@@ -103,7 +103,7 @@ export default function SmsDashboard() {
   const currentAccount = MOCK_ACCOUNTS.find(a => a.id === selectedAccount);
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-8 font-sans">
+    <div className="p-4 md:p-8 font-sans">
       <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
         
         {/* Left Sidebar: Configuration */}
