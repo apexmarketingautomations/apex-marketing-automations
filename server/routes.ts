@@ -595,6 +595,101 @@ Rules:
     }
   });
 
+  const dialerJobs = new Map<string, { leads: any[]; current: number; status: string; results: any[] }>();
+
+  app.post("/api/voice-agents/power-dial", async (req, res) => {
+    try {
+      const vapiKey = process.env.VAPI_API_KEY;
+      if (!vapiKey) {
+        return res.status(503).json({ error: "Vapi API key is not configured. Add your VAPI_API_KEY in Secrets." });
+      }
+
+      const { assistantId, phoneNumberId, leads } = req.body;
+      if (!assistantId || !Array.isArray(leads) || leads.length === 0) {
+        return res.status(400).json({ error: "assistantId and a non-empty leads array are required" });
+      }
+
+      if (leads.length > 50) {
+        return res.status(400).json({ error: "Maximum 50 leads per batch" });
+      }
+
+      const jobId = `dial_${Date.now()}`;
+      const jobData = {
+        leads: leads.map((l: any) => ({ name: l.name || "Unknown", phone: l.phone })),
+        current: 0,
+        status: "running",
+        results: [] as any[],
+      };
+      dialerJobs.set(jobId, jobData);
+
+      res.json({ jobId, total: leads.length, status: "running" });
+
+      (async () => {
+        for (let i = 0; i < jobData.leads.length; i++) {
+          const lead = jobData.leads[i];
+          jobData.current = i;
+
+          try {
+            const payload: any = {
+              assistantId,
+              customer: { number: lead.phone },
+            };
+
+            if (phoneNumberId) {
+              payload.phoneNumberId = phoneNumberId;
+            }
+
+            payload.assistantOverrides = {
+              variableValues: { lead_name: lead.name },
+            };
+
+            const response = await fetch("https://api.vapi.ai/call/phone", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${vapiKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(payload),
+            });
+
+            if (response.ok) {
+              const call = await response.json();
+              jobData.results.push({ name: lead.name, phone: lead.phone, status: "dialed", callId: call.id });
+            } else {
+              jobData.results.push({ name: lead.name, phone: lead.phone, status: "failed", error: "API error" });
+            }
+          } catch {
+            jobData.results.push({ name: lead.name, phone: lead.phone, status: "failed", error: "Network error" });
+          }
+
+          if (i < jobData.leads.length - 1) {
+            await new Promise((resolve) => setTimeout(resolve, 30000));
+          }
+        }
+
+        jobData.current = jobData.leads.length;
+        jobData.status = "completed";
+      })();
+    } catch (err: any) {
+      console.error("Power dialer error:", err);
+      res.status(500).json({ error: err.message || "Failed to start power dialer" });
+    }
+  });
+
+  app.get("/api/voice-agents/power-dial/:jobId", (req, res) => {
+    const job = dialerJobs.get(req.params.jobId);
+    if (!job) {
+      return res.status(404).json({ error: "Job not found" });
+    }
+    res.json({
+      total: job.leads.length,
+      current: job.current,
+      status: job.status,
+      results: job.results,
+      leads: job.leads,
+    });
+  });
+
   app.get("/api/voice-agents/public-key", (_req, res) => {
     const publicKey = process.env.VAPI_PUBLIC_KEY;
     if (!publicKey) {
