@@ -53,7 +53,9 @@ const CHAT_SCENARIOS = {
   }
 };
 
-const DEFAULT_PERSONA = "You are a helpful assistant for Forge Fitness. Be concise and friendly.";
+const DEFAULT_PERSONA = `You are chatting on Instagram.
+CONTEXT: The user just replied to a story about 'Our new 6-week weight loss challenge'.
+GOAL: Pivot the conversation to booking an appointment.`;
 
 export default function BotTrainer() {
   const [url, setUrl] = useState("https://forge-fitness.com");
