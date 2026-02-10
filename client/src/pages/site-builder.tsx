@@ -139,244 +139,50 @@ function BookingSection({ title, theme }: any) {
   );
 }
 
-const TEMPLATES: Record<string, any> = {
-  luxe: {
-    theme: {
-      primary: "#D4AF37",
-      bg: "#0a0a0a",
-      text: "#ffffff",
-      font: "Playfair Display",
-    },
-    sections: [
-      {
-        type: "HERO",
-        props: {
-          title: "Timeless Elegance.",
-          subtitle:
-            "Luxury aesthetic treatments for the modern individual.",
-          cta: "Book Consultation",
-          image:
-            "https://images.unsplash.com/photo-1616394584738-fc6e612e71b9?q=80&w=2070&auto=format&fit=crop",
-        },
-      },
-      {
-        type: "FEATURES",
-        props: {
-          title: "Why Choose Luxe?",
-          features: [
-            {
-              icon: "ShieldCheck",
-              title: "Board Certified",
-              desc: "Treatments performed by MDs only.",
-            },
-            {
-              icon: "Clock",
-              title: "Zero Downtime",
-              desc: "Lunch break procedures available.",
-            },
-            {
-              icon: "Sparkles",
-              title: "Premium Products",
-              desc: "Only FDA-approved fillers used.",
-            },
-          ],
-        },
-      },
-      {
-        type: "BOOKING",
-        props: {
-          title: "Secure Your Exclusive Offer",
-          formId: "form_luxe",
-        },
-      },
-    ],
-  },
-  gym: {
-    theme: {
-      primary: "#ef4444",
-      bg: "#0a0a0a",
-      text: "#ffffff",
-      font: "Inter",
-    },
-    sections: [
-      {
-        type: "HERO",
-        props: {
-          title: "Transform Your Body.",
-          subtitle:
-            "Join the 6-week challenge that has helped 1,000+ members reach their goals.",
-          cta: "Start Free Trial",
-          image:
-            "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=2070&auto=format&fit=crop",
-        },
-      },
-      {
-        type: "FEATURES",
-        props: {
-          title: "Why Train With Us?",
-          features: [
-            {
-              icon: "Dumbbell",
-              title: "Expert Trainers",
-              desc: "Certified personal trainers for every session.",
-            },
-            {
-              icon: "Zap",
-              title: "High Intensity",
-              desc: "Maximum results in minimum time.",
-            },
-            {
-              icon: "Trophy",
-              title: "Proven Results",
-              desc: "94% of members hit their goals.",
-            },
-          ],
-        },
-      },
-      {
-        type: "BOOKING",
-        props: {
-          title: "Claim Your Free Trial",
-          formId: "form_gym",
-        },
-      },
-    ],
-  },
-  dental: {
-    theme: {
-      primary: "#3b82f6",
-      bg: "#0f172a",
-      text: "#ffffff",
-      font: "Inter",
-    },
-    sections: [
-      {
-        type: "HERO",
-        props: {
-          title: "Your Perfect Smile Awaits.",
-          subtitle:
-            "Gentle, modern dentistry for the whole family. New patient specials available.",
-          cta: "Book Appointment",
-          image:
-            "https://images.unsplash.com/photo-1606811841689-23dfddce3e95?q=80&w=2070&auto=format&fit=crop",
-        },
-      },
-      {
-        type: "FEATURES",
-        props: {
-          title: "Modern Care You Can Trust",
-          features: [
-            {
-              icon: "Heart",
-              title: "Gentle Approach",
-              desc: "Pain-free treatments with sedation options.",
-            },
-            {
-              icon: "ShieldCheck",
-              title: "Licensed Professionals",
-              desc: "Board-certified dentists and hygienists.",
-            },
-            {
-              icon: "Clock",
-              title: "Same Day Service",
-              desc: "Emergency appointments available daily.",
-            },
-          ],
-        },
-      },
-      {
-        type: "BOOKING",
-        props: {
-          title: "Schedule Your Visit",
-          formId: "form_dental",
-        },
-      },
-    ],
-  },
-};
-
-function generateSiteFromPrompt(prompt: string): any {
-  const lower = prompt.toLowerCase();
-
-  if (lower.includes("gym") || lower.includes("fitness") || lower.includes("workout")) {
-    return TEMPLATES.gym;
-  }
-  if (lower.includes("dent") || lower.includes("smile") || lower.includes("clinic")) {
-    return TEMPLATES.dental;
-  }
-
-  const customTheme = {
-    primary: "#D4AF37",
-    bg: "#0a0a0a",
-    text: "#ffffff",
-    font: "Playfair Display",
-  };
-
-  if (lower.includes("red")) customTheme.primary = "#ef4444";
-  if (lower.includes("blue")) customTheme.primary = "#3b82f6";
-  if (lower.includes("green")) customTheme.primary = "#22c55e";
-  if (lower.includes("purple")) customTheme.primary = "#a855f7";
-  if (lower.includes("pink")) customTheme.primary = "#ec4899";
-
-  const title = lower.includes("gym")
-    ? "Transform Your Body."
-    : lower.includes("spa") || lower.includes("luxe") || lower.includes("med")
-    ? "Timeless Elegance."
-    : "Welcome to Your Business.";
-
-  return {
-    theme: customTheme,
-    sections: [
-      {
-        type: "HERO",
-        props: {
-          title,
-          subtitle: "Premium services tailored for you. Book today and experience the difference.",
-          cta: "Get Started",
-          image:
-            "https://images.unsplash.com/photo-1616394584738-fc6e612e71b9?q=80&w=2070&auto=format&fit=crop",
-        },
-      },
-      {
-        type: "FEATURES",
-        props: {
-          title: "Why Choose Us?",
-          features: [
-            { icon: "Star", title: "Top Rated", desc: "5-star reviews from hundreds of clients." },
-            { icon: "Clock", title: "Fast Service", desc: "Quick and efficient — respect your time." },
-            { icon: "ShieldCheck", title: "Trusted", desc: "Licensed, insured, and certified." },
-          ],
-        },
-      },
-      {
-        type: "BOOKING",
-        props: {
-          title: "Book Your Appointment",
-          formId: "form_custom",
-        },
-      },
-    ],
-  };
-}
-
 export default function SiteBuilder() {
   const [prompt, setPrompt] = useState("");
   const [siteData, setSiteData] = useState<any>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
   const [history, setHistory] = useState<string[]>([]);
+  const [lastPrompt, setLastPrompt] = useState("");
   const { toast } = useToast();
 
-  const handleGenerate = async () => {
-    if (!prompt.trim()) return;
+  const handleGenerate = async (overridePrompt?: string) => {
+    const text = overridePrompt || prompt.trim();
+    if (!text) return;
     setIsGenerating(true);
-    setHistory((prev) => [...prev, prompt]);
+    setLastPrompt(text);
+    if (!overridePrompt) setHistory((prev) => [...prev, text]);
 
-    await new Promise((r) => setTimeout(r, 1800));
-    const data = generateSiteFromPrompt(prompt);
-    setSiteData(data);
-    setIsGenerating(false);
-    setPrompt("");
+    try {
+      const res = await fetch("/api/generate-site", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: text }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Generation failed");
+      }
+
+      const data = await res.json();
+      setSiteData(data);
+    } catch (err: any) {
+      toast({
+        title: "Generation Failed",
+        description: err.message || "Could not generate site. Try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
+      setPrompt("");
+    }
+  };
+
+  const handleRegenerate = () => {
+    if (lastPrompt) handleGenerate(lastPrompt);
   };
 
   const handlePublish = () => {
@@ -497,7 +303,7 @@ export default function SiteBuilder() {
               data-testid="input-prompt"
             />
             <Button
-              onClick={handleGenerate}
+              onClick={() => handleGenerate()}
               disabled={isGenerating || !prompt.trim()}
               className="bg-indigo-600 hover:bg-indigo-700"
               data-testid="button-generate"
@@ -540,8 +346,8 @@ export default function SiteBuilder() {
               variant="outline"
               size="sm"
               className="border-white/10 hover:bg-white/5"
-              onClick={handleGenerate}
-              disabled={!prompt.trim() && history.length === 0}
+              onClick={handleRegenerate}
+              disabled={!lastPrompt || isGenerating}
               data-testid="button-regenerate"
             >
               <RefreshCcw size={14} className="mr-2" /> Regenerate

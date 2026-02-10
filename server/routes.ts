@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema } from "@shared/schema";
+import OpenAI from "openai";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -111,6 +112,103 @@ export async function registerRoutes(
     });
 
     res.status(201).json({ account, blueprint: bp });
+  });
+
+  // ---- Site Builder (AI Generation) ----
+  const openai = new OpenAI({
+    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  });
+
+  const SITE_SYSTEM_PROMPT = `You are a landing-page architect for a SaaS site-builder.
+
+When the user describes a business, return a JSON object with this exact structure:
+
+{
+  "theme": {
+    "primary": "<hex color>",
+    "bg": "<hex background color>",
+    "text": "<hex text color>",
+    "font": "<font family name>"
+  },
+  "sections": [
+    {
+      "type": "HERO",
+      "props": {
+        "title": "<headline>",
+        "subtitle": "<subheadline>",
+        "cta": "<button text>",
+        "image": "<unsplash URL for a relevant background image>"
+      }
+    },
+    {
+      "type": "FEATURES",
+      "props": {
+        "title": "<section heading>",
+        "features": [
+          { "icon": "<icon name>", "title": "<feature title>", "desc": "<short description>" },
+          { "icon": "<icon name>", "title": "<feature title>", "desc": "<short description>" },
+          { "icon": "<icon name>", "title": "<feature title>", "desc": "<short description>" }
+        ]
+      }
+    },
+    {
+      "type": "BOOKING",
+      "props": {
+        "title": "<form heading>",
+        "formId": "<unique form id>"
+      }
+    }
+  ]
+}
+
+Rules:
+- Always return exactly 3 sections: HERO, FEATURES, BOOKING in that order.
+- icon must be one of: ShieldCheck, Clock, Sparkles, Star, Dumbbell, Heart, Zap, Trophy, CheckCircle2
+- Use real Unsplash image URLs that are relevant to the business type. Format: https://images.unsplash.com/photo-XXXXX?q=80&w=2070&auto=format&fit=crop
+- Choose theme colors that match the business vibe (luxury = gold/black, fitness = red/black, medical = blue/white, etc.)
+- font should be either "Playfair Display" for luxury/elegant or "Inter" for modern/clean
+- Write compelling, concise marketing copy
+- Return ONLY the JSON object, no markdown, no explanation, no code fences.`;
+
+  app.post("/api/generate-site", async (req, res) => {
+    try {
+      if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+        return res.status(503).json({ error: "AI service is not configured" });
+      }
+
+      const { prompt } = req.body;
+      if (!prompt || typeof prompt !== "string") {
+        return res.status(400).json({ error: "prompt is required" });
+      }
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: SITE_SYSTEM_PROMPT },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.7,
+        max_tokens: 1500,
+      });
+
+      const raw = completion.choices[0]?.message?.content ?? "";
+      const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+
+      const siteData = JSON.parse(cleaned);
+
+      if (!siteData.theme || !Array.isArray(siteData.sections)) {
+        return res.status(500).json({ error: "AI returned invalid site structure" });
+      }
+
+      res.json(siteData);
+    } catch (err: any) {
+      console.error("Site generation error:", err);
+      if (err instanceof SyntaxError) {
+        return res.status(500).json({ error: "AI returned invalid JSON" });
+      }
+      res.status(500).json({ error: err.message || "Failed to generate site" });
+    }
   });
 
   return httpServer;
