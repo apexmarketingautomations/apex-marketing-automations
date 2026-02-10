@@ -21,6 +21,7 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { ChatWidget } from "@/components/chat-widget";
 
 const ICON_MAP: Record<string, React.ComponentType<any>> = {
   ShieldCheck,
@@ -389,6 +390,7 @@ export default function SiteBuilder() {
                 const props = { ...section.props, theme: siteData.theme };
                 return <Component key={i} {...props} />;
               })}
+              <ChatWidget primaryColor={siteData.theme.primary} />
             </motion.div>
           ) : (
             <div className="flex flex-col items-center justify-center text-neutral-600 space-y-4 mt-32">
