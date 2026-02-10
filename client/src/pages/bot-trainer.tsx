@@ -57,6 +57,39 @@ const DEFAULT_PERSONA = `You are chatting on Instagram.
 CONTEXT: The user just replied to a story about 'Our new 6-week weight loss challenge'.
 GOAL: Pivot the conversation to booking an appointment.`;
 
+// --- MOCK SERVER (SIMULATION) ---
+// This overrides fetch for specific endpoints to make the prototype "work" without a real backend.
+const simulateFetch = async (url: string, options?: any) => {
+  // Simulate Network Delay
+  await new Promise(r => setTimeout(r, 600));
+
+  if (url.includes('/api/bots/train')) {
+    return {
+      ok: true,
+      json: async () => ({ jobId: "job_" + Date.now() })
+    };
+  }
+
+  if (url.includes('/api/jobs/')) {
+    // Return random progress updates based on time
+    const randomLog = TRAINING_LOGS[Math.floor(Math.random() * TRAINING_LOGS.length)];
+    const isComplete = Math.random() > 0.85; 
+    
+    return {
+      ok: true,
+      json: async () => ({
+        logs: [randomLog],
+        progress: isComplete ? 100 : Math.floor(Math.random() * 90),
+        state: isComplete ? 'completed' : 'processing'
+      })
+    };
+  }
+
+  // Fallback to real fetch (which will 404 in this env, but keeps the code correct)
+  return fetch(url, options);
+};
+
+
 export default function BotTrainer() {
   const [url, setUrl] = useState("https://forge-fitness.com");
   const [persona, setPersona] = useState(DEFAULT_PERSONA);
@@ -72,24 +105,50 @@ export default function BotTrainer() {
   const [currentTool, setCurrentTool] = useState<any>(null);
   const [ragContext, setRagContext] = useState<any[]>([]);
 
-  const handleTrain = () => {
+  const handleTrain = async () => {
     setIsTraining(true);
     setLogs([]);
-    setTrainingProgress(0);
-    
-    let step = 0;
-    const interval = setInterval(() => {
-      if (step >= TRAINING_LOGS.length) {
-        clearInterval(interval);
-        setIsTraining(false);
-        setActiveTab("test"); // Auto-switch to test tab
-        return;
-      }
+    setTrainingProgress(5); // Started
+
+    try {
+      // 1. Tell the Server to start the job
+      // We use simulateFetch here to mimic the backend response in this prototype
+      const response = await simulateFetch('http://localhost:5000/api/bots/train', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url, persona: persona })
+      });
       
-      setLogs(prev => [...prev, TRAINING_LOGS[step]]);
-      setTrainingProgress(prev => prev + (100 / TRAINING_LOGS.length));
-      step++;
-    }, 800);
+      const { jobId } = await response.json();
+
+      // 2. Poll for logs/status (The "Live Terminal" effect)
+      const interval = setInterval(async () => {
+        const statusRes = await simulateFetch(`http://localhost:5000/api/jobs/${jobId}`);
+        const statusData = await statusRes.json();
+        
+        // Update the Logs UI with real data from the server
+        if (statusData.logs && statusData.logs.length > 0) {
+            setLogs(prev => [...prev, ...statusData.logs]); // The server sends back ["Scraping...", "Found 12 pages..."]
+        }
+        
+        // Only update progress if it increases
+        if (statusData.progress > 0) {
+          setTrainingProgress(statusData.progress);
+        }
+
+        if (statusData.state === 'completed') {
+            clearInterval(interval);
+            setIsTraining(false);
+            setTrainingProgress(100);
+            setLogs(prev => [...prev, "✅ Training Complete. Bot is ready."]);
+            setTimeout(() => setActiveTab("test"), 1000);
+        }
+      }, 1000);
+
+    } catch (error) {
+        setLogs(prev => [...prev, "❌ Error connecting to Training Engine"]);
+        setIsTraining(false);
+    }
   };
 
   const handleSendMessage = async () => {
