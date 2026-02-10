@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { 
   Bot, 
   Globe, 
@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 
 // --- MOCK DATA ---
 const TRAINING_LOGS = [
@@ -52,8 +53,11 @@ const CHAT_SCENARIOS = {
   }
 };
 
+const DEFAULT_PERSONA = "You are a helpful assistant for Forge Fitness. Be concise and friendly.";
+
 export default function BotTrainer() {
   const [url, setUrl] = useState("https://forge-fitness.com");
+  const [persona, setPersona] = useState(DEFAULT_PERSONA);
   const [isTraining, setIsTraining] = useState(false);
   const [trainingProgress, setTrainingProgress] = useState(0);
   const [logs, setLogs] = useState<string[]>([]);
@@ -148,55 +152,72 @@ export default function BotTrainer() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             
             {/* Input Card */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Source Material</CardTitle>
-                <CardDescription>Enter a URL to scrape and vectorize.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Globe className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input 
-                      value={url} 
-                      onChange={(e) => setUrl(e.target.value)} 
-                      className="pl-9" 
-                      placeholder="https://example.com"
-                    />
-                  </div>
-                </div>
-                
-                <div className="rounded-lg bg-muted/50 p-4 border border-border">
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
-                    <Database className="h-3 w-3" />
-                    Configuration
-                  </h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Chunk Size:</span>
-                      <span className="font-mono">1000 chars</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Overlap:</span>
-                      <span className="font-mono">200 chars</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Embedding Model:</span>
-                      <span className="font-mono text-indigo-500">text-embedding-3-small</span>
+            <div className="space-y-8">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Source Material</CardTitle>
+                  <CardDescription>Enter a URL to scrape and vectorize.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Globe className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input 
+                        value={url} 
+                        onChange={(e) => setUrl(e.target.value)} 
+                        className="pl-9" 
+                        placeholder="https://example.com"
+                      />
                     </div>
                   </div>
-                </div>
-              </CardContent>
-              <CardFooter>
-                <Button onClick={handleTrain} disabled={isTraining} className="w-full bg-indigo-600 hover:bg-indigo-700">
-                  {isTraining ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-                  {isTraining ? "Training..." : "Start Training"}
-                </Button>
-              </CardFooter>
-            </Card>
+                  
+                  <div className="rounded-lg bg-muted/50 p-4 border border-border">
+                    <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+                      <Database className="h-3 w-3" />
+                      Configuration
+                    </h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Chunk Size:</span>
+                        <span className="font-mono">1000 chars</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Overlap:</span>
+                        <span className="font-mono">200 chars</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Embedding Model:</span>
+                        <span className="font-mono text-indigo-500">text-embedding-3-small</span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Bot Persona</CardTitle>
+                  <CardDescription>Define the system prompt for the AI agent.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Textarea 
+                    value={persona}
+                    onChange={(e) => setPersona(e.target.value)}
+                    className="min-h-[100px] font-mono text-sm"
+                    placeholder="Enter system prompt..."
+                  />
+                </CardContent>
+                <CardFooter>
+                  <Button onClick={handleTrain} disabled={isTraining} className="w-full bg-indigo-600 hover:bg-indigo-700">
+                    {isTraining ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                    {isTraining ? "Training..." : "Start Training"}
+                  </Button>
+                </CardFooter>
+              </Card>
+            </div>
 
             {/* Logs Output */}
-            <Card className="bg-slate-950 border-slate-800 text-slate-50 flex flex-col h-[400px]">
+            <Card className="bg-slate-950 border-slate-800 text-slate-50 flex flex-col h-full min-h-[500px]">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-mono text-slate-400">Terminal Output</CardTitle>
               </CardHeader>
@@ -318,6 +339,19 @@ export default function BotTrainer() {
               </CardHeader>
               <CardContent className="flex-1 overflow-y-auto p-0">
                 <div className="p-4 space-y-6">
+
+                  {/* System Prompt Section */}
+                   <div className="space-y-2">
+                    <h4 className="text-xs font-semibold text-muted-foreground uppercase flex items-center gap-2">
+                      <Bot className="h-3 w-3" />
+                      System Prompt
+                    </h4>
+                    <div className="bg-slate-950 text-slate-300 p-2 rounded text-[10px] font-mono border border-slate-800">
+                      {`{"role": "system", "content": "${persona}\\n\\nAnswer using this knowledge:\\n..."}`}
+                    </div>
+                  </div>
+
+                  <Separator />
                   
                   {/* RAG Section */}
                   <div className="space-y-2">
