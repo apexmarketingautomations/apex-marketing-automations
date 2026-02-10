@@ -14,6 +14,7 @@ import BotTrainer from "@/pages/bot-trainer";
 import SiteBuilder from "@/pages/site-builder";
 import LiquidWebsite from "@/pages/liquid-website";
 import AdLauncher from "@/pages/ad-launcher";
+import VoiceAgent from "@/pages/voice-agent";
 
 function Router() {
   return (
@@ -25,6 +26,7 @@ function Router() {
       <Route path="/site-builder" component={SiteBuilder} />
       <Route path="/liquid" component={LiquidWebsite} />
       <Route path="/ad-launcher" component={AdLauncher} />
+      <Route path="/voice-agent" component={VoiceAgent} />
 
       {/* Dashboard Routes (With Sidebar) */}
       <Route path="/">

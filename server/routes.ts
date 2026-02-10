@@ -453,6 +453,143 @@ Rules:
     }
   });
 
+  // ---- Voice Agent (Vapi Integration) ----
+  app.post("/api/voice-agents/create", async (req, res) => {
+    try {
+      const vapiKey = process.env.VAPI_API_KEY;
+      if (!vapiKey) {
+        return res.status(503).json({ error: "Vapi API key is not configured. Add your VAPI_API_KEY in Secrets." });
+      }
+
+      const { persona, firstMessage, voiceId, voiceProvider } = req.body;
+      if (!persona || !firstMessage) {
+        return res.status(400).json({ error: "persona and firstMessage are required" });
+      }
+
+      const payload = {
+        transcriber: { provider: "deepgram" },
+        model: {
+          provider: "openai",
+          model: "gpt-4",
+          messages: [
+            {
+              role: "system",
+              content: `You are a voice AI assistant. Keep sentences short and natural. Do not sound robotic. Pauses like 'um' and 'uh' are okay. YOUR GOAL: ${persona}`,
+            },
+          ],
+        },
+        voice: {
+          provider: voiceProvider || "11labs",
+          voiceId: voiceId || "21m00Tcm4TlvDq8ikWAM",
+        },
+        firstMessage: firstMessage,
+        name: `Nexus Agent - ${new Date().toLocaleDateString()}`,
+      };
+
+      const response = await fetch("https://api.vapi.ai/assistant", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${vapiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errData = await response.text();
+        console.error("Vapi error:", errData);
+        return res.status(response.status).json({ error: "Failed to create voice agent on Vapi" });
+      }
+
+      const agent = await response.json();
+      res.json({
+        id: agent.id,
+        name: agent.name,
+        status: "created",
+        phoneNumber: agent.phoneNumber || null,
+      });
+    } catch (err: any) {
+      console.error("Voice agent creation error:", err);
+      res.status(500).json({ error: err.message || "Failed to create voice agent" });
+    }
+  });
+
+  app.get("/api/voice-agents", async (_req, res) => {
+    try {
+      const vapiKey = process.env.VAPI_API_KEY;
+      if (!vapiKey) {
+        return res.json([]);
+      }
+
+      const response = await fetch("https://api.vapi.ai/assistant", {
+        headers: {
+          Authorization: `Bearer ${vapiKey}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        return res.json([]);
+      }
+
+      const agents = await response.json();
+      res.json(
+        (Array.isArray(agents) ? agents : []).map((a: any) => ({
+          id: a.id,
+          name: a.name,
+          createdAt: a.createdAt,
+          model: a.model?.model,
+          voice: a.voice?.voiceId,
+        }))
+      );
+    } catch {
+      res.json([]);
+    }
+  });
+
+  app.post("/api/voice-agents/generate-persona", async (req, res) => {
+    try {
+      if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+        return res.status(503).json({ error: "AI service is not configured" });
+      }
+
+      const { businessDescription } = req.body;
+      if (!businessDescription) {
+        return res.status(400).json({ error: "businessDescription is required" });
+      }
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: `You generate voice AI agent personas for businesses. Given a business description, return a JSON object with:
+{
+  "persona": "<detailed agent persona/instructions for handling calls, max 3 sentences>",
+  "firstMessage": "<natural greeting the agent says when answering, max 1 sentence>",
+  "suggestedName": "<friendly agent name>"
+}
+Rules:
+- Persona should be specific to the business type
+- First message should sound warm and natural, not robotic
+- Return ONLY valid JSON, no markdown or code fences`,
+          },
+          { role: "user", content: businessDescription },
+        ],
+        temperature: 0.7,
+        max_tokens: 300,
+      });
+
+      const raw = completion.choices[0]?.message?.content ?? "";
+      const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      const data = JSON.parse(cleaned);
+      res.json(data);
+    } catch (err: any) {
+      console.error("Persona generation error:", err);
+      res.status(500).json({ error: "Failed to generate persona" });
+    }
+  });
+
   return httpServer;
 }
 
