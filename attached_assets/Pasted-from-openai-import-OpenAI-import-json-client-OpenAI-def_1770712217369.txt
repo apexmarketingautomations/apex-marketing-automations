@@ -1,0 +1,70 @@
+from openai import OpenAI
+import json
+
+client = OpenAI()
+
+def handle_incoming_message(sub_account_id, user_message, contact_id):
+    
+    # 1. RAG: Search the Knowledge Base
+    # Query pgvector for the 3 most relevant chunks of text
+    knowledge_snippets = vector_db.similarity_search(user_message, filter={"sub_account_id": sub_account_id})
+    context_text = "\n".join([doc.page_content for doc in knowledge_snippets])
+
+    # 2. Define Tools (The "Hands")
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "check_calendar_availability",
+                "description": "Check if a time slot is open",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "date": {"type": "string", "description": "YYYY-MM-DD"},
+                        "time": {"type": "string", "description": "HH:MM"}
+                    },
+                    "required": ["date"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "book_appointment",
+                "description": "Book the appointment once confirmed",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "slot_time": {"type": "string"}
+                    }
+                }
+            }
+        }
+    ]
+
+    # 3. The LLM Call (The "Brain")
+    # We give it the Context (Website Info) and the Tools (Calendar Access)
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": f"You are a helpful assistant. Answer using this knowledge:\n{context_text}"},
+            {"role": "user", "content": user_message}
+        ],
+        tools=tools
+    )
+
+    msg = response.choices[0].message
+
+    # 4. Handle "Function Calling" (If the bot wants to book)
+    if msg.tool_calls:
+        for tool in msg.tool_calls:
+            if tool.function.name == "check_calendar_availability":
+                # Execute your DB code to check the calendar table
+                availability = check_db_slots(tool.function.arguments)
+                
+                # Send the result BACK to the AI so it can reply to the user
+                # "Yes, 4pm is available."
+                return run_follow_up_ai(availability)
+    
+    # 5. Otherwise, just send the text reply
+    return send_sms(contact_id, msg.content)

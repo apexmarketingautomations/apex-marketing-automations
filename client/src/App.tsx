@@ -9,6 +9,7 @@ import SmsDashboard from "@/pages/sms-dashboard";
 import WorkflowBuilder from "@/pages/workflow-builder";
 import GymLanding from "@/pages/gym-landing";
 import Onboarding from "@/pages/onboarding";
+import BotTrainer from "@/pages/bot-trainer";
 
 function Router() {
   return (
@@ -26,6 +27,11 @@ function Router() {
       <Route path="/workflows">
         <Layout>
           <WorkflowBuilder />
+        </Layout>
+      </Route>
+      <Route path="/bot-trainer">
+        <Layout>
+          <BotTrainer />
         </Layout>
       </Route>
       

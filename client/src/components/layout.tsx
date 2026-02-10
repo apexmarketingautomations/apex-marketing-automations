@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { MessageSquare, GitFork, LayoutDashboard, Settings, Briefcase } from "lucide-react";
+import { MessageSquare, GitFork, LayoutDashboard, Settings, Briefcase, Bot } from "lucide-react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -7,6 +7,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const navItems = [
     { href: "/", icon: MessageSquare, label: "Messages" },
     { href: "/workflows", icon: GitFork, label: "Workflows" },
+    { href: "/bot-trainer", icon: Bot, label: "Bot Trainer" },
     { href: "/onboarding", icon: Briefcase, label: "New Account" },
   ];
 
