@@ -7,16 +7,33 @@ import { Layout } from "@/components/layout";
 import NotFound from "@/pages/not-found";
 import SmsDashboard from "@/pages/sms-dashboard";
 import WorkflowBuilder from "@/pages/workflow-builder";
+import GymLanding from "@/pages/gym-landing";
 
 function Router() {
   return (
-    <Layout>
-      <Switch>
-        <Route path="/" component={SmsDashboard} />
-        <Route path="/workflows" component={WorkflowBuilder} />
-        <Route component={NotFound} />
-      </Switch>
-    </Layout>
+    <Switch>
+      {/* Landing Page (No Sidebar) */}
+      <Route path="/gym" component={GymLanding} />
+
+      {/* Dashboard Routes (With Sidebar) */}
+      <Route path="/">
+        <Layout>
+          <SmsDashboard />
+        </Layout>
+      </Route>
+      <Route path="/workflows">
+        <Layout>
+          <WorkflowBuilder />
+        </Layout>
+      </Route>
+      
+      {/* Fallback */}
+      <Route>
+        <Layout>
+          <NotFound />
+        </Layout>
+      </Route>
+    </Switch>
   );
 }
 
