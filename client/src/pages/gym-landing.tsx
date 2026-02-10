@@ -4,11 +4,10 @@ import { Check } from "lucide-react";
 import { Link } from "wouter";
 
 // Component: Hero_Section_Video_Background
-// Simulating video background with a high-quality dark image and overlay for now
-const HeroSection = ({ headline, subheadline, cta }: { headline: string, subheadline: string, cta: string }) => {
+const HeroSection = ({ headline, subheadline, cta_button }: { headline: string, subheadline: string, cta_button: string }) => {
   return (
     <div className="relative h-screen w-full overflow-hidden flex items-center justify-center bg-black">
-      {/* Background "Video" Placeholder - Using a gritty texture/image */}
+      {/* Background "Video" Placeholder */}
       <div 
         className="absolute inset-0 bg-cover bg-center opacity-60 mix-blend-overlay"
         style={{ 
@@ -48,7 +47,7 @@ const HeroSection = ({ headline, subheadline, cta }: { headline: string, subhead
             size="lg" 
             className="bg-red-600 hover:bg-red-700 text-white border-0 text-lg px-10 py-8 rounded-none font-bold tracking-widest uppercase hover:scale-105 transition-transform"
           >
-            {cta}
+            {cta_button}
           </Button>
         </motion.div>
       </div>
@@ -119,14 +118,24 @@ const PricingSection = ({ tiers }: { tiers: any[] }) => {
               </Button>
             </motion.div>
           ))}
-          
-          {/* Placeholder for 3rd column if needed or requested by "3_Col" name, 
-              but standardizing on the data provided. Adding a "Pro" tier dummy for visual balance if user asked for 3-col explicitly but gave 2 items? 
-              No, better to respect data. */}
         </div>
       </div>
     </div>
   );
+};
+
+// --- Dynamic Component Registry ---
+const COMPONENT_REGISTRY: Record<string, React.ComponentType<any>> = {
+  "Hero_Section_Video_Background": HeroSection,
+  "Pricing_Table_3_Col": PricingSection,
+};
+
+const ComponentRegistry = ({ type, props }: { type: string, props: any }) => {
+  const Component = COMPONENT_REGISTRY[type];
+  if (!Component) {
+    return <div className="p-4 bg-red-900 text-white">Unknown Component: {type}</div>;
+  }
+  return <Component {...props} />;
 };
 
 export default function GymLanding() {
@@ -144,16 +153,11 @@ export default function GymLanding() {
         tiers: [
           { name: "Drop In", price: "$20" },
           { name: "Unlimited", price: "$150" },
-           // Adding a 3rd mock tier to satisfy the "3_Col" component name visually
           { name: "Personal Training", price: "$400" }
         ]
       }
     ]
   };
-
-  // Explicitly typing or casting to avoid TS union issues with the mixed sections array
-  const heroSection = data.sections[0] as { headline: string; subheadline: string; cta_button: string };
-  const pricingSection = data.sections[1] as { tiers: { name: string; price: string }[] };
 
   return (
     <div className="bg-black min-h-screen text-white font-sans selection:bg-red-600 selection:text-white">
@@ -167,13 +171,14 @@ export default function GymLanding() {
         </div>
       </nav>
 
-      <HeroSection 
-        headline={heroSection.headline} 
-        subheadline={heroSection.subheadline} 
-        cta={heroSection.cta_button} 
-      />
-      
-      <PricingSection tiers={pricingSection.tiers} />
+      {/* Dynamic Rendering Loop */}
+      {data.sections.map((section, idx) => (
+        <ComponentRegistry 
+          key={idx} 
+          type={section.component} 
+          props={section} 
+        />
+      ))}
 
       <footer className="bg-black py-12 border-t border-zinc-900 text-center text-zinc-600 text-sm">
         <p>© 2026 FORGE FITNESS. ALL RIGHTS RESERVED.</p>
