@@ -124,7 +124,7 @@ export default function BotTrainer() {
     if (scenario.tool_call) {
       setCurrentTool(scenario.tool_call);
       await new Promise(r => setTimeout(r, 1200));
-      setCurrentTool(prev => ({ ...prev, status: "success", result: "Available: 4:00 PM, 5:30 PM" }));
+      setCurrentTool((prev: any) => ({ ...prev, status: "success", result: "Available: 4:00 PM, 5:30 PM" }));
       await new Promise(r => setTimeout(r, 800));
     }
 
