@@ -901,35 +901,49 @@ Rules:
     }
   });
 
-  // ---- SMS Webhook (Twilio inbound → AI auto-reply) ----
+  // ---- Unified Webhook (Twilio inbound SMS/WhatsApp/Messenger → AI auto-reply) ----
+
+  function detectChannel(from: string): "whatsapp" | "messenger" | "sms" {
+    if (from.startsWith("whatsapp:")) return "whatsapp";
+    if (from.startsWith("messenger:")) return "messenger";
+    return "sms";
+  }
+
+  function stripChannelPrefix(addr: string): string {
+    return addr.replace(/^(whatsapp:|messenger:)/, "");
+  }
 
   app.post("/api/sms-webhook", async (req, res) => {
     try {
       const incomingMsg = req.body.Body;
-      const senderNumber = req.body.From;
-      const toNumber = req.body.To;
+      const senderRaw = req.body.From;
+      const toRaw = req.body.To;
 
-      if (!incomingMsg || !senderNumber) {
+      if (!incomingMsg || !senderRaw) {
         res.type("text/xml").send("<Response></Response>");
         return;
       }
 
-      console.log(`SMS from ${senderNumber}: ${incomingMsg}`);
+      const channel = detectChannel(senderRaw);
+      const senderClean = stripChannelPrefix(senderRaw);
+
+      console.log(`[${channel.toUpperCase()}] from ${senderClean}: ${incomingMsg}`);
 
       let aiReply = "Thanks for your message! We'll get back to you shortly.";
 
       if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
         try {
+          const systemPrompt = channel === "sms"
+            ? "You are a helpful business receptionist. Keep text replies under 160 characters. Be warm, professional, and concise. If someone wants to book an appointment, suggest they call the office number."
+            : "You are a helpful business assistant responding via chat. Keep replies conversational and under 300 characters. Be warm, professional, and helpful. If someone wants to book an appointment, suggest they call the office number.";
+
           const completion = await openai.chat.completions.create({
             model: "gpt-4o",
             messages: [
-              {
-                role: "system",
-                content: "You are a helpful business receptionist. Keep text replies under 160 characters. Be warm, professional, and concise. If someone wants to book an appointment, suggest they call the office number.",
-              },
+              { role: "system", content: systemPrompt },
               { role: "user", content: incomingMsg },
             ],
-            max_tokens: 100,
+            max_tokens: 150,
             temperature: 0.7,
           });
           aiReply = completion.choices[0]?.message?.content || aiReply;
@@ -939,17 +953,21 @@ Rules:
       }
 
       const twilioClient = getTwilioClient();
-      if (twilioClient && toNumber) {
+      if (twilioClient && toRaw) {
+        const replyFrom = channel === "whatsapp" ? `whatsapp:${stripChannelPrefix(toRaw)}`
+          : channel === "messenger" ? `messenger:${stripChannelPrefix(toRaw)}`
+          : toRaw;
+
         await twilioClient.messages.create({
           body: aiReply,
-          from: toNumber,
-          to: senderNumber,
+          from: replyFrom,
+          to: senderRaw,
         });
       }
 
       res.type("text/xml").send("<Response></Response>");
     } catch (err: any) {
-      console.error("SMS webhook error:", err);
+      console.error("Unified webhook error:", err);
       res.type("text/xml").send("<Response></Response>");
     }
   });
