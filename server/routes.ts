@@ -595,6 +595,14 @@ Rules:
     }
   });
 
+  app.get("/api/voice-agents/public-key", (_req, res) => {
+    const publicKey = process.env.VAPI_PUBLIC_KEY;
+    if (!publicKey) {
+      return res.json({ publicKey: null });
+    }
+    res.json({ publicKey });
+  });
+
   app.post("/api/voice-agents/generate-persona", async (req, res) => {
     try {
       if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {

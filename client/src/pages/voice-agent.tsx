@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Phone,
   Loader2,
   Mic,
+  MicOff,
   Send,
   Sparkles,
   CheckCircle2,
@@ -22,6 +23,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import Vapi from "@vapi-ai/web";
 
 const VOICE_OPTIONS = [
   { id: "21m00Tcm4TlvDq8ikWAM", name: "Rachel", desc: "Warm, professional female" },
@@ -49,6 +51,11 @@ export default function VoiceAgent() {
   const [callPhoneNumberId, setCallPhoneNumberId] = useState("");
   const [isCalling, setIsCalling] = useState(false);
   const [callResult, setCallResult] = useState<any>(null);
+  const [demoActive, setDemoActive] = useState(false);
+  const [demoConnecting, setDemoConnecting] = useState(false);
+  const [demoVolume, setDemoVolume] = useState(0);
+  const [vapiPublicKey, setVapiPublicKey] = useState<string | null>(null);
+  const vapiRef = useRef<Vapi | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -61,6 +68,22 @@ export default function VoiceAgent() {
         }
       })
       .catch(() => setHasVapiKey(false));
+
+    fetch("/api/voice-agents/public-key")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.publicKey) setVapiPublicKey(data.publicKey);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (vapiRef.current) {
+        vapiRef.current.stop();
+        vapiRef.current = null;
+      }
+    };
   }, []);
 
   const handleGeneratePersona = async () => {
@@ -171,6 +194,59 @@ export default function VoiceAgent() {
     setCallPhone("");
     setCallPhoneNumberId("");
     setCallResult(null);
+  };
+
+  const startDemoCall = async (agentId: string) => {
+    if (!vapiPublicKey) {
+      toast({ title: "Missing Key", description: "Add VAPI_PUBLIC_KEY in Secrets to use browser demo calls.", variant: "destructive" });
+      return;
+    }
+
+    setDemoConnecting(true);
+
+    try {
+      const vapi = new Vapi(vapiPublicKey);
+      vapiRef.current = vapi;
+
+      vapi.on("call-start", () => {
+        setDemoConnecting(false);
+        setDemoActive(true);
+      });
+
+      vapi.on("call-end", () => {
+        setDemoActive(false);
+        setDemoConnecting(false);
+        setDemoVolume(0);
+        vapiRef.current = null;
+      });
+
+      vapi.on("volume-level", (level: number) => {
+        setDemoVolume(level);
+      });
+
+      vapi.on("error", (err: any) => {
+        console.error("Vapi error:", err);
+        setDemoActive(false);
+        setDemoConnecting(false);
+        vapiRef.current = null;
+        toast({ title: "Call Error", description: "The demo call encountered an error.", variant: "destructive" });
+      });
+
+      await vapi.start(agentId);
+    } catch (err: any) {
+      setDemoConnecting(false);
+      toast({ title: "Failed to Start", description: err.message || "Could not start browser call.", variant: "destructive" });
+    }
+  };
+
+  const stopDemoCall = () => {
+    if (vapiRef.current) {
+      vapiRef.current.stop();
+      vapiRef.current = null;
+    }
+    setDemoActive(false);
+    setDemoConnecting(false);
+    setDemoVolume(0);
   };
 
   return (
@@ -470,6 +546,65 @@ export default function VoiceAgent() {
                 </div>
               </div>
 
+              <div className="bg-gradient-to-r from-violet-900/40 to-fuchsia-900/40 border border-violet-500/20 rounded-2xl p-6 space-y-4">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Mic size={16} className="text-fuchsia-400" /> Talk to {agentName} (Browser Demo)
+                </h3>
+                <p className="text-xs text-neutral-400">
+                  Test your agent right here in the browser. Click the button and start talking — your microphone will be used.
+                </p>
+
+                {!demoActive && !demoConnecting && (
+                  <Button
+                    className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 h-12 text-base"
+                    onClick={() => startDemoCall(deployedAgent.id)}
+                    disabled={!vapiPublicKey}
+                    data-testid="button-demo-call"
+                  >
+                    <Mic className="mr-2" size={18} /> Talk to {agentName} (Demo)
+                  </Button>
+                )}
+
+                {demoConnecting && (
+                  <div className="flex items-center justify-center gap-3 py-4">
+                    <Loader2 className="animate-spin text-fuchsia-400" size={24} />
+                    <span className="text-sm text-fuchsia-300">Connecting...</span>
+                  </div>
+                )}
+
+                {demoActive && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-center gap-4">
+                      <div className="relative">
+                        <div
+                          className="w-20 h-20 rounded-full bg-fuchsia-500/20 flex items-center justify-center transition-all"
+                          style={{
+                            boxShadow: `0 0 ${20 + demoVolume * 60}px ${demoVolume * 30}px rgba(217,70,239,${0.2 + demoVolume * 0.4})`,
+                            transform: `scale(${1 + demoVolume * 0.15})`,
+                          }}
+                        >
+                          <Mic className="text-fuchsia-300" size={32} />
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-center text-sm text-fuchsia-300 animate-pulse">Listening... speak now</p>
+                    <Button
+                      className="w-full bg-red-600 hover:bg-red-500 h-12 text-base"
+                      onClick={stopDemoCall}
+                      data-testid="button-end-demo"
+                    >
+                      <MicOff className="mr-2" size={18} /> End Call
+                    </Button>
+                  </div>
+                )}
+
+                {!vapiPublicKey && (
+                  <p className="text-xs text-amber-400 mt-2">
+                    Add VAPI_PUBLIC_KEY in Secrets to enable browser demo calls.
+                  </p>
+                )}
+              </div>
+
               <div className="bg-white/5 border border-white/10 rounded-2xl p-6 space-y-4">
                 <h3 className="text-sm font-bold text-neutral-300 flex items-center gap-2">
                   <PhoneOutgoing size={16} className="text-violet-400" /> Make Outbound Call
@@ -590,6 +725,20 @@ export default function VoiceAgent() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      {vapiPublicKey && (
+                        <button
+                          onClick={() => demoActive ? stopDemoCall() : startDemoCall(agent.id)}
+                          className={`p-2 rounded-lg transition-colors ${
+                            demoActive
+                              ? "bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                              : "bg-fuchsia-500/10 text-fuchsia-400 hover:bg-fuchsia-500/20"
+                          }`}
+                          title={demoActive ? "End demo call" : "Talk to agent (browser)"}
+                          data-testid={`button-demo-agent-${agent.id}`}
+                        >
+                          {demoConnecting ? <Loader2 size={16} className="animate-spin" /> : demoActive ? <MicOff size={16} /> : <Mic size={16} />}
+                        </button>
+                      )}
                       <button
                         onClick={() => openCallPanel(agent.id)}
                         className="p-2 rounded-lg bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors"
