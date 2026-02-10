@@ -15,6 +15,8 @@ import {
   Copy,
   PhoneCall,
   Clock,
+  PhoneOutgoing,
+  X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -42,6 +44,11 @@ export default function VoiceAgent() {
   const [deployedAgent, setDeployedAgent] = useState<any>(null);
   const [existingAgents, setExistingAgents] = useState<any[]>([]);
   const [hasVapiKey, setHasVapiKey] = useState<boolean | null>(null);
+  const [callAgentId, setCallAgentId] = useState<string | null>(null);
+  const [callPhone, setCallPhone] = useState("");
+  const [callPhoneNumberId, setCallPhoneNumberId] = useState("");
+  const [isCalling, setIsCalling] = useState(false);
+  const [callResult, setCallResult] = useState<any>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -126,6 +133,44 @@ export default function VoiceAgent() {
       navigator.clipboard.writeText(deployedAgent.id);
       toast({ title: "Copied!", description: "Agent ID copied to clipboard." });
     }
+  };
+
+  const handleOutboundCall = async () => {
+    if (!callAgentId || !callPhone.trim()) return;
+    setIsCalling(true);
+    setCallResult(null);
+
+    try {
+      const res = await fetch("/api/voice-agents/call", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assistantId: callAgentId,
+          customerPhone: callPhone.trim(),
+          phoneNumberId: callPhoneNumberId.trim() || undefined,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Call failed");
+      }
+
+      const data = await res.json();
+      setCallResult(data);
+      toast({ title: "Call Initiated!", description: `Call ${data.callId} is ${data.status}.` });
+    } catch (err: any) {
+      toast({ title: "Call Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsCalling(false);
+    }
+  };
+
+  const openCallPanel = (agentId: string) => {
+    setCallAgentId(agentId);
+    setCallPhone("");
+    setCallPhoneNumberId("");
+    setCallResult(null);
   };
 
   return (
@@ -425,14 +470,78 @@ export default function VoiceAgent() {
                 </div>
               </div>
 
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 space-y-4">
+                <h3 className="text-sm font-bold text-neutral-300 flex items-center gap-2">
+                  <PhoneOutgoing size={16} className="text-violet-400" /> Make Outbound Call
+                </h3>
+                <p className="text-xs text-neutral-400">
+                  Have your agent call a customer. Enter their phone number in E.164 format (e.g. +14155551234).
+                </p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs text-neutral-500 mb-1 block">Customer Phone Number</label>
+                    <Input
+                      value={callAgentId === deployedAgent.id ? callPhone : ""}
+                      onChange={(e) => {
+                        setCallAgentId(deployedAgent.id);
+                        setCallPhone(e.target.value);
+                      }}
+                      placeholder="+14155551234"
+                      className="bg-white/5 border-white/10"
+                      data-testid="input-outbound-phone"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-neutral-500 mb-1 block">Vapi Phone Number ID (from your Vapi dashboard)</label>
+                    <Input
+                      value={callAgentId === deployedAgent.id ? callPhoneNumberId : ""}
+                      onChange={(e) => {
+                        setCallAgentId(deployedAgent.id);
+                        setCallPhoneNumberId(e.target.value);
+                      }}
+                      placeholder="Optional — required for outbound calls"
+                      className="bg-white/5 border-white/10"
+                      data-testid="input-phone-number-id"
+                    />
+                  </div>
+                  <Button
+                    className="w-full bg-green-600 hover:bg-green-700"
+                    disabled={isCalling || !(callAgentId === deployedAgent.id && callPhone.trim())}
+                    onClick={() => {
+                      setCallAgentId(deployedAgent.id);
+                      handleOutboundCall();
+                    }}
+                    data-testid="button-make-call"
+                  >
+                    {isCalling ? (
+                      <>
+                        <Loader2 className="mr-2 animate-spin" size={16} /> Dialing...
+                      </>
+                    ) : (
+                      <>
+                        <PhoneOutgoing className="mr-2" size={16} /> Call Now
+                      </>
+                    )}
+                  </Button>
+                  {callResult && callAgentId === deployedAgent.id && (
+                    <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3 text-sm">
+                      <p className="text-green-300 font-medium">Call initiated!</p>
+                      <p className="text-xs text-neutral-400 mt-1">
+                        Call ID: <code className="text-green-300">{callResult.callId}</code> — Status: {callResult.status}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4">
                 <div className="flex items-start gap-3">
                   <AlertCircle className="text-amber-400 mt-0.5" size={18} />
                   <div>
-                    <p className="text-sm font-medium text-amber-300">Next Steps</p>
+                    <p className="text-sm font-medium text-amber-300">Outbound Call Requirements</p>
                     <p className="text-xs text-neutral-400 mt-1">
-                      To connect a phone number, go to your Vapi dashboard and assign a number to agent ID:{" "}
-                      <code className="text-amber-300">{deployedAgent.id}</code>
+                      To make outbound calls, you need a phone number configured in your Vapi dashboard. Enter its Phone Number ID above.
+                      Agent ID: <code className="text-amber-300">{deployedAgent.id}</code>
                     </p>
                   </div>
                 </div>
@@ -465,22 +574,94 @@ export default function VoiceAgent() {
               {existingAgents.map((agent) => (
                 <div
                   key={agent.id}
-                  className="bg-white/5 border border-white/10 rounded-xl p-4 flex items-center justify-between"
+                  className="bg-white/5 border border-white/10 rounded-xl p-4"
                   data-testid={`card-agent-${agent.id}`}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-violet-500/20 flex items-center justify-center">
-                      <Mic size={18} className="text-violet-400" />
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-violet-500/20 flex items-center justify-center">
+                        <Mic size={18} className="text-violet-400" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">{agent.name || "Unnamed Agent"}</p>
+                        <p className="text-xs text-neutral-400 flex items-center gap-1">
+                          <Clock size={10} /> {agent.createdAt ? new Date(agent.createdAt).toLocaleDateString() : "Recent"}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium">{agent.name || "Unnamed Agent"}</p>
-                      <p className="text-xs text-neutral-400 flex items-center gap-1">
-                        <Clock size={10} /> {agent.createdAt ? new Date(agent.createdAt).toLocaleDateString() : "Recent"}
-                      </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => openCallPanel(agent.id)}
+                        className="p-2 rounded-lg bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors"
+                        title="Make outbound call"
+                        data-testid={`button-call-agent-${agent.id}`}
+                      >
+                        <PhoneOutgoing size={16} />
+                      </button>
+                      <code className="text-xs text-neutral-500 bg-white/5 px-2 py-1 rounded">{agent.id?.slice(0, 12)}...</code>
                     </div>
                   </div>
-                  <code className="text-xs text-neutral-500 bg-white/5 px-2 py-1 rounded">{agent.id?.slice(0, 12)}...</code>
-                </div>
+
+                <AnimatePresence>
+                  {callAgentId === agent.id && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="mt-3 pt-3 border-t border-white/5 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-violet-300">Outbound Call</span>
+                          <button
+                            onClick={() => setCallAgentId(null)}
+                            className="text-neutral-500 hover:text-white"
+                            data-testid={`button-close-call-${agent.id}`}
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                        <Input
+                          value={callPhone}
+                          onChange={(e) => setCallPhone(e.target.value)}
+                          placeholder="Customer phone (+14155551234)"
+                          className="bg-white/5 border-white/10 h-9 text-sm"
+                          data-testid={`input-call-phone-${agent.id}`}
+                        />
+                        <Input
+                          value={callPhoneNumberId}
+                          onChange={(e) => setCallPhoneNumberId(e.target.value)}
+                          placeholder="Vapi Phone Number ID (optional)"
+                          className="bg-white/5 border-white/10 h-9 text-sm"
+                          data-testid={`input-call-number-id-${agent.id}`}
+                        />
+                        <Button
+                          size="sm"
+                          className="w-full bg-green-600 hover:bg-green-700"
+                          disabled={isCalling || !callPhone.trim()}
+                          onClick={handleOutboundCall}
+                          data-testid={`button-dial-${agent.id}`}
+                        >
+                          {isCalling ? (
+                            <>
+                              <Loader2 className="mr-1.5 animate-spin" size={14} /> Dialing...
+                            </>
+                          ) : (
+                            <>
+                              <PhoneOutgoing className="mr-1.5" size={14} /> Call Now
+                            </>
+                          )}
+                        </Button>
+                        {callResult && (
+                          <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-2 text-xs">
+                            <p className="text-green-300">Call initiated — ID: <code>{callResult.callId}</code></p>
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
               ))}
             </div>
           </div>

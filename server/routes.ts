@@ -547,6 +547,54 @@ Rules:
     }
   });
 
+  app.post("/api/voice-agents/call", async (req, res) => {
+    try {
+      const vapiKey = process.env.VAPI_API_KEY;
+      if (!vapiKey) {
+        return res.status(503).json({ error: "Vapi API key is not configured. Add your VAPI_API_KEY in Secrets." });
+      }
+
+      const { assistantId, customerPhone, phoneNumberId } = req.body;
+      if (!assistantId || !customerPhone) {
+        return res.status(400).json({ error: "assistantId and customerPhone are required" });
+      }
+
+      const payload: any = {
+        assistantId,
+        customer: { number: customerPhone },
+      };
+
+      if (phoneNumberId) {
+        payload.phoneNumberId = phoneNumberId;
+      }
+
+      const response = await fetch("https://api.vapi.ai/call/phone", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${vapiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errData = await response.text();
+        console.error("Vapi outbound call error:", errData);
+        return res.status(response.status).json({ error: "Failed to initiate outbound call" });
+      }
+
+      const call = await response.json();
+      res.json({
+        callId: call.id,
+        status: call.status || "queued",
+        createdAt: call.createdAt,
+      });
+    } catch (err: any) {
+      console.error("Outbound call error:", err);
+      res.status(500).json({ error: err.message || "Failed to initiate call" });
+    }
+  });
+
   app.post("/api/voice-agents/generate-persona", async (req, res) => {
     try {
       if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
