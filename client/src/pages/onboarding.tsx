@@ -1,32 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, Loader2, Briefcase, Dumbbell, Home, Stethoscope, Hammer, ArrowRight, Database, LayoutTemplate, Columns } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useLocation } from "wouter";
-
-// --- Mock Blueprints ---
-const BLUEPRINTS: Record<string, any> = {
-  gym: {
-    title: "Fitness Center",
-    stages: ["New Lead", "Trial Booked", "Trial Completed", "Member Signed", "Churned"],
-    fields: ["Fitness Goal", "Preferred Time", "Injury History"],
-    templates: ["Trial Confirmation SMS", "Missed Workout Follow-up"]
-  },
-  real_estate: {
-    title: "Real Estate Agency",
-    stages: ["Inquiry", "Viewing Scheduled", "Offer Made", "Under Contract", "Sold"],
-    fields: ["Budget Range", "Property Type", "Mortgage Status"],
-    templates: ["New Listing Alert", "Open House Invite"]
-  },
-  dental: {
-    title: "Dental Practice",
-    stages: ["New Patient", "Consultation", "Treatment Plan", "Procedure Scheduled", "Follow-up"],
-    fields: ["Insurance Provider", "Last Visit Date", "Pain Level"],
-    templates: ["Appointment Reminder", "6-Month Checkup Recall"]
-  }
-};
+import { api } from "@/lib/api";
 
 const INDUSTRIES = [
   { id: "gym", label: "Gym & Fitness", icon: Dumbbell, color: "text-red-500", bg: "bg-red-500/10" },
@@ -41,20 +20,37 @@ export default function Onboarding() {
   const [progress, setProgress] = useState(0);
   const [log, setLog] = useState<string[]>([]);
   const [, setLocation] = useLocation();
+  const [blueprint, setBlueprint] = useState<{ title: string; stages: string[]; fields: string[]; templates: string[] } | null>(null);
+  const apiDoneRef = useRef(false);
+  const animDoneRef = useRef(false);
 
   const startSetup = (industryId: string) => {
     setSelectedIndustry(industryId);
     setStep("setup");
-    
-    const blueprint = BLUEPRINTS[industryId] || BLUEPRINTS.gym; // Fallback
-    
-    // Simulate the Python script execution
+    apiDoneRef.current = false;
+    animDoneRef.current = false;
+
+    const industryLabel = INDUSTRIES.find(i => i.id === industryId)?.label || industryId;
+
+    api.onboard(industryId).then((data: { account: any; blueprint: { title: string; stages: string[]; fields: string[]; templates: string[] } }) => {
+      setBlueprint(data.blueprint);
+      apiDoneRef.current = true;
+      if (animDoneRef.current) {
+        setStep("complete");
+      }
+    }).catch(() => {
+      apiDoneRef.current = true;
+      if (animDoneRef.current) {
+        setStep("complete");
+      }
+    });
+
     const steps = [
-      { msg: `Fetching AI Blueprint for ${blueprint.title}...`, progress: 20, delay: 800 },
+      { msg: `Fetching AI Blueprint for ${industryLabel}...`, progress: 20, delay: 800 },
       { msg: "Analyzing industry standards...", progress: 40, delay: 1500 },
-      { msg: `Creating ${blueprint.stages.length} pipeline stages in database...`, progress: 60, delay: 2200 },
-      { msg: `Configuring ${blueprint.fields.length} custom fields...`, progress: 80, delay: 3000 },
-      { msg: `Generating ${blueprint.templates.length} SMS/Email templates...`, progress: 95, delay: 3800 },
+      { msg: "Creating pipeline stages in database...", progress: 60, delay: 2200 },
+      { msg: "Configuring custom fields...", progress: 80, delay: 3000 },
+      { msg: "Generating SMS/Email templates...", progress: 95, delay: 3800 },
       { msg: "Account Ready.", progress: 100, delay: 4500 },
     ];
 
@@ -62,7 +58,10 @@ export default function Onboarding() {
 
     const runNextStep = () => {
       if (currentStep >= steps.length) {
-        setStep("complete");
+        animDoneRef.current = true;
+        if (apiDoneRef.current) {
+          setStep("complete");
+        }
         return;
       }
 
@@ -77,8 +76,6 @@ export default function Onboarding() {
 
     runNextStep();
   };
-
-  const selectedBlueprint = selectedIndustry ? (BLUEPRINTS[selectedIndustry] || BLUEPRINTS.gym) : null;
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
@@ -172,7 +169,7 @@ export default function Onboarding() {
           )}
 
           {/* STEP 3: COMPLETE */}
-          {step === "complete" && selectedBlueprint && (
+          {step === "complete" && blueprint && (
             <motion.div
               key="complete"
               initial={{ opacity: 0, y: 20 }}
@@ -186,7 +183,7 @@ export default function Onboarding() {
                   </div>
                   <h2 className="text-2xl font-bold text-foreground">Setup Complete!</h2>
                   <p className="text-muted-foreground max-w-md mx-auto">
-                    We've configured your account for the <strong>{selectedBlueprint.title}</strong> industry standards.
+                    We've configured your account for the <strong>{blueprint.title}</strong> industry standards.
                   </p>
                 </CardContent>
               </Card>
@@ -198,8 +195,8 @@ export default function Onboarding() {
                       <LayoutTemplate className="h-5 w-5" />
                     </div>
                     <div>
-                      <p className="font-semibold">{selectedBlueprint.stages.length} Pipelines</p>
-                      <p className="text-xs text-muted-foreground mt-1">{selectedBlueprint.stages.join(", ")}</p>
+                      <p className="font-semibold">{blueprint.stages.length} Pipelines</p>
+                      <p className="text-xs text-muted-foreground mt-1">{blueprint.stages.join(", ")}</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -209,8 +206,8 @@ export default function Onboarding() {
                       <Columns className="h-5 w-5" />
                     </div>
                     <div>
-                      <p className="font-semibold">{selectedBlueprint.fields.length} Custom Fields</p>
-                      <p className="text-xs text-muted-foreground mt-1">{selectedBlueprint.fields.join(", ")}</p>
+                      <p className="font-semibold">{blueprint.fields.length} Custom Fields</p>
+                      <p className="text-xs text-muted-foreground mt-1">{blueprint.fields.join(", ")}</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -220,7 +217,7 @@ export default function Onboarding() {
                       <Database className="h-5 w-5" />
                     </div>
                     <div>
-                      <p className="font-semibold">{selectedBlueprint.templates.length} Templates</p>
+                      <p className="font-semibold">{blueprint.templates.length} Templates</p>
                       <p className="text-xs text-muted-foreground mt-1">Ready to use</p>
                     </div>
                   </CardContent>

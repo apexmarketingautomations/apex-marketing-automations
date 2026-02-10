@@ -26,21 +26,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
           {navItems.map((item) => {
             const isActive = location === item.href;
             return (
-              <Link key={item.href} href={item.href}>
-                <a
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200 group ${
-                    isActive
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm"
-                      : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground"
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200 group ${
+                  isActive
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm"
+                    : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground"
+                }`}
+              >
+                <item.icon
+                  className={`h-5 w-5 ${
+                    isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
                   }`}
-                >
-                  <item.icon
-                    className={`h-5 w-5 ${
-                      isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
-                    }`}
-                  />
-                  <span className="hidden md:block">{item.label}</span>
-                </a>
+                />
+                <span className="hidden md:block">{item.label}</span>
               </Link>
             );
           })}

@@ -8,6 +8,7 @@ import NotFound from "@/pages/not-found";
 import SmsDashboard from "@/pages/sms-dashboard";
 import WorkflowBuilder from "@/pages/workflow-builder";
 import GymLanding from "@/pages/gym-landing";
+import LuxeLanding from "@/pages/luxe-landing";
 import Onboarding from "@/pages/onboarding";
 import BotTrainer from "@/pages/bot-trainer";
 
@@ -16,6 +17,7 @@ function Router() {
     <Switch>
       {/* Landing Page (No Sidebar) */}
       <Route path="/gym" component={GymLanding} />
+      <Route path="/luxe" component={LuxeLanding} />
       <Route path="/onboarding" component={Onboarding} />
 
       {/* Dashboard Routes (With Sidebar) */}

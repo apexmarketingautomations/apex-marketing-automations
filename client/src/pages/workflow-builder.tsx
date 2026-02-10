@@ -14,22 +14,20 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import type { Workflow } from "@shared/schema";
 
-// Initial Empty State or Default Workflow
+const GENERATED_STEPS = [
+  { action_type: "WAIT", params: { duration_minutes: 5 } },
+  { action_type: "SMS", params: { body: "Hey" } },
+  { action_type: "CONDITION", params: { check: "has_replied" } },
+  { action_type: "ALERT", params: { user_id: "admin" } }
+];
+
 const DEFAULT_WORKFLOW = {
   trigger: "manual_trigger",
-  steps: []
-};
-
-// The "AI Generated" Workflow (simulating the Python script output)
-const GENERATED_WORKFLOW = {
-  trigger: "facebook_form_submit",
-  steps: [
-    { action_type: "WAIT", params: { duration_minutes: 5 } },
-    { action_type: "SMS", params: { body: "Hey" } },
-    { action_type: "CONDITION", params: { check: "has_replied" } },
-    { action_type: "ALERT", params: { user_id: "admin" } }
-  ]
+  steps: [] as any[]
 };
 
 const StepIcon = ({ type }: { type: string }) => {
@@ -86,21 +84,74 @@ const StepCard = ({ step, index, onClick }: { step: any, index: number, onClick:
 };
 
 export default function WorkflowBuilder() {
-  const [workflow, setWorkflow] = useState<any>(GENERATED_WORKFLOW);
+  const queryClient = useQueryClient();
   const [selectedStep, setSelectedStep] = useState<any>(null);
   const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
   const [prompt, setPrompt] = useState("When a lead fills the Facebook form, wait 5 mins, then SMS them 'Hey'. If they reply, alert me.");
-  const [isGenerating, setIsGenerating] = useState(false);
+
+  const { data: workflows = [], isLoading } = useQuery<Workflow[]>({
+    queryKey: ["/api/workflows"],
+    queryFn: api.getWorkflows,
+  });
+
+  const currentWorkflow = workflows.length > 0 ? workflows[0] : null;
+  const displayWorkflow = currentWorkflow ?? DEFAULT_WORKFLOW;
+  const steps = Array.isArray(displayWorkflow.steps) ? displayWorkflow.steps : [];
+
+  const createMutation = useMutation({
+    mutationFn: (data: { name: string; trigger: string; steps: any; subAccountId?: number | null }) =>
+      api.createWorkflow(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/workflows"] });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<{ name: string; trigger: string; steps: any }> }) =>
+      api.updateWorkflow(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/workflows"] });
+    },
+  });
 
   const handleGenerate = async () => {
-    setIsGenerating(true);
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setWorkflow(GENERATED_WORKFLOW);
-    setIsGenerating(false);
+    await createMutation.mutateAsync({
+      name: "AI Generated",
+      trigger: "facebook_form_submit",
+      steps: GENERATED_STEPS,
+    });
     setIsAiDialogOpen(false);
     setSelectedStep(null);
   };
+
+  const handlePublish = () => {
+    if (!currentWorkflow) return;
+    updateMutation.mutate({
+      id: currentWorkflow.id,
+      data: {
+        name: currentWorkflow.name,
+        trigger: currentWorkflow.trigger,
+        steps: currentWorkflow.steps,
+      },
+    });
+  };
+
+  const handleDiscard = () => {
+    createMutation.mutate({
+      name: "New Workflow",
+      trigger: "manual_trigger",
+      steps: [],
+    });
+    setSelectedStep(null);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="p-6 md:p-10 max-w-6xl mx-auto flex items-center justify-center min-h-[50vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 md:p-10 max-w-6xl mx-auto">
@@ -108,13 +159,13 @@ export default function WorkflowBuilder() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Workflow Editor</h1>
           <p className="text-muted-foreground mt-1">
-            Visualizing trigger: <code className="text-xs bg-muted px-1 py-0.5 rounded text-primary">{workflow.trigger}</code>
+            Visualizing trigger: <code className="text-xs bg-muted px-1 py-0.5 rounded text-primary">{displayWorkflow.trigger}</code>
           </p>
         </div>
         <div className="flex gap-3">
           <Dialog open={isAiDialogOpen} onOpenChange={setIsAiDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white border-0">
+              <Button data-testid="button-generate-ai" className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white border-0">
                 <Sparkles className="mr-2 h-4 w-4" />
                 Generate with AI
               </Button>
@@ -131,6 +182,7 @@ export default function WorkflowBuilder() {
               </DialogHeader>
               <div className="py-4">
                 <Textarea 
+                  data-testid="input-ai-prompt"
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   className="min-h-[120px] resize-none text-base"
@@ -139,8 +191,8 @@ export default function WorkflowBuilder() {
               </div>
               <DialogFooter>
                 <Button variant="secondary" onClick={() => setIsAiDialogOpen(false)}>Cancel</Button>
-                <Button onClick={handleGenerate} disabled={isGenerating || !prompt.trim()}>
-                  {isGenerating ? (
+                <Button data-testid="button-generate-submit" onClick={handleGenerate} disabled={createMutation.isPending || !prompt.trim()}>
+                  {createMutation.isPending ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Generating Plan...
@@ -156,9 +208,13 @@ export default function WorkflowBuilder() {
             </DialogContent>
           </Dialog>
           
-          <Button variant="outline">Discard</Button>
-          <Button variant="secondary">
-            <PlayCircle className="mr-2 h-4 w-4" />
+          <Button data-testid="button-discard" variant="outline" onClick={handleDiscard}>Discard</Button>
+          <Button data-testid="button-publish" variant="secondary" onClick={handlePublish} disabled={!currentWorkflow || updateMutation.isPending}>
+            {updateMutation.isPending ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <PlayCircle className="mr-2 h-4 w-4" />
+            )}
             Publish
           </Button>
         </div>
@@ -173,7 +229,7 @@ export default function WorkflowBuilder() {
           <div className="flex justify-center mb-8">
             <div className="bg-foreground text-background px-6 py-3 rounded-full text-sm font-medium shadow-lg flex items-center gap-2 animate-in zoom-in duration-300">
               <PlayCircle className="h-4 w-4" />
-              Trigger: {workflow.trigger}
+              Trigger: {displayWorkflow.trigger}
             </div>
           </div>
           
@@ -183,7 +239,7 @@ export default function WorkflowBuilder() {
             <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-border/50 -z-20" />
 
             <AnimatePresence mode="popLayout">
-              {workflow.steps.map((step: any, index: number) => (
+              {steps.map((step: any, index: number) => (
                 <StepCard 
                   key={index} 
                   step={step} 
@@ -193,15 +249,15 @@ export default function WorkflowBuilder() {
               ))}
             </AnimatePresence>
 
-            {workflow.steps.length === 0 && (
-              <div className="text-center py-12 text-muted-foreground border-2 border-dashed border-border rounded-xl">
+            {steps.length === 0 && (
+              <div data-testid="text-empty-state" className="text-center py-12 text-muted-foreground border-2 border-dashed border-border rounded-xl">
                 <p>No steps yet. Use AI generation or add manually.</p>
               </div>
             )}
 
             {/* Add Step Button */}
             <div className="flex justify-center pt-4">
-              <Button variant="outline" size="sm" className="rounded-full h-8 w-8 p-0 bg-background hover:bg-muted">
+              <Button data-testid="button-add-step" variant="outline" size="sm" className="rounded-full h-8 w-8 p-0 bg-background hover:bg-muted">
                 <Plus className="h-4 w-4" />
               </Button>
             </div>

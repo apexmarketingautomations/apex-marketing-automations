@@ -21,16 +21,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-
-// --- MOCK DATA ---
-const TRAINING_LOGS = [
-  "🕷️ Scraping https://forge-fitness.com...",
-  "📄 Found 12 pages of content",
-  "✂️ Splitting text into 48 chunks (1000 chars each)",
-  "🧠 Generating embeddings with OpenAI...",
-  "💾 Saving to Postgres (PGVector)...",
-  "✅ Training Complete. Bot is ready."
-];
+import { api } from "@/lib/api";
 
 const KNOWLEDGE_CHUNKS = [
   { id: 1, text: "Forge Fitness is open 24/7 for members. Staffed hours are 8am-8pm daily.", score: 0.92 },
@@ -57,86 +48,6 @@ const DEFAULT_PERSONA = `You are chatting on Instagram.
 CONTEXT: The user just replied to a story about 'Our new 6-week weight loss challenge'.
 GOAL: Pivot the conversation to booking an appointment.`;
 
-// --- MOCK SERVER (SIMULATION) ---
-// This overrides fetch for specific endpoints to make the prototype "work" without a real backend.
-const simulateFetch = async (url: string, options?: any) => {
-  // Simulate Network Delay
-  await new Promise(r => setTimeout(r, 600));
-
-  if (url.includes('/api/bots/train')) {
-    return {
-      ok: true,
-      json: async () => ({ jobId: "job_" + Date.now() })
-    };
-  }
-
-  if (url.includes('/api/jobs/')) {
-    // We want to simulate the specific Python workflow the user requested
-    // "progress" is a simple way to track "time" in this mock since it's called every 1 second
-    
-    // Use a closure or global-ish way to track state? 
-    // Actually, since this function is stateless, we can infer state from the random progress 
-    // OR we can make this smarter by checking "time since job started" if we had the start time.
-    // For this prototype, let's just make a stateful mock object outside if needed, 
-    // or just return a random progression that eventually finishes.
-    
-    // Let's rely on the client-side progress to determine the next "step" to return, 
-    // BUT since we can't see client state here, we'll return a random meaningful step 
-    // that advances the story.
-    
-    // Better approach for a pure function mock: 
-    // The previous implementation was random. 
-    // To match the user's specific sequence, let's just create a sequence based on a global counter for the demo.
-    
-    const now = Date.now();
-    const second = Math.floor((now / 1000) % 10); // 0-9 cycle
-    
-    let log = "";
-    let progress = 0;
-    let state = "processing";
-
-    // 0-2s: Scrape
-    if (second < 3) {
-       log = "🕷️ Starting Scraper for https://forge-fitness.com...";
-       progress = 10;
-    } 
-    // 3-5s: Scrape Done
-    else if (second < 6) {
-       log = "📄 Successfully scraped 45,201 characters";
-       progress = 40;
-    }
-    // 6-8s: Chunk
-    else if (second < 8) {
-       log = "✂️ Split into 12 knowledge chunks";
-       progress = 60;
-    }
-    // 8-9s: Embed
-    else {
-       log = "🧠 Generating OpenAI Embeddings...";
-       progress = 80;
-    }
-
-    // Occasionally finish
-    if (Math.random() > 0.9) {
-        state = "completed";
-        log = "✅ Training Complete. Bot is ready.";
-        progress = 100;
-    }
-
-    return {
-      ok: true,
-      json: async () => ({
-        logs: [log],
-        progress: progress,
-        state: state
-      })
-    };
-  }
-
-  // Fallback to real fetch (which will 404 in this env, but keeps the code correct)
-  return fetch(url, options);
-};
-
 
 export default function BotTrainer() {
   const [url, setUrl] = useState("https://forge-fitness.com");
@@ -146,7 +57,6 @@ export default function BotTrainer() {
   const [logs, setLogs] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState("train");
   
-  // Chat Simulation State
   const [chatInput, setChatInput] = useState("");
   const [chatHistory, setChatHistory] = useState<any[]>([]);
   const [isTyping, setIsTyping] = useState(false);
@@ -156,42 +66,35 @@ export default function BotTrainer() {
   const handleTrain = async () => {
     setIsTraining(true);
     setLogs([]);
-    setTrainingProgress(5); // Started
+    setTrainingProgress(5);
 
     try {
-      // 1. Tell the Server to start the job
-      // We use simulateFetch here to mimic the backend response in this prototype
-      const response = await simulateFetch('http://localhost:5000/api/bots/train', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url, persona: persona })
-      });
-      
-      const { jobId } = await response.json();
+      const { jobId } = await api.startTraining(url, persona);
 
-      // 2. Poll for logs/status (The "Live Terminal" effect)
       const interval = setInterval(async () => {
-        const statusRes = await simulateFetch(`http://localhost:5000/api/jobs/${jobId}`);
-        const statusData = await statusRes.json();
-        
-        // Update the Logs UI with real data from the server
-        if (statusData.logs && statusData.logs.length > 0) {
-            setLogs(prev => [...prev, ...statusData.logs]); // The server sends back ["Scraping...", "Found 12 pages..."]
-        }
-        
-        // Only update progress if it increases
-        if (statusData.progress > 0) {
-          setTrainingProgress(statusData.progress);
-        }
+        try {
+          const statusData = await api.getTrainingJob(jobId);
 
-        if (statusData.state === 'completed') {
+          if (statusData.logs && statusData.logs.length > 0) {
+            setLogs(statusData.logs);
+          }
+
+          if (statusData.progress > 0) {
+            setTrainingProgress(statusData.progress);
+          }
+
+          if (statusData.state === 'completed') {
             clearInterval(interval);
             setIsTraining(false);
             setTrainingProgress(100);
-            setLogs(prev => [...prev, "✅ Training Complete. Bot is ready."]);
             setTimeout(() => setActiveTab("test"), 1000);
+          }
+        } catch (pollError) {
+          clearInterval(interval);
+          setLogs(prev => [...prev, "❌ Error polling training status"]);
+          setIsTraining(false);
         }
-      }, 1000);
+      }, 1500);
 
     } catch (error) {
         setLogs(prev => [...prev, "❌ Error connecting to Training Engine"]);
@@ -209,27 +112,22 @@ export default function BotTrainer() {
     setRagContext([]);
     setCurrentTool(null);
 
-    // Simulate Processing Delay
     await new Promise(r => setTimeout(r, 600));
 
-    // Determine scenario (simple keyword matching for demo)
     const scenario = userMsg.toLowerCase().includes("open") || userMsg.toLowerCase().includes("tomorrow") 
       ? CHAT_SCENARIOS.availability 
       : CHAT_SCENARIOS.pricing;
 
-    // 1. Show RAG step
     setRagContext(KNOWLEDGE_CHUNKS);
     await new Promise(r => setTimeout(r, 800));
 
-    // 2. Show Tool Call (if any)
     if (scenario.tool_call) {
       setCurrentTool(scenario.tool_call);
-      await new Promise(r => setTimeout(r, 1200)); // Wait for "DB query"
+      await new Promise(r => setTimeout(r, 1200));
       setCurrentTool(prev => ({ ...prev, status: "success", result: "Available: 4:00 PM, 5:30 PM" }));
       await new Promise(r => setTimeout(r, 800));
     }
 
-    // 3. Bot Reply
     setIsTyping(false);
     setChatHistory(prev => [...prev, { role: "assistant", content: scenario.bot_response }]);
   };
