@@ -194,21 +194,24 @@ export default function SiteBuilder() {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white flex flex-col md:flex-row font-sans overflow-hidden">
-      <div className="w-full md:w-[400px] border-r border-white/10 flex flex-col bg-neutral-900 z-10 h-screen md:h-auto md:min-h-screen">
-        <div className="p-6 border-b border-white/10">
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            <LayoutTemplate className="text-indigo-500" />
-            Site Builder
+    <div className="min-h-screen bg-[#030014] text-white flex flex-col md:flex-row font-sans overflow-hidden relative">
+      <div className="fixed inset-0 bg-grid z-0 pointer-events-none" />
+      <div className="fixed top-0 left-0 w-full h-[500px] bg-gradient-to-b from-indigo-900/10 to-transparent pointer-events-none z-0" />
+
+      <div className="w-full md:w-[400px] border-r border-white/10 flex flex-col glass-panel z-10 h-screen md:h-auto md:min-h-screen relative">
+        <div className="p-6 border-b border-white/5">
+          <h1 className="text-xl font-bold flex items-center gap-2 glow-text">
+            <LayoutTemplate className="text-indigo-400 drop-shadow-[0_0_8px_rgba(129,140,248,0.5)]" />
+            Site Architect
           </h1>
-          <p className="text-xs text-neutral-400 mt-1">
-            Describe your business, get a landing page.
+          <p className="text-xs text-slate-500 mt-1 font-mono">
+            AI-POWERED // DESCRIBE &rarr; GENERATE
           </p>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {history.length === 0 && (
-            <div className="text-center text-neutral-500 mt-10 text-sm p-4 border border-dashed border-white/10 rounded-xl">
+            <div className="text-center text-slate-500 mt-10 text-sm p-4 border border-dashed border-white/10 rounded-xl glass">
               <p className="mb-3">Try prompts like:</p>
               <ul className="space-y-2 text-indigo-400">
                 <li>
@@ -258,9 +261,9 @@ export default function SiteBuilder() {
               key={i}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white/5 p-3 rounded-lg text-sm border border-white/5"
+              className="glass p-3 rounded-lg text-sm"
             >
-              <span className="opacity-50 text-xs block mb-1">YOU</span>
+              <span className="opacity-50 text-xs block mb-1 font-mono">YOU</span>
               {h}
             </motion.div>
           ))}
@@ -274,14 +277,14 @@ export default function SiteBuilder() {
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-indigo-500/10 p-3 rounded-lg text-sm border border-indigo-500/20"
+              className="bg-indigo-500/10 p-3 rounded-lg text-sm border border-indigo-500/20 glow-box"
             >
-              <span className="opacity-50 text-xs block mb-1">AI</span>
+              <span className="opacity-50 text-xs block mb-1 font-mono">AI</span>
               <div className="flex items-center gap-2 text-indigo-300">
                 <CheckCircle2 className="h-4 w-4" />
                 Site generated with {siteData.sections.length} sections.
               </div>
-              <p className="text-xs text-neutral-400 mt-1">
+              <p className="text-xs text-slate-400 mt-1">
                 Theme: {siteData.theme.font} /{" "}
                 <span
                   className="inline-block w-3 h-3 rounded-full align-middle"
@@ -293,7 +296,7 @@ export default function SiteBuilder() {
           )}
         </div>
 
-        <div className="p-4 bg-neutral-950 border-t border-white/10">
+        <div className="p-4 bg-black/40 border-t border-white/5 backdrop-blur-md">
           <div className="flex gap-2">
             <Input
               value={prompt}
@@ -306,7 +309,7 @@ export default function SiteBuilder() {
             <Button
               onClick={() => handleGenerate()}
               disabled={isGenerating || !prompt.trim()}
-              className="bg-indigo-600 hover:bg-indigo-700"
+              className="bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-500/20"
               data-testid="button-generate"
             >
               <Send size={18} />
@@ -315,15 +318,15 @@ export default function SiteBuilder() {
         </div>
       </div>
 
-      <div className="flex-1 bg-neutral-950 relative flex flex-col">
-        <div className="h-14 border-b border-white/10 flex items-center justify-between px-6 bg-neutral-900">
-          <div className="flex items-center gap-2 bg-neutral-800 p-1 rounded-lg">
+      <div className="flex-1 relative flex flex-col bg-black/40 backdrop-blur-sm z-10">
+        <div className="h-16 border-b border-white/5 flex items-center justify-between px-6 bg-white/5 backdrop-blur-md sticky top-0 z-50">
+          <div className="flex items-center gap-2 bg-black/50 p-1 rounded-lg border border-white/5">
             <button
               onClick={() => setViewMode("desktop")}
               className={`p-2 rounded transition-colors ${
                 viewMode === "desktop"
-                  ? "bg-indigo-600 text-white"
-                  : "text-neutral-400 hover:text-white"
+                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                  : "text-slate-400 hover:text-white"
               }`}
               data-testid="button-view-desktop"
             >
@@ -333,8 +336,8 @@ export default function SiteBuilder() {
               onClick={() => setViewMode("mobile")}
               className={`p-2 rounded transition-colors ${
                 viewMode === "mobile"
-                  ? "bg-indigo-600 text-white"
-                  : "text-neutral-400 hover:text-white"
+                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                  : "text-slate-400 hover:text-white"
               }`}
               data-testid="button-view-mobile"
             >
@@ -346,7 +349,7 @@ export default function SiteBuilder() {
             <Button
               variant="outline"
               size="sm"
-              className="border-white/10 hover:bg-white/5"
+              className="border-white/10 hover:bg-white/5 text-slate-300"
               onClick={handleRegenerate}
               disabled={!lastPrompt || isGenerating}
               data-testid="button-regenerate"
@@ -355,7 +358,7 @@ export default function SiteBuilder() {
             </Button>
             <Button
               size="sm"
-              className="bg-green-600 hover:bg-green-700 text-white"
+              className="bg-green-600 hover:bg-green-500 text-white shadow-lg shadow-green-500/20"
               onClick={handlePublish}
               disabled={!siteData}
               data-testid="button-publish"
@@ -365,16 +368,16 @@ export default function SiteBuilder() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto p-8 flex justify-center items-start bg-neutral-950/50">
+        <div className="flex-1 overflow-auto p-8 flex justify-center items-start bg-[radial-gradient(#2a2a2a_1px,transparent_1px)] [background-size:16px_16px]">
           {siteData ? (
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5 }}
-              className={`bg-white shadow-2xl overflow-hidden transition-all duration-500 ease-in-out ${
+              className={`bg-white shadow-[0_0_50px_-12px_rgba(0,0,0,0.5)] overflow-hidden transition-all duration-500 ease-in-out ${
                 viewMode === "mobile"
-                  ? "w-[375px] rounded-[30px] border-[8px] border-neutral-800"
-                  : "w-full max-w-5xl rounded-lg"
+                  ? "w-[375px] rounded-[30px] border-[8px] border-neutral-900"
+                  : "w-full max-w-5xl rounded-lg border-[8px] border-neutral-900"
               }`}
               style={{ minHeight: "800px" }}
               data-testid="preview-canvas"
@@ -393,10 +396,12 @@ export default function SiteBuilder() {
               <ChatWidget primaryColor={siteData.theme.primary} />
             </motion.div>
           ) : (
-            <div className="flex flex-col items-center justify-center text-neutral-600 space-y-4 mt-32">
-              <LayoutTemplate size={64} className="opacity-20" />
-              <p className="text-lg">Enter a prompt to generate a preview</p>
-              <p className="text-sm text-neutral-500">
+            <div className="flex flex-col items-center justify-center text-slate-600 space-y-4 mt-32">
+              <div className="w-20 h-20 rounded-2xl glass flex items-center justify-center glow-box">
+                <LayoutTemplate size={40} className="text-indigo-500/30" />
+              </div>
+              <p className="text-lg font-medium text-slate-400">Enter a prompt to generate a preview</p>
+              <p className="text-sm text-slate-600">
                 Describe your business type, style, and color preferences
               </p>
             </div>

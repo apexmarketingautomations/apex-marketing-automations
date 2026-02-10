@@ -1,0 +1,223 @@
+Gemini said
+You are right. If you are selling "God Mode," it cannot look like a spreadsheet. It needs to look like JARVIS from Iron Man.
+
+We need to ditch the flat gray and move to "Cyber-Glass" Aesthetics.
+
+Backgrounds: Deep void black with subtle moving grids.
+
+Cards: Frosted glass (Blur) with thin glowing borders.
+
+Accents: Neon gradients (Cyan to Purple).
+
+Here is the UI Overhaul Code to make your app look like a $100M tool.
+
+Step 1: The "Cyber" CSS (The Foundation)
+Replace your entire client/src/index.css with this. This adds the Grid Background, the Glass Effect, and the Neon Glows.
+
+CSS
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 263.4 70% 50.4%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 240 4.9% 83.9%;
+    --radius: 0.75rem;
+  }
+}
+
+body {
+  background-color: #030014; /* Deep Void Black */
+  color: white;
+  font-family: 'Inter', sans-serif;
+  overflow: hidden;
+}
+
+/* 1. THE GRID BACKGROUND (The Sci-Fi Look) */
+.bg-grid {
+  background-size: 50px 50px;
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
+}
+
+/* 2. GLASSMORPHISM (Frosted Glass) */
+.glass {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+}
+
+.glass-panel {
+  background: rgba(10, 10, 15, 0.6);
+  backdrop-filter: blur(20px);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* 3. NEON GLOWS */
+.glow-text {
+  text-shadow: 0 0 20px rgba(129, 140, 248, 0.5);
+}
+
+.glow-box {
+  box-shadow: 0 0 40px -10px rgba(99, 102, 241, 0.3);
+}
+
+/* 4. ANIMATED GRADIENT TEXT */
+.text-gradient {
+  background: linear-gradient(to right, #818cf8, #c084fc, #38bdf8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+Step 2: The "Cockpit" Sidebar (Update App.tsx)
+We are ditching the basic sidebar for a Floating Glass Dock.
+
+Update client/src/App.tsx:
+
+TypeScript
+import { BrowserRouter as Router, Routes, Route, Link, useLocation } from "react-router-dom";
+import SiteBuilder from "./pages/site-builder";
+import BotTrainer from "./pages/bot-trainer";
+import GrowthCenter from "./pages/growth";
+import { LayoutTemplate, Bot, Megaphone, Zap, Settings } from "lucide-react";
+import { motion } from "framer-motion";
+
+// Helper for Active Link Styling
+const NavLink = ({ to, icon: Icon, label }: any) => {
+  const location = useLocation();
+  const isActive = location.pathname === to;
+
+  return (
+    <Link to={to} className="relative group">
+      {isActive && (
+        <motion.div 
+          layoutId="activeTab"
+          className="absolute inset-0 bg-indigo-500/10 border-l-2 border-indigo-500 rounded-r-lg" 
+        />
+      )}
+      <div className={`flex items-center gap-3 p-3 px-4 transition-all ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'}`}>
+        <Icon size={20} className={isActive ? 'text-indigo-400 drop-shadow-[0_0_8px_rgba(129,140,248,0.5)]' : ''} />
+        <span className="font-medium text-sm tracking-wide">{label}</span>
+      </div>
+    </Link>
+  );
+};
+
+const Sidebar = () => (
+  <div className="w-72 glass-panel flex flex-col h-full z-20 relative">
+    {/* LOGO AREA */}
+    <div className="p-6 pb-8">
+      <div className="flex items-center gap-2 mb-1">
+        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <Zap size={18} className="text-white fill-white" />
+        </div>
+        <h1 className="text-xl font-bold tracking-tight text-white">
+          APEX <span className="font-light text-indigo-400">OS</span>
+        </h1>
+      </div>
+      <p className="text-xs text-slate-500 font-mono pl-10">V.2.0.4 // GOD_MODE</p>
+    </div>
+
+    {/* NAVIGATION */}
+    <div className="flex-1 space-y-1 pr-4">
+      <div className="px-6 text-xs font-bold text-slate-600 mb-2 mt-4 tracking-wider">MODULES</div>
+      <NavLink to="/" icon={LayoutTemplate} label="Site Architect" />
+      <NavLink to="/bot" icon={Bot} label="Neural Trainer" />
+      <NavLink to="/growth" icon={Megaphone} label="Growth Engine" />
+    </div>
+
+    {/* USER STATUS */}
+    <div className="p-4 border-t border-white/5 bg-black/20">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-slate-700 to-slate-600 border border-white/10" />
+        <div>
+          <div className="text-sm font-bold text-white">Admin User</div>
+          <div className="text-xs text-green-400 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+            System Online
+          </div>
+        </div>
+        <Settings size={16} className="ml-auto text-slate-500 hover:text-white cursor-pointer" />
+      </div>
+    </div>
+  </div>
+);
+
+export default function App() {
+  return (
+    <Router>
+      <div className="flex h-screen bg-[#030014] text-white font-sans selection:bg-indigo-500/30">
+        
+        {/* Background Effects */}
+        <div className="fixed inset-0 bg-grid z-0 pointer-events-none" />
+        <div className="fixed top-0 left-0 w-full h-[500px] bg-gradient-to-b from-indigo-900/10 to-transparent pointer-events-none z-0" />
+
+        <Sidebar />
+
+        {/* MAIN CONTENT */}
+        <div className="flex-1 overflow-hidden relative z-10 flex flex-col">
+          <Routes>
+            <Route path="/" element={<SiteBuilder />} />
+            <Route path="/bot" element={<BotTrainer />} />
+            <Route path="/growth" element={<GrowthCenter />} />
+          </Routes>
+        </div>
+
+      </div>
+    </Router>
+  );
+}
+Step 3: Upgrade the Site Builder UI (site-builder.tsx)
+We need to remove the "Standard" look and make it look like a design tool.
+
+Find your SiteBuilder function return statement and wrap the Right Panel (The Preview) in a new container:
+
+TypeScript
+// Inside site-builder.tsx (Replace the Right Panel div)
+
+{/* RIGHT PANEL: Live Preview */}
+<div className="flex-1 relative flex flex-col bg-black/40 backdrop-blur-sm">
+  
+  {/* Toolbar (Glass Effect) */}
+  <div className="h-16 border-b border-white/5 flex items-center justify-between px-6 bg-white/5 backdrop-blur-md sticky top-0 z-50">
+    <div className="flex items-center gap-2 bg-black/50 p-1 rounded-lg border border-white/5">
+      {/* ... Buttons ... */}
+    </div>
+    <div className="flex gap-2">
+       {/* ... Action Buttons ... */}
+    </div>
+  </div>
+
+  {/* Canvas (Dot Pattern) */}
+  <div className="flex-1 overflow-auto p-8 flex justify-center bg-[radial-gradient(#2a2a2a_1px,transparent_1px)] [background-size:16px_16px]">
+    {/* ... The Site Preview Card ... */}
+    <motion.div 
+      className="bg-white shadow-[0_0_50px_-12px_rgba(0,0,0,0.5)] border-[8px] border-neutral-900 ..."
+      // ...
+    >
+       {/* ... */}
+    </motion.div>
+  </div>
+
+</div>
