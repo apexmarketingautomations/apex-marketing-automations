@@ -322,6 +322,59 @@ Generate a personalized premium wellness/beauty service landing page for this sp
     }
   });
 
+  // ---- Chat Widget (AI Assistant) ----
+  const CHAT_SYSTEM_PROMPT = `You are a friendly, professional booking assistant for a premium business. Your goal is to help visitors book appointments, answer questions about services, and provide a warm, helpful experience.
+
+Rules:
+- Keep responses short (1-3 sentences max)
+- Be conversational and warm, use a friendly tone
+- If someone wants to book, ask for their preferred date and time
+- If you don't know something specific about the business, say you'll connect them with the team
+- Never make up specific pricing or availability — offer to check or connect them with staff
+- End messages with a helpful next step or question when appropriate`;
+
+  app.post("/api/chat", async (req, res) => {
+    try {
+      if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+        return res.status(503).json({ reply: "Chat service is currently offline. Please try again later." });
+      }
+
+      const { message, conversationHistory } = req.body;
+      if (!message || typeof message !== "string") {
+        return res.status(400).json({ error: "message is required" });
+      }
+
+      const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
+        { role: "system", content: CHAT_SYSTEM_PROMPT },
+      ];
+
+      if (Array.isArray(conversationHistory)) {
+        for (const msg of conversationHistory.slice(-10)) {
+          messages.push({
+            role: msg.role === "user" ? "user" : "assistant",
+            content: msg.text,
+          });
+        }
+      }
+
+      messages.push({ role: "user", content: message });
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages,
+        temperature: 0.7,
+        max_tokens: 200,
+      });
+
+      const reply = completion.choices[0]?.message?.content ?? "I'm here to help! Could you tell me more about what you're looking for?";
+
+      res.json({ reply });
+    } catch (err: any) {
+      console.error("Chat error:", err);
+      res.json({ reply: "I'm having a moment — could you try again?" });
+    }
+  });
+
   return httpServer;
 }
 

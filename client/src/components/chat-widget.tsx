@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { MessageSquare, X, Send } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { MessageSquare, X, Send, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
@@ -10,15 +10,38 @@ export function ChatWidget({ primaryColor = "#D4AF37" }: { primaryColor?: string
     { role: "bot", text: "Hi there! 👋 Can I help you book an appointment?" }
   ]);
   const [input, setInput] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const handleSend = () => {
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isTyping]);
+
+  const handleSend = async () => {
     if (!input.trim()) return;
-    setMessages([...messages, { role: "user", text: input }]);
-    setInput("");
 
-    setTimeout(() => {
-      setMessages(prev => [...prev, { role: "bot", text: "Great! What day works best for you?" }]);
-    }, 1000);
+    const userMsg = input;
+    setMessages(prev => [...prev, { role: "user", text: userMsg }]);
+    setInput("");
+    setIsTyping(true);
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: userMsg,
+          conversationHistory: messages,
+        }),
+      });
+
+      const data = await response.json();
+      setMessages(prev => [...prev, { role: "bot", text: data.reply }]);
+    } catch {
+      setMessages(prev => [...prev, { role: "bot", text: "⚠️ Offline mode. Let me connect you with our team." }]);
+    } finally {
+      setIsTyping(false);
+    }
   };
 
   return (
@@ -56,6 +79,15 @@ export function ChatWidget({ primaryColor = "#D4AF37" }: { primaryColor?: string
                   </div>
                 </div>
               ))}
+              {isTyping && (
+                <div className="flex justify-start">
+                  <div className="bg-white border border-neutral-200 text-neutral-500 rounded-xl rounded-bl-none shadow-sm p-3 text-sm flex items-center gap-2">
+                    <Loader2 size={14} className="animate-spin" />
+                    Typing...
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
             </div>
 
             <div className="p-3 bg-white border-t border-neutral-100 flex gap-2">
@@ -67,7 +99,7 @@ export function ChatWidget({ primaryColor = "#D4AF37" }: { primaryColor?: string
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                 data-testid="input-chat-message"
               />
-              <Button size="icon" onClick={handleSend} style={{ backgroundColor: primaryColor }} data-testid="button-chat-send">
+              <Button size="icon" onClick={handleSend} disabled={isTyping || !input.trim()} style={{ backgroundColor: primaryColor }} data-testid="button-chat-send">
                 <Send size={16} />
               </Button>
             </div>
