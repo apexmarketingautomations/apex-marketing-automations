@@ -71,16 +71,64 @@ const simulateFetch = async (url: string, options?: any) => {
   }
 
   if (url.includes('/api/jobs/')) {
-    // Return random progress updates based on time
-    const randomLog = TRAINING_LOGS[Math.floor(Math.random() * TRAINING_LOGS.length)];
-    const isComplete = Math.random() > 0.85; 
+    // We want to simulate the specific Python workflow the user requested
+    // "progress" is a simple way to track "time" in this mock since it's called every 1 second
     
+    // Use a closure or global-ish way to track state? 
+    // Actually, since this function is stateless, we can infer state from the random progress 
+    // OR we can make this smarter by checking "time since job started" if we had the start time.
+    // For this prototype, let's just make a stateful mock object outside if needed, 
+    // or just return a random progression that eventually finishes.
+    
+    // Let's rely on the client-side progress to determine the next "step" to return, 
+    // BUT since we can't see client state here, we'll return a random meaningful step 
+    // that advances the story.
+    
+    // Better approach for a pure function mock: 
+    // The previous implementation was random. 
+    // To match the user's specific sequence, let's just create a sequence based on a global counter for the demo.
+    
+    const now = Date.now();
+    const second = Math.floor((now / 1000) % 10); // 0-9 cycle
+    
+    let log = "";
+    let progress = 0;
+    let state = "processing";
+
+    // 0-2s: Scrape
+    if (second < 3) {
+       log = "🕷️ Starting Scraper for https://forge-fitness.com...";
+       progress = 10;
+    } 
+    // 3-5s: Scrape Done
+    else if (second < 6) {
+       log = "📄 Successfully scraped 45,201 characters";
+       progress = 40;
+    }
+    // 6-8s: Chunk
+    else if (second < 8) {
+       log = "✂️ Split into 12 knowledge chunks";
+       progress = 60;
+    }
+    // 8-9s: Embed
+    else {
+       log = "🧠 Generating OpenAI Embeddings...";
+       progress = 80;
+    }
+
+    // Occasionally finish
+    if (Math.random() > 0.9) {
+        state = "completed";
+        log = "✅ Training Complete. Bot is ready.";
+        progress = 100;
+    }
+
     return {
       ok: true,
       json: async () => ({
-        logs: [randomLog],
-        progress: isComplete ? 100 : Math.floor(Math.random() * 90),
-        state: isComplete ? 'completed' : 'processing'
+        logs: [log],
+        progress: progress,
+        state: state
       })
     };
   }
