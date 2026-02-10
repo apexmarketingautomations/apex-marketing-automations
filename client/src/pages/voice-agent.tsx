@@ -71,7 +71,7 @@ export default function VoiceAgent() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
   const [persona, setPersona] = useState("");
-  const [firstMessage, setFirstMessage] = useState("");
+  const [firstMessage, setFirstMessage] = useState("Hi, this is Sarah on a recorded line. How can I help?");
   const [agentName, setAgentName] = useState("");
   const [selectedVoice, setSelectedVoice] = useState(VOICE_OPTIONS[0].id);
   const [deployedAgent, setDeployedAgent] = useState<any>(null);
