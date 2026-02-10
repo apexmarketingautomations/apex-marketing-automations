@@ -30,6 +30,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { CallPlayer } from "@/components/call-player";
 import Vapi from "@vapi-ai/web";
 
 interface ObjectionRule {
@@ -93,6 +94,8 @@ export default function VoiceAgent() {
   const [purchasingNumber, setPurchasingNumber] = useState<string | null>(null);
   const [ownedNumbers, setOwnedNumbers] = useState<any[]>([]);
   const [purchasedNumber, setPurchasedNumber] = useState<any>(null);
+  const [callLogs, setCallLogs] = useState<any[]>([]);
+  const [loadingCallLogs, setLoadingCallLogs] = useState(false);
   const vapiRef = useRef<Vapi | null>(null);
   const { toast } = useToast();
 
@@ -160,6 +163,20 @@ export default function VoiceAgent() {
       });
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const fetchCallLogs = async (agentId?: string) => {
+    setLoadingCallLogs(true);
+    try {
+      const url = agentId ? `/api/voice-agents/calls?assistantId=${agentId}&limit=10` : "/api/voice-agents/calls?limit=10";
+      const res = await fetch(url);
+      const data = await res.json();
+      if (Array.isArray(data)) setCallLogs(data);
+    } catch {
+      setCallLogs([]);
+    } finally {
+      setLoadingCallLogs(false);
     }
   };
 
@@ -233,6 +250,7 @@ export default function VoiceAgent() {
       const agent = await res.json();
       setDeployedAgent(agent);
       setStep("deployed");
+      fetchCallLogs(agent.id);
       toast({ title: "Agent Deployed!", description: `${agentName} is ready to take calls.` });
     } catch (err: any) {
       toast({
@@ -937,6 +955,54 @@ export default function VoiceAgent() {
                 )}
               </div>
 
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-neutral-300 flex items-center gap-2">
+                    <Phone size={16} className="text-violet-400" /> Call Logs
+                  </h3>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-white/10 hover:bg-white/5 text-xs"
+                    onClick={() => fetchCallLogs(deployedAgent.id)}
+                    disabled={loadingCallLogs}
+                    data-testid="button-refresh-logs"
+                  >
+                    {loadingCallLogs ? (
+                      <Loader2 className="animate-spin" size={12} />
+                    ) : (
+                      <><RefreshCcw size={12} className="mr-1" /> Refresh</>
+                    )}
+                  </Button>
+                </div>
+
+                {callLogs.length === 0 && !loadingCallLogs && (
+                  <p className="text-xs text-neutral-500 text-center py-4">
+                    No call recordings yet. Make an outbound call or receive an inbound call to see logs here.
+                  </p>
+                )}
+
+                {loadingCallLogs && callLogs.length === 0 && (
+                  <div className="flex items-center justify-center py-6">
+                    <Loader2 className="animate-spin text-violet-400" size={20} />
+                  </div>
+                )}
+
+                <div className="space-y-3" data-testid="call-logs-list">
+                  {callLogs.map((call) => (
+                    <CallPlayer
+                      key={call.id}
+                      recordingUrl={call.recordingUrl}
+                      transcript={call.transcript}
+                      duration={call.duration}
+                      callerNumber={call.customer}
+                      status={call.status}
+                      createdAt={call.startedAt}
+                    />
+                  ))}
+                </div>
+              </div>
+
               <Button
                 className="w-full bg-violet-600 hover:bg-violet-700"
                 onClick={() => {
@@ -945,6 +1011,7 @@ export default function VoiceAgent() {
                   setPersona("");
                   setFirstMessage("");
                   setDeployedAgent(null);
+                  setCallLogs([]);
                 }}
                 data-testid="button-create-another"
               >

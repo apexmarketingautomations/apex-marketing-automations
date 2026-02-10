@@ -84,7 +84,8 @@ The `shared/` directory contains code used by both frontend and backend:
 - `GET /api/phone-numbers/search?areaCode=` - Search available Twilio numbers
 - `POST /api/phone-numbers/purchase` - Buy Twilio number + auto-link to Vapi agent
 - `GET /api/phone-numbers` - List owned Twilio numbers
-- `POST /api/sms-webhook` - Twilio SMS webhook with AI auto-reply (GPT-4o)
+- `POST /api/sms-webhook` - Unified Twilio webhook with AI auto-reply (SMS/WhatsApp/Messenger channel detection)
+- `GET /api/voice-agents/calls?assistantId=&limit=` - Fetch call logs with recordings and transcripts from Vapi
 
 ## External Dependencies
 

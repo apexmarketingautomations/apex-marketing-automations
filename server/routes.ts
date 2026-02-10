@@ -706,6 +706,64 @@ Rules:
     });
   });
 
+  app.get("/api/voice-agents/calls", async (req, res) => {
+    try {
+      const vapiKey = process.env.VAPI_API_KEY;
+      if (!vapiKey) {
+        return res.json([]);
+      }
+
+      const assistantId = req.query.assistantId as string;
+      const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
+
+      let url = `https://api.vapi.ai/call?limit=${limit}`;
+      if (assistantId) {
+        url += `&assistantId=${assistantId}`;
+      }
+
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${vapiKey}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        return res.json([]);
+      }
+
+      const calls = await response.json();
+      const callList = Array.isArray(calls) ? calls : [];
+
+      res.json(
+        callList.map((c: any) => ({
+          id: c.id,
+          status: c.status,
+          type: c.type,
+          startedAt: c.startedAt || c.createdAt,
+          endedAt: c.endedAt,
+          duration: c.duration || (c.endedAt && c.startedAt
+            ? Math.round((new Date(c.endedAt).getTime() - new Date(c.startedAt).getTime()) / 1000)
+            : null),
+          recordingUrl: c.recordingUrl || c.artifact?.recordingUrl || null,
+          transcript: (c.artifact?.messages || c.messages || [])
+            .filter((m: any) => m.role && m.message)
+            .map((m: any) => ({
+              role: m.role,
+              message: m.message,
+              timestamp: m.secondsFromStart || null,
+            })),
+          customer: c.customer?.number || null,
+          assistantId: c.assistantId,
+          cost: c.cost || null,
+        }))
+      );
+    } catch (err: any) {
+      console.error("Vapi call logs error:", err);
+      res.json([]);
+    }
+  });
+
   app.get("/api/voice-agents/public-key", (_req, res) => {
     const publicKey = process.env.VAPI_PUBLIC_KEY;
     if (!publicKey) {
