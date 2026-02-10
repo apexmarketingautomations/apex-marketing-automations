@@ -841,10 +841,16 @@ export default function VoiceAgent() {
                         Vapi Phone ID: <code className="text-green-300">{purchasedNumber.vapiPhoneId}</code>
                       </p>
                     )}
-                    {purchasedNumber.smsWebhookUrl && (
-                      <p className="text-xs text-neutral-500 flex items-center justify-center gap-1">
-                        <MessageSquare size={10} /> SMS auto-reply active
-                      </p>
+                    {purchasedNumber.dualAgent && (
+                      <div className="flex items-center justify-center gap-3 mt-1">
+                        <span className="text-xs text-violet-300 flex items-center gap-1">
+                          <Phone size={10} /> Voice → AI Agent
+                        </span>
+                        <span className="text-xs text-neutral-500">|</span>
+                        <span className="text-xs text-blue-300 flex items-center gap-1">
+                          <MessageSquare size={10} /> SMS → AI Auto-Reply
+                        </span>
+                      </div>
                     )}
                   </div>
                 ) : phoneConfig?.hasTwilio ? (

@@ -773,7 +773,7 @@ Rules:
         return res.status(503).json({ error: "Twilio credentials are not configured. Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in Secrets." });
       }
 
-      const areaCode = (req.query.areaCode as string) || "305";
+      const areaCode = parseInt((req.query.areaCode as string) || "305") || 305;
       const country = (req.query.country as string) || "US";
       const limit = Math.min(parseInt(req.query.limit as string) || 5, 20);
 
@@ -816,13 +816,7 @@ Rules:
       const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || process.env.REPLIT_DEV_DOMAIN || "";
       const smsWebhookUrl = domain ? `https://${domain}/api/sms-webhook` : "";
 
-      const purchaseOpts: any = { phoneNumber };
-      if (smsWebhookUrl) {
-        purchaseOpts.smsUrl = smsWebhookUrl;
-        purchaseOpts.smsMethod = "POST";
-      }
-
-      const purchased = await twilioClient.incomingPhoneNumbers.create(purchaseOpts);
+      const purchased = await twilioClient.incomingPhoneNumbers.create({ phoneNumber });
 
       let vapiPhoneId = null;
       const vapiKey = process.env.VAPI_API_KEY;
@@ -854,12 +848,28 @@ Rules:
         }
       }
 
+      const updateOpts: any = {};
+      if (smsWebhookUrl) {
+        updateOpts.smsUrl = smsWebhookUrl;
+        updateOpts.smsMethod = "POST";
+      }
+      updateOpts.voiceUrl = "https://api.vapi.ai/twilio/voice/handler";
+      updateOpts.voiceMethod = "POST";
+
+      try {
+        await twilioClient.incomingPhoneNumbers(purchased.sid).update(updateOpts);
+        console.log(`Full-duplex configured: Voice → Vapi, SMS → ${smsWebhookUrl}`);
+      } catch (cfgErr: any) {
+        console.error("Dual-agent config error:", cfgErr.message);
+      }
+
       res.json({
         sid: purchased.sid,
         phoneNumber: purchased.phoneNumber,
         friendlyName: purchased.friendlyName,
         vapiPhoneId,
         smsWebhookUrl: smsWebhookUrl || null,
+        dualAgent: true,
       });
     } catch (err: any) {
       console.error("Twilio purchase error:", err);
