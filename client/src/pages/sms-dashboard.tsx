@@ -120,18 +120,27 @@ export default function SmsDashboard() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSending(true);
     try {
-      const response = await mockApi.sendSms(values);
-      // Manually add the channel for visual demo
-      const msgWithChannel: UnifiedMessage = {
-        ...response.message,
-        channel: values.channel as any
-      };
+      let responseMessage: UnifiedMessage;
       
-      setMessages((prev) => [...prev, msgWithChannel]);
+      if (values.channel === 'instagram') {
+        // Use the new Instagram mock handler
+        const response = await mockApi.sendInstagram({
+          subAccountId: values.subAccountId,
+          recipientId: values.contactPhone,
+          text: values.messageBody
+        });
+        responseMessage = response.message as UnifiedMessage;
+      } else {
+        // Use standard SMS handler
+        const response = await mockApi.sendSms(values);
+        responseMessage = response.message as UnifiedMessage;
+      }
+      
+      setMessages((prev) => [...prev, responseMessage]);
       form.resetField("messageBody");
       toast({
         title: "Message sent",
-        description: `Your ${values.channel === 'instagram' ? 'DM' : 'SMS'} has been sent.`,
+        description: `Your ${values.channel === 'instagram' ? 'DM' : 'SMS'} has been sent via ${values.channel === 'instagram' ? 'Meta Graph API' : 'Twilio'}.`,
       });
     } catch (error) {
       toast({

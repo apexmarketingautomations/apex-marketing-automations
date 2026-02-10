@@ -6,6 +6,7 @@ export interface Message {
   status: 'queued' | 'sent' | 'delivered' | 'failed' | 'received';
   createdAt: string;
   contactPhone: string;
+  channel?: 'sms' | 'instagram' | 'email';
 }
 
 export interface SubAccount {
@@ -28,7 +29,8 @@ const INITIAL_MESSAGES: Message[] = [
     body: 'Hey, I am interested in the enterprise plan.',
     status: 'received',
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(), // 2 hours ago
-    contactPhone: '+15559999'
+    contactPhone: '+15559999',
+    channel: 'sms'
   },
   {
     id: 'msg_2',
@@ -37,7 +39,8 @@ const INITIAL_MESSAGES: Message[] = [
     body: 'Hi there! I would be happy to help you with that. When are you free for a call?',
     status: 'delivered',
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 1.9).toISOString(),
-    contactPhone: '+15559999'
+    contactPhone: '+15559999',
+    channel: 'sms'
   }
 ];
 
@@ -67,10 +70,30 @@ export const mockApi = {
       body: payload.messageBody,
       status: 'sent',
       createdAt: new Date().toISOString(),
-      contactPhone: payload.contactPhone
+      contactPhone: payload.contactPhone,
+      channel: 'sms'
     };
 
     messagesStore.push(newMessage);
     return { success: true, sid: `SM${Date.now()}`, message: newMessage };
+  },
+
+  // Added to simulate the sendInstagramReply function
+  sendInstagram: async (payload: { subAccountId: string; recipientId: string; text: string }) => {
+    await new Promise(resolve => setTimeout(resolve, 800)); // Simulate Meta API latency
+
+    const newMessage: Message = {
+      id: `ig_${Date.now()}`,
+      subAccountId: payload.subAccountId,
+      direction: 'outbound',
+      body: payload.text,
+      status: 'sent',
+      createdAt: new Date().toISOString(),
+      contactPhone: payload.recipientId, // storing ID here for prototype
+      channel: 'instagram'
+    };
+
+    messagesStore.push(newMessage);
+    return { success: true, messageId: `ig_mid_${Date.now()}`, message: newMessage };
   }
 };
