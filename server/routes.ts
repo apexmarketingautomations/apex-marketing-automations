@@ -125,13 +125,15 @@ export async function registerRoutes(
   }));
 
   app.get("/api/blueprints/:industryId", asyncHandler(async (req, res) => {
-    const bp = await storage.getBlueprintByIndustryId(req.params.industryId);
+    const industryId = Array.isArray(req.params.industryId) ? req.params.industryId[0] : req.params.industryId;
+    const bp = await storage.getBlueprintByIndustryId(industryId);
     if (!bp) return res.status(404).json({ error: "Blueprint not found" });
     res.json(bp);
   }));
 
   app.post("/api/onboarding/:industryId", asyncHandler(async (req, res) => {
-    const bp = await storage.getBlueprintByIndustryId(req.params.industryId);
+    const industryId = Array.isArray(req.params.industryId) ? req.params.industryId[0] : req.params.industryId;
+    const bp = await storage.getBlueprintByIndustryId(industryId);
     if (!bp) return res.status(404).json({ error: "Blueprint not found for this industry" });
 
     const account = await storage.createSubAccount({
@@ -640,11 +642,11 @@ Rules:
 
   function cleanupDialerJobs() {
     const now = Date.now();
-    for (const [id, job] of dialerJobs) {
+    dialerJobs.forEach((job, id) => {
       if (job.status === "completed" && now - job.createdAt > DIALER_JOB_TTL_MS) {
         dialerJobs.delete(id);
       }
-    }
+    });
   }
 
   const powerDialSchema = z.object({
