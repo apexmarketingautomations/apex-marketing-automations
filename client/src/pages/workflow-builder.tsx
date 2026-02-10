@@ -1,13 +1,28 @@
 import { useState } from "react";
-import { Clock, MessageSquare, GitFork, MoreHorizontal, Plus, PlayCircle, CheckCircle2, AlertCircle } from "lucide-react";
-import { motion } from "framer-motion";
-import { Card, CardContent } from "@/components/ui/card";
+import { Clock, MessageSquare, GitFork, MoreHorizontal, Plus, PlayCircle, CheckCircle2, AlertCircle, Sparkles, Loader2 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
-// Replicating the user's snapshot structure
-const MOCK_WORKFLOW = {
+// Initial Empty State or Default Workflow
+const DEFAULT_WORKFLOW = {
+  trigger: "manual_trigger",
+  steps: []
+};
+
+// The "AI Generated" Workflow (simulating the Python script output)
+const GENERATED_WORKFLOW = {
   trigger: "facebook_form_submit",
   steps: [
     { action_type: "WAIT", params: { duration_minutes: 5 } },
@@ -32,6 +47,9 @@ const StepCard = ({ step, index, onClick }: { step: any, index: number, onClick:
   
   return (
     <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.1 }}
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
       className="relative group cursor-pointer"
@@ -68,20 +86,80 @@ const StepCard = ({ step, index, onClick }: { step: any, index: number, onClick:
 };
 
 export default function WorkflowBuilder() {
+  const [workflow, setWorkflow] = useState<any>(GENERATED_WORKFLOW);
   const [selectedStep, setSelectedStep] = useState<any>(null);
+  const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
+  const [prompt, setPrompt] = useState("When a lead fills the Facebook form, wait 5 mins, then SMS them 'Hey'. If they reply, alert me.");
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const handleGenerate = async () => {
+    setIsGenerating(true);
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    setWorkflow(GENERATED_WORKFLOW);
+    setIsGenerating(false);
+    setIsAiDialogOpen(false);
+    setSelectedStep(null);
+  };
 
   return (
     <div className="p-6 md:p-10 max-w-6xl mx-auto">
       <header className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Workflow Editor</h1>
-          <p className="text-muted-foreground mt-1">Visualizing trigger: <code className="text-xs bg-muted px-1 py-0.5 rounded text-primary">{MOCK_WORKFLOW.trigger}</code></p>
+          <p className="text-muted-foreground mt-1">
+            Visualizing trigger: <code className="text-xs bg-muted px-1 py-0.5 rounded text-primary">{workflow.trigger}</code>
+          </p>
         </div>
         <div className="flex gap-3">
+          <Dialog open={isAiDialogOpen} onOpenChange={setIsAiDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white border-0">
+                <Sparkles className="mr-2 h-4 w-4" />
+                Generate with AI
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-purple-500" />
+                  Generate Workflow
+                </DialogTitle>
+                <DialogDescription>
+                  Describe your automation in plain English, and our AI will build the workflow structure for you.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-4">
+                <Textarea 
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  className="min-h-[120px] resize-none text-base"
+                  placeholder="e.g. When a user signs up, wait 1 day and send a welcome email..."
+                />
+              </div>
+              <DialogFooter>
+                <Button variant="secondary" onClick={() => setIsAiDialogOpen(false)}>Cancel</Button>
+                <Button onClick={handleGenerate} disabled={isGenerating || !prompt.trim()}>
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Generating Plan...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="mr-2 h-4 w-4" />
+                      Generate
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          
           <Button variant="outline">Discard</Button>
-          <Button>
+          <Button variant="secondary">
             <PlayCircle className="mr-2 h-4 w-4" />
-            Publish Workflow
+            Publish
           </Button>
         </div>
       </header>
@@ -93,9 +171,9 @@ export default function WorkflowBuilder() {
           
           {/* Trigger Block */}
           <div className="flex justify-center mb-8">
-            <div className="bg-foreground text-background px-6 py-3 rounded-full text-sm font-medium shadow-lg flex items-center gap-2">
+            <div className="bg-foreground text-background px-6 py-3 rounded-full text-sm font-medium shadow-lg flex items-center gap-2 animate-in zoom-in duration-300">
               <PlayCircle className="h-4 w-4" />
-              Trigger: {MOCK_WORKFLOW.trigger}
+              Trigger: {workflow.trigger}
             </div>
           </div>
           
@@ -104,18 +182,26 @@ export default function WorkflowBuilder() {
             {/* Connecting line for the whole flow background */}
             <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-border/50 -z-20" />
 
-            {MOCK_WORKFLOW.steps.map((step, index) => (
-              <StepCard 
-                key={index} 
-                step={step} 
-                index={index}
-                onClick={() => setSelectedStep(step)} 
-              />
-            ))}
+            <AnimatePresence mode="popLayout">
+              {workflow.steps.map((step: any, index: number) => (
+                <StepCard 
+                  key={index} 
+                  step={step} 
+                  index={index}
+                  onClick={() => setSelectedStep(step)} 
+                />
+              ))}
+            </AnimatePresence>
+
+            {workflow.steps.length === 0 && (
+              <div className="text-center py-12 text-muted-foreground border-2 border-dashed border-border rounded-xl">
+                <p>No steps yet. Use AI generation or add manually.</p>
+              </div>
+            )}
 
             {/* Add Step Button */}
             <div className="flex justify-center pt-4">
-              <Button variant="outline" size="sm" className="rounded-full h-8 w-8 p-0">
+              <Button variant="outline" size="sm" className="rounded-full h-8 w-8 p-0 bg-background hover:bg-muted">
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
@@ -127,7 +213,7 @@ export default function WorkflowBuilder() {
           <Card className="sticky top-6 border-border h-[calc(100vh-8rem)]">
             <CardContent className="p-6 h-full flex flex-col">
               {selectedStep ? (
-                <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300" key={JSON.stringify(selectedStep)}>
                   <div className="flex items-center gap-3 border-b border-border pb-4">
                     <div className="p-2 bg-secondary rounded-md">
                       <StepIcon type={selectedStep.action_type} />
