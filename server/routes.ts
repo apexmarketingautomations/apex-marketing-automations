@@ -307,12 +307,23 @@ Rules:
 - Make the copy feel personally tailored to this specific visitor
 - Return ONLY the JSON object, no markdown, no code fences.`;
 
+  const liquidSiteSchema = z.object({
+    device: z.enum(["desktop", "mobile", "tablet"]).optional().default("desktop"),
+    referrer: z.string().max(500).optional().default("direct"),
+    timeOfDay: z.enum(["morning", "afternoon", "evening", "night"]).optional().default("afternoon"),
+    hour: z.number().int().min(0).max(23).optional().default(12),
+    language: z.string().max(10).optional().default("en-US"),
+  });
+
   app.post("/api/generate-liquid-site", asyncHandler(async (req, res) => {
     if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
       return res.status(503).json({ error: "AI service is not configured" });
     }
 
-    const { device, referrer, timeOfDay, hour, language } = req.body;
+    const parsed = liquidSiteSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const { device, referrer, timeOfDay, hour, language } = parsed.data;
 
     const visitorDescription = `Visitor context:
 - Device: ${device || "desktop"}
@@ -435,11 +446,11 @@ Rules:
 - End messages with a helpful next step or question when appropriate`;
 
   const chatBodySchema = z.object({
-    message: z.string().min(1, "message is required").max(5000),
+    message: z.string().min(1, "message is required").max(2000),
     conversationHistory: z.array(z.object({
-      role: z.string(),
-      text: z.string(),
-    })).optional(),
+      role: z.string().max(20),
+      text: z.string().max(2000),
+    })).max(20).optional(),
   });
 
   app.post("/api/chat", asyncHandler(async (req, res) => {
@@ -479,15 +490,15 @@ Rules:
 
   // ---- Voice Agent (Vapi Integration) ----
   const voiceAgentSchema = z.object({
-    persona: z.string().min(1, "persona is required"),
-    firstMessage: z.string().min(1, "firstMessage is required"),
-    voiceId: z.string().optional(),
-    voiceProvider: z.string().optional(),
+    persona: z.string().min(1, "persona is required").max(2000),
+    firstMessage: z.string().min(1, "firstMessage is required").max(500),
+    voiceId: z.string().max(100).optional(),
+    voiceProvider: z.string().max(50).optional(),
     objectionRules: z.array(z.object({
-      trigger: z.string(),
-      response: z.string(),
-      note: z.string().optional(),
-    })).optional(),
+      trigger: z.string().max(500),
+      response: z.string().max(1000),
+      note: z.string().max(500).optional(),
+    })).max(20).optional(),
   });
 
   app.post("/api/voice-agents/create", asyncHandler(async (req, res) => {
@@ -639,15 +650,23 @@ Rules:
   const dialerJobs = new Map<string, { leads: { name: string; phone: string }[]; current: number; status: string; results: { name: string; phone: string; status: string; callId?: string; error?: string }[]; createdAt: number }>();
 
   const DIALER_JOB_TTL_MS = 60 * 60 * 1000;
+  const DIALER_STALE_TTL_MS = 2 * 60 * 60 * 1000;
 
   function cleanupDialerJobs() {
     const now = Date.now();
     dialerJobs.forEach((job, id) => {
-      if (job.status === "completed" && now - job.createdAt > DIALER_JOB_TTL_MS) {
+      const age = now - job.createdAt;
+      if (job.status === "completed" && age > DIALER_JOB_TTL_MS) {
+        dialerJobs.delete(id);
+      } else if (job.status === "running" && age > DIALER_STALE_TTL_MS) {
+        job.status = "completed";
         dialerJobs.delete(id);
       }
     });
   }
+
+  const dialerCleanupInterval = setInterval(cleanupDialerJobs, 10 * 60 * 1000);
+  dialerCleanupInterval.unref();
 
   const powerDialSchema = z.object({
     assistantId: z.string().min(1),
