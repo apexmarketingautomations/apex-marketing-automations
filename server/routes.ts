@@ -461,9 +461,24 @@ Rules:
         return res.status(503).json({ error: "Vapi API key is not configured. Add your VAPI_API_KEY in Secrets." });
       }
 
-      const { persona, firstMessage, voiceId, voiceProvider } = req.body;
+      const { persona, firstMessage, voiceId, voiceProvider, objectionRules } = req.body;
       if (!persona || !firstMessage) {
         return res.status(400).json({ error: "persona and firstMessage are required" });
+      }
+
+      let objectionBlock = "";
+      if (Array.isArray(objectionRules) && objectionRules.length > 0) {
+        const rulesText = objectionRules
+          .filter((r: any) => r.trigger && r.response)
+          .map((r: any, i: number) => {
+            let line = `${i + 1}. If they say "${r.trigger}":\n   - Say: "${r.response}"`;
+            if (r.note) line += `\n   - NOTE: ${r.note}`;
+            return line;
+          })
+          .join("\n");
+        if (rulesText) {
+          objectionBlock = `\n\nOBJECTION HANDLING RULES (follow these exactly when the caller raises these objections):\n${rulesText}`;
+        }
       }
 
       const payload = {
@@ -474,7 +489,7 @@ Rules:
           messages: [
             {
               role: "system",
-              content: `You are a voice AI assistant. Keep sentences short and natural. Do not sound robotic. Pauses like 'um' and 'uh' are okay. YOUR GOAL: ${persona}`,
+              content: `You are a voice AI assistant. Keep sentences short and natural. Do not sound robotic. Pauses like 'um' and 'uh' are okay. YOUR GOAL: ${persona}${objectionBlock}`,
             },
           ],
         },

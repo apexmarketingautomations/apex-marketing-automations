@@ -18,12 +18,38 @@ import {
   Clock,
   PhoneOutgoing,
   X,
+  ShieldAlert,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import Vapi from "@vapi-ai/web";
+
+interface ObjectionRule {
+  trigger: string;
+  response: string;
+  note?: string;
+}
+
+const DEFAULT_OBJECTION_RULES: ObjectionRule[] = [
+  {
+    trigger: "I'm busy",
+    response: "No worries, I'll be super quick. I just wanted to ask...",
+    note: "Pivot back to script",
+  },
+  {
+    trigger: "Not interested",
+    response: "Totally fair. Just so I don't bother you again, was it the price?",
+  },
+  {
+    trigger: "Are you a robot?",
+    response: "I'm a virtual assistant, but I can book appointments. Want to grab a slot?",
+    note: "DO NOT lie and say you are human — it kills trust",
+  },
+];
 
 const VOICE_OPTIONS = [
   { id: "21m00Tcm4TlvDq8ikWAM", name: "Rachel", desc: "Warm, professional female" },
@@ -55,6 +81,7 @@ export default function VoiceAgent() {
   const [demoConnecting, setDemoConnecting] = useState(false);
   const [demoVolume, setDemoVolume] = useState(0);
   const [vapiPublicKey, setVapiPublicKey] = useState<string | null>(null);
+  const [objectionRules, setObjectionRules] = useState<ObjectionRule[]>(DEFAULT_OBJECTION_RULES);
   const vapiRef = useRef<Vapi | null>(null);
   const { toast } = useToast();
 
@@ -128,6 +155,7 @@ export default function VoiceAgent() {
           firstMessage,
           voiceId: selectedVoice,
           voiceProvider: "11labs",
+          objectionRules: objectionRules.filter((r) => r.trigger.trim() && r.response.trim()),
         }),
       });
 
@@ -425,6 +453,63 @@ export default function VoiceAgent() {
                       className="bg-white/5 border-white/10"
                       data-testid="input-first-message"
                     />
+                  </div>
+
+                  <div>
+                    <label className="text-sm text-neutral-400 mb-3 block flex items-center gap-2">
+                      <ShieldAlert size={14} /> Objection Handling Rules
+                    </label>
+                    <div className="space-y-3">
+                      {objectionRules.map((rule, idx) => (
+                        <div key={idx} className="bg-black/20 border border-white/5 rounded-xl p-4 space-y-2 relative group">
+                          <button
+                            onClick={() => setObjectionRules((prev) => prev.filter((_, i) => i !== idx))}
+                            className="absolute top-3 right-3 text-neutral-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                            data-testid={`button-remove-objection-${idx}`}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-neutral-500 whitespace-nowrap">If they say:</span>
+                            <Input
+                              value={rule.trigger}
+                              onChange={(e) => {
+                                const updated = [...objectionRules];
+                                updated[idx] = { ...updated[idx], trigger: e.target.value };
+                                setObjectionRules(updated);
+                              }}
+                              className="bg-white/5 border-white/10 text-sm h-8"
+                              placeholder={`"I'm busy"`}
+                              data-testid={`input-objection-trigger-${idx}`}
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-neutral-500 whitespace-nowrap">Respond:</span>
+                            <Input
+                              value={rule.response}
+                              onChange={(e) => {
+                                const updated = [...objectionRules];
+                                updated[idx] = { ...updated[idx], response: e.target.value };
+                                setObjectionRules(updated);
+                              }}
+                              className="bg-white/5 border-white/10 text-sm h-8"
+                              placeholder="No worries, I'll be super quick..."
+                              data-testid={`input-objection-response-${idx}`}
+                            />
+                          </div>
+                          {rule.note && (
+                            <p className="text-xs text-amber-400/70 pl-1">{rule.note}</p>
+                          )}
+                        </div>
+                      ))}
+                      <button
+                        onClick={() => setObjectionRules((prev) => [...prev, { trigger: "", response: "" }])}
+                        className="flex items-center gap-2 text-sm text-violet-400 hover:text-violet-300 transition-colors"
+                        data-testid="button-add-objection"
+                      >
+                        <Plus size={14} /> Add Rule
+                      </button>
+                    </div>
                   </div>
 
                   <div>
