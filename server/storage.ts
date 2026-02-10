@@ -1,4 +1,7 @@
+import { eq } from "drizzle-orm";
+import { db } from "./db";
 import {
+  subAccounts, messages, workflows, trainingJobs, blueprints,
   type SubAccount, type InsertSubAccount,
   type Message, type InsertMessage,
   type Workflow, type InsertWorkflow,
@@ -18,6 +21,7 @@ export interface IStorage {
   getWorkflows(): Promise<Workflow[]>;
   getWorkflow(id: number): Promise<Workflow | undefined>;
   createWorkflow(data: InsertWorkflow): Promise<Workflow>;
+  updateWorkflow(id: number, data: Partial<InsertWorkflow>): Promise<Workflow | undefined>;
 
   getTrainingJobs(): Promise<TrainingJob[]>;
   getTrainingJob(id: number): Promise<TrainingJob | undefined>;
@@ -30,70 +34,91 @@ export interface IStorage {
   createBlueprint(data: InsertBlueprint): Promise<Blueprint>;
 }
 
-export class MemStorage implements IStorage {
-  private subAccounts: Map<number, SubAccount> = new Map();
-  private messages: Map<number, Message> = new Map();
-  private workflows: Map<number, Workflow> = new Map();
-  private trainingJobs: Map<number, TrainingJob> = new Map();
-  private blueprints: Map<number, Blueprint> = new Map();
-  private nextId = { subAccounts: 1, messages: 1, workflows: 1, trainingJobs: 1, blueprints: 1 };
+export class DatabaseStorage implements IStorage {
+  async getSubAccounts() {
+    return db.select().from(subAccounts);
+  }
 
-  async getSubAccounts() { return Array.from(this.subAccounts.values()); }
-  async getSubAccount(id: number) { return this.subAccounts.get(id); }
-  async createSubAccount(data: InsertSubAccount): Promise<SubAccount> {
-    const id = this.nextId.subAccounts++;
-    const record = { ...data, id } as SubAccount;
-    this.subAccounts.set(id, record);
-    return record;
+  async getSubAccount(id: number) {
+    const [row] = await db.select().from(subAccounts).where(eq(subAccounts.id, id));
+    return row;
+  }
+
+  async createSubAccount(data: InsertSubAccount) {
+    const [row] = await db.insert(subAccounts).values(data).returning();
+    return row;
   }
 
   async getMessages(subAccountId: number) {
-    return Array.from(this.messages.values()).filter(m => m.subAccountId === subAccountId);
-  }
-  async getMessage(id: number) { return this.messages.get(id); }
-  async createMessage(data: InsertMessage): Promise<Message> {
-    const id = this.nextId.messages++;
-    const record = { ...data, id, createdAt: new Date() } as Message;
-    this.messages.set(id, record);
-    return record;
+    return db.select().from(messages).where(eq(messages.subAccountId, subAccountId));
   }
 
-  async getWorkflows() { return Array.from(this.workflows.values()); }
-  async getWorkflow(id: number) { return this.workflows.get(id); }
-  async createWorkflow(data: InsertWorkflow): Promise<Workflow> {
-    const id = this.nextId.workflows++;
-    const record = { ...data, id } as Workflow;
-    this.workflows.set(id, record);
-    return record;
+  async getMessage(id: number) {
+    const [row] = await db.select().from(messages).where(eq(messages.id, id));
+    return row;
   }
 
-  async getTrainingJobs() { return Array.from(this.trainingJobs.values()); }
-  async getTrainingJob(id: number) { return this.trainingJobs.get(id); }
-  async createTrainingJob(data: InsertTrainingJob): Promise<TrainingJob> {
-    const id = this.nextId.trainingJobs++;
-    const record = { ...data, id, state: data.state ?? "pending", progress: data.progress ?? 0, logs: data.logs ?? [], createdAt: new Date() } as TrainingJob;
-    this.trainingJobs.set(id, record);
-    return record;
-  }
-  async updateTrainingJob(id: number, data: Partial<TrainingJob>): Promise<TrainingJob | undefined> {
-    const existing = this.trainingJobs.get(id);
-    if (!existing) return undefined;
-    const updated = { ...existing, ...data } as TrainingJob;
-    this.trainingJobs.set(id, updated);
-    return updated;
+  async createMessage(data: InsertMessage) {
+    const [row] = await db.insert(messages).values(data).returning();
+    return row;
   }
 
-  async getBlueprints() { return Array.from(this.blueprints.values()); }
-  async getBlueprint(id: number) { return this.blueprints.get(id); }
+  async getWorkflows() {
+    return db.select().from(workflows);
+  }
+
+  async getWorkflow(id: number) {
+    const [row] = await db.select().from(workflows).where(eq(workflows.id, id));
+    return row;
+  }
+
+  async createWorkflow(data: InsertWorkflow) {
+    const [row] = await db.insert(workflows).values(data).returning();
+    return row;
+  }
+
+  async updateWorkflow(id: number, data: Partial<InsertWorkflow>) {
+    const [row] = await db.update(workflows).set(data).where(eq(workflows.id, id)).returning();
+    return row;
+  }
+
+  async getTrainingJobs() {
+    return db.select().from(trainingJobs);
+  }
+
+  async getTrainingJob(id: number) {
+    const [row] = await db.select().from(trainingJobs).where(eq(trainingJobs.id, id));
+    return row;
+  }
+
+  async createTrainingJob(data: InsertTrainingJob) {
+    const [row] = await db.insert(trainingJobs).values(data).returning();
+    return row;
+  }
+
+  async updateTrainingJob(id: number, data: Partial<TrainingJob>) {
+    const [row] = await db.update(trainingJobs).set(data).where(eq(trainingJobs.id, id)).returning();
+    return row;
+  }
+
+  async getBlueprints() {
+    return db.select().from(blueprints);
+  }
+
+  async getBlueprint(id: number) {
+    const [row] = await db.select().from(blueprints).where(eq(blueprints.id, id));
+    return row;
+  }
+
   async getBlueprintByIndustryId(industryId: string) {
-    return Array.from(this.blueprints.values()).find(b => b.industryId === industryId);
+    const [row] = await db.select().from(blueprints).where(eq(blueprints.industryId, industryId));
+    return row;
   }
-  async createBlueprint(data: InsertBlueprint): Promise<Blueprint> {
-    const id = this.nextId.blueprints++;
-    const record = { ...data, id } as Blueprint;
-    this.blueprints.set(id, record);
-    return record;
+
+  async createBlueprint(data: InsertBlueprint) {
+    const [row] = await db.insert(blueprints).values(data).returning();
+    return row;
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();

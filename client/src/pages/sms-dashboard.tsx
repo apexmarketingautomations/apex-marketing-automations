@@ -5,6 +5,7 @@ import * as z from "zod";
 import { format } from "date-fns";
 import { Send, Phone, User, Building2, MessageSquare, Loader2, CheckCircle2, Clock, Instagram, Mail, Bell } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -37,7 +38,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
 
-import { mockApi, MOCK_ACCOUNTS, type Message } from "@/lib/mock-service";
+import { api } from "@/lib/api";
+import type { SubAccount, Message } from "@shared/schema";
 
 const formSchema = z.object({
   subAccountId: z.string().min(1, "Please select an account"),
@@ -46,42 +48,67 @@ const formSchema = z.object({
   channel: z.enum(["sms", "instagram"]).default("sms"),
 });
 
-// Extend Message type for this view
-interface UnifiedMessage extends Message {
-  channel?: 'sms' | 'instagram' | 'email';
+interface LocalMessage extends Message {
+  _local?: boolean;
 }
 
 export default function SmsDashboard() {
-  const [selectedAccount, setSelectedAccount] = useState<string>(MOCK_ACCOUNTS[0].id);
-  const [messages, setMessages] = useState<UnifiedMessage[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSending, setIsSending] = useState(false);
+  const [selectedAccount, setSelectedAccount] = useState<string>("");
   const [instagramConnected, setInstagramConnected] = useState(false);
+  const [localMessages, setLocalMessages] = useState<LocalMessage[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: accounts = [], isLoading: accountsLoading } = useQuery<SubAccount[]>({
+    queryKey: ["/api/accounts"],
+  });
+
+  useEffect(() => {
+    if (accounts.length > 0 && !selectedAccount) {
+      const firstId = String(accounts[0].id);
+      setSelectedAccount(firstId);
+      form.setValue("subAccountId", firstId);
+    }
+  }, [accounts]);
+
+  const numericAccountId = selectedAccount ? Number(selectedAccount) : undefined;
+
+  const { data: serverMessages = [], isLoading: messagesLoading } = useQuery<Message[]>({
+    queryKey: ["/api/messages", numericAccountId],
+    queryFn: () => api.getMessages(numericAccountId!),
+    enabled: !!numericAccountId,
+  });
+
+  const allMessages: LocalMessage[] = [
+    ...serverMessages,
+    ...localMessages.filter(lm => lm.subAccountId === numericAccountId),
+  ];
+
+  const sendMutation = useMutation({
+    mutationFn: (data: {
+      subAccountId: number;
+      contactPhone: string;
+      body: string;
+      channel: string;
+      direction: string;
+      status: string;
+    }) => api.sendMessage(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/messages", numericAccountId] });
+    },
+  });
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      subAccountId: MOCK_ACCOUNTS[0].id,
+      subAccountId: "",
       contactPhone: "+15559999",
       messageBody: "",
       channel: "sms",
     },
   });
 
-  // Load initial data
-  useEffect(() => {
-    const loadMessages = async () => {
-      setIsLoading(true);
-      const data = await mockApi.getMessages(selectedAccount);
-      setMessages(data);
-      setIsLoading(false);
-    };
-    loadMessages();
-  }, [selectedAccount]);
-
-  // Simulate incoming Instagram message
   const simulateInstagramMessage = () => {
     if (!instagramConnected) {
       toast({
@@ -92,51 +119,43 @@ export default function SmsDashboard() {
       return;
     }
 
-    const newMessage: UnifiedMessage = {
-      id: `ig_${Date.now()}`,
-      subAccountId: selectedAccount,
+    if (!numericAccountId) return;
+
+    const newMessage: LocalMessage = {
+      id: Date.now(),
+      subAccountId: numericAccountId,
       direction: 'inbound',
       body: "Hey! Saw your story about the 6-week challenge. Can I get more info?",
       status: 'received',
-      createdAt: new Date().toISOString(),
+      createdAt: new Date(),
       contactPhone: "instagram_user_123",
-      channel: "instagram"
+      channel: "instagram",
+      _local: true,
     };
     
-    setMessages(prev => [...prev, newMessage]);
+    setLocalMessages(prev => [...prev, newMessage]);
     toast({
       title: "New Instagram Message",
       description: "Received from @instagram_user_123",
     });
   };
 
-  // Auto-scroll to bottom
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages]);
+  }, [allMessages.length]);
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    setIsSending(true);
     try {
-      let responseMessage: UnifiedMessage;
-      
-      if (values.channel === 'instagram') {
-        // Use the new Instagram mock handler
-        const response = await mockApi.sendInstagram({
-          subAccountId: values.subAccountId,
-          recipientId: values.contactPhone,
-          text: values.messageBody
-        });
-        responseMessage = response.message as UnifiedMessage;
-      } else {
-        // Use standard SMS handler
-        const response = await mockApi.sendSms(values);
-        responseMessage = response.message as UnifiedMessage;
-      }
-      
-      setMessages((prev) => [...prev, responseMessage]);
+      await sendMutation.mutateAsync({
+        subAccountId: Number(values.subAccountId),
+        contactPhone: values.contactPhone,
+        body: values.messageBody,
+        channel: values.channel,
+        direction: "outbound",
+        status: "sent",
+      });
       form.resetField("messageBody");
       toast({
         title: "Message sent",
@@ -148,12 +167,11 @@ export default function SmsDashboard() {
         title: "Error",
         description: "Failed to send message. Please try again.",
       });
-    } finally {
-      setIsSending(false);
     }
   }
 
-  const currentAccount = MOCK_ACCOUNTS.find(a => a.id === selectedAccount);
+  const isLoading = accountsLoading || messagesLoading;
+  const isSending = sendMutation.isPending;
 
   return (
     <div className="p-4 md:p-8 font-sans">
@@ -180,14 +198,15 @@ export default function SmsDashboard() {
                   onValueChange={(val) => {
                     setSelectedAccount(val);
                     form.setValue("subAccountId", val);
+                    setLocalMessages([]);
                   }}
                 >
                   <SelectTrigger data-testid="select-account">
                     <SelectValue placeholder="Select account" />
                   </SelectTrigger>
                   <SelectContent>
-                    {MOCK_ACCOUNTS.map((acc) => (
-                      <SelectItem key={acc.id} value={acc.id}>
+                    {accounts.map((acc) => (
+                      <SelectItem key={acc.id} value={String(acc.id)}>
                         <div className="flex items-center gap-2">
                           <Building2 className="h-4 w-4 text-muted-foreground" />
                           <span>{acc.name}</span>
@@ -280,13 +299,13 @@ export default function SmsDashboard() {
                   <div className="flex items-center justify-center h-full py-10">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   </div>
-                ) : messages.length === 0 ? (
+                ) : allMessages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
                     <MessageSquare className="h-10 w-10 mb-2 opacity-20" />
                     <p>No messages yet. Start the conversation!</p>
                   </div>
                 ) : (
-                  messages.map((msg) => (
+                  allMessages.map((msg) => (
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
