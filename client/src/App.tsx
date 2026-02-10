@@ -12,6 +12,7 @@ import LuxeLanding from "@/pages/luxe-landing";
 import Onboarding from "@/pages/onboarding";
 import BotTrainer from "@/pages/bot-trainer";
 import SiteBuilder from "@/pages/site-builder";
+import LiquidWebsite from "@/pages/liquid-website";
 
 function Router() {
   return (
@@ -21,6 +22,7 @@ function Router() {
       <Route path="/luxe" component={LuxeLanding} />
       <Route path="/onboarding" component={Onboarding} />
       <Route path="/site-builder" component={SiteBuilder} />
+      <Route path="/liquid" component={LiquidWebsite} />
 
       {/* Dashboard Routes (With Sidebar) */}
       <Route path="/">

@@ -211,6 +211,117 @@ Rules:
     }
   });
 
+  // ---- Liquid Website (Personalized AI Generation) ----
+  const LIQUID_SYSTEM_PROMPT = `You are a landing-page architect that creates PERSONALIZED websites based on visitor context.
+
+You will receive visitor data including:
+- device: "mobile" or "desktop"
+- referrer: where they came from (google, facebook, instagram, tiktok, twitter, referral, direct)
+- timeOfDay: "morning", "afternoon", "evening", or "night"
+- hour: the current hour (0-23)
+- language: browser language
+
+PERSONALIZATION RULES:
+- Mobile visitors: shorter headlines, bigger CTA buttons, concise text
+- Desktop visitors: longer, more detailed descriptions
+- Morning visitors: energetic, fresh-start messaging ("Start your day right")
+- Evening/night visitors: relaxation-focused ("Wind down with...")
+- Google referrers: trust-focused messaging (reviews, certifications)
+- Social media referrers (facebook, instagram, tiktok): trend-focused, social proof messaging
+- Direct visitors: loyalty/returning customer focus
+
+Return a JSON object with this exact structure:
+
+{
+  "theme": {
+    "primary": "<hex color>",
+    "bg": "<hex background>",
+    "text": "<hex text>",
+    "font": "<font family>"
+  },
+  "sections": [
+    {
+      "type": "HERO",
+      "props": {
+        "title": "<personalized headline>",
+        "subtitle": "<personalized subheadline>",
+        "cta": "<personalized button text>",
+        "image": "<unsplash URL>"
+      }
+    },
+    {
+      "type": "FEATURES",
+      "props": {
+        "title": "<section heading>",
+        "features": [
+          { "icon": "<icon>", "title": "<title>", "desc": "<description>" },
+          { "icon": "<icon>", "title": "<title>", "desc": "<description>" },
+          { "icon": "<icon>", "title": "<title>", "desc": "<description>" }
+        ]
+      }
+    },
+    {
+      "type": "BOOKING",
+      "props": {
+        "title": "<form heading>",
+        "formId": "<unique id>"
+      }
+    }
+  ]
+}
+
+Rules:
+- Always return exactly 3 sections: HERO, FEATURES, BOOKING
+- icon must be one of: ShieldCheck, Clock, Sparkles, Star, Dumbbell, Heart, Zap, Trophy, CheckCircle2
+- Use real Unsplash image URLs. Format: https://images.unsplash.com/photo-XXXXX?q=80&w=2070&auto=format&fit=crop
+- font: "Playfair Display" for luxury/elegant, "Inter" for modern/clean
+- Make the copy feel personally tailored to this specific visitor
+- Return ONLY the JSON object, no markdown, no code fences.`;
+
+  app.post("/api/generate-liquid-site", async (req, res) => {
+    try {
+      if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+        return res.status(503).json({ error: "AI service is not configured" });
+      }
+
+      const { device, referrer, timeOfDay, hour, language } = req.body;
+
+      const visitorDescription = `Visitor context:
+- Device: ${device || "desktop"}
+- Came from: ${referrer || "direct"}  
+- Time of day: ${timeOfDay || "afternoon"} (${hour ?? 12}:00)
+- Language: ${language || "en-US"}
+
+Generate a personalized premium wellness/beauty service landing page for this specific visitor.`;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: LIQUID_SYSTEM_PROMPT },
+          { role: "user", content: visitorDescription },
+        ],
+        temperature: 0.8,
+        max_tokens: 1500,
+      });
+
+      const raw = completion.choices[0]?.message?.content ?? "";
+      const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      const siteData = JSON.parse(cleaned);
+
+      if (!siteData.theme || !Array.isArray(siteData.sections)) {
+        return res.status(500).json({ error: "AI returned invalid site structure" });
+      }
+
+      res.json(siteData);
+    } catch (err: any) {
+      console.error("Liquid site generation error:", err);
+      if (err instanceof SyntaxError) {
+        return res.status(500).json({ error: "AI returned invalid JSON" });
+      }
+      res.status(500).json({ error: err.message || "Failed to generate personalized site" });
+    }
+  });
+
   return httpServer;
 }
 

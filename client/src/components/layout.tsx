@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { MessageSquare, GitFork, LayoutDashboard, Settings, Briefcase, Bot, LayoutTemplate } from "lucide-react";
+import { MessageSquare, GitFork, LayoutDashboard, Settings, Briefcase, Bot, LayoutTemplate, Globe } from "lucide-react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -10,6 +10,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { href: "/bot-trainer", icon: Bot, label: "Bot Trainer" },
     { href: "/onboarding", icon: Briefcase, label: "New Account" },
     { href: "/site-builder", icon: LayoutTemplate, label: "Site Builder" },
+    { href: "/liquid", icon: Globe, label: "Liquid Website" },
   ];
 
   return (
