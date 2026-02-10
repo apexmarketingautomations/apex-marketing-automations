@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { format } from "date-fns";
-import { Send, Phone, User, Building2, MessageSquare, Loader2, CheckCircle2, Clock } from "lucide-react";
+import { Send, Phone, User, Building2, MessageSquare, Loader2, CheckCircle2, Clock, Instagram, Mail, Bell } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
+import { Switch } from "@/components/ui/switch";
 
 import { mockApi, MOCK_ACCOUNTS, type Message } from "@/lib/mock-service";
 
@@ -42,13 +43,20 @@ const formSchema = z.object({
   subAccountId: z.string().min(1, "Please select an account"),
   contactPhone: z.string().min(10, "Phone number must be at least 10 digits"),
   messageBody: z.string().min(1, "Message cannot be empty").max(1600, "Message too long"),
+  channel: z.enum(["sms", "instagram"]).default("sms"),
 });
+
+// Extend Message type for this view
+interface UnifiedMessage extends Message {
+  channel?: 'sms' | 'instagram' | 'email';
+}
 
 export default function SmsDashboard() {
   const [selectedAccount, setSelectedAccount] = useState<string>(MOCK_ACCOUNTS[0].id);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<UnifiedMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [instagramConnected, setInstagramConnected] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -58,6 +66,7 @@ export default function SmsDashboard() {
       subAccountId: MOCK_ACCOUNTS[0].id,
       contactPhone: "+15559999",
       messageBody: "",
+      channel: "sms",
     },
   });
 
@@ -72,6 +81,35 @@ export default function SmsDashboard() {
     loadMessages();
   }, [selectedAccount]);
 
+  // Simulate incoming Instagram message
+  const simulateInstagramMessage = () => {
+    if (!instagramConnected) {
+      toast({
+        variant: "destructive",
+        title: "Integration Required",
+        description: "Please connect your Instagram account first.",
+      });
+      return;
+    }
+
+    const newMessage: UnifiedMessage = {
+      id: `ig_${Date.now()}`,
+      subAccountId: selectedAccount,
+      direction: 'inbound',
+      body: "Hey! Saw your story about the 6-week challenge. Can I get more info?",
+      status: 'received',
+      createdAt: new Date().toISOString(),
+      contactPhone: "instagram_user_123",
+      channel: "instagram"
+    };
+    
+    setMessages(prev => [...prev, newMessage]);
+    toast({
+      title: "New Instagram Message",
+      description: "Received from @instagram_user_123",
+    });
+  };
+
   // Auto-scroll to bottom
   useEffect(() => {
     if (scrollRef.current) {
@@ -83,11 +121,17 @@ export default function SmsDashboard() {
     setIsSending(true);
     try {
       const response = await mockApi.sendSms(values);
-      setMessages((prev) => [...prev, response.message]);
+      // Manually add the channel for visual demo
+      const msgWithChannel: UnifiedMessage = {
+        ...response.message,
+        channel: values.channel as any
+      };
+      
+      setMessages((prev) => [...prev, msgWithChannel]);
       form.resetField("messageBody");
       toast({
         title: "Message sent",
-        description: "Your SMS has been successfully queued for delivery.",
+        description: `Your ${values.channel === 'instagram' ? 'DM' : 'SMS'} has been sent.`,
       });
     } catch (error) {
       toast({
@@ -109,8 +153,8 @@ export default function SmsDashboard() {
         {/* Left Sidebar: Configuration */}
         <div className="space-y-6">
           <div className="space-y-2">
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Messaging</h1>
-            <p className="text-sm text-muted-foreground">Manage your SMS communications.</p>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Unified Inbox</h1>
+            <p className="text-sm text-muted-foreground">Manage all your customer conversations in one place.</p>
           </div>
 
           <Card className="border-border shadow-sm">
@@ -120,7 +164,7 @@ export default function SmsDashboard() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                  Sending Account
+                  Active Account
                 </label>
                 <Select 
                   value={selectedAccount} 
@@ -143,11 +187,32 @@ export default function SmsDashboard() {
                     ))}
                   </SelectContent>
                 </Select>
-                {currentAccount && (
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    From: <span className="font-mono text-foreground bg-muted px-1 rounded">{currentAccount.twilioNumber}</span>
-                  </p>
-                )}
+              </div>
+
+              <div className="space-y-3 pt-2 border-t border-border">
+                 <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-pink-100 rounded-md">
+                        <Instagram className="h-4 w-4 text-pink-600" />
+                      </div>
+                      <span className="text-sm font-medium">Instagram</span>
+                    </div>
+                    <Switch 
+                      checked={instagramConnected}
+                      onCheckedChange={setInstagramConnected}
+                    />
+                 </div>
+                 {instagramConnected && (
+                   <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full text-xs"
+                    onClick={simulateInstagramMessage}
+                  >
+                    <Bell className="mr-2 h-3 w-3" />
+                    Simulate Incoming DM
+                  </Button>
+                 )}
               </div>
             </CardContent>
           </Card>
@@ -159,9 +224,9 @@ export default function SmsDashboard() {
                   <CheckCircle2 className="h-5 w-5 text-primary" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-primary">System Online</h3>
+                  <h3 className="font-semibold text-primary">Omnichannel Ready</h3>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Twilio services are operational. Queue status is normal.
+                    Connected to Twilio (SMS) and Meta Graph API (Instagram).
                   </p>
                 </div>
               </div>
@@ -189,9 +254,14 @@ export default function SmsDashboard() {
                   </div>
                 </div>
               </div>
-              <Button variant="ghost" size="icon">
-                <Phone className="h-4 w-4" />
-              </Button>
+              <div className="flex gap-2">
+                 <Badge variant="outline" className="gap-1">
+                   <Phone className="h-3 w-3" /> SMS
+                 </Badge>
+                 <Badge variant="outline" className={`gap-1 ${!instagramConnected && 'opacity-50'}`}>
+                   <Instagram className="h-3 w-3" /> Instagram
+                 </Badge>
+              </div>
             </div>
 
             {/* Messages Area */}
@@ -214,16 +284,26 @@ export default function SmsDashboard() {
                       key={msg.id}
                       className={`flex ${msg.direction === 'outbound' ? 'justify-end' : 'justify-start'}`}
                     >
-                      <div
-                        className={`max-w-[80%] rounded-2xl px-4 py-3 shadow-sm ${
-                          msg.direction === 'outbound'
-                            ? 'bg-primary text-primary-foreground rounded-br-none'
-                            : 'bg-white border border-border text-foreground rounded-bl-none'
-                        }`}
-                      >
-                        <p className="text-sm leading-relaxed">{msg.body}</p>
+                      <div className={`flex flex-col ${msg.direction === 'outbound' ? 'items-end' : 'items-start'} max-w-[80%]`}>
+                        <div className="flex items-center gap-1 mb-1 px-1">
+                           {msg.channel === 'instagram' ? (
+                             <Instagram className="h-3 w-3 text-pink-500" />
+                           ) : (
+                             <MessageSquare className="h-3 w-3 text-blue-500" />
+                           )}
+                           <span className="text-[10px] text-muted-foreground capitalize">{msg.channel || 'sms'}</span>
+                        </div>
+                        <div
+                          className={`rounded-2xl px-4 py-3 shadow-sm ${
+                            msg.direction === 'outbound'
+                              ? 'bg-primary text-primary-foreground rounded-br-none'
+                              : 'bg-white border border-border text-foreground rounded-bl-none'
+                          }`}
+                        >
+                          <p className="text-sm leading-relaxed">{msg.body}</p>
+                        </div>
                         <div className={`flex items-center gap-1 mt-1 text-[10px] ${
-                          msg.direction === 'outbound' ? 'text-primary-foreground/70' : 'text-muted-foreground'
+                          msg.direction === 'outbound' ? 'text-muted-foreground' : 'text-muted-foreground'
                         }`}>
                           <span>{format(new Date(msg.createdAt), 'h:mm a')}</span>
                           {msg.direction === 'outbound' && (
@@ -243,21 +323,29 @@ export default function SmsDashboard() {
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                   
-                  {/* Recipient Input (Visual only for this demo, usually fixed in a thread) */}
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xs font-medium text-muted-foreground">To:</span>
-                    <FormField
-                      control={form.control}
-                      name="contactPhone"
-                      render={({ field }) => (
-                        <input 
-                          {...field}
-                          className="text-xs bg-transparent border-none focus:outline-none text-foreground font-mono w-full"
-                          placeholder="Enter phone number..."
-                        />
-                      )}
-                    />
-                  </div>
+                  {/* Channel Selector for Sending */}
+                  {instagramConnected && (
+                    <div className="flex gap-2 mb-2">
+                       <Button
+                        type="button"
+                        variant={form.watch("channel") === "sms" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => form.setValue("channel", "sms")}
+                        className="text-xs h-7"
+                       >
+                         <Phone className="mr-1.5 h-3 w-3" /> SMS
+                       </Button>
+                       <Button
+                        type="button"
+                        variant={form.watch("channel") === "instagram" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => form.setValue("channel", "instagram")}
+                        className={`text-xs h-7 ${form.watch("channel") === "instagram" ? "bg-pink-600 hover:bg-pink-700" : ""}`}
+                       >
+                         <Instagram className="mr-1.5 h-3 w-3" /> Instagram
+                       </Button>
+                    </div>
+                  )}
 
                   <div className="relative">
                     <FormField
@@ -267,7 +355,7 @@ export default function SmsDashboard() {
                         <FormItem>
                           <FormControl>
                             <Textarea
-                              placeholder="Type your message..."
+                              placeholder={`Type your ${form.watch("channel") === 'instagram' ? 'DM' : 'SMS'}...`}
                               className="min-h-[80px] resize-none pr-12 text-sm bg-muted/30 border-muted-foreground/20 focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
                               {...field}
                               onKeyDown={(e) => {
@@ -287,7 +375,7 @@ export default function SmsDashboard() {
                         type="submit" 
                         size="icon" 
                         disabled={isSending || !form.watch("messageBody")}
-                        className="h-8 w-8 rounded-full shadow-sm"
+                        className={`h-8 w-8 rounded-full shadow-sm ${form.watch("channel") === 'instagram' ? 'bg-pink-600 hover:bg-pink-700' : ''}`}
                         data-testid="button-send"
                       >
                         {isSending ? (
