@@ -15,6 +15,7 @@ import SiteBuilder from "@/pages/site-builder";
 import LiquidWebsite from "@/pages/liquid-website";
 import AdLauncher from "@/pages/ad-launcher";
 import VoiceAgent from "@/pages/voice-agent";
+import GrowthCenter from "@/pages/growth-center";
 
 function Router() {
   return (
@@ -27,6 +28,7 @@ function Router() {
       <Route path="/liquid" component={LiquidWebsite} />
       <Route path="/ad-launcher" component={AdLauncher} />
       <Route path="/voice-agent" component={VoiceAgent} />
+      <Route path="/growth" component={GrowthCenter} />
 
       {/* Dashboard Routes (With Sidebar) */}
       <Route path="/">

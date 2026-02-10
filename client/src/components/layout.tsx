@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { MessageSquare, GitFork, LayoutDashboard, Settings, Briefcase, Bot, LayoutTemplate, Globe, Megaphone, Phone } from "lucide-react";
+import { MessageSquare, GitFork, LayoutDashboard, Settings, Briefcase, Bot, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp } from "lucide-react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -13,6 +13,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { href: "/liquid", icon: Globe, label: "Liquid Website" },
     { href: "/ad-launcher", icon: Megaphone, label: "Ad Launcher" },
     { href: "/voice-agent", icon: Phone, label: "Voice Agent" },
+    { href: "/growth", icon: TrendingUp, label: "Growth Center" },
   ];
 
   return (
