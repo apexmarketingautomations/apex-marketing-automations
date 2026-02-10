@@ -11,14 +11,16 @@ import GymLanding from "@/pages/gym-landing";
 import LuxeLanding from "@/pages/luxe-landing";
 import Onboarding from "@/pages/onboarding";
 import BotTrainer from "@/pages/bot-trainer";
+import SiteBuilder from "@/pages/site-builder";
 
 function Router() {
   return (
     <Switch>
-      {/* Landing Page (No Sidebar) */}
+      {/* Full-screen pages (No Sidebar) */}
       <Route path="/gym" component={GymLanding} />
       <Route path="/luxe" component={LuxeLanding} />
       <Route path="/onboarding" component={Onboarding} />
+      <Route path="/site-builder" component={SiteBuilder} />
 
       {/* Dashboard Routes (With Sidebar) */}
       <Route path="/">
