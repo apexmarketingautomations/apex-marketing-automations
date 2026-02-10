@@ -75,6 +75,16 @@ The `shared/` directory contains code used by both frontend and backend:
 - `POST /api/bots/train` | `GET /api/jobs/:id` - Bot training jobs
 - `GET /api/blueprints/:industryId` - Industry blueprints
 - `POST /api/onboard` - Full onboarding flow (creates account + returns blueprint)
+- `POST /api/voice-agents/create` - Deploy voice agent to Vapi (with objection handling rules)
+- `GET /api/voice-agents` - List deployed voice agents
+- `POST /api/voice-agents/call` - Outbound call via Vapi
+- `POST /api/voice-agents/power-dial` | `GET /api/voice-agents/power-dial/:jobId` - Power Dialer batch calling
+- `POST /api/voice-agents/generate-persona` - AI persona generation
+- `GET /api/phone-numbers/config` - Check Twilio/Vapi key availability
+- `GET /api/phone-numbers/search?areaCode=` - Search available Twilio numbers
+- `POST /api/phone-numbers/purchase` - Buy Twilio number + auto-link to Vapi agent
+- `GET /api/phone-numbers` - List owned Twilio numbers
+- `POST /api/sms-webhook` - Twilio SMS webhook with AI auto-reply (GPT-4o)
 
 ## External Dependencies
 
@@ -85,8 +95,9 @@ The `shared/` directory contains code used by both frontend and backend:
 - **OpenAI API** - Referenced in attached assets for GPT-4o chat completions with function calling (calendar booking tools)
 - **RAG Pipeline** - Architecture references pgvector for similarity search on knowledge base chunks
 
-### Communication Services (Referenced)
-- **Twilio** - SMS sending capability (sub-accounts have Twilio numbers; full integration may need to be built)
+### Communication Services
+- **Twilio** - Phone number provisioning (search, purchase), SMS webhook with AI auto-reply. Requires TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN secrets (not using Replit integration — user dismissed it; credentials stored as manual secrets)
+- **Vapi** - Voice AI agent deployment, outbound calling, browser demo calls. Requires VAPI_API_KEY and VAPI_PUBLIC_KEY secrets
 
 ### Frontend Libraries
 - **shadcn/ui** - Full component library (40+ Radix-based components)

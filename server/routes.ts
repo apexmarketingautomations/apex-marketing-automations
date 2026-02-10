@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema } from "@shared/schema";
 import OpenAI from "openai";
+import Twilio from "twilio";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -754,6 +755,200 @@ Rules:
       console.error("Persona generation error:", err);
       res.status(500).json({ error: "Failed to generate persona" });
     }
+  });
+
+  // ---- Phone Number Provisioning (Twilio + Vapi) ----
+
+  function getTwilioClient() {
+    const sid = process.env.TWILIO_ACCOUNT_SID;
+    const token = process.env.TWILIO_AUTH_TOKEN;
+    if (!sid || !token) return null;
+    return Twilio(sid, token);
+  }
+
+  app.get("/api/phone-numbers/search", async (req, res) => {
+    try {
+      const twilioClient = getTwilioClient();
+      if (!twilioClient) {
+        return res.status(503).json({ error: "Twilio credentials are not configured. Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in Secrets." });
+      }
+
+      const areaCode = (req.query.areaCode as string) || "305";
+      const country = (req.query.country as string) || "US";
+      const limit = Math.min(parseInt(req.query.limit as string) || 5, 20);
+
+      const numbers = await twilioClient.availablePhoneNumbers(country).local.list({
+        areaCode,
+        limit,
+      });
+
+      res.json(
+        numbers.map((n) => ({
+          phoneNumber: n.phoneNumber,
+          friendlyName: n.friendlyName,
+          locality: n.locality,
+          region: n.region,
+          capabilities: {
+            voice: n.capabilities.voice,
+            sms: n.capabilities.sms,
+            mms: n.capabilities.mms,
+          },
+        }))
+      );
+    } catch (err: any) {
+      console.error("Twilio search error:", err);
+      res.status(500).json({ error: err.message || "Failed to search numbers" });
+    }
+  });
+
+  app.post("/api/phone-numbers/purchase", async (req, res) => {
+    try {
+      const twilioClient = getTwilioClient();
+      if (!twilioClient) {
+        return res.status(503).json({ error: "Twilio credentials are not configured." });
+      }
+
+      const { phoneNumber, assistantId } = req.body;
+      if (!phoneNumber) {
+        return res.status(400).json({ error: "phoneNumber is required" });
+      }
+
+      const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || process.env.REPLIT_DEV_DOMAIN || "";
+      const smsWebhookUrl = domain ? `https://${domain}/api/sms-webhook` : "";
+
+      const purchaseOpts: any = { phoneNumber };
+      if (smsWebhookUrl) {
+        purchaseOpts.smsUrl = smsWebhookUrl;
+        purchaseOpts.smsMethod = "POST";
+      }
+
+      const purchased = await twilioClient.incomingPhoneNumbers.create(purchaseOpts);
+
+      let vapiPhoneId = null;
+      const vapiKey = process.env.VAPI_API_KEY;
+      if (vapiKey && assistantId) {
+        try {
+          const vapiRes = await fetch("https://api.vapi.ai/phone-number", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${vapiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              provider: "twilio",
+              number: purchased.phoneNumber,
+              twilioAccountSid: process.env.TWILIO_ACCOUNT_SID,
+              twilioAuthToken: process.env.TWILIO_AUTH_TOKEN,
+              assistantId,
+            }),
+          });
+
+          if (vapiRes.ok) {
+            const vapiData = await vapiRes.json();
+            vapiPhoneId = vapiData.id;
+          } else {
+            console.error("Vapi link error:", await vapiRes.text());
+          }
+        } catch (linkErr: any) {
+          console.error("Vapi link error:", linkErr.message);
+        }
+      }
+
+      res.json({
+        sid: purchased.sid,
+        phoneNumber: purchased.phoneNumber,
+        friendlyName: purchased.friendlyName,
+        vapiPhoneId,
+        smsWebhookUrl: smsWebhookUrl || null,
+      });
+    } catch (err: any) {
+      console.error("Twilio purchase error:", err);
+      res.status(500).json({ error: err.message || "Failed to purchase number" });
+    }
+  });
+
+  app.get("/api/phone-numbers", async (_req, res) => {
+    try {
+      const twilioClient = getTwilioClient();
+      if (!twilioClient) {
+        return res.json([]);
+      }
+
+      const numbers = await twilioClient.incomingPhoneNumbers.list({ limit: 20 });
+      res.json(
+        numbers.map((n) => ({
+          sid: n.sid,
+          phoneNumber: n.phoneNumber,
+          friendlyName: n.friendlyName,
+          smsUrl: n.smsUrl,
+          voiceUrl: n.voiceUrl,
+          dateCreated: n.dateCreated,
+        }))
+      );
+    } catch (err: any) {
+      console.error("Twilio list error:", err);
+      res.json([]);
+    }
+  });
+
+  // ---- SMS Webhook (Twilio inbound → AI auto-reply) ----
+
+  app.post("/api/sms-webhook", async (req, res) => {
+    try {
+      const incomingMsg = req.body.Body;
+      const senderNumber = req.body.From;
+      const toNumber = req.body.To;
+
+      if (!incomingMsg || !senderNumber) {
+        res.type("text/xml").send("<Response></Response>");
+        return;
+      }
+
+      console.log(`SMS from ${senderNumber}: ${incomingMsg}`);
+
+      let aiReply = "Thanks for your message! We'll get back to you shortly.";
+
+      if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+        try {
+          const completion = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [
+              {
+                role: "system",
+                content: "You are a helpful business receptionist. Keep text replies under 160 characters. Be warm, professional, and concise. If someone wants to book an appointment, suggest they call the office number.",
+              },
+              { role: "user", content: incomingMsg },
+            ],
+            max_tokens: 100,
+            temperature: 0.7,
+          });
+          aiReply = completion.choices[0]?.message?.content || aiReply;
+        } catch (aiErr: any) {
+          console.error("AI reply error:", aiErr.message);
+        }
+      }
+
+      const twilioClient = getTwilioClient();
+      if (twilioClient && toNumber) {
+        await twilioClient.messages.create({
+          body: aiReply,
+          from: toNumber,
+          to: senderNumber,
+        });
+      }
+
+      res.type("text/xml").send("<Response></Response>");
+    } catch (err: any) {
+      console.error("SMS webhook error:", err);
+      res.type("text/xml").send("<Response></Response>");
+    }
+  });
+
+  app.get("/api/phone-numbers/config", (_req, res) => {
+    const hasTwilio = !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN);
+    const hasVapi = !!process.env.VAPI_API_KEY;
+    const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || process.env.REPLIT_DEV_DOMAIN || "";
+    res.json({ hasTwilio, hasVapi, webhookDomain: domain ? `https://${domain}` : null });
   });
 
   return httpServer;

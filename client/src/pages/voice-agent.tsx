@@ -21,6 +21,10 @@ import {
   ShieldAlert,
   Plus,
   Trash2,
+  Search,
+  ShoppingCart,
+  Wifi,
+  MessageSquare,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -82,6 +86,13 @@ export default function VoiceAgent() {
   const [demoVolume, setDemoVolume] = useState(0);
   const [vapiPublicKey, setVapiPublicKey] = useState<string | null>(null);
   const [objectionRules, setObjectionRules] = useState<ObjectionRule[]>(DEFAULT_OBJECTION_RULES);
+  const [phoneConfig, setPhoneConfig] = useState<{ hasTwilio: boolean; hasVapi: boolean; webhookDomain: string | null } | null>(null);
+  const [areaCode, setAreaCode] = useState("305");
+  const [searchingNumbers, setSearchingNumbers] = useState(false);
+  const [availableNumbers, setAvailableNumbers] = useState<any[]>([]);
+  const [purchasingNumber, setPurchasingNumber] = useState<string | null>(null);
+  const [ownedNumbers, setOwnedNumbers] = useState<any[]>([]);
+  const [purchasedNumber, setPurchasedNumber] = useState<any>(null);
   const vapiRef = useRef<Vapi | null>(null);
   const { toast } = useToast();
 
@@ -101,6 +112,16 @@ export default function VoiceAgent() {
       .then((data) => {
         if (data.publicKey) setVapiPublicKey(data.publicKey);
       })
+      .catch(() => {});
+
+    fetch("/api/phone-numbers/config")
+      .then((r) => r.json())
+      .then((data) => setPhoneConfig(data))
+      .catch(() => {});
+
+    fetch("/api/phone-numbers")
+      .then((r) => r.json())
+      .then((data) => { if (Array.isArray(data)) setOwnedNumbers(data); })
       .catch(() => {});
   }, []);
 
@@ -139,6 +160,51 @@ export default function VoiceAgent() {
       });
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const searchNumbers = async () => {
+    setSearchingNumbers(true);
+    setAvailableNumbers([]);
+    try {
+      const res = await fetch(`/api/phone-numbers/search?areaCode=${areaCode}&limit=5`);
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Search failed");
+      }
+      const data = await res.json();
+      setAvailableNumbers(data);
+      if (data.length === 0) {
+        toast({ title: "No Numbers Found", description: `No numbers available in area code ${areaCode}. Try another.`, variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Search Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setSearchingNumbers(false);
+    }
+  };
+
+  const purchaseNumber = async (phoneNumber: string, agentId?: string) => {
+    setPurchasingNumber(phoneNumber);
+    try {
+      const res = await fetch("/api/phone-numbers/purchase", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phoneNumber, assistantId: agentId }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Purchase failed");
+      }
+      const data = await res.json();
+      setPurchasedNumber(data);
+      setAvailableNumbers([]);
+      setOwnedNumbers((prev) => [...prev, { sid: data.sid, phoneNumber: data.phoneNumber, friendlyName: data.friendlyName }]);
+      toast({ title: "Number Purchased!", description: `${data.phoneNumber} is now active and linked to your AI agent.` });
+    } catch (err: any) {
+      toast({ title: "Purchase Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setPurchasingNumber(null);
     }
   };
 
@@ -754,17 +820,115 @@ export default function VoiceAgent() {
                 </div>
               </div>
 
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="text-amber-400 mt-0.5" size={18} />
-                  <div>
-                    <p className="text-sm font-medium text-amber-300">Outbound Call Requirements</p>
-                    <p className="text-xs text-neutral-400 mt-1">
-                      To make outbound calls, you need a phone number configured in your Vapi dashboard. Enter its Phone Number ID above.
-                      Agent ID: <code className="text-amber-300">{deployedAgent.id}</code>
+              <div className="bg-gradient-to-r from-green-900/30 to-emerald-900/30 border border-green-500/20 rounded-2xl p-6 space-y-5">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Phone size={16} className="text-green-400" /> AI Phone Line
+                </h3>
+                <p className="text-xs text-neutral-400">
+                  Get a dedicated phone number for your agent. It will answer calls and reply to texts with AI — 24/7.
+                </p>
+
+                {purchasedNumber ? (
+                  <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-5 text-center space-y-2">
+                    <div className="text-2xl font-mono font-bold text-green-400" data-testid="text-purchased-number">
+                      {purchasedNumber.phoneNumber}
+                    </div>
+                    <p className="text-xs text-green-300 flex items-center justify-center gap-1.5">
+                      <Wifi size={12} /> Active & Connected to AI
+                    </p>
+                    {purchasedNumber.vapiPhoneId && (
+                      <p className="text-xs text-neutral-400">
+                        Vapi Phone ID: <code className="text-green-300">{purchasedNumber.vapiPhoneId}</code>
+                      </p>
+                    )}
+                    {purchasedNumber.smsWebhookUrl && (
+                      <p className="text-xs text-neutral-500 flex items-center justify-center gap-1">
+                        <MessageSquare size={10} /> SMS auto-reply active
+                      </p>
+                    )}
+                  </div>
+                ) : phoneConfig?.hasTwilio ? (
+                  <div className="space-y-4">
+                    <div className="flex gap-2">
+                      <Input
+                        value={areaCode}
+                        onChange={(e) => setAreaCode(e.target.value)}
+                        placeholder="Area code (e.g. 305)"
+                        className="bg-white/5 border-white/10 w-36"
+                        maxLength={3}
+                        data-testid="input-area-code"
+                      />
+                      <Button
+                        className="bg-green-600 hover:bg-green-700"
+                        onClick={searchNumbers}
+                        disabled={searchingNumbers || !areaCode.trim()}
+                        data-testid="button-search-numbers"
+                      >
+                        {searchingNumbers ? (
+                          <Loader2 className="animate-spin mr-2" size={14} />
+                        ) : (
+                          <Search className="mr-2" size={14} />
+                        )}
+                        Find Numbers
+                      </Button>
+                    </div>
+
+                    {availableNumbers.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs text-neutral-400">{availableNumbers.length} numbers available:</p>
+                        {availableNumbers.map((num) => (
+                          <div
+                            key={num.phoneNumber}
+                            className="flex items-center justify-between bg-black/20 border border-white/5 rounded-lg p-3"
+                            data-testid={`card-number-${num.phoneNumber}`}
+                          >
+                            <div>
+                              <p className="text-sm font-mono text-white">{num.phoneNumber}</p>
+                              <p className="text-xs text-neutral-400">
+                                {num.locality && `${num.locality}, `}{num.region}
+                                {num.capabilities?.sms && " · SMS"}
+                                {num.capabilities?.voice && " · Voice"}
+                              </p>
+                            </div>
+                            <Button
+                              size="sm"
+                              className="bg-green-600 hover:bg-green-700"
+                              disabled={purchasingNumber !== null}
+                              onClick={() => purchaseNumber(num.phoneNumber, deployedAgent.id)}
+                              data-testid={`button-buy-${num.phoneNumber}`}
+                            >
+                              {purchasingNumber === num.phoneNumber ? (
+                                <Loader2 className="animate-spin" size={14} />
+                              ) : (
+                                <><ShoppingCart size={14} className="mr-1" /> Buy</>
+                              )}
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
+                    <p className="text-xs text-amber-300">
+                      Add your TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in Secrets to enable phone number purchasing.
                     </p>
                   </div>
-                </div>
+                )}
+
+                {ownedNumbers.length > 0 && !purchasedNumber && (
+                  <div className="border-t border-white/5 pt-4">
+                    <p className="text-xs text-neutral-400 mb-2">Your existing numbers:</p>
+                    <div className="space-y-2">
+                      {ownedNumbers.map((num) => (
+                        <div key={num.sid} className="flex items-center justify-between bg-black/10 rounded-lg px-3 py-2" data-testid={`card-owned-${num.sid}`}>
+                          <span className="text-sm font-mono text-green-300">{num.phoneNumber}</span>
+                          <span className="text-xs text-neutral-500">{num.friendlyName}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <Button
