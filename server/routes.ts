@@ -1,9 +1,27 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema } from "@shared/schema";
+import { z } from "zod";
 import OpenAI from "openai";
 import Twilio from "twilio";
+
+type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<any>;
+
+function asyncHandler(fn: AsyncHandler) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+}
+
+function parseIntParam(value: string | string[] | undefined, name: string): number {
+  const str = Array.isArray(value) ? value[0] : value;
+  const parsed = parseInt(str || "", 10);
+  if (isNaN(parsed) || parsed < 1) {
+    throw Object.assign(new Error(`Invalid ${name}`), { status: 400 });
+  }
+  return parsed;
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -11,77 +29,86 @@ export async function registerRoutes(
 ): Promise<Server> {
 
   // ---- Sub-Accounts ----
-  app.get("/api/accounts", async (_req, res) => {
+  app.get("/api/accounts", asyncHandler(async (_req, res) => {
     const accounts = await storage.getSubAccounts();
     res.json(accounts);
-  });
+  }));
 
-  app.post("/api/accounts", async (req, res) => {
+  app.post("/api/accounts", asyncHandler(async (req, res) => {
     const parsed = insertSubAccountSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const account = await storage.createSubAccount(parsed.data);
     res.status(201).json(account);
-  });
+  }));
 
   // ---- Messages ----
-  app.get("/api/messages/:subAccountId", async (req, res) => {
-    const subAccountId = parseInt(req.params.subAccountId);
-    if (isNaN(subAccountId)) return res.status(400).json({ error: "Invalid subAccountId" });
+  app.get("/api/messages/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
     const msgs = await storage.getMessages(subAccountId);
     res.json(msgs);
-  });
+  }));
 
-  app.post("/api/messages", async (req, res) => {
+  app.post("/api/messages", asyncHandler(async (req, res) => {
     const parsed = insertMessageSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const msg = await storage.createMessage(parsed.data);
     res.status(201).json(msg);
-  });
+  }));
 
   // ---- Workflows ----
-  app.get("/api/workflows", async (_req, res) => {
+  app.get("/api/workflows", asyncHandler(async (_req, res) => {
     const wfs = await storage.getWorkflows();
     res.json(wfs);
-  });
+  }));
 
-  app.get("/api/workflows/:id", async (req, res) => {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  app.get("/api/workflows/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
     const wf = await storage.getWorkflow(id);
     if (!wf) return res.status(404).json({ error: "Not found" });
     res.json(wf);
-  });
+  }));
 
-  app.post("/api/workflows", async (req, res) => {
+  app.post("/api/workflows", asyncHandler(async (req, res) => {
     const parsed = insertWorkflowSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const wf = await storage.createWorkflow(parsed.data);
     res.status(201).json(wf);
+  }));
+
+  const workflowPatchSchema = z.object({
+    name: z.string().min(1).optional(),
+    trigger: z.string().min(1).optional(),
+    steps: z.any().optional(),
   });
 
-  app.patch("/api/workflows/:id", async (req, res) => {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
-    const wf = await storage.updateWorkflow(id, req.body);
+  app.patch("/api/workflows/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const parsed = workflowPatchSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const wf = await storage.updateWorkflow(id, parsed.data);
     if (!wf) return res.status(404).json({ error: "Not found" });
     res.json(wf);
-  });
+  }));
 
   // ---- Bot Training Jobs ----
-  app.post("/api/bots/train", async (req, res) => {
-    const { url, persona } = req.body;
-    if (!url || !persona) return res.status(400).json({ error: "url and persona are required" });
+  const trainBodySchema = z.object({
+    url: z.string().url("A valid URL is required"),
+    persona: z.string().min(1, "persona is required"),
+  });
 
-    const job = await storage.createTrainingJob({ url, persona });
+  app.post("/api/bots/train", asyncHandler(async (req, res) => {
+    const parsed = trainBodySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const job = await storage.createTrainingJob(parsed.data);
 
     simulateTraining(job.id);
 
     res.status(201).json({ jobId: job.id });
-  });
+  }));
 
-  app.get("/api/jobs/:id", async (req, res) => {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  app.get("/api/jobs/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
     const job = await storage.getTrainingJob(id);
     if (!job) return res.status(404).json({ error: "Not found" });
     res.json({
@@ -89,21 +116,21 @@ export async function registerRoutes(
       progress: job.progress,
       logs: job.logs,
     });
-  });
+  }));
 
   // ---- Blueprints / Onboarding ----
-  app.get("/api/blueprints", async (_req, res) => {
+  app.get("/api/blueprints", asyncHandler(async (_req, res) => {
     const bps = await storage.getBlueprints();
     res.json(bps);
-  });
+  }));
 
-  app.get("/api/blueprints/:industryId", async (req, res) => {
+  app.get("/api/blueprints/:industryId", asyncHandler(async (req, res) => {
     const bp = await storage.getBlueprintByIndustryId(req.params.industryId);
     if (!bp) return res.status(404).json({ error: "Blueprint not found" });
     res.json(bp);
-  });
+  }));
 
-  app.post("/api/onboarding/:industryId", async (req, res) => {
+  app.post("/api/onboarding/:industryId", asyncHandler(async (req, res) => {
     const bp = await storage.getBlueprintByIndustryId(req.params.industryId);
     if (!bp) return res.status(404).json({ error: "Blueprint not found for this industry" });
 
@@ -113,7 +140,7 @@ export async function registerRoutes(
     });
 
     res.status(201).json({ account, blueprint: bp });
-  });
+  }));
 
   // ---- Site Builder (AI Generation) ----
   const openai = new OpenAI({
@@ -172,45 +199,44 @@ Rules:
 - Write compelling, concise marketing copy
 - Return ONLY the JSON object, no markdown, no explanation, no code fences.`;
 
-  app.post("/api/generate-site", async (req, res) => {
-    try {
-      if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
-        return res.status(503).json({ error: "AI service is not configured" });
-      }
-
-      const { prompt } = req.body;
-      if (!prompt || typeof prompt !== "string") {
-        return res.status(400).json({ error: "prompt is required" });
-      }
-
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: SITE_SYSTEM_PROMPT },
-          { role: "user", content: prompt },
-        ],
-        temperature: 0.7,
-        max_tokens: 1500,
-      });
-
-      const raw = completion.choices[0]?.message?.content ?? "";
-      const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-
-      const siteData = JSON.parse(cleaned);
-
-      if (!siteData.theme || !Array.isArray(siteData.sections)) {
-        return res.status(500).json({ error: "AI returned invalid site structure" });
-      }
-
-      res.json(siteData);
-    } catch (err: any) {
-      console.error("Site generation error:", err);
-      if (err instanceof SyntaxError) {
-        return res.status(500).json({ error: "AI returned invalid JSON" });
-      }
-      res.status(500).json({ error: err.message || "Failed to generate site" });
-    }
+  const promptSchema = z.object({
+    prompt: z.string().min(1, "prompt is required").max(2000),
   });
+
+  app.post("/api/generate-site", asyncHandler(async (req, res) => {
+    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+      return res.status(503).json({ error: "AI service is not configured" });
+    }
+
+    const parsed = promptSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: SITE_SYSTEM_PROMPT },
+        { role: "user", content: parsed.data.prompt },
+      ],
+      temperature: 0.7,
+      max_tokens: 1500,
+    });
+
+    const raw = completion.choices[0]?.message?.content ?? "";
+    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+
+    let siteData: any;
+    try {
+      siteData = JSON.parse(cleaned);
+    } catch {
+      return res.status(500).json({ error: "AI returned invalid JSON" });
+    }
+
+    if (!siteData.theme || !Array.isArray(siteData.sections)) {
+      return res.status(500).json({ error: "AI returned invalid site structure" });
+    }
+
+    res.json(siteData);
+  }));
 
   // ---- Liquid Website (Personalized AI Generation) ----
   const LIQUID_SYSTEM_PROMPT = `You are a landing-page architect that creates PERSONALIZED websites based on visitor context.
@@ -279,15 +305,14 @@ Rules:
 - Make the copy feel personally tailored to this specific visitor
 - Return ONLY the JSON object, no markdown, no code fences.`;
 
-  app.post("/api/generate-liquid-site", async (req, res) => {
-    try {
-      if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
-        return res.status(503).json({ error: "AI service is not configured" });
-      }
+  app.post("/api/generate-liquid-site", asyncHandler(async (req, res) => {
+    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+      return res.status(503).json({ error: "AI service is not configured" });
+    }
 
-      const { device, referrer, timeOfDay, hour, language } = req.body;
+    const { device, referrer, timeOfDay, hour, language } = req.body;
 
-      const visitorDescription = `Visitor context:
+    const visitorDescription = `Visitor context:
 - Device: ${device || "desktop"}
 - Came from: ${referrer || "direct"}  
 - Time of day: ${timeOfDay || "afternoon"} (${hour ?? 12}:00)
@@ -295,33 +320,32 @@ Rules:
 
 Generate a personalized premium wellness/beauty service landing page for this specific visitor.`;
 
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: LIQUID_SYSTEM_PROMPT },
-          { role: "user", content: visitorDescription },
-        ],
-        temperature: 0.8,
-        max_tokens: 1500,
-      });
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: LIQUID_SYSTEM_PROMPT },
+        { role: "user", content: visitorDescription },
+      ],
+      temperature: 0.8,
+      max_tokens: 1500,
+    });
 
-      const raw = completion.choices[0]?.message?.content ?? "";
-      const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-      const siteData = JSON.parse(cleaned);
+    const raw = completion.choices[0]?.message?.content ?? "";
+    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
-      if (!siteData.theme || !Array.isArray(siteData.sections)) {
-        return res.status(500).json({ error: "AI returned invalid site structure" });
-      }
-
-      res.json(siteData);
-    } catch (err: any) {
-      console.error("Liquid site generation error:", err);
-      if (err instanceof SyntaxError) {
-        return res.status(500).json({ error: "AI returned invalid JSON" });
-      }
-      res.status(500).json({ error: err.message || "Failed to generate personalized site" });
+    let siteData: any;
+    try {
+      siteData = JSON.parse(cleaned);
+    } catch {
+      return res.status(500).json({ error: "AI returned invalid JSON" });
     }
-  });
+
+    if (!siteData.theme || !Array.isArray(siteData.sections)) {
+      return res.status(500).json({ error: "AI returned invalid site structure" });
+    }
+
+    res.json(siteData);
+  }));
 
   // ---- AI Ad Campaign Generator ----
   const AD_CAMPAIGN_SYSTEM_PROMPT = `You are an expert Facebook Ads campaign strategist. When a user describes their business and promotion, generate a complete campaign plan as JSON.
@@ -362,44 +386,40 @@ Rules:
 - interests and behaviors should be relevant to the business
 - Return ONLY valid JSON, no markdown, no code fences`;
 
-  app.post("/api/generate-ad-campaign", async (req, res) => {
-    try {
-      if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
-        return res.status(503).json({ error: "AI service is not configured" });
-      }
-
-      const { prompt } = req.body;
-      if (!prompt || typeof prompt !== "string") {
-        return res.status(400).json({ error: "prompt is required" });
-      }
-
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: AD_CAMPAIGN_SYSTEM_PROMPT },
-          { role: "user", content: prompt },
-        ],
-        temperature: 0.7,
-        max_tokens: 1500,
-      });
-
-      const raw = completion.choices[0]?.message?.content ?? "";
-      const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-      const campaign = JSON.parse(cleaned);
-
-      if (!campaign.campaign_name || !campaign.targeting || !campaign.ad_copy) {
-        return res.status(500).json({ error: "AI returned incomplete campaign data" });
-      }
-
-      res.json(campaign);
-    } catch (err: any) {
-      console.error("Ad campaign generation error:", err);
-      if (err instanceof SyntaxError) {
-        return res.status(500).json({ error: "AI returned invalid JSON" });
-      }
-      res.status(500).json({ error: err.message || "Failed to generate campaign" });
+  app.post("/api/generate-ad-campaign", asyncHandler(async (req, res) => {
+    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+      return res.status(503).json({ error: "AI service is not configured" });
     }
-  });
+
+    const parsed = promptSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: AD_CAMPAIGN_SYSTEM_PROMPT },
+        { role: "user", content: parsed.data.prompt },
+      ],
+      temperature: 0.7,
+      max_tokens: 1500,
+    });
+
+    const raw = completion.choices[0]?.message?.content ?? "";
+    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+
+    let campaign: any;
+    try {
+      campaign = JSON.parse(cleaned);
+    } catch {
+      return res.status(500).json({ error: "AI returned invalid JSON" });
+    }
+
+    if (!campaign.campaign_name || !campaign.targeting || !campaign.ad_copy) {
+      return res.status(500).json({ error: "AI returned incomplete campaign data" });
+    }
+
+    res.json(campaign);
+  }));
 
   // ---- Chat Widget (AI Assistant) ----
   const CHAT_SYSTEM_PROMPT = `You are a friendly, professional booking assistant for a premium business. Your goal is to help visitors book appointments, answer questions about services, and provide a warm, helpful experience.
@@ -412,288 +432,306 @@ Rules:
 - Never make up specific pricing or availability — offer to check or connect them with staff
 - End messages with a helpful next step or question when appropriate`;
 
-  app.post("/api/chat", async (req, res) => {
-    try {
-      if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
-        return res.status(503).json({ reply: "Chat service is currently offline. Please try again later." });
-      }
-
-      const { message, conversationHistory } = req.body;
-      if (!message || typeof message !== "string") {
-        return res.status(400).json({ error: "message is required" });
-      }
-
-      const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
-        { role: "system", content: CHAT_SYSTEM_PROMPT },
-      ];
-
-      if (Array.isArray(conversationHistory)) {
-        for (const msg of conversationHistory.slice(-10)) {
-          messages.push({
-            role: msg.role === "user" ? "user" : "assistant",
-            content: msg.text,
-          });
-        }
-      }
-
-      messages.push({ role: "user", content: message });
-
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages,
-        temperature: 0.7,
-        max_tokens: 200,
-      });
-
-      const reply = completion.choices[0]?.message?.content ?? "I'm here to help! Could you tell me more about what you're looking for?";
-
-      res.json({ reply });
-    } catch (err: any) {
-      console.error("Chat error:", err);
-      res.json({ reply: "I'm having a moment — could you try again?" });
-    }
+  const chatBodySchema = z.object({
+    message: z.string().min(1, "message is required").max(5000),
+    conversationHistory: z.array(z.object({
+      role: z.string(),
+      text: z.string(),
+    })).optional(),
   });
+
+  app.post("/api/chat", asyncHandler(async (req, res) => {
+    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+      return res.status(503).json({ reply: "Chat service is currently offline. Please try again later." });
+    }
+
+    const parsed = chatBodySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const chatMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
+      { role: "system", content: CHAT_SYSTEM_PROMPT },
+    ];
+
+    if (parsed.data.conversationHistory) {
+      for (const msg of parsed.data.conversationHistory.slice(-10)) {
+        chatMessages.push({
+          role: msg.role === "user" ? "user" : "assistant",
+          content: msg.text,
+        });
+      }
+    }
+
+    chatMessages.push({ role: "user", content: parsed.data.message });
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: chatMessages,
+      temperature: 0.7,
+      max_tokens: 200,
+    });
+
+    const reply = completion.choices[0]?.message?.content ?? "I'm here to help! Could you tell me more about what you're looking for?";
+
+    res.json({ reply });
+  }));
 
   // ---- Voice Agent (Vapi Integration) ----
-  app.post("/api/voice-agents/create", async (req, res) => {
-    try {
-      const vapiKey = process.env.VAPI_API_KEY;
-      if (!vapiKey) {
-        return res.status(503).json({ error: "Vapi API key is not configured. Add your VAPI_API_KEY in Secrets." });
-      }
+  const voiceAgentSchema = z.object({
+    persona: z.string().min(1, "persona is required"),
+    firstMessage: z.string().min(1, "firstMessage is required"),
+    voiceId: z.string().optional(),
+    voiceProvider: z.string().optional(),
+    objectionRules: z.array(z.object({
+      trigger: z.string(),
+      response: z.string(),
+      note: z.string().optional(),
+    })).optional(),
+  });
 
-      const { persona, firstMessage, voiceId, voiceProvider, objectionRules } = req.body;
-      if (!persona || !firstMessage) {
-        return res.status(400).json({ error: "persona and firstMessage are required" });
-      }
+  app.post("/api/voice-agents/create", asyncHandler(async (req, res) => {
+    const vapiKey = process.env.VAPI_API_KEY;
+    if (!vapiKey) {
+      return res.status(503).json({ error: "Vapi API key is not configured. Add your VAPI_API_KEY in Secrets." });
+    }
 
-      let objectionBlock = "";
-      if (Array.isArray(objectionRules) && objectionRules.length > 0) {
-        const rulesText = objectionRules
-          .filter((r: any) => r.trigger && r.response)
-          .map((r: any, i: number) => {
-            let line = `${i + 1}. If they say "${r.trigger}":\n   - Say: "${r.response}"`;
-            if (r.note) line += `\n   - NOTE: ${r.note}`;
-            return line;
-          })
-          .join("\n");
-        if (rulesText) {
-          objectionBlock = `\n\nOBJECTION HANDLING RULES (follow these exactly when the caller raises these objections):\n${rulesText}`;
-        }
-      }
+    const parsed = voiceAgentSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-      const payload = {
-        transcriber: { provider: "deepgram" },
-        model: {
-          provider: "openai",
-          model: "gpt-4",
-          messages: [
-            {
-              role: "system",
-              content: `You are a voice AI assistant. Keep sentences short and natural. Do not sound robotic. Pauses like 'um' and 'uh' are okay. YOUR GOAL: ${persona}${objectionBlock}`,
+    const { persona, firstMessage, voiceId, voiceProvider, objectionRules } = parsed.data;
+
+    let objectionBlock = "";
+    if (objectionRules && objectionRules.length > 0) {
+      const rulesText = objectionRules
+        .filter((r) => r.trigger && r.response)
+        .map((r, i) => {
+          let line = `${i + 1}. If they say "${r.trigger}":\n   - Say: "${r.response}"`;
+          if (r.note) line += `\n   - NOTE: ${r.note}`;
+          return line;
+        })
+        .join("\n");
+      if (rulesText) {
+        objectionBlock = `\n\nOBJECTION HANDLING RULES (follow these exactly when the caller raises these objections):\n${rulesText}`;
+      }
+    }
+
+    const payload = {
+      transcriber: { provider: "deepgram" },
+      model: {
+        provider: "openai",
+        model: "gpt-4",
+        messages: [
+          {
+            role: "system",
+            content: `You are a voice AI assistant. Keep sentences short and natural. Do not sound robotic. Pauses like 'um' and 'uh' are okay. YOUR GOAL: ${persona}${objectionBlock}`,
+          },
+        ],
+      },
+      voice: {
+        provider: voiceProvider || "11labs",
+        voiceId: voiceId || "21m00Tcm4TlvDq8ikWAM",
+      },
+      firstMessage,
+      name: `Nexus Agent - ${new Date().toLocaleDateString()}`,
+    };
+
+    const response = await fetch("https://api.vapi.ai/assistant", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${vapiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errData = await response.text();
+      console.error("Vapi error:", errData);
+      return res.status(response.status).json({ error: "Failed to create voice agent on Vapi" });
+    }
+
+    const agent = await response.json();
+    res.json({
+      id: agent.id,
+      name: agent.name,
+      status: "created",
+      phoneNumber: agent.phoneNumber || null,
+    });
+  }));
+
+  app.get("/api/voice-agents", asyncHandler(async (_req, res) => {
+    const vapiKey = process.env.VAPI_API_KEY;
+    if (!vapiKey) {
+      return res.json([]);
+    }
+
+    const response = await fetch("https://api.vapi.ai/assistant", {
+      headers: {
+        Authorization: `Bearer ${vapiKey}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      return res.json([]);
+    }
+
+    const agents = await response.json();
+    res.json(
+      (Array.isArray(agents) ? agents : []).map((a: any) => ({
+        id: a.id,
+        name: a.name,
+        createdAt: a.createdAt,
+        model: a.model?.model,
+        voice: a.voice?.voiceId,
+      }))
+    );
+  }));
+
+  const outboundCallSchema = z.object({
+    assistantId: z.string().min(1, "assistantId is required"),
+    customerPhone: z.string().min(1, "customerPhone is required"),
+    phoneNumberId: z.string().optional(),
+  });
+
+  app.post("/api/voice-agents/call", asyncHandler(async (req, res) => {
+    const vapiKey = process.env.VAPI_API_KEY;
+    if (!vapiKey) {
+      return res.status(503).json({ error: "Vapi API key is not configured. Add your VAPI_API_KEY in Secrets." });
+    }
+
+    const parsed = outboundCallSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const payload: Record<string, any> = {
+      assistantId: parsed.data.assistantId,
+      customer: { number: parsed.data.customerPhone },
+    };
+
+    if (parsed.data.phoneNumberId) {
+      payload.phoneNumberId = parsed.data.phoneNumberId;
+    }
+
+    const response = await fetch("https://api.vapi.ai/call/phone", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${vapiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errData = await response.text();
+      console.error("Vapi outbound call error:", errData);
+      return res.status(response.status).json({ error: "Failed to initiate outbound call" });
+    }
+
+    const call = await response.json();
+    res.json({
+      callId: call.id,
+      status: call.status || "queued",
+      createdAt: call.createdAt,
+    });
+  }));
+
+  const dialerJobs = new Map<string, { leads: { name: string; phone: string }[]; current: number; status: string; results: { name: string; phone: string; status: string; callId?: string; error?: string }[]; createdAt: number }>();
+
+  const DIALER_JOB_TTL_MS = 60 * 60 * 1000;
+
+  function cleanupDialerJobs() {
+    const now = Date.now();
+    for (const [id, job] of dialerJobs) {
+      if (job.status === "completed" && now - job.createdAt > DIALER_JOB_TTL_MS) {
+        dialerJobs.delete(id);
+      }
+    }
+  }
+
+  const powerDialSchema = z.object({
+    assistantId: z.string().min(1),
+    phoneNumberId: z.string().optional(),
+    leads: z.array(z.object({
+      name: z.string().optional(),
+      phone: z.string().min(1),
+    })).min(1, "At least one lead is required").max(50, "Maximum 50 leads per batch"),
+  });
+
+  app.post("/api/voice-agents/power-dial", asyncHandler(async (req, res) => {
+    const vapiKey = process.env.VAPI_API_KEY;
+    if (!vapiKey) {
+      return res.status(503).json({ error: "Vapi API key is not configured. Add your VAPI_API_KEY in Secrets." });
+    }
+
+    const parsed = powerDialSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const { assistantId, phoneNumberId, leads } = parsed.data;
+
+    cleanupDialerJobs();
+
+    const jobId = `dial_${Date.now()}`;
+    const jobData = {
+      leads: leads.map((l) => ({ name: l.name || "Unknown", phone: l.phone })),
+      current: 0,
+      status: "running",
+      results: [] as { name: string; phone: string; status: string; callId?: string; error?: string }[],
+      createdAt: Date.now(),
+    };
+    dialerJobs.set(jobId, jobData);
+
+    res.json({ jobId, total: leads.length, status: "running" });
+
+    (async () => {
+      for (let i = 0; i < jobData.leads.length; i++) {
+        const lead = jobData.leads[i];
+        jobData.current = i;
+
+        try {
+          const callPayload: Record<string, any> = {
+            assistantId,
+            customer: { number: lead.phone },
+          };
+
+          if (phoneNumberId) {
+            callPayload.phoneNumberId = phoneNumberId;
+          }
+
+          callPayload.assistantOverrides = {
+            variableValues: { lead_name: lead.name },
+          };
+
+          const response = await fetch("https://api.vapi.ai/call/phone", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${vapiKey}`,
+              "Content-Type": "application/json",
             },
-          ],
-        },
-        voice: {
-          provider: voiceProvider || "11labs",
-          voiceId: voiceId || "21m00Tcm4TlvDq8ikWAM",
-        },
-        firstMessage: firstMessage,
-        name: `Nexus Agent - ${new Date().toLocaleDateString()}`,
-      };
+            body: JSON.stringify(callPayload),
+          });
 
-      const response = await fetch("https://api.vapi.ai/assistant", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${vapiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errData = await response.text();
-        console.error("Vapi error:", errData);
-        return res.status(response.status).json({ error: "Failed to create voice agent on Vapi" });
-      }
-
-      const agent = await response.json();
-      res.json({
-        id: agent.id,
-        name: agent.name,
-        status: "created",
-        phoneNumber: agent.phoneNumber || null,
-      });
-    } catch (err: any) {
-      console.error("Voice agent creation error:", err);
-      res.status(500).json({ error: err.message || "Failed to create voice agent" });
-    }
-  });
-
-  app.get("/api/voice-agents", async (_req, res) => {
-    try {
-      const vapiKey = process.env.VAPI_API_KEY;
-      if (!vapiKey) {
-        return res.json([]);
-      }
-
-      const response = await fetch("https://api.vapi.ai/assistant", {
-        headers: {
-          Authorization: `Bearer ${vapiKey}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        return res.json([]);
-      }
-
-      const agents = await response.json();
-      res.json(
-        (Array.isArray(agents) ? agents : []).map((a: any) => ({
-          id: a.id,
-          name: a.name,
-          createdAt: a.createdAt,
-          model: a.model?.model,
-          voice: a.voice?.voiceId,
-        }))
-      );
-    } catch {
-      res.json([]);
-    }
-  });
-
-  app.post("/api/voice-agents/call", async (req, res) => {
-    try {
-      const vapiKey = process.env.VAPI_API_KEY;
-      if (!vapiKey) {
-        return res.status(503).json({ error: "Vapi API key is not configured. Add your VAPI_API_KEY in Secrets." });
-      }
-
-      const { assistantId, customerPhone, phoneNumberId } = req.body;
-      if (!assistantId || !customerPhone) {
-        return res.status(400).json({ error: "assistantId and customerPhone are required" });
-      }
-
-      const payload: any = {
-        assistantId,
-        customer: { number: customerPhone },
-      };
-
-      if (phoneNumberId) {
-        payload.phoneNumberId = phoneNumberId;
-      }
-
-      const response = await fetch("https://api.vapi.ai/call/phone", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${vapiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errData = await response.text();
-        console.error("Vapi outbound call error:", errData);
-        return res.status(response.status).json({ error: "Failed to initiate outbound call" });
-      }
-
-      const call = await response.json();
-      res.json({
-        callId: call.id,
-        status: call.status || "queued",
-        createdAt: call.createdAt,
-      });
-    } catch (err: any) {
-      console.error("Outbound call error:", err);
-      res.status(500).json({ error: err.message || "Failed to initiate call" });
-    }
-  });
-
-  const dialerJobs = new Map<string, { leads: any[]; current: number; status: string; results: any[] }>();
-
-  app.post("/api/voice-agents/power-dial", async (req, res) => {
-    try {
-      const vapiKey = process.env.VAPI_API_KEY;
-      if (!vapiKey) {
-        return res.status(503).json({ error: "Vapi API key is not configured. Add your VAPI_API_KEY in Secrets." });
-      }
-
-      const { assistantId, phoneNumberId, leads } = req.body;
-      if (!assistantId || !Array.isArray(leads) || leads.length === 0) {
-        return res.status(400).json({ error: "assistantId and a non-empty leads array are required" });
-      }
-
-      if (leads.length > 50) {
-        return res.status(400).json({ error: "Maximum 50 leads per batch" });
-      }
-
-      const jobId = `dial_${Date.now()}`;
-      const jobData = {
-        leads: leads.map((l: any) => ({ name: l.name || "Unknown", phone: l.phone })),
-        current: 0,
-        status: "running",
-        results: [] as any[],
-      };
-      dialerJobs.set(jobId, jobData);
-
-      res.json({ jobId, total: leads.length, status: "running" });
-
-      (async () => {
-        for (let i = 0; i < jobData.leads.length; i++) {
-          const lead = jobData.leads[i];
-          jobData.current = i;
-
-          try {
-            const payload: any = {
-              assistantId,
-              customer: { number: lead.phone },
-            };
-
-            if (phoneNumberId) {
-              payload.phoneNumberId = phoneNumberId;
-            }
-
-            payload.assistantOverrides = {
-              variableValues: { lead_name: lead.name },
-            };
-
-            const response = await fetch("https://api.vapi.ai/call/phone", {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${vapiKey}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify(payload),
-            });
-
-            if (response.ok) {
-              const call = await response.json();
-              jobData.results.push({ name: lead.name, phone: lead.phone, status: "dialed", callId: call.id });
-            } else {
-              jobData.results.push({ name: lead.name, phone: lead.phone, status: "failed", error: "API error" });
-            }
-          } catch {
-            jobData.results.push({ name: lead.name, phone: lead.phone, status: "failed", error: "Network error" });
+          if (response.ok) {
+            const call = await response.json();
+            jobData.results.push({ name: lead.name, phone: lead.phone, status: "dialed", callId: call.id });
+          } else {
+            jobData.results.push({ name: lead.name, phone: lead.phone, status: "failed", error: "API error" });
           }
-
-          if (i < jobData.leads.length - 1) {
-            await new Promise((resolve) => setTimeout(resolve, 30000));
-          }
+        } catch {
+          jobData.results.push({ name: lead.name, phone: lead.phone, status: "failed", error: "Network error" });
         }
 
-        jobData.current = jobData.leads.length;
-        jobData.status = "completed";
-      })();
-    } catch (err: any) {
-      console.error("Power dialer error:", err);
-      res.status(500).json({ error: err.message || "Failed to start power dialer" });
-    }
-  });
+        if (i < jobData.leads.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 30000));
+        }
+      }
+
+      jobData.current = jobData.leads.length;
+      jobData.status = "completed";
+    })();
+  }));
 
   app.get("/api/voice-agents/power-dial/:jobId", (req, res) => {
-    const job = dialerJobs.get(req.params.jobId);
+    const jobId = Array.isArray(req.params.jobId) ? req.params.jobId[0] : req.params.jobId;
+    const job = dialerJobs.get(jobId || "");
     if (!job) {
       return res.status(404).json({ error: "Job not found" });
     }
@@ -706,63 +744,59 @@ Rules:
     });
   });
 
-  app.get("/api/voice-agents/calls", async (req, res) => {
-    try {
-      const vapiKey = process.env.VAPI_API_KEY;
-      if (!vapiKey) {
-        return res.json([]);
-      }
-
-      const assistantId = req.query.assistantId as string;
-      const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
-
-      let url = `https://api.vapi.ai/call?limit=${limit}`;
-      if (assistantId) {
-        url += `&assistantId=${assistantId}`;
-      }
-
-      const response = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${vapiKey}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        return res.json([]);
-      }
-
-      const calls = await response.json();
-      const callList = Array.isArray(calls) ? calls : [];
-
-      res.json(
-        callList.map((c: any) => ({
-          id: c.id,
-          status: c.status,
-          type: c.type,
-          startedAt: c.startedAt || c.createdAt,
-          endedAt: c.endedAt,
-          duration: c.duration || (c.endedAt && c.startedAt
-            ? Math.round((new Date(c.endedAt).getTime() - new Date(c.startedAt).getTime()) / 1000)
-            : null),
-          recordingUrl: c.recordingUrl || c.artifact?.recordingUrl || null,
-          transcript: (c.artifact?.messages || c.messages || [])
-            .filter((m: any) => m.role && m.message)
-            .map((m: any) => ({
-              role: m.role,
-              message: m.message,
-              timestamp: m.secondsFromStart || null,
-            })),
-          customer: c.customer?.number || null,
-          assistantId: c.assistantId,
-          cost: c.cost || null,
-        }))
-      );
-    } catch (err: any) {
-      console.error("Vapi call logs error:", err);
-      res.json([]);
+  app.get("/api/voice-agents/calls", asyncHandler(async (req, res) => {
+    const vapiKey = process.env.VAPI_API_KEY;
+    if (!vapiKey) {
+      return res.json([]);
     }
-  });
+
+    const assistantId = (Array.isArray(req.query.assistantId) ? req.query.assistantId[0] : req.query.assistantId) as string | undefined;
+    const limitStr = (Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit) as string | undefined;
+    const limit = Math.min(parseInt(limitStr || "10", 10) || 10, 50);
+
+    let url = `https://api.vapi.ai/call?limit=${limit}`;
+    if (assistantId) {
+      url += `&assistantId=${encodeURIComponent(assistantId)}`;
+    }
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${vapiKey}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      return res.json([]);
+    }
+
+    const calls = await response.json();
+    const callList = Array.isArray(calls) ? calls : [];
+
+    res.json(
+      callList.map((c: any) => ({
+        id: c.id,
+        status: c.status,
+        type: c.type,
+        startedAt: c.startedAt || c.createdAt,
+        endedAt: c.endedAt,
+        duration: c.duration || (c.endedAt && c.startedAt
+          ? Math.round((new Date(c.endedAt).getTime() - new Date(c.startedAt).getTime()) / 1000)
+          : null),
+        recordingUrl: c.recordingUrl || c.artifact?.recordingUrl || null,
+        transcript: (c.artifact?.messages || c.messages || [])
+          .filter((m: any) => m.role && m.message)
+          .map((m: any) => ({
+            role: m.role,
+            message: m.message,
+            timestamp: m.secondsFromStart || null,
+          })),
+        customer: c.customer?.number || null,
+        assistantId: c.assistantId,
+        cost: c.cost || null,
+      }))
+    );
+  }));
 
   app.get("/api/voice-agents/public-key", (_req, res) => {
     const publicKey = process.env.VAPI_PUBLIC_KEY;
@@ -772,23 +806,24 @@ Rules:
     res.json({ publicKey });
   });
 
-  app.post("/api/voice-agents/generate-persona", async (req, res) => {
-    try {
-      if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
-        return res.status(503).json({ error: "AI service is not configured" });
-      }
+  const personaSchema = z.object({
+    businessDescription: z.string().min(1, "businessDescription is required").max(2000),
+  });
 
-      const { businessDescription } = req.body;
-      if (!businessDescription) {
-        return res.status(400).json({ error: "businessDescription is required" });
-      }
+  app.post("/api/voice-agents/generate-persona", asyncHandler(async (req, res) => {
+    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+      return res.status(503).json({ error: "AI service is not configured" });
+    }
 
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content: `You generate voice AI agent personas for businesses. Given a business description, return a JSON object with:
+    const parsed = personaSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: `You generate voice AI agent personas for businesses. Given a business description, return a JSON object with:
 {
   "persona": "<detailed agent persona/instructions for handling calls, max 3 sentences>",
   "firstMessage": "<natural greeting the agent says when answering, max 1 sentence>",
@@ -798,22 +833,25 @@ Rules:
 - Persona should be specific to the business type
 - First message should sound warm and natural, not robotic
 - Return ONLY valid JSON, no markdown or code fences`,
-          },
-          { role: "user", content: businessDescription },
-        ],
-        temperature: 0.7,
-        max_tokens: 300,
-      });
+        },
+        { role: "user", content: parsed.data.businessDescription },
+      ],
+      temperature: 0.7,
+      max_tokens: 300,
+    });
 
-      const raw = completion.choices[0]?.message?.content ?? "";
-      const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-      const data = JSON.parse(cleaned);
-      res.json(data);
-    } catch (err: any) {
-      console.error("Persona generation error:", err);
-      res.status(500).json({ error: "Failed to generate persona" });
+    const raw = completion.choices[0]?.message?.content ?? "";
+    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+
+    let data: any;
+    try {
+      data = JSON.parse(cleaned);
+    } catch {
+      return res.status(500).json({ error: "AI returned invalid JSON" });
     }
-  });
+
+    res.json(data);
+  }));
 
   // ---- Phone Number Provisioning (Twilio + Vapi) ----
 
@@ -824,142 +862,136 @@ Rules:
     return Twilio(sid, token);
   }
 
-  app.get("/api/phone-numbers/search", async (req, res) => {
-    try {
-      const twilioClient = getTwilioClient();
-      if (!twilioClient) {
-        return res.status(503).json({ error: "Twilio credentials are not configured. Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in Secrets." });
-      }
-
-      const areaCode = parseInt((req.query.areaCode as string) || "305") || 305;
-      const country = (req.query.country as string) || "US";
-      const limit = Math.min(parseInt(req.query.limit as string) || 5, 20);
-
-      const numbers = await twilioClient.availablePhoneNumbers(country).local.list({
-        areaCode,
-        limit,
-      });
-
-      res.json(
-        numbers.map((n) => ({
-          phoneNumber: n.phoneNumber,
-          friendlyName: n.friendlyName,
-          locality: n.locality,
-          region: n.region,
-          capabilities: {
-            voice: n.capabilities.voice,
-            sms: n.capabilities.sms,
-            mms: n.capabilities.mms,
-          },
-        }))
-      );
-    } catch (err: any) {
-      console.error("Twilio search error:", err);
-      res.status(500).json({ error: err.message || "Failed to search numbers" });
+  app.get("/api/phone-numbers/search", asyncHandler(async (req, res) => {
+    const twilioClient = getTwilioClient();
+    if (!twilioClient) {
+      return res.status(503).json({ error: "Twilio credentials are not configured. Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in Secrets." });
     }
+
+    const areaCodeStr = (Array.isArray(req.query.areaCode) ? req.query.areaCode[0] : req.query.areaCode) as string | undefined;
+    const countryStr = (Array.isArray(req.query.country) ? req.query.country[0] : req.query.country) as string | undefined;
+    const limitStr = (Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit) as string | undefined;
+
+    const areaCode = parseInt(areaCodeStr || "305", 10) || 305;
+    const country = countryStr || "US";
+    const limit = Math.min(parseInt(limitStr || "5", 10) || 5, 20);
+
+    const numbers = await twilioClient.availablePhoneNumbers(country).local.list({
+      areaCode,
+      limit,
+    });
+
+    res.json(
+      numbers.map((n) => ({
+        phoneNumber: n.phoneNumber,
+        friendlyName: n.friendlyName,
+        locality: n.locality,
+        region: n.region,
+        capabilities: {
+          voice: n.capabilities.voice,
+          sms: n.capabilities.sms,
+          mms: n.capabilities.mms,
+        },
+      }))
+    );
+  }));
+
+  const purchaseSchema = z.object({
+    phoneNumber: z.string().min(1, "phoneNumber is required"),
+    assistantId: z.string().optional(),
   });
 
-  app.post("/api/phone-numbers/purchase", async (req, res) => {
-    try {
-      const twilioClient = getTwilioClient();
-      if (!twilioClient) {
-        return res.status(503).json({ error: "Twilio credentials are not configured." });
-      }
+  app.post("/api/phone-numbers/purchase", asyncHandler(async (req, res) => {
+    const twilioClient = getTwilioClient();
+    if (!twilioClient) {
+      return res.status(503).json({ error: "Twilio credentials are not configured." });
+    }
 
-      const { phoneNumber, assistantId } = req.body;
-      if (!phoneNumber) {
-        return res.status(400).json({ error: "phoneNumber is required" });
-      }
+    const parsed = purchaseSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-      const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || process.env.REPLIT_DEV_DOMAIN || "";
-      const smsWebhookUrl = domain ? `https://${domain}/api/sms-webhook` : "";
+    const { phoneNumber, assistantId } = parsed.data;
 
-      const purchased = await twilioClient.incomingPhoneNumbers.create({ phoneNumber });
+    const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || process.env.REPLIT_DEV_DOMAIN || "";
+    const smsWebhookUrl = domain ? `https://${domain}/api/sms-webhook` : "";
 
-      let vapiPhoneId = null;
-      const vapiKey = process.env.VAPI_API_KEY;
-      if (vapiKey && assistantId) {
-        try {
-          const vapiRes = await fetch("https://api.vapi.ai/phone-number", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${vapiKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              provider: "twilio",
-              number: purchased.phoneNumber,
-              twilioAccountSid: process.env.TWILIO_ACCOUNT_SID,
-              twilioAuthToken: process.env.TWILIO_AUTH_TOKEN,
-              assistantId,
-            }),
-          });
+    const purchased = await twilioClient.incomingPhoneNumbers.create({ phoneNumber });
 
-          if (vapiRes.ok) {
-            const vapiData = await vapiRes.json();
-            vapiPhoneId = vapiData.id;
-          } else {
-            console.error("Vapi link error:", await vapiRes.text());
-          }
-        } catch (linkErr: any) {
-          console.error("Vapi link error:", linkErr.message);
-        }
-      }
-
-      const updateOpts: any = {};
-      if (smsWebhookUrl) {
-        updateOpts.smsUrl = smsWebhookUrl;
-        updateOpts.smsMethod = "POST";
-      }
-      updateOpts.voiceUrl = "https://api.vapi.ai/twilio/voice/handler";
-      updateOpts.voiceMethod = "POST";
-
+    let vapiPhoneId: string | null = null;
+    const vapiKey = process.env.VAPI_API_KEY;
+    if (vapiKey && assistantId) {
       try {
-        await twilioClient.incomingPhoneNumbers(purchased.sid).update(updateOpts);
-        console.log(`Full-duplex configured: Voice → Vapi, SMS → ${smsWebhookUrl}`);
-      } catch (cfgErr: any) {
-        console.error("Dual-agent config error:", cfgErr.message);
+        const vapiRes = await fetch("https://api.vapi.ai/phone-number", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${vapiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            provider: "twilio",
+            number: purchased.phoneNumber,
+            twilioAccountSid: process.env.TWILIO_ACCOUNT_SID,
+            twilioAuthToken: process.env.TWILIO_AUTH_TOKEN,
+            assistantId,
+          }),
+        });
+
+        if (vapiRes.ok) {
+          const vapiData = await vapiRes.json();
+          vapiPhoneId = vapiData.id;
+        } else {
+          console.error("Vapi link error:", await vapiRes.text());
+        }
+      } catch (linkErr: any) {
+        console.error("Vapi link error:", linkErr.message);
       }
-
-      res.json({
-        sid: purchased.sid,
-        phoneNumber: purchased.phoneNumber,
-        friendlyName: purchased.friendlyName,
-        vapiPhoneId,
-        smsWebhookUrl: smsWebhookUrl || null,
-        dualAgent: true,
-      });
-    } catch (err: any) {
-      console.error("Twilio purchase error:", err);
-      res.status(500).json({ error: err.message || "Failed to purchase number" });
     }
-  });
 
-  app.get("/api/phone-numbers", async (_req, res) => {
+    const updateOpts: Record<string, string> = {};
+    if (smsWebhookUrl) {
+      updateOpts.smsUrl = smsWebhookUrl;
+      updateOpts.smsMethod = "POST";
+    }
+    updateOpts.voiceUrl = "https://api.vapi.ai/twilio/voice/handler";
+    updateOpts.voiceMethod = "POST";
+
     try {
-      const twilioClient = getTwilioClient();
-      if (!twilioClient) {
-        return res.json([]);
-      }
-
-      const numbers = await twilioClient.incomingPhoneNumbers.list({ limit: 20 });
-      res.json(
-        numbers.map((n) => ({
-          sid: n.sid,
-          phoneNumber: n.phoneNumber,
-          friendlyName: n.friendlyName,
-          smsUrl: n.smsUrl,
-          voiceUrl: n.voiceUrl,
-          dateCreated: n.dateCreated,
-        }))
-      );
-    } catch (err: any) {
-      console.error("Twilio list error:", err);
-      res.json([]);
+      await twilioClient.incomingPhoneNumbers(purchased.sid).update(updateOpts);
+      console.log(`Full-duplex configured: Voice -> Vapi, SMS -> ${smsWebhookUrl}`);
+    } catch (cfgErr: any) {
+      console.error("Dual-agent config error:", cfgErr.message);
     }
-  });
 
-  // ---- Unified Webhook (Twilio inbound SMS/WhatsApp/Messenger → AI auto-reply) ----
+    res.json({
+      sid: purchased.sid,
+      phoneNumber: purchased.phoneNumber,
+      friendlyName: purchased.friendlyName,
+      vapiPhoneId,
+      smsWebhookUrl: smsWebhookUrl || null,
+      dualAgent: true,
+    });
+  }));
+
+  app.get("/api/phone-numbers", asyncHandler(async (_req, res) => {
+    const twilioClient = getTwilioClient();
+    if (!twilioClient) {
+      return res.json([]);
+    }
+
+    const numbers = await twilioClient.incomingPhoneNumbers.list({ limit: 20 });
+    res.json(
+      numbers.map((n) => ({
+        sid: n.sid,
+        phoneNumber: n.phoneNumber,
+        friendlyName: n.friendlyName,
+        smsUrl: n.smsUrl,
+        voiceUrl: n.voiceUrl,
+        dateCreated: n.dateCreated,
+      }))
+    );
+  }));
+
+  // ---- Unified Webhook (Twilio inbound SMS/WhatsApp/Messenger -> AI auto-reply) ----
 
   function detectChannel(from: string): "whatsapp" | "messenger" | "sms" {
     if (from.startsWith("whatsapp:")) return "whatsapp";
@@ -973,9 +1005,9 @@ Rules:
 
   app.post("/api/sms-webhook", async (req, res) => {
     try {
-      const incomingMsg = req.body.Body;
-      const senderRaw = req.body.From;
-      const toRaw = req.body.To;
+      const incomingMsg = req.body.Body as string | undefined;
+      const senderRaw = req.body.From as string | undefined;
+      const toRaw = req.body.To as string | undefined;
 
       if (!incomingMsg || !senderRaw) {
         res.type("text/xml").send("<Response></Response>");
@@ -985,7 +1017,7 @@ Rules:
       const channel = detectChannel(senderRaw);
       const senderClean = stripChannelPrefix(senderRaw);
 
-      console.log(`[${channel.toUpperCase()}] from ${senderClean}: ${incomingMsg}`);
+      console.log(`[${channel.toUpperCase()}] from ${senderClean}: ${incomingMsg.substring(0, 100)}`);
 
       let aiReply = "Thanks for your message! We'll get back to you shortly.";
 
@@ -999,7 +1031,7 @@ Rules:
             model: "gpt-4o",
             messages: [
               { role: "system", content: systemPrompt },
-              { role: "user", content: incomingMsg },
+              { role: "user", content: incomingMsg.substring(0, 1000) },
             ],
             max_tokens: 150,
             temperature: 0.7,
