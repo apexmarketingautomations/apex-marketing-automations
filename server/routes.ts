@@ -322,6 +322,84 @@ Generate a personalized premium wellness/beauty service landing page for this sp
     }
   });
 
+  // ---- AI Ad Campaign Generator ----
+  const AD_CAMPAIGN_SYSTEM_PROMPT = `You are an expert Facebook Ads campaign strategist. When a user describes their business and promotion, generate a complete campaign plan as JSON.
+
+Return this exact structure:
+{
+  "campaign_name": "<descriptive campaign name>",
+  "objective": "OUTCOME_LEADS" | "OUTCOME_AWARENESS" | "OUTCOME_TRAFFIC" | "OUTCOME_SALES",
+  "daily_budget": <number in cents, e.g. 5000 = $50/day>,
+  "duration_days": <recommended campaign duration>,
+  "targeting": {
+    "age_min": <number>,
+    "age_max": <number>,
+    "genders": [1, 2] or [1] or [2],
+    "geo_locations": {
+      "cities": [{"key": "<city name>", "radius": <miles>}],
+      "countries": ["US"]
+    },
+    "interests": [{"name": "<interest>"}],
+    "behaviors": [{"name": "<behavior>"}]
+  },
+  "ad_copy": {
+    "headline": "<max 40 chars>",
+    "primary_text": "<compelling ad text, max 125 chars>",
+    "description": "<max 30 chars>",
+    "cta": "BOOK_NOW" | "LEARN_MORE" | "SIGN_UP" | "GET_OFFER" | "SHOP_NOW"
+  },
+  "image_prompt": "<detailed prompt for AI image generation matching the brand/offer>",
+  "estimated_reach": "<estimated daily reach range, e.g. 5,000 - 15,000>",
+  "estimated_cpl": "<estimated cost per lead, e.g. $8 - $15>",
+  "strategy_notes": "<2-3 sentences explaining the targeting strategy>"
+}
+
+Rules:
+- Budget should be realistic for the business type (local business: $20-50/day, larger: $50-200/day)
+- Targeting should be specific and data-driven
+- Ad copy must be punchy, compliant with FB ad policies (no exaggerated claims)
+- interests and behaviors should be relevant to the business
+- Return ONLY valid JSON, no markdown, no code fences`;
+
+  app.post("/api/generate-ad-campaign", async (req, res) => {
+    try {
+      if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+        return res.status(503).json({ error: "AI service is not configured" });
+      }
+
+      const { prompt } = req.body;
+      if (!prompt || typeof prompt !== "string") {
+        return res.status(400).json({ error: "prompt is required" });
+      }
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: AD_CAMPAIGN_SYSTEM_PROMPT },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.7,
+        max_tokens: 1500,
+      });
+
+      const raw = completion.choices[0]?.message?.content ?? "";
+      const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      const campaign = JSON.parse(cleaned);
+
+      if (!campaign.campaign_name || !campaign.targeting || !campaign.ad_copy) {
+        return res.status(500).json({ error: "AI returned incomplete campaign data" });
+      }
+
+      res.json(campaign);
+    } catch (err: any) {
+      console.error("Ad campaign generation error:", err);
+      if (err instanceof SyntaxError) {
+        return res.status(500).json({ error: "AI returned invalid JSON" });
+      }
+      res.status(500).json({ error: err.message || "Failed to generate campaign" });
+    }
+  });
+
   // ---- Chat Widget (AI Assistant) ----
   const CHAT_SYSTEM_PROMPT = `You are a friendly, professional booking assistant for a premium business. Your goal is to help visitors book appointments, answer questions about services, and provide a warm, helpful experience.
 
