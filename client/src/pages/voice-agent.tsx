@@ -85,6 +85,7 @@ export default function VoiceAgent() {
   const [demoActive, setDemoActive] = useState(false);
   const [demoConnecting, setDemoConnecting] = useState(false);
   const [demoVolume, setDemoVolume] = useState(0);
+  const [demoAgentName, setDemoAgentName] = useState<string>("");
   const [vapiPublicKey, setVapiPublicKey] = useState<string | null>(null);
   const [objectionRules, setObjectionRules] = useState<ObjectionRule[]>(DEFAULT_OBJECTION_RULES);
   const [phoneConfig, setPhoneConfig] = useState<{ hasTwilio: boolean; hasVapi: boolean; webhookDomain: string | null } | null>(null);
@@ -308,13 +309,14 @@ export default function VoiceAgent() {
     setCallResult(null);
   };
 
-  const startDemoCall = async (agentId: string) => {
+  const startDemoCall = async (agentId: string, name?: string) => {
     if (!vapiPublicKey) {
       toast({ title: "Missing Key", description: "Add VAPI_PUBLIC_KEY in Secrets to use browser demo calls.", variant: "destructive" });
       return;
     }
 
     setDemoConnecting(true);
+    setDemoAgentName(name || "Agent");
 
     try {
       const configRes = await fetch(`/api/voice-agents/${agentId}/config`);
@@ -740,7 +742,7 @@ export default function VoiceAgent() {
                 {!demoActive && !demoConnecting && (
                   <Button
                     className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 h-12 text-base"
-                    onClick={() => startDemoCall(deployedAgent.id)}
+                    onClick={() => startDemoCall(deployedAgent.id, agentName)}
                     disabled={!vapiPublicKey}
                     data-testid="button-demo-call"
                   >
@@ -1063,7 +1065,7 @@ export default function VoiceAgent() {
                     <div className="flex items-center gap-2">
                       {vapiPublicKey && (
                         <button
-                          onClick={() => demoActive ? stopDemoCall() : startDemoCall(agent.id)}
+                          onClick={() => demoActive ? stopDemoCall() : startDemoCall(agent.id, agent.name)}
                           className={`p-2 rounded-lg transition-colors ${
                             demoActive
                               ? "bg-red-500/10 text-red-400 hover:bg-red-500/20"
@@ -1162,6 +1164,60 @@ export default function VoiceAgent() {
           </div>
         )}
       </div>
+
+      <AnimatePresence>
+        {(demoConnecting || demoActive) && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-[90vw] max-w-md"
+            data-testid="demo-call-overlay"
+          >
+            <div className="bg-black/90 backdrop-blur-xl border border-fuchsia-500/40 rounded-2xl p-5 shadow-[0_0_40px_rgba(217,70,239,0.3)]">
+              {demoConnecting && (
+                <div className="flex items-center justify-center gap-3 py-2">
+                  <Loader2 className="animate-spin text-fuchsia-400" size={28} />
+                  <div>
+                    <p className="text-sm font-medium text-white">Connecting to {demoAgentName}...</p>
+                    <p className="text-xs text-neutral-400">Please allow microphone access</p>
+                  </div>
+                </div>
+              )}
+              {demoActive && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-4">
+                    <div className="relative flex-shrink-0">
+                      <div
+                        className="w-14 h-14 rounded-full bg-fuchsia-500/20 flex items-center justify-center transition-all"
+                        style={{
+                          boxShadow: `0 0 ${15 + demoVolume * 50}px ${demoVolume * 25}px rgba(217,70,239,${0.2 + demoVolume * 0.4})`,
+                          transform: `scale(${1 + demoVolume * 0.15})`,
+                        }}
+                      >
+                        <Volume2 className="text-fuchsia-300" size={24} />
+                      </div>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-white truncate">Talking to {demoAgentName}</p>
+                      <p className="text-xs text-fuchsia-300 animate-pulse">Listening... speak now</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      className="bg-red-600 hover:bg-red-500 flex-shrink-0 h-10 px-4"
+                      onClick={stopDemoCall}
+                      data-testid="button-end-demo-overlay"
+                    >
+                      <MicOff size={16} className="mr-1" /> End
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
