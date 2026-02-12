@@ -75,7 +75,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <main className="flex-1 ml-16 md:ml-72 overflow-hidden relative z-10 flex flex-col min-h-screen">
+      <main className="flex-1 ml-16 md:ml-72 overflow-y-auto relative z-10 flex flex-col min-h-screen">
         {children}
       </main>
     </div>
