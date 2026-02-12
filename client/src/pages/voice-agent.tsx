@@ -220,7 +220,7 @@ export default function VoiceAgent() {
       const data = await res.json();
       setPurchasedNumber(data);
       setAvailableNumbers([]);
-      setOwnedNumbers((prev) => [...prev, { sid: data.sid, phoneNumber: data.phoneNumber, friendlyName: data.friendlyName }]);
+      setOwnedNumbers((prev) => [...prev, { sid: data.sid, phoneNumber: data.phoneNumber, friendlyName: data.friendlyName, vapiPhoneId: data.vapiPhoneId || null }]);
       toast({ title: "Number Purchased!", description: `${data.phoneNumber} is now active and linked to your AI agent.` });
     } catch (err: any) {
       toast({ title: "Purchase Failed", description: err.message, variant: "destructive" });
@@ -278,10 +278,20 @@ export default function VoiceAgent() {
     }
   };
 
+  const formatE164 = (phone: string): string => {
+    const digits = phone.replace(/[^\d]/g, "");
+    if (digits.length === 10) return `+1${digits}`;
+    if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+    if (phone.startsWith("+")) return phone.trim();
+    return `+${digits}`;
+  };
+
   const handleOutboundCall = async () => {
     if (!callAgentId || !callPhone.trim()) return;
     setIsCalling(true);
     setCallResult(null);
+
+    const formattedPhone = formatE164(callPhone.trim());
 
     try {
       const res = await fetch("/api/voice-agents/call", {
@@ -289,7 +299,7 @@ export default function VoiceAgent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           assistantId: callAgentId,
-          customerPhone: callPhone.trim(),
+          customerPhone: formattedPhone,
           phoneNumberId: callPhoneNumberId.trim() || undefined,
         }),
       });
@@ -868,13 +878,19 @@ export default function VoiceAgent() {
                           className="bg-white/5 border-white/10 h-9 text-sm"
                           data-testid={`input-call-phone-${agent.id}`}
                         />
-                        <Input
+                        <select
                           value={callPhoneNumberId}
                           onChange={(e) => setCallPhoneNumberId(e.target.value)}
-                          placeholder="Vapi Phone Number ID (optional)"
-                          className="bg-white/5 border-white/10 h-9 text-sm"
+                          className="bg-white/5 border border-white/10 rounded-md h-9 text-sm text-white px-2 w-full"
                           data-testid={`input-call-number-id-${agent.id}`}
-                        />
+                        >
+                          <option value="" className="bg-neutral-900">Caller ID (select your number)</option>
+                          {ownedNumbers.filter((n) => n.vapiPhoneId).map((n) => (
+                            <option key={n.sid} value={n.vapiPhoneId} className="bg-neutral-900">
+                              {n.phoneNumber} {n.friendlyName ? `(${n.friendlyName})` : ""}
+                            </option>
+                          ))}
+                        </select>
                         <Button
                           size="sm"
                           className="w-full bg-green-600 hover:bg-green-700"
@@ -1036,17 +1052,26 @@ export default function VoiceAgent() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-neutral-500 mb-1 block">Vapi Phone Number ID (from your Vapi dashboard)</label>
-                  <Input
+                  <label className="text-xs text-neutral-500 mb-1 block">Caller ID (your phone number)</label>
+                  <select
                     value={callAgentId === selectedAgent.id ? callPhoneNumberId : ""}
                     onChange={(e) => {
                       setCallAgentId(selectedAgent.id);
                       setCallPhoneNumberId(e.target.value);
                     }}
-                    placeholder="Optional — required for outbound calls"
-                    className="bg-white/5 border-white/10"
+                    className="bg-white/5 border border-white/10 rounded-md h-10 text-sm text-white px-3 w-full"
                     data-testid="input-phone-number-id"
-                  />
+                  >
+                    <option value="" className="bg-neutral-900">Select your phone number</option>
+                    {ownedNumbers.filter((n) => n.vapiPhoneId).map((n) => (
+                      <option key={n.sid} value={n.vapiPhoneId} className="bg-neutral-900">
+                        {n.phoneNumber} {n.friendlyName ? `(${n.friendlyName})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {ownedNumbers.length > 0 && ownedNumbers.filter((n) => n.vapiPhoneId).length === 0 && (
+                    <p className="text-xs text-amber-400 mt-1">Your numbers aren't linked to Vapi yet. Purchase a new number to auto-link.</p>
+                  )}
                 </div>
                 <Button
                   className="w-full bg-green-600 hover:bg-green-700"

@@ -999,14 +999,13 @@ Rules:
       return res.status(400).json({ error: "assistantId is required" });
     }
 
-    const response = await fetch("https://api.vapi.ai/call", {
+    const response = await fetch("https://api.vapi.ai/call/web", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${vapiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        type: "web",
         assistantId,
       }),
     });
@@ -1217,15 +1216,37 @@ Rules:
       console.error("Twilio list numbers error:", twilioErr.message, twilioErr.code);
       return res.json([]);
     }
+
+    let vapiNumbers: any[] = [];
+    const vapiKey = process.env.VAPI_API_KEY || process.env.apex_private_vapi;
+    if (vapiKey) {
+      try {
+        const vapiRes = await fetch("https://api.vapi.ai/phone-number", {
+          headers: { Authorization: `Bearer ${vapiKey}` },
+        });
+        if (vapiRes.ok) {
+          vapiNumbers = await vapiRes.json();
+        }
+      } catch {}
+    }
+
+    const normalizeNum = (num: string) => num?.replace(/[^\d+]/g, "") || "";
     res.json(
-      numbers.map((n) => ({
-        sid: n.sid,
-        phoneNumber: n.phoneNumber,
-        friendlyName: n.friendlyName,
-        smsUrl: n.smsUrl,
-        voiceUrl: n.voiceUrl,
-        dateCreated: n.dateCreated,
-      }))
+      numbers.map((n) => {
+        const twilioNorm = normalizeNum(n.phoneNumber);
+        const vapiMatch = vapiNumbers.find((v: any) =>
+          normalizeNum(v.number) === twilioNorm || normalizeNum(v.phoneNumber) === twilioNorm
+        );
+        return {
+          sid: n.sid,
+          phoneNumber: n.phoneNumber,
+          friendlyName: n.friendlyName,
+          smsUrl: n.smsUrl,
+          voiceUrl: n.voiceUrl,
+          dateCreated: n.dateCreated,
+          vapiPhoneId: vapiMatch?.id || null,
+        };
+      })
     );
   }));
 
