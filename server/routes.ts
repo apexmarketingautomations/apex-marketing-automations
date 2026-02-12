@@ -32,6 +32,35 @@ function getVapiPublicKey(): string | null {
   return process.env.apex_public_vapi || null;
 }
 
+let cachedVapiOrgId: string | null = null;
+
+async function getVapiOrgId(): Promise<string | null> {
+  const explicit = process.env.VAPI_ORG_ID || process.env.apex_vapi_org_id;
+  if (explicit) return explicit;
+  if (cachedVapiOrgId) return cachedVapiOrgId;
+
+  const key = getVapiKey();
+  if (!key) return null;
+
+  try {
+    const res = await fetch("https://api.vapi.ai/assistant?limit=1", {
+      headers: { Authorization: `Bearer ${key}` },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const orgId = Array.isArray(data) && data[0]?.orgId;
+      if (orgId) {
+        cachedVapiOrgId = orgId;
+        console.log(`[vapi] Auto-discovered orgId: ${orgId}`);
+        return orgId;
+      }
+    }
+  } catch (err: any) {
+    console.error("[vapi] Failed to auto-discover orgId:", err.message);
+  }
+  return null;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -1003,7 +1032,6 @@ Rules:
 
   app.post("/api/vapi/start-web-call", asyncHandler(async (req, res) => {
     const vapiPrivateKey = getVapiKey();
-    const vapiOrgId = process.env.VAPI_ORG_ID || process.env.apex_vapi_org_id;
 
     if (!vapiPrivateKey) {
       return res.status(503).json({ error: "Vapi private key is not configured. Add your apex_private_vapi in Secrets." });
@@ -1014,37 +1042,10 @@ Rules:
       return res.status(400).json({ error: "assistantId is required" });
     }
 
-    let authToken: string;
-
-    if (vapiOrgId) {
-      authToken = jwt.sign(
-        {
-          orgId: vapiOrgId,
-          token: {
-            tag: "public",
-            restrictions: {
-              enabled: false,
-              allowTransientAssistant: true,
-            },
-          },
-        },
-        vapiPrivateKey,
-        { algorithm: "HS256", expiresIn: "1h" }
-      );
-      console.log("[vapi] Using JWT auth for web call");
-    } else {
-      const publicKey = getVapiPublicKey();
-      if (!publicKey) {
-        return res.status(503).json({ error: "Vapi org ID or public key required for web calls. Add VAPI_ORG_ID or apex_public_vapi in Secrets." });
-      }
-      authToken = publicKey;
-      console.log("[vapi] Using public key for web call (no org ID configured)");
-    }
-
     const response = await fetch("https://api.vapi.ai/call/web", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${authToken}`,
+        Authorization: `Bearer ${vapiPrivateKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ assistantId }),
