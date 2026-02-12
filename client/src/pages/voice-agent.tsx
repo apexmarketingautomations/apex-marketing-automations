@@ -341,13 +341,17 @@ export default function VoiceAgent() {
         setDemoActive(false);
         setDemoConnecting(false);
         vapiRef.current = null;
-        toast({ title: "Call Error", description: "The demo call encountered an error.", variant: "destructive" });
+        const errMsg = typeof err === "string" ? err
+          : err?.error?.message || err?.message || err?.errorMessage || "The demo call encountered an error.";
+        toast({ title: "Call Error", description: errMsg, variant: "destructive" });
       });
 
       await vapi.start(agentId);
     } catch (err: any) {
+      console.error("Vapi start error:", err);
       setDemoConnecting(false);
-      toast({ title: "Failed to Start", description: err.message || "Could not start browser call.", variant: "destructive" });
+      const errMsg = err?.message || err?.error?.message || "Could not start browser call. Make sure you allow microphone access.";
+      toast({ title: "Failed to Start", description: errMsg, variant: "destructive" });
     }
   };
 

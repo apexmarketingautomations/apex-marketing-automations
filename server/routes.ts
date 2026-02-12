@@ -615,7 +615,7 @@ Rules:
   });
 
   app.post("/api/voice-agents/create", asyncHandler(async (req, res) => {
-    const vapiKey = process.env.VAPI_API_KEY;
+    const vapiKey = process.env.VAPI_API_KEY || process.env.apex_private_vapi;
     if (!vapiKey) {
       return res.status(503).json({ error: "Vapi API key is not configured. Add your VAPI_API_KEY in Secrets." });
     }
@@ -690,7 +690,7 @@ Rules:
   }));
 
   app.get("/api/voice-agents", asyncHandler(async (_req, res) => {
-    const vapiKey = process.env.VAPI_API_KEY;
+    const vapiKey = process.env.VAPI_API_KEY || process.env.apex_private_vapi;
     if (!vapiKey) {
       return res.json([]);
     }
@@ -727,7 +727,7 @@ Rules:
   });
 
   app.post("/api/voice-agents/call", asyncHandler(async (req, res) => {
-    const vapiKey = process.env.VAPI_API_KEY;
+    const vapiKey = process.env.VAPI_API_KEY || process.env.apex_private_vapi;
     if (!vapiKey) {
       return res.status(503).json({ error: "Vapi API key is not configured. Add your VAPI_API_KEY in Secrets." });
     }
@@ -803,7 +803,7 @@ Rules:
   });
 
   app.post("/api/voice-agents/power-dial", asyncHandler(async (req, res) => {
-    const vapiKey = process.env.VAPI_API_KEY;
+    const vapiKey = process.env.VAPI_API_KEY || process.env.apex_private_vapi;
     if (!vapiKey) {
       return res.status(503).json({ error: "Vapi API key is not configured. Add your VAPI_API_KEY in Secrets." });
     }
@@ -891,7 +891,7 @@ Rules:
   });
 
   app.get("/api/voice-agents/calls", asyncHandler(async (req, res) => {
-    const vapiKey = process.env.VAPI_API_KEY;
+    const vapiKey = process.env.VAPI_API_KEY || process.env.apex_private_vapi;
     if (!vapiKey) {
       return res.json([]);
     }
@@ -947,7 +947,7 @@ Rules:
   }));
 
   app.get("/api/voice-agents/public-key", (_req, res) => {
-    const publicKey = process.env.VAPI_PUBLIC_KEY;
+    const publicKey = process.env.VAPI_PUBLIC_KEY || process.env.apex_public_vapi;
     if (!publicKey) {
       return res.json({ publicKey: null });
     }
@@ -1078,7 +1078,7 @@ Rules:
     }
 
     let vapiPhoneId: string | null = null;
-    const vapiKey = process.env.VAPI_API_KEY;
+    const vapiKey = process.env.VAPI_API_KEY || process.env.apex_private_vapi;
     if (vapiKey && assistantId) {
       try {
         const vapiRes = await fetch("https://api.vapi.ai/phone-number", {

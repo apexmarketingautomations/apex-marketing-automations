@@ -25,6 +25,7 @@ const allowlist = [
   "passport-local",
   "pg",
   "stripe",
+  "twilio",
   "uuid",
   "ws",
   "xlsx",
