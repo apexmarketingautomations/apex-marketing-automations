@@ -62,7 +62,37 @@ app.use((req, res, next) => {
   next();
 });
 
+function validateEnvVars() {
+  const required: { key: string; label: string; critical: boolean }[] = [
+    { key: "VAPI_API_KEY", label: "Vapi Private API Key (for server-side calls)", critical: true },
+    { key: "VAPI_PUBLIC_KEY", label: "Vapi Public Key (for browser demo calls)", critical: false },
+    { key: "TWILIO_ACCOUNT_SID", label: "Twilio Account SID", critical: false },
+    { key: "TWILIO_AUTH_TOKEN", label: "Twilio Auth Token", critical: false },
+  ];
+
+  let hasError = false;
+  for (const { key, label, critical } of required) {
+    if (!process.env[key]) {
+      const level = critical ? "ERROR" : "WARN";
+      console.error(`[${level}] Missing environment variable: ${key} — ${label}`);
+      if (critical) hasError = true;
+    }
+  }
+
+  if (hasError) {
+    console.error("[STARTUP] Some critical environment variables are missing. Voice agent features will be unavailable.");
+  }
+
+  if (process.env.TWILIO_ACCOUNT_SID && !process.env.TWILIO_AUTH_TOKEN) {
+    console.error("[WARN] TWILIO_ACCOUNT_SID is set but TWILIO_AUTH_TOKEN is missing — Twilio will not work.");
+  }
+  if (!process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
+    console.error("[WARN] TWILIO_AUTH_TOKEN is set but TWILIO_ACCOUNT_SID is missing — Twilio will not work.");
+  }
+}
+
 (async () => {
+  validateEnvVars();
   await seed();
   await registerRoutes(httpServer, app);
 

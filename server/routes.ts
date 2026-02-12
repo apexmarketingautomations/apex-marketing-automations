@@ -755,8 +755,13 @@ Rules:
 
     if (!response.ok) {
       const errData = await response.text();
-      console.error("Vapi outbound call error:", errData);
-      return res.status(response.status).json({ error: "Failed to initiate outbound call" });
+      console.error("Vapi outbound call error:", response.status, errData);
+      let detail = "Failed to initiate outbound call";
+      try {
+        const parsed = JSON.parse(errData);
+        detail = parsed.message || parsed.error || detail;
+      } catch {}
+      return res.status(response.status).json({ error: detail });
     }
 
     const call = await response.json();
@@ -908,6 +913,8 @@ Rules:
     });
 
     if (!response.ok) {
+      const errText = await response.text();
+      console.error("Vapi calls list error:", response.status, errText);
       return res.json([]);
     }
 
@@ -1017,10 +1024,16 @@ Rules:
     const country = countryStr || "US";
     const limit = Math.min(parseInt(limitStr || "5", 10) || 5, 20);
 
-    const numbers = await twilioClient.availablePhoneNumbers(country).local.list({
-      areaCode,
-      limit,
-    });
+    let numbers;
+    try {
+      numbers = await twilioClient.availablePhoneNumbers(country).local.list({
+        areaCode,
+        limit,
+      });
+    } catch (twilioErr: any) {
+      console.error("Twilio search error:", twilioErr.message, twilioErr.code);
+      return res.status(400).json({ error: twilioErr.message || "Failed to search phone numbers" });
+    }
 
     res.json(
       numbers.map((n) => ({
@@ -1056,7 +1069,13 @@ Rules:
     const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || process.env.REPLIT_DEV_DOMAIN || "";
     const smsWebhookUrl = domain ? `https://${domain}/api/sms-webhook` : "";
 
-    const purchased = await twilioClient.incomingPhoneNumbers.create({ phoneNumber });
+    let purchased;
+    try {
+      purchased = await twilioClient.incomingPhoneNumbers.create({ phoneNumber });
+    } catch (twilioErr: any) {
+      console.error("Twilio purchase error:", twilioErr.message, twilioErr.code);
+      return res.status(400).json({ error: twilioErr.message || "Failed to purchase phone number from Twilio" });
+    }
 
     let vapiPhoneId: string | null = null;
     const vapiKey = process.env.VAPI_API_KEY;
@@ -1119,7 +1138,13 @@ Rules:
       return res.json([]);
     }
 
-    const numbers = await twilioClient.incomingPhoneNumbers.list({ limit: 20 });
+    let numbers;
+    try {
+      numbers = await twilioClient.incomingPhoneNumbers.list({ limit: 20 });
+    } catch (twilioErr: any) {
+      console.error("Twilio list numbers error:", twilioErr.message, twilioErr.code);
+      return res.json([]);
+    }
     res.json(
       numbers.map((n) => ({
         sid: n.sid,
