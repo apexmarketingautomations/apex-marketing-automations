@@ -345,8 +345,8 @@ export default function VoiceAgent() {
   };
 
   const startDemoCall = async (agentId: string, name?: string) => {
-    if (!vapiPublicKey) {
-      toast({ title: "Missing Key", description: "Add VAPI_PUBLIC_KEY in Secrets to use browser demo calls.", variant: "destructive" });
+    if (!hasVapiKey) {
+      toast({ title: "Missing Key", description: "Add VAPI_API_KEY in Secrets to use browser demo calls.", variant: "destructive" });
       return;
     }
 
@@ -354,13 +354,24 @@ export default function VoiceAgent() {
     setDemoAgentName(name || "Agent");
 
     try {
-      const configRes = await fetch(`/api/voice-agents/${agentId}/config`);
-      let assistantConfig: any = null;
-      if (configRes.ok) {
-        assistantConfig = await configRes.json();
+      const webCallRes = await fetch("/api/vapi/web-call", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assistantId: agentId }),
+      });
+
+      if (!webCallRes.ok) {
+        const errData = await webCallRes.json().catch(() => ({ error: "Failed to create web call" }));
+        throw new Error(errData.error || errData.detail || "Failed to create web call");
       }
 
-      const vapi = new Vapi(vapiPublicKey);
+      const { webCallUrl } = await webCallRes.json();
+      if (!webCallUrl) {
+        throw new Error("No webCallUrl returned from server");
+      }
+
+      const publicKey = vapiPublicKey || "unused";
+      const vapi = new Vapi(publicKey);
       vapiRef.current = vapi;
 
       const connectTimeout = setTimeout(() => {
@@ -405,13 +416,8 @@ export default function VoiceAgent() {
         toast({ title: "Call Error", description: errMsg, variant: "destructive" });
       });
 
-      if (assistantConfig) {
-        console.log("Starting transient call with config:", Object.keys(assistantConfig));
-        await vapi.start(assistantConfig);
-      } else {
-        console.log("Starting call with assistant ID:", agentId);
-        await vapi.start(agentId);
-      }
+      console.log("Joining server-created web call");
+      await (vapi as any).reconnect({ webCallUrl });
     } catch (err: any) {
       console.error("Vapi start error:", err);
       setDemoConnecting(false);
@@ -810,7 +816,7 @@ export default function VoiceAgent() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {vapiPublicKey && (
+                      {hasVapiKey && (
                         <button
                           onClick={(e) => { e.stopPropagation(); demoActive ? stopDemoCall() : startDemoCall(agent.id, agent.name); setSelectedAgent({ id: agent.id, name: agent.name || "Agent" }); }}
                           className={`p-2 rounded-lg transition-colors ${
@@ -961,7 +967,7 @@ export default function VoiceAgent() {
                 <Button
                   className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 h-12 text-base"
                   onClick={() => startDemoCall(selectedAgent.id, selectedAgent.name)}
-                  disabled={!vapiPublicKey}
+                  disabled={!hasVapiKey}
                   data-testid="button-demo-call"
                 >
                   <Mic className="mr-2" size={18} /> Talk to {selectedAgent.name} (Demo)
@@ -1001,9 +1007,9 @@ export default function VoiceAgent() {
                 </div>
               )}
 
-              {!vapiPublicKey && (
+              {!hasVapiKey && (
                 <p className="text-xs text-amber-400 mt-2">
-                  Add VAPI_PUBLIC_KEY in Secrets to enable browser demo calls.
+                  Add VAPI_API_KEY in Secrets to enable browser demo calls.
                 </p>
               )}
             </div>

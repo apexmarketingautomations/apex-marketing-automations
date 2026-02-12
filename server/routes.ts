@@ -988,6 +988,44 @@ Rules:
     res.json({ publicKey });
   });
 
+  app.post("/api/vapi/web-call", asyncHandler(async (req, res) => {
+    const vapiKey = process.env.VAPI_API_KEY || process.env.apex_private_vapi;
+    if (!vapiKey) {
+      return res.status(503).json({ error: "Vapi API key is not configured. Add your VAPI_API_KEY in Secrets." });
+    }
+
+    const { assistantId } = req.body;
+    if (!assistantId || typeof assistantId !== "string") {
+      return res.status(400).json({ error: "assistantId is required" });
+    }
+
+    const response = await fetch("https://api.vapi.ai/call", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${vapiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        type: "web",
+        assistantId,
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("Vapi web-call error:", response.status, errText);
+      return res.status(response.status).json({ error: "Failed to create web call", detail: errText });
+    }
+
+    const callData = await response.json();
+    const webCallUrl = callData.webCallUrl || callData.transport?.callUrl;
+    if (!webCallUrl) {
+      console.error("Vapi web-call response missing webCallUrl:", JSON.stringify(callData));
+      return res.status(500).json({ error: "Web call created but no URL returned" });
+    }
+    res.json({ webCallUrl, callId: callData.id });
+  }));
+
   const personaSchema = z.object({
     businessDescription: z.string().min(1, "businessDescription is required").max(2000),
   });
