@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema } from "@shared/schema";
+import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema } from "@shared/schema";
 import { z } from "zod";
 import OpenAI from "openai";
 import Twilio from "twilio";
@@ -238,6 +238,43 @@ Rules:
     }
 
     res.json(siteData);
+  }));
+
+  // ---- Saved Sites ----
+  app.get("/api/sites", asyncHandler(async (_req, res) => {
+    const sites = await storage.getSavedSites();
+    res.json(sites);
+  }));
+
+  const siteDataValidator = z.object({
+    theme: z.object({
+      bg: z.string(),
+      text: z.string(),
+      primary: z.string(),
+      font: z.string(),
+    }),
+    sections: z.array(z.object({
+      type: z.string(),
+      props: z.record(z.any()),
+    })).min(1),
+  });
+
+  app.post("/api/sites", asyncHandler(async (req, res) => {
+    const parsed = insertSavedSiteSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const siteCheck = siteDataValidator.safeParse(parsed.data.siteData);
+    if (!siteCheck.success) return res.status(400).json({ error: "Invalid site data: must contain theme and sections" });
+
+    const site = await storage.createSavedSite(parsed.data);
+    res.status(201).json(site);
+  }));
+
+  app.delete("/api/sites/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const deleted = await storage.deleteSavedSite(id);
+    if (!deleted) return res.status(404).json({ error: "Site not found" });
+    res.json({ success: true });
   }));
 
   // ---- Liquid Website (Personalized AI Generation) ----

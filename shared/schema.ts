@@ -65,3 +65,15 @@ export const blueprints = pgTable("blueprints", {
 export const insertBlueprintSchema = createInsertSchema(blueprints).omit({ id: true });
 export type InsertBlueprint = z.infer<typeof insertBlueprintSchema>;
 export type Blueprint = typeof blueprints.$inferSelect;
+
+export const savedSites = pgTable("saved_sites", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  prompt: text("prompt").notNull(),
+  siteData: json("site_data").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSavedSiteSchema = createInsertSchema(savedSites).omit({ id: true, createdAt: true });
+export type InsertSavedSite = z.infer<typeof insertSavedSiteSchema>;
+export type SavedSite = typeof savedSites.$inferSelect;

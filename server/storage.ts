@@ -1,12 +1,13 @@
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { db } from "./db";
 import {
-  subAccounts, messages, workflows, trainingJobs, blueprints,
+  subAccounts, messages, workflows, trainingJobs, blueprints, savedSites,
   type SubAccount, type InsertSubAccount,
   type Message, type InsertMessage,
   type Workflow, type InsertWorkflow,
   type TrainingJob, type InsertTrainingJob,
   type Blueprint, type InsertBlueprint,
+  type SavedSite, type InsertSavedSite,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -32,6 +33,11 @@ export interface IStorage {
   getBlueprint(id: number): Promise<Blueprint | undefined>;
   getBlueprintByIndustryId(industryId: string): Promise<Blueprint | undefined>;
   createBlueprint(data: InsertBlueprint): Promise<Blueprint>;
+
+  getSavedSites(): Promise<SavedSite[]>;
+  getSavedSite(id: number): Promise<SavedSite | undefined>;
+  createSavedSite(data: InsertSavedSite): Promise<SavedSite>;
+  deleteSavedSite(id: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -118,6 +124,25 @@ export class DatabaseStorage implements IStorage {
   async createBlueprint(data: InsertBlueprint) {
     const [row] = await db.insert(blueprints).values(data).returning();
     return row;
+  }
+
+  async getSavedSites() {
+    return db.select().from(savedSites).orderBy(desc(savedSites.createdAt));
+  }
+
+  async getSavedSite(id: number) {
+    const [row] = await db.select().from(savedSites).where(eq(savedSites.id, id));
+    return row;
+  }
+
+  async createSavedSite(data: InsertSavedSite) {
+    const [row] = await db.insert(savedSites).values(data).returning();
+    return row;
+  }
+
+  async deleteSavedSite(id: number) {
+    const rows = await db.delete(savedSites).where(eq(savedSites.id, id)).returning();
+    return rows.length > 0;
   }
 }
 
