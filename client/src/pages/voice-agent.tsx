@@ -57,12 +57,12 @@ const DEFAULT_OBJECTION_RULES: ObjectionRule[] = [
 ];
 
 const VOICE_OPTIONS = [
-  { id: "21m00Tcm4TlvDq8ikWAM", name: "Rachel", desc: "Warm, professional female" },
-  { id: "ErXwobaYiN019PkySvjV", name: "Antoni", desc: "Calm, friendly male" },
-  { id: "EXAVITQu4vr4xnSDxMaL", name: "Bella", desc: "Soft, nurturing female" },
-  { id: "VR6AewLTigWG4xSOukaG", name: "Arnold", desc: "Confident, deep male" },
-  { id: "pNInz6obpgDQGcFmaJgB", name: "Adam", desc: "Clear, neutral male" },
-  { id: "yoZ06aMxZJJ28mfd3POQ", name: "Sam", desc: "Conversational, energetic" },
+  { id: "EXAVITQu4vr4xnSDxMaL", name: "Sarah", desc: "Mature, reassuring female", previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/EXAVITQu4vr4xnSDxMaL/01a3e33c-6e99-4ee7-8543-ff2216a32186.mp3" },
+  { id: "CwhRBWXzGAHq8TQ4Fs17", name: "Roger", desc: "Laid-back, casual male", previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/CwhRBWXzGAHq8TQ4Fs17/58ee3ff5-f6f2-4628-93b8-e38eb31806b0.mp3" },
+  { id: "Xb7hH8MSUJpSbSDYk0k2", name: "Alice", desc: "Clear, engaging female", previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/Xb7hH8MSUJpSbSDYk0k2/d10f7534-11f6-41fe-a012-2de1e482d336.mp3" },
+  { id: "IKne3meq5aSn9XLyUdCD", name: "Charlie", desc: "Deep, confident male", previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/IKne3meq5aSn9XLyUdCD/102de6f2-22ed-43e0-a1f1-111fa75c5481.mp3" },
+  { id: "XrExE9yKIg1WjnnlVkGX", name: "Matilda", desc: "Professional, upbeat female", previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/XrExE9yKIg1WjnnlVkGX/b930e18d-6b4d-466e-bab2-0ae97c6d8535.mp3" },
+  { id: "pNInz6obpgDQGcFmaJgB", name: "Adam", desc: "Dominant, firm male", previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/pNInz6obpgDQGcFmaJgB/d6905d7a-dd26-4187-bfff-1bd3a5ea7cac.mp3" },
 ];
 
 export default function VoiceAgent() {
@@ -98,7 +98,9 @@ export default function VoiceAgent() {
   const [purchasedNumber, setPurchasedNumber] = useState<any>(null);
   const [callLogs, setCallLogs] = useState<any[]>([]);
   const [loadingCallLogs, setLoadingCallLogs] = useState(false);
+  const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
   const vapiRef = useRef<Vapi | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -305,6 +307,34 @@ export default function VoiceAgent() {
     } finally {
       setIsCalling(false);
     }
+  };
+
+  const playVoicePreview = (voiceId: string, previewUrl: string) => {
+    if (playingVoiceId === voiceId && audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+      setPlayingVoiceId(null);
+      return;
+    }
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    const audio = new Audio(previewUrl);
+    audioRef.current = audio;
+    setPlayingVoiceId(voiceId);
+    audio.play().catch(() => {
+      setPlayingVoiceId(null);
+      toast({ title: "Playback Error", description: "Could not play voice preview.", variant: "destructive" });
+    });
+    audio.onended = () => {
+      setPlayingVoiceId(null);
+      audioRef.current = null;
+    };
+    audio.onerror = () => {
+      setPlayingVoiceId(null);
+      audioRef.current = null;
+    };
   };
 
   const openCallPanel = (agentId: string) => {
@@ -644,19 +674,39 @@ export default function VoiceAgent() {
                     </label>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                       {VOICE_OPTIONS.map((voice) => (
-                        <button
+                        <div
                           key={voice.id}
-                          onClick={() => setSelectedVoice(voice.id)}
-                          className={`p-3 rounded-xl border text-left transition-all ${
+                          className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
                             selectedVoice === voice.id
                               ? "border-violet-500 bg-violet-500/10"
                               : "border-white/10 bg-white/5 hover:border-white/20"
                           }`}
+                          onClick={() => setSelectedVoice(voice.id)}
                           data-testid={`button-voice-${voice.name.toLowerCase()}`}
                         >
-                          <p className="text-sm font-medium">{voice.name}</p>
-                          <p className="text-xs text-neutral-400">{voice.desc}</p>
-                        </button>
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium">{voice.name}</p>
+                              <p className="text-xs text-neutral-400">{voice.desc}</p>
+                            </div>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); playVoicePreview(voice.id, voice.previewUrl); }}
+                              className={`p-2 rounded-lg transition-colors flex-shrink-0 ${
+                                playingVoiceId === voice.id
+                                  ? "bg-fuchsia-500/20 text-fuchsia-400"
+                                  : "bg-white/5 text-neutral-400 hover:text-white hover:bg-white/10"
+                              }`}
+                              title={playingVoiceId === voice.id ? "Stop preview" : `Listen to ${voice.name}`}
+                              data-testid={`button-preview-${voice.name.toLowerCase()}`}
+                            >
+                              {playingVoiceId === voice.id ? (
+                                <Volume2 size={16} className="animate-pulse" />
+                              ) : (
+                                <Volume2 size={16} />
+                              )}
+                            </button>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </div>
