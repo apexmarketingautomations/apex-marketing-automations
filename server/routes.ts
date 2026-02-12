@@ -270,10 +270,86 @@ Rules:
     res.status(201).json(site);
   }));
 
+  app.patch("/api/sites/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const site = await storage.getSavedSite(id);
+    if (!site) return res.status(404).json({ error: "Site not found" });
+
+    const updates: any = {};
+    if (req.body.name) updates.name = req.body.name;
+    if (req.body.siteData) {
+      const siteCheck = siteDataValidator.safeParse(req.body.siteData);
+      if (!siteCheck.success) return res.status(400).json({ error: "Invalid site data" });
+      updates.siteData = req.body.siteData;
+    }
+    if (req.body.customDomain !== undefined) updates.customDomain = req.body.customDomain;
+    if (req.body.publishedUrl !== undefined) updates.publishedUrl = req.body.publishedUrl;
+
+    const updated = await storage.updateSavedSite(id, updates);
+    res.json(updated);
+  }));
+
   app.delete("/api/sites/:id", asyncHandler(async (req, res) => {
     const id = parseIntParam(req.params.id, "id");
     const deleted = await storage.deleteSavedSite(id);
     if (!deleted) return res.status(404).json({ error: "Site not found" });
+    res.json({ success: true });
+  }));
+
+  // ---- Version Control ----
+  app.get("/api/sites/:id/versions", asyncHandler(async (req, res) => {
+    const siteId = parseIntParam(req.params.id, "id");
+    const versions = await storage.getSiteVersions(siteId);
+    res.json(versions);
+  }));
+
+  app.post("/api/sites/:id/versions", asyncHandler(async (req, res) => {
+    const siteId = parseIntParam(req.params.id, "id");
+    const site = await storage.getSavedSite(siteId);
+    if (!site) return res.status(404).json({ error: "Site not found" });
+
+    const existing = await storage.getSiteVersions(siteId);
+    const nextVersion = existing.length > 0 ? Math.max(...existing.map(v => v.versionNumber)) + 1 : 1;
+
+    const version = await storage.createSiteVersion({
+      siteId,
+      versionNumber: nextVersion,
+      label: req.body.label || `Version ${nextVersion}`,
+      siteData: site.siteData as any,
+    });
+    res.status(201).json(version);
+  }));
+
+  // ---- Collaborators ----
+  app.get("/api/sites/:id/collaborators", asyncHandler(async (req, res) => {
+    const siteId = parseIntParam(req.params.id, "id");
+    const collaborators = await storage.getSiteCollaborators(siteId);
+    res.json(collaborators);
+  }));
+
+  app.post("/api/sites/:id/collaborators", asyncHandler(async (req, res) => {
+    const siteId = parseIntParam(req.params.id, "id");
+    const site = await storage.getSavedSite(siteId);
+    if (!site) return res.status(404).json({ error: "Site not found" });
+
+    const { name, email, role } = req.body;
+    if (!name || !email) return res.status(400).json({ error: "Name and email required" });
+
+    const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const collaborator = await storage.createSiteCollaborator({
+      siteId,
+      name,
+      email,
+      role: role || "editor",
+      inviteCode,
+    });
+    res.status(201).json(collaborator);
+  }));
+
+  app.delete("/api/collaborators/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const deleted = await storage.deleteSiteCollaborator(id);
+    if (!deleted) return res.status(404).json({ error: "Collaborator not found" });
     res.json({ success: true });
   }));
 

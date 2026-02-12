@@ -72,8 +72,37 @@ export const savedSites = pgTable("saved_sites", {
   prompt: text("prompt").notNull(),
   siteData: json("site_data").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  customDomain: text("custom_domain"),
+  publishedUrl: text("published_url"),
 });
 
 export const insertSavedSiteSchema = createInsertSchema(savedSites).omit({ id: true, createdAt: true });
 export type InsertSavedSite = z.infer<typeof insertSavedSiteSchema>;
 export type SavedSite = typeof savedSites.$inferSelect;
+
+export const siteVersions = pgTable("site_versions", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id").references(() => savedSites.id).notNull(),
+  versionNumber: integer("version_number").notNull(),
+  label: text("label").notNull(),
+  siteData: json("site_data").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSiteVersionSchema = createInsertSchema(siteVersions).omit({ id: true, createdAt: true });
+export type InsertSiteVersion = z.infer<typeof insertSiteVersionSchema>;
+export type SiteVersion = typeof siteVersions.$inferSelect;
+
+export const siteCollaborators = pgTable("site_collaborators", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id").references(() => savedSites.id).notNull(),
+  name: text("name").notNull(),
+  email: text("email").notNull(),
+  role: text("role").notNull().default("editor"),
+  inviteCode: text("invite_code").notNull(),
+  joinedAt: timestamp("joined_at").defaultNow().notNull(),
+});
+
+export const insertSiteCollaboratorSchema = createInsertSchema(siteCollaborators).omit({ id: true, joinedAt: true });
+export type InsertSiteCollaborator = z.infer<typeof insertSiteCollaboratorSchema>;
+export type SiteCollaborator = typeof siteCollaborators.$inferSelect;

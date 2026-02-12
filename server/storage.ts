@@ -1,13 +1,15 @@
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { db } from "./db";
 import {
-  subAccounts, messages, workflows, trainingJobs, blueprints, savedSites,
+  subAccounts, messages, workflows, trainingJobs, blueprints, savedSites, siteVersions, siteCollaborators,
   type SubAccount, type InsertSubAccount,
   type Message, type InsertMessage,
   type Workflow, type InsertWorkflow,
   type TrainingJob, type InsertTrainingJob,
   type Blueprint, type InsertBlueprint,
   type SavedSite, type InsertSavedSite,
+  type SiteVersion, type InsertSiteVersion,
+  type SiteCollaborator, type InsertSiteCollaborator,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -37,7 +39,16 @@ export interface IStorage {
   getSavedSites(): Promise<SavedSite[]>;
   getSavedSite(id: number): Promise<SavedSite | undefined>;
   createSavedSite(data: InsertSavedSite): Promise<SavedSite>;
+  updateSavedSite(id: number, data: Partial<InsertSavedSite>): Promise<SavedSite | undefined>;
   deleteSavedSite(id: number): Promise<boolean>;
+
+  getSiteVersions(siteId: number): Promise<SiteVersion[]>;
+  createSiteVersion(data: InsertSiteVersion): Promise<SiteVersion>;
+
+  getSiteCollaborators(siteId: number): Promise<SiteCollaborator[]>;
+  createSiteCollaborator(data: InsertSiteCollaborator): Promise<SiteCollaborator>;
+  deleteSiteCollaborator(id: number): Promise<boolean>;
+  findCollaboratorByInviteCode(code: string): Promise<SiteCollaborator | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -140,9 +151,44 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
+  async updateSavedSite(id: number, data: Partial<InsertSavedSite>) {
+    const [row] = await db.update(savedSites).set(data).where(eq(savedSites.id, id)).returning();
+    return row;
+  }
+
   async deleteSavedSite(id: number) {
+    await db.delete(siteVersions).where(eq(siteVersions.siteId, id));
+    await db.delete(siteCollaborators).where(eq(siteCollaborators.siteId, id));
     const rows = await db.delete(savedSites).where(eq(savedSites.id, id)).returning();
     return rows.length > 0;
+  }
+
+  async getSiteVersions(siteId: number) {
+    return db.select().from(siteVersions).where(eq(siteVersions.siteId, siteId)).orderBy(desc(siteVersions.createdAt));
+  }
+
+  async createSiteVersion(data: InsertSiteVersion) {
+    const [row] = await db.insert(siteVersions).values(data).returning();
+    return row;
+  }
+
+  async getSiteCollaborators(siteId: number) {
+    return db.select().from(siteCollaborators).where(eq(siteCollaborators.siteId, siteId));
+  }
+
+  async createSiteCollaborator(data: InsertSiteCollaborator) {
+    const [row] = await db.insert(siteCollaborators).values(data).returning();
+    return row;
+  }
+
+  async deleteSiteCollaborator(id: number) {
+    const rows = await db.delete(siteCollaborators).where(eq(siteCollaborators.id, id)).returning();
+    return rows.length > 0;
+  }
+
+  async findCollaboratorByInviteCode(code: string) {
+    const [row] = await db.select().from(siteCollaborators).where(eq(siteCollaborators.inviteCode, code));
+    return row;
   }
 }
 
