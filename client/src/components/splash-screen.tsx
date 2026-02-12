@@ -1,6 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
-import { Zap } from "lucide-react";
 
 export function SplashScreen({ onComplete }: { onComplete: () => void }) {
   const [isVisible, setIsVisible] = useState(true);
@@ -27,16 +26,13 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
               initial={{ scale: 0.8, opacity: 0, filter: "blur(10px)" }}
               animate={{ scale: 1, opacity: 1, filter: "blur(0px)" }}
               transition={{ duration: 1.2, ease: "easeOut" }}
-              className="drop-shadow-[0_0_30px_rgba(255,255,255,0.3)] flex items-center gap-3"
+              className="drop-shadow-[0_0_30px_rgba(255,255,255,0.3)] flex flex-col items-center gap-4"
             >
-              <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
-                <Zap size={36} className="text-white fill-white md:w-11 md:h-11" />
-              </div>
-              <div>
-                <h1 className="text-4xl md:text-5xl font-bold tracking-tight">
-                  NEXUS <span className="font-light text-indigo-400">OS</span>
-                </h1>
-              </div>
+              <img
+                src="/apex-logo.png"
+                alt="Apex Marketing Animation"
+                className="w-32 h-32 md:w-40 md:h-40 object-contain"
+              />
             </motion.div>
 
             <motion.div

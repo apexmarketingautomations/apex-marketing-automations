@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, Zap } from "lucide-react";
+import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings } from "lucide-react";
 import { motion } from "framer-motion";
 
 const navItems = [
@@ -43,14 +43,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <aside className="w-16 md:w-72 glass-panel flex flex-col h-full z-20 relative fixed">
         <div className="p-4 md:p-6 pb-6 md:pb-8">
           <div className="flex items-center gap-2 mb-1">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-              <Zap size={18} className="text-white fill-white" />
-            </div>
-            <h1 className="text-xl font-bold tracking-tight text-white hidden md:block">
-              NEXUS <span className="font-light text-indigo-400">OS</span>
+            <img src="/apex-logo.png" alt="Apex Marketing Animation" className="w-8 h-8 object-contain" />
+            <h1 className="text-lg font-bold tracking-tight text-white hidden md:block leading-tight">
+              APEX <span className="font-light text-indigo-400 text-xs block -mt-0.5">MARKETING ANIMATION</span>
             </h1>
           </div>
-          <p className="text-xs text-slate-500 font-mono pl-10 hidden md:block">V.2.0 // GOD_MODE</p>
         </div>
 
         <div className="flex-1 space-y-1 pr-0 md:pr-4 overflow-y-auto">

@@ -544,7 +544,7 @@ Rules:
         voiceId: voiceId || "21m00Tcm4TlvDq8ikWAM",
       },
       firstMessage,
-      name: `Nexus Agent - ${new Date().toLocaleDateString()}`,
+      name: `Apex Agent - ${new Date().toLocaleDateString()}`,
     };
 
     const response = await fetch("https://api.vapi.ai/assistant", {

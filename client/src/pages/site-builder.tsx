@@ -133,7 +133,7 @@ function BookingSection({ title, theme }: any) {
           >
             Check Availability
           </Button>
-          <p className="text-xs opacity-50 mt-4">Powered by Nexus AI</p>
+          <p className="text-xs opacity-50 mt-4">Powered by Apex Marketing Animation</p>
         </div>
       </div>
     </div>
