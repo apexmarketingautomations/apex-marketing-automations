@@ -87,7 +87,6 @@ export default function VoiceAgent() {
   const [demoConnecting, setDemoConnecting] = useState(false);
   const [demoVolume, setDemoVolume] = useState(0);
   const [demoAgentName, setDemoAgentName] = useState<string>("");
-  const [vapiPublicKey, setVapiPublicKey] = useState<string | null>(null);
   const [objectionRules, setObjectionRules] = useState<ObjectionRule[]>(DEFAULT_OBJECTION_RULES);
   const [phoneConfig, setPhoneConfig] = useState<{ hasTwilio: boolean; hasVapi: boolean; webhookDomain: string | null } | null>(null);
   const [areaCode, setAreaCode] = useState("305");
@@ -113,13 +112,6 @@ export default function VoiceAgent() {
         }
       })
       .catch(() => setHasVapiKey(false));
-
-    fetch("/api/voice-agents/public-key")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.publicKey) setVapiPublicKey(data.publicKey);
-      })
-      .catch(() => {});
 
     fetch("/api/phone-numbers/config")
       .then((r) => r.json())
@@ -364,7 +356,7 @@ export default function VoiceAgent() {
     setDemoAgentName(name || "Agent");
 
     try {
-      const webCallRes = await fetch("/api/vapi/web-call", {
+      const webCallRes = await fetch("/api/vapi/start-web-call", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ assistantId: agentId }),
@@ -380,8 +372,7 @@ export default function VoiceAgent() {
         throw new Error("No webCallUrl returned from server");
       }
 
-      const publicKey = vapiPublicKey || "unused";
-      const vapi = new Vapi(publicKey);
+      const vapi = new Vapi("unused-backend-proxy");
       vapiRef.current = vapi;
 
       const connectTimeout = setTimeout(() => {
@@ -426,7 +417,6 @@ export default function VoiceAgent() {
         toast({ title: "Call Error", description: errMsg, variant: "destructive" });
       });
 
-      console.log("Joining server-created web call");
       await (vapi as any).reconnect({ webCallUrl });
     } catch (err: any) {
       console.error("Vapi start error:", err);
@@ -1025,7 +1015,7 @@ export default function VoiceAgent() {
 
               {!hasVapiKey && (
                 <p className="text-xs text-amber-400 mt-2">
-                  Add VAPI_API_KEY in Secrets to enable browser demo calls.
+                  Add your VAPI_API_KEY in Secrets to enable browser demo calls (handled securely on the server).
                 </p>
               )}
             </div>

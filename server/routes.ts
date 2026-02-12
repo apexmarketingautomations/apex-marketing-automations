@@ -774,8 +774,11 @@ Rules:
       customer: { number: parsed.data.customerPhone },
     };
 
+    const envPhoneId = process.env.VAPI_PHONE_NUMBER_ID;
     if (parsed.data.phoneNumberId) {
       payload.phoneNumberId = parsed.data.phoneNumberId;
+    } else if (envPhoneId) {
+      payload.phoneNumberId = envPhoneId;
     }
 
     const response = await fetch("https://api.vapi.ai/call/phone", {
@@ -792,8 +795,8 @@ Rules:
       console.error("Vapi outbound call error:", response.status, errData);
       let detail = "Failed to initiate outbound call";
       try {
-        const parsed = JSON.parse(errData);
-        detail = parsed.message || parsed.error || detail;
+        const p = JSON.parse(errData);
+        detail = p.message || p.error || detail;
       } catch {}
       return res.status(response.status).json({ error: detail });
     }
@@ -845,7 +848,8 @@ Rules:
     const parsed = powerDialSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-    const { assistantId, phoneNumberId, leads } = parsed.data;
+    const { assistantId, leads } = parsed.data;
+    const phoneNumberId = parsed.data.phoneNumberId || process.env.VAPI_PHONE_NUMBER_ID || undefined;
 
     cleanupDialerJobs();
 
@@ -988,7 +992,7 @@ Rules:
     res.json({ publicKey });
   });
 
-  app.post("/api/vapi/web-call", asyncHandler(async (req, res) => {
+  app.post("/api/vapi/start-web-call", asyncHandler(async (req, res) => {
     const vapiKey = process.env.VAPI_API_KEY || process.env.apex_private_vapi;
     if (!vapiKey) {
       return res.status(503).json({ error: "Vapi API key is not configured. Add your VAPI_API_KEY in Secrets." });
@@ -1005,23 +1009,24 @@ Rules:
         Authorization: `Bearer ${vapiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        assistantId,
-      }),
+      body: JSON.stringify({ assistantId }),
     });
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error("Vapi web-call error:", response.status, errText);
-      return res.status(response.status).json({ error: "Failed to create web call", detail: errText });
+      console.error("Vapi start-web-call error:", response.status, errText);
+      let detail = "Failed to create web call";
+      try { const p = JSON.parse(errText); detail = p.message || p.error || detail; } catch {}
+      return res.status(response.status).json({ error: detail });
     }
 
     const callData = await response.json();
     const webCallUrl = callData.webCallUrl || callData.transport?.callUrl;
     if (!webCallUrl) {
-      console.error("Vapi web-call response missing webCallUrl:", JSON.stringify(callData));
+      console.error("Vapi start-web-call response missing webCallUrl:", JSON.stringify(callData));
       return res.status(500).json({ error: "Web call created but no URL returned" });
     }
+
     res.json({ webCallUrl, callId: callData.id });
   }));
 
