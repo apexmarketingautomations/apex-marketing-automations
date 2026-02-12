@@ -85,6 +85,7 @@ The `shared/` directory contains code used by both frontend and backend:
 - `POST /api/phone-numbers/purchase` - Buy Twilio number + auto-link to Vapi agent
 - `GET /api/phone-numbers` - List owned Twilio numbers
 - `POST /api/sms-webhook` - Unified Twilio webhook with AI auto-reply (SMS/WhatsApp/Messenger channel detection)
+- `POST /api/vapi/start-web-call` - Backend proxy: creates browser web call via Vapi private key, returns webCallUrl
 - `GET /api/voice-agents/calls?assistantId=&limit=` - Fetch call logs with recordings and transcripts from Vapi
 
 ## External Dependencies
@@ -98,7 +99,7 @@ The `shared/` directory contains code used by both frontend and backend:
 
 ### Communication Services
 - **Twilio** - Phone number provisioning (search, purchase), SMS webhook with AI auto-reply. Requires TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN secrets (not using Replit integration — user dismissed it; credentials stored as manual secrets)
-- **Vapi** - Voice AI agent deployment, outbound calling, browser demo calls. Requires VAPI_API_KEY and VAPI_PUBLIC_KEY secrets
+- **Vapi** - Voice AI agent deployment, outbound calling, browser demo calls. Uses strict Backend Proxy pattern: VAPI_API_KEY (private key) is used server-side only. Frontend never touches the key — all Vapi API calls go through Express endpoints. Optional VAPI_PHONE_NUMBER_ID for default outbound caller ID injection.
 
 ### Frontend Libraries
 - **shadcn/ui** - Full component library (40+ Radix-based components)
