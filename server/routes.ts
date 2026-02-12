@@ -590,6 +590,8 @@ Rules:
     });
 
     if (!response.ok) {
+      const errText = await response.text();
+      console.error("Vapi list error:", response.status, errText);
       return res.json([]);
     }
 
