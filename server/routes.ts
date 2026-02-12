@@ -5,6 +5,7 @@ import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, inse
 import { z } from "zod";
 import OpenAI from "openai";
 import Twilio from "twilio";
+import jwt from "jsonwebtoken";
 
 type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
@@ -21,6 +22,14 @@ function parseIntParam(value: string | string[] | undefined, name: string): numb
     throw Object.assign(new Error(`Invalid ${name}`), { status: 400 });
   }
   return parsed;
+}
+
+function getVapiKey(): string | null {
+  return process.env.apex_private_vapi || null;
+}
+
+function getVapiPublicKey(): string | null {
+  return process.env.apex_public_vapi || null;
 }
 
 export async function registerRoutes(
@@ -615,7 +624,7 @@ Rules:
   });
 
   app.post("/api/voice-agents/create", asyncHandler(async (req, res) => {
-    const vapiKey = process.env.VAPI_API_KEY || process.env.apex_private_vapi;
+    const vapiKey = getVapiKey();
     if (!vapiKey) {
       return res.status(503).json({ error: "Vapi API key is not configured. Add your VAPI_API_KEY in Secrets." });
     }
@@ -690,7 +699,7 @@ Rules:
   }));
 
   app.get("/api/voice-agents", asyncHandler(async (_req, res) => {
-    const vapiKey = process.env.VAPI_API_KEY || process.env.apex_private_vapi;
+    const vapiKey = getVapiKey();
     if (!vapiKey) {
       return res.json([]);
     }
@@ -721,7 +730,7 @@ Rules:
   }));
 
   app.get("/api/voice-agents/:id/config", asyncHandler(async (req, res) => {
-    const vapiKey = process.env.VAPI_API_KEY || process.env.apex_private_vapi;
+    const vapiKey = getVapiKey();
     if (!vapiKey) {
       return res.status(503).json({ error: "Vapi API key is not configured." });
     }
@@ -761,7 +770,7 @@ Rules:
   });
 
   app.post("/api/voice-agents/call", asyncHandler(async (req, res) => {
-    const vapiKey = process.env.VAPI_API_KEY || process.env.apex_private_vapi;
+    const vapiKey = getVapiKey();
     if (!vapiKey) {
       return res.status(503).json({ error: "Vapi API key is not configured. Add your VAPI_API_KEY in Secrets." });
     }
@@ -840,7 +849,7 @@ Rules:
   });
 
   app.post("/api/voice-agents/power-dial", asyncHandler(async (req, res) => {
-    const vapiKey = process.env.VAPI_API_KEY || process.env.apex_private_vapi;
+    const vapiKey = getVapiKey();
     if (!vapiKey) {
       return res.status(503).json({ error: "Vapi API key is not configured. Add your VAPI_API_KEY in Secrets." });
     }
@@ -929,7 +938,7 @@ Rules:
   });
 
   app.get("/api/voice-agents/calls", asyncHandler(async (req, res) => {
-    const vapiKey = process.env.VAPI_API_KEY || process.env.apex_private_vapi;
+    const vapiKey = getVapiKey();
     if (!vapiKey) {
       return res.json([]);
     }
@@ -985,7 +994,7 @@ Rules:
   }));
 
   app.get("/api/voice-agents/public-key", (_req, res) => {
-    const publicKey = process.env.VAPI_PUBLIC_KEY || process.env.apex_public_vapi;
+    const publicKey = getVapiPublicKey();
     if (!publicKey) {
       return res.json({ publicKey: null });
     }
@@ -993,9 +1002,11 @@ Rules:
   });
 
   app.post("/api/vapi/start-web-call", asyncHandler(async (req, res) => {
-    const vapiKey = process.env.VAPI_API_KEY || process.env.apex_private_vapi;
-    if (!vapiKey) {
-      return res.status(503).json({ error: "Vapi API key is not configured. Add your VAPI_API_KEY in Secrets." });
+    const vapiPrivateKey = getVapiKey();
+    const vapiOrgId = process.env.VAPI_ORG_ID || process.env.apex_vapi_org_id;
+
+    if (!vapiPrivateKey) {
+      return res.status(503).json({ error: "Vapi private key is not configured. Add your apex_private_vapi in Secrets." });
     }
 
     const { assistantId } = req.body;
@@ -1003,10 +1014,37 @@ Rules:
       return res.status(400).json({ error: "assistantId is required" });
     }
 
+    let authToken: string;
+
+    if (vapiOrgId) {
+      authToken = jwt.sign(
+        {
+          orgId: vapiOrgId,
+          token: {
+            tag: "public",
+            restrictions: {
+              enabled: false,
+              allowTransientAssistant: true,
+            },
+          },
+        },
+        vapiPrivateKey,
+        { algorithm: "HS256", expiresIn: "1h" }
+      );
+      console.log("[vapi] Using JWT auth for web call");
+    } else {
+      const publicKey = getVapiPublicKey();
+      if (!publicKey) {
+        return res.status(503).json({ error: "Vapi org ID or public key required for web calls. Add VAPI_ORG_ID or apex_public_vapi in Secrets." });
+      }
+      authToken = publicKey;
+      console.log("[vapi] Using public key for web call (no org ID configured)");
+    }
+
     const response = await fetch("https://api.vapi.ai/call/web", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${vapiKey}`,
+        Authorization: `Bearer ${authToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ assistantId }),
@@ -1154,7 +1192,7 @@ Rules:
     }
 
     let vapiPhoneId: string | null = null;
-    const vapiKey = process.env.VAPI_API_KEY || process.env.apex_private_vapi;
+    const vapiKey = getVapiKey();
     if (vapiKey && assistantId) {
       try {
         const vapiRes = await fetch("https://api.vapi.ai/phone-number", {
@@ -1223,7 +1261,7 @@ Rules:
     }
 
     let vapiNumbers: any[] = [];
-    const vapiKey = process.env.VAPI_API_KEY || process.env.apex_private_vapi;
+    const vapiKey = getVapiKey();
     if (vapiKey) {
       try {
         const vapiRes = await fetch("https://api.vapi.ai/phone-number", {
@@ -1328,7 +1366,7 @@ Rules:
 
   app.get("/api/phone-numbers/config", (_req, res) => {
     const hasTwilio = !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN);
-    const hasVapi = !!process.env.VAPI_API_KEY;
+    const hasVapi = !!getVapiKey();
     const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || process.env.REPLIT_DEV_DOMAIN || "";
     res.json({ hasTwilio, hasVapi, webhookDomain: domain ? `https://${domain}` : null });
   });
