@@ -558,8 +558,13 @@ Rules:
 
     if (!response.ok) {
       const errData = await response.text();
-      console.error("Vapi error:", errData);
-      return res.status(response.status).json({ error: "Failed to create voice agent on Vapi" });
+      console.error("Vapi create error:", response.status, errData);
+      let detail = "Failed to create voice agent on Vapi";
+      try {
+        const parsed = JSON.parse(errData);
+        detail = parsed.message || parsed.error || detail;
+      } catch {}
+      return res.status(response.status).json({ error: detail });
     }
 
     const agent = await response.json();
