@@ -21,41 +21,22 @@ import GrowthCenter from "@/pages/growth-center";
 
 function Router() {
   return (
-    <Switch>
-      {/* Full-screen pages (No Sidebar) */}
-      <Route path="/gym" component={GymLanding} />
-      <Route path="/luxe" component={LuxeLanding} />
-      <Route path="/onboarding" component={Onboarding} />
-      <Route path="/site-builder" component={SiteBuilder} />
-      <Route path="/liquid" component={LiquidWebsite} />
-      <Route path="/ad-launcher" component={AdLauncher} />
-      <Route path="/voice-agent" component={VoiceAgent} />
-      <Route path="/growth" component={GrowthCenter} />
-
-      {/* Dashboard Routes (With Sidebar) */}
-      <Route path="/">
-        <Layout>
-          <SmsDashboard />
-        </Layout>
-      </Route>
-      <Route path="/workflows">
-        <Layout>
-          <WorkflowBuilder />
-        </Layout>
-      </Route>
-      <Route path="/bot-trainer">
-        <Layout>
-          <BotTrainer />
-        </Layout>
-      </Route>
-      
-      {/* Fallback */}
-      <Route>
-        <Layout>
-          <NotFound />
-        </Layout>
-      </Route>
-    </Switch>
+    <Layout>
+      <Switch>
+        <Route path="/" component={SmsDashboard} />
+        <Route path="/workflows" component={WorkflowBuilder} />
+        <Route path="/bot-trainer" component={BotTrainer} />
+        <Route path="/onboarding" component={Onboarding} />
+        <Route path="/site-builder" component={SiteBuilder} />
+        <Route path="/liquid" component={LiquidWebsite} />
+        <Route path="/ad-launcher" component={AdLauncher} />
+        <Route path="/voice-agent" component={VoiceAgent} />
+        <Route path="/growth" component={GrowthCenter} />
+        <Route path="/gym" component={GymLanding} />
+        <Route path="/luxe" component={LuxeLanding} />
+        <Route component={NotFound} />
+      </Switch>
+    </Layout>
   );
 }
 

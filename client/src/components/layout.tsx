@@ -75,20 +75,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <main className="flex-1 ml-16 md:ml-72 relative z-10 flex flex-col min-h-screen">
         {location !== "/" && (
           <div className="px-6 pt-4 pb-0">
-            <button
-              onClick={() => {
-                if (window.history.length > 1) {
-                  window.history.back();
-                } else {
-                  window.location.href = "/";
-                }
-              }}
+            <Link
+              href="/"
               className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors group"
               data-testid="button-back"
             >
               <ArrowLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
-              Back
-            </button>
+              Back to Home
+            </Link>
           </div>
         )}
         {children}
