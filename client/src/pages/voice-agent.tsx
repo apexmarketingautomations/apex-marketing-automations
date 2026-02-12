@@ -75,6 +75,7 @@ export default function VoiceAgent() {
   const [agentName, setAgentName] = useState("");
   const [selectedVoice, setSelectedVoice] = useState(VOICE_OPTIONS[0].id);
   const [deployedAgent, setDeployedAgent] = useState<any>(null);
+  const [selectedAgent, setSelectedAgent] = useState<any>(null);
   const [existingAgents, setExistingAgents] = useState<any[]>([]);
   const [hasVapiKey, setHasVapiKey] = useState<boolean | null>(null);
   const [callAgentId, setCallAgentId] = useState<string | null>(null);
@@ -249,10 +250,13 @@ export default function VoiceAgent() {
       }
 
       const agent = await res.json();
+      const newAgentName = agentName || agent.name || "Agent";
       setDeployedAgent(agent);
+      setSelectedAgent({ id: agent.id, name: newAgentName });
+      setExistingAgents((prev) => [{ id: agent.id, name: newAgentName, createdAt: new Date().toISOString(), model: agent.model?.model, voice: agent.voice?.voiceId }, ...prev]);
       setStep("deployed");
       fetchCallLogs(agent.id);
-      toast({ title: "Agent Deployed!", description: `${agentName} is ready to take calls.` });
+      toast({ title: "Agent Deployed!", description: `${newAgentName} is ready to take calls.` });
     } catch (err: any) {
       toast({
         title: "Deployment Failed",
@@ -265,8 +269,9 @@ export default function VoiceAgent() {
   };
 
   const copyAgentId = () => {
-    if (deployedAgent?.id) {
-      navigator.clipboard.writeText(deployedAgent.id);
+    const id = selectedAgent?.id || deployedAgent?.id;
+    if (id) {
+      navigator.clipboard.writeText(id);
       toast({ title: "Copied!", description: "Agent ID copied to clipboard." });
     }
   };
@@ -681,358 +686,21 @@ export default function VoiceAgent() {
             </motion.div>
           )}
 
-          {step === "deployed" && deployedAgent && (
+          {step === "deployed" && deployedAgent && !selectedAgent && (
             <motion.div
-              key="deployed"
+              key="deployed-banner"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="space-y-6"
+              className="space-y-4"
             >
               <div className="bg-green-500/10 border border-green-500/20 rounded-2xl p-8 text-center space-y-4">
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-500/20">
                   <CheckCircle2 className="text-green-400" size={32} />
                 </div>
                 <h2 className="text-2xl font-bold text-green-300">{agentName} is Live!</h2>
-                <p className="text-neutral-400">Your voice agent has been deployed and is ready to handle calls.</p>
+                <p className="text-neutral-400">Your voice agent has been deployed. Select it below to test and manage it.</p>
               </div>
-
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 space-y-4">
-                <h3 className="text-sm font-bold text-neutral-300">Agent Details</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between py-2 border-b border-white/5">
-                    <span className="text-sm text-neutral-400">Agent ID</span>
-                    <div className="flex items-center gap-2">
-                      <code className="text-sm text-violet-300 bg-violet-500/10 px-2 py-1 rounded" data-testid="text-agent-id">
-                        {deployedAgent.id}
-                      </code>
-                      <button onClick={copyAgentId} className="text-neutral-400 hover:text-white" data-testid="button-copy-id">
-                        <Copy size={14} />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between py-2 border-b border-white/5">
-                    <span className="text-sm text-neutral-400">Status</span>
-                    <span className="text-sm text-green-400 flex items-center gap-1">
-                      <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                      Active
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between py-2 border-b border-white/5">
-                    <span className="text-sm text-neutral-400">Voice</span>
-                    <span className="text-sm text-neutral-300">
-                      {VOICE_OPTIONS.find((v) => v.id === selectedVoice)?.name || "Default"}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between py-2">
-                    <span className="text-sm text-neutral-400">Greeting</span>
-                    <span className="text-sm text-neutral-300 max-w-[250px] truncate">"{firstMessage}"</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-gradient-to-r from-violet-900/40 to-fuchsia-900/40 border border-violet-500/20 rounded-2xl p-6 space-y-4">
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Mic size={16} className="text-fuchsia-400" /> Talk to {agentName} (Browser Demo)
-                </h3>
-                <p className="text-xs text-neutral-400">
-                  Test your agent right here in the browser. Click the button and start talking — your microphone will be used.
-                </p>
-
-                {!demoActive && !demoConnecting && (
-                  <Button
-                    className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 h-12 text-base"
-                    onClick={() => startDemoCall(deployedAgent.id, agentName)}
-                    disabled={!vapiPublicKey}
-                    data-testid="button-demo-call"
-                  >
-                    <Mic className="mr-2" size={18} /> Talk to {agentName} (Demo)
-                  </Button>
-                )}
-
-                {demoConnecting && (
-                  <div className="flex items-center justify-center gap-3 py-4">
-                    <Loader2 className="animate-spin text-fuchsia-400" size={24} />
-                    <span className="text-sm text-fuchsia-300">Connecting...</span>
-                  </div>
-                )}
-
-                {demoActive && (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-center gap-4">
-                      <div className="relative">
-                        <div
-                          className="w-20 h-20 rounded-full bg-fuchsia-500/20 flex items-center justify-center transition-all"
-                          style={{
-                            boxShadow: `0 0 ${20 + demoVolume * 60}px ${demoVolume * 30}px rgba(217,70,239,${0.2 + demoVolume * 0.4})`,
-                            transform: `scale(${1 + demoVolume * 0.15})`,
-                          }}
-                        >
-                          <Mic className="text-fuchsia-300" size={32} />
-                        </div>
-                      </div>
-                    </div>
-                    <p className="text-center text-sm text-fuchsia-300 animate-pulse">Listening... speak now</p>
-                    <Button
-                      className="w-full bg-red-600 hover:bg-red-500 h-12 text-base"
-                      onClick={stopDemoCall}
-                      data-testid="button-end-demo"
-                    >
-                      <MicOff className="mr-2" size={18} /> End Call
-                    </Button>
-                  </div>
-                )}
-
-                {!vapiPublicKey && (
-                  <p className="text-xs text-amber-400 mt-2">
-                    Add VAPI_PUBLIC_KEY in Secrets to enable browser demo calls.
-                  </p>
-                )}
-              </div>
-
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 space-y-4">
-                <h3 className="text-sm font-bold text-neutral-300 flex items-center gap-2">
-                  <PhoneOutgoing size={16} className="text-violet-400" /> Make Outbound Call
-                </h3>
-                <p className="text-xs text-neutral-400">
-                  Have your agent call a customer. Enter their phone number in E.164 format (e.g. +14155551234).
-                </p>
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs text-neutral-500 mb-1 block">Customer Phone Number</label>
-                    <Input
-                      value={callAgentId === deployedAgent.id ? callPhone : ""}
-                      onChange={(e) => {
-                        setCallAgentId(deployedAgent.id);
-                        setCallPhone(e.target.value);
-                      }}
-                      placeholder="+14155551234"
-                      className="bg-white/5 border-white/10"
-                      data-testid="input-outbound-phone"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-neutral-500 mb-1 block">Vapi Phone Number ID (from your Vapi dashboard)</label>
-                    <Input
-                      value={callAgentId === deployedAgent.id ? callPhoneNumberId : ""}
-                      onChange={(e) => {
-                        setCallAgentId(deployedAgent.id);
-                        setCallPhoneNumberId(e.target.value);
-                      }}
-                      placeholder="Optional — required for outbound calls"
-                      className="bg-white/5 border-white/10"
-                      data-testid="input-phone-number-id"
-                    />
-                  </div>
-                  <Button
-                    className="w-full bg-green-600 hover:bg-green-700"
-                    disabled={isCalling || !(callAgentId === deployedAgent.id && callPhone.trim())}
-                    onClick={() => {
-                      setCallAgentId(deployedAgent.id);
-                      handleOutboundCall();
-                    }}
-                    data-testid="button-make-call"
-                  >
-                    {isCalling ? (
-                      <>
-                        <Loader2 className="mr-2 animate-spin" size={16} /> Dialing...
-                      </>
-                    ) : (
-                      <>
-                        <PhoneOutgoing className="mr-2" size={16} /> Call Now
-                      </>
-                    )}
-                  </Button>
-                  {callResult && callAgentId === deployedAgent.id && (
-                    <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3 text-sm">
-                      <p className="text-green-300 font-medium">Call initiated!</p>
-                      <p className="text-xs text-neutral-400 mt-1">
-                        Call ID: <code className="text-green-300">{callResult.callId}</code> — Status: {callResult.status}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="bg-gradient-to-r from-green-900/30 to-emerald-900/30 border border-green-500/20 rounded-2xl p-6 space-y-5">
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Phone size={16} className="text-green-400" /> AI Phone Line
-                </h3>
-                <p className="text-xs text-neutral-400">
-                  Get a dedicated phone number for your agent. It will answer calls and reply to texts with AI — 24/7.
-                </p>
-
-                {purchasedNumber ? (
-                  <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-5 text-center space-y-2">
-                    <div className="text-2xl font-mono font-bold text-green-400" data-testid="text-purchased-number">
-                      {purchasedNumber.phoneNumber}
-                    </div>
-                    <p className="text-xs text-green-300 flex items-center justify-center gap-1.5">
-                      <Wifi size={12} /> Active & Connected to AI
-                    </p>
-                    {purchasedNumber.vapiPhoneId && (
-                      <p className="text-xs text-neutral-400">
-                        Vapi Phone ID: <code className="text-green-300">{purchasedNumber.vapiPhoneId}</code>
-                      </p>
-                    )}
-                    {purchasedNumber.dualAgent && (
-                      <div className="flex items-center justify-center gap-3 mt-1">
-                        <span className="text-xs text-violet-300 flex items-center gap-1">
-                          <Phone size={10} /> Voice → AI Agent
-                        </span>
-                        <span className="text-xs text-neutral-500">|</span>
-                        <span className="text-xs text-blue-300 flex items-center gap-1">
-                          <MessageSquare size={10} /> SMS → AI Auto-Reply
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                ) : phoneConfig?.hasTwilio ? (
-                  <div className="space-y-4">
-                    <div className="flex gap-2">
-                      <Input
-                        value={areaCode}
-                        onChange={(e) => setAreaCode(e.target.value)}
-                        placeholder="Area code (e.g. 305)"
-                        className="bg-white/5 border-white/10 w-36"
-                        maxLength={3}
-                        data-testid="input-area-code"
-                      />
-                      <Button
-                        className="bg-green-600 hover:bg-green-700"
-                        onClick={searchNumbers}
-                        disabled={searchingNumbers || !areaCode.trim()}
-                        data-testid="button-search-numbers"
-                      >
-                        {searchingNumbers ? (
-                          <Loader2 className="animate-spin mr-2" size={14} />
-                        ) : (
-                          <Search className="mr-2" size={14} />
-                        )}
-                        Find Numbers
-                      </Button>
-                    </div>
-
-                    {availableNumbers.length > 0 && (
-                      <div className="space-y-2">
-                        <p className="text-xs text-neutral-400">{availableNumbers.length} numbers available:</p>
-                        {availableNumbers.map((num) => (
-                          <div
-                            key={num.phoneNumber}
-                            className="flex items-center justify-between bg-black/20 border border-white/5 rounded-lg p-3"
-                            data-testid={`card-number-${num.phoneNumber}`}
-                          >
-                            <div>
-                              <p className="text-sm font-mono text-white">{num.phoneNumber}</p>
-                              <p className="text-xs text-neutral-400">
-                                {num.locality && `${num.locality}, `}{num.region}
-                                {num.capabilities?.sms && " · SMS"}
-                                {num.capabilities?.voice && " · Voice"}
-                              </p>
-                            </div>
-                            <Button
-                              size="sm"
-                              className="bg-green-600 hover:bg-green-700"
-                              disabled={purchasingNumber !== null}
-                              onClick={() => purchaseNumber(num.phoneNumber, deployedAgent.id)}
-                              data-testid={`button-buy-${num.phoneNumber}`}
-                            >
-                              {purchasingNumber === num.phoneNumber ? (
-                                <Loader2 className="animate-spin" size={14} />
-                              ) : (
-                                <><ShoppingCart size={14} className="mr-1" /> Buy</>
-                              )}
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
-                    <p className="text-xs text-amber-300">
-                      Add your TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in Secrets to enable phone number purchasing.
-                    </p>
-                  </div>
-                )}
-
-                {ownedNumbers.length > 0 && !purchasedNumber && (
-                  <div className="border-t border-white/5 pt-4">
-                    <p className="text-xs text-neutral-400 mb-2">Your existing numbers:</p>
-                    <div className="space-y-2">
-                      {ownedNumbers.map((num) => (
-                        <div key={num.sid} className="flex items-center justify-between bg-black/10 rounded-lg px-3 py-2" data-testid={`card-owned-${num.sid}`}>
-                          <span className="text-sm font-mono text-green-300">{num.phoneNumber}</span>
-                          <span className="text-xs text-neutral-500">{num.friendlyName}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-neutral-300 flex items-center gap-2">
-                    <Phone size={16} className="text-violet-400" /> Call Logs
-                  </h3>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="border-white/10 hover:bg-white/5 text-xs"
-                    onClick={() => fetchCallLogs(deployedAgent.id)}
-                    disabled={loadingCallLogs}
-                    data-testid="button-refresh-logs"
-                  >
-                    {loadingCallLogs ? (
-                      <Loader2 className="animate-spin" size={12} />
-                    ) : (
-                      <><RefreshCcw size={12} className="mr-1" /> Refresh</>
-                    )}
-                  </Button>
-                </div>
-
-                {callLogs.length === 0 && !loadingCallLogs && (
-                  <p className="text-xs text-neutral-500 text-center py-4">
-                    No call recordings yet. Make an outbound call or receive an inbound call to see logs here.
-                  </p>
-                )}
-
-                {loadingCallLogs && callLogs.length === 0 && (
-                  <div className="flex items-center justify-center py-6">
-                    <Loader2 className="animate-spin text-violet-400" size={20} />
-                  </div>
-                )}
-
-                <div className="space-y-3" data-testid="call-logs-list">
-                  {callLogs.map((call) => (
-                    <CallPlayer
-                      key={call.id}
-                      recordingUrl={call.recordingUrl}
-                      transcript={call.transcript}
-                      duration={call.duration}
-                      callerNumber={call.customer}
-                      status={call.status}
-                      createdAt={call.startedAt}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <Button
-                className="w-full bg-violet-600 hover:bg-violet-700"
-                onClick={() => {
-                  setStep("describe");
-                  setBusinessPrompt("");
-                  setPersona("");
-                  setFirstMessage("");
-                  setDeployedAgent(null);
-                  setCallLogs([]);
-                }}
-                data-testid="button-create-another"
-              >
-                <RefreshCcw className="mr-2" size={16} /> Create Another Agent
-              </Button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -1047,12 +715,20 @@ export default function VoiceAgent() {
               {existingAgents.map((agent) => (
                 <div
                   key={agent.id}
-                  className="bg-white/5 border border-white/10 rounded-xl p-4"
+                  className={`bg-white/5 border rounded-xl p-4 cursor-pointer transition-all hover:bg-white/8 ${
+                    selectedAgent?.id === agent.id ? "border-violet-500/50 bg-violet-500/10" : "border-white/10"
+                  }`}
+                  onClick={() => {
+                    setSelectedAgent(selectedAgent?.id === agent.id ? null : { id: agent.id, name: agent.name || "Agent" });
+                    if (selectedAgent?.id !== agent.id) fetchCallLogs(agent.id);
+                  }}
                   data-testid={`card-agent-${agent.id}`}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-violet-500/20 flex items-center justify-center">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        selectedAgent?.id === agent.id ? "bg-violet-500/30" : "bg-violet-500/20"
+                      }`}>
                         <Mic size={18} className="text-violet-400" />
                       </div>
                       <div>
@@ -1065,7 +741,7 @@ export default function VoiceAgent() {
                     <div className="flex items-center gap-2">
                       {vapiPublicKey && (
                         <button
-                          onClick={() => demoActive ? stopDemoCall() : startDemoCall(agent.id, agent.name)}
+                          onClick={(e) => { e.stopPropagation(); demoActive ? stopDemoCall() : startDemoCall(agent.id, agent.name); setSelectedAgent({ id: agent.id, name: agent.name || "Agent" }); }}
                           className={`p-2 rounded-lg transition-colors ${
                             demoActive
                               ? "bg-red-500/10 text-red-400 hover:bg-red-500/20"
@@ -1152,6 +828,344 @@ export default function VoiceAgent() {
               ))}
             </div>
           </div>
+        )}
+
+        {selectedAgent && (
+          <motion.div
+            key={`panel-${selectedAgent.id}`}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-8 space-y-6"
+            data-testid="selected-agent-panel"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <User size={18} className="text-violet-400" />
+                {selectedAgent.name}
+              </h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-neutral-400 hover:text-white"
+                onClick={() => setSelectedAgent(null)}
+                data-testid="button-close-agent-panel"
+              >
+                <X size={16} />
+              </Button>
+            </div>
+
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 space-y-4">
+              <h3 className="text-sm font-bold text-neutral-300">Agent Details</h3>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between py-2 border-b border-white/5">
+                  <span className="text-sm text-neutral-400">Agent ID</span>
+                  <div className="flex items-center gap-2">
+                    <code className="text-sm text-violet-300 bg-violet-500/10 px-2 py-1 rounded" data-testid="text-agent-id">
+                      {selectedAgent.id}
+                    </code>
+                    <button onClick={copyAgentId} className="text-neutral-400 hover:text-white" data-testid="button-copy-id">
+                      <Copy size={14} />
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between py-2">
+                  <span className="text-sm text-neutral-400">Status</span>
+                  <span className="text-sm text-green-400 flex items-center gap-1">
+                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                    Active
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-r from-violet-900/40 to-fuchsia-900/40 border border-violet-500/20 rounded-2xl p-6 space-y-4">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Mic size={16} className="text-fuchsia-400" /> Talk to {selectedAgent.name} (Browser Demo)
+              </h3>
+              <p className="text-xs text-neutral-400">
+                Test your agent right here in the browser. Click the button and start talking — your microphone will be used.
+              </p>
+
+              {!demoActive && !demoConnecting && (
+                <Button
+                  className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 h-12 text-base"
+                  onClick={() => startDemoCall(selectedAgent.id, selectedAgent.name)}
+                  disabled={!vapiPublicKey}
+                  data-testid="button-demo-call"
+                >
+                  <Mic className="mr-2" size={18} /> Talk to {selectedAgent.name} (Demo)
+                </Button>
+              )}
+
+              {demoConnecting && (
+                <div className="flex items-center justify-center gap-3 py-4">
+                  <Loader2 className="animate-spin text-fuchsia-400" size={24} />
+                  <span className="text-sm text-fuchsia-300">Connecting...</span>
+                </div>
+              )}
+
+              {demoActive && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-center gap-4">
+                    <div className="relative">
+                      <div
+                        className="w-20 h-20 rounded-full bg-fuchsia-500/20 flex items-center justify-center transition-all"
+                        style={{
+                          boxShadow: `0 0 ${20 + demoVolume * 60}px ${demoVolume * 30}px rgba(217,70,239,${0.2 + demoVolume * 0.4})`,
+                          transform: `scale(${1 + demoVolume * 0.15})`,
+                        }}
+                      >
+                        <Mic className="text-fuchsia-300" size={32} />
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-center text-sm text-fuchsia-300 animate-pulse">Listening... speak now</p>
+                  <Button
+                    className="w-full bg-red-600 hover:bg-red-500 h-12 text-base"
+                    onClick={stopDemoCall}
+                    data-testid="button-end-demo"
+                  >
+                    <MicOff className="mr-2" size={18} /> End Call
+                  </Button>
+                </div>
+              )}
+
+              {!vapiPublicKey && (
+                <p className="text-xs text-amber-400 mt-2">
+                  Add VAPI_PUBLIC_KEY in Secrets to enable browser demo calls.
+                </p>
+              )}
+            </div>
+
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 space-y-4">
+              <h3 className="text-sm font-bold text-neutral-300 flex items-center gap-2">
+                <PhoneOutgoing size={16} className="text-violet-400" /> Make Outbound Call
+              </h3>
+              <p className="text-xs text-neutral-400">
+                Have your agent call a customer. Enter their phone number in E.164 format (e.g. +14155551234).
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs text-neutral-500 mb-1 block">Customer Phone Number</label>
+                  <Input
+                    value={callAgentId === selectedAgent.id ? callPhone : ""}
+                    onChange={(e) => {
+                      setCallAgentId(selectedAgent.id);
+                      setCallPhone(e.target.value);
+                    }}
+                    placeholder="+14155551234"
+                    className="bg-white/5 border-white/10"
+                    data-testid="input-outbound-phone"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-neutral-500 mb-1 block">Vapi Phone Number ID (from your Vapi dashboard)</label>
+                  <Input
+                    value={callAgentId === selectedAgent.id ? callPhoneNumberId : ""}
+                    onChange={(e) => {
+                      setCallAgentId(selectedAgent.id);
+                      setCallPhoneNumberId(e.target.value);
+                    }}
+                    placeholder="Optional — required for outbound calls"
+                    className="bg-white/5 border-white/10"
+                    data-testid="input-phone-number-id"
+                  />
+                </div>
+                <Button
+                  className="w-full bg-green-600 hover:bg-green-700"
+                  disabled={isCalling || !(callAgentId === selectedAgent.id && callPhone.trim())}
+                  onClick={() => {
+                    setCallAgentId(selectedAgent.id);
+                    handleOutboundCall();
+                  }}
+                  data-testid="button-make-call"
+                >
+                  {isCalling ? (
+                    <>
+                      <Loader2 className="mr-2 animate-spin" size={16} /> Dialing...
+                    </>
+                  ) : (
+                    <>
+                      <PhoneOutgoing className="mr-2" size={16} /> Call Now
+                    </>
+                  )}
+                </Button>
+                {callResult && callAgentId === selectedAgent.id && (
+                  <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3 text-sm">
+                    <p className="text-green-300 font-medium">Call initiated!</p>
+                    <p className="text-xs text-neutral-400 mt-1">
+                      Call ID: <code className="text-green-300">{callResult.callId}</code> — Status: {callResult.status}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-r from-green-900/30 to-emerald-900/30 border border-green-500/20 rounded-2xl p-6 space-y-5">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Phone size={16} className="text-green-400" /> AI Phone Line
+              </h3>
+              <p className="text-xs text-neutral-400">
+                Get a dedicated phone number for your agent. It will answer calls and reply to texts with AI — 24/7.
+              </p>
+
+              {purchasedNumber ? (
+                <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-5 text-center space-y-2">
+                  <div className="text-2xl font-mono font-bold text-green-400" data-testid="text-purchased-number">
+                    {purchasedNumber.phoneNumber}
+                  </div>
+                  <p className="text-xs text-green-300 flex items-center justify-center gap-1.5">
+                    <Wifi size={12} /> Active & Connected to AI
+                  </p>
+                  {purchasedNumber.vapiPhoneId && (
+                    <p className="text-xs text-neutral-400">
+                      Vapi Phone ID: <code className="text-green-300">{purchasedNumber.vapiPhoneId}</code>
+                    </p>
+                  )}
+                  {purchasedNumber.dualAgent && (
+                    <div className="flex items-center justify-center gap-3 mt-1">
+                      <span className="text-xs text-violet-300 flex items-center gap-1">
+                        <Phone size={10} /> Voice → AI Agent
+                      </span>
+                      <span className="text-xs text-neutral-500">|</span>
+                      <span className="text-xs text-blue-300 flex items-center gap-1">
+                        <MessageSquare size={10} /> SMS → AI Auto-Reply
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ) : phoneConfig?.hasTwilio ? (
+                <div className="space-y-4">
+                  <div className="flex gap-2">
+                    <Input
+                      value={areaCode}
+                      onChange={(e) => setAreaCode(e.target.value)}
+                      placeholder="Area code (e.g. 305)"
+                      className="bg-white/5 border-white/10 w-36"
+                      maxLength={3}
+                      data-testid="input-area-code"
+                    />
+                    <Button
+                      className="bg-green-600 hover:bg-green-700"
+                      onClick={searchNumbers}
+                      disabled={searchingNumbers || !areaCode.trim()}
+                      data-testid="button-search-numbers"
+                    >
+                      {searchingNumbers ? (
+                        <Loader2 className="animate-spin mr-2" size={14} />
+                      ) : (
+                        <Search className="mr-2" size={14} />
+                      )}
+                      Find Numbers
+                    </Button>
+                  </div>
+
+                  {availableNumbers.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-neutral-400">{availableNumbers.length} numbers available:</p>
+                      {availableNumbers.map((num) => (
+                        <div
+                          key={num.phoneNumber}
+                          className="flex items-center justify-between bg-black/20 border border-white/5 rounded-lg p-3"
+                          data-testid={`card-number-${num.phoneNumber}`}
+                        >
+                          <div>
+                            <p className="text-sm font-mono text-white">{num.phoneNumber}</p>
+                            <p className="text-xs text-neutral-400">
+                              {num.locality && `${num.locality}, `}{num.region}
+                              {num.capabilities?.sms && " · SMS"}
+                              {num.capabilities?.voice && " · Voice"}
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700"
+                            disabled={purchasingNumber !== null}
+                            onClick={() => purchaseNumber(num.phoneNumber, selectedAgent.id)}
+                            data-testid={`button-buy-${num.phoneNumber}`}
+                          >
+                            {purchasingNumber === num.phoneNumber ? (
+                              <Loader2 className="animate-spin" size={14} />
+                            ) : (
+                              <><ShoppingCart size={14} className="mr-1" /> Buy</>
+                            )}
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
+                  <p className="text-xs text-amber-300">
+                    Add your TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in Secrets to enable phone number purchasing.
+                  </p>
+                </div>
+              )}
+
+              {ownedNumbers.length > 0 && !purchasedNumber && (
+                <div className="border-t border-white/5 pt-4">
+                  <p className="text-xs text-neutral-400 mb-2">Your existing numbers:</p>
+                  <div className="space-y-2">
+                    {ownedNumbers.map((num) => (
+                      <div key={num.sid} className="flex items-center justify-between bg-black/10 rounded-lg px-3 py-2" data-testid={`card-owned-${num.sid}`}>
+                        <span className="text-sm font-mono text-green-300">{num.phoneNumber}</span>
+                        <span className="text-xs text-neutral-500">{num.friendlyName}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-neutral-300 flex items-center gap-2">
+                  <Phone size={16} className="text-violet-400" /> Call Logs
+                </h3>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-white/10 hover:bg-white/5 text-xs"
+                  onClick={() => fetchCallLogs(selectedAgent.id)}
+                  disabled={loadingCallLogs}
+                  data-testid="button-refresh-logs"
+                >
+                  {loadingCallLogs ? (
+                    <Loader2 className="animate-spin" size={12} />
+                  ) : (
+                    <><RefreshCcw size={12} className="mr-1" /> Refresh</>
+                  )}
+                </Button>
+              </div>
+
+              {callLogs.length === 0 && !loadingCallLogs && (
+                <p className="text-xs text-neutral-500 text-center py-4">
+                  No call recordings yet. Make an outbound call or receive an inbound call to see logs here.
+                </p>
+              )}
+
+              {loadingCallLogs && callLogs.length === 0 && (
+                <div className="flex items-center justify-center py-6">
+                  <Loader2 className="animate-spin text-violet-400" size={20} />
+                </div>
+              )}
+
+              <div className="space-y-3" data-testid="call-logs-list">
+                {callLogs.map((call) => (
+                  <CallPlayer
+                    key={call.id}
+                    recordingUrl={call.recordingUrl}
+                    transcript={call.transcript}
+                    duration={call.duration}
+                    callerNumber={call.customer}
+                    status={call.status}
+                    createdAt={call.startedAt}
+                  />
+                ))}
+              </div>
+            </div>
+          </motion.div>
         )}
 
         {hasVapiKey === false && (
