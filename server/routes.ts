@@ -1031,10 +1031,10 @@ Rules:
   });
 
   app.post("/api/vapi/start-web-call", asyncHandler(async (req, res) => {
-    const vapiPrivateKey = getVapiKey();
+    const vapiPublicKey = getVapiPublicKey();
 
-    if (!vapiPrivateKey) {
-      return res.status(503).json({ error: "Vapi private key is not configured. Add your apex_private_vapi in Secrets." });
+    if (!vapiPublicKey) {
+      return res.status(503).json({ error: "Vapi public key is not configured. Add your apex_public_vapi in Secrets." });
     }
 
     const { assistantId } = req.body;
@@ -1045,7 +1045,7 @@ Rules:
     const response = await fetch("https://api.vapi.ai/call/web", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${vapiPrivateKey}`,
+        Authorization: `Bearer ${vapiPublicKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ assistantId }),
@@ -1056,6 +1056,9 @@ Rules:
       console.error("Vapi start-web-call error:", response.status, errText);
       let detail = "Failed to create web call";
       try { const p = JSON.parse(errText); detail = p.message || p.error || detail; } catch {}
+      if (detail.includes("doesn't allow assistantId")) {
+        detail += " — Update your Vapi Public Key settings to allow this assistant, or remove the assistant restriction.";
+      }
       return res.status(response.status).json({ error: detail });
     }
 
