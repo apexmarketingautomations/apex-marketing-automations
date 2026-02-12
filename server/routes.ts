@@ -720,6 +720,35 @@ Rules:
     );
   }));
 
+  app.get("/api/voice-agents/:id/config", asyncHandler(async (req, res) => {
+    const vapiKey = process.env.VAPI_API_KEY || process.env.apex_private_vapi;
+    if (!vapiKey) {
+      return res.status(503).json({ error: "Vapi API key is not configured." });
+    }
+
+    const agentId = req.params.id;
+    const response = await fetch(`https://api.vapi.ai/assistant/${agentId}`, {
+      headers: {
+        Authorization: `Bearer ${vapiKey}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("Vapi get agent error:", response.status, errText);
+      return res.status(response.status).json({ error: "Failed to fetch agent config" });
+    }
+
+    const agent = await response.json();
+    res.json({
+      model: agent.model,
+      voice: agent.voice,
+      firstMessage: agent.firstMessage,
+      transcriber: agent.transcriber,
+    });
+  }));
+
   const outboundCallSchema = z.object({
     assistantId: z.string().min(1, "assistantId is required"),
     customerPhone: z.string().min(1, "customerPhone is required"),

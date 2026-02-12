@@ -317,6 +317,12 @@ export default function VoiceAgent() {
     setDemoConnecting(true);
 
     try {
+      const configRes = await fetch(`/api/voice-agents/${agentId}/config`);
+      let assistantConfig: any = null;
+      if (configRes.ok) {
+        assistantConfig = await configRes.json();
+      }
+
       const vapi = new Vapi(vapiPublicKey);
       vapiRef.current = vapi;
 
@@ -346,7 +352,11 @@ export default function VoiceAgent() {
         toast({ title: "Call Error", description: errMsg, variant: "destructive" });
       });
 
-      await vapi.start(agentId);
+      if (assistantConfig) {
+        await vapi.start(assistantConfig);
+      } else {
+        await vapi.start(agentId);
+      }
     } catch (err: any) {
       console.error("Vapi start error:", err);
       setDemoConnecting(false);
