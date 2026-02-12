@@ -742,10 +742,15 @@ Rules:
 
     const agent = await response.json();
     res.json({
+      name: agent.name,
       model: agent.model,
       voice: agent.voice,
       firstMessage: agent.firstMessage,
       transcriber: agent.transcriber,
+      endCallFunctionEnabled: agent.endCallFunctionEnabled,
+      silenceTimeoutSeconds: agent.silenceTimeoutSeconds,
+      maxDurationSeconds: agent.maxDurationSeconds,
+      responseDelaySeconds: agent.responseDelaySeconds,
     });
   }));
 

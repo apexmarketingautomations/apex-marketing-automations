@@ -333,12 +333,22 @@ export default function VoiceAgent() {
       const vapi = new Vapi(vapiPublicKey);
       vapiRef.current = vapi;
 
+      const connectTimeout = setTimeout(() => {
+        if (!vapiRef.current) return;
+        setDemoConnecting(false);
+        toast({ title: "Connection Timeout", description: "Demo call took too long to connect. Please try again.", variant: "destructive" });
+        try { vapiRef.current.stop(); } catch {}
+        vapiRef.current = null;
+      }, 20000);
+
       vapi.on("call-start", () => {
+        clearTimeout(connectTimeout);
         setDemoConnecting(false);
         setDemoActive(true);
       });
 
       vapi.on("call-end", () => {
+        clearTimeout(connectTimeout);
         setDemoActive(false);
         setDemoConnecting(false);
         setDemoVolume(0);
@@ -350,7 +360,8 @@ export default function VoiceAgent() {
       });
 
       vapi.on("error", (err: any) => {
-        console.error("Vapi error:", err);
+        clearTimeout(connectTimeout);
+        console.error("Vapi error:", JSON.stringify(err));
         setDemoActive(false);
         setDemoConnecting(false);
         vapiRef.current = null;
@@ -360,12 +371,15 @@ export default function VoiceAgent() {
         else if (typeof err?.error === "string") errMsg = err.error;
         else if (typeof err?.error?.message === "string") errMsg = err.error.message;
         else if (typeof err?.errorMessage === "string") errMsg = err.errorMessage;
+        else { try { errMsg = JSON.stringify(err); } catch {} }
         toast({ title: "Call Error", description: errMsg, variant: "destructive" });
       });
 
       if (assistantConfig) {
+        console.log("Starting transient call with config:", Object.keys(assistantConfig));
         await vapi.start(assistantConfig);
       } else {
+        console.log("Starting call with assistant ID:", agentId);
         await vapi.start(agentId);
       }
     } catch (err: any) {
@@ -374,6 +388,7 @@ export default function VoiceAgent() {
       let errMsg = "Could not start browser call. Make sure you allow microphone access.";
       if (typeof err?.message === "string") errMsg = err.message;
       else if (typeof err?.error === "string") errMsg = err.error;
+      else { try { errMsg = JSON.stringify(err); } catch {} }
       toast({ title: "Failed to Start", description: errMsg, variant: "destructive" });
     }
   };
