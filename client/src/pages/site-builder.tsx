@@ -194,11 +194,11 @@ export default function SiteBuilder() {
   };
 
   return (
-    <div className="min-h-screen bg-[#030014] text-white flex flex-col md:flex-row font-sans overflow-hidden relative">
+    <div className="min-h-screen bg-[#030014] text-white flex flex-col md:flex-row font-sans relative">
       <div className="fixed inset-0 bg-grid z-0 pointer-events-none" />
       <div className="fixed top-0 left-0 w-full h-[500px] bg-gradient-to-b from-indigo-900/10 to-transparent pointer-events-none z-0" />
 
-      <div className="w-full md:w-[400px] border-r border-white/10 flex flex-col glass-panel z-10 h-screen md:h-auto md:min-h-screen relative">
+      <div className="w-full md:w-[400px] border-r border-white/10 flex flex-col glass-panel z-10 md:min-h-screen relative">
         <div className="p-6 border-b border-white/5">
           <h1 className="text-xl font-bold flex items-center gap-2 glow-text">
             <LayoutTemplate className="text-indigo-400 drop-shadow-[0_0_8px_rgba(129,140,248,0.5)]" />

@@ -233,8 +233,8 @@ export default function AdLauncher() {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white flex flex-col md:flex-row font-sans overflow-hidden">
-      <div className="w-full md:w-[400px] border-r border-white/10 flex flex-col bg-neutral-900 z-10 h-screen md:h-auto md:min-h-screen">
+    <div className="min-h-screen bg-neutral-950 text-white flex flex-col md:flex-row font-sans">
+      <div className="w-full md:w-[400px] border-r border-white/10 flex flex-col bg-neutral-900 z-10 md:min-h-screen">
         <div className="p-6 border-b border-white/10">
           <h1 className="text-xl font-bold flex items-center gap-2">
             <Megaphone className="text-orange-500" />

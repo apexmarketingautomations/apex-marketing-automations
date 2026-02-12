@@ -36,11 +36,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
 
   return (
-    <div className="flex h-screen bg-[#030014] text-white font-sans selection:bg-indigo-500/30">
+    <div className="flex min-h-screen bg-[#030014] text-white font-sans selection:bg-indigo-500/30">
       <div className="fixed inset-0 bg-grid z-0 pointer-events-none" />
       <div className="fixed top-0 left-0 w-full h-[500px] bg-gradient-to-b from-indigo-900/10 to-transparent pointer-events-none z-0" />
 
-      <aside className="w-16 md:w-72 glass-panel flex flex-col h-full z-20 relative fixed">
+      <aside className="w-16 md:w-72 glass-panel flex flex-col z-20 fixed top-0 left-0 h-screen overflow-y-auto">
         <div className="p-4 md:p-6 pb-6 md:pb-8">
           <div className="flex items-center gap-2 mb-1">
             <img src="/apex-logo.png" alt="Apex Marketing Animation" className="w-8 h-8 object-contain" />
@@ -72,7 +72,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <main className="flex-1 ml-16 md:ml-72 overflow-y-auto relative z-10 flex flex-col min-h-screen">
+      <main className="flex-1 ml-16 md:ml-72 relative z-10 flex flex-col min-h-screen">
         {children}
       </main>
     </div>
