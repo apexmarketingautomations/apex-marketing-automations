@@ -1,0 +1,44 @@
+Act as a Senior Lead Developer. I need you to perform a complete "Head-to-Toe" audit, repair, and consolidation of this entire project. The current codebase is fragmented and the Vapi integration is failing due to architecture issues.
+
+Execute the following 4-Phase Repair Plan:
+
+PHASE 1: AUDIT & CONSOLIDATE (The Cleanup)
+
+Scan every file in the directory. Identify and list any duplicate files, unused components, or "dead code" left over from previous failed attempts.
+
+Consolidate logic: If we have multiple files trying to do the same thing (e.g., two different Vapi hooks), delete the broken ones and unify the logic into a single, clean source of truth.
+
+Verify Imports: Check that every import path is correct and that no files are calling modules that don't exist.
+
+PHASE 2: ARCHITECTURE REFACTOR (The Vapi Fix)
+
+Enforce Backend-First Security: The frontend is currently triggering 403 Forbidden errors because it tries to configure the agent client-side.
+
+Refactor server.ts (or routes.ts): Create a robust, secure API route (/api/vapi/start) that handles all Vapi authentication using the VAPI_PRIVATE_KEY and returns a secure session to the frontend.
+
+Fix Outbound Calls: Ensure the backend automatically injects the VAPI_PHONE_NUMBER_ID from Secrets into every outbound call request so the user never encounters a "missing phone number" error.
+
+PHASE 3: UI & FUNCTIONALITY CHECK (The "Button Test")
+
+Trace every button: Ensure that "Start Call," "End Call," and any other UI triggers are actually wired to the new backend endpoints.
+
+Add Feedback: If a process takes time (like connecting to the voice agent), add a visual "Loading..." state or a toast notification so the user knows it's working.
+
+Error Handling: Ensure that if the backend fails, the frontend displays a readable error message (e.g., "Check your API Key") instead of crashing or doing nothing.
+
+PHASE 4: MISSING ESSENTIALS
+
+Identify Gaps: Look for missing standard practices (e.g., environment variable validation, CORS settings, basic logging).
+
+Implement missing safeguards: Add a check at startup to print a warning in the console if any required Secret (like VAPI_ORG_ID) is missing.
+
+Output Requirement:
+Don't just tell me what to do—rewrite the code. Start with the backend (Server), then the API routes, and finally the Frontend integration. Present the solution as a cohesive, working system.
+
+What this prompt does differently:
+
+It authorizes deletion: It gives the AI permission to delete "dead code," which is often the cause of conflicts.
+
+It forces a pattern: It explicitly demands "Backend-First Security," which solves your specific Vapi error.
+
+It asks for "Gaps": It specifically asks the AI to find things that are missing (like error messages or loading spinners), which usually get ignored in simple bug fixes.
