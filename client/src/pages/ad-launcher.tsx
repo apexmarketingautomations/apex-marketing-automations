@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   Send,
   Loader2,
@@ -18,6 +18,8 @@ import {
   Sparkles,
   CheckCircle2,
   AlertTriangle,
+  Upload,
+  X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -39,7 +41,7 @@ const OBJECTIVE_LABELS: Record<string, string> = {
   OUTCOME_SALES: "Sales",
 };
 
-function CampaignCard({ campaign }: { campaign: any }) {
+function CampaignCard({ campaign, onImageChange }: { campaign: any; onImageChange: (url: string | null) => void }) {
   const budgetDollars = (campaign.daily_budget / 100).toFixed(0);
   const totalBudget = ((campaign.daily_budget / 100) * (campaign.duration_days || 14)).toFixed(0);
   const targeting = campaign.targeting;
@@ -47,6 +49,37 @@ function CampaignCard({ campaign }: { campaign: any }) {
   const cities = targeting?.geo_locations?.cities || [];
   const interests = targeting?.interests || [];
   const behaviors = targeting?.behaviors || [];
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const { toast } = useToast();
+  const isUploaded = campaign.generated_image_url && campaign.generated_image_url.startsWith("/uploads/");
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+      const res = await fetch("/api/upload-ad-image", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        let errMsg = "Upload failed";
+        try { const err = await res.json(); errMsg = err.error || errMsg; } catch {}
+        throw new Error(errMsg);
+      }
+      const data = await res.json();
+      onImageChange(data.url);
+      toast({ title: "Image Uploaded", description: "Your ad creative has been updated." });
+    } catch (err: any) {
+      toast({ title: "Upload Failed", description: err.message || "Could not upload image.", variant: "destructive" });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -129,28 +162,75 @@ function CampaignCard({ campaign }: { campaign: any }) {
         </div>
 
         <div className="bg-white/5 border border-white/10 rounded-xl p-5 space-y-4">
-          <h3 className="text-sm font-bold text-neutral-300 flex items-center gap-2">
-            <FileText size={16} className="text-green-400" /> Ad Creative
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-neutral-300 flex items-center gap-2">
+              <FileText size={16} className="text-green-400" /> Ad Creative
+            </h3>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="hidden"
+              onChange={handleFileUpload}
+              data-testid="input-upload-ad-image"
+            />
+            <div className="flex items-center gap-1">
+              {campaign.generated_image_url && isUploaded && (
+                <button
+                  onClick={() => onImageChange(null)}
+                  className="text-[10px] text-neutral-500 hover:text-red-400 transition-colors flex items-center gap-1 px-2 py-1 rounded-md hover:bg-white/5"
+                  data-testid="button-remove-image"
+                >
+                  <X size={10} /> Remove
+                </button>
+              )}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="text-[10px] text-orange-400 hover:text-orange-300 transition-colors flex items-center gap-1 px-2 py-1 rounded-md hover:bg-white/5 disabled:opacity-50"
+                data-testid="button-upload-image"
+              >
+                {uploading ? <Loader2 size={10} className="animate-spin" /> : <Upload size={10} />}
+                {uploading ? "Uploading..." : "Upload Image"}
+              </button>
+            </div>
+          </div>
 
           <div className="bg-white rounded-xl overflow-hidden shadow-lg" data-testid="card-ad-preview">
             {campaign.generated_image_url ? (
-              <div className="h-56 relative overflow-hidden">
+              <div className="h-56 relative overflow-hidden group">
                 <img
                   src={campaign.generated_image_url}
-                  alt="AI-generated ad creative"
+                  alt="Ad creative"
                   className="w-full h-full object-cover"
                   data-testid="img-ad-creative"
                 />
                 <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-sm text-white text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <Sparkles size={10} /> AI Generated
+                  {isUploaded ? (
+                    <><Upload size={10} /> Uploaded</>
+                  ) : (
+                    <><Sparkles size={10} /> AI Generated</>
+                  )}
+                </div>
+                <div
+                  className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <div className="text-white text-xs flex items-center gap-2 bg-black/60 px-3 py-2 rounded-lg">
+                    <Upload size={14} /> Replace Image
+                  </div>
                 </div>
               </div>
             ) : (
-              <div className="h-40 bg-gradient-to-br from-neutral-200 to-neutral-300 flex items-center justify-center">
+              <div
+                className="h-40 bg-gradient-to-br from-neutral-200 to-neutral-300 flex items-center justify-center cursor-pointer hover:from-neutral-300 hover:to-neutral-400 transition-colors"
+                onClick={() => fileInputRef.current?.click()}
+                data-testid="button-upload-placeholder"
+              >
                 <div className="text-center text-neutral-500">
-                  <Image size={32} className="mx-auto mb-2 opacity-50" />
-                  <p className="text-xs">{campaign.image_prompt ? `AI Image: ${campaign.image_prompt.slice(0, 50)}...` : "No image generated"}</p>
+                  <Upload size={32} className="mx-auto mb-2 opacity-50" />
+                  <p className="text-xs font-medium">Click to upload an image</p>
+                  <p className="text-[10px] opacity-60 mt-1">JPEG, PNG, WebP, GIF up to 5MB</p>
                 </div>
               </div>
             )}
@@ -419,7 +499,10 @@ export default function AdLauncher() {
                   </div>
                 )}
 
-                <CampaignCard campaign={campaign} />
+                <CampaignCard
+                  campaign={campaign}
+                  onImageChange={(url) => setCampaign((prev: any) => prev ? { ...prev, generated_image_url: url } : prev)}
+                />
               </motion.div>
             ) : (
               <motion.div

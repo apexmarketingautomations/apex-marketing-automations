@@ -5,6 +5,10 @@ import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, inse
 import { z } from "zod";
 import OpenAI from "openai";
 import Twilio from "twilio";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import express from "express";
 
 type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
@@ -51,6 +55,41 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  // ---- Image Uploads ----
+  const uploadsDir = path.resolve(process.cwd(), "uploads");
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+  app.use("/uploads", express.static(uploadsDir));
+
+  const upload = multer({
+    storage: multer.diskStorage({
+      destination: (_req, _file, cb) => cb(null, uploadsDir),
+      filename: (_req, file, cb) => {
+        const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+        const ext = path.extname(file.originalname) || ".png";
+        cb(null, `ad-${uniqueSuffix}${ext}`);
+      },
+    }),
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+      if (allowed.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error("Only JPEG, PNG, WebP, and GIF images are allowed"));
+      }
+    },
+  });
+
+  app.post("/api/upload-ad-image", upload.single("image"), (req: Request, res: Response) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "No image file provided" });
+    }
+    const imageUrl = `/uploads/${req.file.filename}`;
+    res.json({ url: imageUrl });
+  });
 
   // ---- Sub-Accounts ----
   app.get("/api/accounts", asyncHandler(async (_req, res) => {
