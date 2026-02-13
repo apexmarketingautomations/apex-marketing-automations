@@ -5,7 +5,6 @@ import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, inse
 import { z } from "zod";
 import OpenAI from "openai";
 import Twilio from "twilio";
-import jwt from "jsonwebtoken";
 
 type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
@@ -24,48 +23,29 @@ function parseIntParam(value: string | string[] | undefined, name: string): numb
   return parsed;
 }
 
-function getVapiKey(): string | null {
-  return process.env.apex_private_vapi || null;
-}
-
-function getVapiPublicKey(): string | null {
-  const candidates = [process.env.apex_public_vapi, process.env.VAPI_PUBLIC_KEY];
-  for (const key of candidates) {
-    if (key && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)) {
-      return key;
-    }
-  }
-  return null;
-}
-
-let cachedVapiOrgId: string | null = null;
-
-async function getVapiOrgId(): Promise<string | null> {
-  const explicit = process.env.VAPI_ORG_ID || process.env.apex_vapi_org_id;
-  if (explicit) return explicit;
-  if (cachedVapiOrgId) return cachedVapiOrgId;
-
-  const key = getVapiKey();
-  if (!key) return null;
-
-  try {
-    const res = await fetch("https://api.vapi.ai/assistant?limit=1", {
-      headers: { Authorization: `Bearer ${key}` },
-    });
-    if (res.ok) {
-      const data = await res.json();
-      const orgId = Array.isArray(data) && data[0]?.orgId;
-      if (orgId) {
-        cachedVapiOrgId = orgId;
-        console.log(`[vapi] Auto-discovered orgId: ${orgId}`);
-        return orgId;
-      }
-    }
-  } catch (err: any) {
-    console.error("[vapi] Failed to auto-discover orgId:", err.message);
-  }
-  return null;
-}
+const vapiConfig = {
+  get privateKey(): string | null {
+    return process.env.VAPI_PRIVATE_KEY || process.env.apex_private_vapi || null;
+  },
+  get publicKey(): string | null {
+    return process.env.VAPI_PUBLIC_KEY || process.env.apex_public_vapi || null;
+  },
+  get orgId(): string | null {
+    return process.env.VAPI_ORG_ID || null;
+  },
+  get phoneNumberId(): string | null {
+    return process.env.VAPI_PHONE_NUMBER_ID || null;
+  },
+  get isConfigured(): boolean {
+    return !!this.privateKey;
+  },
+  privateHeaders() {
+    return {
+      Authorization: `Bearer ${this.privateKey}`,
+      "Content-Type": "application/json",
+    };
+  },
+};
 
 export async function registerRoutes(
   httpServer: Server,
@@ -659,9 +639,8 @@ Rules:
   });
 
   app.post("/api/voice-agents/create", asyncHandler(async (req, res) => {
-    const vapiKey = getVapiKey();
-    if (!vapiKey) {
-      return res.status(503).json({ error: "Vapi API key is not configured. Add your VAPI_API_KEY in Secrets." });
+    if (!vapiConfig.isConfigured) {
+      return res.status(503).json({ error: "Vapi API key is not configured. Add VAPI_PRIVATE_KEY in Secrets." });
     }
 
     const parsed = voiceAgentSchema.safeParse(req.body);
@@ -707,8 +686,7 @@ Rules:
     const response = await fetch("https://api.vapi.ai/assistant", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${vapiKey}`,
-        "Content-Type": "application/json",
+        ...vapiConfig.privateHeaders(),
       },
       body: JSON.stringify(payload),
     });
@@ -734,16 +712,12 @@ Rules:
   }));
 
   app.get("/api/voice-agents", asyncHandler(async (_req, res) => {
-    const vapiKey = getVapiKey();
-    if (!vapiKey) {
+    if (!vapiConfig.isConfigured) {
       return res.json([]);
     }
 
     const response = await fetch("https://api.vapi.ai/assistant", {
-      headers: {
-        Authorization: `Bearer ${vapiKey}`,
-        "Content-Type": "application/json",
-      },
+      headers: vapiConfig.privateHeaders(),
     });
 
     if (!response.ok) {
@@ -765,17 +739,13 @@ Rules:
   }));
 
   app.get("/api/voice-agents/:id/config", asyncHandler(async (req, res) => {
-    const vapiKey = getVapiKey();
-    if (!vapiKey) {
+    if (!vapiConfig.isConfigured) {
       return res.status(503).json({ error: "Vapi API key is not configured." });
     }
 
     const agentId = req.params.id;
     const response = await fetch(`https://api.vapi.ai/assistant/${agentId}`, {
-      headers: {
-        Authorization: `Bearer ${vapiKey}`,
-        "Content-Type": "application/json",
-      },
+      headers: vapiConfig.privateHeaders(),
     });
 
     if (!response.ok) {
@@ -805,9 +775,8 @@ Rules:
   });
 
   app.post("/api/voice-agents/call", asyncHandler(async (req, res) => {
-    const vapiKey = getVapiKey();
-    if (!vapiKey) {
-      return res.status(503).json({ error: "Vapi API key is not configured. Add your VAPI_API_KEY in Secrets." });
+    if (!vapiConfig.isConfigured) {
+      return res.status(503).json({ error: "Vapi API key is not configured. Add VAPI_PRIVATE_KEY in Secrets." });
     }
 
     const parsed = outboundCallSchema.safeParse(req.body);
@@ -818,19 +787,15 @@ Rules:
       customer: { number: parsed.data.customerPhone },
     };
 
-    const envPhoneId = process.env.VAPI_PHONE_NUMBER_ID;
     if (parsed.data.phoneNumberId) {
       payload.phoneNumberId = parsed.data.phoneNumberId;
-    } else if (envPhoneId) {
-      payload.phoneNumberId = envPhoneId;
+    } else if (vapiConfig.phoneNumberId) {
+      payload.phoneNumberId = vapiConfig.phoneNumberId;
     }
 
     const response = await fetch("https://api.vapi.ai/call/phone", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${vapiKey}`,
-        "Content-Type": "application/json",
-      },
+      headers: vapiConfig.privateHeaders(),
       body: JSON.stringify(payload),
     });
 
@@ -884,16 +849,15 @@ Rules:
   });
 
   app.post("/api/voice-agents/power-dial", asyncHandler(async (req, res) => {
-    const vapiKey = getVapiKey();
-    if (!vapiKey) {
-      return res.status(503).json({ error: "Vapi API key is not configured. Add your VAPI_API_KEY in Secrets." });
+    if (!vapiConfig.isConfigured) {
+      return res.status(503).json({ error: "Vapi API key is not configured. Add VAPI_PRIVATE_KEY in Secrets." });
     }
 
     const parsed = powerDialSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
     const { assistantId, leads } = parsed.data;
-    const phoneNumberId = parsed.data.phoneNumberId || process.env.VAPI_PHONE_NUMBER_ID || undefined;
+    const phoneNumberId = parsed.data.phoneNumberId || vapiConfig.phoneNumberId || undefined;
 
     cleanupDialerJobs();
 
@@ -930,10 +894,7 @@ Rules:
 
           const response = await fetch("https://api.vapi.ai/call/phone", {
             method: "POST",
-            headers: {
-              Authorization: `Bearer ${vapiKey}`,
-              "Content-Type": "application/json",
-            },
+            headers: vapiConfig.privateHeaders(),
             body: JSON.stringify(callPayload),
           });
 
@@ -973,8 +934,7 @@ Rules:
   });
 
   app.get("/api/voice-agents/calls", asyncHandler(async (req, res) => {
-    const vapiKey = getVapiKey();
-    if (!vapiKey) {
+    if (!vapiConfig.isConfigured) {
       return res.json([]);
     }
 
@@ -988,10 +948,7 @@ Rules:
     }
 
     const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${vapiKey}`,
-        "Content-Type": "application/json",
-      },
+      headers: vapiConfig.privateHeaders(),
     });
 
     if (!response.ok) {
@@ -1028,19 +985,18 @@ Rules:
     );
   }));
 
-  app.get("/api/voice-agents/public-key", (_req, res) => {
-    const publicKey = getVapiPublicKey();
-    if (!publicKey) {
-      return res.json({ publicKey: null });
-    }
-    res.json({ publicKey });
+  app.get("/api/vapi/get-config", (_req, res) => {
+    res.json({
+      isConfigured: vapiConfig.isConfigured,
+      hasPublicKey: !!vapiConfig.publicKey,
+      publicKey: vapiConfig.publicKey || null,
+      hasPhoneNumber: !!vapiConfig.phoneNumberId,
+    });
   });
 
   app.post("/api/vapi/start-web-call", asyncHandler(async (req, res) => {
-    const vapiPublicKey = getVapiPublicKey();
-
-    if (!vapiPublicKey) {
-      return res.status(503).json({ error: "Vapi public key is not configured. Add your apex_public_vapi in Secrets." });
+    if (!vapiConfig.publicKey) {
+      return res.status(503).json({ error: "Vapi public key is not configured. Add VAPI_PUBLIC_KEY in Secrets." });
     }
 
     const { assistantId } = req.body;
@@ -1051,7 +1007,7 @@ Rules:
     const response = await fetch("https://api.vapi.ai/call/web", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${vapiPublicKey}`,
+        Authorization: `Bearer ${vapiConfig.publicKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ assistantId }),
@@ -1062,9 +1018,6 @@ Rules:
       console.error("Vapi start-web-call error:", response.status, errText);
       let detail = "Failed to create web call";
       try { const p = JSON.parse(errText); detail = p.message || p.error || detail; } catch {}
-      if (detail.includes("doesn't allow assistantId")) {
-        detail += " — Update your Vapi Public Key settings to allow this assistant, or remove the assistant restriction.";
-      }
       return res.status(response.status).json({ error: detail });
     }
 
@@ -1202,15 +1155,11 @@ Rules:
     }
 
     let vapiPhoneId: string | null = null;
-    const vapiKey = getVapiKey();
-    if (vapiKey && assistantId) {
+    if (vapiConfig.isConfigured && assistantId) {
       try {
         const vapiRes = await fetch("https://api.vapi.ai/phone-number", {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${vapiKey}`,
-            "Content-Type": "application/json",
-          },
+          headers: vapiConfig.privateHeaders(),
           body: JSON.stringify({
             provider: "twilio",
             number: purchased.phoneNumber,
@@ -1271,11 +1220,10 @@ Rules:
     }
 
     let vapiNumbers: any[] = [];
-    const vapiKey = getVapiKey();
-    if (vapiKey) {
+    if (vapiConfig.isConfigured) {
       try {
         const vapiRes = await fetch("https://api.vapi.ai/phone-number", {
-          headers: { Authorization: `Bearer ${vapiKey}` },
+          headers: vapiConfig.privateHeaders(),
         });
         if (vapiRes.ok) {
           vapiNumbers = await vapiRes.json();
@@ -1376,7 +1324,7 @@ Rules:
 
   app.get("/api/phone-numbers/config", (_req, res) => {
     const hasTwilio = !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN);
-    const hasVapi = !!getVapiKey();
+    const hasVapi = vapiConfig.isConfigured;
     const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || process.env.REPLIT_DEV_DOMAIN || "";
     res.json({ hasTwilio, hasVapi, webhookDomain: domain ? `https://${domain}` : null });
   });

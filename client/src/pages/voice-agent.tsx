@@ -103,15 +103,21 @@ export default function VoiceAgent() {
   const { toast } = useToast();
 
   useEffect(() => {
+    fetch("/api/vapi/get-config")
+      .then((r) => r.json())
+      .then((data) => {
+        setHasVapiKey(data.isConfigured);
+      })
+      .catch(() => setHasVapiKey(false));
+
     fetch("/api/voice-agents")
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) {
           setExistingAgents(data);
-          setHasVapiKey(true);
         }
       })
-      .catch(() => setHasVapiKey(false));
+      .catch(() => {});
 
     fetch("/api/phone-numbers/config")
       .then((r) => r.json())
@@ -348,7 +354,7 @@ export default function VoiceAgent() {
 
   const startDemoCall = async (agentId: string, name?: string) => {
     if (!hasVapiKey) {
-      toast({ title: "Missing Key", description: "Add VAPI_API_KEY in Secrets to use browser demo calls.", variant: "destructive" });
+      toast({ title: "Missing Key", description: "Vapi keys are not configured in Secrets.", variant: "destructive" });
       return;
     }
 
@@ -356,6 +362,12 @@ export default function VoiceAgent() {
     setDemoAgentName(name || "Agent");
 
     try {
+      const configRes = await fetch("/api/vapi/get-config");
+      const config = await configRes.json();
+      if (!config.publicKey) {
+        throw new Error("Vapi public key is not configured. Add VAPI_PUBLIC_KEY in Secrets.");
+      }
+
       const webCallRes = await fetch("/api/vapi/start-web-call", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -372,7 +384,7 @@ export default function VoiceAgent() {
         throw new Error("No webCallUrl returned from server");
       }
 
-      const vapi = new Vapi("unused-backend-proxy");
+      const vapi = new Vapi(config.publicKey);
       vapiRef.current = vapi;
 
       const connectTimeout = setTimeout(() => {
