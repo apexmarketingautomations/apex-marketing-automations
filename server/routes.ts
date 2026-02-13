@@ -29,7 +29,13 @@ function getVapiKey(): string | null {
 }
 
 function getVapiPublicKey(): string | null {
-  return process.env.apex_public_vapi || null;
+  const candidates = [process.env.apex_public_vapi, process.env.VAPI_PUBLIC_KEY];
+  for (const key of candidates) {
+    if (key && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)) {
+      return key;
+    }
+  }
+  return null;
 }
 
 let cachedVapiOrgId: string | null = null;
