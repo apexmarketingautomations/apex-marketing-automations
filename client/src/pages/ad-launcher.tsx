@@ -134,12 +134,26 @@ function CampaignCard({ campaign }: { campaign: any }) {
           </h3>
 
           <div className="bg-white rounded-xl overflow-hidden shadow-lg" data-testid="card-ad-preview">
-            <div className="h-40 bg-gradient-to-br from-neutral-200 to-neutral-300 flex items-center justify-center">
-              <div className="text-center text-neutral-500">
-                <Image size={32} className="mx-auto mb-2 opacity-50" />
-                <p className="text-xs">AI Image: {campaign.image_prompt?.slice(0, 50)}...</p>
+            {campaign.generated_image_url ? (
+              <div className="h-56 relative overflow-hidden">
+                <img
+                  src={campaign.generated_image_url}
+                  alt="AI-generated ad creative"
+                  className="w-full h-full object-cover"
+                  data-testid="img-ad-creative"
+                />
+                <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-sm text-white text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <Sparkles size={10} /> AI Generated
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="h-40 bg-gradient-to-br from-neutral-200 to-neutral-300 flex items-center justify-center">
+                <div className="text-center text-neutral-500">
+                  <Image size={32} className="mx-auto mb-2 opacity-50" />
+                  <p className="text-xs">{campaign.image_prompt ? `AI Image: ${campaign.image_prompt.slice(0, 50)}...` : "No image generated"}</p>
+                </div>
+              </div>
+            )}
             <div className="p-4 space-y-2">
               <p className="text-sm text-neutral-800 font-medium">{adCopy?.primary_text}</p>
               <p className="text-base font-bold text-neutral-900">{adCopy?.headline}</p>
@@ -294,7 +308,7 @@ export default function AdLauncher() {
           {isGenerating && (
             <div className="flex items-center gap-2 text-orange-400 text-sm animate-pulse">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Building campaign strategy...
+              Building campaign strategy & generating ad creative...
             </div>
           )}
           {campaign && !isGenerating && history.length > 0 && (

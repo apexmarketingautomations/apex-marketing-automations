@@ -568,6 +568,22 @@ Rules:
       return res.status(500).json({ error: "AI returned incomplete campaign data" });
     }
 
+    if (campaign.image_prompt) {
+      try {
+        const imageResponse = await openai.images.generate({
+          model: "dall-e-3",
+          prompt: `Facebook ad creative image: ${campaign.image_prompt}. Professional marketing photo, high quality, no text overlay, clean composition, suitable for social media advertising.`,
+          n: 1,
+          size: "1024x1024",
+          quality: "standard",
+        });
+        campaign.generated_image_url = imageResponse.data?.[0]?.url || null;
+      } catch (imgErr: any) {
+        console.error("Ad image generation failed:", imgErr.message);
+        campaign.generated_image_url = null;
+      }
+    }
+
     res.json(campaign);
   }));
 
