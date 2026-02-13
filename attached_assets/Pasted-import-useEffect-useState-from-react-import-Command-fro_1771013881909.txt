@@ -1,0 +1,124 @@
+import { useEffect, useState } from "react";
+import { Command } from "cmdk"; // The magic library
+import { useNavigate } from "react-router-dom";
+import { 
+  LayoutTemplate, 
+  Bot, 
+  Megaphone, 
+  Zap, 
+  Search, 
+  User, 
+  CreditCard,
+  LogOut 
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+
+export function CommandMenu() {
+  const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+
+  // Toggle with "Cmd+K" or "/"
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setOpen((open) => !open);
+      }
+      if (e.key === "/" && !open) {
+        e.preventDefault();
+        setOpen(true);
+      }
+    };
+    document.addEventListener("keydown", down);
+    return () => document.removeEventListener("keydown", down);
+  }, [open]);
+
+  // Helper to run command and close
+  const run = (action: () => void) => {
+    action();
+    setOpen(false);
+  };
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="w-full max-w-lg overflow-hidden rounded-xl border border-white/10 bg-[#0a0a0a] shadow-2xl shadow-indigo-500/20"
+          >
+            <Command label="Global Command Menu" className="w-full">
+              
+              {/* SEARCH BAR */}
+              <div className="flex items-center border-b border-white/10 px-3">
+                <Search className="mr-2 h-5 w-5 text-slate-500" />
+                <Command.Input 
+                  placeholder="Type a command or search..."
+                  className="w-full bg-transparent py-4 text-sm text-white placeholder:text-slate-500 focus:outline-none"
+                />
+                <div className="flex gap-1">
+                    <span className="text-[10px] text-slate-500 border border-white/10 px-1.5 py-0.5 rounded">ESC</span>
+                </div>
+              </div>
+
+              {/* RESULTS LIST */}
+              <Command.List className="max-h-[300px] overflow-y-auto p-2 scroll-py-2">
+                <Command.Empty className="py-6 text-center text-sm text-slate-500">
+                  No results found.
+                </Command.Empty>
+
+                <Command.Group heading="Go To" className="text-[10px] uppercase text-slate-500 font-bold tracking-wider mb-2 px-2">
+                  <Item icon={LayoutTemplate} onSelect={() => run(() => navigate('/'))}>
+                    Site Architect
+                  </Item>
+                  <Item icon={Bot} onSelect={() => run(() => navigate('/bot'))}>
+                    Neural Trainer
+                  </Item>
+                  <Item icon={Megaphone} onSelect={() => run(() => navigate('/growth'))}>
+                    Growth Engine
+                  </Item>
+                </Command.Group>
+
+                <Command.Group heading="Actions" className="text-[10px] uppercase text-slate-500 font-bold tracking-wider mb-2 px-2 mt-2">
+                  <Item icon={Zap} onSelect={() => run(() => console.log('New Project'))}>
+                    Create New Project...
+                  </Item>
+                  <Item icon={User} onSelect={() => run(() => console.log('Profile'))}>
+                    Manage Team...
+                  </Item>
+                  <Item icon={CreditCard} onSelect={() => run(() => console.log('Billing'))}>
+                    Subscription...
+                  </Item>
+                </Command.Group>
+                
+                <div className="my-2 h-px bg-white/10" />
+
+                <Item icon={LogOut} onSelect={() => run(() => console.log('Logout'))} isDanger>
+                  Log Out
+                </Item>
+
+              </Command.List>
+            </Command>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+// Styled Item Component
+function Item({ children, icon: Icon, onSelect, isDanger }: any) {
+  return (
+    <Command.Item
+      onSelect={onSelect}
+      className={`flex cursor-pointer items-center gap-2 rounded-lg px-2 py-3 text-sm transition-colors aria-selected:bg-white/10 ${
+        isDanger ? 'text-red-400 aria-selected:text-red-300' : 'text-slate-300 aria-selected:text-white'
+      }`}
+    >
+      <Icon size={16} className={isDanger ? 'text-red-500' : 'text-slate-500'} />
+      {children}
+    </Command.Item>
+  );
+}
