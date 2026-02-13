@@ -63,32 +63,44 @@ app.use((req, res, next) => {
 });
 
 function validateEnvVars() {
-  const required: { key: string; label: string; critical: boolean }[] = [
-    { key: "VAPI_API_KEY", label: "Vapi Private API Key (for server-side calls)", critical: true },
-    { key: "VAPI_PUBLIC_KEY", label: "Vapi Public Key (for browser demo calls)", critical: false },
-    { key: "TWILIO_ACCOUNT_SID", label: "Twilio Account SID", critical: false },
-    { key: "TWILIO_AUTH_TOKEN", label: "Twilio Auth Token", critical: false },
+  console.log("=".repeat(60));
+  console.log("[STARTUP] Apex Marketing Animation — Environment Check");
+  console.log("=".repeat(60));
+
+  const checks: { key: string; altKey?: string; label: string; critical: boolean }[] = [
+    { key: "VAPI_PRIVATE_KEY", altKey: "apex_private_vapi", label: "Vapi Private Key (server-side API calls)", critical: true },
+    { key: "VAPI_PUBLIC_KEY", altKey: "apex_public_vapi", label: "Vapi Public Key (browser demo calls)", critical: false },
+    { key: "VAPI_ORG_ID", label: "Vapi Organization ID", critical: false },
+    { key: "VAPI_PHONE_NUMBER_ID", label: "Vapi Default Phone Number ID (auto-inject for outbound)", critical: false },
+    { key: "TWILIO_ACCOUNT_SID", label: "Twilio Account SID (phone provisioning)", critical: false },
+    { key: "TWILIO_AUTH_TOKEN", label: "Twilio Auth Token (phone provisioning)", critical: false },
+    { key: "AI_INTEGRATIONS_OPENAI_API_KEY", label: "OpenAI API Key (AI features)", critical: false },
   ];
 
-  let hasError = false;
-  for (const { key, label, critical } of required) {
-    if (!process.env[key]) {
+  let missingCritical = false;
+  for (const { key, altKey, label, critical } of checks) {
+    const hasKey = !!process.env[key] || (altKey ? !!process.env[altKey] : false);
+    if (!hasKey) {
       const level = critical ? "ERROR" : "WARN";
-      console.error(`[${level}] Missing environment variable: ${key} — ${label}`);
-      if (critical) hasError = true;
+      console.log(`  [${level}] ${key} — ${label}`);
+      if (critical) missingCritical = true;
+    } else {
+      console.log(`  [OK]    ${key} — ${label}`);
     }
   }
 
-  if (hasError) {
-    console.error("[STARTUP] Some critical environment variables are missing. Voice agent features will be unavailable.");
+  if (missingCritical) {
+    console.log("[STARTUP] Critical secrets missing. Voice agent features will be unavailable.");
   }
 
   if (process.env.TWILIO_ACCOUNT_SID && !process.env.TWILIO_AUTH_TOKEN) {
-    console.error("[WARN] TWILIO_ACCOUNT_SID is set but TWILIO_AUTH_TOKEN is missing — Twilio will not work.");
+    console.log("[WARN] TWILIO_ACCOUNT_SID is set but TWILIO_AUTH_TOKEN is missing — Twilio will not work.");
   }
   if (!process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
-    console.error("[WARN] TWILIO_AUTH_TOKEN is set but TWILIO_ACCOUNT_SID is missing — Twilio will not work.");
+    console.log("[WARN] TWILIO_AUTH_TOKEN is set but TWILIO_ACCOUNT_SID is missing — Twilio will not work.");
   }
+
+  console.log("=".repeat(60));
 }
 
 (async () => {

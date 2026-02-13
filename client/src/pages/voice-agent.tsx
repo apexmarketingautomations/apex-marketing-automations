@@ -1027,7 +1027,7 @@ export default function VoiceAgent() {
 
               {!hasVapiKey && (
                 <p className="text-xs text-amber-400 mt-2">
-                  Add your VAPI_API_KEY in Secrets to enable browser demo calls (handled securely on the server).
+                  Voice agent keys are not configured. Contact your admin to set up VAPI_PRIVATE_KEY in Secrets.
                 </p>
               )}
             </div>
@@ -1277,7 +1277,7 @@ export default function VoiceAgent() {
             <AlertCircle className="mx-auto text-amber-400 mb-3" size={24} />
             <p className="text-sm text-amber-300 font-medium">Vapi API Key Required</p>
             <p className="text-xs text-neutral-400 mt-1">
-              Add your VAPI_API_KEY in Secrets to deploy agents. You can still generate personas without it.
+              Voice agent keys are not configured. Add VAPI_PRIVATE_KEY in Secrets to deploy and manage agents.
             </p>
           </div>
         )}

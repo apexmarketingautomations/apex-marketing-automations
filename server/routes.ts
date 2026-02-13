@@ -699,6 +699,9 @@ Rules:
         const parsed = JSON.parse(errData);
         detail = parsed.message || parsed.error || detail;
       } catch {}
+      if (response.status === 403) {
+        detail = "Vapi authentication failed. Check your VAPI_PRIVATE_KEY in Secrets.";
+      }
       return res.status(response.status).json({ error: detail });
     }
 
@@ -807,6 +810,12 @@ Rules:
         const p = JSON.parse(errData);
         detail = p.message || p.error || detail;
       } catch {}
+      if (response.status === 403) {
+        detail = "Vapi authentication failed. Check your VAPI_PRIVATE_KEY in Secrets.";
+      }
+      if (!payload.phoneNumberId) {
+        detail += " (No phone number configured — add VAPI_PHONE_NUMBER_ID in Secrets or purchase a number)";
+      }
       return res.status(response.status).json({ error: detail });
     }
 
@@ -995,8 +1004,8 @@ Rules:
   });
 
   app.post("/api/vapi/start-web-call", asyncHandler(async (req, res) => {
-    if (!vapiConfig.publicKey) {
-      return res.status(503).json({ error: "Vapi public key is not configured. Add VAPI_PUBLIC_KEY in Secrets." });
+    if (!vapiConfig.isConfigured) {
+      return res.status(503).json({ error: "Vapi is not configured. Add VAPI_PRIVATE_KEY in Secrets." });
     }
 
     const { assistantId } = req.body;
@@ -1006,10 +1015,7 @@ Rules:
 
     const response = await fetch("https://api.vapi.ai/call/web", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${vapiConfig.publicKey}`,
-        "Content-Type": "application/json",
-      },
+      headers: vapiConfig.privateHeaders(),
       body: JSON.stringify({ assistantId }),
     });
 
@@ -1018,6 +1024,9 @@ Rules:
       console.error("Vapi start-web-call error:", response.status, errText);
       let detail = "Failed to create web call";
       try { const p = JSON.parse(errText); detail = p.message || p.error || detail; } catch {}
+      if (response.status === 403) {
+        detail = "Vapi authentication failed. Check your VAPI_PRIVATE_KEY in Secrets.";
+      }
       return res.status(response.status).json({ error: detail });
     }
 
