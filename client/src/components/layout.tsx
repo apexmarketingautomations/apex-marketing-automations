@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
-import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft } from "lucide-react";
+import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search } from "lucide-react";
 import { motion } from "framer-motion";
+import { CommandMenu } from "@/components/command-menu";
 
 const navItems = [
   { href: "/", icon: MessageSquare, label: "Unified Inbox" },
@@ -50,6 +51,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
 
+        <div className="px-2 md:px-4 mb-2">
+          <button
+            onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition-colors text-slate-400 hover:text-white text-sm"
+            data-testid="button-command-menu"
+          >
+            <Search size={14} />
+            <span className="hidden md:inline flex-1 text-left">Search...</span>
+            <span className="hidden md:flex items-center gap-0.5 text-[10px] text-slate-600 border border-white/10 px-1.5 py-0.5 rounded">
+              <span>⌘</span>K
+            </span>
+          </button>
+        </div>
+
         <div className="flex-1 space-y-1 pr-0 md:pr-4 overflow-y-auto">
           <div className="px-4 md:px-6 text-xs font-bold text-slate-600 mb-2 mt-4 tracking-wider hidden md:block">MODULES</div>
           {navItems.map((item) => (
@@ -87,6 +102,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
         )}
         {children}
       </main>
+
+      <CommandMenu />
     </div>
   );
 }

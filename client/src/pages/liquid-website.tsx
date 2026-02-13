@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearch } from "wouter";
 import {
   ShieldCheck,
   Clock,
@@ -134,6 +135,59 @@ const COMPONENT_MAP: Record<string, React.ComponentType<any>> = {
   BOOKING: BookingSection,
 };
 
+const LIQUID_RULES: Record<string, {
+  theme: { primary: string; bg: string; text: string; font: string };
+  headline: string;
+  subtitle: string;
+  cta: string;
+  features?: { icon: string; title: string; desc: string }[];
+}> = {
+  luxury: {
+    theme: { primary: "#D4AF37", bg: "#000000", text: "#ffffff", font: "'Playfair Display', serif" },
+    headline: "Experience Ultimate Perfection.",
+    subtitle: "Where luxury meets results. Premium treatments tailored exclusively for you.",
+    cta: "Reserve Your Session",
+    features: [
+      { icon: "Star", title: "VIP Treatment", desc: "Private suites with personalized attention from our senior specialists." },
+      { icon: "ShieldCheck", title: "Premium Products", desc: "Medical-grade formulations sourced from the world's finest labs." },
+      { icon: "Trophy", title: "Award-Winning Team", desc: "Our team has been recognized nationally for excellence in aesthetics." },
+    ],
+  },
+  student: {
+    theme: { primary: "#00FF99", bg: "#111111", text: "#ffffff", font: "'Inter', sans-serif" },
+    headline: "Look Great. Save Money. 20% Off.",
+    subtitle: "Student specials that fit your budget without compromising on quality.",
+    cta: "Claim Student Discount",
+    features: [
+      { icon: "Zap", title: "Quick Sessions", desc: "In and out in 30 minutes — perfect between classes." },
+      { icon: "Heart", title: "Affordable Plans", desc: "Monthly packages starting at just $49 with valid student ID." },
+      { icon: "Sparkles", title: "Trending Looks", desc: "Stay on top of the latest aesthetic trends your friends are loving." },
+    ],
+  },
+  fitness: {
+    theme: { primary: "#FF4444", bg: "#0a0a0a", text: "#ffffff", font: "'Oswald', sans-serif" },
+    headline: "Push Beyond Your Limits.",
+    subtitle: "Elite training programs designed to transform your body and mindset.",
+    cta: "Start Your Transformation",
+    features: [
+      { icon: "Dumbbell", title: "Personal Training", desc: "1-on-1 coaching with certified strength and conditioning specialists." },
+      { icon: "Trophy", title: "Proven Results", desc: "Our members see measurable progress within the first 30 days." },
+      { icon: "Zap", title: "High-Intensity Programs", desc: "HIIT, CrossFit, and functional training to maximize every session." },
+    ],
+  },
+  wellness: {
+    theme: { primary: "#7C3AED", bg: "#050510", text: "#ffffff", font: "'Poppins', sans-serif" },
+    headline: "Restore. Rebalance. Renew.",
+    subtitle: "Holistic wellness experiences that nurture your mind, body, and spirit.",
+    cta: "Book Your Wellness Journey",
+    features: [
+      { icon: "Heart", title: "Mindful Healing", desc: "Therapeutic treatments rooted in ancient traditions and modern science." },
+      { icon: "Sparkles", title: "Energy Restoration", desc: "IV therapy, cryotherapy, and infrared sessions for full-body renewal." },
+      { icon: "ShieldCheck", title: "Expert Practitioners", desc: "Licensed therapists with decades of holistic healing experience." },
+    ],
+  },
+};
+
 function getVisitorContext() {
   const hour = new Date().getHours();
   let timeOfDay = "morning";
@@ -161,14 +215,53 @@ function getVisitorContext() {
   };
 }
 
+function applyVibeOverrides(data: any, vibe: string | null): any {
+  if (!vibe || !LIQUID_RULES[vibe]) return data;
+
+  const rule = LIQUID_RULES[vibe];
+  const result = JSON.parse(JSON.stringify(data));
+
+  result.theme = { ...result.theme, ...rule.theme };
+
+  if (result.sections && result.sections.length > 0) {
+    const heroIdx = result.sections.findIndex((s: any) => s.type === "HERO");
+    if (heroIdx !== -1) {
+      result.sections[heroIdx].props = {
+        ...result.sections[heroIdx].props,
+        title: rule.headline,
+        subtitle: rule.subtitle,
+        cta: rule.cta,
+      };
+    }
+
+    if (rule.features) {
+      const featIdx = result.sections.findIndex((s: any) => s.type === "FEATURES");
+      if (featIdx !== -1) {
+        result.sections[featIdx].props = {
+          ...result.sections[featIdx].props,
+          features: rule.features,
+        };
+      }
+    }
+  }
+
+  return result;
+}
+
 export default function LiquidWebsite() {
   const [siteData, setSiteData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [context, setContext] = useState<any>(null);
 
+  const searchString = useSearch();
+  const vibe = new URLSearchParams(searchString).get("vibe");
+
   useEffect(() => {
     const ctx = getVisitorContext();
+    if (vibe) {
+      (ctx as any).vibe = vibe;
+    }
     setContext(ctx);
 
     fetch("/api/generate-liquid-site", {
@@ -181,14 +274,15 @@ export default function LiquidWebsite() {
         return res.json();
       })
       .then((data) => {
-        setSiteData(data);
+        const finalData = applyVibeOverrides(data, vibe);
+        setSiteData(finalData);
         setLoading(false);
       })
       .catch((err) => {
         setError(err.message);
         setLoading(false);
       });
-  }, []);
+  }, [vibe]);
 
   if (loading) {
     return (
