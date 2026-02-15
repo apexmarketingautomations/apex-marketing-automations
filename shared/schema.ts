@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, json, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, json, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -6,6 +6,7 @@ export const subAccounts = pgTable("sub_accounts", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   twilioNumber: text("twilio_number").notNull(),
+  googleReviewLink: text("google_review_link"),
 });
 
 export const insertSubAccountSchema = createInsertSchema(subAccounts).omit({ id: true });
@@ -106,3 +107,20 @@ export const siteCollaborators = pgTable("site_collaborators", {
 export const insertSiteCollaboratorSchema = createInsertSchema(siteCollaborators).omit({ id: true, joinedAt: true });
 export type InsertSiteCollaborator = z.infer<typeof insertSiteCollaboratorSchema>;
 export type SiteCollaborator = typeof siteCollaborators.$inferSelect;
+
+export const reviews = pgTable("reviews", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  rating: integer("rating").notNull(),
+  comment: text("comment").notNull(),
+  customerName: text("customer_name").notNull(),
+  customerEmail: text("customer_email"),
+  isPublic: boolean("is_public").default(false),
+  aiResponse: text("ai_response"),
+  googleReviewLink: text("google_review_link"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertReviewSchema = createInsertSchema(reviews).omit({ id: true, createdAt: true });
+export type InsertReview = z.infer<typeof insertReviewSchema>;
+export type Review = typeof reviews.$inferSelect;

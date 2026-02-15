@@ -21,6 +21,8 @@ const AdLauncher = lazy(() => import("@/pages/ad-launcher"));
 const VoiceAgent = lazy(() => import("@/pages/voice-agent"));
 const GrowthCenter = lazy(() => import("@/pages/growth-center"));
 const GodMode = lazy(() => import("@/pages/god-mode"));
+const Reputation = lazy(() => import("@/pages/reputation"));
+const ReviewBuffer = lazy(() => import("@/pages/review-buffer"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
 function PageLoader() {
@@ -33,25 +35,33 @@ function PageLoader() {
 
 function Router() {
   return (
-    <Layout>
-      <Suspense fallback={<PageLoader />}>
-        <Switch>
-          <Route path="/" component={SmsDashboard} />
-          <Route path="/workflows" component={WorkflowBuilder} />
-          <Route path="/bot-trainer" component={BotTrainer} />
-          <Route path="/onboarding" component={Onboarding} />
-          <Route path="/site-builder" component={SiteBuilder} />
-          <Route path="/liquid" component={LiquidWebsite} />
-          <Route path="/ad-launcher" component={AdLauncher} />
-          <Route path="/voice-agent" component={VoiceAgent} />
-          <Route path="/growth" component={GrowthCenter} />
-          <Route path="/god-mode" component={GodMode} />
-          <Route path="/gym" component={GymLanding} />
-          <Route path="/luxe" component={LuxeLanding} />
-          <Route component={NotFound} />
-        </Switch>
-      </Suspense>
-    </Layout>
+    <Suspense fallback={<PageLoader />}>
+      <Switch>
+        <Route path="/review/:subAccountId" component={ReviewBuffer} />
+        <Route>
+          <Layout>
+            <Suspense fallback={<PageLoader />}>
+              <Switch>
+                <Route path="/" component={SmsDashboard} />
+                <Route path="/workflows" component={WorkflowBuilder} />
+                <Route path="/bot-trainer" component={BotTrainer} />
+                <Route path="/onboarding" component={Onboarding} />
+                <Route path="/site-builder" component={SiteBuilder} />
+                <Route path="/liquid" component={LiquidWebsite} />
+                <Route path="/ad-launcher" component={AdLauncher} />
+                <Route path="/voice-agent" component={VoiceAgent} />
+                <Route path="/growth" component={GrowthCenter} />
+                <Route path="/reputation" component={Reputation} />
+                <Route path="/god-mode" component={GodMode} />
+                <Route path="/gym" component={GymLanding} />
+                <Route path="/luxe" component={LuxeLanding} />
+                <Route component={NotFound} />
+              </Switch>
+            </Suspense>
+          </Layout>
+        </Route>
+      </Switch>
+    </Suspense>
   );
 }
 

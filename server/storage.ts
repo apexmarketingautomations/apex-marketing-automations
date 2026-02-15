@@ -1,7 +1,7 @@
 import { eq, desc, and } from "drizzle-orm";
 import { db } from "./db";
 import {
-  subAccounts, messages, workflows, trainingJobs, blueprints, savedSites, siteVersions, siteCollaborators,
+  subAccounts, messages, workflows, trainingJobs, blueprints, savedSites, siteVersions, siteCollaborators, reviews,
   type SubAccount, type InsertSubAccount,
   type Message, type InsertMessage,
   type Workflow, type InsertWorkflow,
@@ -10,6 +10,7 @@ import {
   type SavedSite, type InsertSavedSite,
   type SiteVersion, type InsertSiteVersion,
   type SiteCollaborator, type InsertSiteCollaborator,
+  type Review, type InsertReview,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -50,6 +51,11 @@ export interface IStorage {
   createSiteCollaborator(data: InsertSiteCollaborator): Promise<SiteCollaborator>;
   deleteSiteCollaborator(id: number): Promise<boolean>;
   findCollaboratorByInviteCode(code: string): Promise<SiteCollaborator | undefined>;
+
+  getReviews(subAccountId: number): Promise<Review[]>;
+  getReview(id: number): Promise<Review | undefined>;
+  createReview(data: InsertReview): Promise<Review>;
+  updateReview(id: number, data: Partial<InsertReview>): Promise<Review | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -194,6 +200,25 @@ export class DatabaseStorage implements IStorage {
 
   async findCollaboratorByInviteCode(code: string) {
     const [row] = await db.select().from(siteCollaborators).where(eq(siteCollaborators.inviteCode, code));
+    return row;
+  }
+
+  async getReviews(subAccountId: number) {
+    return db.select().from(reviews).where(eq(reviews.subAccountId, subAccountId)).orderBy(desc(reviews.createdAt));
+  }
+
+  async getReview(id: number) {
+    const [row] = await db.select().from(reviews).where(eq(reviews.id, id));
+    return row;
+  }
+
+  async createReview(data: InsertReview) {
+    const [row] = await db.insert(reviews).values(data).returning();
+    return row;
+  }
+
+  async updateReview(id: number, data: Partial<InsertReview>) {
+    const [row] = await db.update(reviews).set(data).where(eq(reviews.id, id)).returning();
     return row;
   }
 }

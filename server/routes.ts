@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema } from "@shared/schema";
+import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, reviews } from "@shared/schema";
 import { z } from "zod";
 import OpenAI from "openai";
 import Twilio from "twilio";
@@ -1763,6 +1763,50 @@ Rules:
 
     results.status = "complete";
     res.json(results);
+  }));
+
+  // ---- Reviews / Reputation Management ----
+  app.get("/api/reviews/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const reviewsList = await storage.getReviews(subAccountId);
+    res.json(reviewsList);
+  }));
+
+  app.post("/api/reviews", asyncHandler(async (req, res) => {
+    const parsed = insertReviewSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const review = await storage.createReview(parsed.data);
+    res.status(201).json(review);
+  }));
+
+  app.patch("/api/reviews/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const existing = await storage.getReview(id);
+    if (!existing) return res.status(404).json({ error: "Review not found" });
+    const updated = await storage.updateReview(id, req.body);
+    if (!updated) return res.status(404).json({ error: "Review not found" });
+    res.json(updated);
+  }));
+
+  app.post("/api/alert-owner", asyncHandler(async (req, res) => {
+    const { subAccountId, customerName, rating, comment } = req.body;
+    console.log(`[ALERT] Negative review from ${customerName} (rating: ${rating}) for account ${subAccountId}: ${comment}`);
+    res.json({ success: true });
+  }));
+
+  app.get("/api/review-config/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const account = await storage.getSubAccount(subAccountId);
+    if (!account) return res.status(404).json({ error: "Account not found" });
+    res.json({ googleReviewLink: account.googleReviewLink || "", name: account.name });
+  }));
+
+  app.patch("/api/review-config/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const { googleReviewLink } = req.body;
+    const updated = await storage.updateSubAccount(subAccountId, { googleReviewLink });
+    if (!updated) return res.status(404).json({ error: "Account not found" });
+    res.json({ googleReviewLink: updated.googleReviewLink });
   }));
 
   return httpServer;
