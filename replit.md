@@ -97,6 +97,11 @@ The `shared/` directory contains code used by both frontend and backend:
 - `GET /api/usage/:subAccountId` - Usage logs and summary for billing dashboard
 - `POST /api/webhooks/vapi` - Vapi webhook: logs VOICE_MINUTE usage on call.ended
 - `PATCH /api/accounts/:id` - Update sub-account fields (ownerPhone, etc.)
+- `POST /api/domains/check` - Check domain availability with TLD pricing
+- `POST /api/domains/search` - Search all TLD options for a domain query
+- `POST /api/domains/purchase` - Purchase domain (simulated registrar) with usage logging
+- `GET /api/domains/:subAccountId` - List domains for a sub-account
+- `PATCH /api/domains/:id` - Configure domain (link site, DNS/SSL)
 
 ## External Dependencies
 
