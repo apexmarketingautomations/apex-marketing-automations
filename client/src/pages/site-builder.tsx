@@ -44,6 +44,8 @@ import {
   Crown,
   Flame,
   Music,
+  Code2,
+  Bot,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -281,6 +283,84 @@ function PaywallSection({ title, tiers, theme }: any) {
   );
 }
 
+function CodeSection({ title, code, theme }: any) {
+  const [iframeHeight] = useState(400);
+  const srcDoc = `<!DOCTYPE html><html><head><style>body{margin:0;font-family:sans-serif;}</style></head><body>${code || ""}</body></html>`;
+  return (
+    <div
+      className="py-16 px-6 md:px-12"
+      style={{ backgroundColor: theme.bg, color: theme.text }}
+    >
+      <div className="max-w-4xl mx-auto">
+        <h2
+          className="text-3xl font-bold text-center mb-8"
+          style={{ fontFamily: theme.font }}
+        >
+          {title}
+        </h2>
+        <iframe
+          srcDoc={srcDoc}
+          sandbox="allow-scripts"
+          style={{
+            border: "none",
+            width: "100%",
+            minHeight: `${iframeHeight}px`,
+            overflow: "auto",
+            borderRadius: "0.75rem",
+            backgroundColor: "white",
+          }}
+          data-testid="code-section-preview"
+        />
+      </div>
+    </div>
+  );
+}
+
+function BotEmbedSection({ title, code, theme }: any) {
+  const srcDoc = `<!DOCTYPE html><html><head><style>body{margin:0;font-family:sans-serif;background:transparent;}</style></head><body>${code || ""}</body></html>`;
+  return (
+    <div
+      className="py-16 px-6 md:px-12"
+      style={{ backgroundColor: theme.bg, color: theme.text }}
+    >
+      <div className="max-w-4xl mx-auto">
+        <h2
+          className="text-3xl font-bold text-center mb-4"
+          style={{ fontFamily: theme.font }}
+        >
+          {title}
+        </h2>
+        {code ? (
+          <>
+            <div className="flex items-center justify-center gap-2 mb-6">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+              </span>
+              <span className="text-xs font-medium opacity-70">Bot Widget Active</span>
+            </div>
+            <iframe
+              srcDoc={srcDoc}
+              sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+              style={{
+                border: "none",
+                width: "100%",
+                minHeight: "100px",
+                backgroundColor: "transparent",
+              }}
+              data-testid="bot-embed-section-preview"
+            />
+          </>
+        ) : (
+          <p className="text-center text-sm opacity-50" data-testid="bot-embed-section-preview">
+            No bot code added yet. Click Edit to paste your chatbot embed code.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface SavedSite {
   id: number;
   name: string;
@@ -336,7 +416,37 @@ function SectionEditor({ section, index, onUpdate, onClose }: { section: any; in
           <X size={16} />
         </button>
       </div>
-      {Object.entries(editProps).map(([key, value]) => {
+      {(section.type === "CODE" || section.type === "BOT_EMBED") && (
+        <div>
+          <label className="text-xs text-slate-400 block mb-1">Title</label>
+          <Input
+            value={editProps.title || ""}
+            onChange={(e) => handleChange("title", e.target.value)}
+            className="bg-white/5 border-white/10 text-sm mb-3"
+            data-testid={`input-edit-title-${index}`}
+          />
+          <label className="text-xs text-slate-400 block mb-1 flex items-center gap-1">
+            {section.type === "BOT_EMBED" ? (
+              <><Bot size={12} /> Bot Embed Code</>
+            ) : (
+              <><Code2 size={12} /> HTML / CSS / JavaScript</>
+            )}
+          </label>
+          <textarea
+            value={editProps.code || ""}
+            onChange={(e) => handleChange("code", e.target.value)}
+            className="w-full h-64 bg-black/50 border border-white/10 rounded-lg p-3 text-xs font-mono text-green-400 resize-y focus:outline-none focus:border-indigo-500"
+            placeholder={section.type === "BOT_EMBED" ? "Paste your chatbot embed code here (e.g. Tidio, Intercom, Drift, or custom bot script)..." : "Paste your HTML, CSS, or JavaScript here..."}
+            spellCheck={false}
+            data-testid={`input-edit-code-${index}`}
+          />
+          <div className="flex gap-2 justify-end mt-3">
+            <Button size="sm" variant="outline" className="border-white/10 text-xs" onClick={onClose}>Cancel</Button>
+            <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500 text-xs" onClick={handleSave} data-testid={`button-save-section-${index}`}>Apply</Button>
+          </div>
+        </div>
+      )}
+      {section.type !== "CODE" && section.type !== "BOT_EMBED" && Object.entries(editProps).map(([key, value]) => {
         if (key === "features" || key === "formId" || typeof value === "object") return null;
         return (
           <div key={key}>
@@ -350,10 +460,12 @@ function SectionEditor({ section, index, onUpdate, onClose }: { section: any; in
           </div>
         );
       })}
-      <div className="flex gap-2 justify-end">
-        <Button size="sm" variant="outline" className="border-white/10 text-xs" onClick={onClose}>Cancel</Button>
-        <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500 text-xs" onClick={handleSave} data-testid={`button-save-section-${index}`}>Apply</Button>
-      </div>
+      {section.type !== "CODE" && section.type !== "BOT_EMBED" && (
+        <div className="flex gap-2 justify-end">
+          <Button size="sm" variant="outline" className="border-white/10 text-xs" onClick={onClose}>Cancel</Button>
+          <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500 text-xs" onClick={handleSave} data-testid={`button-save-section-${index}`}>Apply</Button>
+        </div>
+      )}
     </motion.div>
   );
 }
@@ -593,6 +705,8 @@ export default function SiteBuilder() {
       FEATURES: { title: "Our Features", features: [{ icon: "Star", title: "Feature 1", desc: "Description" }, { icon: "Zap", title: "Feature 2", desc: "Description" }, { icon: "Heart", title: "Feature 3", desc: "Description" }] },
       BOOKING: { title: "Book Now", formId: "new-form" },
       PAYWALL: { title: "Choose Your Plan", tiers: [{ name: "Basic", price: 9, perks: ["Access to basic content", "Community chat"], cta: "Subscribe" }, { name: "Premium", price: 25, perks: ["All basic perks", "Exclusive content", "Direct messages"], cta: "Go Premium" }, { name: "VIP", price: 50, perks: ["Everything included", "Custom requests", "Priority access"], cta: "Join VIP" }] },
+      CODE: { title: "Custom Code", code: "<h1 style=\"text-align:center;padding:40px;color:#6366f1;\">Hello World</h1>\n<p style=\"text-align:center;\">Edit this code to add your own HTML, CSS & JavaScript</p>" },
+      BOT_EMBED: { title: "Chat Bot", code: "" },
     };
     setSiteData((prev: any) => ({
       ...prev,
@@ -911,6 +1025,8 @@ export default function SiteBuilder() {
     FEATURES: FeatureSection,
     BOOKING: BookingSection,
     PAYWALL: PaywallSection,
+    CODE: CodeSection,
+    BOT_EMBED: BotEmbedSection,
   };
 
   return (
@@ -1257,7 +1373,14 @@ export default function SiteBuilder() {
                       animate={{ opacity: 1, y: 0 }}
                       className="flex gap-2"
                     >
-                      {["HERO", "FEATURES", "BOOKING", "PAYWALL"].map((type) => (
+                      {[
+                        { type: "HERO", label: "HERO" },
+                        { type: "FEATURES", label: "FEATURES" },
+                        { type: "BOOKING", label: "BOOKING" },
+                        { type: "PAYWALL", label: "PAYWALL" },
+                        { type: "CODE", label: "CODE" },
+                        { type: "BOT_EMBED", label: "BOT" },
+                      ].map(({ type, label }) => (
                         <Button
                           key={type}
                           size="sm"
@@ -1265,7 +1388,7 @@ export default function SiteBuilder() {
                           onClick={() => handleAddSection(type)}
                           data-testid={`button-add-${type.toLowerCase()}`}
                         >
-                          <Plus size={14} className="mr-1" /> {type}
+                          <Plus size={14} className="mr-1" /> {label}
                         </Button>
                       ))}
                       <Button
