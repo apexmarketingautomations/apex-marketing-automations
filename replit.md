@@ -88,6 +88,11 @@ The `shared/` directory contains code used by both frontend and backend:
 - `POST /api/vapi/start-web-call` - Backend proxy: creates browser web call via Vapi private key, returns webCallUrl
 - `GET /api/voice-agents/calls?assistantId=&limit=` - Fetch call logs with recordings and transcripts from Vapi
 - `POST /api/god-mode` - One-click empire builder: orchestrates account creation, Twilio phone provisioning, Vapi voice agent, bot training, AI site generation, and missed-call workflow
+- `GET /api/reviews/:subAccountId` - List reviews for a sub-account
+- `POST /api/reviews` - Create a review (public submission)
+- `PATCH /api/reviews/:id` - Update review (toggle public, add AI response)
+- `POST /api/alert-owner` - Negative review alert notification
+- `GET/PATCH /api/review-config/:subAccountId` - Get/update Google Review link config
 
 ## External Dependencies
 
