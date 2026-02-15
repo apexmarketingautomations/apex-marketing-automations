@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, json, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, json, timestamp, boolean, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -7,6 +7,7 @@ export const subAccounts = pgTable("sub_accounts", {
   name: text("name").notNull(),
   twilioNumber: text("twilio_number").notNull(),
   googleReviewLink: text("google_review_link"),
+  ownerPhone: text("owner_phone"),
 });
 
 export const insertSubAccountSchema = createInsertSchema(subAccounts).omit({ id: true });
@@ -124,3 +125,17 @@ export const reviews = pgTable("reviews", {
 export const insertReviewSchema = createInsertSchema(reviews).omit({ id: true, createdAt: true });
 export type InsertReview = z.infer<typeof insertReviewSchema>;
 export type Review = typeof reviews.$inferSelect;
+
+export const usageLogs = pgTable("usage_logs", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  type: text("type").notNull(),
+  amount: real("amount").notNull(),
+  cost: real("cost").notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertUsageLogSchema = createInsertSchema(usageLogs).omit({ id: true, createdAt: true });
+export type InsertUsageLog = z.infer<typeof insertUsageLogSchema>;
+export type UsageLog = typeof usageLogs.$inferSelect;

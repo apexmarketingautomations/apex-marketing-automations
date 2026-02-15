@@ -1,7 +1,7 @@
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
-  subAccounts, messages, workflows, trainingJobs, blueprints, savedSites, siteVersions, siteCollaborators, reviews,
+  subAccounts, messages, workflows, trainingJobs, blueprints, savedSites, siteVersions, siteCollaborators, reviews, usageLogs,
   type SubAccount, type InsertSubAccount,
   type Message, type InsertMessage,
   type Workflow, type InsertWorkflow,
@@ -11,6 +11,7 @@ import {
   type SiteVersion, type InsertSiteVersion,
   type SiteCollaborator, type InsertSiteCollaborator,
   type Review, type InsertReview,
+  type UsageLog, type InsertUsageLog,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -56,6 +57,10 @@ export interface IStorage {
   getReview(id: number): Promise<Review | undefined>;
   createReview(data: InsertReview): Promise<Review>;
   updateReview(id: number, data: Partial<InsertReview>): Promise<Review | undefined>;
+
+  getUsageLogs(subAccountId: number): Promise<UsageLog[]>;
+  createUsageLog(data: InsertUsageLog): Promise<UsageLog>;
+  getUsageLogsSummary(subAccountId: number): Promise<{type: string, totalAmount: number, totalCost: number, count: number}[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -220,6 +225,25 @@ export class DatabaseStorage implements IStorage {
   async updateReview(id: number, data: Partial<InsertReview>) {
     const [row] = await db.update(reviews).set(data).where(eq(reviews.id, id)).returning();
     return row;
+  }
+
+  async getUsageLogs(subAccountId: number) {
+    return db.select().from(usageLogs).where(eq(usageLogs.subAccountId, subAccountId)).orderBy(desc(usageLogs.createdAt));
+  }
+
+  async createUsageLog(data: InsertUsageLog) {
+    const [row] = await db.insert(usageLogs).values(data).returning();
+    return row;
+  }
+
+  async getUsageLogsSummary(subAccountId: number) {
+    const result = await db.select({
+      type: usageLogs.type,
+      totalAmount: sql<number>`sum(${usageLogs.amount})`.as('total_amount'),
+      totalCost: sql<number>`sum(${usageLogs.cost})`.as('total_cost'),
+      count: sql<number>`count(*)::int`.as('count'),
+    }).from(usageLogs).where(eq(usageLogs.subAccountId, subAccountId)).groupBy(usageLogs.type);
+    return result;
   }
 }
 

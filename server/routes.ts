@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, reviews } from "@shared/schema";
+import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, reviews } from "@shared/schema";
 import { z } from "zod";
 import OpenAI from "openai";
 import Twilio from "twilio";
@@ -1791,6 +1791,34 @@ Rules:
   app.post("/api/alert-owner", asyncHandler(async (req, res) => {
     const { subAccountId, customerName, rating, comment } = req.body;
     console.log(`[ALERT] Negative review from ${customerName} (rating: ${rating}) for account ${subAccountId}: ${comment}`);
+
+    const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+    const twilioToken = process.env.TWILIO_AUTH_TOKEN;
+    if (twilioSid && twilioToken && subAccountId) {
+      try {
+        const account = await storage.getSubAccount(parseInt(subAccountId));
+        if (account?.ownerPhone) {
+          const twilio = Twilio(twilioSid, twilioToken);
+          await twilio.messages.create({
+            body: `🚨 APEX ALERT: ${customerName} just left a ${rating}-star rating. "${comment?.substring(0, 100)}". Check your Reputation Dashboard now!`,
+            from: account.twilioNumber,
+            to: account.ownerPhone,
+          });
+          console.log(`[ALERT] SMS sent to ${account.ownerPhone}`);
+
+          await storage.createUsageLog({
+            subAccountId: parseInt(subAccountId),
+            type: "SMS_SEGMENT",
+            amount: 1,
+            cost: 2.0,
+            description: "Negative review alert SMS",
+          });
+        }
+      } catch (e) {
+        console.error("[ALERT] SMS failed:", (e as any).message);
+      }
+    }
+
     res.json({ success: true });
   }));
 
@@ -1807,6 +1835,91 @@ Rules:
     const updated = await storage.updateSubAccount(subAccountId, { googleReviewLink });
     if (!updated) return res.status(404).json({ error: "Account not found" });
     res.json({ googleReviewLink: updated.googleReviewLink });
+  }));
+
+  // ── Usage & Billing ──────────────────────────────────────────
+
+  const MARKUP_RATES: Record<string, number> = {
+    SMS_SEGMENT: 2.0,
+    VOICE_MINUTE: 1.5,
+    AI_IMAGE_GEN: 0.50,
+    AI_CHAT: 0.10,
+  };
+
+  const usageLogBodySchema = z.object({
+    subAccountId: z.number().int().positive(),
+    type: z.string().min(1),
+    amount: z.number().positive(),
+    description: z.string().optional(),
+  });
+
+  app.post("/api/usage/log", asyncHandler(async (req, res) => {
+    const parsed = usageLogBodySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const { subAccountId, type, amount, description } = parsed.data;
+    const rate = MARKUP_RATES[type] ?? 0;
+    const cost = (type === "AI_IMAGE_GEN" || type === "AI_CHAT") ? rate : amount * rate;
+
+    const log = await storage.createUsageLog({
+      subAccountId,
+      type,
+      amount,
+      cost,
+      description: description || null,
+    });
+
+    try {
+      const { getUncachableStripeClient } = await import("./stripeClient");
+      const stripe = await getUncachableStripeClient();
+      await stripe.billing.meterEvents.create({
+        event_name: type.toLowerCase(),
+        payload: {
+          value: cost.toString(),
+          stripe_customer_id: "pending",
+        },
+      });
+    } catch (e) {
+      console.log("[BILLING] Stripe meter event skipped:", (e as any).message);
+    }
+
+    res.status(201).json(log);
+  }));
+
+  app.get("/api/usage/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const [logs, summary] = await Promise.all([
+      storage.getUsageLogs(subAccountId),
+      storage.getUsageLogsSummary(subAccountId),
+    ]);
+    res.json({ logs, summary });
+  }));
+
+  app.post("/api/webhooks/vapi", asyncHandler(async (req, res) => {
+    const { type, call } = req.body;
+    if (type === "call.ended" && call) {
+      const durationMinutes = (call.durationSeconds || 0) / 60;
+      const subAccountId = call.assistant?.metadata?.subAccountId;
+      if (subAccountId && durationMinutes > 0) {
+        const rate = 1.5;
+        await storage.createUsageLog({
+          subAccountId: parseInt(subAccountId),
+          type: "VOICE_MINUTE",
+          amount: durationMinutes,
+          cost: durationMinutes * rate,
+          description: `Voice call: ${Math.ceil(durationMinutes)} min`,
+        });
+      }
+    }
+    res.json({ success: true });
+  }));
+
+  app.patch("/api/accounts/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const { ownerPhone } = req.body;
+    const updated = await storage.updateSubAccount(id, { ownerPhone });
+    if (!updated) return res.status(404).json({ error: "Account not found" });
+    res.json(updated);
   }));
 
   return httpServer;

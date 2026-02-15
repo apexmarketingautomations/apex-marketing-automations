@@ -22,6 +22,7 @@ const VoiceAgent = lazy(() => import("@/pages/voice-agent"));
 const GrowthCenter = lazy(() => import("@/pages/growth-center"));
 const GodMode = lazy(() => import("@/pages/god-mode"));
 const Reputation = lazy(() => import("@/pages/reputation"));
+const Billing = lazy(() => import("@/pages/billing"));
 const ReviewBuffer = lazy(() => import("@/pages/review-buffer"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
@@ -52,6 +53,7 @@ function Router() {
                 <Route path="/voice-agent" component={VoiceAgent} />
                 <Route path="/growth" component={GrowthCenter} />
                 <Route path="/reputation" component={Reputation} />
+                <Route path="/billing" component={Billing} />
                 <Route path="/god-mode" component={GodMode} />
                 <Route path="/gym" component={GymLanding} />
                 <Route path="/luxe" component={LuxeLanding} />
