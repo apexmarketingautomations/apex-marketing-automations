@@ -636,10 +636,11 @@ export default function SiteBuilder() {
     if (!overridePrompt) setHistory((prev) => [...prev, text]);
 
     try {
+      const imageUrls = uploadedImages.map((img) => img.url);
       const res = await fetch("/api/generate-site", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: text }),
+        body: JSON.stringify({ prompt: text, uploadedImages: imageUrls }),
       });
 
       if (!res.ok) {

@@ -291,7 +291,7 @@ When the user describes a business, return a JSON object with this exact structu
 Rules:
 - Always return exactly 3 sections: HERO, FEATURES, BOOKING in that order.
 - icon must be one of: ShieldCheck, Clock, Sparkles, Star, Dumbbell, Heart, Zap, Trophy, CheckCircle2
-- Use real Unsplash image URLs that are relevant to the business type. Format: https://images.unsplash.com/photo-XXXXX?q=80&w=2070&auto=format&fit=crop
+- For the HERO image: If the user provides uploaded image URLs, you MUST use one of those URLs as the HERO image. Pick the most relevant one. If no uploaded images are provided, use a real Unsplash image URL relevant to the business type. Format: https://images.unsplash.com/photo-XXXXX?q=80&w=2070&auto=format&fit=crop
 - Choose theme colors that match the business vibe (luxury = gold/black, fitness = red/black, medical = blue/white, etc.)
 - font should be either "Playfair Display" for luxury/elegant or "Inter" for modern/clean
 - Write compelling, concise marketing copy
@@ -299,6 +299,7 @@ Rules:
 
   const promptSchema = z.object({
     prompt: z.string().min(1, "prompt is required").max(2000),
+    uploadedImages: z.array(z.string()).optional(),
   });
 
   app.post("/api/generate-site", asyncHandler(async (req, res) => {
@@ -309,11 +310,16 @@ Rules:
     const parsed = promptSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
+    let userMessage = parsed.data.prompt;
+    if (parsed.data.uploadedImages && parsed.data.uploadedImages.length > 0) {
+      userMessage += `\n\nThe user has uploaded these images to use on the site:\n${parsed.data.uploadedImages.join("\n")}`;
+    }
+
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
         { role: "system", content: SITE_SYSTEM_PROMPT },
-        { role: "user", content: parsed.data.prompt },
+        { role: "user", content: userMessage },
       ],
       temperature: 0.7,
       max_tokens: 1500,
