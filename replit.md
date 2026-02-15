@@ -93,6 +93,10 @@ The `shared/` directory contains code used by both frontend and backend:
 - `PATCH /api/reviews/:id` - Update review (toggle public, add AI response)
 - `POST /api/alert-owner` - Negative review alert notification
 - `GET/PATCH /api/review-config/:subAccountId` - Get/update Google Review link config
+- `POST /api/usage/log` - Log usage event with markup (SMS, Voice, AI) + optional Stripe meter
+- `GET /api/usage/:subAccountId` - Usage logs and summary for billing dashboard
+- `POST /api/webhooks/vapi` - Vapi webhook: logs VOICE_MINUTE usage on call.ended
+- `PATCH /api/accounts/:id` - Update sub-account fields (ownerPhone, etc.)
 
 ## External Dependencies
 
