@@ -91,6 +91,22 @@ export async function registerRoutes(
     res.json({ url: imageUrl });
   });
 
+  // ---- Project Download ----
+  app.get("/api/download-project", asyncHandler(async (_req, res) => {
+    const { execSync } = await import("child_process");
+    const archivePath = path.resolve(process.cwd(), "apex-marketing-animation.tar.gz");
+    execSync(
+      `tar -czf "${archivePath}" --exclude='node_modules' --exclude='.git' --exclude='dist' --exclude='.cache' --exclude='uploads' --exclude='.local' --exclude='*.tar.gz' -C "${process.cwd()}" .`,
+      { timeout: 60000 }
+    );
+    res.download(archivePath, "apex-marketing-animation.tar.gz", (err) => {
+      fs.unlink(archivePath, () => {});
+      if (err && !res.headersSent) {
+        res.status(500).json({ error: "Download failed" });
+      }
+    });
+  }));
+
   // ---- Sub-Accounts ----
   app.get("/api/accounts", asyncHandler(async (_req, res) => {
     const accounts = await storage.getSubAccounts();
