@@ -1,7 +1,7 @@
 import { eq, desc, and, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
-  subAccounts, messages, workflows, trainingJobs, blueprints, savedSites, siteVersions, siteCollaborators, reviews, usageLogs,
+  subAccounts, messages, workflows, trainingJobs, blueprints, savedSites, siteVersions, siteCollaborators, reviews, usageLogs, domains,
   type SubAccount, type InsertSubAccount,
   type Message, type InsertMessage,
   type Workflow, type InsertWorkflow,
@@ -12,6 +12,7 @@ import {
   type SiteCollaborator, type InsertSiteCollaborator,
   type Review, type InsertReview,
   type UsageLog, type InsertUsageLog,
+  type Domain, type InsertDomain,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -61,6 +62,12 @@ export interface IStorage {
   getUsageLogs(subAccountId: number): Promise<UsageLog[]>;
   createUsageLog(data: InsertUsageLog): Promise<UsageLog>;
   getUsageLogsSummary(subAccountId: number): Promise<{type: string, totalAmount: number, totalCost: number, count: number}[]>;
+
+  getDomains(subAccountId: number): Promise<Domain[]>;
+  getDomain(id: number): Promise<Domain | undefined>;
+  getDomainByName(name: string): Promise<Domain | undefined>;
+  createDomain(data: InsertDomain): Promise<Domain>;
+  updateDomain(id: number, data: Partial<InsertDomain>): Promise<Domain | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -244,6 +251,30 @@ export class DatabaseStorage implements IStorage {
       count: sql<number>`count(*)::int`.as('count'),
     }).from(usageLogs).where(eq(usageLogs.subAccountId, subAccountId)).groupBy(usageLogs.type);
     return result;
+  }
+
+  async getDomains(subAccountId: number) {
+    return db.select().from(domains).where(eq(domains.subAccountId, subAccountId)).orderBy(desc(domains.createdAt));
+  }
+
+  async getDomain(id: number) {
+    const [row] = await db.select().from(domains).where(eq(domains.id, id));
+    return row;
+  }
+
+  async getDomainByName(name: string) {
+    const [row] = await db.select().from(domains).where(eq(domains.domainName, name));
+    return row;
+  }
+
+  async createDomain(data: InsertDomain) {
+    const [row] = await db.insert(domains).values(data).returning();
+    return row;
+  }
+
+  async updateDomain(id: number, data: Partial<InsertDomain>) {
+    const [row] = await db.update(domains).set(data).where(eq(domains.id, id)).returning();
+    return row;
   }
 }
 

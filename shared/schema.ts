@@ -139,3 +139,21 @@ export const usageLogs = pgTable("usage_logs", {
 export const insertUsageLogSchema = createInsertSchema(usageLogs).omit({ id: true, createdAt: true });
 export type InsertUsageLog = z.infer<typeof insertUsageLogSchema>;
 export type UsageLog = typeof usageLogs.$inferSelect;
+
+export const domains = pgTable("domains", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  domainName: text("domain_name").notNull().unique(),
+  status: text("status").notNull().default("pending"),
+  purchasePrice: real("purchase_price").notNull(),
+  salePrice: real("sale_price").notNull(),
+  dnsConfigured: boolean("dns_configured").default(false),
+  sslActive: boolean("ssl_active").default(false),
+  registrar: text("registrar"),
+  siteId: integer("site_id").references(() => savedSites.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertDomainSchema = createInsertSchema(domains).omit({ id: true, createdAt: true });
+export type InsertDomain = z.infer<typeof insertDomainSchema>;
+export type Domain = typeof domains.$inferSelect;

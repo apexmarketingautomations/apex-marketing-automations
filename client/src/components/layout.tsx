@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign } from "lucide-react";
+import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { CommandMenu } from "@/components/command-menu";
 import { VibeSwitcher } from "@/components/vibe-switcher";
@@ -16,6 +16,7 @@ const navItems = [
   { href: "/growth", icon: TrendingUp, label: "Growth Center" },
   { href: "/reputation", icon: Star, label: "Reputation" },
   { href: "/billing", icon: DollarSign, label: "Usage & Billing" },
+  { href: "/domains", icon: Link2, label: "Domains" },
   { href: "/god-mode", icon: Rocket, label: "God Mode" },
 ];
 

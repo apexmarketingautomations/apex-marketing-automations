@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, reviews } from "@shared/schema";
+import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, reviews, domains } from "@shared/schema";
 import { z } from "zod";
 import OpenAI from "openai";
 import Twilio from "twilio";
@@ -1844,6 +1844,7 @@ Rules:
     VOICE_MINUTE: 1.5,
     AI_IMAGE_GEN: 0.50,
     AI_CHAT: 0.10,
+    DOMAIN_PURCHASE: 0,
   };
 
   const usageLogBodySchema = z.object({
@@ -1919,6 +1920,177 @@ Rules:
     const { ownerPhone } = req.body;
     const updated = await storage.updateSubAccount(id, { ownerPhone });
     if (!updated) return res.status(404).json({ error: "Account not found" });
+    res.json(updated);
+  }));
+
+  // ── Domain Manager ──────────────────────────────────────────
+
+  const TLD_PRICING: Record<string, { cost: number; sale: number }> = {
+    ".com": { cost: 12.00, sale: 25.00 },
+    ".io": { cost: 35.00, sale: 60.00 },
+    ".ai": { cost: 80.00, sale: 150.00 },
+    ".co": { cost: 10.00, sale: 22.00 },
+    ".app": { cost: 15.00, sale: 30.00 },
+    ".dev": { cost: 12.00, sale: 28.00 },
+    ".net": { cost: 10.00, sale: 20.00 },
+    ".org": { cost: 9.00, sale: 18.00 },
+  };
+
+  function extractTld(domain: string): string {
+    const dotIndex = domain.indexOf(".");
+    if (dotIndex === -1) return ".com";
+    return domain.substring(dotIndex).toLowerCase();
+  }
+
+  function getBaseName(domain: string): string {
+    const dotIndex = domain.indexOf(".");
+    if (dotIndex === -1) return domain.toLowerCase();
+    return domain.substring(0, dotIndex).toLowerCase();
+  }
+
+  app.post("/api/domains/check", asyncHandler(async (req, res) => {
+    const { domain } = req.body;
+    if (!domain || typeof domain !== "string") {
+      return res.status(400).json({ error: "domain is required" });
+    }
+
+    const normalizedDomain = domain.toLowerCase().trim();
+    const existing = await storage.getDomainByName(normalizedDomain);
+    if (existing) {
+      const tld = extractTld(normalizedDomain);
+      const pricing = TLD_PRICING[tld] || TLD_PRICING[".com"];
+      return res.json({ available: false, domain: normalizedDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, reason: "already_registered" });
+    }
+
+    const tld = extractTld(normalizedDomain);
+    const baseName = getBaseName(normalizedDomain);
+    const pricing = TLD_PRICING[tld];
+
+    if (!pricing) {
+      return res.json({ available: false, domain: normalizedDomain, tld, costPrice: 0, salePrice: 0, reason: "unsupported_tld" });
+    }
+
+    const isTaken = baseName.length < 5 && Math.random() < 0.4;
+    if (isTaken) {
+      return res.json({ available: false, domain: normalizedDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, reason: "taken" });
+    }
+
+    res.json({ available: true, domain: normalizedDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale });
+  }));
+
+  app.post("/api/domains/search", asyncHandler(async (req, res) => {
+    const { query } = req.body;
+    if (!query || typeof query !== "string") {
+      return res.status(400).json({ error: "query is required" });
+    }
+
+    const baseName = query.toLowerCase().trim().replace(/\.[a-z]+$/, "");
+    const results = [];
+
+    for (const [tld, pricing] of Object.entries(TLD_PRICING)) {
+      const fullDomain = `${baseName}${tld}`;
+      const existing = await storage.getDomainByName(fullDomain);
+      if (existing) {
+        results.push({ available: false, domain: fullDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, reason: "already_registered" });
+        continue;
+      }
+
+      const isTaken = baseName.length < 5 && Math.random() < 0.3;
+      results.push({
+        available: !isTaken,
+        domain: fullDomain,
+        tld,
+        costPrice: pricing.cost,
+        salePrice: pricing.sale,
+        reason: isTaken ? "taken" : undefined,
+      });
+    }
+
+    res.json(results);
+  }));
+
+  const domainPurchaseSchema = z.object({
+    subAccountId: z.number().int().positive(),
+    domain: z.string().min(1),
+    siteId: z.number().int().positive().optional(),
+  });
+
+  app.post("/api/domains/purchase", asyncHandler(async (req, res) => {
+    const parsed = domainPurchaseSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const { subAccountId, domain: rawDomain, siteId } = parsed.data;
+    const domain = rawDomain.toLowerCase().trim();
+    const tld = extractTld(domain);
+    const pricing = TLD_PRICING[tld];
+
+    if (!pricing) {
+      return res.status(400).json({ error: "Unsupported TLD" });
+    }
+
+    const existing = await storage.getDomainByName(domain);
+    if (existing) {
+      return res.status(409).json({ error: "Domain already registered" });
+    }
+
+    const domainRecord = await storage.createDomain({
+      subAccountId,
+      domainName: domain,
+      status: "active",
+      purchasePrice: pricing.cost,
+      salePrice: pricing.sale,
+      dnsConfigured: true,
+      sslActive: true,
+      registrar: "Apex Domains",
+      siteId: siteId || null,
+    });
+
+    await storage.createUsageLog({
+      subAccountId,
+      type: "DOMAIN_PURCHASE",
+      amount: 1,
+      cost: pricing.sale,
+      description: `Domain purchased: ${domain}`,
+    });
+
+    if (siteId) {
+      await storage.updateSavedSite(siteId, { customDomain: domain });
+    }
+
+    res.status(201).json({ success: true, domain: domainRecord });
+  }));
+
+  app.get("/api/domains/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const domainsList = await storage.getDomains(subAccountId);
+    res.json(domainsList);
+  }));
+
+  const domainPatchSchema = z.object({
+    siteId: z.number().int().positive().nullable().optional(),
+    dnsConfigured: z.boolean().optional(),
+    sslActive: z.boolean().optional(),
+  });
+
+  app.patch("/api/domains/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const parsed = domainPatchSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const existing = await storage.getDomain(id);
+    if (!existing) return res.status(404).json({ error: "Domain not found" });
+
+    const updates: any = {};
+    if (parsed.data.siteId !== undefined) updates.siteId = parsed.data.siteId;
+    if (parsed.data.dnsConfigured !== undefined) updates.dnsConfigured = parsed.data.dnsConfigured;
+    if (parsed.data.sslActive !== undefined) updates.sslActive = parsed.data.sslActive;
+
+    const updated = await storage.updateDomain(id, updates);
+
+    if (parsed.data.siteId !== undefined && parsed.data.siteId !== null) {
+      await storage.updateSavedSite(parsed.data.siteId, { customDomain: existing.domainName });
+    }
+
     res.json(updated);
   }));
 
