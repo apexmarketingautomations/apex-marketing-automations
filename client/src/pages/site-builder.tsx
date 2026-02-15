@@ -32,6 +32,14 @@ import {
   Eye,
   EyeOff,
   Info,
+  Palette,
+  Building2,
+  Scissors,
+  Stethoscope,
+  UtensilsCrossed,
+  GraduationCap,
+  Briefcase,
+  Car,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -251,6 +259,7 @@ export default function SiteBuilder() {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [editingSectionIndex, setEditingSectionIndex] = useState<number | null>(null);
   const [addSectionOpen, setAddSectionOpen] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [versions, setVersions] = useState<SiteVersion[]>([]);
@@ -527,6 +536,178 @@ export default function SiteBuilder() {
     toast({ title: "Copied!", description: "Invite code copied to clipboard." });
   };
 
+  const SITE_TEMPLATES = [
+    {
+      id: "gym-aggressive",
+      name: "Iron Forge Gym",
+      industry: "Fitness",
+      icon: Dumbbell,
+      color: "#ef4444",
+      description: "High-energy gym landing page with bold red/black theme and aggressive copy",
+      siteData: {
+        theme: { bg: "#0a0a0a", primary: "#ef4444", text: "#ffffff", font: "Inter" },
+        sections: [
+          { type: "HERO", props: { title: "CRUSH YOUR LIMITS", subtitle: "Elite training for those who refuse to settle. Transform your body in 90 days or your money back.", cta: "START FREE TRIAL", image: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=2070&auto=format&fit=crop" } },
+          { type: "FEATURES", props: { title: "WHY IRON FORGE", features: [{ icon: "Dumbbell", title: "Pro Equipment", desc: "Olympic-grade free weights, machines, and functional training rigs" }, { icon: "Zap", title: "Expert Coaches", desc: "NASM-certified trainers with competition experience" }, { icon: "Trophy", title: "Results Guaranteed", desc: "90-day transformation guarantee or your money back" }] } },
+          { type: "BOOKING", props: { title: "Claim Your Free Session", formId: "gym-trial" } },
+        ],
+      },
+    },
+    {
+      id: "medspa-luxury",
+      name: "Lumière Med Spa",
+      industry: "Med Spa",
+      icon: Sparkles,
+      color: "#d4a574",
+      description: "Elegant luxury med spa with gold/black theme and premium aesthetic",
+      siteData: {
+        theme: { bg: "#0c0a09", primary: "#d4a574", text: "#fafaf9", font: "Playfair Display" },
+        sections: [
+          { type: "HERO", props: { title: "Timeless Beauty, Refined", subtitle: "Experience the art of aesthetic medicine at Manhattan's most exclusive med spa. Botox, fillers, and advanced skincare treatments.", cta: "Book Consultation", image: "https://images.unsplash.com/photo-1560750588-73207b1ef5b8?q=80&w=2070&auto=format&fit=crop" } },
+          { type: "FEATURES", props: { title: "Our Signature Services", features: [{ icon: "Sparkles", title: "Botox & Fillers", desc: "Natural-looking results from board-certified injectors" }, { icon: "Heart", title: "Laser Treatments", desc: "Advanced laser skin resurfacing and hair removal" }, { icon: "ShieldCheck", title: "Medical Grade", desc: "FDA-approved treatments in a luxurious clinical setting" }] } },
+          { type: "BOOKING", props: { title: "Schedule Your Consultation", formId: "medspa-consult" } },
+        ],
+      },
+    },
+    {
+      id: "dental-clean",
+      name: "Bright Smile Dental",
+      industry: "Dental",
+      icon: Stethoscope,
+      color: "#3b82f6",
+      description: "Clean, friendly dental practice with calming blue/white professional theme",
+      siteData: {
+        theme: { bg: "#0f172a", primary: "#3b82f6", text: "#f1f5f9", font: "Inter" },
+        sections: [
+          { type: "HERO", props: { title: "Your Smile Deserves the Best", subtitle: "Gentle, modern dentistry for the whole family. Same-day appointments available with flexible payment plans.", cta: "Book Appointment", image: "https://images.unsplash.com/photo-1629909613654-28e377c37b09?q=80&w=2068&auto=format&fit=crop" } },
+          { type: "FEATURES", props: { title: "Why Choose Us", features: [{ icon: "ShieldCheck", title: "Gentle Care", desc: "Anxiety-free dentistry with sedation options available" }, { icon: "Clock", title: "Same-Day Service", desc: "Emergency appointments and quick turnaround on procedures" }, { icon: "Star", title: "5-Star Rated", desc: "Over 2,000 happy patients and counting" }] } },
+          { type: "BOOKING", props: { title: "Request Your Appointment", formId: "dental-appt" } },
+        ],
+      },
+    },
+    {
+      id: "restaurant-warm",
+      name: "Ember Kitchen",
+      industry: "Restaurant",
+      icon: UtensilsCrossed,
+      color: "#f59e0b",
+      description: "Warm, inviting restaurant page with amber tones and appetizing copy",
+      siteData: {
+        theme: { bg: "#1c1917", primary: "#f59e0b", text: "#fafaf9", font: "Playfair Display" },
+        sections: [
+          { type: "HERO", props: { title: "Farm to Table, Fire to Soul", subtitle: "Handcrafted dishes using locally sourced ingredients, wood-fired to perfection. Reserve your table tonight.", cta: "Reserve a Table", image: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=2070&auto=format&fit=crop" } },
+          { type: "FEATURES", props: { title: "The Ember Experience", features: [{ icon: "Star", title: "Chef's Tasting Menu", desc: "A curated 7-course journey through seasonal flavors" }, { icon: "Heart", title: "Local Ingredients", desc: "Partnerships with 12+ local farms and artisan producers" }, { icon: "Trophy", title: "Award Winning", desc: "Zagat rated, James Beard nominated, community loved" }] } },
+          { type: "BOOKING", props: { title: "Make a Reservation", formId: "restaurant-reserve" } },
+        ],
+      },
+    },
+    {
+      id: "realestate-modern",
+      name: "Apex Realty",
+      industry: "Real Estate",
+      icon: Building2,
+      color: "#10b981",
+      description: "Modern real estate agency with sleek green/dark theme and property focus",
+      siteData: {
+        theme: { bg: "#0f1115", primary: "#10b981", text: "#e2e8f0", font: "Inter" },
+        sections: [
+          { type: "HERO", props: { title: "Find Your Dream Home", subtitle: "Luxury properties, expert agents, and a seamless buying experience. Browse 500+ exclusive listings today.", cta: "Browse Listings", image: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?q=80&w=2075&auto=format&fit=crop" } },
+          { type: "FEATURES", props: { title: "Why Apex Realty", features: [{ icon: "ShieldCheck", title: "Trusted Agents", desc: "Licensed professionals with 15+ years of market experience" }, { icon: "Zap", title: "Fast Closings", desc: "Average 21-day close with our streamlined process" }, { icon: "Star", title: "Premium Listings", desc: "Exclusive access to off-market and pre-launch properties" }] } },
+          { type: "BOOKING", props: { title: "Schedule a Viewing", formId: "realty-viewing" } },
+        ],
+      },
+    },
+    {
+      id: "salon-chic",
+      name: "Velvet Salon",
+      industry: "Salon",
+      icon: Scissors,
+      color: "#ec4899",
+      description: "Chic hair salon with pink/dark glam theme and trendy styling",
+      siteData: {
+        theme: { bg: "#18181b", primary: "#ec4899", text: "#fafafa", font: "Playfair Display" },
+        sections: [
+          { type: "HERO", props: { title: "Where Style Meets Art", subtitle: "Award-winning stylists creating looks that turn heads. Balayage, cuts, extensions, and bridal packages.", cta: "Book Your Look", image: "https://images.unsplash.com/photo-1560066984-138dadb4c035?q=80&w=2074&auto=format&fit=crop" } },
+          { type: "FEATURES", props: { title: "Our Services", features: [{ icon: "Sparkles", title: "Color & Balayage", desc: "Hand-painted highlights and vivid color transformations" }, { icon: "Star", title: "Precision Cuts", desc: "Tailored cuts from NYC-trained master stylists" }, { icon: "Heart", title: "Bridal Packages", desc: "Full bridal party styling with trial sessions included" }] } },
+          { type: "BOOKING", props: { title: "Book Your Appointment", formId: "salon-booking" } },
+        ],
+      },
+    },
+    {
+      id: "coaching-pro",
+      name: "Peak Performance",
+      industry: "Coaching",
+      icon: GraduationCap,
+      color: "#8b5cf6",
+      description: "Professional business coaching with purple/dark authority theme",
+      siteData: {
+        theme: { bg: "#0c0a1a", primary: "#8b5cf6", text: "#e2e8f0", font: "Inter" },
+        sections: [
+          { type: "HERO", props: { title: "Unlock Your Full Potential", subtitle: "Executive coaching for ambitious leaders. 10x your revenue, build elite teams, and dominate your industry.", cta: "Apply Now", image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=2070&auto=format&fit=crop" } },
+          { type: "FEATURES", props: { title: "The Peak Method", features: [{ icon: "Trophy", title: "Proven Framework", desc: "The same system used by 200+ CEOs to scale past 7 figures" }, { icon: "Zap", title: "1-on-1 Mentoring", desc: "Weekly private sessions with a dedicated success coach" }, { icon: "CheckCircle2", title: "Accountability", desc: "Daily tracking, weekly reviews, and monthly strategy pivots" }] } },
+          { type: "BOOKING", props: { title: "Book a Strategy Call", formId: "coaching-call" } },
+        ],
+      },
+    },
+    {
+      id: "auto-bold",
+      name: "Apex Auto Detailing",
+      industry: "Automotive",
+      icon: Car,
+      color: "#06b6d4",
+      description: "Bold auto detailing shop with cyan/dark high-performance theme",
+      siteData: {
+        theme: { bg: "#0a0f1a", primary: "#06b6d4", text: "#f0f9ff", font: "Inter" },
+        sections: [
+          { type: "HERO", props: { title: "Showroom Finish, Every Time", subtitle: "Professional ceramic coating, paint correction, and full detailing. Your ride deserves the best treatment.", cta: "Get a Quote", image: "https://images.unsplash.com/photo-1507136566006-cfc505b114fc?q=80&w=2070&auto=format&fit=crop" } },
+          { type: "FEATURES", props: { title: "Our Packages", features: [{ icon: "ShieldCheck", title: "Ceramic Coating", desc: "9H hardness coating with 5-year warranty and hydrophobic protection" }, { icon: "Sparkles", title: "Paint Correction", desc: "Multi-stage machine polishing to remove swirls and scratches" }, { icon: "Star", title: "Full Detail", desc: "Interior deep clean, exterior polish, and engine bay detailing" }] } },
+          { type: "BOOKING", props: { title: "Schedule Your Detail", formId: "auto-detail" } },
+        ],
+      },
+    },
+    {
+      id: "law-firm",
+      name: "Sterling & Associates",
+      industry: "Legal",
+      icon: Briefcase,
+      color: "#1e40af",
+      description: "Authoritative law firm page with deep blue/dark professional theme",
+      siteData: {
+        theme: { bg: "#0c1222", primary: "#1e40af", text: "#e2e8f0", font: "Playfair Display" },
+        sections: [
+          { type: "HERO", props: { title: "Justice. Integrity. Results.", subtitle: "Over 30 years of trial-tested experience in personal injury, business law, and estate planning. Free consultations.", cta: "Free Consultation", image: "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?q=80&w=2070&auto=format&fit=crop" } },
+          { type: "FEATURES", props: { title: "Practice Areas", features: [{ icon: "ShieldCheck", title: "Personal Injury", desc: "No fee unless we win. Millions recovered for our clients" }, { icon: "Star", title: "Business Law", desc: "Contracts, compliance, and corporate litigation expertise" }, { icon: "CheckCircle2", title: "Estate Planning", desc: "Wills, trusts, and comprehensive asset protection strategies" }] } },
+          { type: "BOOKING", props: { title: "Request a Free Case Review", formId: "law-consult" } },
+        ],
+      },
+    },
+    {
+      id: "yoga-zen",
+      name: "Serenity Studio",
+      industry: "Yoga & Wellness",
+      icon: Heart,
+      color: "#a3e635",
+      description: "Zen yoga studio with calming green/dark natural wellness theme",
+      siteData: {
+        theme: { bg: "#0a1a0a", primary: "#a3e635", text: "#ecfccb", font: "Inter" },
+        sections: [
+          { type: "HERO", props: { title: "Breathe. Flow. Transform.", subtitle: "Discover inner peace through yoga, meditation, and holistic wellness. All levels welcome, first class free.", cta: "Try a Free Class", image: "https://images.unsplash.com/photo-1545389336-cf090694435e?q=80&w=2070&auto=format&fit=crop" } },
+          { type: "FEATURES", props: { title: "Our Offerings", features: [{ icon: "Heart", title: "Vinyasa Flow", desc: "Dynamic movement sequences synchronized with breath" }, { icon: "Sparkles", title: "Sound Healing", desc: "Crystal bowl meditation and chakra balancing sessions" }, { icon: "Clock", title: "Flexible Schedule", desc: "Classes from 6am to 9pm, 7 days a week" }] } },
+          { type: "BOOKING", props: { title: "Reserve Your Mat", formId: "yoga-class" } },
+        ],
+      },
+    },
+  ];
+
+  const handleLoadTemplate = (template: typeof SITE_TEMPLATES[0]) => {
+    setSiteData(template.siteData);
+    setLastPrompt(`Template: ${template.name}`);
+    setHistory((prev) => [...prev, `Loaded template: ${template.name}`]);
+    setCurrentSiteId(null);
+    setShowTemplates(false);
+    toast({ title: "Template Loaded", description: `"${template.name}" is ready to customize.` });
+  };
+
   const COMPONENT_MAP: Record<string, React.ComponentType<any>> = {
     HERO: HeroSection,
     FEATURES: FeatureSection,
@@ -594,6 +775,16 @@ export default function SiteBuilder() {
                   </button>
                 </li>
               </ul>
+              <div className="mt-4 pt-3 border-t border-white/10">
+                <button
+                  onClick={() => setShowTemplates(true)}
+                  className="flex items-center gap-2 mx-auto text-indigo-400 hover:text-indigo-300 transition-colors"
+                  data-testid="button-browse-templates-empty"
+                >
+                  <Palette size={16} />
+                  Or browse Template Gallery
+                </button>
+              </div>
             </div>
           )}
           {history.map((h, i) => (
@@ -636,7 +827,7 @@ export default function SiteBuilder() {
           )}
         </div>
 
-        <div className="p-4 bg-black/40 border-t border-white/5 backdrop-blur-md">
+        <div className="p-4 bg-black/40 border-t border-white/5 backdrop-blur-md space-y-2">
           <div className="flex gap-2">
             <Input
               value={prompt}
@@ -655,6 +846,14 @@ export default function SiteBuilder() {
               <Send size={18} />
             </Button>
           </div>
+          <button
+            onClick={() => setShowTemplates(true)}
+            className="w-full flex items-center justify-center gap-2 text-xs text-slate-400 hover:text-indigo-400 transition-colors py-1.5 rounded-lg border border-dashed border-white/10 hover:border-indigo-500/30"
+            data-testid="button-open-templates"
+          >
+            <Palette size={14} />
+            Browse Template Gallery
+          </button>
         </div>
       </div>
 
@@ -980,6 +1179,118 @@ export default function SiteBuilder() {
                 </div>
               )}
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Template Gallery */}
+      <AnimatePresence>
+        {showTemplates && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-md"
+            onClick={() => setShowTemplates(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="bg-[#0a0a1a] border border-white/10 rounded-2xl w-full max-w-5xl max-h-[85vh] shadow-2xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+              data-testid="dialog-template-gallery"
+            >
+              <div className="flex items-center justify-between p-6 border-b border-white/10 bg-white/5">
+                <div>
+                  <h2 className="text-xl font-bold flex items-center gap-2">
+                    <Palette className="text-indigo-400" size={22} />
+                    Template Gallery
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1">Pre-designed landing pages ready to customize</p>
+                </div>
+                <button
+                  onClick={() => setShowTemplates(false)}
+                  className="text-slate-400 hover:text-white p-2 hover:bg-white/10 rounded-lg transition-colors"
+                  data-testid="button-close-templates"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="overflow-y-auto p-6" style={{ maxHeight: "calc(85vh - 80px)" }}>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {SITE_TEMPLATES.map((template) => {
+                    const IconComp = template.icon;
+                    return (
+                      <motion.div
+                        key={template.id}
+                        whileHover={{ scale: 1.02, y: -4 }}
+                        whileTap={{ scale: 0.98 }}
+                        className="group relative rounded-xl border border-white/10 overflow-hidden cursor-pointer bg-white/5 hover:border-indigo-500/40 transition-all duration-300"
+                        onClick={() => handleLoadTemplate(template)}
+                        data-testid={`template-card-${template.id}`}
+                      >
+                        <div
+                          className="h-40 relative overflow-hidden"
+                          style={{ backgroundColor: template.siteData.theme.bg }}
+                        >
+                          <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
+                            <div
+                              className="w-10 h-10 rounded-full flex items-center justify-center mb-2"
+                              style={{ backgroundColor: template.color + "20", color: template.color }}
+                            >
+                              <IconComp size={20} />
+                            </div>
+                            <h3
+                              className="text-sm font-bold"
+                              style={{ color: template.siteData.theme.text, fontFamily: template.siteData.theme.font }}
+                            >
+                              {template.siteData.sections[0]?.props?.title}
+                            </h3>
+                            <p
+                              className="text-[10px] mt-1 line-clamp-2 opacity-60"
+                              style={{ color: template.siteData.theme.text }}
+                            >
+                              {template.siteData.sections[0]?.props?.subtitle}
+                            </p>
+                            <div
+                              className="mt-2 px-3 py-1 rounded-full text-[10px] font-bold"
+                              style={{ backgroundColor: template.color, color: template.siteData.theme.bg }}
+                            >
+                              {template.siteData.sections[0]?.props?.cta}
+                            </div>
+                          </div>
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-3">
+                            <span className="text-xs font-medium text-white bg-indigo-600 px-3 py-1 rounded-full">
+                              Use Template
+                            </span>
+                          </div>
+                        </div>
+                        <div className="p-3">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span
+                              className="w-3 h-3 rounded-full"
+                              style={{ backgroundColor: template.color }}
+                            />
+                            <h4 className="text-sm font-bold text-white">{template.name}</h4>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-slate-400">
+                              {template.industry}
+                            </span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-slate-400">
+                              {template.siteData.theme.font}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-1.5 line-clamp-2">{template.description}</p>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
