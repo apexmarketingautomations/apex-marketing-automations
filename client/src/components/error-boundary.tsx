@@ -24,6 +24,17 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
+
+    fetch("/api/log-error", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: error.message,
+        stack: errorInfo.componentStack,
+        url: window.location.href,
+        timestamp: new Date().toISOString(),
+      }),
+    }).catch((err) => console.error("Failed to send error report", err));
   }
 
   public render() {

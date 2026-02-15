@@ -91,6 +91,23 @@ export async function registerRoutes(
     res.json({ url: imageUrl });
   });
 
+  // ---- Error Logging ----
+  const errorLogSchema = z.object({
+    message: z.string().max(2000),
+    stack: z.string().max(10000).optional(),
+    url: z.string().max(500).optional(),
+    timestamp: z.string().optional(),
+  });
+
+  app.post("/api/log-error", (req: Request, res: Response) => {
+    const parsed = errorLogSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid error report" });
+    const { message, stack, url, timestamp } = parsed.data;
+    console.error(`[CLIENT ERROR] ${timestamp || new Date().toISOString()} | ${url || "unknown"} | ${message}`);
+    if (stack) console.error(`[CLIENT STACK] ${stack.slice(0, 2000)}`);
+    res.json({ received: true });
+  });
+
   // ---- Project Download ----
   app.get("/api/download-project", asyncHandler(async (_req, res) => {
     const { execSync } = await import("child_process");
