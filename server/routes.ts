@@ -246,56 +246,54 @@ export async function registerRoutes(
     baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
   });
 
-  const SITE_SYSTEM_PROMPT = `You are a landing-page architect for a SaaS site-builder.
+  const SITE_SYSTEM_PROMPT = `You are an expert landing-page architect who creates stunning, high-converting websites. Generate rich, visually impressive sites with many sections.
 
-When the user describes a business, return a JSON object with this exact structure:
+Return a JSON object with this structure:
 
 {
   "theme": {
-    "primary": "<hex color>",
-    "bg": "<hex background color>",
-    "text": "<hex text color>",
-    "font": "<font family name>"
+    "primary": "<vibrant hex accent color>",
+    "bg": "<dark background hex>",
+    "text": "<light text hex>",
+    "font": "<Google Font name>"
   },
-  "sections": [
-    {
-      "type": "HERO",
-      "props": {
-        "title": "<headline>",
-        "subtitle": "<subheadline>",
-        "cta": "<button text>",
-        "image": "<unsplash URL for a relevant background image>"
-      }
-    },
-    {
-      "type": "FEATURES",
-      "props": {
-        "title": "<section heading>",
-        "features": [
-          { "icon": "<icon name>", "title": "<feature title>", "desc": "<short description>" },
-          { "icon": "<icon name>", "title": "<feature title>", "desc": "<short description>" },
-          { "icon": "<icon name>", "title": "<feature title>", "desc": "<short description>" }
-        ]
-      }
-    },
-    {
-      "type": "BOOKING",
-      "props": {
-        "title": "<form heading>",
-        "formId": "<unique form id>"
-      }
-    }
-  ]
+  "sections": [ ...array of 8-12 section objects... ]
 }
 
+Available section types and their props:
+
+HERO: { title, subtitle, cta, image (URL), badge (optional short tagline) }
+FEATURES: { title, subtitle, features: [{ icon, title, desc }] } — 3-6 features
+TESTIMONIALS: { title, subtitle, testimonials: [{ name, role, quote, stars (1-5) }] } — 3 testimonials
+STATS: { title, stats: [{ value (e.g. "500+"), label }] } — 4 stats
+GALLERY: { title, subtitle, images: [{ url (unsplash), caption }] } — 6 images
+ABOUT: { title, text (2-3 paragraphs), image (URL), stats: [{ value, label }] }
+CTA: { title, subtitle, cta }
+FAQ: { title, faqs: [{ q, a }] } — 5-8 questions
+PRICING: { title, subtitle, plans: [{ name, description, price (number), period, features: [strings], cta, featured (boolean) }] } — 3 plans
+TEAM: { title, subtitle, members: [{ name, role }] } — 4 members
+LOGO_BAR: { title (e.g. "Trusted By"), logos: ["Brand Name 1", "Brand Name 2", ...] } — 5-8 logos
+TIMELINE: { title, subtitle, events: [{ date, title, desc }] } — 4-6 events
+CONTACT: { title, subtitle, fields: ["Name", "Email", "Phone", "Message"] }
+VIDEO: { title, subtitle }
+BANNER: { title, subtitle, cta, image (URL) }
+COMPARISON: { title, subtitle, headers: ["Feature", "Us", "Others"], rows: [{ cells: ["Feature name", "✓", "✗"] }] }
+PROCESS_STEPS: { title, subtitle, steps: [{ title, desc }] } — 3-5 steps
+BOOKING: { title, formId }
+PAYWALL: { title, tiers: [{ name, price, perks: [strings], cta }] }
+
 Rules:
-- Always return exactly 3 sections: HERO, FEATURES, BOOKING in that order.
-- icon must be one of: ShieldCheck, Clock, Sparkles, Star, Dumbbell, Heart, Zap, Trophy, CheckCircle2
-- For the HERO image: If the user provides uploaded image URLs, you MUST use one of those URLs as the HERO image. Pick the most relevant one. If no uploaded images are provided, use a real Unsplash image URL relevant to the business type. Format: https://images.unsplash.com/photo-XXXXX?q=80&w=2070&auto=format&fit=crop
-- Choose theme colors that match the business vibe (luxury = gold/black, fitness = red/black, medical = blue/white, etc.)
-- font should be either "Playfair Display" for luxury/elegant or "Inter" for modern/clean
-- Write compelling, concise marketing copy
-- Return ONLY the JSON object, no markdown, no explanation, no code fences.`;
+- Generate 8-12 sections for a rich, complete website. NEVER generate only 3 sections.
+- Start with HERO, then mix section types to create a compelling flow. Good pattern: HERO → LOGO_BAR → FEATURES → ABOUT → STATS → TESTIMONIALS → PROCESS_STEPS → PRICING or FAQ → CTA or CONTACT
+- Icon must be one of: ShieldCheck, Clock, Sparkles, Star, Dumbbell, Heart, Zap, Trophy, CheckCircle2, Crown, Flame, Camera
+- For images: If the user provides uploaded image URLs, ALWAYS use them. Otherwise use real Unsplash URLs: https://images.unsplash.com/photo-XXXXX?q=80&w=2070&auto=format&fit=crop
+- Choose theme colors that match the business (luxury=gold/black, fitness=red/black, medical=blue/white, tech=purple/dark, food=warm orange, wellness=green/cream)
+- Font choices: "Playfair Display" for luxury/elegant, "Inter" for modern/tech, "Montserrat" for bold/fitness, "DM Sans" for clean/professional, "Space Grotesk" for tech/startup
+- Write compelling, specific marketing copy — not generic placeholder text. Use real-sounding numbers, names, and details.
+- Make testimonials sound authentic with full names and specific roles
+- Pricing should use realistic price points for the industry
+- Stats should use impressive but believable numbers
+- Return ONLY the JSON object, no markdown, no code fences, no explanation.`;
 
   const promptSchema = z.object({
     prompt: z.string().min(1, "prompt is required").max(2000),
@@ -322,7 +320,7 @@ Rules:
         { role: "user", content: userMessage },
       ],
       temperature: 0.7,
-      max_tokens: 1500,
+      max_tokens: 4000,
     });
 
     const raw = completion.choices[0]?.message?.content ?? "";

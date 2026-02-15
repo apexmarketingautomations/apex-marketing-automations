@@ -49,6 +49,22 @@ import {
   ImagePlus,
   Upload,
   Image,
+  Quote,
+  BarChart3,
+  Users2,
+  Play,
+  Phone,
+  MapPin,
+  Mail,
+  ChevronDown,
+  ChevronUp,
+  Award,
+  Target,
+  Layers,
+  ArrowRight,
+  ExternalLink,
+  Calendar,
+  MessageCircle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -71,69 +87,91 @@ const ICON_MAP: Record<string, React.ComponentType<any>> = {
   Camera,
 };
 
-function HeroSection({ title, subtitle, cta, image, theme }: any) {
+function HeroSection({ title, subtitle, cta, image, badge, theme }: any) {
   return (
     <div
-      className="py-20 px-6 md:px-12 flex flex-col items-center text-center relative overflow-hidden"
+      className="relative min-h-[80vh] flex flex-col items-center justify-center text-center overflow-hidden"
       style={{ backgroundColor: theme.bg, color: theme.text }}
     >
       <div
-        className="absolute inset-0 opacity-20 bg-cover bg-center z-0"
-        style={{ backgroundImage: `url(${image})` }}
+        className="absolute inset-0 bg-cover bg-center z-0 scale-105"
+        style={{ backgroundImage: `url(${image})`, filter: 'blur(1px)' }}
       />
-      <div className="relative z-10 max-w-3xl space-y-6">
+      <div className="absolute inset-0 z-0" style={{ background: `linear-gradient(180deg, ${theme.bg}ee 0%, ${theme.bg}99 40%, ${theme.bg}dd 100%)` }} />
+      <div className="absolute inset-0 z-0" style={{ background: `radial-gradient(ellipse at center, ${theme.primary}15 0%, transparent 70%)` }} />
+      <div className="relative z-10 max-w-4xl px-6 space-y-8">
+        {badge && (
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold border" style={{ borderColor: theme.primary + '40', color: theme.primary, backgroundColor: theme.primary + '10' }}>
+            <Sparkles size={12} /> {badge}
+          </div>
+        )}
         <h1
-          className="text-4xl md:text-6xl font-bold tracking-tight"
+          className="text-5xl md:text-7xl font-extrabold tracking-tight leading-[1.1]"
           style={{ fontFamily: theme.font }}
         >
           {title}
         </h1>
-        <p className="text-lg md:text-xl opacity-90">{subtitle}</p>
-        <Button
-          size="lg"
-          className="mt-4 font-bold"
-          style={{ backgroundColor: theme.primary, color: theme.bg }}
-          data-testid="button-hero-cta"
-        >
-          {cta}
-        </Button>
+        <p className="text-lg md:text-xl opacity-80 max-w-2xl mx-auto leading-relaxed">{subtitle}</p>
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
+          <Button
+            size="lg"
+            className="font-bold px-8 py-3 text-base rounded-full shadow-xl"
+            style={{ backgroundColor: theme.primary, color: theme.bg, boxShadow: `0 0 40px ${theme.primary}30` }}
+            data-testid="button-hero-cta"
+          >
+            {cta}
+          </Button>
+          <Button
+            size="lg"
+            variant="outline"
+            className="font-semibold px-8 py-3 text-base rounded-full"
+            style={{ borderColor: theme.text + '30', color: theme.text }}
+            data-testid="button-hero-secondary"
+          >
+            Learn More
+          </Button>
+        </div>
       </div>
+      <div className="absolute bottom-0 left-0 right-0 h-24 z-10" style={{ background: `linear-gradient(to top, ${theme.bg}, transparent)` }} />
     </div>
   );
 }
 
-function FeatureSection({ title, features, theme }: any) {
+function FeatureSection({ title, subtitle, features, theme }: any) {
   return (
     <div
-      className="py-16 px-6 md:px-12 bg-white/5"
-      style={{ color: theme.text }}
+      className="py-20 px-6 md:px-12"
+      style={{ backgroundColor: theme.primary + '05', color: theme.text }}
     >
       <div className="max-w-6xl mx-auto">
         <h2
-          className="text-3xl font-bold text-center mb-12"
+          className="text-3xl md:text-4xl font-bold text-center mb-3"
           style={{ fontFamily: theme.font }}
         >
           {title}
         </h2>
+        {subtitle && <p className="text-center opacity-60 mb-14 max-w-2xl mx-auto">{subtitle}</p>}
+        {!subtitle && <div className="mb-14" />}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {features.map((f: any, i: number) => {
+          {(features || []).map((f: any, i: number) => {
             const IconComponent = ICON_MAP[f.icon] || Star;
             return (
               <div
                 key={i}
-                className="p-6 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-colors"
+                className="group p-8 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 transition-all duration-300 hover:border-current/20 hover:-translate-y-1 hover:shadow-xl"
+                style={{ '--tw-shadow-color': theme.primary + '15' } as any}
               >
                 <div
-                  className="w-12 h-12 rounded-full flex items-center justify-center mb-4"
+                  className="w-14 h-14 rounded-xl flex items-center justify-center mb-5 group-hover:scale-110 transition-transform"
                   style={{
-                    backgroundColor: theme.primary + "20",
+                    backgroundColor: theme.primary + '15',
                     color: theme.primary,
                   }}
                 >
-                  <IconComponent size={24} />
+                  <IconComponent size={26} />
                 </div>
-                <h3 className="text-xl font-bold mb-2">{f.title}</h3>
-                <p className="text-sm opacity-70">{f.desc}</p>
+                <h3 className="text-xl font-bold mb-3">{f.title}</h3>
+                <p className="text-sm opacity-60 leading-relaxed">{f.desc}</p>
               </div>
             );
           })}
@@ -359,6 +397,371 @@ function BotEmbedSection({ title, code, theme }: any) {
             No bot code added yet. Click Edit to paste your chatbot embed code.
           </p>
         )}
+      </div>
+    </div>
+  );
+}
+
+function TestimonialsSection({ title, subtitle, testimonials, theme }: any) {
+  return (
+    <div className="py-20 px-6 md:px-12" style={{ backgroundColor: theme.bg, color: theme.text }}>
+      <div className="max-w-6xl mx-auto">
+        <h2 className="text-3xl md:text-4xl font-bold text-center mb-3" style={{ fontFamily: theme.font }}>{title}</h2>
+        {subtitle && <p className="text-center opacity-60 mb-12 max-w-2xl mx-auto">{subtitle}</p>}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {(testimonials || []).map((t: any, i: number) => (
+            <div key={i} className="p-6 rounded-2xl border border-white/10 bg-white/5 relative">
+              <div className="text-4xl opacity-20 absolute top-4 right-4" style={{ color: theme.primary }}>"</div>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold" style={{ backgroundColor: theme.primary + '30', color: theme.primary }}>
+                  {(t.name || 'A').charAt(0)}
+                </div>
+                <div>
+                  <p className="font-semibold text-sm">{t.name}</p>
+                  <p className="text-xs opacity-50">{t.role}</p>
+                </div>
+              </div>
+              <div className="flex gap-0.5 mb-3">
+                {Array.from({ length: t.stars || 5 }).map((_, j) => (
+                  <Star key={j} size={14} fill={theme.primary} color={theme.primary} />
+                ))}
+              </div>
+              <p className="text-sm opacity-80 leading-relaxed">{t.quote}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatsSection({ title, stats, theme }: any) {
+  return (
+    <div className="py-16 px-6" style={{ backgroundColor: theme.primary + '08', color: theme.text }}>
+      <div className="max-w-6xl mx-auto">
+        {title && <h2 className="text-2xl font-bold text-center mb-10" style={{ fontFamily: theme.font }}>{title}</h2>}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+          {(stats || []).map((s: any, i: number) => (
+            <div key={i} className="text-center">
+              <div className="text-4xl md:text-5xl font-black mb-2" style={{ color: theme.primary }}>{s.value}</div>
+              <div className="text-sm opacity-60 uppercase tracking-wider">{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GallerySection({ title, subtitle, images, theme }: any) {
+  return (
+    <div className="py-20 px-6 md:px-12" style={{ backgroundColor: theme.bg, color: theme.text }}>
+      <div className="max-w-6xl mx-auto">
+        <h2 className="text-3xl md:text-4xl font-bold text-center mb-3" style={{ fontFamily: theme.font }}>{title}</h2>
+        {subtitle && <p className="text-center opacity-60 mb-10 max-w-2xl mx-auto">{subtitle}</p>}
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          {(images || []).map((img: any, i: number) => (
+            <div key={i} className="aspect-[4/3] rounded-xl overflow-hidden border border-white/10 group relative">
+              <img src={typeof img === 'string' ? img : img.url} alt={typeof img === 'string' ? '' : img.caption || ''} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+              {typeof img !== 'string' && img.caption && (
+                <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent p-4 translate-y-full group-hover:translate-y-0 transition-transform">
+                  <p className="text-sm text-white">{img.caption}</p>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AboutSection({ title, text, image, stats, theme }: any) {
+  return (
+    <div className="py-20 px-6 md:px-12" style={{ backgroundColor: theme.bg, color: theme.text }}>
+      <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+        <div>
+          <h2 className="text-3xl md:text-4xl font-bold mb-6" style={{ fontFamily: theme.font }}>{title}</h2>
+          <p className="opacity-80 leading-relaxed mb-6 text-lg">{text}</p>
+          {stats && (
+            <div className="grid grid-cols-3 gap-4">
+              {stats.map((s: any, i: number) => (
+                <div key={i}>
+                  <div className="text-2xl font-black" style={{ color: theme.primary }}>{s.value}</div>
+                  <div className="text-xs opacity-50 uppercase">{s.label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        {image && (
+          <div className="rounded-2xl overflow-hidden border border-white/10 aspect-square">
+            <img src={image} alt="" className="w-full h-full object-cover" />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CtaSection({ title, subtitle, cta, theme }: any) {
+  return (
+    <div className="py-20 px-6" style={{ background: `linear-gradient(135deg, ${theme.primary}15, ${theme.primary}05)`, color: theme.text }}>
+      <div className="max-w-3xl mx-auto text-center">
+        <h2 className="text-3xl md:text-5xl font-bold mb-4" style={{ fontFamily: theme.font }}>{title}</h2>
+        {subtitle && <p className="text-lg opacity-70 mb-8 max-w-xl mx-auto">{subtitle}</p>}
+        <Button size="lg" className="font-bold px-8 py-3 text-lg rounded-full shadow-lg" style={{ backgroundColor: theme.primary, color: theme.bg, boxShadow: `0 0 30px ${theme.primary}40` }} data-testid="button-cta-action">
+          {cta || "Get Started"} <ArrowRight className="ml-2" size={18} />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function FaqSection({ title, faqs, theme }: any) {
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  return (
+    <div className="py-20 px-6 md:px-12" style={{ backgroundColor: theme.bg, color: theme.text }}>
+      <div className="max-w-3xl mx-auto">
+        <h2 className="text-3xl md:text-4xl font-bold text-center mb-12" style={{ fontFamily: theme.font }}>{title}</h2>
+        <div className="space-y-3">
+          {(faqs || []).map((faq: any, i: number) => (
+            <div key={i} className="border border-white/10 rounded-xl overflow-hidden">
+              <button className="w-full p-5 text-left flex items-center justify-between hover:bg-white/5 transition-colors" onClick={() => setOpenIndex(openIndex === i ? null : i)}>
+                <span className="font-semibold pr-4">{faq.q}</span>
+                {openIndex === i ? <ChevronUp size={18} style={{ color: theme.primary }} /> : <ChevronDown size={18} className="opacity-50" />}
+              </button>
+              {openIndex === i && (
+                <div className="px-5 pb-5 text-sm opacity-70 leading-relaxed border-t border-white/5 pt-4">{faq.a}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PricingSection({ title, subtitle, plans, theme }: any) {
+  return (
+    <div className="py-20 px-6 md:px-12" style={{ backgroundColor: theme.bg, color: theme.text }}>
+      <div className="max-w-6xl mx-auto">
+        <h2 className="text-3xl md:text-4xl font-bold text-center mb-3" style={{ fontFamily: theme.font }}>{title}</h2>
+        {subtitle && <p className="text-center opacity-60 mb-12 max-w-2xl mx-auto">{subtitle}</p>}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {(plans || []).map((plan: any, i: number) => {
+            const featured = plan.featured || i === 1;
+            return (
+              <div key={i} className={`rounded-2xl p-8 border transition-all hover:scale-[1.02] relative ${featured ? 'border-2 shadow-2xl' : 'border-white/10'}`} style={{ borderColor: featured ? theme.primary : undefined, backgroundColor: featured ? theme.primary + '08' : 'rgba(255,255,255,0.03)' }}>
+                {featured && <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full text-xs font-bold" style={{ backgroundColor: theme.primary, color: theme.bg }}>RECOMMENDED</div>}
+                <h3 className="text-xl font-bold mb-1">{plan.name}</h3>
+                <p className="text-xs opacity-50 mb-4">{plan.description}</p>
+                <div className="flex items-baseline gap-1 mb-6"><span className="text-4xl font-black" style={{ color: theme.primary }}>${plan.price}</span><span className="text-sm opacity-50">/{plan.period || 'mo'}</span></div>
+                <ul className="space-y-3 mb-8">
+                  {(plan.features || []).map((f: string, j: number) => (
+                    <li key={j} className="flex items-start gap-2 text-sm"><CheckCircle2 size={16} className="mt-0.5 shrink-0" style={{ color: theme.primary }} />{f}</li>
+                  ))}
+                </ul>
+                <Button className="w-full font-bold rounded-full" style={{ backgroundColor: featured ? theme.primary : 'transparent', color: featured ? theme.bg : theme.text, border: featured ? 'none' : `1px solid ${theme.primary}` }} data-testid={`button-pricing-${i}`}>{plan.cta || 'Choose Plan'}</Button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TeamSection({ title, subtitle, members, theme }: any) {
+  return (
+    <div className="py-20 px-6 md:px-12" style={{ backgroundColor: theme.bg, color: theme.text }}>
+      <div className="max-w-6xl mx-auto">
+        <h2 className="text-3xl md:text-4xl font-bold text-center mb-3" style={{ fontFamily: theme.font }}>{title}</h2>
+        {subtitle && <p className="text-center opacity-60 mb-12 max-w-2xl mx-auto">{subtitle}</p>}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+          {(members || []).map((m: any, i: number) => (
+            <div key={i} className="text-center group">
+              <div className="w-24 h-24 rounded-full mx-auto mb-4 border-2 overflow-hidden flex items-center justify-center text-2xl font-bold" style={{ borderColor: theme.primary + '40', backgroundColor: theme.primary + '15', color: theme.primary }}>
+                {m.image ? <img src={m.image} alt={m.name} className="w-full h-full object-cover" /> : (m.name || 'T').charAt(0)}
+              </div>
+              <h3 className="font-bold">{m.name}</h3>
+              <p className="text-sm opacity-50">{m.role}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LogoBarSection({ title, logos, theme }: any) {
+  return (
+    <div className="py-12 px-6" style={{ backgroundColor: theme.primary + '05', color: theme.text }}>
+      <div className="max-w-6xl mx-auto">
+        {title && <p className="text-center text-xs uppercase tracking-widest opacity-40 mb-8">{title}</p>}
+        <div className="flex flex-wrap items-center justify-center gap-8 md:gap-12">
+          {(logos || []).map((logo: any, i: number) => (
+            <div key={i} className="opacity-40 hover:opacity-80 transition-opacity text-sm font-bold tracking-wider uppercase" style={{ fontFamily: theme.font }}>
+              {typeof logo === 'string' ? logo : logo.name}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TimelineSection({ title, subtitle, events, theme }: any) {
+  return (
+    <div className="py-20 px-6 md:px-12" style={{ backgroundColor: theme.bg, color: theme.text }}>
+      <div className="max-w-3xl mx-auto">
+        <h2 className="text-3xl md:text-4xl font-bold text-center mb-3" style={{ fontFamily: theme.font }}>{title}</h2>
+        {subtitle && <p className="text-center opacity-60 mb-12">{subtitle}</p>}
+        <div className="relative">
+          <div className="absolute left-4 md:left-1/2 top-0 bottom-0 w-0.5" style={{ backgroundColor: theme.primary + '30' }} />
+          {(events || []).map((ev: any, i: number) => (
+            <div key={i} className={`relative flex items-start mb-10 ${i % 2 === 0 ? 'md:flex-row-reverse' : ''}`}>
+              <div className="absolute left-4 md:left-1/2 w-3 h-3 rounded-full -translate-x-1/2 mt-2 z-10 ring-4" style={{ backgroundColor: theme.primary }} />
+              <div className={`ml-10 md:ml-0 md:w-[calc(50%-2rem)] ${i % 2 === 0 ? 'md:mr-auto md:pr-8 md:text-right' : 'md:ml-auto md:pl-8'}`}>
+                <span className="text-xs font-mono opacity-40">{ev.date}</span>
+                <h3 className="font-bold text-lg mt-1">{ev.title}</h3>
+                <p className="text-sm opacity-60 mt-1">{ev.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ContactSection({ title, subtitle, fields, theme }: any) {
+  return (
+    <div className="py-20 px-6 md:px-12" style={{ backgroundColor: theme.bg, color: theme.text }}>
+      <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12">
+        <div>
+          <h2 className="text-3xl md:text-4xl font-bold mb-4" style={{ fontFamily: theme.font }}>{title}</h2>
+          {subtitle && <p className="opacity-60 mb-8">{subtitle}</p>}
+          <div className="space-y-4">
+            <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: theme.primary + '20' }}><Mail size={18} style={{ color: theme.primary }} /></div><div><p className="text-xs opacity-50">Email</p><p className="font-semibold text-sm">hello@yourbusiness.com</p></div></div>
+            <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: theme.primary + '20' }}><Phone size={18} style={{ color: theme.primary }} /></div><div><p className="text-xs opacity-50">Phone</p><p className="font-semibold text-sm">(555) 123-4567</p></div></div>
+            <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: theme.primary + '20' }}><MapPin size={18} style={{ color: theme.primary }} /></div><div><p className="text-xs opacity-50">Location</p><p className="font-semibold text-sm">123 Main St, Your City</p></div></div>
+          </div>
+        </div>
+        <div className="p-8 rounded-2xl border border-white/10 bg-white/5">
+          <div className="space-y-4">
+            {(fields || ['Name', 'Email', 'Phone', 'Message']).map((field: string, i: number) => (
+              <div key={i}>
+                <label className="text-xs opacity-50 block mb-1">{field}</label>
+                {field === 'Message' ? (
+                  <textarea className="w-full bg-white/10 border border-white/20 rounded-lg p-3 text-sm resize-none h-24 focus:outline-none focus:border-current" style={{ borderColor: theme.primary + '50' }} placeholder={`Your ${field.toLowerCase()}...`} />
+                ) : (
+                  <Input className="bg-white/10 border-white/20" placeholder={`Your ${field.toLowerCase()}...`} data-testid={`input-contact-${field.toLowerCase()}`} />
+                )}
+              </div>
+            ))}
+            <Button className="w-full font-bold rounded-full" style={{ backgroundColor: theme.primary, color: theme.bg }} data-testid="button-contact-submit">Send Message</Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VideoSection({ title, subtitle, videoUrl, theme }: any) {
+  return (
+    <div className="py-20 px-6 md:px-12" style={{ backgroundColor: theme.bg, color: theme.text }}>
+      <div className="max-w-4xl mx-auto text-center">
+        <h2 className="text-3xl md:text-4xl font-bold mb-3" style={{ fontFamily: theme.font }}>{title}</h2>
+        {subtitle && <p className="opacity-60 mb-10 max-w-2xl mx-auto">{subtitle}</p>}
+        <div className="aspect-video rounded-2xl overflow-hidden border border-white/10 bg-black/50 flex items-center justify-center relative group cursor-pointer">
+          {videoUrl ? (
+            <iframe src={videoUrl} className="w-full h-full" allow="autoplay; encrypted-media" allowFullScreen />
+          ) : (
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-16 h-16 rounded-full flex items-center justify-center border-2 group-hover:scale-110 transition-transform" style={{ borderColor: theme.primary, color: theme.primary }}>
+                <Play size={28} fill={theme.primary} />
+              </div>
+              <p className="text-sm opacity-50">Watch Our Story</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BannerSection({ title, subtitle, cta, image, theme }: any) {
+  return (
+    <div className="py-16 px-6 md:px-12 relative overflow-hidden" style={{ color: theme.text }}>
+      <div className="absolute inset-0 bg-cover bg-center z-0" style={{ backgroundImage: `url(${image})` }} />
+      <div className="absolute inset-0 z-0" style={{ backgroundColor: theme.bg, opacity: 0.85 }} />
+      <div className="relative z-10 max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
+        <div>
+          <h2 className="text-2xl md:text-3xl font-bold" style={{ fontFamily: theme.font }}>{title}</h2>
+          {subtitle && <p className="opacity-70 mt-2">{subtitle}</p>}
+        </div>
+        {cta && (
+          <Button size="lg" className="font-bold rounded-full shrink-0 px-8" style={{ backgroundColor: theme.primary, color: theme.bg }} data-testid="button-banner-cta">
+            {cta} <ArrowRight className="ml-2" size={16} />
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ComparisonSection({ title, subtitle, headers, rows, theme }: any) {
+  return (
+    <div className="py-20 px-6 md:px-12" style={{ backgroundColor: theme.bg, color: theme.text }}>
+      <div className="max-w-4xl mx-auto">
+        <h2 className="text-3xl md:text-4xl font-bold text-center mb-3" style={{ fontFamily: theme.font }}>{title}</h2>
+        {subtitle && <p className="text-center opacity-60 mb-10">{subtitle}</p>}
+        <div className="overflow-x-auto rounded-2xl border border-white/10">
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ backgroundColor: theme.primary + '15' }}>
+                {(headers || []).map((h: string, i: number) => (
+                  <th key={i} className={`p-4 text-left font-bold ${i === 0 ? '' : 'text-center'}`} style={{ color: i > 0 ? theme.primary : undefined }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {(rows || []).map((row: any, i: number) => (
+                <tr key={i} className="border-t border-white/5 hover:bg-white/5">
+                  {(row.cells || []).map((cell: string, j: number) => (
+                    <td key={j} className={`p-4 ${j === 0 ? 'font-medium' : 'text-center'}`}>
+                      {cell === '✓' ? <CheckCircle2 size={18} className="mx-auto" style={{ color: theme.primary }} /> : cell === '✗' ? <span className="opacity-30">—</span> : cell}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProcessStepsSection({ title, subtitle, steps, theme }: any) {
+  return (
+    <div className="py-20 px-6 md:px-12" style={{ backgroundColor: theme.primary + '05', color: theme.text }}>
+      <div className="max-w-6xl mx-auto">
+        <h2 className="text-3xl md:text-4xl font-bold text-center mb-3" style={{ fontFamily: theme.font }}>{title}</h2>
+        {subtitle && <p className="text-center opacity-60 mb-14 max-w-2xl mx-auto">{subtitle}</p>}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 relative">
+          <div className="hidden md:block absolute top-10 left-[12.5%] right-[12.5%] h-0.5" style={{ backgroundColor: theme.primary + '20' }} />
+          {(steps || []).map((step: any, i: number) => (
+            <div key={i} className="text-center relative">
+              <div className="w-14 h-14 rounded-full mx-auto mb-4 flex items-center justify-center text-lg font-black border-2 relative z-10" style={{ borderColor: theme.primary, color: theme.primary, backgroundColor: theme.bg }}>
+                {i + 1}
+              </div>
+              <h3 className="font-bold mb-2">{step.title}</h3>
+              <p className="text-sm opacity-60">{step.desc}</p>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -791,12 +1194,27 @@ export default function SiteBuilder() {
 
   const handleAddSection = (type: string) => {
     const defaults: Record<string, any> = {
-      HERO: { title: "New Hero Section", subtitle: "Your subtitle here", cta: "Get Started", image: "" },
-      FEATURES: { title: "Our Features", features: [{ icon: "Star", title: "Feature 1", desc: "Description" }, { icon: "Zap", title: "Feature 2", desc: "Description" }, { icon: "Heart", title: "Feature 3", desc: "Description" }] },
+      HERO: { title: "New Hero Section", subtitle: "Your subtitle here", cta: "Get Started", image: "", badge: "New" },
+      FEATURES: { title: "Our Features", subtitle: "What makes us different", features: [{ icon: "Star", title: "Feature 1", desc: "Description" }, { icon: "Zap", title: "Feature 2", desc: "Description" }, { icon: "Heart", title: "Feature 3", desc: "Description" }] },
       BOOKING: { title: "Book Now", formId: "new-form" },
       PAYWALL: { title: "Choose Your Plan", tiers: [{ name: "Basic", price: 9, perks: ["Access to basic content", "Community chat"], cta: "Subscribe" }, { name: "Premium", price: 25, perks: ["All basic perks", "Exclusive content", "Direct messages"], cta: "Go Premium" }, { name: "VIP", price: 50, perks: ["Everything included", "Custom requests", "Priority access"], cta: "Join VIP" }] },
       CODE: { title: "Custom Code", code: "<h1 style=\"text-align:center;padding:40px;color:#6366f1;\">Hello World</h1>\n<p style=\"text-align:center;\">Edit this code to add your own HTML, CSS & JavaScript</p>" },
       BOT_EMBED: { title: "Chat Bot", code: "" },
+      TESTIMONIALS: { title: "What Our Clients Say", subtitle: "Real results from real people", testimonials: [{ name: "Sarah Johnson", role: "CEO, TechCorp", quote: "Absolutely transformed our business. The results speak for themselves.", stars: 5 }, { name: "Mike Chen", role: "Founder, StartupXYZ", quote: "Best decision we made this year. ROI was incredible.", stars: 5 }, { name: "Emma Davis", role: "Marketing Director", quote: "Professional, responsive, and delivered beyond expectations.", stars: 5 }] },
+      STATS: { title: "By The Numbers", stats: [{ value: "500+", label: "Clients Served" }, { value: "98%", label: "Satisfaction Rate" }, { value: "10+", label: "Years Experience" }, { value: "24/7", label: "Support" }] },
+      GALLERY: { title: "Our Work", subtitle: "See what we've accomplished", images: [{ url: "", caption: "Project 1" }, { url: "", caption: "Project 2" }, { url: "", caption: "Project 3" }] },
+      ABOUT: { title: "About Us", text: "We are passionate about delivering exceptional results. With years of experience and a dedicated team, we help businesses achieve their goals.", image: "" },
+      CTA: { title: "Ready to Get Started?", subtitle: "Join thousands of satisfied customers today.", cta: "Start Now" },
+      FAQ: { title: "Frequently Asked Questions", faqs: [{ q: "How does it work?", a: "Simply sign up, choose your plan, and get started in minutes." }, { q: "Is there a free trial?", a: "Yes, we offer a 14-day free trial with no credit card required." }, { q: "Can I cancel anytime?", a: "Absolutely. No contracts, no hidden fees." }] },
+      PRICING: { title: "Simple Pricing", subtitle: "Choose the plan that works for you", plans: [{ name: "Starter", description: "For individuals", price: 29, period: "mo", features: ["1 User", "5 Projects", "Basic Support"], cta: "Get Started" }, { name: "Pro", description: "For growing teams", price: 79, period: "mo", features: ["5 Users", "Unlimited Projects", "Priority Support", "Analytics"], cta: "Choose Pro", featured: true }, { name: "Enterprise", description: "For large orgs", price: 199, period: "mo", features: ["Unlimited Users", "Custom Integrations", "Dedicated Manager", "SLA"], cta: "Contact Sales" }] },
+      TEAM: { title: "Meet Our Team", subtitle: "The people behind the magic", members: [{ name: "Alex Smith", role: "CEO" }, { name: "Jordan Lee", role: "CTO" }, { name: "Taylor Kim", role: "Design Lead" }, { name: "Casey Brown", role: "Marketing" }] },
+      LOGO_BAR: { title: "Trusted By Leading Brands", logos: ["Google", "Apple", "Microsoft", "Amazon", "Netflix"] },
+      TIMELINE: { title: "Our Journey", subtitle: "How we got here", events: [{ date: "2020", title: "Founded", desc: "Started with a vision" }, { date: "2021", title: "First 100 Clients", desc: "Rapid growth phase" }, { date: "2022", title: "Series A Funding", desc: "Raised $10M" }, { date: "2023", title: "Global Expansion", desc: "Opened 3 new offices" }] },
+      CONTACT: { title: "Get In Touch", subtitle: "We'd love to hear from you", fields: ["Name", "Email", "Phone", "Message"] },
+      VIDEO: { title: "See It In Action", subtitle: "Watch how we help businesses grow" },
+      BANNER: { title: "Limited Time Offer", subtitle: "Get 50% off your first month", cta: "Claim Offer", image: "" },
+      COMPARISON: { title: "Why Choose Us", subtitle: "See how we compare", headers: ["Feature", "Us", "Others"], rows: [{ cells: ["24/7 Support", "✓", "✗"] }, { cells: ["Custom Solutions", "✓", "✗"] }, { cells: ["Free Onboarding", "✓", "✗"] }, { cells: ["No Contracts", "✓", "✗"] }] },
+      PROCESS_STEPS: { title: "How It Works", subtitle: "Get started in 4 easy steps", steps: [{ title: "Sign Up", desc: "Create your free account" }, { title: "Customize", desc: "Set up your preferences" }, { title: "Launch", desc: "Go live in minutes" }, { title: "Grow", desc: "Watch your business thrive" }] },
     };
     setSiteData((prev: any) => ({
       ...prev,
@@ -1117,6 +1535,21 @@ export default function SiteBuilder() {
     PAYWALL: PaywallSection,
     CODE: CodeSection,
     BOT_EMBED: BotEmbedSection,
+    TESTIMONIALS: TestimonialsSection,
+    STATS: StatsSection,
+    GALLERY: GallerySection,
+    ABOUT: AboutSection,
+    CTA: CtaSection,
+    FAQ: FaqSection,
+    PRICING: PricingSection,
+    TEAM: TeamSection,
+    LOGO_BAR: LogoBarSection,
+    TIMELINE: TimelineSection,
+    CONTACT: ContactSection,
+    VIDEO: VideoSection,
+    BANNER: BannerSection,
+    COMPARISON: ComparisonSection,
+    PROCESS_STEPS: ProcessStepsSection,
   };
 
   return (
@@ -1557,24 +1990,39 @@ export default function SiteBuilder() {
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="flex gap-2"
+                      className="flex flex-wrap gap-1.5 max-w-md justify-center"
                     >
                       {[
-                        { type: "HERO", label: "HERO" },
-                        { type: "FEATURES", label: "FEATURES" },
-                        { type: "BOOKING", label: "BOOKING" },
-                        { type: "PAYWALL", label: "PAYWALL" },
-                        { type: "CODE", label: "CODE" },
-                        { type: "BOT_EMBED", label: "BOT" },
+                        { type: "HERO", label: "Hero" },
+                        { type: "FEATURES", label: "Features" },
+                        { type: "TESTIMONIALS", label: "Reviews" },
+                        { type: "STATS", label: "Stats" },
+                        { type: "ABOUT", label: "About" },
+                        { type: "GALLERY", label: "Gallery" },
+                        { type: "CTA", label: "CTA" },
+                        { type: "FAQ", label: "FAQ" },
+                        { type: "PRICING", label: "Pricing" },
+                        { type: "TEAM", label: "Team" },
+                        { type: "LOGO_BAR", label: "Logos" },
+                        { type: "TIMELINE", label: "Timeline" },
+                        { type: "CONTACT", label: "Contact" },
+                        { type: "VIDEO", label: "Video" },
+                        { type: "BANNER", label: "Banner" },
+                        { type: "COMPARISON", label: "Compare" },
+                        { type: "PROCESS_STEPS", label: "Steps" },
+                        { type: "BOOKING", label: "Booking" },
+                        { type: "PAYWALL", label: "Paywall" },
+                        { type: "CODE", label: "Code" },
+                        { type: "BOT_EMBED", label: "Bot" },
                       ].map(({ type, label }) => (
                         <Button
                           key={type}
                           size="sm"
-                          className="bg-indigo-600 hover:bg-indigo-500 text-xs"
+                          className="bg-indigo-600 hover:bg-indigo-500 text-[10px] px-2 py-1 h-auto"
                           onClick={() => handleAddSection(type)}
                           data-testid={`button-add-${type.toLowerCase()}`}
                         >
-                          <Plus size={14} className="mr-1" /> {label}
+                          <Plus size={10} className="mr-0.5" /> {label}
                         </Button>
                       ))}
                       <Button
