@@ -46,6 +46,9 @@ import {
   Music,
   Code2,
   Bot,
+  ImagePlus,
+  Upload,
+  Image,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -448,6 +451,42 @@ function SectionEditor({ section, index, onUpdate, onClose }: { section: any; in
       )}
       {section.type !== "CODE" && section.type !== "BOT_EMBED" && Object.entries(editProps).map(([key, value]) => {
         if (key === "features" || key === "formId" || typeof value === "object") return null;
+        if (key === "image") {
+          return (
+            <div key={key}>
+              <label className="text-xs text-slate-400 block mb-1 capitalize">{key}</label>
+              <Input
+                value={String(value || "")}
+                onChange={(e) => handleChange(key, e.target.value)}
+                className="bg-white/5 border-white/10 text-sm mb-2"
+                placeholder="Image URL or upload below"
+                data-testid={`input-edit-${key}-${index}`}
+              />
+              <div className="flex gap-1 flex-wrap">
+                <label className="cursor-pointer px-2 py-1 bg-indigo-600/30 hover:bg-indigo-600/50 rounded text-[10px] text-indigo-300 transition-colors flex items-center gap-1">
+                  <Upload size={10} /> Upload
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const formData = new FormData();
+                      formData.append("image", file);
+                      try {
+                        const res = await fetch("/api/uploads", { method: "POST", body: formData });
+                        const data = await res.json();
+                        if (data.url) handleChange("image", data.url);
+                      } catch {}
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+          );
+        }
         return (
           <div key={key}>
             <label className="text-xs text-slate-400 block mb-1 capitalize">{key}</label>
@@ -489,6 +528,56 @@ export default function SiteBuilder() {
   const [editingSectionIndex, setEditingSectionIndex] = useState<number | null>(null);
   const [addSectionOpen, setAddSectionOpen] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+
+  const [showImageLibrary, setShowImageLibrary] = useState(false);
+  const [uploadedImages, setUploadedImages] = useState<{url: string; filename: string; size: number; uploadedAt?: string}[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const fetchUploadedImages = useCallback(async () => {
+    try {
+      const res = await fetch("/api/uploads");
+      const data = await res.json();
+      if (data.files) setUploadedImages(data.files);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    fetchUploadedImages();
+  }, [fetchUploadedImages]);
+
+  const handleImageUpload = async (file: File) => {
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+      const res = await fetch("/api/uploads", { method: "POST", body: formData });
+      const data = await res.json();
+      if (data.url) {
+        await fetchUploadedImages();
+        toast({ title: "Image Uploaded", description: file.name });
+      }
+    } catch {
+      toast({ title: "Upload Failed", description: "Could not upload image", variant: "destructive" });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleDeleteImage = async (filename: string) => {
+    try {
+      await fetch(`/api/uploads/${filename}`, { method: "DELETE" });
+      await fetchUploadedImages();
+      toast({ title: "Image Deleted" });
+    } catch {}
+  };
+
+  const handleImageDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith("image/")) {
+      handleImageUpload(file);
+    }
+  };
 
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [versions, setVersions] = useState<SiteVersion[]>([]);
@@ -1142,6 +1231,94 @@ export default function SiteBuilder() {
           )}
         </div>
 
+        <AnimatePresence>
+          {showImageLibrary && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="border-t border-white/10 overflow-hidden"
+            >
+              <div className="p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-indigo-400 flex items-center gap-2">
+                    <ImagePlus size={14} />
+                    Image Library
+                  </h3>
+                  <span className="text-xs text-slate-500">{uploadedImages.length} images</span>
+                </div>
+
+                <div
+                  className="border-2 border-dashed border-white/10 rounded-xl p-4 text-center cursor-pointer hover:border-indigo-500/50 transition-colors relative"
+                  onDrop={handleImageDrop}
+                  onDragOver={(e) => e.preventDefault()}
+                  onClick={() => document.getElementById("image-upload-input")?.click()}
+                  data-testid="dropzone-image-upload"
+                >
+                  {isUploading ? (
+                    <div className="flex items-center justify-center gap-2 text-indigo-400">
+                      <Loader2 size={16} className="animate-spin" />
+                      <span className="text-xs">Uploading...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <Upload size={20} className="mx-auto text-slate-500 mb-1" />
+                      <p className="text-xs text-slate-500">Drop image here or click to upload</p>
+                      <p className="text-[10px] text-slate-600 mt-1">JPG, PNG, GIF, WebP, SVG (max 10MB)</p>
+                    </>
+                  )}
+                  <input
+                    id="image-upload-input"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleImageUpload(file);
+                      e.target.value = "";
+                    }}
+                    data-testid="input-image-upload"
+                  />
+                </div>
+
+                {uploadedImages.length > 0 && (
+                  <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
+                    {uploadedImages.map((img) => (
+                      <div
+                        key={img.filename}
+                        className="relative group aspect-square rounded-lg overflow-hidden border border-white/10 cursor-pointer hover:border-indigo-500/50 transition-colors"
+                        onClick={() => {
+                          navigator.clipboard.writeText(img.url);
+                          toast({ title: "URL Copied", description: "Image URL copied to clipboard" });
+                        }}
+                        data-testid={`image-thumbnail-${img.filename}`}
+                      >
+                        <img src={img.url} alt={img.filename} className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <div className="text-center">
+                            <Copy size={14} className="mx-auto text-white mb-1" />
+                            <span className="text-[10px] text-white">Copy URL</span>
+                          </div>
+                        </div>
+                        <button
+                          className="absolute top-1 right-1 p-1 bg-red-500/80 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteImage(img.filename);
+                          }}
+                          data-testid={`button-delete-image-${img.filename}`}
+                        >
+                          <Trash2 size={10} className="text-white" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <div className="p-4 bg-black/40 border-t border-white/5 backdrop-blur-md space-y-2">
           <div className="flex gap-2">
             <Input
@@ -1168,6 +1345,14 @@ export default function SiteBuilder() {
           >
             <Palette size={14} />
             Browse Template Gallery
+          </button>
+          <button
+            onClick={() => setShowImageLibrary(!showImageLibrary)}
+            className="w-full flex items-center justify-center gap-2 text-xs text-slate-400 hover:text-indigo-400 transition-colors py-1.5 rounded-lg border border-dashed border-white/10 hover:border-indigo-500/30"
+            data-testid="button-toggle-image-library"
+          >
+            <ImagePlus size={14} />
+            {showImageLibrary ? "Hide Image Library" : "Image Library"}
           </button>
         </div>
       </div>

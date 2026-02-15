@@ -1511,6 +1511,82 @@ Rules:
     res.json({ url: session.url });
   }));
 
+  // ── General Image Upload ──────────────────────────────────────────
+  const generalUploadsDir = path.join(process.cwd(), "uploads");
+  if (!fs.existsSync(generalUploadsDir)) {
+    fs.mkdirSync(generalUploadsDir, { recursive: true });
+  }
+
+  const generalStorage = multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, generalUploadsDir),
+    filename: (_req, file, cb) => {
+      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+      cb(null, uniqueSuffix + path.extname(file.originalname));
+    },
+  });
+
+  const generalUpload = multer({
+    storage: generalStorage,
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const allowed = /\.(jpg|jpeg|png|gif|webp|svg|ico)$/i;
+      if (allowed.test(path.extname(file.originalname))) {
+        cb(null, true);
+      } else {
+        cb(new Error("Only image files are allowed"));
+      }
+    },
+  });
+
+  app.post("/api/uploads", generalUpload.single("image"), (req: any, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+    const url = `/uploads/${req.file.filename}`;
+    res.json({
+      url,
+      filename: req.file.originalname,
+      size: req.file.size,
+      mimetype: req.file.mimetype,
+    });
+  });
+
+  app.get("/api/uploads", (_req, res) => {
+    try {
+      const files = fs.readdirSync(generalUploadsDir)
+        .filter((f: string) => /\.(jpg|jpeg|png|gif|webp|svg|ico)$/i.test(f))
+        .map((f: string) => {
+          const stat = fs.statSync(path.join(generalUploadsDir, f));
+          return {
+            url: `/uploads/${f}`,
+            filename: f,
+            size: stat.size,
+            uploadedAt: stat.mtime.toISOString(),
+          };
+        })
+        .sort((a: any, b: any) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+      res.json({ files });
+    } catch {
+      res.json({ files: [] });
+    }
+  });
+
+  app.delete("/api/uploads/:filename", (req, res) => {
+    const filename = path.basename(req.params.filename);
+    if (!/^[\w.-]+$/.test(filename)) {
+      return res.status(400).json({ error: "Invalid filename" });
+    }
+    const filePath = path.resolve(path.join(generalUploadsDir, filename));
+    if (!filePath.startsWith(path.resolve(generalUploadsDir))) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: "File not found" });
+    }
+    fs.unlinkSync(filePath);
+    res.json({ success: true });
+  });
+
   return httpServer;
 }
 
