@@ -61,6 +61,9 @@ const ICON_MAP: Record<string, React.ComponentType<any>> = {
   Zap,
   Trophy,
   CheckCircle2,
+  Crown,
+  Flame,
+  Camera,
 };
 
 function HeroSection({ title, subtitle, cta, image, theme }: any) {
