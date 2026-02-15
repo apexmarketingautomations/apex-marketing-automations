@@ -40,6 +40,10 @@ import {
   GraduationCap,
   Briefcase,
   Car,
+  Camera,
+  Crown,
+  Flame,
+  Music,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -694,6 +698,86 @@ export default function SiteBuilder() {
           { type: "HERO", props: { title: "Breathe. Flow. Transform.", subtitle: "Discover inner peace through yoga, meditation, and holistic wellness. All levels welcome, first class free.", cta: "Try a Free Class", image: "https://images.unsplash.com/photo-1545389336-cf090694435e?q=80&w=2070&auto=format&fit=crop" } },
           { type: "FEATURES", props: { title: "Our Offerings", features: [{ icon: "Heart", title: "Vinyasa Flow", desc: "Dynamic movement sequences synchronized with breath" }, { icon: "Sparkles", title: "Sound Healing", desc: "Crystal bowl meditation and chakra balancing sessions" }, { icon: "Clock", title: "Flexible Schedule", desc: "Classes from 6am to 9pm, 7 days a week" }] } },
           { type: "BOOKING", props: { title: "Reserve Your Mat", formId: "yoga-class" } },
+        ],
+      },
+    },
+    {
+      id: "creator-glam",
+      name: "Velvet Glow",
+      industry: "Adult Creator",
+      icon: Crown,
+      color: "#e879f9",
+      description: "Premium indie creator page with purple/pink glam aesthetic and VIP subscription CTA",
+      siteData: {
+        theme: { bg: "#0d0015", primary: "#e879f9", text: "#fae8ff", font: "Playfair Display" },
+        sections: [
+          { type: "HERO", props: { title: "Exclusive. Bold. Unapologetic.", subtitle: "Your all-access pass to premium content, private messages, and behind-the-scenes drops. Join the VIP list.", cta: "Subscribe Now", image: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2064&auto=format&fit=crop" } },
+          { type: "FEATURES", props: { title: "What You Get", features: [{ icon: "Crown", title: "VIP Content", desc: "Exclusive photos, videos, and livestreams updated weekly" }, { icon: "Heart", title: "Direct Messages", desc: "Private 1-on-1 messaging and custom content requests" }, { icon: "Star", title: "Early Access", desc: "Be the first to see new drops and limited releases" }] } },
+          { type: "BOOKING", props: { title: "Join the Inner Circle", formId: "creator-sub" } },
+        ],
+      },
+    },
+    {
+      id: "creator-dark",
+      name: "Midnight Muse",
+      industry: "Adult Creator",
+      icon: Flame,
+      color: "#f43f5e",
+      description: "Dark, sultry creator page with red/black bold theme and link-in-bio style",
+      siteData: {
+        theme: { bg: "#0a0000", primary: "#f43f5e", text: "#ffe4e6", font: "Inter" },
+        sections: [
+          { type: "HERO", props: { title: "Welcome to My World", subtitle: "Curated content, exclusive drops, and a community that gets it. All links, all platforms, one place.", cta: "See My Content", image: "https://images.unsplash.com/photo-1557682250-33bd709cbe85?q=80&w=2029&auto=format&fit=crop" } },
+          { type: "FEATURES", props: { title: "Find Me Here", features: [{ icon: "Flame", title: "Premium Feed", desc: "Subscribe for the full uncensored experience" }, { icon: "Camera", title: "Photo Sets", desc: "Professional themed shoots released monthly" }, { icon: "Zap", title: "Live Sessions", desc: "Weekly live streams with real-time interaction" }] } },
+          { type: "BOOKING", props: { title: "Get in Touch", formId: "creator-contact" } },
+        ],
+      },
+    },
+    {
+      id: "creator-luxe",
+      name: "Gilded Rose",
+      industry: "Adult Creator",
+      icon: Sparkles,
+      color: "#fbbf24",
+      description: "Luxury gold-themed creator page with high-end branding and tiered membership",
+      siteData: {
+        theme: { bg: "#0f0d08", primary: "#fbbf24", text: "#fef3c7", font: "Playfair Display" },
+        sections: [
+          { type: "HERO", props: { title: "Art. Allure. Access.", subtitle: "A curated luxury experience for discerning fans. Three tiers of exclusive membership with escalating perks.", cta: "Choose Your Tier", image: "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?q=80&w=2070&auto=format&fit=crop" } },
+          { type: "FEATURES", props: { title: "Membership Tiers", features: [{ icon: "Star", title: "Bronze - $9/mo", desc: "Access to weekly photo sets and community chat" }, { icon: "Sparkles", title: "Silver - $25/mo", desc: "All Bronze perks plus video content and DMs" }, { icon: "Crown", title: "Gold - $50/mo", desc: "Full access: custom content, video calls, and priority requests" }] } },
+          { type: "BOOKING", props: { title: "Apply for Gold Membership", formId: "creator-gold" } },
+        ],
+      },
+    },
+    {
+      id: "creator-neon",
+      name: "Neon Nights",
+      industry: "Adult Creator",
+      icon: Camera,
+      color: "#22d3ee",
+      description: "Cyberpunk neon-themed creator page with electric cyan aesthetic and bold energy",
+      siteData: {
+        theme: { bg: "#020617", primary: "#22d3ee", text: "#cffafe", font: "Inter" },
+        sections: [
+          { type: "HERO", props: { title: "Plug In. Turn On.", subtitle: "Digital-first content creator with a vibe that hits different. Exclusive drops, collabs, and 24/7 access.", cta: "Enter the Feed", image: "https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=2070&auto=format&fit=crop" } },
+          { type: "FEATURES", props: { title: "The Experience", features: [{ icon: "Zap", title: "Daily Content", desc: "Fresh uploads every single day across all platforms" }, { icon: "Camera", title: "Cinematic Quality", desc: "Studio-grade production on every piece of content" }, { icon: "Heart", title: "Fan Community", desc: "Private Discord with exclusive rooms and events" }] } },
+          { type: "BOOKING", props: { title: "Book a Collab", formId: "creator-collab" } },
+        ],
+      },
+    },
+    {
+      id: "creator-minimal",
+      name: "Bare Canvas",
+      industry: "Adult Creator",
+      icon: Music,
+      color: "#a78bfa",
+      description: "Minimalist artistic creator page with soft violet tones and clean aesthetic",
+      siteData: {
+        theme: { bg: "#0c0a15", primary: "#a78bfa", text: "#ede9fe", font: "Inter" },
+        sections: [
+          { type: "HERO", props: { title: "Less Noise. More Art.", subtitle: "A clean, intentional space for creators who value aesthetic over everything. Minimalist content, maximum impact.", cta: "View Portfolio", image: "https://images.unsplash.com/photo-1618005198919-d3d4b5a92ead?q=80&w=2074&auto=format&fit=crop" } },
+          { type: "FEATURES", props: { title: "What I Offer", features: [{ icon: "Sparkles", title: "Curated Gallery", desc: "Hand-picked portfolio of my best artistic work" }, { icon: "Heart", title: "Intimate Access", desc: "Behind-the-scenes process and personal journal entries" }, { icon: "Star", title: "Prints & Merch", desc: "Limited edition prints and exclusive branded merchandise" }] } },
+          { type: "BOOKING", props: { title: "Commission a Piece", formId: "creator-commission" } },
         ],
       },
     },
