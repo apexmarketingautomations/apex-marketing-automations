@@ -279,6 +279,7 @@ VIDEO: { title, subtitle }
 BANNER: { title, subtitle, cta, image (URL) }
 COMPARISON: { title, subtitle, headers: ["Feature", "Us", "Others"], rows: [{ cells: ["Feature name", "✓", "✗"] }] }
 PROCESS_STEPS: { title, subtitle, steps: [{ title, desc }] } — 3-5 steps
+QR_CODE: { title, subtitle, qrValue (URL to encode), qrLabel (text below QR code), cta (button text) }
 BOOKING: { title, formId }
 PAYWALL: { title, tiers: [{ name, price, perks: [strings], cta }] }
 

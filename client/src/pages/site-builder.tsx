@@ -27,6 +27,7 @@ import {
   Edit,
   Copy,
   Share2,
+  QrCode,
   ArrowUp,
   ArrowDown,
   Eye,
@@ -767,6 +768,102 @@ function ProcessStepsSection({ title, subtitle, steps, theme }: any) {
   );
 }
 
+function QrCodeSection({ title, subtitle, qrValue, qrLabel, cta, theme }: any) {
+  const [inputUrl, setInputUrl] = useState(qrValue || "https://yoursite.com");
+  const [activeUrl, setActiveUrl] = useState(qrValue || "https://yoursite.com");
+  const qrSize = 280;
+  const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${qrSize}x${qrSize}&data=${encodeURIComponent(activeUrl)}&bgcolor=${theme.bg.replace('#','')}&color=${theme.primary.replace('#','')}&format=svg`;
+
+  return (
+    <div className="py-24 px-6 md:px-12" style={{ backgroundColor: theme.bg, color: theme.text }}>
+      <div className="max-w-5xl mx-auto">
+        <div className="text-center mb-12">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold border mb-6" style={{ borderColor: theme.primary + '40', color: theme.primary, backgroundColor: theme.primary + '10' }}>
+            <QrCode size={14} /> QR Code
+          </div>
+          <h2 className="text-4xl md:text-5xl font-bold mb-4" style={{ fontFamily: theme.font }}>{title}</h2>
+          {subtitle && <p className="text-lg opacity-60 max-w-2xl mx-auto">{subtitle}</p>}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+          <div className="flex flex-col items-center">
+            <div className="relative p-6 rounded-3xl border-2 border-dashed" style={{ borderColor: theme.primary + '30', backgroundColor: theme.primary + '05' }}>
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest" style={{ backgroundColor: theme.primary, color: theme.bg }}>
+                Scan Me
+              </div>
+              <img
+                src={qrApiUrl}
+                alt="QR Code"
+                width={qrSize}
+                height={qrSize}
+                className="rounded-xl"
+                data-testid="img-qr-code"
+              />
+            </div>
+            {qrLabel && <p className="mt-4 text-sm opacity-50 text-center">{qrLabel}</p>}
+          </div>
+
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-semibold mb-2 opacity-70">Enter URL or Text</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={inputUrl}
+                  onChange={(e) => setInputUrl(e.target.value)}
+                  placeholder="https://yourwebsite.com"
+                  className="flex-1 px-4 py-3 rounded-xl border bg-transparent text-sm focus:outline-none focus:ring-2"
+                  style={{ borderColor: theme.text + '20', color: theme.text }}
+                  data-testid="input-qr-url"
+                />
+                <button
+                  onClick={() => setActiveUrl(inputUrl)}
+                  className="px-5 py-3 rounded-xl font-bold text-sm shrink-0 transition-transform hover:scale-105"
+                  style={{ backgroundColor: theme.primary, color: theme.bg }}
+                  data-testid="button-generate-qr"
+                >
+                  Generate
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <a
+                href={qrApiUrl.replace('format=svg', 'format=png') + '&size=1000x1000'}
+                download="qr-code.png"
+                className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border text-sm font-semibold hover:bg-white/5 transition-colors"
+                style={{ borderColor: theme.text + '20' }}
+                data-testid="button-download-png"
+              >
+                <ArrowDown size={16} /> PNG
+              </a>
+              <a
+                href={qrApiUrl}
+                download="qr-code.svg"
+                className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border text-sm font-semibold hover:bg-white/5 transition-colors"
+                style={{ borderColor: theme.text + '20' }}
+                data-testid="button-download-svg"
+              >
+                <ArrowDown size={16} /> SVG
+              </a>
+            </div>
+
+            {cta && (
+              <button
+                className="w-full py-4 rounded-xl font-bold text-base transition-all hover:scale-[1.02] shadow-lg"
+                style={{ backgroundColor: theme.primary, color: theme.bg, boxShadow: `0 0 30px ${theme.primary}25` }}
+                data-testid="button-qr-cta"
+              >
+                {cta}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface SavedSite {
   id: number;
   name: string;
@@ -1215,6 +1312,7 @@ export default function SiteBuilder() {
       BANNER: { title: "Limited Time Offer", subtitle: "Get 50% off your first month", cta: "Claim Offer", image: "" },
       COMPARISON: { title: "Why Choose Us", subtitle: "See how we compare", headers: ["Feature", "Us", "Others"], rows: [{ cells: ["24/7 Support", "✓", "✗"] }, { cells: ["Custom Solutions", "✓", "✗"] }, { cells: ["Free Onboarding", "✓", "✗"] }, { cells: ["No Contracts", "✓", "✗"] }] },
       PROCESS_STEPS: { title: "How It Works", subtitle: "Get started in 4 easy steps", steps: [{ title: "Sign Up", desc: "Create your free account" }, { title: "Customize", desc: "Set up your preferences" }, { title: "Launch", desc: "Go live in minutes" }, { title: "Grow", desc: "Watch your business thrive" }] },
+      QR_CODE: { title: "Scan & Connect", subtitle: "Point your phone camera at the QR code to get started instantly", qrValue: "https://yoursite.com", qrLabel: "Works with any phone camera", cta: "Get Started" },
     };
     setSiteData((prev: any) => ({
       ...prev,
@@ -1550,6 +1648,7 @@ export default function SiteBuilder() {
     BANNER: BannerSection,
     COMPARISON: ComparisonSection,
     PROCESS_STEPS: ProcessStepsSection,
+    QR_CODE: QrCodeSection,
   };
 
   return (
@@ -2010,6 +2109,7 @@ export default function SiteBuilder() {
                         { type: "BANNER", label: "Banner" },
                         { type: "COMPARISON", label: "Compare" },
                         { type: "PROCESS_STEPS", label: "Steps" },
+                        { type: "QR_CODE", label: "QR Code" },
                         { type: "BOOKING", label: "Booking" },
                         { type: "PAYWALL", label: "Paywall" },
                         { type: "CODE", label: "Code" },
