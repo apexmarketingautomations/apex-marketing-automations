@@ -1426,6 +1426,91 @@ Rules:
     res.json({ hasTwilio, hasVapi, webhookDomain: domain ? `https://${domain}` : null });
   });
 
+  // ── Stripe Paywall Routes ──────────────────────────────────────────
+
+  app.get("/api/stripe/publishable-key", asyncHandler(async (_req, res) => {
+    try {
+      const { getStripePublishableKey } = await import("./stripeClient");
+      const key = await getStripePublishableKey();
+      res.json({ publishableKey: key });
+    } catch {
+      res.json({ publishableKey: null });
+    }
+  }));
+
+  app.get("/api/stripe/products", asyncHandler(async (_req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      const result = await db.execute(sql`
+        SELECT
+          p.id as product_id,
+          p.name as product_name,
+          p.description as product_description,
+          p.metadata as product_metadata,
+          pr.id as price_id,
+          pr.unit_amount,
+          pr.currency,
+          pr.recurring
+        FROM stripe.products p
+        LEFT JOIN stripe.prices pr ON pr.product = p.id AND pr.active = true
+        WHERE p.active = true
+        ORDER BY pr.unit_amount ASC
+      `);
+
+      const productsMap = new Map();
+      for (const row of result.rows as any[]) {
+        if (!productsMap.has(row.product_id)) {
+          productsMap.set(row.product_id, {
+            id: row.product_id,
+            name: row.product_name,
+            description: row.product_description,
+            metadata: row.product_metadata,
+            prices: [],
+          });
+        }
+        if (row.price_id) {
+          productsMap.get(row.product_id).prices.push({
+            id: row.price_id,
+            unit_amount: row.unit_amount,
+            currency: row.currency,
+            recurring: row.recurring,
+          });
+        }
+      }
+
+      res.json({ products: Array.from(productsMap.values()) });
+    } catch (err: any) {
+      res.json({ products: [] });
+    }
+  }));
+
+  app.post("/api/stripe/checkout", asyncHandler(async (req, res) => {
+    const schema = z.object({
+      priceId: z.string().min(1),
+      successUrl: z.string().url().optional(),
+      cancelUrl: z.string().url().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid request" });
+
+    const { getUncachableStripeClient } = await import("./stripeClient");
+    const stripe = await getUncachableStripeClient();
+
+    const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost:5000";
+    const baseUrl = `https://${domain}`;
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      line_items: [{ price: parsed.data.priceId, quantity: 1 }],
+      mode: "subscription",
+      success_url: parsed.data.successUrl || `${baseUrl}/site-builder?payment=success`,
+      cancel_url: parsed.data.cancelUrl || `${baseUrl}/site-builder?payment=cancelled`,
+    });
+
+    res.json({ url: session.url });
+  }));
+
   return httpServer;
 }
 

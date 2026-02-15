@@ -3,6 +3,9 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { seed } from "./seed";
+import { runMigrations } from "stripe-replit-sync";
+import { getStripeSync } from "./stripeClient";
+import { WebhookHandlers } from "./webhookHandlers";
 
 const app = express();
 const httpServer = createServer(app);
@@ -12,6 +15,64 @@ declare module "http" {
     rawBody: unknown;
   }
 }
+
+async function initStripe() {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    console.log("[STRIPE] DATABASE_URL not found, skipping Stripe init");
+    return;
+  }
+
+  try {
+    console.log("[STRIPE] Initializing schema...");
+    await runMigrations({ databaseUrl });
+    console.log("[STRIPE] Schema ready");
+
+    const stripeSync = await getStripeSync();
+
+    const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
+    if (domain) {
+      try {
+        const webhookBaseUrl = `https://${domain}`;
+        const { webhook } = await stripeSync.findOrCreateManagedWebhook(
+          `${webhookBaseUrl}/api/stripe/webhook`
+        );
+        console.log(`[STRIPE] Webhook configured: ${webhook.url}`);
+      } catch (whErr: any) {
+        console.log("[STRIPE] Webhook setup skipped:", whErr.message);
+      }
+    } else {
+      console.log("[STRIPE] No public domain found, skipping webhook setup");
+    }
+
+    stripeSync.syncBackfill()
+      .then(() => console.log("[STRIPE] Data synced"))
+      .catch((err: any) => console.error("[STRIPE] Sync error:", err));
+  } catch (error) {
+    console.error("[STRIPE] Init failed:", error);
+  }
+}
+
+app.post(
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    const signature = req.headers["stripe-signature"];
+    if (!signature) return res.status(400).json({ error: "Missing signature" });
+
+    try {
+      const sig = Array.isArray(signature) ? signature[0] : signature;
+      if (!Buffer.isBuffer(req.body)) {
+        return res.status(500).json({ error: "Webhook processing error" });
+      }
+      await WebhookHandlers.processWebhook(req.body as Buffer, sig);
+      res.status(200).json({ received: true });
+    } catch (error: any) {
+      console.error("[STRIPE] Webhook error:", error.message);
+      res.status(400).json({ error: "Webhook processing error" });
+    }
+  }
+);
 
 app.use(
   express.json({
@@ -105,6 +166,7 @@ function validateEnvVars() {
 
 (async () => {
   validateEnvVars();
+  await initStripe();
   await seed();
   await registerRoutes(httpServer, app);
 

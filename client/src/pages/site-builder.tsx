@@ -171,6 +171,116 @@ function BookingSection({ title, theme }: any) {
   );
 }
 
+function PaywallSection({ title, tiers, theme }: any) {
+  const [stripeProducts, setStripeProducts] = useState<any[]>([]);
+  const [checkoutLoading, setCheckoutLoading] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch("/api/stripe/products")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.products) setStripeProducts(data.products);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSubscribe = async (tier: any, index: number) => {
+    const priceId = tier.priceId || stripeProducts[index]?.prices?.[0]?.id;
+    if (!priceId) {
+      return;
+    }
+    setCheckoutLoading(index);
+    try {
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ priceId }),
+      });
+      const data = await res.json();
+      if (data.url) window.open(data.url, "_blank");
+    } catch {} finally {
+      setCheckoutLoading(null);
+    }
+  };
+
+  return (
+    <div
+      className="py-20 px-6"
+      style={{ backgroundColor: theme.bg, color: theme.text }}
+    >
+      <div className="max-w-5xl mx-auto">
+        <h2
+          className="text-3xl font-bold text-center mb-4"
+          style={{ fontFamily: theme.font }}
+        >
+          {title}
+        </h2>
+        <p className="text-center text-sm opacity-60 mb-12">Choose your access level</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {(tiers || []).map((tier: any, i: number) => {
+            const isPopular = i === 1;
+            return (
+              <div
+                key={i}
+                className={`relative rounded-2xl p-6 border transition-all hover:scale-[1.02] ${
+                  isPopular
+                    ? "border-2 shadow-lg shadow-current/10"
+                    : "border-white/10"
+                }`}
+                style={{
+                  borderColor: isPopular ? theme.primary : undefined,
+                  backgroundColor: isPopular ? theme.primary + "08" : "rgba(255,255,255,0.03)",
+                }}
+                data-testid={`paywall-tier-${i}`}
+              >
+                {isPopular && (
+                  <div
+                    className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-0.5 rounded-full text-xs font-bold"
+                    style={{ backgroundColor: theme.primary, color: theme.bg }}
+                  >
+                    MOST POPULAR
+                  </div>
+                )}
+                <h3 className="text-lg font-bold mb-1">{tier.name}</h3>
+                <div className="flex items-baseline gap-1 mb-4">
+                  <span className="text-3xl font-black" style={{ color: theme.primary }}>
+                    ${tier.price}
+                  </span>
+                  <span className="text-xs opacity-50">/month</span>
+                </div>
+                <ul className="space-y-2 mb-6 text-sm">
+                  {(tier.perks || []).map((perk: string, j: number) => (
+                    <li key={j} className="flex items-center gap-2">
+                      <span style={{ color: theme.primary }}>&#10003;</span>
+                      {perk}
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  className="w-full font-bold"
+                  style={{
+                    backgroundColor: isPopular ? theme.primary : "transparent",
+                    color: isPopular ? theme.bg : theme.text,
+                    border: isPopular ? "none" : `1px solid ${theme.primary}`,
+                  }}
+                  onClick={() => handleSubscribe(tier, i)}
+                  disabled={checkoutLoading === i}
+                  data-testid={`button-subscribe-tier-${i}`}
+                >
+                  {checkoutLoading === i ? "Loading..." : (tier.cta || "Subscribe")}
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+        <p className="text-center text-xs opacity-40 mt-8">
+          Secure payments powered by Stripe. Cancel anytime.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 interface SavedSite {
   id: number;
   name: string;
@@ -482,6 +592,7 @@ export default function SiteBuilder() {
       HERO: { title: "New Hero Section", subtitle: "Your subtitle here", cta: "Get Started", image: "" },
       FEATURES: { title: "Our Features", features: [{ icon: "Star", title: "Feature 1", desc: "Description" }, { icon: "Zap", title: "Feature 2", desc: "Description" }, { icon: "Heart", title: "Feature 3", desc: "Description" }] },
       BOOKING: { title: "Book Now", formId: "new-form" },
+      PAYWALL: { title: "Choose Your Plan", tiers: [{ name: "Basic", price: 9, perks: ["Access to basic content", "Community chat"], cta: "Subscribe" }, { name: "Premium", price: 25, perks: ["All basic perks", "Exclusive content", "Direct messages"], cta: "Go Premium" }, { name: "VIP", price: 50, perks: ["Everything included", "Custom requests", "Priority access"], cta: "Join VIP" }] },
     };
     setSiteData((prev: any) => ({
       ...prev,
@@ -710,13 +821,13 @@ export default function SiteBuilder() {
       industry: "Adult Creator",
       icon: Crown,
       color: "#e879f9",
-      description: "Premium indie creator page with purple/pink glam aesthetic and VIP subscription CTA",
+      description: "Premium indie creator page with purple/pink glam aesthetic and VIP subscription paywall",
       siteData: {
         theme: { bg: "#0d0015", primary: "#e879f9", text: "#fae8ff", font: "Playfair Display" },
         sections: [
           { type: "HERO", props: { title: "Exclusive. Bold. Unapologetic.", subtitle: "Your all-access pass to premium content, private messages, and behind-the-scenes drops. Join the VIP list.", cta: "Subscribe Now", image: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2064&auto=format&fit=crop" } },
           { type: "FEATURES", props: { title: "What You Get", features: [{ icon: "Crown", title: "VIP Content", desc: "Exclusive photos, videos, and livestreams updated weekly" }, { icon: "Heart", title: "Direct Messages", desc: "Private 1-on-1 messaging and custom content requests" }, { icon: "Star", title: "Early Access", desc: "Be the first to see new drops and limited releases" }] } },
-          { type: "BOOKING", props: { title: "Join the Inner Circle", formId: "creator-sub" } },
+          { type: "PAYWALL", props: { title: "Choose Your Access", tiers: [{ name: "Peek", price: 5, perks: ["Weekly photo drops", "Community feed access"], cta: "Start Peeking" }, { name: "VIP", price: 20, perks: ["All Peek perks", "Exclusive video content", "Priority DMs"], cta: "Go VIP" }, { name: "Inner Circle", price: 50, perks: ["Everything included", "Custom content requests", "1-on-1 video calls", "Early access to collabs"], cta: "Join Inner Circle" }] } },
         ],
       },
     },
@@ -726,13 +837,13 @@ export default function SiteBuilder() {
       industry: "Adult Creator",
       icon: Flame,
       color: "#f43f5e",
-      description: "Dark, sultry creator page with red/black bold theme and link-in-bio style",
+      description: "Dark, sultry creator page with red/black bold theme and subscription tiers",
       siteData: {
         theme: { bg: "#0a0000", primary: "#f43f5e", text: "#ffe4e6", font: "Inter" },
         sections: [
           { type: "HERO", props: { title: "Welcome to My World", subtitle: "Curated content, exclusive drops, and a community that gets it. All links, all platforms, one place.", cta: "See My Content", image: "https://images.unsplash.com/photo-1557682250-33bd709cbe85?q=80&w=2029&auto=format&fit=crop" } },
           { type: "FEATURES", props: { title: "Find Me Here", features: [{ icon: "Flame", title: "Premium Feed", desc: "Subscribe for the full uncensored experience" }, { icon: "Camera", title: "Photo Sets", desc: "Professional themed shoots released monthly" }, { icon: "Zap", title: "Live Sessions", desc: "Weekly live streams with real-time interaction" }] } },
-          { type: "BOOKING", props: { title: "Get in Touch", formId: "creator-contact" } },
+          { type: "PAYWALL", props: { title: "Unlock the Full Experience", tiers: [{ name: "Fan", price: 7, perks: ["Access to the feed", "Monthly photo set"], cta: "Subscribe" }, { name: "Superfan", price: 25, perks: ["All Fan perks", "Behind-the-scenes content", "DM access"], cta: "Upgrade" }, { name: "Obsessed", price: 55, perks: ["Everything unlocked", "Custom requests", "Live private sessions", "Name in credits"], cta: "Go All In" }] } },
         ],
       },
     },
@@ -742,13 +853,13 @@ export default function SiteBuilder() {
       industry: "Adult Creator",
       icon: Sparkles,
       color: "#fbbf24",
-      description: "Luxury gold-themed creator page with high-end branding and tiered membership",
+      description: "Luxury gold-themed creator page with high-end tiered membership paywall",
       siteData: {
         theme: { bg: "#0f0d08", primary: "#fbbf24", text: "#fef3c7", font: "Playfair Display" },
         sections: [
           { type: "HERO", props: { title: "Art. Allure. Access.", subtitle: "A curated luxury experience for discerning fans. Three tiers of exclusive membership with escalating perks.", cta: "Choose Your Tier", image: "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?q=80&w=2070&auto=format&fit=crop" } },
-          { type: "FEATURES", props: { title: "Membership Tiers", features: [{ icon: "Star", title: "Bronze - $9/mo", desc: "Access to weekly photo sets and community chat" }, { icon: "Sparkles", title: "Silver - $25/mo", desc: "All Bronze perks plus video content and DMs" }, { icon: "Crown", title: "Gold - $50/mo", desc: "Full access: custom content, video calls, and priority requests" }] } },
-          { type: "BOOKING", props: { title: "Apply for Gold Membership", formId: "creator-gold" } },
+          { type: "FEATURES", props: { title: "Membership Tiers", features: [{ icon: "Star", title: "Bronze Access", desc: "Weekly photo sets and community chat" }, { icon: "Sparkles", title: "Silver Access", desc: "Video content, DMs, and exclusive drops" }, { icon: "Crown", title: "Gold Access", desc: "Custom content, video calls, priority everything" }] } },
+          { type: "PAYWALL", props: { title: "Select Your Membership", tiers: [{ name: "Bronze", price: 9, perks: ["Weekly photo sets", "Community chat access"], cta: "Join Bronze" }, { name: "Silver", price: 25, perks: ["All Bronze perks", "Video content library", "Direct messages"], cta: "Join Silver" }, { name: "Gold", price: 50, perks: ["Everything included", "Custom content requests", "Monthly video calls", "Priority access"], cta: "Join Gold" }] } },
         ],
       },
     },
@@ -758,13 +869,13 @@ export default function SiteBuilder() {
       industry: "Adult Creator",
       icon: Camera,
       color: "#22d3ee",
-      description: "Cyberpunk neon-themed creator page with electric cyan aesthetic and bold energy",
+      description: "Cyberpunk neon-themed creator page with electric cyan aesthetic and paywall",
       siteData: {
         theme: { bg: "#020617", primary: "#22d3ee", text: "#cffafe", font: "Inter" },
         sections: [
           { type: "HERO", props: { title: "Plug In. Turn On.", subtitle: "Digital-first content creator with a vibe that hits different. Exclusive drops, collabs, and 24/7 access.", cta: "Enter the Feed", image: "https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=2070&auto=format&fit=crop" } },
           { type: "FEATURES", props: { title: "The Experience", features: [{ icon: "Zap", title: "Daily Content", desc: "Fresh uploads every single day across all platforms" }, { icon: "Camera", title: "Cinematic Quality", desc: "Studio-grade production on every piece of content" }, { icon: "Heart", title: "Fan Community", desc: "Private Discord with exclusive rooms and events" }] } },
-          { type: "BOOKING", props: { title: "Book a Collab", formId: "creator-collab" } },
+          { type: "PAYWALL", props: { title: "Pick Your Frequency", tiers: [{ name: "Tuned In", price: 8, perks: ["Daily content feed", "Community access"], cta: "Tune In" }, { name: "Dialed Up", price: 22, perks: ["All Tuned In perks", "HD video drops", "Behind-the-scenes"], cta: "Dial Up" }, { name: "Maxed Out", price: 45, perks: ["Full access everything", "Collab requests", "Live sessions", "Merch discounts"], cta: "Max Out" }] } },
         ],
       },
     },
@@ -774,13 +885,13 @@ export default function SiteBuilder() {
       industry: "Adult Creator",
       icon: Music,
       color: "#a78bfa",
-      description: "Minimalist artistic creator page with soft violet tones and clean aesthetic",
+      description: "Minimalist artistic creator page with soft violet tones and subscription paywall",
       siteData: {
         theme: { bg: "#0c0a15", primary: "#a78bfa", text: "#ede9fe", font: "Inter" },
         sections: [
           { type: "HERO", props: { title: "Less Noise. More Art.", subtitle: "A clean, intentional space for creators who value aesthetic over everything. Minimalist content, maximum impact.", cta: "View Portfolio", image: "https://images.unsplash.com/photo-1618005198919-d3d4b5a92ead?q=80&w=2074&auto=format&fit=crop" } },
           { type: "FEATURES", props: { title: "What I Offer", features: [{ icon: "Sparkles", title: "Curated Gallery", desc: "Hand-picked portfolio of my best artistic work" }, { icon: "Heart", title: "Intimate Access", desc: "Behind-the-scenes process and personal journal entries" }, { icon: "Star", title: "Prints & Merch", desc: "Limited edition prints and exclusive branded merchandise" }] } },
-          { type: "BOOKING", props: { title: "Commission a Piece", formId: "creator-commission" } },
+          { type: "PAYWALL", props: { title: "Support My Art", tiers: [{ name: "Admirer", price: 6, perks: ["Monthly curated gallery", "Journal entries"], cta: "Support" }, { name: "Patron", price: 18, perks: ["All Admirer perks", "Process videos", "Early print access"], cta: "Become Patron" }, { name: "Muse", price: 40, perks: ["Everything included", "Commission priority", "Signed prints", "Creative direction input"], cta: "Be My Muse" }] } },
         ],
       },
     },
@@ -799,6 +910,7 @@ export default function SiteBuilder() {
     HERO: HeroSection,
     FEATURES: FeatureSection,
     BOOKING: BookingSection,
+    PAYWALL: PaywallSection,
   };
 
   return (
@@ -1145,7 +1257,7 @@ export default function SiteBuilder() {
                       animate={{ opacity: 1, y: 0 }}
                       className="flex gap-2"
                     >
-                      {["HERO", "FEATURES", "BOOKING"].map((type) => (
+                      {["HERO", "FEATURES", "BOOKING", "PAYWALL"].map((type) => (
                         <Button
                           key={type}
                           size="sm"
