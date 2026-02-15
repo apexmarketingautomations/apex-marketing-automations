@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Clock, MessageSquare, GitFork, MoreHorizontal, Plus, PlayCircle, CheckCircle2, AlertCircle, Sparkles, Loader2 } from "lucide-react";
+import { Clock, MessageSquare, GitFork, MoreHorizontal, Plus, PlayCircle, CheckCircle2, AlertCircle, Sparkles, Loader2, Code2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +21,7 @@ import type { Workflow } from "@shared/schema";
 const GENERATED_STEPS = [
   { action_type: "WAIT", params: { duration_minutes: 5 } },
   { action_type: "SMS", params: { body: "Hey" } },
+  { action_type: "CODE", params: { language: "javascript", code: "// Check CRM for lead score\nconst score = await context.crm.getLeadScore(contact.id);\nif (score > 80) {\n  context.setVariable('priority', 'high');\n}", description: "Evaluate lead score from CRM" } },
   { action_type: "CONDITION", params: { check: "has_replied" } },
   { action_type: "ALERT", params: { user_id: "admin" } }
 ];
@@ -36,6 +37,7 @@ const StepIcon = ({ type }: { type: string }) => {
     case "SMS": return <MessageSquare className="h-5 w-5 text-blue-500" />;
     case "CONDITION": return <GitFork className="h-5 w-5 text-purple-500" />;
     case "ALERT": return <AlertCircle className="h-5 w-5 text-red-500" />;
+    case "CODE": return <Code2 className="h-5 w-5 text-emerald-500" />;
     default: return <CheckCircle2 className="h-5 w-5 text-gray-400" />;
   }
 };
@@ -67,6 +69,7 @@ const StepCard = ({ step, index, onClick }: { step: any, index: number, onClick:
                   {step.action_type === "SMS" && `"${step.params.body}"`}
                   {step.action_type === "CONDITION" && `Check: ${step.params.check}`}
                   {step.action_type === "ALERT" && `Notify: ${step.params.user_id}`}
+                  {step.action_type === "CODE" && <span className="text-emerald-400">Custom Code</span>}
                 </p>
               </div>
               <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -143,6 +146,33 @@ export default function WorkflowBuilder() {
       steps: [],
     });
     setSelectedStep(null);
+  };
+
+  const handleAddStep = (type: string) => {
+    const stepDefaults: Record<string, any> = {
+      WAIT: { action_type: "WAIT", params: { duration_minutes: 5 } },
+      SMS: { action_type: "SMS", params: { body: "Hello!" } },
+      CONDITION: { action_type: "CONDITION", params: { check: "has_replied" } },
+      ALERT: { action_type: "ALERT", params: { user_id: "admin" } },
+      CODE: { action_type: "CODE", params: { language: "javascript", code: "// Write your custom code here\n// Available variables: contact, workflow, context\n\nconsole.log('Running custom step...');", description: "Custom code execution" } },
+    };
+
+    const newStep = stepDefaults[type];
+    if (!newStep) return;
+
+    if (currentWorkflow) {
+      const newSteps = [...steps, newStep];
+      updateMutation.mutate({
+        id: currentWorkflow.id,
+        data: { steps: newSteps },
+      });
+    } else {
+      createMutation.mutate({
+        name: "New Workflow",
+        trigger: "manual_trigger",
+        steps: [newStep],
+      });
+    }
   };
 
   if (isLoading) {
@@ -255,11 +285,29 @@ export default function WorkflowBuilder() {
               </div>
             )}
 
-            {/* Add Step Button */}
+            {/* Add Step Buttons */}
             <div className="flex justify-center pt-4">
-              <Button data-testid="button-add-step" variant="outline" size="sm" className="rounded-full h-8 w-8 p-0 bg-background hover:bg-muted">
-                <Plus className="h-4 w-4" />
-              </Button>
+              <div className="flex flex-wrap gap-2 justify-center">
+                {[
+                  { type: "WAIT", label: "Wait", icon: <Clock className="h-3 w-3" />, color: "text-amber-500 border-amber-500/30 hover:bg-amber-500/10" },
+                  { type: "SMS", label: "SMS", icon: <MessageSquare className="h-3 w-3" />, color: "text-blue-500 border-blue-500/30 hover:bg-blue-500/10" },
+                  { type: "CONDITION", label: "Condition", icon: <GitFork className="h-3 w-3" />, color: "text-purple-500 border-purple-500/30 hover:bg-purple-500/10" },
+                  { type: "ALERT", label: "Alert", icon: <AlertCircle className="h-3 w-3" />, color: "text-red-500 border-red-500/30 hover:bg-red-500/10" },
+                  { type: "CODE", label: "Code", icon: <Code2 className="h-3 w-3" />, color: "text-emerald-500 border-emerald-500/30 hover:bg-emerald-500/10" },
+                ].map(({ type, label, icon, color }) => (
+                  <Button
+                    key={type}
+                    data-testid={`button-add-step-${type.toLowerCase()}`}
+                    variant="outline"
+                    size="sm"
+                    className={`rounded-full text-xs ${color}`}
+                    onClick={() => handleAddStep(type)}
+                  >
+                    {icon}
+                    <span className="ml-1">{label}</span>
+                  </Button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -314,6 +362,30 @@ export default function WorkflowBuilder() {
                           <label className="text-sm font-medium">User ID</label>
                           <div className="p-2 border border-border rounded bg-muted/20 text-sm font-mono">{selectedStep.params.user_id}</div>
                         </div>
+                      </div>
+                    )}
+
+                    {selectedStep.action_type === "CODE" && (
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Language</label>
+                          <div className="p-2 border border-border rounded bg-muted/20 text-sm font-mono flex items-center gap-2">
+                            <Code2 className="h-4 w-4 text-emerald-500" />
+                            {selectedStep.params.language || "javascript"}
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Code</label>
+                          <pre className="p-3 border border-border rounded-md bg-slate-950 text-emerald-400 text-xs font-mono overflow-x-auto min-h-[200px] whitespace-pre-wrap">
+                            {selectedStep.params.code || "// No code written yet"}
+                          </pre>
+                        </div>
+                        {selectedStep.params.description && (
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Description</label>
+                            <p className="text-sm text-muted-foreground">{selectedStep.params.description}</p>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
