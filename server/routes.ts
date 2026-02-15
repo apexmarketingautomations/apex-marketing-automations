@@ -337,6 +337,12 @@ Rules:
       return res.status(500).json({ error: "AI returned invalid site structure" });
     }
 
+    siteData.sections = siteData.sections.map((s: any) => {
+      if (s.props) return s;
+      const { type, ...props } = s;
+      return { type, props };
+    });
+
     res.json(siteData);
   }));
 
@@ -569,6 +575,12 @@ Generate a personalized premium wellness/beauty service landing page for this sp
     if (!siteData.theme || !Array.isArray(siteData.sections)) {
       return res.status(500).json({ error: "AI returned invalid site structure" });
     }
+
+    siteData.sections = siteData.sections.map((s: any) => {
+      if (s.props) return s;
+      const { type, ...props } = s;
+      return { type, props };
+    });
 
     res.json(siteData);
   }));
