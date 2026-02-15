@@ -1,7 +1,8 @@
 import { Link, useLocation } from "wouter";
-import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search } from "lucide-react";
+import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket } from "lucide-react";
 import { motion } from "framer-motion";
 import { CommandMenu } from "@/components/command-menu";
+import { VibeSwitcher } from "@/components/vibe-switcher";
 
 const navItems = [
   { href: "/", icon: MessageSquare, label: "Unified Inbox" },
@@ -13,6 +14,7 @@ const navItems = [
   { href: "/ad-launcher", icon: Megaphone, label: "Growth Engine" },
   { href: "/voice-agent", icon: Phone, label: "Voice Agent" },
   { href: "/growth", icon: TrendingUp, label: "Growth Center" },
+  { href: "/god-mode", icon: Rocket, label: "God Mode" },
 ];
 
 function NavLink({ href, icon: Icon, label, isActive }: { href: string; icon: any; label: string; isActive: boolean }) {
@@ -37,7 +39,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
 
   return (
-    <div className="flex min-h-screen bg-[#030014] text-white font-sans selection:bg-indigo-500/30">
+    <div className="flex min-h-screen text-white font-sans selection:bg-indigo-500/30" style={{ backgroundColor: 'var(--vibe-bg, #030014)' }}>
       <div className="fixed inset-0 bg-grid z-0 pointer-events-none" />
       <div className="fixed top-0 left-0 w-full h-[500px] bg-gradient-to-b from-indigo-900/10 to-transparent pointer-events-none z-0" />
 
@@ -70,6 +72,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
           {navItems.map((item) => (
             <NavLink key={item.href} {...item} isActive={location === item.href} />
           ))}
+        </div>
+
+        <div className="px-2 md:px-4 mb-2">
+          <VibeSwitcher />
         </div>
 
         <div className="p-4 border-t border-white/5 bg-black/20">

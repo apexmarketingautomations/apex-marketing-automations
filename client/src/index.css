@@ -61,7 +61,8 @@
   }
   body {
     @apply font-sans antialiased bg-background text-foreground;
-    background-color: #030014;
+    background-color: var(--vibe-bg, #030014);
+    transition: background-color 0.5s ease;
   }
   html, body {
     height: auto;
@@ -87,18 +88,19 @@
 }
 
 .glass-panel {
-  background: rgba(10, 10, 15, 0.6);
+  background: rgba(10, 10, 15, var(--vibe-glass, 0.6));
   backdrop-filter: blur(20px);
   border-right: 1px solid rgba(255, 255, 255, 0.08);
+  transition: background 0.5s ease;
 }
 
 /* 3. NEON GLOWS */
 .glow-text {
-  text-shadow: 0 0 20px rgba(129, 140, 248, 0.5);
+  text-shadow: 0 0 20px var(--vibe-glow, rgba(129, 140, 248, 0.5));
 }
 
 .glow-box {
-  box-shadow: 0 0 40px -10px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 0 40px -10px var(--vibe-glow, rgba(99, 102, 241, 0.3));
 }
 
 /* 4. ANIMATED GRADIENT TEXT */

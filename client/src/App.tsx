@@ -1,4 +1,4 @@
-import { useState, Suspense, lazy } from "react";
+import { useState, useEffect, Suspense, lazy } from "react";
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
 import { SplashScreen } from "@/components/splash-screen";
 import { Spinner } from "@/components/ui/spinner";
+import { initVibe } from "@/components/vibe-switcher";
 
 const SmsDashboard = lazy(() => import("@/pages/sms-dashboard"));
 const WorkflowBuilder = lazy(() => import("@/pages/workflow-builder"));
@@ -19,6 +20,7 @@ const LiquidWebsite = lazy(() => import("@/pages/liquid-website"));
 const AdLauncher = lazy(() => import("@/pages/ad-launcher"));
 const VoiceAgent = lazy(() => import("@/pages/voice-agent"));
 const GrowthCenter = lazy(() => import("@/pages/growth-center"));
+const GodMode = lazy(() => import("@/pages/god-mode"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
 function PageLoader() {
@@ -43,6 +45,7 @@ function Router() {
           <Route path="/ad-launcher" component={AdLauncher} />
           <Route path="/voice-agent" component={VoiceAgent} />
           <Route path="/growth" component={GrowthCenter} />
+          <Route path="/god-mode" component={GodMode} />
           <Route path="/gym" component={GymLanding} />
           <Route path="/luxe" component={LuxeLanding} />
           <Route component={NotFound} />
@@ -54,6 +57,10 @@ function Router() {
 
 function App() {
   const [showSplash, setShowSplash] = useState(true);
+
+  useEffect(() => {
+    initVibe();
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>

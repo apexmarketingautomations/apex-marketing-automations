@@ -1604,6 +1604,167 @@ Rules:
     res.json({ success: true });
   });
 
+  app.post("/api/god-mode", asyncHandler(async (req, res) => {
+    const schema = z.object({
+      businessName: z.string().min(1),
+      industry: z.string().min(1),
+      website: z.string().optional(),
+      areaCode: z.string().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const { businessName, industry, website, areaCode } = parsed.data;
+    const results: any = { steps: [], businessName, industry };
+
+    results.steps.push({ id: "account", status: "running", label: "Creating Sub-Account" });
+
+    const account = await storage.createSubAccount({
+      name: `${businessName} Account`,
+      twilioNumber: "",
+    });
+    results.accountId = account.id;
+    results.steps[0].status = "done";
+
+    results.steps.push({ id: "phone", status: "running", label: "Provisioning Phone Line" });
+    let phoneNumber = null;
+    const twilioClient = getTwilioClient();
+    if (twilioClient) {
+      try {
+        const numbers = await twilioClient.availablePhoneNumbers("US").local.list({
+          areaCode: parseInt(areaCode || "239", 10),
+          limit: 1,
+        });
+        if (numbers.length > 0) {
+          const purchased = await twilioClient.incomingPhoneNumbers.create({
+            phoneNumber: numbers[0].phoneNumber,
+          });
+          phoneNumber = purchased.phoneNumber;
+
+          const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || process.env.REPLIT_DEV_DOMAIN || "";
+          const smsUrl = domain ? `https://${domain}/api/sms-webhook` : "";
+          const updateOpts: Record<string, string> = {};
+          if (smsUrl) { updateOpts.smsUrl = smsUrl; updateOpts.smsMethod = "POST"; }
+          updateOpts.voiceUrl = "https://api.vapi.ai/twilio/voice/handler";
+          updateOpts.voiceMethod = "POST";
+          await twilioClient.incomingPhoneNumbers(purchased.sid).update(updateOpts);
+        }
+      } catch (err: any) {
+        console.error("God Mode phone error:", err.message);
+      }
+    }
+    if (phoneNumber) {
+      await storage.updateSubAccount(account.id, { twilioNumber: phoneNumber });
+    }
+    results.phoneNumber = phoneNumber;
+    results.steps[1].status = phoneNumber ? "done" : "skipped";
+
+    results.steps.push({ id: "voice", status: "running", label: "Deploying Voice Agent" });
+    let agentId = null;
+    if (vapiConfig.isConfigured) {
+      try {
+        const payload = {
+          transcriber: { provider: "deepgram" },
+          model: {
+            provider: "openai",
+            model: "gpt-4",
+            messages: [{
+              role: "system",
+              content: `You are the AI receptionist for ${businessName}, a ${industry} business. Be professional, friendly, and help with bookings and FAQs. Keep responses short and natural.`,
+            }],
+          },
+          voice: { provider: "11labs", voiceId: "21m00Tcm4TlvDq8ikWAM" },
+          firstMessage: `Hello! Thanks for calling ${businessName}. How can I help you today?`,
+          name: `${businessName} AI Receptionist`,
+        };
+        const vapiRes = await fetch("https://api.vapi.ai/assistant", {
+          method: "POST",
+          headers: vapiConfig.privateHeaders(),
+          body: JSON.stringify(payload),
+        });
+        if (vapiRes.ok) {
+          const agent = await vapiRes.json();
+          agentId = agent.id;
+        }
+      } catch (err: any) {
+        console.error("God Mode voice agent error:", err.message);
+      }
+    }
+    results.agentId = agentId;
+    results.steps[2].status = agentId ? "done" : "skipped";
+
+    results.steps.push({ id: "bot", status: "running", label: "Training AI Bot" });
+    let jobId = null;
+    if (website) {
+      try {
+        const job = await storage.createTrainingJob({
+          url: website,
+          persona: `Helpful assistant for ${businessName}`,
+        });
+        jobId = job.id;
+        simulateTraining(job.id);
+      } catch (err: any) {
+        console.error("God Mode bot training error:", err.message);
+      }
+    }
+    results.jobId = jobId;
+    results.steps[3].status = jobId ? "done" : "skipped";
+
+    results.steps.push({ id: "site", status: "running", label: "Generating Landing Page" });
+    let siteData = null;
+    if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+      try {
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            { role: "system", content: SITE_SYSTEM_PROMPT },
+            { role: "user", content: `Create a premium landing page for "${businessName}", a ${industry} business. Make it look high-end and professional with compelling copy.` },
+          ],
+          temperature: 0.7,
+          max_tokens: 4000,
+        });
+        const raw = completion.choices[0]?.message?.content ?? "";
+        const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+        const parsed = JSON.parse(cleaned);
+        if (parsed.theme && Array.isArray(parsed.sections)) {
+          parsed.sections = parsed.sections.map((s: any) => {
+            if (s.props) return s;
+            const { type, ...props } = s;
+            return { type, props };
+          });
+          siteData = parsed;
+          await storage.createSavedSite({
+            name: `${businessName} — God Mode`,
+            prompt: `${industry} landing page for ${businessName}`,
+            siteData,
+          });
+        }
+      } catch (err: any) {
+        console.error("God Mode site generation error:", err.message);
+      }
+    }
+    results.siteGenerated = !!siteData;
+    results.steps[4].status = siteData ? "done" : "skipped";
+
+    results.steps.push({ id: "workflow", status: "running", label: "Creating Missed-Call Workflow" });
+    try {
+      await storage.createWorkflow({
+        name: `${businessName} - Missed Call Text Back`,
+        trigger: "missed_call",
+        steps: [
+          { type: "DELAY", config: { seconds: 10 } },
+          { type: "SMS", config: { template: `Hey! This is ${businessName}. Sorry we missed your call. How can we help? Reply to this text and we'll get right back to you.` } },
+        ],
+      });
+    } catch (err: any) {
+      console.error("God Mode workflow error:", err.message);
+    }
+    results.steps[5].status = "done";
+
+    results.status = "complete";
+    res.json(results);
+  }));
+
   return httpServer;
 }
 

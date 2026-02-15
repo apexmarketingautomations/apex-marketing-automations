@@ -87,6 +87,7 @@ The `shared/` directory contains code used by both frontend and backend:
 - `POST /api/sms-webhook` - Unified Twilio webhook with AI auto-reply (SMS/WhatsApp/Messenger channel detection)
 - `POST /api/vapi/start-web-call` - Backend proxy: creates browser web call via Vapi private key, returns webCallUrl
 - `GET /api/voice-agents/calls?assistantId=&limit=` - Fetch call logs with recordings and transcripts from Vapi
+- `POST /api/god-mode` - One-click empire builder: orchestrates account creation, Twilio phone provisioning, Vapi voice agent, bot training, AI site generation, and missed-call workflow
 
 ## External Dependencies
 

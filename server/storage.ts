@@ -16,6 +16,7 @@ export interface IStorage {
   getSubAccounts(): Promise<SubAccount[]>;
   getSubAccount(id: number): Promise<SubAccount | undefined>;
   createSubAccount(data: InsertSubAccount): Promise<SubAccount>;
+  updateSubAccount(id: number, data: Partial<InsertSubAccount>): Promise<SubAccount | undefined>;
 
   getMessages(subAccountId: number): Promise<Message[]>;
   getMessage(id: number): Promise<Message | undefined>;
@@ -63,6 +64,11 @@ export class DatabaseStorage implements IStorage {
 
   async createSubAccount(data: InsertSubAccount) {
     const [row] = await db.insert(subAccounts).values(data).returning();
+    return row;
+  }
+
+  async updateSubAccount(id: number, data: Partial<InsertSubAccount>) {
+    const [row] = await db.update(subAccounts).set(data).where(eq(subAccounts.id, id)).returning();
     return row;
   }
 
