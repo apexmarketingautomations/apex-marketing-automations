@@ -103,6 +103,10 @@ The `shared/` directory contains code used by both frontend and backend:
 - `POST /api/domains/purchase` - Purchase domain (simulated registrar) with usage logging
 - `GET /api/domains/:subAccountId` - List domains for a sub-account
 - `PATCH /api/domains/:id` - Configure domain (link site, DNS/SSL)
+- `GET /api/login` - Replit OIDC login flow (redirects to Replit auth)
+- `GET /api/logout` - Logout flow
+- `GET /api/callback` - OIDC callback handler
+- `GET /api/auth/user` - Get current authenticated user
 
 ## External Dependencies
 

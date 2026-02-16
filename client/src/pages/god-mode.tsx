@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import {
   Rocket,
   Phone,
@@ -13,25 +14,29 @@ import {
   Zap,
   Shield,
   Users,
+  ArrowRight,
+  ExternalLink,
+  RefreshCcw,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 
 const INDUSTRIES = [
-  { id: "fitness", label: "Fitness / Gym", icon: "💪" },
-  { id: "restaurant", label: "Restaurant / Food", icon: "🍽️" },
-  { id: "medspa", label: "Med Spa / Wellness", icon: "✨" },
-  { id: "realestate", label: "Real Estate", icon: "🏠" },
-  { id: "dental", label: "Dental / Medical", icon: "🦷" },
-  { id: "auto", label: "Auto / Detailing", icon: "🚗" },
-  { id: "salon", label: "Salon / Beauty", icon: "💅" },
-  { id: "legal", label: "Legal / Law Firm", icon: "⚖️" },
-  { id: "luxury", label: "Luxury Services", icon: "👑" },
-  { id: "tech", label: "Tech / SaaS", icon: "🖥️" },
-  { id: "ecommerce", label: "E-Commerce", icon: "🛒" },
-  { id: "other", label: "Other", icon: "🔮" },
+  { id: "fitness", label: "Fitness / Gym", icon: "\u{1F4AA}" },
+  { id: "restaurant", label: "Restaurant / Food", icon: "\u{1F37D}\u{FE0F}" },
+  { id: "medspa", label: "Med Spa / Wellness", icon: "\u{2728}" },
+  { id: "realestate", label: "Real Estate", icon: "\u{1F3E0}" },
+  { id: "dental", label: "Dental / Medical", icon: "\u{1F9B7}" },
+  { id: "auto", label: "Auto / Detailing", icon: "\u{1F697}" },
+  { id: "salon", label: "Salon / Beauty", icon: "\u{1F485}" },
+  { id: "legal", label: "Legal / Law Firm", icon: "\u{2696}\u{FE0F}" },
+  { id: "luxury", label: "Luxury Services", icon: "\u{1F451}" },
+  { id: "tech", label: "Tech / SaaS", icon: "\u{1F5A5}\u{FE0F}" },
+  { id: "ecommerce", label: "E-Commerce", icon: "\u{1F6D2}" },
+  { id: "other", label: "Other", icon: "\u{1F52E}" },
 ];
 
 type StepStatus = "pending" | "running" | "done" | "skipped" | "error";
@@ -101,6 +106,8 @@ function StepIndicator({ step, index }: { step: LaunchStep; index: number }) {
 
 export default function GodMode() {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
   const [businessName, setBusinessName] = useState("");
   const [industry, setIndustry] = useState("");
   const [website, setWebsite] = useState("");
@@ -167,6 +174,9 @@ export default function GodMode() {
       setSteps(finalSteps);
       setLaunched(true);
 
+      queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/workflows"] });
+
       toast({ title: "God Mode Activated!", description: `${businessName} is fully deployed.` });
     } catch (err: any) {
       clearInterval(animateSteps);
@@ -176,6 +186,20 @@ export default function GodMode() {
       setIsLaunching(false);
     }
   };
+
+  const handleReset = () => {
+    setBusinessName("");
+    setIndustry("");
+    setWebsite("");
+    setAreaCode("");
+    setIsLaunching(false);
+    setLaunched(false);
+    setSteps([]);
+    setResults(null);
+  };
+
+  const doneCount = steps.filter(s => s.status === "done").length;
+  const totalCount = steps.length;
 
   return (
     <div className="flex-1 p-6 md:p-10 overflow-y-auto">
@@ -207,6 +231,7 @@ export default function GodMode() {
                   onChange={(e) => setBusinessName(e.target.value)}
                   placeholder="Apex Fitness Studio"
                   className="bg-white/5 border-white/10 text-white placeholder:text-white/20"
+                  disabled={isLaunching}
                   data-testid="input-business-name"
                 />
               </div>
@@ -218,6 +243,7 @@ export default function GodMode() {
                     <button
                       key={ind.id}
                       onClick={() => setIndustry(ind.id)}
+                      disabled={isLaunching}
                       className={`flex flex-col items-center gap-1 p-3 rounded-xl border text-xs font-medium transition-all ${
                         industry === ind.id
                           ? "border-indigo-500 bg-indigo-500/10 text-indigo-300 shadow-lg shadow-indigo-500/10"
@@ -239,6 +265,7 @@ export default function GodMode() {
                   onChange={(e) => setWebsite(e.target.value)}
                   placeholder="https://mybusiness.com"
                   className="bg-white/5 border-white/10 text-white placeholder:text-white/20"
+                  disabled={isLaunching}
                   data-testid="input-website"
                 />
                 <p className="text-[10px] text-slate-600 mt-1">We'll scrape this to train your AI chatbot</p>
@@ -252,37 +279,55 @@ export default function GodMode() {
                   placeholder="239"
                   maxLength={3}
                   className="bg-white/5 border-white/10 text-white placeholder:text-white/20 w-32"
+                  disabled={isLaunching}
                   data-testid="input-area-code"
                 />
                 <p className="text-[10px] text-slate-600 mt-1">For your AI phone number</p>
               </div>
 
-              <Button
-                onClick={handleLaunch}
-                disabled={isLaunching || !businessName.trim() || !industry}
-                className="w-full py-6 text-base font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:via-purple-500 hover:to-pink-500 rounded-xl shadow-xl shadow-indigo-500/20 disabled:opacity-40"
-                data-testid="button-launch-god-mode"
-              >
-                {isLaunching ? (
-                  <>
-                    <Loader2 className="mr-2 animate-spin" size={20} />
-                    Deploying Empire...
-                  </>
-                ) : (
-                  <>
-                    <Rocket className="mr-2" size={20} />
-                    LAUNCH GOD MODE
-                  </>
-                )}
-              </Button>
+              {!launched ? (
+                <Button
+                  onClick={handleLaunch}
+                  disabled={isLaunching || !businessName.trim() || !industry}
+                  className="w-full py-6 text-base font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:via-purple-500 hover:to-pink-500 rounded-xl shadow-xl shadow-indigo-500/20 disabled:opacity-40"
+                  data-testid="button-launch-god-mode"
+                >
+                  {isLaunching ? (
+                    <>
+                      <Loader2 className="mr-2 animate-spin" size={20} />
+                      Deploying Empire...
+                    </>
+                  ) : (
+                    <>
+                      <Rocket className="mr-2" size={20} />
+                      LAUNCH GOD MODE
+                    </>
+                  )}
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleReset}
+                  variant="outline"
+                  className="w-full py-6 text-base font-bold rounded-xl border-white/10 hover:bg-white/5"
+                  data-testid="button-reset-god-mode"
+                >
+                  <RefreshCcw className="mr-2" size={18} />
+                  Deploy Another Business
+                </Button>
+              )}
             </div>
           </motion.div>
 
           <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }}>
             <div className="glass-panel rounded-2xl p-6 border border-white/10">
-              <div className="flex items-center gap-2 mb-5">
-                <Rocket size={18} className="text-purple-400" />
-                <h2 className="font-bold text-lg">Launch Sequence</h2>
+              <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-2">
+                  <Rocket size={18} className="text-purple-400" />
+                  <h2 className="font-bold text-lg">Launch Sequence</h2>
+                </div>
+                {steps.length > 0 && (
+                  <span className="text-xs text-slate-400 font-mono">{doneCount}/{totalCount} complete</span>
+                )}
               </div>
 
               {steps.length === 0 ? (
@@ -305,35 +350,110 @@ export default function GodMode() {
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="mt-6 p-5 rounded-xl bg-gradient-to-br from-emerald-500/10 to-indigo-500/10 border border-emerald-500/20"
+                  className="mt-6 space-y-4"
                 >
-                  <div className="flex items-center gap-2 mb-3">
-                    <CheckCircle2 size={20} className="text-emerald-400" />
-                    <h3 className="font-bold text-emerald-400">Empire Deployed!</h3>
-                  </div>
-                  <div className="space-y-2 text-sm">
-                    {results.phoneNumber && (
+                  <div className="p-5 rounded-xl bg-gradient-to-br from-emerald-500/10 to-indigo-500/10 border border-emerald-500/20">
+                    <div className="flex items-center gap-2 mb-4">
+                      <CheckCircle2 size={20} className="text-emerald-400" />
+                      <h3 className="font-bold text-emerald-400">Empire Deployed!</h3>
+                    </div>
+                    <div className="space-y-3 text-sm">
                       <div className="flex items-center justify-between">
-                        <span className="text-slate-400">Phone Line</span>
-                        <span className="font-mono text-white">{results.phoneNumber}</span>
+                        <span className="text-slate-400">Account</span>
+                        <span className="font-mono text-white text-xs">{results.businessName} (ID: {results.accountId})</span>
                       </div>
+                      {results.phoneNumber && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400">Phone Line</span>
+                          <span className="font-mono text-white">{results.phoneNumber}</span>
+                        </div>
+                      )}
+                      {results.agentId && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400">Voice Agent</span>
+                          <span className="font-mono text-emerald-400 text-xs">{results.agentId.slice(0, 16)}...</span>
+                        </div>
+                      )}
+                      {results.jobId && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400">Bot Training</span>
+                          <span className="text-emerald-400 text-xs">Job #{results.jobId} started</span>
+                        </div>
+                      )}
+                      {results.siteGenerated && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400">Landing Page</span>
+                          <span className="text-emerald-400 text-xs">Generated & Saved</span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">Workflow</span>
+                        <span className="text-emerald-400 text-xs">Missed-Call Text Back Active</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => setLocation("/")}
+                      className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-sm text-white transition-colors"
+                      data-testid="button-goto-inbox"
+                    >
+                      <Users size={14} />
+                      Inbox
+                      <ArrowRight size={12} className="ml-auto opacity-40" />
+                    </button>
+                    <button
+                      onClick={() => setLocation("/workflows")}
+                      className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-sm text-white transition-colors"
+                      data-testid="button-goto-workflows"
+                    >
+                      <GitFork size={14} />
+                      Workflows
+                      <ArrowRight size={12} className="ml-auto opacity-40" />
+                    </button>
+                    {results.siteGenerated && (
+                      <button
+                        onClick={() => setLocation("/site-builder")}
+                        className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-sm text-white transition-colors"
+                        data-testid="button-goto-site-builder"
+                      >
+                        <Globe size={14} />
+                        Site Builder
+                        <ArrowRight size={12} className="ml-auto opacity-40" />
+                      </button>
                     )}
                     {results.agentId && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-400">Voice Agent</span>
-                        <span className="font-mono text-emerald-400 text-xs">{results.agentId.slice(0, 16)}...</span>
-                      </div>
+                      <button
+                        onClick={() => setLocation("/voice-agent")}
+                        className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-sm text-white transition-colors"
+                        data-testid="button-goto-voice-agent"
+                      >
+                        <Bot size={14} />
+                        Voice Agent
+                        <ArrowRight size={12} className="ml-auto opacity-40" />
+                      </button>
                     )}
-                    {results.siteGenerated && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-400">Landing Page</span>
-                        <span className="text-emerald-400 text-xs">Generated & Saved</span>
-                      </div>
+                    {results.jobId && (
+                      <button
+                        onClick={() => setLocation("/bot-trainer")}
+                        className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-sm text-white transition-colors"
+                        data-testid="button-goto-bot-trainer"
+                      >
+                        <Sparkles size={14} />
+                        Bot Trainer
+                        <ArrowRight size={12} className="ml-auto opacity-40" />
+                      </button>
                     )}
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Workflow</span>
-                      <span className="text-emerald-400 text-xs">Missed-Call Text Back Active</span>
-                    </div>
+                    <button
+                      onClick={() => setLocation("/billing")}
+                      className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-sm text-white transition-colors"
+                      data-testid="button-goto-billing"
+                    >
+                      <ExternalLink size={14} />
+                      Billing
+                      <ArrowRight size={12} className="ml-auto opacity-40" />
+                    </button>
                   </div>
                 </motion.div>
               )}

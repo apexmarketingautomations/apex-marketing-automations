@@ -1,0 +1,159 @@
+To move from a developer to a **Platform Provider**, you need a checkout system that doesn't just take money, but automatically builds the "Sub-Account" and applies your **60-day launch deal**.
+
+To be competitive with GoHighLevel ($297–$497/mo), we’ll structure your tiers to offer more AI value upfront while keeping the "God Mode" features for the top tier.
+
+### 1. The Strategy: The "Apex 60-Day Founders Launch"
+
+* **The Deal:** 60 days for the price of 30, plus **$50 in AI credits** (Vapi/SMS) included to get them through the "setup" phase without fear of costs.
+* **The Tiers:**
+* **Starter ($97/mo):** 1 Sub-account, Unified Inbox, Site Builder.
+* **Agency Pro ($297/mo):** Unlimited Sub-accounts, AI Voice Agents, Snapshots.
+* **God Mode ($497/mo):** Everything + White-Labeling (Their own Vibe/Domain).
+
+
+
+---
+
+### 2. The Stripe Pricing Logic
+
+You’ll run this script once to set up your products in Stripe.
+
+```javascript
+// scripts/setup-stripe-tiers.js
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+
+async function createTiers() {
+  const tiers = [
+    {
+      name: 'Starter AI',
+      price: 9700,
+      description: 'Perfect for single business owners.'
+    },
+    {
+      name: 'Agency Pro',
+      price: 29700,
+      description: 'Unlimited sub-accounts & AI Voice Agents.'
+    },
+    {
+      name: 'God Mode (Founder)',
+      price: 49700,
+      description: 'White-labeling, Ghost SDR, and Custom Branding.'
+    }
+  ];
+
+  for (const tier of tiers) {
+    const product = await stripe.products.create({ name: tier.name, description: tier.description });
+    await stripe.prices.create({
+      unit_amount: tier.price,
+      currency: 'usd',
+      recurring: { interval: 'month' },
+      product: product.id,
+    });
+  }
+}
+
+```
+
+---
+
+### 3. The "God Mode" Launch Script
+
+This handles the **60-day deal** logic and the **automatic provisioning** of their first AI Agent so they see value within 60 seconds of paying.
+
+```javascript
+// api/checkout/success.js
+import { prisma } from '../lib/db';
+import { provisionAIAgent } from '../lib/vapi-service';
+
+export default async function handleSuccess(req, res) {
+  const { sessionId, userId } = req.body;
+  const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+  if (session.payment_status === 'paid') {
+    // 1. Apply the 60-Day Deal (Update next billing date in Stripe)
+    await stripe.subscriptions.update(session.subscription, {
+      trial_end: Math.floor(Date.now() / 1000) + (60 * 24 * 60 * 60), // 60 days from now
+    });
+
+    // 2. Provision the Master Sub-Account
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { 
+        isSubscribed: true, 
+        tier: session.metadata.tierName,
+        aiCredits: 50.00 // Give them $50 launch credit
+      }
+    });
+
+    // 3. THE MAGIC: Auto-Provision the first Voice Agent
+    // This makes the app feel "alive" immediately
+    const initialAgent = await provisionAIAgent({
+      name: `${user.businessName} Assistant`,
+      welcomeMessage: `Hello! I am your new AI assistant for ${user.businessName}. How can I help you today?`,
+      vibe: 'cyber-glass'
+    });
+
+    // 4. Send the "Welcome to the Future" Email
+    await sendWelcomeEmail(user.email, initialAgent.id);
+
+    res.json({ message: "God Mode Activated. 60-Day Launch Period Started." });
+  }
+}
+
+```
+
+---
+
+### 4. The Competitive Edge: "Snapshot" Distribution
+
+To beat GHL, you need a way for users to "install" success.
+
+**The Code for the "Snapshot" Loader:**
+
+```javascript
+// lib/snapshot-engine.ts
+export async function installSnapshot(targetSubAccountId, snapshotType) {
+  const blueprints = {
+    'med-spa': {
+      workflow: 'Lead Follow-up + Booking',
+      botTrainingUrl: 'https://standard-medspa-sop.com',
+      vibe: 'clean-glass'
+    },
+    'real-estate': {
+      workflow: 'Property Inquiry + SMS Agent',
+      botTrainingUrl: 'https://standard-realestate-faq.com',
+      vibe: 'gilded-rose'
+    }
+  };
+
+  const selected = blueprints[snapshotType];
+
+  // Apply all settings at once to the new sub-account
+  await prisma.subAccount.update({
+    where: { id: targetSubAccountId },
+    data: {
+      vibeTheme: selected.vibe,
+      activeWorkflows: { create: { name: selected.workflow } }
+    }
+  });
+}
+
+```
+
+---
+
+### 🔱 Your 60-Day Success Roadmap
+
+| Timeline | Action | Goal |
+| --- | --- | --- |
+| **Days 1-10** | **The Alpha Launch** | Get 5 Agency owners to test your **Snapshot** system for free. |
+| **Days 11-30** | **The Feedback Loop** | Fix bugs in the **Unified Inbox** based on real client messages. |
+| **Days 31-60** | **The Affiliate Push** | Offer your 5 Founders a 40% recurring commission to sell your $497 God Mode tier to their peers. |
+
+### Summary of the "God Mode" Launch Pack
+
+* **60 Days for the price of 30:** Lowers the barrier to entry.
+* **$50 AI Credit:** Gets them over the "Usage Billing" hump.
+* **Instant Provisioning:** They don't have to learn how to build a bot; one is waiting for them when they log in.
+
+**Would you like me to help you design the "Affiliate Dashboard" so your users can see how much money they are making by selling your platform for you?**

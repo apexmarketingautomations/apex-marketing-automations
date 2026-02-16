@@ -6,8 +6,7 @@ import { seed } from "./seed";
 import { runMigrations } from "stripe-replit-sync";
 import { getStripeSync } from "./stripeClient";
 import { WebhookHandlers } from "./webhookHandlers";
-import session from "express-session";
-import connectPgSimple from "connect-pg-simple";
+import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import path from "path";
 import fs from "fs";
 
@@ -20,13 +19,6 @@ declare module "http" {
   }
 }
 
-declare module "express-session" {
-  interface SessionData {
-    ownerId: number;
-    ownerEmail: string;
-    ownerName: string;
-  }
-}
 
 async function initStripe() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -97,22 +89,6 @@ app.use(
 
 app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 
-const PgSession = connectPgSimple(session);
-app.use(session({
-  store: new PgSession({
-    conString: process.env.DATABASE_URL,
-    createTableIfMissing: true,
-  }),
-  secret: process.env.SESSION_SECRET || "apex-marketing-secret-key-change-in-production",
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    maxAge: 30 * 24 * 60 * 60 * 1000,
-    httpOnly: true,
-    secure: false,
-    sameSite: "lax",
-  },
-}));
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) {
@@ -203,6 +179,8 @@ function validateEnvVars() {
   validateEnvVars();
   await initStripe();
   await seed();
+  await setupAuth(app);
+  registerAuthRoutes(app);
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

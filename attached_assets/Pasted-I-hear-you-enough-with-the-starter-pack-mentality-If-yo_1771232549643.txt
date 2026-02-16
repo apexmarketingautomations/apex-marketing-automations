@@ -1,0 +1,100 @@
+I hear you—enough with the "starter pack" mentality. If you’re going for **God Mode**, the platform shouldn't just offer niches; it should *own* the concept of industry creation.
+
+To stop selling you short, we need to move past a simple gallery and build a **Snapshot Marketplace**. This turns your platform into a self-evolving ecosystem where users do the heavy lifting of expanding the niches, and you take a cut of the transaction.
+
+---
+
+### 🔱 The Snapshot Marketplace: "B2B2B" Architecture
+
+This is where your power users (Agencies) build a perfect setup for a niche (like "Exotic Car Rentals") and sell that "Blueprint" to other users. You provide the infrastructure; they provide the expertise.
+
+#### 1. The "Snapshot" Schema
+
+You need a way to "package" an entire account's DNA—workflows, bot prompts, site templates, and pipeline stages—into a single, shareable ID.
+
+```prisma
+// Add to schema.prisma
+
+model Snapshot {
+  id           String   @id @default(cuid())
+  creatorId    String
+  creator      User     @relation(fields: [creatorId], references: [id])
+  name         String   // e.g., "The Ultimate Tattoo Studio Pack"
+  description  String
+  price        Float    @default(0.0) // Can be free or paid
+  industry     String
+  
+  // The "DNA" Payload (stored as JSON)
+  config       Json     
+  
+  isPublic     Boolean  @default(false)
+  downloads    Int      @default(0)
+  createdAt    DateTime @default(now())
+}
+
+```
+
+---
+
+#### 2. The "Publish" Logic
+
+When an AGM or a GM builds a winning system for their bar (like your Toast integration + email capture), they can "God Mode" it into a product.
+
+```javascript
+// lib/marketplace-engine.ts
+
+export async function publishSnapshot(subAccountId, details) {
+  // 1. Capture the current state of the sub-account
+  const accountData = await prisma.subAccount.findUnique({
+    where: { id: subAccountId },
+    include: { workflows: true, siteBuilder: true, voiceAgent: true }
+  });
+
+  // 2. Package it into a Snapshot
+  const newSnapshot = await prisma.snapshot.create({
+    data: {
+      creatorId: accountData.ownerId,
+      name: details.name,
+      price: details.price,
+      industry: accountData.industry,
+      config: {
+        vibe: accountData.vibeTheme,
+        pipelines: accountData.pipelines,
+        botPrompt: accountData.voiceAgent.prompt,
+        workflowSteps: accountData.workflows.map(w => w.steps)
+      }
+    }
+  });
+
+  return newSnapshot.id; // This ID is now a viral link
+}
+
+```
+
+---
+
+### 🎨 The Marketplace UI (Cyber-Glass Style)
+
+This isn't a list; it's a **Gallery of Power**. Use high-contrast cards with glowing borders to show off the "Bestsellers."
+
+| Industry | Creator | Success Rate | Price |
+| --- | --- | --- | --- |
+| **Luxury RV Rentals** | @ApexFounder_1 | 94% Lead Conv. | $199 |
+| **High-Ticket Law** | @LegalAI_Pro | 200+ Downloads | $499 |
+| **Seed & Bean Martini Pack** | @AGM_Creator | Top Rated | FREE |
+
+---
+
+### 🔱 Scaling to "Infinite" Niches
+
+To truly stop selling you short, here is how you handle the "15 is not enough" problem permanently:
+
+1. **AI Industry Generation:** If a niche doesn't exist in the Marketplace, the **"Architect"** (which we discussed) uses GPT-4o to build a *new* Snapshot on the fly.
+2. **Snapshot Forking:** Allow users to "Fork" a template. They take the "Dental" template and tweak it for "Orthodontics," then re-publish it.
+3. **The Affiliate Loop:** When an affiliate sells a Snapshot *and* a subscription, they get the 40% recurring commission + 70% of the Snapshot price. You keep 30% of the Snapshot price as a "Platform Fee."
+
+### Your Next Step to Victory
+
+Since you mentioned the "Add New Account" section was limiting, you need the **Global Search & Deploy** bar.
+
+**Would you like me to write the code for the "Instant Deploy" search bar, where a user types a niche and it either finds a Marketplace Snapshot or triggers the AI Architect to build it?**

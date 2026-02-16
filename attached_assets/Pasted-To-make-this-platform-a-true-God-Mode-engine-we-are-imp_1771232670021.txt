@@ -1,0 +1,79 @@
+To make this platform a true **God Mode** engine, we are implementing **Snapshot Forking**. This allows any user to take one of your core templates (like "Med Spa" or "Adult Creator") and "fork" it—making a copy they can refine, rename, and either use for a new client or re-publish to the marketplace under their own brand.
+
+This is exactly how GitHub grew to own the world of code. You are doing the same for **Business DNA**.
+
+---
+
+### 🔱 The "Fork" Logic: Cloning the Business DNA
+
+When a user "forks" a snapshot, you aren't just copying a row in a database; you are duplicating an entire ecosystem (Workflows, Agent Prompts, Site Structures) and re-linking them to a new owner.
+
+```javascript
+// lib/snapshot-fork-engine.ts
+
+export async function forkSnapshot(snapshotId, newOwnerId, newBusinessName) {
+  // 1. Fetch the Original "Parent" Snapshot
+  const parentSnapshot = await prisma.snapshot.findUnique({
+    where: { id: snapshotId }
+  });
+
+  if (!parentSnapshot) throw new Error("Snapshot not found.");
+
+  // 2. CREATE THE FORKED SUB-ACCOUNT
+  // We take the parent's 'config' (The DNA) and inject it into a new account
+  const forkedAccount = await prisma.subAccount.create({
+    data: {
+      ownerId: newOwnerId,
+      name: newBusinessName,
+      industry: parentSnapshot.industry,
+      vibeTheme: parentSnapshot.config.vibe,
+      
+      // The deep copy of the configuration
+      config: parentSnapshot.config,
+      
+      // Track the lineage (Who is the original creator?)
+      parentSnapshotId: parentSnapshot.id,
+      isFork: true
+    }
+  });
+
+  // 3. LOG THE FORK FOR THE MARKETPLACE (Social Proof)
+  await prisma.snapshot.update({
+    where: { id: snapshotId },
+    data: { forkCount: { increment: 1 } }
+  });
+
+  return forkedAccount.id;
+}
+
+```
+
+---
+
+### 🎨 The "Fork & Tweak" UI (Cyber-Glass Dashboard)
+
+When a user forks a template, they shouldn't just be dumped into a dashboard. They should enter an **"Architect Mode"** where they can see what they've inherited and change the "DNA" before it goes live.
+
+**The Forking Modal should show:**
+
+* **"Inherited from [Creator Name]"** (Builds community authority).
+* **"What’s inside:"** A checklist of the 5 Pipeline Stages, 3 Workflows, and the AI Voice Agent persona.
+* **"The Tweak Box:"** A prompt where they can say: *"Keep the Med Spa structure, but make the tone more 'Luxury/High-End' and change the color to Gold."*
+
+---
+
+### 🔱 The "Marketplace Evolution" (Scaling to Thousands)
+
+By allowing forking, your 15 templates will naturally evolve into thousands of variations:
+
+1. **The "Med Spa" Parent** gets forked into **"Luxury Med Spa,"** **"Budget Med Spa,"** and **"Men’s Health Clinic."**
+2. **The "Adult Creator" Parent** gets forked into specialized themes for **"Cosplay,"** **"Fitness,"** or **"ASMR."**
+3. **The "Snap-Back" Revenue:** If a user forks a **Paid Snapshot**, you ensure the original creator still gets their cut. This incentivizes your best users to build "Parent" templates that everyone wants to fork.
+
+---
+
+### 🔱 The "Apex" Level Move: Version History
+
+Since you've worked with **Replit**, you know how important it is to be able to "undo" a mistake. If a user forks a template and messes up the AI Agent's logic, they need a **"Restore to Parent"** button.
+
+**Would you like me to write the "Snapshot Versioning" code so users can save "Checkpoints" of their business setup as they tweak it?**

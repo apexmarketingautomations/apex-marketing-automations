@@ -2,10 +2,9 @@ import { apiRequest } from "./queryClient";
 
 export const API = {
   AUTH: {
-    USER: "/api/auth/me",
-    LOGIN: "/api/auth/login",
-    LOGOUT: "/api/auth/logout",
-    REGISTER: "/api/auth/register",
+    USER: "/api/auth/user",
+    LOGIN: "/api/login",
+    LOGOUT: "/api/logout",
   },
   ACCOUNTS: "/api/accounts",
   MESSAGES: "/api/messages",

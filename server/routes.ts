@@ -9,7 +9,6 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import express from "express";
-import crypto from "crypto";
 
 type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
@@ -52,17 +51,6 @@ const vapiConfig = {
   },
 };
 
-function hashPassword(password: string): string {
-  const salt = crypto.randomBytes(16).toString("hex");
-  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, "sha512").toString("hex");
-  return `${salt}:${hash}`;
-}
-
-function verifyPassword(password: string, stored: string): boolean {
-  const [salt, hash] = stored.split(":");
-  const verify = crypto.pbkdf2Sync(password, salt, 1000, 64, "sha512").toString("hex");
-  return hash === verify;
-}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -95,69 +83,19 @@ export async function registerRoutes(
     }
   }
 
-  // ---- Auth Routes ----
-  app.post("/api/auth/register", asyncHandler(async (req, res) => {
-    const { email, password, name } = req.body;
-    if (!email || !password || !name) {
-      return res.status(400).json({ error: "Email, password, and name are required" });
-    }
-    const existing = await storage.getOwnerByEmail(email);
-    if (existing) {
-      return res.status(409).json({ error: "Email already registered" });
-    }
-    const passwordHash = hashPassword(password);
-    const owner = await storage.createOwner({ email, passwordHash, name });
-    req.session.ownerId = owner.id;
-    req.session.ownerEmail = owner.email;
-    req.session.ownerName = owner.name;
-    res.status(201).json({ id: owner.id, email: owner.email, name: owner.name });
-  }));
-
-  app.post("/api/auth/login", asyncHandler(async (req, res) => {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: "Email and password are required" });
-    }
-    const owner = await storage.getOwnerByEmail(email);
-    if (!owner || !verifyPassword(password, owner.passwordHash)) {
-      return res.status(401).json({ error: "Invalid email or password" });
-    }
-    req.session.ownerId = owner.id;
-    req.session.ownerEmail = owner.email;
-    req.session.ownerName = owner.name;
-    res.json({ id: owner.id, email: owner.email, name: owner.name });
-  }));
-
-  app.post("/api/auth/logout", (req, res) => {
-    req.session.destroy((err) => {
-      if (err) return res.status(500).json({ error: "Logout failed" });
-      res.json({ success: true });
-    });
-  });
-
-  app.get("/api/auth/me", (req, res) => {
-    if (!req.session?.ownerId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    res.json({
-      id: req.session.ownerId,
-      email: req.session.ownerEmail,
-      name: req.session.ownerName,
-    });
-  });
-
   // ---- Auth Middleware ----
   app.use("/api", (req, res, next) => {
     const fullPath = req.originalUrl || req.baseUrl + req.path;
-    const openPaths = ["/api/auth/", "/api/stripe/webhook", "/api/webhooks/"];
+    const openPaths = ["/api/auth/", "/api/login", "/api/logout", "/api/callback", "/api/stripe/webhook", "/api/webhooks/"];
     const openExact = ["/api/reviews", "/api/alert-owner"];
 
     if (openPaths.some(p => fullPath.startsWith(p))) return next();
     if (req.method === "POST" && openExact.some(p => fullPath === p)) return next();
     if (req.method === "GET" && fullPath.startsWith("/api/review-config/")) return next();
     if (fullPath === "/api/log-error") return next();
+    if (fullPath === "/api/sms-webhook") return next();
 
-    if (!req.session?.ownerId) {
+    if (!req.isAuthenticated || !req.isAuthenticated()) {
       return res.status(401).json({ error: "Not authenticated" });
     }
     next();

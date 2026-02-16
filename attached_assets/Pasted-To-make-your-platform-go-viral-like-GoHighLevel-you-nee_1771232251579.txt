@@ -1,0 +1,140 @@
+To make your platform go viral like GoHighLevel, you need your users to become your sales team. This happens through an **Affiliate Dashboard** where they can see their recurring commissions in real-time.
+
+For the **$497/mo God Mode** tier, offering a **40% recurring commission** means your affiliate earns **$198.80 per month** for every person they sign up. That is a life-changing "passive income" story that sells itself.
+
+---
+
+### 1. The Affiliate Database Schema
+
+You need to track who referred whom and how much they are owed.
+
+```prisma
+// Add these to your schema.prisma
+
+model AffiliateProfile {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id])
+  affiliateCode  String   @unique // e.g., "AGM_LAUNCH"
+  commissionRate Float    @default(0.40) // 40%
+  totalEarned    Float    @default(0.0)
+  pendingPayout  Float    @default(0.0)
+  referrals      User[]   @relation("Referrals")
+}
+
+// Update User model to include a referrer
+model User {
+  // ... existing fields
+  referrerId     String?
+  referrer       AffiliateProfile? @relation("Referrals", fields: [referrerId], references: [id])
+}
+
+```
+
+---
+
+### 2. The "Cyber-Glass" Affiliate Dashboard (UI)
+
+This is what your "Founders" see when they log in. It needs to look like a high-end trading terminal.
+
+```jsx
+// components/AffiliateStats.jsx
+export default function AffiliateStats({ stats }) {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* Monthly Recurring Revenue Earned */}
+      <div className="bg-black/40 backdrop-blur-md border border-cyan-500/30 p-6 rounded-2xl shadow-[0_0_15px_rgba(0,243,255,0.1)]">
+        <p className="text-gray-400 text-sm uppercase font-bold tracking-widest">Monthly Commissions</p>
+        <p className="text-4xl font-black text-white mt-2">${stats.mrr}<span className="text-cyan-400 text-lg">/mo</span></p>
+      </div>
+
+      {/* Referral Count */}
+      <div className="bg-black/40 backdrop-blur-md border border-purple-500/30 p-6 rounded-2xl">
+        <p className="text-gray-400 text-sm uppercase font-bold tracking-widest">Active Referrals</p>
+        <p className="text-4xl font-black text-white mt-2">{stats.referralCount}</p>
+      </div>
+
+      {/* Unique Link Section */}
+      <div className="bg-black/40 backdrop-blur-md border border-white/10 p-6 rounded-2xl col-span-1 md:col-span-3">
+        <p className="text-gray-400 text-sm mb-2">Your Unique Invite Link</p>
+        <div className="flex gap-2">
+          <input 
+            readOnly 
+            value={`https://apex.ai/join?ref=${stats.code}`} 
+            className="w-full bg-white/5 border border-white/10 rounded p-2 text-cyan-300 font-mono"
+          />
+          <button className="bg-cyan-500 text-black font-bold px-4 rounded">COPY</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+```
+
+---
+
+### 3. The "Payout" Engine (Fintech Logic)
+
+This script runs whenever a customer pays their monthly bill. It automatically splits the money and moves the commission to the Affiliate's "Pending" bucket.
+
+```javascript
+// lib/affiliate-payouts.ts
+
+export async function processCommission(userId, paymentAmount) {
+  // 1. Find the user who just paid
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { referrer: true }
+  });
+
+  // 2. If they have a referrer, calculate the cut
+  if (user.referrer) {
+    const commission = paymentAmount * user.referrer.commissionRate;
+
+    // 3. Update the Affiliate's balance
+    await prisma.affiliateProfile.update({
+      where: { id: user.referrer.id },
+      data: {
+        totalEarned: { increment: commission },
+        pendingPayout: { increment: commission }
+      }
+    });
+
+    // 4. Log the transaction for the Affiliate Dashboard
+    await prisma.transaction.create({
+      data: {
+        affiliateId: user.referrer.id,
+        amount: commission,
+        note: `Commission from ${user.businessName} payment`
+      }
+    });
+  }
+}
+
+```
+
+---
+
+### 🔱 The "60-Day Deal" Affiliate Strategy
+
+To make your 60-day launch deal even more explosive:
+
+1. **Double Credit:** Tell your Affiliates that if they bring in 5 people in their first 30 days, their own **God Mode** subscription becomes **free forever**.
+2. **Snapshot Bounty:** If an affiliate creates a "Snapshot" (e.g., a perfect setup for Tattoo Studios) that gets used by 100 people, pay them a $1,000 bonus. This incentivizes them to create high-quality content for your platform.
+3. **Tiered Affiliates:** * 0-10 referrals: 30% commission.
+* 11-50 referrals: 40% commission.
+* 50+ referrals: 50% commission (This turns them into "Partners").
+
+
+
+### Summary of the Distribution Engine
+
+| Feature | Growth Result |
+| --- | --- |
+| **Referral Link** | Users share it on TikTok/YouTube to "make money with AI." |
+| **40% Commission** | High enough to make professionals switch from GoHighLevel. |
+| **60-Day Deal** | Massive conversion rate from "curious" to "subscriber." |
+| **Snapshots** | Creates a community-driven marketplace you don't have to build. |
+
+**Would you like me to draft the "Founder Invite" email you’ll send to your first 5 potential Agency partners to get them on board?**

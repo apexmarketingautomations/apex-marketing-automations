@@ -2,6 +2,8 @@ import { pgTable, text, serial, integer, json, timestamp, boolean, real } from "
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+export * from "./models/auth";
+
 export const subAccounts = pgTable("sub_accounts", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),

@@ -84,7 +84,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-2 px-3 py-2 text-xs text-slate-400">
               <span className="hidden md:block truncate">{user.email}</span>
             </div>
-            <button onClick={logout} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors" data-testid="button-logout">
+            <button onClick={() => logout()} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors" data-testid="button-logout">
               <LogOut size={16} />
               <span className="hidden md:block">Sign Out</span>
             </button>
@@ -97,9 +97,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
         <div className="p-4 border-t border-white/5 bg-black/20">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-slate-700 to-slate-600 border border-white/10 shrink-0" />
+            {user?.profileImageUrl ? (
+              <img src={user.profileImageUrl} alt="" className="w-10 h-10 rounded-full border border-white/10 shrink-0 object-cover" />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-slate-700 to-slate-600 border border-white/10 shrink-0" />
+            )}
             <div className="hidden md:block">
-              <div className="text-sm font-bold text-white">{user?.name || "Admin User"}</div>
+              <div className="text-sm font-bold text-white">{user?.firstName || user?.email || "Admin User"}</div>
               <div className="text-xs text-green-400 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
                 System Online
