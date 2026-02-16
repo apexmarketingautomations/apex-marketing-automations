@@ -36,6 +36,7 @@ const SentinelPage = lazy(() => import("@/pages/sentinel"));
 const PropertyRadarPage = lazy(() => import("@/pages/property-radar"));
 const WebsiteIntegration = lazy(() => import("@/pages/website-integration"));
 const FormBuilder = lazy(() => import("@/pages/form-builder"));
+const NexusDemo = lazy(() => import("@/pages/nexus-demo"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const Login = lazy(() => import("@/pages/login"));
 const Welcome = lazy(() => import("@/pages/welcome"));
@@ -63,6 +64,7 @@ function Router() {
     <Suspense fallback={<PageLoader />}>
       <Switch>
         <Route path="/review/:subAccountId" component={ReviewBuffer} />
+        <Route path="/demo" component={NexusDemo} />
         <Route path="/login" component={Login} />
         <Route path="/welcome" component={Welcome} />
         <Route>
