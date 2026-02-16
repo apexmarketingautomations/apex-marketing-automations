@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Globe, Search, ShoppingCart, Shield, Lock, CheckCircle2, XCircle, Loader2, Link2 } from "lucide-react";
+import { Globe, Search, ShoppingCart, Shield, Lock, CheckCircle2, XCircle, Loader2, Link2, BookOpen } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
+import { DOMAINS_STEPS } from "@/components/tutorial-steps";
 
 const SUB_ACCOUNT_ID = 1;
 
@@ -44,6 +46,7 @@ type SavedSite = {
 export default function Domains() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_domains");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTld, setSelectedTld] = useState(".com");
   const [checkResult, setCheckResult] = useState<DomainCheckResult | null>(null);
@@ -197,6 +200,9 @@ export default function Domains() {
             Domain <span className="bg-gradient-to-r from-indigo-400 via-cyan-400 to-purple-400 bg-clip-text text-transparent">Manager</span>
           </h1>
           <p className="text-slate-400 text-sm mt-1">Search, purchase, and manage domains for your projects</p>
+          <Button variant="ghost" size="sm" onClick={startTutorial} className="text-slate-400 hover:text-white mt-2" data-testid="button-start-tutorial">
+            <BookOpen size={16} className="mr-1" /> Tutorial
+          </Button>
         </motion.div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8" data-testid="stats-row">
@@ -428,6 +434,7 @@ export default function Domains() {
           </Card>
         </motion.div>
       </div>
+      {showTutorial && <TutorialOverlay steps={DOMAINS_STEPS} storageKey="apex_tutorial_domains" onClose={closeTutorial} accentColor="cyan" />}
     </div>
   );
 }

@@ -17,12 +17,15 @@ import {
   ArrowRight,
   ExternalLink,
   RefreshCcw,
+  BookOpen,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
+import { GOD_MODE_STEPS } from "@/components/tutorial-steps";
 
 const INDUSTRIES = [
   { id: "fitness", label: "Fitness / Gym", icon: "\u{1F4AA}" },
@@ -108,6 +111,7 @@ export default function GodMode() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
+  const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_god_mode");
   const [businessName, setBusinessName] = useState("");
   const [industry, setIndustry] = useState("");
   const [website, setWebsite] = useState("");
@@ -205,8 +209,13 @@ export default function GodMode() {
     <div className="flex-1 p-6 md:p-10 overflow-y-auto">
       <div className="max-w-4xl mx-auto">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-12">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold border border-indigo-500/30 bg-indigo-500/10 text-indigo-400 mb-6">
-            <Zap size={12} /> GOD MODE
+          <div className="flex items-center justify-center gap-3 mb-6">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold border border-indigo-500/30 bg-indigo-500/10 text-indigo-400">
+              <Zap size={12} /> GOD MODE
+            </div>
+            <Button variant="ghost" size="sm" onClick={startTutorial} className="text-slate-400 hover:text-white" data-testid="button-start-tutorial">
+              <BookOpen size={16} className="mr-1" /> Tutorial
+            </Button>
           </div>
           <h1 className="text-4xl md:text-5xl font-black tracking-tight mb-4" data-testid="text-god-mode-title">
             One-Click <span className="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Empire Builder</span>
@@ -481,6 +490,7 @@ export default function GodMode() {
           ))}
         </motion.div>
       </div>
+      {showTutorial && <TutorialOverlay steps={GOD_MODE_STEPS} storageKey="apex_tutorial_god_mode" onClose={closeTutorial} accentColor="red" />}
     </div>
   );
 }

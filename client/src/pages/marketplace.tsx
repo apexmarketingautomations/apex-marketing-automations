@@ -2,12 +2,14 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Store, Download, GitFork, Star, Search, Package, ArrowRight, Sparkles, Filter } from "lucide-react";
+import { Store, Download, GitFork, Star, Search, Package, ArrowRight, Sparkles, Filter, BookOpen } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import type { Snapshot } from "@shared/schema";
+import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
+import { MARKETPLACE_STEPS } from "@/components/tutorial-steps";
 
 const industries = [
   "All", "Medical/Health", "Home Services", "Professional", "Lifestyle/Beauty", "Hospitality", "Creators", "Tech", "Fitness"
@@ -16,6 +18,7 @@ const industries = [
 export default function Marketplace() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_marketplace");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedIndustry, setSelectedIndustry] = useState("All");
   const [forkSnapshot, setForkSnapshot] = useState<Snapshot | null>(null);
@@ -51,14 +54,19 @@ export default function Marketplace() {
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-            <Store size={20} className="text-white" />
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+              <Store size={20} className="text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-black text-white" data-testid="text-marketplace-title">Snapshot Marketplace</h1>
+              <p className="text-slate-400 text-sm">Install pre-built business templates in one click</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-3xl font-black text-white" data-testid="text-marketplace-title">Snapshot Marketplace</h1>
-            <p className="text-slate-400 text-sm">Install pre-built business templates in one click</p>
-          </div>
+          <Button variant="ghost" size="sm" onClick={startTutorial} className="text-slate-400 hover:text-white" data-testid="button-start-tutorial">
+            <BookOpen size={16} className="mr-1" /> Tutorial
+          </Button>
         </div>
       </motion.div>
 
@@ -206,6 +214,7 @@ export default function Marketplace() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {showTutorial && <TutorialOverlay steps={MARKETPLACE_STEPS} storageKey="apex_tutorial_marketplace" onClose={closeTutorial} accentColor="amber" />}
     </div>
   );
 }

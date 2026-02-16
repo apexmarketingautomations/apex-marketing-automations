@@ -7,8 +7,10 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Building, MapPin, Phone, DollarSign, AlertTriangle, CheckCircle2,
   Settings, Play, Home, TrendingUp, Send, Target, Eye, Search, Filter,
-  ArrowRight, User, Mail, Hash, Layers, Zap, BarChart3
+  ArrowRight, User, Mail, Hash, Layers, Zap, BarChart3, BookOpen
 } from "lucide-react";
+import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
+import { PROPERTY_RADAR_STEPS } from "@/components/tutorial-steps";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -64,6 +66,7 @@ type LeadWithMetrics = PropertyLead & {
 };
 
 export default function PropertyRadar() {
+  const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_property_radar");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { activeAccountId } = useAccount();
@@ -227,6 +230,9 @@ export default function PropertyRadar() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" onClick={startTutorial} className="text-slate-400 hover:text-white" data-testid="button-start-tutorial">
+            <BookOpen size={16} className="mr-1" /> Tutorial
+          </Button>
           <div className="flex bg-slate-800/50 rounded-lg border border-slate-700/50 p-1">
             <button
               onClick={() => setViewMode("feed")}
@@ -637,6 +643,7 @@ export default function PropertyRadar() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {showTutorial && <TutorialOverlay steps={PROPERTY_RADAR_STEPS} storageKey="apex_tutorial_property_radar" onClose={closeTutorial} accentColor="emerald" />}
     </div>
   );
 }

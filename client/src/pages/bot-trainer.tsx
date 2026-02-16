@@ -10,8 +10,11 @@ import {
   BrainCircuit, 
   Calendar,
   Loader2,
-  ExternalLink
+  ExternalLink,
+  BookOpen
 } from "lucide-react";
+import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
+import { BOT_TRAINER_STEPS } from "@/components/tutorial-steps";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -46,6 +49,7 @@ export default function BotTrainer() {
   const [logs, setLogs] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState("train");
   const { toast } = useToast();
+  const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_bot_trainer");
   
   const [chatInput, setChatInput] = useState("");
   const [chatHistory, setChatHistory] = useState<{role: string; content: string}[]>([]);
@@ -135,6 +139,9 @@ export default function BotTrainer() {
             Train your AI agent with a knowledge base, then test it with real conversations.
           </p>
         </div>
+        <Button variant="ghost" size="sm" onClick={startTutorial} className="text-slate-400 hover:text-white" data-testid="button-start-tutorial">
+          <BookOpen size={16} className="mr-1" /> Tutorial
+        </Button>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
@@ -389,6 +396,7 @@ export default function BotTrainer() {
           </div>
         </TabsContent>
       </Tabs>
+      {showTutorial && <TutorialOverlay steps={BOT_TRAINER_STEPS} storageKey="apex_tutorial_bot_trainer" onClose={closeTutorial} accentColor="purple" />}
     </div>
   );
 }

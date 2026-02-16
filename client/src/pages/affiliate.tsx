@@ -1,11 +1,15 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
-import { Users, DollarSign, Link2, Copy, TrendingUp, Clock, CheckCircle2, ArrowUpRight } from "lucide-react";
+import { Users, DollarSign, Link2, Copy, TrendingUp, Clock, CheckCircle2, ArrowUpRight, BookOpen } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
+import { AFFILIATE_STEPS } from "@/components/tutorial-steps";
 
 export default function Affiliate() {
   const { toast } = useToast();
+  const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_affiliate");
 
   const { data: affiliate, isLoading } = useQuery<any>({
     queryKey: ["/api/affiliate"],
@@ -34,14 +38,19 @@ export default function Affiliate() {
   return (
     <div className="p-6 md:p-10 max-w-6xl mx-auto">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
-            <Users size={20} className="text-white" />
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
+              <Users size={20} className="text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-black text-white" data-testid="text-affiliate-title">Affiliate Dashboard</h1>
+              <p className="text-slate-400 text-sm">Earn recurring commissions by sharing Apex</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-3xl font-black text-white" data-testid="text-affiliate-title">Affiliate Dashboard</h1>
-            <p className="text-slate-400 text-sm">Earn recurring commissions by sharing Apex</p>
-          </div>
+          <Button variant="ghost" size="sm" onClick={startTutorial} className="text-slate-400 hover:text-white" data-testid="button-start-tutorial">
+            <BookOpen size={16} className="mr-1" /> Tutorial
+          </Button>
         </div>
       </motion.div>
 
@@ -165,6 +174,7 @@ export default function Affiliate() {
           </div>
         </div>
       </motion.div>
+      {showTutorial && <TutorialOverlay steps={AFFILIATE_STEPS} storageKey="apex_tutorial_affiliate" onClose={closeTutorial} accentColor="emerald" />}
     </div>
   );
 }

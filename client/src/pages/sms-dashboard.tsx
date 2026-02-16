@@ -3,7 +3,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { format } from "date-fns";
-import { Send, Phone, User, Building2, MessageSquare, Loader2, CheckCircle2, Clock, Instagram, Mail, Bell } from "lucide-react";
+import { Send, Phone, User, Building2, MessageSquare, Loader2, CheckCircle2, Clock, Instagram, Mail, Bell, BookOpen } from "lucide-react";
+import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
+import { INBOX_STEPS } from "@/components/tutorial-steps";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -53,6 +55,7 @@ interface LocalMessage extends Message {
 }
 
 export default function SmsDashboard() {
+  const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_inbox");
   const [selectedAccount, setSelectedAccount] = useState<string>("");
   const [instagramConnected, setInstagramConnected] = useState(false);
   const [localMessages, setLocalMessages] = useState<LocalMessage[]>([]);
@@ -180,7 +183,12 @@ export default function SmsDashboard() {
         {/* Left Sidebar: Configuration */}
         <div className="space-y-6">
           <div className="space-y-2">
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Unified Inbox</h1>
+            <div className="flex items-center justify-between">
+              <h1 className="text-2xl font-bold tracking-tight text-foreground">Unified Inbox</h1>
+              <Button variant="ghost" size="sm" onClick={startTutorial} className="text-slate-400 hover:text-white" data-testid="button-start-tutorial">
+                <BookOpen size={16} className="mr-1" /> Tutorial
+              </Button>
+            </div>
             <p className="text-sm text-muted-foreground">Manage all your customer conversations in one place.</p>
           </div>
 
@@ -425,6 +433,7 @@ export default function SmsDashboard() {
           </Card>
         </div>
       </div>
+      {showTutorial && <TutorialOverlay steps={INBOX_STEPS} storageKey="apex_tutorial_inbox" onClose={closeTutorial} accentColor="indigo" />}
     </div>
   );
 }

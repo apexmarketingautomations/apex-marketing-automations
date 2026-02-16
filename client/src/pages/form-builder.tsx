@@ -3,8 +3,10 @@ import { useMutation } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutTemplate, Sparkles, Plus, Trash2, GripVertical, Copy, Check,
-  Loader2, ChevronUp, ChevronDown, Eye, Code, Edit3, AlertTriangle, Shield
+  Loader2, ChevronUp, ChevronDown, Eye, Code, Edit3, AlertTriangle, Shield, BookOpen
 } from "lucide-react";
+import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
+import { FORM_BUILDER_STEPS } from "@/components/tutorial-steps";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,6 +61,7 @@ const FIELD_TYPES = [
 ];
 
 export default function FormBuilder() {
+  const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_form_builder");
   const { toast } = useToast();
   const [industry, setIndustry] = useState("");
   const [businessName, setBusinessName] = useState("");
@@ -182,6 +185,9 @@ ${formHtml}
             Generate industry-specific lead capture forms with AI-powered compliance notes.
           </p>
         </div>
+        <Button variant="ghost" size="sm" onClick={startTutorial} className="text-slate-400 hover:text-white" data-testid="button-start-tutorial">
+          <BookOpen size={16} className="mr-1" /> Tutorial
+        </Button>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -664,6 +670,7 @@ ${formHtml}
           </Card>
         </TabsContent>
       </Tabs>
+      {showTutorial && <TutorialOverlay steps={FORM_BUILDER_STEPS} storageKey="apex_tutorial_form_builder" onClose={closeTutorial} accentColor="purple" />}
     </div>
   );
 }

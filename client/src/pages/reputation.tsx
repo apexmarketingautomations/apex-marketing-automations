@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Star, Copy, ExternalLink, Loader2, Shield, Sparkles, MessageSquare, ThumbsUp, ThumbsDown, Eye, EyeOff, Save } from "lucide-react";
+import { Star, Copy, ExternalLink, Loader2, Shield, Sparkles, MessageSquare, ThumbsUp, ThumbsDown, Eye, EyeOff, Save, BookOpen } from "lucide-react";
+import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
+import { REPUTATION_STEPS } from "@/components/tutorial-steps";
 import { motion } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,6 +27,7 @@ function StarDisplay({ rating, size = 16 }: { rating: number; size?: number }) {
 }
 
 export default function Reputation() {
+  const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_reputation");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [googleLink, setGoogleLink] = useState("");
@@ -143,9 +146,14 @@ export default function Reputation() {
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold border border-yellow-500/30 bg-yellow-500/10 text-yellow-400 mb-4">
             <Star size={12} /> REPUTATION MANAGER
           </div>
-          <h1 className="text-3xl md:text-4xl font-black tracking-tight" data-testid="text-reputation-title">
-            Review <span className="bg-gradient-to-r from-yellow-400 via-orange-400 to-red-400 bg-clip-text text-transparent">Dashboard</span>
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl md:text-4xl font-black tracking-tight" data-testid="text-reputation-title">
+              Review <span className="bg-gradient-to-r from-yellow-400 via-orange-400 to-red-400 bg-clip-text text-transparent">Dashboard</span>
+            </h1>
+            <Button variant="ghost" size="sm" onClick={startTutorial} className="text-slate-400 hover:text-white" data-testid="button-start-tutorial">
+              <BookOpen size={16} className="mr-1" /> Tutorial
+            </Button>
+          </div>
         </motion.div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -307,6 +315,7 @@ export default function Reputation() {
           )}
         </div>
       </div>
+      {showTutorial && <TutorialOverlay steps={REPUTATION_STEPS} storageKey="apex_tutorial_reputation" onClose={closeTutorial} accentColor="amber" />}
     </div>
   );
 }

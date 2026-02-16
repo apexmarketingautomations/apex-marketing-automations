@@ -1,12 +1,14 @@
 import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Loader2, Briefcase, Dumbbell, Home, Stethoscope, Hammer, ArrowRight, Database, LayoutTemplate, Columns, Scale, Car, Scissors, GraduationCap, UtensilsCrossed, ShieldCheck, Sparkles, Building2, Truck, Dog, Camera, Heart, Wrench, Palmtree, Landmark } from "lucide-react";
+import { Check, Loader2, Briefcase, Dumbbell, Home, Stethoscope, Hammer, ArrowRight, Database, LayoutTemplate, Columns, Scale, Car, Scissors, GraduationCap, UtensilsCrossed, ShieldCheck, Sparkles, Building2, Truck, Dog, Camera, Heart, Wrench, Palmtree, Landmark, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { useLocation } from "wouter";
 import { api } from "@/lib/api";
+import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
+import { ONBOARDING_STEPS } from "@/components/tutorial-steps";
 
 const INDUSTRIES = [
   { id: "gym", label: "Gym & Fitness", icon: Dumbbell, color: "text-red-500", bg: "bg-red-500/10" },
@@ -40,6 +42,7 @@ export default function Onboarding() {
   const apiDoneRef = useRef(false);
   const animDoneRef = useRef(false);
   const [customIndustry, setCustomIndustry] = useState("");
+  const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_onboarding");
 
   const startSetup = (industryId: string) => {
     setSelectedIndustry(industryId);
@@ -119,6 +122,9 @@ export default function Onboarding() {
           </div>
           <h1 className="text-3xl font-bold tracking-tight">Account Setup</h1>
           <p className="text-muted-foreground">Select your industry to auto-configure your CRM with AI-powered pipelines, templates, and automations.</p>
+          <Button variant="ghost" size="sm" onClick={startTutorial} className="text-slate-400 hover:text-white" data-testid="button-start-tutorial">
+            <BookOpen size={16} className="mr-1" /> Tutorial
+          </Button>
         </div>
 
         <AnimatePresence mode="wait">
@@ -317,6 +323,7 @@ export default function Onboarding() {
 
         </AnimatePresence>
       </div>
+      {showTutorial && <TutorialOverlay steps={ONBOARDING_STEPS} storageKey="apex_tutorial_onboarding" onClose={closeTutorial} accentColor="indigo" />}
     </div>
   );
 }

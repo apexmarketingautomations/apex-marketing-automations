@@ -17,6 +17,7 @@ The app includes:
 - **Command Center**: Agency "War Room" with fleet health monitoring, production pipeline visualization
 - **Account Switcher**: Multi-account context switching with persistent selection
 - **Website Integration**: Connect client websites, scrape/train AI chatbots, generate embeddable chat widgets, and preview sites from within the platform
+- **Interactive Tutorials**: 18 step-by-step guided tutorials covering every tool on the platform with spotlight highlighting, auto-launch on first visit, and localStorage completion tracking
 
 ## User Preferences
 

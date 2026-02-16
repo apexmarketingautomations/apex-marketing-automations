@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { Clock, MessageSquare, GitFork, MoreHorizontal, Plus, PlayCircle, CheckCircle2, AlertCircle, Sparkles, Loader2, Code2, Trash2 } from "lucide-react";
+import { Clock, MessageSquare, GitFork, MoreHorizontal, Plus, PlayCircle, CheckCircle2, AlertCircle, Sparkles, Loader2, Code2, Trash2, BookOpen } from "lucide-react";
+import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
+import { WORKFLOW_STEPS } from "@/components/tutorial-steps";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -83,6 +85,7 @@ const StepCard = ({ step, index, onClick, isSelected }: { step: any, index: numb
 export default function WorkflowBuilder() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_workflows");
   const [selectedStepIndex, setSelectedStepIndex] = useState<number | null>(null);
   const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -224,7 +227,10 @@ export default function WorkflowBuilder() {
             Visualizing trigger: <code className="text-xs bg-muted px-1 py-0.5 rounded text-primary">{displayWorkflow.trigger}</code>
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 items-center">
+          <Button variant="ghost" size="sm" onClick={startTutorial} className="text-slate-400 hover:text-white" data-testid="button-start-tutorial">
+            <BookOpen size={16} className="mr-1" /> Tutorial
+          </Button>
           <Dialog open={isAiDialogOpen} onOpenChange={setIsAiDialogOpen}>
             <DialogTrigger asChild>
               <Button data-testid="button-generate-ai" className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white border-0">
@@ -475,6 +481,7 @@ export default function WorkflowBuilder() {
         </div>
 
       </div>
+      {showTutorial && <TutorialOverlay steps={WORKFLOW_STEPS} storageKey="apex_tutorial_workflows" onClose={closeTutorial} accentColor="indigo" />}
     </div>
   );
 }

@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from "react";
-import { Mic, Megaphone, Play, Loader2, CheckCircle2, Sparkles, TrendingUp, Plus, Trash2, Phone, XCircle, Clock, Users } from "lucide-react";
+import { Mic, Megaphone, Play, Loader2, CheckCircle2, Sparkles, TrendingUp, Plus, Trash2, Phone, XCircle, Clock, Users, BookOpen } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
+import { GROWTH_CENTER_STEPS } from "@/components/tutorial-steps";
 
 interface Lead {
   name: string;
@@ -20,6 +22,7 @@ interface DialResult {
 }
 
 export default function GrowthCenter() {
+  const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_growth_center");
   const [adCommand, setAdCommand] = useState("");
   const [adLoading, setAdLoading] = useState(false);
   const [adResult, setAdResult] = useState<any>(null);
@@ -169,6 +172,9 @@ export default function GrowthCenter() {
           </div>
           <h1 className="text-3xl font-bold" data-testid="text-page-title">Growth Center</h1>
           <p className="text-neutral-400 mt-2">Launch ads and cold calls with a single command.</p>
+          <Button variant="ghost" size="sm" onClick={startTutorial} className="text-slate-400 hover:text-white" data-testid="button-start-tutorial">
+            <BookOpen size={16} className="mr-1" /> Tutorial
+          </Button>
         </div>
 
         <Card className="bg-gradient-to-r from-blue-900 to-slate-900 border-blue-500/30">
@@ -461,6 +467,7 @@ export default function GrowthCenter() {
           </CardContent>
         </Card>
       </div>
+      {showTutorial && <TutorialOverlay steps={GROWTH_CENTER_STEPS} storageKey="apex_tutorial_growth_center" onClose={closeTutorial} accentColor="emerald" />}
     </div>
   );
 }

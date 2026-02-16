@@ -20,7 +20,10 @@ import {
   AlertTriangle,
   Upload,
   X,
+  BookOpen,
 } from "lucide-react";
+import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
+import { AD_LAUNCHER_STEPS } from "@/components/tutorial-steps";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -285,6 +288,7 @@ export default function AdLauncher() {
   const [launched, setLaunched] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
   const { toast } = useToast();
+  const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_ad_launcher");
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
@@ -337,6 +341,9 @@ export default function AdLauncher() {
           <p className="text-xs text-neutral-400 mt-1">
             Describe your offer, AI builds the full campaign.
           </p>
+          <Button variant="ghost" size="sm" onClick={startTutorial} className="text-slate-400 hover:text-white mt-2" data-testid="button-start-tutorial">
+            <BookOpen size={16} className="mr-1" /> Tutorial
+          </Button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -521,6 +528,7 @@ export default function AdLauncher() {
           </AnimatePresence>
         </div>
       </div>
+      {showTutorial && <TutorialOverlay steps={AD_LAUNCHER_STEPS} storageKey="apex_tutorial_ad_launcher" onClose={closeTutorial} accentColor="amber" />}
     </div>
   );
 }

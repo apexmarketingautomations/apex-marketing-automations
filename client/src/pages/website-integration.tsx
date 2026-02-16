@@ -4,8 +4,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Globe, Plus, Trash2, Bot, Code, ExternalLink, Eye,
   CheckCircle2, Loader2, RefreshCw, Copy, Check, Paintbrush,
-  MessageSquare, Settings, Zap, ChevronRight, AlertTriangle
+  MessageSquare, Settings, Zap, ChevronRight, AlertTriangle, BookOpen
 } from "lucide-react";
+import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
+import { WEBSITE_INTEGRATION_STEPS } from "@/components/tutorial-steps";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +35,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function WebsiteIntegration() {
+  const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_website_integration");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { activeAccountId } = useAccount();
@@ -175,13 +178,18 @@ export default function WebsiteIntegration() {
             Connect client websites, train AI chatbots, and embed widgets on their existing sites.
           </p>
         </div>
-        <Button
-          onClick={() => setShowAddDialog(true)}
-          className="bg-cyan-600 hover:bg-cyan-500 text-white"
-          data-testid="button-add-website"
-        >
-          <Plus className="w-4 h-4 mr-2" /> Connect Website
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={startTutorial} className="text-slate-400 hover:text-white" data-testid="button-start-tutorial">
+            <BookOpen size={16} className="mr-1" /> Tutorial
+          </Button>
+          <Button
+            onClick={() => setShowAddDialog(true)}
+            className="bg-cyan-600 hover:bg-cyan-500 text-white"
+            data-testid="button-add-website"
+          >
+            <Plus className="w-4 h-4 mr-2" /> Connect Website
+          </Button>
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -649,6 +657,7 @@ export default function WebsiteIntegration() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {showTutorial && <TutorialOverlay steps={WEBSITE_INTEGRATION_STEPS} storageKey="apex_tutorial_website_integration" onClose={closeTutorial} accentColor="cyan" />}
     </div>
   );
 }

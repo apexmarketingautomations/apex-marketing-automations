@@ -4,16 +4,19 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAccount } from "@/hooks/use-account";
 import { useToast } from "@/hooks/use-toast";
-import { History, Save, RotateCcw, Upload, Clock, ChevronRight, AlertTriangle, CheckCircle2, Package } from "lucide-react";
+import { History, Save, RotateCcw, Upload, Clock, ChevronRight, AlertTriangle, CheckCircle2, Package, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import type { SubAccount, SnapshotVersion } from "@shared/schema";
+import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
+import { SNAPSHOTS_STEPS } from "@/components/tutorial-steps";
 
 export default function Snapshots() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_snapshots");
   const { activeAccountId } = useAccount();
   const [checkpointName, setCheckpointName] = useState("");
   const [showPublish, setShowPublish] = useState(false);
@@ -110,14 +113,19 @@ export default function Snapshots() {
               </p>
             </div>
           </div>
-          <Button
-            onClick={() => { setShowPublish(true); setPublishName(currentAccount?.name || ""); }}
-            className="bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold gap-2"
-            disabled={!currentAccount}
-            data-testid="button-publish-snapshot"
-          >
-            <Upload size={16} /> Publish to Marketplace
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={startTutorial} className="text-slate-400 hover:text-white" data-testid="button-start-tutorial">
+              <BookOpen size={16} className="mr-1" /> Tutorial
+            </Button>
+            <Button
+              onClick={() => { setShowPublish(true); setPublishName(currentAccount?.name || ""); }}
+              className="bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold gap-2"
+              disabled={!currentAccount}
+              data-testid="button-publish-snapshot"
+            >
+              <Upload size={16} /> Publish to Marketplace
+            </Button>
+          </div>
         </div>
       </motion.div>
 
@@ -299,6 +307,7 @@ export default function Snapshots() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {showTutorial && <TutorialOverlay steps={SNAPSHOTS_STEPS} storageKey="apex_tutorial_snapshots" onClose={closeTutorial} accentColor="purple" />}
     </div>
   );
 }

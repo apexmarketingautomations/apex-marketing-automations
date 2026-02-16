@@ -6,8 +6,10 @@ import { useAccount } from "@/hooks/use-account";
 import { useToast } from "@/hooks/use-toast";
 import {
   Satellite, Radar, MapPin, Phone, Crosshair, AlertTriangle, CheckCircle2,
-  Settings, Play, Pause, Radio, Shield, Clock, ChevronRight, Send, Target, Zap, Eye
+  Settings, Play, Pause, Radio, Shield, Clock, ChevronRight, Send, Target, Zap, Eye, BookOpen
 } from "lucide-react";
+import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
+import { SENTINEL_STEPS } from "@/components/tutorial-steps";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -32,6 +34,7 @@ function timeAgo(dateStr: string) {
 }
 
 export default function Sentinel() {
+  const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_sentinel");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { activeAccountId } = useAccount();
@@ -193,6 +196,9 @@ export default function Sentinel() {
             </div>
           </div>
           <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={startTutorial} className="text-slate-400 hover:text-white" data-testid="button-start-tutorial">
+              <BookOpen size={16} className="mr-1" /> Tutorial
+            </Button>
             <Button
               variant="outline"
               onClick={() => setShowConfig(true)}
@@ -446,6 +452,7 @@ export default function Sentinel() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {showTutorial && <TutorialOverlay steps={SENTINEL_STEPS} storageKey="apex_tutorial_sentinel" onClose={closeTutorial} accentColor="red" />}
     </div>
   );
 }

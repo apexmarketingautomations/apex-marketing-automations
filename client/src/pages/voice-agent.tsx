@@ -25,7 +25,10 @@ import {
   ShoppingCart,
   Wifi,
   MessageSquare,
+  BookOpen,
 } from "lucide-react";
+import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
+import { VOICE_AGENT_STEPS } from "@/components/tutorial-steps";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -101,6 +104,7 @@ export default function VoiceAgent() {
   const vapiRef = useRef<Vapi | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const { toast } = useToast();
+  const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_voice_agent");
 
   useEffect(() => {
     fetch("/api/vapi/get-config")
@@ -460,6 +464,9 @@ export default function VoiceAgent() {
           </div>
           <h1 className="text-3xl font-bold">Voice Agent Studio</h1>
           <p className="text-neutral-400 mt-2">Deploy AI phone agents that book appointments, answer questions, and close deals.</p>
+          <Button variant="ghost" size="sm" onClick={startTutorial} className="text-slate-400 hover:text-white mt-3" data-testid="button-start-tutorial">
+            <BookOpen size={16} className="mr-1" /> Tutorial
+          </Button>
         </div>
 
         <div className="flex items-center justify-center gap-2 mb-10">
@@ -1336,6 +1343,7 @@ export default function VoiceAgent() {
           </motion.div>
         )}
       </AnimatePresence>
+      {showTutorial && <TutorialOverlay steps={VOICE_AGENT_STEPS} storageKey="apex_tutorial_voice_agent" onClose={closeTutorial} accentColor="violet" />}
     </div>
   );
 }

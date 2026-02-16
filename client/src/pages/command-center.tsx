@@ -2,15 +2,18 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Shield, TrendingUp, Users, MessageSquare, GitFork, Zap, Star, DollarSign, Activity, BarChart3, RotateCcw, CheckSquare, Square } from "lucide-react";
+import { Shield, TrendingUp, Users, MessageSquare, GitFork, Zap, Star, DollarSign, Activity, BarChart3, RotateCcw, CheckSquare, Square, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import type { SnapshotVersion } from "@shared/schema";
+import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
+import { COMMAND_CENTER_STEPS } from "@/components/tutorial-steps";
 
 export default function CommandCenter() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_command_center");
   const [showBulkRollback, setShowBulkRollback] = useState(false);
   const [selectedAccounts, setSelectedAccounts] = useState<number[]>([]);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
@@ -84,14 +87,19 @@ export default function CommandCenter() {
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center">
-            <Shield size={20} className="text-white" />
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center">
+              <Shield size={20} className="text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-black text-white" data-testid="text-command-center-title">Agency Command Center</h1>
+              <p className="text-slate-400 text-sm">Fleet health, revenue, and global metrics at a glance</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-3xl font-black text-white" data-testid="text-command-center-title">Agency Command Center</h1>
-            <p className="text-slate-400 text-sm">Fleet health, revenue, and global metrics at a glance</p>
-          </div>
+          <Button variant="ghost" size="sm" onClick={startTutorial} className="text-slate-400 hover:text-white" data-testid="button-start-tutorial">
+            <BookOpen size={16} className="mr-1" /> Tutorial
+          </Button>
         </div>
       </motion.div>
 
@@ -335,6 +343,7 @@ export default function CommandCenter() {
           </div>
         </motion.div>
       )}
+      {showTutorial && <TutorialOverlay steps={COMMAND_CENTER_STEPS} storageKey="apex_tutorial_command_center" onClose={closeTutorial} accentColor="indigo" />}
     </div>
   );
 }
