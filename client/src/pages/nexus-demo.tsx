@@ -14,6 +14,7 @@ import screenSentinel from "@/assets/demo/screen-sentinel.png";
 import screenCommand from "@/assets/demo/screen-command.png";
 import screenWebsite from "@/assets/demo/screen-website.png";
 import screenMobile from "@/assets/demo/screen-mobile.png";
+import demoVideo from "@/assets/demo/nexus-demo-video.mp4";
 
 function LaptopFrame({ image, className = "" }: { image: string; className?: string }) {
   return (
@@ -358,7 +359,26 @@ export default function NexusDemo() {
               style={{ rotateX: laptopRotateX, rotateY: laptopRotateY }}
               className="relative z-10"
             >
-              <LaptopFrame image={screenCommand} className="w-full" />
+              <div className="relative rounded-xl overflow-hidden shadow-2xl shadow-black/50 border border-white/10 bg-[#1a1a2e]">
+                <div className="flex items-center gap-1.5 px-4 py-2.5 bg-[#0d0d1a] border-b border-white/5">
+                  <div className="w-3 h-3 rounded-full bg-red-500/80" />
+                  <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
+                  <div className="w-3 h-3 rounded-full bg-green-500/80" />
+                  <div className="flex-1 mx-8">
+                    <div className="h-5 bg-white/5 rounded-full max-w-xs mx-auto" />
+                  </div>
+                </div>
+                <video
+                  src={demoVideo}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  className="w-full block"
+                  data-testid="demo-hero-video"
+                />
+              </div>
+              <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-[60%] h-3 bg-gradient-to-b from-[#2a2a3e] to-[#1a1a2e] rounded-b-lg border-x border-b border-white/5" />
             </motion.div>
 
             <motion.div
