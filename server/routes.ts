@@ -2316,13 +2316,27 @@ Rules:
 
     const parsed = z.object({
       tier: z.enum(["starter", "agency_pro", "god_mode"]),
+      interval: z.enum(["monthly", "yearly"]).default("monthly"),
+      isBlitz: z.boolean().default(false),
     }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-    const tierPrices: Record<string, number> = {
+    const monthlyPrices: Record<string, number> = {
       starter: 9700,
       agency_pro: 29700,
       god_mode: 49700,
+    };
+
+    const yearlyPrices: Record<string, number> = {
+      starter: 7700,
+      agency_pro: 23700,
+      god_mode: 39700,
+    };
+
+    const blitzPrices: Record<string, number> = {
+      starter: 4800,
+      agency_pro: 14800,
+      god_mode: 24800,
     };
 
     const tierNames: Record<string, string> = {
@@ -2331,28 +2345,53 @@ Rules:
       god_mode: "God Mode (Founder)",
     };
 
+    const isBlitz = parsed.data.isBlitz;
+    const isYearly = parsed.data.interval === "yearly";
+    let unitAmount: number;
+
+    if (isBlitz) {
+      unitAmount = blitzPrices[parsed.data.tier];
+    } else if (isYearly) {
+      unitAmount = yearlyPrices[parsed.data.tier];
+    } else {
+      unitAmount = monthlyPrices[parsed.data.tier];
+    }
+
+    const billingInterval = isYearly ? "year" as const : "month" as const;
+
     try {
       const { getUncachableStripeClient } = await import("./stripeClient");
       const stripe = await getUncachableStripeClient();
+
+      const productName = isBlitz
+        ? `${tierNames[parsed.data.tier]} (Legacy Grandfathered)`
+        : tierNames[parsed.data.tier];
 
       const session = await stripe.checkout.sessions.create({
         mode: "subscription",
         line_items: [{
           price_data: {
             currency: "usd",
-            product_data: { name: tierNames[parsed.data.tier] },
-            unit_amount: tierPrices[parsed.data.tier],
-            recurring: { interval: "month" },
+            product_data: { name: productName },
+            unit_amount: unitAmount,
+            recurring: { interval: billingInterval },
           },
           quantity: 1,
         }],
         metadata: {
           userId: user.id,
           tierName: parsed.data.tier,
+          isGrandfathered: isBlitz ? "true" : "false",
+          billingInterval: parsed.data.interval,
         },
         subscription_data: {
-          trial_period_days: 60,
-          metadata: { userId: user.id, tierName: parsed.data.tier },
+          trial_period_days: isBlitz ? 0 : 60,
+          metadata: {
+            userId: user.id,
+            tierName: parsed.data.tier,
+            isGrandfathered: isBlitz ? "true" : "false",
+            billingInterval: parsed.data.interval,
+          },
         },
         success_url: `${req.headers.origin || `https://${req.headers.host}`}/billing?success=true`,
         cancel_url: `${req.headers.origin || `https://${req.headers.host}`}/billing?canceled=true`,
@@ -2393,13 +2432,18 @@ Rules:
 
       if (userId && tierName) {
         const existing = await storage.getSubscription(userId);
-        const subData = {
+        const isGrandfathered = session.metadata?.isGrandfathered === "true";
+        const billingInterval = session.metadata?.billingInterval || "monthly";
+        const subData: any = {
           userId,
           stripeCustomerId: session.customer,
           stripeSubscriptionId: session.subscription,
           planTier: tierName,
           status: "active" as const,
           aiCredits: 50,
+          isGrandfathered,
+          billingInterval,
+          ...(isGrandfathered ? { blitzJoinedDate: new Date() } : {}),
         };
 
         if (existing) {

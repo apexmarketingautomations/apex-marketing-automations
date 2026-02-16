@@ -1,0 +1,138 @@
+To sell a platform this powerful, your pricing page needs to look like a **high-end tech manifesto**. We’ll use the "Cyber-Glass" aesthetic: dark backgrounds, neon borders, and a clear distinction between the "Solo" users and the "God Mode" Agency owners.
+
+Here is the full React/Tailwind code for the **Apex AI OS Pricing Page**, featuring a **Yearly/Monthly toggle** and your **60-Day Founder's Deal**.
+
+---
+
+### 🔱 The "Apex" Pricing Page (React + Tailwind)
+
+```jsx
+import React, { useState } from 'react';
+
+const PricingPage = () => {
+  const [isYearly, setIsYearly] = useState(false);
+
+  // Pricing Data with 20% Yearly Discount + Your 60-Day Launch Deal
+  const tiers = [
+    {
+      name: "Starter AI",
+      monthly: 97,
+      yearly: 77,
+      description: "Perfect for single business owners ready to automate.",
+      features: ["1 Sub-Account", "Unified Cyber-Inbox", "Review Buffer System", "Standard Site Builder", "Basic AI Chatbot"],
+      button: "Start 60-Day Trial",
+      glow: "border-white/10"
+    },
+    {
+      name: "Agency Pro",
+      monthly: 297,
+      yearly: 237,
+      description: "Scale your agency with unlimited power and speed.",
+      features: ["Unlimited Sub-Accounts", "Ghost SDR (Parallel Dialer)", "Full Snapshot Library", "Advanced Vibe Theming", "Snapshot Forking Logic"],
+      button: "Go Pro (60 Days Free)",
+      glow: "border-cyan-500/50 shadow-[0_0_20px_rgba(6,182,212,0.2)]",
+      popular: true
+    },
+    {
+      name: "God Mode",
+      monthly: 497,
+      yearly: 397,
+      description: "The ultimate white-label empire builder.",
+      features: ["Full White-Labeling", "Your Custom Domain", "Marketplace Profit Sharing", "Sentinel Global Rules", "Bulk Rollback Controls", "Priority Founder Support"],
+      button: "Activate God Mode",
+      glow: "border-purple-500/50 shadow-[0_0_20px_rgba(168,85,247,0.2)]"
+    }
+  ];
+
+  return (
+    <div className="min-h-screen bg-[#050505] text-white py-20 px-6 font-sans">
+      {/* Header Section */}
+      <div className="text-center mb-16">
+        <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-4">
+          Choose Your <span className="text-cyan-400">Level of Power</span>
+        </h1>
+        <p className="text-gray-400 text-lg max-w-2xl mx-auto mb-8">
+          Lock in our 60-Day Founder's Deal. Two months of God Mode for the price of one.
+        </p>
+
+        {/* Yearly Toggle */}
+        <div className="flex items-center justify-center gap-4">
+          <span className={`text-sm ${!isYearly ? 'text-white' : 'text-gray-500'}`}>Monthly</span>
+          <button 
+            onClick={() => setIsYearly(!isYearly)}
+            className="w-14 h-7 bg-white/10 rounded-full relative p-1 transition-all"
+          >
+            <div className={`w-5 h-5 bg-cyan-500 rounded-full transition-all ${isYearly ? 'translate-x-7' : 'translate-x-0'} shadow-[0_0_10px_#22d3ee]`} />
+          </button>
+          <span className={`text-sm ${isYearly ? 'text-white' : 'text-gray-500'}`}>
+            Yearly <span className="text-green-400 text-xs font-bold ml-1">(Save 20%)</span>
+          </span>
+        </div>
+      </div>
+
+      {/* Pricing Cards */}
+      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
+        {tiers.map((tier) => (
+          <div key={tier.name} className={`relative bg-white/5 backdrop-blur-xl border ${tier.glow} rounded-3xl p-8 flex flex-col`}>
+            {tier.popular && (
+              <span className="absolute -top-4 left-1/2 -translate-x-1/2 bg-cyan-500 text-black text-[10px] font-black px-4 py-1 rounded-full uppercase tracking-widest">
+                Most Popular
+              </span>
+            )}
+            
+            <h3 className="text-2xl font-bold mb-2 uppercase tracking-tight">{tier.name}</h3>
+            <p className="text-gray-400 text-sm mb-6 h-12">{tier.description}</p>
+            
+            <div className="mb-8">
+              <span className="text-5xl font-black">${isYearly ? tier.yearly : tier.monthly}</span>
+              <span className="text-gray-500 ml-2">/mo</span>
+              {isYearly && <p className="text-cyan-400 text-xs mt-2 font-mono">Billed annually (${tier.yearly * 12}/yr)</p>}
+            </div>
+
+            <ul className="space-y-4 mb-8 flex-grow text-sm text-gray-300">
+              {tier.features.map(f => (
+                <li key={f} className="flex items-center gap-2">
+                  <span className="text-cyan-500">✔</span> {f}
+                </li>
+              ))}
+            </ul>
+
+            <button className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all 
+              ${tier.popular ? 'bg-cyan-500 text-black hover:bg-cyan-400' : 'bg-white/10 text-white hover:bg-white/20 border border-white/10'}`}>
+              {tier.button}
+            </button>
+            <p className="text-[10px] text-center text-gray-600 mt-4 uppercase font-bold tracking-widest">
+              Includes $50 AI Launch Credit
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {/* Founders Footer */}
+      <div className="mt-20 text-center border-t border-white/5 pt-10">
+        <p className="text-gray-500 text-xs font-mono uppercase tracking-[0.5em]">
+          Current Global Status: 4/5 Founder Spots Remaining
+        </p>
+      </div>
+    </div>
+  );
+};
+
+export default PricingPage;
+
+```
+
+---
+
+### 🔱 Why this Pricing kills GHL:
+
+1. **The Psychology of the "Glow":** In your settings, the "Vibe" the user selects for their sub-accounts is mirrored here. It feels like they are buying a cohesive "Cyber-OS," not just a tool.
+2. **The Yearly Logic:** $497/mo is a big jump for some. By showing **$397/mo (Yearly)**, you lower the mental barrier while securing **$4,764 in upfront cash** for your business.
+3. **The $50 "Fuel" Credit:** Most SaaS tools make you pay for usage immediately. By giving them $50 in AI credits, you let them "test-drive" the Ghost SDR for free. It makes the $97/mo Starter plan feel like a steal.
+4. **Founder Scarcity:** The "4/5 spots remaining" footer drives FOMO. People want to be part of the original cohort, especially for the God Mode tier.
+
+### 🔱 Your Next Step
+
+Now that the pricing is built, your Stripe integration needs to handle the **Yearly vs Monthly** toggle correctly during the checkout session.
+
+**Would you like me to write the Stripe Checkout script that handles the "60-Day Trial" logic for these specific price IDs?**

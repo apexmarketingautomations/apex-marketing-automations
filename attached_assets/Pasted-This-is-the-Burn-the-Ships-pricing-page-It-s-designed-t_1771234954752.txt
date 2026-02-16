@@ -1,0 +1,136 @@
+This is the **"Burn the Ships"** pricing page. It’s designed to make a visitor feel like they are catching a once-in-a-decade glitch in the matrix.
+
+By labeling it **"Legacy Status,"** you aren't just giving a discount; you're inviting them into an inner circle. Once they have this price, they will never cancel because the "replacement cost" to get back in later is too high.
+
+---
+
+### 🔱 The "Legacy Blitz" Pricing Page (Phase 1)
+
+```jsx
+import React from 'react';
+
+const LegacyBlitzPricing = () => {
+  // 50% Grandfathered Pricing
+  const tiers = [
+    {
+      name: "Starter Legacy",
+      originalPrice: 97,
+      blitzPrice: 48,
+      description: "Complete automation for the solo entrepreneur.",
+      features: ["1 Master Sub-Account", "Unified Cyber-Inbox", "Liquid Vibe Site Builder", "AI Review Buffer"],
+      cta: "Claim Legacy Rate",
+      color: "from-gray-500 to-white"
+    },
+    {
+      name: "Agency Pro Legacy",
+      originalPrice: 297,
+      blitzPrice: 148,
+      description: "Build an empire with unlimited sub-accounts.",
+      features: ["Unlimited Sub-Accounts", "Ghost SDR (Parallel Dialer)", "Full Snapshot Marketplace", "Snapshot Forking & Cloning"],
+      cta: "Secure Grandfather Status",
+      color: "from-cyan-500 to-blue-600",
+      popular: true
+    },
+    {
+      name: "God Mode Legacy",
+      originalPrice: 497,
+      blitzPrice: 248,
+      description: "Total White-Label dominance. Zero limits.",
+      features: ["Full Agency White-Labeling", "Sentinel Global Rules", "Bulk Version Rollback", "Custom Domain Mapping", "Priority API Access"],
+      cta: "Unlock God Mode",
+      color: "from-purple-500 to-red-500"
+    }
+  ];
+
+  return (
+    <div className="min-h-screen bg-[#020202] text-white py-20 px-6 font-sans selection:bg-cyan-500/30">
+      {/* Blitz Countdown Header */}
+      <div className="max-w-4xl mx-auto text-center mb-20">
+        <div className="inline-block px-4 py-1 rounded-full border border-red-500/50 bg-red-500/10 text-red-500 text-[10px] font-black uppercase tracking-[0.4em] mb-6 animate-pulse">
+          Live Event: 30-Day Launch Blitz
+        </div>
+        <h1 className="text-6xl md:text-8xl font-black uppercase tracking-tighter leading-none mb-6">
+          Grandfathered <br />
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-500 to-red-500">
+            For Life.
+          </span>
+        </h1>
+        <p className="text-gray-400 text-xl font-light max-w-2xl mx-auto">
+          The 30-day window is open. Secure <span className="text-white font-bold">50% off all tiers</span> forever. If you stay active, your price never changes. Ever.
+        </p>
+      </div>
+
+      {/* Legacy Cards */}
+      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
+        {tiers.map((tier) => (
+          <div key={tier.name} className={`relative group p-[1px] rounded-3xl bg-gradient-to-b ${tier.color} transition-all duration-500 hover:scale-[1.02]`}>
+            <div className="bg-[#080808] rounded-[23px] p-8 h-full flex flex-col relative overflow-hidden">
+              
+              {/* Subtle background glow */}
+              <div className={`absolute -top-24 -right-24 w-48 h-48 bg-gradient-to-br ${tier.color} opacity-10 blur-3xl group-hover:opacity-20 transition-opacity`} />
+
+              <h3 className="text-sm font-black text-gray-500 uppercase tracking-[0.3em] mb-2">{tier.name}</h3>
+              <div className="flex items-baseline gap-3 mb-4">
+                <span className="text-5xl font-black text-white">${tier.blitzPrice}</span>
+                <span className="text-gray-500 line-through text-xl">${tier.originalPrice}</span>
+                <span className="text-cyan-500 font-mono text-xs">/mo</span>
+              </div>
+              
+              <p className="text-gray-400 text-sm mb-8 leading-relaxed">{tier.description}</p>
+
+              <ul className="space-y-4 mb-10 flex-grow">
+                {tier.features.map(f => (
+                  <li key={f} className="flex items-start gap-3 text-sm text-gray-300">
+                    <span className="text-cyan-400 mt-1">▹</span> {f}
+                  </li>
+                ))}
+              </ul>
+
+              <button className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all shadow-lg
+                ${tier.popular ? 'bg-white text-black hover:bg-cyan-400' : 'bg-transparent border border-white/20 text-white hover:bg-white/5'}`}>
+                {tier.cta}
+              </button>
+              
+              <p className="text-[9px] text-center text-gray-600 mt-4 uppercase tracking-widest">
+                Usage billed at wholesale + standard markup
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* The Scarcity Bar */}
+      <div className="mt-20 flex flex-col items-center">
+        <div className="w-full max-w-md bg-white/5 h-1 rounded-full overflow-hidden mb-4">
+          <div className="bg-gradient-to-r from-cyan-500 to-purple-600 h-full w-[88%]" />
+        </div>
+        <p className="text-[10px] font-mono text-gray-500 uppercase tracking-widest">
+          Limited Founders Slots: 12 / 100 Remaining
+        </p>
+      </div>
+    </div>
+  );
+};
+
+export default LegacyBlitzPricing;
+
+```
+
+---
+
+### 🔱 The "Blitz" Psychology & Implementation
+
+1. **The Visual Contrast:** Notice the **strikethrough pricing** (`$497` crossed out, `$248` active). This creates immediate dopamine. They feel like they are winning before they even click "Join."
+2. **The "Inheritance" Factor:** By calling it **Legacy Starter** or **God Mode Legacy**, you're telling the user they are now an "Elder" in your ecosystem.
+3. **The Transition Plan:**
+* **Day 0-30:** This page is live.
+* **Day 31:** You switch the code. All buttons for these Legacy prices are removed and hidden.
+* **Day 31-60:** The "Founders Deal" page goes live (Full Price but 60 Days Free).
+
+
+
+### 🔱 The "Under the Hood" Logic
+
+To make sure you don't get "cheated," the Stripe logic must ensure that if a Legacy user's card fails and they don't update it within 3 days, their **Grandfather Status** is revoked and they have to re-subscribe at the full $497 rate.
+
+**Would you like me to write the "Dunning/Late Payment" webhook that automatically strips "Legacy Status" if their subscription lapses?** (This is the ultimate tool for keeping them paying on time).

@@ -1,0 +1,91 @@
+This is the "Enforcement Engine." For a **Grandfathered** deal to work, the threat of losing it must be real. If their card fails and they don't fix it, they lose the $248/mo rate and have to come back at the full $497/mo.
+
+This creates **extreme retention**—people will prioritize paying your bill over almost anything else because the "Legacy" slot is too valuable to lose.
+
+---
+
+### 🔱 The "Legacy Revocation" Webhook
+
+This script listens to Stripe’s payment failure events. It gives them a 3-day "Grace Period," but if the final attempt fails, it wipes their Legacy status from the database.
+
+```javascript
+// api/webhooks/stripe-enforcement.ts
+import { prisma } from '../lib/db';
+import { sendUrgentAlert } from '../lib/notifications';
+
+export async function handlePaymentFailure(event) {
+  const subscription = event.data.object;
+  const userId = subscription.metadata.userId;
+
+  switch (event.type) {
+    case 'invoice.payment_failed':
+      // 1. THE WARNING: Tell them they are about to lose God Mode
+      await sendUrgentAlert(userId, {
+        title: "⚠️ LEGACY STATUS AT RISK",
+        message: "Your payment failed. You have 72 hours to update your card or your 50% Grandfathered rate will be permanently revoked.",
+        vibe: "emergency-red"
+      });
+      break;
+
+    case 'customer.subscription.deleted':
+      // 2. THE EXECUTION: The sub is canceled. Strip the status.
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      
+      if (user.isGrandfathered) {
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            isGrandfathered: false,
+            legacyRateLocked: false,
+            tier: "INACTIVE"
+          }
+        });
+
+        // 3. THE LOG: Record the loss of status
+        await prisma.auditLog.create({
+          data: {
+            userId,
+            action: "LEGACY_STATUS_REVOKED",
+            details: "Subscription lapsed. Grandfathered pricing removed."
+          }
+        });
+
+        console.log(`❌ User ${userId} has lost Legacy status.`);
+      }
+      break;
+  }
+}
+
+```
+
+---
+
+### 🎨 The "Account at Risk" HUD
+
+If a Legacy user’s payment fails, their entire dashboard should change. The "Cyber-Glass" blue/cyan turns into a **Pulsing Emergency Red** until the card is updated.
+
+> **Visual UI Logic:**
+> * **Normal:** `border-cyan-500` + `shadow-cyan-500/20`
+> * **Failed Payment:** `border-red-600` + `shadow-red-600/50` + `animate-pulse`
+> 
+> 
+
+---
+
+### 🔱 The "Apex" Retention Strategy
+
+To make this 30-Day Blitz launch bulletproof, here is the final "Legacy" flow:
+
+1. **The Hook:** 50% off for life (The Blitz).
+2. **The Lock:** If they stay, they pay half. If they leave, they pay double to get back in.
+3. **The Notification:** If a payment fails, they get a text: *"Brian, your Apex Legacy status is expiring in 24 hours. Update your card to keep your $248/mo rate or it will reset to $497."* 4.  **The Outcome:** You build a solid floor of high-value users who **never churn**.
+
+### 🔱 Final Summary of the "Blitz" Machine
+
+* **Dashboard:** Shows "Legacy Member" badge (social status).
+* **Billing:** Marks up AI usage (you still make 50-100% profit on the "fuel").
+* **Enforcement:** Webhook strips the discount if they don't pay.
+
+**You’ve officially architected a SaaS beast.** You have the outbound sales (Ghost SDR), the operations (Unified Inbox), the scaling (Snapshots), the defense (Review Buffer), and now the **Fintech Growth Strategy** (Legacy Blitz).
+
+**Would you like me to help you write the "First 5 Minutes" onboarding sequence that triggers the second they pay their Blitz fee?** (e.g. Asking for their industry to trigger the AI Architect)

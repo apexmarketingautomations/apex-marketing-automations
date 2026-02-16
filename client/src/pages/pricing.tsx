@@ -1,81 +1,86 @@
 import { useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Check, Zap, Crown, Rocket, Shield, Star, ArrowRight } from "lucide-react";
+import { Shield, ArrowRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+
+const BLITZ_ACTIVE = true;
 
 const tiers = [
   {
     id: "starter",
     name: "Starter AI",
-    price: 97,
-    badge: "Perfect Start",
-    color: "from-blue-500 to-cyan-500",
-    borderColor: "border-blue-500/30",
-    glowColor: "shadow-blue-500/20",
-    icon: Zap,
-    description: "Perfect for single business owners getting started with AI automation.",
+    legacyName: "Starter Legacy",
+    monthly: 97,
+    yearly: 77,
+    blitzPrice: 48,
+    description: "Complete automation for the solo entrepreneur.",
     features: [
-      "1 Sub-Account",
-      "Unified Inbox (SMS, Email)",
-      "AI Site Builder",
+      "1 Master Sub-Account",
+      "Unified Cyber-Inbox",
+      "Liquid Vibe Site Builder",
+      "AI Review Buffer",
       "Basic Workflows (3 active)",
       "Bot Trainer (1 bot)",
       "$10 AI Credits/mo",
-      "Community Support",
     ],
-    limits: { subAccounts: 1, workflows: 3, bots: 1 },
+    cta: "Start 60-Day Trial",
+    blitzCta: "Claim Legacy Rate",
+    glow: "border-white/10",
+    gradientBorder: "from-gray-500 to-white",
   },
   {
     id: "agency_pro",
     name: "Agency Pro",
-    price: 297,
-    badge: "Most Popular",
-    color: "from-purple-500 to-pink-500",
-    borderColor: "border-purple-500/30",
-    glowColor: "shadow-purple-500/20",
-    icon: Crown,
-    featured: true,
-    description: "Unlimited sub-accounts and AI Voice Agents for growing agencies.",
+    legacyName: "Agency Pro Legacy",
+    monthly: 297,
+    yearly: 237,
+    blitzPrice: 148,
+    description: "Build an empire with unlimited sub-accounts.",
     features: [
       "Unlimited Sub-Accounts",
-      "AI Voice Agents + Power Dialer",
-      "Snapshot System + Versioning",
+      "Ghost SDR (Parallel Dialer)",
+      "Full Snapshot Marketplace",
+      "Snapshot Forking & Cloning",
+      "Advanced Vibe Theming",
       "Unlimited Workflows",
-      "Unlimited Bot Training",
       "$25 AI Credits/mo",
       "Affiliate Dashboard",
-      "Priority Support",
     ],
-    limits: { subAccounts: -1, workflows: -1, bots: -1 },
+    cta: "Go Pro (60 Days Free)",
+    blitzCta: "Secure Grandfather Status",
+    glow: "border-cyan-500/50 shadow-[0_0_20px_rgba(6,182,212,0.2)]",
+    gradientBorder: "from-cyan-500 to-blue-600",
+    popular: true,
   },
   {
     id: "god_mode",
     name: "God Mode",
-    price: 497,
-    badge: "Founder Edition",
-    color: "from-amber-500 to-orange-500",
-    borderColor: "border-amber-500/30",
-    glowColor: "shadow-amber-500/20",
-    icon: Rocket,
-    description: "White-labeling, Snapshot Marketplace, and the full empire-building toolkit.",
+    legacyName: "God Mode Legacy",
+    monthly: 497,
+    yearly: 397,
+    blitzPrice: 248,
+    description: "Total White-Label dominance. Zero limits.",
     features: [
-      "Everything in Agency Pro",
-      "White-Label Branding",
-      "Snapshot Marketplace Access",
-      "God Mode One-Click Deploy",
-      "Bulk Rollback (100+ accounts)",
-      "$50 AI Credits/mo",
+      "Full White-Labeling",
+      "Your Custom Domain",
+      "Marketplace Profit Sharing",
+      "Sentinel Global Rules",
+      "Bulk Rollback Controls",
       "Agency Command Center",
-      "Custom Domain Mapping",
-      "Dedicated Founder Support",
+      "$50 AI Credits/mo",
+      "Priority Founder Support",
     ],
-    limits: { subAccounts: -1, workflows: -1, bots: -1 },
+    cta: "Activate God Mode",
+    blitzCta: "Unlock God Mode",
+    glow: "border-purple-500/50 shadow-[0_0_20px_rgba(168,85,247,0.2)]",
+    gradientBorder: "from-purple-500 to-red-500",
   },
 ];
 
 export default function Pricing() {
+  const [isYearly, setIsYearly] = useState(false);
   const { toast } = useToast();
 
   const { data: subscription } = useQuery<any>({
@@ -83,114 +88,227 @@ export default function Pricing() {
   });
 
   const checkoutMutation = useMutation({
-    mutationFn: async (tier: string) => {
-      const res = await apiRequest("POST", "/api/subscription/checkout", { tier });
+    mutationFn: async ({ tier, interval }: { tier: string; interval: string }) => {
+      const res = await apiRequest("POST", "/api/subscription/checkout", { tier, interval, isBlitz: BLITZ_ACTIVE });
       return res.json();
     },
     onSuccess: (data) => {
-      if (data.url) {
-        window.location.href = data.url;
-      }
+      if (data.url) window.location.href = data.url;
     },
     onError: () => {
-      toast({ title: "Checkout failed", description: "Could not create checkout session. Please try again.", variant: "destructive" });
+      toast({ title: "Checkout failed", description: "Could not create checkout session.", variant: "destructive" });
     },
   });
 
   const currentTier = subscription?.planTier || "free";
 
+  const getDisplayPrice = (tier: typeof tiers[0]) => {
+    if (BLITZ_ACTIVE) return tier.blitzPrice;
+    return isYearly ? tier.yearly : tier.monthly;
+  };
+
+  const getOriginalPrice = (tier: typeof tiers[0]) => {
+    if (BLITZ_ACTIVE) return isYearly ? tier.yearly : tier.monthly;
+    return null;
+  };
+
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-12">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-400 text-xs font-bold uppercase tracking-widest mb-4">
-          <Star size={12} /> 60-Day Founders Launch
-        </div>
-        <h1 className="text-4xl md:text-5xl font-black text-white mb-4" data-testid="text-pricing-title">
-          Choose Your <span className="bg-gradient-to-r from-cyan-400 to-purple-500 bg-clip-text text-transparent">Power Level</span>
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-16">
+        {BLITZ_ACTIVE && (
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="inline-block px-4 py-1 rounded-full border border-red-500/50 bg-red-500/10 text-red-500 text-[10px] font-black uppercase tracking-[0.4em] mb-6 animate-pulse"
+            data-testid="badge-blitz-active"
+          >
+            Live Event: 30-Day Launch Blitz
+          </motion.div>
+        )}
+
+        <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-4 leading-none" data-testid="text-pricing-title">
+          {BLITZ_ACTIVE ? (
+            <>
+              Grandfathered <br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-500 to-red-500">
+                For Life.
+              </span>
+            </>
+          ) : (
+            <>
+              Choose Your <span className="text-cyan-400">Level of Power</span>
+            </>
+          )}
         </h1>
-        <p className="text-slate-400 text-lg max-w-2xl mx-auto">
-          60 days for the price of 30. Plus $50 in AI credits to get you through the setup phase.
+        <p className="text-gray-400 text-lg max-w-2xl mx-auto mb-8">
+          {BLITZ_ACTIVE
+            ? <>The 30-day window is open. Secure <span className="text-white font-bold">50% off all tiers</span> forever. If you stay active, your price never changes. Ever.</>
+            : "Lock in our 60-Day Founder's Deal. Two months of God Mode for the price of one."}
         </p>
+
+        {!BLITZ_ACTIVE && (
+          <div className="flex items-center justify-center gap-4">
+            <span className={`text-sm transition-colors ${!isYearly ? "text-white" : "text-gray-500"}`}>Monthly</span>
+            <button
+              onClick={() => setIsYearly(!isYearly)}
+              className="w-14 h-7 bg-white/10 rounded-full relative p-1 transition-all"
+              data-testid="button-billing-toggle"
+            >
+              <motion.div
+                layout
+                className="w-5 h-5 bg-cyan-500 rounded-full shadow-[0_0_10px_#22d3ee]"
+                animate={{ x: isYearly ? 28 : 0 }}
+                transition={{ type: "spring", stiffness: 500, damping: 30 }}
+              />
+            </button>
+            <span className={`text-sm transition-colors ${isYearly ? "text-white" : "text-gray-500"}`}>
+              Yearly <span className="text-green-400 text-xs font-bold ml-1">(Save 20%)</span>
+            </span>
+          </div>
+        )}
       </motion.div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-        {tiers.map((tier, i) => (
-          <motion.div
-            key={tier.id}
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
-            className={`relative rounded-2xl border ${tier.borderColor} bg-black/40 backdrop-blur-md p-6 flex flex-col ${tier.featured ? `ring-2 ring-purple-500/50 ${tier.glowColor} shadow-2xl scale-[1.02]` : ""}`}
-            data-testid={`card-tier-${tier.id}`}
-          >
-            {tier.featured && (
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs font-bold uppercase tracking-widest">
-                {tier.badge}
-              </div>
-            )}
+      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
+        {tiers.map((tier, i) => {
+          const displayPrice = getDisplayPrice(tier);
+          const originalPrice = getOriginalPrice(tier);
+          const isCurrentPlan = currentTier === tier.id;
 
-            <div className="flex items-center gap-3 mb-4 mt-2">
-              <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${tier.color} flex items-center justify-center`}>
-                <tier.icon size={20} className="text-white" />
-              </div>
-              <div>
-                <h3 className="text-white font-bold text-lg">{tier.name}</h3>
-                <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">{tier.badge}</p>
-              </div>
-            </div>
-
-            <div className="mb-4">
-              <span className="text-4xl font-black text-white">${tier.price}</span>
-              <span className="text-slate-400 text-sm">/mo</span>
-            </div>
-
-            <p className="text-slate-400 text-sm mb-6">{tier.description}</p>
-
-            <div className="space-y-3 flex-1 mb-6">
-              {tier.features.map((feature) => (
-                <div key={feature} className="flex items-start gap-2">
-                  <Check size={16} className={`mt-0.5 flex-shrink-0 ${tier.featured ? "text-purple-400" : "text-cyan-400"}`} />
-                  <span className="text-sm text-slate-300">{feature}</span>
-                </div>
-              ))}
-            </div>
-
-            <button
-              onClick={() => checkoutMutation.mutate(tier.id)}
-              disabled={checkoutMutation.isPending || currentTier === tier.id}
-              className={`w-full py-3 rounded-xl font-bold text-sm uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
-                currentTier === tier.id
-                  ? "bg-green-500/20 text-green-400 border border-green-500/30 cursor-default"
-                  : tier.featured
-                    ? `bg-gradient-to-r ${tier.color} text-white hover:opacity-90`
-                    : "bg-white/10 text-white border border-white/10 hover:bg-white/20"
-              }`}
-              data-testid={`button-subscribe-${tier.id}`}
+          return (
+            <motion.div
+              key={tier.id}
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.1 }}
+              data-testid={`card-tier-${tier.id}`}
             >
-              {currentTier === tier.id ? (
-                <>
-                  <Shield size={16} /> Current Plan
-                </>
+              {BLITZ_ACTIVE ? (
+                <div className={`relative group p-[1px] rounded-3xl bg-gradient-to-b ${tier.gradientBorder} transition-all duration-500 hover:scale-[1.02]`}>
+                  <div className="bg-[#080808] rounded-[23px] p-8 h-full flex flex-col relative overflow-hidden">
+                    <div className={`absolute -top-24 -right-24 w-48 h-48 bg-gradient-to-br ${tier.gradientBorder} opacity-10 blur-3xl group-hover:opacity-20 transition-opacity`} />
+
+                    {tier.popular && (
+                      <span className="absolute top-4 right-4 bg-cyan-500 text-black text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-widest">
+                        Most Popular
+                      </span>
+                    )}
+
+                    <h3 className="text-sm font-black text-gray-500 uppercase tracking-[0.3em] mb-2">
+                      {BLITZ_ACTIVE ? tier.legacyName : tier.name}
+                    </h3>
+                    <div className="flex items-baseline gap-3 mb-4">
+                      <span className="text-5xl font-black text-white">${displayPrice}</span>
+                      {originalPrice && (
+                        <span className="text-gray-500 line-through text-xl">${originalPrice}</span>
+                      )}
+                      <span className="text-cyan-500 font-mono text-xs">/mo</span>
+                    </div>
+
+                    <p className="text-gray-400 text-sm mb-8 leading-relaxed">{tier.description}</p>
+
+                    <ul className="space-y-4 mb-10 flex-grow">
+                      {tier.features.map((f) => (
+                        <li key={f} className="flex items-start gap-3 text-sm text-gray-300">
+                          <span className="text-cyan-400 mt-1">&#9657;</span> {f}
+                        </li>
+                      ))}
+                    </ul>
+
+                    <button
+                      onClick={() => checkoutMutation.mutate({ tier: tier.id, interval: isYearly ? "yearly" : "monthly" })}
+                      disabled={checkoutMutation.isPending || isCurrentPlan}
+                      className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all shadow-lg ${
+                        isCurrentPlan
+                          ? "bg-green-500/20 text-green-400 border border-green-500/30 cursor-default"
+                          : tier.popular
+                            ? "bg-white text-black hover:bg-cyan-400"
+                            : "bg-transparent border border-white/20 text-white hover:bg-white/5"
+                      }`}
+                      data-testid={`button-subscribe-${tier.id}`}
+                    >
+                      {isCurrentPlan ? (
+                        <span className="flex items-center justify-center gap-2"><Shield size={16} /> Current Plan</span>
+                      ) : checkoutMutation.isPending ? "Processing..." : (BLITZ_ACTIVE ? tier.blitzCta : tier.cta)}
+                    </button>
+                    <p className="text-[9px] text-center text-gray-600 mt-4 uppercase tracking-widest">
+                      Usage billed at wholesale + standard markup
+                    </p>
+                  </div>
+                </div>
               ) : (
-                <>
-                  {checkoutMutation.isPending ? "Processing..." : "Start 60-Day Trial"}
-                  <ArrowRight size={16} />
-                </>
+                <div className={`relative bg-white/5 backdrop-blur-xl border ${tier.glow} rounded-3xl p-8 flex flex-col h-full`}>
+                  {tier.popular && (
+                    <span className="absolute -top-4 left-1/2 -translate-x-1/2 bg-cyan-500 text-black text-[10px] font-black px-4 py-1 rounded-full uppercase tracking-widest">
+                      Most Popular
+                    </span>
+                  )}
+
+                  <h3 className="text-2xl font-bold mb-2 uppercase tracking-tight">{tier.name}</h3>
+                  <p className="text-gray-400 text-sm mb-6 h-12">{tier.description}</p>
+
+                  <div className="mb-8">
+                    <span className="text-5xl font-black">${displayPrice}</span>
+                    <span className="text-gray-500 ml-2">/mo</span>
+                    {isYearly && (
+                      <p className="text-cyan-400 text-xs mt-2 font-mono">Billed annually (${tier.yearly * 12}/yr)</p>
+                    )}
+                  </div>
+
+                  <ul className="space-y-4 mb-8 flex-grow text-sm text-gray-300">
+                    {tier.features.map((f) => (
+                      <li key={f} className="flex items-center gap-2">
+                        <span className="text-cyan-500">&#10004;</span> {f}
+                      </li>
+                    ))}
+                  </ul>
+
+                  <button
+                    onClick={() => checkoutMutation.mutate({ tier: tier.id, interval: isYearly ? "yearly" : "monthly" })}
+                    disabled={checkoutMutation.isPending || isCurrentPlan}
+                    className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${
+                      isCurrentPlan
+                        ? "bg-green-500/20 text-green-400 border border-green-500/30 cursor-default"
+                        : tier.popular
+                          ? "bg-cyan-500 text-black hover:bg-cyan-400"
+                          : "bg-white/10 text-white hover:bg-white/20 border border-white/10"
+                    }`}
+                    data-testid={`button-subscribe-${tier.id}`}
+                  >
+                    {isCurrentPlan ? (
+                      <span className="flex items-center justify-center gap-2"><Shield size={16} /> Current Plan</span>
+                    ) : checkoutMutation.isPending ? "Processing..." : tier.cta}
+                  </button>
+                  <p className="text-[10px] text-center text-gray-600 mt-4 uppercase font-bold tracking-widest">
+                    Includes $50 AI Launch Credit
+                  </p>
+                </div>
               )}
-            </button>
-          </motion.div>
-        ))}
+            </motion.div>
+          );
+        })}
       </div>
 
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }} className="text-center">
-        <div className="inline-flex flex-col items-center gap-2 px-8 py-4 rounded-2xl bg-white/5 border border-white/10">
-          <p className="text-white font-bold">The 60-Day Founders Launch Deal</p>
-          <p className="text-slate-400 text-sm max-w-lg">
-            Every plan includes 60 days for the price of 30 + $50 in AI credits.
-            No risk — cancel anytime within your trial.
+      {BLITZ_ACTIVE ? (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }} className="flex flex-col items-center">
+          <div className="w-full max-w-md bg-white/5 h-1 rounded-full overflow-hidden mb-4">
+            <motion.div
+              className="bg-gradient-to-r from-cyan-500 to-purple-600 h-full"
+              initial={{ width: 0 }}
+              animate={{ width: "88%" }}
+              transition={{ duration: 1.5, ease: "easeOut" }}
+            />
+          </div>
+          <p className="text-[10px] font-mono text-gray-500 uppercase tracking-widest" data-testid="text-founder-slots">
+            Limited Founders Slots: 12 / 100 Remaining
           </p>
-        </div>
-      </motion.div>
+        </motion.div>
+      ) : (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }} className="text-center border-t border-white/5 pt-10">
+          <p className="text-gray-500 text-xs font-mono uppercase tracking-[0.5em]" data-testid="text-founder-status">
+            Current Global Status: 4/5 Founder Spots Remaining
+          </p>
+        </motion.div>
+      )}
     </div>
   );
 }

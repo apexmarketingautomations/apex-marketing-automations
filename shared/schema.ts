@@ -188,6 +188,9 @@ export const subscriptions = pgTable("subscriptions", {
   currentPeriodEnd: timestamp("current_period_end"),
   trialEnd: timestamp("trial_end"),
   aiCredits: real("ai_credits").default(0),
+  isGrandfathered: boolean("is_grandfathered").default(false),
+  billingInterval: text("billing_interval").default("monthly"),
+  blitzJoinedDate: timestamp("blitz_joined_date"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

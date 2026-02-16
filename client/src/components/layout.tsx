@@ -7,6 +7,7 @@ import { CommandMenu } from "@/components/command-menu";
 import { VibeSwitcher } from "@/components/vibe-switcher";
 import { useAuth } from "@/hooks/use-auth";
 import { useAccount } from "@/hooks/use-account";
+import { BlitzBanner } from "@/components/blitz-banner";
 import type { SubAccount } from "@shared/schema";
 
 const navSections = [
