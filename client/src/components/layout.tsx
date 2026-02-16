@@ -8,6 +8,7 @@ import { VibeSwitcher } from "@/components/vibe-switcher";
 import { useAuth } from "@/hooks/use-auth";
 import { useAccount } from "@/hooks/use-account";
 import { BlitzBanner } from "@/components/blitz-banner";
+import { LegacyStatusBadge } from "@/components/legacy-status";
 import type { SubAccount } from "@shared/schema";
 
 const navSections = [
@@ -143,6 +144,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         {accounts.length > 0 && <AccountSwitcher accounts={accounts} />}
+        <LegacyStatusBadge />
 
         <div className="px-2 md:px-4 mb-2">
           <button
@@ -205,6 +207,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </aside>
 
       <main className="flex-1 ml-16 md:ml-72 relative z-10 flex flex-col min-h-screen">
+        <BlitzBanner />
         {location !== "/" && (
           <div className="px-6 pt-4 pb-0">
             <Link

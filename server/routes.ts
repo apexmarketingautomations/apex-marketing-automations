@@ -2458,10 +2458,70 @@ Rules:
       const subscription = event.data.object;
       const existing = await storage.getSubscriptionByStripeId(subscription.id);
       if (existing) {
-        await storage.updateSubscription(existing.id, {
+        const updateData: any = {
           status: subscription.status === "active" ? "active" : "inactive",
           currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+        };
+
+        if (subscription.status === "active") {
+          updateData.paymentStatus = "ok";
+          updateData.paymentFailedAt = null;
+        }
+
+        await storage.updateSubscription(existing.id, updateData);
+      }
+    }
+
+    if (event.type === "invoice.payment_failed") {
+      const invoice = event.data.object;
+      const subId = invoice.subscription;
+      if (subId) {
+        const existing = await storage.getSubscriptionByStripeId(subId as string);
+        if (existing) {
+          await storage.updateSubscription(existing.id, {
+            paymentStatus: "failed",
+            paymentFailedAt: new Date(),
+          });
+
+          if (existing.isGrandfathered) {
+            console.log(`[ENFORCEMENT] Legacy user ${existing.userId} payment failed - 72hr grace period started`);
+            await storage.createAuditLog({
+              action: "LEGACY_PAYMENT_WARNING",
+              performedBy: existing.userId,
+              details: {
+                message: "Payment failed. 72-hour grace period before Legacy status revocation.",
+                subscriptionId: existing.id,
+                planTier: existing.planTier,
+              },
+            });
+          }
+        }
+      }
+    }
+
+    if (event.type === "customer.subscription.deleted") {
+      const subscription = event.data.object;
+      const existing = await storage.getSubscriptionByStripeId(subscription.id);
+
+      if (existing && existing.isGrandfathered) {
+        await storage.updateSubscription(existing.id, {
+          isGrandfathered: false,
+          status: "inactive",
+          paymentStatus: "revoked",
         });
+
+        await storage.createAuditLog({
+          action: "LEGACY_STATUS_REVOKED",
+          performedBy: existing.userId,
+          details: {
+            message: "Subscription lapsed. Grandfathered pricing permanently revoked.",
+            subscriptionId: existing.id,
+            planTier: existing.planTier,
+            originalBlitzDate: existing.blitzJoinedDate,
+          },
+        });
+
+        console.log(`[ENFORCEMENT] User ${existing.userId} has LOST Legacy status permanently.`);
       }
     }
 

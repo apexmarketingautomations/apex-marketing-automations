@@ -191,6 +191,8 @@ export const subscriptions = pgTable("subscriptions", {
   isGrandfathered: boolean("is_grandfathered").default(false),
   billingInterval: text("billing_interval").default("monthly"),
   blitzJoinedDate: timestamp("blitz_joined_date"),
+  paymentStatus: text("payment_status").default("ok"),
+  paymentFailedAt: timestamp("payment_failed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
