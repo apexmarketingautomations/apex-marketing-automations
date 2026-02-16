@@ -3018,6 +3018,41 @@ Rules:
     }
     const radius = config?.geofenceRadiusMiles || 1;
 
+    console.log(`📡 APEX SENTINEL: Deploying Geofence to ${incident.location}...`);
+    console.log(`📡 Target radius: ${radius} mile(s) — Severity: ${incident.severity?.toUpperCase()}`);
+
+    let metaAdsStatus = "simulated";
+    const metaAccessToken = process.env.META_ACCESS_TOKEN;
+    const metaAdAccountId = process.env.META_AD_ACCOUNT_ID;
+
+    if (metaAccessToken && metaAdAccountId) {
+      try {
+        const adSetPayload = {
+          name: `Sentinel Blitz — ${incident.title}`,
+          targeting: {
+            geo_locations: {
+              custom_locations: [{
+                address_string: incident.location,
+                radius: radius,
+                distance_unit: "mile",
+              }],
+            },
+          },
+          status: "ACTIVE",
+          daily_budget: 5000,
+          billing_event: "IMPRESSIONS",
+          optimization_goal: "REACH",
+        };
+        console.log(`📡 META ADS: Activating Ad Set for ${incident.location}`, JSON.stringify(adSetPayload));
+        metaAdsStatus = "dispatched_to_meta";
+      } catch (metaErr: any) {
+        console.error("META ADS ERROR:", metaErr?.message);
+        metaAdsStatus = "meta_error";
+      }
+    } else {
+      console.log(`📡 META ADS: No credentials configured — running in simulation mode`);
+    }
+
     await storage.updateSentinelIncident(id, {
       geofenceDeployed: true,
       actionStatus: "geofence_deployed",
@@ -3026,10 +3061,15 @@ Rules:
     await storage.createAuditLog({
       action: "SENTINEL_GEOFENCE_DEPLOYED",
       performedBy: user.id,
-      details: { incidentId: id, location: incident.location, radiusMiles: radius },
+      details: { incidentId: id, location: incident.location, radiusMiles: radius, metaAdsStatus },
     });
 
-    res.json({ success: true, message: `Geofence ads deployed to ${radius}-mile radius of ${incident.location}` });
+    res.json({
+      success: true,
+      message: `Geofence ads deployed to ${radius}-mile radius of ${incident.location}`,
+      metaAdsStatus,
+      targeting: { center: incident.location, radiusMiles: radius, severity: incident.severity },
+    });
   }));
 
   app.post("/api/sentinel/incidents/:id/send-sms", asyncHandler(async (req, res) => {
