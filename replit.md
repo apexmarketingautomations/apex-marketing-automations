@@ -10,6 +10,12 @@ The app includes:
 - **Bot Trainer**: AI chatbot training pipeline that scrapes websites, builds RAG knowledge bases, and supports tool-calling (calendar booking)
 - **Onboarding**: Industry-specific setup wizard that provisions accounts with pre-built pipeline stages, fields, and templates
 - **Landing Pages**: Demo landing pages for gym and luxury service verticals
+- **Stripe Subscriptions**: 3-tier pricing (Starter $97/mo, Agency Pro $297/mo, God Mode $497/mo) with 60-day trials
+- **Snapshot Marketplace**: Publish, browse, and fork account configurations as reusable templates
+- **Snapshot Versioning**: Checkpoint/rollback system with bulk rollback for agencies
+- **Affiliate Dashboard**: Referral links, tiered commissions (30-50%), payout tracking
+- **Command Center**: Agency "War Room" with fleet health monitoring, production pipeline visualization
+- **Account Switcher**: Multi-account context switching with persistent selection
 
 ## User Preferences
 
