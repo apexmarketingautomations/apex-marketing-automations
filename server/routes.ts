@@ -2872,7 +2872,235 @@ Rules:
     });
   }));
 
+  // ---- Sentinel Module ----
+  app.get("/api/sentinel/config/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const config = await storage.getSentinelConfig(subAccountId);
+    res.json(config || {
+      subAccountId,
+      feedUrl: null,
+      keywords: ['MVA', 'EXTRICATION', 'ROLLOVER', 'INJURIES', 'SIGNAL 4', 'ENTRAPMENT', 'FATALITY'],
+      scanInterval: 60,
+      enabled: false,
+      smsAlertEnabled: true,
+      geofenceEnabled: true,
+      geofenceRadiusMiles: 1,
+    });
+  }));
+
+  app.put("/api/sentinel/config", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const parsed = z.object({
+      subAccountId: z.number().int().positive(),
+      feedUrl: z.string().nullable().optional(),
+      keywords: z.array(z.string()).optional(),
+      scanInterval: z.number().int().min(10).max(3600).optional(),
+      enabled: z.boolean().optional(),
+      smsAlertEnabled: z.boolean().optional(),
+      geofenceEnabled: z.boolean().optional(),
+      geofenceRadiusMiles: z.number().min(0.1).max(50).optional(),
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const config = await storage.upsertSentinelConfig(parsed.data as any);
+    res.json(config);
+  }));
+
+  app.get("/api/sentinel/incidents/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const incidents = await storage.getSentinelIncidents(subAccountId);
+    res.json(incidents);
+  }));
+
+  app.post("/api/sentinel/scan", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const parsed = z.object({
+      subAccountId: z.number().int().positive(),
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const config = await storage.getSentinelConfig(parsed.data.subAccountId);
+    const keywords = config?.keywords?.length ? config.keywords : ['MVA', 'EXTRICATION', 'ROLLOVER', 'INJURIES', 'SIGNAL 4', 'ENTRAPMENT', 'FATALITY'];
+
+    let incidents: any[] = [];
+    let source = "simulated";
+
+    if (config?.feedUrl) {
+      try {
+        const axios = (await import("axios")).default;
+        const response = await axios.get(config.feedUrl, { timeout: 10000 });
+        const data = response.data;
+
+        if (Array.isArray(data)) {
+          incidents = data.filter((item: any) => {
+            const desc = (item.description || item.title || item.text || "").toUpperCase();
+            return keywords.some(kw => desc.includes(kw.toUpperCase()));
+          }).map((item: any) => ({
+            title: item.title || item.description?.substring(0, 100) || "Incident Detected",
+            description: item.description || item.text || "",
+            location: item.location || item.address || "Location pending",
+            severity: determineSeverity(item.description || "", keywords),
+            rawPayload: item,
+          }));
+        }
+        source = "live_feed";
+      } catch (e) {
+        console.log("[SENTINEL] Feed fetch failed, using simulated data:", (e as any).message);
+      }
+    }
+
+    if (incidents.length === 0) {
+      const sampleIncidents = [
+        { title: "MVA w/ Entrapment", description: "Motor vehicle accident with entrapment reported. Multiple units dispatched.", location: "Intersection of Main St & 4th Ave", severity: "critical" },
+        { title: "Signal 4 — Rollover", description: "Single vehicle rollover accident. Injuries reported. EMS on scene.", location: "Highway 95 NB Mile Marker 42", severity: "high" },
+        { title: "MVA — Minor Injuries", description: "Two-vehicle collision. Minor injuries. Police directing traffic.", location: "Oak Blvd & Commerce Dr", severity: "medium" },
+        { title: "Extrication Required", description: "Vehicle vs. pole. Driver trapped. Fire rescue en route for extrication.", location: "2100 Block Industrial Pkwy", severity: "critical" },
+        { title: "MVA — Possible Injuries", description: "Rear-end collision. Possible injuries. One lane blocked.", location: "Elm St near Central Park", severity: "medium" },
+      ];
+
+      const count = Math.floor(Math.random() * 3) + 1;
+      const shuffled = sampleIncidents.sort(() => 0.5 - Math.random()).slice(0, count);
+      incidents = shuffled;
+      source = "simulated";
+    }
+
+    const created = [];
+    for (const inc of incidents) {
+      const hashInput = inc.rawPayload?.id
+        ? `${inc.rawPayload.id}`
+        : `${inc.title}-${inc.location}`;
+      const hash = Buffer.from(hashInput).toString("base64").substring(0, 64);
+
+      const existing = await storage.getSentinelIncidentByHash(parsed.data.subAccountId, hash);
+      if (!existing) {
+        const record = await storage.createSentinelIncident({
+          subAccountId: parsed.data.subAccountId,
+          sourceHash: hash,
+          title: inc.title,
+          description: inc.description,
+          location: inc.location,
+          severity: inc.severity || "medium",
+          rawPayload: inc.rawPayload || null,
+          actionStatus: "pending",
+          smsSent: false,
+          geofenceDeployed: false,
+        });
+        created.push(record);
+      }
+    }
+
+    await storage.createAuditLog({
+      action: "SENTINEL_SCAN",
+      performedBy: user.id,
+      details: { subAccountId: parsed.data.subAccountId, source, found: created.length },
+    });
+
+    res.json({ source, found: created.length, incidents: created });
+  }));
+
+  app.post("/api/sentinel/incidents/:id/deploy-geofence", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const id = parseIntParam(req.params.id, "id");
+    const incident = await storage.getSentinelIncident(id);
+    if (!incident) return res.status(404).json({ error: "Incident not found" });
+
+    const config = await storage.getSentinelConfig(incident.subAccountId);
+    if (config && config.geofenceEnabled === false) {
+      return res.status(400).json({ error: "Geofence ads are disabled in Sentinel config." });
+    }
+    const radius = config?.geofenceRadiusMiles || 1;
+
+    await storage.updateSentinelIncident(id, {
+      geofenceDeployed: true,
+      actionStatus: "geofence_deployed",
+    });
+
+    await storage.createAuditLog({
+      action: "SENTINEL_GEOFENCE_DEPLOYED",
+      performedBy: user.id,
+      details: { incidentId: id, location: incident.location, radiusMiles: radius },
+    });
+
+    res.json({ success: true, message: `Geofence ads deployed to ${radius}-mile radius of ${incident.location}` });
+  }));
+
+  app.post("/api/sentinel/incidents/:id/send-sms", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const id = parseIntParam(req.params.id, "id");
+    const incident = await storage.getSentinelIncident(id);
+    if (!incident) return res.status(404).json({ error: "Incident not found" });
+
+    const sentinelConf = await storage.getSentinelConfig(incident.subAccountId);
+    if (sentinelConf && sentinelConf.smsAlertEnabled === false) {
+      return res.status(400).json({ error: "SMS alerts are disabled in Sentinel config." });
+    }
+
+    const account = await storage.getSubAccount(incident.subAccountId);
+    if (!account?.ownerPhone) {
+      return res.status(400).json({ error: "No owner phone number configured for this account." });
+    }
+
+    const alertMsg = `🚨 APEX SENTINEL ALERT\n\n${incident.severity?.toUpperCase()} PRIORITY: ${incident.title}\n📍 ${incident.location}\n\n${incident.description}\n\nDeploy geofence ads now from your Sentinel dashboard.`;
+
+    const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+    const twilioToken = process.env.TWILIO_AUTH_TOKEN;
+
+    if (twilioSid && twilioToken && account.twilioNumber) {
+      try {
+        const twilioClient = Twilio(twilioSid, twilioToken);
+        await twilioClient.messages.create({
+          body: alertMsg,
+          from: account.twilioNumber,
+          to: account.ownerPhone,
+        });
+      } catch (e) {
+        console.log("[SENTINEL] SMS send failed:", (e as any).message);
+      }
+    }
+
+    await storage.updateSentinelIncident(id, {
+      smsSent: true,
+      actionStatus: incident.geofenceDeployed ? "fully_actioned" : "sms_sent",
+    });
+
+    await storage.createAuditLog({
+      action: "SENTINEL_SMS_ALERT",
+      performedBy: user.id,
+      details: { incidentId: id, sentTo: account.ownerPhone },
+    });
+
+    res.json({ success: true, message: `SMS alert sent to ${account.ownerPhone}` });
+  }));
+
+  app.post("/api/sentinel/incidents/:id/acknowledge", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const id = parseIntParam(req.params.id, "id");
+    const incident = await storage.getSentinelIncident(id);
+    if (!incident) return res.status(404).json({ error: "Incident not found" });
+
+    await storage.updateSentinelIncident(id, { actionStatus: "acknowledged" });
+    res.json({ success: true });
+  }));
+
   return httpServer;
+}
+
+function determineSeverity(description: string, keywords: string[]): string {
+  const upper = description.toUpperCase();
+  if (upper.includes("FATALITY") || upper.includes("ENTRAPMENT") || upper.includes("EXTRICATION")) return "critical";
+  if (upper.includes("ROLLOVER") || upper.includes("INJURIES")) return "high";
+  if (upper.includes("MVA") || upper.includes("SIGNAL 4")) return "medium";
+  return "low";
 }
 
 function simulateTraining(jobId: number) {

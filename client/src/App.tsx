@@ -32,6 +32,7 @@ const MarketplacePage = lazy(() => import("@/pages/marketplace"));
 const AffiliateDashboard = lazy(() => import("@/pages/affiliate"));
 const CommandCenterPage = lazy(() => import("@/pages/command-center"));
 const SnapshotsPage = lazy(() => import("@/pages/snapshots"));
+const SentinelPage = lazy(() => import("@/pages/sentinel"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const Login = lazy(() => import("@/pages/login"));
 const Welcome = lazy(() => import("@/pages/welcome"));
@@ -86,6 +87,7 @@ function Router() {
                   <Route path="/affiliate" component={AffiliateDashboard} />
                   <Route path="/command-center" component={CommandCenterPage} />
                   <Route path="/snapshots" component={SnapshotsPage} />
+                  <Route path="/sentinel" component={SentinelPage} />
                   <Route path="/gym" component={GymLanding} />
                   <Route path="/luxe" component={LuxeLanding} />
                   <Route component={NotFound} />

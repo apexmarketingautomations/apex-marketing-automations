@@ -2,7 +2,7 @@ import { eq, desc, and, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   subAccounts, messages, workflows, trainingJobs, blueprints, savedSites, siteVersions, siteCollaborators, reviews, usageLogs, domains, owners,
-  subscriptions, snapshots, snapshotVersions, affiliates, referrals, commissions, auditLogs,
+  subscriptions, snapshots, snapshotVersions, affiliates, referrals, commissions, sentinelConfig, sentinelIncidents, auditLogs,
   type SubAccount, type InsertSubAccount,
   type Message, type InsertMessage,
   type Workflow, type InsertWorkflow,
@@ -21,6 +21,8 @@ import {
   type Affiliate, type InsertAffiliate,
   type Referral, type InsertReferral,
   type Commission, type InsertCommission,
+  type SentinelConfig, type InsertSentinelConfig,
+  type SentinelIncident, type InsertSentinelIncident,
   type AuditLog, type InsertAuditLog,
 } from "@shared/schema";
 
@@ -108,6 +110,15 @@ export interface IStorage {
 
   getCommissions(affiliateId: number): Promise<Commission[]>;
   createCommission(data: InsertCommission): Promise<Commission>;
+
+  getSentinelConfig(subAccountId: number): Promise<SentinelConfig | undefined>;
+  upsertSentinelConfig(data: InsertSentinelConfig): Promise<SentinelConfig>;
+
+  getSentinelIncidents(subAccountId: number): Promise<SentinelIncident[]>;
+  getSentinelIncident(id: number): Promise<SentinelIncident | undefined>;
+  createSentinelIncident(data: InsertSentinelIncident): Promise<SentinelIncident>;
+  updateSentinelIncident(id: number, data: Partial<InsertSentinelIncident>): Promise<SentinelIncident | undefined>;
+  getSentinelIncidentByHash(subAccountId: number, hash: string): Promise<SentinelIncident | undefined>;
 
   createAuditLog(data: InsertAuditLog): Promise<AuditLog>;
 }
@@ -429,6 +440,45 @@ export class DatabaseStorage implements IStorage {
 
   async createCommission(data: InsertCommission) {
     const [row] = await db.insert(commissions).values(data).returning();
+    return row;
+  }
+
+  async getSentinelConfig(subAccountId: number) {
+    const [row] = await db.select().from(sentinelConfig).where(eq(sentinelConfig.subAccountId, subAccountId));
+    return row;
+  }
+
+  async upsertSentinelConfig(data: InsertSentinelConfig) {
+    const existing = await this.getSentinelConfig(data.subAccountId);
+    if (existing) {
+      const [row] = await db.update(sentinelConfig).set({ ...data, updatedAt: new Date() }).where(eq(sentinelConfig.id, existing.id)).returning();
+      return row;
+    }
+    const [row] = await db.insert(sentinelConfig).values(data).returning();
+    return row;
+  }
+
+  async getSentinelIncidents(subAccountId: number) {
+    return db.select().from(sentinelIncidents).where(eq(sentinelIncidents.subAccountId, subAccountId)).orderBy(desc(sentinelIncidents.detectedAt));
+  }
+
+  async getSentinelIncident(id: number) {
+    const [row] = await db.select().from(sentinelIncidents).where(eq(sentinelIncidents.id, id));
+    return row;
+  }
+
+  async createSentinelIncident(data: InsertSentinelIncident) {
+    const [row] = await db.insert(sentinelIncidents).values(data).returning();
+    return row;
+  }
+
+  async updateSentinelIncident(id: number, data: Partial<InsertSentinelIncident>) {
+    const [row] = await db.update(sentinelIncidents).set(data).where(eq(sentinelIncidents.id, id)).returning();
+    return row;
+  }
+
+  async getSentinelIncidentByHash(subAccountId: number, hash: string) {
+    const [row] = await db.select().from(sentinelIncidents).where(and(eq(sentinelIncidents.subAccountId, subAccountId), eq(sentinelIncidents.sourceHash, hash)));
     return row;
   }
 

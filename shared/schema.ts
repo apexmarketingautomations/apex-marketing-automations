@@ -276,6 +276,42 @@ export const insertCommissionSchema = createInsertSchema(commissions).omit({ id:
 export type InsertCommission = z.infer<typeof insertCommissionSchema>;
 export type Commission = typeof commissions.$inferSelect;
 
+export const sentinelConfig = pgTable("sentinel_config", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  feedUrl: text("feed_url"),
+  keywords: text("keywords").array().default([]),
+  scanInterval: integer("scan_interval").default(60),
+  enabled: boolean("enabled").default(false),
+  smsAlertEnabled: boolean("sms_alert_enabled").default(true),
+  geofenceEnabled: boolean("geofence_enabled").default(true),
+  geofenceRadiusMiles: real("geofence_radius_miles").default(1),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertSentinelConfigSchema = createInsertSchema(sentinelConfig).omit({ id: true, updatedAt: true });
+export type InsertSentinelConfig = z.infer<typeof insertSentinelConfigSchema>;
+export type SentinelConfig = typeof sentinelConfig.$inferSelect;
+
+export const sentinelIncidents = pgTable("sentinel_incidents", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  sourceHash: text("source_hash"),
+  title: text("title").notNull(),
+  description: text("description"),
+  location: text("location"),
+  severity: text("severity").notNull().default("medium"),
+  rawPayload: json("raw_payload"),
+  actionStatus: text("action_status").default("pending"),
+  smsSent: boolean("sms_sent").default(false),
+  geofenceDeployed: boolean("geofence_deployed").default(false),
+  detectedAt: timestamp("detected_at").defaultNow().notNull(),
+});
+
+export const insertSentinelIncidentSchema = createInsertSchema(sentinelIncidents).omit({ id: true, detectedAt: true });
+export type InsertSentinelIncident = z.infer<typeof insertSentinelIncidentSchema>;
+export type SentinelIncident = typeof sentinelIncidents.$inferSelect;
+
 export const auditLogs = pgTable("audit_logs", {
   id: serial("id").primaryKey(),
   action: text("action").notNull(),

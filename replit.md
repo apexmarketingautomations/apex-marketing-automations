@@ -63,6 +63,8 @@ Key server files:
 3. **workflows** - Automation workflows with trigger type and JSON steps array
 4. **training_jobs** - AI bot training job tracking (URL, persona, state, progress, logs)
 5. **blueprints** - Industry-specific templates (stages, fields, templates) for onboarding
+6. **sentinel_config** - Per-account Sentinel scanner config (feed URL, keywords, intervals, toggles)
+7. **sentinel_incidents** - Detected accident/incident records with severity, location, action status
 
 ### Shared Code
 The `shared/` directory contains code used by both frontend and backend:
@@ -109,6 +111,12 @@ The `shared/` directory contains code used by both frontend and backend:
 - `POST /api/domains/purchase` - Purchase domain (simulated registrar) with usage logging
 - `GET /api/domains/:subAccountId` - List domains for a sub-account
 - `PATCH /api/domains/:id` - Configure domain (link site, DNS/SSL)
+- `GET/PUT /api/sentinel/config/:subAccountId` - Sentinel scanner config CRUD
+- `GET /api/sentinel/incidents/:subAccountId` - List detected incidents
+- `POST /api/sentinel/scan` - Trigger manual scan (live feed or simulated data)
+- `POST /api/sentinel/incidents/:id/deploy-geofence` - Deploy geofence ads around incident
+- `POST /api/sentinel/incidents/:id/send-sms` - SMS alert to account owner via Twilio
+- `POST /api/sentinel/incidents/:id/acknowledge` - Mark incident as handled
 - `GET /api/login` - Replit OIDC login flow (redirects to Replit auth)
 - `GET /api/logout` - Logout flow
 - `GET /api/callback` - OIDC callback handler
