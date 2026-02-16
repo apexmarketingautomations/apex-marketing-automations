@@ -3000,28 +3000,48 @@ Rules:
     const keywords = config?.keywords?.length ? config.keywords : ['MVA', 'EXTRICATION', 'ROLLOVER', 'INJURIES', 'SIGNAL 4', 'ENTRAPMENT', 'FATALITY'];
 
     let incidents: any[] = [];
-    let source = "simulated";
+    const sources: string[] = [];
 
-    // Priority 1: Try LVMPD live scraper (real dispatch data)
+    // Live Feed 1: LVMPD (Nevada) + FHP (Florida) — both run in parallel
     try {
-      console.log("📡 SENTINEL: Attempting LVMPD live feed scrape...");
+      console.log("📡 SENTINEL: Pulling live feeds (LVMPD + FHP)...");
       const liveIncidents = await processLiveSentinelFeed();
       if (liveIncidents.length > 0) {
-        incidents = liveIncidents.map(inc => ({
+        const targetCities = (config as any)?.targetCities;
+        const targetStates = (config as any)?.targetStates;
+
+        const filtered = liveIncidents.filter(inc => {
+          if (targetStates?.length) {
+            if (!targetStates.some((s: string) => s.toUpperCase() === inc.state.toUpperCase())) return false;
+          }
+          if (targetCities?.length) {
+            const loc = inc.location.toUpperCase();
+            if (!targetCities.some((c: string) => loc.includes(c.toUpperCase()))) return false;
+          }
+          if (keywords.length) {
+            const desc = inc.type.toUpperCase();
+            if (!keywords.some(kw => desc.includes(kw.toUpperCase()))) return false;
+          }
+          return true;
+        });
+
+        incidents = filtered.map(inc => ({
           title: inc.type,
-          description: `${inc.type} at ${inc.location}. ${inc.actionRequired ? 'HIGH VALUE — Action required.' : 'Monitoring.'}`,
+          description: `${inc.type} at ${inc.location}. ${inc.actionRequired ? 'HIGH VALUE — Action required.' : 'Monitoring.'} [${inc.source.toUpperCase()}]`,
           location: inc.location,
           severity: inc.severity,
-          rawPayload: { id: inc.id, lat: inc.lat, lng: inc.lng, type: inc.type },
+          rawPayload: { id: inc.id, lat: inc.lat, lng: inc.lng, type: inc.type, source: inc.source, state: inc.state },
         }));
-        source = "lvmpd_live";
-        console.log(`📡 SENTINEL: Pulled ${incidents.length} live incidents from LVMPD`);
+
+        const feedSources = [...new Set(filtered.map(i => i.source))];
+        sources.push(...feedSources);
+        console.log(`📡 SENTINEL: ${liveIncidents.length} raw → ${filtered.length} after filters (sources: ${feedSources.join(', ')})`);
       }
     } catch (e) {
-      console.log("📡 SENTINEL: LVMPD scraper unavailable:", (e as any).message);
+      console.log("📡 SENTINEL: Live feed scrape failed:", (e as any).message);
     }
 
-    // Priority 2: Try custom feed URL from config
+    // Fallback: Custom feed URL from config (if no live data)
     if (incidents.length === 0 && config?.feedUrl) {
       try {
         const axios = (await import("axios")).default;
@@ -3040,27 +3060,13 @@ Rules:
             rawPayload: item,
           }));
         }
-        source = "custom_feed";
+        sources.push("custom_feed");
       } catch (e) {
         console.log("📡 SENTINEL: Custom feed fetch failed:", (e as any).message);
       }
     }
 
-    // Priority 3: Simulated fallback
-    if (incidents.length === 0) {
-      const sampleIncidents = [
-        { title: "MVA w/ Entrapment", description: "Motor vehicle accident with entrapment reported. Multiple units dispatched.", location: "Intersection of Main St & 4th Ave", severity: "critical" },
-        { title: "Signal 4 — Rollover", description: "Single vehicle rollover accident. Injuries reported. EMS on scene.", location: "Highway 95 NB Mile Marker 42", severity: "high" },
-        { title: "MVA — Minor Injuries", description: "Two-vehicle collision. Minor injuries. Police directing traffic.", location: "Oak Blvd & Commerce Dr", severity: "medium" },
-        { title: "Extrication Required", description: "Vehicle vs. pole. Driver trapped. Fire rescue en route for extrication.", location: "2100 Block Industrial Pkwy", severity: "critical" },
-        { title: "MVA — Possible Injuries", description: "Rear-end collision. Possible injuries. One lane blocked.", location: "Elm St near Central Park", severity: "medium" },
-      ];
-
-      const count = Math.floor(Math.random() * 3) + 1;
-      const shuffled = sampleIncidents.sort(() => 0.5 - Math.random()).slice(0, count);
-      incidents = shuffled;
-      source = "simulated";
-    }
+    const source = sources.length > 0 ? sources.join("+") : "no_data";
 
     const created = [];
     for (const inc of incidents) {
@@ -3609,6 +3615,129 @@ Rules:
 
     res.type("application/javascript").send(js);
   });
+
+  // ─── AI Form Builder ──────────────────────────────────────────────
+  const FORM_BUILDER_SYSTEM_PROMPT = `You are an expert form builder for lead generation. Given an industry/niche, generate a custom form with fields appropriate for that business type.
+
+Return a JSON object with this exact structure:
+{
+  "fields": [
+    {
+      "id": "<unique_id>",
+      "label": "<field label>",
+      "type": "<text|email|phone|textarea|select|checkbox|date>",
+      "required": <true|false>,
+      "placeholder": "<placeholder text>",
+      "helpText": "<optional compliance/regulation note>",
+      "options": ["option1", "option2"] // only for select type
+    }
+  ],
+  "complianceNotes": [
+    "<regulation note 1>",
+    "<regulation note 2>"
+  ]
+}
+
+Rules:
+- Generate 6-12 fields appropriate for the industry
+- Always include: Full Name, Email, Phone as the first three fields
+- Add industry-specific fields (e.g., "Case Type" for law, "Property Address" for real estate, "Insurance Provider" for medical)
+- Include compliance/regulation helpText where relevant:
+  - Medical/dental/medspa: HIPAA privacy notice on health-related fields
+  - Legal: Attorney-client privilege disclaimers
+  - Any SMS/phone collection: TCPA consent notice
+  - Financial: Disclaimer about not being financial advice
+  - Real estate: Fair Housing Act compliance
+- complianceNotes should list 2-4 key regulations the business should be aware of
+- Field IDs should be snake_case
+- Return ONLY valid JSON, no markdown, no code fences`;
+
+  const formGenerateSchema = z.object({
+    industry: z.string().min(1).max(500),
+    businessName: z.string().max(500).optional(),
+  });
+
+  app.post("/api/forms/generate", asyncHandler(async (req, res) => {
+    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+      return res.status(503).json({ error: "AI service is not configured" });
+    }
+
+    const parsed = formGenerateSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const { industry, businessName } = parsed.data;
+    const userPrompt = businessName
+      ? `Generate a lead capture form for a ${industry} business called "${businessName}".`
+      : `Generate a lead capture form for a ${industry} business.`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: FORM_BUILDER_SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.7,
+      max_tokens: 2000,
+    });
+
+    const raw = completion.choices[0]?.message?.content ?? "";
+    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+
+    let formData: any;
+    try {
+      formData = JSON.parse(cleaned);
+    } catch {
+      return res.status(500).json({ error: "AI returned invalid JSON" });
+    }
+
+    if (!formData.fields || !Array.isArray(formData.fields)) {
+      return res.status(500).json({ error: "AI returned invalid form structure" });
+    }
+
+    await logUsageInternal(null, "AI_CHAT", 1, "Form builder AI generation");
+
+    res.json({
+      fields: formData.fields,
+      complianceNotes: formData.complianceNotes || [],
+    });
+  }));
+
+  const savedForms = new Map<string, any[]>();
+
+  app.get("/api/forms/saved/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = req.params.subAccountId;
+    const forms = savedForms.get(subAccountId) || [];
+    res.json(forms);
+  }));
+
+  const formSaveSchema = z.object({
+    subAccountId: z.string().or(z.number()).transform(String),
+    name: z.string().min(1).max(200),
+    industry: z.string().min(1).max(500),
+    fields: z.array(z.any()),
+    complianceNotes: z.array(z.string()).optional(),
+  });
+
+  app.post("/api/forms/save", asyncHandler(async (req, res) => {
+    const parsed = formSaveSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const { subAccountId, name, industry, fields, complianceNotes } = parsed.data;
+    const form = {
+      id: `form_${Date.now()}`,
+      name,
+      industry,
+      fields,
+      complianceNotes: complianceNotes || [],
+      createdAt: new Date().toISOString(),
+    };
+
+    const existing = savedForms.get(subAccountId) || [];
+    existing.push(form);
+    savedForms.set(subAccountId, existing);
+
+    res.status(201).json(form);
+  }));
 
   return httpServer;
 }

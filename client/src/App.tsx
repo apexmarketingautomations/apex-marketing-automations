@@ -35,6 +35,7 @@ const SnapshotsPage = lazy(() => import("@/pages/snapshots"));
 const SentinelPage = lazy(() => import("@/pages/sentinel"));
 const PropertyRadarPage = lazy(() => import("@/pages/property-radar"));
 const WebsiteIntegration = lazy(() => import("@/pages/website-integration"));
+const FormBuilder = lazy(() => import("@/pages/form-builder"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const Login = lazy(() => import("@/pages/login"));
 const Welcome = lazy(() => import("@/pages/welcome"));
@@ -92,6 +93,7 @@ function Router() {
                   <Route path="/sentinel" component={SentinelPage} />
                   <Route path="/property-radar" component={PropertyRadarPage} />
                   <Route path="/website-integration" component={WebsiteIntegration} />
+                  <Route path="/form-builder" component={FormBuilder} />
                   <Route path="/gym" component={GymLanding} />
                   <Route path="/luxe" component={LuxeLanding} />
                   <Route component={NotFound} />

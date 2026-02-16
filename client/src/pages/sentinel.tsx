@@ -45,7 +45,10 @@ export default function Sentinel() {
     smsAlertEnabled: true,
     geofenceEnabled: true,
     geofenceRadiusMiles: 1,
+    targetCities: "",
+    targetStates: "",
   });
+  const [locationFilter, setLocationFilter] = useState("");
 
   const { data: accounts = [] } = useQuery<SubAccount[]>({ queryKey: ["/api/accounts"] });
   const currentAccount = accounts.find(a => a.id === activeAccountId) || accounts[0];
@@ -79,6 +82,8 @@ export default function Sentinel() {
         smsAlertEnabled: config.smsAlertEnabled !== false,
         geofenceEnabled: config.geofenceEnabled !== false,
         geofenceRadiusMiles: config.geofenceRadiusMiles || 1,
+        targetCities: ((config as any).targetCities || []).join(", "),
+        targetStates: ((config as any).targetStates || []).join(", "),
       });
     }
   }, [config]);
@@ -94,7 +99,7 @@ export default function Sentinel() {
       queryClient.invalidateQueries({ queryKey: ["/api/sentinel/incidents", currentAccount?.id] });
       toast({
         title: `Scan Complete — ${data.found} incident${data.found !== 1 ? "s" : ""} detected`,
-        description: data.source === "live_feed" ? "Data pulled from live feed" : "Simulated dispatch data used",
+        description: data.found > 0 ? `Live data from ${data.source}` : "No incidents found from live feeds",
       });
     },
     onError: () => {
@@ -149,6 +154,8 @@ export default function Sentinel() {
         smsAlertEnabled: configForm.smsAlertEnabled,
         geofenceEnabled: configForm.geofenceEnabled,
         geofenceRadiusMiles: configForm.geofenceRadiusMiles,
+        targetCities: configForm.targetCities.split(",").map(c => c.trim()).filter(Boolean),
+        targetStates: configForm.targetStates.split(",").map(s => s.trim()).filter(Boolean),
       });
       return res.json();
     },
@@ -159,9 +166,12 @@ export default function Sentinel() {
     },
   });
 
-  const pendingIncidents = incidents.filter(i => i.actionStatus === "pending");
-  const actionedIncidents = incidents.filter(i => i.actionStatus !== "pending");
-  const criticalCount = incidents.filter(i => i.severity === "critical" || i.severity === "high").length;
+  const filteredIncidents = locationFilter
+    ? incidents.filter(i => (i.location || "").toLowerCase().includes(locationFilter.toLowerCase()))
+    : incidents;
+  const pendingIncidents = filteredIncidents.filter(i => i.actionStatus === "pending");
+  const actionedIncidents = filteredIncidents.filter(i => i.actionStatus !== "pending");
+  const criticalCount = filteredIncidents.filter(i => i.severity === "critical" || i.severity === "high").length;
 
   return (
     <div className="p-6 md:p-10 max-w-6xl mx-auto">
@@ -256,14 +266,26 @@ export default function Sentinel() {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
         className="bg-[#0a0a0a] border border-red-500/30 p-6 rounded-2xl mb-8"
       >
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
           <h2 className="text-red-500 font-black tracking-widest uppercase flex items-center gap-2" data-testid="text-live-stream-title">
             <Radio size={16} className={scanPulse ? "animate-pulse" : ""} />
             Sentinel: Live Accident Stream
           </h2>
-          <span className="text-[10px] text-gray-600 uppercase tracking-widest">
-            {incidents.length} incident{incidents.length !== 1 ? "s" : ""} in database
-          </span>
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <MapPin size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <Input
+                value={locationFilter}
+                onChange={(e) => setLocationFilter(e.target.value)}
+                placeholder="Filter by location..."
+                className="bg-white/5 border-white/10 text-white pl-8 w-48 h-8 text-xs"
+                data-testid="input-location-filter"
+              />
+            </div>
+            <span className="text-[10px] text-gray-600 uppercase tracking-widest whitespace-nowrap">
+              {filteredIncidents.length} of {incidents.length} incident{incidents.length !== 1 ? "s" : ""}
+            </span>
+          </div>
         </div>
 
         {loadingIncidents ? (
@@ -340,7 +362,7 @@ export default function Sentinel() {
                 className="bg-white/5 border-white/10 text-white"
                 data-testid="input-feed-url"
               />
-              <p className="text-[10px] text-slate-600 mt-1">Leave empty for simulated demo data</p>
+              <p className="text-[10px] text-slate-600 mt-1">Optional: Add a custom JSON feed URL for additional data</p>
             </div>
             <div>
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Keywords (comma-separated)</label>
@@ -350,6 +372,27 @@ export default function Sentinel() {
                 placeholder="MVA, EXTRICATION, ROLLOVER, INJURIES"
                 className="bg-white/5 border-white/10 text-white"
                 data-testid="input-keywords"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Target Cities (comma-separated)</label>
+              <Input
+                value={configForm.targetCities}
+                onChange={(e) => setConfigForm(f => ({ ...f, targetCities: e.target.value }))}
+                placeholder="Las Vegas, Henderson, North Las Vegas"
+                className="bg-white/5 border-white/10 text-white"
+                data-testid="input-target-cities"
+              />
+              <p className="text-[10px] text-slate-600 mt-1">Only show incidents from these cities. Leave empty for all.</p>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Target States (comma-separated)</label>
+              <Input
+                value={configForm.targetStates}
+                onChange={(e) => setConfigForm(f => ({ ...f, targetStates: e.target.value }))}
+                placeholder="NV, CA, AZ"
+                className="bg-white/5 border-white/10 text-white"
+                data-testid="input-target-states"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -453,6 +496,14 @@ function IncidentCard({
           <span className={`${sev.bg} ${sev.text} text-[10px] px-2 py-1 rounded font-black tracking-wider`}>
             {sev.label}
           </span>
+          {(incident.rawPayload as any)?.source && (
+            <span className="text-[8px] bg-cyan-500/10 text-cyan-400 px-1.5 py-0.5 rounded font-bold mt-1 inline-block">
+              {(incident.rawPayload as any).source === "lvmpd_live" ? "LVMPD" :
+               (incident.rawPayload as any).source === "fhp_live" ? "FL FHP" :
+               (incident.rawPayload as any).source?.toUpperCase()}
+              {(incident.rawPayload as any).state ? ` · ${(incident.rawPayload as any).state}` : ""}
+            </span>
+          )}
           <p className="text-gray-600 text-[10px] mt-1 flex items-center gap-1 justify-end">
             <Clock size={8} /> {timeAgo(incident.detectedAt as unknown as string)}
           </p>

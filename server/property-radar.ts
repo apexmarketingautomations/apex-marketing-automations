@@ -17,163 +17,117 @@ export interface DistressedProperty {
   lng: number | null;
 }
 
-const SAMPLE_PROPERTIES: DistressedProperty[] = [
-  {
-    id: "prop-001",
-    address: "4821 Sahara Ave",
-    city: "Las Vegas",
-    state: "NV",
-    zip: "89104",
-    ownerName: "Robert Martinez",
-    ownerPhone: null,
-    propertyType: "Single Family",
-    estimatedValue: 285000,
-    estimatedEquity: 142000,
-    distressSignals: ["Pre-Foreclosure", "Tax Lien"],
-    priority: "critical",
-    lat: 36.1435,
-    lng: -115.1781,
-  },
-  {
-    id: "prop-002",
-    address: "1922 Charleston Blvd",
-    city: "Las Vegas",
-    state: "NV",
-    zip: "89104",
-    ownerName: "Linda Chen",
-    ownerPhone: null,
-    propertyType: "Single Family",
-    estimatedValue: 195000,
-    estimatedEquity: 87000,
-    distressSignals: ["Vacant", "Code Violation"],
-    priority: "high",
-    lat: 36.1585,
-    lng: -115.1687,
-  },
-  {
-    id: "prop-003",
-    address: "7340 Smoke Ranch Rd",
-    city: "Las Vegas",
-    state: "NV",
-    zip: "89128",
-    ownerName: "James Thompson",
-    ownerPhone: null,
-    propertyType: "Single Family",
-    estimatedValue: 340000,
-    estimatedEquity: 210000,
-    distressSignals: ["Probate", "Deferred Maintenance"],
-    priority: "high",
-    lat: 36.2012,
-    lng: -115.2534,
-  },
-  {
-    id: "prop-004",
-    address: "3015 Tropicana Ave",
-    city: "Las Vegas",
-    state: "NV",
-    zip: "89121",
-    ownerName: "Patricia Davis",
-    ownerPhone: null,
-    propertyType: "Duplex",
-    estimatedValue: 410000,
-    estimatedEquity: 195000,
-    distressSignals: ["Expired Listing", "High Equity"],
-    priority: "medium",
-    lat: 36.1011,
-    lng: -115.1182,
-  },
-  {
-    id: "prop-005",
-    address: "5601 Boulder Hwy",
-    city: "Las Vegas",
-    state: "NV",
-    zip: "89122",
-    ownerName: "Michael Johnson",
-    ownerPhone: null,
-    propertyType: "Single Family",
-    estimatedValue: 165000,
-    estimatedEquity: 112000,
-    distressSignals: ["Tax Lien", "Divorce Filing", "Vacant"],
-    priority: "critical",
-    lat: 36.1152,
-    lng: -115.0628,
-  },
-  {
-    id: "prop-006",
-    address: "920 E Desert Inn Rd",
-    city: "Las Vegas",
-    state: "NV",
-    zip: "89109",
-    ownerName: "Sandra Williams",
-    ownerPhone: null,
-    propertyType: "Single Family",
-    estimatedValue: 225000,
-    estimatedEquity: 165000,
-    distressSignals: ["Pre-Foreclosure", "Absentee Owner"],
-    priority: "critical",
-    lat: 36.1281,
-    lng: -115.1492,
-  },
-  {
-    id: "prop-007",
-    address: "2780 S Maryland Pkwy",
-    city: "Las Vegas",
-    state: "NV",
-    zip: "89109",
-    ownerName: "David Brown",
-    ownerPhone: null,
-    propertyType: "Condo",
-    estimatedValue: 155000,
-    estimatedEquity: 72000,
-    distressSignals: ["Expired Listing", "Price Reduced 3x"],
-    priority: "medium",
-    lat: 36.1367,
-    lng: -115.1379,
-  },
-  {
-    id: "prop-008",
-    address: "4102 W Flamingo Rd",
-    city: "Las Vegas",
-    state: "NV",
-    zip: "89103",
-    ownerName: "Karen Wilson",
-    ownerPhone: null,
-    propertyType: "Single Family",
-    estimatedValue: 375000,
-    estimatedEquity: 248000,
-    distressSignals: ["Probate", "Estate Sale", "Vacant"],
-    priority: "critical",
-    lat: 36.1152,
-    lng: -115.1962,
-  },
-];
+function classifyDistress(prop: any): { signals: string[]; priority: string } {
+  const signals: string[] = [];
 
-export async function scanDistressedProperties(targetZips?: string[], distressFilters?: string[], minEquity?: number): Promise<{ properties: DistressedProperty[]; source: string }> {
-  let properties = [...SAMPLE_PROPERTIES];
+  if (prop.status === 'Pre-Foreclosure' || prop.status === 'Foreclosure') signals.push('Pre-Foreclosure');
+  if (prop.listedDate) {
+    const daysOnMarket = Math.floor((Date.now() - new Date(prop.listedDate).getTime()) / 86400000);
+    if (daysOnMarket > 90) signals.push('Stale Listing (90+ days)');
+    if (daysOnMarket > 180) signals.push('Expired Listing');
+  }
+  if (prop.priceReductions && prop.priceReductions > 0) signals.push(`Price Reduced ${prop.priceReductions}x`);
+  if (prop.ownerOccupied === false) signals.push('Absentee Owner');
+  if (prop.propertyType === 'Vacant Land' || prop.lotSize > 10000) signals.push('Potential Vacant');
 
-  if (targetZips && targetZips.length > 0) {
-    properties = properties.filter(p => targetZips.includes(p.zip));
+  const estimatedEquityPct = prop.price && prop.assessedValue
+    ? ((prop.assessedValue - (prop.price * 0.7)) / prop.assessedValue)
+    : 0.3;
+  if (estimatedEquityPct > 0.5) signals.push('High Equity');
+
+  if (signals.length === 0) signals.push('Active Listing');
+
+  const criticalSignals = ['Pre-Foreclosure', 'Expired Listing'];
+  const highSignals = ['Absentee Owner', 'High Equity', 'Price Reduced'];
+  const hasCritical = signals.some(s => criticalSignals.some(cs => s.includes(cs)));
+  const hasHigh = signals.some(s => highSignals.some(hs => s.includes(hs)));
+
+  const priority = hasCritical ? 'critical' : hasHigh ? 'high' : 'medium';
+  return { signals, priority };
+}
+
+export async function scanDistressedProperties(
+  targetZips?: string[],
+  distressFilters?: string[],
+  minEquity?: number,
+): Promise<{ properties: DistressedProperty[]; source: string }> {
+  const apiKey = process.env.RENTCAST_API_KEY;
+
+  if (!apiKey) {
+    console.log("🏠 PROPERTY RADAR: No RENTCAST_API_KEY — no data available");
+    return { properties: [], source: "no_api_key" };
   }
 
-  if (distressFilters && distressFilters.length > 0) {
-    properties = properties.filter(p =>
-      p.distressSignals.some(signal =>
-        distressFilters.some(filter => signal.toLowerCase().includes(filter.toLowerCase()))
-      )
-    );
+  const zips = targetZips?.length ? targetZips : ['33901'];
+  const allProperties: DistressedProperty[] = [];
+
+  for (const zip of zips.slice(0, 5)) {
+    try {
+      console.log(`🏠 PROPERTY RADAR: Querying RentCast for zip ${zip}...`);
+      const response = await axios.get('https://api.rentcast.io/v1/listings/sale', {
+        params: {
+          zipCode: zip,
+          propertyType: 'Single Family',
+          limit: 20,
+        },
+        headers: {
+          accept: 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        timeout: 15000,
+      });
+
+      const listings = Array.isArray(response.data) ? response.data : [];
+      console.log(`🏠 PROPERTY RADAR: RentCast returned ${listings.length} listings for ${zip}`);
+
+      for (const prop of listings) {
+        const estimatedValue = prop.price || prop.assessedValue || 0;
+        const estimatedEquity = Math.round(estimatedValue * (prop.ownerOccupied === false ? 0.45 : 0.30));
+        const { signals, priority } = classifyDistress(prop);
+
+        if (minEquity && estimatedEquity < minEquity) continue;
+
+        if (distressFilters?.length) {
+          const hasMatch = signals.some(s =>
+            distressFilters.some(f => s.toLowerCase().includes(f.toLowerCase()))
+          );
+          if (!hasMatch) continue;
+        }
+
+        const fullAddress = typeof prop.addressLine1 === 'string'
+          ? prop.addressLine1
+          : `${prop.formattedAddress || prop.address || 'Unknown'}`;
+
+        allProperties.push({
+          id: `rc-${prop.id || prop.mlsId || `${zip}-${allProperties.length}`}`,
+          address: fullAddress,
+          city: prop.city || '',
+          state: prop.state || '',
+          zip: prop.zipCode || zip,
+          ownerName: prop.ownerName || 'On File',
+          ownerPhone: prop.ownerPhone || null,
+          propertyType: prop.propertyType || 'Single Family',
+          estimatedValue,
+          estimatedEquity,
+          distressSignals: signals,
+          priority,
+          lat: prop.latitude || null,
+          lng: prop.longitude || null,
+        });
+      }
+    } catch (error: any) {
+      console.error(`🏠 PROPERTY RADAR: RentCast error for zip ${zip}:`, error?.message || error);
+    }
   }
 
-  if (minEquity && minEquity > 0) {
-    properties = properties.filter(p => p.estimatedEquity >= minEquity);
-  }
-
-  const count = Math.min(properties.length, Math.floor(Math.random() * 3) + 2);
-  const shuffled = properties.sort(() => 0.5 - Math.random()).slice(0, count);
-
-  return { properties: shuffled, source: "simulated" };
+  console.log(`🏠 PROPERTY RADAR: Total ${allProperties.length} properties after filtering`);
+  return { properties: allProperties, source: "rentcast_live" };
 }
 
 export function calculateDealMetrics(estimatedValue: number, estimatedEquity: number) {
+  if (!estimatedValue || estimatedValue <= 0) {
+    return { arv: 0, maxOffer: 0, assignmentFee: 0, potentialProfit: 0, equityPercentage: 0 };
+  }
   const maxOffer = Math.round(estimatedValue * 0.7);
   const assignmentFee = Math.round(estimatedValue * 0.05);
   const potentialProfit = estimatedEquity - (estimatedValue - maxOffer);

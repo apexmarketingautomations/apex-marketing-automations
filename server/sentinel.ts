@@ -2,6 +2,7 @@ import axios from 'axios';
 
 const META_VERSION = 'v18.0';
 const LVMPD_DATA_URL = "https://services.arcgis.com/s9H9v64pX9S6X36r/arcgis/rest/services/LVMPD_Calls_For_Service/FeatureServer/0/query";
+const FHP_FEED_URL = "https://www.flhsmv.gov/fhp/traffic/live_traffic_feed.html";
 
 export interface SentinelIncidentRaw {
   id: string;
@@ -11,18 +12,21 @@ export interface SentinelIncidentRaw {
   lng: number | null;
   severity: string;
   actionRequired: boolean;
+  source: string;
+  state: string;
 }
 
-export async function processLiveSentinelFeed(): Promise<SentinelIncidentRaw[]> {
+export async function processLVMPDFeed(): Promise<SentinelIncidentRaw[]> {
   try {
     const params = {
       where: "Incident_Type_Description LIKE '%ACCIDENT%'",
       outFields: "*",
       f: "json",
-      resultRecordCount: 5,
+      resultRecordCount: 10,
       orderByFields: "Incident_Date DESC",
     };
 
+    console.log("📡 SENTINEL: Scraping LVMPD live feed...");
     const response = await axios.get(LVMPD_DATA_URL, { params, timeout: 10000 });
     const incidents = response.data?.features;
 
@@ -31,7 +35,7 @@ export async function processLiveSentinelFeed(): Promise<SentinelIncidentRaw[]> 
       return [];
     }
 
-    return incidents.map((inc: any) => {
+    const results = incidents.map((inc: any) => {
       const data = inc.attributes;
       const desc = (data.Incident_Type_Description || "").toUpperCase();
       const isHighValue = desc.includes('INJURIES') ||
@@ -50,12 +54,124 @@ export async function processLiveSentinelFeed(): Promise<SentinelIncidentRaw[]> 
         lng: data.Longitude != null ? data.Longitude : null,
         severity: isHighValue ? 'critical' : 'high',
         actionRequired: isHighValue,
+        source: "lvmpd_live",
+        state: "NV",
       };
     }).filter((x): x is SentinelIncidentRaw => x !== null);
+
+    console.log(`📡 SENTINEL: LVMPD returned ${results.length} incidents`);
+    return results;
   } catch (error: any) {
-    console.error("📡 SENTINEL SCRAPER ERROR:", error?.message || error);
+    console.error("📡 SENTINEL LVMPD ERROR:", error?.message || error);
     return [];
   }
+}
+
+function stableHash(input: string): string {
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    const chr = input.charCodeAt(i);
+    hash = ((hash << 5) - hash) + chr;
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+export async function processFloridaFHPFeed(): Promise<SentinelIncidentRaw[]> {
+  try {
+    console.log("📡 SENTINEL: Scraping Florida FHP live feed...");
+    const response = await axios.get(FHP_FEED_URL, { timeout: 15000 });
+    const html: string = response.data;
+
+    if (!html || typeof html !== 'string' || html.length < 100) {
+      console.log("📡 SENTINEL: FHP feed returned empty or invalid response");
+      return [];
+    }
+
+    const incidents: SentinelIncidentRaw[] = [];
+    const seenHashes = new Set<string>();
+
+    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    const cellRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+    let rowMatch;
+
+    while ((rowMatch = rowRegex.exec(html)) !== null) {
+      const rowContent = rowMatch[1];
+      if (rowContent.includes('<th')) continue;
+
+      const cells: string[] = [];
+      let cellMatch;
+      cellRegex.lastIndex = 0;
+
+      while ((cellMatch = cellRegex.exec(rowContent)) !== null) {
+        cells.push(cellMatch[1].replace(/<[^>]*>/g, '').trim());
+      }
+
+      if (cells.length < 3) continue;
+
+      const rawDesc = cells.join(' ').toUpperCase();
+      const isAccident = rawDesc.includes('CRASH') ||
+                         rawDesc.includes('ACCIDENT') ||
+                         rawDesc.includes('COLLISION') ||
+                         rawDesc.includes('MVA') ||
+                         rawDesc.includes('OVERTURN') ||
+                         rawDesc.includes('ROLLOVER') ||
+                         rawDesc.includes('HIT AND RUN');
+
+      if (!isAccident) continue;
+
+      const hasInjury = rawDesc.includes('INJUR') ||
+                        rawDesc.includes('FATAL') ||
+                        rawDesc.includes('ENTRAP') ||
+                        rawDesc.includes('EXTRICAT') ||
+                        rawDesc.includes('TRAUMA') ||
+                        rawDesc.includes('RESCUE');
+
+      const description = cells[2] || cells[1] || cells[0] || "Traffic Incident";
+      const location = cells[1] || cells[0] || "Florida";
+
+      const contentHash = stableHash(cells.join('|'));
+      if (seenHashes.has(contentHash)) continue;
+      seenHashes.add(contentHash);
+
+      const stableId = cells[0]
+        ? `FHP-${cells[0].replace(/[^a-zA-Z0-9]/g, '-').substring(0, 40)}`
+        : `FHP-${contentHash}`;
+
+      incidents.push({
+        id: stableId,
+        type: description.substring(0, 200),
+        location: location.substring(0, 300),
+        lat: null,
+        lng: null,
+        severity: hasInjury ? 'critical' : 'high',
+        actionRequired: hasInjury,
+        source: "fhp_live",
+        state: "FL",
+      });
+    }
+
+    console.log(`📡 SENTINEL: FHP returned ${incidents.length} incidents`);
+    return incidents;
+  } catch (error: any) {
+    console.error("📡 SENTINEL FHP ERROR:", error?.message || error);
+    return [];
+  }
+}
+
+export async function processLiveSentinelFeed(): Promise<SentinelIncidentRaw[]> {
+  const [lvmpd, fhp] = await Promise.allSettled([
+    processLVMPDFeed(),
+    processFloridaFHPFeed(),
+  ]);
+
+  const results: SentinelIncidentRaw[] = [];
+
+  if (lvmpd.status === 'fulfilled') results.push(...lvmpd.value);
+  if (fhp.status === 'fulfilled') results.push(...fhp.value);
+
+  console.log(`📡 SENTINEL: Combined ${results.length} total live incidents (LVMPD: ${lvmpd.status === 'fulfilled' ? lvmpd.value.length : 'failed'}, FHP: ${fhp.status === 'fulfilled' ? fhp.value.length : 'failed'})`);
+  return results;
 }
 
 export interface GeofenceResult {

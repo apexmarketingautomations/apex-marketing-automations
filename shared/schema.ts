@@ -286,6 +286,8 @@ export const sentinelConfig = pgTable("sentinel_config", {
   smsAlertEnabled: boolean("sms_alert_enabled").default(true),
   geofenceEnabled: boolean("geofence_enabled").default(true),
   geofenceRadiusMiles: real("geofence_radius_miles").default(1),
+  targetCities: text("target_cities").array().default([]),
+  targetStates: text("target_states").array().default([]),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 

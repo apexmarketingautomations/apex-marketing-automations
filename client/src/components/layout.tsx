@@ -4,6 +4,7 @@ import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphon
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { CommandMenu } from "@/components/command-menu";
+import { SiteAssistant } from "@/components/site-assistant";
 import { VibeSwitcher } from "@/components/vibe-switcher";
 import { useAuth } from "@/hooks/use-auth";
 import { useAccount } from "@/hooks/use-account";
@@ -28,6 +29,7 @@ const navSections = [
       { href: "/sentinel", icon: Satellite, label: "Sentinel" },
       { href: "/property-radar", icon: Building, label: "Property Radar" },
       { href: "/website-integration", icon: Globe, label: "Website Integration" },
+      { href: "/form-builder", icon: LayoutTemplate, label: "Form Builder" },
     ],
   },
   {
@@ -228,6 +230,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </main>
 
       <CommandMenu />
+      <SiteAssistant />
     </div>
   );
 }
