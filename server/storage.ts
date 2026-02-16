@@ -2,7 +2,7 @@ import { eq, desc, and, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   subAccounts, messages, workflows, trainingJobs, blueprints, savedSites, siteVersions, siteCollaborators, reviews, usageLogs, domains, owners,
-  subscriptions, snapshots, snapshotVersions, affiliates, referrals, commissions, sentinelConfig, sentinelIncidents, auditLogs,
+  subscriptions, snapshots, snapshotVersions, affiliates, referrals, commissions, sentinelConfig, sentinelIncidents, propertyLeads, wholesalerConfig, auditLogs,
   type SubAccount, type InsertSubAccount,
   type Message, type InsertMessage,
   type Workflow, type InsertWorkflow,
@@ -23,6 +23,8 @@ import {
   type Commission, type InsertCommission,
   type SentinelConfig, type InsertSentinelConfig,
   type SentinelIncident, type InsertSentinelIncident,
+  type PropertyLead, type InsertPropertyLead,
+  type WholesalerConfig, type InsertWholesalerConfig,
   type AuditLog, type InsertAuditLog,
 } from "@shared/schema";
 
@@ -119,6 +121,15 @@ export interface IStorage {
   createSentinelIncident(data: InsertSentinelIncident): Promise<SentinelIncident>;
   updateSentinelIncident(id: number, data: Partial<InsertSentinelIncident>): Promise<SentinelIncident | undefined>;
   getSentinelIncidentByHash(subAccountId: number, hash: string): Promise<SentinelIncident | undefined>;
+
+  getPropertyLeads(subAccountId: number): Promise<PropertyLead[]>;
+  getPropertyLead(id: number): Promise<PropertyLead | undefined>;
+  createPropertyLead(data: InsertPropertyLead): Promise<PropertyLead>;
+  updatePropertyLead(id: number, data: Partial<InsertPropertyLead>): Promise<PropertyLead | undefined>;
+  getPropertyLeadByHash(subAccountId: number, hash: string): Promise<PropertyLead | undefined>;
+
+  getWholesalerConfig(subAccountId: number): Promise<WholesalerConfig | undefined>;
+  upsertWholesalerConfig(data: InsertWholesalerConfig): Promise<WholesalerConfig>;
 
   createAuditLog(data: InsertAuditLog): Promise<AuditLog>;
 }
@@ -479,6 +490,45 @@ export class DatabaseStorage implements IStorage {
 
   async getSentinelIncidentByHash(subAccountId: number, hash: string) {
     const [row] = await db.select().from(sentinelIncidents).where(and(eq(sentinelIncidents.subAccountId, subAccountId), eq(sentinelIncidents.sourceHash, hash)));
+    return row;
+  }
+
+  async getPropertyLeads(subAccountId: number) {
+    return db.select().from(propertyLeads).where(eq(propertyLeads.subAccountId, subAccountId)).orderBy(desc(propertyLeads.createdAt));
+  }
+
+  async getPropertyLead(id: number) {
+    const [row] = await db.select().from(propertyLeads).where(eq(propertyLeads.id, id));
+    return row;
+  }
+
+  async createPropertyLead(data: InsertPropertyLead) {
+    const [row] = await db.insert(propertyLeads).values(data).returning();
+    return row;
+  }
+
+  async updatePropertyLead(id: number, data: Partial<InsertPropertyLead>) {
+    const [row] = await db.update(propertyLeads).set(data).where(eq(propertyLeads.id, id)).returning();
+    return row;
+  }
+
+  async getPropertyLeadByHash(subAccountId: number, hash: string) {
+    const [row] = await db.select().from(propertyLeads).where(and(eq(propertyLeads.subAccountId, subAccountId), eq(propertyLeads.sourceHash, hash)));
+    return row;
+  }
+
+  async getWholesalerConfig(subAccountId: number) {
+    const [row] = await db.select().from(wholesalerConfig).where(eq(wholesalerConfig.subAccountId, subAccountId));
+    return row;
+  }
+
+  async upsertWholesalerConfig(data: InsertWholesalerConfig) {
+    const existing = await this.getWholesalerConfig(data.subAccountId);
+    if (existing) {
+      const [row] = await db.update(wholesalerConfig).set(data).where(eq(wholesalerConfig.id, existing.id)).returning();
+      return row;
+    }
+    const [row] = await db.insert(wholesalerConfig).values(data).returning();
     return row;
   }
 

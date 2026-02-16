@@ -312,6 +312,61 @@ export const insertSentinelIncidentSchema = createInsertSchema(sentinelIncidents
 export type InsertSentinelIncident = z.infer<typeof insertSentinelIncidentSchema>;
 export type SentinelIncident = typeof sentinelIncidents.$inferSelect;
 
+// ---- Property Wholesaler (Property Radar) ----
+
+export const propertyLeads = pgTable("property_leads", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  address: text("address").notNull(),
+  city: text("city"),
+  state: text("state"),
+  zip: text("zip"),
+  ownerName: text("owner_name"),
+  ownerPhone: text("owner_phone"),
+  ownerEmail: text("owner_email"),
+  propertyType: text("property_type"),
+  bedrooms: integer("bedrooms"),
+  bathrooms: integer("bathrooms"),
+  sqft: integer("sqft"),
+  estimatedValue: integer("estimated_value"),
+  estimatedEquity: integer("estimated_equity"),
+  distressSignals: text("distress_signals").array().default([]),
+  sourceHash: text("source_hash"),
+  pipelineStage: text("pipeline_stage").default("new"),
+  priority: text("priority").default("medium"),
+  notes: text("notes"),
+  lastContactedAt: timestamp("last_contacted_at"),
+  smsSent: boolean("sms_sent").default(false),
+  called: boolean("called").default(false),
+  adDeployed: boolean("ad_deployed").default(false),
+  lat: real("lat"),
+  lng: real("lng"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertPropertyLeadSchema = createInsertSchema(propertyLeads).omit({ id: true, createdAt: true });
+export type InsertPropertyLead = z.infer<typeof insertPropertyLeadSchema>;
+export type PropertyLead = typeof propertyLeads.$inferSelect;
+
+export const wholesalerConfig = pgTable("wholesaler_config", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  targetZips: text("target_zips").array().default([]),
+  targetCities: text("target_cities").array().default([]),
+  distressFilters: text("distress_filters").array().default([]),
+  minEquity: integer("min_equity").default(30000),
+  maxArv: integer("max_arv"),
+  autoSms: boolean("auto_sms").default(false),
+  autoCall: boolean("auto_call").default(false),
+  autoAds: boolean("auto_ads").default(false),
+  smsTemplate: text("sms_template"),
+  enabled: boolean("enabled").default(true),
+});
+
+export const insertWholesalerConfigSchema = createInsertSchema(wholesalerConfig).omit({ id: true });
+export type InsertWholesalerConfig = z.infer<typeof insertWholesalerConfigSchema>;
+export type WholesalerConfig = typeof wholesalerConfig.$inferSelect;
+
 export const auditLogs = pgTable("audit_logs", {
   id: serial("id").primaryKey(),
   action: text("action").notNull(),

@@ -10,6 +10,7 @@ import path from "path";
 import fs from "fs";
 import express from "express";
 import { processLiveSentinelFeed, deployGeofenceAd } from "./sentinel";
+import { scanDistressedProperties, calculateDealMetrics } from "./property-radar";
 
 type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
@@ -3143,6 +3144,163 @@ Rules:
     ];
     res.json(mockAccidents);
   });
+
+  // ---- Property Radar (Wholesaler) Routes ----
+
+  app.get("/api/property-radar/config/:subAccountId", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const config = await storage.getWholesalerConfig(subAccountId);
+    res.json(config || { subAccountId, targetZips: [], targetCities: [], distressFilters: [], minEquity: 30000, autoSms: false, autoCall: false, autoAds: false, enabled: true });
+  }));
+
+  app.put("/api/property-radar/config/:subAccountId", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const config = await storage.upsertWholesalerConfig({ ...req.body, subAccountId });
+    res.json(config);
+  }));
+
+  app.get("/api/property-radar/leads/:subAccountId", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const leads = await storage.getPropertyLeads(subAccountId);
+    const leadsWithMetrics = leads.map(lead => ({
+      ...lead,
+      dealMetrics: calculateDealMetrics(lead.estimatedValue || 0, lead.estimatedEquity || 0),
+    }));
+    res.json(leadsWithMetrics);
+  }));
+
+  app.post("/api/property-radar/scan", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const parsed = z.object({
+      subAccountId: z.number().int().positive(),
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const config = await storage.getWholesalerConfig(parsed.data.subAccountId);
+    const { properties, source } = await scanDistressedProperties(
+      config?.targetZips || [],
+      config?.distressFilters || [],
+      config?.minEquity || 30000,
+    );
+
+    console.log(`🏠 PROPERTY RADAR: Scanned ${properties.length} distressed properties (${source})`);
+
+    const created = [];
+    for (const prop of properties) {
+      const hash = Buffer.from(`${prop.id}-${prop.address}`).toString("base64").substring(0, 64);
+      const existing = await storage.getPropertyLeadByHash(parsed.data.subAccountId, hash);
+      if (!existing) {
+        const record = await storage.createPropertyLead({
+          subAccountId: parsed.data.subAccountId,
+          address: prop.address,
+          city: prop.city,
+          state: prop.state,
+          zip: prop.zip,
+          ownerName: prop.ownerName,
+          ownerPhone: prop.ownerPhone,
+          propertyType: prop.propertyType,
+          estimatedValue: prop.estimatedValue,
+          estimatedEquity: prop.estimatedEquity,
+          distressSignals: prop.distressSignals,
+          sourceHash: hash,
+          pipelineStage: "new",
+          priority: prop.priority,
+          lat: prop.lat,
+          lng: prop.lng,
+        });
+        created.push({
+          ...record,
+          dealMetrics: calculateDealMetrics(record.estimatedValue || 0, record.estimatedEquity || 0),
+        });
+      }
+    }
+
+    await storage.createAuditLog({
+      action: "PROPERTY_RADAR_SCAN",
+      performedBy: user.id,
+      details: { subAccountId: parsed.data.subAccountId, source, found: created.length },
+    });
+
+    res.json({ source, found: created.length, leads: created });
+  }));
+
+  app.patch("/api/property-radar/leads/:id", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    const id = parseIntParam(req.params.id, "id");
+    const lead = await storage.updatePropertyLead(id, req.body);
+    if (!lead) return res.status(404).json({ error: "Lead not found" });
+    res.json({ ...lead, dealMetrics: calculateDealMetrics(lead.estimatedValue || 0, lead.estimatedEquity || 0) });
+  }));
+
+  app.post("/api/property-radar/leads/:id/sms", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const id = parseIntParam(req.params.id, "id");
+    const lead = await storage.getPropertyLead(id);
+    if (!lead) return res.status(404).json({ error: "Lead not found" });
+    if (!lead.ownerPhone) return res.status(400).json({ error: "No phone number available for this property owner." });
+
+    const account = await storage.getSubAccount(lead.subAccountId);
+    const smsBody = `Hi ${lead.ownerName}, I noticed your property at ${lead.address}. I'm a local investor and would love to make you a fair cash offer. Would you be open to a quick chat? Reply STOP to opt out.`;
+
+    const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+    const twilioToken = process.env.TWILIO_AUTH_TOKEN;
+
+    if (twilioSid && twilioToken && account?.twilioNumber) {
+      try {
+        const client = Twilio(twilioSid, twilioToken);
+        await client.messages.create({
+          body: smsBody,
+          from: account.twilioNumber,
+          to: lead.ownerPhone,
+        });
+      } catch (err: any) {
+        console.error("Property Radar SMS error:", err?.message);
+      }
+    }
+
+    await storage.updatePropertyLead(id, { smsSent: true, lastContactedAt: new Date() });
+    console.log(`🏠 PROPERTY RADAR: SMS sent to ${lead.ownerName} for ${lead.address}`);
+
+    res.json({ success: true, message: `SMS sent to ${lead.ownerName}` });
+  }));
+
+  app.post("/api/property-radar/leads/:id/deploy-ads", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const id = parseIntParam(req.params.id, "id");
+    const lead = await storage.getPropertyLead(id);
+    if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+    const geoResult = await deployGeofenceAd({
+      id: lead.id,
+      location: lead.address || "",
+      lat: lead.lat,
+      lng: lead.lng,
+      title: `Wholesaler - ${lead.address}`,
+    }, 1);
+
+    await storage.updatePropertyLead(id, { adDeployed: true });
+    console.log(`🏠 PROPERTY RADAR: Geofence ads deployed around ${lead.address}`);
+
+    res.json({
+      success: true,
+      message: `Geofence ads deployed around ${lead.address}`,
+      metaAdsStatus: geoResult.status,
+      targeting: { center: lead.address, lat: lead.lat, lng: lead.lng },
+    });
+  }));
 
   app.post("/api/sentinel/test-trigger", asyncHandler(async (req, res) => {
     // No auth required — demo endpoint for live meeting triggers
