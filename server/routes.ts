@@ -2307,7 +2307,31 @@ Rules:
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "Not authenticated" });
     const sub = await storage.getSubscription(user.id);
-    res.json(sub || { planTier: "free", status: "inactive", aiCredits: 0 });
+    if (!sub) return res.json({ planTier: "free", status: "inactive", aiCredits: 0 });
+
+    if (sub.isGrandfathered && sub.paymentStatus === "failed" && sub.paymentFailedAt) {
+      const hoursSinceFail = (Date.now() - new Date(sub.paymentFailedAt).getTime()) / (1000 * 60 * 60);
+      if (hoursSinceFail >= 72) {
+        await storage.updateSubscription(sub.id, {
+          isGrandfathered: false,
+          paymentStatus: "revoked",
+        });
+        await storage.createAuditLog({
+          action: "LEGACY_STATUS_REVOKED",
+          performedBy: user.id,
+          details: {
+            message: "72-hour grace period expired. Grandfathered pricing permanently revoked.",
+            subscriptionId: sub.id,
+            hoursSinceFail: Math.round(hoursSinceFail),
+          },
+        });
+        console.log(`[ENFORCEMENT] User ${user.id} Legacy status auto-revoked after 72hr grace period`);
+        const updated = await storage.getSubscription(user.id);
+        return res.json(updated);
+      }
+    }
+
+    res.json(sub);
   }));
 
   app.post("/api/subscription/checkout", asyncHandler(async (req, res) => {
