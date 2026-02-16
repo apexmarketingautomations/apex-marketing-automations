@@ -2322,7 +2322,7 @@ Rules:
         });
         await storage.createAuditLog({
           action: "LEGACY_STATUS_REVOKED",
-          performedBy: user.id,
+          performedBy: user?.claims?.sub || user?.id || "system",
           details: {
             message: "72-hour grace period expired. Grandfathered pricing permanently revoked.",
             subscriptionId: sub.id,
@@ -2665,7 +2665,7 @@ Rules:
 
     await storage.createAuditLog({
       action: "SNAPSHOT_FORK",
-      performedBy: user.id,
+      performedBy: user?.claims?.sub || user?.id || "system",
       details: { snapshotId: id, newAccountId: newAccount.id, businessName: parsed.data.businessName },
     });
 
@@ -2731,7 +2731,7 @@ Rules:
 
     await storage.createAuditLog({
       action: "ROLLBACK",
-      performedBy: user.id,
+      performedBy: user?.claims?.sub || user?.id || "system",
       details: { versionId: id, subAccountId: version.subAccountId, versionName: version.versionName },
     });
 
@@ -2768,7 +2768,7 @@ Rules:
 
     await storage.createAuditLog({
       action: "BULK_ROLLBACK",
-      performedBy: user.id,
+      performedBy: user?.claims?.sub || user?.id || "system",
       count: successCount,
       details: { versionId: parsed.data.versionId, totalTargeted: parsed.data.subAccountIds.length },
     });
@@ -3020,7 +3020,7 @@ Rules:
 
     await storage.createAuditLog({
       action: "SENTINEL_SCAN",
-      performedBy: user.id,
+      performedBy: user?.claims?.sub || user?.id || "system",
       details: { subAccountId: parsed.data.subAccountId, source, found: created.length },
     });
 
@@ -3060,7 +3060,7 @@ Rules:
 
     await storage.createAuditLog({
       action: "SENTINEL_GEOFENCE_DEPLOYED",
-      performedBy: user.id,
+      performedBy: user?.claims?.sub || user?.id || "system",
       details: { incidentId: id, location: incident.location, radiusMiles: radius, metaResult: geoResult },
     });
 
@@ -3116,7 +3116,7 @@ Rules:
 
     await storage.createAuditLog({
       action: "SENTINEL_SMS_ALERT",
-      performedBy: user.id,
+      performedBy: user?.claims?.sub || user?.id || "system",
       details: { incidentId: id, sentTo: account.ownerPhone },
     });
 
@@ -3225,7 +3225,7 @@ Rules:
 
     await storage.createAuditLog({
       action: "PROPERTY_RADAR_SCAN",
-      performedBy: user.id,
+      performedBy: user?.claims?.sub || user?.id || "system",
       details: { subAccountId: parsed.data.subAccountId, source, found: created.length },
     });
 

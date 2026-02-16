@@ -1,9 +1,10 @@
 import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Loader2, Briefcase, Dumbbell, Home, Stethoscope, Hammer, ArrowRight, Database, LayoutTemplate, Columns } from "lucide-react";
+import { Check, Loader2, Briefcase, Dumbbell, Home, Stethoscope, Hammer, ArrowRight, Database, LayoutTemplate, Columns, Scale, Car, Scissors, GraduationCap, UtensilsCrossed, ShieldCheck, Sparkles, Building2, Truck, Dog, Camera, Heart, Wrench, Palmtree, Landmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
 import { useLocation } from "wouter";
 import { api } from "@/lib/api";
 
@@ -12,6 +13,21 @@ const INDUSTRIES = [
   { id: "real_estate", label: "Real Estate", icon: Home, color: "text-blue-500", bg: "bg-blue-500/10" },
   { id: "dental", label: "Dental & Medical", icon: Stethoscope, color: "text-teal-500", bg: "bg-teal-500/10" },
   { id: "contractor", label: "Home Services", icon: Hammer, color: "text-amber-500", bg: "bg-amber-500/10" },
+  { id: "law_firm", label: "Law Firm", icon: Scale, color: "text-indigo-500", bg: "bg-indigo-500/10" },
+  { id: "auto_dealer", label: "Auto Dealership", icon: Car, color: "text-slate-500", bg: "bg-slate-500/10" },
+  { id: "salon", label: "Salon & Spa", icon: Scissors, color: "text-pink-500", bg: "bg-pink-500/10" },
+  { id: "education", label: "Education & Coaching", icon: GraduationCap, color: "text-violet-500", bg: "bg-violet-500/10" },
+  { id: "restaurant", label: "Restaurant & Bar", icon: UtensilsCrossed, color: "text-orange-500", bg: "bg-orange-500/10" },
+  { id: "insurance", label: "Insurance Agency", icon: ShieldCheck, color: "text-green-500", bg: "bg-green-500/10" },
+  { id: "medspa", label: "Med Spa & Aesthetics", icon: Sparkles, color: "text-fuchsia-500", bg: "bg-fuchsia-500/10" },
+  { id: "property_mgmt", label: "Property Management", icon: Building2, color: "text-cyan-500", bg: "bg-cyan-500/10" },
+  { id: "logistics", label: "Logistics & Moving", icon: Truck, color: "text-yellow-500", bg: "bg-yellow-500/10" },
+  { id: "veterinary", label: "Veterinary Clinic", icon: Dog, color: "text-emerald-500", bg: "bg-emerald-500/10" },
+  { id: "photography", label: "Photography & Video", icon: Camera, color: "text-rose-500", bg: "bg-rose-500/10" },
+  { id: "nonprofit", label: "Nonprofit & Charity", icon: Heart, color: "text-red-400", bg: "bg-red-400/10" },
+  { id: "auto_repair", label: "Auto Repair Shop", icon: Wrench, color: "text-zinc-500", bg: "bg-zinc-500/10" },
+  { id: "travel", label: "Travel & Hospitality", icon: Palmtree, color: "text-sky-500", bg: "bg-sky-500/10" },
+  { id: "financial", label: "Financial Services", icon: Landmark, color: "text-emerald-600", bg: "bg-emerald-600/10" },
 ];
 
 export default function Onboarding() {
@@ -77,17 +93,22 @@ export default function Onboarding() {
     runNextStep();
   };
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const filteredIndustries = INDUSTRIES.filter(ind =>
+    ind.label.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex flex-col items-center justify-start p-4 pt-10">
       
-      <div className="max-w-3xl w-full">
+      <div className="max-w-5xl w-full">
         {/* Header */}
-        <div className="text-center mb-12 space-y-2">
+        <div className="text-center mb-8 space-y-2">
           <div className="inline-flex items-center justify-center p-3 bg-primary/10 rounded-xl mb-4">
             <Briefcase className="h-8 w-8 text-primary" />
           </div>
           <h1 className="text-3xl font-bold tracking-tight">Account Setup</h1>
-          <p className="text-muted-foreground">Select your industry to auto-configure your CRM with AI.</p>
+          <p className="text-muted-foreground">Select your industry to auto-configure your CRM with AI-powered pipelines, templates, and automations.</p>
         </div>
 
         <AnimatePresence mode="wait">
@@ -99,17 +120,29 @@ export default function Onboarding() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="grid grid-cols-1 md:grid-cols-2 gap-4"
+              className="space-y-4"
             >
-              {INDUSTRIES.map((ind) => (
+              <div className="relative max-w-md mx-auto">
+                <ArrowRight className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground rotate-180" />
+                <Input
+                  placeholder="Search industries..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                  data-testid="input-search-industry"
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {filteredIndustries.map((ind) => (
                 <Card 
                   key={ind.id} 
                   className="cursor-pointer hover:border-primary/50 hover:shadow-md transition-all group"
                   onClick={() => startSetup(ind.id)}
+                  data-testid={`card-industry-${ind.id}`}
                 >
-                  <CardContent className="p-6 flex items-center gap-4">
-                    <div className={`p-3 rounded-lg ${ind.bg} ${ind.color} group-hover:scale-110 transition-transform`}>
-                      <ind.icon className="h-6 w-6" />
+                  <CardContent className="p-5 flex items-center gap-3">
+                    <div className={`p-2.5 rounded-lg ${ind.bg} ${ind.color} group-hover:scale-110 transition-transform`}>
+                      <ind.icon className="h-5 w-5" />
                     </div>
                     <div>
                       <h3 className="font-semibold text-lg">{ind.label}</h3>
@@ -119,6 +152,7 @@ export default function Onboarding() {
                   </CardContent>
                 </Card>
               ))}
+              </div>
             </motion.div>
           )}
 
