@@ -1,5 +1,5 @@
 import { useState, useEffect, Suspense, lazy } from "react";
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -8,6 +8,7 @@ import { Layout } from "@/components/layout";
 import { SplashScreen } from "@/components/splash-screen";
 import { Spinner } from "@/components/ui/spinner";
 import { initVibe } from "@/components/vibe-switcher";
+import { useAuth } from "@/hooks/use-auth";
 
 const SmsDashboard = lazy(() => import("@/pages/sms-dashboard"));
 const WorkflowBuilder = lazy(() => import("@/pages/workflow-builder"));
@@ -26,6 +27,8 @@ const Billing = lazy(() => import("@/pages/billing"));
 const Domains = lazy(() => import("@/pages/domains"));
 const ReviewBuffer = lazy(() => import("@/pages/review-buffer"));
 const NotFound = lazy(() => import("@/pages/not-found"));
+const Login = lazy(() => import("@/pages/login"));
+const Welcome = lazy(() => import("@/pages/welcome"));
 
 function PageLoader() {
   return (
@@ -35,34 +38,50 @@ function PageLoader() {
   );
 }
 
+function Redirect({ to }: { to: string }) {
+  const [, setLocation] = useLocation();
+  useEffect(() => { setLocation(to); }, [to, setLocation]);
+  return null;
+}
+
 function Router() {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) return <PageLoader />;
+
   return (
     <Suspense fallback={<PageLoader />}>
       <Switch>
         <Route path="/review/:subAccountId" component={ReviewBuffer} />
+        <Route path="/login" component={Login} />
+        <Route path="/welcome" component={Welcome} />
         <Route>
-          <Layout>
-            <Suspense fallback={<PageLoader />}>
-              <Switch>
-                <Route path="/" component={SmsDashboard} />
-                <Route path="/workflows" component={WorkflowBuilder} />
-                <Route path="/bot-trainer" component={BotTrainer} />
-                <Route path="/onboarding" component={Onboarding} />
-                <Route path="/site-builder" component={SiteBuilder} />
-                <Route path="/liquid" component={LiquidWebsite} />
-                <Route path="/ad-launcher" component={AdLauncher} />
-                <Route path="/voice-agent" component={VoiceAgent} />
-                <Route path="/growth" component={GrowthCenter} />
-                <Route path="/reputation" component={Reputation} />
-                <Route path="/billing" component={Billing} />
-                <Route path="/domains" component={Domains} />
-                <Route path="/god-mode" component={GodMode} />
-                <Route path="/gym" component={GymLanding} />
-                <Route path="/luxe" component={LuxeLanding} />
-                <Route component={NotFound} />
-              </Switch>
-            </Suspense>
-          </Layout>
+          {!isAuthenticated ? (
+            <Redirect to="/login" />
+          ) : (
+            <Layout>
+              <Suspense fallback={<PageLoader />}>
+                <Switch>
+                  <Route path="/" component={SmsDashboard} />
+                  <Route path="/workflows" component={WorkflowBuilder} />
+                  <Route path="/bot-trainer" component={BotTrainer} />
+                  <Route path="/onboarding" component={Onboarding} />
+                  <Route path="/site-builder" component={SiteBuilder} />
+                  <Route path="/liquid" component={LiquidWebsite} />
+                  <Route path="/ad-launcher" component={AdLauncher} />
+                  <Route path="/voice-agent" component={VoiceAgent} />
+                  <Route path="/growth" component={GrowthCenter} />
+                  <Route path="/reputation" component={Reputation} />
+                  <Route path="/billing" component={Billing} />
+                  <Route path="/domains" component={Domains} />
+                  <Route path="/god-mode" component={GodMode} />
+                  <Route path="/gym" component={GymLanding} />
+                  <Route path="/luxe" component={LuxeLanding} />
+                  <Route component={NotFound} />
+                </Switch>
+              </Suspense>
+            </Layout>
+          )}
         </Route>
       </Switch>
     </Suspense>

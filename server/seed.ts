@@ -1,7 +1,20 @@
 import { db } from "./db";
-import { subAccounts, messages, workflows, blueprints } from "@shared/schema";
+import { subAccounts, messages, workflows, blueprints, owners } from "@shared/schema";
+import crypto from "crypto";
 
 export async function seed() {
+  const existingOwners = await db.select().from(owners);
+  if (existingOwners.length === 0) {
+    const salt = crypto.randomBytes(16).toString("hex");
+    const hash = crypto.pbkdf2Sync("admin123", salt, 1000, 64, "sha512").toString("hex");
+    await db.insert(owners).values({
+      email: "admin@apex.com",
+      passwordHash: `${salt}:${hash}`,
+      name: "Apex Admin",
+    });
+    console.log("Default owner seeded: admin@apex.com / admin123");
+  }
+
   const existingAccounts = await db.select().from(subAccounts);
   if (existingAccounts.length > 0) return;
 

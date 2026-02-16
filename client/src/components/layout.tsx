@@ -1,8 +1,9 @@
 import { Link, useLocation } from "wouter";
-import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2 } from "lucide-react";
+import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut } from "lucide-react";
 import { motion } from "framer-motion";
 import { CommandMenu } from "@/components/command-menu";
 import { VibeSwitcher } from "@/components/vibe-switcher";
+import { useAuth } from "@/hooks/use-auth";
 
 const navItems = [
   { href: "/", icon: MessageSquare, label: "Unified Inbox" },
@@ -40,6 +41,7 @@ function NavLink({ href, icon: Icon, label, isActive }: { href: string; icon: an
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
+  const { user, logout } = useAuth();
 
   return (
     <div className="flex min-h-screen text-white font-sans selection:bg-indigo-500/30" style={{ backgroundColor: 'var(--vibe-bg, #030014)' }}>
@@ -77,6 +79,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
           ))}
         </div>
 
+        {user && (
+          <div className="px-2 md:px-4 mb-2">
+            <div className="flex items-center gap-2 px-3 py-2 text-xs text-slate-400">
+              <span className="hidden md:block truncate">{user.email}</span>
+            </div>
+            <button onClick={logout} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors" data-testid="button-logout">
+              <LogOut size={16} />
+              <span className="hidden md:block">Sign Out</span>
+            </button>
+          </div>
+        )}
+
         <div className="px-2 md:px-4 mb-2">
           <VibeSwitcher />
         </div>
@@ -85,7 +99,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-slate-700 to-slate-600 border border-white/10 shrink-0" />
             <div className="hidden md:block">
-              <div className="text-sm font-bold text-white">Admin User</div>
+              <div className="text-sm font-bold text-white">{user?.name || "Admin User"}</div>
               <div className="text-xs text-green-400 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
                 System Online

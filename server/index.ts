@@ -6,6 +6,8 @@ import { seed } from "./seed";
 import { runMigrations } from "stripe-replit-sync";
 import { getStripeSync } from "./stripeClient";
 import { WebhookHandlers } from "./webhookHandlers";
+import session from "express-session";
+import connectPgSimple from "connect-pg-simple";
 import path from "path";
 import fs from "fs";
 
@@ -15,6 +17,14 @@ const httpServer = createServer(app);
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
+  }
+}
+
+declare module "express-session" {
+  interface SessionData {
+    ownerId: number;
+    ownerEmail: string;
+    ownerName: string;
   }
 }
 
@@ -86,6 +96,23 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false, limit: "1mb" }));
+
+const PgSession = connectPgSimple(session);
+app.use(session({
+  store: new PgSession({
+    conString: process.env.DATABASE_URL,
+    createTableIfMissing: true,
+  }),
+  secret: process.env.SESSION_SECRET || "apex-marketing-secret-key-change-in-production",
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    httpOnly: true,
+    secure: false,
+    sameSite: "lax",
+  },
+}));
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) {

@@ -157,3 +157,15 @@ export const domains = pgTable("domains", {
 export const insertDomainSchema = createInsertSchema(domains).omit({ id: true, createdAt: true });
 export type InsertDomain = z.infer<typeof insertDomainSchema>;
 export type Domain = typeof domains.$inferSelect;
+
+export const owners = pgTable("owners", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertOwnerSchema = createInsertSchema(owners).omit({ id: true, createdAt: true });
+export type InsertOwner = z.infer<typeof insertOwnerSchema>;
+export type Owner = typeof owners.$inferSelect;

@@ -1,7 +1,7 @@
 import { eq, desc, and, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
-  subAccounts, messages, workflows, trainingJobs, blueprints, savedSites, siteVersions, siteCollaborators, reviews, usageLogs, domains,
+  subAccounts, messages, workflows, trainingJobs, blueprints, savedSites, siteVersions, siteCollaborators, reviews, usageLogs, domains, owners,
   type SubAccount, type InsertSubAccount,
   type Message, type InsertMessage,
   type Workflow, type InsertWorkflow,
@@ -13,6 +13,7 @@ import {
   type Review, type InsertReview,
   type UsageLog, type InsertUsageLog,
   type Domain, type InsertDomain,
+  type Owner, type InsertOwner,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -68,6 +69,9 @@ export interface IStorage {
   getDomainByName(name: string): Promise<Domain | undefined>;
   createDomain(data: InsertDomain): Promise<Domain>;
   updateDomain(id: number, data: Partial<InsertDomain>): Promise<Domain | undefined>;
+
+  getOwnerByEmail(email: string): Promise<Owner | undefined>;
+  createOwner(data: InsertOwner): Promise<Owner>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -274,6 +278,16 @@ export class DatabaseStorage implements IStorage {
 
   async updateDomain(id: number, data: Partial<InsertDomain>) {
     const [row] = await db.update(domains).set(data).where(eq(domains.id, id)).returning();
+    return row;
+  }
+
+  async getOwnerByEmail(email: string) {
+    const [row] = await db.select().from(owners).where(eq(owners.email, email));
+    return row;
+  }
+
+  async createOwner(data: InsertOwner) {
+    const [row] = await db.insert(owners).values(data).returning();
     return row;
   }
 }
