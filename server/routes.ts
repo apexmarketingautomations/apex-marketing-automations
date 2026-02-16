@@ -94,6 +94,7 @@ export async function registerRoutes(
     if (req.method === "GET" && fullPath.startsWith("/api/review-config/")) return next();
     if (fullPath === "/api/log-error") return next();
     if (fullPath === "/api/sms-webhook") return next();
+    if (fullPath === "/api/sentinel/test-trigger") return next();
 
     if (!req.isAuthenticated || !req.isAuthenticated()) {
       return res.status(401).json({ error: "Not authenticated" });
@@ -3090,6 +3091,59 @@ Rules:
 
     await storage.updateSentinelIncident(id, { actionStatus: "acknowledged" });
     res.json({ success: true });
+  }));
+
+  app.post("/api/sentinel/test-trigger", asyncHandler(async (req, res) => {
+    // No auth required — demo endpoint for live meeting triggers
+    const subAccountId = req.body.subAccountId || 1;
+
+    const mockAccident = {
+      title: "MVA — Entrapment (High Value)",
+      description: "Multi-vehicle accident with entrapment. Fire rescue and extrication units dispatched. Multiple injuries reported. High-value personal injury case detected.",
+      location: "Intersection of Flamingo & Las Vegas Blvd",
+      severity: "critical",
+    };
+
+    const hashInput = `demo-trigger-${mockAccident.title}-${mockAccident.location}`;
+    const hash = Buffer.from(hashInput).toString("base64").substring(0, 64);
+
+    const existing = await storage.getSentinelIncidentByHash(subAccountId, hash);
+    if (existing) {
+      await storage.updateSentinelIncident(existing.id, {
+        actionStatus: "pending",
+        geofenceDeployed: false,
+        smsSent: false,
+      });
+      return res.json({
+        ...existing,
+        actionStatus: "pending",
+        geofenceDeployed: false,
+        smsSent: false,
+        status: "Deploying Geofence Ads...",
+        time: new Date().toLocaleTimeString(),
+        demo: true,
+      });
+    }
+
+    const record = await storage.createSentinelIncident({
+      subAccountId,
+      sourceHash: hash,
+      title: mockAccident.title,
+      description: mockAccident.description,
+      location: mockAccident.location,
+      severity: mockAccident.severity,
+      rawPayload: null,
+      actionStatus: "pending",
+      smsSent: false,
+      geofenceDeployed: false,
+    });
+
+    res.json({
+      ...record,
+      status: "Deploying Geofence Ads...",
+      time: new Date().toLocaleTimeString(),
+      demo: true,
+    });
   }));
 
   return httpServer;
