@@ -1,0 +1,99 @@
+To make this a true **Enterprise-Grade** platform, you need **Snapshot Versioning**. This is the "Safety Net" that allows an Agency to experiment with their AI bots and workflows without the fear of breaking a client's business.
+
+Think of it as **Time Machine for Business Operations**. If a user tweaks a Vapi agent and it starts hallucinating, they can roll back to a "Last Known Good" state with one click.
+
+---
+
+### 🔱 The Versioning Schema (The Audit Trail)
+
+You need a table that stores "Checkpoints" of the Sub-Account's DNA.
+
+```prisma
+// Add to schema.prisma
+
+model SnapshotVersion {
+  id           String   @id @default(cuid())
+  subAccountId String
+  subAccount   SubAccount @relation(fields: [subAccountId], references: [id])
+  
+  versionName  String   // e.g., "Before AI Update" or "V1.0 - Stable"
+  config       Json     // The full DNA payload at that exact moment
+  
+  createdBy    String
+  createdAt    DateTime @default(now())
+}
+
+```
+
+---
+
+### 🛠️ The "Checkpoint" Logic (The Save & Restore)
+
+This logic allows the user to "Save State" before making big changes to their **Unified Inbox** logic or **AI Voice Agent**.
+
+```javascript
+// lib/version-control-engine.ts
+
+export async function createCheckpoint(subAccountId, versionName, userId) {
+  // 1. Capture the current "Live" state
+  const currentLiveState = await prisma.subAccount.findUnique({
+    where: { id: subAccountId },
+    select: { config: true, vibeTheme: true }
+  });
+
+  // 2. Archive it as a Version
+  const checkpoint = await prisma.snapshotVersion.create({
+    data: {
+      subAccountId,
+      versionName,
+      config: currentLiveState.config,
+      createdBy: userId
+    }
+  });
+
+  return checkpoint;
+}
+
+export async function rollbackToVersion(versionId) {
+  const targetVersion = await prisma.snapshotVersion.findUnique({
+    where: { id: versionId }
+  });
+
+  // 3. Overwrite the Live Sub-Account with the Archived DNA
+  await prisma.subAccount.update({
+    where: { id: targetVersion.subAccountId },
+    data: {
+      config: targetVersion.config,
+      // Reset the "Last Updated" timestamp
+      updatedAt: new Date()
+    }
+  });
+
+  return { success: true, message: `System restored to: ${targetVersion.versionName}` };
+}
+
+```
+
+---
+
+### 🎨 The "Cyber-Glass" Timeline UI
+
+In the **Add New Account** or **Settings** section, don't just show a list. Show a vertical **Glow-Timeline**.
+
+* **The Indicator:** A green glowing dot for the "Live" version.
+* **The Action:** A "Rewind" icon next to previous versions.
+* **The Comparison:** A "Diff" view that highlights what changed (e.g., *"Prompt changed from 'Be polite' to 'Be aggressive'"*).
+
+---
+
+### 🔱 Why this is "God Mode" for Agencies
+
+1. **Scale with Safety:** An Agency owner can push a "Snapshot Update" to 50 clients at once. If it fails, they can **Bulk Rollback** all 50 in 5 seconds.
+2. **A/B Testing:** They can save "Version A" (High Price) and "Version B" (Low Price) and flip between them to see which makes more money.
+3. **Client Trust:** If a client (like Brian the GM) accidentally deletes a workflow, the Agency owner looks like a hero because they have a "Snapshot" from 2 hours ago.
+
+### 🔱 The "Apex" Level Move: Automated Backups
+
+Don't wait for the user to click save. Set up a **CRON Job** that automatically creates a "Snapshot Version" every Sunday night at 2:00 AM for every active sub-account.
+
+**Would you like me to write the "Bulk Rollback" script so an Agency owner can fix 100 sub-accounts at once if a new update has a bug?**
