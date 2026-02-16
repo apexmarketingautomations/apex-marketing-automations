@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Clock, MessageSquare, GitFork, MoreHorizontal, Plus, PlayCircle, CheckCircle2, AlertCircle, Sparkles, Loader2, Code2 } from "lucide-react";
+import { Clock, MessageSquare, GitFork, MoreHorizontal, Plus, PlayCircle, CheckCircle2, AlertCircle, Sparkles, Loader2, Code2, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -15,16 +16,10 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
+import { apiRequest } from "@/lib/queryClient";
 import type { Workflow } from "@shared/schema";
-
-const GENERATED_STEPS = [
-  { action_type: "WAIT", params: { duration_minutes: 5 } },
-  { action_type: "SMS", params: { body: "Hey" } },
-  { action_type: "CODE", params: { language: "javascript", code: "// Check CRM for lead score\nconst score = await context.crm.getLeadScore(contact.id);\nif (score > 80) {\n  context.setVariable('priority', 'high');\n}", description: "Evaluate lead score from CRM" } },
-  { action_type: "CONDITION", params: { check: "has_replied" } },
-  { action_type: "ALERT", params: { user_id: "admin" } }
-];
 
 const DEFAULT_WORKFLOW = {
   trigger: "manual_trigger",
@@ -42,7 +37,7 @@ const StepIcon = ({ type }: { type: string }) => {
   }
 };
 
-const StepCard = ({ step, index, onClick }: { step: any, index: number, onClick: () => void }) => {
+const StepCard = ({ step, index, onClick, isSelected }: { step: any, index: number, onClick: () => void, isSelected: boolean }) => {
   const label = step.action_type;
   
   return (
@@ -55,7 +50,7 @@ const StepCard = ({ step, index, onClick }: { step: any, index: number, onClick:
       className="relative group cursor-pointer"
       onClick={onClick}
     >
-      <Card className="border-border shadow-sm hover:shadow-md transition-shadow duration-200">
+      <Card className={`border-border shadow-sm hover:shadow-md transition-shadow duration-200 ${isSelected ? 'ring-2 ring-primary' : ''}`}>
         <CardContent className="p-4 flex items-start gap-4">
           <div className={`p-2 rounded-lg bg-secondary/50 group-hover:bg-secondary transition-colors`}>
             <StepIcon type={step.action_type} />
@@ -80,7 +75,6 @@ const StepCard = ({ step, index, onClick }: { step: any, index: number, onClick:
         </CardContent>
       </Card>
       
-      {/* Connector Line */}
       <div className="absolute left-8 top-full h-8 w-0.5 bg-border -z-10 group-last:hidden" />
     </motion.div>
   );
@@ -88,9 +82,11 @@ const StepCard = ({ step, index, onClick }: { step: any, index: number, onClick:
 
 export default function WorkflowBuilder() {
   const queryClient = useQueryClient();
-  const [selectedStep, setSelectedStep] = useState<any>(null);
+  const { toast } = useToast();
+  const [selectedStepIndex, setSelectedStepIndex] = useState<number | null>(null);
   const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
-  const [prompt, setPrompt] = useState("When a lead fills the Facebook form, wait 5 mins, then SMS them 'Hey'. If they reply, alert me.");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [prompt, setPrompt] = useState("When a lead fills the Facebook form, wait 5 mins, then SMS them 'Hey {{name}}, thanks for your interest!' If they reply, alert me.");
 
   const { data: workflows = [], isLoading } = useQuery<Workflow[]>({
     queryKey: ["/api/workflows"],
@@ -100,6 +96,7 @@ export default function WorkflowBuilder() {
   const currentWorkflow = workflows.length > 0 ? workflows[0] : null;
   const displayWorkflow = currentWorkflow ?? DEFAULT_WORKFLOW;
   const steps = Array.isArray(displayWorkflow.steps) ? displayWorkflow.steps : [];
+  const selectedStep = selectedStepIndex !== null ? steps[selectedStepIndex] : null;
 
   const createMutation = useMutation({
     mutationFn: (data: { name: string; trigger: string; steps: any; subAccountId?: number | null }) =>
@@ -118,13 +115,27 @@ export default function WorkflowBuilder() {
   });
 
   const handleGenerate = async () => {
-    await createMutation.mutateAsync({
-      name: "AI Generated",
-      trigger: "facebook_form_submit",
-      steps: GENERATED_STEPS,
-    });
-    setIsAiDialogOpen(false);
-    setSelectedStep(null);
+    if (!prompt.trim()) return;
+    setIsGenerating(true);
+    try {
+      const res = await apiRequest("POST", "/api/workflows/generate", { prompt });
+      const wf = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/workflows"] });
+      setIsAiDialogOpen(false);
+      setSelectedStepIndex(null);
+      toast({
+        title: "Workflow generated",
+        description: `"${wf.name}" created with ${Array.isArray(wf.steps) ? wf.steps.length : 0} steps by AI.`,
+      });
+    } catch (err: any) {
+      toast({
+        variant: "destructive",
+        title: "Generation failed",
+        description: err.message || "Could not generate workflow. Try again.",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handlePublish = () => {
@@ -137,6 +148,7 @@ export default function WorkflowBuilder() {
         steps: currentWorkflow.steps,
       },
     });
+    toast({ title: "Workflow saved", description: "Your workflow has been published." });
   };
 
   const handleDiscard = () => {
@@ -145,7 +157,7 @@ export default function WorkflowBuilder() {
       trigger: "manual_trigger",
       steps: [],
     });
-    setSelectedStep(null);
+    setSelectedStepIndex(null);
   };
 
   const handleAddStep = (type: string) => {
@@ -173,6 +185,26 @@ export default function WorkflowBuilder() {
         steps: [newStep],
       });
     }
+  };
+
+  const handleUpdateStep = (index: number, updatedStep: any) => {
+    if (!currentWorkflow) return;
+    const newSteps = [...steps];
+    newSteps[index] = updatedStep;
+    updateMutation.mutate({
+      id: currentWorkflow.id,
+      data: { steps: newSteps },
+    });
+  };
+
+  const handleDeleteStep = (index: number) => {
+    if (!currentWorkflow) return;
+    const newSteps = steps.filter((_: any, i: number) => i !== index);
+    updateMutation.mutate({
+      id: currentWorkflow.id,
+      data: { steps: newSteps },
+    });
+    setSelectedStepIndex(null);
   };
 
   if (isLoading) {
@@ -207,7 +239,7 @@ export default function WorkflowBuilder() {
                   Generate Workflow
                 </DialogTitle>
                 <DialogDescription>
-                  Describe your automation in plain English, and our AI will build the workflow structure for you.
+                  Describe your automation in plain English. AI will build a real workflow with smart steps.
                 </DialogDescription>
               </DialogHeader>
               <div className="py-4">
@@ -221,11 +253,11 @@ export default function WorkflowBuilder() {
               </div>
               <DialogFooter>
                 <Button variant="secondary" onClick={() => setIsAiDialogOpen(false)}>Cancel</Button>
-                <Button data-testid="button-generate-submit" onClick={handleGenerate} disabled={createMutation.isPending || !prompt.trim()}>
-                  {createMutation.isPending ? (
+                <Button data-testid="button-generate-submit" onClick={handleGenerate} disabled={isGenerating || !prompt.trim()}>
+                  {isGenerating ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Generating Plan...
+                      AI is building...
                     </>
                   ) : (
                     <>
@@ -252,10 +284,8 @@ export default function WorkflowBuilder() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* Canvas Area */}
         <div className="lg:col-span-2 space-y-8">
           
-          {/* Trigger Block */}
           <div className="flex justify-center mb-8">
             <div className="bg-foreground text-background px-6 py-3 rounded-full text-sm font-medium shadow-lg flex items-center gap-2 animate-in zoom-in duration-300">
               <PlayCircle className="h-4 w-4" />
@@ -263,18 +293,17 @@ export default function WorkflowBuilder() {
             </div>
           </div>
           
-          {/* Steps Flow */}
           <div className="space-y-4 max-w-md mx-auto relative pb-20">
-            {/* Connecting line for the whole flow background */}
             <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-border/50 -z-20" />
 
             <AnimatePresence mode="popLayout">
               {steps.map((step: any, index: number) => (
                 <StepCard 
-                  key={index} 
+                  key={`${index}-${step.action_type}`} 
                   step={step} 
                   index={index}
-                  onClick={() => setSelectedStep(step)} 
+                  isSelected={selectedStepIndex === index}
+                  onClick={() => setSelectedStepIndex(index)} 
                 />
               ))}
             </AnimatePresence>
@@ -285,7 +314,6 @@ export default function WorkflowBuilder() {
               </div>
             )}
 
-            {/* Add Step Buttons */}
             <div className="flex justify-center pt-4">
               <div className="flex flex-wrap gap-2 justify-center">
                 {[
@@ -312,80 +340,114 @@ export default function WorkflowBuilder() {
           </div>
         </div>
 
-        {/* Inspector Panel */}
         <div className="lg:col-span-1">
           <Card className="sticky top-6 border-border h-[calc(100vh-8rem)]">
-            <CardContent className="p-6 h-full flex flex-col">
-              {selectedStep ? (
-                <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300" key={JSON.stringify(selectedStep)}>
+            <CardContent className="p-6 h-full flex flex-col overflow-y-auto">
+              {selectedStep && selectedStepIndex !== null ? (
+                <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300" key={selectedStepIndex}>
                   <div className="flex items-center gap-3 border-b border-border pb-4">
                     <div className="p-2 bg-secondary rounded-md">
                       <StepIcon type={selectedStep.action_type} />
                     </div>
-                    <div>
+                    <div className="flex-1">
                       <h3 className="font-semibold text-lg">{selectedStep.action_type} Step</h3>
                     </div>
+                    <Button
+                      data-testid="button-delete-step"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
+                      onClick={() => handleDeleteStep(selectedStepIndex)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
 
                   <div className="space-y-4">
                     {selectedStep.action_type === "WAIT" && (
                       <div className="space-y-2">
                         <label className="text-sm font-medium">Duration (Minutes)</label>
-                        <div className="flex items-center gap-2 p-3 border border-border rounded-md bg-muted/20">
-                          <Clock className="h-4 w-4 text-muted-foreground" />
-                          <span className="font-mono text-sm">{selectedStep.params.duration_minutes}</span>
-                        </div>
+                        <Input
+                          data-testid="input-wait-duration"
+                          type="number"
+                          min={1}
+                          value={selectedStep.params.duration_minutes}
+                          onChange={(e) => {
+                            const updated = { ...selectedStep, params: { ...selectedStep.params, duration_minutes: parseInt(e.target.value) || 1 } };
+                            handleUpdateStep(selectedStepIndex, updated);
+                          }}
+                        />
                       </div>
                     )}
 
                     {selectedStep.action_type === "SMS" && (
                       <div className="space-y-2">
-                         <label className="text-sm font-medium">Message Body</label>
-                         <div className="p-3 border border-border rounded-md bg-muted/20 min-h-[100px] text-sm">
-                           {selectedStep.params.body}
-                         </div>
+                        <label className="text-sm font-medium">Message Body</label>
+                        <Textarea
+                          data-testid="input-sms-body"
+                          value={selectedStep.params.body}
+                          className="min-h-[100px]"
+                          onChange={(e) => {
+                            const updated = { ...selectedStep, params: { ...selectedStep.params, body: e.target.value } };
+                            handleUpdateStep(selectedStepIndex, updated);
+                          }}
+                        />
                       </div>
                     )}
 
                     {selectedStep.action_type === "CONDITION" && (
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Condition Check</label>
-                          <div className="p-2 border border-border rounded bg-muted/20 text-sm font-mono">{selectedStep.params.check}</div>
-                        </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Condition Check</label>
+                        <Input
+                          data-testid="input-condition-check"
+                          value={selectedStep.params.check}
+                          onChange={(e) => {
+                            const updated = { ...selectedStep, params: { ...selectedStep.params, check: e.target.value } };
+                            handleUpdateStep(selectedStepIndex, updated);
+                          }}
+                        />
                       </div>
                     )}
 
                     {selectedStep.action_type === "ALERT" && (
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">User ID</label>
-                          <div className="p-2 border border-border rounded bg-muted/20 text-sm font-mono">{selectedStep.params.user_id}</div>
-                        </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">User ID</label>
+                        <Input
+                          data-testid="input-alert-user"
+                          value={selectedStep.params.user_id}
+                          onChange={(e) => {
+                            const updated = { ...selectedStep, params: { ...selectedStep.params, user_id: e.target.value } };
+                            handleUpdateStep(selectedStepIndex, updated);
+                          }}
+                        />
                       </div>
                     )}
 
                     {selectedStep.action_type === "CODE" && (
                       <div className="space-y-4">
                         <div className="space-y-2">
-                          <label className="text-sm font-medium">Language</label>
-                          <div className="p-2 border border-border rounded bg-muted/20 text-sm font-mono flex items-center gap-2">
-                            <Code2 className="h-4 w-4 text-emerald-500" />
-                            {selectedStep.params.language || "javascript"}
-                          </div>
+                          <label className="text-sm font-medium">Description</label>
+                          <Input
+                            data-testid="input-code-desc"
+                            value={selectedStep.params.description || ""}
+                            onChange={(e) => {
+                              const updated = { ...selectedStep, params: { ...selectedStep.params, description: e.target.value } };
+                              handleUpdateStep(selectedStepIndex, updated);
+                            }}
+                          />
                         </div>
                         <div className="space-y-2">
                           <label className="text-sm font-medium">Code</label>
-                          <pre className="p-3 border border-border rounded-md bg-slate-950 text-emerald-400 text-xs font-mono overflow-x-auto min-h-[200px] whitespace-pre-wrap">
-                            {selectedStep.params.code || "// No code written yet"}
-                          </pre>
+                          <Textarea
+                            data-testid="input-code-editor"
+                            value={selectedStep.params.code || ""}
+                            className="min-h-[200px] font-mono text-xs bg-slate-950 text-emerald-400 border-slate-800"
+                            onChange={(e) => {
+                              const updated = { ...selectedStep, params: { ...selectedStep.params, code: e.target.value } };
+                              handleUpdateStep(selectedStepIndex, updated);
+                            }}
+                          />
                         </div>
-                        {selectedStep.params.description && (
-                          <div className="space-y-2">
-                            <label className="text-sm font-medium">Description</label>
-                            <p className="text-sm text-muted-foreground">{selectedStep.params.description}</p>
-                          </div>
-                        )}
                       </div>
                     )}
                   </div>
@@ -404,7 +466,7 @@ export default function WorkflowBuilder() {
                   </div>
                   <div>
                     <h3 className="font-semibold text-foreground">No Step Selected</h3>
-                    <p className="text-sm mt-1">Click on a step in the workflow<br/>to view its properties.</p>
+                    <p className="text-sm mt-1">Click on a step in the workflow<br/>to view and edit its properties.</p>
                   </div>
                 </div>
               )}

@@ -21,33 +21,22 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
+import { apiRequest } from "@/lib/queryClient";
 
-const KNOWLEDGE_CHUNKS = [
-  { id: 1, text: "Forge Fitness is open 24/7 for members. Staffed hours are 8am-8pm daily.", score: 0.92 },
-  { id: 2, text: "First class is always free. Just bring a valid ID and a towel.", score: 0.88 },
-  { id: 3, text: "Personal training packages start at $400/mo for 4 sessions.", score: 0.85 }
-];
+const DEFAULT_PERSONA = `You are a friendly, knowledgeable assistant for a premium fitness studio called Forge Fitness.
 
-const CHAT_SCENARIOS = {
-  "availability": {
-    user: "Do you have any openings for a PT session tomorrow afternoon?",
-    rag_context: "Staffed hours are 8am-8pm daily. PT sessions available by appointment.",
-    tool_call: { name: "check_calendar_availability", args: { date: "2026-02-11", time: "afternoon" } },
-    bot_response: "I checked our calendar. We have a 4:00 PM and a 5:30 PM slot available tomorrow with Coach Mike. Would you like to grab one?"
-  },
-  "pricing": {
-    user: "How much is the unlimited membership?",
-    rag_context: "Unlimited membership is $150/mo. Drop-in is $20.",
-    tool_call: null,
-    bot_response: "Our Unlimited membership is $150/month, which gives you 24/7 access and all classes. We also have a drop-in rate of $20 if you just want to try it out!"
-  }
-};
+You can help with:
+- Answering questions about membership plans, pricing, and class schedules
+- Booking appointments and consultations
+- Providing information about trainers and facilities
 
-const DEFAULT_PERSONA = `You are chatting on Instagram.
-CONTEXT: The user just replied to a story about 'Our new 6-week weight loss challenge'.
-GOAL: Pivot the conversation to booking an appointment.`;
+You have access to these tools:
+- check_calendar_availability: Check available appointment slots
+- book_appointment: Book an appointment for a client
 
+Keep responses concise (1-3 sentences). Be warm, professional, and always try to guide the conversation toward booking.`;
 
 export default function BotTrainer() {
   const [url, setUrl] = useState("https://forge-fitness.com");
@@ -56,12 +45,11 @@ export default function BotTrainer() {
   const [trainingProgress, setTrainingProgress] = useState(0);
   const [logs, setLogs] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState("train");
+  const { toast } = useToast();
   
   const [chatInput, setChatInput] = useState("");
-  const [chatHistory, setChatHistory] = useState<any[]>([]);
+  const [chatHistory, setChatHistory] = useState<{role: string; content: string}[]>([]);
   const [isTyping, setIsTyping] = useState(false);
-  const [currentTool, setCurrentTool] = useState<any>(null);
-  const [ragContext, setRagContext] = useState<any[]>([]);
 
   const handleTrain = async () => {
     setIsTraining(true);
@@ -87,17 +75,21 @@ export default function BotTrainer() {
             clearInterval(interval);
             setIsTraining(false);
             setTrainingProgress(100);
+            toast({
+              title: "Training complete",
+              description: "Your bot is ready to test. Switch to the Test Agent tab.",
+            });
             setTimeout(() => setActiveTab("test"), 1000);
           }
         } catch (pollError) {
           clearInterval(interval);
-          setLogs(prev => [...prev, "❌ Error polling training status"]);
+          setLogs(prev => [...prev, "Error polling training status"]);
           setIsTraining(false);
         }
       }, 1500);
 
     } catch (error) {
-        setLogs(prev => [...prev, "❌ Error connecting to Training Engine"]);
+        setLogs(prev => [...prev, "Error connecting to Training Engine"]);
         setIsTraining(false);
     }
   };
@@ -109,33 +101,30 @@ export default function BotTrainer() {
     setChatInput("");
     setChatHistory(prev => [...prev, { role: "user", content: userMsg }]);
     setIsTyping(true);
-    setRagContext([]);
-    setCurrentTool(null);
 
-    await new Promise(r => setTimeout(r, 600));
-
-    const scenario = userMsg.toLowerCase().includes("open") || userMsg.toLowerCase().includes("tomorrow") 
-      ? CHAT_SCENARIOS.availability 
-      : CHAT_SCENARIOS.pricing;
-
-    setRagContext(KNOWLEDGE_CHUNKS);
-    await new Promise(r => setTimeout(r, 800));
-
-    if (scenario.tool_call) {
-      setCurrentTool(scenario.tool_call);
-      await new Promise(r => setTimeout(r, 1200));
-      setCurrentTool((prev: any) => ({ ...prev, status: "success", result: "Available: 4:00 PM, 5:30 PM" }));
-      await new Promise(r => setTimeout(r, 800));
+    try {
+      const res = await apiRequest("POST", "/api/bot/chat", {
+        message: userMsg,
+        persona,
+        conversationHistory: chatHistory,
+      });
+      const data = await res.json();
+      setChatHistory(prev => [...prev, { role: "assistant", content: data.reply }]);
+    } catch (err: any) {
+      setChatHistory(prev => [...prev, { role: "assistant", content: "Sorry, I'm having trouble connecting right now. Please try again." }]);
+      toast({
+        variant: "destructive",
+        title: "Chat error",
+        description: err.message || "Failed to get AI response",
+      });
+    } finally {
+      setIsTyping(false);
     }
-
-    setIsTyping(false);
-    setChatHistory(prev => [...prev, { role: "assistant", content: scenario.bot_response }]);
   };
 
   return (
     <div className="p-6 md:p-10 max-w-6xl mx-auto space-y-8">
       
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-3">
@@ -143,7 +132,7 @@ export default function BotTrainer() {
             AI Bot Trainer
           </h1>
           <p className="text-muted-foreground mt-1">
-            Scrape your website, train the RAG knowledge base, and test the agent.
+            Train your AI agent with a knowledge base, then test it with real conversations.
           </p>
         </div>
       </div>
@@ -151,14 +140,12 @@ export default function BotTrainer() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="grid w-full max-w-md grid-cols-2">
           <TabsTrigger value="train">1. Train Knowledge Base</TabsTrigger>
-          <TabsTrigger value="test" disabled={logs.length === 0}>2. Test Agent</TabsTrigger>
+          <TabsTrigger value="test">2. Test Agent</TabsTrigger>
         </TabsList>
 
-        {/* TAB 1: TRAIN */}
         <TabsContent value="train" className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             
-            {/* Input Card */}
             <div className="space-y-8">
               <Card>
                 <CardHeader>
@@ -170,6 +157,7 @@ export default function BotTrainer() {
                     <div className="relative flex-1">
                       <Globe className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                       <Input 
+                        data-testid="input-training-url"
                         value={url} 
                         onChange={(e) => setUrl(e.target.value)} 
                         className="pl-9" 
@@ -193,8 +181,8 @@ export default function BotTrainer() {
                         <span className="font-mono">200 chars</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Embedding Model:</span>
-                        <span className="font-mono text-indigo-500">text-embedding-3-small</span>
+                        <span className="text-muted-foreground">Model:</span>
+                        <span className="font-mono text-indigo-500">GPT-4o</span>
                       </div>
                     </div>
                   </div>
@@ -208,14 +196,15 @@ export default function BotTrainer() {
                 </CardHeader>
                 <CardContent>
                   <Textarea 
+                    data-testid="input-bot-persona"
                     value={persona}
                     onChange={(e) => setPersona(e.target.value)}
-                    className="min-h-[100px] font-mono text-sm"
+                    className="min-h-[150px] font-mono text-sm"
                     placeholder="Enter system prompt..."
                   />
                 </CardContent>
                 <CardFooter>
-                  <Button onClick={handleTrain} disabled={isTraining} className="w-full bg-indigo-600 hover:bg-indigo-700">
+                  <Button data-testid="button-start-training" onClick={handleTrain} disabled={isTraining} className="w-full bg-indigo-600 hover:bg-indigo-700">
                     {isTraining ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
                     {isTraining ? "Training..." : "Start Training"}
                   </Button>
@@ -223,7 +212,6 @@ export default function BotTrainer() {
               </Card>
             </div>
 
-            {/* Logs Output */}
             <Card className="bg-slate-950 border-slate-800 text-slate-50 flex flex-col h-full min-h-[500px]">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-mono text-slate-400">Terminal Output</CardTitle>
@@ -260,11 +248,9 @@ export default function BotTrainer() {
           </div>
         </TabsContent>
 
-        {/* TAB 2: TEST */}
         <TabsContent value="test" className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-[600px]">
             
-            {/* Left: Chat Interface */}
             <Card className="lg:col-span-2 flex flex-col shadow-lg border-indigo-100 dark:border-indigo-900/20">
               <CardHeader className="border-b bg-muted/20 pb-4">
                 <div className="flex items-center gap-3">
@@ -275,7 +261,7 @@ export default function BotTrainer() {
                     <CardTitle className="text-base">Agent Preview</CardTitle>
                     <CardDescription className="flex items-center gap-1.5">
                       <span className="h-2 w-2 rounded-full bg-green-500" />
-                      Online • Using Knowledge Base
+                      Online — Powered by GPT-4o
                     </CardDescription>
                   </div>
                 </div>
@@ -285,7 +271,9 @@ export default function BotTrainer() {
                 <div className="space-y-6">
                   {chatHistory.length === 0 && (
                     <div className="text-center text-muted-foreground py-10">
-                      <p>Ask me about membership prices or availability!</p>
+                      <Bot className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                      <p className="font-medium">Start a conversation</p>
+                      <p className="text-sm mt-1">Messages are powered by real AI using your persona prompt above.</p>
                     </div>
                   )}
                   
@@ -306,12 +294,11 @@ export default function BotTrainer() {
                     </motion.div>
                   ))}
 
-                  {/* Typing / Thinking Indicator */}
                   {isTyping && (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
                       <div className="bg-white dark:bg-slate-800 border border-border rounded-2xl rounded-bl-none px-4 py-3 flex items-center gap-2 shadow-sm">
                         <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />
-                        <span className="text-xs text-muted-foreground">Thinking...</span>
+                        <span className="text-xs text-muted-foreground">AI is thinking...</span>
                       </div>
                     </motion.div>
                   )}
@@ -324,110 +311,76 @@ export default function BotTrainer() {
                   className="flex gap-2"
                 >
                   <Input 
+                    data-testid="input-bot-chat"
                     placeholder="Type a message..." 
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     className="flex-1"
                   />
-                  <Button type="submit" disabled={!chatInput.trim() || isTyping}>
+                  <Button data-testid="button-bot-send" type="submit" disabled={!chatInput.trim() || isTyping}>
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </form>
               </div>
             </Card>
 
-            {/* Right: Debugger Panel */}
             <Card className="bg-slate-50 dark:bg-slate-900 border-l-4 border-l-indigo-500 overflow-hidden flex flex-col">
               <CardHeader className="bg-muted/30 pb-3">
                 <CardTitle className="text-sm font-bold uppercase tracking-wider flex items-center gap-2">
                   <BrainCircuit className="h-4 w-4 text-indigo-500" />
-                  Live Debugger
+                  Agent Config
                 </CardTitle>
               </CardHeader>
               <CardContent className="flex-1 overflow-y-auto p-0">
                 <div className="p-4 space-y-6">
 
-                  {/* System Prompt Section */}
-                   <div className="space-y-2">
+                  <div className="space-y-2">
                     <h4 className="text-xs font-semibold text-muted-foreground uppercase flex items-center gap-2">
                       <Bot className="h-3 w-3" />
                       System Prompt
                     </h4>
-                    <div className="bg-slate-950 text-slate-300 p-2 rounded text-[10px] font-mono border border-slate-800">
-                      {`{"role": "system", "content": "${persona}\\n\\nAnswer using this knowledge:\\n..."}`}
+                    <div className="bg-slate-950 text-slate-300 p-3 rounded text-[10px] font-mono border border-slate-800 max-h-[200px] overflow-y-auto">
+                      {persona}
                     </div>
                   </div>
 
                   <Separator />
                   
-                  {/* RAG Section */}
                   <div className="space-y-2">
                     <h4 className="text-xs font-semibold text-muted-foreground uppercase flex items-center gap-2">
                       <Database className="h-3 w-3" />
-                      Retrieved Context (RAG)
+                      Model Info
                     </h4>
-                    {ragContext.length > 0 ? (
-                      <div className="space-y-2">
-                        {ragContext.map((chunk) => (
-                          <motion.div 
-                            key={chunk.id}
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            className="bg-white dark:bg-black border border-indigo-100 dark:border-indigo-900/30 p-2 rounded text-xs shadow-sm"
-                          >
-                            <div className="flex justify-between mb-1">
-                              <Badge variant="outline" className="text-[10px] py-0 h-4 border-indigo-200 text-indigo-600">
-                                Chunk #{chunk.id}
-                              </Badge>
-                              <span className="text-[10px] text-green-600 font-mono">{(chunk.score * 100).toFixed(0)}% Match</span>
-                            </div>
-                            <p className="line-clamp-3 text-muted-foreground">{chunk.text}</p>
-                          </motion.div>
-                        ))}
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between p-2 bg-white dark:bg-black border rounded">
+                        <span className="text-muted-foreground">Model</span>
+                        <Badge variant="outline" className="text-[10px]">GPT-4o</Badge>
                       </div>
-                    ) : (
-                      <div className="text-xs text-muted-foreground italic p-2 border border-dashed rounded">
-                        Waiting for query...
+                      <div className="flex justify-between p-2 bg-white dark:bg-black border rounded">
+                        <span className="text-muted-foreground">Temperature</span>
+                        <span className="font-mono">0.7</span>
                       </div>
-                    )}
+                      <div className="flex justify-between p-2 bg-white dark:bg-black border rounded">
+                        <span className="text-muted-foreground">Max Tokens</span>
+                        <span className="font-mono">300</span>
+                      </div>
+                      <div className="flex justify-between p-2 bg-white dark:bg-black border rounded">
+                        <span className="text-muted-foreground">Messages</span>
+                        <span className="font-mono">{chatHistory.length}</span>
+                      </div>
+                    </div>
                   </div>
 
                   <Separator />
 
-                  {/* Tools Section */}
                   <div className="space-y-2">
                     <h4 className="text-xs font-semibold text-muted-foreground uppercase flex items-center gap-2">
                       <Calendar className="h-3 w-3" />
-                      Tool Execution
+                      Usage
                     </h4>
-                    {currentTool ? (
-                      <motion.div 
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="bg-slate-950 text-slate-50 p-3 rounded-md font-mono text-[10px] space-y-2"
-                      >
-                        <div className="flex items-center gap-2 text-yellow-400">
-                          <Loader2 className={`h-3 w-3 ${!currentTool.result ? 'animate-spin' : ''}`} />
-                          <span>function_call: {currentTool.name}</span>
-                        </div>
-                        <div className="pl-4 border-l border-slate-700 text-slate-400">
-                          {JSON.stringify(currentTool.args, null, 2)}
-                        </div>
-                        {currentTool.result && (
-                          <motion.div 
-                            initial={{ opacity: 0 }} 
-                            animate={{ opacity: 1 }}
-                            className="text-green-400 pt-2 border-t border-slate-800 mt-2"
-                          >
-                            ◄ return: {currentTool.result}
-                          </motion.div>
-                        )}
-                      </motion.div>
-                    ) : (
-                      <div className="text-xs text-muted-foreground italic p-2 border border-dashed rounded">
-                        No tools called
-                      </div>
-                    )}
+                    <div className="text-xs text-muted-foreground p-2 border rounded bg-white dark:bg-black">
+                      Each message costs ~$0.10 and is logged to your billing dashboard.
+                    </div>
                   </div>
 
                 </div>

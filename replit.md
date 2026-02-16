@@ -37,7 +37,7 @@ The frontend lives in `client/src/`. Pages are in `client/src/pages/`, reusable 
 
 Key server files:
 - `server/index.ts` - Express app setup, middleware, logging
-- `server/routes.ts` - All API route definitions (accounts, messages, workflows, training jobs, blueprints, onboarding)
+- `server/routes.ts` - All API route definitions (accounts, messages, workflows, training jobs, blueprints, onboarding, AI generation, Twilio SMS, usage billing)
 - `server/storage.ts` - Data access layer with `IStorage` interface and `DatabaseStorage` implementation
 - `server/db.ts` - Database connection pool setup
 - `server/seed.ts` - Seeds initial demo data on first run
@@ -70,8 +70,9 @@ The `shared/` directory contains code used by both frontend and backend:
 
 ### API Routes
 - `GET/POST /api/accounts` - Sub-account CRUD
-- `GET /api/messages/:subAccountId` | `POST /api/messages` - Messaging
-- `GET/POST /api/workflows` | `GET/PATCH /api/workflows/:id` - Workflow management
+- `GET /api/messages/:subAccountId` | `POST /api/messages` | `POST /api/messages/send` - Messaging (send endpoint uses real Twilio SMS + auto-logs usage)
+- `GET/POST /api/workflows` | `GET/PATCH /api/workflows/:id` | `POST /api/workflows/generate` - Workflow management (generate uses real OpenAI GPT-4o)
+- `POST /api/bot/chat` - Real OpenAI chat with custom persona + conversation history (auto-logs usage)
 - `POST /api/bots/train` | `GET /api/jobs/:id` - Bot training jobs
 - `GET /api/blueprints/:industryId` - Industry blueprints
 - `POST /api/onboard` - Full onboarding flow (creates account + returns blueprint)
@@ -108,8 +109,9 @@ The `shared/` directory contains code used by both frontend and backend:
 ### Database
 - **PostgreSQL** - Primary data store, connected via `DATABASE_URL` environment variable using `pg` (node-postgres) connection pool
 
-### AI/ML (Referenced but may need implementation)
-- **OpenAI API** - Referenced in attached assets for GPT-4o chat completions with function calling (calendar booking tools)
+### AI/ML
+- **OpenAI API** - GPT-4o used for: site generation, ad campaign generation, bot chat, workflow AI generation, voice persona generation, chat widget. All calls auto-log usage to billing dashboard.
+- **DALL-E 3** - Used for ad creative image generation with auto usage logging
 - **RAG Pipeline** - Architecture references pgvector for similarity search on knowledge base chunks
 
 ### Communication Services

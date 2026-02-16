@@ -85,19 +85,7 @@ export default function SmsDashboard() {
     ...localMessages.filter(lm => lm.subAccountId === numericAccountId),
   ];
 
-  const sendMutation = useMutation({
-    mutationFn: (data: {
-      subAccountId: number;
-      contactPhone: string;
-      body: string;
-      channel: string;
-      direction: string;
-      status: string;
-    }) => api.sendMessage(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/messages", numericAccountId] });
-    },
-  });
+  const [isSendingMsg, setIsSendingMsg] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -147,31 +135,43 @@ export default function SmsDashboard() {
   }, [allMessages.length]);
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
+    setIsSendingMsg(true);
     try {
-      await sendMutation.mutateAsync({
-        subAccountId: Number(values.subAccountId),
-        contactPhone: values.contactPhone,
-        body: values.messageBody,
-        channel: values.channel,
-        direction: "outbound",
-        status: "sent",
+      const res = await fetch("/api/messages/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          subAccountId: Number(values.subAccountId),
+          contactPhone: values.contactPhone,
+          body: values.messageBody,
+          channel: values.channel,
+          direction: "outbound",
+          status: "sent",
+        }),
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Send failed");
+      
+      queryClient.invalidateQueries({ queryKey: ["/api/messages", numericAccountId] });
       form.resetField("messageBody");
       toast({
-        title: "Message sent",
-        description: `Your ${values.channel === 'instagram' ? 'DM' : 'SMS'} has been sent via ${values.channel === 'instagram' ? 'Meta Graph API' : 'Twilio'}.`,
+        title: "Message sent via Twilio",
+        description: `SMS delivered to ${values.contactPhone}. Status: ${data.status || "sent"}.`,
       });
-    } catch (error) {
+    } catch (error: any) {
       toast({
         variant: "destructive",
-        title: "Error",
-        description: "Failed to send message. Please try again.",
+        title: "Send failed",
+        description: error.message || "Failed to send message. Check Twilio config.",
       });
+    } finally {
+      setIsSendingMsg(false);
     }
   }
 
   const isLoading = accountsLoading || messagesLoading;
-  const isSending = sendMutation.isPending;
+  const isSending = isSendingMsg;
 
   return (
     <div className="p-4 md:p-8 font-sans">

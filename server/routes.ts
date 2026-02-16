@@ -69,6 +69,32 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  function getTwilioClient() {
+    const sid = process.env.TWILIO_ACCOUNT_SID;
+    const token = process.env.TWILIO_AUTH_TOKEN;
+    if (!sid || !token) return null;
+    return Twilio(sid, token);
+  }
+
+  async function logUsageInternal(subAccountId: number | null, type: string, amount: number, description: string) {
+    const MARKUP_RATES_INT: Record<string, number> = {
+      SMS_SEGMENT: 2.0, VOICE_MINUTE: 1.5, AI_IMAGE_GEN: 0.50, AI_CHAT: 0.10, DOMAIN_PURCHASE: 0,
+    };
+    const rate = MARKUP_RATES_INT[type] ?? 0;
+    const cost = (type === "AI_IMAGE_GEN" || type === "AI_CHAT") ? rate : amount * rate;
+    try {
+      await storage.createUsageLog({
+        subAccountId: subAccountId ?? 1,
+        type,
+        amount,
+        cost,
+        description: description || null,
+      });
+    } catch (e) {
+      console.log("[USAGE] Log failed:", (e as any).message);
+    }
+  }
+
   // ---- Auth Routes ----
   app.post("/api/auth/register", asyncHandler(async (req, res) => {
     const { email, password, name } = req.body;
@@ -267,6 +293,165 @@ export async function registerRoutes(
     res.json(wf);
   }));
 
+  // ---- Workflow AI Generation ----
+  const WORKFLOW_AI_SYSTEM_PROMPT = `You are a workflow automation architect. Given a plain-English description, generate a structured workflow.
+
+Return a JSON object with this structure:
+{
+  "name": "<short workflow name>",
+  "trigger": "<one of: manual_trigger, facebook_form_submit, new_lead, missed_call, appointment_booked, review_received, sms_reply>",
+  "steps": [
+    { "action_type": "WAIT", "params": { "duration_minutes": <number> } },
+    { "action_type": "SMS", "params": { "body": "<message text>" } },
+    { "action_type": "CONDITION", "params": { "check": "<condition like has_replied, is_new_lead, rating_above_3>" } },
+    { "action_type": "ALERT", "params": { "user_id": "admin" } },
+    { "action_type": "CODE", "params": { "language": "javascript", "code": "<code>", "description": "<what the code does>" } }
+  ]
+}
+
+Rules:
+- Generate 3-8 steps based on the complexity of the request
+- Use realistic SMS message copy (personalized, professional)
+- WAIT durations should be practical (1-60 minutes for urgency, hours/days for nurture)
+- CODE steps should contain realistic JavaScript (checking CRM, scoring leads, calling APIs)
+- Conditions should be meaningful business logic
+- Return ONLY valid JSON, no markdown, no code fences`;
+
+  app.post("/api/workflows/generate", asyncHandler(async (req, res) => {
+    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+      return res.status(503).json({ error: "AI service is not configured" });
+    }
+
+    const parsed = z.object({ prompt: z.string().min(1).max(2000) }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: WORKFLOW_AI_SYSTEM_PROMPT },
+        { role: "user", content: parsed.data.prompt },
+      ],
+      temperature: 0.7,
+      max_tokens: 1500,
+    });
+
+    const raw = completion.choices[0]?.message?.content ?? "";
+    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+
+    let workflowData: any;
+    try {
+      workflowData = JSON.parse(cleaned);
+    } catch {
+      return res.status(500).json({ error: "AI returned invalid JSON" });
+    }
+
+    if (!workflowData.steps || !Array.isArray(workflowData.steps)) {
+      return res.status(500).json({ error: "AI returned invalid workflow structure" });
+    }
+
+    const wf = await storage.createWorkflow({
+      name: workflowData.name || "AI Generated Workflow",
+      trigger: workflowData.trigger || "manual_trigger",
+      steps: workflowData.steps,
+      subAccountId: null,
+    });
+
+    await logUsageInternal(null, "AI_CHAT", 1, "Workflow AI generation");
+
+    res.status(201).json(wf);
+  }));
+
+  // ---- SMS Sending via Twilio ----
+  app.post("/api/messages/send", asyncHandler(async (req, res) => {
+    const parsed = insertMessageSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const { subAccountId, contactPhone, body, channel } = parsed.data;
+
+    let twilioStatus = "sent";
+    let twilioSid: string | null = null;
+
+    if (channel === "sms" || !channel) {
+      const twilioClient = getTwilioClient();
+      if (twilioClient) {
+        const account = await storage.getSubAccount(subAccountId);
+        const fromNumber = account?.twilioNumber;
+        if (fromNumber) {
+          try {
+            const twilioMsg = await twilioClient.messages.create({
+              body: body,
+              to: contactPhone,
+              from: fromNumber,
+            });
+            twilioStatus = twilioMsg.status || "sent";
+            twilioSid = twilioMsg.sid;
+          } catch (twilioErr: any) {
+            console.error("[SMS] Twilio send error:", twilioErr.message);
+            twilioStatus = "failed";
+          }
+        }
+      }
+    }
+
+    const msg = await storage.createMessage({
+      ...parsed.data,
+      status: twilioStatus,
+    });
+
+    await logUsageInternal(subAccountId, "SMS_SEGMENT", 1, `SMS to ${contactPhone}`);
+
+    res.status(201).json({ ...msg, twilioSid });
+  }));
+
+  // ---- Bot Chat (Real OpenAI) ----
+  const botChatSchema = z.object({
+    message: z.string().min(1).max(2000),
+    persona: z.string().max(5000).optional(),
+    conversationHistory: z.array(z.object({
+      role: z.string(),
+      content: z.string(),
+    })).max(20).optional(),
+  });
+
+  app.post("/api/bot/chat", asyncHandler(async (req, res) => {
+    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+      return res.status(503).json({ error: "AI service is not configured" });
+    }
+
+    const parsed = botChatSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const systemPrompt = parsed.data.persona || `You are a helpful AI assistant for a business. Keep responses concise and helpful (1-3 sentences). Help with bookings, answer questions, and provide a warm experience.`;
+
+    const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
+      { role: "system", content: systemPrompt },
+    ];
+
+    if (parsed.data.conversationHistory) {
+      for (const msg of parsed.data.conversationHistory.slice(-10)) {
+        messages.push({
+          role: msg.role === "user" ? "user" : "assistant",
+          content: msg.content,
+        });
+      }
+    }
+
+    messages.push({ role: "user", content: parsed.data.message });
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages,
+      temperature: 0.7,
+      max_tokens: 300,
+    });
+
+    const reply = completion.choices[0]?.message?.content ?? "I'm here to help! Could you tell me more?";
+
+    await logUsageInternal(null, "AI_CHAT", 1, "Bot trainer chat");
+
+    res.json({ reply });
+  }));
+
   // ---- Bot Training Jobs ----
   const trainBodySchema = z.object({
     url: z.string().url("A valid URL is required"),
@@ -424,6 +609,8 @@ Rules:
       const { type, ...props } = s;
       return { type, props };
     });
+
+    await logUsageInternal(null, "AI_CHAT", 1, "AI site generation");
 
     res.json(siteData);
   }));
@@ -664,6 +851,8 @@ Generate a personalized premium wellness/beauty service landing page for this sp
       return { type, props };
     });
 
+    await logUsageInternal(null, "AI_CHAT", 1, "God mode site generation");
+
     res.json(siteData);
   }));
 
@@ -754,6 +943,11 @@ Rules:
       }
     }
 
+    await logUsageInternal(null, "AI_CHAT", 1, "Ad campaign AI generation");
+    if (campaign.generated_image_url) {
+      await logUsageInternal(null, "AI_IMAGE_GEN", 1, "Ad creative DALL-E generation");
+    }
+
     res.json(campaign);
   }));
 
@@ -807,6 +1001,8 @@ Rules:
     });
 
     const reply = completion.choices[0]?.message?.content ?? "I'm here to help! Could you tell me more about what you're looking for?";
+
+    await logUsageInternal(null, "AI_CHAT", 1, "Chat widget AI response");
 
     res.json({ reply });
   }));
@@ -1274,13 +1470,6 @@ Rules:
   }));
 
   // ---- Phone Number Provisioning (Twilio + Vapi) ----
-
-  function getTwilioClient() {
-    const sid = process.env.TWILIO_ACCOUNT_SID;
-    const token = process.env.TWILIO_AUTH_TOKEN;
-    if (!sid || !token) return null;
-    return Twilio(sid, token);
-  }
 
   app.get("/api/phone-numbers/search", asyncHandler(async (req, res) => {
     const twilioClient = getTwilioClient();
