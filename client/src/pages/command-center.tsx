@@ -1,11 +1,67 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { useQuery } from "@tanstack/react-query";
-import { Shield, TrendingUp, Users, MessageSquare, GitFork, Zap, Star, DollarSign, Activity, BarChart3 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { Shield, TrendingUp, Users, MessageSquare, GitFork, Zap, Star, DollarSign, Activity, BarChart3, RotateCcw, CheckSquare, Square } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
+import type { SnapshotVersion } from "@shared/schema";
 
 export default function CommandCenter() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [showBulkRollback, setShowBulkRollback] = useState(false);
+  const [selectedAccounts, setSelectedAccounts] = useState<number[]>([]);
+  const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
+
   const { data: metrics, isLoading } = useQuery<any>({
     queryKey: ["/api/command-center"],
   });
+
+  const { data: allVersions = [] } = useQuery<SnapshotVersion[]>({
+    queryKey: ["/api/snapshots"],
+    queryFn: async () => {
+      const accounts = metrics?.accounts || [];
+      const all: SnapshotVersion[] = [];
+      for (const acc of accounts.slice(0, 10)) {
+        try {
+          const res = await fetch(`/api/versions/${acc.id}`);
+          const versions = await res.json();
+          all.push(...versions);
+        } catch {}
+      }
+      return all;
+    },
+    enabled: !!metrics?.accounts?.length,
+  });
+
+  const bulkRollbackMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/versions/bulk-rollback", {
+        versionId: selectedVersion,
+        subAccountIds: selectedAccounts,
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Bulk rollback complete!", description: data.message });
+      queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/command-center"] });
+      setShowBulkRollback(false);
+      setSelectedAccounts([]);
+      setSelectedVersion(null);
+    },
+    onError: () => {
+      toast({ title: "Bulk rollback failed", variant: "destructive" });
+    },
+  });
+
+  const toggleAccount = (id: number) => {
+    setSelectedAccounts(prev =>
+      prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]
+    );
+  };
 
   if (isLoading) {
     return (
@@ -179,6 +235,81 @@ export default function CommandCenter() {
           )}
         </motion.div>
       </div>
+
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.52 }}
+        className="mb-8"
+      >
+        <Button
+          onClick={() => setShowBulkRollback(true)}
+          className="bg-gradient-to-r from-amber-500 to-orange-500 text-black font-bold gap-2"
+          data-testid="button-bulk-rollback"
+        >
+          <RotateCcw size={16} /> Bulk Rollback Accounts
+        </Button>
+      </motion.div>
+
+      <Dialog open={showBulkRollback} onOpenChange={setShowBulkRollback}>
+        <DialogContent className="bg-neutral-950 border-white/10 text-white max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-400">
+              <RotateCcw size={20} /> Bulk Rollback
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Select Checkpoint</label>
+              {allVersions.length === 0 ? (
+                <p className="text-slate-500 text-sm">No checkpoints found. Create checkpoints from the Snapshots page first.</p>
+              ) : (
+                <div className="space-y-2 max-h-32 overflow-y-auto">
+                  {allVersions.map(v => (
+                    <button
+                      key={v.id}
+                      onClick={() => setSelectedVersion(v.id)}
+                      className={`w-full text-left p-3 rounded-lg border text-sm transition-all ${selectedVersion === v.id ? "border-amber-500/50 bg-amber-500/10 text-white" : "border-white/10 bg-white/5 text-slate-400 hover:bg-white/10"}`}
+                      data-testid={`button-select-version-${v.id}`}
+                    >
+                      <span className="font-bold">{v.versionName}</span>
+                      <span className="text-xs text-slate-500 ml-2">Account #{v.subAccountId}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Apply To Accounts</label>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {(metrics?.accounts || []).map((acc: any) => (
+                  <button
+                    key={acc.id}
+                    onClick={() => toggleAccount(acc.id)}
+                    className={`w-full text-left p-3 rounded-lg border text-sm flex items-center gap-2 transition-all ${selectedAccounts.includes(acc.id) ? "border-cyan-500/50 bg-cyan-500/10" : "border-white/10 bg-white/5 hover:bg-white/10"}`}
+                    data-testid={`button-select-account-${acc.id}`}
+                  >
+                    {selectedAccounts.includes(acc.id) ? <CheckSquare size={14} className="text-cyan-400" /> : <Square size={14} className="text-slate-500" />}
+                    <span className="text-white">{acc.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBulkRollback(false)} className="border-white/10 text-white hover:bg-white/10">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => bulkRollbackMutation.mutate()}
+              disabled={!selectedVersion || selectedAccounts.length === 0 || bulkRollbackMutation.isPending}
+              className="bg-amber-500 text-black font-bold gap-2"
+              data-testid="button-confirm-bulk-rollback"
+            >
+              {bulkRollbackMutation.isPending ? "Rolling back..." : <>
+                <RotateCcw size={14} /> Rollback {selectedAccounts.length} Account{selectedAccounts.length !== 1 ? "s" : ""}
+              </>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {atRisk.length > 0 && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.55 }}

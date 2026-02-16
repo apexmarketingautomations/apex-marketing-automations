@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2 } from "lucide-react";
+import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2, History } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { CommandMenu } from "@/components/command-menu";
@@ -31,6 +31,7 @@ const navSections = [
     label: "PLATFORM",
     items: [
       { href: "/command-center", icon: Shield, label: "Command Center" },
+      { href: "/snapshots", icon: History, label: "Snapshots" },
       { href: "/marketplace", icon: Store, label: "Marketplace" },
       { href: "/affiliate", icon: Users, label: "Affiliates" },
       { href: "/pricing", icon: CreditCard, label: "Plans & Pricing" },
