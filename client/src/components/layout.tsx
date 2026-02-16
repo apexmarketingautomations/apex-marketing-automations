@@ -27,6 +27,7 @@ const navSections = [
       { href: "/reputation", icon: Star, label: "Reputation" },
       { href: "/sentinel", icon: Satellite, label: "Sentinel" },
       { href: "/property-radar", icon: Building, label: "Property Radar" },
+      { href: "/website-integration", icon: Globe, label: "Website Integration" },
     ],
   },
   {

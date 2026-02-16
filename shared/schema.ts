@@ -367,6 +367,28 @@ export const insertWholesalerConfigSchema = createInsertSchema(wholesalerConfig)
 export type InsertWholesalerConfig = z.infer<typeof insertWholesalerConfigSchema>;
 export type WholesalerConfig = typeof wholesalerConfig.$inferSelect;
 
+export const clientWebsites = pgTable("client_websites", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  url: text("url").notNull(),
+  name: text("name").notNull(),
+  status: text("status").notNull().default("connected"),
+  scrapedAt: timestamp("scraped_at"),
+  trainingJobId: integer("training_job_id").references(() => trainingJobs.id),
+  widgetEnabled: boolean("widget_enabled").default(false),
+  widgetColor: text("widget_color").default("#6366f1"),
+  widgetGreeting: text("widget_greeting").default("Hi there! How can I help you today?"),
+  widgetPosition: text("widget_position").default("bottom-right"),
+  botPersona: text("bot_persona"),
+  pagesCrawled: integer("pages_crawled").default(0),
+  lastCrawlStatus: text("last_crawl_status"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertClientWebsiteSchema = createInsertSchema(clientWebsites).omit({ id: true, createdAt: true });
+export type InsertClientWebsite = z.infer<typeof insertClientWebsiteSchema>;
+export type ClientWebsite = typeof clientWebsites.$inferSelect;
+
 export const auditLogs = pgTable("audit_logs", {
   id: serial("id").primaryKey(),
   action: text("action").notNull(),

@@ -2,7 +2,7 @@ import { eq, desc, and, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   subAccounts, messages, workflows, trainingJobs, blueprints, savedSites, siteVersions, siteCollaborators, reviews, usageLogs, domains, owners,
-  subscriptions, snapshots, snapshotVersions, affiliates, referrals, commissions, sentinelConfig, sentinelIncidents, propertyLeads, wholesalerConfig, auditLogs,
+  subscriptions, snapshots, snapshotVersions, affiliates, referrals, commissions, sentinelConfig, sentinelIncidents, propertyLeads, wholesalerConfig, clientWebsites, auditLogs,
   type SubAccount, type InsertSubAccount,
   type Message, type InsertMessage,
   type Workflow, type InsertWorkflow,
@@ -25,6 +25,7 @@ import {
   type SentinelIncident, type InsertSentinelIncident,
   type PropertyLead, type InsertPropertyLead,
   type WholesalerConfig, type InsertWholesalerConfig,
+  type ClientWebsite, type InsertClientWebsite,
   type AuditLog, type InsertAuditLog,
 } from "@shared/schema";
 
@@ -130,6 +131,12 @@ export interface IStorage {
 
   getWholesalerConfig(subAccountId: number): Promise<WholesalerConfig | undefined>;
   upsertWholesalerConfig(data: InsertWholesalerConfig): Promise<WholesalerConfig>;
+
+  getClientWebsites(subAccountId: number): Promise<ClientWebsite[]>;
+  getClientWebsite(id: number): Promise<ClientWebsite | undefined>;
+  createClientWebsite(data: InsertClientWebsite): Promise<ClientWebsite>;
+  updateClientWebsite(id: number, data: Partial<InsertClientWebsite>): Promise<ClientWebsite | undefined>;
+  deleteClientWebsite(id: number): Promise<boolean>;
 
   createAuditLog(data: InsertAuditLog): Promise<AuditLog>;
 }
@@ -530,6 +537,30 @@ export class DatabaseStorage implements IStorage {
     }
     const [row] = await db.insert(wholesalerConfig).values(data).returning();
     return row;
+  }
+
+  async getClientWebsites(subAccountId: number) {
+    return db.select().from(clientWebsites).where(eq(clientWebsites.subAccountId, subAccountId)).orderBy(desc(clientWebsites.createdAt));
+  }
+
+  async getClientWebsite(id: number) {
+    const [row] = await db.select().from(clientWebsites).where(eq(clientWebsites.id, id));
+    return row;
+  }
+
+  async createClientWebsite(data: InsertClientWebsite) {
+    const [row] = await db.insert(clientWebsites).values(data).returning();
+    return row;
+  }
+
+  async updateClientWebsite(id: number, data: Partial<InsertClientWebsite>) {
+    const [row] = await db.update(clientWebsites).set(data).where(eq(clientWebsites.id, id)).returning();
+    return row;
+  }
+
+  async deleteClientWebsite(id: number) {
+    const result = await db.delete(clientWebsites).where(eq(clientWebsites.id, id));
+    return true;
   }
 
   async createAuditLog(data: InsertAuditLog) {

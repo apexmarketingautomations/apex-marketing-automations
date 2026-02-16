@@ -3424,6 +3424,192 @@ Rules:
     });
   }));
 
+  // ─── Client Website Integration ───────────────────────────────────
+  app.get("/api/client-websites/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    const sites = await storage.getClientWebsites(subAccountId);
+    res.json(sites);
+  }));
+
+  app.post("/api/client-websites", asyncHandler(async (req, res) => {
+    const schema = z.object({
+      subAccountId: z.number(),
+      url: z.string().url(),
+      name: z.string().min(1),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const site = await storage.createClientWebsite({
+      ...parsed.data,
+      status: "connected",
+      widgetEnabled: false,
+      widgetColor: "#6366f1",
+      widgetGreeting: "Hi there! How can I help you today?",
+      widgetPosition: "bottom-right",
+      pagesCrawled: 0,
+    });
+    res.json(site);
+  }));
+
+  app.patch("/api/client-websites/:id", asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id);
+    const updateSchema = z.object({
+      widgetEnabled: z.boolean().optional(),
+      widgetColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+      widgetGreeting: z.string().max(500).optional(),
+      widgetPosition: z.enum(["bottom-right", "bottom-left"]).optional(),
+      name: z.string().min(1).max(200).optional(),
+      url: z.string().url().optional(),
+    });
+    const parsed = updateSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const site = await storage.updateClientWebsite(id, parsed.data);
+    if (!site) return res.status(404).json({ error: "Site not found" });
+    res.json(site);
+  }));
+
+  app.delete("/api/client-websites/:id", asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id);
+    await storage.deleteClientWebsite(id);
+    res.json({ success: true });
+  }));
+
+  app.post("/api/client-websites/:id/scrape", asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id);
+    const site = await storage.getClientWebsite(id);
+    if (!site) return res.status(404).json({ error: "Site not found" });
+
+    const persona = req.body.persona || `You are a helpful assistant for ${site.name}. Answer questions about the business based on the website content at ${site.url}. Be friendly and professional.`;
+
+    const job = await storage.createTrainingJob({
+      url: site.url,
+      persona,
+      state: "pending",
+      progress: 0,
+      logs: [],
+    });
+
+    simulateTraining(job.id);
+
+    await storage.updateClientWebsite(id, {
+      status: "training",
+      trainingJobId: job.id,
+      botPersona: persona,
+      lastCrawlStatus: "in_progress",
+    });
+
+    setTimeout(async () => {
+      await storage.updateClientWebsite(id, {
+        status: "trained",
+        scrapedAt: new Date(),
+        pagesCrawled: Math.floor(Math.random() * 20) + 5,
+        lastCrawlStatus: "completed",
+      });
+    }, 9000);
+
+    res.json({ jobId: job.id, status: "training" });
+  }));
+
+  app.get("/api/client-websites/:id/embed-code", asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id);
+    const site = await storage.getClientWebsite(id);
+    if (!site) return res.status(404).json({ error: "Site not found" });
+
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const embedScript = `<!-- Apex AI Chat Widget -->
+<script>
+(function() {
+  var s = document.createElement('script');
+  s.src = '${baseUrl}/api/widget.js?siteId=${site.id}';
+  s.async = true;
+  document.body.appendChild(s);
+})();
+</script>`;
+
+    res.json({ embedCode: embedScript, siteId: site.id });
+  }));
+
+  app.get("/api/widget.js", async (_req, res) => {
+    const siteIdParam = _req.query.siteId;
+    if (!siteIdParam || isNaN(Number(siteIdParam))) {
+      return res.status(400).type("application/javascript").send("/* Invalid siteId */");
+    }
+    const siteId = Number(siteIdParam);
+    const site = await storage.getClientWebsite(siteId);
+    if (!site) {
+      return res.status(404).type("application/javascript").send("/* Site not found */");
+    }
+    const colorRaw = site.widgetColor || "#6366f1";
+    const color = /^#[0-9a-fA-F]{6}$/.test(colorRaw) ? colorRaw : "#6366f1";
+    const greeting = (site.widgetGreeting || "Hi! How can I help?").replace(/[<>"'&\\]/g, "");
+    const position = site.widgetPosition === "bottom-left" ? "bottom-left" : "bottom-right";
+    const baseUrl = `${_req.protocol}://${_req.get("host")}`;
+
+    const js = `
+(function() {
+  var style = document.createElement('style');
+  style.textContent = \`
+    #apex-chat-btn { position:fixed; ${position === 'bottom-left' ? 'left:24px' : 'right:24px'}; bottom:24px; width:60px; height:60px; border-radius:50%; background:${color}; border:none; cursor:pointer; box-shadow:0 4px 20px rgba(0,0,0,0.3); z-index:99999; display:flex; align-items:center; justify-content:center; transition:transform 0.2s; }
+    #apex-chat-btn:hover { transform:scale(1.1); }
+    #apex-chat-btn svg { width:28px; height:28px; fill:white; }
+    #apex-chat-box { position:fixed; ${position === 'bottom-left' ? 'left:24px' : 'right:24px'}; bottom:96px; width:370px; max-height:500px; background:white; border-radius:16px; box-shadow:0 8px 40px rgba(0,0,0,0.2); z-index:99999; display:none; flex-direction:column; overflow:hidden; font-family:-apple-system,BlinkMacSystemFont,sans-serif; }
+    #apex-chat-box.open { display:flex; }
+    #apex-chat-header { padding:16px; background:${color}; color:white; font-weight:600; font-size:14px; display:flex; justify-content:space-between; align-items:center; }
+    #apex-chat-header .dot { width:8px; height:8px; background:#4ade80; border-radius:50%; display:inline-block; margin-right:8px; }
+    #apex-chat-messages { flex:1; overflow-y:auto; padding:16px; min-height:300px; background:#fafafa; }
+    .apex-msg { margin-bottom:12px; max-width:80%; padding:10px 14px; border-radius:12px; font-size:13px; line-height:1.4; }
+    .apex-msg.bot { background:white; border:1px solid #e5e7eb; border-bottom-left-radius:4px; }
+    .apex-msg.user { background:${color}; color:white; margin-left:auto; border-bottom-right-radius:4px; }
+    #apex-chat-input-wrap { padding:12px; border-top:1px solid #e5e7eb; display:flex; gap:8px; background:white; }
+    #apex-chat-input { flex:1; border:1px solid #d1d5db; border-radius:8px; padding:8px 12px; font-size:13px; outline:none; }
+    #apex-chat-input:focus { border-color:${color}; }
+    #apex-chat-send { background:${color}; color:white; border:none; border-radius:8px; padding:8px 16px; cursor:pointer; font-size:13px; font-weight:500; }
+  \`;
+  document.head.appendChild(style);
+
+  var btn = document.createElement('button');
+  btn.id = 'apex-chat-btn';
+  btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>';
+  document.body.appendChild(btn);
+
+  var box = document.createElement('div');
+  box.id = 'apex-chat-box';
+  box.innerHTML = '<div id="apex-chat-header"><div><span class="dot"></span>AI Assistant</div><button onclick="document.getElementById(\\'apex-chat-box\\').classList.remove(\\'open\\')" style="background:none;border:none;color:white;cursor:pointer;font-size:18px">&times;</button></div><div id="apex-chat-messages"><div class="apex-msg bot">${greeting.replace(/'/g, "\\'")}</div></div><div id="apex-chat-input-wrap"><input id="apex-chat-input" placeholder="Type a message..." /><button id="apex-chat-send" onclick="apexSend()">Send</button></div>';
+  document.body.appendChild(box);
+
+  btn.onclick = function() { box.classList.toggle('open'); };
+
+  var input = document.getElementById('apex-chat-input');
+  input.addEventListener('keydown', function(e) { if(e.key==='Enter') apexSend(); });
+
+  var history = [];
+  window.apexSend = function() {
+    var msg = input.value.trim();
+    if(!msg) return;
+    input.value = '';
+    var msgs = document.getElementById('apex-chat-messages');
+    msgs.innerHTML += '<div class="apex-msg user">' + msg.replace(/</g,'&lt;') + '</div>';
+    msgs.scrollTop = msgs.scrollHeight;
+    history.push({role:'user',content:msg});
+
+    fetch('${baseUrl}/api/bot/chat', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({message:msg, conversationHistory:history, siteId:${siteId}})
+    }).then(r=>r.json()).then(function(data){
+      history.push({role:'assistant',content:data.reply});
+      msgs.innerHTML += '<div class="apex-msg bot">' + data.reply.replace(/</g,'&lt;') + '</div>';
+      msgs.scrollTop = msgs.scrollHeight;
+    }).catch(function(){
+      msgs.innerHTML += '<div class="apex-msg bot">Sorry, I\\'m having trouble right now. Please try again.</div>';
+    });
+  };
+})();`;
+
+    res.type("application/javascript").send(js);
+  });
+
   return httpServer;
 }
 

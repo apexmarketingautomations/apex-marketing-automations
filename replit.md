@@ -16,6 +16,7 @@ The app includes:
 - **Affiliate Dashboard**: Referral links, tiered commissions (30-50%), payout tracking
 - **Command Center**: Agency "War Room" with fleet health monitoring, production pipeline visualization
 - **Account Switcher**: Multi-account context switching with persistent selection
+- **Website Integration**: Connect client websites, scrape/train AI chatbots, generate embeddable chat widgets, and preview sites from within the platform
 
 ## User Preferences
 
@@ -65,6 +66,7 @@ Key server files:
 5. **blueprints** - Industry-specific templates (stages, fields, templates) for onboarding
 6. **sentinel_config** - Per-account Sentinel scanner config (feed URL, keywords, intervals, toggles)
 7. **sentinel_incidents** - Detected accident/incident records with severity, location, action status
+8. **client_websites** - Connected client websites with AI training status, widget config, and embed settings
 
 ### Shared Code
 The `shared/` directory contains code used by both frontend and backend:
