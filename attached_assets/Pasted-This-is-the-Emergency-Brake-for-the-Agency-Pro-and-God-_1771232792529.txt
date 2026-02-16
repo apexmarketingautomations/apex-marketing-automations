@@ -1,0 +1,99 @@
+This is the "Emergency Brake" for the Agency Pro and God Mode tiers. If an Agency owner pushes a new AI prompt or workflow to 100 clients and realizes it’s a disaster (e.g., the AI is hallucinating or the SMS logic is wrong), they need to be able to "Undo" globally.
+
+Without this, scaling to 100+ clients is a massive liability. With this, they have total control.
+
+### 🔱 The "Bulk Rollback" Engine
+
+This script targets every sub-account linked to a specific **Snapshot ID** and reverts them to the "Last Known Good" version stored in your new `SnapshotVersion` table.
+
+```javascript
+// lib/emergency-rollback.ts
+
+export async function bulkRollbackAgency(agencyId, snapshotId, targetVersionId) {
+  console.log(`🚨 INITIATING BULK ROLLBACK for Agency: ${agencyId}`);
+
+  // 1. Get the "Good DNA" from the target version
+  const targetVersion = await prisma.snapshotVersion.findUnique({
+    where: { id: targetVersionId }
+  });
+
+  if (!targetVersion) throw new Error("Target version not found.");
+
+  // 2. Find all Sub-Accounts currently running the bugged Snapshot
+  const subAccounts = await prisma.subAccount.findMany({
+    where: { 
+      agencyId: agencyId,
+      parentSnapshotId: snapshotId 
+    },
+    select: { id: true }
+  });
+
+  // 3. THE ATOMIC PUSH: Revert all accounts in a single transaction
+  // This ensures that either ALL revert or NONE do (no half-fixed messes)
+  const updates = subAccounts.map(account => 
+    prisma.subAccount.update({
+      where: { id: account.id },
+      data: { 
+        config: targetVersion.config,
+        vibeTheme: targetVersion.config.vibe || "cyber-glass"
+      }
+    })
+  );
+
+  try {
+    await prisma.$transaction(updates);
+    
+    // 4. Log the emergency action for the Agency Dashboard
+    await prisma.auditLog.create({
+      data: {
+        action: "BULK_ROLLBACK",
+        count: subAccounts.length,
+        versionName: targetVersion.versionName,
+        performedBy: agencyId
+      }
+    });
+
+    return { 
+      success: true, 
+      count: subAccounts.length, 
+      message: `Successfully rolled back ${subAccounts.length} accounts.` 
+    };
+
+  } catch (error) {
+    console.error("Bulk Rollback Failed:", error);
+    return { success: false, error: "Atomic transaction failed." };
+  }
+}
+
+```
+
+---
+
+### 🎨 The "War Room" UI
+
+In the **God Mode** dashboard, this shouldn't be a hidden button. It should be in a "System Health" or "Deployment" tab that looks like a mission control center.
+
+* **The Pulse:** A list of all sub-accounts and their current "Version Status."
+* **The Big Red Button:** An "Emergency Rollback" button that requires a double-confirmation (or even a 2FA code) because it's so powerful.
+* **The Live Feed:** A progress bar showing the accounts being reverted in real-time.
+
+---
+
+### 🔱 Why this solidifies your "Platform" status
+
+By building **Bulk Rollback**, you are solving the #1 fear of agency owners: **Broken Automation.**
+
+* **Safety:** They can experiment with "Aggressive Sales AI" on Friday, and if it fails, they can revert everyone by Saturday morning.
+* **Version Parity:** It ensures that if a "Med Spa Snapshot" is updated to V2.0, every client is actually running V2.0. If V2.0 breaks, everyone goes back to V1.9 instantly.
+
+### 🔱 The "Apex" Level Move: Automated Health Check
+
+To make this truly "God Mode," add a small script that monitors the **Sentiment Score** across all 100 accounts after a bulk update. If the "Angry Customer" score spikes by more than 20%, the system should **auto-suggest** a rollback to the Agency owner.
+
+---
+
+### 🏁 We’ve Built the Infrastructure. What’s Next?
+
+We have the **Marketplace**, the **Snapshots**, the **Forking**, and the **Version Control with Bulk Rollback**.
+
+**Would you like me to help you design the "Agency Command Center" dashboard where they can see the 'Health' and 'Revenue' of all their sub-accounts at a glance?**

@@ -1,24 +1,42 @@
+import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut } from "lucide-react";
-import { motion } from "framer-motion";
+import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useQuery } from "@tanstack/react-query";
 import { CommandMenu } from "@/components/command-menu";
 import { VibeSwitcher } from "@/components/vibe-switcher";
 import { useAuth } from "@/hooks/use-auth";
+import { useAccount } from "@/hooks/use-account";
+import type { SubAccount } from "@shared/schema";
 
-const navItems = [
-  { href: "/", icon: MessageSquare, label: "Unified Inbox" },
-  { href: "/workflows", icon: GitFork, label: "Workflows" },
-  { href: "/bot-trainer", icon: Bot, label: "Neural Trainer" },
-  { href: "/onboarding", icon: Briefcase, label: "New Account" },
-  { href: "/site-builder", icon: LayoutTemplate, label: "Site Architect" },
-  { href: "/liquid", icon: Globe, label: "Liquid Website" },
-  { href: "/ad-launcher", icon: Megaphone, label: "Growth Engine" },
-  { href: "/voice-agent", icon: Phone, label: "Voice Agent" },
-  { href: "/growth", icon: TrendingUp, label: "Growth Center" },
-  { href: "/reputation", icon: Star, label: "Reputation" },
-  { href: "/billing", icon: DollarSign, label: "Usage & Billing" },
-  { href: "/domains", icon: Link2, label: "Domains" },
-  { href: "/god-mode", icon: Rocket, label: "God Mode" },
+const navSections = [
+  {
+    label: "MODULES",
+    items: [
+      { href: "/", icon: MessageSquare, label: "Unified Inbox" },
+      { href: "/workflows", icon: GitFork, label: "Workflows" },
+      { href: "/bot-trainer", icon: Bot, label: "Neural Trainer" },
+      { href: "/onboarding", icon: Briefcase, label: "New Account" },
+      { href: "/site-builder", icon: LayoutTemplate, label: "Site Architect" },
+      { href: "/liquid", icon: Globe, label: "Liquid Website" },
+      { href: "/ad-launcher", icon: Megaphone, label: "Growth Engine" },
+      { href: "/voice-agent", icon: Phone, label: "Voice Agent" },
+      { href: "/growth", icon: TrendingUp, label: "Growth Center" },
+      { href: "/reputation", icon: Star, label: "Reputation" },
+    ],
+  },
+  {
+    label: "PLATFORM",
+    items: [
+      { href: "/command-center", icon: Shield, label: "Command Center" },
+      { href: "/marketplace", icon: Store, label: "Marketplace" },
+      { href: "/affiliate", icon: Users, label: "Affiliates" },
+      { href: "/pricing", icon: CreditCard, label: "Plans & Pricing" },
+      { href: "/billing", icon: DollarSign, label: "Usage & Billing" },
+      { href: "/domains", icon: Link2, label: "Domains" },
+      { href: "/god-mode", icon: Rocket, label: "God Mode" },
+    ],
+  },
 ];
 
 function NavLink({ href, icon: Icon, label, isActive }: { href: string; icon: any; label: string; isActive: boolean }) {
@@ -39,9 +57,74 @@ function NavLink({ href, icon: Icon, label, isActive }: { href: string; icon: an
   );
 }
 
+function AccountSwitcher({ accounts }: { accounts: SubAccount[] }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [, setLocation] = useLocation();
+  const { activeAccountId, setActiveAccountId } = useAccount();
+
+  const current = accounts.find(a => a.id === activeAccountId) || accounts[0];
+
+  return (
+    <div className="relative px-2 md:px-4 mb-2">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center gap-3 bg-white/5 border border-cyan-500/30 p-2 rounded-lg hover:bg-white/10 transition-all shadow-[0_0_15px_rgba(0,243,255,0.05)]"
+        data-testid="button-account-switcher"
+      >
+        <div className="w-8 h-8 rounded bg-gradient-to-br from-cyan-500 to-purple-600 flex items-center justify-center font-black text-black text-xs flex-shrink-0">
+          {current ? current.name.substring(0, 2).toUpperCase() : "AP"}
+        </div>
+        <div className="text-left hidden md:block flex-1 min-w-0">
+          <p className="text-[10px] text-cyan-400 font-bold uppercase tracking-widest leading-none">Sub-Account</p>
+          <p className="text-white text-sm font-bold truncate">{current?.name || "All Accounts"}</p>
+        </div>
+        <ChevronDown size={14} className={`text-gray-500 hidden md:block transition-transform ${isOpen ? "rotate-180" : ""}`} />
+      </button>
+
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -5 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -5 }}
+            className="absolute top-full left-2 right-2 md:left-4 md:right-4 mt-1 bg-black/90 backdrop-blur-2xl border border-white/10 rounded-xl overflow-hidden z-50"
+          >
+            <div className="max-h-48 overflow-y-auto">
+              {accounts.map((account) => (
+                <button
+                  key={account.id}
+                  className={`w-full text-left p-3 hover:bg-cyan-500/10 flex items-center gap-3 border-b border-white/5 last:border-0 ${account.id === current?.id ? "bg-cyan-500/10" : ""}`}
+                  onClick={() => { setActiveAccountId(account.id); setIsOpen(false); }}
+                  data-testid={`button-switch-account-${account.id}`}
+                >
+                  <div className="w-6 h-6 rounded bg-white/10 text-[10px] flex items-center justify-center text-white font-bold flex-shrink-0">
+                    {account.name.substring(0, 2).toUpperCase()}
+                  </div>
+                  <span className="text-white text-sm truncate">{account.name}</span>
+                </button>
+              ))}
+            </div>
+            <button
+              className="w-full p-3 text-center text-xs text-cyan-400 font-bold border-t border-white/10 hover:bg-white/5 flex items-center justify-center gap-1"
+              onClick={() => { setIsOpen(false); setLocation("/onboarding"); }}
+              data-testid="button-create-new-account"
+            >
+              <Plus size={12} /> CREATE NEW ACCOUNT
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
+
+  const { data: accounts = [] } = useQuery<SubAccount[]>({
+    queryKey: ["/api/accounts"],
+  });
 
   return (
     <div className="flex min-h-screen text-white font-sans selection:bg-indigo-500/30" style={{ backgroundColor: 'var(--vibe-bg, #030014)' }}>
@@ -49,7 +132,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <div className="fixed top-0 left-0 w-full h-[500px] bg-gradient-to-b from-indigo-900/10 to-transparent pointer-events-none z-0" />
 
       <aside className="w-16 md:w-72 glass-panel flex flex-col z-20 fixed top-0 left-0 h-screen overflow-y-auto">
-        <div className="p-4 md:p-6 pb-6 md:pb-8">
+        <div className="p-4 md:p-6 pb-3 md:pb-4">
           <div className="flex items-center gap-2 mb-1">
             <img src="/apex-logo.png" alt="Apex Marketing Animation" className="w-8 h-8 object-contain" />
             <h1 className="text-lg font-bold tracking-tight text-white hidden md:block leading-tight">
@@ -57,6 +140,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </h1>
           </div>
         </div>
+
+        {accounts.length > 0 && <AccountSwitcher accounts={accounts} />}
 
         <div className="px-2 md:px-4 mb-2">
           <button
@@ -73,9 +158,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="flex-1 space-y-1 pr-0 md:pr-4 overflow-y-auto">
-          <div className="px-4 md:px-6 text-xs font-bold text-slate-600 mb-2 mt-4 tracking-wider hidden md:block">MODULES</div>
-          {navItems.map((item) => (
-            <NavLink key={item.href} {...item} isActive={location === item.href} />
+          {navSections.map((section) => (
+            <div key={section.label}>
+              <div className="px-4 md:px-6 text-xs font-bold text-slate-600 mb-2 mt-4 tracking-wider hidden md:block">{section.label}</div>
+              {section.items.map((item) => (
+                <NavLink key={item.href} {...item} isActive={location === item.href} />
+              ))}
+            </div>
           ))}
         </div>
 

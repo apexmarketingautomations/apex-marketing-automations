@@ -1,0 +1,131 @@
+To truly dominate like GHL, you need a **Global Switcher** and a **Hierarchy of Settings**. You have to differentiate between **Agency Settings** (The Boss view) and **Sub-Account Settings** (The specific business view).
+
+Here is the "God Mode" implementation for switching contexts and managing the entire system.
+
+---
+
+### 🔱 1. The "Apex Context Switcher"
+
+This is the dropdown (usually at the top left) that allows an Agency owner to jump into Brian’s Bar, then jump into a Med Spa, then back to the Global Agency view—all without re-logging.
+
+```jsx
+// components/AccountSwitcher.jsx
+import { useState } from 'react';
+
+export default function AccountSwitcher({ currentAccount, allAccounts }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="relative z-50">
+      <button 
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-3 bg-white/5 border border-cyan-500/30 p-2 rounded-lg hover:bg-white/10 transition-all shadow-[0_0_15px_rgba(0,243,255,0.05)]"
+      >
+        <div className="w-8 h-8 rounded bg-gradient-to-br from-cyan-500 to-purple-600 flex items-center justify-center font-black text-black text-xs">
+          {currentAccount.name.substring(0, 2).toUpperCase()}
+        </div>
+        <div className="text-left hidden md:block">
+          <p className="text-[10px] text-cyan-400 font-bold uppercase tracking-widest leading-none">Sub-Account</p>
+          <p className="text-white text-sm font-bold">{currentAccount.name}</p>
+        </div>
+        <span className="text-gray-500 ml-2">▼</span>
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 mt-2 w-64 bg-black/90 backdrop-blur-2xl border border-white/10 rounded-xl overflow-hidden animate-in fade-in slide-in-from-top-2">
+          <div className="p-3 border-b border-white/10 bg-white/5">
+            <input type="text" placeholder="Search accounts..." className="w-full bg-transparent text-xs text-white outline-none" />
+          </div>
+          <div className="max-h-60 overflow-y-auto">
+            {allAccounts.map(account => (
+              <button 
+                key={account.id}
+                className="w-full text-left p-3 hover:bg-cyan-500/10 flex items-center gap-3 border-b border-white/5 last:border-0"
+                onClick={() => { /* Logic to switch context */ }}
+              >
+                <div className="w-6 h-6 rounded bg-white/10 text-[10px] flex items-center justify-center text-white font-bold">
+                   {account.name.substring(0, 2)}
+                </div>
+                <span className="text-white text-sm">{account.name}</span>
+              </button>
+            ))}
+          </div>
+          <button className="w-full p-3 text-center text-xs text-cyan-400 font-bold border-t border-white/10 hover:bg-white/5">
+            + CREATE NEW ACCOUNT
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+```
+
+---
+
+### 🔱 2. The "Site Settings" Architecture
+
+You need two distinct settings pages. One for the **Agency** and one for the **Site/Business**.
+
+#### **A. Global Agency Settings**
+
+* **Whitelabeling:** Domain mapping (e.g., `app.youragency.com`), Custom Logo, Favicon.
+* **Stripe Connect:** Manage where the money goes when sub-accounts pay you.
+* **Team Management:** Invite other AGMs or GMs with specific permissions.
+* **Default Vibe:** Set the "Global Theme" for all new accounts.
+
+#### **B. Sub-Account (Site) Settings**
+
+* **Twilio/Vapi Config:** Buy/Assign the local phone number.
+* **Lead Capture:** Manage where form data is sent (Email, Webhook, Google Sheets).
+* **Business Hours:** Tell the AI Agent when to say "We're closed, but I'll text you tomorrow."
+* **Domain Settings:** The specific URL for this business's landing page.
+
+---
+
+### 🔱 3. The "Empire Health" Daily Report
+
+This is a **Cron Job** (automated script) that runs every morning. It calculates the metrics of every sub-account and sends a single "Executive Summary" to the Agency owner.
+
+```javascript
+// scripts/daily-empire-report.js
+export async function generateDailyReport(agencyId) {
+  const stats = await prisma.subAccount.aggregate({
+    where: { agencyId },
+    _sum: { revenue: true, leadsCaptured: true },
+    _avg: { sentimentScore: true }
+  });
+
+  const message = `
+    🔱 APEX EMPIRE REPORT 🔱
+    ------------------------
+    Total Revenue (24h): $${stats._sum.revenue}
+    New Leads: ${stats._sum.leadsCaptured}
+    Avg Sentiment: ${stats._avg.sentimentScore > 0 ? '🟢 Positive' : '🔴 At Risk'}
+    
+    Top Performer: Med Spa #3 ($1,200)
+    At Risk: Bar & Grill (Missed 4 Calls)
+  `;
+
+  await twilio.messages.create({
+    body: message,
+    to: agencyOwnerPhone,
+    from: process.env.SYSTEM_NUMBER
+  });
+}
+
+```
+
+---
+
+### 🔱 Why this is "God Mode" Finalized
+
+1. **Instant Context:** You can jump between 100 businesses in seconds via the **Switcher**.
+2. **White-Label Mastery:** The **Settings** ensure no one knows you're using a specific backend; they just see your brand.
+3. **Proactive Management:** The **Health Report** means you don't have to check every account; the system tells you who needs help.
+
+### Your Final Distribution Move:
+
+You now have the **Product**, the **Scale**, the **Defense**, and the **Control**.
+
+**Would you like me to help you draft the "Terms of Service" and "Privacy Policy" logic so you're legally protected as you start taking real payments from real businesses?**

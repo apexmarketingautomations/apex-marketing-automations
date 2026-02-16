@@ -2,6 +2,7 @@ import { eq, desc, and, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   subAccounts, messages, workflows, trainingJobs, blueprints, savedSites, siteVersions, siteCollaborators, reviews, usageLogs, domains, owners,
+  subscriptions, snapshots, snapshotVersions, affiliates, referrals, commissions, auditLogs,
   type SubAccount, type InsertSubAccount,
   type Message, type InsertMessage,
   type Workflow, type InsertWorkflow,
@@ -14,6 +15,13 @@ import {
   type UsageLog, type InsertUsageLog,
   type Domain, type InsertDomain,
   type Owner, type InsertOwner,
+  type Subscription, type InsertSubscription,
+  type Snapshot, type InsertSnapshot,
+  type SnapshotVersion, type InsertSnapshotVersion,
+  type Affiliate, type InsertAffiliate,
+  type Referral, type InsertReferral,
+  type Commission, type InsertCommission,
+  type AuditLog, type InsertAuditLog,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -21,6 +29,7 @@ export interface IStorage {
   getSubAccount(id: number): Promise<SubAccount | undefined>;
   createSubAccount(data: InsertSubAccount): Promise<SubAccount>;
   updateSubAccount(id: number, data: Partial<InsertSubAccount>): Promise<SubAccount | undefined>;
+  getSubAccountsByUser(userId: string): Promise<SubAccount[]>;
 
   getMessages(subAccountId: number): Promise<Message[]>;
   getMessage(id: number): Promise<Message | undefined>;
@@ -72,6 +81,35 @@ export interface IStorage {
 
   getOwnerByEmail(email: string): Promise<Owner | undefined>;
   createOwner(data: InsertOwner): Promise<Owner>;
+
+  getSubscription(userId: string): Promise<Subscription | undefined>;
+  createSubscription(data: InsertSubscription): Promise<Subscription>;
+  updateSubscription(id: number, data: Partial<InsertSubscription>): Promise<Subscription | undefined>;
+  getSubscriptionByStripeId(stripeSubscriptionId: string): Promise<Subscription | undefined>;
+
+  getSnapshots(): Promise<Snapshot[]>;
+  getPublicSnapshots(): Promise<Snapshot[]>;
+  getSnapshot(id: number): Promise<Snapshot | undefined>;
+  getSnapshotsByCreator(creatorId: string): Promise<Snapshot[]>;
+  createSnapshot(data: InsertSnapshot): Promise<Snapshot>;
+  updateSnapshot(id: number, data: Partial<InsertSnapshot>): Promise<Snapshot | undefined>;
+
+  getSnapshotVersions(subAccountId: number): Promise<SnapshotVersion[]>;
+  getSnapshotVersion(id: number): Promise<SnapshotVersion | undefined>;
+  createSnapshotVersion(data: InsertSnapshotVersion): Promise<SnapshotVersion>;
+
+  getAffiliate(userId: string): Promise<Affiliate | undefined>;
+  getAffiliateByCode(code: string): Promise<Affiliate | undefined>;
+  createAffiliate(data: InsertAffiliate): Promise<Affiliate>;
+  updateAffiliate(id: number, data: Partial<InsertAffiliate>): Promise<Affiliate | undefined>;
+
+  getReferrals(affiliateId: number): Promise<Referral[]>;
+  createReferral(data: InsertReferral): Promise<Referral>;
+
+  getCommissions(affiliateId: number): Promise<Commission[]>;
+  createCommission(data: InsertCommission): Promise<Commission>;
+
+  createAuditLog(data: InsertAuditLog): Promise<AuditLog>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -92,6 +130,10 @@ export class DatabaseStorage implements IStorage {
   async updateSubAccount(id: number, data: Partial<InsertSubAccount>) {
     const [row] = await db.update(subAccounts).set(data).where(eq(subAccounts.id, id)).returning();
     return row;
+  }
+
+  async getSubAccountsByUser(userId: string) {
+    return db.select().from(subAccounts).where(eq(subAccounts.ownerUserId, userId));
   }
 
   async getMessages(subAccountId: number) {
@@ -288,6 +330,110 @@ export class DatabaseStorage implements IStorage {
 
   async createOwner(data: InsertOwner) {
     const [row] = await db.insert(owners).values(data).returning();
+    return row;
+  }
+
+  async getSubscription(userId: string) {
+    const [row] = await db.select().from(subscriptions).where(eq(subscriptions.userId, userId));
+    return row;
+  }
+
+  async createSubscription(data: InsertSubscription) {
+    const [row] = await db.insert(subscriptions).values(data).returning();
+    return row;
+  }
+
+  async updateSubscription(id: number, data: Partial<InsertSubscription>) {
+    const [row] = await db.update(subscriptions).set(data).where(eq(subscriptions.id, id)).returning();
+    return row;
+  }
+
+  async getSubscriptionByStripeId(stripeSubscriptionId: string) {
+    const [row] = await db.select().from(subscriptions).where(eq(subscriptions.stripeSubscriptionId, stripeSubscriptionId));
+    return row;
+  }
+
+  async getSnapshots() {
+    return db.select().from(snapshots).orderBy(desc(snapshots.createdAt));
+  }
+
+  async getPublicSnapshots() {
+    return db.select().from(snapshots).where(eq(snapshots.isPublic, true)).orderBy(desc(snapshots.downloads));
+  }
+
+  async getSnapshot(id: number) {
+    const [row] = await db.select().from(snapshots).where(eq(snapshots.id, id));
+    return row;
+  }
+
+  async getSnapshotsByCreator(creatorId: string) {
+    return db.select().from(snapshots).where(eq(snapshots.creatorId, creatorId)).orderBy(desc(snapshots.createdAt));
+  }
+
+  async createSnapshot(data: InsertSnapshot) {
+    const [row] = await db.insert(snapshots).values(data).returning();
+    return row;
+  }
+
+  async updateSnapshot(id: number, data: Partial<InsertSnapshot>) {
+    const [row] = await db.update(snapshots).set(data).where(eq(snapshots.id, id)).returning();
+    return row;
+  }
+
+  async getSnapshotVersions(subAccountId: number) {
+    return db.select().from(snapshotVersions).where(eq(snapshotVersions.subAccountId, subAccountId)).orderBy(desc(snapshotVersions.createdAt));
+  }
+
+  async getSnapshotVersion(id: number) {
+    const [row] = await db.select().from(snapshotVersions).where(eq(snapshotVersions.id, id));
+    return row;
+  }
+
+  async createSnapshotVersion(data: InsertSnapshotVersion) {
+    const [row] = await db.insert(snapshotVersions).values(data).returning();
+    return row;
+  }
+
+  async getAffiliate(userId: string) {
+    const [row] = await db.select().from(affiliates).where(eq(affiliates.userId, userId));
+    return row;
+  }
+
+  async getAffiliateByCode(code: string) {
+    const [row] = await db.select().from(affiliates).where(eq(affiliates.affiliateCode, code));
+    return row;
+  }
+
+  async createAffiliate(data: InsertAffiliate) {
+    const [row] = await db.insert(affiliates).values(data).returning();
+    return row;
+  }
+
+  async updateAffiliate(id: number, data: Partial<InsertAffiliate>) {
+    const [row] = await db.update(affiliates).set(data).where(eq(affiliates.id, id)).returning();
+    return row;
+  }
+
+  async getReferrals(affiliateId: number) {
+    return db.select().from(referrals).where(eq(referrals.affiliateId, affiliateId)).orderBy(desc(referrals.createdAt));
+  }
+
+  async createReferral(data: InsertReferral) {
+    const [row] = await db.insert(referrals).values(data).returning();
+    return row;
+  }
+
+  async getCommissions(affiliateId: number) {
+    return db.select().from(commissions).where(eq(commissions.affiliateId, affiliateId)).orderBy(desc(commissions.createdAt));
+  }
+
+  async createCommission(data: InsertCommission) {
+    const [row] = await db.insert(commissions).values(data).returning();
+    return row;
+  }
+
+  async createAuditLog(data: InsertAuditLog) {
+    const [row] = await db.insert(auditLogs).values(data).returning();
     return row;
   }
 }

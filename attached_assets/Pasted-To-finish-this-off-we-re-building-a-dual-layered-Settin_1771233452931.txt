@@ -1,0 +1,93 @@
+To finish this off, we’re building a **dual-layered Settings system**. You need an **Agency View** (to control the whole machine) and a **Sub-Account View** (to control a specific business).
+
+In a "Cyber-Glass" UI, this isn't just a list of toggles—it's a control center with neon glows and glass panels.
+
+---
+
+### 🔱 1. The "Apex" Dashboard Switcher
+
+This sits at the top of your sidebar. It allows you to jump from "Global Agency Mode" into "Brian’s Bar" or "The Med Spa" without ever leaving the page.
+
+```jsx
+// components/AccountSwitcher.jsx
+export default function AccountSwitcher({ activeAccount, accounts }) {
+  return (
+    <div className="p-4 border-b border-white/10">
+      <label className="text-[10px] font-black text-cyan-500 uppercase tracking-[0.2em] mb-2 block">
+        Current Context
+      </label>
+      <select 
+        className="w-full bg-white/5 border border-white/10 rounded-lg py-2 px-3 text-white text-sm focus:border-cyan-500 outline-none appearance-none cursor-pointer"
+        value={activeAccount.id}
+      >
+        <option value="agency">🌐 Global Agency View</option>
+        <hr />
+        {accounts.map(acc => (
+          <option key={acc.id} value={acc.id}>🏢 {acc.name}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+```
+
+---
+
+### 🔱 2. The Master Settings Page (Agency Level)
+
+This is where you handle the high-level "God Mode" infrastructure.
+
+| Section | What it Controls |
+| --- | --- |
+| **White-Labeling** | Upload your logo, set your "Glow Color," and map `app.yourbrand.com`. |
+| **Wallet & Markup** | Set how much profit you take on every SMS ($0.02) and Voice Min ($0.10). |
+| **Team Access** | Grant "GM" or "AGM" permissions to your staff. |
+| **Snapshots** | Manage your library of 15+ (and growing) industry templates. |
+
+**The "White-Label" CSS Logic:**
+
+```javascript
+// This allows you to change the "Vibe" for the whole app in one click
+const updateBrandColor = (newColor) => {
+  document.documentElement.style.setProperty('--glow-primary', newColor);
+  // Update DB so all sub-accounts see the new agency branding
+};
+
+```
+
+---
+
+### 🔱 3. Sub-Account Settings (Site Level)
+
+When you switch into a specific business, the settings change to handle that local operation.
+
+* **Phone Provisioning:** Purchase and link the Twilio/Vapi number for *this* site.
+* **AI Persona:** Deep-tune the bot's instructions for this specific business.
+* **Business Hours:** Set the "Sentinels" to handle calls differently at 2 AM.
+* **Domain Mapping:** Connect `www.briansbar.com` to the site builder.
+
+---
+
+### 🔱 4. The Legal Shield (TOS & Privacy)
+
+To take real money through Stripe, you **must** have these. But in "God Mode," you don't write them—you generate them for your clients.
+
+**The "Legal Snapshots" Logic:**
+When an Agency owner creates a new sub-account, your system should auto-generate a **Privacy Policy** that specifically mentions **SMS/MMS and AI Voice data collection**.
+
+> **Privacy Policy Snippet for AI SaaS:**
+> *"By providing your phone number, you consent to receive automated SMS and AI-generated voice calls from [Business Name]. Data is processed via Apex AI OS to improve service quality. Text STOP to opt-out."*
+
+---
+
+### 🔱 Your Final Distribution Checklist
+
+* [ ] **The Switcher:** Can you jump between accounts in <1 sec?
+* [ ] **The Markup:** Is your Stripe logic taking your "God Mode" cut on every call?
+* [ ] **The Whitelabel:** Does the URL say *your* brand or someone else's?
+* [ ] **The TOS:** Are you legally protected against AI "hallucination" liability?
+
+### What’s the move?
+
+We have built the **Empire, the Defense, the Marketplace, and the Control Center.** **Would you like me to help you write the "First 100 Days" roadmap to take this from Replit to your first $10k/mo in recurring revenue?**

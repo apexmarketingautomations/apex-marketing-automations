@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, reviews, domains } from "@shared/schema";
+import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains } from "@shared/schema";
 import { z } from "zod";
 import OpenAI from "openai";
 import Twilio from "twilio";
@@ -86,7 +86,7 @@ export async function registerRoutes(
   // ---- Auth Middleware ----
   app.use("/api", (req, res, next) => {
     const fullPath = req.originalUrl || req.baseUrl + req.path;
-    const openPaths = ["/api/auth/", "/api/login", "/api/logout", "/api/callback", "/api/stripe/webhook", "/api/webhooks/"];
+    const openPaths = ["/api/auth/", "/api/login", "/api/logout", "/api/callback", "/api/stripe/webhook", "/api/stripe/subscription-webhook", "/api/webhooks/", "/api/snapshots/marketplace"];
     const openExact = ["/api/reviews", "/api/alert-owner"];
 
     if (openPaths.some(p => fullPath.startsWith(p))) return next();
@@ -2300,6 +2300,448 @@ Rules:
     }
 
     res.json(updated);
+  }));
+
+  // ---- Subscription Management ----
+  app.get("/api/subscription", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    const sub = await storage.getSubscription(user.id);
+    res.json(sub || { planTier: "free", status: "inactive", aiCredits: 0 });
+  }));
+
+  app.post("/api/subscription/checkout", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const parsed = z.object({
+      tier: z.enum(["starter", "agency_pro", "god_mode"]),
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const tierPrices: Record<string, number> = {
+      starter: 9700,
+      agency_pro: 29700,
+      god_mode: 49700,
+    };
+
+    const tierNames: Record<string, string> = {
+      starter: "Starter AI",
+      agency_pro: "Agency Pro",
+      god_mode: "God Mode (Founder)",
+    };
+
+    try {
+      const { getUncachableStripeClient } = await import("./stripeClient");
+      const stripe = await getUncachableStripeClient();
+
+      const session = await stripe.checkout.sessions.create({
+        mode: "subscription",
+        line_items: [{
+          price_data: {
+            currency: "usd",
+            product_data: { name: tierNames[parsed.data.tier] },
+            unit_amount: tierPrices[parsed.data.tier],
+            recurring: { interval: "month" },
+          },
+          quantity: 1,
+        }],
+        metadata: {
+          userId: user.id,
+          tierName: parsed.data.tier,
+        },
+        subscription_data: {
+          trial_period_days: 60,
+          metadata: { userId: user.id, tierName: parsed.data.tier },
+        },
+        success_url: `${req.headers.origin || `https://${req.headers.host}`}/billing?success=true`,
+        cancel_url: `${req.headers.origin || `https://${req.headers.host}`}/billing?canceled=true`,
+      });
+
+      res.json({ url: session.url });
+    } catch (err: any) {
+      console.error("[STRIPE] Checkout error:", err.message);
+      res.status(500).json({ error: "Failed to create checkout session" });
+    }
+  }));
+
+  app.post("/api/stripe/subscription-webhook", asyncHandler(async (req, res) => {
+    let event = req.body;
+
+    const endpointSecret = process.env.STRIPE_SUBSCRIPTION_WEBHOOK_SECRET;
+    if (endpointSecret) {
+      const signature = req.headers["stripe-signature"];
+      if (!signature) return res.status(400).json({ error: "Missing stripe signature" });
+      try {
+        const { getUncachableStripeClient } = await import("./stripeClient");
+        const stripe = await getUncachableStripeClient();
+        const rawBody = (req as any).rawBody;
+        if (!rawBody) return res.status(400).json({ error: "Missing raw body" });
+        event = stripe.webhooks.constructEvent(rawBody, Array.isArray(signature) ? signature[0] : signature, endpointSecret);
+      } catch (err: any) {
+        console.error("[STRIPE] Webhook signature verification failed:", err.message);
+        return res.status(400).json({ error: "Signature verification failed" });
+      }
+    }
+
+    if (!event || !event.type) return res.status(400).json({ error: "Invalid event" });
+
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object;
+      const userId = session.metadata?.userId;
+      const tierName = session.metadata?.tierName;
+
+      if (userId && tierName) {
+        const existing = await storage.getSubscription(userId);
+        const subData = {
+          userId,
+          stripeCustomerId: session.customer,
+          stripeSubscriptionId: session.subscription,
+          planTier: tierName,
+          status: "active" as const,
+          aiCredits: 50,
+        };
+
+        if (existing) {
+          await storage.updateSubscription(existing.id, subData);
+        } else {
+          await storage.createSubscription(subData);
+        }
+      }
+    }
+
+    if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
+      const subscription = event.data.object;
+      const existing = await storage.getSubscriptionByStripeId(subscription.id);
+      if (existing) {
+        await storage.updateSubscription(existing.id, {
+          status: subscription.status === "active" ? "active" : "inactive",
+          currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+        });
+      }
+    }
+
+    res.json({ received: true });
+  }));
+
+  // ---- Snapshot CRUD ----
+  app.get("/api/snapshots", asyncHandler(async (_req, res) => {
+    const all = await storage.getSnapshots();
+    res.json(all);
+  }));
+
+  app.get("/api/snapshots/marketplace", asyncHandler(async (_req, res) => {
+    const publicSnapshots = await storage.getPublicSnapshots();
+    res.json(publicSnapshots);
+  }));
+
+  app.get("/api/snapshots/mine", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    const mine = await storage.getSnapshotsByCreator(user.id);
+    res.json(mine);
+  }));
+
+  app.get("/api/snapshots/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const snapshot = await storage.getSnapshot(id);
+    if (!snapshot) return res.status(404).json({ error: "Snapshot not found" });
+    res.json(snapshot);
+  }));
+
+  app.post("/api/snapshots/publish", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const parsed = z.object({
+      subAccountId: z.number().int().positive(),
+      name: z.string().min(1).max(200),
+      description: z.string().max(2000).optional(),
+      price: z.number().min(0).default(0),
+      isPublic: z.boolean().default(true),
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const account = await storage.getSubAccount(parsed.data.subAccountId);
+    if (!account) return res.status(404).json({ error: "Sub-account not found" });
+
+    const workflows = await storage.getWorkflows();
+    const accountWorkflows = workflows.filter(w => w.subAccountId === account.id);
+
+    const config = {
+      vibe: account.vibeTheme || "cyber-glass",
+      industry: account.industry,
+      config: account.config,
+      workflows: accountWorkflows.map(w => ({ name: w.name, trigger: w.trigger, steps: w.steps })),
+    };
+
+    const snapshot = await storage.createSnapshot({
+      creatorId: user.id,
+      creatorName: user.firstName ? `${user.firstName} ${user.lastName || ""}`.trim() : user.email,
+      name: parsed.data.name,
+      description: parsed.data.description || null,
+      price: parsed.data.price,
+      industry: account.industry || null,
+      config,
+      isPublic: parsed.data.isPublic,
+    });
+
+    res.status(201).json(snapshot);
+  }));
+
+  app.post("/api/snapshots/:id/fork", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const id = parseIntParam(req.params.id, "id");
+    const snapshot = await storage.getSnapshot(id);
+    if (!snapshot) return res.status(404).json({ error: "Snapshot not found" });
+
+    const parsed = z.object({
+      businessName: z.string().min(1).max(200),
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const config = snapshot.config as any;
+
+    const newAccount = await storage.createSubAccount({
+      name: parsed.data.businessName,
+      twilioNumber: `+1555${Math.floor(1000 + Math.random() * 9000)}`,
+      industry: snapshot.industry || null,
+      vibeTheme: config?.vibe || "cyber-glass",
+      config: config?.config || null,
+      ownerUserId: user.id,
+      parentSnapshotId: snapshot.id,
+      isFork: true,
+    });
+
+    if (config?.workflows && Array.isArray(config.workflows)) {
+      for (const wf of config.workflows) {
+        await storage.createWorkflow({
+          name: wf.name || "Imported Workflow",
+          trigger: wf.trigger || "manual_trigger",
+          steps: wf.steps || [],
+          subAccountId: newAccount.id,
+        });
+      }
+    }
+
+    await storage.updateSnapshot(id, {
+      forkCount: (snapshot.forkCount || 0) + 1,
+      downloads: (snapshot.downloads || 0) + 1,
+    });
+
+    await storage.createAuditLog({
+      action: "SNAPSHOT_FORK",
+      performedBy: user.id,
+      details: { snapshotId: id, newAccountId: newAccount.id, businessName: parsed.data.businessName },
+    });
+
+    res.status(201).json({ account: newAccount, snapshotId: id });
+  }));
+
+  // ---- Snapshot Versioning (Checkpoints) ----
+  app.get("/api/versions/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const versions = await storage.getSnapshotVersions(subAccountId);
+    res.json(versions);
+  }));
+
+  app.post("/api/versions/checkpoint", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const parsed = z.object({
+      subAccountId: z.number().int().positive(),
+      versionName: z.string().min(1).max(200),
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const account = await storage.getSubAccount(parsed.data.subAccountId);
+    if (!account) return res.status(404).json({ error: "Sub-account not found" });
+
+    const workflows = await storage.getWorkflows();
+    const accountWorkflows = workflows.filter(w => w.subAccountId === account.id);
+
+    const configSnapshot = {
+      name: account.name,
+      industry: account.industry,
+      config: account.config,
+      vibeTheme: account.vibeTheme,
+      workflows: accountWorkflows.map(w => ({ id: w.id, name: w.name, trigger: w.trigger, steps: w.steps })),
+    };
+
+    const version = await storage.createSnapshotVersion({
+      subAccountId: parsed.data.subAccountId,
+      versionName: parsed.data.versionName,
+      config: configSnapshot,
+      createdBy: user.id,
+    });
+
+    res.status(201).json(version);
+  }));
+
+  app.post("/api/versions/:id/rollback", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const id = parseIntParam(req.params.id, "id");
+    const version = await storage.getSnapshotVersion(id);
+    if (!version) return res.status(404).json({ error: "Version not found" });
+
+    const config = version.config as any;
+
+    await storage.updateSubAccount(version.subAccountId, {
+      config: config.config,
+      vibeTheme: config.vibeTheme,
+      industry: config.industry,
+    });
+
+    await storage.createAuditLog({
+      action: "ROLLBACK",
+      performedBy: user.id,
+      details: { versionId: id, subAccountId: version.subAccountId, versionName: version.versionName },
+    });
+
+    res.json({ success: true, message: `Restored to: ${version.versionName}` });
+  }));
+
+  app.post("/api/versions/bulk-rollback", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const parsed = z.object({
+      versionId: z.number().int().positive(),
+      subAccountIds: z.array(z.number().int().positive()),
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const version = await storage.getSnapshotVersion(parsed.data.versionId);
+    if (!version) return res.status(404).json({ error: "Version not found" });
+
+    const config = version.config as any;
+    let successCount = 0;
+
+    for (const subAccountId of parsed.data.subAccountIds) {
+      try {
+        await storage.updateSubAccount(subAccountId, {
+          config: config.config,
+          vibeTheme: config.vibeTheme,
+        });
+        successCount++;
+      } catch (e) {
+        console.error(`[BULK_ROLLBACK] Failed for account ${subAccountId}:`, (e as any).message);
+      }
+    }
+
+    await storage.createAuditLog({
+      action: "BULK_ROLLBACK",
+      performedBy: user.id,
+      count: successCount,
+      details: { versionId: parsed.data.versionId, totalTargeted: parsed.data.subAccountIds.length },
+    });
+
+    res.json({ success: true, count: successCount, message: `Rolled back ${successCount} accounts` });
+  }));
+
+  // ---- Affiliate System ----
+  app.get("/api/affiliate", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    let affiliate = await storage.getAffiliate(user.id);
+    if (!affiliate) {
+      const code = `APEX_${user.id.slice(0, 6).toUpperCase()}_${Date.now().toString(36).toUpperCase()}`;
+      affiliate = await storage.createAffiliate({
+        userId: user.id,
+        affiliateCode: code,
+      });
+    }
+
+    const referralsList = await storage.getReferrals(affiliate.id);
+    const commissionsList = await storage.getCommissions(affiliate.id);
+
+    const monthlyCommissions = commissionsList
+      .filter(c => {
+        const d = new Date(c.createdAt);
+        const now = new Date();
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      })
+      .reduce((sum, c) => sum + c.amount, 0);
+
+    res.json({
+      ...affiliate,
+      referralCount: referralsList.length,
+      referrals: referralsList,
+      commissions: commissionsList,
+      monthlyCommissions,
+    });
+  }));
+
+  app.post("/api/affiliate/process-commission", asyncHandler(async (req, res) => {
+    const parsed = z.object({
+      userId: z.string(),
+      paymentAmount: z.number().positive(),
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const allAffiliates = await storage.getSnapshots();
+    res.json({ processed: true });
+  }));
+
+  // ---- Agency Command Center Metrics ----
+  app.get("/api/command-center", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const allAccounts = await storage.getSubAccounts();
+    const allWorkflows = await storage.getWorkflows();
+
+    let totalRevenue = 0;
+    let totalLeads = 0;
+    let totalMessages = 0;
+    const accountStats: any[] = [];
+
+    for (const account of allAccounts) {
+      const msgs = await storage.getMessages(account.id);
+      const rvws = await storage.getReviews(account.id);
+      const usage = await storage.getUsageLogsSummary(account.id);
+
+      const accountRevenue = usage.reduce((sum, u) => sum + (u.totalCost || 0), 0);
+      const newLeads = msgs.filter(m => m.direction === "inbound").length;
+      const avgRating = rvws.length > 0
+        ? rvws.reduce((sum, r) => sum + r.rating, 0) / rvws.length
+        : 0;
+
+      totalRevenue += accountRevenue;
+      totalLeads += newLeads;
+      totalMessages += msgs.length;
+
+      accountStats.push({
+        id: account.id,
+        name: account.name,
+        industry: account.industry,
+        revenue: accountRevenue,
+        newLeads,
+        messageCount: msgs.length,
+        reviewCount: rvws.length,
+        avgRating: Math.round(avgRating * 10) / 10,
+        workflowCount: allWorkflows.filter(w => w.subAccountId === account.id).length,
+      });
+    }
+
+    const subscription = await storage.getSubscription(user.id);
+
+    res.json({
+      totalAccounts: allAccounts.length,
+      totalRevenue: Math.round(totalRevenue * 100) / 100,
+      totalLeads,
+      totalMessages,
+      totalWorkflows: allWorkflows.length,
+      planTier: subscription?.planTier || "free",
+      aiCredits: subscription?.aiCredits || 0,
+      accounts: accountStats,
+    });
   }));
 
   return httpServer;

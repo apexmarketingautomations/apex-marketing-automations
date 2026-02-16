@@ -9,6 +9,7 @@ import { SplashScreen } from "@/components/splash-screen";
 import { Spinner } from "@/components/ui/spinner";
 import { initVibe } from "@/components/vibe-switcher";
 import { useAuth } from "@/hooks/use-auth";
+import { AccountProvider } from "@/hooks/use-account";
 
 const SmsDashboard = lazy(() => import("@/pages/sms-dashboard"));
 const WorkflowBuilder = lazy(() => import("@/pages/workflow-builder"));
@@ -26,6 +27,10 @@ const Reputation = lazy(() => import("@/pages/reputation"));
 const Billing = lazy(() => import("@/pages/billing"));
 const Domains = lazy(() => import("@/pages/domains"));
 const ReviewBuffer = lazy(() => import("@/pages/review-buffer"));
+const Pricing = lazy(() => import("@/pages/pricing"));
+const MarketplacePage = lazy(() => import("@/pages/marketplace"));
+const AffiliateDashboard = lazy(() => import("@/pages/affiliate"));
+const CommandCenterPage = lazy(() => import("@/pages/command-center"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const Login = lazy(() => import("@/pages/login"));
 const Welcome = lazy(() => import("@/pages/welcome"));
@@ -75,6 +80,10 @@ function Router() {
                   <Route path="/billing" component={Billing} />
                   <Route path="/domains" component={Domains} />
                   <Route path="/god-mode" component={GodMode} />
+                  <Route path="/pricing" component={Pricing} />
+                  <Route path="/marketplace" component={MarketplacePage} />
+                  <Route path="/affiliate" component={AffiliateDashboard} />
+                  <Route path="/command-center" component={CommandCenterPage} />
                   <Route path="/gym" component={GymLanding} />
                   <Route path="/luxe" component={LuxeLanding} />
                   <Route component={NotFound} />
@@ -97,11 +106,13 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
-        <Router />
-      </TooltipProvider>
+      <AccountProvider>
+        <TooltipProvider>
+          <Toaster />
+          {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
+          <Router />
+        </TooltipProvider>
+      </AccountProvider>
     </QueryClientProvider>
   );
 }

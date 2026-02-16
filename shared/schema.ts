@@ -10,6 +10,12 @@ export const subAccounts = pgTable("sub_accounts", {
   twilioNumber: text("twilio_number").notNull(),
   googleReviewLink: text("google_review_link"),
   ownerPhone: text("owner_phone"),
+  industry: text("industry"),
+  config: json("config"),
+  vibeTheme: text("vibe_theme").default("cyber-glass"),
+  ownerUserId: text("owner_user_id"),
+  parentSnapshotId: integer("parent_snapshot_id"),
+  isFork: boolean("is_fork").default(false),
 });
 
 export const insertSubAccountSchema = createInsertSchema(subAccounts).omit({ id: true });
@@ -171,3 +177,109 @@ export const owners = pgTable("owners", {
 export const insertOwnerSchema = createInsertSchema(owners).omit({ id: true, createdAt: true });
 export type InsertOwner = z.infer<typeof insertOwnerSchema>;
 export type Owner = typeof owners.$inferSelect;
+
+export const subscriptions = pgTable("subscriptions", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  planTier: text("plan_tier").notNull().default("free"),
+  status: text("status").notNull().default("inactive"),
+  currentPeriodEnd: timestamp("current_period_end"),
+  trialEnd: timestamp("trial_end"),
+  aiCredits: real("ai_credits").default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertSubscriptionSchema = createInsertSchema(subscriptions).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertSubscription = z.infer<typeof insertSubscriptionSchema>;
+export type Subscription = typeof subscriptions.$inferSelect;
+
+export const snapshots = pgTable("snapshots", {
+  id: serial("id").primaryKey(),
+  creatorId: text("creator_id").notNull(),
+  creatorName: text("creator_name"),
+  name: text("name").notNull(),
+  description: text("description"),
+  price: real("price").default(0),
+  industry: text("industry"),
+  config: json("config").notNull(),
+  isPublic: boolean("is_public").default(false),
+  downloads: integer("downloads").default(0),
+  forkCount: integer("fork_count").default(0),
+  rating: real("rating").default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSnapshotSchema = createInsertSchema(snapshots).omit({ id: true, createdAt: true });
+export type InsertSnapshot = z.infer<typeof insertSnapshotSchema>;
+export type Snapshot = typeof snapshots.$inferSelect;
+
+export const snapshotVersions = pgTable("snapshot_versions", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  versionName: text("version_name").notNull(),
+  config: json("config").notNull(),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSnapshotVersionSchema = createInsertSchema(snapshotVersions).omit({ id: true, createdAt: true });
+export type InsertSnapshotVersion = z.infer<typeof insertSnapshotVersionSchema>;
+export type SnapshotVersion = typeof snapshotVersions.$inferSelect;
+
+export const affiliates = pgTable("affiliates", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().unique(),
+  affiliateCode: text("affiliate_code").notNull().unique(),
+  commissionRate: real("commission_rate").default(0.40),
+  totalEarned: real("total_earned").default(0),
+  pendingPayout: real("pending_payout").default(0),
+  tier: text("tier").default("standard"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertAffiliateSchema = createInsertSchema(affiliates).omit({ id: true, createdAt: true });
+export type InsertAffiliate = z.infer<typeof insertAffiliateSchema>;
+export type Affiliate = typeof affiliates.$inferSelect;
+
+export const referrals = pgTable("referrals", {
+  id: serial("id").primaryKey(),
+  affiliateId: integer("affiliate_id").references(() => affiliates.id).notNull(),
+  referredUserId: text("referred_user_id").notNull(),
+  referredEmail: text("referred_email"),
+  status: text("status").notNull().default("active"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertReferralSchema = createInsertSchema(referrals).omit({ id: true, createdAt: true });
+export type InsertReferral = z.infer<typeof insertReferralSchema>;
+export type Referral = typeof referrals.$inferSelect;
+
+export const commissions = pgTable("commissions", {
+  id: serial("id").primaryKey(),
+  affiliateId: integer("affiliate_id").references(() => affiliates.id).notNull(),
+  referralId: integer("referral_id").references(() => referrals.id).notNull(),
+  amount: real("amount").notNull(),
+  status: text("status").notNull().default("pending"),
+  note: text("note"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertCommissionSchema = createInsertSchema(commissions).omit({ id: true, createdAt: true });
+export type InsertCommission = z.infer<typeof insertCommissionSchema>;
+export type Commission = typeof commissions.$inferSelect;
+
+export const auditLogs = pgTable("audit_logs", {
+  id: serial("id").primaryKey(),
+  action: text("action").notNull(),
+  performedBy: text("performed_by").notNull(),
+  details: json("details"),
+  count: integer("count"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: true, createdAt: true });
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+export type AuditLog = typeof auditLogs.$inferSelect;
