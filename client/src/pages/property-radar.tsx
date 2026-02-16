@@ -71,6 +71,7 @@ export default function PropertyRadar() {
   const [scanPulse, setScanPulse] = useState(false);
   const [viewMode, setViewMode] = useState<"feed" | "pipeline">("feed");
   const [selectedLead, setSelectedLead] = useState<LeadWithMetrics | null>(null);
+  const [dataSource, setDataSource] = useState<string>("simulated");
   const [configForm, setConfigForm] = useState({
     targetZips: "",
     targetCities: "",
@@ -129,8 +130,12 @@ export default function PropertyRadar() {
     },
     onSuccess: (data) => {
       setScanPulse(false);
+      setDataSource(data.source || "simulated");
       queryClient.invalidateQueries({ queryKey: ["/api/property-radar/leads"] });
-      toast({ title: `🏠 ${data.found} Distressed Properties Found`, description: `Source: ${data.source}` });
+      toast({
+        title: `${data.found} Distressed Properties Found`,
+        description: data.source === "simulated" ? "Demo data — connect a data provider for live results" : `Live data from ${data.source}`,
+      });
     },
     onError: () => {
       setScanPulse(false);
@@ -251,6 +256,22 @@ export default function PropertyRadar() {
           </Button>
         </div>
       </div>
+
+      {/* Data Source Banner */}
+      {dataSource === "simulated" && leads.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3 flex items-center gap-3"
+        >
+          <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+          <div className="flex-1">
+            <span className="text-sm text-amber-300 font-medium">Demo Mode</span>
+            <span className="text-sm text-amber-400/70 ml-2">Showing simulated Las Vegas property data. Connect a live data provider (PropStream, BatchLeads, etc.) for real distressed property feeds.</span>
+          </div>
+          <span className="text-xs px-2 py-1 rounded-full bg-amber-500/20 text-amber-400 font-mono">SIMULATED</span>
+        </motion.div>
+      )}
 
       {/* Stats Bar */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

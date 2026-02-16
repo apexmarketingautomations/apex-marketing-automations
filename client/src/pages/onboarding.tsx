@@ -39,6 +39,7 @@ export default function Onboarding() {
   const [blueprint, setBlueprint] = useState<{ title: string; stages: string[]; fields: string[]; templates: string[] } | null>(null);
   const apiDoneRef = useRef(false);
   const animDoneRef = useRef(false);
+  const [customIndustry, setCustomIndustry] = useState("");
 
   const startSetup = (industryId: string) => {
     setSelectedIndustry(industryId);
@@ -46,7 +47,7 @@ export default function Onboarding() {
     apiDoneRef.current = false;
     animDoneRef.current = false;
 
-    const industryLabel = INDUSTRIES.find(i => i.id === industryId)?.label || industryId;
+    const industryLabel = INDUSTRIES.find(i => i.id === industryId)?.label || industryId.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 
     api.onboard(industryId).then((data: { account: any; blueprint: { title: string; stages: string[]; fields: string[]; templates: string[] } }) => {
       setBlueprint(data.blueprint);
@@ -61,7 +62,16 @@ export default function Onboarding() {
       }
     });
 
-    const steps = [
+    const isCustom = !INDUSTRIES.find(i => i.id === industryId);
+    const steps = isCustom ? [
+      { msg: `Generating AI Blueprint for "${industryLabel}"...`, progress: 15, delay: 800 },
+      { msg: "Analyzing industry best practices with GPT-4o...", progress: 30, delay: 1800 },
+      { msg: "Designing optimal pipeline stages...", progress: 50, delay: 3000 },
+      { msg: "Creating custom contact fields...", progress: 65, delay: 4000 },
+      { msg: "Generating SMS & Email templates...", progress: 80, delay: 5000 },
+      { msg: "Saving blueprint to database...", progress: 95, delay: 6000 },
+      { msg: "Account Ready.", progress: 100, delay: 7000 },
+    ] : [
       { msg: `Fetching AI Blueprint for ${industryLabel}...`, progress: 20, delay: 800 },
       { msg: "Analyzing industry standards...", progress: 40, delay: 1500 },
       { msg: "Creating pipeline stages in database...", progress: 60, delay: 2200 },
@@ -153,6 +163,45 @@ export default function Onboarding() {
                 </Card>
               ))}
               </div>
+              <Card className="border-dashed border-2 border-primary/30 hover:border-primary/50 transition-all mt-2">
+                <CardContent className="p-5">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2.5 rounded-lg bg-gradient-to-br from-purple-500/10 to-cyan-500/10">
+                      <Sparkles className="h-5 w-5 text-purple-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-lg">Custom Industry</h3>
+                      <p className="text-sm text-muted-foreground">Don't see yours? AI will generate a custom blueprint</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="e.g. Pet Grooming, Solar Energy, Wedding Planning..."
+                      value={customIndustry}
+                      onChange={(e) => setCustomIndustry(e.target.value)}
+                      className="flex-1"
+                      data-testid="input-custom-industry"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && customIndustry.trim()) {
+                          startSetup(customIndustry.trim().toLowerCase().replace(/\s+/g, "_"));
+                        }
+                      }}
+                    />
+                    <Button
+                      onClick={() => {
+                        if (customIndustry.trim()) {
+                          startSetup(customIndustry.trim().toLowerCase().replace(/\s+/g, "_"));
+                        }
+                      }}
+                      disabled={!customIndustry.trim()}
+                      className="bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500"
+                      data-testid="button-custom-generate"
+                    >
+                      <Sparkles className="h-4 w-4 mr-1" /> Generate
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             </motion.div>
           )}
 
