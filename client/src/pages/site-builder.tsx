@@ -72,6 +72,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { ChatWidget } from "@/components/chat-widget";
+import { SiteBuilderTutorial, useSiteBuilderTutorial } from "@/components/site-builder-tutorial";
 
 const ICON_MAP: Record<string, React.ComponentType<any>> = {
   ShieldCheck,
@@ -1032,6 +1033,7 @@ export default function SiteBuilder() {
   const [showImageLibrary, setShowImageLibrary] = useState(false);
   const [uploadedImages, setUploadedImages] = useState<{url: string; filename: string; size: number; uploadedAt?: string}[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const { showTutorial, startTutorial, closeTutorial } = useSiteBuilderTutorial();
 
   const fetchUploadedImages = useCallback(async () => {
     try {
@@ -1982,6 +1984,15 @@ export default function SiteBuilder() {
             >
               Publish
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-indigo-500/30 hover:bg-indigo-500/10 text-indigo-400 hover:text-indigo-300"
+              onClick={startTutorial}
+              data-testid="button-start-tutorial"
+            >
+              <Info size={14} className="mr-1" /> Tutorial
+            </Button>
           </div>
         </div>
 
@@ -2639,6 +2650,8 @@ export default function SiteBuilder() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {showTutorial && <SiteBuilderTutorial onClose={closeTutorial} />}
     </div>
   );
 }
