@@ -95,6 +95,7 @@ export async function registerRoutes(
     if (fullPath === "/api/log-error") return next();
     if (fullPath === "/api/sms-webhook") return next();
     if (fullPath === "/api/sentinel/test-trigger") return next();
+    if (fullPath === "/api/sentinel/live") return next();
 
     if (!req.isAuthenticated || !req.isAuthenticated()) {
       return res.status(401).json({ error: "Not authenticated" });
@@ -3092,6 +3093,16 @@ Rules:
     await storage.updateSentinelIncident(id, { actionStatus: "acknowledged" });
     res.json({ success: true });
   }));
+
+  app.get("/api/sentinel/live", (_req, res) => {
+    const mockAccidents = [
+      { id: 1, type: "MVA w/ Injuries", location: "Intersection of 5th & Main", time: "2 mins ago", value: "HIGH" },
+      { id: 2, type: "Rollover", location: "Hwy 101 Exit 42", time: "14 mins ago", value: "CRITICAL" },
+      { id: 3, type: "MVA — Entrapment", location: "I-15 Southbound Mile Marker 38", time: "Just now", value: "CRITICAL" },
+      { id: 4, type: "Signal 4 — Possible Injuries", location: "Flamingo & Las Vegas Blvd", time: "6 mins ago", value: "HIGH" },
+    ];
+    res.json(mockAccidents);
+  });
 
   app.post("/api/sentinel/test-trigger", asyncHandler(async (req, res) => {
     // No auth required — demo endpoint for live meeting triggers
