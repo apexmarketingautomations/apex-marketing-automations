@@ -1,0 +1,84 @@
+import axios from 'axios';
+
+// 🔱 CONFIGURATION: Add these to your Replit Secrets
+const META_VERSION = 'v18.0';
+const META_ACCESS_TOKEN = process.env.META_ACCESS_TOKEN;
+const AD_ACCOUNT_ID = process.env.META_AD_ACCOUNT_ID;
+
+// 1. THE LIVE SCRAPER: Pulling from LVMPD Open Data
+const LVMPD_DATA_URL = "https://services.arcgis.com/s9H9v64pX9S6X36r/arcgis/rest/services/LVMPD_Calls_For_Service/FeatureServer/0/query";
+
+export async function processLiveSentinelFeed() {
+    try {
+        const params = {
+            where: "Incident_Type_Description LIKE '%ACCIDENT%'",
+            outFields: "*",
+            f: "json",
+            resultRecordCount: 5,
+            orderByFields: "Incident_Date DESC"
+        };
+
+        const response = await axios.get(LVMPD_DATA_URL, { params });
+        const incidents = response.data.features;
+
+        // 2. THE PROFIT FILTER: Identifying 7-Figure Cases
+        return incidents.map((inc: any) => {
+            const data = inc.attributes;
+            const isHighValue = data.Incident_Type_Description.includes('INJURIES') || 
+                                data.Incident_Type_Description.includes('ENTRAPMENT');
+
+            return {
+                id: data.Incident_Number,
+                type: data.Incident_Type_Description,
+                location: data.Address,
+                lat: data.Latitude,
+                lng: data.Longitude,
+                severity: isHighValue ? 'CRITICAL' : 'HIGH VALUE',
+                actionRequired: isHighValue // Auto-trigger for serious crashes
+            };
+        });
+    } catch (error) {
+        console.error("Sentinel Scraper Error:", error);
+        return [];
+    }
+}
+
+// 3. THE GEOFENCE DEPLOYER: Connecting to Meta Ads
+export async function deployGeofenceAd(incident: any) {
+    if (!META_ACCESS_TOKEN || !AD_ACCOUNT_ID) {
+        return { status: "SIMULATION_MODE", message: "Add Meta Credentials for Live Fire" };
+    }
+
+    try {
+        // This creates a targeted "Pin" 1-mile around the accident
+        const adSetPayload = {
+            name: `Sentinel_Deploy_${incident.id}`,
+            optimization_goal: 'REACH',
+            billing_event: 'IMPRESSIONS',
+            bid_amount: 1000, // Aggressive bidding to win the "Speed to Lead"
+            targeting: {
+                geo_locations: {
+                    custom_locations: [
+                        {
+                            latitude: incident.lat,
+                            longitude: incident.lng,
+                            radius: 1,
+                            distance_unit: 'mile'
+                        }
+                    ]
+                }
+            },
+            status: 'ACTIVE'
+        };
+
+        const response = await axios.post(
+            `https://graph.facebook.com/${META_VERSION}/act_${AD_ACCOUNT_ID}/adsets`,
+            adSetPayload,
+            { headers: { Authorization: `Bearer ${META_ACCESS_TOKEN}` } }
+        );
+
+        return { status: "LIVE_FIRE", adSetId: response.data.id };
+    } catch (error) {
+        return { status: "ERROR", error: error.message };
+    }
+}

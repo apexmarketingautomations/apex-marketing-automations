@@ -9,6 +9,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import express from "express";
+import { processLiveSentinelFeed, deployGeofenceAd } from "./sentinel";
 
 type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
@@ -2931,7 +2932,27 @@ Rules:
     let incidents: any[] = [];
     let source = "simulated";
 
-    if (config?.feedUrl) {
+    // Priority 1: Try LVMPD live scraper (real dispatch data)
+    try {
+      console.log("📡 SENTINEL: Attempting LVMPD live feed scrape...");
+      const liveIncidents = await processLiveSentinelFeed();
+      if (liveIncidents.length > 0) {
+        incidents = liveIncidents.map(inc => ({
+          title: inc.type,
+          description: `${inc.type} at ${inc.location}. ${inc.actionRequired ? 'HIGH VALUE — Action required.' : 'Monitoring.'}`,
+          location: inc.location,
+          severity: inc.severity,
+          rawPayload: { id: inc.id, lat: inc.lat, lng: inc.lng, type: inc.type },
+        }));
+        source = "lvmpd_live";
+        console.log(`📡 SENTINEL: Pulled ${incidents.length} live incidents from LVMPD`);
+      }
+    } catch (e) {
+      console.log("📡 SENTINEL: LVMPD scraper unavailable:", (e as any).message);
+    }
+
+    // Priority 2: Try custom feed URL from config
+    if (incidents.length === 0 && config?.feedUrl) {
       try {
         const axios = (await import("axios")).default;
         const response = await axios.get(config.feedUrl, { timeout: 10000 });
@@ -2949,12 +2970,13 @@ Rules:
             rawPayload: item,
           }));
         }
-        source = "live_feed";
+        source = "custom_feed";
       } catch (e) {
-        console.log("[SENTINEL] Feed fetch failed, using simulated data:", (e as any).message);
+        console.log("📡 SENTINEL: Custom feed fetch failed:", (e as any).message);
       }
     }
 
+    // Priority 3: Simulated fallback
     if (incidents.length === 0) {
       const sampleIncidents = [
         { title: "MVA w/ Entrapment", description: "Motor vehicle accident with entrapment reported. Multiple units dispatched.", location: "Intersection of Main St & 4th Ave", severity: "critical" },
@@ -3021,37 +3043,14 @@ Rules:
     console.log(`📡 APEX SENTINEL: Deploying Geofence to ${incident.location}...`);
     console.log(`📡 Target radius: ${radius} mile(s) — Severity: ${incident.severity?.toUpperCase()}`);
 
-    let metaAdsStatus = "simulated";
-    const metaAccessToken = process.env.META_ACCESS_TOKEN;
-    const metaAdAccountId = process.env.META_AD_ACCOUNT_ID;
-
-    if (metaAccessToken && metaAdAccountId) {
-      try {
-        const adSetPayload = {
-          name: `Sentinel Blitz — ${incident.title}`,
-          targeting: {
-            geo_locations: {
-              custom_locations: [{
-                address_string: incident.location,
-                radius: radius,
-                distance_unit: "mile",
-              }],
-            },
-          },
-          status: "ACTIVE",
-          daily_budget: 5000,
-          billing_event: "IMPRESSIONS",
-          optimization_goal: "REACH",
-        };
-        console.log(`📡 META ADS: Activating Ad Set for ${incident.location}`, JSON.stringify(adSetPayload));
-        metaAdsStatus = "dispatched_to_meta";
-      } catch (metaErr: any) {
-        console.error("META ADS ERROR:", metaErr?.message);
-        metaAdsStatus = "meta_error";
-      }
-    } else {
-      console.log(`📡 META ADS: No credentials configured — running in simulation mode`);
-    }
+    const rawPayload = incident.rawPayload as any;
+    const geoResult = await deployGeofenceAd({
+      id: incident.id,
+      location: incident.location || "",
+      lat: rawPayload?.lat || null,
+      lng: rawPayload?.lng || null,
+      title: incident.title || undefined,
+    }, radius);
 
     await storage.updateSentinelIncident(id, {
       geofenceDeployed: true,
@@ -3061,14 +3060,15 @@ Rules:
     await storage.createAuditLog({
       action: "SENTINEL_GEOFENCE_DEPLOYED",
       performedBy: user.id,
-      details: { incidentId: id, location: incident.location, radiusMiles: radius, metaAdsStatus },
+      details: { incidentId: id, location: incident.location, radiusMiles: radius, metaResult: geoResult },
     });
 
     res.json({
       success: true,
       message: `Geofence ads deployed to ${radius}-mile radius of ${incident.location}`,
-      metaAdsStatus,
-      targeting: { center: incident.location, radiusMiles: radius, severity: incident.severity },
+      metaAdsStatus: geoResult.status,
+      adSetId: geoResult.adSetId || null,
+      targeting: { center: incident.location, radiusMiles: radius, severity: incident.severity, lat: rawPayload?.lat, lng: rawPayload?.lng },
     });
   }));
 
