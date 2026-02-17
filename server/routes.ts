@@ -270,7 +270,7 @@ Rules:
     const raw = await geminiChat([
       { role: "system", content: WORKFLOW_AI_SYSTEM_PROMPT },
       { role: "user", content: parsed.data.prompt },
-    ], { temperature: 0.7, maxTokens: 1500 });
+    ], { temperature: 0.7, maxTokens: 1500, jsonMode: true });
     const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     let workflowData: any;
@@ -455,7 +455,7 @@ Guidelines:
           role: "user",
           content: `Generate a CRM blueprint for: ${industryLabel}`
         }
-      ], { temperature: 0.7 });
+      ], { temperature: 0.7, jsonMode: true });
       const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
 
       try {
@@ -564,7 +564,7 @@ Rules:
     const raw = await geminiChat([
       { role: "system", content: SITE_SYSTEM_PROMPT },
       { role: "user", content: userMessage },
-    ], { temperature: 0.7, maxTokens: 4000 });
+    ], { temperature: 0.7, maxTokens: 4000, jsonMode: true });
     const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     let siteData: any;
@@ -798,7 +798,7 @@ Generate a personalized premium wellness/beauty service landing page for this sp
     const raw = await geminiChat([
       { role: "system", content: LIQUID_SYSTEM_PROMPT },
       { role: "user", content: visitorDescription },
-    ], { temperature: 0.8, maxTokens: 1500 });
+    ], { temperature: 0.8, maxTokens: 1500, jsonMode: true });
     const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     let siteData: any;
@@ -873,7 +873,7 @@ Rules:
     const raw = await geminiChat([
       { role: "system", content: AD_CAMPAIGN_SYSTEM_PROMPT },
       { role: "user", content: parsed.data.prompt },
-    ], { temperature: 0.7, maxTokens: 1500 });
+    ], { temperature: 0.7, maxTokens: 1500, jsonMode: true });
     const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     let campaign: any;
@@ -1391,7 +1391,7 @@ Rules:
 - Return ONLY valid JSON, no markdown or code fences`,
       },
       { role: "user", content: parsed.data.businessDescription },
-    ], { temperature: 0.7, maxTokens: 300 });
+    ], { temperature: 0.7, maxTokens: 300, jsonMode: true });
     const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     let data: any;
@@ -1917,7 +1917,7 @@ Rules:
         const raw = await geminiChat([
           { role: "system", content: SITE_SYSTEM_PROMPT },
           { role: "user", content: `Create a premium landing page for "${businessName}", a ${industry} business. Make it look high-end and professional with compelling copy.` },
-        ], { temperature: 0.7, maxTokens: 4000 });
+        ], { temperature: 0.7, maxTokens: 4000, jsonMode: true });
         const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
         const parsed = JSON.parse(cleaned);
         if (parsed.theme && Array.isArray(parsed.sections)) {
@@ -3586,7 +3586,7 @@ Rules:
     const raw = await geminiChat([
       { role: "system", content: FORM_BUILDER_SYSTEM_PROMPT },
       { role: "user", content: userPrompt },
-    ], { temperature: 0.7, maxTokens: 2000 });
+    ], { temperature: 0.7, maxTokens: 2000, jsonMode: true });
     const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     let formData: any;

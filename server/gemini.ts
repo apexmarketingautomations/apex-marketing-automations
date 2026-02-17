@@ -14,13 +14,14 @@ interface ChatMessage {
 interface GeminiOptions {
   temperature?: number;
   maxTokens?: number;
+  jsonMode?: boolean;
 }
 
 export async function geminiChat(
   messages: ChatMessage[],
   options: GeminiOptions = {}
 ): Promise<string> {
-  const { temperature = 0.7, maxTokens = 1500 } = options;
+  const { temperature = 0.7, maxTokens = 1500, jsonMode = false } = options;
 
   let systemInstruction: string | undefined;
   const contents: { role: string; parts: { text: string }[] }[] = [];
@@ -36,14 +37,20 @@ export async function geminiChat(
     }
   }
 
+  const config: any = {
+    systemInstruction: systemInstruction,
+    temperature,
+    maxOutputTokens: maxTokens,
+  };
+
+  if (jsonMode) {
+    config.responseMimeType = "application/json";
+  }
+
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash",
     contents,
-    config: {
-      systemInstruction: systemInstruction,
-      temperature,
-      maxOutputTokens: maxTokens,
-    },
+    config,
   });
 
   return response.text ?? "";
