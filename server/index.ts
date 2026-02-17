@@ -146,7 +146,7 @@ function validateEnvVars() {
     { key: "VAPI_PHONE_NUMBER_ID", label: "Vapi Default Phone Number ID (auto-inject for outbound)", critical: false },
     { key: "TWILIO_ACCOUNT_SID", label: "Twilio Account SID (phone provisioning)", critical: false },
     { key: "TWILIO_AUTH_TOKEN", label: "Twilio Auth Token (phone provisioning)", critical: false },
-    { key: "AI_INTEGRATIONS_OPENAI_API_KEY", label: "OpenAI API Key (AI features)", critical: false },
+    { key: "Gemini_API_Key_saas", label: "Gemini API Key (AI features)", critical: false },
   ];
 
   let missingCritical = false;

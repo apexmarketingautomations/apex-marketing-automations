@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains } from "@shared/schema";
 import { z } from "zod";
-import OpenAI from "openai";
+import { geminiChat, isGeminiConfigured } from "./gemini";
 import Twilio from "twilio";
 import multer from "multer";
 import path from "path";
@@ -260,24 +260,17 @@ Rules:
 - Return ONLY valid JSON, no markdown, no code fences`;
 
   app.post("/api/workflows/generate", asyncHandler(async (req, res) => {
-    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+    if (!isGeminiConfigured()) {
       return res.status(503).json({ error: "AI service is not configured" });
     }
 
     const parsed = z.object({ prompt: z.string().min(1).max(2000) }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        { role: "system", content: WORKFLOW_AI_SYSTEM_PROMPT },
-        { role: "user", content: parsed.data.prompt },
-      ],
-      temperature: 0.7,
-      max_tokens: 1500,
-    });
-
-    const raw = completion.choices[0]?.message?.content ?? "";
+    const raw = await geminiChat([
+      { role: "system", content: WORKFLOW_AI_SYSTEM_PROMPT },
+      { role: "user", content: parsed.data.prompt },
+    ], { temperature: 0.7, maxTokens: 1500 });
     const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     let workflowData: any;
@@ -356,7 +349,7 @@ Rules:
   });
 
   app.post("/api/bot/chat", asyncHandler(async (req, res) => {
-    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+    if (!isGeminiConfigured()) {
       return res.status(503).json({ error: "AI service is not configured" });
     }
 
@@ -380,14 +373,7 @@ Rules:
 
     messages.push({ role: "user", content: parsed.data.message });
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages,
-      temperature: 0.7,
-      max_tokens: 300,
-    });
-
-    const reply = completion.choices[0]?.message?.content ?? "I'm here to help! Could you tell me more?";
+    const reply = await geminiChat(messages as any, { temperature: 0.7, maxTokens: 300 }) || "I'm here to help! Could you tell me more?";
 
     await logUsageInternal(null, "AI_CHAT", 1, "Bot trainer chat");
 
@@ -440,25 +426,16 @@ Rules:
     let bp = await storage.getBlueprintByIndustryId(industryId);
 
     if (!bp) {
-      const aiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-      if (!aiKey) {
+      if (!isGeminiConfigured()) {
         return res.status(404).json({ error: "Blueprint not found and AI service is not configured to generate one" });
       }
 
-      const aiClient = new OpenAI({
-        apiKey: aiKey,
-        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-      });
-
       const industryLabel = industryId.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 
-      const completion = await aiClient.chat.completions.create({
-        model: "gpt-4o",
-        temperature: 0.7,
-        messages: [
-          {
-            role: "system",
-            content: `You are a CRM configuration expert. Generate a complete CRM blueprint for a specific industry. Return ONLY valid JSON with no markdown or code fences.
+      const raw = await geminiChat([
+        {
+          role: "system",
+          content: `You are a CRM configuration expert. Generate a complete CRM blueprint for a specific industry. Return ONLY valid JSON with no markdown or code fences.
 
 The JSON must have this exact structure:
 {
@@ -473,15 +450,12 @@ Guidelines:
 - fields: 4-6 custom contact fields relevant to this industry (things you'd track about each customer)
 - templates: 3-5 SMS/email template names for key touchpoints (appointment reminders, follow-ups, promotions)
 - Make it practical and industry-specific, not generic`
-          },
-          {
-            role: "user",
-            content: `Generate a CRM blueprint for: ${industryLabel}`
-          }
-        ],
-      });
-
-      const raw = completion.choices[0]?.message?.content || "";
+        },
+        {
+          role: "user",
+          content: `Generate a CRM blueprint for: ${industryLabel}`
+        }
+      ], { temperature: 0.7 });
       const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
 
       try {
@@ -518,10 +492,6 @@ Guidelines:
   }));
 
   // ---- Site Builder (AI Generation) ----
-  const openai = new OpenAI({
-    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-  });
 
   const SITE_SYSTEM_PROMPT = `You are an expert landing-page architect who creates stunning, high-converting websites. Generate rich, visually impressive sites with many sections.
 
@@ -579,7 +549,7 @@ Rules:
   });
 
   app.post("/api/generate-site", asyncHandler(async (req, res) => {
-    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+    if (!isGeminiConfigured()) {
       return res.status(503).json({ error: "AI service is not configured" });
     }
 
@@ -591,17 +561,10 @@ Rules:
       userMessage += `\n\nThe user has uploaded these images to use on the site:\n${parsed.data.uploadedImages.join("\n")}`;
     }
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        { role: "system", content: SITE_SYSTEM_PROMPT },
-        { role: "user", content: userMessage },
-      ],
-      temperature: 0.7,
-      max_tokens: 4000,
-    });
-
-    const raw = completion.choices[0]?.message?.content ?? "";
+    const raw = await geminiChat([
+      { role: "system", content: SITE_SYSTEM_PROMPT },
+      { role: "user", content: userMessage },
+    ], { temperature: 0.7, maxTokens: 4000 });
     const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     let siteData: any;
@@ -815,7 +778,7 @@ Rules:
   });
 
   app.post("/api/generate-liquid-site", asyncHandler(async (req, res) => {
-    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+    if (!isGeminiConfigured()) {
       return res.status(503).json({ error: "AI service is not configured" });
     }
 
@@ -832,17 +795,10 @@ Rules:
 
 Generate a personalized premium wellness/beauty service landing page for this specific visitor.`;
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        { role: "system", content: LIQUID_SYSTEM_PROMPT },
-        { role: "user", content: visitorDescription },
-      ],
-      temperature: 0.8,
-      max_tokens: 1500,
-    });
-
-    const raw = completion.choices[0]?.message?.content ?? "";
+    const raw = await geminiChat([
+      { role: "system", content: LIQUID_SYSTEM_PROMPT },
+      { role: "user", content: visitorDescription },
+    ], { temperature: 0.8, maxTokens: 1500 });
     const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     let siteData: any;
@@ -907,24 +863,17 @@ Rules:
 - Return ONLY valid JSON, no markdown, no code fences`;
 
   app.post("/api/generate-ad-campaign", asyncHandler(async (req, res) => {
-    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+    if (!isGeminiConfigured()) {
       return res.status(503).json({ error: "AI service is not configured" });
     }
 
     const parsed = promptSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        { role: "system", content: AD_CAMPAIGN_SYSTEM_PROMPT },
-        { role: "user", content: parsed.data.prompt },
-      ],
-      temperature: 0.7,
-      max_tokens: 1500,
-    });
-
-    const raw = completion.choices[0]?.message?.content ?? "";
+    const raw = await geminiChat([
+      { role: "system", content: AD_CAMPAIGN_SYSTEM_PROMPT },
+      { role: "user", content: parsed.data.prompt },
+    ], { temperature: 0.7, maxTokens: 1500 });
     const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     let campaign: any;
@@ -939,19 +888,8 @@ Rules:
     }
 
     if (campaign.image_prompt) {
-      try {
-        const imageResponse = await openai.images.generate({
-          model: "dall-e-3",
-          prompt: `Facebook ad creative image: ${campaign.image_prompt}. Professional marketing photo, high quality, no text overlay, clean composition, suitable for social media advertising.`,
-          n: 1,
-          size: "1024x1024",
-          quality: "standard",
-        });
-        campaign.generated_image_url = imageResponse.data?.[0]?.url || null;
-      } catch (imgErr: any) {
-        console.error("Ad image generation failed:", imgErr.message);
-        campaign.generated_image_url = null;
-      }
+      campaign.generated_image_url = null;
+      console.log("Image generation skipped (Gemini mode - no DALL-E)");
     }
 
     await logUsageInternal(null, "AI_CHAT", 1, "Ad campaign AI generation");
@@ -982,7 +920,7 @@ Rules:
   });
 
   app.post("/api/chat", asyncHandler(async (req, res) => {
-    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+    if (!isGeminiConfigured()) {
       return res.status(503).json({ reply: "Chat service is currently offline. Please try again later." });
     }
 
@@ -1004,14 +942,7 @@ Rules:
 
     chatMessages.push({ role: "user", content: parsed.data.message });
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: chatMessages,
-      temperature: 0.7,
-      max_tokens: 200,
-    });
-
-    const reply = completion.choices[0]?.message?.content ?? "I'm here to help! Could you tell me more about what you're looking for?";
+    const reply = await geminiChat(chatMessages as any, { temperature: 0.7, maxTokens: 200 }) || "I'm here to help! Could you tell me more about what you're looking for?";
 
     await logUsageInternal(null, "AI_CHAT", 1, "Chat widget AI response");
 
@@ -1438,19 +1369,17 @@ Rules:
   });
 
   app.post("/api/voice-agents/generate-persona", asyncHandler(async (req, res) => {
-    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+    if (!isGeminiConfigured()) {
       return res.status(503).json({ error: "AI service is not configured" });
     }
 
     const parsed = personaSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content: `You generate voice AI agent personas for businesses. Given a business description, return a JSON object with:
+    const raw = await geminiChat([
+      {
+        role: "system",
+        content: `You generate voice AI agent personas for businesses. Given a business description, return a JSON object with:
 {
   "persona": "<detailed agent persona/instructions for handling calls, max 3 sentences>",
   "firstMessage": "<natural greeting the agent says when answering, max 1 sentence>",
@@ -1460,14 +1389,9 @@ Rules:
 - Persona should be specific to the business type
 - First message should sound warm and natural, not robotic
 - Return ONLY valid JSON, no markdown or code fences`,
-        },
-        { role: "user", content: parsed.data.businessDescription },
-      ],
-      temperature: 0.7,
-      max_tokens: 300,
-    });
-
-    const raw = completion.choices[0]?.message?.content ?? "";
+      },
+      { role: "user", content: parsed.data.businessDescription },
+    ], { temperature: 0.7, maxTokens: 300 });
     const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     let data: any;
@@ -1676,22 +1600,17 @@ Rules:
 
       let aiReply = "Thanks for your message! We'll get back to you shortly.";
 
-      if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+      if (isGeminiConfigured()) {
         try {
           const systemPrompt = channel === "sms"
             ? "You are a helpful business receptionist. Keep text replies under 160 characters. Be warm, professional, and concise. If someone wants to book an appointment, suggest they call the office number."
             : "You are a helpful business assistant responding via chat. Keep replies conversational and under 300 characters. Be warm, professional, and helpful. If someone wants to book an appointment, suggest they call the office number.";
 
-          const completion = await openai.chat.completions.create({
-            model: "gpt-4o",
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: incomingMsg.substring(0, 1000) },
-            ],
-            max_tokens: 150,
-            temperature: 0.7,
-          });
-          aiReply = completion.choices[0]?.message?.content || aiReply;
+          const geminiReply = await geminiChat([
+            { role: "system", content: systemPrompt },
+            { role: "user", content: incomingMsg.substring(0, 1000) },
+          ], { temperature: 0.7, maxTokens: 150 });
+          aiReply = geminiReply || aiReply;
         } catch (aiErr: any) {
           console.error("AI reply error:", aiErr.message);
         }
@@ -1993,18 +1912,12 @@ Rules:
 
     results.steps.push({ id: "site", status: "running", label: "Generating Landing Page" });
     let siteData = null;
-    if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+    if (isGeminiConfigured()) {
       try {
-        const completion = await openai.chat.completions.create({
-          model: "gpt-4o",
-          messages: [
-            { role: "system", content: SITE_SYSTEM_PROMPT },
-            { role: "user", content: `Create a premium landing page for "${businessName}", a ${industry} business. Make it look high-end and professional with compelling copy.` },
-          ],
-          temperature: 0.7,
-          max_tokens: 4000,
-        });
-        const raw = completion.choices[0]?.message?.content ?? "";
+        const raw = await geminiChat([
+          { role: "system", content: SITE_SYSTEM_PROMPT },
+          { role: "user", content: `Create a premium landing page for "${businessName}", a ${industry} business. Make it look high-end and professional with compelling copy.` },
+        ], { temperature: 0.7, maxTokens: 4000 });
         const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
         const parsed = JSON.parse(cleaned);
         if (parsed.theme && Array.isArray(parsed.sections)) {
@@ -3658,7 +3571,7 @@ Rules:
   });
 
   app.post("/api/forms/generate", asyncHandler(async (req, res) => {
-    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+    if (!isGeminiConfigured()) {
       return res.status(503).json({ error: "AI service is not configured" });
     }
 
@@ -3670,17 +3583,10 @@ Rules:
       ? `Generate a lead capture form for a ${industry} business called "${businessName}".`
       : `Generate a lead capture form for a ${industry} business.`;
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        { role: "system", content: FORM_BUILDER_SYSTEM_PROMPT },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.7,
-      max_tokens: 2000,
-    });
-
-    const raw = completion.choices[0]?.message?.content ?? "";
+    const raw = await geminiChat([
+      { role: "system", content: FORM_BUILDER_SYSTEM_PROMPT },
+      { role: "user", content: userPrompt },
+    ], { temperature: 0.7, maxTokens: 2000 });
     const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     let formData: any;
