@@ -48,20 +48,3 @@ export async function geminiChat(
 
   return response.text ?? "";
 }
-
-export async function geminiGenerateImage(prompt: string): Promise<string | null> {
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash-exp",
-      contents: `Generate a detailed description of this image concept for a Facebook ad: ${prompt}. Describe colors, composition, and visual elements in detail.`,
-      config: {
-        temperature: 0.8,
-        maxOutputTokens: 500,
-      },
-    });
-    return null;
-  } catch (err: any) {
-    console.error("Gemini image description failed:", err.message);
-    return null;
-  }
-}
