@@ -132,6 +132,13 @@ The `shared/` directory contains code used by both frontend and backend:
 
 ### AI/ML
 - **Google Gemini API** - Gemini 2.5 Flash used for: site generation, ad campaign generation, bot chat, workflow AI generation, voice persona generation, chat widget, form builder. All calls auto-log usage to billing dashboard. Uses `@google/genai` SDK via `server/gemini.ts` helper module. Requires `Gemini_API_Key_saas` secret.
+  - **Retry Logic** - Exponential backoff (3 attempts, 1s/2s/4s delays) for transient errors (429, 500, 503, network issues)
+  - **Streaming** - `geminiChatStream` async generator for real-time SSE responses (bot chat + chat widget)
+  - **Image Generation** - `geminiGenerateImage` using gemini-2.0-flash-exp with IMAGE response modality for ad campaign creatives
+  - **JSON Mode** - `responseMimeType: "application/json"` for reliable structured output from all JSON-returning endpoints
+  - **Industry Prompt Tuning** - 8 industry verticals (personal-injury, dental, medspa, gym, real-estate, roofing, hvac, plumbing) with tone/vocabulary/focus configs
+  - **Multi-Language** - 12 languages supported (en, es, pt, fr, de, it, zh, ja, ko, ar, hi, ru) with per-account language preference
+  - **Gemini Pricing** - AI_CHAT: $0.03/call, AI_STREAM: $0.03/call, AI_IMAGE_GEN: $0.25/image (updated from OpenAI rates)
 - **RAG Pipeline** - Architecture references pgvector for similarity search on knowledge base chunks
 
 ### Communication Services

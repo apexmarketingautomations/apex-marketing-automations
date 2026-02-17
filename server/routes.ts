@@ -1066,6 +1066,7 @@ Rules:
   const chatBodySchema = z.object({
     message: z.string().min(1, "message is required").max(2000),
     industry: z.string().max(100).optional(),
+    language: z.string().max(10).optional(),
     conversationHistory: z.array(z.object({
       role: z.string().max(20),
       text: z.string().max(2000),
@@ -1080,7 +1081,7 @@ Rules:
     const parsed = chatBodySchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-    const chatSystemPrompt = CHAT_SYSTEM_PROMPT + getIndustryContext(parsed.data.industry);
+    const chatSystemPrompt = CHAT_SYSTEM_PROMPT + getIndustryContext(parsed.data.industry) + getLanguageInstruction(parsed.data.language);
 
     const chatMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
       { role: "system", content: chatSystemPrompt },
@@ -1113,7 +1114,7 @@ Rules:
       const parsed = chatBodySchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-      const chatSystemPrompt = CHAT_SYSTEM_PROMPT + getIndustryContext(parsed.data.industry);
+      const chatSystemPrompt = CHAT_SYSTEM_PROMPT + getIndustryContext(parsed.data.industry) + getLanguageInstruction(parsed.data.language);
 
       const chatMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
         { role: "system", content: chatSystemPrompt },
