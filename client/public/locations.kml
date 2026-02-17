@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Placemark>
+    <name>Apex Automation HQ</name>
+    <description>Service Area: Orlando, Tampa, Sarasota, Fort Myers, Naples</description>
+    <Point>
+      <coordinates>-81.8723,26.6406,0</coordinates>
+    </Point>
+  </Placemark>
+</kml>
