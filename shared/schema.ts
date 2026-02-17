@@ -16,6 +16,8 @@ export const subAccounts = pgTable("sub_accounts", {
   ownerUserId: text("owner_user_id"),
   parentSnapshotId: integer("parent_snapshot_id"),
   isFork: boolean("is_fork").default(false),
+  language: text("language").default("en"),
+  aiPromptConfig: json("ai_prompt_config"),
 });
 
 export const insertSubAccountSchema = createInsertSchema(subAccounts).omit({ id: true });
@@ -141,6 +143,7 @@ export const usageLogs = pgTable("usage_logs", {
   amount: real("amount").notNull(),
   cost: real("cost").notNull(),
   description: text("description"),
+  tokenCount: integer("token_count"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -159,6 +162,8 @@ export const domains = pgTable("domains", {
   sslActive: boolean("ssl_active").default(false),
   registrar: text("registrar"),
   siteId: integer("site_id").references(() => savedSites.id),
+  verificationToken: text("verification_token"),
+  verifiedAt: timestamp("verified_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

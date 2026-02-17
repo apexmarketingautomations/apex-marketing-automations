@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains } from "@shared/schema";
 import { z } from "zod";
-import { geminiChat, isGeminiConfigured } from "./gemini";
+import { geminiChat, geminiChatStream, isGeminiConfigured, geminiGenerateImage } from "./gemini";
 import Twilio from "twilio";
 import multer from "multer";
 import path from "path";
@@ -11,6 +11,79 @@ import fs from "fs";
 import express from "express";
 import { processLiveSentinelFeed, deployGeofenceAd } from "./sentinel";
 import { scanDistressedProperties, calculateDealMetrics } from "./property-radar";
+import crypto from "crypto";
+import dns from "dns";
+
+const INDUSTRY_PROMPTS: Record<string, { tone: string; vocabulary: string[]; focus: string }> = {
+  "personal-injury": {
+    tone: "empathetic, authoritative, and compassionate",
+    vocabulary: ["consultation", "case evaluation", "settlement", "negligence", "liability", "damages", "injury claim"],
+    focus: "Build trust, emphasize free consultation, highlight track record of settlements"
+  },
+  "dental": {
+    tone: "warm, reassuring, and professional",
+    vocabulary: ["appointment", "treatment plan", "oral health", "dental care", "cleaning", "cosmetic dentistry"],
+    focus: "Reduce dental anxiety, emphasize comfort, promote preventive care"
+  },
+  "medspa": {
+    tone: "luxurious, confident, and welcoming",
+    vocabulary: ["treatment", "rejuvenation", "aesthetic", "consultation", "results", "non-invasive", "enhancement"],
+    focus: "Emphasize transformation results, safety, and premium experience"
+  },
+  "gym": {
+    tone: "energetic, motivating, and supportive",
+    vocabulary: ["membership", "fitness goals", "training", "classes", "transformation", "wellness"],
+    focus: "Motivate action, emphasize community, promote trial offers"
+  },
+  "real-estate": {
+    tone: "professional, knowledgeable, and trustworthy",
+    vocabulary: ["property", "listing", "market analysis", "closing", "investment", "valuation"],
+    focus: "Demonstrate market expertise, emphasize local knowledge, build confidence"
+  },
+  "roofing": {
+    tone: "reliable, straightforward, and expert",
+    vocabulary: ["inspection", "estimate", "repair", "replacement", "warranty", "storm damage"],
+    focus: "Emphasize reliability, free inspections, insurance claim assistance"
+  },
+  "hvac": {
+    tone: "helpful, dependable, and knowledgeable",
+    vocabulary: ["maintenance", "repair", "installation", "energy efficiency", "comfort", "emergency service"],
+    focus: "Highlight emergency availability, energy savings, seasonal tune-ups"
+  },
+  "plumbing": {
+    tone: "responsive, honest, and skilled",
+    vocabulary: ["repair", "emergency", "installation", "drain", "water heater", "leak detection"],
+    focus: "Emphasize fast response times, upfront pricing, licensed technicians"
+  },
+};
+
+function getIndustryContext(industry: string | null | undefined): string {
+  if (!industry) return "";
+  const config = INDUSTRY_PROMPTS[industry.toLowerCase()];
+  if (!config) return "";
+  return `\n\nIndustry context: This is a ${industry} business. Use a ${config.tone} tone. Key terms to naturally incorporate: ${config.vocabulary.join(", ")}. Focus on: ${config.focus}.`;
+}
+
+const SUPPORTED_LANGUAGES: Record<string, string> = {
+  en: "English",
+  es: "Spanish (Español)",
+  pt: "Portuguese (Português)",
+  fr: "French (Français)",
+  de: "German (Deutsch)",
+  it: "Italian (Italiano)",
+  zh: "Chinese (中文)",
+  ja: "Japanese (日本語)",
+  ko: "Korean (한국어)",
+  ar: "Arabic (العربية)",
+  hi: "Hindi (हिन्दी)",
+  ru: "Russian (Русский)",
+};
+
+function getLanguageInstruction(language: string | null | undefined): string {
+  if (!language || language === "en") return "";
+  const langName = SUPPORTED_LANGUAGES[language] || language;
+  return `\n\nIMPORTANT: Respond in ${langName}. All your responses must be in ${langName}, not English.`;
+}
 
 type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
@@ -68,10 +141,10 @@ export async function registerRoutes(
 
   async function logUsageInternal(subAccountId: number | null, type: string, amount: number, description: string) {
     const MARKUP_RATES_INT: Record<string, number> = {
-      SMS_SEGMENT: 2.0, VOICE_MINUTE: 1.5, AI_IMAGE_GEN: 0.50, AI_CHAT: 0.10, DOMAIN_PURCHASE: 0,
+      SMS_SEGMENT: 2.0, VOICE_MINUTE: 1.5, AI_IMAGE_GEN: 0.25, AI_CHAT: 0.03, AI_STREAM: 0.03, DOMAIN_PURCHASE: 0,
     };
     const rate = MARKUP_RATES_INT[type] ?? 0;
-    const cost = (type === "AI_IMAGE_GEN" || type === "AI_CHAT") ? rate : amount * rate;
+    const cost = (type === "AI_IMAGE_GEN" || type === "AI_CHAT" || type === "AI_STREAM") ? rate : amount * rate;
     try {
       await storage.createUsageLog({
         subAccountId: subAccountId ?? 1,
@@ -89,10 +162,11 @@ export async function registerRoutes(
   app.use("/api", (req, res, next) => {
     const fullPath = req.originalUrl || req.baseUrl + req.path;
     const openPaths = ["/api/auth/", "/api/login", "/api/logout", "/api/callback", "/api/stripe/webhook", "/api/stripe/subscription-webhook", "/api/webhooks/", "/api/snapshots/marketplace"];
-    const openExact = ["/api/reviews", "/api/alert-owner"];
+    const openExact = ["/api/reviews", "/api/alert-owner", "/api/languages"];
 
     if (openPaths.some(p => fullPath.startsWith(p))) return next();
     if (req.method === "POST" && openExact.some(p => fullPath === p)) return next();
+    if (req.method === "GET" && fullPath === "/api/languages") return next();
     if (req.method === "GET" && fullPath.startsWith("/api/review-config/")) return next();
     if (fullPath === "/api/log-error") return next();
     if (fullPath === "/api/sms-webhook") return next();
@@ -185,6 +259,24 @@ export async function registerRoutes(
     const account = await storage.createSubAccount(parsed.data);
     res.status(201).json(account);
   }));
+
+  app.patch("/api/accounts/:id/language", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const parsed = z.object({ language: z.string().min(1).max(10) }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const { language } = parsed.data;
+    if (!SUPPORTED_LANGUAGES[language]) {
+      return res.status(400).json({ error: `Unsupported language: ${language}. Supported: ${Object.keys(SUPPORTED_LANGUAGES).join(", ")}` });
+    }
+    const updated = await storage.updateSubAccount(id, { language });
+    if (!updated) return res.status(404).json({ error: "Account not found" });
+    res.json(updated);
+  }));
+
+  // ---- Languages ----
+  app.get("/api/languages", (_req, res) => {
+    res.json(SUPPORTED_LANGUAGES);
+  });
 
   // ---- Messages ----
   app.get("/api/messages/:subAccountId", asyncHandler(async (req, res) => {
@@ -342,6 +434,8 @@ Rules:
   const botChatSchema = z.object({
     message: z.string().min(1).max(2000),
     persona: z.string().max(5000).optional(),
+    industry: z.string().max(100).optional(),
+    language: z.string().max(10).optional(),
     conversationHistory: z.array(z.object({
       role: z.string(),
       content: z.string(),
@@ -356,7 +450,8 @@ Rules:
     const parsed = botChatSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-    const systemPrompt = parsed.data.persona || `You are a helpful AI assistant for a business. Keep responses concise and helpful (1-3 sentences). Help with bookings, answer questions, and provide a warm experience.`;
+    const basePrompt = parsed.data.persona || `You are a helpful AI assistant for a business. Keep responses concise and helpful (1-3 sentences). Help with bookings, answer questions, and provide a warm experience.`;
+    const systemPrompt = basePrompt + getIndustryContext(parsed.data.industry) + getLanguageInstruction(parsed.data.language);
 
     const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
       { role: "system", content: systemPrompt },
@@ -378,6 +473,56 @@ Rules:
     await logUsageInternal(null, "AI_CHAT", 1, "Bot trainer chat");
 
     res.json({ reply });
+  }));
+
+  app.post("/api/bot/chat/stream", asyncHandler(async (req, res) => {
+    try {
+      if (!isGeminiConfigured()) {
+        return res.status(503).json({ error: "AI service is not configured" });
+      }
+
+      const parsed = botChatSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+      const basePrompt = parsed.data.persona || `You are a helpful AI assistant for a business. Keep responses concise and helpful (1-3 sentences). Help with bookings, answer questions, and provide a warm experience.`;
+      const systemPrompt = basePrompt + getIndustryContext(parsed.data.industry) + getLanguageInstruction(parsed.data.language);
+
+      const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
+        { role: "system", content: systemPrompt },
+      ];
+
+      if (parsed.data.conversationHistory) {
+        for (const msg of parsed.data.conversationHistory.slice(-10)) {
+          messages.push({
+            role: msg.role === "user" ? "user" : "assistant",
+            content: msg.content,
+          });
+        }
+      }
+
+      messages.push({ role: "user", content: parsed.data.message });
+
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+
+      const stream = geminiChatStream(messages as any, { temperature: 0.7, maxTokens: 300 });
+      for await (const chunk of stream) {
+        res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
+      }
+
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      res.end();
+
+      await logUsageInternal(null, "AI_CHAT", 1, "Bot trainer chat (stream)");
+    } catch (error: any) {
+      if (!res.headersSent) {
+        res.status(500).json({ error: error.message || "Streaming failed" });
+      } else {
+        res.write(`data: ${JSON.stringify({ error: error.message || "Streaming failed" })}\n\n`);
+        res.end();
+      }
+    }
   }));
 
   // ---- Bot Training Jobs ----
@@ -888,8 +1033,15 @@ Rules:
     }
 
     if (campaign.image_prompt) {
-      campaign.generated_image_url = null;
-      console.log("Image generation skipped (Gemini mode - no DALL-E)");
+      try {
+        const imageUrl = await geminiGenerateImage(
+          `Professional marketing photo for Facebook ad: ${campaign.image_prompt}. High quality, clean composition, suitable for social media advertising, no text overlay.`
+        );
+        campaign.generated_image_url = imageUrl;
+      } catch (imgErr: any) {
+        console.error("Ad image generation failed:", imgErr.message);
+        campaign.generated_image_url = null;
+      }
     }
 
     await logUsageInternal(null, "AI_CHAT", 1, "Ad campaign AI generation");
@@ -913,6 +1065,7 @@ Rules:
 
   const chatBodySchema = z.object({
     message: z.string().min(1, "message is required").max(2000),
+    industry: z.string().max(100).optional(),
     conversationHistory: z.array(z.object({
       role: z.string().max(20),
       text: z.string().max(2000),
@@ -927,8 +1080,10 @@ Rules:
     const parsed = chatBodySchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
+    const chatSystemPrompt = CHAT_SYSTEM_PROMPT + getIndustryContext(parsed.data.industry);
+
     const chatMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
-      { role: "system", content: CHAT_SYSTEM_PROMPT },
+      { role: "system", content: chatSystemPrompt },
     ];
 
     if (parsed.data.conversationHistory) {
@@ -947,6 +1102,55 @@ Rules:
     await logUsageInternal(null, "AI_CHAT", 1, "Chat widget AI response");
 
     res.json({ reply });
+  }));
+
+  app.post("/api/chat/stream", asyncHandler(async (req, res) => {
+    try {
+      if (!isGeminiConfigured()) {
+        return res.status(503).json({ reply: "Chat service is currently offline. Please try again later." });
+      }
+
+      const parsed = chatBodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+      const chatSystemPrompt = CHAT_SYSTEM_PROMPT + getIndustryContext(parsed.data.industry);
+
+      const chatMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
+        { role: "system", content: chatSystemPrompt },
+      ];
+
+      if (parsed.data.conversationHistory) {
+        for (const msg of parsed.data.conversationHistory.slice(-10)) {
+          chatMessages.push({
+            role: msg.role === "user" ? "user" : "assistant",
+            content: msg.text,
+          });
+        }
+      }
+
+      chatMessages.push({ role: "user", content: parsed.data.message });
+
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+
+      const stream = geminiChatStream(chatMessages as any, { temperature: 0.7, maxTokens: 200 });
+      for await (const chunk of stream) {
+        res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
+      }
+
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      res.end();
+
+      await logUsageInternal(null, "AI_CHAT", 1, "Chat widget AI response (stream)");
+    } catch (error: any) {
+      if (!res.headersSent) {
+        res.status(500).json({ error: error.message || "Streaming failed" });
+      } else {
+        res.write(`data: ${JSON.stringify({ error: error.message || "Streaming failed" })}\n\n`);
+        res.end();
+      }
+    }
   }));
 
   // ---- Voice Agent (Vapi Integration) ----
@@ -1366,6 +1570,7 @@ Rules:
 
   const personaSchema = z.object({
     businessDescription: z.string().min(1, "businessDescription is required").max(2000),
+    industry: z.string().max(100).optional(),
   });
 
   app.post("/api/voice-agents/generate-persona", asyncHandler(async (req, res) => {
@@ -1376,10 +1581,7 @@ Rules:
     const parsed = personaSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-    const raw = await geminiChat([
-      {
-        role: "system",
-        content: `You generate voice AI agent personas for businesses. Given a business description, return a JSON object with:
+    const voicePersonaBasePrompt = `You generate voice AI agent personas for businesses. Given a business description, return a JSON object with:
 {
   "persona": "<detailed agent persona/instructions for handling calls, max 3 sentences>",
   "firstMessage": "<natural greeting the agent says when answering, max 1 sentence>",
@@ -1388,7 +1590,12 @@ Rules:
 Rules:
 - Persona should be specific to the business type
 - First message should sound warm and natural, not robotic
-- Return ONLY valid JSON, no markdown or code fences`,
+- Return ONLY valid JSON, no markdown or code fences`;
+
+    const raw = await geminiChat([
+      {
+        role: "system",
+        content: voicePersonaBasePrompt + getIndustryContext(parsed.data.industry),
       },
       { role: "user", content: parsed.data.businessDescription },
     ], { temperature: 0.7, maxTokens: 300, jsonMode: true });
@@ -1602,9 +1809,12 @@ Rules:
 
       if (isGeminiConfigured()) {
         try {
-          const systemPrompt = channel === "sms"
+          const smsIndustry = req.body.industry as string | undefined;
+          const smsLanguage = req.body.language as string | undefined;
+          const baseSystemPrompt = channel === "sms"
             ? "You are a helpful business receptionist. Keep text replies under 160 characters. Be warm, professional, and concise. If someone wants to book an appointment, suggest they call the office number."
             : "You are a helpful business assistant responding via chat. Keep replies conversational and under 300 characters. Be warm, professional, and helpful. If someone wants to book an appointment, suggest they call the office number.";
+          const systemPrompt = baseSystemPrompt + getIndustryContext(smsIndustry) + getLanguageInstruction(smsLanguage);
 
           const geminiReply = await geminiChat([
             { role: "system", content: systemPrompt },
@@ -2036,8 +2246,9 @@ Rules:
   const MARKUP_RATES: Record<string, number> = {
     SMS_SEGMENT: 2.0,
     VOICE_MINUTE: 1.5,
-    AI_IMAGE_GEN: 0.50,
-    AI_CHAT: 0.10,
+    AI_IMAGE_GEN: 0.25,
+    AI_CHAT: 0.03,
+    AI_STREAM: 0.03,
     DOMAIN_PURCHASE: 0,
   };
 
@@ -2054,7 +2265,7 @@ Rules:
 
     const { subAccountId, type, amount, description } = parsed.data;
     const rate = MARKUP_RATES[type] ?? 0;
-    const cost = (type === "AI_IMAGE_GEN" || type === "AI_CHAT") ? rate : amount * rate;
+    const cost = (type === "AI_IMAGE_GEN" || type === "AI_CHAT" || type === "AI_STREAM") ? rate : amount * rate;
 
     const log = await storage.createUsageLog({
       subAccountId,
@@ -2087,7 +2298,13 @@ Rules:
       storage.getUsageLogs(subAccountId),
       storage.getUsageLogsSummary(subAccountId),
     ]);
-    res.json({ logs, summary });
+    const costBreakdown = {
+      ai: { label: "AI (Gemini 2.5 Flash)", perUnit: "$0.03/call", provider: "Google Gemini" },
+      sms: { label: "SMS Segments", perUnit: "$2.00/segment", provider: "Twilio" },
+      voice: { label: "Voice Minutes", perUnit: "$1.50/min", provider: "Vapi" },
+      image: { label: "AI Image Generation", perUnit: "$0.25/image", provider: "Google Gemini" },
+    };
+    res.json({ logs, summary, costBreakdown });
   }));
 
   app.post("/api/webhooks/vapi", asyncHandler(async (req, res) => {
@@ -2230,11 +2447,11 @@ Rules:
     const domainRecord = await storage.createDomain({
       subAccountId,
       domainName: domain,
-      status: "active",
+      status: "pending_verification",
       purchasePrice: pricing.cost,
       salePrice: pricing.sale,
-      dnsConfigured: true,
-      sslActive: true,
+      dnsConfigured: false,
+      sslActive: false,
       registrar: "Apex Domains",
       siteId: siteId || null,
     });
@@ -2286,6 +2503,93 @@ Rules:
     }
 
     res.json(updated);
+  }));
+
+  app.post("/api/domains/:id/verify", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const domain = await storage.getDomain(id);
+    if (!domain) return res.status(404).json({ error: "Domain not found" });
+
+    const token = "apex-verify-" + crypto.randomUUID().substring(0, 8);
+    await storage.updateDomain(id, { verificationToken: token });
+
+    res.json({
+      verificationToken: token,
+      instructions: {
+        type: "TXT",
+        host: "_apex-verify",
+        value: token,
+        ttl: 3600,
+        steps: [
+          "Log into your domain registrar's DNS settings",
+          "Add a new TXT record",
+          "Set the host/name to: _apex-verify",
+          `Set the value to: ${token}`,
+          "Save and wait 5-10 minutes for propagation",
+          "Click 'Check Verification' to confirm"
+        ]
+      }
+    });
+  }));
+
+  app.post("/api/domains/:id/check-verification", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const domain = await storage.getDomain(id);
+    if (!domain) return res.status(404).json({ error: "Domain not found" });
+
+    if (!domain.verificationToken) {
+      return res.status(400).json({ error: "No verification token found. Please start verification first." });
+    }
+
+    try {
+      const records = await dns.promises.resolveTxt(`_apex-verify.${domain.domainName}`);
+      const flatRecords = records.map(r => r.join(""));
+      const found = flatRecords.includes(domain.verificationToken);
+
+      if (found) {
+        const updated = await storage.updateDomain(id, {
+          verifiedAt: new Date(),
+          status: "verified",
+          dnsConfigured: true,
+        });
+        return res.json({ verified: true, domain: updated });
+      }
+
+      res.json({ verified: false, message: "DNS record not found yet. Please wait a few minutes and try again." });
+    } catch (err: any) {
+      res.json({ verified: false, message: "DNS record not found yet. Please wait a few minutes and try again." });
+    }
+  }));
+
+  app.post("/api/domains/:id/configure-ssl", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const domain = await storage.getDomain(id);
+    if (!domain) return res.status(404).json({ error: "Domain not found" });
+
+    if (!domain.verifiedAt) {
+      return res.status(400).json({ error: "Domain must be verified before configuring SSL" });
+    }
+
+    await storage.updateDomain(id, { sslActive: true });
+
+    res.json({
+      success: true,
+      message: "SSL certificate provisioned successfully",
+      expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+    });
+  }));
+
+  app.get("/api/domains/:id/status", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const domain = await storage.getDomain(id);
+    if (!domain) return res.status(404).json({ error: "Domain not found" });
+
+    res.json({
+      ...domain,
+      verificationStatus: domain.verifiedAt ? "verified" : (domain.verificationToken ? "pending" : "not_started"),
+      sslStatus: domain.sslActive ? "active" : "inactive",
+      dnsStatus: domain.dnsConfigured ? "configured" : "pending",
+    });
   }));
 
   // ---- Subscription Management ----

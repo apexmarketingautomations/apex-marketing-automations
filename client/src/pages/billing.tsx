@@ -15,6 +15,7 @@ const TYPE_META: Record<string, { label: string; icon: typeof Phone; color: stri
   SMS_SEGMENT: { label: "SMS Segments", icon: MessageSquare, color: "text-indigo-400", badgeClass: "bg-indigo-500/20 text-indigo-400 border-indigo-500/30" },
   AI_IMAGE_GEN: { label: "AI Image Gen", icon: Sparkles, color: "text-purple-400", badgeClass: "bg-purple-500/20 text-purple-400 border-purple-500/30" },
   AI_CHAT: { label: "AI Chat", icon: Zap, color: "text-emerald-400", badgeClass: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" },
+  AI_STREAM: { label: "AI Stream", icon: Zap, color: "text-emerald-400", badgeClass: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" },
 };
 
 function formatCost(cost: number) {
@@ -81,10 +82,11 @@ export default function Billing() {
   const recentLogs = logs.slice(0, 50);
 
   const MARKUP_RATES = [
-    { type: "SMS", rate: "2x markup", desc: "$2.00 per segment", color: "text-indigo-400" },
-    { type: "Voice", rate: "1.5x markup", desc: "$1.50 per minute", color: "text-cyan-400" },
-    { type: "AI Image", rate: "$0.50 flat", desc: "Per generation", color: "text-purple-400" },
-    { type: "AI Chat", rate: "$0.10 flat", desc: "Per message", color: "text-emerald-400" },
+    { type: "SMS", rate: "$2.00/segment", desc: "Twilio", color: "text-indigo-400" },
+    { type: "Voice", rate: "$1.50/min", desc: "Vapi", color: "text-cyan-400" },
+    { type: "AI Image", rate: "$0.25/image", desc: "Google Gemini", color: "text-purple-400" },
+    { type: "AI Chat", rate: "$0.03/call", desc: "Gemini 2.5 Flash", color: "text-emerald-400" },
+    { type: "AI Stream", rate: "$0.03/call", desc: "Gemini 2.5 Flash", color: "text-emerald-400" },
   ];
 
   return (
@@ -163,16 +165,16 @@ export default function Billing() {
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
                   <Card className="bg-white/5 border-white/10 p-5" data-testid="markup-rates">
                     <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2">
-                      <DollarSign size={14} className="text-cyan-400" /> Markup Rates
+                      <DollarSign size={14} className="text-cyan-400" /> Per-Unit Pricing
                     </h3>
                     <div className="space-y-2">
                       {MARKUP_RATES.map((r, i) => (
                         <div key={i} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0" data-testid={`rate-row-${i}`}>
-                          <span className={`text-sm font-medium ${r.color}`}>{r.type}</span>
-                          <div className="text-right">
-                            <span className="text-sm font-bold text-white">{r.rate}</span>
-                            <span className="text-xs text-slate-500 ml-2">{r.desc}</span>
+                          <div className="flex flex-col">
+                            <span className={`text-sm font-medium ${r.color}`}>{r.type}</span>
+                            <span className="text-[10px] text-slate-500">{r.desc}</span>
                           </div>
+                          <span className="text-sm font-bold text-white">{r.rate}</span>
                         </div>
                       ))}
                     </div>
