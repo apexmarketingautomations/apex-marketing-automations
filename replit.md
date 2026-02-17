@@ -131,8 +131,7 @@ The `shared/` directory contains code used by both frontend and backend:
 - **PostgreSQL** - Primary data store, connected via `DATABASE_URL` environment variable using `pg` (node-postgres) connection pool
 
 ### AI/ML
-- **OpenAI API** - GPT-4o used for: site generation, ad campaign generation, bot chat, workflow AI generation, voice persona generation, chat widget. All calls auto-log usage to billing dashboard.
-- **DALL-E 3** - Used for ad creative image generation with auto usage logging
+- **Google Gemini API** - Gemini 2.5 Flash used for: site generation, ad campaign generation, bot chat, workflow AI generation, voice persona generation, chat widget, form builder. All calls auto-log usage to billing dashboard. Uses `@google/genai` SDK via `server/gemini.ts` helper module. Requires `Gemini_API_Key_saas` secret.
 - **RAG Pipeline** - Architecture references pgvector for similarity search on knowledge base chunks
 
 ### Communication Services
