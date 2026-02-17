@@ -43,6 +43,9 @@ const EmailCampaignsPage = lazy(() => import("@/pages/email-campaigns"));
 const WhiteLabelPage = lazy(() => import("@/pages/white-label"));
 const WebhooksPage = lazy(() => import("@/pages/webhooks"));
 const ReportsPage = lazy(() => import("@/pages/reports"));
+const MetaAdsPage = lazy(() => import("@/pages/meta-ads"));
+const MetaLeadsPage = lazy(() => import("@/pages/meta-leads"));
+const InstagramInboxPage = lazy(() => import("@/pages/instagram-inbox"));
 const NexusDemo = lazy(() => import("@/pages/nexus-demo"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const Login = lazy(() => import("@/pages/login"));
@@ -110,6 +113,9 @@ function Router() {
                   <Route path="/white-label" component={WhiteLabelPage} />
                   <Route path="/webhooks" component={WebhooksPage} />
                   <Route path="/reports" component={ReportsPage} />
+                  <Route path="/meta-ads" component={MetaAdsPage} />
+                  <Route path="/meta-leads" component={MetaLeadsPage} />
+                  <Route path="/instagram-inbox" component={InstagramInboxPage} />
                   <Route path="/gym" component={GymLanding} />
                   <Route path="/luxe" component={LuxeLanding} />
                   <Route component={NotFound} />

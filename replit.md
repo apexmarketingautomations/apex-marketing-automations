@@ -82,6 +82,10 @@ Key server files:
 13. **email_campaigns** - Email campaign management with subject, body, scheduling, open/click tracking
 14. **webhooks** - Webhook endpoints for external integrations with event filtering and secrets
 15. **white_label_settings** - Per-agency branding customization (logo, colors, domain, branding toggle)
+16. **meta_ad_campaigns** - Facebook/Instagram ad campaign management with objectives, budgets, targeting, and performance metrics
+17. **meta_leads** - Lead form submissions from Facebook with CRM sync tracking
+18. **instagram_conversations** - Instagram DM conversation threads with user info and unread counts
+19. **instagram_messages** - Individual Instagram DM messages with direction and media support
 
 ### Shared Code
 The `shared/` directory contains code used by both frontend and backend:

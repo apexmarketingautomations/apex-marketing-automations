@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains, insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings, messages } from "@shared/schema";
+import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains, insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, insertMetaAdCampaignSchema, insertMetaLeadSchema, insertInstagramConversationSchema, insertInstagramMessageSchema, contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings, metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, messages } from "@shared/schema";
 import { sql } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -4258,6 +4258,306 @@ Rules:
     res.setHeader("Content-Type", "text/csv");
     res.setHeader("Content-Disposition", `attachment; filename="${type}-export-${subAccountId}.csv"`);
     res.send(csvContent);
+  }));
+
+  // ---- Meta Ad Campaigns ----
+
+  app.get("/api/meta/campaigns/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
+    const campaigns = await storage.getMetaAdCampaigns(Number(req.params.subAccountId));
+    res.json(campaigns);
+  }));
+
+  app.post("/api/meta/campaigns", asyncHandler(async (req: Request, res: Response) => {
+    const data = insertMetaAdCampaignSchema.parse(req.body);
+    const campaign = await storage.createMetaAdCampaign(data);
+    res.json(campaign);
+  }));
+
+  app.patch("/api/meta/campaigns/:id", asyncHandler(async (req: Request, res: Response) => {
+    const campaign = await storage.updateMetaAdCampaign(Number(req.params.id), req.body);
+    if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+    res.json(campaign);
+  }));
+
+  app.delete("/api/meta/campaigns/:id", asyncHandler(async (req: Request, res: Response) => {
+    const ok = await storage.deleteMetaAdCampaign(Number(req.params.id));
+    if (!ok) return res.status(404).json({ error: "Campaign not found" });
+    res.json({ success: true });
+  }));
+
+  app.post("/api/meta/campaigns/:id/sync", asyncHandler(async (req: Request, res: Response) => {
+    const accessToken = process.env.META_ACCESS_TOKEN;
+    const campaign = await storage.getMetaAdCampaign(Number(req.params.id));
+    if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+
+    if (!accessToken || !campaign.metaCampaignId) {
+      return res.json({ synced: false, message: "Meta API not configured or no campaign ID linked" });
+    }
+
+    try {
+      const fbRes = await fetch(`https://graph.facebook.com/v19.0/${campaign.metaCampaignId}/insights?fields=impressions,clicks,spend,cpc,ctr,actions&access_token=${accessToken}`);
+      const fbData = await fbRes.json() as any;
+      if (fbData.data && fbData.data[0]) {
+        const insights = fbData.data[0];
+        const leads = insights.actions?.find((a: any) => a.action_type === "lead")?.value || 0;
+        await storage.updateMetaAdCampaign(campaign.id, {
+          impressions: parseInt(insights.impressions || "0"),
+          clicks: parseInt(insights.clicks || "0"),
+          totalSpend: parseFloat(insights.spend || "0"),
+          cpc: parseFloat(insights.cpc || "0"),
+          ctr: parseFloat(insights.ctr || "0"),
+          leads: parseInt(leads),
+        });
+      }
+      const updated = await storage.getMetaAdCampaign(campaign.id);
+      res.json({ synced: true, campaign: updated });
+    } catch (err: any) {
+      res.json({ synced: false, message: err.message });
+    }
+  }));
+
+  app.post("/api/meta/campaigns/:id/publish", asyncHandler(async (req: Request, res: Response) => {
+    const accessToken = process.env.META_ACCESS_TOKEN;
+    const adAccountId = process.env.META_AD_ACCOUNT_ID;
+    const campaign = await storage.getMetaAdCampaign(Number(req.params.id));
+    if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+
+    if (!accessToken || !adAccountId) {
+      await storage.updateMetaAdCampaign(campaign.id, { status: "active" });
+      const updated = await storage.getMetaAdCampaign(campaign.id);
+      return res.json({ published: false, message: "Meta API not configured - campaign marked active locally", campaign: updated });
+    }
+
+    try {
+      const fbRes = await fetch(`https://graph.facebook.com/v19.0/act_${adAccountId}/campaigns`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: campaign.name,
+          objective: campaign.objective,
+          status: "ACTIVE",
+          special_ad_categories: [],
+          access_token: accessToken,
+        }),
+      });
+      const fbData = await fbRes.json() as any;
+      if (fbData.id) {
+        await storage.updateMetaAdCampaign(campaign.id, { metaCampaignId: fbData.id, status: "active" });
+      }
+      const updated = await storage.getMetaAdCampaign(campaign.id);
+      res.json({ published: true, campaign: updated });
+    } catch (err: any) {
+      res.json({ published: false, message: err.message });
+    }
+  }));
+
+  // ---- Meta Lead Forms ----
+
+  app.get("/api/meta/leads/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
+    const leads = await storage.getMetaLeads(Number(req.params.subAccountId));
+    res.json(leads);
+  }));
+
+  app.post("/api/meta/leads", asyncHandler(async (req: Request, res: Response) => {
+    const data = insertMetaLeadSchema.parse(req.body);
+    const lead = await storage.createMetaLead(data);
+    res.json(lead);
+  }));
+
+  app.post("/api/meta/leads/sync/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
+    const accessToken = process.env.META_ACCESS_TOKEN;
+    const pageId = process.env.META_PAGE_ID;
+    const subAccountId = Number(req.params.subAccountId);
+
+    if (!accessToken || !pageId) {
+      return res.json({ synced: false, message: "Meta API not configured. Add META_ACCESS_TOKEN and META_PAGE_ID." });
+    }
+
+    try {
+      const formsRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}/leadgen_forms?access_token=${accessToken}`);
+      const formsData = await formsRes.json() as any;
+      let totalSynced = 0;
+
+      if (formsData.data) {
+        for (const form of formsData.data) {
+          const leadsRes = await fetch(`https://graph.facebook.com/v19.0/${form.id}/leads?access_token=${accessToken}`);
+          const leadsData = await leadsRes.json() as any;
+          if (leadsData.data) {
+            const existingLeads = await storage.getMetaLeads(subAccountId);
+            const existingFormLeadKeys = new Set(existingLeads.map(l => `${l.metaFormId}:${l.name}:${l.email}`));
+            for (const lead of leadsData.data) {
+              const fields = lead.field_data || [];
+              const getName = (key: string) => fields.find((f: any) => f.name === key)?.values?.[0] || "";
+              const name = getName("full_name") || getName("first_name") || "Unknown";
+              const email = getName("email") || "";
+              const dedupeKey = `${form.id}:${name}:${email}`;
+              if (existingFormLeadKeys.has(dedupeKey)) continue;
+              await storage.createMetaLead({
+                subAccountId,
+                metaFormId: form.id,
+                formName: form.name,
+                name,
+                email,
+                phone: getName("phone_number"),
+                customFields: fields,
+              });
+              existingFormLeadKeys.add(dedupeKey);
+              totalSynced++;
+            }
+          }
+        }
+      }
+      res.json({ synced: true, count: totalSynced });
+    } catch (err: any) {
+      res.json({ synced: false, message: err.message });
+    }
+  }));
+
+  app.post("/api/meta/leads/:id/to-crm", asyncHandler(async (req: Request, res: Response) => {
+    const lead = await storage.getMetaLead(Number(req.params.id));
+    if (!lead) return res.status(404).json({ error: "Lead not found" });
+    if (lead.syncedToCrm && lead.contactId) {
+      return res.json({ success: true, alreadySynced: true, contactId: lead.contactId });
+    }
+
+    const existingContacts = await storage.getContacts(lead.subAccountId);
+    const existingContact = lead.email
+      ? existingContacts.find(c => c.email === lead.email)
+      : lead.phone
+        ? existingContacts.find(c => c.phone === lead.phone)
+        : null;
+
+    const contact = existingContact || await storage.createContact({
+      subAccountId: lead.subAccountId,
+      firstName: (lead.name || "").split(" ")[0] || "Unknown",
+      lastName: (lead.name || "").split(" ").slice(1).join(" ") || "",
+      email: lead.email || "",
+      phone: lead.phone || "",
+      source: "facebook_lead_form",
+      tags: ["meta-lead"],
+    });
+
+    await storage.updateMetaLead(lead.id, { syncedToCrm: true, contactId: contact.id });
+    res.json({ success: true, contact });
+  }));
+
+  // ---- Instagram DM Inbox ----
+
+  app.get("/api/meta/instagram/conversations/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
+    const conversations = await storage.getInstagramConversations(Number(req.params.subAccountId));
+    res.json(conversations);
+  }));
+
+  app.get("/api/meta/instagram/messages/:conversationId", asyncHandler(async (req: Request, res: Response) => {
+    const msgs = await storage.getInstagramMessages(Number(req.params.conversationId));
+    res.json(msgs);
+  }));
+
+  app.post("/api/meta/instagram/send", asyncHandler(async (req: Request, res: Response) => {
+    const { conversationId, body } = req.body;
+    const conversation = await storage.getInstagramConversation(conversationId);
+    if (!conversation) return res.status(404).json({ error: "Conversation not found" });
+
+    const accessToken = process.env.META_ACCESS_TOKEN;
+    const pageId = process.env.META_PAGE_ID;
+
+    const msg = await storage.createInstagramMessage({
+      conversationId,
+      direction: "outbound",
+      body,
+    });
+
+    if (accessToken && pageId && conversation.igUserId) {
+      try {
+        await fetch(`https://graph.facebook.com/v19.0/${pageId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recipient: { id: conversation.igUserId },
+            message: { text: body },
+            access_token: accessToken,
+          }),
+        });
+      } catch (err: any) {
+        console.log("Meta IG send error (non-blocking):", err.message);
+      }
+    }
+
+    await storage.updateInstagramConversation(conversationId, {
+      lastMessage: body,
+      lastMessageAt: new Date(),
+    });
+
+    res.json(msg);
+  }));
+
+  app.post("/api/meta/instagram/sync/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
+    const accessToken = process.env.META_ACCESS_TOKEN;
+    const pageId = process.env.META_PAGE_ID;
+    const subAccountId = Number(req.params.subAccountId);
+
+    if (!accessToken || !pageId) {
+      return res.json({ synced: false, message: "Meta API not configured" });
+    }
+
+    try {
+      const convRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}/conversations?platform=instagram&fields=participants,messages{message,from,created_time}&access_token=${accessToken}`);
+      const convData = await convRes.json() as any;
+      let count = 0;
+
+      if (convData.data) {
+        for (const conv of convData.data) {
+          const participant = conv.participants?.data?.find((p: any) => p.id !== pageId);
+          if (!participant) continue;
+
+          const existing = await storage.getInstagramConversations(subAccountId);
+          let conversation = existing.find(c => c.igUserId === participant.id);
+
+          if (!conversation) {
+            conversation = await storage.createInstagramConversation({
+              subAccountId,
+              igUserId: participant.id,
+              igUsername: participant.name || participant.id,
+            });
+          }
+
+          if (conv.messages?.data) {
+            const existingMsgs = await storage.getInstagramMessages(conversation.id);
+            const existingMsgIds = new Set(existingMsgs.map(m => m.igMessageId).filter(Boolean));
+            for (const m of conv.messages.data) {
+              if (m.id && existingMsgIds.has(m.id)) continue;
+              await storage.createInstagramMessage({
+                conversationId: conversation.id,
+                direction: m.from?.id === pageId ? "outbound" : "inbound",
+                body: m.message || "",
+                igMessageId: m.id,
+              });
+            }
+            const lastMsg = conv.messages.data[0];
+            if (lastMsg) {
+              await storage.updateInstagramConversation(conversation.id, {
+                lastMessage: lastMsg.message,
+                lastMessageAt: new Date(lastMsg.created_time),
+              });
+            }
+          }
+          count++;
+        }
+      }
+      res.json({ synced: true, conversations: count });
+    } catch (err: any) {
+      res.json({ synced: false, message: err.message });
+    }
+  }));
+
+  // ---- Meta Config Check ----
+  app.get("/api/meta/config", asyncHandler(async (_req: Request, res: Response) => {
+    res.json({
+      hasAccessToken: !!process.env.META_ACCESS_TOKEN,
+      hasAdAccountId: !!process.env.META_AD_ACCOUNT_ID,
+      hasPageId: !!process.env.META_PAGE_ID,
+      hasAppId: !!process.env.META_APP_ID,
+    });
   }));
 
   return httpServer;

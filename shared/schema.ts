@@ -539,3 +539,85 @@ export const whiteLabelSettings = pgTable("white_label_settings", {
 export const insertWhiteLabelSettingsSchema = createInsertSchema(whiteLabelSettings).omit({ id: true, updatedAt: true });
 export type InsertWhiteLabelSettings = z.infer<typeof insertWhiteLabelSettingsSchema>;
 export type WhiteLabelSettings = typeof whiteLabelSettings.$inferSelect;
+
+// ---- Meta Ad Campaigns ----
+
+export const metaAdCampaigns = pgTable("meta_ad_campaigns", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  metaCampaignId: text("meta_campaign_id"),
+  name: text("name").notNull(),
+  objective: text("objective").default("LEAD_GENERATION"),
+  status: text("status").default("draft"),
+  dailyBudget: real("daily_budget").default(0),
+  totalSpend: real("total_spend").default(0),
+  impressions: integer("impressions").default(0),
+  clicks: integer("clicks").default(0),
+  leads: integer("leads").default(0),
+  cpc: real("cpc").default(0),
+  ctr: real("ctr").default(0),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  targeting: json("targeting"),
+  creativeUrl: text("creative_url"),
+  adText: text("ad_text"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertMetaAdCampaignSchema = createInsertSchema(metaAdCampaigns).omit({ id: true, createdAt: true });
+export type InsertMetaAdCampaign = z.infer<typeof insertMetaAdCampaignSchema>;
+export type MetaAdCampaign = typeof metaAdCampaigns.$inferSelect;
+
+// ---- Meta Lead Forms ----
+
+export const metaLeads = pgTable("meta_leads", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  metaFormId: text("meta_form_id"),
+  formName: text("form_name"),
+  name: text("name").notNull(),
+  email: text("email"),
+  phone: text("phone"),
+  customFields: json("custom_fields"),
+  syncedToCrm: boolean("synced_to_crm").default(false),
+  contactId: integer("contact_id"),
+  campaignId: integer("campaign_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertMetaLeadSchema = createInsertSchema(metaLeads).omit({ id: true, createdAt: true });
+export type InsertMetaLead = z.infer<typeof insertMetaLeadSchema>;
+export type MetaLead = typeof metaLeads.$inferSelect;
+
+// ---- Instagram Conversations ----
+
+export const instagramConversations = pgTable("instagram_conversations", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  igUserId: text("ig_user_id"),
+  igUsername: text("ig_username"),
+  lastMessage: text("last_message"),
+  lastMessageAt: timestamp("last_message_at"),
+  unreadCount: integer("unread_count").default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertInstagramConversationSchema = createInsertSchema(instagramConversations).omit({ id: true, createdAt: true });
+export type InsertInstagramConversation = z.infer<typeof insertInstagramConversationSchema>;
+export type InstagramConversation = typeof instagramConversations.$inferSelect;
+
+// ---- Instagram Messages ----
+
+export const instagramMessages = pgTable("instagram_messages", {
+  id: serial("id").primaryKey(),
+  conversationId: integer("conversation_id").references(() => instagramConversations.id).notNull(),
+  direction: text("direction").notNull(),
+  body: text("body").notNull(),
+  igMessageId: text("ig_message_id"),
+  mediaUrl: text("media_url"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertInstagramMessageSchema = createInsertSchema(instagramMessages).omit({ id: true, createdAt: true });
+export type InsertInstagramMessage = z.infer<typeof insertInstagramMessageSchema>;
+export type InstagramMessage = typeof instagramMessages.$inferSelect;

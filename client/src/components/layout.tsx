@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2, History, Satellite, Building, BarChart3, Kanban, CalendarDays, Mail, Palette, Webhook, FileBarChart } from "lucide-react";
+import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2, History, Satellite, Building, BarChart3, Kanban, CalendarDays, Mail, Palette, Webhook, FileBarChart, Instagram, Target } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { CommandMenu } from "@/components/command-menu";
@@ -34,6 +34,14 @@ const navSections = [
       { href: "/pipeline", icon: Kanban, label: "Pipeline & CRM" },
       { href: "/calendar", icon: CalendarDays, label: "Calendar" },
       { href: "/email-campaigns", icon: Mail, label: "Email Campaigns" },
+    ],
+  },
+  {
+    label: "META",
+    items: [
+      { href: "/meta-ads", icon: Target, label: "Ad Campaigns" },
+      { href: "/meta-leads", icon: Users, label: "Lead Forms" },
+      { href: "/instagram-inbox", icon: Instagram, label: "Instagram Inbox" },
     ],
   },
   {

@@ -4,6 +4,7 @@ import {
   subAccounts, messages, workflows, trainingJobs, blueprints, savedSites, siteVersions, siteCollaborators, reviews, usageLogs, domains, owners,
   subscriptions, snapshots, snapshotVersions, affiliates, referrals, commissions, sentinelConfig, sentinelIncidents, propertyLeads, wholesalerConfig, clientWebsites, auditLogs,
   contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings,
+  metaAdCampaigns, metaLeads, instagramConversations, instagramMessages,
   type SubAccount, type InsertSubAccount,
   type Message, type InsertMessage,
   type Workflow, type InsertWorkflow,
@@ -35,6 +36,10 @@ import {
   type EmailCampaign, type InsertEmailCampaign,
   type Webhook, type InsertWebhook,
   type WhiteLabelSettings, type InsertWhiteLabelSettings,
+  type MetaAdCampaign, type InsertMetaAdCampaign,
+  type MetaLead, type InsertMetaLead,
+  type InstagramConversation, type InsertInstagramConversation,
+  type InstagramMessage, type InsertInstagramMessage,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -185,6 +190,25 @@ export interface IStorage {
 
   getWhiteLabelSettings(userId: string): Promise<WhiteLabelSettings | undefined>;
   upsertWhiteLabelSettings(data: InsertWhiteLabelSettings): Promise<WhiteLabelSettings>;
+
+  getMetaAdCampaigns(subAccountId: number): Promise<MetaAdCampaign[]>;
+  getMetaAdCampaign(id: number): Promise<MetaAdCampaign | undefined>;
+  createMetaAdCampaign(data: InsertMetaAdCampaign): Promise<MetaAdCampaign>;
+  updateMetaAdCampaign(id: number, data: Partial<InsertMetaAdCampaign>): Promise<MetaAdCampaign | undefined>;
+  deleteMetaAdCampaign(id: number): Promise<boolean>;
+
+  getMetaLeads(subAccountId: number): Promise<MetaLead[]>;
+  getMetaLead(id: number): Promise<MetaLead | undefined>;
+  createMetaLead(data: InsertMetaLead): Promise<MetaLead>;
+  updateMetaLead(id: number, data: Partial<InsertMetaLead>): Promise<MetaLead | undefined>;
+
+  getInstagramConversations(subAccountId: number): Promise<InstagramConversation[]>;
+  getInstagramConversation(id: number): Promise<InstagramConversation | undefined>;
+  createInstagramConversation(data: InsertInstagramConversation): Promise<InstagramConversation>;
+  updateInstagramConversation(id: number, data: Partial<InsertInstagramConversation>): Promise<InstagramConversation | undefined>;
+
+  getInstagramMessages(conversationId: number): Promise<InstagramMessage[]>;
+  createInstagramMessage(data: InsertInstagramMessage): Promise<InstagramMessage>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -765,6 +789,77 @@ export class DatabaseStorage implements IStorage {
       return row;
     }
     const [row] = await db.insert(whiteLabelSettings).values(data).returning();
+    return row;
+  }
+
+  async getMetaAdCampaigns(subAccountId: number) {
+    return db.select().from(metaAdCampaigns).where(eq(metaAdCampaigns.subAccountId, subAccountId)).orderBy(desc(metaAdCampaigns.createdAt));
+  }
+
+  async getMetaAdCampaign(id: number) {
+    const [row] = await db.select().from(metaAdCampaigns).where(eq(metaAdCampaigns.id, id));
+    return row;
+  }
+
+  async createMetaAdCampaign(data: InsertMetaAdCampaign) {
+    const [row] = await db.insert(metaAdCampaigns).values(data).returning();
+    return row;
+  }
+
+  async updateMetaAdCampaign(id: number, data: Partial<InsertMetaAdCampaign>) {
+    const [row] = await db.update(metaAdCampaigns).set(data).where(eq(metaAdCampaigns.id, id)).returning();
+    return row;
+  }
+
+  async deleteMetaAdCampaign(id: number) {
+    const rows = await db.delete(metaAdCampaigns).where(eq(metaAdCampaigns.id, id)).returning();
+    return rows.length > 0;
+  }
+
+  async getMetaLeads(subAccountId: number) {
+    return db.select().from(metaLeads).where(eq(metaLeads.subAccountId, subAccountId)).orderBy(desc(metaLeads.createdAt));
+  }
+
+  async getMetaLead(id: number) {
+    const [row] = await db.select().from(metaLeads).where(eq(metaLeads.id, id));
+    return row;
+  }
+
+  async createMetaLead(data: InsertMetaLead) {
+    const [row] = await db.insert(metaLeads).values(data).returning();
+    return row;
+  }
+
+  async updateMetaLead(id: number, data: Partial<InsertMetaLead>) {
+    const [row] = await db.update(metaLeads).set(data).where(eq(metaLeads.id, id)).returning();
+    return row;
+  }
+
+  async getInstagramConversations(subAccountId: number) {
+    return db.select().from(instagramConversations).where(eq(instagramConversations.subAccountId, subAccountId)).orderBy(desc(instagramConversations.lastMessageAt));
+  }
+
+  async getInstagramConversation(id: number) {
+    const [row] = await db.select().from(instagramConversations).where(eq(instagramConversations.id, id));
+    return row;
+  }
+
+  async createInstagramConversation(data: InsertInstagramConversation) {
+    const [row] = await db.insert(instagramConversations).values(data).returning();
+    return row;
+  }
+
+  async updateInstagramConversation(id: number, data: Partial<InsertInstagramConversation>) {
+    const [row] = await db.update(instagramConversations).set(data).where(eq(instagramConversations.id, id)).returning();
+    return row;
+  }
+
+  async getInstagramMessages(conversationId: number) {
+    return db.select().from(instagramMessages).where(eq(instagramMessages.conversationId, conversationId)).orderBy(instagramMessages.createdAt);
+  }
+
+  async createInstagramMessage(data: InsertInstagramMessage) {
+    const [row] = await db.insert(instagramMessages).values(data).returning();
     return row;
   }
 }
