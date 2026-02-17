@@ -1,7 +1,9 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains } from "@shared/schema";
+import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains, insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings, messages } from "@shared/schema";
+import { sql } from "drizzle-orm";
+import { db } from "./db";
 import { z } from "zod";
 import { geminiChat, geminiChatStream, isGeminiConfigured, geminiGenerateImage } from "./gemini";
 import Twilio from "twilio";
@@ -3948,6 +3950,314 @@ Rules:
     savedForms.set(subAccountId, existing);
 
     res.status(201).json(form);
+  }));
+
+  app.get("/api/contacts/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const list = await storage.getContacts(subAccountId);
+    res.json(list);
+  }));
+
+  app.get("/api/contacts/detail/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const contact = await storage.getContactById(id);
+    if (!contact) return res.status(404).json({ error: "Contact not found" });
+    res.json(contact);
+  }));
+
+  app.post("/api/contacts", asyncHandler(async (req, res) => {
+    const parsed = insertContactSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const contact = await storage.createContact(parsed.data);
+    res.status(201).json(contact);
+  }));
+
+  app.patch("/api/contacts/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const updated = await storage.updateContact(id, req.body);
+    if (!updated) return res.status(404).json({ error: "Contact not found" });
+    res.json(updated);
+  }));
+
+  app.delete("/api/contacts/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const deleted = await storage.deleteContact(id);
+    if (!deleted) return res.status(404).json({ error: "Contact not found" });
+    res.json({ success: true });
+  }));
+
+  app.get("/api/pipeline/stages/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const stages = await storage.getPipelineStages(subAccountId);
+    res.json(stages);
+  }));
+
+  app.post("/api/pipeline/stages", asyncHandler(async (req, res) => {
+    const parsed = insertPipelineStageSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const stage = await storage.createPipelineStage(parsed.data);
+    res.status(201).json(stage);
+  }));
+
+  app.patch("/api/pipeline/stages/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const updated = await storage.updatePipelineStage(id, req.body);
+    if (!updated) return res.status(404).json({ error: "Stage not found" });
+    res.json(updated);
+  }));
+
+  app.delete("/api/pipeline/stages/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const deleted = await storage.deletePipelineStage(id);
+    if (!deleted) return res.status(404).json({ error: "Stage not found" });
+    res.json({ success: true });
+  }));
+
+  app.get("/api/deals/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const list = await storage.getDeals(subAccountId);
+    res.json(list);
+  }));
+
+  app.get("/api/deals/detail/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const deal = await storage.getDealById(id);
+    if (!deal) return res.status(404).json({ error: "Deal not found" });
+    res.json(deal);
+  }));
+
+  app.post("/api/deals", asyncHandler(async (req, res) => {
+    const parsed = insertDealSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const deal = await storage.createDeal(parsed.data);
+    res.status(201).json(deal);
+  }));
+
+  app.patch("/api/deals/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const body = req.body;
+    if (body.stageId !== undefined) {
+      body.stageId = parseInt(body.stageId, 10);
+    }
+    const updated = await storage.updateDeal(id, body);
+    if (!updated) return res.status(404).json({ error: "Deal not found" });
+    res.json(updated);
+  }));
+
+  app.delete("/api/deals/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const deleted = await storage.deleteDeal(id);
+    if (!deleted) return res.status(404).json({ error: "Deal not found" });
+    res.json({ success: true });
+  }));
+
+  app.get("/api/appointments/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const list = await storage.getAppointments(subAccountId);
+    res.json(list);
+  }));
+
+  app.post("/api/appointments", asyncHandler(async (req, res) => {
+    const parsed = insertAppointmentSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const appt = await storage.createAppointment(parsed.data);
+    res.status(201).json(appt);
+  }));
+
+  app.patch("/api/appointments/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const validStatuses = ["scheduled", "completed", "cancelled"];
+    if (req.body.status && !validStatuses.includes(req.body.status)) {
+      return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` });
+    }
+    const updated = await storage.updateAppointment(id, req.body);
+    if (!updated) return res.status(404).json({ error: "Appointment not found" });
+    res.json(updated);
+  }));
+
+  app.delete("/api/appointments/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const deleted = await storage.deleteAppointment(id);
+    if (!deleted) return res.status(404).json({ error: "Appointment not found" });
+    res.json({ success: true });
+  }));
+
+  app.get("/api/email-campaigns/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const list = await storage.getEmailCampaigns(subAccountId);
+    res.json(list);
+  }));
+
+  app.post("/api/email-campaigns", asyncHandler(async (req, res) => {
+    const parsed = insertEmailCampaignSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const campaign = await storage.createEmailCampaign(parsed.data);
+    res.status(201).json(campaign);
+  }));
+
+  app.patch("/api/email-campaigns/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const updated = await storage.updateEmailCampaign(id, req.body);
+    if (!updated) return res.status(404).json({ error: "Campaign not found" });
+    res.json(updated);
+  }));
+
+  app.post("/api/email-campaigns/:id/send", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const campaign = await storage.getEmailCampaignById(id);
+    if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+    const updated = await storage.updateEmailCampaign(id, { status: "sent", sentAt: new Date() });
+    res.json(updated);
+  }));
+
+  app.delete("/api/email-campaigns/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const deleted = await storage.deleteEmailCampaign(id);
+    if (!deleted) return res.status(404).json({ error: "Campaign not found" });
+    res.json({ success: true });
+  }));
+
+  app.get("/api/webhooks/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const list = await storage.getWebhooks(subAccountId);
+    res.json(list);
+  }));
+
+  app.post("/api/webhooks", asyncHandler(async (req, res) => {
+    const parsed = insertWebhookSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const data = { ...parsed.data, secret: crypto.randomBytes(32).toString("hex") };
+    const webhook = await storage.createWebhook(data);
+    res.status(201).json(webhook);
+  }));
+
+  app.patch("/api/webhooks/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const updated = await storage.updateWebhook(id, req.body);
+    if (!updated) return res.status(404).json({ error: "Webhook not found" });
+    res.json(updated);
+  }));
+
+  app.delete("/api/webhooks/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const deleted = await storage.deleteWebhook(id);
+    if (!deleted) return res.status(404).json({ error: "Webhook not found" });
+    res.json({ success: true });
+  }));
+
+  app.post("/api/webhooks/test/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const webhook = await storage.getWebhookById(id);
+    if (!webhook) return res.status(404).json({ error: "Webhook not found" });
+    try {
+      const testPayload = { event: "test", timestamp: new Date().toISOString(), webhookId: id };
+      const response = await fetch(webhook.url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Webhook-Secret": webhook.secret || "" },
+        body: JSON.stringify(testPayload),
+      });
+      await storage.updateWebhook(id, { lastTriggeredAt: new Date() });
+      res.json({ success: true, statusCode: response.status });
+    } catch (err: any) {
+      await storage.updateWebhook(id, { failCount: (webhook.failCount || 0) + 1 });
+      res.status(502).json({ error: "Failed to reach webhook URL", details: err.message });
+    }
+  }));
+
+  app.get("/api/white-label/:userId", asyncHandler(async (req, res) => {
+    const userId = req.params.userId;
+    const settings = await storage.getWhiteLabelSettings(userId);
+    if (!settings) return res.json(null);
+    res.json(settings);
+  }));
+
+  app.put("/api/white-label", asyncHandler(async (req, res) => {
+    const parsed = insertWhiteLabelSettingsSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const settings = await storage.upsertWhiteLabelSettings(parsed.data);
+    res.json(settings);
+  }));
+
+  app.get("/api/analytics/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+
+    const messagesByDay = await db.execute(sql`
+      SELECT DATE(created_at) as date, COUNT(*)::int as count
+      FROM messages
+      WHERE sub_account_id = ${subAccountId} AND created_at >= NOW() - INTERVAL '30 days'
+      GROUP BY DATE(created_at) ORDER BY date
+    `);
+
+    const messagesByChannel = await db.execute(sql`
+      SELECT channel, COUNT(*)::int as count
+      FROM messages
+      WHERE sub_account_id = ${subAccountId}
+      GROUP BY channel
+    `);
+
+    const dealsByStage = await db.execute(sql`
+      SELECT ps.name as stage, COUNT(d.id)::int as count
+      FROM pipeline_stages ps
+      LEFT JOIN deals d ON d.stage_id = ps.id
+      WHERE ps.sub_account_id = ${subAccountId}
+      GROUP BY ps.name, ps.position ORDER BY ps.position
+    `);
+
+    const revenueByMonth = await db.execute(sql`
+      SELECT TO_CHAR(created_at, 'YYYY-MM') as month, SUM(COALESCE(value, 0))::real as revenue
+      FROM deals
+      WHERE sub_account_id = ${subAccountId}
+      GROUP BY TO_CHAR(created_at, 'YYYY-MM') ORDER BY month
+    `);
+
+    const totalContacts = await db.execute(sql`SELECT COUNT(*)::int as count FROM contacts WHERE sub_account_id = ${subAccountId}`);
+    const totalDeals = await db.execute(sql`SELECT COUNT(*)::int as count FROM deals WHERE sub_account_id = ${subAccountId}`);
+    const totalMessages = await db.execute(sql`SELECT COUNT(*)::int as count FROM messages WHERE sub_account_id = ${subAccountId}`);
+    const totalAppointments = await db.execute(sql`SELECT COUNT(*)::int as count FROM appointments WHERE sub_account_id = ${subAccountId}`);
+
+    res.json({
+      messagesByDay: messagesByDay.rows,
+      messagesByChannel: messagesByChannel.rows,
+      dealsByStage: dealsByStage.rows,
+      revenueByMonth: revenueByMonth.rows,
+      totalContacts: totalContacts.rows[0]?.count || 0,
+      totalDeals: totalDeals.rows[0]?.count || 0,
+      totalMessages: totalMessages.rows[0]?.count || 0,
+      totalAppointments: totalAppointments.rows[0]?.count || 0,
+    });
+  }));
+
+  app.get("/api/reports/export/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const type = (req.query.type as string) || "contacts";
+
+    let csvContent = "";
+
+    if (type === "contacts") {
+      const data = await storage.getContacts(subAccountId);
+      csvContent = "ID,First Name,Last Name,Email,Phone,Company,Source,Created At\n";
+      for (const r of data) {
+        csvContent += `${r.id},"${r.firstName || ""}","${r.lastName || ""}","${r.email || ""}","${r.phone || ""}","${r.company || ""}","${r.source || ""}","${r.createdAt}"\n`;
+      }
+    } else if (type === "deals") {
+      const data = await storage.getDeals(subAccountId);
+      csvContent = "ID,Title,Value,Status,Stage ID,Created At\n";
+      for (const r of data) {
+        csvContent += `${r.id},"${r.title || ""}",${r.value || 0},"${r.status || ""}",${r.stageId},"${r.createdAt}"\n`;
+      }
+    } else if (type === "messages") {
+      const data = await storage.getMessages(subAccountId);
+      csvContent = "ID,Direction,Body,Status,Channel,Contact Phone,Created At\n";
+      for (const r of data) {
+        csvContent += `${r.id},"${r.direction}","${(r.body || "").replace(/"/g, '""')}","${r.status}","${r.channel}","${r.contactPhone}","${r.createdAt}"\n`;
+      }
+    } else {
+      return res.status(400).json({ error: "Invalid type. Must be contacts, deals, or messages" });
+    }
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="${type}-export-${subAccountId}.csv"`);
+    res.send(csvContent);
   }));
 
   return httpServer;

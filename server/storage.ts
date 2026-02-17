@@ -3,6 +3,7 @@ import { db } from "./db";
 import {
   subAccounts, messages, workflows, trainingJobs, blueprints, savedSites, siteVersions, siteCollaborators, reviews, usageLogs, domains, owners,
   subscriptions, snapshots, snapshotVersions, affiliates, referrals, commissions, sentinelConfig, sentinelIncidents, propertyLeads, wholesalerConfig, clientWebsites, auditLogs,
+  contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings,
   type SubAccount, type InsertSubAccount,
   type Message, type InsertMessage,
   type Workflow, type InsertWorkflow,
@@ -27,6 +28,13 @@ import {
   type WholesalerConfig, type InsertWholesalerConfig,
   type ClientWebsite, type InsertClientWebsite,
   type AuditLog, type InsertAuditLog,
+  type Contact, type InsertContact,
+  type PipelineStage, type InsertPipelineStage,
+  type Deal, type InsertDeal,
+  type Appointment, type InsertAppointment,
+  type EmailCampaign, type InsertEmailCampaign,
+  type Webhook, type InsertWebhook,
+  type WhiteLabelSettings, type InsertWhiteLabelSettings,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -139,6 +147,44 @@ export interface IStorage {
   deleteClientWebsite(id: number): Promise<boolean>;
 
   createAuditLog(data: InsertAuditLog): Promise<AuditLog>;
+
+  getContacts(subAccountId: number): Promise<Contact[]>;
+  getContactById(id: number): Promise<Contact | undefined>;
+  createContact(data: InsertContact): Promise<Contact>;
+  updateContact(id: number, data: Partial<InsertContact>): Promise<Contact | undefined>;
+  deleteContact(id: number): Promise<boolean>;
+
+  getPipelineStages(subAccountId: number): Promise<PipelineStage[]>;
+  createPipelineStage(data: InsertPipelineStage): Promise<PipelineStage>;
+  updatePipelineStage(id: number, data: Partial<InsertPipelineStage>): Promise<PipelineStage | undefined>;
+  deletePipelineStage(id: number): Promise<boolean>;
+
+  getDeals(subAccountId: number): Promise<Deal[]>;
+  getDealById(id: number): Promise<Deal | undefined>;
+  createDeal(data: InsertDeal): Promise<Deal>;
+  updateDeal(id: number, data: Partial<InsertDeal>): Promise<Deal | undefined>;
+  deleteDeal(id: number): Promise<boolean>;
+
+  getAppointments(subAccountId: number): Promise<Appointment[]>;
+  getAppointmentById(id: number): Promise<Appointment | undefined>;
+  createAppointment(data: InsertAppointment): Promise<Appointment>;
+  updateAppointment(id: number, data: Partial<InsertAppointment>): Promise<Appointment | undefined>;
+  deleteAppointment(id: number): Promise<boolean>;
+
+  getEmailCampaigns(subAccountId: number): Promise<EmailCampaign[]>;
+  getEmailCampaignById(id: number): Promise<EmailCampaign | undefined>;
+  createEmailCampaign(data: InsertEmailCampaign): Promise<EmailCampaign>;
+  updateEmailCampaign(id: number, data: Partial<InsertEmailCampaign>): Promise<EmailCampaign | undefined>;
+  deleteEmailCampaign(id: number): Promise<boolean>;
+
+  getWebhooks(subAccountId: number): Promise<Webhook[]>;
+  getWebhookById(id: number): Promise<Webhook | undefined>;
+  createWebhook(data: InsertWebhook): Promise<Webhook>;
+  updateWebhook(id: number, data: Partial<InsertWebhook>): Promise<Webhook | undefined>;
+  deleteWebhook(id: number): Promise<boolean>;
+
+  getWhiteLabelSettings(userId: string): Promise<WhiteLabelSettings | undefined>;
+  upsertWhiteLabelSettings(data: InsertWhiteLabelSettings): Promise<WhiteLabelSettings>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -565,6 +611,160 @@ export class DatabaseStorage implements IStorage {
 
   async createAuditLog(data: InsertAuditLog) {
     const [row] = await db.insert(auditLogs).values(data).returning();
+    return row;
+  }
+
+  async getContacts(subAccountId: number) {
+    return db.select().from(contacts).where(eq(contacts.subAccountId, subAccountId)).orderBy(desc(contacts.createdAt));
+  }
+
+  async getContactById(id: number) {
+    const [row] = await db.select().from(contacts).where(eq(contacts.id, id));
+    return row;
+  }
+
+  async createContact(data: InsertContact) {
+    const [row] = await db.insert(contacts).values(data).returning();
+    return row;
+  }
+
+  async updateContact(id: number, data: Partial<InsertContact>) {
+    const [row] = await db.update(contacts).set(data).where(eq(contacts.id, id)).returning();
+    return row;
+  }
+
+  async deleteContact(id: number) {
+    const rows = await db.delete(contacts).where(eq(contacts.id, id)).returning();
+    return rows.length > 0;
+  }
+
+  async getPipelineStages(subAccountId: number) {
+    return db.select().from(pipelineStages).where(eq(pipelineStages.subAccountId, subAccountId));
+  }
+
+  async createPipelineStage(data: InsertPipelineStage) {
+    const [row] = await db.insert(pipelineStages).values(data).returning();
+    return row;
+  }
+
+  async updatePipelineStage(id: number, data: Partial<InsertPipelineStage>) {
+    const [row] = await db.update(pipelineStages).set(data).where(eq(pipelineStages.id, id)).returning();
+    return row;
+  }
+
+  async deletePipelineStage(id: number) {
+    const rows = await db.delete(pipelineStages).where(eq(pipelineStages.id, id)).returning();
+    return rows.length > 0;
+  }
+
+  async getDeals(subAccountId: number) {
+    return db.select().from(deals).where(eq(deals.subAccountId, subAccountId)).orderBy(desc(deals.createdAt));
+  }
+
+  async getDealById(id: number) {
+    const [row] = await db.select().from(deals).where(eq(deals.id, id));
+    return row;
+  }
+
+  async createDeal(data: InsertDeal) {
+    const [row] = await db.insert(deals).values(data).returning();
+    return row;
+  }
+
+  async updateDeal(id: number, data: Partial<InsertDeal>) {
+    const [row] = await db.update(deals).set(data).where(eq(deals.id, id)).returning();
+    return row;
+  }
+
+  async deleteDeal(id: number) {
+    const rows = await db.delete(deals).where(eq(deals.id, id)).returning();
+    return rows.length > 0;
+  }
+
+  async getAppointments(subAccountId: number) {
+    return db.select().from(appointments).where(eq(appointments.subAccountId, subAccountId)).orderBy(desc(appointments.createdAt));
+  }
+
+  async getAppointmentById(id: number) {
+    const [row] = await db.select().from(appointments).where(eq(appointments.id, id));
+    return row;
+  }
+
+  async createAppointment(data: InsertAppointment) {
+    const [row] = await db.insert(appointments).values(data).returning();
+    return row;
+  }
+
+  async updateAppointment(id: number, data: Partial<InsertAppointment>) {
+    const [row] = await db.update(appointments).set(data).where(eq(appointments.id, id)).returning();
+    return row;
+  }
+
+  async deleteAppointment(id: number) {
+    const rows = await db.delete(appointments).where(eq(appointments.id, id)).returning();
+    return rows.length > 0;
+  }
+
+  async getEmailCampaigns(subAccountId: number) {
+    return db.select().from(emailCampaigns).where(eq(emailCampaigns.subAccountId, subAccountId)).orderBy(desc(emailCampaigns.createdAt));
+  }
+
+  async getEmailCampaignById(id: number) {
+    const [row] = await db.select().from(emailCampaigns).where(eq(emailCampaigns.id, id));
+    return row;
+  }
+
+  async createEmailCampaign(data: InsertEmailCampaign) {
+    const [row] = await db.insert(emailCampaigns).values(data).returning();
+    return row;
+  }
+
+  async updateEmailCampaign(id: number, data: Partial<InsertEmailCampaign>) {
+    const [row] = await db.update(emailCampaigns).set(data).where(eq(emailCampaigns.id, id)).returning();
+    return row;
+  }
+
+  async deleteEmailCampaign(id: number) {
+    const rows = await db.delete(emailCampaigns).where(eq(emailCampaigns.id, id)).returning();
+    return rows.length > 0;
+  }
+
+  async getWebhooks(subAccountId: number) {
+    return db.select().from(webhooks).where(eq(webhooks.subAccountId, subAccountId)).orderBy(desc(webhooks.createdAt));
+  }
+
+  async getWebhookById(id: number) {
+    const [row] = await db.select().from(webhooks).where(eq(webhooks.id, id));
+    return row;
+  }
+
+  async createWebhook(data: InsertWebhook) {
+    const [row] = await db.insert(webhooks).values(data).returning();
+    return row;
+  }
+
+  async updateWebhook(id: number, data: Partial<InsertWebhook>) {
+    const [row] = await db.update(webhooks).set(data).where(eq(webhooks.id, id)).returning();
+    return row;
+  }
+
+  async deleteWebhook(id: number) {
+    const rows = await db.delete(webhooks).where(eq(webhooks.id, id)).returning();
+    return rows.length > 0;
+  }
+
+  async getWhiteLabelSettings(userId: string) {
+    const [row] = await db.select().from(whiteLabelSettings).where(eq(whiteLabelSettings.userId, userId));
+    return row;
+  }
+
+  async upsertWhiteLabelSettings(data: InsertWhiteLabelSettings) {
+    const existing = await this.getWhiteLabelSettings(data.userId);
+    if (existing) {
+      const [row] = await db.update(whiteLabelSettings).set({ ...data, updatedAt: new Date() }).where(eq(whiteLabelSettings.id, existing.id)).returning();
+      return row;
+    }
+    const [row] = await db.insert(whiteLabelSettings).values(data).returning();
     return row;
   }
 }

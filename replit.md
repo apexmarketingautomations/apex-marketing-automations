@@ -18,6 +18,13 @@ The app includes:
 - **Account Switcher**: Multi-account context switching with persistent selection
 - **Website Integration**: Connect client websites, scrape/train AI chatbots, generate embeddable chat widgets, and preview sites from within the platform
 - **Interactive Tutorials**: 18 step-by-step guided tutorials covering every tool on the platform with spotlight highlighting, auto-launch on first visit, and localStorage completion tracking
+- **Analytics Dashboard**: Real-time charts showing message volumes, AI usage trends, conversion rates, and pipeline performance with Recharts
+- **CRM Pipeline**: Kanban-style deal pipeline with drag-and-drop between stages, contact management, and deal tracking
+- **Calendar & Appointments**: Monthly calendar view with appointment scheduling, contact linking, and status management
+- **Email Campaigns**: Campaign builder with templates (Welcome, Newsletter, Promotion), scheduling, open/click tracking, and send management
+- **Webhooks**: Webhook management for external tool integration (Zapier, Make.com) with event selection, secret generation, and testing
+- **White-Label**: Agency branding customization with logo, colors, custom domain, favicon, footer text, and branding toggle with live preview
+- **Reports & Export**: CSV export for contacts, deals, and messages with aggregated analytics summary
 
 ## User Preferences
 
@@ -68,6 +75,13 @@ Key server files:
 6. **sentinel_config** - Per-account Sentinel scanner config (feed URL, keywords, intervals, toggles)
 7. **sentinel_incidents** - Detected accident/incident records with severity, location, action status
 8. **client_websites** - Connected client websites with AI training status, widget config, and embed settings
+9. **contacts** - CRM contacts with name, email, phone, company, source, tags
+10. **pipeline_stages** - Configurable deal pipeline stages with color and position
+11. **deals** - Deal/opportunity tracking with stage, value, contact link, status
+12. **appointments** - Calendar appointments with start/end times, status, contact link
+13. **email_campaigns** - Email campaign management with subject, body, scheduling, open/click tracking
+14. **webhooks** - Webhook endpoints for external integrations with event filtering and secrets
+15. **white_label_settings** - Per-agency branding customization (logo, colors, domain, branding toggle)
 
 ### Shared Code
 The `shared/` directory contains code used by both frontend and backend:

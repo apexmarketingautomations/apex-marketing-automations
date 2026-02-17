@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2, History, Satellite, Building } from "lucide-react";
+import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2, History, Satellite, Building, BarChart3, Kanban, CalendarDays, Mail, Palette, Webhook, FileBarChart } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { CommandMenu } from "@/components/command-menu";
@@ -30,6 +30,10 @@ const navSections = [
       { href: "/property-radar", icon: Building, label: "Property Radar" },
       { href: "/website-integration", icon: Globe, label: "Website Integration" },
       { href: "/form-builder", icon: LayoutTemplate, label: "Form Builder" },
+      { href: "/analytics", icon: BarChart3, label: "Analytics" },
+      { href: "/pipeline", icon: Kanban, label: "Pipeline & CRM" },
+      { href: "/calendar", icon: CalendarDays, label: "Calendar" },
+      { href: "/email-campaigns", icon: Mail, label: "Email Campaigns" },
     ],
   },
   {
@@ -42,6 +46,9 @@ const navSections = [
       { href: "/pricing", icon: CreditCard, label: "Plans & Pricing" },
       { href: "/billing", icon: DollarSign, label: "Usage & Billing" },
       { href: "/domains", icon: Link2, label: "Domains" },
+      { href: "/webhooks", icon: Webhook, label: "Webhooks" },
+      { href: "/white-label", icon: Palette, label: "White Label" },
+      { href: "/reports", icon: FileBarChart, label: "Reports" },
       { href: "/god-mode", icon: Rocket, label: "God Mode" },
     ],
   },

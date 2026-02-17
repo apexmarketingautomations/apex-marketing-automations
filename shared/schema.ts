@@ -408,3 +408,134 @@ export const auditLogs = pgTable("audit_logs", {
 export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: true, createdAt: true });
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
 export type AuditLog = typeof auditLogs.$inferSelect;
+
+// ---- CRM Contacts ----
+
+export const contacts = pgTable("contacts", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  firstName: text("first_name").notNull(),
+  lastName: text("last_name"),
+  email: text("email"),
+  phone: text("phone"),
+  company: text("company"),
+  source: text("source").default("manual"),
+  tags: text("tags").array().default([]),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertContactSchema = createInsertSchema(contacts).omit({ id: true, createdAt: true });
+export type InsertContact = z.infer<typeof insertContactSchema>;
+export type Contact = typeof contacts.$inferSelect;
+
+// ---- Pipeline Deals ----
+
+export const pipelineStages = pgTable("pipeline_stages", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  name: text("name").notNull(),
+  color: text("color").default("#6366f1"),
+  position: integer("position").notNull().default(0),
+});
+
+export const insertPipelineStageSchema = createInsertSchema(pipelineStages).omit({ id: true });
+export type InsertPipelineStage = z.infer<typeof insertPipelineStageSchema>;
+export type PipelineStage = typeof pipelineStages.$inferSelect;
+
+export const deals = pgTable("deals", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  contactId: integer("contact_id").references(() => contacts.id),
+  stageId: integer("stage_id").references(() => pipelineStages.id).notNull(),
+  title: text("title").notNull(),
+  value: real("value").default(0),
+  status: text("status").default("open"),
+  notes: text("notes"),
+  closedAt: timestamp("closed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertDealSchema = createInsertSchema(deals).omit({ id: true, createdAt: true });
+export type InsertDeal = z.infer<typeof insertDealSchema>;
+export type Deal = typeof deals.$inferSelect;
+
+// ---- Appointments ----
+
+export const appointments = pgTable("appointments", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  contactId: integer("contact_id").references(() => contacts.id),
+  title: text("title").notNull(),
+  description: text("description"),
+  startTime: timestamp("start_time").notNull(),
+  endTime: timestamp("end_time").notNull(),
+  status: text("status").default("scheduled"),
+  location: text("location"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertAppointmentSchema = createInsertSchema(appointments).omit({ id: true, createdAt: true });
+export type InsertAppointment = z.infer<typeof insertAppointmentSchema>;
+export type Appointment = typeof appointments.$inferSelect;
+
+// ---- Email Campaigns ----
+
+export const emailCampaigns = pgTable("email_campaigns", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  name: text("name").notNull(),
+  subject: text("subject").notNull(),
+  body: text("body").notNull(),
+  status: text("status").default("draft"),
+  recipientCount: integer("recipient_count").default(0),
+  sentCount: integer("sent_count").default(0),
+  openCount: integer("open_count").default(0),
+  clickCount: integer("click_count").default(0),
+  scheduledAt: timestamp("scheduled_at"),
+  sentAt: timestamp("sent_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertEmailCampaignSchema = createInsertSchema(emailCampaigns).omit({ id: true, createdAt: true });
+export type InsertEmailCampaign = z.infer<typeof insertEmailCampaignSchema>;
+export type EmailCampaign = typeof emailCampaigns.$inferSelect;
+
+// ---- Webhooks ----
+
+export const webhooks = pgTable("webhooks", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  name: text("name").notNull(),
+  url: text("url").notNull(),
+  events: text("events").array().default([]),
+  secret: text("secret"),
+  active: boolean("active").default(true),
+  lastTriggeredAt: timestamp("last_triggered_at"),
+  failCount: integer("fail_count").default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertWebhookSchema = createInsertSchema(webhooks).omit({ id: true, createdAt: true });
+export type InsertWebhook = z.infer<typeof insertWebhookSchema>;
+export type Webhook = typeof webhooks.$inferSelect;
+
+// ---- White-Label Settings ----
+
+export const whiteLabelSettings = pgTable("white_label_settings", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().unique(),
+  brandName: text("brand_name"),
+  logoUrl: text("logo_url"),
+  primaryColor: text("primary_color").default("#6366f1"),
+  accentColor: text("accent_color").default("#06b6d4"),
+  customDomain: text("custom_domain"),
+  favicon: text("favicon"),
+  footerText: text("footer_text"),
+  hideApexBranding: boolean("hide_apex_branding").default(false),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertWhiteLabelSettingsSchema = createInsertSchema(whiteLabelSettings).omit({ id: true, updatedAt: true });
+export type InsertWhiteLabelSettings = z.infer<typeof insertWhiteLabelSettingsSchema>;
+export type WhiteLabelSettings = typeof whiteLabelSettings.$inferSelect;

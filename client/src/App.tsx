@@ -36,6 +36,13 @@ const SentinelPage = lazy(() => import("@/pages/sentinel"));
 const PropertyRadarPage = lazy(() => import("@/pages/property-radar"));
 const WebsiteIntegration = lazy(() => import("@/pages/website-integration"));
 const FormBuilder = lazy(() => import("@/pages/form-builder"));
+const AnalyticsPage = lazy(() => import("@/pages/analytics"));
+const PipelinePage = lazy(() => import("@/pages/pipeline"));
+const CalendarPage = lazy(() => import("@/pages/calendar"));
+const EmailCampaignsPage = lazy(() => import("@/pages/email-campaigns"));
+const WhiteLabelPage = lazy(() => import("@/pages/white-label"));
+const WebhooksPage = lazy(() => import("@/pages/webhooks"));
+const ReportsPage = lazy(() => import("@/pages/reports"));
 const NexusDemo = lazy(() => import("@/pages/nexus-demo"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const Login = lazy(() => import("@/pages/login"));
@@ -96,6 +103,13 @@ function Router() {
                   <Route path="/property-radar" component={PropertyRadarPage} />
                   <Route path="/website-integration" component={WebsiteIntegration} />
                   <Route path="/form-builder" component={FormBuilder} />
+                  <Route path="/analytics" component={AnalyticsPage} />
+                  <Route path="/pipeline" component={PipelinePage} />
+                  <Route path="/calendar" component={CalendarPage} />
+                  <Route path="/email-campaigns" component={EmailCampaignsPage} />
+                  <Route path="/white-label" component={WhiteLabelPage} />
+                  <Route path="/webhooks" component={WebhooksPage} />
+                  <Route path="/reports" component={ReportsPage} />
                   <Route path="/gym" component={GymLanding} />
                   <Route path="/luxe" component={LuxeLanding} />
                   <Route component={NotFound} />
