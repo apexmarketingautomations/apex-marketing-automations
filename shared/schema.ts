@@ -621,3 +621,20 @@ export const instagramMessages = pgTable("instagram_messages", {
 export const insertInstagramMessageSchema = createInsertSchema(instagramMessages).omit({ id: true, createdAt: true });
 export type InsertInstagramMessage = z.infer<typeof insertInstagramMessageSchema>;
 export type InstagramMessage = typeof instagramMessages.$inferSelect;
+
+// ---- Notifications ----
+
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  type: text("type").notNull(),
+  title: text("title").notNull(),
+  body: text("body"),
+  read: boolean("read").default(false),
+  link: text("link"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+export type Notification = typeof notifications.$inferSelect;

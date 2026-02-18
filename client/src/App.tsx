@@ -43,6 +43,7 @@ const EmailCampaignsPage = lazy(() => import("@/pages/email-campaigns"));
 const WhiteLabelPage = lazy(() => import("@/pages/white-label"));
 const WebhooksPage = lazy(() => import("@/pages/webhooks"));
 const ReportsPage = lazy(() => import("@/pages/reports"));
+const DashboardPage = lazy(() => import("@/pages/dashboard"));
 const MetaAdsPage = lazy(() => import("@/pages/meta-ads"));
 const MetaLeadsPage = lazy(() => import("@/pages/meta-leads"));
 const InstagramInboxPage = lazy(() => import("@/pages/instagram-inbox"));
@@ -84,7 +85,8 @@ function Router() {
             <Layout>
               <Suspense fallback={<PageLoader />}>
                 <Switch>
-                  <Route path="/" component={SmsDashboard} />
+                  <Route path="/" component={DashboardPage} />
+                  <Route path="/inbox" component={SmsDashboard} />
                   <Route path="/workflows" component={WorkflowBuilder} />
                   <Route path="/bot-trainer" component={BotTrainer} />
                   <Route path="/onboarding" component={Onboarding} />

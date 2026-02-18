@@ -1,4 +1,7 @@
 User-agent: *
 Allow: /
+Disallow: /api/
+Disallow: /login
+Disallow: /god-mode
 
-Sitemap: https://YOUR-SITE.com/locations.kml
+Sitemap: https://apexmarketingautomations.com/sitemap.xml

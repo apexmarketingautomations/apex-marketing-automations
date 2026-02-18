@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains, insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, insertMetaAdCampaignSchema, insertMetaLeadSchema, insertInstagramConversationSchema, insertInstagramMessageSchema, contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings, metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, messages } from "@shared/schema";
+import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains, insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, insertMetaAdCampaignSchema, insertMetaLeadSchema, insertInstagramConversationSchema, insertInstagramMessageSchema, insertNotificationSchema, contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings, metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications, messages } from "@shared/schema";
 import { sql } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -4403,6 +4403,36 @@ Rules:
               });
               existingFormLeadKeys.add(dedupeKey);
               totalSynced++;
+
+              storage.createNotification({
+                subAccountId,
+                type: "new_lead",
+                title: "New Facebook Lead",
+                body: `${name}${email ? ` (${email})` : ""} submitted a lead form`,
+                link: "/meta-leads",
+              }).catch(() => {});
+
+              const account = await storage.getSubAccount(subAccountId);
+              if (account?.twilioNumber && getName("phone_number")) {
+                try {
+                  const twilioClient = Twilio(process.env.TWILIO_ACCOUNT_SID!, process.env.TWILIO_AUTH_TOKEN!);
+                  await twilioClient.messages.create({
+                    body: `Hi ${name.split(" ")[0] || "there"}! Thanks for your interest. We received your inquiry and will follow up shortly. - ${account.name}`,
+                    from: account.twilioNumber,
+                    to: getName("phone_number"),
+                  });
+                  await storage.createMessage({
+                    subAccountId,
+                    direction: "outbound",
+                    body: `[Auto-reply] Hi ${name.split(" ")[0] || "there"}! Thanks for your interest. We received your inquiry and will follow up shortly.`,
+                    status: "sent",
+                    contactPhone: getName("phone_number"),
+                    channel: "sms",
+                  });
+                } catch (smsErr: any) {
+                  console.log("Auto-reply SMS failed (non-blocking):", smsErr.message);
+                }
+              }
             }
           }
         }
@@ -4557,6 +4587,129 @@ Rules:
       hasAdAccountId: !!process.env.META_AD_ACCOUNT_ID,
       hasPageId: !!process.env.META_PAGE_ID,
       hasAppId: !!process.env.META_APP_ID,
+    });
+  }));
+
+  // ---- Notifications ----
+
+  app.get("/api/notifications/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
+    const notifs = await storage.getNotifications(Number(req.params.subAccountId));
+    res.json(notifs);
+  }));
+
+  app.get("/api/notifications/:subAccountId/unread-count", asyncHandler(async (req: Request, res: Response) => {
+    const count = await storage.getUnreadNotificationCount(Number(req.params.subAccountId));
+    res.json({ count });
+  }));
+
+  app.post("/api/notifications/:id/read", asyncHandler(async (req: Request, res: Response) => {
+    const notif = await storage.markNotificationRead(Number(req.params.id));
+    if (!notif) return res.status(404).json({ error: "Notification not found" });
+    res.json(notif);
+  }));
+
+  app.post("/api/notifications/:subAccountId/read-all", asyncHandler(async (req: Request, res: Response) => {
+    await storage.markAllNotificationsRead(Number(req.params.subAccountId));
+    res.json({ success: true });
+  }));
+
+  // ---- Dashboard Metrics ----
+
+  app.get("/api/dashboard/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
+    const subAccountId = Number(req.params.subAccountId);
+    const [msgs, contactsList, dealsList, appointmentsList, campaigns, metaCampaignsList, metaLeadsList, igConvs, unreadNotifs] = await Promise.all([
+      storage.getMessages(subAccountId),
+      storage.getContacts(subAccountId),
+      storage.getDeals(subAccountId),
+      storage.getAppointments(subAccountId),
+      storage.getEmailCampaigns(subAccountId),
+      storage.getMetaAdCampaigns(subAccountId),
+      storage.getMetaLeads(subAccountId),
+      storage.getInstagramConversations(subAccountId),
+      storage.getUnreadNotificationCount(subAccountId),
+    ]);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayMsgs = msgs.filter(m => new Date(m.createdAt) >= today);
+    const totalDealValue = dealsList.reduce((s, d) => s + (d.value || 0), 0);
+    const upcomingAppts = appointmentsList.filter(a => new Date(a.startTime) > new Date());
+    const totalAdSpend = metaCampaignsList.reduce((s, c) => s + (c.totalSpend || 0), 0);
+    const totalAdLeads = metaCampaignsList.reduce((s, c) => s + (c.leads || 0), 0);
+    const unreadIgMsgs = igConvs.reduce((s, c) => s + (c.unreadCount || 0), 0);
+
+    res.json({
+      totalMessages: msgs.length,
+      todayMessages: todayMsgs.length,
+      totalContacts: contactsList.length,
+      totalDeals: dealsList.length,
+      totalDealValue,
+      upcomingAppointments: upcomingAppts.length,
+      totalCampaigns: campaigns.length,
+      metaAdCampaigns: metaCampaignsList.length,
+      metaLeads: metaLeadsList.length,
+      totalAdSpend,
+      totalAdLeads,
+      igConversations: igConvs.length,
+      unreadIgMessages: unreadIgMsgs,
+      unreadNotifications: unreadNotifs,
+      recentMessages: todayMsgs.slice(0, 5),
+      recentLeads: metaLeadsList.slice(0, 5),
+    });
+  }));
+
+  // ---- Sitemap ----
+
+  app.get("/sitemap.xml", (_req: Request, res: Response) => {
+    const base = "https://apexmarketingautomations.com";
+    const pages = [
+      { loc: "/", priority: "1.0", changefreq: "daily" },
+      { loc: "/demo", priority: "0.9", changefreq: "weekly" },
+      { loc: "/pricing", priority: "0.8", changefreq: "weekly" },
+      { loc: "/gym", priority: "0.7", changefreq: "monthly" },
+      { loc: "/luxe", priority: "0.7", changefreq: "monthly" },
+    ];
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${pages.map(p => `  <url>
+    <loc>${base}${p.loc}</loc>
+    <changefreq>${p.changefreq}</changefreq>
+    <priority>${p.priority}</priority>
+  </url>`).join("\n")}
+</urlset>`;
+    res.setHeader("Content-Type", "application/xml");
+    res.send(xml);
+  });
+
+  // ---- Email Validation Helper ----
+
+  app.post("/api/validate-email", asyncHandler(async (req: Request, res: Response) => {
+    const { email } = req.body;
+    if (!email) return res.json({ valid: false, reason: "No email provided" });
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) return res.json({ valid: false, reason: "Invalid format" });
+
+    const domain = email.split("@")[1];
+    try {
+      const mxRecords = await new Promise<dns.MxRecord[]>((resolve, reject) => {
+        dns.resolveMx(domain, (err, records) => {
+          if (err) reject(err);
+          else resolve(records);
+        });
+      });
+      res.json({ valid: mxRecords.length > 0, reason: mxRecords.length > 0 ? "Valid MX records" : "No MX records" });
+    } catch {
+      res.json({ valid: false, reason: "Domain DNS lookup failed" });
+    }
+  }));
+
+  // ---- Tracking Config ----
+
+  app.get("/api/tracking-config", asyncHandler(async (_req: Request, res: Response) => {
+    res.json({
+      gaId: process.env.GA_MEASUREMENT_ID || "",
+      metaPixelId: process.env.META_PIXEL_ID || "",
     });
   }));
 

@@ -4,7 +4,7 @@ import {
   subAccounts, messages, workflows, trainingJobs, blueprints, savedSites, siteVersions, siteCollaborators, reviews, usageLogs, domains, owners,
   subscriptions, snapshots, snapshotVersions, affiliates, referrals, commissions, sentinelConfig, sentinelIncidents, propertyLeads, wholesalerConfig, clientWebsites, auditLogs,
   contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings,
-  metaAdCampaigns, metaLeads, instagramConversations, instagramMessages,
+  metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications,
   type SubAccount, type InsertSubAccount,
   type Message, type InsertMessage,
   type Workflow, type InsertWorkflow,
@@ -40,6 +40,7 @@ import {
   type MetaLead, type InsertMetaLead,
   type InstagramConversation, type InsertInstagramConversation,
   type InstagramMessage, type InsertInstagramMessage,
+  type Notification, type InsertNotification,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -209,6 +210,12 @@ export interface IStorage {
 
   getInstagramMessages(conversationId: number): Promise<InstagramMessage[]>;
   createInstagramMessage(data: InsertInstagramMessage): Promise<InstagramMessage>;
+
+  getNotifications(subAccountId: number): Promise<Notification[]>;
+  createNotification(data: InsertNotification): Promise<Notification>;
+  markNotificationRead(id: number): Promise<Notification | undefined>;
+  markAllNotificationsRead(subAccountId: number): Promise<void>;
+  getUnreadNotificationCount(subAccountId: number): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -861,6 +868,29 @@ export class DatabaseStorage implements IStorage {
   async createInstagramMessage(data: InsertInstagramMessage) {
     const [row] = await db.insert(instagramMessages).values(data).returning();
     return row;
+  }
+
+  async getNotifications(subAccountId: number) {
+    return db.select().from(notifications).where(eq(notifications.subAccountId, subAccountId)).orderBy(desc(notifications.createdAt)).limit(50);
+  }
+
+  async createNotification(data: InsertNotification) {
+    const [row] = await db.insert(notifications).values(data).returning();
+    return row;
+  }
+
+  async markNotificationRead(id: number) {
+    const [row] = await db.update(notifications).set({ read: true }).where(eq(notifications.id, id)).returning();
+    return row;
+  }
+
+  async markAllNotificationsRead(subAccountId: number) {
+    await db.update(notifications).set({ read: true }).where(and(eq(notifications.subAccountId, subAccountId), eq(notifications.read, false)));
+  }
+
+  async getUnreadNotificationCount(subAccountId: number) {
+    const [result] = await db.select({ count: sql<number>`count(*)::int` }).from(notifications).where(and(eq(notifications.subAccountId, subAccountId), eq(notifications.read, false)));
+    return result?.count || 0;
   }
 }
 

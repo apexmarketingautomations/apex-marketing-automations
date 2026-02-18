@@ -9,6 +9,7 @@ import { VibeSwitcher } from "@/components/vibe-switcher";
 import { useAuth } from "@/hooks/use-auth";
 import { useAccount } from "@/hooks/use-account";
 import { BlitzBanner } from "@/components/blitz-banner";
+import { NotificationBell } from "@/components/notification-bell";
 import { LegacyStatusBadge } from "@/components/legacy-status";
 import type { SubAccount } from "@shared/schema";
 
@@ -16,7 +17,8 @@ const navSections = [
   {
     label: "MODULES",
     items: [
-      { href: "/", icon: MessageSquare, label: "Unified Inbox" },
+      { href: "/", icon: TrendingUp, label: "Dashboard" },
+      { href: "/inbox", icon: MessageSquare, label: "Unified Inbox" },
       { href: "/workflows", icon: GitFork, label: "Workflows" },
       { href: "/bot-trainer", icon: Bot, label: "Neural Trainer" },
       { href: "/onboarding", icon: Briefcase, label: "New Account" },
@@ -167,10 +169,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {accounts.length > 0 && <AccountSwitcher accounts={accounts} />}
         <LegacyStatusBadge />
 
-        <div className="px-2 md:px-4 mb-2">
+        <div className="px-2 md:px-4 mb-2 flex items-center gap-2">
           <button
             onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition-colors text-slate-400 hover:text-white text-sm"
+            className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition-colors text-slate-400 hover:text-white text-sm"
             data-testid="button-command-menu"
           >
             <Search size={14} />
@@ -179,6 +181,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <span>⌘</span>K
             </span>
           </button>
+          <NotificationBell />
         </div>
 
         <div className="flex-1 space-y-1 pr-0 md:pr-4 overflow-y-auto">
