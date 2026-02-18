@@ -20,7 +20,7 @@ export default function Login() {
       <div className="hidden lg:flex lg:w-1/2 flex-col justify-between p-12 relative z-10">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold border border-indigo-500/30 bg-indigo-500/10 text-indigo-400 mb-8">
-            <Sparkles size={12} /> APEX MARKETING ANIMATION
+            <Sparkles size={12} /> APEX MARKETING AUTOMATIONS
           </div>
           <h1 className="text-5xl font-black text-white tracking-tight leading-tight mb-4" data-testid="text-login-title">
             Your AI-Powered
@@ -59,7 +59,7 @@ export default function Login() {
           ))}
         </motion.div>
 
-        <p className="text-xs text-slate-600 mt-8">&copy; {new Date().getFullYear()} Apex Marketing Animation. All rights reserved.</p>
+        <p className="text-xs text-slate-600 mt-8">&copy; {new Date().getFullYear()} Apex Marketing Automations. All rights reserved.</p>
       </div>
 
       <div className="flex-1 flex items-center justify-center relative z-10 p-8">
@@ -71,7 +71,7 @@ export default function Login() {
         >
           <div className="lg:hidden text-center mb-8">
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold border border-indigo-500/30 bg-indigo-500/10 text-indigo-400 mb-4">
-              <Sparkles size={12} /> APEX MARKETING
+              <Sparkles size={12} /> APEX MARKETING AUTOMATIONS
             </div>
             <h1 className="text-3xl font-black text-white tracking-tight">
               AI-Powered <span className="bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">Command Center</span>

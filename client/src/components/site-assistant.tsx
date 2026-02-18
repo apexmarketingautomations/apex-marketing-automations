@@ -3,7 +3,7 @@ import { Bot, X, Send, Loader2, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation } from "wouter";
 
-const SYSTEM_PROMPT = `You are Apex Assistant, the built-in AI guide for the Apex Marketing Animation platform. You know every feature inside-out and help users navigate, learn, and get the most from the platform.
+const SYSTEM_PROMPT = `You are Apex Assistant, the built-in AI guide for the Apex Marketing Automations platform. You know every feature inside-out and help users navigate, learn, and get the most from the platform.
 
 Platform Features & Navigation:
 

@@ -2,8 +2,10 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Shield, ArrowRight } from "lucide-react";
+import { Shield, ArrowRight, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
+import { Link } from "wouter";
 
 const BLITZ_ACTIVE = true;
 
@@ -82,18 +84,24 @@ const tiers = [
 export default function Pricing() {
   const [isYearly, setIsYearly] = useState(false);
   const { toast } = useToast();
+  const { isAuthenticated } = useAuth();
 
   const { data: subscription } = useQuery<any>({
     queryKey: ["/api/subscription"],
+    enabled: isAuthenticated,
   });
 
   const checkoutMutation = useMutation({
     mutationFn: async ({ tier, interval }: { tier: string; interval: string }) => {
+      if (!isAuthenticated) {
+        window.location.href = "/api/login";
+        return;
+      }
       const res = await apiRequest("POST", "/api/subscription/checkout", { tier, interval, isBlitz: BLITZ_ACTIVE });
       return res.json();
     },
     onSuccess: (data) => {
-      if (data.url) window.location.href = data.url;
+      if (data?.url) window.location.href = data.url;
     },
     onError: () => {
       toast({ title: "Checkout failed", description: "Could not create checkout session.", variant: "destructive" });
@@ -113,7 +121,22 @@ export default function Pricing() {
   };
 
   return (
-    <div className="p-6 md:p-10 max-w-7xl mx-auto">
+    <div className="min-h-screen" style={{ backgroundColor: isAuthenticated ? "transparent" : "#030014" }}>
+      {!isAuthenticated && (
+        <>
+          <div className="fixed inset-0 bg-grid z-0 pointer-events-none" />
+          <nav className="sticky top-0 z-50 bg-black/60 backdrop-blur-xl border-b border-white/5">
+            <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+              <Link href="/" className="flex items-center gap-3">
+                <img src="/apex-logo.png" alt="Apex" className="w-8 h-8" />
+                <span className="font-black text-white tracking-tight hidden sm:block">APEX <span className="text-indigo-400 font-light text-xs">MARKETING AUTOMATIONS</span></span>
+              </Link>
+              <a href="/api/login" className="px-5 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-bold rounded-lg" data-testid="button-pricing-login">Sign In</a>
+            </div>
+          </nav>
+        </>
+      )}
+    <div className="p-6 md:p-10 max-w-7xl mx-auto relative z-10">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-16">
         {BLITZ_ACTIVE && (
           <motion.div
@@ -309,6 +332,7 @@ export default function Pricing() {
           </p>
         </motion.div>
       )}
+    </div>
     </div>
   );
 }

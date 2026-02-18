@@ -159,9 +159,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <aside className="w-16 md:w-72 glass-panel flex flex-col z-20 fixed top-0 left-0 h-screen overflow-y-auto">
         <div className="p-4 md:p-6 pb-3 md:pb-4">
           <div className="flex items-center gap-2 mb-1">
-            <img src="/apex-logo.png" alt="Apex Marketing Animation" className="w-8 h-8 object-contain" />
+            <img src="/apex-logo.png" alt="Apex Marketing Automations" className="w-8 h-8 object-contain" />
             <h1 className="text-lg font-bold tracking-tight text-white hidden md:block leading-tight">
-              APEX <span className="font-light text-indigo-400 text-xs block -mt-0.5">MARKETING ANIMATION</span>
+              APEX <span className="font-light text-indigo-400 text-xs block -mt-0.5">MARKETING AUTOMATIONS</span>
             </h1>
           </div>
         </div>

@@ -198,7 +198,7 @@ export default function Welcome() {
           >
             <span className="block">APEX</span>
             <span className="block bg-gradient-to-r from-indigo-400 via-purple-400 to-cyan-400 bg-clip-text text-transparent">
-              MARKETING ANIMATION
+              MARKETING AUTOMATIONS
             </span>
           </motion.h1>
 
@@ -326,7 +326,7 @@ export default function Welcome() {
 
       <footer className="relative z-10 py-12 px-6 border-t border-white/5" data-testid="section-footer">
         <div className="max-w-5xl mx-auto text-center">
-          <p className="text-slate-600 text-sm mb-4">Powered by Apex Marketing Animation</p>
+          <p className="text-slate-600 text-sm mb-4">Powered by Apex Marketing Automations</p>
           <Link
             href="/login"
             className="text-indigo-400 hover:text-indigo-300 text-sm font-medium transition-colors"

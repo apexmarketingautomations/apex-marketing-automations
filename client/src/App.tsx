@@ -49,8 +49,7 @@ const MetaLeadsPage = lazy(() => import("@/pages/meta-leads"));
 const InstagramInboxPage = lazy(() => import("@/pages/instagram-inbox"));
 const NexusDemo = lazy(() => import("@/pages/nexus-demo"));
 const NotFound = lazy(() => import("@/pages/not-found"));
-const Login = lazy(() => import("@/pages/login"));
-const Welcome = lazy(() => import("@/pages/welcome"));
+const LandingPage = lazy(() => import("@/pages/landing"));
 
 function PageLoader() {
   return (
@@ -74,18 +73,35 @@ function Router() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Switch>
+        {/* Public routes — no auth required */}
         <Route path="/review/:subAccountId" component={ReviewBuffer} />
         <Route path="/demo" component={NexusDemo} />
-        <Route path="/login" component={Login} />
-        <Route path="/welcome" component={Welcome} />
+        <Route path="/pricing" component={Pricing} />
+        <Route path="/gym" component={GymLanding} />
+        <Route path="/luxe" component={LuxeLanding} />
+
+        {/* Landing page for unauthenticated, dashboard for authenticated */}
+        <Route path="/">
+          {isAuthenticated ? (
+            <Layout>
+              <Suspense fallback={<PageLoader />}>
+                <DashboardPage />
+              </Suspense>
+            </Layout>
+          ) : (
+            <LandingPage />
+          )}
+        </Route>
+
+        {/* All authenticated routes */}
         <Route>
           {!isAuthenticated ? (
-            <Redirect to="/login" />
+            <Redirect to="/" />
           ) : (
             <Layout>
               <Suspense fallback={<PageLoader />}>
                 <Switch>
-                  <Route path="/" component={DashboardPage} />
+                  <Route path="/dashboard" component={DashboardPage} />
                   <Route path="/inbox" component={SmsDashboard} />
                   <Route path="/workflows" component={WorkflowBuilder} />
                   <Route path="/bot-trainer" component={BotTrainer} />
@@ -99,7 +115,6 @@ function Router() {
                   <Route path="/billing" component={Billing} />
                   <Route path="/domains" component={Domains} />
                   <Route path="/god-mode" component={GodMode} />
-                  <Route path="/pricing" component={Pricing} />
                   <Route path="/marketplace" component={MarketplacePage} />
                   <Route path="/affiliate" component={AffiliateDashboard} />
                   <Route path="/command-center" component={CommandCenterPage} />
@@ -118,8 +133,6 @@ function Router() {
                   <Route path="/meta-ads" component={MetaAdsPage} />
                   <Route path="/meta-leads" component={MetaLeadsPage} />
                   <Route path="/instagram-inbox" component={InstagramInboxPage} />
-                  <Route path="/gym" component={GymLanding} />
-                  <Route path="/luxe" component={LuxeLanding} />
                   <Route component={NotFound} />
                 </Switch>
               </Suspense>

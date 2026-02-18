@@ -136,7 +136,7 @@ app.use((req, res, next) => {
 
 function validateEnvVars() {
   console.log("=".repeat(60));
-  console.log("[STARTUP] Apex Marketing Animation — Environment Check");
+  console.log("[STARTUP] Apex Marketing Automations — Environment Check");
   console.log("=".repeat(60));
 
   const checks: { key: string; altKey?: string; label: string; critical: boolean }[] = [
