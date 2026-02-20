@@ -73,6 +73,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { ChatWidget } from "@/components/chat-widget";
 import { SiteBuilderTutorial, useSiteBuilderTutorial } from "@/components/site-builder-tutorial";
+import { markMilestoneComplete, TutorialCenterCompact } from "@/components/tutorial-center";
 
 const ICON_MAP: Record<string, React.ComponentType<any>> = {
   ShieldCheck,
@@ -1035,6 +1036,10 @@ export default function SiteBuilder() {
   const [isUploading, setIsUploading] = useState(false);
   const { showTutorial, startTutorial, closeTutorial } = useSiteBuilderTutorial();
 
+  useEffect(() => {
+    markMilestoneComplete("describe");
+  }, []);
+
   const fetchUploadedImages = useCallback(async () => {
     try {
       const res = await fetch("/api/uploads");
@@ -1153,6 +1158,8 @@ export default function SiteBuilder() {
       const data = await res.json();
       setSiteData(data);
       setCurrentSiteId(null);
+      markMilestoneComplete("generate");
+      markMilestoneComplete("preview");
     } catch (err: any) {
       toast({
         title: "Generation Failed",
@@ -1195,6 +1202,7 @@ export default function SiteBuilder() {
       await fetchSavedSites();
       setShowSaveDialog(false);
       setSaveName("");
+      markMilestoneComplete("save");
       toast({ title: "Design Saved!", description: `"${saveName.trim()}" has been saved with version snapshot.` });
     } catch (err: any) {
       toast({ title: "Save Failed", description: err.message, variant: "destructive" });
@@ -1229,6 +1237,7 @@ export default function SiteBuilder() {
   };
 
   const handlePublish = () => {
+    markMilestoneComplete("publish");
     toast({
       title: "Site Published!",
       description: "Your landing page is now live.",
@@ -1625,6 +1634,8 @@ export default function SiteBuilder() {
     setHistory((prev) => [...prev, `Loaded template: ${template.name}`]);
     setCurrentSiteId(null);
     setShowTemplates(false);
+    markMilestoneComplete("generate");
+    markMilestoneComplete("preview");
     toast({ title: "Template Loaded", description: `"${template.name}" is ready to customize.` });
   };
 
@@ -1855,6 +1866,7 @@ export default function SiteBuilder() {
         </AnimatePresence>
 
         <div className="p-4 bg-black/40 border-t border-white/5 backdrop-blur-md space-y-2">
+          <TutorialCenterCompact />
           <div className="flex gap-2">
             <Input
               value={prompt}
@@ -1921,7 +1933,7 @@ export default function SiteBuilder() {
             </div>
             {siteData && (
               <button
-                onClick={() => setEditMode(!editMode)}
+                onClick={() => { if (!editMode) markMilestoneComplete("customize"); setEditMode(!editMode); }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
                   editMode
                     ? "bg-amber-500/20 border-amber-500/40 text-amber-300"

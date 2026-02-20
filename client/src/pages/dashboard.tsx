@@ -4,6 +4,7 @@ import { useActiveSubAccountId } from "@/components/account-required";
 import { Card, CardContent } from "@/components/ui/card";
 import { MessageSquare, Users, Kanban, CalendarDays, Mail, Megaphone, Target, Instagram, DollarSign, TrendingUp, Bell, Clock } from "lucide-react";
 import { Link } from "wouter";
+import { TutorialCenter } from "@/components/tutorial-center";
 
 interface DashboardMetrics {
   totalMessages: number;
@@ -106,6 +107,8 @@ export default function DashboardPage() {
         </h1>
         <p className="text-slate-400 mt-1">Real-time overview of your business operations</p>
       </div>
+
+      <TutorialCenter />
 
       {isLoading ? (
         <div className="text-center py-20 text-slate-400">Loading dashboard...</div>
