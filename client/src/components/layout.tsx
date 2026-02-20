@@ -170,7 +170,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const { activeAccountId } = useAccount();
   const currentAccount = accounts.find(a => a.id === activeAccountId) || accounts[0];
-  const accountPlan = (currentAccount as any)?.plan || 'starter';
+  const isUserAdmin = (user as any)?.isAdmin === "true";
+  const accountPlan = isUserAdmin ? 'enterprise' : ((currentAccount as any)?.plan || 'starter');
 
   const renderNavContent = (onNavClick?: () => void) => (
     <>

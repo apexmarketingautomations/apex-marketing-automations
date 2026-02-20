@@ -2,6 +2,7 @@ import { useActiveSubAccountId } from "@/components/account-required";
 import { useQuery } from "@tanstack/react-query";
 import { hasFeature } from "@shared/schema";
 import type { SubAccount } from "@shared/schema";
+import { useAuth } from "@/hooks/use-auth";
 import { Lock, ArrowUpCircle } from "lucide-react";
 import { Link } from "wouter";
 
@@ -12,10 +13,16 @@ interface PlanGateProps {
 }
 
 export function PlanGate({ feature, children, featureLabel }: PlanGateProps) {
+  const { user } = useAuth();
+  const isAdmin = user?.isAdmin === "true";
   const activeId = useActiveSubAccountId();
   const { data: accounts = [] } = useQuery<SubAccount[]>({ queryKey: ["/api/accounts"] });
   const currentAccount = activeId ? accounts.find(a => a.id === activeId) : null;
-  const accountPlan = currentAccount?.plan || "starter";
+  const accountPlan = isAdmin ? "enterprise" : (currentAccount?.plan || "starter");
+
+  if (isAdmin) {
+    return <>{children}</>;
+  }
 
   if (!activeId) {
     return (
