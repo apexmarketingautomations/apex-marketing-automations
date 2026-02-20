@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains, insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, insertMetaAdCampaignSchema, insertMetaLeadSchema, insertInstagramConversationSchema, insertInstagramMessageSchema, insertNotificationSchema, contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings, metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications, messages } from "@shared/schema";
+import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains, insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, insertMetaAdCampaignSchema, insertMetaLeadSchema, insertInstagramConversationSchema, insertInstagramMessageSchema, insertNotificationSchema, contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings, metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications, messages, hasFeature, PLAN_TIERS, subAccounts } from "@shared/schema";
 import { sql } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -160,6 +160,13 @@ export async function registerRoutes(
     }
   }
 
+  async function requirePlanFeature(subAccountId: number, feature: string): Promise<{ allowed: boolean; plan: string }> {
+    const account = await storage.getSubAccount(subAccountId);
+    if (!account) return { allowed: false, plan: 'none' };
+    const plan = (account as any).plan || 'starter';
+    return { allowed: hasFeature(plan, feature), plan };
+  }
+
   // ---- Auth Middleware ----
   app.use("/api", (req, res, next) => {
     const fullPath = req.originalUrl || req.baseUrl + req.path;
@@ -263,6 +270,25 @@ export async function registerRoutes(
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const account = await storage.createSubAccount(parsed.data);
     res.status(201).json(account);
+  }));
+
+  app.get("/api/plan-tiers", (_req, res) => {
+    res.json(PLAN_TIERS);
+  });
+
+  app.patch("/api/accounts/:id/plan", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    const id = parseIntParam(req.params.id, "id");
+    const account = await storage.getSubAccount(id);
+    if (!account) return res.status(404).json({ error: "Account not found" });
+    if ((account as any).ownerUserId && (account as any).ownerUserId !== user.id) {
+      return res.status(403).json({ error: "Not authorized to change this account's plan" });
+    }
+    const parsed = z.object({ plan: z.enum(['starter', 'pro', 'enterprise']) }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const updated = await db.update(subAccounts).set({ plan: parsed.data.plan }).where(sql`${subAccounts.id} = ${id}`).returning();
+    res.json(updated[0]);
   }));
 
   app.patch("/api/accounts/:id/language", asyncHandler(async (req, res) => {
@@ -3171,6 +3197,8 @@ Rules:
   // ---- Sentinel Module ----
   app.get("/api/sentinel/config/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const { allowed, plan } = await requirePlanFeature(subAccountId, 'sentinel');
+    if (!allowed) return res.status(403).json({ error: "upgrade_required", feature: "sentinel", currentPlan: plan, requiredPlan: "pro", message: "Sentinel is a Pro feature. Upgrade to access real-time crash detection." });
     const config = await storage.getSentinelConfig(subAccountId);
     res.json(config || {
       subAccountId,
@@ -3198,12 +3226,17 @@ Rules:
     }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
+    const { allowed, plan } = await requirePlanFeature(parsed.data.subAccountId, 'sentinel');
+    if (!allowed) return res.status(403).json({ error: "upgrade_required", feature: "sentinel", currentPlan: plan, requiredPlan: "pro" });
+
     const config = await storage.upsertSentinelConfig(parsed.data as any);
     res.json(config);
   }));
 
   app.get("/api/sentinel/incidents/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const { allowed, plan } = await requirePlanFeature(subAccountId, 'sentinel');
+    if (!allowed) return res.status(403).json({ error: "upgrade_required", feature: "sentinel", currentPlan: plan, requiredPlan: "pro" });
     const incidents = await storage.getSentinelIncidents(subAccountId);
     res.json(incidents);
   }));
@@ -3216,6 +3249,9 @@ Rules:
       subAccountId: z.number().int().positive(),
     }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const { allowed, plan } = await requirePlanFeature(parsed.data.subAccountId, 'sentinel');
+    if (!allowed) return res.status(403).json({ error: "upgrade_required", feature: "sentinel", currentPlan: plan, requiredPlan: "pro" });
 
     const config = await storage.getSentinelConfig(parsed.data.subAccountId);
     const keywords = config?.keywords?.length ? config.keywords : ['MVA', 'EXTRICATION', 'ROLLOVER', 'INJURIES', 'SIGNAL 4', 'ENTRAPMENT', 'FATALITY'];

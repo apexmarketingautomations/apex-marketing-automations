@@ -4,6 +4,29 @@ import { z } from "zod";
 
 export * from "./models/auth";
 
+export const PLAN_TIERS = {
+  starter: {
+    name: 'Starter',
+    features: ['inbox', 'contacts', 'deals', 'appointments', 'reviews', 'site_builder'],
+  },
+  pro: {
+    name: 'Pro',
+    features: ['inbox', 'contacts', 'deals', 'appointments', 'reviews', 'site_builder', 'workflows', 'ai_bots', 'sentinel', 'voice_agents', 'email_campaigns'],
+  },
+  enterprise: {
+    name: 'Enterprise',
+    features: ['inbox', 'contacts', 'deals', 'appointments', 'reviews', 'site_builder', 'workflows', 'ai_bots', 'sentinel', 'voice_agents', 'email_campaigns', 'white_label', 'webhooks', 'multi_location', 'priority_support'],
+  },
+} as const;
+
+export type PlanTier = keyof typeof PLAN_TIERS;
+
+export function hasFeature(plan: string, feature: string): boolean {
+  const tier = PLAN_TIERS[plan as PlanTier];
+  if (!tier) return false;
+  return (tier.features as readonly string[]).includes(feature);
+}
+
 export const subAccounts = pgTable("sub_accounts", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -18,6 +41,8 @@ export const subAccounts = pgTable("sub_accounts", {
   isFork: boolean("is_fork").default(false),
   language: text("language").default("en"),
   aiPromptConfig: json("ai_prompt_config"),
+  plan: text("plan").default("starter").notNull(),
+  planFeatures: text("plan_features").array(),
 });
 
 export const insertSubAccountSchema = createInsertSchema(subAccounts).omit({ id: true });

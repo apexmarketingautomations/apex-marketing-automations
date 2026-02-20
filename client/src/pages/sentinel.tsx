@@ -6,7 +6,7 @@ import { useAccount } from "@/hooks/use-account";
 import { useToast } from "@/hooks/use-toast";
 import {
   Satellite, Radar, MapPin, Phone, Crosshair, AlertTriangle, CheckCircle2,
-  Settings, Play, Pause, Radio, Shield, Clock, ChevronRight, Send, Target, Zap, Eye, BookOpen
+  Settings, Play, Pause, Radio, Shield, Clock, ChevronRight, Send, Target, Zap, Eye, BookOpen, Lock, ArrowUpCircle
 } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { SENTINEL_STEPS } from "@/components/tutorial-steps";
@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import type { SubAccount, SentinelIncident, SentinelConfig } from "@shared/schema";
+import { hasFeature } from "@shared/schema";
 
 const SEVERITY_COLORS: Record<string, { bg: string; text: string; border: string; label: string }> = {
   critical: { bg: "bg-red-500/20", text: "text-red-500", border: "border-red-500/30", label: "CRITICAL" },
@@ -55,10 +56,12 @@ export default function Sentinel() {
 
   const { data: accounts = [] } = useQuery<SubAccount[]>({ queryKey: ["/api/accounts"] });
   const currentAccount = accounts.find(a => a.id === activeAccountId) || accounts[0];
+  const accountPlan = (currentAccount as any)?.plan || 'starter';
+  const hasSentinelAccess = hasFeature(accountPlan, 'sentinel');
 
   const { data: config } = useQuery<SentinelConfig>({
     queryKey: ["/api/sentinel/config", currentAccount?.id],
-    enabled: !!currentAccount?.id,
+    enabled: !!currentAccount?.id && hasSentinelAccess,
     queryFn: async () => {
       const res = await fetch(`/api/sentinel/config/${currentAccount!.id}`);
       return res.json();
@@ -67,7 +70,7 @@ export default function Sentinel() {
 
   const { data: incidents = [], isLoading: loadingIncidents } = useQuery<SentinelIncident[]>({
     queryKey: ["/api/sentinel/incidents", currentAccount?.id],
-    enabled: !!currentAccount?.id,
+    enabled: !!currentAccount?.id && hasSentinelAccess,
     queryFn: async () => {
       const res = await fetch(`/api/sentinel/incidents/${currentAccount!.id}`);
       return res.json();
@@ -175,6 +178,50 @@ export default function Sentinel() {
   const pendingIncidents = filteredIncidents.filter(i => i.actionStatus === "pending");
   const actionedIncidents = filteredIncidents.filter(i => i.actionStatus !== "pending");
   const criticalCount = filteredIncidents.filter(i => i.severity === "critical" || i.severity === "high").length;
+
+  if (!hasSentinelAccess) {
+    return (
+      <div className="p-6 md:p-10 max-w-3xl mx-auto">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center py-20">
+          <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-red-600/30 to-orange-500/30 flex items-center justify-center mx-auto mb-6 border border-red-500/20">
+            <Lock size={36} className="text-red-400" />
+          </div>
+          <h1 className="text-4xl font-black text-white mb-3" data-testid="text-sentinel-locked">APEX SENTINEL</h1>
+          <p className="text-lg text-slate-400 mb-2">Real-Time Crash Detection & Lead Generation</p>
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400 text-sm font-bold mb-8">
+            <ArrowUpCircle size={16} /> PRO FEATURE
+          </div>
+          <div className="max-w-md mx-auto space-y-4 text-left mb-10">
+            <div className="flex items-start gap-3 p-3 rounded-lg bg-white/5 border border-white/5">
+              <Radar size={18} className="text-red-400 mt-0.5 shrink-0" />
+              <div><span className="text-white font-semibold text-sm">Live FHP Crash Feed</span><p className="text-slate-500 text-xs">Real-time Florida Highway Patrol data scanning every 60 seconds</p></div>
+            </div>
+            <div className="flex items-start gap-3 p-3 rounded-lg bg-white/5 border border-white/5">
+              <MapPin size={18} className="text-orange-400 mt-0.5 shrink-0" />
+              <div><span className="text-white font-semibold text-sm">SWFL Priority Zones</span><p className="text-slate-500 text-xs">Cape Coral, Fort Myers, Naples, Bonita — instant alerts for your territory</p></div>
+            </div>
+            <div className="flex items-start gap-3 p-3 rounded-lg bg-white/5 border border-white/5">
+              <Phone size={18} className="text-emerald-400 mt-0.5 shrink-0" />
+              <div><span className="text-white font-semibold text-sm">SMS & Webhook Alerts</span><p className="text-slate-500 text-xs">Get crash leads delivered to your phone and CRM instantly</p></div>
+            </div>
+            <div className="flex items-start gap-3 p-3 rounded-lg bg-white/5 border border-white/5">
+              <Target size={18} className="text-cyan-400 mt-0.5 shrink-0" />
+              <div><span className="text-white font-semibold text-sm">Geofence Ad Deployment</span><p className="text-slate-500 text-xs">Auto-deploy targeted ads around crash scenes for maximum reach</p></div>
+            </div>
+          </div>
+          <p className="text-slate-500 text-xs mb-4">Current plan: <span className="text-white font-bold uppercase">{accountPlan}</span></p>
+          <Button
+            size="lg"
+            className="bg-gradient-to-r from-red-600 to-orange-500 text-white font-bold text-lg px-10 py-6 shadow-lg shadow-red-500/25"
+            onClick={() => window.location.href = "/pricing"}
+            data-testid="button-upgrade-sentinel"
+          >
+            <ArrowUpCircle size={20} className="mr-2" /> Upgrade to Pro
+          </Button>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 md:p-10 max-w-6xl mx-auto">

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2, History, Satellite, Building, BarChart3, Kanban, CalendarDays, Mail, Palette, Webhook, FileBarChart, Instagram, Target } from "lucide-react";
+import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2, History, Satellite, Building, BarChart3, Kanban, CalendarDays, Mail, Palette, Webhook, FileBarChart, Instagram, Target, Lock } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { CommandMenu } from "@/components/command-menu";
@@ -12,6 +12,7 @@ import { BlitzBanner } from "@/components/blitz-banner";
 import { NotificationBell } from "@/components/notification-bell";
 import { LegacyStatusBadge } from "@/components/legacy-status";
 import type { SubAccount } from "@shared/schema";
+import { hasFeature } from "@shared/schema";
 
 const navSections = [
   {
@@ -28,7 +29,7 @@ const navSections = [
       { href: "/voice-agent", icon: Phone, label: "Voice Agent" },
       { href: "/growth", icon: TrendingUp, label: "Growth Center" },
       { href: "/reputation", icon: Star, label: "Reputation" },
-      { href: "/sentinel", icon: Satellite, label: "Sentinel" },
+      { href: "/sentinel", icon: Satellite, label: "Sentinel", requiredFeature: "sentinel" },
       { href: "/property-radar", icon: Building, label: "Property Radar" },
       { href: "/website-integration", icon: Globe, label: "Website Integration" },
       { href: "/form-builder", icon: LayoutTemplate, label: "Form Builder" },
@@ -64,7 +65,7 @@ const navSections = [
   },
 ];
 
-function NavLink({ href, icon: Icon, label, isActive }: { href: string; icon: any; label: string; isActive: boolean }) {
+function NavLink({ href, icon: Icon, label, isActive, isLocked }: { href: string; icon: any; label: string; isActive: boolean; isLocked?: boolean }) {
   return (
     <Link href={href} className="relative group block" data-testid={`nav-link-${href.replace("/", "") || "home"}`}>
       {isActive && (
@@ -77,6 +78,7 @@ function NavLink({ href, icon: Icon, label, isActive }: { href: string; icon: an
       <div className={`flex items-center gap-3 p-3 px-4 transition-all ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'}`}>
         <Icon size={20} className={isActive ? 'text-indigo-400 drop-shadow-[0_0_8px_rgba(129,140,248,0.5)]' : ''} />
         <span className="font-medium text-sm tracking-wide hidden md:block">{label}</span>
+        {isLocked && <Lock size={12} className="text-orange-400 hidden md:block" />}
       </div>
     </Link>
   );
@@ -151,6 +153,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
     queryKey: ["/api/accounts"],
   });
 
+  const { activeAccountId } = useAccount();
+  const currentAccount = accounts.find(a => a.id === activeAccountId) || accounts[0];
+  const accountPlan = (currentAccount as any)?.plan || 'starter';
+
   return (
     <div className="flex min-h-screen text-white font-sans selection:bg-indigo-500/30" style={{ backgroundColor: 'var(--vibe-bg, #030014)' }}>
       <div className="fixed inset-0 bg-grid z-0 pointer-events-none" />
@@ -189,7 +195,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div key={section.label}>
               <div className="px-4 md:px-6 text-xs font-bold text-slate-600 mb-2 mt-4 tracking-wider hidden md:block">{section.label}</div>
               {section.items.map((item) => (
-                <NavLink key={item.href} {...item} isActive={location === item.href} />
+                <NavLink key={item.href} {...item} isActive={location === item.href} isLocked={(item as any).requiredFeature ? !hasFeature(accountPlan, (item as any).requiredFeature) : false} />
               ))}
             </div>
           ))}
