@@ -367,6 +367,23 @@ export default function Sentinel() {
               <p className="text-[10px] text-slate-600 mt-1">Live Florida Highway Patrol crash data (updates every 60s)</p>
             </div>
             <div>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Target Counties</label>
+              <div className="flex flex-wrap gap-1.5">
+                {['LEE', 'COLLIER', 'CHARLOTTE', 'HENDRY', 'GLADES'].map(c => (
+                  <span key={c} className="px-2 py-0.5 rounded bg-red-500/20 text-red-300 text-xs font-bold border border-red-500/30">{c}</span>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Target Cities (SWFL)</label>
+              <div className="flex flex-wrap gap-1.5">
+                {['Cape Coral', 'Fort Myers', 'North Fort Myers', 'Naples', 'Bonita Springs', 'Lehigh Acres', 'Estero', 'Marco Island', 'Punta Gorda', 'Port Charlotte'].map(c => (
+                  <span key={c} className="px-2 py-0.5 rounded bg-orange-500/20 text-orange-300 text-xs font-medium border border-orange-500/30">{c}</span>
+                ))}
+              </div>
+              <p className="text-[10px] text-slate-600 mt-1">Crashes in these cities get priority alerts</p>
+            </div>
+            <div>
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Keywords (comma-separated)</label>
               <Input
                 value={configForm.keywords}

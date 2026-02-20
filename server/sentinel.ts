@@ -5,8 +5,16 @@ import { getDistance } from 'geolib';
 const META_VERSION = 'v18.0';
 const FHP_HSMV_URL = "https://trafficincidents.flhsmv.gov/SmartWebClient/CADView.aspx";
 
-const DEFAULT_TARGET_COUNTIES = ['LEE', 'COLLIER', 'CHARLOTTE'];
+const DEFAULT_TARGET_COUNTIES = ['LEE', 'COLLIER', 'CHARLOTTE', 'HENDRY', 'GLADES'];
 const DEFAULT_RADIUS_METERS = 80467; // 50 miles
+
+const SWFL_TARGET_CITIES = [
+  'CAPE CORAL', 'FORT MYERS', 'FT MYERS', 'FT. MYERS',
+  'NORTH FORT MYERS', 'N FORT MYERS', 'N FT MYERS',
+  'NAPLES', 'BONITA SPRINGS', 'BONITA', 'LEHIGH ACRES', 'LEHIGH',
+  'ESTERO', 'MARCO ISLAND', 'IMMOKALEE', 'LABELLE', 'PUNTA GORDA',
+  'PORT CHARLOTTE', 'SANIBEL', 'PINE ISLAND', 'GOLDEN GATE',
+];
 
 export interface SentinelIncidentRaw {
   id: string;
@@ -78,6 +86,9 @@ export async function processFHPHSMVFeed(targetCounties?: string[], radiusMeters
 
       if (!counties.some(tc => county.toUpperCase().includes(tc.toUpperCase()))) return;
 
+      const locationUpper = location.toUpperCase();
+      const isTargetCity = SWFL_TARGET_CITIES.some(city => locationUpper.includes(city));
+
       const typeUpper = type.toUpperCase();
       const isCrash = typeUpper.includes('CRASH') ||
                       typeUpper.includes('FATALITY') ||
@@ -119,6 +130,7 @@ export async function processFHPHSMVFeed(targetCounties?: string[], radiusMeters
 
       const stableId = `FHP-${county}-${stableHash(received + location)}`;
       const googleMaps = hasCoords ? `https://www.google.com/maps?q=${lat},${lon}` : undefined;
+      const matchedCity = SWFL_TARGET_CITIES.find(city => locationUpper.includes(city)) || null;
 
       incidents.push({
         id: stableId,
@@ -126,8 +138,8 @@ export async function processFHPHSMVFeed(targetCounties?: string[], radiusMeters
         location: `${location}, ${county} County, FL`,
         lat: hasCoords ? lat : null,
         lng: hasCoords ? lon : null,
-        severity: typeUpper.includes('FATAL') ? 'critical' : hasInjury ? 'critical' : 'high',
-        actionRequired: hasInjury,
+        severity: typeUpper.includes('FATAL') ? 'critical' : hasInjury ? 'critical' : isTargetCity ? 'critical' : 'high',
+        actionRequired: hasInjury || isTargetCity,
         source: "fhp_hsmv",
         state: "FL",
         county,
