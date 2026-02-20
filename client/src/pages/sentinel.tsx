@@ -46,6 +46,7 @@ export default function Sentinel() {
     scanInterval: 60,
     enabled: false,
     smsAlertEnabled: true,
+    smsAlertPhone: "",
     geofenceEnabled: true,
     geofenceRadiusMiles: 1,
     targetCities: "",
@@ -83,6 +84,7 @@ export default function Sentinel() {
         scanInterval: config.scanInterval || 60,
         enabled: config.enabled || false,
         smsAlertEnabled: config.smsAlertEnabled !== false,
+        smsAlertPhone: config.smsAlertPhone || "",
         geofenceEnabled: config.geofenceEnabled !== false,
         geofenceRadiusMiles: config.geofenceRadiusMiles || 1,
         targetCities: ((config as any).targetCities || []).join(", "),
@@ -155,6 +157,7 @@ export default function Sentinel() {
         scanInterval: configForm.scanInterval,
         enabled: configForm.enabled,
         smsAlertEnabled: configForm.smsAlertEnabled,
+        smsAlertPhone: configForm.smsAlertPhone || null,
         geofenceEnabled: configForm.geofenceEnabled,
         geofenceRadiusMiles: configForm.geofenceRadiusMiles,
         targetCities: configForm.targetCities.split(",").map(c => c.trim()).filter(Boolean),
@@ -433,6 +436,19 @@ export default function Sentinel() {
                 <span className="text-sm text-slate-300">SMS Alerts</span>
                 <Switch checked={configForm.smsAlertEnabled} onCheckedChange={(v) => setConfigForm(f => ({ ...f, smsAlertEnabled: v }))} data-testid="switch-sms" />
               </div>
+              {configForm.smsAlertEnabled && (
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Client Alert Phone Number</label>
+                  <Input
+                    value={configForm.smsAlertPhone}
+                    onChange={(e) => setConfigForm(f => ({ ...f, smsAlertPhone: e.target.value }))}
+                    placeholder="+1 (555) 123-4567"
+                    className="bg-white/5 border-white/10 text-white"
+                    data-testid="input-sms-alert-phone"
+                  />
+                  <p className="text-[10px] text-slate-600 mt-1">Your client's phone number for crash alert texts</p>
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <span className="text-sm text-slate-300">Auto-Deploy Geofence Ads</span>
                 <Switch checked={configForm.geofenceEnabled} onCheckedChange={(v) => setConfigForm(f => ({ ...f, geofenceEnabled: v }))} data-testid="switch-geofence" />
