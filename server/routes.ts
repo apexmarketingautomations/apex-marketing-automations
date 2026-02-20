@@ -3174,7 +3174,6 @@ Rules:
     const config = await storage.getSentinelConfig(subAccountId);
     res.json(config || {
       subAccountId,
-      feedUrl: null,
       keywords: ['MVA', 'EXTRICATION', 'ROLLOVER', 'INJURIES', 'SIGNAL 4', 'ENTRAPMENT', 'FATALITY'],
       scanInterval: 60,
       enabled: false,
@@ -3190,7 +3189,6 @@ Rules:
 
     const parsed = z.object({
       subAccountId: z.number().int().positive(),
-      feedUrl: z.string().nullable().optional(),
       keywords: z.array(z.string()).optional(),
       scanInterval: z.number().int().min(10).max(3600).optional(),
       enabled: z.boolean().optional(),
@@ -3247,31 +3245,6 @@ Rules:
       }
     } catch (e) {
       console.log("📡 SENTINEL: FHP HSMV feed scrape failed:", (e as any).message);
-    }
-
-    // Fallback: Custom feed URL from config (if no live data)
-    if (incidents.length === 0 && config?.feedUrl) {
-      try {
-        const axios = (await import("axios")).default;
-        const response = await axios.get(config.feedUrl, { timeout: 10000 });
-        const data = response.data;
-
-        if (Array.isArray(data)) {
-          incidents = data.filter((item: any) => {
-            const desc = (item.description || item.title || item.text || "").toUpperCase();
-            return keywords.some(kw => desc.includes(kw.toUpperCase()));
-          }).map((item: any) => ({
-            title: item.title || item.description?.substring(0, 100) || "Incident Detected",
-            description: item.description || item.text || "",
-            location: item.location || item.address || "Location pending",
-            severity: determineSeverity(item.description || "", keywords),
-            rawPayload: item,
-          }));
-        }
-        sources.push("custom_feed");
-      } catch (e) {
-        console.log("📡 SENTINEL: Custom feed fetch failed:", (e as any).message);
-      }
     }
 
     const source = sources.length > 0 ? sources.join("+") : "no_data";

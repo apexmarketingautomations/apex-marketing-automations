@@ -41,7 +41,6 @@ export default function Sentinel() {
   const [showConfig, setShowConfig] = useState(false);
   const [scanPulse, setScanPulse] = useState(false);
   const [configForm, setConfigForm] = useState({
-    feedUrl: "",
     keywords: "",
     scanInterval: 60,
     enabled: false,
@@ -79,7 +78,6 @@ export default function Sentinel() {
   useEffect(() => {
     if (config) {
       setConfigForm({
-        feedUrl: config.feedUrl || "",
         keywords: (config.keywords || []).join(", "),
         scanInterval: config.scanInterval || 60,
         enabled: config.enabled || false,
@@ -152,7 +150,6 @@ export default function Sentinel() {
     mutationFn: async () => {
       const res = await apiRequest("PUT", "/api/sentinel/config", {
         subAccountId: currentAccount!.id,
-        feedUrl: configForm.feedUrl || null,
         keywords: configForm.keywords.split(",").map(k => k.trim()).filter(Boolean),
         scanInterval: configForm.scanInterval,
         enabled: configForm.enabled,
@@ -363,15 +360,11 @@ export default function Sentinel() {
           </DialogHeader>
           <div className="space-y-5">
             <div>
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Incident Feed URL</label>
-              <Input
-                value={configForm.feedUrl}
-                onChange={(e) => setConfigForm(f => ({ ...f, feedUrl: e.target.value }))}
-                placeholder="https://your-dispatch-feed.com/api/incidents"
-                className="bg-white/5 border-white/10 text-white"
-                data-testid="input-feed-url"
-              />
-              <p className="text-[10px] text-slate-600 mt-1">Optional: Add a custom JSON feed URL for additional data</p>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Incident Feed</label>
+              <div className="bg-white/5 border border-white/10 rounded-md px-3 py-2 text-sm text-emerald-400 font-mono">
+                FHP HSMV — trafficincidents.flhsmv.gov
+              </div>
+              <p className="text-[10px] text-slate-600 mt-1">Live Florida Highway Patrol crash data (updates every 60s)</p>
             </div>
             <div>
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Keywords (comma-separated)</label>
