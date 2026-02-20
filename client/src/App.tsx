@@ -54,6 +54,9 @@ const IntegrationsPage = lazy(() => import("@/pages/integrations"));
 const WebhookEventsPage = lazy(() => import("@/pages/webhook-events"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const LandingPage = lazy(() => import("@/pages/landing"));
+const MarketersLanding = lazy(() => import("@/pages/marketers-landing"));
+const RealtorsLanding = lazy(() => import("@/pages/realtors-landing"));
+const HomeServiceLanding = lazy(() => import("@/pages/home-service-landing"));
 
 function PageLoader() {
   return (
@@ -84,6 +87,9 @@ function Router() {
         <Route path="/pricing" component={Pricing} />
         <Route path="/gym" component={GymLanding} />
         <Route path="/luxe" component={LuxeLanding} />
+        <Route path="/marketers" component={MarketersLanding} />
+        <Route path="/realtors" component={RealtorsLanding} />
+        <Route path="/home-services" component={HomeServiceLanding} />
 
         {/* Landing page for unauthenticated, dashboard for authenticated */}
         <Route path="/">

@@ -3,17 +3,17 @@ import { motion, useInView } from "framer-motion";
 import { Link } from "wouter";
 import {
   ArrowRight, Zap, CheckCircle2, ChevronDown, ChevronUp,
-  BarChart3, Target, Mail, Bot, MessageSquare, Phone,
-  GitFork, Rocket, Globe, Users, TrendingUp, Clock,
-  Sparkles, Shield, Star, DollarSign, Play, X,
-  MousePointer, Send, Brain, Layers, PieChart, Eye
+  BarChart3, Target, Bot, MessageSquare,
+  GitFork, Globe, TrendingUp, Clock,
+  Sparkles, Star, DollarSign, Play,
+  Layers, Eye
 } from "lucide-react";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 30 },
   visible: (i: number) => ({
     opacity: 1, y: 0,
-    transition: { delay: i * 0.08, duration: 0.5, ease: "easeOut" },
+    transition: { delay: i * 0.08, duration: 0.5, ease: "easeOut" as const },
   }),
 };
 
