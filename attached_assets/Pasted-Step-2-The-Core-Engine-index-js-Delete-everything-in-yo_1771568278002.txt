@@ -1,0 +1,124 @@
+Step 2: The Core Engine (index.js)
+Delete everything in your current index.js file and paste this in. I wrote this with aggressive error handling and terminal logging, so if a crash happens, you will see exactly how many miles away it was and whether it was successfully fired to Apex.
+
+JavaScript
+const express = require('express');
+const axios = require('axios');
+const geolib = require('geolib');
+require('dotenv').config();
+
+const app = express();
+app.use(express.json());
+
+// --- 1. THE CONFIGURATION ---
+// We pull these from your Replit Secrets (Environment Variables)
+const CLIENT_HQ = {
+    latitude: parseFloat(process.env.CLIENT_LAT),
+    longitude: parseFloat(process.env.CLIENT_LON)
+};
+
+// Radius in METERS (e.g., 16093 meters = 10 miles)
+const GEOFENCE_RADIUS = parseInt(process.env.RADIUS_METERS); 
+
+// Your Apex / GoHighLevel Inbound Webhook URL
+const APEX_WEBHOOK_URL = process.env.APEX_WEBHOOK_URL;
+
+// --- 2. THE SENTINEL ENGINE ---
+app.post('/sentinel/incoming-crash', async (req, res) => {
+    try {
+        // Parse the raw crash data from whatever feed you are using
+        const { crashId, latitude, longitude, severity, timestamp } = req.body;
+
+        if (!latitude || !longitude) {
+            console.error('🛑 CRITICAL: Incoming data missing coordinates.');
+            return res.status(400).json({ error: 'Missing coordinates' });
+        }
+
+        const crashLocation = { latitude: parseFloat(latitude), longitude: parseFloat(longitude) };
+        console.log(`\n📡 SENTINEL: New Crash Detected [ID: ${crashId}]. Calculating trajectory...`);
+
+        // --- 3. THE GEOFENCE MATH ---
+        // This geolib function is bulletproof. It calculates exact curvature of the earth.
+        const isInsideZone = geolib.isPointWithinRadius(
+            crashLocation,
+            CLIENT_HQ,
+            GEOFENCE_RADIUS
+        );
+
+        const distanceInMeters = geolib.getDistance(crashLocation, CLIENT_HQ);
+        const distanceInMiles = (distanceInMeters / 1609.34).toFixed(2);
+
+        if (!isInsideZone) {
+            console.log(`❌ IGNORED: Crash is ${distanceInMiles} miles away. Outside client territory.`);
+            return res.status(200).json({ status: 'ignored', reason: 'outside_geofence' });
+        }
+
+        console.log(`🎯 TARGET ACQUIRED: Crash is strictly inside the zone (${distanceInMiles} miles away). Firing to Apex...`);
+
+        // --- 4. THE APEX WEBHOOK PAYLOAD ---
+        const apexPayload = {
+            contact: {
+                // Apex requires a name/email to create a contact card, so we generate a unique one per crash
+                first_name: "Sentinel",
+                last_name: "Alert",
+                email: `crash-${crashId}@sentinel.local`
+            },
+            customData: {
+                crash_id: crashId,
+                distance_miles: distanceInMiles,
+                severity: severity,
+                google_maps_link: `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`,
+                timestamp: timestamp
+            }
+        };
+
+        
+
+        // Fire the lead directly into your GoHighLevel Workflow
+        const apexResponse = await axios.post(APEX_WEBHOOK_URL, apexPayload, {
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (apexResponse.status === 200 || apexResponse.status === 201 || apexResponse.data.success) {
+            console.log(`✅ SUCCESS: Lead injected into Apex CRM. Workflow triggered.`);
+            return res.status(200).json({ status: 'success', message: 'Fired to Apex' });
+        } else {
+            throw new Error(`Apex rejected the payload. Status: ${apexResponse.status}`);
+        }
+
+    } catch (error) {
+        console.error(`🔥 SYSTEM FAILURE: Failed to process crash. Error:`, error.message);
+        // Always return 200 to the original data feed so they don't block your server for crashing
+        return res.status(200).json({ status: 'error', message: 'Internal Sentinel Error' });
+    }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`\n========================================`);
+    console.log(`🐆 SENTINEL GEOFENCE ENGINE ONLINE`);
+    console.log(`📍 Guarding coords: ${CLIENT_HQ.latitude}, ${CLIENT_HQ.longitude}`);
+    console.log(`📏 Radius: ${GEOFENCE_RADIUS} meters`);
+    console.log(`========================================\n`);
+});
+Step 3: Set Your Replit Secrets
+For this to work flawlessly without hardcoding sensitive data into the open, go to the Secrets tool (the padlock icon) on the left side of your Replit dashboard and add these four keys:
+
+CLIENT_LAT (Value: Your client's exact latitude, e.g., 26.6406)
+
+CLIENT_LON (Value: Your client's exact longitude, e.g., -81.8723)
+
+RADIUS_METERS (Value: The radius in meters. 10 miles = 16093)
+
+APEX_WEBHOOK_URL (Value: The Inbound Webhook URL you generate inside your Apex/GoHighLevel workflow).
+
+Step 4: The Apex Catch
+Inside your Apex Marketing dashboard, go to Automations and create a new Workflow.
+
+Set the Trigger to Inbound Webhook.
+
+Copy that URL and put it into your Replit Secrets.
+
+Click Save.
+
+Once Replit detects a crash, it will ping this workflow. You will then map the Maps_link and distance_miles to custom fields so your client gets an immediate text message with exactly where the accident happened.

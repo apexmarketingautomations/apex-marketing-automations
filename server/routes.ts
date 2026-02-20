@@ -174,6 +174,7 @@ export async function registerRoutes(
     if (fullPath === "/api/sms-webhook") return next();
     if (fullPath === "/api/sentinel/test-trigger") return next();
     if (fullPath === "/api/sentinel/live") return next();
+    if (fullPath === "/api/sentinel/incoming-crash") return next();
 
     if (!req.isAuthenticated || !req.isAuthenticated()) {
       return res.status(401).json({ error: "Not authenticated" });
@@ -3647,6 +3648,111 @@ Rules:
       status: "Deploying Geofence Ads...",
       time: new Date().toLocaleTimeString(),
       demo: true,
+    });
+  }));
+
+  // ─── Sentinel Geofence Engine — Incoming Crash Feed ────────────────
+  app.post("/api/sentinel/incoming-crash", asyncHandler(async (req, res) => {
+    const geolib = await import("geolib");
+    const axiosLib = await import("axios");
+
+    const CLIENT_HQ = {
+      latitude: parseFloat(process.env.CLIENT_LAT || "0"),
+      longitude: parseFloat(process.env.CLIENT_LON || "0"),
+    };
+    const GEOFENCE_RADIUS = parseInt(process.env.RADIUS_METERS || "16093");
+    const APEX_WEBHOOK_URL = process.env.APEX_WEBHOOK_URL;
+
+    const { crashId, latitude, longitude, severity, timestamp } = req.body;
+
+    if (!latitude || !longitude) {
+      console.error("SENTINEL: Incoming data missing coordinates.");
+      return res.status(400).json({ error: "Missing coordinates" });
+    }
+
+    const crashLocation = {
+      latitude: parseFloat(latitude),
+      longitude: parseFloat(longitude),
+    };
+    console.log(`SENTINEL: New Crash Detected [ID: ${crashId}]. Calculating trajectory...`);
+
+    const isInsideZone = geolib.isPointWithinRadius(
+      crashLocation,
+      CLIENT_HQ,
+      GEOFENCE_RADIUS
+    );
+
+    const distanceInMeters = geolib.getDistance(crashLocation, CLIENT_HQ);
+    const distanceInMiles = (distanceInMeters / 1609.34).toFixed(2);
+
+    if (!isInsideZone) {
+      console.log(`SENTINEL: Crash is ${distanceInMiles} miles away. Outside client territory.`);
+      return res.status(200).json({ status: "ignored", reason: "outside_geofence" });
+    }
+
+    console.log(`SENTINEL: Target acquired — crash is ${distanceInMiles} miles away. Inside geofence. Firing...`);
+
+    const subAccountId = parseInt(req.body.subAccountId || "1");
+    const hashInput = `crash-${crashId}-${latitude}-${longitude}`;
+    const hash = Buffer.from(hashInput).toString("base64").substring(0, 64);
+
+    const existing = await storage.getSentinelIncidentByHash(subAccountId, hash);
+    if (existing) {
+      return res.status(200).json({ status: "duplicate", incidentId: existing.id });
+    }
+
+    const record = await storage.createSentinelIncident({
+      subAccountId,
+      sourceHash: hash,
+      title: `MVA — Crash ${crashId}`,
+      description: `Vehicle crash detected ${distanceInMiles} miles from HQ. Severity: ${severity || "unknown"}.`,
+      location: `${latitude}, ${longitude}`,
+      severity: severity || "moderate",
+      rawPayload: JSON.stringify(req.body),
+      actionStatus: "pending",
+      smsSent: false,
+      geofenceDeployed: false,
+    });
+
+    await storage.createNotification({
+      userId: "system",
+      type: "incident",
+      title: "Sentinel: Crash Detected Inside Geofence",
+      message: `Crash ${crashId} detected ${distanceInMiles} mi away. Severity: ${severity || "unknown"}.`,
+      link: "/sentinel",
+      read: false,
+    });
+
+    if (APEX_WEBHOOK_URL) {
+      try {
+        const apexPayload = {
+          contact: {
+            first_name: "Sentinel",
+            last_name: "Alert",
+            email: `crash-${crashId}@sentinel.local`,
+          },
+          customData: {
+            crash_id: crashId,
+            distance_miles: distanceInMiles,
+            severity: severity,
+            google_maps_link: `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`,
+            timestamp: timestamp,
+          },
+        };
+        await axiosLib.default.post(APEX_WEBHOOK_URL, apexPayload, {
+          headers: { "Content-Type": "application/json" },
+        });
+        console.log("SENTINEL: Lead injected into Apex webhook. Workflow triggered.");
+      } catch (webhookErr: any) {
+        console.error("SENTINEL: Apex webhook failed:", webhookErr.message);
+      }
+    }
+
+    res.status(200).json({
+      status: "success",
+      incidentId: record.id,
+      distance_miles: distanceInMiles,
+      message: "Crash logged and fired to Apex",
     });
   }));
 
