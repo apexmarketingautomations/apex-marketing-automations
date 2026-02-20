@@ -1,6 +1,6 @@
 import { PlanGate } from "@/components/plan-gate";
 import { useState } from "react";
-import { Clock, MessageSquare, GitFork, MoreHorizontal, PlayCircle, CheckCircle2, AlertCircle, Sparkles, Loader2, Code2, Trash2, BookOpen, Target, Mail, UserPlus, TrendingUp, Bell, Globe, Zap, Terminal, Cpu, Brain, ChevronDown, Eye, Power, Archive } from "lucide-react";
+import { Clock, MessageSquare, GitFork, MoreHorizontal, PlayCircle, CheckCircle2, AlertCircle, AlertTriangle, Sparkles, Loader2, Code2, Trash2, BookOpen, Target, Mail, UserPlus, TrendingUp, Bell, Globe, Zap, Terminal, Cpu, Brain, ChevronDown, Eye, Power, Archive } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { WORKFLOW_STEPS } from "@/components/tutorial-steps";
 import { motion, AnimatePresence } from "framer-motion";
@@ -212,97 +212,273 @@ function AiToolbeltPanel() {
   const { toast } = useToast();
   const [command, setCommand] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [lastResult, setLastResult] = useState<any>(null);
+  const [executionResult, setExecutionResult] = useState<any>(null);
+  const [showTools, setShowTools] = useState(false);
 
   const { data: toolsData } = useQuery({
     queryKey: ["/api/v1/tools"],
     queryFn: api.getAiTools,
   });
 
-  const handleCommand = async () => {
+  const EXAMPLE_COMMANDS = [
+    "I just signed a lawyer in Tampa. Set him up with a 50-mile crash geofence and a Vapi intro call for every commercial wreck.",
+    "Create a sub-account for Dr. Smith's dental practice, set up a welcome SMS workflow, and provision a 239 area code Vapi line.",
+    "Check all active workflows and get the latest crash logs for Lee County.",
+    "Deploy a geo-targeted ad around Fort Myers with $50 daily budget for PI leads.",
+  ];
+
+  const handleOrchestrate = async () => {
     if (!command.trim()) return;
     setIsProcessing(true);
+    setExecutionResult(null);
+
     try {
-      const result = await api.aiCommand(command);
-      setLastResult(result);
-      toast({ title: "Command processed", description: "AI has interpreted your command." });
+      const result = await api.orchestrateAi(command);
+      setExecutionResult(result);
+
+      const successCount = result.successCount || 0;
+      const totalSteps = result.totalSteps || 0;
+
+      toast({
+        title: successCount === totalSteps ? "All actions completed" : `${successCount}/${totalSteps} actions completed`,
+        description: result.summary || result.interpretation,
+      });
     } catch (err: any) {
-      toast({ variant: "destructive", title: "Command failed", description: err.message });
+      toast({ variant: "destructive", title: "Orchestration failed", description: err.message });
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const handleExecuteTool = async (toolName: string) => {
+  const handleDirectAction = async (action: string, payload: any = {}) => {
     setIsProcessing(true);
     try {
-      const result = await api.executeAiTool(toolName, {});
-      setLastResult(result);
-      toast({ title: "Tool executed", description: `${toolName} completed.` });
+      const result = await api.orchestrate(action, payload);
+      setExecutionResult({ steps: [{ step: 1, action, status: result.status, result, description: result.message }], summary: result.message, totalSteps: 1, successCount: result.status === "Success" ? 1 : 0 });
+      toast({ title: result.message || "Action completed" });
     } catch (err: any) {
-      toast({ variant: "destructive", title: "Execution failed", description: err.message });
+      toast({ variant: "destructive", title: "Action failed", description: err.message });
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const stepStatusIcon = (status: string) => {
+    if (status === "Success") return <CheckCircle2 className="h-4 w-4 text-emerald-400" />;
+    if (status === "Error") return <AlertCircle className="h-4 w-4 text-red-400" />;
+    return <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />;
   };
 
   return (
     <div className="space-y-4">
-      <div className="border border-violet-500/20 rounded-xl bg-gradient-to-br from-violet-500/5 to-pink-500/5 p-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <Terminal className="h-5 w-5 text-violet-400" />
-          <h3 className="text-sm font-bold text-violet-400 uppercase tracking-wider">AI Command Center</h3>
+      <div className="border border-violet-500/20 rounded-xl bg-gradient-to-br from-violet-950/40 to-indigo-950/40 p-5 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-gradient-to-br from-violet-500/20 to-cyan-500/20">
+            <Terminal className="h-6 w-6 text-violet-400" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-white/90">Global Command Menu</h3>
+            <p className="text-xs text-white/40">Tell Apex what to do. It will orchestrate everything automatically.</p>
+          </div>
         </div>
-        <p className="text-xs text-white/50">
-          Tell the AI what to do in plain English. It will figure out which tools to use.
-        </p>
-        <div className="flex gap-2">
-          <Input
-            data-testid="input-ai-command"
+
+        <div className="relative">
+          <Textarea
+            data-testid="input-global-command"
             value={command}
             onChange={(e) => setCommand(e.target.value)}
-            placeholder='e.g. "Clean up leads older than 90 days" or "Create a contact for John Smith"'
-            className="bg-black/30 border-white/10 text-white/80"
-            onKeyDown={(e) => e.key === "Enter" && handleCommand()}
+            placeholder='"Apex, I just signed a lawyer in Tampa. Set him up with a 50-mile crash geofence and a Vapi intro call for every commercial wreck."'
+            className="min-h-[80px] bg-black/40 border-white/10 text-white/90 placeholder:text-white/25 resize-none pr-16 text-sm"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleOrchestrate();
+              }
+            }}
           />
           <Button
-            data-testid="button-ai-command-execute"
-            onClick={handleCommand}
+            data-testid="button-orchestrate"
+            onClick={handleOrchestrate}
             disabled={isProcessing || !command.trim()}
-            className="bg-violet-600 hover:bg-violet-500"
+            className="absolute bottom-2 right-2 bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 text-white border-0 shadow-lg shadow-violet-500/20"
+            size="sm"
           >
-            {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+            {isProcessing ? (
+              <><Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />Executing...</>
+            ) : (
+              <><Zap className="mr-1 h-3.5 w-3.5" />Execute</>
+            )}
           </Button>
+        </div>
+
+        <div className="space-y-1">
+          <p className="text-[10px] text-white/25 uppercase tracking-wider">Try saying:</p>
+          {EXAMPLE_COMMANDS.map((ex, i) => (
+            <button
+              key={i}
+              onClick={() => setCommand(ex)}
+              className="block w-full text-left text-[11px] text-white/35 hover:text-violet-400 transition-colors py-0.5 leading-relaxed"
+              data-testid={`button-example-command-${i}`}
+            >
+              "{ex.slice(0, 110)}{ex.length > 110 ? '...' : ''}"
+            </button>
+          ))}
         </div>
       </div>
 
-      {toolsData?.tools && (
-        <div className="border border-white/10 rounded-xl bg-black/20 p-3 space-y-2">
-          <p className="text-[10px] text-white/30 uppercase tracking-wider">Available Tools ({toolsData.count})</p>
-          <div className="grid grid-cols-2 gap-1.5">
-            {toolsData.tools.map((tool: any) => (
-              <button
-                key={tool.name}
-                onClick={() => handleExecuteTool(tool.name)}
-                className="text-left p-2 rounded-lg border border-white/5 hover:border-violet-500/30 hover:bg-violet-500/5 transition-all group"
-                data-testid={`button-tool-${tool.name}`}
-              >
-                <span className="text-[10px] font-mono text-violet-400 group-hover:text-violet-300">{tool.name}</span>
-                <p className="text-[9px] text-white/30 mt-0.5 truncate">{tool.description}</p>
-              </button>
-            ))}
+      {isProcessing && !executionResult && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="border border-cyan-500/20 rounded-xl bg-black/30 p-4"
+        >
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <div className="h-8 w-8 rounded-full border-2 border-cyan-500/30 flex items-center justify-center">
+                <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
+              </div>
+              <motion.div
+                className="absolute inset-0 rounded-full border-2 border-cyan-400/20"
+                animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
+                transition={{ duration: 2, repeat: Infinity }}
+              />
+            </div>
+            <div>
+              <p className="text-sm text-cyan-400 font-medium">Apex is thinking...</p>
+              <p className="text-[10px] text-white/30">AI is analyzing your command and building an execution plan</p>
+            </div>
           </div>
-        </div>
+        </motion.div>
       )}
 
-      {lastResult && (
-        <div className="border border-white/10 rounded-xl bg-black/30 p-3">
-          <p className="text-[10px] text-white/30 uppercase tracking-wider mb-2">Result</p>
-          <pre className="text-[10px] text-emerald-400/80 font-mono overflow-x-auto max-h-40 overflow-y-auto">
-            {JSON.stringify(lastResult, null, 2)}
-          </pre>
-        </div>
+      {executionResult && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="border border-white/10 rounded-xl bg-black/20 overflow-hidden"
+          data-testid="orchestration-result"
+        >
+          <div className="p-3 bg-gradient-to-r from-emerald-500/10 to-cyan-500/10 border-b border-white/10">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                <span className="text-xs font-bold text-white/80 uppercase tracking-wider">Orchestration Complete</span>
+              </div>
+              <Badge variant="outline" className="text-[9px] border-emerald-500/30 text-emerald-400">
+                {executionResult.successCount ?? 0}/{executionResult.totalSteps ?? 0} OK
+              </Badge>
+            </div>
+            {executionResult.interpretation && (
+              <p className="text-[11px] text-white/50 mt-1">{executionResult.interpretation}</p>
+            )}
+          </div>
+
+          <div className="p-3 space-y-2">
+            {executionResult.steps?.map((step: any, i: number) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.15 }}
+                className={`flex items-start gap-3 p-2.5 rounded-lg border ${
+                  step.status === "Success"
+                    ? "border-emerald-500/20 bg-emerald-500/5"
+                    : "border-red-500/20 bg-red-500/5"
+                }`}
+                data-testid={`orchestration-step-${i}`}
+              >
+                {stepStatusIcon(step.status)}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono text-white/60 uppercase">{step.action}</span>
+                    <Badge variant="outline" className={`text-[8px] ${step.status === "Success" ? "border-emerald-500/30 text-emerald-400" : "border-red-500/30 text-red-400"}`}>
+                      {step.status}
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-white/40 mt-0.5">{step.description}</p>
+                  {step.result?.message && step.result.message !== step.description && (
+                    <p className="text-[10px] text-white/30 mt-0.5 font-mono">{step.result.message}</p>
+                  )}
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          {executionResult.summary && (
+            <div className="px-3 pb-3">
+              <div className="p-2 rounded-lg bg-white/5 border border-white/5">
+                <p className="text-[11px] text-white/50">
+                  <span className="text-cyan-400 font-medium">Apex:</span> {executionResult.summary}
+                </p>
+              </div>
+            </div>
+          )}
+        </motion.div>
       )}
+
+      <div className="border border-white/10 rounded-xl bg-black/20 overflow-hidden">
+        <button
+          onClick={() => setShowTools(!showTools)}
+          className="w-full flex items-center justify-between p-3 hover:bg-white/5 transition-colors"
+          data-testid="button-toggle-tools"
+        >
+          <div className="flex items-center gap-2">
+            <Cpu className="h-4 w-4 text-white/30" />
+            <span className="text-xs font-medium text-white/50">Direct Actions ({toolsData?.count || 0} tools)</span>
+          </div>
+          <ChevronDown className={`h-3 w-3 text-white/30 transition-transform ${showTools ? "rotate-180" : ""}`} />
+        </button>
+
+        <AnimatePresence>
+          {showTools && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="p-3 border-t border-white/5 space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { action: "trigger_geofence", label: "Scan Crashes", icon: <AlertCircle className="h-3 w-3" />, color: "text-red-400 border-red-500/20 hover:bg-red-500/10" },
+                    { action: "check_workflow_status", label: "Check Status", icon: <Eye className="h-3 w-3" />, color: "text-cyan-400 border-cyan-500/20 hover:bg-cyan-500/10" },
+                    { action: "get_crash_logs", label: "Crash Logs", icon: <AlertTriangle className="h-3 w-3" />, color: "text-amber-400 border-amber-500/20 hover:bg-amber-500/10" },
+                    { action: "provision_vapi_line", label: "New Phone Line", icon: <Zap className="h-3 w-3" />, color: "text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/10" },
+                  ].map(({ action, label, icon, color }) => (
+                    <Button
+                      key={action}
+                      variant="outline"
+                      size="sm"
+                      className={`justify-start text-xs ${color}`}
+                      onClick={() => handleDirectAction(action)}
+                      disabled={isProcessing}
+                      data-testid={`button-direct-${action}`}
+                    >
+                      {icon}
+                      <span className="ml-1.5">{label}</span>
+                    </Button>
+                  ))}
+                </div>
+                {toolsData?.tools && (
+                  <div className="grid grid-cols-2 gap-1">
+                    {toolsData.tools.map((tool: any) => (
+                      <button
+                        key={tool.name}
+                        onClick={() => handleDirectAction(tool.name.replace(/_/g, "_"), { tool_name: tool.name })}
+                        className="text-left p-1.5 rounded-md border border-white/5 hover:border-violet-500/20 hover:bg-violet-500/5 transition-all group"
+                        data-testid={`button-tool-${tool.name}`}
+                      >
+                        <span className="text-[9px] font-mono text-violet-400/70 group-hover:text-violet-300">{tool.name}</span>
+                        <p className="text-[8px] text-white/20 mt-0.5 truncate">{tool.description}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }

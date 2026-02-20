@@ -158,4 +158,14 @@ export const api = {
     const res = await apiRequest("GET", "/api/v1/compiler/schema/info");
     return res.json();
   },
+
+  orchestrate: async (action: string, payload: any) => {
+    const res = await apiRequest("POST", "/api/v1/orchestrate", { action, payload });
+    return res.json();
+  },
+
+  orchestrateAi: async (command: string, subAccountId?: number, autoExecute = true) => {
+    const res = await apiRequest("POST", "/api/v1/orchestrate/ai", { command, subAccountId, autoExecute });
+    return res.json();
+  },
 };

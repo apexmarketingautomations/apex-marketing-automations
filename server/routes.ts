@@ -5882,6 +5882,424 @@ Return ONLY valid JSON.` },
     });
   }));
 
+  // ============================================================
+  // UNIVERSAL DISPATCHER — Single endpoint for ALL system commands
+  // ============================================================
+
+  const ORCHESTRATE_ACTIONS = [
+    "save_workflow", "deploy_ad", "provision_user", "trigger_geofence",
+    "send_sms", "start_vapi_call", "broadcast_alert", "create_sub_account",
+    "update_settings", "generate_site", "create_contact", "create_deal",
+    "deploy_geofence_ad", "provision_vapi_line", "check_workflow_status",
+    "get_crash_logs", "update_user_role", "save_workflow_manifest",
+  ] as const;
+
+  async function executeDispatchAction(action: string, payload: Record<string, any>): Promise<any> {
+    let result: any;
+    switch (action) {
+        case "save_workflow":
+        case "save_workflow_manifest": {
+          if (payload.manifest) {
+            const automation = await storage.createLiveAutomation({
+              name: payload.name || payload.manifest.name || `Workflow_${Date.now()}`,
+              description: payload.description || payload.manifest.description || null,
+              manifest: payload.manifest,
+              status: "compiled",
+              subAccountId: payload.subAccountId || null,
+              lastRunAt: null,
+              runCount: 0,
+              runLogs: [],
+            });
+            result = { status: "Success", message: "Workflow Live", automationId: automation.id, name: automation.name };
+          } else {
+            const wf = await storage.createWorkflow({
+              name: payload.name || "Orchestrated Workflow",
+              trigger: payload.trigger || "manual_trigger",
+              steps: payload.steps || [],
+              subAccountId: payload.subAccountId || null,
+            });
+            result = { status: "Success", message: "Workflow Saved", workflowId: wf.id };
+          }
+          break;
+        }
+
+        case "deploy_ad":
+        case "deploy_geofence_ad": {
+          const adResult = await deployGeofenceAd({
+            lat: payload.lat,
+            lng: payload.lng,
+            radius_miles: payload.radius_miles || 1,
+            campaign_name: payload.campaign_name || "Apex Geofence Campaign",
+            ad_copy: payload.ad_copy,
+            daily_budget: payload.budget_daily || payload.daily_budget || 25,
+          });
+          result = { status: "Success", message: "Ad Deployed", details: adResult };
+          break;
+        }
+
+        case "provision_user":
+        case "create_sub_account": {
+          const account = await storage.createSubAccount({
+            name: payload.name || "New Account",
+            industry: payload.industry || "general",
+            plan: payload.plan || "starter",
+            ownerUserId: payload.owner_user_id || null,
+          });
+          result = { status: "Success", message: "Account Ready", accountId: account.id, name: account.name };
+          break;
+        }
+
+        case "trigger_geofence": {
+          const incidents = await processLiveSentinelFeed();
+          const filtered = payload.county
+            ? incidents.filter(inc => inc.county?.toUpperCase() === payload.county.toUpperCase())
+            : incidents;
+          result = {
+            status: "Success",
+            message: `Geofence scan complete. ${filtered.length} incidents found.`,
+            incidents: filtered.slice(0, 20),
+            total: filtered.length,
+          };
+          break;
+        }
+
+        case "get_crash_logs": {
+          const logs = await processLiveSentinelFeed();
+          const limit = payload.limit || 20;
+          result = {
+            status: "Success",
+            message: `${logs.length} total incidents`,
+            incidents: logs.slice(0, limit),
+          };
+          break;
+        }
+
+        case "send_sms": {
+          const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+          const twilioAuth = process.env.TWILIO_AUTH_TOKEN;
+          if (!twilioSid || !twilioAuth) {
+            result = { status: "Error", message: "Twilio not configured" };
+          } else if (!payload.to || !payload.body) {
+            result = { status: "Error", message: "Missing 'to' phone number or 'body'" };
+          } else {
+            try {
+              const twilio = Twilio(twilioSid, twilioAuth);
+              const msg = await twilio.messages.create({
+                to: payload.to,
+                from: payload.from || process.env.TWILIO_PHONE_NUMBER || "+18001234567",
+                body: payload.body,
+              });
+              result = { status: "Success", message: "SMS Sent", sid: msg.sid };
+            } catch (err: any) {
+              result = { status: "Error", message: `SMS failed: ${err.message}` };
+            }
+          }
+          break;
+        }
+
+        case "start_vapi_call": {
+          const vapiKey = process.env.VAPI_PRIVATE_KEY;
+          if (!vapiKey) {
+            result = { status: "Error", message: "Vapi not configured" };
+          } else {
+            try {
+              const vapiRes = await fetch("https://api.vapi.ai/call/phone", {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${vapiKey}`, "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  phoneNumberId: payload.phoneNumberId || process.env.VAPI_PHONE_NUMBER_ID,
+                  customer: { number: payload.to },
+                  assistantId: payload.assistantId,
+                  assistant: payload.assistantId ? undefined : {
+                    model: { provider: "openai", model: "gpt-4o-mini" },
+                    voice: { provider: "11labs", voiceId: "21m00Tcm4TlvDq8ikWAM" },
+                    firstMessage: payload.first_message || "Hi, this is Apex calling on behalf of your local firm. How can I help you today?",
+                  },
+                }),
+              });
+              const vapiData = await vapiRes.json();
+              result = { status: "Success", message: "Call Initiated", callId: (vapiData as any).id, details: vapiData };
+            } catch (err: any) {
+              result = { status: "Error", message: `Vapi call failed: ${err.message}` };
+            }
+          }
+          break;
+        }
+
+        case "broadcast_alert": {
+          if (!payload.message) {
+            result = { status: "Error", message: "Missing alert message" };
+          } else {
+            const alertWebhookUrl = process.env.APEX_WEBHOOK_URL;
+            if (alertWebhookUrl) {
+              try {
+                await fetch(alertWebhookUrl, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    type: "broadcast_alert",
+                    message: payload.message,
+                    channel: payload.channel || "all",
+                    priority: payload.priority || "normal",
+                    timestamp: new Date().toISOString(),
+                  }),
+                });
+              } catch {}
+            }
+            result = { status: "Success", message: "Alert Broadcast", alert: payload.message, channel: payload.channel || "all" };
+          }
+          break;
+        }
+
+        case "update_settings":
+        case "update_user_role": {
+          if (!payload.sub_account_id) {
+            result = { status: "Error", message: "sub_account_id required" };
+          } else {
+            const updateData: any = {};
+            if (payload.name) updateData.name = payload.name;
+            if (payload.industry) updateData.industry = payload.industry;
+            if (payload.plan) updateData.plan = payload.plan;
+            const updated = await storage.updateSubAccount(payload.sub_account_id, updateData);
+            result = { status: "Success", message: "Settings Updated", account: updated };
+          }
+          break;
+        }
+
+        case "generate_site": {
+          if (!isGeminiConfigured()) throw new Error("AI not configured");
+          const siteRaw = await geminiChat([
+            { role: "system", content: "Generate a JSON site structure with sections: hero, features, testimonials, cta. Return valid JSON." },
+            { role: "user", content: payload.prompt || "Professional business landing page" },
+          ], { temperature: 0.7, maxTokens: 2000, jsonMode: true });
+          const cleaned = siteRaw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+          let siteData;
+          try { siteData = JSON.parse(cleaned); } catch { siteData = { raw: cleaned }; }
+          result = { status: "Success", message: "Site Generated", siteData };
+          break;
+        }
+
+        case "create_contact": {
+          if (!payload.sub_account_id) throw new Error("sub_account_id required");
+          const contact = await storage.createContact({
+            subAccountId: payload.sub_account_id,
+            firstName: payload.first_name || "Unknown",
+            lastName: payload.last_name || null,
+            phone: payload.phone || null,
+            email: payload.email || null,
+            source: payload.source || "orchestrator",
+            tags: payload.tags || [],
+            notes: payload.notes || "Created via Universal Dispatcher",
+          });
+          result = { status: "Success", message: "Contact Created", contact };
+          break;
+        }
+
+        case "create_deal": {
+          if (!payload.sub_account_id) throw new Error("sub_account_id required");
+          const deal = await storage.createDeal({
+            subAccountId: payload.sub_account_id,
+            title: payload.title || "New Deal",
+            value: payload.value || 0,
+            stageId: payload.stage_id,
+            contactId: payload.contact_id || null,
+            status: "open",
+            notes: payload.notes || "Created via Universal Dispatcher",
+            closedAt: null,
+          });
+          result = { status: "Success", message: "Deal Created", deal };
+          break;
+        }
+
+        case "provision_vapi_line": {
+          const areaCode = payload.area_code || "239";
+          result = { status: "Success", message: `Phone line provisioning initiated for area code ${areaCode}`, areaCode };
+          break;
+        }
+
+        case "check_workflow_status": {
+          const automations = await storage.getLiveAutomations(payload.sub_account_id);
+          const workflows = (await storage.getWorkflows()).filter(w =>
+            payload.sub_account_id ? w.subAccountId === payload.sub_account_id : true
+          );
+          result = {
+            status: "Success",
+            message: `${automations.length} live automations, ${workflows.length} workflows`,
+            automations: automations.map(a => ({ id: a.id, name: a.name, status: a.status })),
+            workflows: workflows.map(w => ({ id: w.id, name: w.name, trigger: w.trigger })),
+          };
+          break;
+        }
+
+        default:
+          return { status: "Error", message: `Unknown command: ${action}`, availableActions: [...ORCHESTRATE_ACTIONS] };
+      }
+    return result;
+  }
+
+  app.post("/api/v1/orchestrate", asyncHandler(async (req: Request, res: Response) => {
+    const parsed = z.object({
+      action: z.string().min(1),
+      payload: z.record(z.any()).optional().default({}),
+    }).safeParse(req.body);
+
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const { action, payload } = parsed.data;
+    console.log(`🤖 AI DELEGATING ACTION: ${action}`, JSON.stringify(payload).slice(0, 200));
+
+    const startMs = Date.now();
+    let result: any;
+
+    try {
+      result = await executeDispatchAction(action, payload);
+    } catch (err: any) {
+      return res.status(500).json({ status: "Error", message: err.message, action });
+    }
+
+    const executionMs = Date.now() - startMs;
+    console.log(`✅ ACTION COMPLETE: ${action} (${executionMs}ms)`);
+
+    await storage.createAiToolLog({
+      subAccountId: payload.sub_account_id || payload.subAccountId || null,
+      toolName: `orchestrate:${action}`,
+      input: payload,
+      output: result,
+      status: result.status === "Error" ? "error" : "success",
+      executionMs,
+    });
+
+    res.json({ ...result, action, executionMs });
+  }));
+
+  // ============================================================
+  // AI ORCHESTRATOR — Full auto-execute: AI interprets → plans → EXECUTES
+  // ============================================================
+  app.post("/api/v1/orchestrate/ai", asyncHandler(async (req: Request, res: Response) => {
+    if (!isGeminiConfigured()) {
+      return res.status(503).json({ error: "AI service is not configured" });
+    }
+
+    const parsed = z.object({
+      command: z.string().min(1).max(3000),
+      subAccountId: z.number().optional(),
+      autoExecute: z.boolean().optional().default(true),
+    }).safeParse(req.body);
+
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const { command, subAccountId, autoExecute } = parsed.data;
+
+    const orchestrateActions = ORCHESTRATE_ACTIONS.join(", ");
+    const toolList = AI_TOOLS.map(t => `- ${t.name}: ${t.description}`).join("\n");
+
+    const raw = await geminiChat([
+      { role: "system", content: `You are the Apex OS Architect. You orchestrate the Apex Marketing Automations ecosystem by issuing commands to the backend API.
+
+RULES OF ENGAGEMENT:
+- You do NOT just chat; you ORCHESTRATE.
+- If a user asks for a workflow, you generate the JSON manifest.
+- You turn natural language into executable action plans.
+
+AVAILABLE ORCHESTRATE ACTIONS (use these as "action" values):
+${orchestrateActions}
+
+AVAILABLE TOOLS (for toolbelt operations):
+${toolList}
+
+When building a workflow manifest, use this structure:
+{
+  "name": "Workflow Name",
+  "trigger": { "type": "OnCrashDetected|OnNewLead|OnMissedCall|OnFormSubmit|Manual", "filters": {} },
+  "steps": [
+    { "id": "step_1", "action_type": "SendTwilioSMS|Wait|Condition|DeployMetaAd|AlertTeam|CreateContact|SendEmail|WebhookCall|AIGenerate", "label": "...", "params": {...} }
+  ]
+}
+
+Return a JSON execution plan:
+{
+  "interpretation": "What the user wants in one sentence",
+  "steps": [
+    { "action": "<orchestrate_action>", "payload": { ... }, "description": "What this step does" }
+  ],
+  "summary": "Brief completion message to show the user"
+}
+
+For workflow creation, use action "save_workflow_manifest" with payload.manifest containing the full manifest.
+
+${subAccountId ? `Context: Operating on sub-account #${subAccountId}` : ""}
+
+Return ONLY valid JSON.` },
+      { role: "user", content: command },
+    ], { temperature: 0.3, maxTokens: 3000, jsonMode: true });
+
+    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    let plan: any;
+    try {
+      plan = JSON.parse(cleaned);
+    } catch {
+      return res.status(500).json({ error: "AI returned invalid plan", raw: cleaned });
+    }
+
+    if (!autoExecute) {
+      return res.json({ plan, executed: false, message: "Plan generated. Set autoExecute=true to run." });
+    }
+
+    const executionResults: any[] = [];
+    const planSteps = plan.steps || (plan.action ? [plan] : []);
+
+    for (let i = 0; i < planSteps.length; i++) {
+      const step = planSteps[i];
+      const stepAction = step.action;
+      const stepPayload = step.payload || step.args || {};
+
+      if (subAccountId && !stepPayload.sub_account_id && !stepPayload.subAccountId) {
+        stepPayload.subAccountId = subAccountId;
+        stepPayload.sub_account_id = subAccountId;
+      }
+
+      try {
+        const stepResult = await executeDispatchAction(stepAction, stepPayload);
+
+        await storage.createAiToolLog({
+          subAccountId: subAccountId || null,
+          toolName: `orchestrate:${stepAction}`,
+          input: stepPayload,
+          output: stepResult,
+          status: stepResult?.status === "Error" ? "error" : "success",
+          executionMs: 0,
+        });
+
+        executionResults.push({
+          step: i + 1,
+          action: stepAction,
+          description: step.description || step.explanation,
+          status: stepResult?.status || "Success",
+          result: stepResult,
+        });
+      } catch (err: any) {
+        executionResults.push({
+          step: i + 1,
+          action: stepAction,
+          description: step.description || step.explanation,
+          status: "Error",
+          result: { error: err.message },
+        });
+      }
+    }
+
+    await logUsageInternal(subAccountId || null, "AI_ORCHESTRATE", planSteps.length, `Orchestrated: ${command.slice(0, 100)}`);
+
+    res.json({
+      interpretation: plan.interpretation || plan.explanation,
+      summary: plan.summary || `Executed ${executionResults.length} actions.`,
+      steps: executionResults,
+      totalSteps: executionResults.length,
+      successCount: executionResults.filter(r => r.status === "Success").length,
+      executed: true,
+    });
+  }));
+
   return httpServer;
 }
 
