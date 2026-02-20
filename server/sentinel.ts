@@ -1,10 +1,12 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import { getDistance } from 'geolib';
 
 const META_VERSION = 'v18.0';
-const FHP_HSMV_URL = "https://trafficincidents.flhsmv.gov/SmartWebClient/CadView.aspx";
+const FHP_HSMV_URL = "https://trafficincidents.flhsmv.gov/SmartWebClient/CADView.aspx";
 
-const SWFL_COUNTIES = ['LEE', 'COLLIER', 'CHARLOTTE', 'HENDRY', 'GLADES'];
+const DEFAULT_TARGET_COUNTIES = ['LEE', 'COLLIER', 'CHARLOTTE'];
+const DEFAULT_RADIUS_METERS = 80467; // 50 miles
 
 export interface SentinelIncidentRaw {
   id: string;
@@ -19,6 +21,8 @@ export interface SentinelIncidentRaw {
   county?: string;
   remarks?: string;
   received?: string;
+  distanceMiles?: string;
+  googleMaps?: string;
 }
 
 function stableHash(input: string): string {
@@ -31,7 +35,7 @@ function stableHash(input: string): string {
   return Math.abs(hash).toString(36);
 }
 
-export async function processFHPHSMVFeed(targetCounties?: string[]): Promise<SentinelIncidentRaw[]> {
+export async function processFHPHSMVFeed(targetCounties?: string[], radiusMeters?: number): Promise<SentinelIncidentRaw[]> {
   try {
     console.log("📡 SENTINEL: Scraping FHP HSMV live feed (trafficincidents.flhsmv.gov)...");
     const response = await axios.get(FHP_HSMV_URL, {
@@ -50,40 +54,61 @@ export async function processFHPHSMVFeed(targetCounties?: string[]): Promise<Sen
     const $ = cheerio.load(html);
     const incidents: SentinelIncidentRaw[] = [];
     const seenHashes = new Set<string>();
+    const counties = targetCounties || DEFAULT_TARGET_COUNTIES;
+    const radius = radiusMeters || parseInt(process.env.RADIUS_METERS || '') || DEFAULT_RADIUS_METERS;
 
-    $('#gvCAD_DXMainTable tr').each((_i, tr) => {
-      const cells: string[] = [];
-      $(tr).find('td').each((_j, td) => {
-        cells.push($(td).text().trim());
-      });
+    const clientLat = parseFloat(process.env.CLIENT_LAT || '');
+    const clientLon = parseFloat(process.env.CLIENT_LON || '');
+    const hasClientLocation = !isNaN(clientLat) && !isNaN(clientLon);
 
-      if (cells.length !== 9) return;
-      if (cells[0] === 'Incident Type' || cells[0].length < 3) return;
+    if (hasClientLocation) {
+      console.log(`📡 SENTINEL: Client HQ at ${clientLat}, ${clientLon} — Radius: ${(radius / 1609.34).toFixed(1)} mi`);
+    }
 
-      const [type, received, _dispatched, _arrived, county, location, remarks, latStr, lngStr] = cells;
+    $('.dxgvDataRow').each((_i, el) => {
+      const cols = $(el).find('td');
+
+      const type = $(cols[0]).text().trim();
+      const received = $(cols[1]).text().trim();
+      const county = $(cols[4]).text().trim();
+      const location = $(cols[5]).text().trim();
+      const remarks = $(cols[6]).text().trim();
+      const latRaw = $(cols[7]).text().trim();
+      const lonRaw = $(cols[8]).text().trim();
+
+      if (!counties.some(tc => county.toUpperCase().includes(tc.toUpperCase()))) return;
 
       const typeUpper = type.toUpperCase();
       const isCrash = typeUpper.includes('CRASH') ||
                       typeUpper.includes('FATALITY') ||
                       typeUpper.includes('HIT AND RUN') ||
+                      typeUpper.includes('H&R') ||
                       typeUpper.includes('ACCIDENT') ||
                       typeUpper.includes('COLLISION') ||
                       typeUpper.includes('ROLLOVER');
 
       if (!isCrash) return;
 
-      if (targetCounties && targetCounties.length > 0) {
-        const countyUpper = county.toUpperCase();
-        if (!targetCounties.some(tc => countyUpper.includes(tc.toUpperCase()))) return;
+      const lat = parseFloat(latRaw);
+      const lon = parseFloat(lonRaw);
+      const hasCoords = !isNaN(lat) && !isNaN(lon) && lat !== 0 && lon !== 0;
+
+      let distanceMiles = "unknown";
+      let withinRadius = true;
+
+      if (hasCoords && hasClientLocation) {
+        const crashLoc = { latitude: lat, longitude: lon };
+        const clientLoc = { latitude: clientLat, longitude: clientLon };
+        const distanceMeters = getDistance(crashLoc, clientLoc);
+        distanceMiles = (distanceMeters / 1609.34).toFixed(2);
+        withinRadius = distanceMeters <= radius;
       }
 
-      const contentHash = stableHash(`${type}|${received}|${location}|${latStr}`);
+      if (!withinRadius) return;
+
+      const contentHash = stableHash(`${type}|${received}|${location}|${latRaw}`);
       if (seenHashes.has(contentHash)) return;
       seenHashes.add(contentHash);
-
-      const lat = parseFloat(latStr);
-      const lng = parseFloat(lngStr);
-      const hasCoords = !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
 
       const hasInjury = typeUpper.includes('INJUR') ||
                         typeUpper.includes('FATAL') ||
@@ -93,13 +118,14 @@ export async function processFHPHSMVFeed(targetCounties?: string[]): Promise<Sen
                         typeUpper.includes('ROADBLOCK');
 
       const stableId = `FHP-${county}-${stableHash(received + location)}`;
+      const googleMaps = hasCoords ? `https://www.google.com/maps?q=${lat},${lon}` : undefined;
 
       incidents.push({
         id: stableId,
         type,
         location: `${location}, ${county} County, FL`,
         lat: hasCoords ? lat : null,
-        lng: hasCoords ? lng : null,
+        lng: hasCoords ? lon : null,
         severity: typeUpper.includes('FATAL') ? 'critical' : hasInjury ? 'critical' : 'high',
         actionRequired: hasInjury,
         source: "fhp_hsmv",
@@ -107,10 +133,12 @@ export async function processFHPHSMVFeed(targetCounties?: string[]): Promise<Sen
         county,
         remarks,
         received,
+        distanceMiles,
+        googleMaps,
       });
     });
 
-    console.log(`📡 SENTINEL: FHP HSMV returned ${incidents.length} crash incidents${targetCounties ? ` (filtered: ${targetCounties.join(', ')})` : ' (all FL)'}`);
+    console.log(`📡 SENTINEL: FHP HSMV returned ${incidents.length} crashes in ${counties.join(', ')} within ${(radius / 1609.34).toFixed(0)}-mile radius`);
     return incidents;
   } catch (error: any) {
     console.error("📡 SENTINEL FHP HSMV ERROR:", error?.message || error);
@@ -119,9 +147,33 @@ export async function processFHPHSMVFeed(targetCounties?: string[]): Promise<Sen
 }
 
 export async function processLiveSentinelFeed(targetCounties?: string[]): Promise<SentinelIncidentRaw[]> {
-  const counties = targetCounties || SWFL_COUNTIES;
+  const counties = targetCounties || DEFAULT_TARGET_COUNTIES;
   const results = await processFHPHSMVFeed(counties);
   console.log(`📡 SENTINEL: Live scan complete — ${results.length} crashes found in ${counties.join(', ')}`);
+
+  const webhookUrl = process.env.APEX_WEBHOOK_URL;
+  if (webhookUrl && results.length > 0) {
+    for (const crash of results) {
+      try {
+        await axios.post(webhookUrl, {
+          type: crash.type,
+          county: crash.county,
+          distance_miles: crash.distanceMiles,
+          google_maps: crash.googleMaps,
+          timestamp: crash.received,
+          lat: crash.lat,
+          lng: crash.lng,
+          severity: crash.severity,
+          location: crash.location,
+          remarks: crash.remarks,
+        });
+        console.log(`🚀 SENTINEL: Lead sent to Apex webhook — ${crash.type} in ${crash.county} (${crash.distanceMiles} mi)`);
+      } catch (e: any) {
+        console.error(`📡 SENTINEL: Webhook fire failed:`, e.message);
+      }
+    }
+  }
+
   return results;
 }
 
