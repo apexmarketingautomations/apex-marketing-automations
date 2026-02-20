@@ -2,9 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useActiveSubAccountId } from "@/components/account-required";
 import { Card, CardContent } from "@/components/ui/card";
-import { MessageSquare, Users, Kanban, CalendarDays, Mail, Megaphone, Target, Instagram, DollarSign, TrendingUp, Bell, Clock, BarChart3, PieChart, Zap, Eye } from "lucide-react";
+import { MessageSquare, Users, Kanban, CalendarDays, Mail, Megaphone, Target, Instagram, DollarSign, TrendingUp, Bell, Clock, BarChart3, PieChart, Zap, Eye, Rocket, Shield } from "lucide-react";
 import { Link } from "wouter";
 import { TutorialCenter } from "@/components/tutorial-center";
+import { useAuth } from "@/hooks/use-auth";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 interface DashboardMetrics {
@@ -43,6 +44,8 @@ const metricCards = [
 
 export default function DashboardPage() {
   const subAccountId = useActiveSubAccountId();
+  const { user } = useAuth();
+  const isAdmin = user?.isAdmin === "true";
 
   const { data: metrics, isLoading } = useQuery<DashboardMetrics>({
     queryKey: ["/api/dashboard", subAccountId],
@@ -68,25 +71,35 @@ export default function DashboardPage() {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="p-4 md:p-8 flex items-center justify-center min-h-[70vh]">
         <div className="text-center space-y-8 max-w-lg" data-testid="status-welcome">
           <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-cyan-500/20 to-indigo-500/20 border border-cyan-500/20 flex items-center justify-center mx-auto">
-            <TrendingUp size={40} className="text-cyan-400" />
+            {isAdmin ? <Shield size={40} className="text-cyan-400" /> : <TrendingUp size={40} className="text-cyan-400" />}
           </div>
           <div>
-            <h1 className="text-3xl font-black text-white mb-3">Welcome to Apex</h1>
-            <p className="text-slate-400 text-lg">Create your first sub-account to unlock your business dashboard, CRM, AI tools, and more.</p>
+            <h1 className="text-3xl font-black text-white mb-3">{isAdmin ? "Admin Command Center" : "Welcome to Apex"}</h1>
+            <p className="text-slate-400 text-lg">{isAdmin ? "You have full platform access. Create your first client business using God Mode or the onboarding wizard." : "Create your first sub-account to unlock your business dashboard, CRM, AI tools, and more."}</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            {isAdmin && (
+              <Link href="/god-mode">
+                <button className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-bold transition-all shadow-lg shadow-violet-500/25" data-testid="button-god-mode">
+                  <Rocket size={18} />
+                  God Mode
+                </button>
+              </Link>
+            )}
             <Link href="/onboarding">
               <button className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-700 hover:to-indigo-700 text-white font-bold transition-all shadow-lg shadow-cyan-500/25" data-testid="button-get-started">
                 <Users size={18} />
                 Create Sub-Account
               </button>
             </Link>
-            <Link href="/pricing">
-              <button className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-white font-bold transition-all" data-testid="button-view-plans">
-                <DollarSign size={18} />
-                View Plans
-              </button>
-            </Link>
+            {!isAdmin && (
+              <Link href="/pricing">
+                <button className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-white font-bold transition-all" data-testid="button-view-plans">
+                  <DollarSign size={18} />
+                  View Plans
+                </button>
+              </Link>
+            )}
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-4">
             {[
