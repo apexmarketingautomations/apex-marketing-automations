@@ -5,64 +5,28 @@ import { chatStorage } from "./storage";
 const ai = new GoogleGenAI({ apiKey: process.env.Gemini_API_Key_saas });
 
 export function registerChatRoutes(app: Express): void {
-  app.get("/api/conversations", async (req: Request, res: Response) => {
+  app.get("/api/chat-messages/:subAccountId", async (req: Request, res: Response) => {
     try {
-      const conversations = await chatStorage.getAllConversations();
-      res.json(conversations);
+      const subAccountId = parseInt(req.params.subAccountId as string);
+      const msgs = await chatStorage.getMessagesByAccount(subAccountId);
+      res.json(msgs);
     } catch (error) {
-      console.error("Error fetching conversations:", error);
-      res.status(500).json({ error: "Failed to fetch conversations" });
+      console.error("Error fetching messages:", error);
+      res.status(500).json({ error: "Failed to fetch messages" });
     }
   });
 
-  app.get("/api/conversations/:id", async (req: Request, res: Response) => {
+  app.post("/api/chat-messages/:subAccountId", async (req: Request, res: Response) => {
     try {
-      const id = parseInt(req.params.id);
-      const conversation = await chatStorage.getConversation(id);
-      if (!conversation) {
-        return res.status(404).json({ error: "Conversation not found" });
-      }
-      const messages = await chatStorage.getMessagesByConversation(id);
-      res.json({ ...conversation, messages });
-    } catch (error) {
-      console.error("Error fetching conversation:", error);
-      res.status(500).json({ error: "Failed to fetch conversation" });
-    }
-  });
-
-  app.post("/api/conversations", async (req: Request, res: Response) => {
-    try {
-      const { title } = req.body;
-      const conversation = await chatStorage.createConversation(title || "New Chat");
-      res.status(201).json(conversation);
-    } catch (error) {
-      console.error("Error creating conversation:", error);
-      res.status(500).json({ error: "Failed to create conversation" });
-    }
-  });
-
-  app.delete("/api/conversations/:id", async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id);
-      await chatStorage.deleteConversation(id);
-      res.status(204).send();
-    } catch (error) {
-      console.error("Error deleting conversation:", error);
-      res.status(500).json({ error: "Failed to delete conversation" });
-    }
-  });
-
-  app.post("/api/conversations/:id/messages", async (req: Request, res: Response) => {
-    try {
-      const conversationId = parseInt(req.params.id);
+      const subAccountId = parseInt(req.params.subAccountId as string);
       const { content } = req.body;
 
-      await chatStorage.createMessage(conversationId, "user", content);
+      await chatStorage.createMessage(subAccountId, content, "inbound", "chat", "web");
 
-      const messages = await chatStorage.getMessagesByConversation(conversationId);
-      const chatContents = messages.map((m) => ({
-        role: m.role === "user" ? "user" as const : "model" as const,
-        parts: [{ text: m.content }],
+      const msgs = await chatStorage.getMessagesByAccount(subAccountId);
+      const chatContents = msgs.slice(-20).reverse().map((m) => ({
+        role: m.direction === "inbound" ? "user" as const : "model" as const,
+        parts: [{ text: m.body }],
       }));
 
       res.setHeader("Content-Type", "text/event-stream");
@@ -87,7 +51,7 @@ export function registerChatRoutes(app: Express): void {
         }
       }
 
-      await chatStorage.createMessage(conversationId, "assistant", fullResponse);
+      await chatStorage.createMessage(subAccountId, fullResponse, "outbound", "chat", "web");
 
       res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
       res.end();

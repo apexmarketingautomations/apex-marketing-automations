@@ -3862,7 +3862,7 @@ Rules:
 
   // ─── Client Website Integration ───────────────────────────────────
   app.get("/api/client-websites/:subAccountId", asyncHandler(async (req, res) => {
-    const subAccountId = parseInt(req.params.subAccountId);
+    const subAccountId = parseInt(req.params.subAccountId as string);
     const sites = await storage.getClientWebsites(subAccountId);
     res.json(sites);
   }));
@@ -3889,7 +3889,7 @@ Rules:
   }));
 
   app.patch("/api/client-websites/:id", asyncHandler(async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const updateSchema = z.object({
       widgetEnabled: z.boolean().optional(),
       widgetColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
@@ -3906,13 +3906,13 @@ Rules:
   }));
 
   app.delete("/api/client-websites/:id", asyncHandler(async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     await storage.deleteClientWebsite(id);
     res.json({ success: true });
   }));
 
   app.post("/api/client-websites/:id/scrape", asyncHandler(async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const site = await storage.getClientWebsite(id);
     if (!site) return res.status(404).json({ error: "Site not found" });
 
@@ -3948,7 +3948,7 @@ Rules:
   }));
 
   app.get("/api/client-websites/:id/embed-code", asyncHandler(async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const site = await storage.getClientWebsite(id);
     if (!site) return res.status(404).json({ error: "Site not found" });
 
@@ -4128,7 +4128,7 @@ Rules:
   const savedForms = new Map<string, any[]>();
 
   app.get("/api/forms/saved/:subAccountId", asyncHandler(async (req, res) => {
-    const subAccountId = req.params.subAccountId;
+    const subAccountId = req.params.subAccountId as string;
     const forms = savedForms.get(subAccountId) || [];
     res.json(forms);
   }));
@@ -4375,7 +4375,7 @@ Rules:
   }));
 
   app.get("/api/white-label/:userId", asyncHandler(async (req, res) => {
-    const userId = req.params.userId;
+    const userId = req.params.userId as string;
     const settings = await storage.getWhiteLabelSettings(userId);
     if (!settings) return res.json(null);
     res.json(settings);
