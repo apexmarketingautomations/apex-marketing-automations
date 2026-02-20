@@ -203,7 +203,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       <div className="flex-1 space-y-1 pr-4 overflow-y-auto" onClick={onNavClick}>
         {navSections.map((section) => {
-          const visibleItems = section.items.filter((item) => !(item as any).adminOnly);
+          const visibleItems = section.items;
           if (visibleItems.length === 0) return null;
           return (
             <div key={section.label}>
