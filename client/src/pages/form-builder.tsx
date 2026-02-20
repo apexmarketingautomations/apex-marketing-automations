@@ -18,6 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { useAccount } from "@/hooks/use-account";
 
 interface FormField {
   id: string;
@@ -63,6 +64,7 @@ const FIELD_TYPES = [
 export default function FormBuilder() {
   const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_form_builder");
   const { toast } = useToast();
+  const { activeAccountId } = useAccount();
   const [industry, setIndustry] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [fields, setFields] = useState<FormField[]>([]);
@@ -158,12 +160,49 @@ export default function FormBuilder() {
       })
       .join("\n");
 
+    const baseUrl = window.location.origin;
     return `<form id="apex-lead-form" style="max-width:480px;margin:0 auto;padding:32px;background:#0f172a;border-radius:16px;border:1px solid #334155;font-family:system-ui,-apple-system,sans-serif;">
   <h2 style="color:#f1f5f9;font-size:24px;font-weight:700;margin-bottom:8px;">Contact Us</h2>
   <p style="color:#94a3b8;font-size:14px;margin-bottom:24px;">Fill out the form below and we'll get back to you shortly.</p>
 ${formHtml}
     <button type="submit" style="width:100%;padding:12px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer;">Submit</button>
-</form>`;
+    <div id="apex-form-msg" style="display:none;margin-top:12px;padding:12px;border-radius:8px;background:#059669;color:white;text-align:center;font-size:14px;">Thank you! Your submission has been received.</div>
+</form>
+<script>
+(function(){
+  var form = document.getElementById('apex-lead-form');
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    var data = {};
+    var inputs = form.querySelectorAll('input,textarea,select');
+    inputs.forEach(function(el) {
+      if (el.name && el.type !== 'submit') {
+        if (el.type === 'checkbox') data[el.name] = el.checked;
+        else data[el.name] = el.value;
+      }
+    });
+    data.subAccountId = '${activeAccountId || 7}';
+    data.formName = '${industry || "Lead Form"}';
+    var btn = form.querySelector('button[type=submit]');
+    btn.textContent = 'Sending...';
+    btn.disabled = true;
+    fetch('${baseUrl}/api/form-submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    }).then(function(r) { return r.json(); }).then(function() {
+      document.getElementById('apex-form-msg').style.display = 'block';
+      btn.textContent = 'Submitted';
+      form.reset();
+    }).catch(function() {
+      btn.textContent = 'Submit';
+      btn.disabled = false;
+      alert('Something went wrong. Please try again.');
+    });
+  });
+})();
+</script>`;
+
   };
 
   const handleCopy = () => {

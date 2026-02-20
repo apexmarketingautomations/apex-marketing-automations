@@ -151,15 +151,20 @@ export default function EmailCampaignsPage() {
 
   const sendMutation = useMutation({
     mutationFn: async (id: number) => {
-      return apiRequest("POST", `/api/email-campaigns/${id}/send`);
+      const res = await apiRequest("POST", `/api/email-campaigns/${id}/send`);
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || err.error || "Failed to send");
+      }
+      return res.json();
     },
     onSuccess: () => {
       toast({ title: "Campaign Sent", description: "Your campaign is being sent." });
       queryClient.invalidateQueries({ queryKey: ["/api/email-campaigns", subAccountId] });
       setConfirmSendId(null);
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to send campaign.", variant: "destructive" });
+    onError: (err: any) => {
+      toast({ title: "Email Service Needed", description: err.message || "Connect an email service (SendGrid, Mailgun, or SMTP) to send real emails.", variant: "destructive" });
     },
   });
 

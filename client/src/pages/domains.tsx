@@ -110,8 +110,8 @@ export default function Domains() {
       }
       return res.json();
     },
-    onSuccess: () => {
-      toast({ title: "Domain Purchased!", description: "Your domain is now active with DNS & SSL configured." });
+    onSuccess: (data: any) => {
+      toast({ title: "Domain Claimed!", description: data.notice || "Domain saved. Register it at your preferred registrar (Namecheap, GoDaddy, Cloudflare) to make it live." });
       queryClient.invalidateQueries({ queryKey: ["/api/domains", SUB_ACCOUNT_ID] });
       setShowConfetti(true);
       setTimeout(() => setShowConfetti(false), 3000);
