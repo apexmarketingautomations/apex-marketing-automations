@@ -99,6 +99,14 @@ export default function PropertyRadar() {
     },
   });
 
+  const { data: apiStatus } = useQuery<{ hasRentcastKey: boolean; hasTwilioSid: boolean; hasTwilioToken: boolean }>({
+    queryKey: ["/api/property-radar/status"],
+    queryFn: async () => {
+      const res = await fetch("/api/property-radar/status", { credentials: "include" });
+      return res.json();
+    },
+  });
+
   const { data: leads = [], isLoading: loadingLeads } = useQuery<LeadWithMetrics[]>({
     queryKey: ["/api/property-radar/leads", currentAccount?.id],
     enabled: !!currentAccount?.id,
@@ -264,17 +272,28 @@ export default function PropertyRadar() {
         </div>
       </div>
 
-      {/* Data Source Indicator */}
-      {dataSource === "no_api_key" && leads.length === 0 && (
+      {/* Configuration Status Banner */}
+      {apiStatus && !apiStatus.hasRentcastKey && (
         <motion.div
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: "auto" }}
-          className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3 flex items-center gap-3"
+          className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3 space-y-2"
+          data-testid="banner-property-config"
         >
-          <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
-          <div className="flex-1">
-            <span className="text-sm text-amber-300 font-medium">API Key Required</span>
-            <span className="text-sm text-amber-400/70 ml-2">Add your RENTCAST_API_KEY in Secrets to pull live property listings.</span>
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+            <div className="flex-1">
+              <span className="text-sm text-amber-300 font-medium">Property Data Not Connected</span>
+              <span className="text-sm text-amber-400/70 ml-2">Connect your RentCast API key to pull live property listings and distress data.</span>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 ml-7">
+            <span className={`text-xs px-2 py-0.5 rounded border ${apiStatus.hasRentcastKey ? "border-green-500/40 text-green-400" : "border-red-500/40 text-red-400"}`}>
+              {apiStatus.hasRentcastKey ? "✓" : "✗"} RENTCAST_API_KEY
+            </span>
+            <span className={`text-xs px-2 py-0.5 rounded border ${apiStatus.hasTwilioSid ? "border-green-500/40 text-green-400" : "border-slate-600 text-slate-400"}`}>
+              {apiStatus.hasTwilioSid ? "✓" : "○"} Twilio SMS (optional)
+            </span>
           </div>
         </motion.div>
       )}

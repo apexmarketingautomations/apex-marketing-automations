@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Megaphone, Plus, Trash2, RefreshCw, Rocket, Eye, MousePointerClick, DollarSign, Users, TrendingUp, BarChart3, Target } from "lucide-react";
+import { Megaphone, Plus, Trash2, RefreshCw, Rocket, Eye, MousePointerClick, DollarSign, Users, TrendingUp, BarChart3, Target, AlertTriangle, Info } from "lucide-react";
 
 interface MetaAdCampaign {
   id: number;
@@ -202,9 +202,30 @@ export default function MetaAdsPage() {
         </Dialog>
       </div>
 
-      {!config?.hasAccessToken && (
-        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 text-yellow-300 text-sm" data-testid="text-meta-warning">
-          Meta API keys not configured. Campaigns will be managed locally. Add META_ACCESS_TOKEN, META_AD_ACCOUNT_ID, and META_PAGE_ID as secrets to enable live integration.
+      {config && (!config.hasAccessToken || !config.hasAdAccountId || !config.hasPageId) && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 space-y-3" data-testid="banner-meta-config">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={20} className="text-amber-400 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-amber-300 font-semibold">Meta API Not Connected</p>
+              <p className="text-slate-400 text-sm mt-1">Campaigns are saved locally. Connect your Meta Business account to publish ads to Facebook & Instagram.</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 ml-8">
+            <Badge variant="outline" className={config.hasAccessToken ? "border-green-500/40 text-green-400" : "border-red-500/40 text-red-400"}>
+              {config.hasAccessToken ? "✓" : "✗"} META_ACCESS_TOKEN
+            </Badge>
+            <Badge variant="outline" className={config.hasAdAccountId ? "border-green-500/40 text-green-400" : "border-red-500/40 text-red-400"}>
+              {config.hasAdAccountId ? "✓" : "✗"} META_AD_ACCOUNT_ID
+            </Badge>
+            <Badge variant="outline" className={config.hasPageId ? "border-green-500/40 text-green-400" : "border-red-500/40 text-red-400"}>
+              {config.hasPageId ? "✓" : "✗"} META_PAGE_ID
+            </Badge>
+            <Badge variant="outline" className={config.hasAppId ? "border-green-500/40 text-green-400" : "border-red-500/40 text-red-400"}>
+              {config.hasAppId ? "✓" : "✗"} META_APP_ID
+            </Badge>
+          </div>
+          <p className="text-slate-500 text-xs ml-8">Add these as secrets in your project settings to enable live Meta integration.</p>
         </div>
       )}
 

@@ -151,7 +151,7 @@ export default function EmailCampaignsPage() {
 
   const sendMutation = useMutation({
     mutationFn: async (id: number) => {
-      const res = await apiRequest("POST", `/api/email-campaigns/${id}/send`);
+      const res = await fetch(`/api/email-campaigns/${id}/send`, { method: "POST", credentials: "include" });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.message || err.error || "Failed to send");
