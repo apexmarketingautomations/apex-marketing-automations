@@ -175,6 +175,7 @@ export async function registerRoutes(
     if (fullPath === "/api/sentinel/test-trigger") return next();
     if (fullPath === "/api/sentinel/live") return next();
     if (fullPath === "/api/sentinel/incoming-crash") return next();
+    if (fullPath === "/api/sentinel-incoming") return next();
 
     if (!req.isAuthenticated || !req.isAuthenticated()) {
       return res.status(401).json({ error: "Not authenticated" });
@@ -3754,6 +3755,47 @@ Rules:
       distance_miles: distanceInMiles,
       message: "Crash logged and fired to Apex",
     });
+  }));
+
+  // ─── Sentinel Incoming — Apex Catch Endpoint ────────────────────────
+  app.post("/api/sentinel-incoming", asyncHandler(async (req, res) => {
+    const data = req.body;
+    console.log("APEX RECEIVED CRASH DATA:", JSON.stringify(data));
+
+    const customData = data.customData || data;
+    const crashId = customData.crash_id || customData.crashId || "unknown";
+    const distanceMiles = customData.distance_miles || "unknown";
+    const severity = customData.severity || "unknown";
+    const mapsLink = customData.google_maps_link || "";
+
+    const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+    const twilioAuth = process.env.TWILIO_AUTH_TOKEN;
+
+    if (twilioSid && twilioAuth) {
+      try {
+        const twilioClient = Twilio(twilioSid, twilioAuth);
+        const sentinelConf = await storage.getSentinelConfig(1);
+        const alertPhone = sentinelConf?.smsAlertPhone;
+
+        if (alertPhone) {
+          const twilioNumbers = await twilioClient.incomingPhoneNumbers.list({ limit: 1 });
+          const fromNumber = twilioNumbers[0]?.phoneNumber;
+
+          if (fromNumber) {
+            await twilioClient.messages.create({
+              body: `SENTINEL ALERT: Crash #${crashId} detected ${distanceMiles} mi from HQ. Severity: ${severity}. Map: ${mapsLink}`,
+              from: fromNumber,
+              to: alertPhone,
+            });
+            console.log(`SENTINEL: SMS alert sent to ${alertPhone}`);
+          }
+        }
+      } catch (smsErr: any) {
+        console.error("SENTINEL: SMS alert failed:", smsErr.message);
+      }
+    }
+
+    res.status(200).json({ message: "Apex received the crash data" });
   }));
 
   // ─── Client Website Integration ───────────────────────────────────
