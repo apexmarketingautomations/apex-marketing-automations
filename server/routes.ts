@@ -3225,43 +3225,28 @@ Rules:
     let incidents: any[] = [];
     const sources: string[] = [];
 
-    // Live Feed 1: LVMPD (Nevada) + FHP (Florida) — both run in parallel
+    // Live Feed: FHP HSMV (Florida Highway Patrol — trafficincidents.flhsmv.gov)
     try {
-      console.log("📡 SENTINEL: Pulling live feeds (LVMPD + FHP)...");
-      const liveIncidents = await processLiveSentinelFeed();
+      const targetCounties = (config as any)?.targetCounties || ['LEE', 'COLLIER', 'CHARLOTTE', 'HENDRY', 'GLADES'];
+      console.log(`📡 SENTINEL: Pulling FHP HSMV live feed for counties: ${targetCounties.join(', ')}...`);
+      const liveIncidents = await processLiveSentinelFeed(targetCounties);
+
       if (liveIncidents.length > 0) {
-        const targetCities = (config as any)?.targetCities;
-        const targetStates = (config as any)?.targetStates;
-
-        const filtered = liveIncidents.filter(inc => {
-          if (targetStates?.length) {
-            if (!targetStates.some((s: string) => s.toUpperCase() === inc.state.toUpperCase())) return false;
-          }
-          if (targetCities?.length) {
-            const loc = inc.location.toUpperCase();
-            if (!targetCities.some((c: string) => loc.includes(c.toUpperCase()))) return false;
-          }
-          if (keywords.length) {
-            const desc = inc.type.toUpperCase();
-            if (!keywords.some(kw => desc.includes(kw.toUpperCase()))) return false;
-          }
-          return true;
-        });
-
-        incidents = filtered.map(inc => ({
+        incidents = liveIncidents.map(inc => ({
           title: inc.type,
-          description: `${inc.type} at ${inc.location}. ${inc.actionRequired ? 'HIGH VALUE — Action required.' : 'Monitoring.'} [${inc.source.toUpperCase()}]`,
+          description: `${inc.type} at ${inc.location}. ${inc.actionRequired ? 'HIGH VALUE — Injuries/Fatality.' : 'Crash detected.'} County: ${inc.county || 'FL'}. ${inc.remarks || ''} [${inc.source.toUpperCase()}]`,
           location: inc.location,
           severity: inc.severity,
-          rawPayload: { id: inc.id, lat: inc.lat, lng: inc.lng, type: inc.type, source: inc.source, state: inc.state },
+          rawPayload: { id: inc.id, lat: inc.lat, lng: inc.lng, type: inc.type, source: inc.source, state: inc.state, county: inc.county, remarks: inc.remarks, received: inc.received },
         }));
 
-        const feedSources = [...new Set(filtered.map(i => i.source))];
-        sources.push(...feedSources);
-        console.log(`📡 SENTINEL: ${liveIncidents.length} raw → ${filtered.length} after filters (sources: ${feedSources.join(', ')})`);
+        sources.push("fhp_hsmv");
+        console.log(`📡 SENTINEL: ${liveIncidents.length} live crashes found`);
+      } else {
+        console.log("📡 SENTINEL: No crashes currently active in target counties");
       }
     } catch (e) {
-      console.log("📡 SENTINEL: Live feed scrape failed:", (e as any).message);
+      console.log("📡 SENTINEL: FHP HSMV feed scrape failed:", (e as any).message);
     }
 
     // Fallback: Custom feed URL from config (if no live data)

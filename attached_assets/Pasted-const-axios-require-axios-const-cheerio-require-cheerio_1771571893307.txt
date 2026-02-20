@@ -1,0 +1,77 @@
+const axios = require('axios');
+const cheerio = require('cheerio');
+const geolib = require('geolib');
+
+// --- CONFIGURATION ---
+const TARGET_COUNTIES = ['LEE', 'COLLIER', 'CHARLOTTE'];
+const APEX_WEBHOOK_URL = process.env.APEX_WEBHOOK_URL;
+const CLIENT_LOCATION = {
+    latitude: parseFloat(process.env.CLIENT_LAT),
+    longitude: parseFloat(process.env.CLIENT_LON)
+};
+const RADIUS_METERS = 80467; // 50 Miles
+
+async function runSentinel() {
+    try {
+        const url = 'https://trafficincidents.flhsmv.gov/SmartWebClient/CADView.aspx';
+        const { data } = await axios.get(url, {
+            headers: { 'User-Agent': 'Mozilla/5.0' }
+        });
+
+        const $ = cheerio.load(data);
+        const incidents = [];
+
+        // DevExpress grids use the 'dxgvDataRow' class for data rows
+        $('.dxgvDataRow').each((i, el) => {
+            const cols = $(el).find('td');
+
+            const type = $(cols[0]).text().trim();
+            const county = $(cols[4]).text().trim();
+            const latRaw = $(cols[7]).text().trim();
+            const lonRaw = $(cols[8]).text().trim();
+
+            // 1. Check if it's in our county target list
+            if (TARGET_COUNTIES.includes(county.toUpperCase())) {
+                
+                // 2. Check if it's a "Vehicle Crash" (ignoring construction/stalls)
+                if (type.toLowerCase().includes('crash') || type.toLowerCase().includes('h&r')) {
+                    
+                    const lat = parseFloat(latRaw);
+                    const lon = parseFloat(lonRaw);
+
+                    if (!isNaN(lat) && !isNaN(lon)) {
+                        const crashLoc = { latitude: lat, longitude: lon };
+                        
+                        // 3. 50-Mile Radius Math
+                        const distance = geolib.getDistance(crashLoc, CLIENT_LOCATION);
+                        
+                        if (distance <= RADIUS_METERS) {
+                            incidents.push({
+                                type,
+                                county,
+                                distance_miles: (distance / 1609.34).toFixed(2),
+                                google_maps: `https://www.google.com/maps?q=${lat},${lon}`,
+                                timestamp: $(cols[1]).text().trim()
+                            });
+                        }
+                    }
+                }
+            }
+        });
+
+        console.log(`🔎 Sentinel Scanned FHP. Found ${incidents.length} valid crashes in 50-mile zone.`);
+        
+        // Firing leads to Apex
+        for (const crash of incidents) {
+            await axios.post(APEX_WEBHOOK_URL, crash);
+            console.log(`🚀 Lead sent to Apex: ${crash.type} in ${crash.county}`);
+        }
+
+    } catch (error) {
+        console.error("🔥 Sentinel Engine Error:", error.message);
+    }
+}
+
+// Run every 2 minutes
+setInterval(runSentinel, 120000);
+runSentinel();

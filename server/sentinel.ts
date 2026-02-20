@@ -1,8 +1,10 @@
 import axios from 'axios';
+import * as cheerio from 'cheerio';
 
 const META_VERSION = 'v18.0';
-const LVMPD_DATA_URL = "https://services.arcgis.com/s9H9v64pX9S6X36r/arcgis/rest/services/LVMPD_Calls_For_Service/FeatureServer/0/query";
-const FHP_FEED_URL = "https://www.flhsmv.gov/fhp/traffic/live_traffic_feed.html";
+const FHP_HSMV_URL = "https://trafficincidents.flhsmv.gov/SmartWebClient/CadView.aspx";
+
+const SWFL_COUNTIES = ['LEE', 'COLLIER', 'CHARLOTTE', 'HENDRY', 'GLADES'];
 
 export interface SentinelIncidentRaw {
   id: string;
@@ -14,57 +16,9 @@ export interface SentinelIncidentRaw {
   actionRequired: boolean;
   source: string;
   state: string;
-}
-
-export async function processLVMPDFeed(): Promise<SentinelIncidentRaw[]> {
-  try {
-    const params = {
-      where: "Incident_Type_Description LIKE '%ACCIDENT%'",
-      outFields: "*",
-      f: "json",
-      resultRecordCount: 10,
-      orderByFields: "Incident_Date DESC",
-    };
-
-    console.log("📡 SENTINEL: Scraping LVMPD live feed...");
-    const response = await axios.get(LVMPD_DATA_URL, { params, timeout: 10000 });
-    const incidents = response.data?.features;
-
-    if (!incidents || !Array.isArray(incidents) || incidents.length === 0) {
-      console.log("📡 SENTINEL: LVMPD feed returned no incidents");
-      return [];
-    }
-
-    const results = incidents.map((inc: any) => {
-      const data = inc.attributes;
-      const desc = (data.Incident_Type_Description || "").toUpperCase();
-      const isHighValue = desc.includes('INJURIES') ||
-                          desc.includes('ENTRAPMENT') ||
-                          desc.includes('EXTRICATION') ||
-                          desc.includes('FATALITY');
-
-      const stableId = data.Incident_Number || data.OBJECTID;
-      if (!stableId) return null;
-
-      return {
-        id: String(stableId),
-        type: data.Incident_Type_Description || "UNKNOWN",
-        location: data.Address || "Unknown Location",
-        lat: data.Latitude != null ? data.Latitude : null,
-        lng: data.Longitude != null ? data.Longitude : null,
-        severity: isHighValue ? 'critical' : 'high',
-        actionRequired: isHighValue,
-        source: "lvmpd_live",
-        state: "NV",
-      };
-    }).filter((x): x is SentinelIncidentRaw => x !== null);
-
-    console.log(`📡 SENTINEL: LVMPD returned ${results.length} incidents`);
-    return results;
-  } catch (error: any) {
-    console.error("📡 SENTINEL LVMPD ERROR:", error?.message || error);
-    return [];
-  }
+  county?: string;
+  remarks?: string;
+  received?: string;
 }
 
 function stableHash(input: string): string {
@@ -77,100 +31,97 @@ function stableHash(input: string): string {
   return Math.abs(hash).toString(36);
 }
 
-export async function processFloridaFHPFeed(): Promise<SentinelIncidentRaw[]> {
+export async function processFHPHSMVFeed(targetCounties?: string[]): Promise<SentinelIncidentRaw[]> {
   try {
-    console.log("📡 SENTINEL: Scraping Florida FHP live feed...");
-    const response = await axios.get(FHP_FEED_URL, { timeout: 15000 });
-    const html: string = response.data;
+    console.log("📡 SENTINEL: Scraping FHP HSMV live feed (trafficincidents.flhsmv.gov)...");
+    const response = await axios.get(FHP_HSMV_URL, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+      timeout: 15000,
+    });
 
-    if (!html || typeof html !== 'string' || html.length < 100) {
-      console.log("📡 SENTINEL: FHP feed returned empty or invalid response");
+    const html: string = response.data;
+    if (!html || html.length < 500) {
+      console.log("📡 SENTINEL: FHP HSMV returned empty response");
       return [];
     }
 
+    const $ = cheerio.load(html);
     const incidents: SentinelIncidentRaw[] = [];
     const seenHashes = new Set<string>();
 
-    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-    const cellRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
-    let rowMatch;
-
-    while ((rowMatch = rowRegex.exec(html)) !== null) {
-      const rowContent = rowMatch[1];
-      if (rowContent.includes('<th')) continue;
-
+    $('#gvCAD_DXMainTable tr').each((_i, tr) => {
       const cells: string[] = [];
-      let cellMatch;
-      cellRegex.lastIndex = 0;
+      $(tr).find('td').each((_j, td) => {
+        cells.push($(td).text().trim());
+      });
 
-      while ((cellMatch = cellRegex.exec(rowContent)) !== null) {
-        cells.push(cellMatch[1].replace(/<[^>]*>/g, '').trim());
+      if (cells.length !== 9) return;
+      if (cells[0] === 'Incident Type' || cells[0].length < 3) return;
+
+      const [type, received, _dispatched, _arrived, county, location, remarks, latStr, lngStr] = cells;
+
+      const typeUpper = type.toUpperCase();
+      const isCrash = typeUpper.includes('CRASH') ||
+                      typeUpper.includes('FATALITY') ||
+                      typeUpper.includes('HIT AND RUN') ||
+                      typeUpper.includes('ACCIDENT') ||
+                      typeUpper.includes('COLLISION') ||
+                      typeUpper.includes('ROLLOVER');
+
+      if (!isCrash) return;
+
+      if (targetCounties && targetCounties.length > 0) {
+        const countyUpper = county.toUpperCase();
+        if (!targetCounties.some(tc => countyUpper.includes(tc.toUpperCase()))) return;
       }
 
-      if (cells.length < 3) continue;
-
-      const rawDesc = cells.join(' ').toUpperCase();
-      const isAccident = rawDesc.includes('CRASH') ||
-                         rawDesc.includes('ACCIDENT') ||
-                         rawDesc.includes('COLLISION') ||
-                         rawDesc.includes('MVA') ||
-                         rawDesc.includes('OVERTURN') ||
-                         rawDesc.includes('ROLLOVER') ||
-                         rawDesc.includes('HIT AND RUN');
-
-      if (!isAccident) continue;
-
-      const hasInjury = rawDesc.includes('INJUR') ||
-                        rawDesc.includes('FATAL') ||
-                        rawDesc.includes('ENTRAP') ||
-                        rawDesc.includes('EXTRICAT') ||
-                        rawDesc.includes('TRAUMA') ||
-                        rawDesc.includes('RESCUE');
-
-      const description = cells[2] || cells[1] || cells[0] || "Traffic Incident";
-      const location = cells[1] || cells[0] || "Florida";
-
-      const contentHash = stableHash(cells.join('|'));
-      if (seenHashes.has(contentHash)) continue;
+      const contentHash = stableHash(`${type}|${received}|${location}|${latStr}`);
+      if (seenHashes.has(contentHash)) return;
       seenHashes.add(contentHash);
 
-      const stableId = cells[0]
-        ? `FHP-${cells[0].replace(/[^a-zA-Z0-9]/g, '-').substring(0, 40)}`
-        : `FHP-${contentHash}`;
+      const lat = parseFloat(latStr);
+      const lng = parseFloat(lngStr);
+      const hasCoords = !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+
+      const hasInjury = typeUpper.includes('INJUR') ||
+                        typeUpper.includes('FATAL') ||
+                        typeUpper.includes('ENTRAP') ||
+                        typeUpper.includes('EXTRICAT') ||
+                        typeUpper.includes('TRAUMA') ||
+                        typeUpper.includes('ROADBLOCK');
+
+      const stableId = `FHP-${county}-${stableHash(received + location)}`;
 
       incidents.push({
         id: stableId,
-        type: description.substring(0, 200),
-        location: location.substring(0, 300),
-        lat: null,
-        lng: null,
-        severity: hasInjury ? 'critical' : 'high',
+        type,
+        location: `${location}, ${county} County, FL`,
+        lat: hasCoords ? lat : null,
+        lng: hasCoords ? lng : null,
+        severity: typeUpper.includes('FATAL') ? 'critical' : hasInjury ? 'critical' : 'high',
         actionRequired: hasInjury,
-        source: "fhp_live",
+        source: "fhp_hsmv",
         state: "FL",
+        county,
+        remarks,
+        received,
       });
-    }
+    });
 
-    console.log(`📡 SENTINEL: FHP returned ${incidents.length} incidents`);
+    console.log(`📡 SENTINEL: FHP HSMV returned ${incidents.length} crash incidents${targetCounties ? ` (filtered: ${targetCounties.join(', ')})` : ' (all FL)'}`);
     return incidents;
   } catch (error: any) {
-    console.error("📡 SENTINEL FHP ERROR:", error?.message || error);
+    console.error("📡 SENTINEL FHP HSMV ERROR:", error?.message || error);
     return [];
   }
 }
 
-export async function processLiveSentinelFeed(): Promise<SentinelIncidentRaw[]> {
-  const [lvmpd, fhp] = await Promise.allSettled([
-    processLVMPDFeed(),
-    processFloridaFHPFeed(),
-  ]);
-
-  const results: SentinelIncidentRaw[] = [];
-
-  if (lvmpd.status === 'fulfilled') results.push(...lvmpd.value);
-  if (fhp.status === 'fulfilled') results.push(...fhp.value);
-
-  console.log(`📡 SENTINEL: Combined ${results.length} total live incidents (LVMPD: ${lvmpd.status === 'fulfilled' ? lvmpd.value.length : 'failed'}, FHP: ${fhp.status === 'fulfilled' ? fhp.value.length : 'failed'})`);
+export async function processLiveSentinelFeed(targetCounties?: string[]): Promise<SentinelIncidentRaw[]> {
+  const counties = targetCounties || SWFL_COUNTIES;
+  const results = await processFHPHSMVFeed(counties);
+  console.log(`📡 SENTINEL: Live scan complete — ${results.length} crashes found in ${counties.join(', ')}`);
   return results;
 }
 
