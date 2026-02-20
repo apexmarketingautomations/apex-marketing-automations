@@ -176,6 +176,7 @@ export async function registerRoutes(
     if (fullPath === "/api/sentinel/live") return next();
     if (fullPath === "/api/sentinel/incoming-crash") return next();
     if (fullPath === "/api/sentinel-incoming") return next();
+    if (fullPath === "/api/v1/sentinel-receiver") return next();
 
     if (!req.isAuthenticated || !req.isAuthenticated()) {
       return res.status(401).json({ error: "Not authenticated" });
@@ -3796,6 +3797,74 @@ Rules:
     }
 
     res.status(200).json({ message: "Apex received the crash data" });
+  }));
+
+  // ─── Sentinel Receiver v1 — External Crash Data Intake ────────────
+  app.post("/api/v1/sentinel-receiver", asyncHandler(async (req, res) => {
+    const crashData = req.body;
+    console.log("APEX RECEIVED CRASH DATA:", JSON.stringify(crashData));
+
+    const subAccountId = crashData.subAccountId || 1;
+    const crashId = crashData.crash_id || crashData.crashId || `auto-${Date.now()}`;
+    const lat = crashData.latitude || crashData.lat;
+    const lng = crashData.longitude || crashData.lng || crashData.lon;
+    const severity = crashData.severity || "unknown";
+    const distanceMiles = crashData.distance_miles || "unknown";
+    const mapsLink = crashData.google_maps_link || (lat && lng ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` : "");
+
+    const hashInput = `crash-${crashId}-${lat}-${lng}`;
+    const hash = Buffer.from(hashInput).toString("base64").substring(0, 64);
+
+    const existing = await storage.getSentinelIncidentByHash(subAccountId, hash);
+    if (!existing) {
+      await storage.createSentinelIncident({
+        subAccountId,
+        sourceHash: hash,
+        title: `MVA — Crash ${crashId}`,
+        description: `Vehicle crash detected. Distance: ${distanceMiles} mi. Severity: ${severity}.`,
+        location: lat && lng ? `${lat}, ${lng}` : "Unknown",
+        severity,
+        rawPayload: JSON.stringify(crashData),
+        actionStatus: "pending",
+        smsSent: false,
+        geofenceDeployed: false,
+      });
+
+      await storage.createNotification({
+        userId: "system",
+        type: "incident",
+        title: "Sentinel: New Crash Received",
+        message: `Crash ${crashId} — ${distanceMiles} mi away. Severity: ${severity}.`,
+        link: "/sentinel",
+        read: false,
+      });
+    }
+
+    const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+    const twilioAuth = process.env.TWILIO_AUTH_TOKEN;
+    if (twilioSid && twilioAuth) {
+      try {
+        const twilioClient = Twilio(twilioSid, twilioAuth);
+        const sentinelConf = await storage.getSentinelConfig(subAccountId);
+        const alertPhone = sentinelConf?.smsAlertPhone;
+        if (alertPhone) {
+          const twilioNumbers = await twilioClient.incomingPhoneNumbers.list({ limit: 1 });
+          const fromNumber = twilioNumbers[0]?.phoneNumber;
+          if (fromNumber) {
+            await twilioClient.messages.create({
+              body: `SENTINEL ALERT: Crash #${crashId} detected ${distanceMiles} mi from HQ. Severity: ${severity}. Map: ${mapsLink}`,
+              from: fromNumber,
+              to: alertPhone,
+            });
+            console.log(`SENTINEL: SMS alert sent to ${alertPhone}`);
+          }
+        }
+      } catch (smsErr: any) {
+        console.error("SENTINEL: SMS alert failed:", smsErr.message);
+      }
+    }
+
+    res.status(200).send("Message Received");
   }));
 
   // ─── Client Website Integration ───────────────────────────────────
