@@ -664,3 +664,39 @@ export const notifications = pgTable("notifications", {
 export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type Notification = typeof notifications.$inferSelect;
+
+// ---- Live Automations (Compiled Workflow Manifests) ----
+
+export const liveAutomations = pgTable("live_automations", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id),
+  name: text("name").notNull(),
+  description: text("description"),
+  manifest: json("manifest").notNull(),
+  status: text("status").notNull().default("compiled"),
+  lastRunAt: timestamp("last_run_at"),
+  runCount: integer("run_count").default(0),
+  runLogs: json("run_logs").default([]),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertLiveAutomationSchema = createInsertSchema(liveAutomations).omit({ id: true, createdAt: true });
+export type InsertLiveAutomation = z.infer<typeof insertLiveAutomationSchema>;
+export type LiveAutomation = typeof liveAutomations.$inferSelect;
+
+// ---- AI Tool Execution Logs ----
+
+export const aiToolLogs = pgTable("ai_tool_logs", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id),
+  toolName: text("tool_name").notNull(),
+  input: json("input"),
+  output: json("output"),
+  status: text("status").notNull().default("success"),
+  executionMs: integer("execution_ms"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertAiToolLogSchema = createInsertSchema(aiToolLogs).omit({ id: true, createdAt: true });
+export type InsertAiToolLog = z.infer<typeof insertAiToolLogSchema>;
+export type AiToolLog = typeof aiToolLogs.$inferSelect;

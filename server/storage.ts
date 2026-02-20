@@ -5,6 +5,7 @@ import {
   subscriptions, snapshots, snapshotVersions, affiliates, referrals, commissions, sentinelConfig, sentinelIncidents, propertyLeads, wholesalerConfig, clientWebsites, auditLogs,
   contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings,
   metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications,
+  liveAutomations, aiToolLogs,
   type SubAccount, type InsertSubAccount,
   type Message, type InsertMessage,
   type Workflow, type InsertWorkflow,
@@ -41,6 +42,8 @@ import {
   type InstagramConversation, type InsertInstagramConversation,
   type InstagramMessage, type InsertInstagramMessage,
   type Notification, type InsertNotification,
+  type LiveAutomation, type InsertLiveAutomation,
+  type AiToolLog, type InsertAiToolLog,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -216,6 +219,15 @@ export interface IStorage {
   markNotificationRead(id: number): Promise<Notification | undefined>;
   markAllNotificationsRead(subAccountId: number): Promise<void>;
   getUnreadNotificationCount(subAccountId: number): Promise<number>;
+
+  getLiveAutomations(subAccountId?: number): Promise<LiveAutomation[]>;
+  getLiveAutomation(id: number): Promise<LiveAutomation | undefined>;
+  createLiveAutomation(data: InsertLiveAutomation): Promise<LiveAutomation>;
+  updateLiveAutomation(id: number, data: Partial<InsertLiveAutomation>): Promise<LiveAutomation | undefined>;
+  deleteLiveAutomation(id: number): Promise<boolean>;
+
+  createAiToolLog(data: InsertAiToolLog): Promise<AiToolLog>;
+  getAiToolLogs(subAccountId: number): Promise<AiToolLog[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -891,6 +903,42 @@ export class DatabaseStorage implements IStorage {
   async getUnreadNotificationCount(subAccountId: number) {
     const [result] = await db.select({ count: sql<number>`count(*)::int` }).from(notifications).where(and(eq(notifications.subAccountId, subAccountId), eq(notifications.read, false)));
     return result?.count || 0;
+  }
+
+  async getLiveAutomations(subAccountId?: number) {
+    if (subAccountId) {
+      return db.select().from(liveAutomations).where(eq(liveAutomations.subAccountId, subAccountId)).orderBy(desc(liveAutomations.createdAt));
+    }
+    return db.select().from(liveAutomations).orderBy(desc(liveAutomations.createdAt));
+  }
+
+  async getLiveAutomation(id: number) {
+    const [row] = await db.select().from(liveAutomations).where(eq(liveAutomations.id, id));
+    return row;
+  }
+
+  async createLiveAutomation(data: InsertLiveAutomation) {
+    const [row] = await db.insert(liveAutomations).values(data).returning();
+    return row;
+  }
+
+  async updateLiveAutomation(id: number, data: Partial<InsertLiveAutomation>) {
+    const [row] = await db.update(liveAutomations).set(data).where(eq(liveAutomations.id, id)).returning();
+    return row;
+  }
+
+  async deleteLiveAutomation(id: number) {
+    const rows = await db.delete(liveAutomations).where(eq(liveAutomations.id, id)).returning();
+    return rows.length > 0;
+  }
+
+  async createAiToolLog(data: InsertAiToolLog) {
+    const [row] = await db.insert(aiToolLogs).values(data).returning();
+    return row;
+  }
+
+  async getAiToolLogs(subAccountId: number) {
+    return db.select().from(aiToolLogs).where(eq(aiToolLogs.subAccountId, subAccountId)).orderBy(desc(aiToolLogs.createdAt)).limit(100);
   }
 }
 

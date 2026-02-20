@@ -102,4 +102,60 @@ export const api = {
     const res = await apiRequest("POST", `${API.ONBOARDING}/${industryId}`);
     return res.json();
   },
+
+  getLiveAutomations: async (subAccountId?: number) => {
+    const url = subAccountId ? `/api/v1/compiler?subAccountId=${subAccountId}` : "/api/v1/compiler";
+    const res = await apiRequest("GET", url);
+    return res.json();
+  },
+
+  getLiveAutomation: async (id: number) => {
+    const res = await apiRequest("GET", `/api/v1/compiler/${id}`);
+    return res.json();
+  },
+
+  compileLiveAutomation: async (manifest: any) => {
+    const res = await apiRequest("POST", "/api/v1/compiler", manifest);
+    return res.json();
+  },
+
+  generateAutomation: async (data: { prompt: string; subAccountId?: number; context?: any }) => {
+    const res = await apiRequest("POST", "/api/v1/compiler/generate", data);
+    return res.json();
+  },
+
+  analyzeAutomations: async (subAccountId: number) => {
+    const res = await apiRequest("POST", "/api/v1/compiler/analyze", { subAccountId });
+    return res.json();
+  },
+
+  updateLiveAutomation: async (id: number, data: any) => {
+    const res = await apiRequest("PATCH", `/api/v1/compiler/${id}`, data);
+    return res.json();
+  },
+
+  deleteLiveAutomation: async (id: number) => {
+    const res = await apiRequest("DELETE", `/api/v1/compiler/${id}`);
+    return res.json();
+  },
+
+  getAiTools: async () => {
+    const res = await apiRequest("GET", "/api/v1/tools");
+    return res.json();
+  },
+
+  executeAiTool: async (tool: string, args: any, subAccountId?: number) => {
+    const res = await apiRequest("POST", "/api/v1/tools/execute", { tool, args, subAccountId });
+    return res.json();
+  },
+
+  aiCommand: async (command: string, subAccountId?: number) => {
+    const res = await apiRequest("POST", "/api/v1/tools/ai-execute", { command, subAccountId });
+    return res.json();
+  },
+
+  getCompilerSchema: async () => {
+    const res = await apiRequest("GET", "/api/v1/compiler/schema/info");
+    return res.json();
+  },
 };
