@@ -3223,11 +3223,10 @@ Rules:
     let incidents: any[] = [];
     const sources: string[] = [];
 
-    // Live Feed: FHP HSMV (Florida Highway Patrol — trafficincidents.flhsmv.gov)
+    // Live Feed: FHP HSMV (Florida Highway Patrol — ALL Florida crashes)
     try {
-      const targetCounties = (config as any)?.targetCounties || ['LEE', 'COLLIER', 'CHARLOTTE', 'HENDRY', 'GLADES'];
-      console.log(`📡 SENTINEL: Pulling FHP HSMV live feed for counties: ${targetCounties.join(', ')}...`);
-      const liveIncidents = await processLiveSentinelFeed(targetCounties);
+      console.log(`📡 SENTINEL: Pulling FHP HSMV live feed — ALL Florida crashes...`);
+      const liveIncidents = await processLiveSentinelFeed();
 
       if (liveIncidents.length > 0) {
         incidents = liveIncidents.map(inc => ({
@@ -3241,7 +3240,7 @@ Rules:
         sources.push("fhp_hsmv");
         console.log(`📡 SENTINEL: ${liveIncidents.length} live crashes found`);
       } else {
-        console.log("📡 SENTINEL: No crashes currently active in target counties");
+        console.log("📡 SENTINEL: No crashes currently active statewide");
       }
     } catch (e) {
       console.log("📡 SENTINEL: FHP HSMV feed scrape failed:", (e as any).message);

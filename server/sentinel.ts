@@ -43,9 +43,9 @@ function stableHash(input: string): string {
   return Math.abs(hash).toString(36);
 }
 
-export async function processFHPHSMVFeed(targetCounties?: string[], radiusMeters?: number): Promise<SentinelIncidentRaw[]> {
+export async function processFHPHSMVFeed(): Promise<SentinelIncidentRaw[]> {
   try {
-    console.log("📡 SENTINEL: Scraping FHP HSMV live feed (trafficincidents.flhsmv.gov)...");
+    console.log("📡 SENTINEL: Scraping FHP HSMV live feed — ALL Florida crashes...");
     const response = await axios.get(FHP_HSMV_URL, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -62,15 +62,13 @@ export async function processFHPHSMVFeed(targetCounties?: string[], radiusMeters
     const $ = cheerio.load(html);
     const incidents: SentinelIncidentRaw[] = [];
     const seenHashes = new Set<string>();
-    const counties = targetCounties || DEFAULT_TARGET_COUNTIES;
-    const radius = radiusMeters || parseInt(process.env.RADIUS_METERS || '') || DEFAULT_RADIUS_METERS;
 
     const clientLat = parseFloat(process.env.CLIENT_LAT || '');
     const clientLon = parseFloat(process.env.CLIENT_LON || '');
     const hasClientLocation = !isNaN(clientLat) && !isNaN(clientLon);
 
     if (hasClientLocation) {
-      console.log(`📡 SENTINEL: Client HQ at ${clientLat}, ${clientLon} — Radius: ${(radius / 1609.34).toFixed(1)} mi`);
+      console.log(`📡 SENTINEL: Client HQ at ${clientLat}, ${clientLon} — scanning ALL FL crashes`);
     }
 
     $('.dxgvDataRow').each((_i, el) => {
@@ -84,9 +82,9 @@ export async function processFHPHSMVFeed(targetCounties?: string[], radiusMeters
       const latRaw = $(cols[7]).text().trim();
       const lonRaw = $(cols[8]).text().trim();
 
-      if (!counties.some(tc => county.toUpperCase().includes(tc.toUpperCase()))) return;
-
       const locationUpper = location.toUpperCase();
+      const countyUpper = county.toUpperCase();
+      const isSWFLCounty = ['LEE', 'COLLIER', 'CHARLOTTE', 'HENDRY', 'GLADES'].some(c => countyUpper.includes(c));
       const isTargetCity = SWFL_TARGET_CITIES.some(city => locationUpper.includes(city));
 
       const typeUpper = type.toUpperCase();
@@ -105,17 +103,13 @@ export async function processFHPHSMVFeed(targetCounties?: string[], radiusMeters
       const hasCoords = !isNaN(lat) && !isNaN(lon) && lat !== 0 && lon !== 0;
 
       let distanceMiles = "unknown";
-      let withinRadius = true;
 
       if (hasCoords && hasClientLocation) {
         const crashLoc = { latitude: lat, longitude: lon };
         const clientLoc = { latitude: clientLat, longitude: clientLon };
         const distanceMeters = getDistance(crashLoc, clientLoc);
         distanceMiles = (distanceMeters / 1609.34).toFixed(2);
-        withinRadius = distanceMeters <= radius;
       }
-
-      if (!withinRadius) return;
 
       const contentHash = stableHash(`${type}|${received}|${location}|${latRaw}`);
       if (seenHashes.has(contentHash)) return;
@@ -138,8 +132,8 @@ export async function processFHPHSMVFeed(targetCounties?: string[], radiusMeters
         location: `${location}, ${county} County, FL`,
         lat: hasCoords ? lat : null,
         lng: hasCoords ? lon : null,
-        severity: typeUpper.includes('FATAL') ? 'critical' : hasInjury ? 'critical' : isTargetCity ? 'critical' : 'high',
-        actionRequired: hasInjury || isTargetCity,
+        severity: typeUpper.includes('FATAL') ? 'critical' : hasInjury ? 'critical' : (isSWFLCounty || isTargetCity) ? 'critical' : 'high',
+        actionRequired: hasInjury || isSWFLCounty || isTargetCity,
         source: "fhp_hsmv",
         state: "FL",
         county,
@@ -150,7 +144,8 @@ export async function processFHPHSMVFeed(targetCounties?: string[], radiusMeters
       });
     });
 
-    console.log(`📡 SENTINEL: FHP HSMV returned ${incidents.length} crashes in ${counties.join(', ')} within ${(radius / 1609.34).toFixed(0)}-mile radius`);
+    const swflCount = incidents.filter(i => i.actionRequired).length;
+    console.log(`📡 SENTINEL: FHP HSMV returned ${incidents.length} crashes statewide (${swflCount} in SWFL priority zone)`);
     return incidents;
   } catch (error: any) {
     console.error("📡 SENTINEL FHP HSMV ERROR:", error?.message || error);
@@ -158,10 +153,9 @@ export async function processFHPHSMVFeed(targetCounties?: string[], radiusMeters
   }
 }
 
-export async function processLiveSentinelFeed(targetCounties?: string[]): Promise<SentinelIncidentRaw[]> {
-  const counties = targetCounties || DEFAULT_TARGET_COUNTIES;
-  const results = await processFHPHSMVFeed(counties);
-  console.log(`📡 SENTINEL: Live scan complete — ${results.length} crashes found in ${counties.join(', ')}`);
+export async function processLiveSentinelFeed(): Promise<SentinelIncidentRaw[]> {
+  const results = await processFHPHSMVFeed();
+  console.log(`📡 SENTINEL: Live scan complete — ${results.length} FL crashes found`);
 
   const webhookUrl = process.env.APEX_WEBHOOK_URL;
   if (webhookUrl && results.length > 0) {
