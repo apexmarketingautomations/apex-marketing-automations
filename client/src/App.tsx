@@ -48,6 +48,7 @@ const MetaAdsPage = lazy(() => import("@/pages/meta-ads"));
 const MetaLeadsPage = lazy(() => import("@/pages/meta-leads"));
 const InstagramInboxPage = lazy(() => import("@/pages/instagram-inbox"));
 const NexusDemo = lazy(() => import("@/pages/nexus-demo"));
+const AccountSettingsPage = lazy(() => import("@/pages/account-settings"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const LandingPage = lazy(() => import("@/pages/landing"));
 
@@ -133,6 +134,7 @@ function Router() {
                   <Route path="/meta-ads" component={MetaAdsPage} />
                   <Route path="/meta-leads" component={MetaLeadsPage} />
                   <Route path="/instagram-inbox" component={InstagramInboxPage} />
+                  <Route path="/account-settings" component={AccountSettingsPage} />
                   <Route component={NotFound} />
                 </Switch>
               </Suspense>

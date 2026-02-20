@@ -2543,9 +2543,30 @@ Rules:
   }));
 
   app.patch("/api/accounts/:id", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
     const id = parseIntParam(req.params.id, "id");
-    const { ownerPhone } = req.body;
-    const updated = await storage.updateSubAccount(id, { ownerPhone });
+
+    const account = await storage.getSubAccount(id);
+    if (!account) return res.status(404).json({ error: "Account not found" });
+
+    const allowedFields = ["name", "ownerPhone", "googleReviewLink", "industry", "vibeTheme", "language", "twilioNumber"] as const;
+    const validThemes = ["cyber-glass", "midnight-pro", "sunset-warm", "forest-green", "royal-purple"];
+    const validLanguages = ["en", "es", "fr", "pt", "de", "zh"];
+
+    const updates: Record<string, any> = {};
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) {
+        const val = req.body[field];
+        if (typeof val !== "string") continue;
+        if (field === "vibeTheme" && !validThemes.includes(val)) continue;
+        if (field === "language" && !validLanguages.includes(val)) continue;
+        if (field === "name" && val.trim().length === 0) continue;
+        updates[field] = val.trim();
+      }
+    }
+    if (Object.keys(updates).length === 0) return res.status(400).json({ error: "No valid fields to update" });
+    const updated = await storage.updateSubAccount(id, updates);
     if (!updated) return res.status(404).json({ error: "Account not found" });
     res.json(updated);
   }));
