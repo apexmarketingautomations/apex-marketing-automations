@@ -1,0 +1,63 @@
+1. The FHP Sentinel Scraper (Node.js)
+Replace your scraping logic in Replit with this. This targets the trafficincidents.flhsmv.gov data source, which is updated every 60 seconds.
+
+JavaScript
+const axios = require('axios');
+const cheerio = require('cheerio'); // You may need to: npm install cheerio
+
+async function getFHPCrashes() {
+    try {
+        // FHP's raw CAD view - this is usually not protected by the same aggressive firewalls
+        const fhpUrl = 'https://trafficincidents.flhsmv.gov/SmartWebClient/CadView.aspx';
+        
+        const response = await axios.get(fhpUrl, {
+            headers: { 
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+        });
+
+        const $ = cheerio.load(response.data);
+        let accidents = [];
+
+        // This parses the table rows for "Vehicle Crash" or "Fatality"
+        $('tr').each((index, element) => {
+            const row = $(element).find('td');
+            const type = $(row[0]).text().trim();
+            const timestamp = $(row[1]).text().trim();
+            const county = $(row[2]).text().trim();
+            const location = $(row[3]).text().trim();
+            
+            // We are looking for "Vehicle Crash" or "Hit and Run"
+            if (type.includes('Crash') || type.includes('Fatality')) {
+                accidents.push({
+                    type,
+                    timestamp,
+                    county,
+                    location, // This feed usually includes the Latitude/Longitude as text
+                });
+            }
+        });
+
+        return accidents;
+    } catch (error) {
+        console.error("FHP Feed Blocked or Down:", error.message);
+        return [];
+    }
+}
+2. Extracting the Lat/Long (The "Secret Sauce")
+In the FHP feed, the coordinates are often hidden inside the location string or as separate columns. You need to pull those out to fire your Meta Ads.
+
+Check the coordinates: Look at the raw output. If you see numbers like 26.14 and -81.79, those are your targets.
+
+The Filter: Add a line to only keep rows where county === 'COLLIER' or county === 'LEE'.
+
+3. Why this works for your "Targeted Ads" plan:
+No More 403: The HSMV (State) site is designed to be accessible to news agencies and the public. It doesn't have the "go away bot" settings that the local Collier Sheriff site has.
+
+Accuracy: These are verified crashes. If FHP is there, it’s a real wreck.
+
+Speed: The feed refreshes constantly. You can have your Meta Ad live within 5 minutes of the trooper arriving on the scene.
+
+4. The "Nuclear" Option (If even this gets blocked)
+If HSMV eventually blocks your Replit IP, use FL511.
+The Florida 511 system (run by FDOT) has a public API specifically for "Incidents." It is built for developers and is the most stable data source in the state.
