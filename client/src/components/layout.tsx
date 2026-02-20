@@ -241,9 +241,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
           )}
           <div>
             <div className="text-sm font-bold text-white">{user?.firstName || user?.email || "Admin User"}</div>
-            <div className="text-xs text-green-400 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-              System Online
+            <div className="text-xs flex items-center gap-2">
+              <span className="text-green-400 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                Online
+              </span>
+              {(user as any)?.isAdmin === "true" && (
+                <span className="px-1.5 py-0.5 rounded bg-gradient-to-r from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 text-indigo-300 text-[9px] font-bold tracking-wider uppercase">Admin</span>
+              )}
             </div>
           </div>
           <Link href="/account-settings" data-testid="button-settings-gear" onClick={onNavClick}>

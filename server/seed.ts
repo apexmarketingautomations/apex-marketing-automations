@@ -1,65 +1,11 @@
 import { db } from "./db";
-import { subAccounts, messages, workflows, blueprints, owners } from "@shared/schema";
+import { blueprints } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import crypto from "crypto";
 
 export async function seed() {
-  const existingOwners = await db.select().from(owners);
-  if (existingOwners.length === 0) {
-    const salt = crypto.randomBytes(16).toString("hex");
-    const hash = crypto.pbkdf2Sync("admin123", salt, 1000, 64, "sha512").toString("hex");
-    await db.insert(owners).values({
-      email: "admin@apex.com",
-      passwordHash: `${salt}:${hash}`,
-      name: "Apex Admin",
-    });
-    console.log("Default owner seeded: admin@apex.com / admin123");
-  }
-
   await seedBlueprints();
 
-  const existingAccounts = await db.select().from(subAccounts);
-  if (existingAccounts.length > 0) return;
-
-  const [acc1, acc2] = await db.insert(subAccounts).values([
-    { name: "Sales Team A", twilioNumber: "+15550101" },
-    { name: "Support Team", twilioNumber: "+15550102" },
-  ]).returning();
-
-  await db.insert(messages).values([
-    {
-      subAccountId: acc1.id,
-      direction: "inbound",
-      body: "Hey, I am interested in the enterprise plan.",
-      status: "received",
-      contactPhone: "+15559999",
-      channel: "sms",
-    },
-    {
-      subAccountId: acc1.id,
-      direction: "outbound",
-      body: "Hi there! I would be happy to help you with that. When are you free for a call?",
-      status: "delivered",
-      contactPhone: "+15559999",
-      channel: "sms",
-    },
-  ]);
-
-  await db.insert(workflows).values([
-    {
-      name: "Lead Follow-up",
-      trigger: "facebook_form_submit",
-      steps: [
-        { action_type: "WAIT", params: { duration_minutes: 5 } },
-        { action_type: "SMS", params: { body: "Hey" } },
-        { action_type: "CONDITION", params: { check: "has_replied" } },
-        { action_type: "ALERT", params: { user_id: "admin" } },
-      ],
-      subAccountId: acc1.id,
-    },
-  ]);
-
-  console.log("Database seeded successfully");
+  console.log("Database seeded successfully (blueprints only)");
 }
 
 async function seedBlueprints() {

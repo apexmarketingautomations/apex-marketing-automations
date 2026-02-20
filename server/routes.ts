@@ -376,6 +376,17 @@ ${sections.map(renderSection).join('\n')}
     next();
   });
 
+  const requireAdmin = async (req: Request, res: Response, next: NextFunction) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    const userId = user.claims?.sub || user.id;
+    const adminUserId = process.env.ADMIN_USER_ID;
+    if (!adminUserId || userId !== adminUserId) {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    next();
+  };
+
   // ---- Image Uploads ----
   const uploadsDir = path.resolve(process.cwd(), "uploads");
   if (!fs.existsSync(uploadsDir)) {
@@ -2243,7 +2254,7 @@ Rules:
     res.json({ success: true });
   });
 
-  app.post("/api/god-mode", asyncHandler(async (req, res) => {
+  app.post("/api/god-mode", requireAdmin, asyncHandler(async (req, res) => {
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "Not authenticated" });
     const schema = z.object({

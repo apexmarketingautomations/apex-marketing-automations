@@ -44,3 +44,8 @@ waitForPort = 5000
 stack = "MOCKUP_JS"
 mockupState = "FULLSTACK"
 integrations = ["javascript_openai_ai_integrations:2.0.0", "stripe:2.0.0", "javascript_log_in_with_replit:2.0.0"]
+
+[userenv]
+
+[userenv.shared]
+ADMIN_USER_ID = "53528927"
