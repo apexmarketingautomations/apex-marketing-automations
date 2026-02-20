@@ -3717,10 +3717,10 @@ Rules:
     });
 
     await storage.createNotification({
-      userId: "system",
+      subAccountId,
       type: "incident",
       title: "Sentinel: Crash Detected Inside Geofence",
-      message: `Crash ${crashId} detected ${distanceInMiles} mi away. Severity: ${severity || "unknown"}.`,
+      body: `Crash ${crashId} detected ${distanceInMiles} mi away. Severity: ${severity || "unknown"}.`,
       link: "/sentinel",
       read: false,
     });
@@ -3831,10 +3831,10 @@ Rules:
       });
 
       await storage.createNotification({
-        userId: "system",
+        subAccountId,
         type: "incident",
         title: "Sentinel: New Crash Received",
-        message: `Crash ${crashId} — ${distanceMiles} mi away. Severity: ${severity}.`,
+        body: `Crash ${crashId} — ${distanceMiles} mi away. Severity: ${severity}.`,
         link: "/sentinel",
         read: false,
       });
