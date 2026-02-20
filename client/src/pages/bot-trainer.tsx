@@ -1,3 +1,4 @@
+import { PlanGate } from "@/components/plan-gate";
 import { useState, useEffect } from "react";
 import { 
   Bot, 
@@ -41,7 +42,7 @@ You have access to these tools:
 
 Keep responses concise (1-3 sentences). Be warm, professional, and always try to guide the conversation toward booking.`;
 
-export default function BotTrainer() {
+function BotTrainerInner() {
   const [url, setUrl] = useState("https://forge-fitness.com");
   const [persona, setPersona] = useState(DEFAULT_PERSONA);
   const [isTraining, setIsTraining] = useState(false);
@@ -399,4 +400,8 @@ export default function BotTrainer() {
       {showTutorial && <TutorialOverlay steps={BOT_TRAINER_STEPS} storageKey="apex_tutorial_bot_trainer" onClose={closeTutorial} accentColor="purple" />}
     </div>
   );
+}
+
+export default function BotTrainer() {
+  return <PlanGate feature="ai_bots"><BotTrainerInner /></PlanGate>;
 }

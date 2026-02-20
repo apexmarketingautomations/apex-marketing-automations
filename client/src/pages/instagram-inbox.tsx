@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
-import { useAccount } from "@/hooks/use-account";
+import { useActiveSubAccountId } from "@/components/account-required";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,9 +41,9 @@ interface MetaConfig {
 export default function InstagramInboxPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { activeAccountId } = useAccount();
-  const subAccountId = activeAccountId || 1;
+  const subAccountId = useActiveSubAccountId();
   const [selectedConversation, setSelectedConversation] = useState<InstagramConversation | null>(null);
+
   const [messageText, setMessageText] = useState("");
 
   const { data: conversations = [], isLoading } = useQuery<InstagramConversation[]>({
@@ -52,6 +52,7 @@ export default function InstagramInboxPage() {
       const res = await fetch(`/api/meta/instagram/conversations/${subAccountId}`);
       return res.json();
     },
+    enabled: !!subAccountId,
   });
 
   const { data: messages = [] } = useQuery<InstagramMessage[]>({
@@ -98,6 +99,16 @@ export default function InstagramInboxPage() {
       setMessageText("");
     },
   });
+
+  if (!subAccountId) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[60vh]">
+        <div className="text-center space-y-3">
+          <p className="text-slate-400">Select a sub-account from the sidebar to continue.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="p-4 md:p-8 h-[calc(100vh-2rem)]">

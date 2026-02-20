@@ -52,6 +52,13 @@ The `shared/` directory centralizes database schema definitions, Zod validation 
 ### API Routes
 The API provides comprehensive endpoints for managing accounts, messages, workflows, AI bots (chat, training, generation), blueprints, onboarding, voice agents (Vapi integration), phone numbers (Twilio integration), reviews, usage logging, domains, Sentinel scanning, and authentication (Replit OIDC). Specific routes exist for `god-mode` operations, webhooks, and white-label configurations.
 
+### Access Control & Multi-Tenancy
+- **Plan-based feature gating**: Features are gated by plan tier (Starter/Pro/Enterprise) using `PLAN_TIERS` in `shared/schema.ts`. The `PlanGate` component (`client/src/components/plan-gate.tsx`) wraps protected pages and shows an upgrade overlay for locked features.
+- **Account ownership**: Sub-accounts have `ownerUserId` linking them to the creating user. `GET /api/accounts` filters by ownership. All account creation routes set `ownerUserId`.
+- **Active account context**: `useActiveSubAccountId()` hook (`client/src/components/account-required.tsx`) provides the current active sub-account ID with null safety. All pages guard queries with `enabled: !!subAccountId`.
+- **Sidebar gating**: Nav items with `requiredFeature` show lock icons and reduced opacity. Items with `adminOnly: true` are hidden from the sidebar entirely.
+- **Plan-gated pages**: workflow-builder, voice-agent, email-campaigns, white-label, webhooks, bot-trainer all use PlanGate wrapper with Inner function pattern.
+
 ## External Dependencies
 
 ### Database

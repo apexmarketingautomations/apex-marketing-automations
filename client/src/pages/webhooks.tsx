@@ -1,6 +1,7 @@
+import { PlanGate } from "@/components/plan-gate";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useAccount } from "@/hooks/use-account";
+import { useActiveSubAccountId } from "@/components/account-required";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,9 +38,8 @@ interface WebhookData {
   failCount?: number;
 }
 
-export default function WebhooksPage() {
-  const { activeAccountId } = useAccount();
-  const subAccountId = activeAccountId || 1;
+function WebhooksPageInner() {
+  const subAccountId = useActiveSubAccountId();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -58,6 +58,7 @@ export default function WebhooksPage() {
       if (!res.ok) throw new Error("Failed to fetch webhooks");
       return res.json();
     },
+    enabled: !!subAccountId,
   });
 
   const createMutation = useMutation({
@@ -167,6 +168,16 @@ export default function WebhooksPage() {
   function copyToClipboard(text: string) {
     navigator.clipboard.writeText(text);
     toast({ title: "Copied", description: "Secret copied to clipboard." });
+  }
+
+  if (!subAccountId) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[60vh]">
+        <div className="text-center space-y-3">
+          <p className="text-slate-400">Select a sub-account from the sidebar to continue.</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -413,4 +424,8 @@ export default function WebhooksPage() {
       </div>
     </div>
   );
+}
+
+export default function WebhooksPage() {
+  return <PlanGate feature="webhooks"><WebhooksPageInner /></PlanGate>;
 }

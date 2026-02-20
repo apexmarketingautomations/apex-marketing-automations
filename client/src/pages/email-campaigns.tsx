@@ -1,6 +1,7 @@
+import { PlanGate } from "@/components/plan-gate";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useAccount } from "@/hooks/use-account";
+import { useActiveSubAccountId } from "@/components/account-required";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -80,11 +81,10 @@ const TEMPLATES = [
   },
 ];
 
-export default function EmailCampaignsPage() {
+function EmailCampaignsPageInner() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { activeAccountId } = useAccount();
-  const subAccountId = activeAccountId || 1;
+  const subAccountId = useActiveSubAccountId();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState<EmailCampaign | null>(null);
@@ -103,6 +103,7 @@ export default function EmailCampaignsPage() {
       if (!res.ok) throw new Error("Failed to fetch campaigns");
       return res.json();
     },
+    enabled: !!subAccountId,
   });
 
   const createMutation = useMutation({
@@ -236,6 +237,16 @@ export default function EmailCampaignsPage() {
     { label: "Total Opens", value: totalOpens, icon: Eye, color: "text-purple-400" },
     { label: "Total Clicks", value: totalClicks, icon: MousePointerClick, color: "text-emerald-400" },
   ];
+
+  if (!subAccountId) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[60vh]">
+        <div className="text-center space-y-3">
+          <p className="text-slate-400">Select a sub-account from the sidebar to continue.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 p-6 md:p-10 overflow-y-auto">
@@ -483,4 +494,8 @@ export default function EmailCampaignsPage() {
       </div>
     </div>
   );
+}
+
+export default function EmailCampaignsPage() {
+  return <PlanGate feature="email_campaigns"><EmailCampaignsPageInner /></PlanGate>;
 }

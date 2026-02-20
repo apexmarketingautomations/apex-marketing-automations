@@ -1,3 +1,4 @@
+import { PlanGate } from "@/components/plan-gate";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,7 +24,7 @@ interface WhiteLabelSettings {
   hideApexBranding: boolean;
 }
 
-export default function WhiteLabelPage() {
+function WhiteLabelPageInner() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -382,4 +383,8 @@ export default function WhiteLabelPage() {
       </div>
     </div>
   );
+}
+
+export default function WhiteLabelPage() {
+  return <PlanGate feature="white_label"><WhiteLabelPageInner /></PlanGate>;
 }

@@ -1,3 +1,4 @@
+import { PlanGate } from "@/components/plan-gate";
 import { useState, useEffect, useRef } from "react";
 import {
   Phone,
@@ -68,7 +69,7 @@ const VOICE_OPTIONS = [
   { id: "pNInz6obpgDQGcFmaJgB", name: "Adam", desc: "Dominant, firm male", previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/pNInz6obpgDQGcFmaJgB/d6905d7a-dd26-4187-bfff-1bd3a5ea7cac.mp3" },
 ];
 
-export default function VoiceAgent() {
+function VoiceAgentInner() {
   const [step, setStep] = useState<"describe" | "configure" | "deployed">("describe");
   const [businessPrompt, setBusinessPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -1346,4 +1347,8 @@ export default function VoiceAgent() {
       {showTutorial && <TutorialOverlay steps={VOICE_AGENT_STEPS} storageKey="apex_tutorial_voice_agent" onClose={closeTutorial} accentColor="violet" />}
     </div>
   );
+}
+
+export default function VoiceAgent() {
+  return <PlanGate feature="voice_agents"><VoiceAgentInner /></PlanGate>;
 }

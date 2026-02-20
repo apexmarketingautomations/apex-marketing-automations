@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { useAccount } from "@/hooks/use-account";
+import { useActiveSubAccountId } from "@/components/account-required";
 import { Card, CardContent } from "@/components/ui/card";
 import { MessageSquare, Users, Kanban, CalendarDays, Mail, Megaphone, Target, Instagram, DollarSign, TrendingUp, Bell, Clock } from "lucide-react";
 import { Link } from "wouter";
@@ -25,8 +25,8 @@ interface DashboardMetrics {
 }
 
 const metricCards = [
-  { key: "totalMessages", label: "Total Messages", icon: MessageSquare, color: "from-cyan-500 to-blue-600", link: "/", bgColor: "bg-cyan-500/20", iconColor: "text-cyan-400" },
-  { key: "todayMessages", label: "Messages Today", icon: Clock, color: "from-blue-500 to-indigo-600", link: "/", bgColor: "bg-blue-500/20", iconColor: "text-blue-400" },
+  { key: "totalMessages", label: "Total Messages", icon: MessageSquare, color: "from-cyan-500 to-blue-600", link: "/inbox", bgColor: "bg-cyan-500/20", iconColor: "text-cyan-400" },
+  { key: "todayMessages", label: "Messages Today", icon: Clock, color: "from-blue-500 to-indigo-600", link: "/inbox", bgColor: "bg-blue-500/20", iconColor: "text-blue-400" },
   { key: "totalContacts", label: "Contacts", icon: Users, color: "from-green-500 to-emerald-600", link: "/pipeline", bgColor: "bg-green-500/20", iconColor: "text-green-400" },
   { key: "totalDeals", label: "Active Deals", icon: Kanban, color: "from-purple-500 to-violet-600", link: "/pipeline", bgColor: "bg-purple-500/20", iconColor: "text-purple-400" },
   { key: "totalDealValue", label: "Deal Pipeline Value", icon: DollarSign, color: "from-emerald-500 to-teal-600", link: "/pipeline", bgColor: "bg-emerald-500/20", iconColor: "text-emerald-400", isCurrency: true },
@@ -40,8 +40,7 @@ const metricCards = [
 ];
 
 export default function DashboardPage() {
-  const { activeAccountId } = useAccount();
-  const subAccountId = activeAccountId || 1;
+  const subAccountId = useActiveSubAccountId();
 
   const { data: metrics, isLoading } = useQuery<DashboardMetrics>({
     queryKey: ["/api/dashboard", subAccountId],
@@ -50,7 +49,51 @@ export default function DashboardPage() {
       return res.json();
     },
     refetchInterval: 30000,
+    enabled: !!subAccountId,
   });
+
+  if (!subAccountId) {
+    return (
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="p-4 md:p-8 flex items-center justify-center min-h-[70vh]">
+        <div className="text-center space-y-8 max-w-lg" data-testid="status-welcome">
+          <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-cyan-500/20 to-indigo-500/20 border border-cyan-500/20 flex items-center justify-center mx-auto">
+            <TrendingUp size={40} className="text-cyan-400" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-black text-white mb-3">Welcome to Apex</h1>
+            <p className="text-slate-400 text-lg">Create your first sub-account to unlock your business dashboard, CRM, AI tools, and more.</p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link href="/onboarding">
+              <button className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-700 hover:to-indigo-700 text-white font-bold transition-all shadow-lg shadow-cyan-500/25" data-testid="button-get-started">
+                <Users size={18} />
+                Create Sub-Account
+              </button>
+            </Link>
+            <Link href="/pricing">
+              <button className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-white font-bold transition-all" data-testid="button-view-plans">
+                <DollarSign size={18} />
+                View Plans
+              </button>
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-4">
+            {[
+              { icon: MessageSquare, label: "Unified Inbox" },
+              { icon: Kanban, label: "Pipeline CRM" },
+              { icon: Mail, label: "Campaigns" },
+              { icon: Target, label: "Ad Launcher" },
+            ].map((item) => (
+              <div key={item.label} className="p-3 rounded-xl bg-white/5 border border-white/5">
+                <item.icon size={20} className="text-slate-400 mb-2 mx-auto" />
+                <p className="text-xs text-slate-500 text-center">{item.label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="p-4 md:p-8 space-y-6">

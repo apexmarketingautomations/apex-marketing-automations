@@ -444,15 +444,25 @@ ${sections.map(renderSection).join('\n')}
   }));
 
   // ---- Sub-Accounts ----
-  app.get("/api/accounts", asyncHandler(async (_req, res) => {
-    const accounts = await storage.getSubAccounts();
-    res.json(accounts);
+  app.get("/api/accounts", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    const allAccounts = await storage.getSubAccounts();
+    const userAccounts = allAccounts.filter((a: any) =>
+      !a.ownerUserId || a.ownerUserId === user.id
+    );
+    res.json(userAccounts);
   }));
 
   app.post("/api/accounts", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
     const parsed = insertSubAccountSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-    const account = await storage.createSubAccount(parsed.data);
+    const account = await storage.createSubAccount({
+      ...parsed.data,
+      ownerUserId: user.id,
+    });
     res.status(201).json(account);
   }));
 
@@ -843,9 +853,11 @@ Guidelines:
       }
     }
 
+    const user = (req as any).user;
     const account = await storage.createSubAccount({
       name: `${bp.title} Account`,
       twilioNumber: `+1555${Math.floor(1000 + Math.random() * 9000)}`,
+      ownerUserId: user?.id || null,
     });
 
     res.status(201).json({ account, blueprint: bp });
@@ -2231,6 +2243,8 @@ Rules:
   });
 
   app.post("/api/god-mode", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
     const schema = z.object({
       businessName: z.string().min(1),
       industry: z.string().min(1),
@@ -2248,6 +2262,7 @@ Rules:
     const account = await storage.createSubAccount({
       name: `${businessName} Account`,
       twilioNumber: "",
+      ownerUserId: user.id,
     });
     results.accountId = account.id;
     results.steps[0].status = "done";

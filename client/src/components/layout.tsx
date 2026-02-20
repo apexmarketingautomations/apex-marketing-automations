@@ -20,13 +20,13 @@ const navSections = [
     items: [
       { href: "/", icon: TrendingUp, label: "Dashboard" },
       { href: "/inbox", icon: MessageSquare, label: "Unified Inbox" },
-      { href: "/workflows", icon: GitFork, label: "Workflows" },
-      { href: "/bot-trainer", icon: Bot, label: "Neural Trainer" },
+      { href: "/workflows", icon: GitFork, label: "Workflows", requiredFeature: "workflows" },
+      { href: "/bot-trainer", icon: Bot, label: "Neural Trainer", requiredFeature: "ai_bots" },
       { href: "/onboarding", icon: Briefcase, label: "New Account" },
       { href: "/site-builder", icon: LayoutTemplate, label: "Site Architect" },
       { href: "/liquid", icon: Globe, label: "Liquid Website" },
       { href: "/ad-launcher", icon: Megaphone, label: "Growth Engine" },
-      { href: "/voice-agent", icon: Phone, label: "Voice Agent" },
+      { href: "/voice-agent", icon: Phone, label: "Voice Agent", requiredFeature: "voice_agents" },
       { href: "/growth", icon: TrendingUp, label: "Growth Center" },
       { href: "/reputation", icon: Star, label: "Reputation" },
       { href: "/sentinel", icon: Satellite, label: "Sentinel", requiredFeature: "sentinel" },
@@ -36,7 +36,7 @@ const navSections = [
       { href: "/analytics", icon: BarChart3, label: "Analytics" },
       { href: "/pipeline", icon: Kanban, label: "Pipeline & CRM" },
       { href: "/calendar", icon: CalendarDays, label: "Calendar" },
-      { href: "/email-campaigns", icon: Mail, label: "Email Campaigns" },
+      { href: "/email-campaigns", icon: Mail, label: "Email Campaigns", requiredFeature: "email_campaigns" },
     ],
   },
   {
@@ -51,22 +51,34 @@ const navSections = [
     label: "PLATFORM",
     items: [
       { href: "/account-settings", icon: Settings, label: "Account Settings" },
-      { href: "/command-center", icon: Shield, label: "Command Center" },
+      { href: "/command-center", icon: Shield, label: "Command Center", adminOnly: true },
       { href: "/snapshots", icon: History, label: "Snapshots" },
       { href: "/marketplace", icon: Store, label: "Marketplace" },
       { href: "/affiliate", icon: Users, label: "Affiliates" },
       { href: "/pricing", icon: CreditCard, label: "Plans & Pricing" },
       { href: "/billing", icon: DollarSign, label: "Usage & Billing" },
       { href: "/domains", icon: Link2, label: "Domains" },
-      { href: "/webhooks", icon: Webhook, label: "Webhooks" },
-      { href: "/white-label", icon: Palette, label: "White Label" },
+      { href: "/webhooks", icon: Webhook, label: "Webhooks", requiredFeature: "webhooks" },
+      { href: "/white-label", icon: Palette, label: "White Label", requiredFeature: "white_label" },
       { href: "/reports", icon: FileBarChart, label: "Reports" },
-      { href: "/god-mode", icon: Rocket, label: "God Mode" },
+      { href: "/god-mode", icon: Rocket, label: "God Mode", adminOnly: true },
     ],
   },
 ];
 
 function NavLink({ href, icon: Icon, label, isActive, isLocked }: { href: string; icon: any; label: string; isActive: boolean; isLocked?: boolean }) {
+  if (isLocked) {
+    return (
+      <Link href={href} className="relative group block opacity-50" data-testid={`nav-link-${href.replace("/", "") || "home"}`}>
+        <div className="flex items-center gap-3 p-3 px-4 transition-all text-slate-500">
+          <Icon size={20} />
+          <span className="font-medium text-sm tracking-wide hidden md:block">{label}</span>
+          <Lock size={12} className="text-orange-400 hidden md:block ml-auto" />
+        </div>
+      </Link>
+    );
+  }
+
   return (
     <Link href={href} className="relative group block" data-testid={`nav-link-${href.replace("/", "") || "home"}`}>
       {isActive && (
@@ -79,7 +91,6 @@ function NavLink({ href, icon: Icon, label, isActive, isLocked }: { href: string
       <div className={`flex items-center gap-3 p-3 px-4 transition-all ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'}`}>
         <Icon size={20} className={isActive ? 'text-indigo-400 drop-shadow-[0_0_8px_rgba(129,140,248,0.5)]' : ''} />
         <span className="font-medium text-sm tracking-wide hidden md:block">{label}</span>
-        {isLocked && <Lock size={12} className="text-orange-400 hidden md:block" />}
       </div>
     </Link>
   );
@@ -192,14 +203,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="flex-1 space-y-1 pr-0 md:pr-4 overflow-y-auto">
-          {navSections.map((section) => (
-            <div key={section.label}>
-              <div className="px-4 md:px-6 text-xs font-bold text-slate-600 mb-2 mt-4 tracking-wider hidden md:block">{section.label}</div>
-              {section.items.map((item) => (
-                <NavLink key={item.href} {...item} isActive={location === item.href} isLocked={(item as any).requiredFeature ? !hasFeature(accountPlan, (item as any).requiredFeature) : false} />
-              ))}
-            </div>
-          ))}
+          {navSections.map((section) => {
+            const visibleItems = section.items.filter((item) => !(item as any).adminOnly);
+            if (visibleItems.length === 0) return null;
+            return (
+              <div key={section.label}>
+                <div className="px-4 md:px-6 text-xs font-bold text-slate-600 mb-2 mt-4 tracking-wider hidden md:block">{section.label}</div>
+                {visibleItems.map((item) => (
+                  <NavLink key={item.href} {...item} isActive={location === item.href} isLocked={(item as any).requiredFeature ? !hasFeature(accountPlan, (item as any).requiredFeature) : false} />
+                ))}
+              </div>
+            );
+          })}
         </div>
 
         {user && (
@@ -232,7 +247,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 System Online
               </div>
             </div>
-            <Settings size={16} className="ml-auto text-slate-500 hover:text-white cursor-pointer hidden md:block" />
+            <Link href="/account-settings" data-testid="button-settings-gear">
+              <Settings size={16} className="ml-auto text-slate-500 hover:text-white cursor-pointer hidden md:block" />
+            </Link>
           </div>
         </div>
       </aside>

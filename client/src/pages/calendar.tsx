@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useAccount } from "@/hooks/use-account";
+import { useActiveSubAccountId } from "@/components/account-required";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,8 +62,7 @@ const emptyForm = {
 };
 
 export default function CalendarPage() {
-  const { activeAccountId } = useAccount();
-  const subAccountId = activeAccountId || 1;
+  const subAccountId = useActiveSubAccountId();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -81,6 +80,7 @@ export default function CalendarPage() {
       if (!res.ok) throw new Error("Failed to fetch appointments");
       return res.json();
     },
+    enabled: !!subAccountId,
   });
 
   const { data: contacts = [] } = useQuery<Contact[]>({
@@ -90,6 +90,7 @@ export default function CalendarPage() {
       if (!res.ok) throw new Error("Failed to fetch contacts");
       return res.json();
     },
+    enabled: !!subAccountId,
   });
 
   const createMutation = useMutation({
@@ -208,6 +209,16 @@ export default function CalendarPage() {
   };
 
   const statusStyle = (status: string) => STATUS_STYLES[status] || STATUS_STYLES.scheduled;
+
+  if (!subAccountId) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[60vh]">
+        <div className="text-center space-y-3">
+          <p className="text-slate-400">Select a sub-account from the sidebar to continue.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 p-6 md:p-10 overflow-y-auto" data-testid="calendar-page">

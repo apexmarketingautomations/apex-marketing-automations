@@ -1,3 +1,4 @@
+import { PlanGate } from "@/components/plan-gate";
 import { useState } from "react";
 import { Clock, MessageSquare, GitFork, MoreHorizontal, Plus, PlayCircle, CheckCircle2, AlertCircle, Sparkles, Loader2, Code2, Trash2, BookOpen } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
@@ -82,7 +83,7 @@ const StepCard = ({ step, index, onClick, isSelected }: { step: any, index: numb
   );
 };
 
-export default function WorkflowBuilder() {
+function WorkflowBuilderInner() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_workflows");
@@ -484,4 +485,8 @@ export default function WorkflowBuilder() {
       {showTutorial && <TutorialOverlay steps={WORKFLOW_STEPS} storageKey="apex_tutorial_workflows" onClose={closeTutorial} accentColor="indigo" />}
     </div>
   );
+}
+
+export default function WorkflowBuilder() {
+  return <PlanGate feature="workflows"><WorkflowBuilderInner /></PlanGate>;
 }

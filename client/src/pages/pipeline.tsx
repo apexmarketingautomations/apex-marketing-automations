@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useAccount } from "@/hooks/use-account";
+import { useActiveSubAccountId } from "@/components/account-required";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,9 +48,9 @@ const DEFAULT_STAGES = [
 export default function PipelinePage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { activeAccountId } = useAccount();
-  const subAccountId = activeAccountId || 1;
+  const subAccountId = useActiveSubAccountId();
   const [activeTab, setActiveTab] = useState<"pipeline" | "contacts">("pipeline");
+
   const [addStageOpen, setAddStageOpen] = useState(false);
   const [addDealOpen, setAddDealOpen] = useState(false);
   const [editDealOpen, setEditDealOpen] = useState(false);
@@ -72,6 +72,7 @@ export default function PipelinePage() {
       if (!res.ok) throw new Error("Failed to fetch stages");
       return res.json();
     },
+    enabled: !!subAccountId,
   });
 
   const { data: deals = [], isLoading: dealsLoading } = useQuery<Deal[]>({
@@ -81,6 +82,7 @@ export default function PipelinePage() {
       if (!res.ok) throw new Error("Failed to fetch deals");
       return res.json();
     },
+    enabled: !!subAccountId,
   });
 
   const { data: contacts = [] } = useQuery<Contact[]>({
@@ -90,6 +92,7 @@ export default function PipelinePage() {
       if (!res.ok) throw new Error("Failed to fetch contacts");
       return res.json();
     },
+    enabled: !!subAccountId,
   });
 
   const createStageMutation = useMutation({
@@ -220,6 +223,16 @@ export default function PipelinePage() {
 
   const sortedStages = [...stages].sort((a, b) => a.position - b.position);
   const isLoading = stagesLoading || dealsLoading;
+
+  if (!subAccountId) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[60vh]">
+        <div className="text-center space-y-3">
+          <p className="text-slate-400">Select a sub-account from the sidebar to continue.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 p-6 md:p-10 overflow-y-auto">

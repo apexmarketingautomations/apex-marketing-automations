@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
-import { useAccount } from "@/hooks/use-account";
+import { useActiveSubAccountId } from "@/components/account-required";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,9 +56,9 @@ const OBJECTIVES = [
 export default function MetaAdsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { activeAccountId } = useAccount();
-  const subAccountId = activeAccountId || 1;
+  const subAccountId = useActiveSubAccountId();
   const [dialogOpen, setDialogOpen] = useState(false);
+
   const [name, setName] = useState("");
   const [objective, setObjective] = useState("LEAD_GENERATION");
   const [dailyBudget, setDailyBudget] = useState("");
@@ -70,6 +70,7 @@ export default function MetaAdsPage() {
       const res = await fetch(`/api/meta/campaigns/${subAccountId}`);
       return res.json();
     },
+    enabled: !!subAccountId,
   });
 
   const { data: config } = useQuery<MetaConfig>({
@@ -145,6 +146,16 @@ export default function MetaAdsPage() {
     paused: "bg-yellow-500/20 text-yellow-400",
     completed: "bg-blue-500/20 text-blue-400",
   };
+
+  if (!subAccountId) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[60vh]">
+        <div className="text-center space-y-3">
+          <p className="text-slate-400">Select a sub-account from the sidebar to continue.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="p-4 md:p-8 space-y-6">

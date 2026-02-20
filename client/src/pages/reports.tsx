@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useAccount } from "@/hooks/use-account";
+import { useActiveSubAccountId } from "@/components/account-required";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -9,7 +9,7 @@ import { motion } from "framer-motion";
 import { Download, FileText, Users, Handshake, MessageSquare, TrendingUp } from "lucide-react";
 
 export default function ReportsPage() {
-  const { activeAccountId } = useAccount();
+  const subAccountId = useActiveSubAccountId();
 
   const { data, isLoading } = useQuery<{
     messagesByDay: { date: string; count: number }[];
@@ -21,17 +21,17 @@ export default function ReportsPage() {
     totalMessages: number;
     totalAppointments: number;
   }>({
-    queryKey: ["/api/analytics", activeAccountId],
+    queryKey: ["/api/analytics", subAccountId],
     queryFn: async () => {
-      const res = await fetch(`/api/analytics/${activeAccountId}`);
+      const res = await fetch(`/api/analytics/${subAccountId}`);
       if (!res.ok) throw new Error("Failed to fetch analytics");
       return res.json();
     },
-    enabled: !!activeAccountId,
+    enabled: !!subAccountId,
   });
 
   const downloadCSV = (type: string) => {
-    const url = `/api/reports/export/${activeAccountId || 1}?type=${type}`;
+    const url = `/api/reports/export/${subAccountId}?type=${type}`;
     const a = document.createElement("a");
     a.href = url;
     a.download = `${type}-export.csv`;
@@ -52,6 +52,16 @@ export default function ReportsPage() {
     { label: "Total Messages", value: data?.totalMessages ?? 0, icon: MessageSquare, color: "text-purple-400", borderColor: "border-purple-500/20", bgColor: "from-purple-500/20 to-purple-500/5" },
     { label: "Total Appointments", value: data?.totalAppointments ?? 0, icon: TrendingUp, color: "text-emerald-400", borderColor: "border-emerald-500/20", bgColor: "from-emerald-500/20 to-emerald-500/5" },
   ];
+
+  if (!subAccountId) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[60vh]">
+        <div className="text-center space-y-3">
+          <p className="text-slate-400">Select a sub-account from the sidebar to continue.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 p-6 md:p-10 overflow-y-auto">
