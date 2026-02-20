@@ -368,6 +368,7 @@ ${sections.map(renderSection).join('\n')}
     if (fullPath === "/api/sentinel-incoming") return next();
     if (fullPath === "/api/v1/sentinel-receiver") return next();
     if (fullPath === "/api/form-submit") return next();
+    if (fullPath.startsWith("/api/portal/")) return next();
 
     if (!req.isAuthenticated || !req.isAuthenticated()) {
       return res.status(401).json({ error: "Not authenticated" });
@@ -6297,6 +6298,180 @@ Return ONLY valid JSON.` },
       totalSteps: executionResults.length,
       successCount: executionResults.filter(r => r.status === "Success").length,
       executed: true,
+    });
+  }));
+
+  // ---- Webhook Events ----
+  app.get("/api/webhook-events/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const events = await storage.getWebhookEvents(subAccountId);
+    res.json(events);
+  }));
+
+  // ---- Integration Connections ----
+  app.get("/api/integrations/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const connections = await storage.getIntegrationConnections(subAccountId);
+    res.json(connections);
+  }));
+
+  app.post("/api/integrations/:subAccountId/connect", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const { provider, config } = req.body;
+    const connection = await storage.upsertIntegrationConnection({
+      subAccountId,
+      provider,
+      status: "connected",
+      config: config || {},
+      connectedAt: new Date(),
+    });
+    res.json(connection);
+  }));
+
+  app.post("/api/integrations/:subAccountId/disconnect", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const { provider } = req.body;
+    const connection = await storage.upsertIntegrationConnection({
+      subAccountId,
+      provider,
+      status: "disconnected",
+      config: {},
+      connectedAt: null,
+    });
+    res.json(connection);
+  }));
+
+  // ---- Portal Tokens ----
+  app.get("/api/portal-tokens/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const tokens = await storage.getPortalTokens(subAccountId);
+    res.json(tokens);
+  }));
+
+  app.post("/api/portal-tokens/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const token = crypto.randomBytes(32).toString("hex");
+    const { label } = req.body;
+    const portalToken = await storage.createPortalToken({
+      subAccountId,
+      token,
+      label: label || "Client Portal Link",
+      active: true,
+    });
+    res.json(portalToken);
+  }));
+
+  app.delete("/api/portal-tokens/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    await storage.deletePortalToken(id);
+    res.json({ ok: true });
+  }));
+
+  // ---- Public Portal (no auth) ----
+  app.get("/api/portal/:token", asyncHandler(async (req, res) => {
+    const portalToken = await storage.getPortalTokenByToken(req.params.token);
+    if (!portalToken) return res.status(404).json({ error: "Invalid or expired portal link" });
+    if (portalToken.expiresAt && new Date(portalToken.expiresAt) < new Date()) {
+      return res.status(410).json({ error: "Portal link has expired" });
+    }
+    const account = await storage.getSubAccount(portalToken.subAccountId);
+    if (!account) return res.status(404).json({ error: "Account not found" });
+    const [msgs, appts, contactsList, dealsList] = await Promise.all([
+      storage.getMessages(portalToken.subAccountId),
+      storage.getAppointments(portalToken.subAccountId),
+      storage.getContacts(portalToken.subAccountId),
+      storage.getDeals(portalToken.subAccountId),
+    ]);
+    res.json({
+      accountName: account.name,
+      industry: account.industry,
+      metrics: {
+        totalMessages: msgs.length,
+        totalContacts: contactsList.length,
+        totalDeals: dealsList.length,
+        totalDealValue: dealsList.reduce((s, d) => s + (d.value || 0), 0),
+        upcomingAppointments: appts.filter(a => a.status === "scheduled").length,
+      },
+      recentMessages: msgs.slice(0, 10),
+      upcomingAppointments: appts.filter(a => a.status === "scheduled").slice(0, 10),
+    });
+  }));
+
+  // ---- Dashboard Analytics ----
+  app.get("/api/analytics/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const [allMessages, allContacts, allDeals, allAppts, allCampaigns, allMetaAds, allMetaLeads, allIncidents, allWebhookEvts] = await Promise.all([
+      storage.getMessages(subAccountId),
+      storage.getContacts(subAccountId),
+      storage.getDeals(subAccountId),
+      storage.getAppointments(subAccountId),
+      storage.getEmailCampaigns(subAccountId),
+      storage.getMetaAdCampaigns(subAccountId),
+      storage.getMetaLeads(subAccountId),
+      storage.getSentinelIncidents(subAccountId),
+      storage.getWebhookEvents(subAccountId),
+    ]);
+
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const dailyLeads: Record<string, number> = {};
+    const dailyMessages: Record<string, number> = {};
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const key = d.toISOString().slice(0, 10);
+      dailyLeads[key] = 0;
+      dailyMessages[key] = 0;
+    }
+    allContacts.forEach(c => {
+      const key = new Date(c.createdAt).toISOString().slice(0, 10);
+      if (dailyLeads[key] !== undefined) dailyLeads[key]++;
+    });
+    allMessages.forEach(m => {
+      const key = new Date(m.createdAt).toISOString().slice(0, 10);
+      if (dailyMessages[key] !== undefined) dailyMessages[key]++;
+    });
+
+    const wonDeals = allDeals.filter(d => d.status === "won");
+    const totalRevenue = wonDeals.reduce((s, d) => s + (d.value || 0), 0);
+    const conversionRate = allDeals.length > 0 ? (wonDeals.length / allDeals.length) * 100 : 0;
+
+    const totalAdSpend = allMetaAds.reduce((s, a) => s + (a.totalSpend || 0), 0);
+    const totalAdLeads = allMetaAds.reduce((s, a) => s + (a.leads || 0), 0);
+    const costPerLead = totalAdLeads > 0 ? totalAdSpend / totalAdLeads : 0;
+    const totalImpressions = allMetaAds.reduce((s, a) => s + (a.impressions || 0), 0);
+    const totalClicks = allMetaAds.reduce((s, a) => s + (a.clicks || 0), 0);
+    const avgCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+
+    res.json({
+      overview: {
+        totalLeads: allContacts.length,
+        totalMessages: allMessages.length,
+        totalDeals: allDeals.length,
+        totalRevenue,
+        conversionRate: Math.round(conversionRate * 10) / 10,
+        avgResponseTime: "< 2 min",
+        activeWorkflows: 0,
+        sentinelIncidents: allIncidents.length,
+      },
+      charts: {
+        dailyLeads: Object.entries(dailyLeads).map(([date, count]) => ({ date, count })),
+        dailyMessages: Object.entries(dailyMessages).map(([date, count]) => ({ date, count })),
+      },
+      adPerformance: {
+        totalSpend: totalAdSpend,
+        totalLeads: totalAdLeads,
+        costPerLead: Math.round(costPerLead * 100) / 100,
+        impressions: totalImpressions,
+        clicks: totalClicks,
+        ctr: Math.round(avgCtr * 100) / 100,
+      },
+      pipeline: {
+        openDeals: allDeals.filter(d => d.status === "open").length,
+        wonDeals: wonDeals.length,
+        lostDeals: allDeals.filter(d => d.status === "lost").length,
+        totalPipelineValue: allDeals.filter(d => d.status === "open").reduce((s, d) => s + (d.value || 0), 0),
+      },
     });
   }));
 

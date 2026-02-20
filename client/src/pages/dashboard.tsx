@@ -2,9 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useActiveSubAccountId } from "@/components/account-required";
 import { Card, CardContent } from "@/components/ui/card";
-import { MessageSquare, Users, Kanban, CalendarDays, Mail, Megaphone, Target, Instagram, DollarSign, TrendingUp, Bell, Clock } from "lucide-react";
+import { MessageSquare, Users, Kanban, CalendarDays, Mail, Megaphone, Target, Instagram, DollarSign, TrendingUp, Bell, Clock, BarChart3, PieChart, Zap, Eye } from "lucide-react";
 import { Link } from "wouter";
 import { TutorialCenter } from "@/components/tutorial-center";
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 interface DashboardMetrics {
   totalMessages: number;
@@ -50,6 +51,15 @@ export default function DashboardPage() {
       return res.json();
     },
     refetchInterval: 30000,
+    enabled: !!subAccountId,
+  });
+
+  const { data: analytics } = useQuery<Record<string, any>>({
+    queryKey: ["/api/analytics", subAccountId],
+    queryFn: async () => {
+      const res = await fetch(`/api/analytics/${subAccountId}`);
+      return res.json();
+    },
     enabled: !!subAccountId,
   });
 
@@ -187,6 +197,158 @@ export default function DashboardPage() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {analytics && (
+        <div className="space-y-6" data-testid="section-performance-analytics">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-black text-white flex items-center gap-3" data-testid="text-analytics-title">
+              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-cyan-500 to-indigo-600 flex items-center justify-center">
+                <BarChart3 size={18} className="text-white" />
+              </div>
+              Performance Analytics
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-black/40 border border-white/10 rounded-xl p-4" data-testid="stat-conversion-rate">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                  <PieChart size={16} className="text-cyan-400" />
+                </div>
+              </div>
+              <p className="text-2xl font-black text-white">{analytics.overview?.conversionRate ?? 0}%</p>
+              <p className="text-xs text-slate-400 mt-1">Conversion Rate</p>
+            </div>
+            <div className="bg-black/40 border border-white/10 rounded-xl p-4" data-testid="stat-avg-response-time">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center">
+                  <Zap size={16} className="text-indigo-400" />
+                </div>
+              </div>
+              <p className="text-2xl font-black text-white">{analytics.overview?.avgResponseTime ?? "N/A"}</p>
+              <p className="text-xs text-slate-400 mt-1">Avg Response Time</p>
+            </div>
+            <div className="bg-black/40 border border-white/10 rounded-xl p-4" data-testid="stat-total-leads">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
+                  <Users size={16} className="text-green-400" />
+                </div>
+              </div>
+              <p className="text-2xl font-black text-white">{(analytics.overview?.totalLeads ?? 0).toLocaleString()}</p>
+              <p className="text-xs text-slate-400 mt-1">Total Leads</p>
+            </div>
+            <div className="bg-black/40 border border-white/10 rounded-xl p-4" data-testid="stat-total-messages">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                  <MessageSquare size={16} className="text-purple-400" />
+                </div>
+              </div>
+              <p className="text-2xl font-black text-white">{(analytics.overview?.totalMessages ?? analytics.totalMessages ?? 0).toLocaleString()}</p>
+              <p className="text-xs text-slate-400 mt-1">Total Messages</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-black/40 border border-white/10 rounded-xl p-5" data-testid="chart-leads-over-time">
+              <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                <TrendingUp size={18} className="text-cyan-400" />
+                Leads Over Time
+              </h3>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={analytics.charts?.dailyLeads ?? []}>
+                    <defs>
+                      <linearGradient id="leadGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="date" tick={{ fill: "#64748b", fontSize: 12 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: "#64748b", fontSize: 12 }} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={{ backgroundColor: "#171717", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px", color: "#fff" }} />
+                    <Area type="monotone" dataKey="count" stroke="#06b6d4" strokeWidth={2} fill="url(#leadGradient)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="bg-black/40 border border-white/10 rounded-xl p-5" data-testid="chart-messages-activity">
+              <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                <MessageSquare size={18} className="text-indigo-400" />
+                Messages Activity
+              </h3>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={analytics.charts?.dailyMessages ?? []}>
+                    <defs>
+                      <linearGradient id="messageGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8} />
+                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0.3} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="date" tick={{ fill: "#64748b", fontSize: 12 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: "#64748b", fontSize: 12 }} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={{ backgroundColor: "#171717", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px", color: "#fff" }} />
+                    <Bar dataKey="count" fill="url(#messageGradient)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-black/40 border border-white/10 rounded-xl p-5" data-testid="section-pipeline-overview">
+              <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                <Kanban size={18} className="text-purple-400" />
+                Pipeline Overview
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-white/5 rounded-lg p-3" data-testid="stat-open-deals">
+                  <p className="text-xl font-black text-white">{analytics.pipeline?.openDeals ?? 0}</p>
+                  <p className="text-xs text-slate-400">Open Deals</p>
+                </div>
+                <div className="bg-white/5 rounded-lg p-3" data-testid="stat-won-deals">
+                  <p className="text-xl font-black text-green-400">{analytics.pipeline?.wonDeals ?? 0}</p>
+                  <p className="text-xs text-slate-400">Won Deals</p>
+                </div>
+                <div className="bg-white/5 rounded-lg p-3" data-testid="stat-lost-deals">
+                  <p className="text-xl font-black text-red-400">{analytics.pipeline?.lostDeals ?? 0}</p>
+                  <p className="text-xs text-slate-400">Lost Deals</p>
+                </div>
+                <div className="bg-white/5 rounded-lg p-3" data-testid="stat-pipeline-value">
+                  <p className="text-xl font-black text-emerald-400">${(analytics.pipeline?.pipelineValue ?? 0).toLocaleString()}</p>
+                  <p className="text-xs text-slate-400">Pipeline Value</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-black/40 border border-white/10 rounded-xl p-5" data-testid="section-ad-performance">
+              <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                <Target size={18} className="text-pink-400" />
+                Ad Performance
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-white/5 rounded-lg p-3" data-testid="stat-ad-spend">
+                  <p className="text-xl font-black text-white">${(analytics.adPerformance?.adSpend ?? 0).toLocaleString()}</p>
+                  <p className="text-xs text-slate-400">Ad Spend</p>
+                </div>
+                <div className="bg-white/5 rounded-lg p-3" data-testid="stat-cost-per-lead">
+                  <p className="text-xl font-black text-cyan-400">${(analytics.adPerformance?.costPerLead ?? 0).toFixed(2)}</p>
+                  <p className="text-xs text-slate-400">Cost Per Lead</p>
+                </div>
+                <div className="bg-white/5 rounded-lg p-3" data-testid="stat-ctr">
+                  <p className="text-xl font-black text-indigo-400">{(analytics.adPerformance?.ctr ?? 0).toFixed(2)}%</p>
+                  <p className="text-xs text-slate-400">CTR</p>
+                </div>
+                <div className="bg-white/5 rounded-lg p-3" data-testid="stat-total-impressions">
+                  <p className="text-xl font-black text-amber-400">{(analytics.adPerformance?.totalImpressions ?? 0).toLocaleString()}</p>
+                  <p className="text-xs text-slate-400">Total Impressions</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

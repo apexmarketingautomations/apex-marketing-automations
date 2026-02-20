@@ -39,7 +39,7 @@ Core server files include `server/index.ts` (Express setup), `server/routes.ts` 
 - **Validation**: Zod schemas generated from Drizzle schemas via `drizzle-zod`
 - **Migrations**: Managed via `drizzle-kit push` (schema push strategy).
 
-Key database tables manage sub-accounts, messages, workflows, AI training jobs, blueprints, Sentinel configurations, incidents, client websites, CRM contacts, pipeline stages, deals, appointments, email campaigns, webhooks, white-label settings, Meta ad campaigns, leads, and Instagram conversations/messages.
+Key database tables manage sub-accounts, messages, workflows, AI training jobs, blueprints, Sentinel configurations, incidents, client websites, CRM contacts, pipeline stages, deals, appointments, email campaigns, webhooks, white-label settings, Meta ad campaigns, leads, Instagram conversations/messages, webhook events, integration connections, portal tokens, notifications, live automations, and AI tool logs.
 
 ### Shared Code
 The `shared/` directory centralizes database schema definitions, Zod validation schemas, and TypeScript types used by both frontend and backend.
@@ -50,7 +50,16 @@ The `shared/` directory centralizes database schema definitions, Zod validation 
 - Server: Bundled with esbuild to `dist/index.cjs`.
 
 ### API Routes
-The API provides comprehensive endpoints for managing accounts, messages, workflows, AI bots (chat, training, generation), blueprints, onboarding, voice agents (Vapi integration), phone numbers (Twilio integration), reviews, usage logging, domains, Sentinel scanning, and authentication (Replit OIDC). Specific routes exist for `god-mode` operations, webhooks, and white-label configurations.
+The API provides comprehensive endpoints for managing accounts, messages, workflows, AI bots (chat, training, generation), blueprints, onboarding, voice agents (Vapi integration), phone numbers (Twilio integration), reviews, usage logging, domains, Sentinel scanning, and authentication (Replit OIDC). Specific routes exist for `god-mode` operations, webhooks, white-label configurations, Universal Dispatcher (`/api/v1/orchestrate`), AI Orchestrator (`/api/v1/orchestrate/ai`), webhook event log, integration connections, portal tokens, and dashboard analytics.
+
+### Recent Additions
+- **Integrations Hub** (`/integrations`): Manage third-party service connections (Google Calendar, Gmail, Sheets, Slack, Zapier, Stripe, Twilio, etc.)
+- **Webhook Event Log** (`/webhook-events`): Timeline of all webhook deliveries with status, duration, and request/response details
+- **Client Portal** (`/portal/:token`): Public page for end-clients to view their metrics, messages, and appointments via token-based access
+- **Dashboard Analytics**: ROI charts with Recharts showing daily leads/messages, pipeline overview, ad performance, conversion rates
+- **Live Demo** (`/demo`): Cinematic 5-scene walkthrough for prospects showing Sentinel detection, AI orchestrator, workflow execution, and results
+- **Mobile Responsive**: Hamburger menu sidebar on mobile with slide-out drawer, responsive layouts throughout
+- **Onboarding Wizard**: 5-step guided wizard (business info → connect phone → train AI → deploy workflow → completion)
 
 ### Access Control & Multi-Tenancy
 - **Plan-based feature gating**: Features are gated by plan tier (Starter/Pro/Enterprise) using `PLAN_TIERS` in `shared/schema.ts`. The `PlanGate` component (`client/src/components/plan-gate.tsx`) wraps protected pages and shows an upgrade overlay for locked features.

@@ -5,7 +5,7 @@ import {
   subscriptions, snapshots, snapshotVersions, affiliates, referrals, commissions, sentinelConfig, sentinelIncidents, propertyLeads, wholesalerConfig, clientWebsites, auditLogs,
   contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings,
   metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications,
-  liveAutomations, aiToolLogs,
+  liveAutomations, aiToolLogs, webhookEvents, integrationConnections, portalTokens,
   type SubAccount, type InsertSubAccount,
   type Message, type InsertMessage,
   type Workflow, type InsertWorkflow,
@@ -44,6 +44,9 @@ import {
   type Notification, type InsertNotification,
   type LiveAutomation, type InsertLiveAutomation,
   type AiToolLog, type InsertAiToolLog,
+  type WebhookEvent, type InsertWebhookEvent,
+  type IntegrationConnection, type InsertIntegrationConnection,
+  type PortalToken, type InsertPortalToken,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -228,6 +231,18 @@ export interface IStorage {
 
   createAiToolLog(data: InsertAiToolLog): Promise<AiToolLog>;
   getAiToolLogs(subAccountId: number): Promise<AiToolLog[]>;
+
+  getWebhookEvents(subAccountId: number): Promise<WebhookEvent[]>;
+  createWebhookEvent(data: InsertWebhookEvent): Promise<WebhookEvent>;
+
+  getIntegrationConnections(subAccountId: number): Promise<IntegrationConnection[]>;
+  getIntegrationConnection(subAccountId: number, provider: string): Promise<IntegrationConnection | undefined>;
+  upsertIntegrationConnection(data: InsertIntegrationConnection): Promise<IntegrationConnection>;
+
+  getPortalTokens(subAccountId: number): Promise<PortalToken[]>;
+  getPortalTokenByToken(token: string): Promise<PortalToken | undefined>;
+  createPortalToken(data: InsertPortalToken): Promise<PortalToken>;
+  deletePortalToken(id: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -939,6 +954,53 @@ export class DatabaseStorage implements IStorage {
 
   async getAiToolLogs(subAccountId: number) {
     return db.select().from(aiToolLogs).where(eq(aiToolLogs.subAccountId, subAccountId)).orderBy(desc(aiToolLogs.createdAt)).limit(100);
+  }
+
+  async getWebhookEvents(subAccountId: number) {
+    return db.select().from(webhookEvents).where(eq(webhookEvents.subAccountId, subAccountId)).orderBy(desc(webhookEvents.createdAt)).limit(200);
+  }
+
+  async createWebhookEvent(data: InsertWebhookEvent) {
+    const [row] = await db.insert(webhookEvents).values(data).returning();
+    return row;
+  }
+
+  async getIntegrationConnections(subAccountId: number) {
+    return db.select().from(integrationConnections).where(eq(integrationConnections.subAccountId, subAccountId));
+  }
+
+  async getIntegrationConnection(subAccountId: number, provider: string) {
+    const [row] = await db.select().from(integrationConnections).where(and(eq(integrationConnections.subAccountId, subAccountId), eq(integrationConnections.provider, provider)));
+    return row;
+  }
+
+  async upsertIntegrationConnection(data: InsertIntegrationConnection) {
+    const existing = await this.getIntegrationConnection(data.subAccountId, data.provider);
+    if (existing) {
+      const [row] = await db.update(integrationConnections).set(data).where(eq(integrationConnections.id, existing.id)).returning();
+      return row;
+    }
+    const [row] = await db.insert(integrationConnections).values(data).returning();
+    return row;
+  }
+
+  async getPortalTokens(subAccountId: number) {
+    return db.select().from(portalTokens).where(eq(portalTokens.subAccountId, subAccountId)).orderBy(desc(portalTokens.createdAt));
+  }
+
+  async getPortalTokenByToken(token: string) {
+    const [row] = await db.select().from(portalTokens).where(and(eq(portalTokens.token, token), eq(portalTokens.active, true)));
+    return row;
+  }
+
+  async createPortalToken(data: InsertPortalToken) {
+    const [row] = await db.insert(portalTokens).values(data).returning();
+    return row;
+  }
+
+  async deletePortalToken(id: number) {
+    const rows = await db.delete(portalTokens).where(eq(portalTokens.id, id)).returning();
+    return rows.length > 0;
   }
 }
 

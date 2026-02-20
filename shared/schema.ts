@@ -700,3 +700,57 @@ export const aiToolLogs = pgTable("ai_tool_logs", {
 export const insertAiToolLogSchema = createInsertSchema(aiToolLogs).omit({ id: true, createdAt: true });
 export type InsertAiToolLog = z.infer<typeof insertAiToolLogSchema>;
 export type AiToolLog = typeof aiToolLogs.$inferSelect;
+
+// ---- Webhook Event Log ----
+
+export const webhookEvents = pgTable("webhook_events", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  webhookId: integer("webhook_id").references(() => webhooks.id),
+  eventType: text("event_type").notNull(),
+  url: text("url").notNull(),
+  method: text("method").default("POST"),
+  requestBody: json("request_body"),
+  responseStatus: integer("response_status"),
+  responseBody: text("response_body"),
+  status: text("status").notNull().default("pending"),
+  duration: integer("duration"),
+  error: text("error"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertWebhookEventSchema = createInsertSchema(webhookEvents).omit({ id: true, createdAt: true });
+export type InsertWebhookEvent = z.infer<typeof insertWebhookEventSchema>;
+export type WebhookEvent = typeof webhookEvents.$inferSelect;
+
+// ---- Integration Connections ----
+
+export const integrationConnections = pgTable("integration_connections", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  provider: text("provider").notNull(),
+  status: text("status").notNull().default("disconnected"),
+  config: json("config"),
+  connectedAt: timestamp("connected_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertIntegrationConnectionSchema = createInsertSchema(integrationConnections).omit({ id: true, createdAt: true });
+export type InsertIntegrationConnection = z.infer<typeof insertIntegrationConnectionSchema>;
+export type IntegrationConnection = typeof integrationConnections.$inferSelect;
+
+// ---- Client Portal Tokens ----
+
+export const portalTokens = pgTable("portal_tokens", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  token: text("token").notNull().unique(),
+  label: text("label"),
+  expiresAt: timestamp("expires_at"),
+  active: boolean("active").default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertPortalTokenSchema = createInsertSchema(portalTokens).omit({ id: true, createdAt: true });
+export type InsertPortalToken = z.infer<typeof insertPortalTokenSchema>;
+export type PortalToken = typeof portalTokens.$inferSelect;

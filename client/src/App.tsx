@@ -49,6 +49,9 @@ const MetaLeadsPage = lazy(() => import("@/pages/meta-leads"));
 const InstagramInboxPage = lazy(() => import("@/pages/instagram-inbox"));
 const NexusDemo = lazy(() => import("@/pages/nexus-demo"));
 const AccountSettingsPage = lazy(() => import("@/pages/account-settings"));
+const ClientPortal = lazy(() => import("@/pages/client-portal"));
+const IntegrationsPage = lazy(() => import("@/pages/integrations"));
+const WebhookEventsPage = lazy(() => import("@/pages/webhook-events"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const LandingPage = lazy(() => import("@/pages/landing"));
 
@@ -75,6 +78,7 @@ function Router() {
     <Suspense fallback={<PageLoader />}>
       <Switch>
         {/* Public routes — no auth required */}
+        <Route path="/portal/:token" component={ClientPortal} />
         <Route path="/review/:subAccountId" component={ReviewBuffer} />
         <Route path="/demo" component={NexusDemo} />
         <Route path="/pricing" component={Pricing} />
@@ -135,6 +139,8 @@ function Router() {
                   <Route path="/meta-leads" component={MetaLeadsPage} />
                   <Route path="/instagram-inbox" component={InstagramInboxPage} />
                   <Route path="/account-settings" component={AccountSettingsPage} />
+                  <Route path="/integrations" component={IntegrationsPage} />
+                  <Route path="/webhook-events" component={WebhookEventsPage} />
                   <Route component={NotFound} />
                 </Switch>
               </Suspense>
