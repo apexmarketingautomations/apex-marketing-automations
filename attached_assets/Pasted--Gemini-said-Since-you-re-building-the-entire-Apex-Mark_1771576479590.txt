@@ -1,0 +1,60 @@
+
+Gemini said
+Since you’re building the entire Apex Marketing ecosystem, you aren't just looking for a single script—you need a Master Blueprint that links the "Cyber-Glass" front-end to the heavy-duty automation back-end.
+
+To make sure your marketers, AI agents, and geofencing all share a single, unbroken "path," use this specialized Replit Agent prompt. It forces the AI to structure the project as a Professional Multi-Tenant SaaS, not just a collection of files.
+
+The "Apex OS" Master Blueprint Prompt
+Copy and paste this into the Replit AI chat:
+
+"I am building Apex Marketing Automations, a comprehensive SaaS platform with a 'Cyber-Glass' dark-mode aesthetic. Act as the Lead Software Architect to audit, connect, and structure my entire system.
+
+Objective: Ensure every module has a functional path and shared data model.
+
+1. Core Infrastructure Audit:
+
+Organize the file structure into: /routes, /controllers, /services, and /public.
+
+Ensure server.js acts as the central hub, managing Socket.io for real-time dashboard updates across the site.
+
+2. The 'Sentinel' Connection:
+
+Verify the path from the FHP Scraper to the /api/sentinel-incoming route.
+
+Ensure the geofencing logic (50-mile radius) correctly triggers an automated Meta Ad Campaign via the Meta API.
+
+3. Marketer & Client Portals:
+
+Audit the Magic Link login path. Ensure successful verification redirects users to their specific role-based dashboard (/portal/marketer or /portal/client).
+
+The Marketer Portal must show a live feed of Sentinel crash leads and allow them to manage client case progress.
+
+4. Automation & AI Paths:
+
+Verify the connection between the Unified Inbox and the Twilio SMS service.
+
+Ensure the AI Bot Trainer can save knowledge base files and that the AI Voice Agent has a clear API path to Vapi/Twilio for outbound calls.
+
+5. UI/UX Integrity:
+
+Ensure the Fullscreen Video Splash correctly transitions to the Cyber-Glass UI.
+
+Map the Global Command Menu so every key feature (Site Builder, Ad Launcher, CRM) is accessible from one shortcut.
+
+Deliverable:
+
+Review my entire current codebase and fix any 'silent failures' where data is being sent but not received.
+
+Provide a unified package.json with all necessary dependencies (geolib, socket.io, twilio, axios, cheerio)."
+
+The 3 Key "Paths" This Fixes for You:
+1. The Lead-to-Dashboard Path
+This ensures that when a crash happens in Naples (Sentinel), it doesn't just sit in a log file. The code will be forced to:
+
+Save it to the Database -> Fire a Socket.io Event -> Update the Marketer's Screen (No refresh needed).
+
+2. The Magic Link Path
+This fixes the "not verified" frustration. It forces Replit to create a secure, one-click login route that actually recognizes who the marketer is and shows them only their specific leads.
+
+3. The Automation-to-Meta Path
+If you want to sell this to marketers, the "Ad Launcher" has to actually work. This prompt forces the AI to check your Meta API credentials and ensures the 50-mile radius math is being used to set the Geofence Targeting on the Facebook Ad.
