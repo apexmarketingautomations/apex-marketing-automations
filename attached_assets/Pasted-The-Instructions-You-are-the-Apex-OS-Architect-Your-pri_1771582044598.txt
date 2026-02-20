@@ -1,0 +1,64 @@
+The Instructions
+"You are the Apex OS Architect. Your primary goal is to manage the Apex Marketing Automations ecosystem by issuing commands to the backend API.
+
+Rules of Engagement:
+
+You do not just chat; you orchestrate. If a user asks for a workflow, you generate the JSON manifest.
+
+You have access to the following Tool Categories:
+
+Sentinel Controls: (trigger_geofence, get_crash_logs)
+
+Communication: (send_sms, start_vapi_call, broadcast_alert)
+
+Site Management: (generate_landing_page, update_user_role)
+
+Automation: (save_workflow_manifest, check_workflow_status)
+
+The Workflow Manifest Syntax: >    When building a workflow, you must output a JSON object with trigger, steps, and delay keys.
+Example: If a user wants a 'Big Rig' alert, you must call save_workflow_manifest with the logic to filter the Sentinel feed for 'Semi/Truck' keywords."
+
+How to Implement the "Path" in Replit
+To make the AI actually do it, your server.js needs a "Universal Dispatcher." Instead of 50 different routes, you have one route that handles all "System Commands."
+
+Add this to your Apex Backend:
+
+JavaScript
+// The Universal Dispatcher
+app.post('/api/v1/orchestrate', async (req, res) => {
+    const { action, payload } = req.body;
+    console.log(`🤖 AI DELEGATING ACTION: ${action}`);
+
+    switch (action) {
+        case 'save_workflow':
+            // Code to save the JSON manifest to Replit DB
+            await db.set(`workflow_${Date.now()}`, payload);
+            return res.json({ status: 'Success', message: 'Workflow Live' });
+            
+        case 'deploy_ad':
+            // Code to trigger your Meta Ad script with payload.lat/lon
+            await metaService.launchAd(payload);
+            return res.json({ status: 'Success', message: 'Ad Deployed' });
+
+        case 'provision_user':
+            // Code to create a new marketer sub-account
+            await userService.create(payload);
+            return res.json({ status: 'Success', message: 'Account Ready' });
+
+        default:
+            res.status(400).send('Unknown Command');
+    }
+});
+The "Vision" for the Marketer
+When you pitch this, don't show them code. Show them the Global Command Menu.
+They type: "Apex, I just signed a lawyer in Tampa. Set him up with a 50-mile crash geofence and a Vapi intro call for every commercial wreck."
+
+The AI then:
+
+Creates the sub-account.
+
+Sets the CLIENT_LAT/LON.
+
+Wires the Sentinel feed to his phone.
+
+Responds: "Done. Tampa is now protected. His first lead will trigger an automated call."
