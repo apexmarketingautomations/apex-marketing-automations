@@ -49,6 +49,12 @@ import {
   type PortalToken, type InsertPortalToken,
   dispatchSubscribers,
   type DispatchSubscriber, type InsertDispatchSubscriber,
+  creditWallets, creditTransactions, sponsorships, sponsorshipClicks, platformProfitLedger,
+  type CreditWallet, type InsertCreditWallet,
+  type CreditTransaction, type InsertCreditTransaction,
+  type Sponsorship, type InsertSponsorship,
+  type SponsorshipClick, type InsertSponsorshipClick,
+  type PlatformProfit, type InsertPlatformProfit,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -251,6 +257,25 @@ export interface IStorage {
   getDispatchSubscriber(id: number): Promise<DispatchSubscriber | undefined>;
   deleteDispatchSubscriber(id: number): Promise<boolean>;
   findSubscribersNear(lat: number, lon: number): Promise<DispatchSubscriber[]>;
+
+  getCreditWallet(subAccountId: number): Promise<CreditWallet | undefined>;
+  upsertCreditWallet(data: InsertCreditWallet): Promise<CreditWallet>;
+  updateCreditWalletBalance(subAccountId: number, delta: number): Promise<CreditWallet | undefined>;
+
+  getCreditTransactions(subAccountId: number): Promise<CreditTransaction[]>;
+  createCreditTransaction(data: InsertCreditTransaction): Promise<CreditTransaction>;
+
+  getSponsorships(): Promise<Sponsorship[]>;
+  getSponsorship(id: number): Promise<Sponsorship | undefined>;
+  createSponsorship(data: InsertSponsorship): Promise<Sponsorship>;
+  updateSponsorship(id: number, data: Partial<InsertSponsorship>): Promise<Sponsorship | undefined>;
+  getActiveSponsorshipsNear(lat: number, lon: number): Promise<Sponsorship[]>;
+
+  createSponsorshipClick(data: InsertSponsorshipClick): Promise<SponsorshipClick>;
+  getSponsorshipClicks(sponsorshipId: number): Promise<SponsorshipClick[]>;
+
+  createPlatformProfit(data: InsertPlatformProfit): Promise<PlatformProfit>;
+  getPlatformProfits(): Promise<PlatformProfit[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1046,6 +1071,95 @@ export class DatabaseStorage implements IStorage {
       ORDER BY distance_meters ASC
     `);
     return results.rows as unknown as DispatchSubscriber[];
+  }
+
+  async getCreditWallet(subAccountId: number) {
+    const [row] = await db.select().from(creditWallets).where(eq(creditWallets.subAccountId, subAccountId));
+    return row;
+  }
+
+  async upsertCreditWallet(data: InsertCreditWallet) {
+    const existing = await this.getCreditWallet(data.subAccountId);
+    if (existing) {
+      const [row] = await db.update(creditWallets).set(data).where(eq(creditWallets.subAccountId, data.subAccountId)).returning();
+      return row;
+    }
+    const [row] = await db.insert(creditWallets).values(data).returning();
+    return row;
+  }
+
+  async updateCreditWalletBalance(subAccountId: number, delta: number) {
+    const wallet = await this.getCreditWallet(subAccountId);
+    if (!wallet) return undefined;
+    const newBalance = Math.max(0, wallet.balance + delta);
+    const updates: any = { balance: newBalance, updatedAt: new Date() };
+    if (delta > 0) updates.lifetimeTopUp = wallet.lifetimeTopUp + delta;
+    if (delta < 0) updates.lifetimeSpend = wallet.lifetimeSpend + Math.abs(delta);
+    const [row] = await db.update(creditWallets).set(updates).where(eq(creditWallets.subAccountId, subAccountId)).returning();
+    return row;
+  }
+
+  async getCreditTransactions(subAccountId: number) {
+    return db.select().from(creditTransactions).where(eq(creditTransactions.subAccountId, subAccountId)).orderBy(desc(creditTransactions.createdAt));
+  }
+
+  async createCreditTransaction(data: InsertCreditTransaction) {
+    const [row] = await db.insert(creditTransactions).values(data).returning();
+    return row;
+  }
+
+  async getSponsorships() {
+    return db.select().from(sponsorships).orderBy(desc(sponsorships.createdAt));
+  }
+
+  async getSponsorship(id: number) {
+    const [row] = await db.select().from(sponsorships).where(eq(sponsorships.id, id));
+    return row;
+  }
+
+  async createSponsorship(data: InsertSponsorship) {
+    const [row] = await db.insert(sponsorships).values(data).returning();
+    return row;
+  }
+
+  async updateSponsorship(id: number, data: Partial<InsertSponsorship>) {
+    const [row] = await db.update(sponsorships).set(data).where(eq(sponsorships.id, id)).returning();
+    return row;
+  }
+
+  async getActiveSponsorshipsNear(lat: number, lon: number) {
+    const results = await db.execute(sql`
+      SELECT * FROM (
+        SELECT *, (2 * 6371000 * asin(sqrt(
+          power(sin(radians(target_lat - ${lat}) / 2), 2) +
+          cos(radians(${lat})) * cos(radians(target_lat)) *
+          power(sin(radians(target_lon - ${lon}) / 2), 2)
+        ))) AS distance_meters
+        FROM sponsorships
+        WHERE status = 'approved' AND spent < total_budget
+      ) sub
+      WHERE distance_meters <= target_radius_meters
+      ORDER BY bid_per_click DESC
+    `);
+    return results.rows as unknown as Sponsorship[];
+  }
+
+  async createSponsorshipClick(data: InsertSponsorshipClick) {
+    const [row] = await db.insert(sponsorshipClicks).values(data).returning();
+    return row;
+  }
+
+  async getSponsorshipClicks(sponsorshipId: number) {
+    return db.select().from(sponsorshipClicks).where(eq(sponsorshipClicks.sponsorshipId, sponsorshipId));
+  }
+
+  async createPlatformProfit(data: InsertPlatformProfit) {
+    const [row] = await db.insert(platformProfitLedger).values(data).returning();
+    return row;
+  }
+
+  async getPlatformProfits() {
+    return db.select().from(platformProfitLedger).orderBy(desc(platformProfitLedger.createdAt));
   }
 }
 

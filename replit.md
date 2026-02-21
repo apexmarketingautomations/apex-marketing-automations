@@ -53,6 +53,10 @@ The `shared/` directory centralizes database schema definitions, Zod validation 
 The API provides comprehensive endpoints for managing accounts, messages, workflows, AI bots (chat, training, generation), blueprints, onboarding, voice agents (Vapi integration), phone numbers (Twilio integration), reviews, usage logging, domains, Sentinel scanning, and authentication (Replit OIDC). Specific routes exist for `god-mode` operations, webhooks, white-label configurations, Universal Dispatcher (`/api/v1/orchestrate`), AI Orchestrator (`/api/v1/orchestrate/ai`), webhook event log, integration connections, portal tokens, and dashboard analytics.
 
 ### Recent Additions
+- **Monetization Engine**: Full credit wallet system (`credit_wallets`, `credit_transactions`), usage-based markup billing (3x multiplier on SMS/Vapi costs), Stripe checkout for credit top-ups, and automatic profit logging (`platform_profit_ledger`)
+- **Sponsorship Engine** (`/sponsorship-manager`): Geo-targeted native ads served as JSON via `GET /api/v1/serve-native-ad?lat=&lon=`, bid-per-click model with `POST /api/v1/ad-click/:id`, admin approval workflow
+- **Revenue Command** (`/revenue-command`): Admin-only profit dashboard showing total platform revenue, markup spread, ad click revenue, 7-day trend chart, and recent profit events
+- **Apex Wallet** (`/billing`): Redesigned billing page with live credit balance, quick top-up buttons ($10-$500), transaction history, usage breakdown tabs
 - **Integrations Hub** (`/integrations`): Manage third-party service connections (Google Calendar, Gmail, Sheets, Slack, Zapier, Stripe, Twilio, etc.)
 - **Webhook Event Log** (`/webhook-events`): Timeline of all webhook deliveries with status, duration, and request/response details
 - **Client Portal** (`/portal/:token`): Public page for end-clients to view their metrics, messages, and appointments via token-based access

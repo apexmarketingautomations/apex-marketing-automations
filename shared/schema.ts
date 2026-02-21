@@ -775,3 +775,95 @@ export const dispatchSubscribers = pgTable("dispatch_subscribers", {
 export const insertDispatchSubscriberSchema = createInsertSchema(dispatchSubscribers).omit({ id: true, createdAt: true });
 export type InsertDispatchSubscriber = z.infer<typeof insertDispatchSubscriberSchema>;
 export type DispatchSubscriber = typeof dispatchSubscribers.$inferSelect;
+
+// ---- Credit Wallets (Monetization) ----
+
+export const creditWallets = pgTable("credit_wallets", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  balance: real("balance").notNull().default(0),
+  lifetimeTopUp: real("lifetime_top_up").notNull().default(0),
+  lifetimeSpend: real("lifetime_spend").notNull().default(0),
+  autoTopUp: boolean("auto_top_up").default(false),
+  autoTopUpAmount: real("auto_top_up_amount").default(25),
+  lowBalanceThreshold: real("low_balance_threshold").default(5),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCreditWalletSchema = createInsertSchema(creditWallets).omit({ id: true, updatedAt: true });
+export type InsertCreditWallet = z.infer<typeof insertCreditWalletSchema>;
+export type CreditWallet = typeof creditWallets.$inferSelect;
+
+// ---- Credit Transactions ----
+
+export const creditTransactions = pgTable("credit_transactions", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  type: text("type").notNull(),
+  amount: real("amount").notNull(),
+  balanceAfter: real("balance_after").notNull(),
+  description: text("description"),
+  baseCost: real("base_cost"),
+  platformProfit: real("platform_profit"),
+  stripeSessionId: text("stripe_session_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertCreditTransactionSchema = createInsertSchema(creditTransactions).omit({ id: true, createdAt: true });
+export type InsertCreditTransaction = z.infer<typeof insertCreditTransactionSchema>;
+export type CreditTransaction = typeof creditTransactions.$inferSelect;
+
+// ---- Sponsorships (Native Ads) ----
+
+export const sponsorships = pgTable("sponsorships", {
+  id: serial("id").primaryKey(),
+  sponsorName: text("sponsor_name").notNull(),
+  businessName: text("business_name"),
+  imageUrl: text("image_url"),
+  linkUrl: text("link_url"),
+  headline: text("headline").notNull(),
+  description: text("description"),
+  bidPerClick: real("bid_per_click").notNull().default(0.50),
+  totalBudget: real("total_budget").notNull().default(100),
+  spent: real("spent").notNull().default(0),
+  targetLat: real("target_lat").notNull(),
+  targetLon: real("target_lon").notNull(),
+  targetRadiusMeters: real("target_radius_meters").notNull().default(80467),
+  status: text("status").notNull().default("pending"),
+  impressions: integer("impressions").notNull().default(0),
+  clicks: integer("clicks").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSponsorshipSchema = createInsertSchema(sponsorships).omit({ id: true, createdAt: true });
+export type InsertSponsorship = z.infer<typeof insertSponsorshipSchema>;
+export type Sponsorship = typeof sponsorships.$inferSelect;
+
+// ---- Sponsorship Clicks ----
+
+export const sponsorshipClicks = pgTable("sponsorship_clicks", {
+  id: serial("id").primaryKey(),
+  sponsorshipId: integer("sponsorship_id").references(() => sponsorships.id).notNull(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id),
+  clickedAt: timestamp("clicked_at").defaultNow().notNull(),
+});
+
+export const insertSponsorshipClickSchema = createInsertSchema(sponsorshipClicks).omit({ id: true, clickedAt: true });
+export type InsertSponsorshipClick = z.infer<typeof insertSponsorshipClickSchema>;
+export type SponsorshipClick = typeof sponsorshipClicks.$inferSelect;
+
+// ---- Platform Profit Ledger ----
+
+export const platformProfitLedger = pgTable("platform_profit_ledger", {
+  id: serial("id").primaryKey(),
+  source: text("source").notNull(),
+  amount: real("amount").notNull(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id),
+  sponsorshipId: integer("sponsorship_id").references(() => sponsorships.id),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertPlatformProfitSchema = createInsertSchema(platformProfitLedger).omit({ id: true, createdAt: true });
+export type InsertPlatformProfit = z.infer<typeof insertPlatformProfitSchema>;
+export type PlatformProfit = typeof platformProfitLedger.$inferSelect;

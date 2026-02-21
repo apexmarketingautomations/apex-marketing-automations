@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains, insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, insertMetaAdCampaignSchema, insertMetaLeadSchema, insertInstagramConversationSchema, insertInstagramMessageSchema, insertNotificationSchema, contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings, metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications, messages, hasFeature, PLAN_TIERS, subAccounts, liveAutomations, insertLiveAutomationSchema } from "@shared/schema";
+import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains, insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, insertMetaAdCampaignSchema, insertMetaLeadSchema, insertInstagramConversationSchema, insertInstagramMessageSchema, insertNotificationSchema, contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings, metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications, messages, hasFeature, PLAN_TIERS, subAccounts, liveAutomations, insertLiveAutomationSchema, insertSponsorshipSchema, insertCreditWalletSchema, creditTransactions, platformProfitLedger, sponsorships, sponsorshipClicks } from "@shared/schema";
 import { sql } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -353,7 +353,7 @@ ${sections.map(renderSection).join('\n')}
   // ---- Auth Middleware ----
   app.use("/api", (req, res, next) => {
     const fullPath = req.originalUrl || req.baseUrl + req.path;
-    const openPaths = ["/api/auth/", "/api/login", "/api/logout", "/api/callback", "/api/stripe/webhook", "/api/stripe/subscription-webhook", "/api/webhooks/", "/api/snapshots/marketplace"];
+    const openPaths = ["/api/auth/", "/api/login", "/api/logout", "/api/callback", "/api/stripe/webhook", "/api/stripe/subscription-webhook", "/api/webhooks/", "/api/snapshots/marketplace", "/api/wallet/webhook", "/api/v1/serve-native-ad", "/api/v1/ad-click/"];
     const openExact = ["/api/reviews", "/api/alert-owner", "/api/languages"];
 
     if (openPaths.some(p => fullPath.startsWith(p))) return next();
@@ -2571,6 +2571,265 @@ Rules:
       }
     }
     res.json({ success: true });
+  }));
+
+  // ── Credit Wallet & Monetization Engine ──────────────────────────────
+
+  app.get("/api/wallet/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    let wallet = await storage.getCreditWallet(subAccountId);
+    if (!wallet) {
+      wallet = await storage.upsertCreditWallet({ subAccountId, balance: 0, lifetimeTopUp: 0, lifetimeSpend: 0 });
+    }
+    res.json(wallet);
+  }));
+
+  app.get("/api/wallet/:subAccountId/transactions", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const txns = await storage.getCreditTransactions(subAccountId);
+    res.json(txns);
+  }));
+
+  app.post("/api/wallet/topup", asyncHandler(async (req, res) => {
+    const schema = z.object({ subAccountId: z.number(), amount: z.number().min(5) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const { subAccountId, amount } = parsed.data;
+
+    try {
+      const { getUncachableStripeClient } = await import("./stripeClient");
+      const stripe = await getUncachableStripeClient();
+
+      const session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        line_items: [{
+          price_data: {
+            currency: "usd",
+            product_data: { name: `Apex Credits — $${amount.toFixed(2)} Top-Up` },
+            unit_amount: Math.round(amount * 100),
+          },
+          quantity: 1,
+        }],
+        metadata: { subAccountId: subAccountId.toString(), creditAmount: amount.toString(), type: "credit_topup" },
+        success_url: `${req.headers.origin || req.protocol + "://" + req.get("host")}/billing?topup=success`,
+        cancel_url: `${req.headers.origin || req.protocol + "://" + req.get("host")}/billing?topup=cancelled`,
+      });
+
+      res.json({ url: session.url });
+    } catch (err: any) {
+      console.error("[WALLET] Stripe checkout error:", err.message);
+      res.status(500).json({ error: "Failed to create checkout session" });
+    }
+  }));
+
+  app.post("/api/wallet/webhook", asyncHandler(async (req, res) => {
+    const event = req.body;
+    if (event?.type === "checkout.session.completed") {
+      const session = event.data?.object;
+      const meta = session?.metadata;
+      if (meta?.type === "credit_topup" && meta?.subAccountId && meta?.creditAmount) {
+        const subAccountId = parseInt(meta.subAccountId);
+        const amount = parseFloat(meta.creditAmount);
+
+        let wallet = await storage.getCreditWallet(subAccountId);
+        if (!wallet) {
+          wallet = await storage.upsertCreditWallet({ subAccountId, balance: 0, lifetimeTopUp: 0, lifetimeSpend: 0 });
+        }
+        const updated = await storage.updateCreditWalletBalance(subAccountId, amount);
+        await storage.createCreditTransaction({
+          subAccountId,
+          type: "topup",
+          amount,
+          balanceAfter: updated?.balance || amount,
+          description: `Credit top-up via Stripe`,
+          stripeSessionId: session.id,
+        });
+        console.log(`[WALLET] +$${amount} credited to account #${subAccountId}`);
+      }
+    }
+    res.json({ received: true });
+  }));
+
+  app.post("/api/wallet/deduct", asyncHandler(async (req, res) => {
+    const schema = z.object({
+      subAccountId: z.number(),
+      baseCost: z.number().min(0),
+      type: z.string(),
+      description: z.string().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const { subAccountId, baseCost, type, description } = parsed.data;
+    const markupMultiplier = MARKUP_RATES[type] ?? 3.0;
+    const totalCharge = type === "AI_CHAT" || type === "AI_STREAM" || type === "AI_IMAGE_GEN"
+      ? markupMultiplier
+      : baseCost * markupMultiplier;
+
+    const wallet = await storage.getCreditWallet(subAccountId);
+    if (!wallet || wallet.balance < totalCharge) {
+      return res.status(402).json({ error: "Insufficient credits", required: totalCharge, balance: wallet?.balance || 0 });
+    }
+
+    const updated = await storage.updateCreditWalletBalance(subAccountId, -totalCharge);
+    const platformProfit = totalCharge - baseCost;
+
+    await storage.createCreditTransaction({
+      subAccountId,
+      type: "usage",
+      amount: -totalCharge,
+      balanceAfter: updated?.balance || 0,
+      description: description || `${type} usage charge`,
+      baseCost,
+      platformProfit,
+    });
+
+    if (platformProfit > 0) {
+      await storage.createPlatformProfit({
+        source: "markup",
+        amount: platformProfit,
+        subAccountId,
+        description: `${type} markup: $${baseCost.toFixed(4)} base → $${totalCharge.toFixed(4)} charged`,
+      });
+    }
+
+    res.json({ success: true, charged: totalCharge, remaining: updated?.balance || 0, profit: platformProfit });
+  }));
+
+  // ── Sponsorship / Native Ad Engine ──────────────────────────────
+
+  app.get("/api/sponsorships", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user?.isAdmin) return res.status(403).json({ error: "Admin access required" });
+    const all = await storage.getSponsorships();
+    res.json(all);
+  }));
+
+  app.get("/api/sponsorships/:id", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user?.isAdmin) return res.status(403).json({ error: "Admin access required" });
+    const id = parseIntParam(req.params.id, "id");
+    const sp = await storage.getSponsorship(id);
+    if (!sp) return res.status(404).json({ error: "Sponsorship not found" });
+    const clicks = await storage.getSponsorshipClicks(id);
+    res.json({ ...sp, clickLog: clicks });
+  }));
+
+  app.post("/api/sponsorships", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user?.isAdmin) return res.status(403).json({ error: "Admin access required" });
+    const parsed = insertSponsorshipSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const sp = await storage.createSponsorship(parsed.data);
+    res.status(201).json(sp);
+  }));
+
+  app.patch("/api/sponsorships/:id", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user?.isAdmin) return res.status(403).json({ error: "Admin access required" });
+    const id = parseIntParam(req.params.id, "id");
+    const updated = await storage.updateSponsorship(id, req.body);
+    if (!updated) return res.status(404).json({ error: "Not found" });
+    res.json(updated);
+  }));
+
+  app.get("/api/v1/serve-native-ad", asyncHandler(async (req, res) => {
+    const lat = parseFloat(req.query.lat as string);
+    const lon = parseFloat(req.query.lon as string);
+    if (isNaN(lat) || isNaN(lon)) return res.status(400).json({ error: "lat and lon required" });
+
+    const ads = await storage.getActiveSponsorshipsNear(lat, lon);
+    if (ads.length === 0) return res.json({ ad: null });
+
+    const topAd = ads[0];
+    await storage.updateSponsorship(topAd.id, { impressions: topAd.impressions + 1 });
+    res.json({
+      ad: {
+        id: topAd.id,
+        sponsorName: topAd.sponsorName,
+        businessName: topAd.businessName,
+        headline: topAd.headline,
+        description: topAd.description,
+        imageUrl: topAd.imageUrl,
+        linkUrl: topAd.linkUrl,
+        type: "sponsored_action",
+      },
+    });
+  }));
+
+  app.post("/api/v1/ad-click/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const subAccountId = req.body.subAccountId ? parseInt(req.body.subAccountId) : undefined;
+    const sp = await storage.getSponsorship(id);
+    if (!sp) return res.status(404).json({ error: "Ad not found" });
+
+    const newSpent = sp.spent + sp.bidPerClick;
+    const newClicks = sp.clicks + 1;
+    const updates: any = { spent: newSpent, clicks: newClicks };
+    if (newSpent >= sp.totalBudget) updates.status = "exhausted";
+
+    await storage.updateSponsorship(id, updates);
+    await storage.createSponsorshipClick({ sponsorshipId: id, subAccountId: subAccountId || null as any });
+
+    await storage.createPlatformProfit({
+      source: "ad_click",
+      amount: sp.bidPerClick,
+      sponsorshipId: id,
+      subAccountId: subAccountId || undefined,
+      description: `Ad click: "${sp.headline}" — $${sp.bidPerClick.toFixed(2)}`,
+    });
+
+    res.json({ success: true, charged: sp.bidPerClick });
+  }));
+
+  // ── Master Profit Report (Admin) ──────────────────────────────
+
+  app.get("/api/admin/profit-report", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user?.isAdmin) return res.status(403).json({ error: "Admin access required" });
+
+    const allProfits = await storage.getPlatformProfits();
+    const totalMarkupProfit = allProfits.filter(p => p.source === "markup").reduce((s, p) => s + p.amount, 0);
+    const totalAdRevenue = allProfits.filter(p => p.source === "ad_click").reduce((s, p) => s + p.amount, 0);
+
+    const now = new Date();
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const weeklyProfits = allProfits.filter(p => new Date(p.createdAt) >= weekAgo);
+
+    const dailyBreakdown: Record<string, { markup: number; ads: number }> = {};
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const key = d.toISOString().slice(0, 10);
+      dailyBreakdown[key] = { markup: 0, ads: 0 };
+    }
+    for (const p of weeklyProfits) {
+      const key = new Date(p.createdAt).toISOString().slice(0, 10);
+      if (dailyBreakdown[key]) {
+        if (p.source === "markup") dailyBreakdown[key].markup += p.amount;
+        else dailyBreakdown[key].ads += p.amount;
+      }
+    }
+
+    const weeklyTrend = Object.entries(dailyBreakdown).map(([date, vals]) => ({
+      date,
+      markup: Math.round(vals.markup * 100) / 100,
+      ads: Math.round(vals.ads * 100) / 100,
+      total: Math.round((vals.markup + vals.ads) * 100) / 100,
+    }));
+
+    const sponsorList = await storage.getSponsorships();
+    const activeSponsorCount = sponsorList.filter(s => s.status === "approved").length;
+
+    res.json({
+      totalRevenue: Math.round((totalMarkupProfit + totalAdRevenue) * 100) / 100,
+      markupProfit: Math.round(totalMarkupProfit * 100) / 100,
+      adRevenue: Math.round(totalAdRevenue * 100) / 100,
+      activeSponsorCount,
+      totalTransactions: allProfits.length,
+      weeklyTrend,
+      recentProfits: allProfits.slice(0, 20),
+    });
   }));
 
   app.patch("/api/accounts/:id", asyncHandler(async (req, res) => {
