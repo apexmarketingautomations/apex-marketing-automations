@@ -2474,15 +2474,18 @@ Rules:
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
     const account = await storage.getSubAccount(subAccountId);
     if (!account) return res.status(404).json({ error: "Account not found" });
-    res.json({ googleReviewLink: account.googleReviewLink || "", name: account.name });
+    res.json({ googleReviewLink: account.googleReviewLink || "", trustpilotLink: account.trustpilotLink || "", name: account.name });
   }));
 
   app.patch("/api/review-config/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
-    const { googleReviewLink } = req.body;
-    const updated = await storage.updateSubAccount(subAccountId, { googleReviewLink });
+    const { googleReviewLink, trustpilotLink } = req.body;
+    const updateData: any = {};
+    if (googleReviewLink !== undefined) updateData.googleReviewLink = googleReviewLink;
+    if (trustpilotLink !== undefined) updateData.trustpilotLink = trustpilotLink;
+    const updated = await storage.updateSubAccount(subAccountId, updateData);
     if (!updated) return res.status(404).json({ error: "Account not found" });
-    res.json({ googleReviewLink: updated.googleReviewLink });
+    res.json({ googleReviewLink: updated.googleReviewLink, trustpilotLink: updated.trustpilotLink });
   }));
 
   // ── Usage & Billing ──────────────────────────────────────────
@@ -2578,7 +2581,7 @@ Rules:
     const account = await storage.getSubAccount(id);
     if (!account) return res.status(404).json({ error: "Account not found" });
 
-    const allowedFields = ["name", "ownerPhone", "googleReviewLink", "industry", "vibeTheme", "language", "twilioNumber"] as const;
+    const allowedFields = ["name", "ownerPhone", "googleReviewLink", "trustpilotLink", "industry", "vibeTheme", "language", "twilioNumber"] as const;
     const validThemes = ["cyber-glass", "midnight-pro", "sunset-warm", "forest-green", "royal-purple"];
     const validLanguages = ["en", "es", "fr", "pt", "de", "zh"];
 

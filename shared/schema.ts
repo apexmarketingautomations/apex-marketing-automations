@@ -32,6 +32,7 @@ export const subAccounts = pgTable("sub_accounts", {
   name: text("name").notNull(),
   twilioNumber: text("twilio_number").notNull(),
   googleReviewLink: text("google_review_link"),
+  trustpilotLink: text("trustpilot_link"),
   ownerPhone: text("owner_phone"),
   industry: text("industry"),
   config: json("config"),
