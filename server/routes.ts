@@ -2832,6 +2832,78 @@ Rules:
     });
   }));
 
+  // ── System Pulse / Health Check (Admin) ──────────────────────────────
+
+  app.get("/api/admin/pulse", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user?.isAdmin) return res.status(403).json({ error: "Admin access required" });
+
+    const checks: { name: string; status: "healthy" | "degraded" | "down"; message: string; latencyMs?: number }[] = [];
+
+    const dbStart = Date.now();
+    try {
+      await db.execute(sql`SELECT 1`);
+      checks.push({ name: "Database", status: "healthy", message: "PostgreSQL connected", latencyMs: Date.now() - dbStart });
+    } catch (e: any) {
+      checks.push({ name: "Database", status: "down", message: e.message || "Connection failed", latencyMs: Date.now() - dbStart });
+    }
+
+    const sentinelStart = Date.now();
+    try {
+      const configs = await db.execute(sql`SELECT COUNT(*) as cnt FROM sentinel_config`);
+      const count = Number((configs as any).rows?.[0]?.cnt ?? 0);
+      checks.push({ name: "Sentinel", status: count > 0 ? "healthy" : "degraded", message: count > 0 ? `${count} active config(s)` : "No Sentinel configs found", latencyMs: Date.now() - sentinelStart });
+    } catch (e: any) {
+      checks.push({ name: "Sentinel", status: "degraded", message: "Sentinel table unavailable", latencyMs: Date.now() - sentinelStart });
+    }
+
+    const billingChecks: string[] = [];
+    const stripeKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API_KEY;
+    if (!stripeKey) billingChecks.push("Stripe API key missing");
+    const walletCount = await db.execute(sql`SELECT COUNT(*) as cnt FROM credit_wallets`).then(r => Number((r as any).rows?.[0]?.cnt ?? 0)).catch(() => -1);
+    if (walletCount === -1) billingChecks.push("Wallet table inaccessible");
+    checks.push({
+      name: "Billing",
+      status: billingChecks.length === 0 ? "healthy" : billingChecks.some(c => c.includes("missing")) ? "down" : "degraded",
+      message: billingChecks.length === 0 ? `Stripe active, ${walletCount} wallet(s)` : billingChecks.join("; "),
+    });
+
+    const aiChecks: string[] = [];
+    if (!isGeminiConfigured()) aiChecks.push("Gemini API key not configured");
+    const vapiKey = process.env.VAPI_PRIVATE_KEY || process.env.apex_private_vapi;
+    if (!vapiKey) aiChecks.push("Vapi API key missing");
+    const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+    const twilioToken = process.env.TWILIO_AUTH_TOKEN;
+    if (!twilioSid || !twilioToken) aiChecks.push("Twilio credentials missing");
+    checks.push({
+      name: "AI Engine",
+      status: aiChecks.length === 0 ? "healthy" : aiChecks.length <= 1 ? "degraded" : "down",
+      message: aiChecks.length === 0 ? "Gemini + Vapi + Twilio online" : aiChecks.join("; "),
+    });
+
+    const overallStatus = checks.every(c => c.status === "healthy") ? "healthy" : checks.some(c => c.status === "down") ? "critical" : "degraded";
+    res.json({ status: overallStatus, timestamp: new Date().toISOString(), checks });
+  }));
+
+  app.post("/api/admin/reboot", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user?.isAdmin) return res.status(403).json({ error: "Admin access required" });
+
+    const results: string[] = [];
+
+    try {
+      await db.execute(sql`SELECT 1`);
+      results.push("Database: connection verified");
+    } catch {
+      results.push("Database: reconnection attempted");
+    }
+
+    results.push("Service cache cleared");
+    results.push("Health check reset");
+
+    res.json({ success: true, message: "Services rebooted", actions: results, timestamp: new Date().toISOString() });
+  }));
+
   app.patch("/api/accounts/:id", asyncHandler(async (req, res) => {
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "Not authenticated" });

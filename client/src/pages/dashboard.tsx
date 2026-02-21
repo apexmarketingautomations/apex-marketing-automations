@@ -8,6 +8,7 @@ import { TutorialCenter } from "@/components/tutorial-center";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { DASHBOARD_STEPS } from "@/components/tutorial-steps";
 import { useAuth } from "@/hooks/use-auth";
+import { SystemPulse } from "@/components/system-pulse";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 interface DashboardMetrics {
@@ -136,6 +137,8 @@ export default function DashboardPage() {
           <button onClick={startTutorial} className="flex items-center gap-1 text-xs text-slate-500 hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-white/5" data-testid="button-start-tutorial"><Info size={14} className="mr-1" /> Tutorial</button>
         </div>
       </div>
+
+      {isAdmin && <SystemPulse />}
 
       <TutorialCenter />
 
