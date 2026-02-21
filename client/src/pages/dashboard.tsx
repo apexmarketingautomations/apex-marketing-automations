@@ -45,7 +45,7 @@ const metricCards = [
 export default function DashboardPage() {
   const subAccountId = useActiveSubAccountId();
   const { user } = useAuth();
-  const isAdmin = user?.isAdmin === "true";
+  const isAdmin = user?.isAdmin === "true" || (user as any)?.role === "DEV_ADMIN";
 
   const { data: metrics, isLoading } = useQuery<DashboardMetrics>({
     queryKey: ["/api/dashboard", subAccountId],

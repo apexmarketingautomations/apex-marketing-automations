@@ -171,7 +171,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const { activeAccountId } = useAccount();
   const currentAccount = accounts.find(a => a.id === activeAccountId) || accounts[0];
-  const isUserAdmin = (user as any)?.isAdmin === "true";
+  const isUserAdmin = (user as any)?.isAdmin === "true" || (user as any)?.role === "DEV_ADMIN";
   const accountPlan = isUserAdmin ? 'enterprise' : ((currentAccount as any)?.plan || 'starter');
 
   const renderNavContent = (onNavClick?: () => void) => (
@@ -248,7 +248,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
                 Online
               </span>
-              {(user as any)?.isAdmin === "true" && (
+              {isUserAdmin && (
                 <span className="px-1.5 py-0.5 rounded bg-gradient-to-r from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 text-indigo-300 text-[9px] font-bold tracking-wider uppercase">Admin</span>
               )}
             </div>

@@ -14,7 +14,7 @@ interface PlanGateProps {
 
 export function PlanGate({ feature, children, featureLabel }: PlanGateProps) {
   const { user } = useAuth();
-  const isAdmin = user?.isAdmin === "true";
+  const isAdmin = user?.isAdmin === "true" || (user as any)?.role === "DEV_ADMIN";
   const activeId = useActiveSubAccountId();
   const { data: accounts = [] } = useQuery<SubAccount[]>({ queryKey: ["/api/accounts"] });
   const currentAccount = activeId ? accounts.find(a => a.id === activeId) : null;
