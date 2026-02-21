@@ -867,3 +867,25 @@ export const platformProfitLedger = pgTable("platform_profit_ledger", {
 export const insertPlatformProfitSchema = createInsertSchema(platformProfitLedger).omit({ id: true, createdAt: true });
 export type InsertPlatformProfit = z.infer<typeof insertPlatformProfitSchema>;
 export type PlatformProfit = typeof platformProfitLedger.$inferSelect;
+
+// ---- Funnel Leads ----
+
+export const funnelLeads = pgTable("funnel_leads", {
+  id: serial("id").primaryKey(),
+  sessionId: text("session_id").notNull().unique(),
+  slug: text("slug").notNull(),
+  niche: text("niche").notNull(),
+  step: integer("step").notNull().default(0),
+  status: text("status").notNull().default("in_progress"),
+  formData: json("form_data").notNull().default({}),
+  contactId: integer("contact_id").references(() => contacts.id),
+  appointmentId: integer("appointment_id").references(() => appointments.id),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id),
+  lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertFunnelLeadSchema = createInsertSchema(funnelLeads).omit({ id: true, createdAt: true, lastSeenAt: true });
+export type InsertFunnelLead = z.infer<typeof insertFunnelLeadSchema>;
+export type FunnelLead = typeof funnelLeads.$inferSelect;
