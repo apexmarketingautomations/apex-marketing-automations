@@ -31,7 +31,8 @@ export default function Reputation() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [googleLink, setGoogleLink] = useState("");
-  const [googleLinkLoaded, setGoogleLinkLoaded] = useState(false);
+  const [trustpilotLink, setTrustpilotLink] = useState("");
+  const [linksLoaded, setLinksLoaded] = useState(false);
   const [generatingAi, setGeneratingAi] = useState<number | null>(null);
 
   const { data: reviews = [], isLoading } = useQuery<any[]>({
@@ -43,7 +44,7 @@ export default function Reputation() {
     },
   });
 
-  const { data: config } = useQuery<{ googleReviewLink: string; name: string }>({
+  const { data: config } = useQuery<{ googleReviewLink: string; trustpilotLink: string; name: string }>({
     queryKey: ["/api/review-config", SUB_ACCOUNT_ID],
     queryFn: async () => {
       const res = await fetch(`/api/review-config/${SUB_ACCOUNT_ID}`);
@@ -51,9 +52,10 @@ export default function Reputation() {
       return res.json();
     },
     onSuccess: (data: any) => {
-      if (!googleLinkLoaded) {
+      if (!linksLoaded) {
         setGoogleLink(data.googleReviewLink || "");
-        setGoogleLinkLoaded(true);
+        setTrustpilotLink(data.trustpilotLink || "");
+        setLinksLoaded(true);
       }
     },
   } as any);
@@ -63,13 +65,13 @@ export default function Reputation() {
       const res = await fetch(`/api/review-config/${SUB_ACCOUNT_ID}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ googleReviewLink: googleLink }),
+        body: JSON.stringify({ googleReviewLink: googleLink, trustpilotLink }),
       });
       if (!res.ok) throw new Error("Failed to save");
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Saved", description: "Google Review link updated." });
+      toast({ title: "Saved", description: "Review links updated." });
       queryClient.invalidateQueries({ queryKey: ["/api/review-config", SUB_ACCOUNT_ID] });
     },
   });
@@ -176,7 +178,7 @@ export default function Reputation() {
           ))}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           <Card className="bg-white/5 border-white/10 p-5">
             <h3 className="text-sm font-bold text-slate-300 mb-3 flex items-center gap-2">
               <ExternalLink size={14} className="text-indigo-400" /> Google Review Link
@@ -189,15 +191,24 @@ export default function Reputation() {
                 className="bg-white/5 border-white/10 text-white placeholder:text-white/20 flex-1"
                 data-testid="input-google-review-link"
               />
-              <Button
-                onClick={() => saveConfigMutation.mutate()}
-                disabled={saveConfigMutation.isPending}
-                className="bg-indigo-600 hover:bg-indigo-500"
-                data-testid="button-save-google-link"
-              >
-                {saveConfigMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-              </Button>
             </div>
+            <p className="text-[10px] text-slate-600 mt-2">Paste your Google Business review URL</p>
+          </Card>
+
+          <Card className="bg-white/5 border-white/10 p-5">
+            <h3 className="text-sm font-bold text-slate-300 mb-3 flex items-center gap-2">
+              <Star size={14} className="text-green-400" /> Trustpilot Link
+            </h3>
+            <div className="flex gap-2">
+              <Input
+                value={trustpilotLink}
+                onChange={(e) => setTrustpilotLink(e.target.value)}
+                placeholder="https://www.trustpilot.com/review/..."
+                className="bg-white/5 border-white/10 text-white placeholder:text-white/20 flex-1"
+                data-testid="input-trustpilot-link"
+              />
+            </div>
+            <p className="text-[10px] text-slate-600 mt-2">Paste your Trustpilot business page URL</p>
           </Card>
 
           <Card className="bg-white/5 border-white/10 p-5">
@@ -222,6 +233,17 @@ export default function Reputation() {
             </div>
             <p className="text-[10px] text-slate-600 mt-2">Share this link with customers to collect reviews</p>
           </Card>
+        </div>
+
+        <div className="flex justify-end mb-8">
+          <Button
+            onClick={() => saveConfigMutation.mutate()}
+            disabled={saveConfigMutation.isPending}
+            className="bg-indigo-600 hover:bg-indigo-500 px-6"
+            data-testid="button-save-review-links"
+          >
+            {saveConfigMutation.isPending ? <><Loader2 size={16} className="animate-spin mr-2" /> Saving...</> : <><Save size={16} className="mr-2" /> Save Review Links</>}
+          </Button>
         </div>
 
         <div className="space-y-4">
