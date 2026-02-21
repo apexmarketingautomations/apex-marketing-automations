@@ -60,6 +60,19 @@ const LandingPage = lazy(() => import("@/pages/landing"));
 const MarketersLanding = lazy(() => import("@/pages/marketers-landing"));
 const RealtorsLanding = lazy(() => import("@/pages/realtors-landing"));
 const HomeServiceLanding = lazy(() => import("@/pages/home-service-landing"));
+const LawyersLanding = lazy(() => import("@/pages/lawyers-landing"));
+const RestaurantsLanding = lazy(() => import("@/pages/restaurants-landing"));
+const DentistsLanding = lazy(() => import("@/pages/dentists-landing"));
+const MedspaLanding = lazy(() => import("@/pages/medspa-landing"));
+const AutoDealersLanding = lazy(() => import("@/pages/auto-dealers-landing"));
+const InsuranceLanding = lazy(() => import("@/pages/insurance-landing"));
+const ChiropractorsLanding = lazy(() => import("@/pages/chiropractors-landing"));
+const CoachesLanding = lazy(() => import("@/pages/coaches-landing"));
+const EcommerceLanding = lazy(() => import("@/pages/ecommerce-landing"));
+const PetServicesLanding = lazy(() => import("@/pages/pet-services-landing"));
+const PhotographyLanding = lazy(() => import("@/pages/photography-landing"));
+const WeddingLanding = lazy(() => import("@/pages/wedding-landing"));
+const NicheDirectory = lazy(() => import("@/pages/niche-directory"));
 
 function PageLoader() {
   return (
@@ -93,6 +106,19 @@ function Router() {
         <Route path="/marketers" component={MarketersLanding} />
         <Route path="/realtors" component={RealtorsLanding} />
         <Route path="/home-services" component={HomeServiceLanding} />
+        <Route path="/lawyers" component={LawyersLanding} />
+        <Route path="/restaurants" component={RestaurantsLanding} />
+        <Route path="/dentists" component={DentistsLanding} />
+        <Route path="/medspa" component={MedspaLanding} />
+        <Route path="/auto-dealers" component={AutoDealersLanding} />
+        <Route path="/insurance" component={InsuranceLanding} />
+        <Route path="/chiropractors" component={ChiropractorsLanding} />
+        <Route path="/coaches" component={CoachesLanding} />
+        <Route path="/ecommerce" component={EcommerceLanding} />
+        <Route path="/pet-services" component={PetServicesLanding} />
+        <Route path="/photography" component={PhotographyLanding} />
+        <Route path="/wedding" component={WeddingLanding} />
+        <Route path="/niches" component={NicheDirectory} />
 
         {/* Landing page for unauthenticated, dashboard for authenticated */}
         <Route path="/">
