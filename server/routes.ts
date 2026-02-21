@@ -367,6 +367,7 @@ ${sections.map(renderSection).join('\n')}
     if (fullPath === "/api/sentinel/incoming-crash") return next();
     if (fullPath === "/api/sentinel-incoming") return next();
     if (fullPath === "/api/v1/sentinel-receiver") return next();
+    if (fullPath === "/api/v1/dispatch") return next();
     if (fullPath === "/api/form-submit") return next();
     if (fullPath.startsWith("/api/portal/")) return next();
 
@@ -6483,6 +6484,137 @@ Return ONLY valid JSON.` },
         lostDeals: allDeals.filter(d => d.status === "lost").length,
         totalPipelineValue: allDeals.filter(d => d.status === "open").reduce((s, d) => s + (d.value || 0), 0),
       },
+    });
+  }));
+
+  // ─── GEO DISPATCH SYSTEM ────────────────────────────────────────────
+
+  async function geocodeZip(zip: string): Promise<{ lat: number; lon: number } | null> {
+    try {
+      const resp = await fetch(`https://api.zippopotam.us/us/${zip}`);
+      if (!resp.ok) return null;
+      const data = await resp.json() as any;
+      if (data.places && data.places.length > 0) {
+        return {
+          lat: parseFloat(data.places[0].latitude),
+          lon: parseFloat(data.places[0].longitude),
+        };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  app.post("/api/v1/dispatch/subscribers", requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+    const schema = z.object({
+      email: z.string().email(),
+      occupation: z.string().optional(),
+      target_zip: z.string().min(3),
+      target_radius: z.number().positive().default(80467),
+      webhook_url: z.string().url(),
+      lat: z.number().optional(),
+      lon: z.number().optional(),
+    });
+
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    let { lat, lon } = parsed.data;
+    if (!lat || !lon) {
+      const geo = await geocodeZip(parsed.data.target_zip);
+      if (!geo) return res.status(400).json({ error: `Could not geocode ZIP: ${parsed.data.target_zip}` });
+      lat = geo.lat;
+      lon = geo.lon;
+    }
+
+    const subscriber = await storage.createDispatchSubscriber({
+      email: parsed.data.email,
+      occupation: parsed.data.occupation || null,
+      targetZip: parsed.data.target_zip,
+      targetRadiusMeters: parsed.data.target_radius,
+      webhookUrl: parsed.data.webhook_url,
+      lat,
+      lon,
+      active: true,
+    });
+
+    res.status(201).json({
+      id: subscriber.id,
+      email: subscriber.email,
+      target_zip: subscriber.targetZip,
+      target_radius_meters: subscriber.targetRadiusMeters,
+      lat: subscriber.lat,
+      lon: subscriber.lon,
+      status: "active",
+    });
+  }));
+
+  app.get("/api/v1/dispatch/subscribers", requireAdmin, asyncHandler(async (_req: Request, res: Response) => {
+    const subs = await storage.getDispatchSubscribers();
+    res.json(subs);
+  }));
+
+  app.delete("/api/v1/dispatch/subscribers/:id", requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    const deleted = await storage.deleteDispatchSubscriber(id);
+    if (!deleted) return res.status(404).json({ error: "Subscriber not found" });
+    res.json({ status: "deleted" });
+  }));
+
+  app.post("/api/v1/dispatch", asyncHandler(async (req: Request, res: Response) => {
+    const schema = z.object({
+      lat: z.number(),
+      lon: z.number(),
+      type: z.string().optional(),
+      payload: z.any().optional(),
+    });
+
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const { lat, lon } = parsed.data;
+    const eventPayload = { ...req.body, dispatched_at: new Date().toISOString() };
+
+    const subscribers = await storage.findSubscribersNear(lat, lon);
+    console.log(`[DISPATCH] Event at ${lat},${lon} — ${subscribers.length} subscriber(s) in range`);
+
+    const results: Array<{ subscriber_id: number; email: string; status: string; distance_meters?: number }> = [];
+
+    for (const sub of subscribers) {
+      const webhookUrl = sub.webhookUrl || (sub as any).webhook_url;
+      try {
+        const resp = await fetch(webhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event: eventPayload,
+            subscriber: {
+              id: sub.id,
+              email: sub.email,
+              occupation: sub.occupation || (sub as any).occupation,
+            },
+          }),
+        });
+        results.push({
+          subscriber_id: sub.id,
+          email: sub.email,
+          status: resp.ok ? "delivered" : `failed:${resp.status}`,
+          distance_meters: (sub as any).distance_meters,
+        });
+      } catch (err: any) {
+        results.push({
+          subscriber_id: sub.id,
+          email: sub.email,
+          status: `error:${err.message}`,
+        });
+      }
+    }
+
+    res.json({
+      dispatched: results.length,
+      results,
     });
   }));
 
