@@ -96,6 +96,7 @@ const accentMap: Record<string, { text: string; bg: string; border: string; glow
 export function NicheLanding({ config }: { config: NicheLandingConfig }) {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const colors = accentMap[config.accentColor] || accentMap.cyan;
+  const funnelUrl = `/${config.slug}/funnel`;
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white overflow-x-hidden">
@@ -110,7 +111,7 @@ export function NicheLanding({ config }: { config: NicheLandingConfig }) {
             <Link href="/pricing">
               <span className="text-sm text-slate-400 hover:text-white transition-colors cursor-pointer" data-testid="link-pricing">Pricing</span>
             </Link>
-            <Link href="/api/login">
+            <Link href={funnelUrl}>
               <span className={`inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-gradient-to-r ${colors.gradient} text-white text-sm font-bold hover:opacity-90 transition-opacity cursor-pointer`} data-testid="button-get-started">
                 Get Started <ArrowRight size={14} />
               </span>
@@ -135,9 +136,11 @@ export function NicheLanding({ config }: { config: NicheLandingConfig }) {
             {config.subheadline}
           </motion.p>
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="flex flex-col sm:flex-row gap-3 justify-center">
-            <a href="/api/login" className={`inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl bg-gradient-to-r ${colors.gradient} text-white font-bold text-lg hover:opacity-90 transition-all shadow-lg ${colors.glow}`} data-testid="button-hero-cta">
-              {config.ctaText || "Start Free Trial"} <ArrowRight size={18} />
-            </a>
+            <Link href={funnelUrl}>
+              <span className={`inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl bg-gradient-to-r ${colors.gradient} text-white font-bold text-lg hover:opacity-90 transition-all shadow-lg ${colors.glow} cursor-pointer`} data-testid="button-hero-cta">
+                {config.ctaText || "Start Free Trial"} <ArrowRight size={18} />
+              </span>
+            </Link>
             <Link href="/demo">
               <span className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl border border-white/10 bg-white/5 text-white font-bold text-lg hover:bg-white/10 transition-all cursor-pointer" data-testid="button-hero-demo">
                 Watch Demo
@@ -250,9 +253,11 @@ export function NicheLanding({ config }: { config: NicheLandingConfig }) {
             </h2>
             <p className="text-lg text-slate-400 mb-8 max-w-xl mx-auto">Join hundreds of {config.industry.toLowerCase()} professionals already using Apex to grow faster with AI.</p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <a href="/api/login" className={`inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl bg-gradient-to-r ${colors.gradient} text-white font-bold text-lg hover:opacity-90 transition-all shadow-lg ${colors.glow}`} data-testid="button-cta-start">
-                {config.ctaText || "Start Free Trial"} <ArrowRight size={18} />
-              </a>
+              <Link href={funnelUrl}>
+                <span className={`inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl bg-gradient-to-r ${colors.gradient} text-white font-bold text-lg hover:opacity-90 transition-all shadow-lg ${colors.glow} cursor-pointer`} data-testid="button-cta-start">
+                  {config.ctaText || "Start Free Trial"} <ArrowRight size={18} />
+                </span>
+              </Link>
               <Link href="/pricing">
                 <span className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl border border-white/10 text-white font-bold text-lg hover:bg-white/5 transition-all cursor-pointer" data-testid="button-cta-pricing">
                   View Pricing

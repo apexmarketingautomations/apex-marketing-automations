@@ -73,6 +73,23 @@ const PetServicesLanding = lazy(() => import("@/pages/pet-services-landing"));
 const PhotographyLanding = lazy(() => import("@/pages/photography-landing"));
 const WeddingLanding = lazy(() => import("@/pages/wedding-landing"));
 const NicheDirectory = lazy(() => import("@/pages/niche-directory"));
+const LawyersFunnel = lazy(() => import("@/pages/lawyers-funnel"));
+const RestaurantsFunnel = lazy(() => import("@/pages/restaurants-funnel"));
+const DentistsFunnel = lazy(() => import("@/pages/dentists-funnel"));
+const MedspaFunnel = lazy(() => import("@/pages/medspa-funnel"));
+const AutoDealersFunnel = lazy(() => import("@/pages/auto-dealers-funnel"));
+const InsuranceFunnel = lazy(() => import("@/pages/insurance-funnel"));
+const ChiropractorsFunnel = lazy(() => import("@/pages/chiropractors-funnel"));
+const CoachesFunnel = lazy(() => import("@/pages/coaches-funnel"));
+const EcommerceFunnel = lazy(() => import("@/pages/ecommerce-funnel"));
+const PetServicesFunnel = lazy(() => import("@/pages/pet-services-funnel"));
+const PhotographyFunnel = lazy(() => import("@/pages/photography-funnel"));
+const WeddingFunnel = lazy(() => import("@/pages/wedding-funnel"));
+const RealtorsFunnel = lazy(() => import("@/pages/realtors-funnel"));
+const HomeServiceFunnel = lazy(() => import("@/pages/home-service-funnel"));
+const GymFunnel = lazy(() => import("@/pages/gym-funnel"));
+const LuxeFunnel = lazy(() => import("@/pages/luxe-funnel"));
+const MarketersFunnel = lazy(() => import("@/pages/marketers-funnel"));
 
 function PageLoader() {
   return (
@@ -119,6 +136,23 @@ function Router() {
         <Route path="/photography" component={PhotographyLanding} />
         <Route path="/wedding" component={WeddingLanding} />
         <Route path="/niches" component={NicheDirectory} />
+        <Route path="/lawyers/funnel" component={LawyersFunnel} />
+        <Route path="/restaurants/funnel" component={RestaurantsFunnel} />
+        <Route path="/dentists/funnel" component={DentistsFunnel} />
+        <Route path="/medspa/funnel" component={MedspaFunnel} />
+        <Route path="/auto-dealers/funnel" component={AutoDealersFunnel} />
+        <Route path="/insurance/funnel" component={InsuranceFunnel} />
+        <Route path="/chiropractors/funnel" component={ChiropractorsFunnel} />
+        <Route path="/coaches/funnel" component={CoachesFunnel} />
+        <Route path="/ecommerce/funnel" component={EcommerceFunnel} />
+        <Route path="/pet-services/funnel" component={PetServicesFunnel} />
+        <Route path="/photography/funnel" component={PhotographyFunnel} />
+        <Route path="/wedding/funnel" component={WeddingFunnel} />
+        <Route path="/realtors/funnel" component={RealtorsFunnel} />
+        <Route path="/home-services/funnel" component={HomeServiceFunnel} />
+        <Route path="/gym/funnel" component={GymFunnel} />
+        <Route path="/luxe/funnel" component={LuxeFunnel} />
+        <Route path="/marketers/funnel" component={MarketersFunnel} />
 
         {/* Landing page for unauthenticated, dashboard for authenticated */}
         <Route path="/">
