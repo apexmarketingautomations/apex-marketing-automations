@@ -754,3 +754,22 @@ export const portalTokens = pgTable("portal_tokens", {
 export const insertPortalTokenSchema = createInsertSchema(portalTokens).omit({ id: true, createdAt: true });
 export type InsertPortalToken = z.infer<typeof insertPortalTokenSchema>;
 export type PortalToken = typeof portalTokens.$inferSelect;
+
+// ---- Dispatch Subscribers ----
+
+export const dispatchSubscribers = pgTable("dispatch_subscribers", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull(),
+  occupation: text("occupation"),
+  targetZip: text("target_zip").notNull(),
+  targetRadiusMeters: real("target_radius_meters").notNull().default(80467),
+  webhookUrl: text("webhook_url").notNull(),
+  lat: real("lat").notNull(),
+  lon: real("lon").notNull(),
+  active: boolean("active").default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertDispatchSubscriberSchema = createInsertSchema(dispatchSubscribers).omit({ id: true, createdAt: true });
+export type InsertDispatchSubscriber = z.infer<typeof insertDispatchSubscriberSchema>;
+export type DispatchSubscriber = typeof dispatchSubscribers.$inferSelect;

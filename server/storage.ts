@@ -47,6 +47,8 @@ import {
   type WebhookEvent, type InsertWebhookEvent,
   type IntegrationConnection, type InsertIntegrationConnection,
   type PortalToken, type InsertPortalToken,
+  dispatchSubscribers,
+  type DispatchSubscriber, type InsertDispatchSubscriber,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -243,6 +245,12 @@ export interface IStorage {
   getPortalTokenByToken(token: string): Promise<PortalToken | undefined>;
   createPortalToken(data: InsertPortalToken): Promise<PortalToken>;
   deletePortalToken(id: number): Promise<boolean>;
+
+  createDispatchSubscriber(data: InsertDispatchSubscriber): Promise<DispatchSubscriber>;
+  getDispatchSubscribers(): Promise<DispatchSubscriber[]>;
+  getDispatchSubscriber(id: number): Promise<DispatchSubscriber | undefined>;
+  deleteDispatchSubscriber(id: number): Promise<boolean>;
+  findSubscribersNear(lat: number, lon: number): Promise<DispatchSubscriber[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1001,6 +1009,43 @@ export class DatabaseStorage implements IStorage {
   async deletePortalToken(id: number) {
     const rows = await db.delete(portalTokens).where(eq(portalTokens.id, id)).returning();
     return rows.length > 0;
+  }
+
+  async createDispatchSubscriber(data: InsertDispatchSubscriber) {
+    const [row] = await db.insert(dispatchSubscribers).values(data).returning();
+    return row;
+  }
+
+  async getDispatchSubscribers() {
+    return db.select().from(dispatchSubscribers).where(eq(dispatchSubscribers.active, true));
+  }
+
+  async getDispatchSubscriber(id: number) {
+    const [row] = await db.select().from(dispatchSubscribers).where(eq(dispatchSubscribers.id, id));
+    return row;
+  }
+
+  async deleteDispatchSubscriber(id: number) {
+    const rows = await db.delete(dispatchSubscribers).where(eq(dispatchSubscribers.id, id)).returning();
+    return rows.length > 0;
+  }
+
+  async findSubscribersNear(lat: number, lon: number) {
+    const results = await db.execute(sql`
+      SELECT * FROM (
+        SELECT *,
+          (2 * 6371000 * asin(sqrt(
+            power(sin(radians(lat - ${lat}) / 2), 2) +
+            cos(radians(${lat})) * cos(radians(lat)) *
+            power(sin(radians(lon - ${lon}) / 2), 2)
+          ))) AS distance_meters
+        FROM dispatch_subscribers
+        WHERE active = true
+      ) sub
+      WHERE distance_meters <= target_radius_meters
+      ORDER BY distance_meters ASC
+    `);
+    return results.rows as unknown as DispatchSubscriber[];
   }
 }
 
