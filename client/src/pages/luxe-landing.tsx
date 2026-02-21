@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { motion } from "framer-motion";
 import { Star, Clock, Shield, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,10 +32,7 @@ function HeroSplit({
       <div className="absolute inset-0 bg-gradient-to-r from-black via-black/90 to-black/60" />
 
       <div className="relative z-10 max-w-7xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-2 gap-16 items-center w-full">
-        <motion.div
-          initial={{ opacity: 0, x: -40 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.8 }}
+        <div
           className="space-y-8"
         >
           <div className="inline-block px-4 py-1.5 border border-[#D4AF37]/30 rounded-full text-xs tracking-[0.3em] uppercase text-[#D4AF37]">
@@ -72,12 +68,9 @@ function HeroSplit({
               <span>Free consultation</span>
             </div>
           </div>
-        </motion.div>
+        </div>
 
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.4, duration: 0.8 }}
+        <div
           className="hidden lg:block"
         >
           <div className="relative">
@@ -88,7 +81,7 @@ function HeroSplit({
               className="relative rounded-2xl shadow-2xl border border-white/10 w-full aspect-[4/5] object-cover"
             />
           </div>
-        </motion.div>
+        </div>
       </div>
     </div>
   );
@@ -118,12 +111,8 @@ function Features3Col({
           {features.map((feature, idx) => {
             const IconComp = ICON_MAP[feature.icon] || Star;
             return (
-              <motion.div
+              <div
                 key={idx}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: idx * 0.15 }}
               >
                 <Card className="bg-zinc-900/50 border-zinc-800 hover:border-[#D4AF37]/30 transition-colors duration-300 h-full">
                   <CardContent className="p-8 text-center space-y-4">
@@ -138,7 +127,7 @@ function Features3Col({
                     </p>
                   </CardContent>
                 </Card>
-              </motion.div>
+              </div>
             );
           })}
         </div>
@@ -171,11 +160,7 @@ function BookingForm({
   return (
     <div className="py-24 px-6" id={form_id}>
       <div className="max-w-lg mx-auto">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-        >
+        <div>
           <Card className="bg-zinc-900/80 border-zinc-800 shadow-2xl">
             <CardContent className="p-10 space-y-8">
               <div className="text-center space-y-3">
@@ -191,9 +176,7 @@ function BookingForm({
               </div>
 
               {submitted ? (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
+                <div
                   className="text-center py-8 space-y-4"
                 >
                   <div className="h-16 w-16 bg-[#D4AF37] rounded-full flex items-center justify-center mx-auto">
@@ -205,7 +188,7 @@ function BookingForm({
                   <p className="text-gray-400">
                     Our team will reach out shortly to confirm your appointment.
                   </p>
-                </motion.div>
+                </div>
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-5">
                   <div className="space-y-2">
@@ -251,7 +234,7 @@ function BookingForm({
               )}
             </CardContent>
           </Card>
-        </motion.div>
+        </div>
       </div>
     </div>
   );

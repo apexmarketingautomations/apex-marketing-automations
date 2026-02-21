@@ -1,21 +1,19 @@
 import { useState, useEffect, useRef } from "react";
-import { motion, useInView } from "framer-motion";
 import { Link } from "wouter";
 import { ArrowRight, CheckCircle2, ChevronDown, ChevronUp, Sparkles, Star } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-const fadeUp = {
-  hidden: { opacity: 0, y: 30 },
-  visible: (i: number) => ({
-    opacity: 1, y: 0,
-    transition: { delay: i * 0.08, duration: 0.5, ease: "easeOut" as const },
-  }),
-};
-
 function CountUp({ end, suffix = "", duration = 2000 }: { end: number; suffix?: string; duration?: number }) {
   const [count, setCount] = useState(0);
   const ref = useRef<HTMLSpanElement>(null);
-  const inView = useInView(ref, { once: true });
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(([entry]) => { if (entry.isIntersecting) { setInView(true); obs.disconnect(); } }, { threshold: 0.1 });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
   useEffect(() => {
     if (!inView) return;
     let start = 0;
@@ -123,19 +121,19 @@ export function NicheLanding({ config }: { config: NicheLandingConfig }) {
       <section className="pt-32 pb-20 px-6 relative" data-testid="section-hero">
         <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-gradient-to-b ${colors.gradient} opacity-[0.08] rounded-full blur-3xl pointer-events-none`} />
         <div className="max-w-5xl mx-auto text-center relative z-10">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+          <div>
             <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold border ${colors.border} ${colors.text} bg-white/5 mb-6`}>
               <Sparkles size={12} /> {config.tagline}
             </div>
-          </motion.div>
-          <motion.h1 initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="text-5xl md:text-7xl font-black tracking-tight leading-[1.1] mb-6" data-testid="text-hero-headline">
+          </div>
+          <h1 className="text-5xl md:text-7xl font-black tracking-tight leading-[1.1] mb-6" data-testid="text-hero-headline">
             {config.headline}{" "}
             <span className={`bg-gradient-to-r ${colors.gradient} bg-clip-text text-transparent`}>{config.headlineAccent}</span>
-          </motion.h1>
-          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="text-lg md:text-xl text-slate-400 max-w-2xl mx-auto mb-8">
+          </h1>
+          <p className="text-lg md:text-xl text-slate-400 max-w-2xl mx-auto mb-8">
             {config.subheadline}
-          </motion.p>
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="flex flex-col sm:flex-row gap-3 justify-center">
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link href={funnelUrl}>
               <span className={`inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl bg-gradient-to-r ${colors.gradient} text-white font-bold text-lg hover:opacity-90 transition-all shadow-lg ${colors.glow} cursor-pointer`} data-testid="button-hero-cta">
                 {config.ctaText || "Start Free Trial"} <ArrowRight size={18} />
@@ -146,30 +144,30 @@ export function NicheLanding({ config }: { config: NicheLandingConfig }) {
                 Watch Demo
               </span>
             </Link>
-          </motion.div>
+          </div>
         </div>
       </section>
 
       <section className="py-16 px-6 border-y border-white/5 bg-white/[0.01]" data-testid="section-stats">
         <div className="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
           {config.stats.map((stat, i) => (
-            <motion.div key={i} custom={i} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp}>
+            <div key={i}>
               <p className={`text-4xl md:text-5xl font-black ${colors.text}`}><CountUp end={stat.value} suffix={stat.suffix} /></p>
               <p className="text-sm text-slate-500 mt-1">{stat.label}</p>
-            </motion.div>
+            </div>
           ))}
         </div>
       </section>
 
       <section className="py-20 px-6" data-testid="section-pain-points">
         <div className="max-w-5xl mx-auto">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={0} className="text-center mb-12">
+          <div className="text-center mb-12">
             <h2 className="text-3xl md:text-4xl font-black mb-3">Sound Familiar?</h2>
             <p className="text-slate-400 max-w-xl mx-auto">These problems cost {config.industry.toLowerCase()} businesses thousands every month</p>
-          </motion.div>
+          </div>
           <div className="grid md:grid-cols-2 gap-4">
             {config.painPoints.map((p, i) => (
-              <motion.div key={i} custom={i + 1} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} className="flex gap-4 p-5 rounded-xl bg-white/[0.03] border border-white/5 hover:border-white/10 transition-colors" data-testid={`card-pain-${i}`}>
+              <div key={i} className="flex gap-4 p-5 rounded-xl bg-white/[0.03] border border-white/5 hover:border-white/10 transition-colors" data-testid={`card-pain-${i}`}>
                 <div className="w-10 h-10 rounded-lg bg-red-500/10 flex items-center justify-center shrink-0">
                   <p.icon size={20} className="text-red-400" />
                 </div>
@@ -177,7 +175,7 @@ export function NicheLanding({ config }: { config: NicheLandingConfig }) {
                   <h3 className="font-bold text-white mb-1">{p.title}</h3>
                   <p className="text-sm text-slate-400 leading-relaxed">{p.desc}</p>
                 </div>
-              </motion.div>
+              </div>
             ))}
           </div>
         </div>
@@ -185,20 +183,20 @@ export function NicheLanding({ config }: { config: NicheLandingConfig }) {
 
       <section className="py-20 px-6 bg-white/[0.01]" data-testid="section-features">
         <div className="max-w-6xl mx-auto">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={0} className="text-center mb-12">
+          <div className="text-center mb-12">
             <h2 className="text-3xl md:text-4xl font-black mb-3">Everything You Need to Dominate</h2>
             <p className="text-slate-400 max-w-xl mx-auto">AI-powered tools built specifically for {config.industry.toLowerCase()}</p>
-          </motion.div>
+          </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
             {config.features.map((f, i) => (
-              <motion.div key={i} custom={i + 1} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} className="p-6 rounded-xl bg-black/40 border border-white/5 hover:border-white/15 transition-all group" data-testid={`card-feature-${i}`}>
+              <div key={i} className="p-6 rounded-xl bg-black/40 border border-white/5 hover:border-white/15 transition-all group" data-testid={`card-feature-${i}`}>
                 <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${f.gradient} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
                   <f.icon size={22} className="text-white" />
                 </div>
                 <h3 className="text-lg font-bold text-white mb-2">{f.title}</h3>
                 <p className="text-sm text-slate-400 leading-relaxed mb-3">{f.desc}</p>
                 <p className={`text-xs font-bold ${colors.text}`}>{f.stat}</p>
-              </motion.div>
+              </div>
             ))}
           </div>
         </div>
@@ -206,12 +204,12 @@ export function NicheLanding({ config }: { config: NicheLandingConfig }) {
 
       <section className="py-20 px-6" data-testid="section-testimonials">
         <div className="max-w-5xl mx-auto">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={0} className="text-center mb-12">
+          <div className="text-center mb-12">
             <h2 className="text-3xl md:text-4xl font-black mb-3">Trusted by {config.industry}</h2>
-          </motion.div>
+          </div>
           <div className="grid md:grid-cols-3 gap-5">
             {config.testimonials.map((t, i) => (
-              <motion.div key={i} custom={i + 1} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} className="p-6 rounded-xl bg-white/[0.03] border border-white/5" data-testid={`card-testimonial-${i}`}>
+              <div key={i} className="p-6 rounded-xl bg-white/[0.03] border border-white/5" data-testid={`card-testimonial-${i}`}>
                 <div className="flex gap-1 mb-3">
                   {[...Array(5)].map((_, j) => <Star key={j} size={14} className="text-amber-400 fill-amber-400" />)}
                 </div>
@@ -220,7 +218,7 @@ export function NicheLanding({ config }: { config: NicheLandingConfig }) {
                   <p className="text-sm font-bold text-white">{t.name}</p>
                   <p className="text-xs text-slate-500">{t.role}</p>
                 </div>
-              </motion.div>
+              </div>
             ))}
           </div>
         </div>
@@ -228,18 +226,18 @@ export function NicheLanding({ config }: { config: NicheLandingConfig }) {
 
       <section className="py-20 px-6 bg-white/[0.01]" data-testid="section-faq">
         <div className="max-w-3xl mx-auto">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={0} className="text-center mb-12">
+          <div className="text-center mb-12">
             <h2 className="text-3xl md:text-4xl font-black mb-3">Frequently Asked Questions</h2>
-          </motion.div>
+          </div>
           <div className="space-y-3">
             {config.faqs.map((faq, i) => (
-              <motion.div key={i} custom={i + 1} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} className="rounded-xl border border-white/5 bg-white/[0.02] overflow-hidden" data-testid={`faq-${i}`}>
+              <div key={i} className="rounded-xl border border-white/5 bg-white/[0.02] overflow-hidden" data-testid={`faq-${i}`}>
                 <button onClick={() => setOpenFaq(openFaq === i ? null : i)} className="w-full flex items-center justify-between p-5 text-left hover:bg-white/[0.02] transition-colors">
                   <span className="font-bold text-sm text-white pr-4">{faq.q}</span>
                   {openFaq === i ? <ChevronUp size={16} className="text-slate-400 shrink-0" /> : <ChevronDown size={16} className="text-slate-400 shrink-0" />}
                 </button>
                 {openFaq === i && <div className="px-5 pb-5 text-sm text-slate-400 leading-relaxed">{faq.a}</div>}
-              </motion.div>
+              </div>
             ))}
           </div>
         </div>
@@ -247,7 +245,7 @@ export function NicheLanding({ config }: { config: NicheLandingConfig }) {
 
       <section className="py-20 px-6" data-testid="section-cta">
         <div className="max-w-4xl mx-auto text-center">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={0}>
+          <div>
             <h2 className="text-4xl md:text-5xl font-black mb-4">
               Ready to Transform Your <span className={`bg-gradient-to-r ${colors.gradient} bg-clip-text text-transparent`}>{config.industry}</span> Business?
             </h2>
@@ -269,7 +267,7 @@ export function NicheLanding({ config }: { config: NicheLandingConfig }) {
                 <span key={t} className="flex items-center gap-1 text-xs text-slate-500"><CheckCircle2 size={12} className={colors.text} /> {t}</span>
               ))}
             </div>
-          </motion.div>
+          </div>
         </div>
       </section>
 

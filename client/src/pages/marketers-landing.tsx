@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { motion, useInView } from "framer-motion";
 import { Link } from "wouter";
 import {
   ArrowRight, Zap, CheckCircle2, ChevronDown, ChevronUp,
@@ -9,23 +8,18 @@ import {
   Layers, Eye
 } from "lucide-react";
 
-const fadeUp = {
-  hidden: { opacity: 0, y: 30 },
-  visible: (i: number) => ({
-    opacity: 1, y: 0,
-    transition: { delay: i * 0.08, duration: 0.5, ease: "easeOut" as const },
-  }),
-};
-
-const stagger = {
-  hidden: {},
-  visible: { transition: { staggerChildren: 0.08 } },
-};
-
 function CountUp({ end, suffix = "", duration = 2000 }: { end: number; suffix?: string; duration?: number }) {
   const [count, setCount] = useState(0);
   const ref = useRef<HTMLSpanElement>(null);
-  const inView = useInView(ref, { once: true });
+  const [inView, setInView] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(([entry]) => { if (entry.isIntersecting) { setInView(true); obs.disconnect(); } }, { threshold: 0.1 });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!inView) return;
@@ -198,16 +192,13 @@ export default function MarketersLanding() {
         <div className="absolute top-40 right-0 w-[400px] h-[400px] bg-gradient-to-bl from-cyan-600/10 to-transparent rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative z-10 max-w-5xl mx-auto text-center">
-          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.4 }}>
+          <div>
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 mb-8" data-testid="badge-hero">
               <Sparkles size={14} /> Built Specifically for Marketing Professionals
             </div>
-          </motion.div>
+          </div>
 
-          <motion.h1
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1, duration: 0.5 }}
+          <h1
             className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-black tracking-tight leading-[0.95] mb-6"
             data-testid="text-hero-title"
           >
@@ -215,23 +206,17 @@ export default function MarketersLanding() {
             <span className="block bg-gradient-to-r from-indigo-400 via-purple-400 to-cyan-400 bg-clip-text text-transparent">
               Start Dominating
             </span>
-          </motion.h1>
+          </h1>
 
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.25, duration: 0.5 }}
+          <p
             className="text-base sm:text-lg md:text-xl text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed"
             data-testid="text-hero-subtitle"
           >
             One AI-powered platform replaces your CRM, inbox, dialer, site builder, ad manager, and chatbot tools.
             Save thousands per month. Close more deals. Work less.
-          </motion.p>
+          </p>
 
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4, duration: 0.5 }}
+          <div
             className="flex flex-col sm:flex-row items-center justify-center gap-4"
           >
             <a
@@ -248,25 +233,19 @@ export default function MarketersLanding() {
             >
               <Play size={18} /> Watch It In Action
             </Link>
-          </motion.div>
+          </div>
 
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.6 }}
+          <div
             className="flex items-center justify-center gap-6 mt-8 text-xs text-slate-500"
           >
             <span className="flex items-center gap-1.5"><CheckCircle2 size={12} className="text-green-500" /> No credit card</span>
             <span className="flex items-center gap-1.5"><CheckCircle2 size={12} className="text-green-500" /> 60-day trial</span>
             <span className="flex items-center gap-1.5"><CheckCircle2 size={12} className="text-green-500" /> Cancel anytime</span>
-          </motion.div>
+          </div>
         </div>
 
         {/* Stats */}
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.7, duration: 0.6 }}
+        <div
           className="relative z-10 max-w-4xl mx-auto mt-16 md:mt-24"
         >
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -282,29 +261,29 @@ export default function MarketersLanding() {
               </div>
             ))}
           </div>
-        </motion.div>
+        </div>
       </section>
 
       {/* Problem Section */}
       <section id="problem" className="relative z-10 py-20 md:py-28 px-6">
         <div className="max-w-6xl mx-auto">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }} className="text-center mb-16">
-            <motion.div variants={fadeUp} custom={0}>
+          <div className="text-center mb-16">
+            <div>
               <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold border border-red-500/30 bg-red-500/10 text-red-400 mb-4">
                 THE PROBLEM
               </div>
-            </motion.div>
-            <motion.h2 variants={fadeUp} custom={1} className="text-3xl md:text-5xl font-black tracking-tight mb-4" data-testid="text-problem-title">
+            </div>
+            <h2 className="text-3xl md:text-5xl font-black tracking-tight mb-4" data-testid="text-problem-title">
               Marketers Are <span className="bg-gradient-to-r from-red-400 to-orange-400 bg-clip-text text-transparent">Drowning</span> in Tools
-            </motion.h2>
-            <motion.p variants={fadeUp} custom={2} className="text-slate-400 max-w-2xl mx-auto text-lg">
+            </h2>
+            <p className="text-slate-400 max-w-2xl mx-auto text-lg">
               The average marketing team uses 8+ different platforms. That's 8 logins, 8 invoices, and zero integration.
-            </motion.p>
-          </motion.div>
+            </p>
+          </div>
 
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger} className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             {painPoints.map((p, i) => (
-              <motion.div key={p.title} variants={fadeUp} custom={i} data-testid={`card-pain-${i}`}>
+              <div key={p.title} data-testid={`card-pain-${i}`}>
                 <div className="group p-6 bg-white/[0.02] border border-red-500/10 hover:border-red-500/20 rounded-2xl transition-all h-full">
                   <div className="flex items-start gap-4">
                     <div className="w-11 h-11 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
@@ -316,49 +295,42 @@ export default function MarketersLanding() {
                     </div>
                   </div>
                 </div>
-              </motion.div>
+              </div>
             ))}
-          </motion.div>
+          </div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
+          <div
             className="mt-12 text-center"
           >
             <div className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-500/20">
               <ArrowRight size={16} className="text-indigo-400" />
               <span className="text-sm font-medium text-indigo-300">There's a better way. One platform. Everything you need.</span>
             </div>
-          </motion.div>
+          </div>
         </div>
       </section>
 
       {/* Features */}
       <section id="features" className="relative z-10 py-20 md:py-28 px-6 bg-gradient-to-b from-transparent via-indigo-600/[0.03] to-transparent">
         <div className="max-w-7xl mx-auto">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }} className="text-center mb-16">
-            <motion.div variants={fadeUp} custom={0}>
+          <div className="text-center mb-16">
+            <div>
               <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 mb-4">
                 THE SOLUTION
               </div>
-            </motion.div>
-            <motion.h2 variants={fadeUp} custom={1} className="text-3xl md:text-5xl font-black tracking-tight mb-4" data-testid="text-features-title">
+            </div>
+            <h2 className="text-3xl md:text-5xl font-black tracking-tight mb-4" data-testid="text-features-title">
               Everything Marketers Need <span className="bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">In One Place</span>
-            </motion.h2>
-            <motion.p variants={fadeUp} custom={2} className="text-slate-400 max-w-2xl mx-auto text-lg">
+            </h2>
+            <p className="text-slate-400 max-w-2xl mx-auto text-lg">
               18 AI-powered modules designed from the ground up for marketing teams and agencies.
-            </motion.p>
-          </motion.div>
+            </p>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {features.map((f, i) => (
-              <motion.div
+              <div
                 key={f.title}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-30px" }}
-                transition={{ delay: i * 0.08 }}
                 data-testid={`card-feature-${i}`}
               >
                 <div className="group h-full bg-white/[0.03] border border-white/[0.06] hover:border-white/[0.12] rounded-2xl p-6 transition-all duration-300 hover:bg-white/[0.05]">
@@ -372,7 +344,7 @@ export default function MarketersLanding() {
                     {f.stat}
                   </div>
                 </div>
-              </motion.div>
+              </div>
             ))}
           </div>
         </div>
@@ -381,19 +353,19 @@ export default function MarketersLanding() {
       {/* Workflow Preview */}
       <section className="relative z-10 py-20 md:py-28 px-6">
         <div className="max-w-5xl mx-auto">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }} className="text-center mb-16">
-            <motion.div variants={fadeUp} custom={0}>
+          <div className="text-center mb-16">
+            <div>
               <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold border border-purple-500/30 bg-purple-500/10 text-purple-300 mb-4">
                 AUTOMATIONS
               </div>
-            </motion.div>
-            <motion.h2 variants={fadeUp} custom={1} className="text-3xl md:text-5xl font-black tracking-tight mb-4" data-testid="text-workflows-title">
+            </div>
+            <h2 className="text-3xl md:text-5xl font-black tracking-tight mb-4" data-testid="text-workflows-title">
               Automate Your <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">Entire Funnel</span>
-            </motion.h2>
-            <motion.p variants={fadeUp} custom={2} className="text-slate-400 max-w-2xl mx-auto text-lg">
+            </h2>
+            <p className="text-slate-400 max-w-2xl mx-auto text-lg">
               Pre-built workflow templates that run 24/7. From lead capture to close — on autopilot.
-            </motion.p>
-          </motion.div>
+            </p>
+          </div>
 
           <div className="space-y-5">
             {workflows.map((wf, i) => {
@@ -404,12 +376,8 @@ export default function MarketersLanding() {
               };
               const c = colors[wf.color];
               return (
-                <motion.div
+                <div
                   key={wf.trigger}
-                  initial={{ opacity: 0, x: -30 }}
-                  whileInView={{ opacity: 1, x: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.15 }}
                   className={`p-5 bg-white/[0.02] border ${c.border} rounded-2xl`}
                   data-testid={`workflow-${i}`}
                 >
@@ -432,7 +400,7 @@ export default function MarketersLanding() {
                       ))}
                     </div>
                   </div>
-                </motion.div>
+                </div>
               );
             })}
           </div>
@@ -442,25 +410,21 @@ export default function MarketersLanding() {
       {/* Social Proof */}
       <section id="proof" className="relative z-10 py-20 md:py-28 px-6 bg-gradient-to-b from-transparent via-purple-600/[0.04] to-transparent">
         <div className="max-w-6xl mx-auto">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }} className="text-center mb-16">
-            <motion.div variants={fadeUp} custom={0}>
+          <div className="text-center mb-16">
+            <div>
               <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold border border-amber-500/30 bg-amber-500/10 text-amber-300 mb-4">
                 RESULTS
               </div>
-            </motion.div>
-            <motion.h2 variants={fadeUp} custom={1} className="text-3xl md:text-5xl font-black tracking-tight mb-4" data-testid="text-proof-title">
+            </div>
+            <h2 className="text-3xl md:text-5xl font-black tracking-tight mb-4" data-testid="text-proof-title">
               Marketers Are <span className="bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent">Winning</span> With Apex
-            </motion.h2>
-          </motion.div>
+            </h2>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {testimonials.map((t, i) => (
-              <motion.div
+              <div
                 key={t.name}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
                 data-testid={`card-testimonial-${i}`}
               >
                 <div className="h-full p-6 bg-white/[0.03] border border-white/[0.06] rounded-2xl hover:border-white/[0.12] transition-colors">
@@ -485,7 +449,7 @@ export default function MarketersLanding() {
                     </div>
                   </div>
                 </div>
-              </motion.div>
+              </div>
             ))}
           </div>
         </div>
@@ -494,24 +458,21 @@ export default function MarketersLanding() {
       {/* Cost Comparison */}
       <section id="pricing" className="relative z-10 py-20 md:py-28 px-6">
         <div className="max-w-4xl mx-auto">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }} className="text-center mb-16">
-            <motion.div variants={fadeUp} custom={0}>
+          <div className="text-center mb-16">
+            <div>
               <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 mb-4">
                 SAVE $800+/mo
               </div>
-            </motion.div>
-            <motion.h2 variants={fadeUp} custom={1} className="text-3xl md:text-5xl font-black tracking-tight mb-4" data-testid="text-pricing-title">
+            </div>
+            <h2 className="text-3xl md:text-5xl font-black tracking-tight mb-4" data-testid="text-pricing-title">
               Replace <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">8 Tools</span> With One
-            </motion.h2>
-            <motion.p variants={fadeUp} custom={2} className="text-slate-400 max-w-xl mx-auto text-lg">
+            </h2>
+            <p className="text-slate-400 max-w-xl mx-auto text-lg">
               Stop paying for overlap. Get everything in a single subscription starting at $48/mo.
-            </motion.p>
-          </motion.div>
+            </p>
+          </div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
+          <div
             className="overflow-hidden rounded-2xl border border-white/[0.08]"
           >
             <div className="grid grid-cols-3 bg-white/[0.04] p-4 border-b border-white/[0.08]">
@@ -533,12 +494,9 @@ export default function MarketersLanding() {
               <div className="text-lg font-black text-red-400 text-center">$810/mo</div>
               <div className="text-lg font-black text-emerald-400 text-center">$48/mo</div>
             </div>
-          </motion.div>
+          </div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
+          <div
             className="mt-10 text-center"
           >
             <a
@@ -549,27 +507,23 @@ export default function MarketersLanding() {
               Start Saving Today <ArrowRight size={20} />
             </a>
             <p className="text-xs text-slate-500 mt-4">60-day free trial. No credit card required.</p>
-          </motion.div>
+          </div>
         </div>
       </section>
 
       {/* FAQ */}
       <section id="faq" className="relative z-10 py-20 md:py-28 px-6 bg-gradient-to-b from-transparent via-indigo-600/[0.03] to-transparent">
         <div className="max-w-3xl mx-auto">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }} className="text-center mb-16">
-            <motion.h2 variants={fadeUp} custom={0} className="text-3xl md:text-5xl font-black tracking-tight mb-4" data-testid="text-faq-title">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl md:text-5xl font-black tracking-tight mb-4" data-testid="text-faq-title">
               Frequently Asked Questions
-            </motion.h2>
-          </motion.div>
+            </h2>
+          </div>
 
           <div className="space-y-3">
             {faqs.map((faq, i) => (
-              <motion.div
+              <div
                 key={i}
-                initial={{ opacity: 0, y: 15 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.06 }}
                 data-testid={`faq-${i}`}
               >
                 <button
@@ -582,16 +536,14 @@ export default function MarketersLanding() {
                     {openFaq === i ? <ChevronUp size={18} className="text-slate-400 shrink-0" /> : <ChevronDown size={18} className="text-slate-400 shrink-0" />}
                   </div>
                   {openFaq === i && (
-                    <motion.p
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
+                    <p
                       className="text-sm text-slate-400 mt-3 leading-relaxed"
                     >
                       {faq.a}
-                    </motion.p>
+                    </p>
                   )}
                 </button>
-              </motion.div>
+              </div>
             ))}
           </div>
         </div>
@@ -605,30 +557,19 @@ export default function MarketersLanding() {
             <div className="absolute inset-0 bg-[#030014]/70" />
 
             <div className="relative z-10">
-              <motion.h2
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
+              <h2
                 className="text-3xl md:text-5xl font-black tracking-tight mb-4"
                 data-testid="text-final-cta"
               >
                 Ready to <span className="bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">10x</span> Your Marketing?
-              </motion.h2>
-              <motion.p
-                initial={{ opacity: 0, y: 15 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: 0.1 }}
+              </h2>
+              <p
                 className="text-slate-400 text-lg max-w-xl mx-auto mb-8"
               >
                 Join thousands of marketers who stopped paying for 8 tools and started growing with one.
-              </motion.p>
+              </p>
 
-              <motion.div
-                initial={{ opacity: 0, y: 15 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: 0.2 }}
+              <div
                 className="flex flex-col sm:flex-row items-center justify-center gap-4"
               >
                 <a
@@ -645,7 +586,7 @@ export default function MarketersLanding() {
                 >
                   <Play size={18} /> See Live Demo
                 </Link>
-              </motion.div>
+              </div>
             </div>
           </div>
         </div>

@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "wouter";
 import {
   ArrowRight, ArrowLeft, CheckCircle2, Sparkles, User, Mail, Phone,
@@ -50,7 +49,7 @@ const accentMap: Record<string, { text: string; bg: string; border: string; grad
   sky: { text: "text-sky-400", bg: "bg-sky-500", border: "border-sky-500/30", gradient: "from-sky-500 to-blue-600", glow: "shadow-sky-500/20", ring: "ring-sky-500/40" },
 };
 
-const steps = ["Your Info", "About Your Business", "Schedule", "Confirmed"];
+const stepLabels = ["Your Info", "About Your Business", "Schedule", "Confirmed"];
 
 export function NicheFunnel({ config }: { config: NicheFunnelConfig }) {
   const [step, setStep] = useState(0);
@@ -105,7 +104,7 @@ export function NicheFunnel({ config }: { config: NicheFunnelConfig }) {
       <div className="pt-28 pb-20 px-4">
         <div className="max-w-5xl mx-auto grid lg:grid-cols-5 gap-10">
           <div className="lg:col-span-2 pt-4">
-            <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
+            <div>
               <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold border ${colors.border} ${colors.text} bg-white/5 mb-4`}>
                 <Sparkles size={11} /> FREE STRATEGY SESSION
               </div>
@@ -117,12 +116,12 @@ export function NicheFunnel({ config }: { config: NicheFunnelConfig }) {
 
               <div className="space-y-3">
                 {config.benefits.map((b, i) => (
-                  <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 + i * 0.08 }} className="flex items-start gap-3" data-testid={`benefit-${i}`}>
+                  <div key={i} className="flex items-start gap-3" data-testid={`benefit-${i}`}>
                     <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${colors.gradient} flex items-center justify-center shrink-0 mt-0.5`}>
                       <b.icon size={14} className="text-white" />
                     </div>
                     <span className="text-sm text-slate-300">{b.text}</span>
-                  </motion.div>
+                  </div>
                 ))}
               </div>
 
@@ -133,170 +132,168 @@ export function NicheFunnel({ config }: { config: NicheFunnelConfig }) {
                 </div>
                 <p className="text-xs text-slate-500">Takes less than 2 minutes. We'll show you exactly how Apex can transform your {config.industry.toLowerCase()} business.</p>
               </div>
-            </motion.div>
+            </div>
           </div>
 
           <div className="lg:col-span-3">
             <div className="mb-6">
               <div className="flex items-center gap-2 mb-3">
-                {steps.map((s, i) => (
+                {stepLabels.map((s, i) => (
                   <div key={i} className="flex items-center gap-2 flex-1">
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${i < step ? `bg-gradient-to-br ${colors.gradient} text-white` : i === step ? `border-2 ${colors.border} ${colors.text}` : "border border-white/10 text-slate-600"}`}>
                       {i < step ? <CheckCircle2 size={14} /> : i + 1}
                     </div>
-                    {i < steps.length - 1 && <div className={`flex-1 h-px ${i < step ? colors.bg : "bg-white/10"} transition-all`} />}
+                    {i < stepLabels.length - 1 && <div className={`flex-1 h-px ${i < step ? colors.bg : "bg-white/10"} transition-all`} />}
                   </div>
                 ))}
               </div>
-              <p className="text-xs text-slate-500">Step {step + 1} of {steps.length}: <span className="text-white font-medium">{steps[step]}</span></p>
+              <p className="text-xs text-slate-500">Step {step + 1} of {stepLabels.length}: <span className="text-white font-medium">{stepLabels[step]}</span></p>
             </div>
 
-            <motion.div className="p-6 md:p-8 rounded-2xl bg-white/[0.03] border border-white/5 backdrop-blur-sm" data-testid="funnel-form">
-              <AnimatePresence mode="wait">
-                {step === 0 && (
-                  <motion.div key="step0" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4">
-                    <h2 className="text-xl font-bold mb-1">Tell us about yourself</h2>
-                    <p className="text-sm text-slate-400 mb-4">We'll use this to personalize your strategy session.</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className={labelClass}>First Name *</label>
-                        <div className="relative">
-                          <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                          <input className={`${inputClass} pl-9`} placeholder="John" value={formData.firstName} onChange={e => updateField("firstName", e.target.value)} data-testid="input-firstName" />
+            <div className="p-6 md:p-8 rounded-2xl bg-white/[0.03] border border-white/5 backdrop-blur-sm" data-testid="funnel-form">
+              {step === 0 && (
+                <div className="space-y-4">
+                  <h2 className="text-xl font-bold mb-1">Tell us about yourself</h2>
+                  <p className="text-sm text-slate-400 mb-4">We'll use this to personalize your strategy session.</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={labelClass}>First Name *</label>
+                      <div className="relative">
+                        <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                        <input className={`${inputClass} pl-9`} placeholder="John" value={formData.firstName} onChange={e => updateField("firstName", e.target.value)} data-testid="input-firstName" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className={labelClass}>Last Name</label>
+                      <input className={inputClass} placeholder="Smith" value={formData.lastName} onChange={e => updateField("lastName", e.target.value)} data-testid="input-lastName" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Email Address *</label>
+                    <div className="relative">
+                      <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                      <input className={`${inputClass} pl-9`} type="email" placeholder="john@business.com" value={formData.email} onChange={e => updateField("email", e.target.value)} data-testid="input-email" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Phone Number *</label>
+                    <div className="relative">
+                      <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                      <input className={`${inputClass} pl-9`} type="tel" placeholder="(555) 123-4567" value={formData.phone} onChange={e => updateField("phone", e.target.value)} data-testid="input-phone" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Business Name</label>
+                    <div className="relative">
+                      <Building2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                      <input className={`${inputClass} pl-9`} placeholder="Your Business LLC" value={formData.businessName} onChange={e => updateField("businessName", e.target.value)} data-testid="input-businessName" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {step === 1 && (
+                <div className="space-y-4">
+                  <h2 className="text-xl font-bold mb-1">About Your Business</h2>
+                  <p className="text-sm text-slate-400 mb-4">Help us understand your needs so we can tailor your strategy.</p>
+                  {config.qualifyingQuestions.map(q => (
+                    <div key={q.id}>
+                      <label className={labelClass}>{q.label}{q.required !== false && " *"}</label>
+                      {q.type === "select" && (
+                        <select className={inputClass} value={formData[q.id] || ""} onChange={e => updateField(q.id, e.target.value)} data-testid={`input-${q.id}`}>
+                          <option value="" className="bg-neutral-900">Select...</option>
+                          {q.options?.map(o => <option key={o} value={o} className="bg-neutral-900">{o}</option>)}
+                        </select>
+                      )}
+                      {q.type === "text" && (
+                        <input className={inputClass} placeholder={q.placeholder || ""} value={formData[q.id] || ""} onChange={e => updateField(q.id, e.target.value)} data-testid={`input-${q.id}`} />
+                      )}
+                      {q.type === "textarea" && (
+                        <textarea className={`${inputClass} min-h-[80px]`} placeholder={q.placeholder || ""} value={formData[q.id] || ""} onChange={e => updateField(q.id, e.target.value)} data-testid={`input-${q.id}`} />
+                      )}
+                      {q.type === "radio" && (
+                        <div className="grid grid-cols-2 gap-2 mt-1">
+                          {q.options?.map(o => (
+                            <button key={o} onClick={() => updateField(q.id, o)} className={`px-4 py-2.5 rounded-xl border text-sm font-medium transition-all text-left ${formData[q.id] === o ? `${colors.border} ${colors.text} bg-white/5` : "border-white/10 text-slate-400 hover:border-white/20"}`} data-testid={`radio-${q.id}-${o}`}>
+                              {o}
+                            </button>
+                          ))}
                         </div>
-                      </div>
-                      <div>
-                        <label className={labelClass}>Last Name</label>
-                        <input className={inputClass} placeholder="Smith" value={formData.lastName} onChange={e => updateField("lastName", e.target.value)} data-testid="input-lastName" />
-                      </div>
+                      )}
                     </div>
-                    <div>
-                      <label className={labelClass}>Email Address *</label>
-                      <div className="relative">
-                        <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                        <input className={`${inputClass} pl-9`} type="email" placeholder="john@business.com" value={formData.email} onChange={e => updateField("email", e.target.value)} data-testid="input-email" />
-                      </div>
-                    </div>
-                    <div>
-                      <label className={labelClass}>Phone Number *</label>
-                      <div className="relative">
-                        <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                        <input className={`${inputClass} pl-9`} type="tel" placeholder="(555) 123-4567" value={formData.phone} onChange={e => updateField("phone", e.target.value)} data-testid="input-phone" />
-                      </div>
-                    </div>
-                    <div>
-                      <label className={labelClass}>Business Name</label>
-                      <div className="relative">
-                        <Building2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                        <input className={`${inputClass} pl-9`} placeholder="Your Business LLC" value={formData.businessName} onChange={e => updateField("businessName", e.target.value)} data-testid="input-businessName" />
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
+                  ))}
+                </div>
+              )}
 
-                {step === 1 && (
-                  <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4">
-                    <h2 className="text-xl font-bold mb-1">About Your Business</h2>
-                    <p className="text-sm text-slate-400 mb-4">Help us understand your needs so we can tailor your strategy.</p>
-                    {config.qualifyingQuestions.map(q => (
-                      <div key={q.id}>
-                        <label className={labelClass}>{q.label}{q.required !== false && " *"}</label>
-                        {q.type === "select" && (
-                          <select className={inputClass} value={formData[q.id] || ""} onChange={e => updateField(q.id, e.target.value)} data-testid={`input-${q.id}`}>
-                            <option value="" className="bg-neutral-900">Select...</option>
-                            {q.options?.map(o => <option key={o} value={o} className="bg-neutral-900">{o}</option>)}
-                          </select>
-                        )}
-                        {q.type === "text" && (
-                          <input className={inputClass} placeholder={q.placeholder || ""} value={formData[q.id] || ""} onChange={e => updateField(q.id, e.target.value)} data-testid={`input-${q.id}`} />
-                        )}
-                        {q.type === "textarea" && (
-                          <textarea className={`${inputClass} min-h-[80px]`} placeholder={q.placeholder || ""} value={formData[q.id] || ""} onChange={e => updateField(q.id, e.target.value)} data-testid={`input-${q.id}`} />
-                        )}
-                        {q.type === "radio" && (
-                          <div className="grid grid-cols-2 gap-2 mt-1">
-                            {q.options?.map(o => (
-                              <button key={o} onClick={() => updateField(q.id, o)} className={`px-4 py-2.5 rounded-xl border text-sm font-medium transition-all text-left ${formData[q.id] === o ? `${colors.border} ${colors.text} bg-white/5` : "border-white/10 text-slate-400 hover:border-white/20"}`} data-testid={`radio-${q.id}-${o}`}>
-                                {o}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </motion.div>
-                )}
+              {step === 2 && (
+                <div className="space-y-4">
+                  <h2 className="text-xl font-bold mb-1">Pick Your Session Time</h2>
+                  <p className="text-sm text-slate-400 mb-4">{config.calendarNote || "Choose a day and time that works best for your free strategy call."}</p>
+                  <div>
+                    <label className={labelClass}>Preferred Day *</label>
+                    <div className="relative">
+                      <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                      <select className={`${inputClass} pl-9`} value={formData.preferredDay} onChange={e => updateField("preferredDay", e.target.value)} data-testid="input-preferredDay">
+                        <option value="" className="bg-neutral-900">Select a day...</option>
+                        <option value="Monday" className="bg-neutral-900">Monday</option>
+                        <option value="Tuesday" className="bg-neutral-900">Tuesday</option>
+                        <option value="Wednesday" className="bg-neutral-900">Wednesday</option>
+                        <option value="Thursday" className="bg-neutral-900">Thursday</option>
+                        <option value="Friday" className="bg-neutral-900">Friday</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Preferred Time *</label>
+                    <div className="relative">
+                      <Clock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                      <select className={`${inputClass} pl-9`} value={formData.preferredTime} onChange={e => updateField("preferredTime", e.target.value)} data-testid="input-preferredTime">
+                        <option value="" className="bg-neutral-900">Select a time...</option>
+                        <option value="9:00 AM" className="bg-neutral-900">9:00 AM</option>
+                        <option value="10:00 AM" className="bg-neutral-900">10:00 AM</option>
+                        <option value="11:00 AM" className="bg-neutral-900">11:00 AM</option>
+                        <option value="12:00 PM" className="bg-neutral-900">12:00 PM</option>
+                        <option value="1:00 PM" className="bg-neutral-900">1:00 PM</option>
+                        <option value="2:00 PM" className="bg-neutral-900">2:00 PM</option>
+                        <option value="3:00 PM" className="bg-neutral-900">3:00 PM</option>
+                        <option value="4:00 PM" className="bg-neutral-900">4:00 PM</option>
+                        <option value="5:00 PM" className="bg-neutral-900">5:00 PM</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Anything else we should know?</label>
+                    <textarea className={`${inputClass} min-h-[80px]`} placeholder="Tell us about your biggest challenge right now..." value={formData.notes || ""} onChange={e => updateField("notes", e.target.value)} data-testid="input-notes" />
+                  </div>
+                </div>
+              )}
 
-                {step === 2 && (
-                  <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4">
-                    <h2 className="text-xl font-bold mb-1">Pick Your Session Time</h2>
-                    <p className="text-sm text-slate-400 mb-4">{config.calendarNote || "Choose a day and time that works best for your free strategy call."}</p>
-                    <div>
-                      <label className={labelClass}>Preferred Day *</label>
-                      <div className="relative">
-                        <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                        <select className={`${inputClass} pl-9`} value={formData.preferredDay} onChange={e => updateField("preferredDay", e.target.value)} data-testid="input-preferredDay">
-                          <option value="" className="bg-neutral-900">Select a day...</option>
-                          <option value="Monday" className="bg-neutral-900">Monday</option>
-                          <option value="Tuesday" className="bg-neutral-900">Tuesday</option>
-                          <option value="Wednesday" className="bg-neutral-900">Wednesday</option>
-                          <option value="Thursday" className="bg-neutral-900">Thursday</option>
-                          <option value="Friday" className="bg-neutral-900">Friday</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div>
-                      <label className={labelClass}>Preferred Time *</label>
-                      <div className="relative">
-                        <Clock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                        <select className={`${inputClass} pl-9`} value={formData.preferredTime} onChange={e => updateField("preferredTime", e.target.value)} data-testid="input-preferredTime">
-                          <option value="" className="bg-neutral-900">Select a time...</option>
-                          <option value="9:00 AM" className="bg-neutral-900">9:00 AM</option>
-                          <option value="10:00 AM" className="bg-neutral-900">10:00 AM</option>
-                          <option value="11:00 AM" className="bg-neutral-900">11:00 AM</option>
-                          <option value="12:00 PM" className="bg-neutral-900">12:00 PM</option>
-                          <option value="1:00 PM" className="bg-neutral-900">1:00 PM</option>
-                          <option value="2:00 PM" className="bg-neutral-900">2:00 PM</option>
-                          <option value="3:00 PM" className="bg-neutral-900">3:00 PM</option>
-                          <option value="4:00 PM" className="bg-neutral-900">4:00 PM</option>
-                          <option value="5:00 PM" className="bg-neutral-900">5:00 PM</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div>
-                      <label className={labelClass}>Anything else we should know?</label>
-                      <textarea className={`${inputClass} min-h-[80px]`} placeholder="Tell us about your biggest challenge right now..." value={formData.notes || ""} onChange={e => updateField("notes", e.target.value)} data-testid="input-notes" />
-                    </div>
-                  </motion.div>
-                )}
-
-                {step === 3 && (
-                  <motion.div key="step3" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-8">
-                    <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", delay: 0.2 }} className={`w-20 h-20 rounded-full bg-gradient-to-br ${colors.gradient} flex items-center justify-center mx-auto mb-6`}>
-                      <CheckCircle2 size={40} className="text-white" />
-                    </motion.div>
-                    <h2 className="text-2xl font-black mb-3" data-testid="text-thank-you">{config.thankYouTitle}</h2>
-                    <p className="text-slate-400 text-sm leading-relaxed max-w-md mx-auto mb-6">{config.thankYouMessage}</p>
-                    <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5 max-w-sm mx-auto mb-6">
-                      <p className="text-xs text-slate-500 mb-2">Your session details:</p>
-                      <p className="text-sm text-white font-medium">{formData.preferredDay} at {formData.preferredTime}</p>
-                      <p className="text-xs text-slate-400 mt-1">{formData.email}</p>
-                    </div>
-                    <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                      <Link href={`/${config.slug}`}>
-                        <span className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r ${colors.gradient} text-white font-bold text-sm hover:opacity-90 transition-all cursor-pointer`} data-testid="button-back-landing">
-                          Back to {config.industry} <ArrowRight size={14} />
-                        </span>
-                      </Link>
-                      <Link href="/pricing">
-                        <span className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-white/10 text-white font-bold text-sm hover:bg-white/5 transition-all cursor-pointer" data-testid="button-view-pricing">
-                          View Plans
-                        </span>
-                      </Link>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              {step === 3 && (
+                <div className="text-center py-8">
+                  <div className={`w-20 h-20 rounded-full bg-gradient-to-br ${colors.gradient} flex items-center justify-center mx-auto mb-6`}>
+                    <CheckCircle2 size={40} className="text-white" />
+                  </div>
+                  <h2 className="text-2xl font-black mb-3" data-testid="text-thank-you">{config.thankYouTitle}</h2>
+                  <p className="text-slate-400 text-sm leading-relaxed max-w-md mx-auto mb-6">{config.thankYouMessage}</p>
+                  <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5 max-w-sm mx-auto mb-6">
+                    <p className="text-xs text-slate-500 mb-2">Your session details:</p>
+                    <p className="text-sm text-white font-medium">{formData.preferredDay} at {formData.preferredTime}</p>
+                    <p className="text-xs text-slate-400 mt-1">{formData.email}</p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                    <Link href={`/${config.slug}`}>
+                      <span className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r ${colors.gradient} text-white font-bold text-sm hover:opacity-90 transition-all cursor-pointer`} data-testid="button-back-landing">
+                        Back to {config.industry} <ArrowRight size={14} />
+                      </span>
+                    </Link>
+                    <Link href="/pricing">
+                      <span className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-white/10 text-white font-bold text-sm hover:bg-white/5 transition-all cursor-pointer" data-testid="button-view-pricing">
+                        View Plans
+                      </span>
+                    </Link>
+                  </div>
+                </div>
+              )}
 
               {step < 3 && (
                 <div className="flex items-center justify-between mt-8 pt-6 border-t border-white/5">
@@ -321,7 +318,7 @@ export function NicheFunnel({ config }: { config: NicheFunnelConfig }) {
                   </button>
                 </div>
               )}
-            </motion.div>
+            </div>
           </div>
         </div>
       </div>

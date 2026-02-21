@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Check } from "lucide-react";
 import { Link } from "wouter";
@@ -19,47 +18,35 @@ const HeroSection = ({ headline, subheadline, cta_button }: { headline: string, 
       
       {/* Content */}
       <div className="relative z-10 text-center px-4 max-w-4xl mx-auto space-y-8">
-        <motion.h1 
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
+        <h1 
           className="text-6xl md:text-9xl font-black tracking-tighter text-white uppercase italic"
           style={{ textShadow: "0 0 40px rgba(255,255,255,0.1)" }}
         >
           {headline}
-        </motion.h1>
+        </h1>
         
-        <motion.p 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4, duration: 0.8 }}
+        <p 
           className="text-xl md:text-2xl text-gray-300 font-light tracking-wide max-w-2xl mx-auto"
         >
           {subheadline}
-        </motion.p>
+        </p>
         
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.8, duration: 0.4 }}
-        >
+        <div>
           <Button 
             size="lg" 
             className="bg-red-600 hover:bg-red-700 text-white border-0 text-lg px-10 py-8 rounded-none font-bold tracking-widest uppercase hover:scale-105 transition-transform"
           >
             {cta_button}
           </Button>
-        </motion.div>
+        </div>
       </div>
 
       {/* Scroll indicator */}
-      <motion.div 
-        animate={{ y: [0, 10, 0] }}
-        transition={{ repeat: Infinity, duration: 2 }}
+      <div 
         className="absolute bottom-10 left-1/2 -translate-x-1/2 text-white/30"
       >
         <div className="w-[1px] h-16 bg-gradient-to-b from-transparent via-white to-transparent" />
-      </motion.div>
+      </div>
     </div>
   );
 };
@@ -76,12 +63,8 @@ const PricingSection = ({ tiers }: { tiers: any[] }) => {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-stretch">
           {tiers.map((tier, idx) => (
-            <motion.div
+            <div
               key={idx}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: idx * 0.1 }}
               className={`relative p-8 border ${
                 tier.name === "Unlimited" 
                   ? "border-red-600 bg-zinc-900/50" 
@@ -116,7 +99,7 @@ const PricingSection = ({ tiers }: { tiers: any[] }) => {
               }`}>
                 Choose {tier.name}
               </Button>
-            </motion.div>
+            </div>
           ))}
         </div>
       </div>
