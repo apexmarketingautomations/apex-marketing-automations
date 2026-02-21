@@ -8,7 +8,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
-import { Plus, Trash2, GripVertical, Users, Loader2, Layers } from "lucide-react";
+import { Plus, Trash2, GripVertical, Users, Loader2, Layers, Info } from "lucide-react";
+import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
+import { PIPELINE_STEPS } from "@/components/tutorial-steps";
 
 
 interface PipelineStage {
@@ -49,6 +51,7 @@ export default function PipelinePage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const subAccountId = useActiveSubAccountId();
+  const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_pipeline_tutorial_completed");
   const [activeTab, setActiveTab] = useState<"pipeline" | "contacts">("pipeline");
 
   const [addStageOpen, setAddStageOpen] = useState(false);
@@ -242,9 +245,12 @@ export default function PipelinePage() {
             <Layers size={12} /> CRM PIPELINE
           </div>
           <div className="flex items-center justify-between flex-wrap gap-4">
-            <h1 className="text-3xl md:text-4xl font-black tracking-tight" data-testid="text-pipeline-title">
-              <span className="bg-gradient-to-r from-cyan-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent">Pipeline</span>
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl md:text-4xl font-black tracking-tight" data-testid="text-pipeline-title">
+                <span className="bg-gradient-to-r from-cyan-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent">Pipeline</span>
+              </h1>
+              <button onClick={startTutorial} className="flex items-center gap-1 text-xs text-slate-500 hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-white/5" data-testid="button-start-tutorial"><Info size={14} className="mr-1" /> Tutorial</button>
+            </div>
             {activeTab === "pipeline" && stages.length > 0 && (
               <div className="flex gap-2">
                 <Dialog open={addStageOpen} onOpenChange={setAddStageOpen}>
@@ -535,6 +541,7 @@ export default function PipelinePage() {
           </DialogContent>
         </Dialog>
       </div>
+      {showTutorial && <TutorialOverlay steps={PIPELINE_STEPS} storageKey="apex_pipeline_tutorial_completed" onClose={closeTutorial} accentColor="purple" finishLabel="Start Closing" />}
     </div>
   );
 }

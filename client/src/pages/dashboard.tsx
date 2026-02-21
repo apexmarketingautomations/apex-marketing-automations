@@ -2,9 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useActiveSubAccountId } from "@/components/account-required";
 import { Card, CardContent } from "@/components/ui/card";
-import { MessageSquare, Users, Kanban, CalendarDays, Mail, Megaphone, Target, Instagram, DollarSign, TrendingUp, Bell, Clock, BarChart3, PieChart, Zap, Eye, Rocket, Shield } from "lucide-react";
+import { MessageSquare, Users, Kanban, CalendarDays, Mail, Megaphone, Target, Instagram, DollarSign, TrendingUp, Bell, Clock, BarChart3, PieChart, Zap, Eye, Rocket, Shield, Info } from "lucide-react";
 import { Link } from "wouter";
 import { TutorialCenter } from "@/components/tutorial-center";
+import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
+import { DASHBOARD_STEPS } from "@/components/tutorial-steps";
 import { useAuth } from "@/hooks/use-auth";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -45,6 +47,7 @@ const metricCards = [
 export default function DashboardPage() {
   const subAccountId = useActiveSubAccountId();
   const { user } = useAuth();
+  const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_dashboard_tutorial_completed");
   const isAdmin = user?.isAdmin === "true" || (user as any)?.role === "DEV_ADMIN";
 
   const { data: metrics, isLoading } = useQuery<DashboardMetrics>({
@@ -128,7 +131,10 @@ export default function DashboardPage() {
           </div>
           Command Dashboard
         </h1>
-        <p className="text-slate-400 mt-1">Real-time overview of your business operations</p>
+        <div className="flex items-center gap-2 mt-1">
+          <p className="text-slate-400">Real-time overview of your business operations</p>
+          <button onClick={startTutorial} className="flex items-center gap-1 text-xs text-slate-500 hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-white/5" data-testid="button-start-tutorial"><Info size={14} className="mr-1" /> Tutorial</button>
+        </div>
       </div>
 
       <TutorialCenter />
@@ -365,6 +371,7 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+      {showTutorial && <TutorialOverlay steps={DASHBOARD_STEPS} storageKey="apex_dashboard_tutorial_completed" onClose={closeTutorial} accentColor="cyan" finishLabel="Let's Go" />}
     </motion.div>
   );
 }

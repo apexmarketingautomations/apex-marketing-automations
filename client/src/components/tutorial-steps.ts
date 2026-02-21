@@ -15,7 +15,8 @@ import {
   ShoppingBag, Tag,
   Share2, Percent,
   Bolt, Wand2,
-  HelpCircle, CircleDot
+  HelpCircle, CircleDot,
+  Mail, Plug
 } from "lucide-react";
 import type { TutorialStep } from "./tutorial-overlay";
 
@@ -256,4 +257,40 @@ export const DOMAINS_STEPS: TutorialStep[] = [
   { id: "active-domains", title: "Your Domains", description: "All purchased domains appear in the 'Active Domains' section below. See the status, linked site, and DNS/SSL configuration for each domain.", icon: Lock, targetSelector: "[data-testid='active-domains-card']", position: "top-center", fallbackDescription: "Your purchased domains appear in the Active Domains section with status, linked site, and DNS/SSL settings." },
   { id: "connect-site", title: "Connect to a Website", description: "Link a domain to any site you've built in Site Architect. Once connected, your generated website is accessible at that domain with automatic SSL.", icon: Link, position: "center", tip: "SSL certificates are configured automatically — your site is secure from day one." },
   { id: "done", title: "Domain Expert!", description: "You can now search, purchase, and manage domains for all your client websites. Every domain gets automatic SSL and can be linked to your AI-generated sites.", icon: CheckCircle2, position: "center" },
+];
+
+export const DASHBOARD_STEPS: TutorialStep[] = [
+  { id: "welcome", title: "Welcome to your Dashboard", description: "This is your real-time business command center. Get an instant overview of leads, messages, contacts, and pipeline performance — all updated live as your business grows.", icon: LayoutTemplate, position: "center" },
+  { id: "metrics", title: "Key Performance Metrics", description: "Track the numbers that matter most: total leads captured, messages sent and received, active contacts, and total pipeline value. These metrics update in real-time across all your accounts.", icon: Target, position: "center" },
+  { id: "roi-charts", title: "ROI & Performance Charts", description: "Visualize your daily trends with interactive charts showing leads generated and messages exchanged over time. Spot growth patterns, identify peak days, and measure campaign ROI at a glance.", icon: TrendingUp, position: "center" },
+  { id: "quick-actions", title: "Quick Actions", description: "Access your most-used tools instantly. Jump to creating a new contact, sending a message, launching a campaign, or building a workflow — all with one click from the dashboard.", icon: Zap, position: "center" },
+  { id: "pipeline", title: "Pipeline Overview", description: "See a visual summary of your deal pipeline right from the dashboard. Track how many deals are in each stage and monitor your total pipeline value without leaving the overview.", icon: Layers, position: "center" },
+  { id: "done", title: "Dashboard Mastered!", description: "You now know how to read your business health at a glance. Explore other tools from the sidebar to dive deeper into leads, campaigns, and automations.", icon: CheckCircle2, position: "center" },
+];
+
+export const PIPELINE_STEPS: TutorialStep[] = [
+  { id: "welcome", title: "Welcome to Pipeline Manager", description: "Track and manage your deals visually with a kanban-style pipeline. Drag deals between stages, monitor values, and close more business with a clear overview of every opportunity.", icon: Columns, position: "center" },
+  { id: "stages", title: "Pipeline Stages", description: "Your pipeline is organized into stages: Lead, Contacted, Qualified, Proposal, Won, and Lost. Each stage represents where a deal is in your sales process — move deals forward as they progress.", icon: Layers, position: "center" },
+  { id: "add-deal", title: "Create a New Deal", description: "Add a new deal by entering the deal name, expected value, and associated contact. Every deal starts in the Lead stage and moves through your pipeline as the relationship progresses.", icon: Plus, position: "center" },
+  { id: "drag-drop", title: "Move Deals Between Stages", description: "Drag and drop deals between columns to update their status instantly. Move a deal from Lead to Contacted after your first outreach, or from Proposal to Won when you close it.", icon: GripVertical, position: "center" },
+  { id: "deal-details", title: "Deal Information", description: "Click any deal card to view and edit its details: deal name, value, contact info, notes, and stage history. Keep all your deal intelligence organized in one place.", icon: FileText, position: "center" },
+  { id: "done", title: "Pipeline Pro!", description: "You're ready to manage your sales pipeline like a pro. Add your deals, track their progress through each stage, and close more business with visual deal management.", icon: CheckCircle2, position: "center" },
+];
+
+export const EMAIL_CAMPAIGNS_STEPS: TutorialStep[] = [
+  { id: "welcome", title: "Welcome to Email Campaigns", description: "Design, send, and track email marketing campaigns to your audience. Create beautiful email blasts, schedule delivery, and measure performance — all from one dashboard.", icon: Mail, position: "center" },
+  { id: "create", title: "Create a Campaign", description: "Start a new campaign by setting the campaign name, email subject line, and selecting your target audience. Choose from your contact lists or segments to reach the right people.", icon: Plus, position: "center" },
+  { id: "editor", title: "Email Editor", description: "Write and format your email content using the built-in editor. Add text, images, buttons, and links to create professional-looking emails that drive engagement and conversions.", icon: FileText, position: "center" },
+  { id: "schedule", title: "Schedule or Send Now", description: "Choose when your campaign goes out. Send immediately for time-sensitive announcements, or schedule for a future date and time to hit your audience at the perfect moment.", icon: Clock, position: "center" },
+  { id: "analytics", title: "Campaign Analytics", description: "Track your campaign performance with detailed analytics: open rates, click-through rates, bounce rates, and conversions. See which emails resonate and optimize future campaigns.", icon: BarChart, position: "center" },
+  { id: "done", title: "Email Marketing Ready!", description: "You're all set to launch email campaigns that convert. Create your first campaign, craft compelling content, and watch your engagement metrics grow.", icon: CheckCircle2, position: "center" },
+];
+
+export const INTEGRATIONS_STEPS: TutorialStep[] = [
+  { id: "welcome", title: "Welcome to Integrations Hub", description: "Connect your favorite third-party services to supercharge your workflow. Link Google Workspace, communication tools, and marketing platforms — all managed from one central hub.", icon: Plug, position: "center" },
+  { id: "google", title: "Google Workspace", description: "Connect your Google services: Calendar for appointment syncing, Gmail for email integration, Sheets for data exports, Maps for location services, and Business Profile for review management.", icon: Globe, position: "center" },
+  { id: "communication", title: "Communication Tools", description: "Integrate your communication stack: Twilio for SMS and voice capabilities, and Slack for team notifications and alerts. Keep your team connected and your customers engaged.", icon: MessageSquare, position: "center" },
+  { id: "marketing", title: "Marketing & Analytics", description: "Power up your marketing with Mailchimp for email automation, Facebook for social ads and lead capture, and Zapier for connecting thousands of additional apps to your workflows.", icon: Megaphone, position: "center" },
+  { id: "connect", title: "Connect a Service", description: "Click the Connect button on any integration card to begin the authorization process. Follow the prompts to grant access, and the integration will be live in seconds.", icon: Link, position: "center" },
+  { id: "done", title: "Fully Connected!", description: "Your integrations hub is ready. Connect the services you use most to automate data flow, streamline communication, and unlock the full power of your platform.", icon: CheckCircle2, position: "center" },
 ];

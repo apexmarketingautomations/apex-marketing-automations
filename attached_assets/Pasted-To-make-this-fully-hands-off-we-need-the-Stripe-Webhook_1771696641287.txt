@@ -1,0 +1,68 @@
+To make this fully hands-off, we need the **Stripe Webhook**. This is the secure "Path" that allows Stripe’s servers to talk to your Replit server. When a payment is successful, Stripe sends a signal, and your code instantly updates the user's credits.
+
+### **The Stripe Webhook Logic**
+
+Add this to your `server.js`. This route is designed to be public but secure, using a signature check to ensure only Stripe can trigger it.
+
+```javascript
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+
+// Use express.raw() for this specific route to verify the signature
+app.post('/api/billing/webhook', express.raw({type: 'application/json'}), async (req, res) => {
+    const sig = req.headers['stripe-signature'];
+    let event;
+
+    try {
+        event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+    } catch (err) {
+        console.error(`❌ Webhook Error: ${err.message}`);
+        return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    // Handle the checkout.session.completed event
+    if (event.type === 'checkout.session.completed') {
+        const session = event.data.object;
+        const userEmail = session.metadata.user_email; // We pass this when creating the session
+        const amountPaid = session.amount_total / 100; // Stripe provides amount in cents
+
+        // ADD CREDITS TO USER
+        const user = await db.get(`user_${userEmail}`);
+        if (user) {
+            user.credits = (user.credits || 0) + amountPaid;
+            await db.set(`user_${userEmail}`, user);
+            
+            console.log(`💰 CREDITS ADDED: $${amountPaid} to ${userEmail}`);
+        }
+    }
+
+    res.json({received: true});
+});
+
+```
+
+---
+
+### **Replit Prompt: Automated Billing Deployment**
+
+Copy and paste this into the Replit AI Chat to connect all the dots:
+
+> "I need to finalize the **Apex Automated Billing Path**.
+> **Tasks for the Agent:**
+> 1. **Stripe Session Creation:** Update the `/api/billing/checkout` route to create a Stripe Checkout Session. It MUST include `metadata: { user_email: req.session.user.email }` so the webhook knows who to pay.
+> 2. **Webhook Fulfillment:** Implement the `checkout.session.completed` logic I provided to update the `credits` field in Replit DB.
+> 3. **Usage Enforcement:** Update the Sentinel alert and Vapi call functions. Before they run, they must check if `user.credits > 0`. If not, send an SMS to the user saying: 'Apex Alert: Insufficient credits to process lead.'
+> 4. **Master Admin Stats:** Update the Master Dashboard to display a 'Projected Profit' metric based on the `global_platform_profit` key in the database.
+> 
+> 
+> **Security:** Ensure the webhook route is excluded from standard JSON body-parsing so the signature verification doesn't fail."
+
+---
+
+### **How this completes the "Apex OS"**
+
+1. **Passive Income:** Your markup logic runs automatically on every text, call, and ad click.
+2. **No Chasing Payments:** Credits are pre-paid. If a user runs out of money, the automation pauses until they top up.
+3. **Scalable for All:** Whether it's 10 barbers or 1,000 realtors, the server handles the accounting for every single one of them individually.
+4. **Developer Freedom:** Because you have the **free admin account**, you bypass the credit check entirely, allowing you to run the system for your own testing and development without ever hitting a "0 balance" error.
+
+**The engine is now fully wired for revenue.** Would you like me to generate a "Profit Report" script for your Master Dashboard so you can see exactly how much you've made from markups this week?

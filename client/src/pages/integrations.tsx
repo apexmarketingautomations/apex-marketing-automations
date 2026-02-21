@@ -6,7 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Plug, CalendarDays, Mail, FileSpreadsheet, MessageSquare, Zap, Receipt, Phone, CreditCard, HardDrive, Users, Globe, Check, X, MapPin, BarChart3, Building2, FileText } from "lucide-react";
+import { Plug, CalendarDays, Mail, FileSpreadsheet, MessageSquare, Zap, Receipt, Phone, CreditCard, HardDrive, Users, Globe, Check, X, MapPin, BarChart3, Building2, FileText, Info } from "lucide-react";
+import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
+import { INTEGRATIONS_STEPS } from "@/components/tutorial-steps";
 
 const INTEGRATIONS = [
   { provider: "google-maps", name: "Google Maps", description: "Embed maps, directions, and location services", icon: MapPin, color: "bg-green-500/20", iconColor: "text-green-400", category: "google" },
@@ -36,6 +38,7 @@ export default function IntegrationsPage() {
   const subAccountId = useActiveSubAccountId();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_integrations_tutorial_completed");
 
   const { data: connections = [] } = useQuery<IntegrationStatus[]>({
     queryKey: ["/api/integrations", subAccountId],
@@ -95,7 +98,10 @@ export default function IntegrationsPage() {
           </div>
           Integrations Hub
         </h1>
-        <p className="text-slate-400 mt-1">Connect third-party services to supercharge your workflow</p>
+        <div className="flex items-center gap-2 mt-1">
+          <p className="text-slate-400">Connect third-party services to supercharge your workflow</p>
+          <button onClick={startTutorial} className="flex items-center gap-1 text-xs text-slate-500 hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-white/5" data-testid="button-start-tutorial"><Info size={14} className="mr-1" /> Tutorial</button>
+        </div>
       </div>
 
       <div className="space-y-6" data-testid="integrations-grid">
@@ -209,6 +215,7 @@ export default function IntegrationsPage() {
           </div>
         </div>
       </div>
+      {showTutorial && <TutorialOverlay steps={INTEGRATIONS_STEPS} storageKey="apex_integrations_tutorial_completed" onClose={closeTutorial} accentColor="emerald" finishLabel="Start Connecting" />}
     </motion.div>
   );
 }

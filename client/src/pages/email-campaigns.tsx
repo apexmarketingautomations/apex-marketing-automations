@@ -11,7 +11,9 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
-import { Mail, Send, Clock, Eye, MousePointerClick, Plus, Trash2, Edit } from "lucide-react";
+import { Mail, Send, Clock, Eye, MousePointerClick, Plus, Trash2, Edit, Info } from "lucide-react";
+import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
+import { EMAIL_CAMPAIGNS_STEPS } from "@/components/tutorial-steps";
 import { format } from "date-fns";
 
 
@@ -85,6 +87,7 @@ function EmailCampaignsPageInner() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const subAccountId = useActiveSubAccountId();
+  const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_email_tutorial_completed");
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState<EmailCampaign | null>(null);
@@ -259,7 +262,10 @@ function EmailCampaignsPageInner() {
             <h1 className="text-3xl md:text-4xl font-black tracking-tight" data-testid="text-email-campaigns-title">
               Email <span className="bg-gradient-to-r from-cyan-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent">Campaigns</span>
             </h1>
-            <p className="text-slate-400 text-sm mt-1">Create, manage, and send email campaigns</p>
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-slate-400 text-sm">Create, manage, and send email campaigns</p>
+              <button onClick={startTutorial} className="flex items-center gap-1 text-xs text-slate-500 hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-white/5" data-testid="button-start-tutorial"><Info size={14} className="mr-1" /> Tutorial</button>
+            </div>
           </div>
           <Button onClick={openCreate} className="bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-semibold" data-testid="button-new-campaign">
             <Plus size={16} className="mr-2" /> New Campaign
@@ -492,6 +498,7 @@ function EmailCampaignsPageInner() {
           </DialogContent>
         </Dialog>
       </div>
+      {showTutorial && <TutorialOverlay steps={EMAIL_CAMPAIGNS_STEPS} storageKey="apex_email_tutorial_completed" onClose={closeTutorial} accentColor="purple" finishLabel="Start Sending" />}
     </div>
   );
 }

@@ -1,0 +1,86 @@
+To finalize this, we’ll build the "Billing & Credits" tab as a unified system. It doesn’t matter if the user is a barber, realtor, or stylist—everyone uses the same "Apex Credit" wallet to pay for their automated workflows (markups) and their internal ad spend.
+
+### **1. The Replit Prompt: Unified Billing & Credit System**
+
+This prompt will build the secure checkout and the "Wallet" logic for your users.
+
+> "I need to build a **Unified Billing & Credit System** for Apex Marketing. This must link to my Stripe account and manage a 'Universal Wallet' for all users.
+> **Core Functionality:**
+> 1. **The Credit Wallet:** Create a `credits` field in the user schema. This stores their current balance (e.g., $50.00).
+> 2. **Stripe Top-Up Path:** Create a `/api/billing/checkout` route that opens a Stripe Checkout Session. Once the payment is successful, use a Stripe Webhook to automatically add those credits to the user's Apex account.
+> 3. **The 'Tax' Logic:** Update the existing 'Sponsorship' and 'Markup' functions to check the user's credit balance before executing. If the balance is below $0.05, return an error: 'Insufficient Credits.'
+> 4. **Member Dashboard UI:** Create a 'Billing' tab for the main dashboard. It should show:
+> * Current Balance (Live)
+> * Usage History (List of SMS/Calls and their markup costs)
+> * Add Credits Button (Triggers Stripe)
+> 
+> 
+> 
+> 
+> **Design Constraint:** Use the 'Cyber-Glass' CSS variables so the billing tab looks like a high-end financial dashboard, not a generic checkout page."
+
+---
+
+### **2. The "Ghost Markup" Middleware**
+
+This is the "Path" that handles your passive income. It runs in the background of every action.
+
+```javascript
+// Middleware to handle usage-based profit
+async function processUsageCharge(userId, baseCost) {
+    const markupMultiplier = 3.0; // Your 3x markup
+    const totalCharge = baseCost * markupMultiplier;
+    
+    const user = await db.get(`user_${userId}`);
+    
+    if (user.credits >= totalCharge) {
+        // Deduct from user
+        user.credits -= totalCharge;
+        await db.set(`user_${userId}`, user);
+        
+        // Log your profit
+        const platformProfit = totalCharge - baseCost;
+        await db.add('global_platform_profit', platformProfit);
+        
+        return { success: true, remaining: user.credits };
+    } else {
+        return { success: false, reason: 'insufficient_funds' };
+    }
+}
+
+```
+
+---
+
+### **3. The "Cyber-Glass" Billing UI**
+
+This is the HTML snippet for your dashboard. It makes the "spent money" feel like a professional investment.
+
+```html
+<div class="billing-container cyber-glass">
+    <div class="wallet-header">
+        <h3>APEX WALLET</h3>
+        <p class="balance-display">$<span id="user-balance">0.00</span></p>
+    </div>
+    
+    <div class="quick-topup">
+        <button onclick="topUp(25)">+ $25</button>
+        <button onclick="topUp(100)">+ $100</button>
+    </div>
+
+    <div class="usage-log">
+        <h4>RECENT ACTIVITY</h4>
+        <ul id="activity-list">
+            </ul>
+    </div>
+</div>
+
+```
+
+### **How this benefits you as the "Root User":**
+
+1. **Passive Revenue:** You don't have to chase anyone for money. The system automatically "skims" your profit every time they use a feature.
+2. **Zero Financial Risk:** Since users must "Top-Up" first, you are never paying Twilio or Vapi out of your own pocket for their usage.
+3. **Unified Control:** On your **Master Dashboard**, you will now see a "Global Revenue" counter that ticks up in real-time as your realtors, barbers, and stylists run their businesses.
+
+**Would you like me to write the "Stripe Webhook" code so that your Replit project automatically detects the payment and adds the credits without you doing anything?**

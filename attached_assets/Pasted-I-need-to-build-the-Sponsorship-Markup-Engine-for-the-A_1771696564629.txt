@@ -1,0 +1,56 @@
+I need to build the Sponsorship & Markup Engine for the Apex OS. This must be occupation-agnostic and focus on geographical targeting.
+
+Required Features:
+
+The Ad Schema: Create a database collection for sponsorships. Each entry needs: sponsor_name, image_url, target_radius (lat/long), bid_per_click, and total_budget.
+
+The Ad Server API: Create a route GET /api/v1/serve-native-ad. It should take the current user's lat/long and return the highest-bidding 'Sponsored Action' within their radius.
+
+The Markup Logic: In the existing SMS and Vapi routes, add a middleware that calculates a 3x markup on the base API cost and logs it as platform_profit.
+
+Master Admin View: In the Root Admin panel, add a 'Sponsorship Manager' table where I can toggle ads to 'Approved' or 'Paused' and see the real-time profit from usage markups.
+
+Integration: Ensure these 'ads' are delivered as JSON objects so they can be rendered as native buttons in the UI."
+
+2. The "Cyber-Glass" Native Ad CSS
+Add this to your main stylesheet. This ensures that when a Barber or Realtor sees a "Sponsored Partner," it looks like a premium feature of the site.
+
+CSS
+/* High-End Native Sponsored Action */
+.apex-sponsored-card {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 15px;
+    margin: 10px 0;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    cursor: pointer;
+}
+
+.apex-sponsored-card:hover {
+    background: rgba(255, 255, 255, 0.07);
+    border-color: rgba(0, 255, 255, 0.4); /* Neon Glow on Hover */
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
+}
+
+.badge-sponsored {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: rgba(0, 255, 255, 0.8);
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+3. How You Make Money (The Flow)
+Usage Profits: Every time any user (any occupation) triggers a text or a call, the Markup Logic skims the profit into your platform_profit ledger automatically.
+
+Native Ad Clicks: When a user clicks a "Sponsored Action" in their feed (e.g., a Barber seeing a local Towing Company recommendation), your backend deducts the bid_per_click from that sponsor's balance and pays it to you.
+
+The "Root User" Advantage
+Because you have that free admin account we set up, you see a special "Sponsorship Approval" tab. You can give yourself free ads to promote your own services, or manually "Boost" a local business you like.

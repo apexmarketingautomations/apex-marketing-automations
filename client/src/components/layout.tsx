@@ -10,6 +10,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useAccount } from "@/hooks/use-account";
 import { BlitzBanner } from "@/components/blitz-banner";
 import { NotificationBell } from "@/components/notification-bell";
+import { WelcomeModal } from "@/components/welcome-modal";
 import { LegacyStatusBadge } from "@/components/legacy-status";
 import type { SubAccount } from "@shared/schema";
 import { hasFeature } from "@shared/schema";
@@ -331,6 +332,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       <CommandMenu />
       <SiteAssistant />
+      <WelcomeModal />
     </div>
   );
 }
