@@ -6487,6 +6487,94 @@ Return ONLY valid JSON.` },
     });
   }));
 
+  // ─── ADMIN COMMAND CONSOLE API ──────────────────────────────────────
+
+  app.get("/api/admin/global-stats", requireAdmin, asyncHandler(async (_req: Request, res: Response) => {
+    const accountsResult = await db.execute(sql`SELECT COUNT(*) as count FROM sub_accounts`);
+    const usersResult = await db.execute(sql`SELECT COUNT(*) as count FROM users`);
+    const leadsResult = await db.execute(sql`SELECT COUNT(*) as count FROM meta_leads`);
+    const contactsResult = await db.execute(sql`SELECT COUNT(*) as count FROM contacts`);
+    const messagesResult = await db.execute(sql`SELECT COUNT(*) as count FROM messages`);
+    const incidentsResult = await db.execute(sql`SELECT COUNT(*) as count FROM sentinel_incidents`);
+    const dispatchSubsResult = await db.execute(sql`SELECT COUNT(*) as count FROM dispatch_subscribers WHERE active = true`);
+    const dealsResult = await db.execute(sql`SELECT COUNT(*) as count, COALESCE(SUM(CAST(value AS real)), 0) as total_value FROM deals`);
+
+    const row = (r: any) => (Array.isArray(r) ? r[0] : r?.rows?.[0] ?? {});
+
+    res.json({
+      totalAccounts: Number(row(accountsResult)?.count ?? 0),
+      totalUsers: Number(row(usersResult)?.count ?? 0),
+      totalLeads: Number(row(leadsResult)?.count ?? 0),
+      totalContacts: Number(row(contactsResult)?.count ?? 0),
+      totalMessages: Number(row(messagesResult)?.count ?? 0),
+      totalIncidents: Number(row(incidentsResult)?.count ?? 0),
+      activeDispatchSubscribers: Number(row(dispatchSubsResult)?.count ?? 0),
+      totalDeals: Number(row(dealsResult)?.count ?? 0),
+      totalDealValue: Number(row(dealsResult)?.total_value ?? 0),
+      sentinelStatus: "RUNNING",
+    });
+  }));
+
+  app.get("/api/admin/master-feed", requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+    const limit = parseInt(req.query.limit as string) || 50;
+    const rows = (r: any) => (Array.isArray(r) ? r : r?.rows ?? []);
+
+    const leads = await db.execute(sql`
+      SELECT ml.id, ml.name, ml.email, ml.phone, ml.created_at as timestamp,
+             ml.sub_account_id, sa.name as account_name,
+             'meta_lead' as category
+      FROM meta_leads ml
+      LEFT JOIN sub_accounts sa ON ml.sub_account_id = sa.id
+      ORDER BY ml.created_at DESC
+      LIMIT ${limit}
+    `);
+
+    const incidents = await db.execute(sql`
+      SELECT si.id, si.title as name, si.location, si.severity, si.detected_at as timestamp,
+             si.action_status, si.sub_account_id, sa.name as account_name,
+             'sentinel_incident' as category
+      FROM sentinel_incidents si
+      LEFT JOIN sub_accounts sa ON si.sub_account_id = sa.id
+      ORDER BY si.detected_at DESC
+      LIMIT ${limit}
+    `);
+
+    const contacts = await db.execute(sql`
+      SELECT c.id, c.name, c.email, c.phone, c.created_at as timestamp,
+             c.sub_account_id, sa.name as account_name,
+             'contact' as category
+      FROM contacts c
+      LEFT JOIN sub_accounts sa ON c.sub_account_id = sa.id
+      ORDER BY c.created_at DESC
+      LIMIT ${limit}
+    `);
+
+    const allItems = [
+      ...rows(leads),
+      ...rows(incidents),
+      ...rows(contacts),
+    ].sort((a: any, b: any) => {
+      const dateA = new Date(a.timestamp || 0).getTime();
+      const dateB = new Date(b.timestamp || 0).getTime();
+      return dateB - dateA;
+    }).slice(0, limit);
+
+    res.json(allItems);
+  }));
+
+  app.get("/api/admin/accounts-overview", requireAdmin, asyncHandler(async (_req: Request, res: Response) => {
+    const result = await db.execute(sql`
+      SELECT sa.id, sa.name, sa.industry, sa.plan, sa.twilio_number, sa.owner_user_id,
+        (SELECT COUNT(*) FROM contacts c WHERE c.sub_account_id = sa.id) as contact_count,
+        (SELECT COUNT(*) FROM messages m WHERE m.sub_account_id = sa.id) as message_count,
+        (SELECT COUNT(*) FROM meta_leads ml WHERE ml.sub_account_id = sa.id) as lead_count
+      FROM sub_accounts sa
+      ORDER BY sa.id DESC
+    `);
+    const rows = Array.isArray(result) ? result : (result as any)?.rows ?? [];
+    res.json(rows);
+  }));
+
   // ─── GEO DISPATCH SYSTEM ────────────────────────────────────────────
 
   // Rate limiter: tracks request counts per IP
@@ -6510,9 +6598,9 @@ Return ONLY valid JSON.` },
   // Clean up stale rate limit entries every 5 minutes
   setInterval(() => {
     const now = Date.now();
-    for (const [ip, entry] of dispatchRateLimiter.entries()) {
+    dispatchRateLimiter.forEach((entry, ip) => {
       if (now > entry.resetAt) dispatchRateLimiter.delete(ip);
-    }
+    });
   }, 5 * 60 * 1000);
 
   // Validate webhook URL: block private/internal IPs

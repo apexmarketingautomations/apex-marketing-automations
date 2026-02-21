@@ -48,6 +48,7 @@ const MetaAdsPage = lazy(() => import("@/pages/meta-ads"));
 const MetaLeadsPage = lazy(() => import("@/pages/meta-leads"));
 const InstagramInboxPage = lazy(() => import("@/pages/instagram-inbox"));
 const NexusDemo = lazy(() => import("@/pages/nexus-demo"));
+const AdminConsolePage = lazy(() => import("@/pages/admin-console"));
 const AccountSettingsPage = lazy(() => import("@/pages/account-settings"));
 const ClientPortal = lazy(() => import("@/pages/client-portal"));
 const IntegrationsPage = lazy(() => import("@/pages/integrations"));
@@ -126,6 +127,7 @@ function Router() {
                   <Route path="/billing" component={Billing} />
                   <Route path="/domains" component={Domains} />
                   <Route path="/god-mode" component={GodMode} />
+                  <Route path="/admin-console" component={AdminConsolePage} />
                   <Route path="/marketplace" component={MarketplacePage} />
                   <Route path="/affiliate" component={AffiliateDashboard} />
                   <Route path="/command-center" component={CommandCenterPage} />

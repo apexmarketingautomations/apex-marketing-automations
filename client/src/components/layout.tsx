@@ -51,6 +51,7 @@ const navSections = [
     label: "PLATFORM",
     items: [
       { href: "/account-settings", icon: Settings, label: "Account Settings" },
+      { href: "/admin-console", icon: Shield, label: "System Command", adminOnly: true },
       { href: "/command-center", icon: Shield, label: "Command Center", adminOnly: true },
       { href: "/snapshots", icon: History, label: "Snapshots" },
       { href: "/marketplace", icon: Store, label: "Marketplace" },
