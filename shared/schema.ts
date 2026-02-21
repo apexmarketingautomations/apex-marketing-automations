@@ -764,6 +764,7 @@ export const dispatchSubscribers = pgTable("dispatch_subscribers", {
   targetZip: text("target_zip").notNull(),
   targetRadiusMeters: real("target_radius_meters").notNull().default(80467),
   webhookUrl: text("webhook_url").notNull(),
+  webhookSecret: text("webhook_secret").notNull(),
   lat: real("lat").notNull(),
   lon: real("lon").notNull(),
   active: boolean("active").default(true),

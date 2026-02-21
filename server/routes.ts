@@ -6489,6 +6489,60 @@ Return ONLY valid JSON.` },
 
   // ─── GEO DISPATCH SYSTEM ────────────────────────────────────────────
 
+  // Rate limiter: tracks request counts per IP
+  const dispatchRateLimiter = new Map<string, { count: number; resetAt: number }>();
+  const DISPATCH_RATE_LIMIT = 60; // max requests per window
+  const DISPATCH_RATE_WINDOW_MS = 60 * 1000; // 1 minute window
+  const DISPATCH_MAX_PAYLOAD_BYTES = 50 * 1024; // 50KB max payload
+
+  function checkDispatchRateLimit(ip: string): boolean {
+    const now = Date.now();
+    const entry = dispatchRateLimiter.get(ip);
+    if (!entry || now > entry.resetAt) {
+      dispatchRateLimiter.set(ip, { count: 1, resetAt: now + DISPATCH_RATE_WINDOW_MS });
+      return true;
+    }
+    if (entry.count >= DISPATCH_RATE_LIMIT) return false;
+    entry.count++;
+    return true;
+  }
+
+  // Clean up stale rate limit entries every 5 minutes
+  setInterval(() => {
+    const now = Date.now();
+    for (const [ip, entry] of dispatchRateLimiter.entries()) {
+      if (now > entry.resetAt) dispatchRateLimiter.delete(ip);
+    }
+  }, 5 * 60 * 1000);
+
+  // Validate webhook URL: block private/internal IPs
+  function isPrivateUrl(urlStr: string): boolean {
+    try {
+      const url = new URL(urlStr);
+      const hostname = url.hostname;
+      // Block localhost and common private ranges
+      if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0") return true;
+      if (hostname === "::1" || hostname === "[::1]") return true;
+      if (hostname.endsWith(".local") || hostname.endsWith(".internal")) return true;
+      // Block private IP ranges
+      const parts = hostname.split(".").map(Number);
+      if (parts.length === 4 && parts.every(n => !isNaN(n))) {
+        if (parts[0] === 10) return true;
+        if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+        if (parts[0] === 192 && parts[1] === 168) return true;
+        if (parts[0] === 169 && parts[1] === 254) return true;
+      }
+      return false;
+    } catch {
+      return true;
+    }
+  }
+
+  // Generate HMAC signature for webhook delivery
+  function signWebhookPayload(secret: string, payload: string): string {
+    return crypto.createHmac("sha256", secret).update(payload).digest("hex");
+  }
+
   async function geocodeZip(zip: string): Promise<{ lat: number; lon: number } | null> {
     try {
       const resp = await fetch(`https://api.zippopotam.us/us/${zip}`);
@@ -6520,6 +6574,10 @@ Return ONLY valid JSON.` },
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
+    if (isPrivateUrl(parsed.data.webhook_url)) {
+      return res.status(400).json({ error: "Webhook URL cannot point to private/internal addresses" });
+    }
+
     let { lat, lon } = parsed.data;
     if (!lat || !lon) {
       const geo = await geocodeZip(parsed.data.target_zip);
@@ -6528,12 +6586,15 @@ Return ONLY valid JSON.` },
       lon = geo.lon;
     }
 
+    const webhookSecret = crypto.randomBytes(32).toString("hex");
+
     const subscriber = await storage.createDispatchSubscriber({
       email: parsed.data.email,
       occupation: parsed.data.occupation || null,
       targetZip: parsed.data.target_zip,
       targetRadiusMeters: parsed.data.target_radius,
       webhookUrl: parsed.data.webhook_url,
+      webhookSecret,
       lat,
       lon,
       active: true,
@@ -6546,6 +6607,7 @@ Return ONLY valid JSON.` },
       target_radius_meters: subscriber.targetRadiusMeters,
       lat: subscriber.lat,
       lon: subscriber.lon,
+      webhook_secret: webhookSecret,
       status: "active",
     });
   }));
@@ -6564,10 +6626,20 @@ Return ONLY valid JSON.` },
   }));
 
   app.post("/api/v1/dispatch", asyncHandler(async (req: Request, res: Response) => {
+    const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+    if (!checkDispatchRateLimit(clientIp)) {
+      return res.status(429).json({ error: "Rate limit exceeded. Max 60 requests per minute." });
+    }
+
+    const bodySize = JSON.stringify(req.body).length;
+    if (bodySize > DISPATCH_MAX_PAYLOAD_BYTES) {
+      return res.status(413).json({ error: `Payload too large. Max ${DISPATCH_MAX_PAYLOAD_BYTES / 1024}KB.` });
+    }
+
     const schema = z.object({
-      lat: z.number(),
-      lon: z.number(),
-      type: z.string().optional(),
+      lat: z.number().min(-90).max(90),
+      lon: z.number().min(-180).max(180),
+      type: z.string().max(100).optional(),
       payload: z.any().optional(),
     });
 
@@ -6584,18 +6656,26 @@ Return ONLY valid JSON.` },
 
     for (const sub of subscribers) {
       const webhookUrl = sub.webhookUrl || (sub as any).webhook_url;
+      const webhookSecret = sub.webhookSecret || (sub as any).webhook_secret;
+      const bodyStr = JSON.stringify({
+        event: eventPayload,
+        subscriber: {
+          id: sub.id,
+          email: sub.email,
+          occupation: sub.occupation || (sub as any).occupation,
+        },
+      });
+      const signature = signWebhookPayload(webhookSecret, bodyStr);
+
       try {
         const resp = await fetch(webhookUrl, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            event: eventPayload,
-            subscriber: {
-              id: sub.id,
-              email: sub.email,
-              occupation: sub.occupation || (sub as any).occupation,
-            },
-          }),
+          headers: {
+            "Content-Type": "application/json",
+            "X-Dispatch-Signature": `sha256=${signature}`,
+            "X-Dispatch-Timestamp": new Date().toISOString(),
+          },
+          body: bodyStr,
         });
         results.push({
           subscriber_id: sub.id,
