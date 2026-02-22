@@ -50,11 +50,13 @@ import {
   dispatchSubscribers,
   type DispatchSubscriber, type InsertDispatchSubscriber,
   creditWallets, creditTransactions, sponsorships, sponsorshipClicks, platformProfitLedger,
+  funnelLeads,
   type CreditWallet, type InsertCreditWallet,
   type CreditTransaction, type InsertCreditTransaction,
   type Sponsorship, type InsertSponsorship,
   type SponsorshipClick, type InsertSponsorshipClick,
   type PlatformProfit, type InsertPlatformProfit,
+  type FunnelLead, type InsertFunnelLead,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -276,6 +278,12 @@ export interface IStorage {
 
   createPlatformProfit(data: InsertPlatformProfit): Promise<PlatformProfit>;
   getPlatformProfits(): Promise<PlatformProfit[]>;
+
+  createFunnelLead(data: InsertFunnelLead): Promise<FunnelLead>;
+  getFunnelLeadBySession(sessionId: string): Promise<FunnelLead | undefined>;
+  updateFunnelLead(id: number, data: Partial<InsertFunnelLead>): Promise<FunnelLead | undefined>;
+  getAbandonedFunnelLeads(staleMinutes: number): Promise<FunnelLead[]>;
+  getFunnelLeads(slug?: string): Promise<FunnelLead[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1160,6 +1168,37 @@ export class DatabaseStorage implements IStorage {
 
   async getPlatformProfits() {
     return db.select().from(platformProfitLedger).orderBy(desc(platformProfitLedger.createdAt));
+  }
+
+  async createFunnelLead(data: InsertFunnelLead) {
+    const [row] = await db.insert(funnelLeads).values(data).returning();
+    return row;
+  }
+
+  async getFunnelLeadBySession(sessionId: string) {
+    const [row] = await db.select().from(funnelLeads).where(eq(funnelLeads.sessionId, sessionId));
+    return row;
+  }
+
+  async updateFunnelLead(id: number, data: Partial<InsertFunnelLead>) {
+    const [row] = await db.update(funnelLeads).set(data).where(eq(funnelLeads.id, id)).returning();
+    return row;
+  }
+
+  async getAbandonedFunnelLeads(staleMinutes: number) {
+    const cutoff = new Date(Date.now() - staleMinutes * 60 * 1000);
+    return db.select().from(funnelLeads)
+      .where(and(
+        eq(funnelLeads.status, "in_progress"),
+        sql`${funnelLeads.lastSeenAt} < ${cutoff}`
+      ));
+  }
+
+  async getFunnelLeads(slug?: string) {
+    if (slug) {
+      return db.select().from(funnelLeads).where(eq(funnelLeads.slug, slug)).orderBy(desc(funnelLeads.createdAt));
+    }
+    return db.select().from(funnelLeads).orderBy(desc(funnelLeads.createdAt));
   }
 }
 

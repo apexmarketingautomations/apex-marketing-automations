@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link } from "wouter";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Link, useSearch } from "wouter";
 import {
   ArrowRight, ArrowLeft, CheckCircle2, Sparkles, User, Mail, Phone,
   Building2, Calendar, Clock, Loader2
@@ -51,14 +51,64 @@ const accentMap: Record<string, { text: string; bg: string; border: string; grad
 
 const stepLabels = ["Your Info", "About Your Business", "Schedule", "Confirmed"];
 
+function getOrCreateSessionId(slug: string): string {
+  const key = `funnel_session_${slug}`;
+  let id = sessionStorage.getItem(key);
+  if (!id) {
+    id = `${slug}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    sessionStorage.setItem(key, id);
+  }
+  return id;
+}
+
 export function NicheFunnel({ config }: { config: NicheFunnelConfig }) {
+  const search = useSearch();
+  const params = new URLSearchParams(search);
+  const sessionId = useRef(getOrCreateSessionId(config.slug));
+
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState<Record<string, string>>({
-    firstName: "", lastName: "", email: "", phone: "", businessName: "",
+    firstName: params.get("firstName") || params.get("name") || "",
+    lastName: params.get("lastName") || "",
+    email: params.get("email") || "",
+    phone: params.get("phone") || "",
+    businessName: params.get("businessName") || "",
     preferredTime: "", preferredDay: "",
   });
   const colors = accentMap[config.accentColor] || accentMap.cyan;
+  const started = useRef(false);
+
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    fetch("/api/funnel/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: sessionId.current, slug: config.slug, niche: config.industry }),
+    }).catch(() => {});
+  }, [config.slug, config.industry]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (step < 3) {
+        fetch("/api/funnel/heartbeat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: sessionId.current }),
+        }).catch(() => {});
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [step]);
+
+  const syncStep = useCallback((newStep: number, data?: Record<string, string>) => {
+    fetch("/api/funnel/update", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: sessionId.current, step: newStep, formData: data || formData }),
+    }).catch(() => {});
+  }, [formData]);
 
   const updateField = (key: string, value: string) => setFormData(prev => ({ ...prev, [key]: value }));
 
@@ -75,11 +125,20 @@ export function NicheFunnel({ config }: { config: NicheFunnelConfig }) {
   const handleNext = async () => {
     if (step === 2) {
       setSubmitting(true);
-      await new Promise(r => setTimeout(r, 1500));
+      syncStep(2, formData);
+      try {
+        await fetch("/api/funnel/submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: sessionId.current }),
+        });
+      } catch {}
       setSubmitting(false);
       setStep(3);
     } else {
-      setStep(s => s + 1);
+      const nextStep = step + 1;
+      syncStep(nextStep, formData);
+      setStep(nextStep);
     }
   };
 
