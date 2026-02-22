@@ -946,17 +946,34 @@ Rules:
       userMessage += `\n\nThe user has uploaded these images to use on the site:\n${parsed.data.uploadedImages.join("\n")}`;
     }
 
-    const raw = await geminiChat([
-      { role: "system", content: SITE_SYSTEM_PROMPT },
-      { role: "user", content: userMessage },
-    ], { temperature: 0.7, maxTokens: 4000, jsonMode: true });
-    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    function extractJson(text: string): any {
+      let cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      const firstBrace = cleaned.indexOf("{");
+      const lastBrace = cleaned.lastIndexOf("}");
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+      }
+      cleaned = cleaned.replace(/,\s*([}\]])/g, "$1");
+      cleaned = cleaned.replace(/[\x00-\x1F\x7F]/g, (ch) => ch === '\n' || ch === '\r' || ch === '\t' ? ch : '');
+      return JSON.parse(cleaned);
+    }
 
     let siteData: any;
-    try {
-      siteData = JSON.parse(cleaned);
-    } catch {
-      return res.status(500).json({ error: "AI returned invalid JSON" });
+    let lastError: string = "";
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const raw = await geminiChat([
+          { role: "system", content: SITE_SYSTEM_PROMPT },
+          { role: "user", content: attempt === 0 ? userMessage : userMessage + "\n\nIMPORTANT: Return ONLY valid JSON. No markdown, no explanation, no text before or after the JSON object." },
+        ], { temperature: attempt === 0 ? 0.7 : 0.3, maxTokens: 4000, jsonMode: true });
+        siteData = extractJson(raw);
+        break;
+      } catch (e: any) {
+        lastError = e.message || "JSON parse failed";
+        if (attempt === 1) {
+          return res.status(500).json({ error: "AI returned invalid JSON after retry", detail: lastError });
+        }
+      }
     }
 
     if (!siteData.theme || !Array.isArray(siteData.sections)) {
@@ -2368,12 +2385,22 @@ Rules:
     let siteData = null;
     if (isGeminiConfigured()) {
       try {
-        const raw = await geminiChat([
-          { role: "system", content: SITE_SYSTEM_PROMPT },
-          { role: "user", content: `Create a premium landing page for "${businessName}", a ${industry} business. Make it look high-end and professional with compelling copy.` },
-        ], { temperature: 0.7, maxTokens: 4000, jsonMode: true });
-        const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-        const parsed = JSON.parse(cleaned);
+        const godModePrompt = `Create a premium landing page for "${businessName}", a ${industry} business. Make it look high-end and professional with compelling copy.`;
+        let parsed: any = null;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const raw = await geminiChat([
+              { role: "system", content: SITE_SYSTEM_PROMPT },
+              { role: "user", content: attempt === 0 ? godModePrompt : godModePrompt + "\n\nIMPORTANT: Return ONLY valid JSON." },
+            ], { temperature: attempt === 0 ? 0.7 : 0.3, maxTokens: 4000, jsonMode: true });
+            let cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+            const fb = cleaned.indexOf("{"); const lb = cleaned.lastIndexOf("}");
+            if (fb !== -1 && lb > fb) cleaned = cleaned.substring(fb, lb + 1);
+            cleaned = cleaned.replace(/,\s*([}\]])/g, "$1");
+            parsed = JSON.parse(cleaned);
+            break;
+          } catch { if (attempt === 1) throw new Error("JSON parse failed"); }
+        }
         if (parsed.theme && Array.isArray(parsed.sections)) {
           parsed.sections = parsed.sections.map((s: any) => {
             if (s.props) return s;
