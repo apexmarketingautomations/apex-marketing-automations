@@ -76,7 +76,7 @@ function NavLink({ href, icon: Icon, label, isActive, isLocked }: { href: string
   if (isLocked) {
     return (
       <Link href={href} className="relative group block opacity-50" data-testid={`nav-link-${href.replace("/", "") || "home"}`}>
-        <div className="flex items-center gap-3 p-3 px-4 transition-all text-slate-500">
+        <div className="flex items-center gap-3 p-3 px-4 transition-all text-slate-300">
           <Icon size={20} />
           <span className="font-medium text-sm tracking-wide">{label}</span>
           <Lock size={12} className="text-orange-400 ml-auto" />
@@ -94,7 +94,7 @@ function NavLink({ href, icon: Icon, label, isActive, isLocked }: { href: string
           transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
         />
       )}
-      <div className={`flex items-center gap-3 p-3 px-4 transition-all ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'}`}>
+      <div className={`flex items-center gap-3 p-3 px-4 transition-all ${isActive ? 'text-white' : 'text-slate-200 group-hover:text-white'}`}>
         <Icon size={20} className={isActive ? 'text-indigo-400 drop-shadow-[0_0_8px_rgba(129,140,248,0.5)]' : ''} />
         <span className="font-medium text-sm tracking-wide">{label}</span>
       </div>
@@ -194,12 +194,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <div className="px-4 mb-2 flex items-center gap-2">
         <button
           onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))}
-          className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition-colors text-slate-400 hover:text-white text-sm"
+          className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition-colors text-slate-200 hover:text-white text-sm"
           data-testid="button-command-menu"
         >
           <Search size={14} />
           <span className="flex-1 text-left">Search...</span>
-          <span className="flex items-center gap-0.5 text-[10px] text-slate-600 border border-white/10 px-1.5 py-0.5 rounded">
+          <span className="flex items-center gap-0.5 text-[10px] text-slate-400 border border-white/10 px-1.5 py-0.5 rounded">
             <span>⌘</span>K
           </span>
         </button>
@@ -212,7 +212,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           if (visibleItems.length === 0) return null;
           return (
             <div key={section.label}>
-              <div className="px-6 text-xs font-bold text-slate-600 mb-2 mt-4 tracking-wider">{section.label}</div>
+              <div className="px-6 text-xs font-bold text-slate-400 mb-2 mt-4 tracking-wider">{section.label}</div>
               {visibleItems.map((item) => (
                 <NavLink key={item.href} {...item} isActive={location === item.href} isLocked={(item as any).requiredFeature ? !hasFeature(accountPlan, (item as any).requiredFeature) : false} />
               ))}
@@ -223,10 +223,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {user && (
         <div className="px-4 mb-2">
-          <div className="flex items-center gap-2 px-3 py-2 text-xs text-slate-400">
+          <div className="flex items-center gap-2 px-3 py-2 text-xs text-slate-300">
             <span className="truncate">{user.email}</span>
           </div>
-          <button onClick={() => { logout(); onNavClick?.(); }} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors" data-testid="button-logout">
+          <button onClick={() => { logout(); onNavClick?.(); }} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-200 hover:text-white hover:bg-white/5 transition-colors" data-testid="button-logout">
             <LogOut size={16} />
             <span>Sign Out</span>
           </button>
@@ -257,7 +257,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           <Link href="/account-settings" data-testid="button-settings-gear" onClick={onNavClick}>
-            <Settings size={16} className="ml-auto text-slate-500 hover:text-white cursor-pointer" />
+            <Settings size={16} className="ml-auto text-slate-300 hover:text-white cursor-pointer" />
           </Link>
         </div>
       </div>
@@ -321,7 +321,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="px-6 pt-4 pb-0">
             <Link
               href="/"
-              className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors group"
+              className="inline-flex items-center gap-1.5 text-sm text-slate-200 hover:text-white transition-colors group"
               data-testid="button-back"
             >
               <ArrowLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />

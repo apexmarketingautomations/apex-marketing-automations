@@ -79,7 +79,7 @@ export default function DashboardPage() {
           </div>
           <div>
             <h1 className="text-3xl font-black text-white mb-3">{isAdmin ? "Admin Command Center" : "Welcome to Apex"}</h1>
-            <p className="text-slate-400 text-lg">{isAdmin ? "You have full platform access. Create your first client business using God Mode or the onboarding wizard." : "Create your first sub-account to unlock your business dashboard, CRM, AI tools, and more."}</p>
+            <p className="text-slate-200 text-lg">{isAdmin ? "You have full platform access. Create your first client business using God Mode or the onboarding wizard." : "Create your first sub-account to unlock your business dashboard, CRM, AI tools, and more."}</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             {isAdmin && (
@@ -114,7 +114,7 @@ export default function DashboardPage() {
             ].map((item) => (
               <div key={item.label} className="p-3 rounded-xl bg-white/5 border border-white/5">
                 <item.icon size={20} className="text-slate-400 mb-2 mx-auto" />
-                <p className="text-xs text-slate-500 text-center">{item.label}</p>
+                <p className="text-xs text-slate-300 text-center">{item.label}</p>
               </div>
             ))}
           </div>
@@ -133,8 +133,8 @@ export default function DashboardPage() {
           Command Dashboard
         </h1>
         <div className="flex items-center gap-2 mt-1">
-          <p className="text-slate-400">Real-time overview of your business operations</p>
-          <button onClick={startTutorial} className="flex items-center gap-1 text-xs text-slate-500 hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-white/5" data-testid="button-start-tutorial"><Info size={14} className="mr-1" /> Tutorial</button>
+          <p className="text-slate-200">Real-time overview of your business operations</p>
+          <button onClick={startTutorial} className="flex items-center gap-1 text-xs text-slate-300 hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-white/5" data-testid="button-start-tutorial"><Info size={14} className="mr-1" /> Tutorial</button>
         </div>
       </div>
 
@@ -143,7 +143,7 @@ export default function DashboardPage() {
       <TutorialCenter />
 
       {isLoading ? (
-        <div className="text-center py-20 text-slate-400">Loading dashboard...</div>
+        <div className="text-center py-20 text-slate-200">Loading dashboard...</div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {metricCards.map((card, idx) => {
@@ -160,7 +160,7 @@ export default function DashboardPage() {
                         </div>
                       </div>
                       <p className="text-2xl font-black text-white">{displayValue}</p>
-                      <p className="text-xs text-slate-400 mt-1">{card.label}</p>
+                      <p className="text-xs text-slate-200 mt-1">{card.label}</p>
                     </CardContent>
                   </Card>
                 </Link>
@@ -177,7 +177,7 @@ export default function DashboardPage() {
               <MessageSquare size={18} className="text-cyan-400" /> Recent Messages
             </h2>
             {metrics.recentMessages.length === 0 ? (
-              <p className="text-slate-500 text-sm">No messages today</p>
+              <p className="text-slate-300 text-sm">No messages today</p>
             ) : (
               <div className="space-y-3">
                 {metrics.recentMessages.map((msg: any, i: number) => (
@@ -187,7 +187,7 @@ export default function DashboardPage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-white text-sm truncate">{msg.body}</p>
-                      <p className="text-slate-500 text-xs">{msg.contactPhone} · {msg.channel}</p>
+                      <p className="text-slate-300 text-xs">{msg.contactPhone} · {msg.channel}</p>
                     </div>
                   </div>
                 ))}
@@ -200,7 +200,7 @@ export default function DashboardPage() {
               <Megaphone size={18} className="text-green-400" /> Recent Leads
             </h2>
             {metrics.recentLeads.length === 0 ? (
-              <p className="text-slate-500 text-sm">No recent leads</p>
+              <p className="text-slate-300 text-sm">No recent leads</p>
             ) : (
               <div className="space-y-3">
                 {metrics.recentLeads.map((lead: any, i: number) => (
@@ -210,7 +210,7 @@ export default function DashboardPage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-white text-sm">{lead.name}</p>
-                      <p className="text-slate-500 text-xs">{lead.email || lead.phone || "No contact info"}</p>
+                      <p className="text-slate-300 text-xs">{lead.email || lead.phone || "No contact info"}</p>
                     </div>
                     {lead.syncedToCrm && (
                       <span className="text-xs text-green-400 bg-green-500/10 px-2 py-0.5 rounded">In CRM</span>
@@ -242,7 +242,7 @@ export default function DashboardPage() {
                 </div>
               </div>
               <p className="text-2xl font-black text-white">{analytics.overview?.conversionRate ?? 0}%</p>
-              <p className="text-xs text-slate-400 mt-1">Conversion Rate</p>
+              <p className="text-xs text-slate-200 mt-1">Conversion Rate</p>
             </div>
             <div className="bg-black/40 border border-white/10 rounded-xl p-4" data-testid="stat-avg-response-time">
               <div className="flex items-center gap-2 mb-2">
@@ -251,7 +251,7 @@ export default function DashboardPage() {
                 </div>
               </div>
               <p className="text-2xl font-black text-white">{analytics.overview?.avgResponseTime ?? "N/A"}</p>
-              <p className="text-xs text-slate-400 mt-1">Avg Response Time</p>
+              <p className="text-xs text-slate-200 mt-1">Avg Response Time</p>
             </div>
             <div className="bg-black/40 border border-white/10 rounded-xl p-4" data-testid="stat-total-leads">
               <div className="flex items-center gap-2 mb-2">
@@ -260,7 +260,7 @@ export default function DashboardPage() {
                 </div>
               </div>
               <p className="text-2xl font-black text-white">{(analytics.overview?.totalLeads ?? 0).toLocaleString()}</p>
-              <p className="text-xs text-slate-400 mt-1">Total Leads</p>
+              <p className="text-xs text-slate-200 mt-1">Total Leads</p>
             </div>
             <div className="bg-black/40 border border-white/10 rounded-xl p-4" data-testid="stat-total-messages">
               <div className="flex items-center gap-2 mb-2">
@@ -269,7 +269,7 @@ export default function DashboardPage() {
                 </div>
               </div>
               <p className="text-2xl font-black text-white">{(analytics.overview?.totalMessages ?? analytics.totalMessages ?? 0).toLocaleString()}</p>
-              <p className="text-xs text-slate-400 mt-1">Total Messages</p>
+              <p className="text-xs text-slate-200 mt-1">Total Messages</p>
             </div>
           </div>
 
@@ -330,19 +330,19 @@ export default function DashboardPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-white/5 rounded-lg p-3" data-testid="stat-open-deals">
                   <p className="text-xl font-black text-white">{analytics.pipeline?.openDeals ?? 0}</p>
-                  <p className="text-xs text-slate-400">Open Deals</p>
+                  <p className="text-xs text-slate-200">Open Deals</p>
                 </div>
                 <div className="bg-white/5 rounded-lg p-3" data-testid="stat-won-deals">
                   <p className="text-xl font-black text-green-400">{analytics.pipeline?.wonDeals ?? 0}</p>
-                  <p className="text-xs text-slate-400">Won Deals</p>
+                  <p className="text-xs text-slate-200">Won Deals</p>
                 </div>
                 <div className="bg-white/5 rounded-lg p-3" data-testid="stat-lost-deals">
                   <p className="text-xl font-black text-red-400">{analytics.pipeline?.lostDeals ?? 0}</p>
-                  <p className="text-xs text-slate-400">Lost Deals</p>
+                  <p className="text-xs text-slate-200">Lost Deals</p>
                 </div>
                 <div className="bg-white/5 rounded-lg p-3" data-testid="stat-pipeline-value">
                   <p className="text-xl font-black text-emerald-400">${(analytics.pipeline?.pipelineValue ?? 0).toLocaleString()}</p>
-                  <p className="text-xs text-slate-400">Pipeline Value</p>
+                  <p className="text-xs text-slate-200">Pipeline Value</p>
                 </div>
               </div>
             </div>
@@ -355,19 +355,19 @@ export default function DashboardPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-white/5 rounded-lg p-3" data-testid="stat-ad-spend">
                   <p className="text-xl font-black text-white">${(analytics.adPerformance?.adSpend ?? 0).toLocaleString()}</p>
-                  <p className="text-xs text-slate-400">Ad Spend</p>
+                  <p className="text-xs text-slate-200">Ad Spend</p>
                 </div>
                 <div className="bg-white/5 rounded-lg p-3" data-testid="stat-cost-per-lead">
                   <p className="text-xl font-black text-cyan-400">${(analytics.adPerformance?.costPerLead ?? 0).toFixed(2)}</p>
-                  <p className="text-xs text-slate-400">Cost Per Lead</p>
+                  <p className="text-xs text-slate-200">Cost Per Lead</p>
                 </div>
                 <div className="bg-white/5 rounded-lg p-3" data-testid="stat-ctr">
                   <p className="text-xl font-black text-indigo-400">{(analytics.adPerformance?.ctr ?? 0).toFixed(2)}%</p>
-                  <p className="text-xs text-slate-400">CTR</p>
+                  <p className="text-xs text-slate-200">CTR</p>
                 </div>
                 <div className="bg-white/5 rounded-lg p-3" data-testid="stat-total-impressions">
                   <p className="text-xl font-black text-amber-400">{(analytics.adPerformance?.totalImpressions ?? 0).toLocaleString()}</p>
-                  <p className="text-xs text-slate-400">Total Impressions</p>
+                  <p className="text-xs text-slate-200">Total Impressions</p>
                 </div>
               </div>
             </div>

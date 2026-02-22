@@ -214,7 +214,7 @@ export default function CalendarPage() {
     return (
       <div className="p-8 flex items-center justify-center min-h-[60vh]">
         <div className="text-center space-y-3">
-          <p className="text-slate-400">Select a sub-account from the sidebar to continue.</p>
+          <p className="text-slate-200">Select a sub-account from the sidebar to continue.</p>
         </div>
       </div>
     );
@@ -295,7 +295,7 @@ export default function CalendarPage() {
                         `}
                         data-testid={`calendar-day-${format(day, "yyyy-MM-dd")}`}
                       >
-                        <span className={`text-sm font-semibold ${today ? "text-cyan-400" : inMonth ? "text-white" : "text-slate-600"}`}>
+                        <span className={`text-sm font-semibold ${today ? "text-cyan-400" : inMonth ? "text-white" : "text-slate-400"}`}>
                           {format(day, "d")}
                         </span>
                         <div className="mt-1 space-y-0.5">
@@ -310,7 +310,7 @@ export default function CalendarPage() {
                             </div>
                           ))}
                           {dayAppts.length > 3 && (
-                            <div className="text-[10px] text-slate-500 pl-1">+{dayAppts.length - 3} more</div>
+                            <div className="text-[10px] text-slate-300 pl-1">+{dayAppts.length - 3} more</div>
                           )}
                         </div>
                       </button>
@@ -337,8 +337,8 @@ export default function CalendarPage() {
                 ) : selectedDayAppointments.length === 0 ? (
                   <div className="text-center py-10">
                     <CalendarIcon size={40} className="mx-auto mb-3 text-white/10" />
-                    <p className="text-slate-400 text-sm" data-testid="text-no-appointments">No appointments</p>
-                    <p className="text-slate-600 text-xs mt-1">Click "New Appointment" to schedule one</p>
+                    <p className="text-slate-200 text-sm" data-testid="text-no-appointments">No appointments</p>
+                    <p className="text-slate-400 text-xs mt-1">Click "New Appointment" to schedule one</p>
                   </div>
                 ) : (
                   <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
@@ -361,7 +361,7 @@ export default function CalendarPage() {
                                 </span>
                               </div>
                               {appt.location && (
-                                <div className="flex items-center gap-1 mt-0.5 text-xs text-slate-500">
+                                <div className="flex items-center gap-1 mt-0.5 text-xs text-slate-300">
                                   <MapPin size={10} />
                                   <span>{appt.location}</span>
                                 </div>

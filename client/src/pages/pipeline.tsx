@@ -231,7 +231,7 @@ export default function PipelinePage() {
     return (
       <div className="p-8 flex items-center justify-center min-h-[60vh]">
         <div className="text-center space-y-3">
-          <p className="text-slate-400">Select a sub-account from the sidebar to continue.</p>
+          <p className="text-slate-200">Select a sub-account from the sidebar to continue.</p>
         </div>
       </div>
     );
@@ -249,7 +249,7 @@ export default function PipelinePage() {
               <h1 className="text-3xl md:text-4xl font-black tracking-tight" data-testid="text-pipeline-title">
                 <span className="bg-gradient-to-r from-cyan-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent">Pipeline</span>
               </h1>
-              <button onClick={startTutorial} className="flex items-center gap-1 text-xs text-slate-500 hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-white/5" data-testid="button-start-tutorial"><Info size={14} className="mr-1" /> Tutorial</button>
+              <button onClick={startTutorial} className="flex items-center gap-1 text-xs text-slate-300 hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-white/5" data-testid="button-start-tutorial"><Info size={14} className="mr-1" /> Tutorial</button>
             </div>
             {activeTab === "pipeline" && stages.length > 0 && (
               <div className="flex gap-2">
@@ -382,7 +382,7 @@ export default function PipelinePage() {
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center justify-center py-20">
                 <Layers size={64} className="text-white/10 mb-6" />
                 <h2 className="text-xl font-bold text-white mb-2" data-testid="text-empty-pipeline">No Pipeline Stages</h2>
-                <p className="text-slate-400 text-sm mb-6">Get started by creating your pipeline stages</p>
+                <p className="text-slate-200 text-sm mb-6">Get started by creating your pipeline stages</p>
                 <Button
                   onClick={handleCreateDefaultStages}
                   disabled={createStageMutation.isPending}
@@ -417,7 +417,7 @@ export default function PipelinePage() {
                             <div className="w-3 h-3 rounded-full" style={{ backgroundColor: stage.color }} />
                             <span className="text-sm font-bold text-white" data-testid={`stage-name-${stage.id}`}>{stage.name}</span>
                           </div>
-                          <span className="text-xs text-slate-500 bg-white/5 px-2 py-0.5 rounded-full" data-testid={`stage-count-${stage.id}`}>
+                          <span className="text-xs text-slate-300 bg-white/5 px-2 py-0.5 rounded-full" data-testid={`stage-count-${stage.id}`}>
                             {stageDeals.length}
                           </span>
                         </div>
@@ -440,7 +440,7 @@ export default function PipelinePage() {
                                       ${deal.value.toLocaleString()}
                                     </p>
                                     {contactName && (
-                                      <p className="text-xs text-slate-500 mt-1 truncate" data-testid={`deal-contact-${deal.id}`}>
+                                      <p className="text-xs text-slate-300 mt-1 truncate" data-testid={`deal-contact-${deal.id}`}>
                                         {contactName}
                                       </p>
                                     )}
@@ -471,7 +471,7 @@ export default function PipelinePage() {
                 {contacts.length === 0 ? (
                   <div className="text-center py-10">
                     <Users size={48} className="mx-auto mb-4 text-white/10" />
-                    <p className="text-slate-400 text-sm">No contacts yet</p>
+                    <p className="text-slate-200 text-sm">No contacts yet</p>
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
@@ -489,9 +489,9 @@ export default function PipelinePage() {
                         {contacts.map((contact) => (
                           <tr key={contact.id} className="border-b border-white/5 hover:bg-white/[0.03] transition-colors" data-testid={`contact-row-${contact.id}`}>
                             <td className="py-3 px-3 text-white font-medium" data-testid={`contact-name-${contact.id}`}>{contact.name}</td>
-                            <td className="py-3 px-3 text-slate-400" data-testid={`contact-email-${contact.id}`}>{contact.email}</td>
-                            <td className="py-3 px-3 text-slate-400" data-testid={`contact-phone-${contact.id}`}>{contact.phone || "—"}</td>
-                            <td className="py-3 px-3 text-slate-400" data-testid={`contact-company-${contact.id}`}>{contact.company || "—"}</td>
+                            <td className="py-3 px-3 text-slate-200" data-testid={`contact-email-${contact.id}`}>{contact.email}</td>
+                            <td className="py-3 px-3 text-slate-200" data-testid={`contact-phone-${contact.id}`}>{contact.phone || "—"}</td>
+                            <td className="py-3 px-3 text-slate-200" data-testid={`contact-company-${contact.id}`}>{contact.company || "—"}</td>
                             <td className="py-3 px-3">
                               <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30" data-testid={`contact-source-${contact.id}`}>
                                 {contact.source || "—"}

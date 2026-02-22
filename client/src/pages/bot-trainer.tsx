@@ -245,7 +245,7 @@ function BotTrainerInner() {
                 </AnimatePresence>
                 
                 {!isTraining && logs.length === 0 && (
-                   <div className="h-full flex flex-col items-center justify-center text-slate-600">
+                   <div className="h-full flex flex-col items-center justify-center text-slate-400">
                      <BrainCircuit className="h-12 w-12 mb-2 opacity-20" />
                      <p>Ready to train</p>
                    </div>

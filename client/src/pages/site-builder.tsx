@@ -917,20 +917,20 @@ function SectionEditor({ section, index, onUpdate, onClose }: { section: any; in
     >
       <div className="flex items-center justify-between">
         <span className="text-sm font-bold text-indigo-400">Edit {section.type} Section</span>
-        <button onClick={onClose} className="text-slate-400 hover:text-white" data-testid={`button-close-editor-${index}`}>
+        <button onClick={onClose} className="text-slate-200 hover:text-white" data-testid={`button-close-editor-${index}`}>
           <X size={16} />
         </button>
       </div>
       {(section.type === "CODE" || section.type === "BOT_EMBED") && (
         <div>
-          <label className="text-xs text-slate-400 block mb-1">Title</label>
+          <label className="text-xs text-slate-200 block mb-1">Title</label>
           <Input
             value={editProps.title || ""}
             onChange={(e) => handleChange("title", e.target.value)}
             className="bg-white/5 border-white/10 text-sm mb-3"
             data-testid={`input-edit-title-${index}`}
           />
-          <label className="text-xs text-slate-400 block mb-1 flex items-center gap-1">
+          <label className="text-xs text-slate-200 block mb-1 flex items-center gap-1">
             {section.type === "BOT_EMBED" ? (
               <><Bot size={12} /> Bot Embed Code</>
             ) : (
@@ -956,7 +956,7 @@ function SectionEditor({ section, index, onUpdate, onClose }: { section: any; in
         if (key === "image") {
           return (
             <div key={key}>
-              <label className="text-xs text-slate-400 block mb-1 capitalize">{key}</label>
+              <label className="text-xs text-slate-200 block mb-1 capitalize">{key}</label>
               <Input
                 value={String(value || "")}
                 onChange={(e) => handleChange(key, e.target.value)}
@@ -991,7 +991,7 @@ function SectionEditor({ section, index, onUpdate, onClose }: { section: any; in
         }
         return (
           <div key={key}>
-            <label className="text-xs text-slate-400 block mb-1 capitalize">{key}</label>
+            <label className="text-xs text-slate-200 block mb-1 capitalize">{key}</label>
             <Input
               value={String(value || "")}
               onChange={(e) => handleChange(key, e.target.value)}
@@ -1675,14 +1675,14 @@ export default function SiteBuilder() {
             <LayoutTemplate className="text-indigo-400 drop-shadow-[0_0_8px_rgba(129,140,248,0.5)]" />
             Site Architect
           </h1>
-          <p className="text-xs text-slate-500 mt-1 font-mono">
+          <p className="text-xs text-slate-300 mt-1 font-mono">
             AI-POWERED // DESCRIBE &rarr; GENERATE
           </p>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {history.length === 0 && (
-            <div className="text-center text-slate-500 mt-10 text-sm p-4 border border-dashed border-white/10 rounded-xl glass">
+            <div className="text-center text-slate-300 mt-10 text-sm p-4 border border-dashed border-white/10 rounded-xl glass">
               <p className="mb-3">Try prompts like:</p>
               <ul className="space-y-2 text-indigo-400">
                 <li>
@@ -1765,7 +1765,7 @@ export default function SiteBuilder() {
                 <CheckCircle2 className="h-4 w-4" />
                 Site generated with {siteData.sections.length} sections.
               </div>
-              <p className="text-xs text-slate-400 mt-1">
+              <p className="text-xs text-slate-200 mt-1">
                 Theme: {siteData.theme.font} /{" "}
                 <span
                   className="inline-block w-3 h-3 rounded-full align-middle"
@@ -1777,93 +1777,6 @@ export default function SiteBuilder() {
           )}
         </div>
 
-        <AnimatePresence>
-          {showImageLibrary && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              className="border-t border-white/10 overflow-hidden"
-            >
-              <div className="p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-indigo-400 flex items-center gap-2">
-                    <ImagePlus size={14} />
-                    Image Library
-                  </h3>
-                  <span className="text-xs text-slate-500">{uploadedImages.length} images</span>
-                </div>
-
-                <div
-                  className="border-2 border-dashed border-white/10 rounded-xl p-4 text-center cursor-pointer hover:border-indigo-500/50 transition-colors relative"
-                  onDrop={handleImageDrop}
-                  onDragOver={(e) => e.preventDefault()}
-                  onClick={() => document.getElementById("image-upload-input")?.click()}
-                  data-testid="dropzone-image-upload"
-                >
-                  {isUploading ? (
-                    <div className="flex items-center justify-center gap-2 text-indigo-400">
-                      <Loader2 size={16} className="animate-spin" />
-                      <span className="text-xs">Uploading...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <Upload size={20} className="mx-auto text-slate-500 mb-1" />
-                      <p className="text-xs text-slate-500">Drop image here or click to upload</p>
-                      <p className="text-[10px] text-slate-600 mt-1">JPG, PNG, GIF, WebP, SVG (max 10MB)</p>
-                    </>
-                  )}
-                  <input
-                    id="image-upload-input"
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleImageUpload(file);
-                      e.target.value = "";
-                    }}
-                    data-testid="input-image-upload"
-                  />
-                </div>
-
-                {uploadedImages.length > 0 && (
-                  <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
-                    {uploadedImages.map((img) => (
-                      <div
-                        key={img.filename}
-                        className="relative group aspect-square rounded-lg overflow-hidden border border-white/10 cursor-pointer hover:border-indigo-500/50 transition-colors"
-                        onClick={() => {
-                          navigator.clipboard.writeText(img.url);
-                          toast({ title: "URL Copied", description: "Image URL copied to clipboard" });
-                        }}
-                        data-testid={`image-thumbnail-${img.filename}`}
-                      >
-                        <img src={img.url} alt={img.filename} className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <div className="text-center">
-                            <Copy size={14} className="mx-auto text-white mb-1" />
-                            <span className="text-[10px] text-white">Copy URL</span>
-                          </div>
-                        </div>
-                        <button
-                          className="absolute top-1 right-1 p-1 bg-red-500/80 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteImage(img.filename);
-                          }}
-                          data-testid={`button-delete-image-${img.filename}`}
-                        >
-                          <Trash2 size={10} className="text-white" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
         <div className="p-4 bg-black/40 border-t border-white/5 backdrop-blur-md space-y-2">
           <TutorialCenterCompact />
@@ -1887,19 +1800,11 @@ export default function SiteBuilder() {
           </div>
           <button
             onClick={() => setShowTemplates(true)}
-            className="w-full flex items-center justify-center gap-2 text-xs text-slate-400 hover:text-indigo-400 transition-colors py-1.5 rounded-lg border border-dashed border-white/10 hover:border-indigo-500/30"
+            className="w-full flex items-center justify-center gap-2 text-xs text-slate-200 hover:text-indigo-400 transition-colors py-1.5 rounded-lg border border-dashed border-white/10 hover:border-indigo-500/30"
             data-testid="button-open-templates"
           >
             <Palette size={14} />
             Browse Template Gallery
-          </button>
-          <button
-            onClick={() => setShowImageLibrary(!showImageLibrary)}
-            className="w-full flex items-center justify-center gap-2 text-xs text-slate-400 hover:text-indigo-400 transition-colors py-1.5 rounded-lg border border-dashed border-white/10 hover:border-indigo-500/30"
-            data-testid="button-toggle-image-library"
-          >
-            <ImagePlus size={14} />
-            {showImageLibrary ? "Hide Image Library" : "Image Library"}
           </button>
         </div>
       </div>
@@ -1913,7 +1818,7 @@ export default function SiteBuilder() {
                 className={`p-2 rounded transition-colors ${
                   viewMode === "desktop"
                     ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
-                    : "text-slate-400 hover:text-white"
+                    : "text-slate-200 hover:text-white"
                 }`}
                 data-testid="button-view-desktop"
               >
@@ -1924,7 +1829,7 @@ export default function SiteBuilder() {
                 className={`p-2 rounded transition-colors ${
                   viewMode === "mobile"
                     ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
-                    : "text-slate-400 hover:text-white"
+                    : "text-slate-200 hover:text-white"
                 }`}
                 data-testid="button-view-mobile"
               >
@@ -1937,7 +1842,7 @@ export default function SiteBuilder() {
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
                   editMode
                     ? "bg-amber-500/20 border-amber-500/40 text-amber-300"
-                    : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
+                    : "bg-white/5 border-white/10 text-slate-200 hover:text-white"
                 }`}
                 data-testid="button-toggle-edit-mode"
               >
@@ -2161,7 +2066,7 @@ export default function SiteBuilder() {
                   ) : (
                     <Button
                       variant="outline"
-                      className="border-dashed border-white/20 text-slate-400 hover:text-white hover:border-indigo-500"
+                      className="border-dashed border-white/20 text-slate-200 hover:text-white hover:border-indigo-500"
                       onClick={() => setAddSectionOpen(true)}
                       data-testid="button-add-section"
                     >
@@ -2174,18 +2079,18 @@ export default function SiteBuilder() {
               <ChatWidget primaryColor={siteData.theme.primary} />
             </motion.div>
           ) : (
-            <div className="flex flex-col items-center justify-center text-slate-600 space-y-4 mt-32">
+            <div className="flex flex-col items-center justify-center text-slate-400 space-y-4 mt-32">
               <div className="w-20 h-20 rounded-2xl glass flex items-center justify-center glow-box">
                 <LayoutTemplate size={40} className="text-indigo-500/30" />
               </div>
-              <p className="text-lg font-medium text-slate-400">Enter a prompt to generate a preview</p>
-              <p className="text-sm text-slate-600">
+              <p className="text-lg font-medium text-slate-200">Enter a prompt to generate a preview</p>
+              <p className="text-sm text-slate-400">
                 Describe your business type, style, and color preferences
               </p>
               {savedSites.length > 0 && (
                 <Button
                   variant="outline"
-                  className="mt-4 border-white/10 hover:bg-white/5 text-slate-400"
+                  className="mt-4 border-white/10 hover:bg-white/5 text-slate-200"
                   onClick={() => setShowSaved(true)}
                   data-testid="button-load-designs-empty"
                 >
@@ -2213,7 +2118,7 @@ export default function SiteBuilder() {
                 <History size={18} className="text-indigo-400" />
                 Version History
               </h3>
-              <button onClick={() => setShowVersionHistory(false)} className="text-slate-400 hover:text-white" data-testid="button-close-versions">
+              <button onClick={() => setShowVersionHistory(false)} className="text-slate-200 hover:text-white" data-testid="button-close-versions">
                 <X size={18} />
               </button>
             </div>
@@ -2223,7 +2128,7 @@ export default function SiteBuilder() {
                   <Loader2 className="h-6 w-6 animate-spin text-indigo-400" />
                 </div>
               ) : versions.length === 0 ? (
-                <div className="text-center py-8 text-slate-500 text-sm">
+                <div className="text-center py-8 text-slate-300 text-sm">
                   <History size={32} className="mx-auto mb-3 opacity-30" />
                   <p>No versions yet.</p>
                   <p className="text-xs mt-1">Save the design to create version snapshots.</p>
@@ -2238,11 +2143,11 @@ export default function SiteBuilder() {
                         <div className="bg-white/5 border border-white/10 rounded-lg p-3">
                           <div className="flex items-center justify-between">
                             <span className="text-sm font-semibold text-indigo-300">v{v.versionNumber}</span>
-                            <span className="text-xs text-slate-500">
+                            <span className="text-xs text-slate-300">
                               {new Date(v.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                             </span>
                           </div>
-                          <p className="text-xs text-slate-400 mt-1">{v.label}</p>
+                          <p className="text-xs text-slate-200 mt-1">{v.label}</p>
                           <Button
                             size="sm"
                             className="mt-2 bg-indigo-600 hover:bg-indigo-500 text-xs w-full"
@@ -2287,11 +2192,11 @@ export default function SiteBuilder() {
                     <Palette className="text-indigo-400" size={22} />
                     Template Gallery
                   </h2>
-                  <p className="text-xs text-slate-500 mt-1">Pre-designed landing pages ready to customize</p>
+                  <p className="text-xs text-slate-300 mt-1">Pre-designed landing pages ready to customize</p>
                 </div>
                 <button
                   onClick={() => setShowTemplates(false)}
-                  className="text-slate-400 hover:text-white p-2 hover:bg-white/10 rounded-lg transition-colors"
+                  className="text-slate-200 hover:text-white p-2 hover:bg-white/10 rounded-lg transition-colors"
                   data-testid="button-close-templates"
                 >
                   <X size={20} />
@@ -2355,14 +2260,14 @@ export default function SiteBuilder() {
                             <h4 className="text-sm font-bold text-white">{template.name}</h4>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-slate-400">
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-slate-200">
                               {template.industry}
                             </span>
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-slate-400">
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-slate-200">
                               {template.siteData.theme.font}
                             </span>
                           </div>
-                          <p className="text-[11px] text-slate-500 mt-1.5 line-clamp-2">{template.description}</p>
+                          <p className="text-[11px] text-slate-300 mt-1.5 line-clamp-2">{template.description}</p>
                         </div>
                       </motion.div>
                     );
@@ -2394,11 +2299,11 @@ export default function SiteBuilder() {
             >
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-bold">Save Design</h3>
-                <button onClick={() => setShowSaveDialog(false)} className="text-slate-400 hover:text-white">
+                <button onClick={() => setShowSaveDialog(false)} className="text-slate-200 hover:text-white">
                   <X size={18} />
                 </button>
               </div>
-              <p className="text-sm text-slate-400 mb-4">Give your design a name so you can find it later.</p>
+              <p className="text-sm text-slate-200 mb-4">Give your design a name so you can find it later.</p>
               <Input
                 value={saveName}
                 onChange={(e) => setSaveName(e.target.value)}
@@ -2454,14 +2359,14 @@ export default function SiteBuilder() {
                   <FolderOpen size={20} className="text-indigo-400" />
                   My Saved Designs
                 </h3>
-                <button onClick={() => { setShowSaved(false); setDomainSiteId(null); setCollabSiteId(null); }} className="text-slate-400 hover:text-white">
+                <button onClick={() => { setShowSaved(false); setDomainSiteId(null); setCollabSiteId(null); }} className="text-slate-200 hover:text-white">
                   <X size={18} />
                 </button>
               </div>
 
               <div className="flex-1 overflow-y-auto space-y-3">
                 {savedSites.length === 0 ? (
-                  <div className="text-center py-12 text-slate-500">
+                  <div className="text-center py-12 text-slate-300">
                     <FolderOpen size={40} className="mx-auto mb-3 opacity-30" />
                     <p>No saved designs yet.</p>
                     <p className="text-xs mt-1">Generate a site and click Save to store it here.</p>
@@ -2483,8 +2388,8 @@ export default function SiteBuilder() {
                               </span>
                             )}
                           </div>
-                          <p className="text-xs text-slate-400 mt-1 truncate">{site.prompt}</p>
-                          <p className="text-xs text-slate-600 mt-1">
+                          <p className="text-xs text-slate-200 mt-1 truncate">{site.prompt}</p>
+                          <p className="text-xs text-slate-400 mt-1">
                             {new Date(site.createdAt).toLocaleDateString(undefined, {
                               month: "short",
                               day: "numeric",
@@ -2505,7 +2410,7 @@ export default function SiteBuilder() {
                           </Button>
                           <button
                             onClick={() => { setDomainSiteId(domainSiteId === site.id ? null : site.id); setDomainInput(site.customDomain || ""); setCollabSiteId(null); }}
-                            className="p-2 text-slate-400 hover:text-indigo-400 transition-colors"
+                            className="p-2 text-slate-200 hover:text-indigo-400 transition-colors"
                             title="Connect Domain"
                             data-testid={`button-domain-${site.id}`}
                           >
@@ -2513,7 +2418,7 @@ export default function SiteBuilder() {
                           </button>
                           <button
                             onClick={() => { setCollabSiteId(collabSiteId === site.id ? null : site.id); setDomainSiteId(null); if (collabSiteId !== site.id) fetchCollaborators(site.id); }}
-                            className="p-2 text-slate-400 hover:text-indigo-400 transition-colors"
+                            className="p-2 text-slate-200 hover:text-indigo-400 transition-colors"
                             title="Share"
                             data-testid={`button-share-${site.id}`}
                           >
@@ -2521,7 +2426,7 @@ export default function SiteBuilder() {
                           </button>
                           <button
                             onClick={() => handleDelete(site.id, site.name)}
-                            className="p-2 text-slate-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                            className="p-2 text-slate-300 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
                             data-testid={`button-delete-site-${site.id}`}
                           >
                             <Trash2 size={14} />
@@ -2563,10 +2468,10 @@ export default function SiteBuilder() {
                                     <Info size={12} /> DNS Setup Instructions
                                   </div>
                                   <div className="space-y-1 text-slate-300">
-                                    <p><span className="text-slate-500">A Record:</span> Point <code className="bg-black/30 px-1 rounded">{site.customDomain}</code> to <code className="bg-black/30 px-1 rounded">76.76.21.21</code></p>
-                                    <p><span className="text-slate-500">CNAME:</span> Point <code className="bg-black/30 px-1 rounded">www.{site.customDomain}</code> to <code className="bg-black/30 px-1 rounded">cname.apex-sites.com</code></p>
+                                    <p><span className="text-slate-300">A Record:</span> Point <code className="bg-black/30 px-1 rounded">{site.customDomain}</code> to <code className="bg-black/30 px-1 rounded">76.76.21.21</code></p>
+                                    <p><span className="text-slate-300">CNAME:</span> Point <code className="bg-black/30 px-1 rounded">www.{site.customDomain}</code> to <code className="bg-black/30 px-1 rounded">cname.apex-sites.com</code></p>
                                   </div>
-                                  <p className="text-slate-500">Changes may take up to 48 hours to propagate.</p>
+                                  <p className="text-slate-300">Changes may take up to 48 hours to propagate.</p>
                                 </div>
                               )}
                             </div>
@@ -2618,14 +2523,14 @@ export default function SiteBuilder() {
                                   <Loader2 className="h-4 w-4 animate-spin text-indigo-400" />
                                 </div>
                               ) : collaborators.length === 0 ? (
-                                <p className="text-xs text-slate-500 text-center py-2">No collaborators yet. Invite someone above.</p>
+                                <p className="text-xs text-slate-300 text-center py-2">No collaborators yet. Invite someone above.</p>
                               ) : (
                                 <div className="space-y-2">
                                   {collaborators.map((c) => (
                                     <div key={c.id} className="flex items-center justify-between bg-white/5 rounded-lg p-2 text-xs" data-testid={`collab-item-${c.id}`}>
                                       <div className="flex-1 min-w-0">
                                         <span className="font-medium text-white">{c.name}</span>
-                                        <span className="text-slate-400 ml-2">{c.email}</span>
+                                        <span className="text-slate-200 ml-2">{c.email}</span>
                                         <span className="ml-2 px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[10px]">{c.role}</span>
                                       </div>
                                       <div className="flex items-center gap-1 shrink-0 ml-2">
@@ -2640,7 +2545,7 @@ export default function SiteBuilder() {
                                         </button>
                                         <button
                                           onClick={() => handleRemoveCollaborator(c.id)}
-                                          className="p-1 text-slate-500 hover:text-red-400 transition-colors"
+                                          className="p-1 text-slate-300 hover:text-red-400 transition-colors"
                                           data-testid={`button-remove-collab-${c.id}`}
                                         >
                                           <Trash2 size={12} />
