@@ -465,13 +465,16 @@ ${sections.map(renderSection).join('\n')}
       }
 
       try {
+        const startDate = new Date(dateTime);
+        const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
         const apt = await storage.createAppointment({
           subAccountId: accountId,
           contactId: contactId || undefined,
           title: `${lead.niche} Consultation — ${fd.firstName || "Lead"}`,
-          dateTime,
+          startTime: startDate,
+          endTime: endDate,
           status: "scheduled",
-          notes: `From ${lead.slug} funnel. ${fd.notes || fd.message || ""}`.trim(),
+          description: `From ${lead.slug} funnel. ${fd.notes || fd.message || ""}`.trim(),
         });
         appointmentId = apt.id;
       } catch (e) {
@@ -2392,81 +2395,6 @@ Rules:
     res.json({ url: session.url });
   }));
 
-  // ── General Image Upload ──────────────────────────────────────────
-  const generalUploadsDir = path.join(process.cwd(), "uploads");
-  if (!fs.existsSync(generalUploadsDir)) {
-    fs.mkdirSync(generalUploadsDir, { recursive: true });
-  }
-
-  const generalStorage = multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, generalUploadsDir),
-    filename: (_req, file, cb) => {
-      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-      cb(null, uniqueSuffix + path.extname(file.originalname));
-    },
-  });
-
-  const generalUpload = multer({
-    storage: generalStorage,
-    limits: { fileSize: 10 * 1024 * 1024 },
-    fileFilter: (_req, file, cb) => {
-      const allowed = /\.(jpg|jpeg|png|gif|webp|svg|ico)$/i;
-      if (allowed.test(path.extname(file.originalname))) {
-        cb(null, true);
-      } else {
-        cb(new Error("Only image files are allowed"));
-      }
-    },
-  });
-
-  app.post("/api/uploads", generalUpload.single("image"), (req: any, res) => {
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
-    }
-    const url = `/uploads/${req.file.filename}`;
-    res.json({
-      url,
-      filename: req.file.originalname,
-      size: req.file.size,
-      mimetype: req.file.mimetype,
-    });
-  });
-
-  app.get("/api/uploads", (_req, res) => {
-    try {
-      const files = fs.readdirSync(generalUploadsDir)
-        .filter((f: string) => /\.(jpg|jpeg|png|gif|webp|svg|ico)$/i.test(f))
-        .map((f: string) => {
-          const stat = fs.statSync(path.join(generalUploadsDir, f));
-          return {
-            url: `/uploads/${f}`,
-            filename: f,
-            size: stat.size,
-            uploadedAt: stat.mtime.toISOString(),
-          };
-        })
-        .sort((a: any, b: any) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
-      res.json({ files });
-    } catch {
-      res.json({ files: [] });
-    }
-  });
-
-  app.delete("/api/uploads/:filename", (req, res) => {
-    const filename = path.basename(req.params.filename);
-    if (!/^[\w.-]+$/.test(filename)) {
-      return res.status(400).json({ error: "Invalid filename" });
-    }
-    const filePath = path.resolve(path.join(generalUploadsDir, filename));
-    if (!filePath.startsWith(path.resolve(generalUploadsDir))) {
-      return res.status(403).json({ error: "Access denied" });
-    }
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: "File not found" });
-    }
-    fs.unlinkSync(filePath);
-    res.json({ success: true });
-  });
 
   app.post("/api/god-mode", requireAdmin, asyncHandler(async (req, res) => {
     const user = (req as any).user;
@@ -4229,7 +4157,7 @@ Rules:
       id: inc.id,
       type: inc.title,
       location: inc.location || "Unknown",
-      time: inc.createdAt ? new Date(inc.createdAt).toLocaleTimeString() : "Unknown",
+      time: inc.detectedAt ? new Date(inc.detectedAt).toLocaleTimeString() : "Unknown",
       value: (inc.severity || "medium").toUpperCase(),
     }));
     res.json(liveFormat);
@@ -6496,13 +6424,12 @@ Return ONLY valid JSON.` },
         case "deploy_ad":
         case "deploy_geofence_ad": {
           const adResult = await deployGeofenceAd({
+            id: payload.id || Date.now(),
+            location: payload.location || "Target Area",
             lat: payload.lat,
             lng: payload.lng,
-            radius_miles: payload.radius_miles || 1,
-            campaign_name: payload.campaign_name || "Apex Geofence Campaign",
-            ad_copy: payload.ad_copy,
-            daily_budget: payload.budget_daily || payload.daily_budget || 25,
-          });
+            title: payload.campaign_name || "Apex Geofence Campaign",
+          }, payload.radius_miles || 1);
           result = { status: "Success", message: "Ad Deployed", details: adResult };
           break;
         }
@@ -6511,6 +6438,7 @@ Return ONLY valid JSON.` },
         case "create_sub_account": {
           const account = await storage.createSubAccount({
             name: payload.name || "New Account",
+            twilioNumber: payload.twilio_number || "",
             industry: payload.industry || "general",
             plan: payload.plan || "starter",
             ownerUserId: payload.owner_user_id || null,
@@ -6938,7 +6866,7 @@ Return ONLY valid JSON.` },
 
   // ---- Public Portal (no auth) ----
   app.get("/api/portal/:token", asyncHandler(async (req, res) => {
-    const portalToken = await storage.getPortalTokenByToken(req.params.token);
+    const portalToken = await storage.getPortalTokenByToken(req.params.token as string);
     if (!portalToken) return res.status(404).json({ error: "Invalid or expired portal link" });
     if (portalToken.expiresAt && new Date(portalToken.expiresAt) < new Date()) {
       return res.status(410).json({ error: "Portal link has expired" });
@@ -7263,7 +7191,7 @@ Return ONLY valid JSON.` },
   }));
 
   app.delete("/api/v1/dispatch/subscribers/:id", requireAdmin, asyncHandler(async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
     const deleted = await storage.deleteDispatchSubscriber(id);
     if (!deleted) return res.status(404).json({ error: "Subscriber not found" });

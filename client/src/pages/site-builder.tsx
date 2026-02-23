@@ -47,7 +47,6 @@ import {
   Music,
   Code2,
   Bot,
-  ImagePlus,
   Upload,
   Image,
   Quote,
@@ -977,7 +976,7 @@ function SectionEditor({ section, index, onUpdate, onClose }: { section: any; in
                       const formData = new FormData();
                       formData.append("image", file);
                       try {
-                        const res = await fetch("/api/uploads", { method: "POST", body: formData });
+                        const res = await fetch("/api/upload-ad-image", { method: "POST", body: formData });
                         const data = await res.json();
                         if (data.url) handleChange("image", data.url);
                       } catch {}
@@ -1031,60 +1030,11 @@ export default function SiteBuilder() {
   const [addSectionOpen, setAddSectionOpen] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
 
-  const [showImageLibrary, setShowImageLibrary] = useState(false);
-  const [uploadedImages, setUploadedImages] = useState<{url: string; filename: string; size: number; uploadedAt?: string}[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
   const { showTutorial, startTutorial, closeTutorial } = useSiteBuilderTutorial();
 
   useEffect(() => {
     markMilestoneComplete("describe");
   }, []);
-
-  const fetchUploadedImages = useCallback(async () => {
-    try {
-      const res = await fetch("/api/uploads");
-      const data = await res.json();
-      if (data.files) setUploadedImages(data.files);
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    fetchUploadedImages();
-  }, [fetchUploadedImages]);
-
-  const handleImageUpload = async (file: File) => {
-    setIsUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append("image", file);
-      const res = await fetch("/api/uploads", { method: "POST", body: formData });
-      const data = await res.json();
-      if (data.url) {
-        await fetchUploadedImages();
-        toast({ title: "Image Uploaded", description: file.name });
-      }
-    } catch {
-      toast({ title: "Upload Failed", description: "Could not upload image", variant: "destructive" });
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const handleDeleteImage = async (filename: string) => {
-    try {
-      await fetch(`/api/uploads/${filename}`, { method: "DELETE" });
-      await fetchUploadedImages();
-      toast({ title: "Image Deleted" });
-    } catch {}
-  };
-
-  const handleImageDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith("image/")) {
-      handleImageUpload(file);
-    }
-  };
 
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [versions, setVersions] = useState<SiteVersion[]>([]);
@@ -1143,11 +1093,10 @@ export default function SiteBuilder() {
     if (!overridePrompt) setHistory((prev) => [...prev, text]);
 
     try {
-      const imageUrls = uploadedImages.map((img) => img.url);
       const res = await fetch("/api/generate-site", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: text, uploadedImages: imageUrls }),
+        body: JSON.stringify({ prompt: text }),
       });
 
       if (!res.ok) {
