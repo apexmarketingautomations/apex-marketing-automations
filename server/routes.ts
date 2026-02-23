@@ -167,6 +167,33 @@ export async function registerRoutes(
     return { allowed: hasFeature(plan, feature), plan };
   }
 
+  function getUserId(user: any): string {
+    return user.claims?.sub || user.id;
+  }
+
+  async function verifyAccountOwnership(req: Request, res: Response, subAccountId: number): Promise<boolean> {
+    const user = (req as any).user;
+    if (!user) {
+      res.status(401).json({ error: "Not authenticated" });
+      return false;
+    }
+    const userId = getUserId(user);
+    const adminUserId = process.env.ADMIN_USER_ID;
+    if (adminUserId && userId === adminUserId) {
+      return true;
+    }
+    const account = await storage.getSubAccount(subAccountId);
+    if (!account) {
+      res.status(404).json({ error: "Account not found" });
+      return false;
+    }
+    if (account.ownerUserId !== userId) {
+      res.status(403).json({ error: "Access denied" });
+      return false;
+    }
+    return true;
+  }
+
   // ---- Public Site Preview (no auth required) ----
   app.get("/live/:siteId", asyncHandler(async (req, res) => {
     const siteId = parseInt(req.params.siteId as string);
@@ -659,10 +686,13 @@ ${sections.map(renderSection).join('\n')}
   app.get("/api/accounts", asyncHandler(async (req, res) => {
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "Not authenticated" });
+    const userId = getUserId(user);
+    const adminUserId = process.env.ADMIN_USER_ID;
+    const isAdmin = adminUserId && userId === adminUserId;
     const allAccounts = await storage.getSubAccounts();
-    const userAccounts = allAccounts.filter((a: any) =>
-      !a.ownerUserId || a.ownerUserId === user.id
-    );
+    const userAccounts = isAdmin
+      ? allAccounts
+      : allAccounts.filter((a: any) => a.ownerUserId === userId);
     res.json(userAccounts);
   }));
 
@@ -673,7 +703,7 @@ ${sections.map(renderSection).join('\n')}
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const account = await storage.createSubAccount({
       ...parsed.data,
-      ownerUserId: user.id,
+      ownerUserId: getUserId(user),
     });
     res.status(201).json(account);
   }));
@@ -688,7 +718,10 @@ ${sections.map(renderSection).join('\n')}
     const id = parseIntParam(req.params.id, "id");
     const account = await storage.getSubAccount(id);
     if (!account) return res.status(404).json({ error: "Account not found" });
-    if ((account as any).ownerUserId && (account as any).ownerUserId !== user.id) {
+    const userId = getUserId(user);
+    const adminUserId = process.env.ADMIN_USER_ID;
+    const isAdmin = adminUserId && userId === adminUserId;
+    if (!isAdmin && account.ownerUserId !== userId) {
       return res.status(403).json({ error: "Not authorized to change this account's plan" });
     }
     const parsed = z.object({ plan: z.enum(['starter', 'pro', 'enterprise']) }).safeParse(req.body);
@@ -718,6 +751,7 @@ ${sections.map(renderSection).join('\n')}
   // ---- Messages ----
   app.get("/api/messages/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const msgs = await storage.getMessages(subAccountId);
     res.json(msgs);
   }));
@@ -730,9 +764,19 @@ ${sections.map(renderSection).join('\n')}
   }));
 
   // ---- Workflows ----
-  app.get("/api/workflows", asyncHandler(async (_req, res) => {
+  app.get("/api/workflows", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    const userId = getUserId(user);
+    const adminUserId = process.env.ADMIN_USER_ID;
+    const isAdmin = adminUserId && userId === adminUserId;
+    const allAccounts = await storage.getSubAccounts();
+    const userAccountIds = isAdmin
+      ? allAccounts.map((a: any) => a.id)
+      : allAccounts.filter((a: any) => a.ownerUserId === userId).map((a: any) => a.id);
     const wfs = await storage.getWorkflows();
-    res.json(wfs);
+    const filtered = isAdmin ? wfs : wfs.filter((w: any) => w.subAccountId && userAccountIds.includes(w.subAccountId));
+    res.json(filtered);
   }));
 
   app.get("/api/workflows/:id", asyncHandler(async (req, res) => {
@@ -2416,7 +2460,7 @@ Rules:
     const account = await storage.createSubAccount({
       name: `${businessName} Account`,
       twilioNumber: "",
-      ownerUserId: user.id,
+      ownerUserId: getUserId(user),
     });
     results.accountId = account.id;
     results.steps[0].status = "done";
@@ -2567,6 +2611,7 @@ Rules:
   // ---- Reviews / Reputation Management ----
   app.get("/api/reviews/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const reviewsList = await storage.getReviews(subAccountId);
     res.json(reviewsList);
   }));
@@ -2623,6 +2668,7 @@ Rules:
 
   app.get("/api/review-config/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const account = await storage.getSubAccount(subAccountId);
     if (!account) return res.status(404).json({ error: "Account not found" });
     res.json({ googleReviewLink: account.googleReviewLink || "", trustpilotLink: account.trustpilotLink || "", name: account.name });
@@ -2630,6 +2676,7 @@ Rules:
 
   app.patch("/api/review-config/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const { googleReviewLink, trustpilotLink } = req.body;
     const updateData: any = {};
     if (googleReviewLink !== undefined) updateData.googleReviewLink = googleReviewLink;
@@ -2692,6 +2739,7 @@ Rules:
 
   app.get("/api/usage/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const [logs, summary] = await Promise.all([
       storage.getUsageLogs(subAccountId),
       storage.getUsageLogsSummary(subAccountId),
@@ -2728,6 +2776,7 @@ Rules:
 
   app.get("/api/wallet/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     let wallet = await storage.getCreditWallet(subAccountId);
     if (!wallet) {
       wallet = await storage.upsertCreditWallet({ subAccountId, balance: 0, lifetimeTopUp: 0, lifetimeSpend: 0 });
@@ -2737,6 +2786,7 @@ Rules:
 
   app.get("/api/wallet/:subAccountId/transactions", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const txns = await storage.getCreditTransactions(subAccountId);
     res.json(txns);
   }));
@@ -3227,6 +3277,7 @@ Rules:
 
   app.get("/api/domains/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const domainsList = await storage.getDomains(subAccountId);
     res.json(domainsList);
   }));
@@ -3437,6 +3488,7 @@ Rules:
 
       const session = await stripe.checkout.sessions.create({
         mode: "subscription",
+        payment_method_collection: "always",
         line_items: [{
           price_data: {
             currency: "usd",
@@ -3682,7 +3734,7 @@ Rules:
       industry: snapshot.industry || null,
       vibeTheme: config?.vibe || "cyber-glass",
       config: config?.config || null,
-      ownerUserId: user.id,
+      ownerUserId: getUserId(user),
       parentSnapshotId: snapshot.id,
       isFork: true,
     });
@@ -3715,6 +3767,7 @@ Rules:
   // ---- Snapshot Versioning (Checkpoints) ----
   app.get("/api/versions/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const versions = await storage.getSnapshotVersions(subAccountId);
     res.json(versions);
   }));
@@ -3919,6 +3972,7 @@ Rules:
   // ---- Sentinel Module ----
   app.get("/api/sentinel/config/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const { allowed, plan } = await requirePlanFeature(subAccountId, 'sentinel');
     if (!allowed) return res.status(403).json({ error: "upgrade_required", feature: "sentinel", currentPlan: plan, requiredPlan: "pro", message: "Sentinel is a Pro feature. Upgrade to access real-time crash detection." });
     const config = await storage.getSentinelConfig(subAccountId);
@@ -3957,6 +4011,7 @@ Rules:
 
   app.get("/api/sentinel/incidents/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const { allowed, plan } = await requirePlanFeature(subAccountId, 'sentinel');
     if (!allowed) return res.status(403).json({ error: "upgrade_required", feature: "sentinel", currentPlan: plan, requiredPlan: "pro" });
     const incidents = await storage.getSentinelIncidents(subAccountId);
@@ -4152,6 +4207,7 @@ Rules:
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "Not authenticated" });
     const subAccountId = parseInt(req.query.subAccountId as string) || 1;
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const incidents = await storage.getSentinelIncidents(subAccountId);
     const liveFormat = incidents.slice(0, 20).map(inc => ({
       id: inc.id,
@@ -4177,6 +4233,7 @@ Rules:
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "Not authenticated" });
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const config = await storage.getWholesalerConfig(subAccountId);
     res.json(config || { subAccountId, targetZips: [], targetCities: [], distressFilters: [], minEquity: 30000, autoSms: false, autoCall: false, autoAds: false, enabled: true });
   }));
@@ -4185,6 +4242,7 @@ Rules:
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "Not authenticated" });
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const config = await storage.upsertWholesalerConfig({ ...req.body, subAccountId });
     res.json(config);
   }));
@@ -4193,6 +4251,7 @@ Rules:
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "Not authenticated" });
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const leads = await storage.getPropertyLeads(subAccountId);
     const leadsWithMetrics = leads.map(lead => ({
       ...lead,
@@ -4899,6 +4958,7 @@ Rules:
 
   app.get("/api/contacts/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const list = await storage.getContacts(subAccountId);
     res.json(list);
   }));
@@ -4933,6 +4993,7 @@ Rules:
 
   app.get("/api/pipeline/stages/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const stages = await storage.getPipelineStages(subAccountId);
     res.json(stages);
   }));
@@ -4960,6 +5021,7 @@ Rules:
 
   app.get("/api/deals/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const list = await storage.getDeals(subAccountId);
     res.json(list);
   }));
@@ -4998,6 +5060,7 @@ Rules:
 
   app.get("/api/appointments/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const list = await storage.getAppointments(subAccountId);
     res.json(list);
   }));
@@ -5029,6 +5092,7 @@ Rules:
 
   app.get("/api/email-campaigns/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const list = await storage.getEmailCampaigns(subAccountId);
     res.json(list);
   }));
@@ -5074,6 +5138,7 @@ Rules:
 
   app.get("/api/webhooks/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const list = await storage.getWebhooks(subAccountId);
     res.json(list);
   }));
@@ -5135,6 +5200,7 @@ Rules:
 
   app.get("/api/analytics/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
 
     const messagesByDay = await db.execute(sql`
       SELECT DATE(created_at) as date, COUNT(*)::int as count
@@ -5184,6 +5250,7 @@ Rules:
 
   app.get("/api/reports/export/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const type = (req.query.type as string) || "contacts";
 
     let csvContent = "";
@@ -5572,6 +5639,7 @@ Rules:
 
   app.get("/api/dashboard/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
     const subAccountId = Number(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const [msgs, contactsList, dealsList, appointmentsList, campaigns, metaCampaignsList, metaLeadsList, igConvs, unreadNotifs] = await Promise.all([
       storage.getMessages(subAccountId),
       storage.getContacts(subAccountId),
@@ -5834,7 +5902,15 @@ ${pages.map(p => `  <url>
   }));
 
   app.get("/api/v1/compiler", asyncHandler(async (req: Request, res: Response) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
     const subAccountId = req.query.subAccountId ? parseInt(req.query.subAccountId as string) : undefined;
+    if (subAccountId && !(await verifyAccountOwnership(req, res, subAccountId))) return;
+    if (!subAccountId) {
+      const adminUserId = process.env.ADMIN_USER_ID;
+      const isAdmin = adminUserId && getUserId(user) === adminUserId;
+      if (!isAdmin) return res.status(403).json({ error: "Access denied" });
+    }
     const automations = await storage.getLiveAutomations(subAccountId);
     res.json(automations);
   }));
@@ -6801,6 +6877,7 @@ Return ONLY valid JSON.` },
   // ---- Webhook Events ----
   app.get("/api/webhook-events/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const events = await storage.getWebhookEvents(subAccountId);
     res.json(events);
   }));
@@ -6808,12 +6885,14 @@ Return ONLY valid JSON.` },
   // ---- Integration Connections ----
   app.get("/api/integrations/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const connections = await storage.getIntegrationConnections(subAccountId);
     res.json(connections);
   }));
 
   app.post("/api/integrations/:subAccountId/connect", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const { provider, config } = req.body;
     const connection = await storage.upsertIntegrationConnection({
       subAccountId,
@@ -6827,6 +6906,7 @@ Return ONLY valid JSON.` },
 
   app.post("/api/integrations/:subAccountId/disconnect", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const { provider } = req.body;
     const connection = await storage.upsertIntegrationConnection({
       subAccountId,
@@ -6841,12 +6921,14 @@ Return ONLY valid JSON.` },
   // ---- Portal Tokens ----
   app.get("/api/portal-tokens/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const tokens = await storage.getPortalTokens(subAccountId);
     res.json(tokens);
   }));
 
   app.post("/api/portal-tokens/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const token = crypto.randomBytes(32).toString("hex");
     const { label } = req.body;
     const portalToken = await storage.createPortalToken({
@@ -6897,6 +6979,7 @@ Return ONLY valid JSON.` },
   // ---- Dashboard Analytics ----
   app.get("/api/analytics/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const [allMessages, allContacts, allDeals, allAppts, allCampaigns, allMetaAds, allMetaLeads, allIncidents, allWebhookEvts] = await Promise.all([
       storage.getMessages(subAccountId),
       storage.getContacts(subAccountId),

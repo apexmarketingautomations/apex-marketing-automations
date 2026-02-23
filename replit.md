@@ -67,10 +67,12 @@ The API provides comprehensive endpoints for managing accounts, messages, workfl
 
 ### Access Control & Multi-Tenancy
 - **Plan-based feature gating**: Features are gated by plan tier (Starter/Pro/Enterprise) using `PLAN_TIERS` in `shared/schema.ts`. The `PlanGate` component (`client/src/components/plan-gate.tsx`) wraps protected pages and shows an upgrade overlay for locked features.
-- **Account ownership**: Sub-accounts have `ownerUserId` linking them to the creating user. `GET /api/accounts` filters by ownership. All account creation routes set `ownerUserId`.
+- **Account ownership enforcement**: `verifyAccountOwnership()` helper in `server/routes.ts` validates that the logged-in user owns the requested sub-account before returning any data. Applied to all 30+ routes that accept `subAccountId`. Admin users (matched by `ADMIN_USER_ID` env var) bypass ownership checks.
+- **Strict account filtering**: `GET /api/accounts` returns only accounts where `ownerUserId === user.id`. Admin sees all. Non-owners get empty results (no leaked data from orphaned accounts).
 - **Active account context**: `useActiveSubAccountId()` hook (`client/src/components/account-required.tsx`) provides the current active sub-account ID with null safety. All pages guard queries with `enabled: !!subAccountId`.
 - **Sidebar gating**: Nav items with `requiredFeature` show lock icons and reduced opacity. Items with `adminOnly: true` are hidden from the sidebar entirely.
 - **Plan-gated pages**: workflow-builder, voice-agent, email-campaigns, white-label, webhooks, bot-trainer all use PlanGate wrapper with Inner function pattern.
+- **Stripe trial with card capture**: Subscription checkout uses `payment_method_collection: "always"` to require credit card info upfront even during the 60-day free trial period.
 
 ## External Dependencies
 
