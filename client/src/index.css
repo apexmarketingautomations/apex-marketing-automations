@@ -25,7 +25,7 @@
   --color-secondary-foreground: hsl(0 0% 98%);
 
   --color-muted: hsl(240 3.7% 15.9%);
-  --color-muted-foreground: hsl(240 5% 64.9%);
+  --color-muted-foreground: hsl(240 5% 78%);
 
   --color-accent: hsl(240 3.7% 15.9%);
   --color-accent-foreground: hsl(0 0% 98%);
@@ -44,7 +44,7 @@
   --color-chart-5: hsl(27 87% 67%);
 
   --color-sidebar: hsl(240 10% 5%);
-  --color-sidebar-foreground: hsl(0 0% 90%);
+  --color-sidebar-foreground: hsl(0 0% 95%);
   --color-sidebar-primary: hsl(263.4 70% 50.4%);
   --color-sidebar-primary-foreground: hsl(0 0% 98%);
   --color-sidebar-accent: hsl(240 3.7% 15.9%);
@@ -68,6 +68,21 @@
     height: auto;
     overflow-y: auto;
   }
+}
+
+@theme inline {
+  --color-gray-300: #c4c4cc;
+  --color-gray-400: #a8a8b8;
+  --color-gray-500: #8e8ea0;
+  --color-zinc-300: #c4c4cc;
+  --color-zinc-400: #a8a8b8;
+  --color-zinc-500: #8e8ea0;
+  --color-slate-300: #c0c8d8;
+  --color-slate-400: #a0aec0;
+  --color-slate-500: #8494a7;
+  --color-neutral-300: #c4c4c4;
+  --color-neutral-400: #a8a8a8;
+  --color-neutral-500: #8e8e8e;
 }
 
 /* 1. THE GRID BACKGROUND (The Sci-Fi Look) */

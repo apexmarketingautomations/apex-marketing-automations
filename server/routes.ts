@@ -614,6 +614,17 @@ ${sections.map(renderSection).join('\n')}
     next();
   };
 
+  app.get("/api/config/google-api-key", asyncHandler(async (req, res) => {
+    const key = process.env.GOOGLE_API_KEY || "";
+    res.json({ apiKey: key ? key.substring(0, 4) + "..." : "", hasKey: !!key });
+  }));
+
+  app.get("/api/config/maps-key", asyncHandler(async (req, res) => {
+    const key = process.env.GOOGLE_API_KEY || "";
+    if (!key) return res.status(404).json({ error: "Google API key not configured" });
+    res.json({ apiKey: key });
+  }));
+
   // ---- Image Uploads ----
   const uploadsDir = path.resolve(process.cwd(), "uploads");
   if (!fs.existsSync(uploadsDir)) {
@@ -1141,7 +1152,6 @@ HERO: { title, subtitle, cta, image (URL), badge (optional short tagline) }
 FEATURES: { title, subtitle, features: [{ icon, title, desc }] } — 3-6 features
 TESTIMONIALS: { title, subtitle, testimonials: [{ name, role, quote, stars (1-5) }] } — 3 testimonials
 STATS: { title, stats: [{ value (e.g. "500+"), label }] } — 4 stats
-GALLERY: { title, subtitle, images: [{ url (unsplash), caption }] } — 6 images
 ABOUT: { title, text (2-3 paragraphs), image (URL), stats: [{ value, label }] }
 CTA: { title, subtitle, cta }
 FAQ: { title, faqs: [{ q, a }] } — 5-8 questions

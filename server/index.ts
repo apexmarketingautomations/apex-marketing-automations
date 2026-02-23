@@ -147,6 +147,7 @@ function validateEnvVars() {
     { key: "TWILIO_ACCOUNT_SID", label: "Twilio Account SID (phone provisioning)", critical: false },
     { key: "TWILIO_AUTH_TOKEN", label: "Twilio Auth Token (phone provisioning)", critical: false },
     { key: "Gemini_API_Key_saas", label: "Gemini API Key (AI features)", critical: false },
+    { key: "GOOGLE_API_KEY", label: "Google API Key (Maps, Places, etc.)", critical: false },
   ];
 
   let missingCritical = false;

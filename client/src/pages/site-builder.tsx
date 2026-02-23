@@ -455,29 +455,6 @@ function StatsSection({ title, stats, theme }: any) {
   );
 }
 
-function GallerySection({ title, subtitle, images, theme }: any) {
-  return (
-    <div className="py-20 px-6 md:px-12" style={{ backgroundColor: theme.bg, color: theme.text }}>
-      <div className="max-w-6xl mx-auto">
-        <h2 className="text-3xl md:text-4xl font-bold text-center mb-3" style={{ fontFamily: theme.font }}>{title}</h2>
-        {subtitle && <p className="text-center opacity-60 mb-10 max-w-2xl mx-auto">{subtitle}</p>}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          {(images || []).map((img: any, i: number) => (
-            <div key={i} className="aspect-[4/3] rounded-xl overflow-hidden border border-white/10 group relative">
-              <img src={typeof img === 'string' ? img : img.url} alt={typeof img === 'string' ? '' : img.caption || ''} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-              {typeof img !== 'string' && img.caption && (
-                <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent p-4 translate-y-full group-hover:translate-y-0 transition-transform">
-                  <p className="text-sm text-white">{img.caption}</p>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function AboutSection({ title, text, image, stats, theme }: any) {
   return (
     <div className="py-20 px-6 md:px-12" style={{ backgroundColor: theme.bg, color: theme.text }}>
@@ -1259,7 +1236,6 @@ export default function SiteBuilder() {
       BOT_EMBED: { title: "Chat Bot", code: "" },
       TESTIMONIALS: { title: "What Our Clients Say", subtitle: "Real results from real people", testimonials: [{ name: "Sarah Johnson", role: "CEO, TechCorp", quote: "Absolutely transformed our business. The results speak for themselves.", stars: 5 }, { name: "Mike Chen", role: "Founder, StartupXYZ", quote: "Best decision we made this year. ROI was incredible.", stars: 5 }, { name: "Emma Davis", role: "Marketing Director", quote: "Professional, responsive, and delivered beyond expectations.", stars: 5 }] },
       STATS: { title: "By The Numbers", stats: [{ value: "500+", label: "Clients Served" }, { value: "98%", label: "Satisfaction Rate" }, { value: "10+", label: "Years Experience" }, { value: "24/7", label: "Support" }] },
-      GALLERY: { title: "Our Work", subtitle: "See what we've accomplished", images: [{ url: "", caption: "Project 1" }, { url: "", caption: "Project 2" }, { url: "", caption: "Project 3" }] },
       ABOUT: { title: "About Us", text: "We are passionate about delivering exceptional results. With years of experience and a dedicated team, we help businesses achieve their goals.", image: "" },
       CTA: { title: "Ready to Get Started?", subtitle: "Join thousands of satisfied customers today.", cta: "Start Now" },
       FAQ: { title: "Frequently Asked Questions", faqs: [{ q: "How does it work?", a: "Simply sign up, choose your plan, and get started in minutes." }, { q: "Is there a free trial?", a: "Yes, we offer a 14-day free trial with no credit card required." }, { q: "Can I cancel anytime?", a: "Absolutely. No contracts, no hidden fees." }] },
@@ -1597,7 +1573,6 @@ export default function SiteBuilder() {
     BOT_EMBED: BotEmbedSection,
     TESTIMONIALS: TestimonialsSection,
     STATS: StatsSection,
-    GALLERY: GallerySection,
     ABOUT: AboutSection,
     CTA: CtaSection,
     FAQ: FaqSection,
@@ -1974,7 +1949,6 @@ export default function SiteBuilder() {
                         { type: "TESTIMONIALS", label: "Reviews" },
                         { type: "STATS", label: "Stats" },
                         { type: "ABOUT", label: "About" },
-                        { type: "GALLERY", label: "Gallery" },
                         { type: "CTA", label: "CTA" },
                         { type: "FAQ", label: "FAQ" },
                         { type: "PRICING", label: "Pricing" },
