@@ -2157,6 +2157,7 @@ Rules:
   const purchaseSchema = z.object({
     phoneNumber: z.string().min(1, "phoneNumber is required"),
     assistantId: z.string().optional(),
+    subAccountId: z.number().optional(),
   });
 
   app.post("/api/phone-numbers/purchase", asyncHandler(async (req, res) => {
@@ -2168,7 +2169,7 @@ Rules:
     const parsed = purchaseSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-    const { phoneNumber, assistantId } = parsed.data;
+    const { phoneNumber, assistantId, subAccountId } = parsed.data;
 
     const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || process.env.REPLIT_DEV_DOMAIN || "";
     const smsWebhookUrl = domain ? `https://${domain}/api/sms-webhook` : "";
@@ -2220,6 +2221,15 @@ Rules:
       console.log(`Full-duplex configured: Voice -> Vapi, SMS -> ${smsWebhookUrl}`);
     } catch (cfgErr: any) {
       console.error("Dual-agent config error:", cfgErr.message);
+    }
+
+    if (subAccountId) {
+      try {
+        await storage.updateSubAccount(subAccountId, { twilioNumber: purchased.phoneNumber });
+        console.log(`[PHONE] Saved ${purchased.phoneNumber} to sub-account ${subAccountId}`);
+      } catch (saveErr: any) {
+        console.error("[PHONE] Failed to save number to sub-account:", saveErr.message);
+      }
     }
 
     res.json({
@@ -6887,7 +6897,12 @@ Return ONLY valid JSON.` },
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const connections = await storage.getIntegrationConnections(subAccountId);
-    res.json(connections);
+    const formatted = connections.map((c: any) => ({
+      provider: c.provider,
+      connected: c.status === "connected",
+      config: c.config || {},
+    }));
+    res.json(formatted);
   }));
 
   app.post("/api/integrations/:subAccountId/connect", asyncHandler(async (req, res) => {

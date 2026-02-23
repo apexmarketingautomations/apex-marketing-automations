@@ -57,7 +57,7 @@ The API provides comprehensive endpoints for managing accounts, messages, workfl
 - **Sponsorship Engine** (`/sponsorship-manager`): Geo-targeted native ads served as JSON via `GET /api/v1/serve-native-ad?lat=&lon=`, bid-per-click model with `POST /api/v1/ad-click/:id`, admin approval workflow
 - **Revenue Command** (`/revenue-command`): Admin-only profit dashboard showing total platform revenue, markup spread, ad click revenue, 7-day trend chart, and recent profit events
 - **Apex Wallet** (`/billing`): Redesigned billing page with live credit balance, quick top-up buttons ($10-$500), transaction history, usage breakdown tabs
-- **Integrations Hub** (`/integrations`): Manage third-party service connections (Google Calendar, Gmail, Sheets, Slack, Zapier, Stripe, Twilio, etc.)
+- **Integrations Hub** (`/integrations`): Full credential-based service connections with modal dialogs for entering API keys/tokens. Supports 16 providers (Google Maps, Calendar, Gmail, Sheets, Drive, Docs, Analytics, Business Profile, Slack, Zapier, QuickBooks, Twilio, Stripe, HubSpot, Mailchimp, Facebook). Config stored in `integration_connections.config` JSON field. Includes help links to credential pages.
 - **Webhook Event Log** (`/webhook-events`): Timeline of all webhook deliveries with status, duration, and request/response details
 - **Client Portal** (`/portal/:token`): Public page for end-clients to view their metrics, messages, and appointments via token-based access
 - **Dashboard Analytics**: ROI charts with Recharts showing daily leads/messages, pipeline overview, ad performance, conversion rates
