@@ -25,7 +25,7 @@
   --color-secondary-foreground: hsl(0 0% 98%);
 
   --color-muted: hsl(240 3.7% 15.9%);
-  --color-muted-foreground: hsl(240 5% 78%);
+  --color-muted-foreground: hsl(240 5% 85%);
 
   --color-accent: hsl(240 3.7% 15.9%);
   --color-accent-foreground: hsl(0 0% 98%);
@@ -52,6 +52,27 @@
   --color-sidebar-border: hsl(240 3.7% 15.9%);
   --color-sidebar-ring: hsl(263.4 70% 50.4%);
 
+  --color-gray-200: #f0f0f5;
+  --color-gray-300: #e0e0e8;
+  --color-gray-400: #d0d0dc;
+  --color-gray-500: #c5c5d0;
+  --color-gray-600: #b0b0bc;
+  --color-zinc-200: #f0f0f5;
+  --color-zinc-300: #e0e0e8;
+  --color-zinc-400: #d0d0dc;
+  --color-zinc-500: #c5c5d0;
+  --color-zinc-600: #b0b0bc;
+  --color-slate-200: #eef0f5;
+  --color-slate-300: #dee2eb;
+  --color-slate-400: #ced4e0;
+  --color-slate-500: #bcc4d4;
+  --color-slate-600: #a8b2c4;
+  --color-neutral-200: #f0f0f0;
+  --color-neutral-300: #e0e0e0;
+  --color-neutral-400: #d0d0d0;
+  --color-neutral-500: #c5c5c5;
+  --color-neutral-600: #b0b0b0;
+
   --radius: 0.75rem;
 }
 
@@ -68,21 +89,10 @@
     height: auto;
     overflow-y: auto;
   }
-}
 
-@theme inline {
-  --color-gray-300: #c4c4cc;
-  --color-gray-400: #a8a8b8;
-  --color-gray-500: #8e8ea0;
-  --color-zinc-300: #c4c4cc;
-  --color-zinc-400: #a8a8b8;
-  --color-zinc-500: #8e8ea0;
-  --color-slate-300: #c0c8d8;
-  --color-slate-400: #a0aec0;
-  --color-slate-500: #8494a7;
-  --color-neutral-300: #c4c4c4;
-  --color-neutral-400: #a8a8a8;
-  --color-neutral-500: #8e8e8e;
+  p, span, div, li, td, th, label, a, h1, h2, h3, h4, h5, h6 {
+    color: inherit;
+  }
 }
 
 /* 1. THE GRID BACKGROUND (The Sci-Fi Look) */
