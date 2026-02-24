@@ -90,12 +90,16 @@ function NavLink({ href, icon: Icon, label, isActive, isLocked }: { href: string
       {isActive && (
         <motion.div
           layoutId="activeTab"
-          className="absolute inset-0 bg-indigo-500/10 border-l-2 border-indigo-500 rounded-r-lg"
+          className="absolute inset-0 rounded-r-lg border-l-2"
+          style={{
+            backgroundColor: 'color-mix(in srgb, var(--vibe-glow, #6366f1) 12%, transparent)',
+            borderLeftColor: 'var(--vibe-glow, #6366f1)',
+          }}
           transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
         />
       )}
       <div className={`flex items-center gap-3 p-3 px-4 transition-all ${isActive ? 'text-white' : 'text-slate-200 group-hover:text-white'}`}>
-        <Icon size={20} className={isActive ? 'text-indigo-400 drop-shadow-[0_0_8px_rgba(129,140,248,0.5)]' : ''} />
+        <Icon size={20} className={isActive ? '' : ''} style={isActive ? { color: 'var(--vibe-accent, #818cf8)', filter: 'drop-shadow(0 0 8px var(--vibe-glow, rgba(129,140,248,0.5)))' } : {}} />
         <span className="font-medium text-sm tracking-wide">{label}</span>
       </div>
     </Link>
@@ -113,14 +117,20 @@ function AccountSwitcher({ accounts }: { accounts: SubAccount[] }) {
     <div className="relative px-2 md:px-4 mb-2">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center gap-3 bg-white/5 border border-cyan-500/30 p-2 rounded-lg hover:bg-white/10 transition-all shadow-[0_0_15px_rgba(0,243,255,0.05)]"
+        className="w-full flex items-center gap-3 bg-white/5 p-2 rounded-lg hover:bg-white/10 transition-all"
+        style={{
+          borderColor: 'color-mix(in srgb, var(--vibe-glow, #6366f1) 30%, transparent)',
+          borderWidth: '1px',
+          borderStyle: 'solid',
+          boxShadow: '0 0 15px color-mix(in srgb, var(--vibe-glow, #6366f1) 8%, transparent)',
+        }}
         data-testid="button-account-switcher"
       >
-        <div className="w-8 h-8 rounded bg-gradient-to-br from-cyan-500 to-purple-600 flex items-center justify-center font-black text-black text-xs flex-shrink-0">
+        <div className="w-8 h-8 rounded flex items-center justify-center font-black text-black text-xs flex-shrink-0" style={{ background: `linear-gradient(to bottom right, var(--vibe-glow, #06b6d4), var(--vibe-accent, #9333ea))` }}>
           {current ? current.name.substring(0, 2).toUpperCase() : "AP"}
         </div>
         <div className="text-left hidden md:block flex-1 min-w-0">
-          <p className="text-[10px] text-cyan-400 font-bold uppercase tracking-widest leading-none">Sub-Account</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest leading-none" style={{ color: 'var(--vibe-accent, #22d3ee)' }}>Sub-Account</p>
           <p className="text-white text-sm font-bold truncate">{current?.name || "All Accounts"}</p>
         </div>
         <ChevronDown size={14} className={`text-gray-500 hidden md:block transition-transform ${isOpen ? "rotate-180" : ""}`} />
@@ -183,7 +193,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className="flex items-center gap-2 mb-1">
           <img src="/apex-logo.png" alt="Apex Marketing Automations" className="w-8 h-8 object-contain" />
           <h1 className="text-lg font-bold tracking-tight text-white leading-tight">
-            APEX <span className="font-light text-indigo-400 text-xs block -mt-0.5">MARKETING AUTOMATIONS</span>
+            APEX <span className="font-light text-xs block -mt-0.5" style={{ color: 'var(--vibe-accent, #818cf8)' }}>MARKETING AUTOMATIONS</span>
           </h1>
         </div>
       </div>
@@ -252,7 +262,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 Online
               </span>
               {isUserAdmin && (
-                <span className="px-1.5 py-0.5 rounded bg-gradient-to-r from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 text-indigo-300 text-[9px] font-bold tracking-wider uppercase">Admin</span>
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase" style={{ background: `linear-gradient(to right, color-mix(in srgb, var(--vibe-glow, #6366f1) 20%, transparent), color-mix(in srgb, var(--vibe-accent, #a855f7) 20%, transparent))`, borderWidth: '1px', borderStyle: 'solid', borderColor: 'color-mix(in srgb, var(--vibe-glow, #6366f1) 30%, transparent)', color: 'var(--vibe-accent, #a5b4fc)' }}>Admin</span>
               )}
             </div>
           </div>
@@ -265,9 +275,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="flex min-h-screen text-white font-sans selection:bg-indigo-500/30" style={{ backgroundColor: 'var(--vibe-bg, #030014)' }}>
+    <div className="flex min-h-screen text-white font-sans" style={{ backgroundColor: 'var(--vibe-bg, #030014)' }}>
       <div className="fixed inset-0 bg-grid z-0 pointer-events-none" />
-      <div className="fixed top-0 left-0 w-full h-[500px] bg-gradient-to-b from-indigo-900/10 to-transparent pointer-events-none z-0" />
+      <div className="fixed top-0 left-0 w-full h-[500px] pointer-events-none z-0" style={{ background: `linear-gradient(to bottom, color-mix(in srgb, var(--vibe-glow, #312e81) 10%, transparent), transparent)` }} />
 
       <div className="md:hidden fixed top-0 left-0 right-0 z-30 bg-black/90 backdrop-blur-xl border-b border-white/10 flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2">

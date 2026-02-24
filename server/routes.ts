@@ -603,12 +603,17 @@ ${sections.map(renderSection).join('\n')}
     next();
   });
 
+  function isUserAdmin(user: any): boolean {
+    if (!user) return false;
+    const userId = getUserId(user);
+    const adminUserId = process.env.ADMIN_USER_ID;
+    return !!(adminUserId && userId === adminUserId);
+  }
+
   const requireAdmin = async (req: Request, res: Response, next: NextFunction) => {
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "Not authenticated" });
-    const userId = user.claims?.sub || user.id;
-    const adminUserId = process.env.ADMIN_USER_ID;
-    if (!adminUserId || userId !== adminUserId) {
+    if (!isUserAdmin(user)) {
       return res.status(403).json({ error: "Admin access required" });
     }
     next();
@@ -2922,14 +2927,14 @@ Rules:
 
   app.get("/api/sponsorships", asyncHandler(async (req, res) => {
     const user = (req as any).user;
-    if (!user?.isAdmin) return res.status(403).json({ error: "Admin access required" });
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
     const all = await storage.getSponsorships();
     res.json(all);
   }));
 
   app.get("/api/sponsorships/:id", asyncHandler(async (req, res) => {
     const user = (req as any).user;
-    if (!user?.isAdmin) return res.status(403).json({ error: "Admin access required" });
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
     const id = parseIntParam(req.params.id, "id");
     const sp = await storage.getSponsorship(id);
     if (!sp) return res.status(404).json({ error: "Sponsorship not found" });
@@ -2939,7 +2944,7 @@ Rules:
 
   app.post("/api/sponsorships", asyncHandler(async (req, res) => {
     const user = (req as any).user;
-    if (!user?.isAdmin) return res.status(403).json({ error: "Admin access required" });
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
     const parsed = insertSponsorshipSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const sp = await storage.createSponsorship(parsed.data);
@@ -2948,7 +2953,7 @@ Rules:
 
   app.patch("/api/sponsorships/:id", asyncHandler(async (req, res) => {
     const user = (req as any).user;
-    if (!user?.isAdmin) return res.status(403).json({ error: "Admin access required" });
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
     const id = parseIntParam(req.params.id, "id");
     const updated = await storage.updateSponsorship(id, req.body);
     if (!updated) return res.status(404).json({ error: "Not found" });
@@ -3008,7 +3013,7 @@ Rules:
 
   app.get("/api/admin/profit-report", asyncHandler(async (req, res) => {
     const user = (req as any).user;
-    if (!user?.isAdmin) return res.status(403).json({ error: "Admin access required" });
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
 
     const allProfits = await storage.getPlatformProfits();
     const totalMarkupProfit = allProfits.filter(p => p.source === "markup").reduce((s, p) => s + p.amount, 0);
@@ -3057,7 +3062,7 @@ Rules:
 
   app.get("/api/admin/pulse", asyncHandler(async (req, res) => {
     const user = (req as any).user;
-    if (!user?.isAdmin) return res.status(403).json({ error: "Admin access required" });
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
 
     const checks: { name: string; status: "healthy" | "degraded" | "down"; message: string; latencyMs?: number }[] = [];
 
@@ -3108,7 +3113,7 @@ Rules:
 
   app.post("/api/admin/reboot", asyncHandler(async (req, res) => {
     const user = (req as any).user;
-    if (!user?.isAdmin) return res.status(403).json({ error: "Admin access required" });
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
 
     const results: string[] = [];
 

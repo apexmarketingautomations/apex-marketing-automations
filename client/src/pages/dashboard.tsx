@@ -127,7 +127,7 @@ export default function DashboardPage() {
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="p-4 md:p-8 space-y-6">
       <div>
         <h1 className="text-3xl font-black text-white flex items-center gap-3" data-testid="text-dashboard-title">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-indigo-600 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: `linear-gradient(to bottom right, var(--vibe-glow, #06b6d4), var(--vibe-accent, #4f46e5))` }}>
             <TrendingUp size={20} className="text-white" />
           </div>
           Command Dashboard
@@ -227,7 +227,7 @@ export default function DashboardPage() {
         <div className="space-y-6" data-testid="section-performance-analytics">
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-black text-white flex items-center gap-3" data-testid="text-analytics-title">
-              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-cyan-500 to-indigo-600 flex items-center justify-center">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: `linear-gradient(to bottom right, var(--vibe-glow, #06b6d4), var(--vibe-accent, #4f46e5))` }}>
                 <BarChart3 size={18} className="text-white" />
               </div>
               Performance Analytics
