@@ -3449,8 +3449,19 @@ Rules:
   app.get("/api/subscription", asyncHandler(async (req, res) => {
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "Not authenticated" });
-    const sub = await storage.getSubscription(user.id);
-    if (!sub) return res.json({ planTier: "free", status: "inactive", aiCredits: 0 });
+    const userId = getUserId(user);
+    const sub = await storage.getSubscription(userId);
+    if (!sub) {
+      const allAccounts = await storage.getSubAccounts();
+      const userAccounts = allAccounts.filter((a: any) => a.ownerUserId === userId);
+      const bestPlan = userAccounts.length > 0
+        ? (userAccounts.find((a: any) => a.plan === "enterprise")?.plan
+          || userAccounts.find((a: any) => a.plan === "pro")?.plan
+          || userAccounts[0]?.plan
+          || "free")
+        : "free";
+      return res.json({ planTier: bestPlan, status: bestPlan !== "free" ? "active" : "inactive", aiCredits: 0 });
+    }
 
     if (sub.isGrandfathered && sub.paymentStatus === "failed" && sub.paymentFailedAt) {
       const hoursSinceFail = (Date.now() - new Date(sub.paymentFailedAt).getTime()) / (1000 * 60 * 60);
