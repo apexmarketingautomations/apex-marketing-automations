@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Plug, CalendarDays, Mail, FileSpreadsheet, MessageSquare, Zap, Receipt, Phone, CreditCard, HardDrive, Users, Globe, Check, X, MapPin, BarChart3, Building2, FileText, Info, Settings, Key, ExternalLink } from "lucide-react";
+import { Plug, CalendarDays, Mail, FileSpreadsheet, MessageSquare, Zap, Receipt, Phone, CreditCard, HardDrive, Users, Globe, Check, X, MapPin, BarChart3, Building2, FileText, Info, Settings, Key, ExternalLink, Target } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { INTEGRATIONS_STEPS } from "@/components/tutorial-steps";
 
@@ -132,6 +132,14 @@ const PROVIDER_CREDENTIALS: Record<string, { fields: CredentialField[]; helpUrl?
     ],
     helpUrl: "https://developers.facebook.com/",
   },
+  "meta-ads": {
+    fields: [
+      { key: "accessToken", label: "Meta Access Token", placeholder: "Your long-lived access token", type: "password" },
+      { key: "adAccountId", label: "Ad Account ID", placeholder: "123456789 (numbers only, no act_ prefix)" },
+    ],
+    helpUrl: "https://developers.facebook.com/tools/explorer/",
+    helpText: "Required for Sentinel geofence ad deployment. Get a token from Meta Business Suite or the Graph API Explorer.",
+  },
 };
 
 const INTEGRATIONS = [
@@ -151,6 +159,7 @@ const INTEGRATIONS = [
   { provider: "hubspot", name: "HubSpot", description: "CRM sync", icon: Users, color: "bg-pink-500/20", iconColor: "text-pink-400", category: "tools" },
   { provider: "mailchimp", name: "Mailchimp", description: "Email marketing", icon: Mail, color: "bg-amber-500/20", iconColor: "text-amber-400", category: "tools" },
   { provider: "facebook", name: "Facebook", description: "Social media management", icon: Globe, color: "bg-sky-500/20", iconColor: "text-sky-400", category: "tools" },
+  { provider: "meta-ads", name: "Meta Ads", description: "Geofence ad deployment for Sentinel", icon: Target, color: "bg-blue-600/20", iconColor: "text-blue-400", category: "tools" },
 ];
 
 interface IntegrationConnection {

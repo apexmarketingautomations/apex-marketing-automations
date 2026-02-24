@@ -127,7 +127,14 @@ export default function Sentinel() {
       return res.json();
     },
     onSuccess: (data: any) => {
-      toast({ title: "Geofence Deployed!", description: data.message });
+      if (data.metaAdsStatus === "SIMULATION_MODE") {
+        toast({
+          title: "Geofence Simulated",
+          description: "Connect your Meta Ads credentials in the Integrations Hub to deploy live ads.",
+        });
+      } else {
+        toast({ title: "Geofence Deployed!", description: data.message });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/sentinel/incidents", currentAccount?.id] });
     },
   });

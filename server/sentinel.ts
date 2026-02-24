@@ -196,13 +196,13 @@ export async function deployGeofenceAd(incident: {
   lat?: number | null;
   lng?: number | null;
   title?: string;
-}, radiusMiles: number = 1): Promise<GeofenceResult> {
-  const metaAccessToken = process.env.META_ACCESS_TOKEN;
-  const adAccountId = process.env.META_AD_ACCOUNT_ID;
+}, radiusMiles: number = 1, credentials?: { accessToken?: string; adAccountId?: string }): Promise<GeofenceResult> {
+  const metaAccessToken = credentials?.accessToken || process.env.META_ACCESS_TOKEN;
+  const adAccountId = credentials?.adAccountId || process.env.META_AD_ACCOUNT_ID;
 
   if (!metaAccessToken || !adAccountId) {
     console.log(`📡 META ADS: No credentials — SIMULATION MODE for ${incident.location}`);
-    return { status: "SIMULATION_MODE", message: "Add Meta Credentials for Live Fire" };
+    return { status: "SIMULATION_MODE", message: "Connect Meta Ads in Integrations Hub to go live" };
   }
 
   try {

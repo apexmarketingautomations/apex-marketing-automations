@@ -4138,13 +4138,19 @@ Rules:
     console.log(`📡 Target radius: ${radius} mile(s) — Severity: ${incident.severity?.toUpperCase()}`);
 
     const rawPayload = incident.rawPayload as any;
+
+    const metaConnection = await storage.getIntegrationConnection(incident.subAccountId, "meta-ads");
+    const metaCreds = metaConnection?.status === "connected" && metaConnection.config
+      ? { accessToken: (metaConnection.config as any).accessToken, adAccountId: (metaConnection.config as any).adAccountId }
+      : undefined;
+
     const geoResult = await deployGeofenceAd({
       id: incident.id,
       location: incident.location || "",
       lat: rawPayload?.lat || null,
       lng: rawPayload?.lng || null,
       title: incident.title || undefined,
-    }, radius);
+    }, radius, metaCreds);
 
     await storage.updateSentinelIncident(id, {
       geofenceDeployed: true,
