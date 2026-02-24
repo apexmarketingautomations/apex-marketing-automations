@@ -66,6 +66,8 @@ The API provides comprehensive endpoints for managing accounts, messages, workfl
 - **Onboarding Wizard**: 5-step guided wizard (business info → connect phone → train AI → deploy workflow → completion)
 
 ### Access Control & Multi-Tenancy
+- **Dual authentication**: Supports both Replit OIDC (admin) and native email/password login (clients). `users` table has `passwordHash` and `authProvider` fields. `isAuthenticated` middleware handles both session types — skips OIDC token refresh for `authProvider: "email"` users. Login page (`client/src/pages/login.tsx`) shows email/password form with register/login toggle, plus "Continue with Replit" fallback.
+- **Auth routes**: `POST /api/auth/register` (bcryptjs hash, auto-login), `POST /api/auth/email-login` (email+password verify), `POST /api/auth/apex-logout` (session destroy without OIDC redirect), `GET /api/auth/user` (handles both OIDC claims.sub and local user.id).
 - **Plan-based feature gating**: Features are gated by plan tier (Starter/Pro/Enterprise) using `PLAN_TIERS` in `shared/schema.ts`. The `PlanGate` component (`client/src/components/plan-gate.tsx`) wraps protected pages and shows an upgrade overlay for locked features.
 - **Account ownership enforcement**: `verifyAccountOwnership()` helper in `server/routes.ts` validates that the logged-in user owns the requested sub-account before returning any data. Applied to all 30+ routes that accept `subAccountId`. Admin users (matched by `ADMIN_USER_ID` env var) bypass ownership checks.
 - **Strict account filtering**: `GET /api/accounts` returns only accounts where `ownerUserId === user.id`. Admin sees all. Non-owners get empty results (no leaked data from orphaned accounts).
