@@ -619,6 +619,29 @@ ${sections.map(renderSection).join('\n')}
     next();
   };
 
+  app.post("/api/admin/transfer-account", requireAdmin, asyncHandler(async (req, res) => {
+    const parsed = z.object({
+      subAccountId: z.number().int().positive(),
+      newOwnerUserId: z.string().min(1),
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const { subAccountId, newOwnerUserId } = parsed.data;
+    const account = await storage.getSubAccount(subAccountId);
+    if (!account) return res.status(404).json({ error: "Account not found" });
+
+    const updated = await storage.updateSubAccount(subAccountId, { ownerUserId: newOwnerUserId });
+
+    await storage.createAuditLog({
+      action: "ACCOUNT_TRANSFERRED",
+      performedBy: getUserId((req as any).user),
+      details: { subAccountId, previousOwner: account.ownerUserId, newOwner: newOwnerUserId, accountName: account.name },
+    });
+
+    console.log(`[ADMIN] Account #${subAccountId} "${account.name}" transferred to user ${newOwnerUserId}`);
+    res.json({ success: true, account: updated });
+  }));
+
   app.get("/api/config/google-api-key", asyncHandler(async (req, res) => {
     const key = process.env.GOOGLE_API_KEY || "";
     res.json({ apiKey: key ? key.substring(0, 4) + "..." : "", hasKey: !!key });
