@@ -34,6 +34,13 @@ function timeAgo(dateStr: string) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+function formatDateTime(dateStr: string) {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) +
+    " · " +
+    d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+}
+
 export default function Sentinel() {
   const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_sentinel");
   const { toast } = useToast();
@@ -584,8 +591,11 @@ function IncidentCard({
               {(incident.rawPayload as any).state ? ` · ${(incident.rawPayload as any).state}` : ""}
             </span>
           )}
-          <p className="text-gray-600 text-[10px] mt-1 flex items-center gap-1 justify-end">
-            <Clock size={8} /> {timeAgo(incident.detectedAt as unknown as string)}
+          <p className="text-gray-500 text-[10px] mt-1 flex items-center gap-1 justify-end" data-testid={`text-incident-date-${incident.id}`}>
+            <Clock size={8} /> {formatDateTime(incident.detectedAt as unknown as string)}
+          </p>
+          <p className="text-gray-600 text-[9px] mt-0.5 text-right">
+            {timeAgo(incident.detectedAt as unknown as string)}
           </p>
         </div>
       </div>
