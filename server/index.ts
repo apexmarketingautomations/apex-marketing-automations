@@ -69,6 +69,74 @@ app.post(
       if (!Buffer.isBuffer(req.body)) {
         return res.status(500).json({ error: "Webhook processing error" });
       }
+
+      const event = JSON.parse(req.body.toString());
+      if (event?.type === "checkout.session.completed") {
+        const session = event.data?.object;
+        const meta = session?.metadata;
+
+        if (meta?.type === "credit_topup" && meta?.subAccountId && meta?.creditAmount) {
+          const { storage } = await import("./storage");
+          const subAccountId = parseInt(meta.subAccountId);
+          const amount = parseFloat(meta.creditAmount);
+
+          let wallet = await storage.getCreditWallet(subAccountId);
+          if (!wallet) {
+            wallet = await storage.upsertCreditWallet({ subAccountId, balance: 0, lifetimeTopUp: 0, lifetimeSpend: 0 });
+          }
+          const updated = await storage.updateCreditWalletBalance(subAccountId, amount);
+          await storage.createCreditTransaction({
+            subAccountId,
+            type: "topup",
+            amount,
+            balanceAfter: updated?.balance || amount,
+            description: `Credit top-up via Stripe`,
+            stripeSessionId: session.id,
+          });
+          console.log(`[WALLET] +$${amount} credited to account #${subAccountId} (main webhook)`);
+        }
+
+        if (meta?.userId && meta?.tierName) {
+          const { storage } = await import("./storage");
+          const existing = await storage.getSubscription(meta.userId);
+          const isGrandfathered = meta.isGrandfathered === "true";
+          const billingInterval = meta.billingInterval || "monthly";
+          const subData: any = {
+            userId: meta.userId,
+            stripeCustomerId: session.customer,
+            stripeSubscriptionId: session.subscription,
+            planTier: meta.tierName,
+            status: "active",
+            aiCredits: 50,
+            isGrandfathered,
+            billingInterval,
+            ...(isGrandfathered ? { blitzJoinedDate: new Date() } : {}),
+          };
+          if (existing) {
+            await storage.updateSubscription(existing.id, subData);
+          } else {
+            await storage.createSubscription(subData);
+          }
+          console.log(`[STRIPE] Subscription activated for user ${meta.userId} — ${meta.tierName}`);
+        }
+      }
+
+      if (event?.type === "invoice.payment_failed") {
+        const invoice = event.data?.object;
+        const subId = invoice?.subscription;
+        if (subId) {
+          const { storage } = await import("./storage");
+          const existing = await storage.getSubscriptionByStripeId(subId as string);
+          if (existing) {
+            await storage.updateSubscription(existing.id, {
+              paymentStatus: "failed",
+              paymentFailedAt: new Date(),
+            });
+            console.log(`[STRIPE] Payment failed for subscription ${subId}`);
+          }
+        }
+      }
+
       await WebhookHandlers.processWebhook(req.body as Buffer, sig);
       res.status(200).json({ received: true });
     } catch (error: any) {

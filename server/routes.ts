@@ -3572,13 +3572,35 @@ Rules:
 
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
-      const userId = session.metadata?.userId;
-      const tierName = session.metadata?.tierName;
+      const meta = session.metadata;
+
+      if (meta?.type === "credit_topup" && meta?.subAccountId && meta?.creditAmount) {
+        const subAccountId = parseInt(meta.subAccountId);
+        const amount = parseFloat(meta.creditAmount);
+
+        let wallet = await storage.getCreditWallet(subAccountId);
+        if (!wallet) {
+          wallet = await storage.upsertCreditWallet({ subAccountId, balance: 0, lifetimeTopUp: 0, lifetimeSpend: 0 });
+        }
+        const updated = await storage.updateCreditWalletBalance(subAccountId, amount);
+        await storage.createCreditTransaction({
+          subAccountId,
+          type: "topup",
+          amount,
+          balanceAfter: updated?.balance || amount,
+          description: `Credit top-up via Stripe`,
+          stripeSessionId: session.id,
+        });
+        console.log(`[WALLET] +$${amount} credited to account #${subAccountId} (verified webhook)`);
+      }
+
+      const userId = meta?.userId;
+      const tierName = meta?.tierName;
 
       if (userId && tierName) {
         const existing = await storage.getSubscription(userId);
-        const isGrandfathered = session.metadata?.isGrandfathered === "true";
-        const billingInterval = session.metadata?.billingInterval || "monthly";
+        const isGrandfathered = meta?.isGrandfathered === "true";
+        const billingInterval = meta?.billingInterval || "monthly";
         const subData: any = {
           userId,
           stripeCustomerId: session.customer,
