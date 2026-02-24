@@ -2,8 +2,9 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Shield, TrendingUp, Users, MessageSquare, GitFork, Zap, Star, DollarSign, Activity, BarChart3, RotateCcw, CheckSquare, Square, BookOpen } from "lucide-react";
+import { Shield, TrendingUp, Users, MessageSquare, GitFork, Zap, Star, DollarSign, Activity, BarChart3, RotateCcw, CheckSquare, Square, BookOpen, ArrowRightLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import type { SnapshotVersion } from "@shared/schema";
@@ -17,6 +18,9 @@ export default function CommandCenter() {
   const [showBulkRollback, setShowBulkRollback] = useState(false);
   const [selectedAccounts, setSelectedAccounts] = useState<number[]>([]);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
+  const [showTransfer, setShowTransfer] = useState(false);
+  const [transferAccountId, setTransferAccountId] = useState<number | null>(null);
+  const [transferUserId, setTransferUserId] = useState("");
 
   const { data: metrics, isLoading } = useQuery<any>({
     queryKey: ["/api/command-center"],
@@ -57,6 +61,27 @@ export default function CommandCenter() {
     },
     onError: () => {
       toast({ title: "Bulk rollback failed", variant: "destructive" });
+    },
+  });
+
+  const transferMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/transfer-account", {
+        subAccountId: transferAccountId,
+        newOwnerUserId: transferUserId.trim(),
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Account Transferred!", description: `${data.account?.name || "Account"} transferred to user ${transferUserId}` });
+      queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/command-center"] });
+      setShowTransfer(false);
+      setTransferAccountId(null);
+      setTransferUserId("");
+    },
+    onError: () => {
+      toast({ title: "Transfer failed", variant: "destructive" });
     },
   });
 
@@ -247,13 +272,22 @@ export default function CommandCenter() {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.52 }}
         className="mb-8"
       >
-        <Button
-          onClick={() => setShowBulkRollback(true)}
-          className="bg-gradient-to-r from-amber-500 to-orange-500 text-black font-bold gap-2"
-          data-testid="button-bulk-rollback"
-        >
-          <RotateCcw size={16} /> Bulk Rollback Accounts
-        </Button>
+        <div className="flex gap-3 flex-wrap">
+          <Button
+            onClick={() => setShowBulkRollback(true)}
+            className="bg-gradient-to-r from-amber-500 to-orange-500 text-black font-bold gap-2"
+            data-testid="button-bulk-rollback"
+          >
+            <RotateCcw size={16} /> Bulk Rollback Accounts
+          </Button>
+          <Button
+            onClick={() => setShowTransfer(true)}
+            className="bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-bold gap-2"
+            data-testid="button-transfer-account"
+          >
+            <ArrowRightLeft size={16} /> Transfer Account
+          </Button>
+        </div>
       </motion.div>
 
       <Dialog open={showBulkRollback} onOpenChange={setShowBulkRollback}>
@@ -313,6 +347,60 @@ export default function CommandCenter() {
             >
               {bulkRollbackMutation.isPending ? "Rolling back..." : <>
                 <RotateCcw size={14} /> Rollback {selectedAccounts.length} Account{selectedAccounts.length !== 1 ? "s" : ""}
+              </>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showTransfer} onOpenChange={setShowTransfer}>
+        <DialogContent className="bg-neutral-950 border-white/10 text-white max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-cyan-400">
+              <ArrowRightLeft size={20} /> Transfer Account Ownership
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Select Account</label>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {(metrics?.accounts || []).map((acc: any) => (
+                  <button
+                    key={acc.id}
+                    onClick={() => setTransferAccountId(acc.id)}
+                    className={`w-full text-left p-3 rounded-lg border text-sm transition-all ${transferAccountId === acc.id ? "border-cyan-500/50 bg-cyan-500/10 text-white" : "border-white/10 bg-white/5 text-slate-400 hover:bg-white/10"}`}
+                    data-testid={`button-transfer-select-${acc.id}`}
+                  >
+                    <span className="font-bold text-white">{acc.name}</span>
+                    <span className="text-xs text-slate-500 ml-2">ID #{acc.id}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">New Owner's Replit User ID</label>
+              <Input
+                value={transferUserId}
+                onChange={(e) => setTransferUserId(e.target.value)}
+                placeholder="e.g. 53528927"
+                className="bg-white/5 border-white/10 text-white"
+                data-testid="input-transfer-user-id"
+              />
+              <p className="text-[10px] text-slate-600 mt-1">Find this in server logs when the user logs in, or ask them for their Replit profile URL</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowTransfer(false)} className="border-white/10 text-white hover:bg-white/10">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => transferMutation.mutate()}
+              disabled={!transferAccountId || !transferUserId.trim() || transferMutation.isPending}
+              className="bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-bold gap-2"
+              data-testid="button-confirm-transfer"
+            >
+              {transferMutation.isPending ? "Transferring..." : <>
+                <ArrowRightLeft size={14} /> Transfer Account
               </>}
             </Button>
           </DialogFooter>
