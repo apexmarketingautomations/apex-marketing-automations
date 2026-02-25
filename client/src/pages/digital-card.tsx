@@ -1,13 +1,26 @@
 import { motion } from "framer-motion";
-import { Phone, Mail, Globe, Download, MessageSquare, Zap, QrCode } from "lucide-react";
+import { Phone, Mail, Globe, Download, MessageSquare, Zap, QrCode, Palette, Code2, Megaphone, Bot, Workflow, BarChart3, Smartphone, Shield, Mic } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useState } from "react";
 
 const LINKS = [
-  { icon: Phone, label: "Call Me", value: "(239) 492-2698", href: "tel:+12394922698", color: "from-green-500 to-emerald-600", bg: "bg-green-500/10", text: "text-green-400" },
-  { icon: MessageSquare, label: "Text Me", value: "Send a message", href: "sms:+12394922698", color: "from-blue-500 to-cyan-600", bg: "bg-blue-500/10", text: "text-blue-400" },
-  { icon: Mail, label: "Email Me", value: "Dante@apexmarketingautomations.com", href: "mailto:Dante@apexmarketingautomations.com", color: "from-purple-500 to-pink-600", bg: "bg-purple-500/10", text: "text-purple-400" },
-  { icon: Globe, label: "Visit Website", value: "apexmarketingautomations.com", href: "https://apexmarketingautomations.com", color: "from-cyan-500 to-blue-600", bg: "bg-cyan-500/10", text: "text-cyan-400" },
+  { icon: Phone, label: "Call Me", value: "(239) 492-2698", href: "tel:+12394922698", bg: "bg-green-500/10", text: "text-green-400" },
+  { icon: MessageSquare, label: "Text Me", value: "Send a message", href: "sms:+12394922698", bg: "bg-blue-500/10", text: "text-blue-400" },
+  { icon: Mail, label: "Email Me", value: "Dante@apexmarketingautomations.com", href: "mailto:Dante@apexmarketingautomations.com", bg: "bg-purple-500/10", text: "text-purple-400" },
+  { icon: Globe, label: "Visit Website", value: "apexmarketingautomations.com", href: "https://apexmarketingautomations.com", bg: "bg-cyan-500/10", text: "text-cyan-400" },
+];
+
+const SKILLS = [
+  { icon: Palette, label: "Graphic Design", color: "from-pink-500 to-rose-500" },
+  { icon: Code2, label: "Software Engineering", color: "from-indigo-500 to-blue-500" },
+  { icon: Globe, label: "Web Development", color: "from-cyan-500 to-teal-500" },
+  { icon: Megaphone, label: "Digital Marketing", color: "from-orange-500 to-amber-500" },
+  { icon: Bot, label: "AI & Automation", color: "from-purple-500 to-violet-500" },
+  { icon: Mic, label: "Voice AI Agents", color: "from-emerald-500 to-green-500" },
+  { icon: Workflow, label: "Workflow Automation", color: "from-blue-500 to-indigo-500" },
+  { icon: BarChart3, label: "Analytics & CRM", color: "from-yellow-500 to-orange-500" },
+  { icon: Smartphone, label: "SMS & Multi-Channel", color: "from-sky-500 to-blue-500" },
+  { icon: Shield, label: "Sentinel Monitoring", color: "from-red-500 to-pink-500" },
 ];
 
 const CARD_URL = "https://apexmarketingautomations.com/DanteS";
@@ -16,7 +29,7 @@ export default function DigitalCard() {
   const [showQR, setShowQR] = useState(false);
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-black">
+    <div className="min-h-screen flex items-center justify-center py-12 px-4 relative overflow-hidden bg-black">
       <div className="absolute inset-0">
         <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-indigo-600/15 rounded-full blur-[120px]" />
         <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] bg-purple-600/15 rounded-full blur-[120px]" />
@@ -27,7 +40,7 @@ export default function DigitalCard() {
         initial={{ opacity: 0, y: 40 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-        className="relative z-10 w-full max-w-[400px]"
+        className="relative z-10 w-full max-w-[420px]"
       >
         <div className="relative rounded-[28px] overflow-hidden" style={{ background: "linear-gradient(145deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%)", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 25px 60px -15px rgba(99, 102, 241, 0.2), 0 0 0 1px rgba(255,255,255,0.05) inset" }}>
           <div className="relative h-40 overflow-hidden">
@@ -67,19 +80,47 @@ export default function DigitalCard() {
               <p className="text-slate-500 text-xs mt-1 font-medium">Apex Marketing Automations</p>
             </motion.div>
 
-            <motion.p
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.45 }}
-              className="text-slate-400 text-[13px] mt-4 leading-relaxed"
+              className="mt-5 p-4 rounded-2xl bg-white/[0.03] border border-white/[0.06]"
             >
-              Building AI-powered systems that grow businesses on autopilot.
-            </motion.p>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-400 mb-2">About Me</p>
+              <p className="text-slate-300 text-[13px] leading-relaxed">
+                Full-stack creative and technologist. I design, build, and market AI-powered platforms that help businesses scale on autopilot. From pixel-perfect graphics to production-grade software, multi-channel marketing campaigns to autonomous voice agents — I turn ideas into systems that work around the clock.
+              </p>
+            </motion.div>
 
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: 0.55 }}
+              transition={{ delay: 0.5 }}
+              className="mt-4"
+            >
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-3 px-1">What I Do</p>
+              <div className="flex flex-wrap gap-2">
+                {SKILLS.map((skill, i) => (
+                  <motion.div
+                    key={skill.label}
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.55 + i * 0.04 }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] transition-colors"
+                  >
+                    <div className={`w-4 h-4 rounded-md bg-gradient-to-br ${skill.color} flex items-center justify-center`}>
+                      <skill.icon size={10} className="text-white" />
+                    </div>
+                    <span className="text-[11px] font-medium text-white/70">{skill.label}</span>
+                  </motion.div>
+                ))}
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.7 }}
               className="mt-6 space-y-2.5"
             >
               {LINKS.map((link, i) => (
@@ -90,7 +131,7 @@ export default function DigitalCard() {
                   rel={link.href.startsWith("http") ? "noopener noreferrer" : undefined}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.6 + i * 0.08 }}
+                  transition={{ delay: 0.75 + i * 0.08 }}
                   className="flex items-center gap-4 p-3.5 rounded-2xl bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.08] hover:border-white/[0.12] transition-all duration-300 group cursor-pointer"
                   data-testid={`link-${link.label.toLowerCase().replace(' ', '-')}`}
                 >
@@ -109,7 +150,7 @@ export default function DigitalCard() {
               <motion.a
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.95 }}
+                transition={{ delay: 1.1 }}
                 href="/contact.vcf"
                 className="flex-1 py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2.5 transition-all duration-300 hover:scale-[1.03] active:scale-[0.97] relative overflow-hidden group"
                 style={{ background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #d946ef 100%)", boxShadow: "0 10px 30px -5px rgba(99, 102, 241, 0.4)" }}
@@ -123,7 +164,7 @@ export default function DigitalCard() {
               <motion.button
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 1.0 }}
+                transition={{ delay: 1.15 }}
                 onClick={() => setShowQR(!showQR)}
                 className="w-14 h-14 rounded-2xl bg-white/[0.06] border border-white/[0.1] flex items-center justify-center hover:bg-white/[0.12] transition-all duration-300 hover:scale-105 active:scale-95 shrink-0"
                 data-testid="button-show-qr"
@@ -157,7 +198,7 @@ export default function DigitalCard() {
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 1.1 }}
+          transition={{ delay: 1.3 }}
           className="text-center text-[10px] text-slate-700 mt-5 font-medium"
         >
           Powered by Apex Marketing Automations
