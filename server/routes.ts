@@ -588,6 +588,7 @@ ${sections.map(renderSection).join('\n')}
     if (req.method === "GET" && fullPath.startsWith("/api/review-config/")) return next();
     if (fullPath === "/api/log-error") return next();
     if (fullPath === "/api/sms-webhook") return next();
+    if (fullPath === "/api/meta-webhook") return next();
     if (fullPath === "/api/sentinel/test-trigger") return next();
     if (fullPath === "/api/sentinel/live") return next();
     if (fullPath === "/api/sentinel/incoming-crash") return next();
@@ -2392,6 +2393,97 @@ Rules:
     } catch (err: any) {
       console.error("Unified webhook error:", err);
       res.type("text/xml").send("<Response></Response>");
+    }
+  });
+
+  // ---- Meta/Facebook Webhook (Instagram/Facebook DMs) ----
+  app.get("/api/meta-webhook", (req, res) => {
+    const mode = req.query["hub.mode"];
+    const token = req.query["hub.verify_token"];
+    const challenge = req.query["hub.challenge"];
+    const verifyToken = process.env.META_VERIFY_TOKEN || "apex_verify_2026";
+    if (mode === "subscribe" && token === verifyToken) {
+      console.log("[META WEBHOOK] Verified");
+      res.status(200).send(challenge);
+    } else {
+      res.sendStatus(403);
+    }
+  });
+
+  app.post("/api/meta-webhook", async (req, res) => {
+    try {
+      const body = req.body;
+      console.log("[META WEBHOOK] Received:", JSON.stringify(body).substring(0, 500));
+
+      if (body.object === "page" || body.object === "instagram") {
+        for (const entry of body.entry || []) {
+          for (const event of entry.messaging || []) {
+            const senderId = event.sender?.id;
+            const message = event.message?.text;
+            const timestamp = event.timestamp;
+
+            if (!senderId || !message) continue;
+
+            console.log(`[META DM] From ${senderId}: ${message.substring(0, 100)}`);
+
+            const channel = body.object === "instagram" ? "instagram" : "facebook";
+
+            await db.insert(messages).values({
+              subAccountId: 13,
+              channel,
+              direction: "inbound",
+              from: senderId,
+              to: process.env.META_PAGE_ID || "",
+              body: message,
+              status: "received",
+            });
+
+            if (isGeminiConfigured()) {
+              try {
+                const aiReply = await geminiChat([
+                  { role: "system", content: `You are a helpful business assistant for Apex Marketing Automations responding via ${channel} DM. Keep replies conversational and under 300 characters. Be warm, professional, and helpful.` },
+                  { role: "user", content: message.substring(0, 1000) },
+                ], { temperature: 0.7, maxTokens: 150 });
+
+                if (aiReply) {
+                  const accessToken = process.env.META_ACCESS_TOKEN;
+                  const pageId = process.env.META_PAGE_ID;
+                  if (accessToken && pageId) {
+                    const sendRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}/messages`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        recipient: { id: senderId },
+                        message: { text: aiReply },
+                        access_token: accessToken,
+                      }),
+                    });
+                    const sendData = await sendRes.json() as any;
+                    console.log(`[META DM] AI reply sent to ${senderId}:`, sendData.message_id ? "OK" : JSON.stringify(sendData).substring(0, 200));
+
+                    await db.insert(messages).values({
+                      subAccountId: 13,
+                      channel,
+                      direction: "outbound",
+                      from: pageId,
+                      to: senderId,
+                      body: aiReply,
+                      status: "sent",
+                    });
+                  }
+                }
+              } catch (aiErr: any) {
+                console.error("[META DM] AI reply error:", aiErr.message);
+              }
+            }
+          }
+        }
+      }
+
+      res.sendStatus(200);
+    } catch (err: any) {
+      console.error("[META WEBHOOK] Error:", err.message);
+      res.sendStatus(200);
     }
   });
 
