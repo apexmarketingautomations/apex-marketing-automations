@@ -3200,13 +3200,21 @@ Rules:
     }
 
     const billingChecks: string[] = [];
-    const stripeKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API_KEY;
-    if (!stripeKey) billingChecks.push("Stripe API key missing");
+    let stripeConnected = false;
+    try {
+      const { getStripeSecretKey } = await import("./stripeClient");
+      const sk = await getStripeSecretKey();
+      if (sk) stripeConnected = true;
+    } catch {
+      const stripeKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API_KEY;
+      if (stripeKey) stripeConnected = true;
+    }
+    if (!stripeConnected) billingChecks.push("Stripe not connected");
     const walletCount = await db.execute(sql`SELECT COUNT(*) as cnt FROM credit_wallets`).then(r => Number((r as any).rows?.[0]?.cnt ?? 0)).catch(() => -1);
     if (walletCount === -1) billingChecks.push("Wallet table inaccessible");
     checks.push({
       name: "Billing",
-      status: billingChecks.length === 0 ? "healthy" : billingChecks.some(c => c.includes("missing")) ? "down" : "degraded",
+      status: billingChecks.length === 0 ? "healthy" : billingChecks.some(c => c.includes("not connected")) ? "down" : "degraded",
       message: billingChecks.length === 0 ? `Stripe active, ${walletCount} wallet(s)` : billingChecks.join("; "),
     });
 
