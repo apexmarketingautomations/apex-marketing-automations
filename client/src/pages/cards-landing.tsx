@@ -9,7 +9,7 @@ import { apiRequest } from "@/lib/queryClient";
 const FEATURES = [
   { icon: ContactRound, title: "Professional Design", desc: "Stunning animated card with your photo, bio, and contact details" },
   { icon: QrCode, title: "QR Code Included", desc: "Print-ready QR code for business cards, stickers, and flyers" },
-  { icon: Nfc, title: "NFC Ready", desc: "Program NFC stickers or tags to open your card with a tap" },
+  { icon: Nfc, title: "NFC Compatible", desc: "Works with any NFC sticker — buy cheap tags, write your link, and people tap to view" },
   { icon: Share2, title: "One-Link Sharing", desc: "Share your card via text, email, or social media with one link" },
   { icon: Download, title: "Save to Contacts", desc: "One-tap contact download — adds you directly to their phone" },
   { icon: Star, title: "Google Reviews", desc: "Built-in review link drives happy customers to leave reviews" },
@@ -68,7 +68,7 @@ export default function CardsLanding() {
           <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={0}>
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 mb-6">
               <Nfc size={14} className="text-cyan-400" />
-              <span className="text-cyan-300 text-sm font-medium">NFC + QR + One-Link Digital Cards</span>
+              <span className="text-cyan-300 text-sm font-medium">QR + One-Link Digital Cards · NFC Compatible</span>
             </div>
           </motion.div>
 
@@ -192,7 +192,7 @@ export default function CardsLanding() {
                     )}
                   </div>
                   <ul className="space-y-3 mb-8">
-                    {["Professional animated card", "QR code generator", "NFC compatible", "Contact download (VCF)", "Google Review link", "Custom URL slug", "5 premium themes", "Unlimited updates", "Mobile optimized"].map((f, i) => (
+                    {["Professional animated card", "QR code generator", "NFC compatible (bring your own stickers)", "Contact download (VCF)", "Google Review link", "Custom URL slug", "5 premium themes", "Unlimited updates", "Mobile optimized"].map((f, i) => (
                       <li key={i} className="flex items-center gap-2 text-sm text-slate-300">
                         <Check size={16} className="text-cyan-400 shrink-0" /> {f}
                       </li>
