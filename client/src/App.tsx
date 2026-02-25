@@ -12,6 +12,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { AccountProvider } from "@/hooks/use-account";
 
 const DigitalCard = lazy(() => import("@/pages/digital-card"));
+const DigitalCardBuilder = lazy(() => import("@/pages/digital-card-builder"));
 const SmsDashboard = lazy(() => import("@/pages/sms-dashboard"));
 const WorkflowBuilder = lazy(() => import("@/pages/workflow-builder"));
 const GymLanding = lazy(() => import("@/pages/gym-landing"));
@@ -126,6 +127,7 @@ function Router() {
       <Switch>
         {/* Public routes — no auth required */}
         <Route path="/DanteS" component={DigitalCard} />
+        <Route path="/card/:slug" component={DigitalCard} />
         <Route path="/portal/:token" component={ClientPortal} />
         <Route path="/review/:subAccountId" component={ReviewBuffer} />
         <Route path="/demo" component={NexusDemo} />
@@ -214,6 +216,7 @@ function Router() {
                   <Route path="/pipeline" component={PipelinePage} />
                   <Route path="/calendar" component={CalendarPage} />
                   <Route path="/email-campaigns" component={EmailCampaignsPage} />
+                  <Route path="/digital-card-builder" component={DigitalCardBuilder} />
                   <Route path="/white-label" component={WhiteLabelPage} />
                   <Route path="/webhooks" component={WebhooksPage} />
                   <Route path="/reports" component={ReportsPage} />

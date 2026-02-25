@@ -1,8 +1,8 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains, insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, insertMetaAdCampaignSchema, insertMetaLeadSchema, insertInstagramConversationSchema, insertInstagramMessageSchema, insertNotificationSchema, contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings, metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications, messages, hasFeature, PLAN_TIERS, subAccounts, liveAutomations, insertLiveAutomationSchema, insertSponsorshipSchema, insertCreditWalletSchema, creditTransactions, platformProfitLedger, sponsorships, sponsorshipClicks } from "@shared/schema";
-import { sql } from "drizzle-orm";
+import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains, insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, insertMetaAdCampaignSchema, insertMetaLeadSchema, insertInstagramConversationSchema, insertInstagramMessageSchema, insertNotificationSchema, contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings, metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications, messages, hasFeature, PLAN_TIERS, subAccounts, liveAutomations, insertLiveAutomationSchema, insertSponsorshipSchema, insertCreditWalletSchema, creditTransactions, platformProfitLedger, sponsorships, sponsorshipClicks, digitalCards } from "@shared/schema";
+import { sql, eq } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
 import { geminiChat, geminiChatStream, isGeminiConfigured, geminiGenerateImage } from "./gemini";
@@ -589,6 +589,7 @@ ${sections.map(renderSection).join('\n')}
     if (fullPath === "/api/log-error") return next();
     if (fullPath === "/api/sms-webhook") return next();
     if (fullPath === "/api/meta-webhook") return next();
+    if (fullPath.startsWith("/api/public-card/")) return next();
     if (fullPath === "/api/sentinel/test-trigger") return next();
     if (fullPath === "/api/sentinel/live") return next();
     if (fullPath === "/api/sentinel/incoming-crash") return next();
@@ -7100,6 +7101,41 @@ Return ONLY valid JSON.` },
       connectedAt: null,
     });
     res.json(connection);
+  }));
+
+  // ---- Digital Business Cards ----
+  app.get("/api/digital-card/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const [card] = await db.select().from(digitalCards).where(eq(digitalCards.subAccountId, subAccountId)).limit(1);
+    if (!card) return res.status(404).json({ error: "No card found" });
+    res.json(card);
+  }));
+
+  app.post("/api/digital-card/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const { name, title, company, phone, email, website, bio, photoUrl, googleReviewLink, slug, links, theme } = req.body;
+    const existing = await db.select().from(digitalCards).where(eq(digitalCards.subAccountId, subAccountId)).limit(1);
+    if (existing.length > 0) {
+      const [updated] = await db.update(digitalCards).set({
+        name, title, company, phone, email, website, bio, photoUrl, googleReviewLink, slug, links, theme, updatedAt: new Date(),
+      }).where(eq(digitalCards.subAccountId, subAccountId)).returning();
+      res.json(updated);
+    } else {
+      const [created] = await db.insert(digitalCards).values({
+        subAccountId, name, title, company, phone, email, website, bio, photoUrl, googleReviewLink, slug, links, theme,
+      }).returning();
+      res.json(created);
+    }
+  }));
+
+  // Public card viewer by slug
+  app.get("/api/public-card/:slug", asyncHandler(async (req, res) => {
+    const { slug } = req.params;
+    const [card] = await db.select().from(digitalCards).where(eq(digitalCards.slug, slug)).limit(1);
+    if (!card) return res.status(404).json({ error: "Card not found" });
+    res.json(card);
   }));
 
   // ---- Portal Tokens ----

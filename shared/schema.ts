@@ -11,11 +11,11 @@ export const PLAN_TIERS = {
   },
   pro: {
     name: 'Pro',
-    features: ['inbox', 'contacts', 'deals', 'appointments', 'reviews', 'site_builder', 'workflows', 'ai_bots', 'sentinel', 'voice_agents', 'email_campaigns'],
+    features: ['inbox', 'contacts', 'deals', 'appointments', 'reviews', 'site_builder', 'workflows', 'ai_bots', 'sentinel', 'voice_agents', 'email_campaigns', 'digital_card'],
   },
   enterprise: {
     name: 'Enterprise',
-    features: ['inbox', 'contacts', 'deals', 'appointments', 'reviews', 'site_builder', 'workflows', 'ai_bots', 'sentinel', 'voice_agents', 'email_campaigns', 'white_label', 'webhooks', 'multi_location', 'priority_support'],
+    features: ['inbox', 'contacts', 'deals', 'appointments', 'reviews', 'site_builder', 'workflows', 'ai_bots', 'sentinel', 'voice_agents', 'email_campaigns', 'white_label', 'webhooks', 'multi_location', 'priority_support', 'digital_card'],
   },
 } as const;
 
@@ -889,3 +889,26 @@ export const funnelLeads = pgTable("funnel_leads", {
 export const insertFunnelLeadSchema = createInsertSchema(funnelLeads).omit({ id: true, createdAt: true, lastSeenAt: true });
 export type InsertFunnelLead = z.infer<typeof insertFunnelLeadSchema>;
 export type FunnelLead = typeof funnelLeads.$inferSelect;
+
+export const digitalCards = pgTable("digital_cards", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  name: text("name").default(""),
+  title: text("title").default(""),
+  company: text("company").default(""),
+  phone: text("phone").default(""),
+  email: text("email").default(""),
+  website: text("website").default(""),
+  bio: text("bio").default(""),
+  photoUrl: text("photo_url").default(""),
+  googleReviewLink: text("google_review_link").default(""),
+  slug: text("slug").unique(),
+  links: json("links").default([]),
+  theme: text("theme").default("midnight"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertDigitalCardSchema = createInsertSchema(digitalCards).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertDigitalCard = z.infer<typeof insertDigitalCardSchema>;
+export type DigitalCard = typeof digitalCards.$inferSelect;
