@@ -1,5 +1,7 @@
 import { motion } from "framer-motion";
-import { Phone, Mail, Globe, Download, MessageSquare, Zap } from "lucide-react";
+import { Phone, Mail, Globe, Download, MessageSquare, Zap, QrCode } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
+import { useState } from "react";
 
 const LINKS = [
   { icon: Phone, label: "Call Me", value: "(239) 492-2698", href: "tel:+12394922698", color: "from-green-500 to-emerald-600", bg: "bg-green-500/10", text: "text-green-400" },
@@ -8,7 +10,11 @@ const LINKS = [
   { icon: Globe, label: "Visit Website", value: "apexmarketingautomations.com", href: "https://apexmarketingautomations.com", color: "from-cyan-500 to-blue-600", bg: "bg-cyan-500/10", text: "text-cyan-400" },
 ];
 
+const CARD_URL = "https://apexmarketingautomations.com/DanteS";
+
 export default function DigitalCard() {
+  const [showQR, setShowQR] = useState(false);
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-black">
       <div className="absolute inset-0">
@@ -99,19 +105,52 @@ export default function DigitalCard() {
               ))}
             </motion.div>
 
-            <motion.a
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.95 }}
-              href="/contact.vcf"
-              className="mt-7 w-full py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2.5 transition-all duration-300 hover:scale-[1.03] active:scale-[0.97] block relative overflow-hidden group"
-              style={{ background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #d946ef 100%)", boxShadow: "0 10px 30px -5px rgba(99, 102, 241, 0.4)" }}
-              data-testid="button-save-contact"
-            >
-              <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 transition-colors duration-300" />
-              <Download size={18} className="text-white relative z-10" />
-              <span className="text-white relative z-10">Save Contact</span>
-            </motion.a>
+            <div className="mt-7 flex gap-2.5">
+              <motion.a
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.95 }}
+                href="/contact.vcf"
+                className="flex-1 py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2.5 transition-all duration-300 hover:scale-[1.03] active:scale-[0.97] relative overflow-hidden group"
+                style={{ background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #d946ef 100%)", boxShadow: "0 10px 30px -5px rgba(99, 102, 241, 0.4)" }}
+                data-testid="button-save-contact"
+              >
+                <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 transition-colors duration-300" />
+                <Download size={18} className="text-white relative z-10" />
+                <span className="text-white relative z-10">Save Contact</span>
+              </motion.a>
+
+              <motion.button
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 1.0 }}
+                onClick={() => setShowQR(!showQR)}
+                className="w-14 h-14 rounded-2xl bg-white/[0.06] border border-white/[0.1] flex items-center justify-center hover:bg-white/[0.12] transition-all duration-300 hover:scale-105 active:scale-95 shrink-0"
+                data-testid="button-show-qr"
+              >
+                <QrCode size={22} className="text-white/70" />
+              </motion.button>
+            </div>
+
+            {showQR && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                className="mt-5 flex flex-col items-center"
+              >
+                <div className="p-4 bg-white rounded-2xl shadow-lg shadow-indigo-500/20">
+                  <QRCodeSVG
+                    value={CARD_URL}
+                    size={180}
+                    bgColor="#ffffff"
+                    fgColor="#000000"
+                    level="H"
+                    includeMargin={false}
+                  />
+                </div>
+                <p className="text-[11px] text-slate-500 mt-3 font-medium">Scan to share this card</p>
+              </motion.div>
+            )}
           </div>
         </div>
 
