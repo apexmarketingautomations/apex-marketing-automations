@@ -106,12 +106,13 @@ function Redirect({ to }: { to: string }) {
 }
 
 function useAutoSaveContact() {
+  const [location] = useLocation();
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('share') === 'true') {
+    if (location === '/DanteS' || urlParams.get('share') === 'true') {
       window.location.href = '/contact.vcf';
     }
-  }, []);
+  }, [location]);
 }
 
 function Router() {
