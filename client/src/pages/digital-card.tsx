@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { Phone, Mail, Globe, Download, MessageSquare, Zap, QrCode, Palette, Code2, Megaphone, Bot, Workflow, BarChart3, Smartphone, Shield, Mic } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useState } from "react";
+import dantePhoto from "@assets/Image_25_1771984241816.jpeg";
 
 const LINKS = [
   { icon: Phone, label: "Call Me", value: "(239) 492-2698", href: "tel:+12394922698", bg: "bg-green-500/10", text: "text-green-400" },
@@ -13,6 +14,7 @@ const LINKS = [
 const SKILLS = [
   { icon: Palette, label: "Graphic Design", color: "from-pink-500 to-rose-500" },
   { icon: Code2, label: "Software Engineering", color: "from-indigo-500 to-blue-500" },
+  { icon: Code2, label: "Full-Stack Developer", color: "from-slate-500 to-zinc-500" },
   { icon: Globe, label: "Web Development", color: "from-cyan-500 to-teal-500" },
   { icon: Megaphone, label: "Digital Marketing", color: "from-orange-500 to-amber-500" },
   { icon: Bot, label: "AI & Automation", color: "from-purple-500 to-violet-500" },
@@ -65,9 +67,7 @@ export default function DigitalCard() {
               className="relative"
             >
               <div className="w-[88px] h-[88px] rounded-[22px] p-[3px] bg-gradient-to-br from-indigo-400 via-purple-500 to-pink-500 shadow-xl shadow-purple-500/30">
-                <div className="w-full h-full rounded-[19px] bg-black flex items-center justify-center">
-                  <span className="text-[32px] font-black bg-gradient-to-br from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">DS</span>
-                </div>
+                <img src={dantePhoto} alt="Dante S." className="w-full h-full rounded-[19px] object-cover object-top" />
               </div>
             </motion.div>
 
