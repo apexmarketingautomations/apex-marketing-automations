@@ -49,3 +49,5 @@ integrations = ["javascript_openai_ai_integrations:2.0.0", "stripe:2.0.0", "java
 
 [userenv.shared]
 ADMIN_USER_ID = "53528927"
+META_APP_ID = "1241083361501051"
+META_AD_ACCOUNT_ID = "871382102873840"
