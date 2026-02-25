@@ -2,7 +2,7 @@ import { motion, useScroll, useTransform } from "framer-motion";
 import { Phone, Mail, Globe, Download, MessageSquare, Zap, QrCode, Palette, Code2, Megaphone, Bot, Workflow, BarChart3, Smartphone, Shield, Mic, Play, ChevronDown, ArrowUpRight } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useState, useEffect, useRef } from "react";
-import dantePhoto from "@assets/Image_25_1771984241816.jpeg";
+const dantePhoto = "/dante-photo.jpeg";
 
 const LINKS = [
   { icon: Phone, label: "Call Me", value: "(239) 492-2698", href: "tel:+12394922698", bg: "bg-green-500/10", text: "text-green-400" },
