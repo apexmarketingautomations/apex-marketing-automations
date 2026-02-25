@@ -597,6 +597,7 @@ ${sections.map(renderSection).join('\n')}
     if (fullPath === "/api/v1/sentinel-receiver") return next();
     if (fullPath === "/api/v1/dispatch") return next();
     if (fullPath === "/api/form-submit") return next();
+    if (fullPath === "/api/card-checkout") return next();
     if (fullPath.startsWith("/api/portal/")) return next();
 
     if (!req.isAuthenticated || !req.isAuthenticated()) {
