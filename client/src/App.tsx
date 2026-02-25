@@ -105,7 +105,17 @@ function Redirect({ to }: { to: string }) {
   return null;
 }
 
+function useAutoSaveContact() {
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('share') === 'true') {
+      window.location.href = '/contact.vcf';
+    }
+  }, []);
+}
+
 function Router() {
+  useAutoSaveContact();
   const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) return <PageLoader />;
