@@ -7111,6 +7111,56 @@ Return ONLY valid JSON.` },
     res.json(connection);
   }));
 
+  // ---- TapCard Checkout ----
+  app.post("/api/card-checkout", asyncHandler(async (req, res) => {
+    const { plan, interval } = req.body;
+    const { getUncachableStripeClient } = await import("./stripeClient");
+    const stripe = await getUncachableStripeClient();
+
+    let priceInCents: number;
+    let productName: string;
+    let planTier: string;
+
+    if (plan === "tapcard") {
+      priceInCents = interval === "yearly" ? 6999 : 999;
+      productName = interval === "yearly" ? "TapCard — Annual" : "TapCard — Monthly";
+      planTier = "starter";
+    } else if (plan === "tapcard_pro") {
+      priceInCents = interval === "yearly" ? 38400 : 4800;
+      productName = interval === "yearly" ? "TapCard Pro — Annual" : "TapCard Pro — Monthly";
+      planTier = "pro";
+    } else {
+      return res.status(400).json({ error: "Invalid plan" });
+    }
+
+    const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || process.env.REPLIT_DEV_DOMAIN || "localhost:5000";
+    const baseUrl = `https://${domain}`;
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      payment_method_types: ["card"],
+      line_items: [{
+        price_data: {
+          currency: "usd",
+          product_data: { name: productName },
+          unit_amount: priceInCents,
+          recurring: { interval: interval === "yearly" ? "year" : "month" },
+        },
+        quantity: 1,
+      }],
+      metadata: {
+        plan: plan,
+        planTier: planTier,
+        source: "tapcard_funnel",
+      },
+      success_url: `${baseUrl}/digital-card-builder?checkout=success`,
+      cancel_url: `${baseUrl}/cards?checkout=cancelled`,
+      payment_method_collection: "always",
+    });
+
+    res.json({ url: session.url });
+  }));
+
   // ---- Digital Business Cards ----
   app.get("/api/digital-card/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");

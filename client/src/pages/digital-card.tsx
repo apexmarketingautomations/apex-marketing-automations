@@ -370,9 +370,9 @@ export default function DigitalCard() {
           </motion.div>
         )}
 
-        <p className="text-center text-[10px] text-slate-700 pb-8 pt-2 font-medium">
-          Powered by Apex Marketing Automations
-        </p>
+        <a href="/cards" className="block text-center text-[10px] text-slate-700 pb-8 pt-2 font-medium hover:text-cyan-400 transition-colors">
+          Powered by Apex Marketing Automations — Get Your Own Card
+        </a>
       </div>
     </div>
   );
