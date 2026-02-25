@@ -11,6 +11,7 @@ import { initVibe } from "@/components/vibe-switcher";
 import { useAuth } from "@/hooks/use-auth";
 import { AccountProvider } from "@/hooks/use-account";
 
+const DigitalCard = lazy(() => import("@/pages/digital-card"));
 const SmsDashboard = lazy(() => import("@/pages/sms-dashboard"));
 const WorkflowBuilder = lazy(() => import("@/pages/workflow-builder"));
 const GymLanding = lazy(() => import("@/pages/gym-landing"));
@@ -106,13 +107,12 @@ function Redirect({ to }: { to: string }) {
 }
 
 function useAutoSaveContact() {
-  const [location] = useLocation();
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    if (location === '/DanteS' || urlParams.get('share') === 'true') {
+    if (urlParams.get('share') === 'true') {
       window.location.href = '/contact.vcf';
     }
-  }, [location]);
+  }, []);
 }
 
 function Router() {
@@ -125,6 +125,7 @@ function Router() {
     <Suspense fallback={<PageLoader />}>
       <Switch>
         {/* Public routes — no auth required */}
+        <Route path="/DanteS" component={DigitalCard} />
         <Route path="/portal/:token" component={ClientPortal} />
         <Route path="/review/:subAccountId" component={ReviewBuffer} />
         <Route path="/demo" component={NexusDemo} />
