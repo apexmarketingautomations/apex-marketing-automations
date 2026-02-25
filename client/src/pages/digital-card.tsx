@@ -12,17 +12,17 @@ const LINKS = [
 ];
 
 const SKILLS = [
-  { icon: Palette, label: "Graphic Design", color: "from-pink-500 to-rose-500" },
-  { icon: Code2, label: "Software Engineering", color: "from-indigo-500 to-blue-500" },
-  { icon: Code2, label: "Full-Stack Developer", color: "from-slate-500 to-zinc-500" },
-  { icon: Globe, label: "Web Development", color: "from-cyan-500 to-teal-500" },
-  { icon: Megaphone, label: "Digital Marketing", color: "from-orange-500 to-amber-500" },
-  { icon: Bot, label: "AI & Automation", color: "from-purple-500 to-violet-500" },
-  { icon: Mic, label: "Voice AI Agents", color: "from-emerald-500 to-green-500" },
-  { icon: Workflow, label: "Workflow Automation", color: "from-blue-500 to-indigo-500" },
-  { icon: BarChart3, label: "Analytics & CRM", color: "from-yellow-500 to-orange-500" },
-  { icon: Smartphone, label: "SMS & Multi-Channel", color: "from-sky-500 to-blue-500" },
-  { icon: Shield, label: "Sentinel Monitoring", color: "from-red-500 to-pink-500" },
+  { icon: Palette, label: "Graphic Design", color: "from-pink-500 to-rose-500", href: "/niche-directory", desc: "Brand identities, landing pages, and visual systems for 17+ industries" },
+  { icon: Code2, label: "Software Engineering", color: "from-indigo-500 to-blue-500", href: "/demo", desc: "Full SaaS platform built from scratch — auth, billing, APIs, and real-time data" },
+  { icon: Code2, label: "Full-Stack Developer", color: "from-slate-500 to-zinc-500", href: "/demo", desc: "React + TypeScript frontend, Node.js + Express backend, PostgreSQL database" },
+  { icon: Globe, label: "Web Development", color: "from-cyan-500 to-teal-500", href: "/site-builder", desc: "AI-powered site builder that generates complete websites from a single prompt" },
+  { icon: Megaphone, label: "Digital Marketing", color: "from-orange-500 to-amber-500", href: "/ad-launcher", desc: "Meta Ads launcher with geofence targeting, audience builder, and ROI tracking" },
+  { icon: Bot, label: "AI & Automation", color: "from-purple-500 to-violet-500", href: "/bot-trainer", desc: "Train AI chatbots on any website — RAG pipeline with tool-calling and memory" },
+  { icon: Mic, label: "Voice AI Agents", color: "from-emerald-500 to-green-500", href: "/voice-agent", desc: "Deploy AI receptionists that answer calls, book appointments, and qualify leads 24/7" },
+  { icon: Workflow, label: "Workflow Automation", color: "from-blue-500 to-indigo-500", href: "/workflow-builder", desc: "Visual drag-and-drop workflow builder with triggers, conditions, and AI actions" },
+  { icon: BarChart3, label: "Analytics & CRM", color: "from-yellow-500 to-orange-500", href: "/pipeline", desc: "Pipeline management, deal tracking, contact CRM, and conversion analytics" },
+  { icon: Smartphone, label: "SMS & Multi-Channel", color: "from-sky-500 to-blue-500", href: "/inbox", desc: "Unified inbox for SMS, Instagram DMs, and WhatsApp with AI auto-reply" },
+  { icon: Shield, label: "Sentinel Monitoring", color: "from-red-500 to-pink-500", href: "/sentinel", desc: "Real-time crash detection scanner that finds broken business websites via geofence" },
 ];
 
 const CARD_URL = "https://apexmarketingautomations.com/DanteS";
@@ -99,20 +99,25 @@ export default function DigitalCard() {
               className="mt-4"
             >
               <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-3 px-1">What I Do</p>
-              <div className="flex flex-wrap gap-2">
+              <div className="space-y-2">
                 {SKILLS.map((skill, i) => (
-                  <motion.div
+                  <motion.a
                     key={skill.label}
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
+                    href={skill.href}
+                    initial={{ opacity: 0, x: -15 }}
+                    animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.55 + i * 0.04 }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] transition-colors"
+                    className="flex items-start gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.08] hover:border-white/[0.12] transition-all duration-300 group cursor-pointer block"
+                    data-testid={`skill-${skill.label.toLowerCase().replace(/\s+/g, '-')}`}
                   >
-                    <div className={`w-4 h-4 rounded-md bg-gradient-to-br ${skill.color} flex items-center justify-center`}>
-                      <skill.icon size={10} className="text-white" />
+                    <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${skill.color} flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300`}>
+                      <skill.icon size={16} className="text-white" />
                     </div>
-                    <span className="text-[11px] font-medium text-white/70">{skill.label}</span>
-                  </motion.div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-bold text-white/90 group-hover:text-white transition-colors">{skill.label}</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">{skill.desc}</p>
+                    </div>
+                  </motion.a>
                 ))}
               </div>
             </motion.div>
