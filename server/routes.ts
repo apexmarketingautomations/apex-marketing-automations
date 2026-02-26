@@ -599,6 +599,7 @@ ${sections.map(renderSection).join('\n')}
     if (fullPath === "/api/form-submit") return next();
     if (fullPath === "/api/card-checkout") return next();
     if (fullPath === "/api/sales-chat") return next();
+    if (fullPath === "/api/liquid/contact-lookup") return next();
     if (fullPath.startsWith("/api/portal/")) return next();
 
     if (!req.isAuthenticated || !req.isAuthenticated()) {
@@ -1407,7 +1408,7 @@ Rules:
   }));
 
   // ---- Liquid Website (Personalized AI Generation) ----
-  const LIQUID_SYSTEM_PROMPT = `You are a landing-page architect that creates PERSONALIZED websites based on visitor context.
+  const LIQUID_SYSTEM_PROMPT = `You are a "Liquid Website" architect that creates PERSONALIZED, shape-shifting landing pages. The site adapts dynamically to the visitor's context, ad parameters, and CRM data.
 
 You will receive visitor data including:
 - device: "mobile" or "desktop"
@@ -1415,39 +1416,55 @@ You will receive visitor data including:
 - timeOfDay: "morning", "afternoon", "evening", or "night"
 - hour: the current hour (0-23)
 - language: browser language
+- contactName: (optional) returning visitor's first name from CRM
+- heading: (optional) dynamic headline injected from ad URL parameter
 
 PERSONALIZATION RULES:
+- If contactName is provided, address the visitor by name in the hero (e.g., "Welcome back, {{contact.first_name | default: 'Friend'}}!"). Use the template syntax literally so the frontend engine resolves it.
+- If heading is provided, use it as the main hero headline text (the ad dictates the headline).
 - Mobile visitors: shorter headlines, bigger CTA buttons, concise text
 - Desktop visitors: longer, more detailed descriptions
 - Morning visitors: energetic, fresh-start messaging ("Start your day right")
 - Evening/night visitors: relaxation-focused ("Wind down with...")
-- Google referrers: trust-focused messaging (reviews, certifications)
+- Google referrers: trust-focused messaging (reviews, certifications, trust badges)
 - Social media referrers (facebook, instagram, tiktok): trend-focused, social proof messaging
 - Direct visitors: loyalty/returning customer focus
+
+TEMPLATE VARIABLES you may embed in text (resolved by the frontend):
+- {{contact.first_name | default: 'there'}} — visitor's name from CRM or localStorage
+- {{url_param.heading}} — headline from ad URL
+- {{url_param.subheading}} — subheadline from ad URL
+- {{url_param.cta}} — CTA text from ad URL
+- {{url_param.offer}} — offer text from ad URL
+- {{visitor.device}} — mobile or desktop
+- {{visitor.time}} — morning, afternoon, evening, night
+- {{visitor.source}} — google, facebook, instagram, etc.
 
 Return a JSON object with this exact structure:
 
 {
   "theme": {
     "primary": "<hex color>",
-    "bg": "<hex background>",
-    "text": "<hex text>",
+    "bg": "<hex background — always dark like #0a0a0a or #000000>",
+    "text": "<hex text — always #ffffff or light>",
     "font": "<font family>"
   },
   "sections": [
     {
       "type": "HERO",
       "props": {
-        "title": "<personalized headline>",
+        "title": "<personalized headline or template variable>",
         "subtitle": "<personalized subheadline>",
         "cta": "<personalized button text>",
-        "image": "<unsplash URL>"
+        "image": "<unsplash URL>",
+        "badge": "<optional badge text like 'Limited Offer' or 'Welcome Back'>"
       }
     },
     {
       "type": "FEATURES",
       "props": {
         "title": "<section heading>",
+        "subtitle": "<optional subtitle>",
         "features": [
           { "icon": "<icon>", "title": "<title>", "desc": "<description>" },
           { "icon": "<icon>", "title": "<title>", "desc": "<description>" },
@@ -1456,20 +1473,39 @@ Return a JSON object with this exact structure:
       }
     },
     {
+      "type": "TESTIMONIALS",
+      "props": {
+        "title": "What Our Clients Say",
+        "testimonials": [
+          { "name": "<name>", "role": "<role>", "quote": "<testimonial>", "stars": 5 },
+          { "name": "<name>", "role": "<role>", "quote": "<testimonial>", "stars": 5 },
+          { "name": "<name>", "role": "<role>", "quote": "<testimonial>", "stars": 5 }
+        ]
+      }
+    },
+    {
       "type": "BOOKING",
       "props": {
-        "title": "<form heading>",
-        "formId": "<unique id>"
+        "title": "<form heading like 'Book Your Session'>"
+      }
+    },
+    {
+      "type": "CTA",
+      "props": {
+        "title": "<final call to action>",
+        "subtitle": "<urgency message>",
+        "cta": "<button text>"
       }
     }
   ]
 }
 
 Rules:
-- Always return exactly 3 sections: HERO, FEATURES, BOOKING
+- Always return exactly 5 sections: HERO, FEATURES, TESTIMONIALS, BOOKING, CTA
 - icon must be one of: ShieldCheck, Clock, Sparkles, Star, Dumbbell, Heart, Zap, Trophy, CheckCircle2
 - Use real Unsplash image URLs. Format: https://images.unsplash.com/photo-XXXXX?q=80&w=2070&auto=format&fit=crop
-- font: "Playfair Display" for luxury/elegant, "Inter" for modern/clean
+- font: "Playfair Display" for luxury/elegant, "Inter" for modern/clean, "Oswald" for bold/fitness
+- bg must always be dark (#0a0a0a, #000000, #050510, #111111). text must always be light (#ffffff, #f0f0f0).
 - Make the copy feel personally tailored to this specific visitor
 - Return ONLY the JSON object, no markdown, no code fences.`;
 
@@ -1479,6 +1515,8 @@ Rules:
     timeOfDay: z.enum(["morning", "afternoon", "evening", "night"]).optional().default("afternoon"),
     hour: z.number().int().min(0).max(23).optional().default(12),
     language: z.string().max(10).optional().default("en-US"),
+    contactName: z.string().max(100).optional(),
+    heading: z.string().max(500).optional(),
   });
 
   app.post("/api/generate-liquid-site", asyncHandler(async (req, res) => {
@@ -1489,15 +1527,18 @@ Rules:
     const parsed = liquidSiteSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-    const { device, referrer, timeOfDay, hour, language } = parsed.data;
+    const { device, referrer, timeOfDay, hour, language, contactName, heading } = parsed.data;
 
-    const visitorDescription = `Visitor context:
+    let visitorDescription = `Visitor context:
 - Device: ${device || "desktop"}
 - Came from: ${referrer || "direct"}  
 - Time of day: ${timeOfDay || "afternoon"} (${hour ?? 12}:00)
-- Language: ${language || "en-US"}
+- Language: ${language || "en-US"}`;
 
-Generate a personalized premium wellness/beauty service landing page for this specific visitor.`;
+    if (contactName) visitorDescription += `\n- Returning visitor name: ${contactName} (greet them personally!)`;
+    if (heading) visitorDescription += `\n- Ad headline override: "${heading}" (use this as the hero title)`;
+
+    visitorDescription += `\n\nGenerate a personalized premium service landing page for this specific visitor. Make it feel tailor-made.`;
 
     const raw = await geminiChat([
       { role: "system", content: LIQUID_SYSTEM_PROMPT },
@@ -1525,6 +1566,31 @@ Generate a personalized premium wellness/beauty service landing page for this sp
     await logUsageInternal(null, "AI_CHAT", 1, "God mode site generation");
 
     res.json(siteData);
+  }));
+
+  app.post("/api/liquid/contact-lookup", express.json(), asyncHandler(async (req, res) => {
+    const { subAccountId, email, phone } = req.body;
+    const accountId = parseInt(subAccountId);
+    if (!accountId) return res.json({ contact: null });
+
+    try {
+      const allContacts = await storage.getContacts(accountId);
+      let match = null;
+      if (email) {
+        match = allContacts.find((c: any) => c.email?.toLowerCase() === email.toLowerCase());
+      }
+      if (!match && phone) {
+        const cleanPhone = phone.replace(/\D/g, "");
+        match = allContacts.find((c: any) => c.phone?.replace(/\D/g, "") === cleanPhone);
+      }
+      if (match) {
+        res.json({ contact: { firstName: match.firstName, lastName: match.lastName, email: match.email, phone: match.phone, tags: match.tags } });
+      } else {
+        res.json({ contact: null });
+      }
+    } catch {
+      res.json({ contact: null });
+    }
   }));
 
   // ---- AI Ad Campaign Generator ----

@@ -1,0 +1,55 @@
+To fully set up the Liquid Website protocol within Apex OS, you need to transition from "static design" to "dynamic architecture". You aren't just building a page; you are creating a system that adapts to the data payload of the visitor.
+
+Here is the exact structural setup to get the engine running:
+
+1. Domain & Infrastructure Mapping
+
+Go to Settings > Domains in your Apex dashboard.
+
+Connect your custom URL (e.g., agency.yourdomain.com).
+
+Apex will provide the A-record and CNAME values. Update these at your registrar (Cloudflare, GoDaddy, etc.).
+
+Once the "Verified" green check appears, the Site Architect can now deploy live code to that URL.
+
+2. Building the "Liquid" Components
+
+Open the Site Architect module and select "Create New Site."
+
+The Hero Section: Instead of hardcoding a headline like "Best Lawyer in Miami," use Custom Values.
+
+In the text editor, type: {{contact.first_name | default: 'Welcome'}} to Apex OS.
+
+The Logic: If the visitor is an existing lead in your CRM, the site will physically display their name the moment they land. If they are a stranger, it defaults to "Welcome."
+
+3. Setting Up Parameter Injection (The "Shape-Shifting" Engine)
+
+To make the site "Liquid," it needs to read the incoming URL from your ads.
+
+In the Page Settings, enable "URL Parameter Tracking."
+
+Dynamic Headlines: Use the syntax {{url_param.heading}}.
+
+The Execution: If you run a Google Ad for "Real Estate Automation," your ad link should be yourdomain.com?heading=Real+Estate+Automation.
+
+The site will automatically swap the main headline to match the user's exact search intent, boosting your conversion rate by making the site feel tailor-made for them.
+
+4. Hardwiring the Form Tripwires
+
+Inside the Site Architect, drag in a Form element.
+
+Select the form you built in the Form Builder.
+
+Ensure "Sticky Contact" is turned ON. This allows the Liquid site to remember the user across multiple visits without them having to re-type their info.
+
+Set the Button Action to "Go to Next Step" or "Open Popup" to keep the user in the conversion loop.
+
+5. Testing the Telemetry
+
+Open your site in an Incognito Window.
+
+Fill out the form with a test email.
+
+Immediately check your Unified Inbox and Pipeline.
+
+If the contact appears with the correct "Site Lead" tag and the Workflow triggers your SMS, the link is live.
