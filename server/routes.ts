@@ -5058,7 +5058,6 @@ Rules:
     res.status(200).json({ status: "Active", message: "Geofence payload secured. Resolving identity." });
 
     const identityApiKey = process.env.IDENTITY_API_KEY;
-    const identityApiUrl = process.env.IDENTITY_API_URL || "https://api.versium.com/v2/contact";
     const apexCrmUrl = process.env.APEX_CRM_URL;
     const apexApiKey = process.env.APEX_API_KEY;
 
@@ -5067,46 +5066,74 @@ Rules:
     let phoneNumber: string | null = null;
     let email: string | null = null;
 
-    if (identityApiKey) {
-      try {
-        console.log(`SENTINEL INGEST: Querying Versium REACH for MAID ${maid}`);
+    const ingestPhone = typeof req.body.phone === "string" ? req.body.phone.trim() : null;
+    const ingestEmail = typeof req.body.email === "string" ? req.body.email.trim() : null;
+    const ingestName = typeof req.body.name === "string" ? req.body.name.trim() : null;
 
-        const versiumUrl = `${identityApiUrl}?maid=${encodeURIComponent(maid)}&output[]=phone&output[]=email&output[]=address`;
-        const brokerRes = await fetch(versiumUrl, {
+    if (identityApiKey && (ingestPhone || ingestEmail || ingestName)) {
+      try {
+        const params = new URLSearchParams({ pretty: "true" });
+        if (ingestPhone) params.append("phone", ingestPhone);
+        if (ingestEmail) params.append("email", ingestEmail);
+        if (ingestName) {
+          const nameParts = ingestName.split(" ");
+          params.append("first_name", nameParts[0]);
+          if (nameParts.length > 1) params.append("last_name", nameParts.slice(1).join(" "));
+        }
+
+        console.log(`SENTINEL INGEST: Enriching via People Data Labs — phone: ${ingestPhone || "n/a"}, email: ${ingestEmail || "n/a"}`);
+
+        const pdlUrl = `https://api.peopledatalabs.com/v5/person/enrich?${params.toString()}`;
+        const brokerRes = await fetch(pdlUrl, {
           method: "GET",
           headers: {
-            "x-versium-api-key": identityApiKey,
+            "X-Api-Key": identityApiKey,
             "Accept": "application/json",
           },
         });
 
         if (brokerRes.ok) {
-          const versiumData = await brokerRes.json() as any;
-          console.log(`SENTINEL INGEST: Versium raw response — matches: ${versiumData?.versium?.num_matches || 0}, results: ${versiumData?.versium?.num_results || 0}`);
+          const pdlData = await brokerRes.json() as any;
+          console.log(`SENTINEL INGEST: PDL response — status: ${pdlData?.status}, likelihood: ${pdlData?.likelihood || 0}`);
 
-          const results = versiumData?.versium?.results || [];
-          if (results.length > 0) {
-            const match = results[0];
-            firstName = match.First || match.first || match.First_Name || match.first_name || "Unknown";
-            lastName = match.Last || match.last || match.Last_Name || match.last_name || "";
-            phoneNumber = match.Phone || match.phone || match.Mobile_Phone || match.mobile_phone || match.Phone_Number || null;
-            email = match.Email || match.email || match.Email_Address || match.email_address || null;
-            const address = match.Address || match.address || "";
-            const city = match.City || match.city || "";
-            const state = match.State || match.state || "";
-            console.log(`SENTINEL INGEST: Versium resolved — ${firstName} ${lastName}, phone: ${phoneNumber || "none"}, email: ${email || "none"}, location: ${city} ${state}`);
+          if (pdlData?.status === 200 && pdlData?.data) {
+            const person = pdlData.data;
+            firstName = person.first_name || ingestName?.split(" ")[0] || "Unknown";
+            lastName = person.last_name || "";
+            phoneNumber = person.mobile_phone || (person.phone_numbers && person.phone_numbers[0]) || ingestPhone || null;
+            email = person.work_email || (person.personal_emails && person.personal_emails[0]) || ingestEmail || null;
+            const city = person.location_locality || "";
+            const state = person.location_region || "";
+            const company = person.job_company_name || "";
+            console.log(`SENTINEL INGEST: PDL enriched — ${firstName} ${lastName}, phone: ${phoneNumber || "none"}, email: ${email || "none"}, location: ${city} ${state}, company: ${company}`);
           } else {
-            console.log(`SENTINEL INGEST: Versium returned 0 matches for MAID ${maid} (device not in their graph)`);
+            firstName = ingestName?.split(" ")[0] || "Unknown";
+            lastName = ingestName?.split(" ").slice(1).join(" ") || "";
+            phoneNumber = ingestPhone;
+            email = ingestEmail;
+            console.log(`SENTINEL INGEST: PDL no match — using raw data: ${firstName}, phone: ${phoneNumber || "none"}`);
           }
         } else {
+          firstName = ingestName?.split(" ")[0] || "Unknown";
+          lastName = ingestName?.split(" ").slice(1).join(" ") || "";
+          phoneNumber = ingestPhone;
+          email = ingestEmail;
           const errText = await brokerRes.text();
-          console.warn(`SENTINEL INGEST: Versium returned ${brokerRes.status}: ${errText.substring(0, 300)}`);
+          console.warn(`SENTINEL INGEST: PDL returned ${brokerRes.status}: ${errText.substring(0, 300)} — using raw data`);
         }
       } catch (err: any) {
-        console.error(`SENTINEL INGEST: Versium API failed — ${err.message}`);
+        phoneNumber = ingestPhone;
+        email = ingestEmail;
+        console.error(`SENTINEL INGEST: PDL API failed — ${err.message} — using raw data`);
       }
+    } else if (ingestPhone || ingestEmail || ingestName) {
+      firstName = ingestName?.split(" ")[0] || "Unknown";
+      lastName = ingestName?.split(" ").slice(1).join(" ") || "";
+      phoneNumber = ingestPhone;
+      email = ingestEmail;
+      console.log(`SENTINEL INGEST: No PDL key — using raw data: ${firstName}, phone: ${phoneNumber || "none"}`);
     } else {
-      console.log("SENTINEL INGEST: No IDENTITY_API_KEY configured, storing MAID as raw lead");
+      console.log(`SENTINEL INGEST: MAID-only payload — stored as raw lead (MAID: ${maid})`);
     }
 
     try {
