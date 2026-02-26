@@ -18,7 +18,7 @@ interface GeminiOptions {
 }
 
 function prepareRequest(messages: ChatMessage[], options: GeminiOptions = {}) {
-  const { temperature = 0.7, maxTokens = 1500, jsonMode = false } = options;
+  const { temperature = 0.7, maxTokens = 4096, jsonMode = false } = options;
 
   let systemInstruction: string | undefined;
   const contents: { role: string; parts: { text: string }[] }[] = [];

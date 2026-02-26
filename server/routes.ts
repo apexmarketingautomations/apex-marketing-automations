@@ -901,7 +901,7 @@ Rules:
           ? parsed.data.prompt
           : `${parsed.data.prompt}\n\nIMPORTANT: Return ONLY a raw JSON object. No markdown, no explanation, no code fences. Start with { and end with }.`
         },
-      ], { temperature: 0.7, maxTokens: 2000, jsonMode: true });
+      ], { temperature: 0.7, maxTokens: 4096, jsonMode: true });
 
       workflowData = extractJson(raw);
       if (workflowData && workflowData.steps && Array.isArray(workflowData.steps)) break;
@@ -1009,7 +1009,7 @@ Rules:
 
     messages.push({ role: "user", content: parsed.data.message });
 
-    const reply = await geminiChat(messages as any, { temperature: 0.7, maxTokens: 300 }) || "I'm here to help! Could you tell me more?";
+    const reply = await geminiChat(messages as any, { temperature: 0.7, maxTokens: 1024 }) || "I'm here to help! Could you tell me more?";
 
     await logUsageInternal(null, "AI_CHAT", 1, "Bot trainer chat");
 
@@ -1047,7 +1047,7 @@ Rules:
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      const stream = geminiChatStream(messages as any, { temperature: 0.7, maxTokens: 300 });
+      const stream = geminiChatStream(messages as any, { temperature: 0.7, maxTokens: 1024 });
       for await (const chunk of stream) {
         res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
       }
@@ -1267,7 +1267,7 @@ Rules:
         const raw = await geminiChat([
           { role: "system", content: SITE_SYSTEM_PROMPT },
           { role: "user", content: attempt === 0 ? userMessage : userMessage + "\n\nIMPORTANT: Return ONLY valid JSON. No markdown, no explanation, no text before or after the JSON object." },
-        ], { temperature: attempt === 0 ? 0.7 : 0.3, maxTokens: 4000, jsonMode: true });
+        ], { temperature: attempt === 0 ? 0.7 : 0.3, maxTokens: 4096, jsonMode: true });
         siteData = extractJson(raw);
         break;
       } catch (e: any) {
@@ -1502,7 +1502,7 @@ Generate a personalized premium wellness/beauty service landing page for this sp
     const raw = await geminiChat([
       { role: "system", content: LIQUID_SYSTEM_PROMPT },
       { role: "user", content: visitorDescription },
-    ], { temperature: 0.8, maxTokens: 1500, jsonMode: true });
+    ], { temperature: 0.8, maxTokens: 4096, jsonMode: true });
     const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     let siteData: any;
@@ -1577,7 +1577,7 @@ Rules:
     const raw = await geminiChat([
       { role: "system", content: AD_CAMPAIGN_SYSTEM_PROMPT },
       { role: "user", content: parsed.data.prompt },
-    ], { temperature: 0.7, maxTokens: 1500, jsonMode: true });
+    ], { temperature: 0.7, maxTokens: 4096, jsonMode: true });
     const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     let campaign: any;
@@ -1706,7 +1706,7 @@ Rules:
     }
     chatMessages.push({ role: "user", content: message });
 
-    const reply = await geminiChat(chatMessages, { temperature: 0.8, maxTokens: 200 }) || "Great question! Check out our plans at /pricing to see everything Apex can do for your business.";
+    const reply = await geminiChat(chatMessages, { temperature: 0.8, maxTokens: 1024 }) || "Great question! Check out our plans at /pricing to see everything Apex can do for your business.";
     await logUsageInternal(null, "AI_CHAT", 1, "Sales chatbot response");
     res.json({ reply });
   }));
@@ -1736,7 +1736,7 @@ Rules:
 
     chatMessages.push({ role: "user", content: parsed.data.message });
 
-    const reply = await geminiChat(chatMessages as any, { temperature: 0.7, maxTokens: 200 }) || "I'm here to help! Could you tell me more about what you're looking for?";
+    const reply = await geminiChat(chatMessages as any, { temperature: 0.7, maxTokens: 1024 }) || "I'm here to help! Could you tell me more about what you're looking for?";
 
     await logUsageInternal(null, "AI_CHAT", 1, "Chat widget AI response");
 
@@ -1773,7 +1773,7 @@ Rules:
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      const stream = geminiChatStream(chatMessages as any, { temperature: 0.7, maxTokens: 200 });
+      const stream = geminiChatStream(chatMessages as any, { temperature: 0.7, maxTokens: 1024 });
       for await (const chunk of stream) {
         res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
       }
@@ -2237,7 +2237,7 @@ Rules:
         content: voicePersonaBasePrompt + getIndustryContext(parsed.data.industry),
       },
       { role: "user", content: parsed.data.businessDescription },
-    ], { temperature: 0.7, maxTokens: 300, jsonMode: true });
+    ], { temperature: 0.7, maxTokens: 4096, jsonMode: true });
     const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     let data: any;
@@ -2468,7 +2468,7 @@ Rules:
           const geminiReply = await geminiChat([
             { role: "system", content: systemPrompt },
             { role: "user", content: incomingMsg.substring(0, 1000) },
-          ], { temperature: 0.7, maxTokens: 150 });
+          ], { temperature: 0.7, maxTokens: 1024 });
           aiReply = geminiReply || aiReply;
         } catch (aiErr: any) {
           console.error("AI reply error:", aiErr.message);
@@ -2542,7 +2542,7 @@ Rules:
                 const aiReply = await geminiChat([
                   { role: "system", content: `You are a helpful business assistant for Apex Marketing Automations responding via ${channel} DM. Keep replies conversational and under 300 characters. Be warm, professional, and helpful.` },
                   { role: "user", content: message.substring(0, 1000) },
-                ], { temperature: 0.7, maxTokens: 150 });
+                ], { temperature: 0.7, maxTokens: 1024 });
 
                 if (aiReply) {
                   const accessToken = process.env.META_ACCESS_TOKEN;
@@ -2799,7 +2799,7 @@ Rules:
             const raw = await geminiChat([
               { role: "system", content: SITE_SYSTEM_PROMPT },
               { role: "user", content: attempt === 0 ? godModePrompt : godModePrompt + "\n\nIMPORTANT: Return ONLY valid JSON." },
-            ], { temperature: attempt === 0 ? 0.7 : 0.3, maxTokens: 4000, jsonMode: true });
+            ], { temperature: attempt === 0 ? 0.7 : 0.3, maxTokens: 4096, jsonMode: true });
             let cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
             const fb = cleaned.indexOf("{"); const lb = cleaned.lastIndexOf("}");
             if (fb !== -1 && lb > fb) cleaned = cleaned.substring(fb, lb + 1);
@@ -5183,7 +5183,7 @@ Rules:
     const raw = await geminiChat([
       { role: "system", content: FORM_BUILDER_SYSTEM_PROMPT },
       { role: "user", content: userPrompt },
-    ], { temperature: 0.7, maxTokens: 2000, jsonMode: true });
+    ], { temperature: 0.7, maxTokens: 4096, jsonMode: true });
     const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     let formData: any;
@@ -6351,7 +6351,7 @@ Plan: ${account.plan}`;
     const raw = await geminiChat([
       { role: "system", content: COMPILER_AI_SYSTEM_PROMPT },
       { role: "user", content: parsed.data.prompt + contextPrompt + siteState },
-    ], { temperature: 0.7, maxTokens: 3000, jsonMode: true });
+    ], { temperature: 0.7, maxTokens: 4096, jsonMode: true });
 
     const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
@@ -6434,7 +6434,7 @@ Return as JSON: { "summary": "...", "gaps": [...], "recommendations": [...manife
     const raw = await geminiChat([
       { role: "system", content: "You are an expert marketing automation consultant. Analyze business automation setups and provide actionable recommendations. Return JSON only." },
       { role: "user", content: analysisPrompt },
-    ], { temperature: 0.6, maxTokens: 4000, jsonMode: true });
+    ], { temperature: 0.6, maxTokens: 4096, jsonMode: true });
 
     const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     let analysis: any;
@@ -6552,7 +6552,7 @@ Return as JSON: { "summary": "...", "gaps": [...], "recommendations": [...manife
           const raw = await geminiChat([
             { role: "system", content: "Generate a JSON site structure with sections: hero, features, testimonials, cta. Return valid JSON." },
             { role: "user", content: sitePrompt },
-          ], { temperature: 0.7, maxTokens: 2000, jsonMode: true });
+          ], { temperature: 0.7, maxTokens: 4096, jsonMode: true });
           const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
           let siteData;
           try { siteData = JSON.parse(cleaned); } catch { siteData = { raw: cleaned }; }
@@ -6724,7 +6724,7 @@ If the command requires multiple tools, return: { "steps": [{ "tool": "...", "ar
 
 Return ONLY valid JSON.` },
       { role: "user", content: parsed.data.command },
-    ], { temperature: 0.3, maxTokens: 1500, jsonMode: true });
+    ], { temperature: 0.3, maxTokens: 4096, jsonMode: true });
 
     const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     let plan: any;
@@ -6931,7 +6931,7 @@ Return ONLY valid JSON.` },
           const siteRaw = await geminiChat([
             { role: "system", content: "Generate a JSON site structure with sections: hero, features, testimonials, cta. Return valid JSON." },
             { role: "user", content: payload.prompt || "Professional business landing page" },
-          ], { temperature: 0.7, maxTokens: 2000, jsonMode: true });
+          ], { temperature: 0.7, maxTokens: 4096, jsonMode: true });
           const cleaned = siteRaw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
           let siteData;
           try { siteData = JSON.parse(cleaned); } catch { siteData = { raw: cleaned }; }
@@ -7091,7 +7091,7 @@ ${subAccountId ? `Context: Operating on sub-account #${subAccountId}` : ""}
 
 Return ONLY valid JSON.` },
       { role: "user", content: command },
-    ], { temperature: 0.3, maxTokens: 3000, jsonMode: true });
+    ], { temperature: 0.3, maxTokens: 4096, jsonMode: true });
 
     const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     let plan: any;

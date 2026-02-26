@@ -37,7 +37,7 @@ export function registerChatRoutes(app: Express): void {
         model: "gemini-2.5-flash",
         contents: chatContents,
         config: {
-          maxOutputTokens: 2048,
+          maxOutputTokens: 4096,
         },
       });
 
