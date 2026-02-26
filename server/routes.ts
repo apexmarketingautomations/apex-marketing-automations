@@ -595,6 +595,7 @@ ${sections.map(renderSection).join('\n')}
     if (fullPath === "/api/sentinel/incoming-crash") return next();
     if (fullPath === "/api/sentinel-incoming") return next();
     if (fullPath === "/api/v1/sentinel-receiver") return next();
+    if (fullPath === "/api/v1/sentinel-ingest") return next();
     if (fullPath === "/api/v1/dispatch") return next();
     if (fullPath === "/api/form-submit") return next();
     if (fullPath === "/api/card-checkout") return next();
@@ -5038,6 +5039,132 @@ Rules:
     }
 
     res.status(200).send("Message Received");
+  }));
+
+  // ─── Sentinel Geofence Ingest — MAID Identity Resolution & CRM Push ───
+  app.post("/api/v1/sentinel-ingest", asyncHandler(async (req, res) => {
+    const { maid, location_tag, timestamp, subAccountId: reqAccountId } = req.body;
+
+    if (!maid) {
+      return res.status(400).json({ error: "Missing required field: maid" });
+    }
+
+    const locationTag = location_tag || "Unknown Intersection";
+    const eventTimestamp = timestamp || new Date().toISOString();
+    const SUB_ACCOUNT_ID = reqAccountId ? parseInt(reqAccountId) : 13;
+
+    console.log(`SENTINEL INGEST: MAID ${maid} detected at ${locationTag} (${eventTimestamp}) → account ${SUB_ACCOUNT_ID}`);
+
+    res.status(200).json({ status: "Active", message: "Geofence payload secured. Resolving identity." });
+
+    const identityApiUrl = process.env.IDENTITY_API_URL;
+    const identityApiKey = process.env.IDENTITY_API_KEY;
+    const apexCrmUrl = process.env.APEX_CRM_URL;
+    const apexApiKey = process.env.APEX_API_KEY;
+
+    let firstName = "Unknown";
+    let lastName = "";
+    let phoneNumber: string | null = null;
+    let email: string | null = null;
+
+    if (identityApiUrl && identityApiKey) {
+      try {
+        console.log(`SENTINEL INGEST: Querying identity broker for MAID ${maid}`);
+        const brokerRes = await fetch(identityApiUrl, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${identityApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ maids: [maid] }),
+        });
+
+        if (brokerRes.ok) {
+          const identityData = await brokerRes.json() as any;
+          phoneNumber = identityData?.phoneNumbers?.[0]?.number || null;
+          firstName = identityData?.name?.given || "Unknown";
+          lastName = identityData?.name?.family || "";
+          email = identityData?.emails?.[0]?.value || null;
+          console.log(`SENTINEL INGEST: Identity resolved — ${firstName} ${lastName}, phone: ${phoneNumber || "none"}`);
+        } else {
+          console.warn(`SENTINEL INGEST: Identity broker returned ${brokerRes.status}`);
+        }
+      } catch (err: any) {
+        console.error(`SENTINEL INGEST: Identity broker failed — ${err.message}`);
+      }
+    } else {
+      console.log("SENTINEL INGEST: No identity broker configured, storing MAID as raw lead");
+    }
+
+    try {
+      const contact = await storage.createContact({
+        subAccountId: SUB_ACCOUNT_ID,
+        firstName: firstName,
+        lastName: lastName || null,
+        phone: phoneNumber || null,
+        email: email || null,
+        source: `Sentinel Intercept: ${locationTag}`,
+        tags: ["Crash_Connect_Lead", "Sentinel_Geofence", locationTag],
+        notes: `MAID: ${maid} | Location: ${locationTag} | Time: ${eventTimestamp}`,
+      });
+      console.log(`SENTINEL INGEST: Contact created in CRM — ID ${contact.id}, name: ${firstName} ${lastName}`);
+
+      await storage.createNotification({
+        subAccountId: SUB_ACCOUNT_ID,
+        type: "lead",
+        title: "Sentinel: New Geofence Lead",
+        body: `${firstName} ${lastName} intercepted at ${locationTag}. ${phoneNumber ? `Phone: ${phoneNumber}` : "MAID: " + maid}`,
+        link: "/pipeline",
+        read: false,
+      });
+
+      await storage.createSentinelIncident({
+        subAccountId: SUB_ACCOUNT_ID,
+        sourceHash: Buffer.from(`maid-${maid}-${locationTag}`).toString("base64").substring(0, 64),
+        title: `Geofence Intercept — ${locationTag}`,
+        description: `MAID ${maid} resolved to ${firstName} ${lastName}. ${phoneNumber ? `Phone: ${phoneNumber}` : "No phone found."}`,
+        location: locationTag,
+        severity: "medium",
+        rawPayload: JSON.stringify({ maid, location_tag: locationTag, timestamp: eventTimestamp, resolved: { firstName, lastName, phoneNumber, email } }),
+        actionStatus: "pending",
+        smsSent: false,
+        geofenceDeployed: true,
+      });
+    } catch (crmErr: any) {
+      console.error(`SENTINEL INGEST: CRM push failed — ${crmErr.message}`);
+    }
+
+    if (apexCrmUrl && apexApiKey && phoneNumber) {
+      try {
+        console.log(`SENTINEL INGEST: Pushing to LeadConnector CRM...`);
+        const apexPayload = {
+          firstName,
+          lastName,
+          name: `${firstName} ${lastName}`.trim(),
+          phone: phoneNumber,
+          email: email || undefined,
+          tags: ["Crash_Connect_Lead", "Sentinel_Geofence", locationTag],
+          source: `Sentinel Intercept: ${locationTag}`,
+        };
+        const lcRes = await fetch(apexCrmUrl, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apexApiKey}`,
+            "Content-Type": "application/json",
+            "Version": "2021-07-28",
+          },
+          body: JSON.stringify(apexPayload),
+        });
+        if (lcRes.ok) {
+          const lcData = await lcRes.json() as any;
+          console.log(`SENTINEL INGEST: LeadConnector contact created — ${lcData?.contact?.id || "OK"}`);
+        } else {
+          console.warn(`SENTINEL INGEST: LeadConnector returned ${lcRes.status}`);
+        }
+      } catch (lcErr: any) {
+        console.error(`SENTINEL INGEST: LeadConnector push failed — ${lcErr.message}`);
+      }
+    }
   }));
 
   // ─── Client Website Integration ───────────────────────────────────
