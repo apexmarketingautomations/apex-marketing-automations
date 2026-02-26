@@ -143,7 +143,7 @@ function FeatureSection({ title, subtitle, features, theme }: any) {
   return (
     <div
       className="py-20 px-6 md:px-12"
-      style={{ backgroundColor: theme.primary + '05', color: theme.text }}
+      style={{ backgroundColor: theme.bg, color: theme.text }}
     >
       <div className="max-w-6xl mx-auto">
         <h2
@@ -152,7 +152,7 @@ function FeatureSection({ title, subtitle, features, theme }: any) {
         >
           {title}
         </h2>
-        {subtitle && <p className="text-center opacity-60 mb-14 max-w-2xl mx-auto">{subtitle}</p>}
+        {subtitle && <p className="text-center opacity-80 mb-14 max-w-2xl mx-auto font-medium">{subtitle}</p>}
         {!subtitle && <div className="mb-14" />}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {(features || []).map((f: any, i: number) => {
@@ -160,8 +160,8 @@ function FeatureSection({ title, subtitle, features, theme }: any) {
             return (
               <div
                 key={i}
-                className="group p-8 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 transition-all duration-300 hover:border-current/20 hover:-translate-y-1 hover:shadow-xl"
-                style={{ '--tw-shadow-color': theme.primary + '15' } as any}
+                className="group p-8 rounded-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+                style={{ '--tw-shadow-color': theme.primary + '15', border: `1px solid ${theme.text}15`, backgroundColor: theme.text + '08' } as any}
               >
                 <div
                   className="w-14 h-14 rounded-xl flex items-center justify-center mb-5 group-hover:scale-110 transition-transform"
@@ -173,7 +173,7 @@ function FeatureSection({ title, subtitle, features, theme }: any) {
                   <IconComponent size={26} />
                 </div>
                 <h3 className="text-xl font-bold mb-3">{f.title}</h3>
-                <p className="text-sm opacity-60 leading-relaxed">{f.desc}</p>
+                <p className="text-sm opacity-80 leading-relaxed font-normal">{f.desc}</p>
               </div>
             );
           })}
@@ -189,17 +189,19 @@ function BookingSection({ title, theme }: any) {
       className="py-20 px-6 text-center"
       style={{ backgroundColor: theme.bg, color: theme.text }}
     >
-      <div className="max-w-md mx-auto p-8 rounded-2xl border border-white/10 bg-black/20 backdrop-blur-sm">
+      <div className="max-w-md mx-auto p-8 rounded-2xl backdrop-blur-sm" style={{ border: `1px solid ${theme.text}15`, backgroundColor: theme.text + '08' }}>
         <h2 className="text-2xl font-bold mb-6">{title}</h2>
         <div className="space-y-4">
           <Input
             placeholder="Full Name"
-            className="bg-white/10 border-white/20"
+            className="border-current/20 bg-current/5"
+            style={{ borderColor: theme.text + '20', backgroundColor: theme.text + '10' }}
             data-testid="input-preview-name"
           />
           <Input
             placeholder="Email Address"
-            className="bg-white/10 border-white/20"
+            className="border-current/20 bg-current/5"
+            style={{ borderColor: theme.text + '20', backgroundColor: theme.text + '10' }}
             data-testid="input-preview-email"
           />
           <Button
@@ -267,14 +269,12 @@ function PaywallSection({ title, tiers, theme }: any) {
             return (
               <div
                 key={i}
-                className={`relative rounded-2xl p-6 border transition-all hover:scale-[1.02] ${
-                  isPopular
-                    ? "border-2 shadow-lg shadow-current/10"
-                    : "border-white/10"
+                className={`relative rounded-2xl p-6 transition-all hover:scale-[1.02] ${
+                  isPopular ? "shadow-lg" : ""
                 }`}
                 style={{
-                  borderColor: isPopular ? theme.primary : undefined,
-                  backgroundColor: isPopular ? theme.primary + "08" : "rgba(255,255,255,0.03)",
+                  border: isPopular ? `2px solid ${theme.primary}` : `1px solid ${theme.text}15`,
+                  backgroundColor: isPopular ? theme.primary + "08" : theme.text + "05",
                 }}
                 data-testid={`paywall-tier-${i}`}
               >
@@ -412,7 +412,7 @@ function TestimonialsSection({ title, subtitle, testimonials, theme }: any) {
         {subtitle && <p className="text-center opacity-60 mb-12 max-w-2xl mx-auto">{subtitle}</p>}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {(testimonials || []).map((t: any, i: number) => (
-            <div key={i} className="p-6 rounded-2xl border border-white/10 bg-white/5 relative">
+            <div key={i} className="p-6 rounded-2xl relative" style={{ border: `1px solid ${theme.text}15`, backgroundColor: theme.text + '08' }}>
               <div className="text-4xl opacity-20 absolute top-4 right-4" style={{ color: theme.primary }}>"</div>
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold" style={{ backgroundColor: theme.primary + '30', color: theme.primary }}>
@@ -439,7 +439,7 @@ function TestimonialsSection({ title, subtitle, testimonials, theme }: any) {
 
 function StatsSection({ title, stats, theme }: any) {
   return (
-    <div className="py-16 px-6" style={{ backgroundColor: theme.primary + '08', color: theme.text }}>
+    <div className="py-16 px-6" style={{ backgroundColor: theme.bg, color: theme.text }}>
       <div className="max-w-6xl mx-auto">
         {title && <h2 className="text-2xl font-bold text-center mb-10" style={{ fontFamily: theme.font }}>{title}</h2>}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
@@ -474,7 +474,7 @@ function AboutSection({ title, text, image, stats, theme }: any) {
           )}
         </div>
         {image && (
-          <div className="rounded-2xl overflow-hidden border border-white/10 aspect-square">
+          <div className="rounded-2xl overflow-hidden aspect-square" style={{ border: `1px solid ${theme.text}15` }}>
             <img src={image} alt="" className="w-full h-full object-cover" />
           </div>
         )}
@@ -485,7 +485,7 @@ function AboutSection({ title, text, image, stats, theme }: any) {
 
 function CtaSection({ title, subtitle, cta, theme }: any) {
   return (
-    <div className="py-20 px-6" style={{ background: `linear-gradient(135deg, ${theme.primary}15, ${theme.primary}05)`, color: theme.text }}>
+    <div className="py-20 px-6" style={{ backgroundColor: theme.bg, color: theme.text }}>
       <div className="max-w-3xl mx-auto text-center">
         <h2 className="text-3xl md:text-5xl font-bold mb-4" style={{ fontFamily: theme.font }}>{title}</h2>
         {subtitle && <p className="text-lg opacity-70 mb-8 max-w-xl mx-auto">{subtitle}</p>}
@@ -505,13 +505,13 @@ function FaqSection({ title, faqs, theme }: any) {
         <h2 className="text-3xl md:text-4xl font-bold text-center mb-12" style={{ fontFamily: theme.font }}>{title}</h2>
         <div className="space-y-3">
           {(faqs || []).map((faq: any, i: number) => (
-            <div key={i} className="border border-white/10 rounded-xl overflow-hidden">
-              <button className="w-full p-5 text-left flex items-center justify-between hover:bg-white/5 transition-colors" onClick={() => setOpenIndex(openIndex === i ? null : i)}>
+            <div key={i} className="rounded-xl overflow-hidden" style={{ border: `1px solid ${theme.text}15` }}>
+              <button className="w-full p-5 text-left flex items-center justify-between transition-colors" style={{ backgroundColor: 'transparent' }} onMouseEnter={e => e.currentTarget.style.backgroundColor = theme.text + '08'} onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'} onClick={() => setOpenIndex(openIndex === i ? null : i)}>
                 <span className="font-semibold pr-4">{faq.q}</span>
-                {openIndex === i ? <ChevronUp size={18} style={{ color: theme.primary }} /> : <ChevronDown size={18} className="opacity-50" />}
+                {openIndex === i ? <ChevronUp size={18} style={{ color: theme.primary }} /> : <ChevronDown size={18} style={{ opacity: 0.5 }} />}
               </button>
               {openIndex === i && (
-                <div className="px-5 pb-5 text-sm opacity-70 leading-relaxed border-t border-white/5 pt-4">{faq.a}</div>
+                <div className="px-5 pb-5 text-sm opacity-80 leading-relaxed pt-4" style={{ borderTop: `1px solid ${theme.text}10` }}>{faq.a}</div>
               )}
             </div>
           ))}
@@ -531,7 +531,7 @@ function PricingSection({ title, subtitle, plans, theme }: any) {
           {(plans || []).map((plan: any, i: number) => {
             const featured = plan.featured || i === 1;
             return (
-              <div key={i} className={`rounded-2xl p-8 border transition-all hover:scale-[1.02] relative ${featured ? 'border-2 shadow-2xl' : 'border-white/10'}`} style={{ borderColor: featured ? theme.primary : undefined, backgroundColor: featured ? theme.primary + '08' : 'rgba(255,255,255,0.03)' }}>
+              <div key={i} className={`rounded-2xl p-8 transition-all hover:scale-[1.02] relative ${featured ? 'shadow-2xl' : ''}`} style={{ border: featured ? `2px solid ${theme.primary}` : `1px solid ${theme.text}15`, backgroundColor: featured ? theme.primary + '08' : theme.text + '05' }}>
                 {featured && <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full text-xs font-bold" style={{ backgroundColor: theme.primary, color: theme.bg }}>RECOMMENDED</div>}
                 <h3 className="text-xl font-bold mb-1">{plan.name}</h3>
                 <p className="text-xs opacity-50 mb-4">{plan.description}</p>
@@ -575,7 +575,7 @@ function TeamSection({ title, subtitle, members, theme }: any) {
 
 function LogoBarSection({ title, logos, theme }: any) {
   return (
-    <div className="py-12 px-6" style={{ backgroundColor: theme.primary + '05', color: theme.text }}>
+    <div className="py-12 px-6" style={{ backgroundColor: theme.bg, color: theme.text }}>
       <div className="max-w-6xl mx-auto">
         {title && <p className="text-center text-xs uppercase tracking-widest opacity-40 mb-8">{title}</p>}
         <div className="flex flex-wrap items-center justify-center gap-8 md:gap-12">
@@ -627,15 +627,15 @@ function ContactSection({ title, subtitle, fields, theme }: any) {
             <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: theme.primary + '20' }}><MapPin size={18} style={{ color: theme.primary }} /></div><div><p className="text-xs opacity-50">Location</p><p className="font-semibold text-sm">123 Main St, Your City</p></div></div>
           </div>
         </div>
-        <div className="p-8 rounded-2xl border border-white/10 bg-white/5">
+        <div className="p-8 rounded-2xl" style={{ border: `1px solid ${theme.text}15`, backgroundColor: theme.text + '08' }}>
           <div className="space-y-4">
             {(fields || ['Name', 'Email', 'Phone', 'Message']).map((field: string, i: number) => (
               <div key={i}>
-                <label className="text-xs opacity-50 block mb-1">{field}</label>
+                <label className="text-xs opacity-60 block mb-1">{field}</label>
                 {field === 'Message' ? (
-                  <textarea className="w-full bg-white/10 border border-white/20 rounded-lg p-3 text-sm resize-none h-24 focus:outline-none focus:border-current" style={{ borderColor: theme.primary + '50' }} placeholder={`Your ${field.toLowerCase()}...`} />
+                  <textarea className="w-full rounded-lg p-3 text-sm resize-none h-24 focus:outline-none" style={{ borderColor: theme.text + '20', backgroundColor: theme.text + '10', border: `1px solid ${theme.text}20`, color: theme.text }} placeholder={`Your ${field.toLowerCase()}...`} />
                 ) : (
-                  <Input className="bg-white/10 border-white/20" placeholder={`Your ${field.toLowerCase()}...`} data-testid={`input-contact-${field.toLowerCase()}`} />
+                  <Input style={{ borderColor: theme.text + '20', backgroundColor: theme.text + '10' }} placeholder={`Your ${field.toLowerCase()}...`} data-testid={`input-contact-${field.toLowerCase()}`} />
                 )}
               </div>
             ))}
@@ -653,7 +653,7 @@ function VideoSection({ title, subtitle, videoUrl, theme }: any) {
       <div className="max-w-4xl mx-auto text-center">
         <h2 className="text-3xl md:text-4xl font-bold mb-3" style={{ fontFamily: theme.font }}>{title}</h2>
         {subtitle && <p className="opacity-60 mb-10 max-w-2xl mx-auto">{subtitle}</p>}
-        <div className="aspect-video rounded-2xl overflow-hidden border border-white/10 bg-black/50 flex items-center justify-center relative group cursor-pointer">
+        <div className="aspect-video rounded-2xl overflow-hidden flex items-center justify-center relative group cursor-pointer" style={{ border: `1px solid ${theme.text}15`, backgroundColor: theme.text + '08' }}>
           {videoUrl ? (
             <iframe src={videoUrl} className="w-full h-full" allow="autoplay; encrypted-media" allowFullScreen />
           ) : (
@@ -696,7 +696,7 @@ function ComparisonSection({ title, subtitle, headers, rows, theme }: any) {
       <div className="max-w-4xl mx-auto">
         <h2 className="text-3xl md:text-4xl font-bold text-center mb-3" style={{ fontFamily: theme.font }}>{title}</h2>
         {subtitle && <p className="text-center opacity-60 mb-10">{subtitle}</p>}
-        <div className="overflow-x-auto rounded-2xl border border-white/10">
+        <div className="overflow-x-auto rounded-2xl" style={{ border: `1px solid ${theme.text}15` }}>
           <table className="w-full text-sm">
             <thead>
               <tr style={{ backgroundColor: theme.primary + '15' }}>
@@ -707,7 +707,7 @@ function ComparisonSection({ title, subtitle, headers, rows, theme }: any) {
             </thead>
             <tbody>
               {(rows || []).map((row: any, i: number) => (
-                <tr key={i} className="border-t border-white/5 hover:bg-white/5">
+                <tr key={i} style={{ borderTop: `1px solid ${theme.text}10` }}>
                   {(row.cells || []).map((cell: string, j: number) => (
                     <td key={j} className={`p-4 ${j === 0 ? 'font-medium' : 'text-center'}`}>
                       {cell === '✓' ? <CheckCircle2 size={18} className="mx-auto" style={{ color: theme.primary }} /> : cell === '✗' ? <span className="opacity-30">—</span> : cell}
@@ -725,7 +725,7 @@ function ComparisonSection({ title, subtitle, headers, rows, theme }: any) {
 
 function ProcessStepsSection({ title, subtitle, steps, theme }: any) {
   return (
-    <div className="py-20 px-6 md:px-12" style={{ backgroundColor: theme.primary + '05', color: theme.text }}>
+    <div className="py-20 px-6 md:px-12" style={{ backgroundColor: theme.bg, color: theme.text }}>
       <div className="max-w-6xl mx-auto">
         <h2 className="text-3xl md:text-4xl font-bold text-center mb-3" style={{ fontFamily: theme.font }}>{title}</h2>
         {subtitle && <p className="text-center opacity-60 mb-14 max-w-2xl mx-auto">{subtitle}</p>}
@@ -809,7 +809,7 @@ function QrCodeSection({ title, subtitle, qrValue, qrLabel, cta, theme }: any) {
               <a
                 href={qrApiUrl.replace('format=svg', 'format=png') + '&size=1000x1000'}
                 download="qr-code.png"
-                className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border text-sm font-semibold hover:bg-white/5 transition-colors"
+                className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border text-sm font-semibold transition-colors"
                 style={{ borderColor: theme.text + '20' }}
                 data-testid="button-download-png"
               >
@@ -818,7 +818,7 @@ function QrCodeSection({ title, subtitle, qrValue, qrLabel, cta, theme }: any) {
               <a
                 href={qrApiUrl}
                 download="qr-code.svg"
-                className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border text-sm font-semibold hover:bg-white/5 transition-colors"
+                className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border text-sm font-semibold transition-colors"
                 style={{ borderColor: theme.text + '20' }}
                 data-testid="button-download-svg"
               >
@@ -1843,12 +1843,12 @@ export default function SiteBuilder() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5 }}
-              className={`bg-white shadow-[0_0_50px_-12px_rgba(0,0,0,0.5)] overflow-hidden transition-all duration-500 ease-in-out ${
+              className={`shadow-[0_0_50px_-12px_rgba(0,0,0,0.5)] overflow-hidden transition-all duration-500 ease-in-out ${
                 viewMode === "mobile"
                   ? "w-[375px] rounded-[30px] border-[8px] border-neutral-900"
                   : "w-full max-w-5xl rounded-lg border-[8px] border-neutral-900"
               }`}
-              style={{ minHeight: "800px" }}
+              style={{ minHeight: "800px", backgroundColor: siteData.theme?.bg || "#0a0a0a" }}
               data-testid="preview-canvas"
             >
               {siteData.sections.map((section: any, i: number) => {
