@@ -5057,8 +5057,8 @@ Rules:
 
     res.status(200).json({ status: "Active", message: "Geofence payload secured. Resolving identity." });
 
-    const identityApiUrl = process.env.IDENTITY_API_URL;
     const identityApiKey = process.env.IDENTITY_API_KEY;
+    const identityApiUrl = process.env.IDENTITY_API_URL || "https://api.versium.com/v2/contact";
     const apexCrmUrl = process.env.APEX_CRM_URL;
     const apexApiKey = process.env.APEX_API_KEY;
 
@@ -5067,33 +5067,41 @@ Rules:
     let phoneNumber: string | null = null;
     let email: string | null = null;
 
-    if (identityApiUrl && identityApiKey) {
+    if (identityApiKey) {
       try {
-        console.log(`SENTINEL INGEST: Querying identity broker for MAID ${maid}`);
-        const brokerRes = await fetch(identityApiUrl, {
-          method: "POST",
+        console.log(`SENTINEL INGEST: Querying Versium for MAID ${maid}`);
+
+        const versiumUrl = `${identityApiUrl}?maid=${encodeURIComponent(maid)}&output[]=phone&output[]=email&output[]=name`;
+        const brokerRes = await fetch(versiumUrl, {
+          method: "GET",
           headers: {
-            "Authorization": `Bearer ${identityApiKey}`,
-            "Content-Type": "application/json",
+            "x-versium-api-key": identityApiKey,
+            "Accept": "application/json",
           },
-          body: JSON.stringify({ maids: [maid] }),
         });
 
         if (brokerRes.ok) {
-          const identityData = await brokerRes.json() as any;
-          phoneNumber = identityData?.phoneNumbers?.[0]?.number || null;
-          firstName = identityData?.name?.given || "Unknown";
-          lastName = identityData?.name?.family || "";
-          email = identityData?.emails?.[0]?.value || null;
-          console.log(`SENTINEL INGEST: Identity resolved — ${firstName} ${lastName}, phone: ${phoneNumber || "none"}`);
+          const versiumData = await brokerRes.json() as any;
+          const results = versiumData?.versium?.results || [];
+          if (results.length > 0) {
+            const match = results[0];
+            firstName = match.first || match.First || match.first_name || "Unknown";
+            lastName = match.last || match.Last || match.last_name || "";
+            phoneNumber = match.phone || match.Phone || match.mobile_phone || match.phone_number || null;
+            email = match.email || match.Email || match.email_address || null;
+            console.log(`SENTINEL INGEST: Versium resolved — ${firstName} ${lastName}, phone: ${phoneNumber || "none"}, email: ${email || "none"}`);
+          } else {
+            console.log(`SENTINEL INGEST: Versium returned no matches for MAID ${maid}`);
+          }
         } else {
-          console.warn(`SENTINEL INGEST: Identity broker returned ${brokerRes.status}`);
+          const errText = await brokerRes.text();
+          console.warn(`SENTINEL INGEST: Versium returned ${brokerRes.status}: ${errText.substring(0, 200)}`);
         }
       } catch (err: any) {
-        console.error(`SENTINEL INGEST: Identity broker failed — ${err.message}`);
+        console.error(`SENTINEL INGEST: Versium API failed — ${err.message}`);
       }
     } else {
-      console.log("SENTINEL INGEST: No identity broker configured, storing MAID as raw lead");
+      console.log("SENTINEL INGEST: No IDENTITY_API_KEY configured, storing MAID as raw lead");
     }
 
     try {
