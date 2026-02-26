@@ -1518,6 +1518,13 @@ Rules:
     language: z.string().max(10).optional().default("en-US"),
     contactName: z.string().max(100).optional(),
     heading: z.string().max(500).optional(),
+    businessName: z.string().max(200).optional(),
+    industry: z.string().max(100).optional(),
+    description: z.string().max(1000).optional(),
+    tone: z.string().max(50).optional(),
+    targetAudience: z.string().max(300).optional(),
+    services: z.string().max(500).optional(),
+    colorPreference: z.string().max(50).optional(),
   });
 
   const liquidSiteRateLimiter = new Map<string, { count: number; resetAt: number }>();
@@ -1542,7 +1549,7 @@ Rules:
     const parsed = liquidSiteSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-    const { device, referrer, timeOfDay, hour, language, contactName, heading } = parsed.data;
+    const { device, referrer, timeOfDay, hour, language, contactName, heading, businessName, industry, description, tone, targetAudience, services, colorPreference } = parsed.data;
 
     let visitorDescription = `Visitor context:
 - Device: ${device || "desktop"}
@@ -1553,7 +1560,19 @@ Rules:
     if (contactName) visitorDescription += `\n- Returning visitor name: ${contactName} (greet them personally!)`;
     if (heading) visitorDescription += `\n- Ad headline override: "${heading}" (use this as the hero title)`;
 
-    visitorDescription += `\n\nGenerate a personalized premium service landing page for this specific visitor. Make it feel tailor-made.`;
+    if (businessName || industry || description) {
+      visitorDescription += `\n\nBusiness details (USE THESE to make the site specific to this business):`;
+      if (businessName) visitorDescription += `\n- Business Name: "${businessName}" (use this name throughout the site)`;
+      if (industry) visitorDescription += `\n- Industry: ${industry}`;
+      if (description) visitorDescription += `\n- About: ${description}`;
+      if (services) visitorDescription += `\n- Key Services: ${services}`;
+      if (targetAudience) visitorDescription += `\n- Target Audience: ${targetAudience}`;
+      if (tone) visitorDescription += `\n- Tone/Style: ${tone}`;
+      if (colorPreference) visitorDescription += `\n- Brand Color Preference: ${colorPreference} (use as primary color)`;
+      visitorDescription += `\n\nGenerate a landing page specifically for this business. Use their name, services, and industry context. Make it sound like it was written by their own marketing team.`;
+    } else {
+      visitorDescription += `\n\nGenerate a personalized premium service landing page for this specific visitor. Make it feel tailor-made.`;
+    }
 
     const raw = await geminiChat([
       { role: "system", content: LIQUID_SYSTEM_PROMPT },
