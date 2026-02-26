@@ -5058,6 +5058,7 @@ Rules:
     res.status(200).json({ status: "Active", message: "Geofence payload secured. Resolving identity." });
 
     const identityApiKey = process.env.IDENTITY_API_KEY;
+    const identityApiUrl = process.env.IDENTITY_API_URL;
     const apexCrmUrl = process.env.APEX_CRM_URL;
     const apexApiKey = process.env.APEX_API_KEY;
 
@@ -5065,12 +5066,61 @@ Rules:
     let lastName = "";
     let phoneNumber: string | null = null;
     let email: string | null = null;
+    let resolved = false;
 
     const ingestPhone = typeof req.body.phone === "string" ? req.body.phone.trim() : null;
     const ingestEmail = typeof req.body.email === "string" ? req.body.email.trim() : null;
     const ingestName = typeof req.body.name === "string" ? req.body.name.trim() : null;
 
-    if (identityApiKey && (ingestPhone || ingestEmail || ingestName)) {
+    if (identityApiUrl && identityApiKey) {
+      try {
+        console.log(`SENTINEL INGEST: Initiating AdTech Identity Strike for MAID ${maid}`);
+
+        const brokerPayload = {
+          device_id: maid,
+          match_requirements: ["phone_number", "first_name"],
+        };
+
+        const brokerRes = await fetch(identityApiUrl, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${identityApiKey}`,
+            "Content-Type": "application/json",
+            "X-Client-ID": "Apex_OS_God_Mode",
+          },
+          body: JSON.stringify(brokerPayload),
+        });
+
+        if (brokerRes.ok) {
+          const identityData = await brokerRes.json() as any;
+          const matchStatus = identityData?.status;
+
+          if (matchStatus === "success") {
+            const personData = identityData?.person || {};
+            phoneNumber = personData.primary_phone || null;
+            firstName = personData.first_name || "Driver";
+            lastName = personData.last_name || "";
+            email = personData.email || null;
+
+            if (phoneNumber) {
+              console.log(`SENTINEL INGEST: AdTech HIT — ${firstName} ${lastName}, phone: ${phoneNumber}, email: ${email || "none"}`);
+              resolved = true;
+            } else {
+              console.log(`SENTINEL INGEST: AdTech match found but no phone number. Dropping to fallback.`);
+            }
+          } else {
+            console.log(`SENTINEL INGEST: AdTech Graph returned no match for MAID ${maid}. Status: ${matchStatus}`);
+          }
+        } else {
+          const errText = await brokerRes.text();
+          console.warn(`SENTINEL INGEST: AdTech Broker returned ${brokerRes.status}: ${errText.substring(0, 300)}`);
+        }
+      } catch (err: any) {
+        console.error(`SENTINEL INGEST: AdTech Broker API Strike Failed — ${err.message}`);
+      }
+    }
+
+    if (!resolved && identityApiKey && (ingestPhone || ingestEmail || ingestName)) {
       try {
         const params = new URLSearchParams({ pretty: "true" });
         if (ingestPhone) params.append("phone", ingestPhone);
@@ -5081,59 +5131,47 @@ Rules:
           if (nameParts.length > 1) params.append("last_name", nameParts.slice(1).join(" "));
         }
 
-        console.log(`SENTINEL INGEST: Enriching via People Data Labs — phone: ${ingestPhone || "n/a"}, email: ${ingestEmail || "n/a"}`);
+        console.log(`SENTINEL INGEST: Fallback — enriching via People Data Labs`);
 
         const pdlUrl = `https://api.peopledatalabs.com/v5/person/enrich?${params.toString()}`;
-        const brokerRes = await fetch(pdlUrl, {
+        const pdlRes = await fetch(pdlUrl, {
           method: "GET",
-          headers: {
-            "X-Api-Key": identityApiKey,
-            "Accept": "application/json",
-          },
+          headers: { "X-Api-Key": identityApiKey, "Accept": "application/json" },
         });
 
-        if (brokerRes.ok) {
-          const pdlData = await brokerRes.json() as any;
-          console.log(`SENTINEL INGEST: PDL response — status: ${pdlData?.status}, likelihood: ${pdlData?.likelihood || 0}`);
-
+        if (pdlRes.ok) {
+          const pdlData = await pdlRes.json() as any;
           if (pdlData?.status === 200 && pdlData?.data) {
             const person = pdlData.data;
             firstName = person.first_name || ingestName?.split(" ")[0] || "Unknown";
             lastName = person.last_name || "";
             phoneNumber = person.mobile_phone || (person.phone_numbers && person.phone_numbers[0]) || ingestPhone || null;
             email = person.work_email || (person.personal_emails && person.personal_emails[0]) || ingestEmail || null;
-            const city = person.location_locality || "";
-            const state = person.location_region || "";
-            const company = person.job_company_name || "";
-            console.log(`SENTINEL INGEST: PDL enriched — ${firstName} ${lastName}, phone: ${phoneNumber || "none"}, email: ${email || "none"}, location: ${city} ${state}, company: ${company}`);
-          } else {
-            firstName = ingestName?.split(" ")[0] || "Unknown";
-            lastName = ingestName?.split(" ").slice(1).join(" ") || "";
-            phoneNumber = ingestPhone;
-            email = ingestEmail;
-            console.log(`SENTINEL INGEST: PDL no match — using raw data: ${firstName}, phone: ${phoneNumber || "none"}`);
+            console.log(`SENTINEL INGEST: PDL enriched — ${firstName} ${lastName}, phone: ${phoneNumber || "none"}, email: ${email || "none"}`);
+            resolved = true;
           }
-        } else {
+        }
+
+        if (!resolved) {
           firstName = ingestName?.split(" ")[0] || "Unknown";
           lastName = ingestName?.split(" ").slice(1).join(" ") || "";
           phoneNumber = ingestPhone;
           email = ingestEmail;
-          const errText = await brokerRes.text();
-          console.warn(`SENTINEL INGEST: PDL returned ${brokerRes.status}: ${errText.substring(0, 300)} — using raw data`);
+          console.log(`SENTINEL INGEST: PDL no match — using raw data: ${firstName}, phone: ${phoneNumber || "none"}`);
         }
       } catch (err: any) {
         phoneNumber = ingestPhone;
         email = ingestEmail;
-        console.error(`SENTINEL INGEST: PDL API failed — ${err.message} — using raw data`);
+        console.error(`SENTINEL INGEST: PDL fallback failed — ${err.message} — using raw data`);
       }
-    } else if (ingestPhone || ingestEmail || ingestName) {
+    } else if (!resolved && (ingestPhone || ingestEmail || ingestName)) {
       firstName = ingestName?.split(" ")[0] || "Unknown";
       lastName = ingestName?.split(" ").slice(1).join(" ") || "";
       phoneNumber = ingestPhone;
       email = ingestEmail;
-      console.log(`SENTINEL INGEST: No PDL key — using raw data: ${firstName}, phone: ${phoneNumber || "none"}`);
-    } else {
-      console.log(`SENTINEL INGEST: MAID-only payload — stored as raw lead (MAID: ${maid})`);
+      console.log(`SENTINEL INGEST: No broker configured — using raw data: ${firstName}, phone: ${phoneNumber || "none"}`);
+    } else if (!resolved) {
+      console.log(`SENTINEL INGEST: MAID-only payload, no broker configured — stored as raw lead`);
     }
 
     try {
