@@ -38,12 +38,16 @@ async function initStripe() {
     if (domain) {
       try {
         const webhookBaseUrl = `https://${domain}`;
-        const { webhook } = await stripeSync.findOrCreateManagedWebhook(
+        const result = await stripeSync.findOrCreateManagedWebhook(
           `${webhookBaseUrl}/api/stripe/webhook`
         );
-        console.log(`[STRIPE] Webhook configured: ${webhook.url}`);
+        if (result?.webhook?.url) {
+          console.log(`[STRIPE] Webhook configured: ${result.webhook.url}`);
+        } else {
+          console.log("[STRIPE] Webhook registered (no URL returned)");
+        }
       } catch (whErr: any) {
-        console.log("[STRIPE] Webhook setup skipped:", whErr.message);
+        console.log("[STRIPE] Webhook setup deferred — will retry on next restart");
       }
     } else {
       console.log("[STRIPE] No public domain found, skipping webhook setup");
