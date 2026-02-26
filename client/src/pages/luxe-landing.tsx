@@ -3,6 +3,7 @@ import { Star, Clock, Shield, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { SalesChatbot } from "@/components/sales-chatbot";
 import { Link } from "wouter";
 
 const ICON_MAP: Record<string, React.ComponentType<any>> = {
@@ -340,6 +341,7 @@ export default function LuxeLanding() {
       <footer className="bg-black py-12 border-t border-zinc-900 text-center text-zinc-600 text-sm">
         <p>&copy; 2026 LUXE MED SPA. ALL RIGHTS RESERVED.</p>
       </footer>
+      <SalesChatbot niche="luxe" accentColor="#D4AF37" />
     </div>
   );
 }

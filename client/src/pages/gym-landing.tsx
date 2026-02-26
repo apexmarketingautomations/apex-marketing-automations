@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Check } from "lucide-react";
 import { Link } from "wouter";
+import { SalesChatbot } from "@/components/sales-chatbot";
 
 // Component: Hero_Section_Video_Background
 const HeroSection = ({ headline, subheadline, cta_button }: { headline: string, subheadline: string, cta_button: string }) => {
@@ -166,6 +167,7 @@ export default function GymLanding() {
       <footer className="bg-black py-12 border-t border-zinc-900 text-center text-zinc-600 text-sm">
         <p>© 2026 FORGE FITNESS. ALL RIGHTS RESERVED.</p>
       </footer>
+      <SalesChatbot niche="gym" accentColor="#ef4444" />
     </div>
   );
 }

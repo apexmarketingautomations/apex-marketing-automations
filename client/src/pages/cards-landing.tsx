@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { ContactRound, QrCode, Smartphone, Share2, Star, Globe, Phone, Mail, Download, BarChart3, Palette, Zap, Shield, Check, ArrowRight, Nfc, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { SalesChatbot } from "@/components/sales-chatbot";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -268,6 +269,7 @@ export default function CardsLanding() {
           </p>
         </footer>
       </div>
+      <SalesChatbot niche="general" accentColor="#06b6d4" />
     </div>
   );
 }

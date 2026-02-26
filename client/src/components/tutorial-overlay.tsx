@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, ChevronRight, ChevronLeft } from "lucide-react";
+import { X, ChevronRight, ChevronLeft, GripHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useDraggable } from "@/hooks/use-draggable";
 
 export interface TutorialStep {
   id: string;
@@ -28,6 +29,7 @@ export function TutorialOverlay({ steps, storageKey, onClose, finishLabel = "Get
   const [highlightRect, setHighlightRect] = useState<DOMRect | null>(null);
   const [targetFound, setTargetFound] = useState(false);
   const hasScrolledRef = useRef(false);
+  const { offset, onPointerDown, resetOffset } = useDraggable();
 
   const step = steps[currentStep];
   const totalSteps = steps.length;
@@ -46,6 +48,7 @@ export function TutorialOverlay({ steps, storageKey, onClose, finishLabel = "Get
 
   useEffect(() => {
     hasScrolledRef.current = false;
+    resetOffset();
     if (!step.targetSelector) {
       setHighlightRect(null);
       setTargetFound(false);
@@ -93,17 +96,22 @@ export function TutorialOverlay({ steps, storageKey, onClose, finishLabel = "Get
 
   const getPopoverPosition = (): React.CSSProperties => {
     if (step.position === "center" || !highlightRect || !targetFound) {
-      return { top: "50%", left: "50%", transform: "translate(-50%, -50%)" };
+      return { top: "50%", left: "50%", transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px))` };
     }
     const p = 16, cw = 400, ch = 280;
+    let base: React.CSSProperties;
     switch (step.position) {
-      case "bottom-left": return { top: Math.min(highlightRect.bottom + p, window.innerHeight - ch - p), left: Math.max(highlightRect.left, p), maxWidth: cw };
-      case "bottom-right": return { top: Math.min(highlightRect.bottom + p, window.innerHeight - ch - p), left: Math.min(highlightRect.right - cw, window.innerWidth - cw - p), maxWidth: cw };
-      case "top-center": return { top: Math.max(highlightRect.top - ch - p, p), left: Math.max(highlightRect.left + (highlightRect.width / 2) - (cw / 2), p), maxWidth: cw };
-      case "top-right": return { top: Math.max(highlightRect.top - ch - p, p), right: p, maxWidth: cw };
-      case "top-left": return { top: Math.max(highlightRect.top - ch - p, p), left: Math.max(highlightRect.left, p), maxWidth: cw };
-      default: return { top: "50%", left: "50%", transform: "translate(-50%, -50%)" };
+      case "bottom-left": base = { top: Math.min(highlightRect.bottom + p, window.innerHeight - ch - p), left: Math.max(highlightRect.left, p), maxWidth: cw }; break;
+      case "bottom-right": base = { top: Math.min(highlightRect.bottom + p, window.innerHeight - ch - p), left: Math.min(highlightRect.right - cw, window.innerWidth - cw - p), maxWidth: cw }; break;
+      case "top-center": base = { top: Math.max(highlightRect.top - ch - p, p), left: Math.max(highlightRect.left + (highlightRect.width / 2) - (cw / 2), p), maxWidth: cw }; break;
+      case "top-right": base = { top: Math.max(highlightRect.top - ch - p, p), right: p, maxWidth: cw }; break;
+      case "top-left": base = { top: Math.max(highlightRect.top - ch - p, p), left: Math.max(highlightRect.left, p), maxWidth: cw }; break;
+      default: base = { top: "50%", left: "50%", transform: "translate(-50%, -50%)" };
     }
+    return {
+      ...base,
+      transform: `translate(${offset.x}px, ${offset.y}px)`,
+    };
   };
 
   const StepIcon = step.icon;
@@ -130,11 +138,19 @@ export function TutorialOverlay({ steps, storageKey, onClose, finishLabel = "Get
 
       <AnimatePresence mode="wait">
         <motion.div key={currentStep} initial={{ opacity: 0, y: 20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -20, scale: 0.95 }} transition={{ duration: 0.25 }} className="absolute" style={{ ...getPopoverPosition(), zIndex: 10 }} data-testid={`tutorial-step-${step.id}`}>
-          <div className={`bg-neutral-950 border ${c.border} rounded-2xl shadow-2xl ${c.glow} overflow-hidden w-[400px]`}>
-            <div className="h-1 bg-neutral-800">
+          <div className={`bg-neutral-950 border ${c.border} rounded-2xl shadow-2xl ${c.glow} overflow-hidden w-[400px] max-w-[90vw]`}>
+            <div
+              className="h-6 flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
+              onMouseDown={onPointerDown as any}
+              onTouchStart={onPointerDown as any}
+              data-testid="tutorial-drag-handle"
+            >
+              <GripHorizontal size={14} className="text-slate-600" />
+            </div>
+            <div className="h-1 bg-neutral-800 -mt-1">
               <motion.div className={`h-full bg-gradient-to-r ${c.gradient}`} initial={{ width: 0 }} animate={{ width: `${progress}%` }} transition={{ duration: 0.4 }} />
             </div>
-            <div className="p-5">
+            <div className="p-5 pt-3">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
                   <div className={`w-10 h-10 rounded-xl ${c.bg} ${c.border} border flex items-center justify-center flex-shrink-0`}>

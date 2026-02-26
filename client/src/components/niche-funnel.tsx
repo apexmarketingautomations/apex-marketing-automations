@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useSearch } from "wouter";
+import { SalesChatbot } from "@/components/sales-chatbot";
 import {
   ArrowRight, ArrowLeft, CheckCircle2, Sparkles, User, Mail, Phone,
   Building2, Calendar, Clock, Loader2
@@ -47,6 +48,12 @@ const accentMap: Record<string, { text: string; bg: string; border: string; grad
   rose: { text: "text-rose-400", bg: "bg-rose-500", border: "border-rose-500/30", gradient: "from-rose-500 to-pink-600", glow: "shadow-rose-500/20", ring: "ring-rose-500/40" },
   orange: { text: "text-orange-400", bg: "bg-orange-500", border: "border-orange-500/30", gradient: "from-orange-500 to-amber-600", glow: "shadow-orange-500/20", ring: "ring-orange-500/40" },
   sky: { text: "text-sky-400", bg: "bg-sky-500", border: "border-sky-500/30", gradient: "from-sky-500 to-blue-600", glow: "shadow-sky-500/20", ring: "ring-sky-500/40" },
+};
+
+const hexMap: Record<string, string> = {
+  cyan: "#06b6d4", blue: "#3b82f6", emerald: "#10b981", purple: "#a855f7",
+  pink: "#ec4899", amber: "#f59e0b", red: "#ef4444", indigo: "#6366f1",
+  teal: "#14b8a6", rose: "#f43f5e", orange: "#f97316", sky: "#0ea5e9",
 };
 
 const stepLabels = ["Your Info", "About Your Business", "Schedule", "Confirmed"];
@@ -392,6 +399,7 @@ export function NicheFunnel({ config }: { config: NicheFunnelConfig }) {
           </div>
         </div>
       </footer>
+      <SalesChatbot niche={config.slug} accentColor={hexMap[config.accentColor] || "#6366f1"} />
     </div>
   );
 }

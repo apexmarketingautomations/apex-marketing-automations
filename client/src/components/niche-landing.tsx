@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { ArrowRight, CheckCircle2, ChevronDown, ChevronUp, Sparkles, Star } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { SalesChatbot } from "@/components/sales-chatbot";
 
 function CountUp({ end, suffix = "", duration = 2000 }: { end: number; suffix?: string; duration?: number }) {
   const [count, setCount] = useState(0);
@@ -76,19 +77,19 @@ export interface NicheLandingConfig {
   ctaText?: string;
 }
 
-const accentMap: Record<string, { text: string; bg: string; border: string; glow: string; gradient: string }> = {
-  cyan: { text: "text-cyan-400", bg: "bg-cyan-500", border: "border-cyan-500/30", glow: "shadow-cyan-500/20", gradient: "from-cyan-500 to-blue-600" },
-  blue: { text: "text-blue-400", bg: "bg-blue-500", border: "border-blue-500/30", glow: "shadow-blue-500/20", gradient: "from-blue-500 to-indigo-600" },
-  emerald: { text: "text-emerald-400", bg: "bg-emerald-500", border: "border-emerald-500/30", glow: "shadow-emerald-500/20", gradient: "from-emerald-500 to-green-600" },
-  purple: { text: "text-purple-400", bg: "bg-purple-500", border: "border-purple-500/30", glow: "shadow-purple-500/20", gradient: "from-purple-500 to-violet-600" },
-  pink: { text: "text-pink-400", bg: "bg-pink-500", border: "border-pink-500/30", glow: "shadow-pink-500/20", gradient: "from-pink-500 to-rose-600" },
-  amber: { text: "text-amber-400", bg: "bg-amber-500", border: "border-amber-500/30", glow: "shadow-amber-500/20", gradient: "from-amber-500 to-orange-600" },
-  red: { text: "text-red-400", bg: "bg-red-500", border: "border-red-500/30", glow: "shadow-red-500/20", gradient: "from-red-500 to-rose-600" },
-  indigo: { text: "text-indigo-400", bg: "bg-indigo-500", border: "border-indigo-500/30", glow: "shadow-indigo-500/20", gradient: "from-indigo-500 to-violet-600" },
-  teal: { text: "text-teal-400", bg: "bg-teal-500", border: "border-teal-500/30", glow: "shadow-teal-500/20", gradient: "from-teal-500 to-cyan-600" },
-  rose: { text: "text-rose-400", bg: "bg-rose-500", border: "border-rose-500/30", glow: "shadow-rose-500/20", gradient: "from-rose-500 to-pink-600" },
-  orange: { text: "text-orange-400", bg: "bg-orange-500", border: "border-orange-500/30", glow: "shadow-orange-500/20", gradient: "from-orange-500 to-amber-600" },
-  sky: { text: "text-sky-400", bg: "bg-sky-500", border: "border-sky-500/30", glow: "shadow-sky-500/20", gradient: "from-sky-500 to-blue-600" },
+const accentMap: Record<string, { text: string; bg: string; border: string; glow: string; gradient: string; hex: string }> = {
+  cyan: { text: "text-cyan-400", bg: "bg-cyan-500", border: "border-cyan-500/30", glow: "shadow-cyan-500/20", gradient: "from-cyan-500 to-blue-600", hex: "#06b6d4" },
+  blue: { text: "text-blue-400", bg: "bg-blue-500", border: "border-blue-500/30", glow: "shadow-blue-500/20", gradient: "from-blue-500 to-indigo-600", hex: "#3b82f6" },
+  emerald: { text: "text-emerald-400", bg: "bg-emerald-500", border: "border-emerald-500/30", glow: "shadow-emerald-500/20", gradient: "from-emerald-500 to-green-600", hex: "#10b981" },
+  purple: { text: "text-purple-400", bg: "bg-purple-500", border: "border-purple-500/30", glow: "shadow-purple-500/20", gradient: "from-purple-500 to-violet-600", hex: "#a855f7" },
+  pink: { text: "text-pink-400", bg: "bg-pink-500", border: "border-pink-500/30", glow: "shadow-pink-500/20", gradient: "from-pink-500 to-rose-600", hex: "#ec4899" },
+  amber: { text: "text-amber-400", bg: "bg-amber-500", border: "border-amber-500/30", glow: "shadow-amber-500/20", gradient: "from-amber-500 to-orange-600", hex: "#f59e0b" },
+  red: { text: "text-red-400", bg: "bg-red-500", border: "border-red-500/30", glow: "shadow-red-500/20", gradient: "from-red-500 to-rose-600", hex: "#ef4444" },
+  indigo: { text: "text-indigo-400", bg: "bg-indigo-500", border: "border-indigo-500/30", glow: "shadow-indigo-500/20", gradient: "from-indigo-500 to-violet-600", hex: "#6366f1" },
+  teal: { text: "text-teal-400", bg: "bg-teal-500", border: "border-teal-500/30", glow: "shadow-teal-500/20", gradient: "from-teal-500 to-cyan-600", hex: "#14b8a6" },
+  rose: { text: "text-rose-400", bg: "bg-rose-500", border: "border-rose-500/30", glow: "shadow-rose-500/20", gradient: "from-rose-500 to-pink-600", hex: "#f43f5e" },
+  orange: { text: "text-orange-400", bg: "bg-orange-500", border: "border-orange-500/30", glow: "shadow-orange-500/20", gradient: "from-orange-500 to-amber-600", hex: "#f97316" },
+  sky: { text: "text-sky-400", bg: "bg-sky-500", border: "border-sky-500/30", glow: "shadow-sky-500/20", gradient: "from-sky-500 to-blue-600", hex: "#0ea5e9" },
 };
 
 export function NicheLanding({ config }: { config: NicheLandingConfig }) {
@@ -281,6 +282,7 @@ export function NicheLanding({ config }: { config: NicheLandingConfig }) {
           </div>
         </div>
       </footer>
+      <SalesChatbot niche={config.slug} accentColor={colors.hex} />
     </div>
   );
 }

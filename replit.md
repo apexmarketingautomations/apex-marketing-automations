@@ -64,6 +64,9 @@ The API provides comprehensive endpoints for managing accounts, messages, workfl
 - **Live Demo** (`/demo`): Cinematic 5-scene walkthrough for prospects showing Sentinel detection, AI orchestrator, workflow execution, and results
 - **Mobile Responsive**: Hamburger menu sidebar on mobile with slide-out drawer, responsive layouts throughout
 - **Onboarding Wizard**: 5-step guided wizard (business info → connect phone → train AI → deploy workflow → completion)
+- **TapCard Funnel** (`/cards`): Standalone digital card sales page with $9.99/mo or $69.99/yr pricing, Stripe checkout via `POST /api/card-checkout` (public, no auth), TapCard Pro upsell to full platform ($48/mo). Every public card links back to `/cards` as growth loop.
+- **Draggable UI**: Tutorial overlays and chat widgets are draggable via grab handles (`client/src/hooks/use-draggable.ts`). Bounds-clamped to prevent off-screen dragging.
+- **Sales Chatbot (Aria)**: AI-powered sales assistant (`client/src/components/sales-chatbot.tsx`) on all public landing/funnel pages. Uses `POST /api/sales-chat` (public, rate-limited 15 req/min/IP). Niche-aware context for 17 industries. Draggable, dark-themed floating widget.
 
 ### Access Control & Multi-Tenancy
 - **Dual authentication**: Supports both Replit OIDC (admin) and native email/password login (clients). `users` table has `passwordHash` and `authProvider` fields. `isAuthenticated` middleware handles both session types — skips OIDC token refresh for `authProvider: "email"` users. Login page (`client/src/pages/login.tsx`) shows email/password form with register/login toggle, plus "Continue with Replit" fallback.

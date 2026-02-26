@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
+import { SalesChatbot } from "@/components/sales-chatbot";
 import {
   MessageSquare, GitFork, Bot, LayoutTemplate, Megaphone, Phone, Star,
   DollarSign, Link2, Rocket, TrendingUp, Palette, Sparkles, ArrowRight,
@@ -599,6 +600,7 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+      <SalesChatbot niche="general" accentColor="#6366f1" />
     </div>
   );
 }

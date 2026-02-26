@@ -1,17 +1,19 @@
 import { useState, useRef, useEffect } from "react";
-import { MessageSquare, X, Send, Loader2 } from "lucide-react";
+import { MessageSquare, X, Send, Loader2, GripHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
+import { useDraggable } from "@/hooks/use-draggable";
 
 export function ChatWidget({ primaryColor = "#D4AF37" }: { primaryColor?: string }) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
-    { role: "bot", text: "Hi there! 👋 Can I help you book an appointment?" }
+    { role: "bot", text: "Hi there! Can I help you book an appointment?" }
   ]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { offset, onPointerDown } = useDraggable();
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -38,14 +40,17 @@ export function ChatWidget({ primaryColor = "#D4AF37" }: { primaryColor?: string
       const data = await response.json();
       setMessages(prev => [...prev, { role: "bot", text: data.reply }]);
     } catch {
-      setMessages(prev => [...prev, { role: "bot", text: "⚠️ Offline mode. Let me connect you with our team." }]);
+      setMessages(prev => [...prev, { role: "bot", text: "Let me connect you with our team." }]);
     } finally {
       setIsTyping(false);
     }
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
+    <div
+      className="fixed bottom-6 right-6 z-50 flex flex-col items-end"
+      style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }}
+    >
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -54,6 +59,14 @@ export function ChatWidget({ primaryColor = "#D4AF37" }: { primaryColor?: string
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
             className="mb-4 w-[350px] bg-white rounded-2xl shadow-2xl overflow-hidden border border-neutral-200"
           >
+            <div
+              className="h-5 flex items-center justify-center cursor-grab active:cursor-grabbing select-none bg-neutral-100 border-b border-neutral-200"
+              onMouseDown={onPointerDown as any}
+              onTouchStart={onPointerDown as any}
+              data-testid="chat-drag-handle"
+            >
+              <GripHorizontal size={12} className="text-neutral-400" />
+            </div>
             <div className="p-4 flex justify-between items-center text-white" style={{ backgroundColor: primaryColor }}>
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
