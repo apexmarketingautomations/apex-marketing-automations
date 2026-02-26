@@ -5069,9 +5069,9 @@ Rules:
 
     if (identityApiKey) {
       try {
-        console.log(`SENTINEL INGEST: Querying Versium for MAID ${maid}`);
+        console.log(`SENTINEL INGEST: Querying Versium REACH for MAID ${maid}`);
 
-        const versiumUrl = `${identityApiUrl}?maid=${encodeURIComponent(maid)}&output[]=phone&output[]=email&output[]=name`;
+        const versiumUrl = `${identityApiUrl}?maid=${encodeURIComponent(maid)}&output[]=phone&output[]=email&output[]=address`;
         const brokerRes = await fetch(versiumUrl, {
           method: "GET",
           headers: {
@@ -5082,20 +5082,25 @@ Rules:
 
         if (brokerRes.ok) {
           const versiumData = await brokerRes.json() as any;
+          console.log(`SENTINEL INGEST: Versium raw response — matches: ${versiumData?.versium?.num_matches || 0}, results: ${versiumData?.versium?.num_results || 0}`);
+
           const results = versiumData?.versium?.results || [];
           if (results.length > 0) {
             const match = results[0];
-            firstName = match.first || match.First || match.first_name || "Unknown";
-            lastName = match.last || match.Last || match.last_name || "";
-            phoneNumber = match.phone || match.Phone || match.mobile_phone || match.phone_number || null;
-            email = match.email || match.Email || match.email_address || null;
-            console.log(`SENTINEL INGEST: Versium resolved — ${firstName} ${lastName}, phone: ${phoneNumber || "none"}, email: ${email || "none"}`);
+            firstName = match.First || match.first || match.First_Name || match.first_name || "Unknown";
+            lastName = match.Last || match.last || match.Last_Name || match.last_name || "";
+            phoneNumber = match.Phone || match.phone || match.Mobile_Phone || match.mobile_phone || match.Phone_Number || null;
+            email = match.Email || match.email || match.Email_Address || match.email_address || null;
+            const address = match.Address || match.address || "";
+            const city = match.City || match.city || "";
+            const state = match.State || match.state || "";
+            console.log(`SENTINEL INGEST: Versium resolved — ${firstName} ${lastName}, phone: ${phoneNumber || "none"}, email: ${email || "none"}, location: ${city} ${state}`);
           } else {
-            console.log(`SENTINEL INGEST: Versium returned no matches for MAID ${maid}`);
+            console.log(`SENTINEL INGEST: Versium returned 0 matches for MAID ${maid} (device not in their graph)`);
           }
         } else {
           const errText = await brokerRes.text();
-          console.warn(`SENTINEL INGEST: Versium returned ${brokerRes.status}: ${errText.substring(0, 200)}`);
+          console.warn(`SENTINEL INGEST: Versium returned ${brokerRes.status}: ${errText.substring(0, 300)}`);
         }
       } catch (err: any) {
         console.error(`SENTINEL INGEST: Versium API failed — ${err.message}`);
