@@ -599,6 +599,7 @@ ${sections.map(renderSection).join('\n')}
     if (fullPath === "/api/form-submit") return next();
     if (fullPath === "/api/card-checkout") return next();
     if (fullPath === "/api/sales-chat") return next();
+    if (fullPath === "/api/generate-liquid-site") return next();
     if (fullPath === "/api/liquid/contact-lookup") return next();
     if (fullPath.startsWith("/api/portal/")) return next();
 
@@ -1519,7 +1520,21 @@ Rules:
     heading: z.string().max(500).optional(),
   });
 
+  const liquidSiteRateLimiter = new Map<string, { count: number; resetAt: number }>();
+  setInterval(() => { const now = Date.now(); liquidSiteRateLimiter.forEach((v, k) => { if (now > v.resetAt) liquidSiteRateLimiter.delete(k); }); }, 60_000);
+
   app.post("/api/generate-liquid-site", asyncHandler(async (req, res) => {
+    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+    const now = Date.now();
+    const entry = liquidSiteRateLimiter.get(ip);
+    if (!entry || now > entry.resetAt) {
+      liquidSiteRateLimiter.set(ip, { count: 1, resetAt: now + 60_000 });
+    } else if (entry.count >= 10) {
+      return res.status(429).json({ error: "Rate limit exceeded. Please try again in a minute." });
+    } else {
+      entry.count++;
+    }
+
     if (!isGeminiConfigured()) {
       return res.status(503).json({ error: "AI service is not configured" });
     }
@@ -4943,7 +4958,7 @@ Rules:
     const crashData = req.body;
     console.log("APEX RECEIVED CRASH DATA:", JSON.stringify(crashData));
 
-    const subAccountId = crashData.subAccountId || 1;
+    const subAccountId = crashData.subAccountId || 13;
     const crashId = crashData.crash_id || crashData.crashId || `auto-${Date.now()}`;
     const lat = crashData.latitude || crashData.lat;
     const lng = crashData.longitude || crashData.lng || crashData.lon;

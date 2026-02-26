@@ -76,6 +76,7 @@ const PetServicesLanding = lazy(() => import("@/pages/pet-services-landing"));
 const PhotographyLanding = lazy(() => import("@/pages/photography-landing"));
 const WeddingLanding = lazy(() => import("@/pages/wedding-landing"));
 const NicheDirectory = lazy(() => import("@/pages/niche-directory"));
+const LoginPage = lazy(() => import("@/pages/login"));
 const LawyersFunnel = lazy(() => import("@/pages/lawyers-funnel"));
 const RestaurantsFunnel = lazy(() => import("@/pages/restaurants-funnel"));
 const DentistsFunnel = lazy(() => import("@/pages/dentists-funnel"));
@@ -132,6 +133,7 @@ function Router() {
         <Route path="/cards" component={CardsLanding} />
         <Route path="/portal/:token" component={ClientPortal} />
         <Route path="/review/:subAccountId" component={ReviewBuffer} />
+        <Route path="/login" component={LoginPage} />
         <Route path="/demo" component={NexusDemo} />
         <Route path="/pricing" component={Pricing} />
         <Route path="/gym" component={GymLanding} />
@@ -142,15 +144,31 @@ function Router() {
         <Route path="/lawyers" component={LawyersLanding} />
         <Route path="/restaurants" component={RestaurantsLanding} />
         <Route path="/dentists" component={DentistsLanding} />
+        <Route path="/dental" component={DentistsLanding} />
         <Route path="/medspa" component={MedspaLanding} />
+        <Route path="/med-spa" component={MedspaLanding} />
         <Route path="/auto-dealers" component={AutoDealersLanding} />
+        <Route path="/auto-detailing" component={AutoDealersLanding} />
         <Route path="/insurance" component={InsuranceLanding} />
         <Route path="/chiropractors" component={ChiropractorsLanding} />
+        <Route path="/chiropractic" component={ChiropractorsLanding} />
         <Route path="/coaches" component={CoachesLanding} />
         <Route path="/ecommerce" component={EcommerceLanding} />
         <Route path="/pet-services" component={PetServicesLanding} />
+        <Route path="/pet-grooming" component={PetServicesLanding} />
         <Route path="/photography" component={PhotographyLanding} />
         <Route path="/wedding" component={WeddingLanding} />
+        <Route path="/hvac" component={HomeServiceLanding} />
+        <Route path="/plumbing" component={HomeServiceLanding} />
+        <Route path="/roofing" component={HomeServiceLanding} />
+        <Route path="/solar" component={HomeServiceLanding} />
+        <Route path="/landscaping" component={HomeServiceLanding} />
+        <Route path="/pest-control" component={HomeServiceLanding} />
+        <Route path="/pressure-washing" component={HomeServiceLanding} />
+        <Route path="/junk-removal" component={HomeServiceLanding} />
+        <Route path="/electrical" component={HomeServiceLanding} />
+        <Route path="/real-estate" component={RealtorsLanding} />
+        <Route path="/personal-injury" component={LawyersLanding} />
         <Route path="/niches" component={NicheDirectory} />
         <Route path="/lawyers/funnel" component={LawyersFunnel} />
         <Route path="/restaurants/funnel" component={RestaurantsFunnel} />
