@@ -38,6 +38,8 @@ interface Contact {
   phone?: string | null;
   company?: string | null;
   source?: string | null;
+  tags?: string[] | null;
+  notes?: string | null;
 }
 
 const DEFAULT_STAGES = [
@@ -481,24 +483,43 @@ export default function PipelinePage() {
                           <th className="text-left py-3 px-3 text-slate-400 font-medium">Name</th>
                           <th className="text-left py-3 px-3 text-slate-400 font-medium">Email</th>
                           <th className="text-left py-3 px-3 text-slate-400 font-medium">Phone</th>
-                          <th className="text-left py-3 px-3 text-slate-400 font-medium">Company</th>
                           <th className="text-left py-3 px-3 text-slate-400 font-medium">Source</th>
+                          <th className="text-left py-3 px-3 text-slate-400 font-medium">Tags</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {contacts.map((contact) => (
-                          <tr key={contact.id} className="border-b border-white/5 hover:bg-white/[0.03] transition-colors" data-testid={`contact-row-${contact.id}`}>
-                            <td className="py-3 px-3 text-white font-medium" data-testid={`contact-name-${contact.id}`}>{contact.name}</td>
-                            <td className="py-3 px-3 text-slate-200" data-testid={`contact-email-${contact.id}`}>{contact.email}</td>
+                        {contacts.map((contact) => {
+                          const isCrashLead = contact.tags?.includes("Crash_Connect_Lead");
+                          const isGeofence = contact.tags?.includes("Sentinel_Geofence");
+                          return (
+                          <tr key={contact.id} className={`border-b border-white/5 hover:bg-white/[0.03] transition-colors ${isCrashLead ? "bg-red-500/5" : ""}`} data-testid={`contact-row-${contact.id}`}>
+                            <td className="py-3 px-3 text-white font-medium" data-testid={`contact-name-${contact.id}`}>
+                              {contact.name}
+                              {isCrashLead && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30 uppercase font-bold">Crash Lead</span>}
+                            </td>
+                            <td className="py-3 px-3 text-slate-200" data-testid={`contact-email-${contact.id}`}>{contact.email || "—"}</td>
                             <td className="py-3 px-3 text-slate-200" data-testid={`contact-phone-${contact.id}`}>{contact.phone || "—"}</td>
-                            <td className="py-3 px-3 text-slate-200" data-testid={`contact-company-${contact.id}`}>{contact.company || "—"}</td>
                             <td className="py-3 px-3">
                               <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30" data-testid={`contact-source-${contact.id}`}>
                                 {contact.source || "—"}
                               </span>
                             </td>
+                            <td className="py-3 px-3">
+                              <div className="flex flex-wrap gap-1" data-testid={`contact-tags-${contact.id}`}>
+                                {contact.tags?.map((tag, i) => (
+                                  <span key={i} className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                                    tag === "Crash_Connect_Lead" ? "bg-red-500/20 text-red-400 border border-red-500/30" :
+                                    tag === "Sentinel_Geofence" ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" :
+                                    "bg-white/10 text-slate-300 border border-white/10"
+                                  }`}>
+                                    {tag}
+                                  </span>
+                                )) || "—"}
+                              </div>
+                            </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
