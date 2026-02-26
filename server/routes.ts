@@ -882,28 +882,45 @@ Rules:
     const parsed = z.object({ prompt: z.string().min(1).max(2000) }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-    const raw = await geminiChat([
-      { role: "system", content: WORKFLOW_AI_SYSTEM_PROMPT },
-      { role: "user", content: parsed.data.prompt },
-    ], { temperature: 0.7, maxTokens: 1500, jsonMode: true });
-    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    function extractJson(text: string): any {
+      const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      try { return JSON.parse(cleaned); } catch {}
+      const braceMatch = text.match(/\{[\s\S]*\}/);
+      if (braceMatch) {
+        try { return JSON.parse(braceMatch[0]); } catch {}
+      }
+      return null;
+    }
 
-    let workflowData: any;
-    try {
-      workflowData = JSON.parse(cleaned);
-    } catch {
-      return res.status(500).json({ error: "AI returned invalid JSON" });
+    let workflowData: any = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const raw = await geminiChat([
+        { role: "system", content: WORKFLOW_AI_SYSTEM_PROMPT },
+        { role: "user", content: attempt === 0
+          ? parsed.data.prompt
+          : `${parsed.data.prompt}\n\nIMPORTANT: Return ONLY a raw JSON object. No markdown, no explanation, no code fences. Start with { and end with }.`
+        },
+      ], { temperature: 0.7, maxTokens: 2000, jsonMode: true });
+
+      workflowData = extractJson(raw);
+      if (workflowData && workflowData.steps && Array.isArray(workflowData.steps)) break;
+      workflowData = null;
+    }
+
+    if (!workflowData) {
+      return res.status(500).json({ error: "AI could not generate a valid workflow. Please try rephrasing your prompt." });
     }
 
     if (!workflowData.steps || !Array.isArray(workflowData.steps)) {
       return res.status(500).json({ error: "AI returned invalid workflow structure" });
     }
 
+    const reqSubAccountId = req.body.subAccountId ? parseInt(req.body.subAccountId) : null;
     const wf = await storage.createWorkflow({
       name: workflowData.name || "AI Generated Workflow",
       trigger: workflowData.trigger || "manual_trigger",
       steps: workflowData.steps,
-      subAccountId: null,
+      subAccountId: reqSubAccountId,
     });
 
     await logUsageInternal(null, "AI_CHAT", 1, "Workflow AI generation");
