@@ -2,6 +2,7 @@ import * as client from "openid-client";
 import { Strategy, type VerifyFunction } from "openid-client/passport";
 
 import passport from "passport";
+import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import session from "express-session";
 import type { Express, RequestHandler } from "express";
 import memoize from "memoizee";
@@ -128,6 +129,63 @@ export async function setupAuth(app: Express) {
       );
     });
   });
+
+  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+    passport.use(
+      new GoogleStrategy(
+        {
+          clientID: process.env.GOOGLE_CLIENT_ID,
+          clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+          callbackURL: "/api/auth/google/callback",
+          proxy: true,
+        },
+        async (_accessToken, _refreshToken, profile, done) => {
+          try {
+            const email = profile.emails?.[0]?.value;
+            const googleId = `google_${profile.id}`;
+
+            let existingUser = email ? await authStorage.getUserByEmail(email) : undefined;
+
+            if (existingUser) {
+              if (!existingUser.profileImageUrl && profile.photos?.[0]?.value) {
+                await authStorage.upsertUser({
+                  ...existingUser,
+                  profileImageUrl: profile.photos[0].value,
+                });
+              }
+              done(null, { id: existingUser.id, claims: { sub: existingUser.id }, authProvider: "google" });
+            } else {
+              await authStorage.upsertUser({
+                id: googleId,
+                email: email || null,
+                firstName: profile.name?.givenName || null,
+                lastName: profile.name?.familyName || null,
+                profileImageUrl: profile.photos?.[0]?.value || null,
+                authProvider: "google",
+              });
+              done(null, { id: googleId, claims: { sub: googleId }, authProvider: "google" });
+            }
+          } catch (error) {
+            done(error as Error);
+          }
+        }
+      )
+    );
+
+    app.get("/api/auth/google", passport.authenticate("google", {
+      scope: ["profile", "email"],
+    }));
+
+    app.get("/api/auth/google/callback", passport.authenticate("google", {
+      failureRedirect: "/login",
+    }), (_req, res) => {
+      res.redirect("/");
+    });
+
+    console.log("[AUTH] Google OAuth strategy enabled");
+  } else {
+    console.log("[AUTH] Google OAuth not configured (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET missing)");
+  }
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
@@ -137,7 +195,7 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
     return res.status(401).json({ message: "Unauthorized" });
   }
 
-  if (user.authProvider === "email") {
+  if (user.authProvider === "email" || user.authProvider === "google") {
     return next();
   }
 
