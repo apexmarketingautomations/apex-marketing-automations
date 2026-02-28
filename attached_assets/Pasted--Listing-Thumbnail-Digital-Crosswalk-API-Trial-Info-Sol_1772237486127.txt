@@ -1,0 +1,73 @@
+
+Listing Thumbnail
+Digital Crosswalk API - Trial  Info
+Sold by: InfutorData 
+Deployed on AWS
+This API can receive 1 Hashed Email, 1 IP Address, 1 MAID or any combination of these markers as input. It then matches that input against Infutor’s digital identity graph and returns up to 10 additional Hashed Emails, up to 10 IP Address, and up to 10 MAIDs that are linked to the consumer identified by the input signals. The trial version allows for up to 100,000 queries per month.
+Show more
+View purchase options
+
+Overview
+
+Pricing
+
+Legal
+
+Usage
+
+Similar products
+Overview
+ Try agent mode
+Create proposal
+Ask question
+Description
+Verisk Marketing Solution’s (formerly Infutor) Digital Crosswalk solution uses anonymous digital identities such as hashed emails, Mobile Ad IDs (MAIDs), and IP Addresses to provide additional anonymous digital identity markers for the consumer. By cross-device linking at the individual and household level, you’ll ensure minimal ad duplication to maximize efficiencies for increased ROI. Digital Crosswalk’s cross-device linking also facilitates retargeting efforts so you can build consistent messaging from one mobile device to another.
+Terms
+This offer allows for up to 100,000 queries per month. Any overage will be billed the following month as a Private Offer through AWS Data Exchange at $10.00 per thousand transactions.
+This API can receive 1 Hashed Email, 1 IP Address, 1 MAID or any combination of these markers as input. It then matches that input against Verisk’s digital identity graph and returns up to 10 additional Hashed Emails, up to 10 IP Address, and up to 10 MAIDs that are linked to the consumer identified by the input signals. The trial version allows for up to 100,000 queries per month.
+Read more about Digital Crosswalk: Digital Crosswalk Overview 
+Use Cases
+Outbound: Expand Reach by Accessing Additional Identity Signals
+Outbound:: Minimize Ad Duplication
+Retargeting: Build Consistent Messaging from One Device to Another
+Achieve Higher Conversion Rates and ROI while Prioritizing the Protection of Anonymity
+Need Help?
+If you have questions about our products, contact us at  partners@infutor.com 
+About Verisk Marketing Solutions
+Verisk Marketing Solutions, the business unit of Verisk (Nasdaq: VRSK) that provides data solutions to marketers, was formed in 2022 through the integration of Infutor, Jornaya, and Contact State. Combining identity resolution and consumer intelligence solutions with unique insights into in-market behaviors and the highest standards in the industry for data security and privacy, Verisk Marketing Solutions provides differentiated value as a key data partner to CMOs, marketing teams, and publishers. For more information, please visit verisk.com/verisk-marketing-solutions
+Support contact email address
+Partners@infutor.com 
+Support contact URL
+https://infutor.com 
+Refund policy
+Refunds are not offered on this product. For questions or concerns, contact partners@infutor.com 
+Show less
+Details
+Sold by
+InfutorData 
+Categories
+Data Products 
+Delivery method
+AWS Data Exchange (ADX)
+Deployed on AWS
+Yes
+New
+Introducing multi-product solutions
+You can now purchase comprehensive solutions tailored to use cases and industries.
+Learn more 
+Explore multi-product solutions
+Multi-product solutions
+Pricing
+Digital Crosswalk API - Trial  Info
+View purchase options
+Pricing is based on the duration and terms of your contract with the vendor. This entitles you to a specified quantity of use for the contract duration. If you choose not to renew or replace your contract before it ends, access to these entitlements will expire.
+Additional AWS infrastructure costs may apply. Use the AWS Pricing Calculator  to estimate your infrastructure costs.
+1-month contract (1)  Info
+Dimension
+Description
+Cost/month
+Product Access
+Dimension that grants access to the product for subscribers.
+$1,000.00
+Vendor refund policy
+Refunds are not offered on this product. For questions or concerns, contact partners@infutor.com 
