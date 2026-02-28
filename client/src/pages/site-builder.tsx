@@ -871,8 +871,84 @@ interface Collaborator {
   joinedAt: string;
 }
 
+function ArrayItemEditor({ item, fields, onChange, onRemove }: { item: any; fields: { key: string; label: string; type?: string }[]; onChange: (updated: any) => void; onRemove: () => void }) {
+  return (
+    <div className="bg-black/30 border border-white/10 rounded-lg p-3 space-y-2 relative group/item">
+      <button onClick={onRemove} className="absolute top-2 right-2 p-1 text-slate-400 hover:text-red-400 opacity-0 group-hover/item:opacity-100 transition-opacity" data-testid="button-remove-array-item">
+        <Trash2 size={12} />
+      </button>
+      {fields.map((f) => (
+        <div key={f.key}>
+          <label className="text-[10px] text-slate-400 block mb-0.5">{f.label}</label>
+          {f.type === "textarea" ? (
+            <textarea
+              value={item[f.key] || ""}
+              onChange={(e) => onChange({ ...item, [f.key]: e.target.value })}
+              className="w-full bg-white/5 border border-white/10 rounded-md p-2 text-xs text-white resize-none h-16 focus:outline-none focus:border-indigo-500"
+            />
+          ) : f.type === "number" ? (
+            <input
+              type="number"
+              value={item[f.key] ?? ""}
+              onChange={(e) => onChange({ ...item, [f.key]: parseFloat(e.target.value) || 0 })}
+              className="w-full bg-white/5 border border-white/10 rounded-md p-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+            />
+          ) : f.type === "select-icon" ? (
+            <select
+              value={item[f.key] || "Star"}
+              onChange={(e) => onChange({ ...item, [f.key]: e.target.value })}
+              className="w-full bg-white/5 border border-white/10 rounded-md p-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+            >
+              {Object.keys(ICON_MAP).map((ic) => <option key={ic} value={ic}>{ic}</option>)}
+            </select>
+          ) : f.type === "string-array" ? (
+            <div className="space-y-1">
+              {(item[f.key] || []).map((val: string, vi: number) => (
+                <div key={vi} className="flex gap-1">
+                  <input
+                    value={val}
+                    onChange={(e) => {
+                      const arr = [...(item[f.key] || [])];
+                      arr[vi] = e.target.value;
+                      onChange({ ...item, [f.key]: arr });
+                    }}
+                    className="flex-1 bg-white/5 border border-white/10 rounded-md p-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                  />
+                  <button onClick={() => { const arr = [...(item[f.key] || [])]; arr.splice(vi, 1); onChange({ ...item, [f.key]: arr }); }} className="text-slate-400 hover:text-red-400 p-1"><Trash2 size={10} /></button>
+                </div>
+              ))}
+              <button onClick={() => onChange({ ...item, [f.key]: [...(item[f.key] || []), ""] })} className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1"><Plus size={10} /> Add</button>
+            </div>
+          ) : (
+            <input
+              value={item[f.key] || ""}
+              onChange={(e) => onChange({ ...item, [f.key]: e.target.value })}
+              className="w-full bg-white/5 border border-white/10 rounded-md p-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+            />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const ARRAY_FIELD_CONFIGS: Record<string, { key: string; addLabel: string; defaultItem: any; fields: { key: string; label: string; type?: string }[] }> = {
+  features: { key: "features", addLabel: "Add Feature", defaultItem: { icon: "Star", title: "New Feature", desc: "Description" }, fields: [{ key: "icon", label: "Icon", type: "select-icon" }, { key: "title", label: "Title" }, { key: "desc", label: "Description", type: "textarea" }] },
+  testimonials: { key: "testimonials", addLabel: "Add Testimonial", defaultItem: { name: "Client Name", role: "Role", quote: "Their review...", stars: 5 }, fields: [{ key: "name", label: "Name" }, { key: "role", label: "Role" }, { key: "quote", label: "Quote", type: "textarea" }, { key: "stars", label: "Stars (1-5)", type: "number" }] },
+  faqs: { key: "faqs", addLabel: "Add FAQ", defaultItem: { q: "Question?", a: "Answer." }, fields: [{ key: "q", label: "Question" }, { key: "a", label: "Answer", type: "textarea" }] },
+  plans: { key: "plans", addLabel: "Add Plan", defaultItem: { name: "Plan", description: "For everyone", price: 29, period: "mo", features: ["Feature 1"], cta: "Choose Plan" }, fields: [{ key: "name", label: "Name" }, { key: "description", label: "Description" }, { key: "price", label: "Price", type: "number" }, { key: "period", label: "Period" }, { key: "features", label: "Features", type: "string-array" }, { key: "cta", label: "Button Text" }] },
+  tiers: { key: "tiers", addLabel: "Add Tier", defaultItem: { name: "Tier", price: 9, perks: ["Perk 1"], cta: "Subscribe" }, fields: [{ key: "name", label: "Name" }, { key: "price", label: "Price", type: "number" }, { key: "perks", label: "Perks", type: "string-array" }, { key: "cta", label: "Button Text" }] },
+  members: { key: "members", addLabel: "Add Member", defaultItem: { name: "Name", role: "Role" }, fields: [{ key: "name", label: "Name" }, { key: "role", label: "Role" }, { key: "image", label: "Image URL" }] },
+  stats: { key: "stats", addLabel: "Add Stat", defaultItem: { value: "0", label: "Label" }, fields: [{ key: "value", label: "Value" }, { key: "label", label: "Label" }] },
+  events: { key: "events", addLabel: "Add Event", defaultItem: { date: "2024", title: "Event", desc: "Description" }, fields: [{ key: "date", label: "Date" }, { key: "title", label: "Title" }, { key: "desc", label: "Description", type: "textarea" }] },
+  steps: { key: "steps", addLabel: "Add Step", defaultItem: { title: "Step", desc: "Description" }, fields: [{ key: "title", label: "Title" }, { key: "desc", label: "Description", type: "textarea" }] },
+  logos: { key: "logos", addLabel: "Add Logo", defaultItem: "Brand", fields: [] },
+  rows: { key: "rows", addLabel: "Add Row", defaultItem: { cells: ["Feature", "✓", "✗"] }, fields: [{ key: "cells", label: "Cells", type: "string-array" }] },
+};
+
 function SectionEditor({ section, index, onUpdate, onClose }: { section: any; index: number; onUpdate: (idx: number, props: any) => void; onClose: () => void }) {
-  const [editProps, setEditProps] = useState<Record<string, any>>({ ...section.props });
+  const [editProps, setEditProps] = useState<Record<string, any>>(JSON.parse(JSON.stringify(section.props)));
+  const [activeTab, setActiveTab] = useState<"fields" | "arrays">("fields");
 
   const handleChange = (key: string, value: any) => {
     setEditProps((prev: Record<string, any>) => ({ ...prev, [key]: value }));
@@ -883,106 +959,225 @@ function SectionEditor({ section, index, onUpdate, onClose }: { section: any; in
     onClose();
   };
 
+  const stringFields = Object.entries(editProps).filter(([key, value]) => typeof value === "string" || typeof value === "number");
+  const arrayFields = Object.entries(editProps).filter(([key, value]) => Array.isArray(value));
+  const hasArrays = arrayFields.length > 0;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
-      className="bg-neutral-900 border border-white/10 rounded-xl p-4 mb-2 space-y-3"
+      className="bg-neutral-900 border border-white/10 rounded-xl p-4 mb-2 max-h-[70vh] overflow-y-auto"
       data-testid={`editor-section-${index}`}
     >
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-bold text-indigo-400">Edit {section.type} Section</span>
         <button onClick={onClose} className="text-slate-200 hover:text-white" data-testid={`button-close-editor-${index}`}>
           <X size={16} />
         </button>
       </div>
+
       {(section.type === "CODE" || section.type === "BOT_EMBED") && (
-        <div>
-          <label className="text-xs text-slate-200 block mb-1">Title</label>
-          <Input
-            value={editProps.title || ""}
-            onChange={(e) => handleChange("title", e.target.value)}
-            className="bg-white/5 border-white/10 text-sm mb-3"
-            data-testid={`input-edit-title-${index}`}
-          />
-          <label className="text-xs text-slate-200 block mb-1 flex items-center gap-1">
-            {section.type === "BOT_EMBED" ? (
-              <><Bot size={12} /> Bot Embed Code</>
-            ) : (
-              <><Code2 size={12} /> HTML / CSS / JavaScript</>
-            )}
-          </label>
-          <textarea
-            value={editProps.code || ""}
-            onChange={(e) => handleChange("code", e.target.value)}
-            className="w-full h-64 bg-black/50 border border-white/10 rounded-lg p-3 text-xs font-mono text-green-400 resize-y focus:outline-none focus:border-indigo-500"
-            placeholder={section.type === "BOT_EMBED" ? "Paste your chatbot embed code here (e.g. Tidio, Intercom, Drift, or custom bot script)..." : "Paste your HTML, CSS, or JavaScript here..."}
-            spellCheck={false}
-            data-testid={`input-edit-code-${index}`}
-          />
-          <div className="flex gap-2 justify-end mt-3">
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-slate-200 block mb-1">Title</label>
+            <Input value={editProps.title || ""} onChange={(e) => handleChange("title", e.target.value)} className="bg-white/5 border-white/10 text-sm" data-testid={`input-edit-title-${index}`} />
+          </div>
+          <div>
+            <label className="text-xs text-slate-200 block mb-1 flex items-center gap-1">
+              {section.type === "BOT_EMBED" ? <><Bot size={12} /> Bot Embed Code</> : <><Code2 size={12} /> HTML / CSS / JavaScript</>}
+            </label>
+            <textarea value={editProps.code || ""} onChange={(e) => handleChange("code", e.target.value)} className="w-full h-64 bg-black/50 border border-white/10 rounded-lg p-3 text-xs font-mono text-green-400 resize-y focus:outline-none focus:border-indigo-500" placeholder={section.type === "BOT_EMBED" ? "Paste chatbot embed code..." : "Paste HTML, CSS, or JavaScript..."} spellCheck={false} data-testid={`input-edit-code-${index}`} />
+          </div>
+          <div className="flex gap-2 justify-end">
             <Button size="sm" variant="outline" className="border-white/10 text-xs" onClick={onClose}>Cancel</Button>
             <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500 text-xs" onClick={handleSave} data-testid={`button-save-section-${index}`}>Apply</Button>
           </div>
         </div>
       )}
-      {section.type !== "CODE" && section.type !== "BOT_EMBED" && Object.entries(editProps).map(([key, value]) => {
-        if (key === "features" || key === "formId" || typeof value === "object") return null;
-        if (key === "image") {
-          return (
-            <div key={key}>
-              <label className="text-xs text-slate-200 block mb-1 capitalize">{key}</label>
-              <Input
-                value={String(value || "")}
-                onChange={(e) => handleChange(key, e.target.value)}
-                className="bg-white/5 border-white/10 text-sm mb-2"
-                placeholder="Image URL or upload below"
-                data-testid={`input-edit-${key}-${index}`}
-              />
-              <div className="flex gap-1 flex-wrap">
-                <label className="cursor-pointer px-2 py-1 bg-indigo-600/30 hover:bg-indigo-600/50 rounded text-[10px] text-indigo-300 transition-colors flex items-center gap-1">
-                  <Upload size={10} /> Upload
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      const formData = new FormData();
-                      formData.append("image", file);
-                      try {
-                        const res = await fetch("/api/upload-ad-image", { method: "POST", body: formData });
-                        const data = await res.json();
-                        if (data.url) handleChange("image", data.url);
-                      } catch {}
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-              </div>
-            </div>
-          );
-        }
-        return (
-          <div key={key}>
-            <label className="text-xs text-slate-200 block mb-1 capitalize">{key}</label>
-            <Input
-              value={String(value || "")}
-              onChange={(e) => handleChange(key, e.target.value)}
-              className="bg-white/5 border-white/10 text-sm"
-              data-testid={`input-edit-${key}-${index}`}
-            />
-          </div>
-        );
-      })}
+
       {section.type !== "CODE" && section.type !== "BOT_EMBED" && (
-        <div className="flex gap-2 justify-end">
-          <Button size="sm" variant="outline" className="border-white/10 text-xs" onClick={onClose}>Cancel</Button>
-          <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500 text-xs" onClick={handleSave} data-testid={`button-save-section-${index}`}>Apply</Button>
+        <div className="space-y-3">
+          {hasArrays && (
+            <div className="flex gap-1 mb-2">
+              <button onClick={() => setActiveTab("fields")} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${activeTab === "fields" ? "bg-indigo-600 text-white" : "bg-white/5 text-slate-300 hover:text-white"}`} data-testid="tab-fields">Content</button>
+              <button onClick={() => setActiveTab("arrays")} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${activeTab === "arrays" ? "bg-indigo-600 text-white" : "bg-white/5 text-slate-300 hover:text-white"}`} data-testid="tab-arrays">Items ({arrayFields.reduce((sum, [, v]) => sum + (v as any[]).length, 0)})</button>
+            </div>
+          )}
+
+          {activeTab === "fields" && stringFields.map(([key, value]) => {
+            if (key === "formId") return null;
+            if (key === "image" || key === "videoUrl") {
+              return (
+                <div key={key}>
+                  <label className="text-xs text-slate-200 block mb-1 capitalize">{key === "videoUrl" ? "Video URL" : key}</label>
+                  <Input value={String(value || "")} onChange={(e) => handleChange(key, e.target.value)} className="bg-white/5 border-white/10 text-sm mb-1" placeholder={key === "videoUrl" ? "YouTube/Vimeo embed URL" : "Image URL"} data-testid={`input-edit-${key}-${index}`} />
+                  {key === "image" && (
+                    <label className="cursor-pointer px-2 py-1 bg-indigo-600/30 hover:bg-indigo-600/50 rounded text-[10px] text-indigo-300 transition-colors inline-flex items-center gap-1">
+                      <Upload size={10} /> Upload
+                      <input type="file" accept="image/*" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; const formData = new FormData(); formData.append("image", file); try { const res = await fetch("/api/upload-ad-image", { method: "POST", body: formData }); const data = await res.json(); if (data.url) handleChange("image", data.url); } catch {} e.target.value = ""; }} />
+                    </label>
+                  )}
+                </div>
+              );
+            }
+            return (
+              <div key={key}>
+                <label className="text-xs text-slate-200 block mb-1 capitalize">{key.replace(/([A-Z])/g, " $1").trim()}</label>
+                <Input value={String(value || "")} onChange={(e) => handleChange(key, typeof value === "number" ? (parseFloat(e.target.value) || 0) : e.target.value)} className="bg-white/5 border-white/10 text-sm" data-testid={`input-edit-${key}-${index}`} />
+              </div>
+            );
+          })}
+
+          {activeTab === "arrays" && arrayFields.map(([key, value]) => {
+            const config = ARRAY_FIELD_CONFIGS[key];
+            const items = value as any[];
+
+            if (key === "logos") {
+              return (
+                <div key={key}>
+                  <label className="text-xs text-slate-200 block mb-2 capitalize font-semibold">{key} ({items.length})</label>
+                  <div className="space-y-1">
+                    {items.map((logo: any, li: number) => (
+                      <div key={li} className="flex gap-1">
+                        <input value={typeof logo === "string" ? logo : logo.name || ""} onChange={(e) => { const arr = [...items]; arr[li] = e.target.value; handleChange(key, arr); }} className="flex-1 bg-white/5 border border-white/10 rounded-md p-2 text-xs text-white focus:outline-none focus:border-indigo-500" />
+                        <button onClick={() => { const arr = [...items]; arr.splice(li, 1); handleChange(key, arr); }} className="text-slate-400 hover:text-red-400 p-1"><Trash2 size={12} /></button>
+                      </div>
+                    ))}
+                    <button onClick={() => handleChange(key, [...items, "Brand"])} className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 mt-1"><Plus size={12} /> Add Logo</button>
+                  </div>
+                </div>
+              );
+            }
+
+            if (key === "headers") {
+              return (
+                <div key={key}>
+                  <label className="text-xs text-slate-200 block mb-2 capitalize font-semibold">Table Headers</label>
+                  <div className="flex gap-1 flex-wrap">
+                    {items.map((h: string, hi: number) => (
+                      <input key={hi} value={h} onChange={(e) => { const arr = [...items]; arr[hi] = e.target.value; handleChange(key, arr); }} className="w-24 bg-white/5 border border-white/10 rounded-md p-2 text-xs text-white focus:outline-none focus:border-indigo-500" />
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+
+            if (key === "fields") {
+              return (
+                <div key={key}>
+                  <label className="text-xs text-slate-200 block mb-2 capitalize font-semibold">Form Fields</label>
+                  <div className="space-y-1">
+                    {items.map((f: string, fi: number) => (
+                      <div key={fi} className="flex gap-1">
+                        <input value={f} onChange={(e) => { const arr = [...items]; arr[fi] = e.target.value; handleChange(key, arr); }} className="flex-1 bg-white/5 border border-white/10 rounded-md p-2 text-xs text-white focus:outline-none focus:border-indigo-500" />
+                        <button onClick={() => { const arr = [...items]; arr.splice(fi, 1); handleChange(key, arr); }} className="text-slate-400 hover:text-red-400 p-1"><Trash2 size={12} /></button>
+                      </div>
+                    ))}
+                    <button onClick={() => handleChange(key, [...items, "New Field"])} className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 mt-1"><Plus size={12} /> Add Field</button>
+                  </div>
+                </div>
+              );
+            }
+
+            if (!config) return null;
+
+            return (
+              <div key={key}>
+                <label className="text-xs text-slate-200 block mb-2 capitalize font-semibold">{key} ({items.length})</label>
+                <div className="space-y-2">
+                  {items.map((item: any, ii: number) => (
+                    <ArrayItemEditor
+                      key={ii}
+                      item={item}
+                      fields={config.fields}
+                      onChange={(updated) => { const arr = [...items]; arr[ii] = updated; handleChange(key, arr); }}
+                      onRemove={() => { const arr = [...items]; arr.splice(ii, 1); handleChange(key, arr); }}
+                    />
+                  ))}
+                  <button onClick={() => handleChange(key, [...items, JSON.parse(JSON.stringify(config.defaultItem))])} className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 w-full justify-center py-2 border border-dashed border-white/10 rounded-lg hover:border-indigo-500/30" data-testid={`button-add-${key}`}>
+                    <Plus size={12} /> {config.addLabel}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+
+          <div className="flex gap-2 justify-end pt-2 border-t border-white/10">
+            <Button size="sm" variant="outline" className="border-white/10 text-xs" onClick={onClose}>Cancel</Button>
+            <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500 text-xs" onClick={handleSave} data-testid={`button-save-section-${index}`}>Apply Changes</Button>
+          </div>
         </div>
       )}
+    </motion.div>
+  );
+}
+
+function ThemeEditor({ theme, onUpdate, onClose }: { theme: any; onUpdate: (theme: any) => void; onClose: () => void }) {
+  const [editTheme, setEditTheme] = useState({ ...theme });
+  const FONT_OPTIONS = ["Inter", "Playfair Display", "Poppins", "Montserrat", "Roboto", "Lato", "Open Sans", "Raleway", "Oswald", "Merriweather", "DM Sans", "Space Grotesk"];
+  const PRESET_COLORS = ["#6366f1", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#1e40af", "#d4a574", "#a3e635", "#f43f5e", "#22d3ee", "#fbbf24", "#a78bfa"];
+
+  return (
+    <motion.div
+      initial={{ x: "100%" }}
+      animate={{ x: 0 }}
+      exit={{ x: "100%" }}
+      transition={{ type: "spring", damping: 25, stiffness: 200 }}
+      className="fixed right-0 top-0 bottom-0 w-[320px] bg-neutral-900 border-l border-white/10 z-[70] flex flex-col shadow-2xl"
+      data-testid="panel-theme-editor"
+    >
+      <div className="p-4 border-b border-white/5 flex items-center justify-between">
+        <h3 className="text-lg font-bold flex items-center gap-2">
+          <Palette size={18} className="text-indigo-400" /> Theme Editor
+        </h3>
+        <button onClick={onClose} className="text-slate-200 hover:text-white" data-testid="button-close-theme"><X size={18} /></button>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        <div>
+          <label className="text-xs text-slate-300 block mb-2 font-semibold uppercase tracking-wider">Primary Color</label>
+          <div className="flex flex-wrap gap-2 mb-2">
+            {PRESET_COLORS.map((c) => (
+              <button key={c} onClick={() => setEditTheme((p: any) => ({ ...p, primary: c }))} className={`w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 ${editTheme.primary === c ? "border-white scale-110" : "border-transparent"}`} style={{ backgroundColor: c }} data-testid={`color-preset-${c.replace("#", "")}`} />
+            ))}
+          </div>
+          <div className="flex gap-2 items-center">
+            <input type="color" value={editTheme.primary} onChange={(e) => setEditTheme((p: any) => ({ ...p, primary: e.target.value }))} className="w-10 h-10 rounded cursor-pointer" data-testid="input-color-primary" />
+            <Input value={editTheme.primary} onChange={(e) => setEditTheme((p: any) => ({ ...p, primary: e.target.value }))} className="bg-white/5 border-white/10 text-sm flex-1 font-mono" data-testid="input-hex-primary" />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs text-slate-300 block mb-2 font-semibold uppercase tracking-wider">Background Color</label>
+          <div className="flex gap-2 items-center">
+            <input type="color" value={editTheme.bg} onChange={(e) => setEditTheme((p: any) => ({ ...p, bg: e.target.value }))} className="w-10 h-10 rounded cursor-pointer" data-testid="input-color-bg" />
+            <Input value={editTheme.bg} onChange={(e) => setEditTheme((p: any) => ({ ...p, bg: e.target.value }))} className="bg-white/5 border-white/10 text-sm flex-1 font-mono" data-testid="input-hex-bg" />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs text-slate-300 block mb-2 font-semibold uppercase tracking-wider">Text Color</label>
+          <div className="flex gap-2 items-center">
+            <input type="color" value={editTheme.text} onChange={(e) => setEditTheme((p: any) => ({ ...p, text: e.target.value }))} className="w-10 h-10 rounded cursor-pointer" data-testid="input-color-text" />
+            <Input value={editTheme.text} onChange={(e) => setEditTheme((p: any) => ({ ...p, text: e.target.value }))} className="bg-white/5 border-white/10 text-sm flex-1 font-mono" data-testid="input-hex-text" />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs text-slate-300 block mb-2 font-semibold uppercase tracking-wider">Font Family</label>
+          <select value={editTheme.font} onChange={(e) => setEditTheme((p: any) => ({ ...p, font: e.target.value }))} className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-indigo-500" data-testid="select-font">
+            {FONT_OPTIONS.map((f) => <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>)}
+          </select>
+        </div>
+        <div className="p-3 rounded-xl" style={{ backgroundColor: editTheme.bg, border: `1px solid ${editTheme.text}20` }}>
+          <p className="text-xs font-semibold mb-1" style={{ color: editTheme.text, fontFamily: editTheme.font }}>Preview</p>
+          <p className="text-lg font-bold" style={{ color: editTheme.text, fontFamily: editTheme.font }}>Heading Text</p>
+          <p className="text-sm mt-1" style={{ color: editTheme.text, opacity: 0.7 }}>Body text preview</p>
+          <div className="mt-2 inline-block px-4 py-1.5 rounded-full text-xs font-bold" style={{ backgroundColor: editTheme.primary, color: editTheme.bg }}>Button</div>
+        </div>
+      </div>
+      <div className="p-4 border-t border-white/5 flex gap-2">
+        <Button variant="outline" className="flex-1 border-white/10 text-xs" onClick={onClose}>Cancel</Button>
+        <Button className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-xs" onClick={() => { onUpdate(editTheme); onClose(); }} data-testid="button-apply-theme">Apply Theme</Button>
+      </div>
     </motion.div>
   );
 }
@@ -1006,6 +1201,7 @@ export default function SiteBuilder() {
   const [editingSectionIndex, setEditingSectionIndex] = useState<number | null>(null);
   const [addSectionOpen, setAddSectionOpen] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showThemeEditor, setShowThemeEditor] = useState(false);
 
   const { showTutorial, startTutorial, closeTutorial } = useSiteBuilderTutorial();
 
@@ -1761,18 +1957,28 @@ export default function SiteBuilder() {
               </button>
             </div>
             {siteData && (
-              <button
-                onClick={() => { if (!editMode) markMilestoneComplete("customize"); setEditMode(!editMode); }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
-                  editMode
-                    ? "bg-amber-500/20 border-amber-500/40 text-amber-300"
-                    : "bg-white/5 border-white/10 text-slate-200 hover:text-white"
-                }`}
-                data-testid="button-toggle-edit-mode"
-              >
-                {editMode ? <EyeOff size={14} /> : <Eye size={14} />}
-                {editMode ? "Exit Edit" : "Edit Mode"}
-              </button>
+              <>
+                <button
+                  onClick={() => { if (!editMode) markMilestoneComplete("customize"); setEditMode(!editMode); }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
+                    editMode
+                      ? "bg-amber-500/20 border-amber-500/40 text-amber-300"
+                      : "bg-white/5 border-white/10 text-slate-200 hover:text-white"
+                  }`}
+                  data-testid="button-toggle-edit-mode"
+                >
+                  {editMode ? <EyeOff size={14} /> : <Eye size={14} />}
+                  {editMode ? "Exit Edit" : "Edit Mode"}
+                </button>
+                <button
+                  onClick={() => setShowThemeEditor(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border bg-white/5 border-white/10 text-slate-200 hover:text-white hover:border-indigo-500/30"
+                  data-testid="button-open-theme-editor"
+                >
+                  <Palette size={14} />
+                  Theme
+                </button>
+              </>
             )}
           </div>
 
@@ -2488,6 +2694,16 @@ export default function SiteBuilder() {
               </div>
             </motion.div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showThemeEditor && siteData && (
+          <ThemeEditor
+            theme={siteData.theme}
+            onUpdate={(newTheme) => setSiteData((prev: any) => ({ ...prev, theme: newTheme }))}
+            onClose={() => setShowThemeEditor(false)}
+          />
         )}
       </AnimatePresence>
 

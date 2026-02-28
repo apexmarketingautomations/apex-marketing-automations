@@ -21,6 +21,7 @@ import {
   X,
   ArrowRight,
   Eye,
+  EyeOff,
   Users,
   FileText,
   Layers,
@@ -31,6 +32,18 @@ import {
   Target,
   MessageSquare,
   Briefcase,
+  Edit,
+  Trash2,
+  Plus,
+  GripVertical,
+  ArrowUp,
+  ArrowDown,
+  Save,
+  Upload,
+  Crown,
+  Flame,
+  Camera,
+  Bot,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -40,7 +53,7 @@ import { useActiveSubAccountId } from "@/components/account-required";
 import { useToast } from "@/hooks/use-toast";
 
 const ICON_MAP: Record<string, React.ComponentType<any>> = {
-  ShieldCheck, Clock, Sparkles, Star, Dumbbell, Heart, Zap, Trophy, CheckCircle2,
+  ShieldCheck, Clock, Sparkles, Star, Dumbbell, Heart, Zap, Trophy, CheckCircle2, Crown, Flame, Camera,
 };
 
 const STICKY_KEY = "apex_liquid_contact";
@@ -316,6 +329,190 @@ const COMPONENT_MAP: Record<string, React.ComponentType<any>> = {
   TESTIMONIALS: TestimonialsSection,
   CTA: CtaSection,
 };
+
+const ARRAY_FIELD_CONFIGS: Record<string, { key: string; addLabel: string; defaultItem: any; fields: { key: string; label: string; type?: string }[] }> = {
+  features: { key: "features", addLabel: "Add Feature", defaultItem: { icon: "Star", title: "New Feature", desc: "Description" }, fields: [{ key: "icon", label: "Icon", type: "select-icon" }, { key: "title", label: "Title" }, { key: "desc", label: "Description", type: "textarea" }] },
+  testimonials: { key: "testimonials", addLabel: "Add Testimonial", defaultItem: { name: "Client", role: "Customer", quote: "Great service!", stars: 5 }, fields: [{ key: "name", label: "Name" }, { key: "role", label: "Role" }, { key: "quote", label: "Quote", type: "textarea" }, { key: "stars", label: "Stars", type: "number" }] },
+  faqs: { key: "faqs", addLabel: "Add FAQ", defaultItem: { q: "Question?", a: "Answer." }, fields: [{ key: "q", label: "Question" }, { key: "a", label: "Answer", type: "textarea" }] },
+  plans: { key: "plans", addLabel: "Add Plan", defaultItem: { name: "Plan", description: "For everyone", price: 29, period: "mo", features: ["Feature 1"], cta: "Choose" }, fields: [{ key: "name", label: "Name" }, { key: "description", label: "Description" }, { key: "price", label: "Price", type: "number" }, { key: "period", label: "Period" }, { key: "cta", label: "Button Text" }] },
+  tiers: { key: "tiers", addLabel: "Add Tier", defaultItem: { name: "Tier", price: 9, perks: ["Perk 1"], cta: "Subscribe" }, fields: [{ key: "name", label: "Name" }, { key: "price", label: "Price", type: "number" }, { key: "cta", label: "Button Text" }] },
+  members: { key: "members", addLabel: "Add Member", defaultItem: { name: "Name", role: "Role" }, fields: [{ key: "name", label: "Name" }, { key: "role", label: "Role" }, { key: "image", label: "Image URL" }] },
+  stats: { key: "stats", addLabel: "Add Stat", defaultItem: { value: "0", label: "Label" }, fields: [{ key: "value", label: "Value" }, { key: "label", label: "Label" }] },
+  events: { key: "events", addLabel: "Add Event", defaultItem: { date: "2024", title: "Event", desc: "Description" }, fields: [{ key: "date", label: "Date" }, { key: "title", label: "Title" }, { key: "desc", label: "Description", type: "textarea" }] },
+  steps: { key: "steps", addLabel: "Add Step", defaultItem: { title: "Step", desc: "Description" }, fields: [{ key: "title", label: "Title" }, { key: "desc", label: "Description", type: "textarea" }] },
+};
+
+function LiquidArrayItemEditor({ item, fields, onChange, onRemove }: { item: any; fields: { key: string; label: string; type?: string }[]; onChange: (u: any) => void; onRemove: () => void }) {
+  return (
+    <div className="bg-black/30 border border-white/10 rounded-lg p-3 space-y-2 relative group/item">
+      <button onClick={onRemove} className="absolute top-2 right-2 p-1 text-slate-400 hover:text-red-400 opacity-0 group-hover/item:opacity-100 transition-opacity"><Trash2 size={12} /></button>
+      {fields.map((f) => (
+        <div key={f.key}>
+          <label className="text-[10px] text-slate-400 block mb-0.5">{f.label}</label>
+          {f.type === "textarea" ? (
+            <textarea value={item[f.key] || ""} onChange={(e) => onChange({ ...item, [f.key]: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-md p-2 text-xs text-white resize-none h-16 focus:outline-none focus:border-indigo-500" />
+          ) : f.type === "number" ? (
+            <input type="number" value={item[f.key] ?? ""} onChange={(e) => onChange({ ...item, [f.key]: parseFloat(e.target.value) || 0 })} className="w-full bg-white/5 border border-white/10 rounded-md p-2 text-xs text-white focus:outline-none focus:border-indigo-500" />
+          ) : f.type === "select-icon" ? (
+            <select value={item[f.key] || "Star"} onChange={(e) => onChange({ ...item, [f.key]: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-md p-2 text-xs text-white focus:outline-none focus:border-indigo-500">
+              {Object.keys(ICON_MAP).map((ic) => <option key={ic} value={ic}>{ic}</option>)}
+            </select>
+          ) : (
+            <input value={item[f.key] || ""} onChange={(e) => onChange({ ...item, [f.key]: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-md p-2 text-xs text-white focus:outline-none focus:border-indigo-500" />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function LiquidSectionEditor({ section, index, onUpdate, onClose }: { section: any; index: number; onUpdate: (idx: number, props: any) => void; onClose: () => void }) {
+  const [editProps, setEditProps] = useState<Record<string, any>>(JSON.parse(JSON.stringify(section.props)));
+  const [activeTab, setActiveTab] = useState<"fields" | "arrays">("fields");
+
+  const handleChange = (key: string, value: any) => {
+    setEditProps((prev: Record<string, any>) => ({ ...prev, [key]: value }));
+  };
+
+  const handleSave = () => { onUpdate(index, editProps); onClose(); };
+
+  const stringFields = Object.entries(editProps).filter(([, v]) => typeof v === "string" || typeof v === "number");
+  const arrayFields = Object.entries(editProps).filter(([, v]) => Array.isArray(v));
+  const hasArrays = arrayFields.length > 0;
+
+  return (
+    <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="bg-neutral-900 border border-white/10 rounded-xl p-4 mb-2 max-h-[70vh] overflow-y-auto" data-testid={`liquid-editor-section-${index}`}>
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-sm font-bold text-indigo-400">Edit {section.type}</span>
+        <button onClick={onClose} className="text-slate-200 hover:text-white"><X size={16} /></button>
+      </div>
+      <div className="space-y-3">
+        {hasArrays && (
+          <div className="flex gap-1 mb-2">
+            <button onClick={() => setActiveTab("fields")} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${activeTab === "fields" ? "bg-indigo-600 text-white" : "bg-white/5 text-slate-300"}`}>Content</button>
+            <button onClick={() => setActiveTab("arrays")} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${activeTab === "arrays" ? "bg-indigo-600 text-white" : "bg-white/5 text-slate-300"}`}>Items ({arrayFields.reduce((s, [, v]) => s + (v as any[]).length, 0)})</button>
+          </div>
+        )}
+        {activeTab === "fields" && stringFields.map(([key, value]) => {
+          if (key === "formId") return null;
+          if (key === "image") {
+            return (
+              <div key={key}>
+                <label className="text-xs text-slate-200 block mb-1 capitalize">{key}</label>
+                <Input value={String(value || "")} onChange={(e) => handleChange(key, e.target.value)} className="bg-white/5 border-white/10 text-sm mb-1" data-testid={`liquid-input-edit-${key}-${index}`} />
+                <label className="cursor-pointer px-2 py-1 bg-indigo-600/30 hover:bg-indigo-600/50 rounded text-[10px] text-indigo-300 inline-flex items-center gap-1">
+                  <Upload size={10} /> Upload
+                  <input type="file" accept="image/*" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; const fd = new FormData(); fd.append("image", file); try { const res = await fetch("/api/upload-ad-image", { method: "POST", body: fd }); const d = await res.json(); if (d.url) handleChange("image", d.url); } catch {} e.target.value = ""; }} />
+                </label>
+              </div>
+            );
+          }
+          return (
+            <div key={key}>
+              <label className="text-xs text-slate-200 block mb-1 capitalize">{key.replace(/([A-Z])/g, " $1").trim()}</label>
+              <Input value={String(value || "")} onChange={(e) => handleChange(key, typeof value === "number" ? (parseFloat(e.target.value) || 0) : e.target.value)} className="bg-white/5 border-white/10 text-sm" data-testid={`liquid-input-edit-${key}-${index}`} />
+            </div>
+          );
+        })}
+        {activeTab === "arrays" && arrayFields.map(([key, value]) => {
+          const config = ARRAY_FIELD_CONFIGS[key];
+          const items = value as any[];
+
+          if (!config) {
+            if (items.length > 0 && typeof items[0] === "string") {
+              return (
+                <div key={key}>
+                  <label className="text-xs text-slate-200 block mb-2 capitalize font-semibold">{key} ({items.length})</label>
+                  <div className="space-y-1">
+                    {items.map((val: string, vi: number) => (
+                      <div key={vi} className="flex gap-1">
+                        <input value={val} onChange={(e) => { const arr = [...items]; arr[vi] = e.target.value; handleChange(key, arr); }} className="flex-1 bg-white/5 border border-white/10 rounded-md p-2 text-xs text-white focus:outline-none focus:border-indigo-500" />
+                        <button onClick={() => { const arr = [...items]; arr.splice(vi, 1); handleChange(key, arr); }} className="text-slate-400 hover:text-red-400 p-1"><Trash2 size={12} /></button>
+                      </div>
+                    ))}
+                    <button onClick={() => handleChange(key, [...items, ""])} className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 mt-1"><Plus size={12} /> Add</button>
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          }
+
+          return (
+            <div key={key}>
+              <label className="text-xs text-slate-200 block mb-2 capitalize font-semibold">{key} ({items.length})</label>
+              <div className="space-y-2">
+                {items.map((item: any, ii: number) => (
+                  <LiquidArrayItemEditor key={ii} item={item} fields={config.fields} onChange={(u) => { const arr = [...items]; arr[ii] = u; handleChange(key, arr); }} onRemove={() => { const arr = [...items]; arr.splice(ii, 1); handleChange(key, arr); }} />
+                ))}
+                <button onClick={() => handleChange(key, [...items, JSON.parse(JSON.stringify(config.defaultItem))])} className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 w-full justify-center py-2 border border-dashed border-white/10 rounded-lg" data-testid={`liquid-add-${key}`}><Plus size={12} /> {config.addLabel}</button>
+              </div>
+            </div>
+          );
+        })}
+        <div className="flex gap-2 justify-end pt-2 border-t border-white/10">
+          <Button size="sm" variant="outline" className="border-white/10 text-xs" onClick={onClose}>Cancel</Button>
+          <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500 text-xs" onClick={handleSave} data-testid={`liquid-save-section-${index}`}>Apply</Button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function LiquidThemeEditor({ theme, onUpdate, onClose }: { theme: any; onUpdate: (t: any) => void; onClose: () => void }) {
+  const [editTheme, setEditTheme] = useState({ ...theme });
+  const FONTS = ["Inter", "Playfair Display", "Poppins", "Montserrat", "Roboto", "Lato", "Raleway", "DM Sans", "Space Grotesk"];
+  const PRESETS = ["#6366f1", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#1e40af", "#d4a574", "#a3e635"];
+  return (
+    <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="fixed right-0 top-0 bottom-0 w-[300px] bg-neutral-900 border-l border-white/10 z-[70] flex flex-col shadow-2xl" data-testid="liquid-theme-editor">
+      <div className="p-4 border-b border-white/5 flex items-center justify-between">
+        <h3 className="text-lg font-bold flex items-center gap-2"><Palette size={18} className="text-indigo-400" /> Theme</h3>
+        <button onClick={onClose} className="text-slate-200 hover:text-white"><X size={18} /></button>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-5">
+        <div>
+          <label className="text-xs text-slate-300 block mb-2 font-semibold uppercase tracking-wider">Primary Color</label>
+          <div className="flex flex-wrap gap-2 mb-2">
+            {PRESETS.map((c) => <button key={c} onClick={() => setEditTheme((p: any) => ({ ...p, primary: c }))} className={`w-7 h-7 rounded-full border-2 hover:scale-110 transition-transform ${editTheme.primary === c ? "border-white scale-110" : "border-transparent"}`} style={{ backgroundColor: c }} />)}
+          </div>
+          <div className="flex gap-2 items-center">
+            <input type="color" value={editTheme.primary} onChange={(e) => setEditTheme((p: any) => ({ ...p, primary: e.target.value }))} className="w-8 h-8 rounded cursor-pointer" />
+            <Input value={editTheme.primary} onChange={(e) => setEditTheme((p: any) => ({ ...p, primary: e.target.value }))} className="bg-white/5 border-white/10 text-sm flex-1 font-mono" />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs text-slate-300 block mb-2 font-semibold uppercase tracking-wider">Background</label>
+          <div className="flex gap-2 items-center">
+            <input type="color" value={editTheme.bg} onChange={(e) => setEditTheme((p: any) => ({ ...p, bg: e.target.value }))} className="w-8 h-8 rounded cursor-pointer" />
+            <Input value={editTheme.bg} onChange={(e) => setEditTheme((p: any) => ({ ...p, bg: e.target.value }))} className="bg-white/5 border-white/10 text-sm flex-1 font-mono" />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs text-slate-300 block mb-2 font-semibold uppercase tracking-wider">Text Color</label>
+          <div className="flex gap-2 items-center">
+            <input type="color" value={editTheme.text} onChange={(e) => setEditTheme((p: any) => ({ ...p, text: e.target.value }))} className="w-8 h-8 rounded cursor-pointer" />
+            <Input value={editTheme.text} onChange={(e) => setEditTheme((p: any) => ({ ...p, text: e.target.value }))} className="bg-white/5 border-white/10 text-sm flex-1 font-mono" />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs text-slate-300 block mb-2 font-semibold uppercase tracking-wider">Font</label>
+          <select value={editTheme.font} onChange={(e) => setEditTheme((p: any) => ({ ...p, font: e.target.value }))} className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+            {FONTS.map((f) => <option key={f} value={f}>{f}</option>)}
+          </select>
+        </div>
+        <div className="p-3 rounded-xl" style={{ backgroundColor: editTheme.bg, border: `1px solid ${editTheme.text}20` }}>
+          <p className="text-lg font-bold" style={{ color: editTheme.text, fontFamily: editTheme.font }}>Preview</p>
+          <p className="text-sm mt-1" style={{ color: editTheme.text, opacity: 0.7 }}>Body text</p>
+          <div className="mt-2 inline-block px-4 py-1 rounded-full text-xs font-bold" style={{ backgroundColor: editTheme.primary, color: editTheme.bg }}>Button</div>
+        </div>
+      </div>
+      <div className="p-4 border-t border-white/5 flex gap-2">
+        <Button variant="outline" className="flex-1 border-white/10 text-xs" onClick={onClose}>Cancel</Button>
+        <Button className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-xs" onClick={() => { onUpdate(editTheme); onClose(); }} data-testid="liquid-apply-theme">Apply</Button>
+      </div>
+    </motion.div>
+  );
+}
 
 const INDUSTRIES = [
   "Dental Practice", "Med Spa / Aesthetics", "Gym / Fitness", "Real Estate", "Roofing",
@@ -700,8 +897,82 @@ export default function LiquidWebsite() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [lastPrompt, setLastPrompt] = useState<PromptFormData | null>(null);
   const [showPrompt, setShowPrompt] = useState(true);
+  const [editMode, setEditMode] = useState(false);
+  const [editingSectionIndex, setEditingSectionIndex] = useState<number | null>(null);
+  const [showThemeEditor, setShowThemeEditor] = useState(false);
+  const [addSectionOpen, setAddSectionOpen] = useState(false);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [savingDesign, setSavingDesign] = useState(false);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [saveName, setSaveName] = useState("");
   const subAccountId = useActiveSubAccountId();
   const { toast } = useToast();
+
+  const handleUpdateSectionProps = (idx: number, newProps: any) => {
+    setSiteData((prev: any) => {
+      const sections = [...prev.sections];
+      sections[idx] = { ...sections[idx], props: newProps };
+      return { ...prev, sections };
+    });
+  };
+
+  const handleDeleteSection = (idx: number) => {
+    setSiteData((prev: any) => {
+      const sections = [...prev.sections];
+      sections.splice(idx, 1);
+      return { ...prev, sections };
+    });
+    setEditingSectionIndex(null);
+  };
+
+  const handleAddSection = (type: string) => {
+    const defaults: Record<string, any> = {
+      HERO: { title: "Your Headline", subtitle: "Your subheadline goes here.", cta: "Get Started" },
+      FEATURES: { title: "Features", features: [{ icon: "Star", title: "Feature 1", desc: "Description" }, { icon: "Zap", title: "Feature 2", desc: "Description" }, { icon: "Heart", title: "Feature 3", desc: "Description" }] },
+      TESTIMONIALS: { title: "What Clients Say", testimonials: [{ name: "Client", role: "Customer", quote: "Great service!", stars: 5 }] },
+      BOOKING: { title: "Book Now" },
+      CTA: { title: "Ready to Get Started?", subtitle: "Take the next step today.", cta: "Contact Us" },
+    };
+    setSiteData((prev: any) => ({
+      ...prev,
+      sections: [...prev.sections, { type, props: defaults[type] || { title: "New Section" } }],
+    }));
+    setAddSectionOpen(false);
+  };
+
+  const handleDragStart = (idx: number) => setDragIndex(idx);
+  const handleDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+    if (dragIndex === null || dragIndex === idx) return;
+    setSiteData((prev: any) => {
+      const sections = [...prev.sections];
+      const dragged = sections.splice(dragIndex, 1)[0];
+      sections.splice(idx, 0, dragged);
+      return { ...prev, sections };
+    });
+    setDragIndex(idx);
+  };
+  const handleDrop = () => setDragIndex(null);
+
+  const handleSaveAsDesign = async () => {
+    if (!saveName.trim() || !siteData) return;
+    setSavingDesign(true);
+    try {
+      const res = await fetch("/api/sites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: saveName.trim(), prompt: lastPrompt?.businessName || "Liquid Site", siteData }),
+      });
+      if (!res.ok) throw new Error("Failed to save");
+      setShowSaveDialog(false);
+      setSaveName("");
+      toast({ title: "Saved!", description: "Design saved to your Site Architect library." });
+    } catch (err: any) {
+      toast({ title: "Save Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setSavingDesign(false);
+    }
+  };
 
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
@@ -855,7 +1126,7 @@ export default function LiquidWebsite() {
 
   return (
     <div className="min-h-screen relative" style={{ backgroundColor: siteData.theme?.bg || "#0a0a0a" }}>
-      {stickyContact?.firstName && (
+      {stickyContact?.firstName && !editMode && (
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -867,9 +1138,61 @@ export default function LiquidWebsite() {
         </motion.div>
       )}
 
+      {editMode && (
+        <div className="sticky top-0 z-50 h-12 bg-neutral-900/95 backdrop-blur-md border-b border-white/10 flex items-center justify-between px-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-amber-400 flex items-center gap-1"><Edit size={12} /> EDIT MODE</span>
+            <span className="text-xs text-slate-400">{siteData.sections?.length} sections</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setShowThemeEditor(true)} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 border border-white/10 text-slate-200 hover:text-white hover:border-indigo-500/30 flex items-center gap-1" data-testid="button-liquid-theme">
+              <Palette size={12} /> Theme
+            </button>
+            <button onClick={() => { setShowSaveDialog(true); setSaveName(lastPrompt?.businessName || ""); }} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1" data-testid="button-liquid-save-design">
+              <Save size={12} /> Save Design
+            </button>
+            <button onClick={() => { setEditMode(false); setEditingSectionIndex(null); }} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 border border-white/10 text-slate-200 hover:text-white flex items-center gap-1" data-testid="button-liquid-exit-edit">
+              <Eye size={12} /> Preview
+            </button>
+          </div>
+        </div>
+      )}
+
       {siteData.sections?.map((section: any, i: number) => {
         const Component = COMPONENT_MAP[section.type];
         if (!Component) return null;
+
+        if (editMode) {
+          return (
+            <div
+              key={i}
+              className={`relative group border-2 transition-colors ${dragIndex === i ? "border-indigo-500 bg-indigo-500/5" : "border-transparent hover:border-indigo-500/30"}`}
+              draggable
+              onDragStart={() => handleDragStart(i)}
+              onDragOver={(e) => handleDragOver(e, i)}
+              onDrop={handleDrop}
+              onDragEnd={() => setDragIndex(null)}
+              data-testid={`liquid-section-wrapper-${i}`}
+            >
+              <div className="absolute left-0 top-0 bottom-0 w-10 flex flex-col items-center justify-center gap-1 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity z-20 cursor-grab">
+                <GripVertical size={18} className="text-white/70" />
+              </div>
+              <div className="absolute right-2 top-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                <button onClick={() => setEditingSectionIndex(editingSectionIndex === i ? null : i)} className="p-1.5 rounded bg-indigo-600 text-white hover:bg-indigo-500" data-testid={`button-liquid-edit-section-${i}`}><Edit size={14} /></button>
+                <button onClick={() => handleDeleteSection(i)} className="p-1.5 rounded bg-red-600 text-white hover:bg-red-500" data-testid={`button-liquid-delete-section-${i}`}><Trash2 size={14} /></button>
+                {i > 0 && <button onClick={() => { setSiteData((prev: any) => { const s = [...prev.sections]; [s[i-1], s[i]] = [s[i], s[i-1]]; return { ...prev, sections: s }; }); }} className="p-1.5 rounded bg-white/10 text-white hover:bg-white/20"><ArrowUp size={14} /></button>}
+                {i < siteData.sections.length - 1 && <button onClick={() => { setSiteData((prev: any) => { const s = [...prev.sections]; [s[i], s[i+1]] = [s[i+1], s[i]]; return { ...prev, sections: s }; }); }} className="p-1.5 rounded bg-white/10 text-white hover:bg-white/20"><ArrowDown size={14} /></button>}
+              </div>
+              <AnimatePresence>
+                {editingSectionIndex === i && (
+                  <LiquidSectionEditor section={section} index={i} onUpdate={handleUpdateSectionProps} onClose={() => setEditingSectionIndex(null)} />
+                )}
+              </AnimatePresence>
+              <Component {...section.props} theme={siteData.theme} templateVars={templateVars} subAccountId={subAccountId} stickyContact={stickyContact} onCtaClick={scrollToForm} onFormSubmit={handleFormSubmit} />
+            </div>
+          );
+        }
+
         return (
           <Component
             key={i}
@@ -884,14 +1207,39 @@ export default function LiquidWebsite() {
         );
       })}
 
+      {editMode && (
+        <div className="p-6 flex justify-center">
+          {addSectionOpen ? (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-wrap gap-2 max-w-md justify-center bg-neutral-900/90 backdrop-blur-md p-4 rounded-xl border border-white/10">
+              {Object.keys(COMPONENT_MAP).map((type) => (
+                <button key={type} onClick={() => handleAddSection(type)} className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-xs text-white hover:bg-indigo-600/20 hover:border-indigo-500/30 transition-colors" data-testid={`button-liquid-add-${type}`}>{type}</button>
+              ))}
+              <Button size="sm" variant="outline" className="border-white/10 text-xs" onClick={() => setAddSectionOpen(false)}>Cancel</Button>
+            </motion.div>
+          ) : (
+            <Button variant="outline" className="border-dashed border-white/20 text-slate-200 hover:text-white hover:border-indigo-500" onClick={() => setAddSectionOpen(true)} data-testid="button-liquid-add-section">
+              <Plus size={16} className="mr-2" /> Add Section
+            </Button>
+          )}
+        </div>
+      )}
+
       <div className="fixed bottom-6 left-6 z-50 flex gap-2">
         <button
           onClick={handleRegenerate}
           className="p-3 rounded-full shadow-lg transition-transform hover:scale-110 bg-white/10 backdrop-blur-md text-white border border-white/20"
-          title="Edit & Regenerate"
+          title="Regenerate"
           data-testid="button-liquid-regenerate"
         >
           <RotateCcw size={20} />
+        </button>
+        <button
+          onClick={() => setEditMode(!editMode)}
+          className={`p-3 rounded-full shadow-lg transition-transform hover:scale-110 backdrop-blur-md border ${editMode ? "bg-amber-500/20 border-amber-500/40 text-amber-300" : "bg-white/10 text-white border-white/20"}`}
+          title={editMode ? "Exit Edit Mode" : "Edit Mode"}
+          data-testid="button-liquid-toggle-edit"
+        >
+          {editMode ? <EyeOff size={20} /> : <Edit size={20} />}
         </button>
         <button
           onClick={() => setSettingsOpen(true)}
@@ -903,6 +1251,46 @@ export default function LiquidWebsite() {
           <Settings size={20} />
         </button>
       </div>
+
+      <AnimatePresence>
+        {showThemeEditor && (
+          <LiquidThemeEditor
+            theme={siteData.theme}
+            onUpdate={(newTheme) => setSiteData((prev: any) => ({ ...prev, theme: newTheme }))}
+            onClose={() => setShowThemeEditor(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showSaveDialog && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowSaveDialog(false)}>
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-neutral-900 border border-white/10 rounded-xl p-6 w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()} data-testid="liquid-save-dialog">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-white">Save to My Designs</h3>
+                <button onClick={() => setShowSaveDialog(false)} className="text-slate-200 hover:text-white"><X size={18} /></button>
+              </div>
+              <p className="text-sm text-slate-300 mb-4">Save this site to your Site Architect library for further editing and publishing.</p>
+              <Input
+                value={saveName}
+                onChange={(e) => setSaveName(e.target.value)}
+                placeholder="Design name..."
+                className="bg-white/5 border-white/10 mb-4 text-white"
+                onKeyDown={(e) => e.key === "Enter" && saveName.trim() && handleSaveAsDesign()}
+                autoFocus
+                data-testid="liquid-input-save-name"
+              />
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" size="sm" className="border-white/10" onClick={() => setShowSaveDialog(false)}>Cancel</Button>
+                <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500" onClick={handleSaveAsDesign} disabled={!saveName.trim() || savingDesign} data-testid="liquid-confirm-save">
+                  {savingDesign ? <Loader2 size={14} className="animate-spin mr-2" /> : <Save size={14} className="mr-2" />}
+                  Save Design
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <SettingsPanel
         open={settingsOpen}
