@@ -1,11 +1,33 @@
 import { db } from "./db";
-import { blueprints } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { blueprints, subAccounts } from "@shared/schema";
+import { eq, isNull } from "drizzle-orm";
 
 export async function seed() {
   await seedBlueprints();
+  await fixOrphanedAccounts();
 
-  console.log("Database seeded successfully (blueprints only)");
+  console.log("Database seeded successfully");
+}
+
+async function fixOrphanedAccounts() {
+  const adminUserId = process.env.ADMIN_USER_ID;
+  if (!adminUserId) return;
+
+  const orphaned = await db
+    .select({ id: subAccounts.id, name: subAccounts.name })
+    .from(subAccounts)
+    .where(isNull(subAccounts.ownerUserId));
+
+  if (orphaned.length === 0) return;
+
+  await db
+    .update(subAccounts)
+    .set({ ownerUserId: adminUserId })
+    .where(isNull(subAccounts.ownerUserId));
+
+  console.log(
+    `[SEED] Assigned ${orphaned.length} orphaned account(s) to admin: ${orphaned.map((a) => `#${a.id} "${a.name}"`).join(", ")}`,
+  );
 }
 
 async function seedBlueprints() {
