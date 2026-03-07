@@ -1,33 +1,182 @@
 import { db } from "./db";
-import { blueprints, subAccounts } from "@shared/schema";
-import { eq, isNull } from "drizzle-orm";
+import {
+  blueprints,
+  subAccounts,
+  pipelineStages,
+  sentinelConfig,
+  creditWallets,
+  digitalCards,
+  integrationConnections,
+  sentinelIncidents,
+  notifications,
+} from "@shared/schema";
+import { eq, isNull, sql } from "drizzle-orm";
 
 export async function seed() {
   await seedBlueprints();
-  await fixOrphanedAccounts();
+  await syncAdminAccounts();
 
   console.log("Database seeded successfully");
 }
 
-async function fixOrphanedAccounts() {
+async function syncAdminAccounts() {
   const adminUserId = process.env.ADMIN_USER_ID;
   if (!adminUserId) return;
 
-  const orphaned = await db
-    .select({ id: subAccounts.id, name: subAccounts.name })
+  const existing = await db
+    .select({ id: subAccounts.id, name: subAccounts.name, ownerUserId: subAccounts.ownerUserId })
+    .from(subAccounts);
+
+  const hasApex = existing.some((a) => a.name === "APEX MARKETING Account");
+  const hasCrashConnect = existing.some((a) => a.name?.includes("Crash Connect") && a.name?.includes("Giovanni"));
+
+  if (hasApex && hasCrashConnect) {
+    return;
+  }
+
+  console.log("[SYNC] Admin accounts missing — syncing dev data to this database...");
+
+  const orphaned = existing.filter((a) => !a.ownerUserId);
+  if (orphaned.length > 0) {
+    for (const acct of orphaned) {
+      await db.delete(notifications).where(eq(notifications.subAccountId, acct.id));
+      await db.delete(sentinelIncidents).where(eq(sentinelIncidents.subAccountId, acct.id));
+      await db.delete(sentinelConfig).where(eq(sentinelConfig.subAccountId, acct.id));
+      await db.delete(creditWallets).where(eq(creditWallets.subAccountId, acct.id));
+      await db.delete(digitalCards).where(eq(digitalCards.subAccountId, acct.id));
+      await db.delete(integrationConnections).where(eq(integrationConnections.subAccountId, acct.id));
+      await db.delete(pipelineStages).where(eq(pipelineStages.subAccountId, acct.id));
+      await db.delete(subAccounts).where(eq(subAccounts.id, acct.id));
+    }
+    console.log(`[SYNC] Cleaned up ${orphaned.length} orphaned account(s)`);
+  }
+
+  if (!hasApex) {
+    const [apexAcct] = await db
+      .insert(subAccounts)
+      .values({
+        name: "APEX MARKETING Account",
+        twilioNumber: "+18777030325",
+        googleReviewLink: "https://g.page/r/CY4EJ5F_Kli-EAI/review",
+        ownerPhone: "+12394922698",
+        industry: "marketing-agency",
+        vibeTheme: "sunset-warm",
+        ownerUserId: adminUserId,
+        language: "en",
+        plan: "enterprise",
+      })
+      .returning();
+
+    const apexId = apexAcct.id;
+    console.log(`[SYNC] Created APEX MARKETING Account #${apexId}`);
+
+    await db.insert(pipelineStages).values([
+      { subAccountId: apexId, name: "New Lead" },
+      { subAccountId: apexId, name: "Contacted" },
+      { subAccountId: apexId, name: "Qualified" },
+      { subAccountId: apexId, name: "Proposal Sent" },
+      { subAccountId: apexId, name: "Negotiation" },
+      { subAccountId: apexId, name: "Closed Won" },
+      { subAccountId: apexId, name: "Closed Lost" },
+    ]);
+
+    await db.insert(sentinelConfig).values({
+      subAccountId: apexId,
+      keywords: ["MVA", "EXTRICATION", "ROLLOVER", "INJURIES", "SIGNAL 4", "ENTRAPMENT", "FATALITY"],
+      scanInterval: 24,
+      enabled: true,
+      smsAlertEnabled: true,
+      geofenceEnabled: true,
+      geofenceRadiusMiles: 5,
+      smsAlertPhone: "+12394922698",
+    });
+
+    await db.insert(creditWallets).values({
+      subAccountId: apexId,
+      balance: 25,
+      lifetimeTopUp: 0,
+      lifetimeSpend: 0,
+      autoTopUp: false,
+      autoTopUpAmount: 25,
+      lowBalanceThreshold: 5,
+    });
+
+    await db.insert(digitalCards).values({
+      subAccountId: apexId,
+      name: "Eddy",
+      company: "Seed and Bean Market",
+      theme: "midnight",
+      links: [],
+    });
+
+    const integrations = [
+      { provider: "google-calendar", config: { clientId: "configured", clientSecret: "configured" }, status: "connected" },
+      { provider: "twilio", config: { accountSid: "configured", authToken: "configured" }, status: "connected" },
+      { provider: "facebook", config: { pageAccessToken: "configured", pageId: "configured" }, status: "connected" },
+      { provider: "mailchimp", config: { apiKey: "configured" }, status: "connected" },
+      { provider: "google-analytics", config: { measurementId: "configured", apiSecret: "configured" }, status: "connected" },
+      { provider: "meta-ads", config: { accessToken: "configured", adAccountId: "configured" }, status: "connected" },
+      { provider: "stripe", config: { publishableKey: "configured", secretKey: "configured" }, status: "connected" },
+    ];
+
+    for (const integ of integrations) {
+      await db.insert(integrationConnections).values({
+        subAccountId: apexId,
+        provider: integ.provider,
+        config: integ.config,
+        status: integ.status,
+      });
+    }
+
+    console.log(`[SYNC] APEX MARKETING Account #${apexId} fully configured`);
+  }
+
+  if (!hasCrashConnect) {
+    const [ccAcct] = await db
+      .insert(subAccounts)
+      .values({
+        name: "Crash Connect \u2014 Giovanni",
+        twilioNumber: "+12396773236",
+        ownerPhone: "+14074808167",
+        industry: "personal-injury",
+        vibeTheme: "cyber-glass",
+        ownerUserId: "apex_giovanni_1771975559683",
+        language: "en",
+        plan: "enterprise",
+        webhookToken: "cc_9d2f4c609e35569db8ce1fcd6187f02e833852adc97b7a2d",
+      })
+      .returning();
+
+    const ccId = ccAcct.id;
+    console.log(`[SYNC] Created Crash Connect Account #${ccId}`);
+
+    await db.insert(creditWallets).values({
+      subAccountId: ccId,
+      balance: 5,
+      lifetimeTopUp: 5,
+      lifetimeSpend: 0,
+      autoTopUp: false,
+      autoTopUpAmount: 25,
+      lowBalanceThreshold: 5,
+    });
+
+    console.log(`[SYNC] Crash Connect Account #${ccId} fully configured`);
+  }
+
+  const orphanedRemaining = await db
+    .select({ id: subAccounts.id })
     .from(subAccounts)
     .where(isNull(subAccounts.ownerUserId));
 
-  if (orphaned.length === 0) return;
+  if (orphanedRemaining.length > 0) {
+    await db
+      .update(subAccounts)
+      .set({ ownerUserId: adminUserId })
+      .where(isNull(subAccounts.ownerUserId));
+    console.log(`[SYNC] Assigned ${orphanedRemaining.length} remaining orphaned account(s) to admin`);
+  }
 
-  await db
-    .update(subAccounts)
-    .set({ ownerUserId: adminUserId })
-    .where(isNull(subAccounts.ownerUserId));
-
-  console.log(
-    `[SEED] Assigned ${orphaned.length} orphaned account(s) to admin: ${orphaned.map((a) => `#${a.id} "${a.name}"`).join(", ")}`,
-  );
+  console.log("[SYNC] Admin account sync complete");
 }
 
 async function seedBlueprints() {
