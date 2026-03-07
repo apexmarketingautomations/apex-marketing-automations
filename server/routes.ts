@@ -5614,6 +5614,100 @@ Rules:
     });
   });
 
+  app.get("/api/v1/external/sentinel/config", async (req, res) => {
+    const token = (req.headers["x-api-token"] || req.query.token) as string;
+    const account = await resolveTokenAccount(token);
+    if (!account) return res.status(401).json({ error: "Invalid or missing token" });
+    const config = await storage.getSentinelConfig(account.id);
+    res.json(config || { enabled: false });
+  });
+
+  const externalScanLastRun = new Map<string, number>();
+  app.post("/api/v1/external/sentinel/scan", async (req, res) => {
+    const token = (req.headers["x-api-token"] || req.query.token) as string;
+    const account = await resolveTokenAccount(token);
+    if (!account) return res.status(401).json({ error: "Invalid or missing token" });
+    const lastRun = externalScanLastRun.get(token) || 0;
+    if (Date.now() - lastRun < 60_000) {
+      return res.status(429).json({ error: "Scan rate limited — wait 60 seconds between scans" });
+    }
+    externalScanLastRun.set(token, Date.now());
+    try {
+      const config = await storage.getSentinelConfig(account.id);
+      const liveIncidents = await processLiveSentinelFeed();
+      let saved = 0;
+      for (const inc of liveIncidents) {
+        const hash = `${inc.type}-${inc.location}-${inc.id}`.replace(/\s+/g, "").toLowerCase();
+        const existing = await storage.getSentinelIncidentByHash(account.id, hash);
+        if (!existing) {
+          await storage.createSentinelIncident({
+            subAccountId: account.id,
+            sourceHash: hash,
+            title: inc.type,
+            description: `${inc.type} at ${inc.location}. ${inc.distanceMiles !== 'unknown' ? inc.distanceMiles + ' mi away.' : ''} County: ${inc.county || 'FL'}. ${inc.remarks || ''}`,
+            location: inc.location,
+            severity: inc.severity,
+            rawPayload: { id: inc.id, lat: inc.lat, lng: inc.lng, type: inc.type, source: inc.source, state: inc.state, county: inc.county },
+          });
+          saved++;
+        }
+      }
+      res.json({ found: saved, total: liveIncidents.length, source: "fhp_live" });
+    } catch (err: any) {
+      console.error(`[EXTERNAL SENTINEL] Scan error: ${err.message}`);
+      res.json({ found: 0, source: "external_trigger", error: err.message });
+    }
+  });
+
+  app.post("/api/v1/external/sentinel/incidents/:id/acknowledge", async (req, res) => {
+    const token = (req.headers["x-api-token"] || req.query.token) as string;
+    const account = await resolveTokenAccount(token);
+    if (!account) return res.status(401).json({ error: "Invalid or missing token" });
+    const incident = await storage.getSentinelIncident(parseInt(req.params.id));
+    if (!incident || incident.subAccountId !== account.id) return res.status(404).json({ error: "Not found" });
+    await storage.updateSentinelIncident(incident.id, { actionStatus: "acknowledged" });
+    res.json({ success: true });
+  });
+
+  app.post("/api/v1/external/sentinel/incidents/:id/deploy-geofence", async (req, res) => {
+    const token = (req.headers["x-api-token"] || req.query.token) as string;
+    const account = await resolveTokenAccount(token);
+    if (!account) return res.status(401).json({ error: "Invalid or missing token" });
+    const incident = await storage.getSentinelIncident(parseInt(req.params.id));
+    if (!incident || incident.subAccountId !== account.id) return res.status(404).json({ error: "Not found" });
+    await storage.updateSentinelIncident(incident.id, { geofenceDeployed: true, actionStatus: "actioned" });
+    res.json({ success: true, message: "Geofence deployed" });
+  });
+
+  app.post("/api/v1/external/sentinel/incidents/:id/send-sms", async (req, res) => {
+    const token = (req.headers["x-api-token"] || req.query.token) as string;
+    const account = await resolveTokenAccount(token);
+    if (!account) return res.status(401).json({ error: "Invalid or missing token" });
+    const incident = await storage.getSentinelIncident(parseInt(req.params.id));
+    if (!incident || incident.subAccountId !== account.id) return res.status(404).json({ error: "Not found" });
+    const config = await storage.getSentinelConfig(account.id);
+    const alertPhone = config?.smsAlertPhone || (account as any).ownerPhone;
+    if (!alertPhone || !(account as any).twilioNumber) {
+      return res.status(400).json({ error: "SMS not configured — set alert phone in Sentinel config" });
+    }
+    try {
+      const twilio = getTwilioClient();
+      if (twilio) {
+        await twilio.messages.create({
+          body: `SENTINEL ALERT: ${incident.title} — ${incident.location || "Unknown location"} (${incident.severity})`,
+          from: (account as any).twilioNumber,
+          to: alertPhone,
+        });
+        await storage.updateSentinelIncident(incident.id, { smsSent: true });
+        res.json({ success: true, message: "SMS sent" });
+      } else {
+        res.status(500).json({ error: "Twilio not configured" });
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ─── Client Website Integration ───────────────────────────────────
   app.get("/api/client-websites/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseInt(req.params.subAccountId as string);

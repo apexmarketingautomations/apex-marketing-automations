@@ -36,6 +36,7 @@ const AffiliateDashboard = lazy(() => import("@/pages/affiliate"));
 const CommandCenterPage = lazy(() => import("@/pages/command-center"));
 const SnapshotsPage = lazy(() => import("@/pages/snapshots"));
 const SentinelPage = lazy(() => import("@/pages/sentinel"));
+const ExternalSentinelPage = lazy(() => import("@/pages/external-sentinel"));
 const PropertyRadarPage = lazy(() => import("@/pages/property-radar"));
 const WebsiteIntegration = lazy(() => import("@/pages/website-integration"));
 const FormBuilder = lazy(() => import("@/pages/form-builder"));
@@ -132,6 +133,7 @@ function Router() {
         <Route path="/card/:slug" component={DigitalCard} />
         <Route path="/cards" component={CardsLanding} />
         <Route path="/portal/:token" component={ClientPortal} />
+        <Route path="/sentinel/:token" component={ExternalSentinelPage} />
         <Route path="/review/:subAccountId" component={ReviewBuffer} />
         <Route path="/login" component={LoginPage} />
         <Route path="/demo" component={NexusDemo} />
