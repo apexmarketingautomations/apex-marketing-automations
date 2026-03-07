@@ -55,6 +55,7 @@ function BotTrainerInner() {
   const [chatInput, setChatInput] = useState("");
   const [chatHistory, setChatHistory] = useState<{role: string; content: string}[]>([]);
   const [isTyping, setIsTyping] = useState(false);
+  const [trainingJobId, setTrainingJobId] = useState<number | null>(null);
 
   const handleTrain = async () => {
     setIsTraining(true);
@@ -63,6 +64,7 @@ function BotTrainerInner() {
 
     try {
       const { jobId } = await api.startTraining(url, persona);
+      setTrainingJobId(jobId);
 
       const interval = setInterval(async () => {
         try {
@@ -80,6 +82,9 @@ function BotTrainerInner() {
             clearInterval(interval);
             setIsTraining(false);
             setTrainingProgress(100);
+            if (statusData.generatedPersona) {
+              setPersona(statusData.generatedPersona);
+            }
             toast({
               title: "Training complete",
               description: "Your bot is ready to test. Switch to the Test Agent tab.",
@@ -112,6 +117,7 @@ function BotTrainerInner() {
         message: userMsg,
         persona,
         conversationHistory: chatHistory,
+        ...(trainingJobId ? { trainingJobId } : {}),
       });
       const data = await res.json();
       setChatHistory(prev => [...prev, { role: "assistant", content: data.reply }]);

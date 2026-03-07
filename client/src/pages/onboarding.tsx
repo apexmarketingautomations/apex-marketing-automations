@@ -85,6 +85,7 @@ export default function Onboarding() {
   const [direction, setDirection] = useState(1);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const [businessName, setBusinessName] = useState("");
   const [industry, setIndustry] = useState("");
@@ -97,6 +98,8 @@ export default function Onboarding() {
 
   const [selectedWorkflow, setSelectedWorkflow] = useState("");
 
+  const [createdAccountId, setCreatedAccountId] = useState<number | null>(null);
+
   const goNext = () => {
     setDirection(1);
     setCurrentStep((s) => Math.min(s + 1, 5));
@@ -106,6 +109,117 @@ export default function Onboarding() {
     setDirection(-1);
     setCurrentStep((s) => Math.max(s - 1, 1));
   };
+
+  const createAccountMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/accounts", {
+        name: businessName.trim(),
+        twilioNumber: twilioNumber.trim() || "",
+        industry: industry,
+        ownerPhone: ownerPhone.trim() || null,
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      setCreatedAccountId(data.id);
+      queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
+      toast({ title: "Account created", description: `${businessName} has been set up.` });
+      goNext();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to create account", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const savePhoneMutation = useMutation({
+    mutationFn: async () => {
+      if (!createdAccountId || !twilioNumber.trim()) return null;
+      const res = await apiRequest("PATCH", `/api/accounts/${createdAccountId}`, {
+        twilioNumber: twilioNumber.trim(),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
+      toast({ title: "Phone number saved", description: "Your Twilio number has been connected." });
+      goNext();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to save phone", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const trainBotMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/bots/train", {
+        url: websiteUrl.trim(),
+        persona: persona || "professional",
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Training started", description: "Your AI bot is being trained on your website content." });
+      goNext();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to start training", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const WORKFLOW_STEP_CONFIGS: Record<string, { name: string; trigger: string; steps: any[] }> = {
+    lead_response: {
+      name: "New Lead Auto-Response",
+      trigger: "new_lead",
+      steps: [
+        { action: "wait", payload: { seconds: 60 } },
+        { action: "send_sms", payload: { body: "Hi {{leadName}}, thanks for reaching out! We received your inquiry and will get back to you shortly." } },
+      ],
+    },
+    appointment_reminder: {
+      name: "Appointment Reminder",
+      trigger: "appointment_booked",
+      steps: [
+        { action: "wait", payload: { seconds: 300 } },
+        { action: "send_sms", payload: { body: "Reminder: You have an appointment coming up. Reply CONFIRM to confirm or call us to reschedule." } },
+      ],
+    },
+    review_request: {
+      name: "Review Request Follow-up",
+      trigger: "review_received",
+      steps: [
+        { action: "wait", payload: { seconds: 120 } },
+        { action: "send_sms", payload: { body: "Thank you for your feedback! We appreciate you taking the time to share your experience with us." } },
+      ],
+    },
+  };
+
+  const deployWorkflowMutation = useMutation({
+    mutationFn: async () => {
+      const config = WORKFLOW_STEP_CONFIGS[selectedWorkflow];
+      if (!config) throw new Error("No workflow template selected");
+      const res = await apiRequest("POST", "/api/v1/orchestrate", {
+        action: "save_workflow_manifest",
+        payload: {
+          name: config.name,
+          manifest: {
+            name: config.name,
+            trigger: config.trigger,
+            steps: config.steps,
+          },
+          subAccountId: createdAccountId,
+        },
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      const wf = WORKFLOW_TEMPLATES.find((w) => w.id === selectedWorkflow);
+      toast({ title: "Workflow deployed!", description: `"${wf?.title}" is now active.` });
+      goNext();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to deploy workflow", description: err.message, variant: "destructive" });
+    },
+  });
 
   const isStep1Valid = businessName.trim() && industry;
 
@@ -221,13 +335,13 @@ export default function Onboarding() {
 
                   <div className="flex justify-end pt-2">
                     <Button
-                      onClick={goNext}
-                      disabled={!isStep1Valid}
+                      onClick={() => createAccountMutation.mutate()}
+                      disabled={!isStep1Valid || createAccountMutation.isPending}
                       className="gap-2"
                       size="lg"
                       data-testid="button-step1-next"
                     >
-                      Next <ArrowRight className="h-4 w-4" />
+                      {createAccountMutation.isPending ? "Creating..." : "Next"} <ArrowRight className="h-4 w-4" />
                     </Button>
                   </div>
                 </CardContent>
@@ -293,15 +407,17 @@ export default function Onboarding() {
                       </Button>
                       <Button
                         onClick={() => {
-                          if (twilioNumber.trim()) {
-                            toast({ title: "Phone number saved", description: "Your Twilio number has been connected." });
+                          if (twilioNumber.trim() && createdAccountId) {
+                            savePhoneMutation.mutate();
+                          } else {
+                            goNext();
                           }
-                          goNext();
                         }}
+                        disabled={savePhoneMutation.isPending}
                         className="gap-2"
                         data-testid="button-step2-connect"
                       >
-                        Connect <ArrowRight className="h-4 w-4" />
+                        {savePhoneMutation.isPending ? "Saving..." : "Connect"} <ArrowRight className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
@@ -380,14 +496,16 @@ export default function Onboarding() {
                       <Button
                         onClick={() => {
                           if (websiteUrl.trim()) {
-                            toast({ title: "Training started", description: "Your AI bot is being trained on your website content." });
+                            trainBotMutation.mutate();
+                          } else {
+                            goNext();
                           }
-                          goNext();
                         }}
+                        disabled={trainBotMutation.isPending}
                         className="gap-2 bg-purple-600 hover:bg-purple-700"
                         data-testid="button-step3-train"
                       >
-                        <Sparkles className="h-4 w-4" /> Start Training
+                        <Sparkles className="h-4 w-4" /> {trainBotMutation.isPending ? "Training..." : "Start Training"}
                       </Button>
                     </div>
                   </div>
@@ -458,16 +576,16 @@ export default function Onboarding() {
                       <Button
                         onClick={() => {
                           if (selectedWorkflow) {
-                            const wf = WORKFLOW_TEMPLATES.find((w) => w.id === selectedWorkflow);
-                            toast({ title: "Workflow deployed!", description: `"${wf?.title}" is now active.` });
+                            deployWorkflowMutation.mutate();
+                          } else {
+                            goNext();
                           }
-                          goNext();
                         }}
                         className="gap-2 bg-green-600 hover:bg-green-700"
-                        disabled={!selectedWorkflow}
+                        disabled={!selectedWorkflow || deployWorkflowMutation.isPending}
                         data-testid="button-step4-deploy"
                       >
-                        <Zap className="h-4 w-4" /> Deploy
+                        <Zap className="h-4 w-4" /> {deployWorkflowMutation.isPending ? "Deploying..." : "Deploy"}
                       </Button>
                     </div>
                   </div>

@@ -353,6 +353,12 @@ ${sections.map(renderSection).join('\n')}
           source: "form",
           tags: formName ? [formName] : ["form-submission"],
         });
+        fireAutomationTrigger("new_lead", accountId, {
+          leadName: contactName || "Lead",
+          leadPhone: contactPhone,
+          leadEmail: contactEmail,
+          source: "form_submit",
+        }).catch(() => {});
       } catch (e) {
         console.log("[FORM] Contact creation skipped (may already exist):", (e as any).message);
       }
@@ -463,6 +469,12 @@ ${sections.map(renderSection).join('\n')}
         tags: [lead.slug, lead.niche],
       });
       contactId = contact.id;
+      fireAutomationTrigger("new_lead", accountId, {
+        leadName: fd.firstName || fd.name || "Funnel Lead",
+        leadPhone: fd.phone,
+        leadEmail: fd.email,
+        source: "funnel",
+      }).catch(() => {});
     } catch (e) {
       console.log("[FUNNEL] Contact creation skipped:", (e as any).message);
     }
@@ -982,6 +994,7 @@ Rules:
     persona: z.string().max(5000).optional(),
     industry: z.string().max(100).optional(),
     language: z.string().max(10).optional(),
+    trainingJobId: z.number().optional(),
     conversationHistory: z.array(z.object({
       role: z.string(),
       content: z.string(),
@@ -996,8 +1009,26 @@ Rules:
     const parsed = botChatSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-    const basePrompt = parsed.data.persona || `You are a helpful AI assistant for a business. Keep responses concise and helpful (1-3 sentences). Help with bookings, answer questions, and provide a warm experience.`;
-    const systemPrompt = basePrompt + getIndustryContext(parsed.data.industry) + getLanguageInstruction(parsed.data.language);
+    let basePrompt = parsed.data.persona || `You are a helpful AI assistant for a business. Keep responses concise and helpful (1-3 sentences). Help with bookings, answer questions, and provide a warm experience.`;
+
+    let knowledgeContext = "";
+    if (parsed.data.trainingJobId) {
+      try {
+        const job = await storage.getTrainingJob(parsed.data.trainingJobId);
+        if (job) {
+          if (job.generatedPersona) {
+            basePrompt = job.generatedPersona;
+          }
+          if (job.scrapedContent && job.scrapedContent.length > 50) {
+            knowledgeContext = `\n\nYou have the following knowledge base from the business website (${job.url}). Use this information to answer questions accurately:\n\n${job.scrapedContent.substring(0, 12000)}`;
+          }
+        }
+      } catch (e) {
+        console.log("[BOT_CHAT] Could not load training job:", (e as any).message);
+      }
+    }
+
+    const systemPrompt = basePrompt + knowledgeContext + getIndustryContext(parsed.data.industry) + getLanguageInstruction(parsed.data.language);
 
     const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
       { role: "system", content: systemPrompt },
@@ -1083,7 +1114,7 @@ Rules:
 
     const job = await storage.createTrainingJob(parsed.data);
 
-    simulateTraining(job.id);
+    runRealTraining(job.id);
 
     res.status(201).json({ jobId: job.id });
   }));
@@ -1096,6 +1127,8 @@ Rules:
       state: job.state,
       progress: job.progress,
       logs: job.logs,
+      generatedPersona: job.generatedPersona || null,
+      jobId: job.id,
     });
   }));
 
@@ -2880,7 +2913,7 @@ Rules:
           persona: `Helpful assistant for ${businessName}`,
         });
         jobId = job.id;
-        simulateTraining(job.id);
+        runRealTraining(job.id);
       } catch (err: any) {
         console.error("God Mode bot training error:", err.message);
       }
@@ -2959,6 +2992,13 @@ Rules:
     const parsed = insertReviewSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const review = await storage.createReview(parsed.data);
+    if (review.subAccountId) {
+      fireAutomationTrigger("review_received", review.subAccountId, {
+        rating: review.rating,
+        customerName: review.customerName,
+        comment: review.comment,
+      }).catch(() => {});
+    }
     res.status(201).json(review);
   }));
 
@@ -5186,6 +5226,19 @@ Rules:
       });
       console.log(`SENTINEL INGEST: Contact created in CRM — ID ${contact.id}, name: ${firstName} ${lastName}`);
 
+      fireAutomationTrigger("new_lead", SUB_ACCOUNT_ID, {
+        leadName: `${firstName} ${lastName}`.trim(),
+        leadPhone: phoneNumber,
+        leadEmail: email,
+        source: "sentinel_geofence",
+        location: locationTag,
+      }).catch(() => {});
+      fireAutomationTrigger("crash_detected", SUB_ACCOUNT_ID, {
+        leadName: `${firstName} ${lastName}`.trim(),
+        leadPhone: phoneNumber,
+        location: locationTag,
+      }).catch(() => {});
+
       await storage.createNotification({
         subAccountId: SUB_ACCOUNT_ID,
         type: "lead",
@@ -5791,7 +5844,7 @@ Rules:
       logs: [],
     });
 
-    simulateTraining(job.id);
+    runRealTraining(job.id);
 
     await storage.updateClientWebsite(id, {
       status: "training",
@@ -6045,6 +6098,14 @@ Rules:
     const parsed = insertContactSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const contact = await storage.createContact(parsed.data);
+    if (contact.subAccountId) {
+      fireAutomationTrigger("new_lead", contact.subAccountId, {
+        leadName: contact.firstName || "Lead",
+        leadPhone: contact.phone,
+        leadEmail: contact.email,
+        source: contact.source || "manual",
+      }).catch(() => {});
+    }
     res.status(201).json(contact);
   }));
 
@@ -6140,6 +6201,13 @@ Rules:
     const parsed = insertAppointmentSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const appt = await storage.createAppointment(parsed.data);
+    if (appt.subAccountId) {
+      fireAutomationTrigger("appointment_booked", appt.subAccountId, {
+        appointmentTitle: appt.title,
+        appointmentTime: appt.startTime,
+        contactId: appt.contactId,
+      }).catch(() => {});
+    }
     res.status(201).json(appt);
   }));
 
@@ -6187,17 +6255,118 @@ Rules:
     const campaign = await storage.getEmailCampaignById(id);
     if (!campaign) return res.status(404).json({ error: "Campaign not found" });
 
-    const hasEmailService = !!process.env.SENDGRID_API_KEY || !!process.env.MAILGUN_API_KEY || !!process.env.SMTP_HOST;
+    const mailchimpKey = process.env.MAILCHIMP_API_KEY;
+    const hasEmailService = !!mailchimpKey || !!process.env.SENDGRID_API_KEY || !!process.env.MAILGUN_API_KEY || !!process.env.SMTP_HOST;
     if (!hasEmailService) {
       return res.status(503).json({
         error: "Email service not configured",
-        message: "To send real emails, connect an email service (SendGrid, Mailgun, or SMTP). Add SENDGRID_API_KEY, MAILGUN_API_KEY, or SMTP_HOST to your environment.",
+        message: "To send real emails, add MAILCHIMP_API_KEY, SENDGRID_API_KEY, MAILGUN_API_KEY, or SMTP_HOST to your environment.",
         needsConfig: true,
       });
     }
 
-    const updated = await storage.updateEmailCampaign(id, { status: "sent", sentAt: new Date() });
-    res.json(updated);
+    const contacts = await storage.getContacts(campaign.subAccountId!);
+    const recipientEmails = contacts.filter(c => c.email).map(c => ({ email: c.email!, name: c.firstName || "" }));
+
+    if (recipientEmails.length === 0) {
+      return res.status(400).json({ error: "No contacts with email addresses found for this account." });
+    }
+
+    let sentCount = 0;
+    let sendError: string | null = null;
+
+    if (mailchimpKey) {
+      const dc = mailchimpKey.split("-").pop() || "us1";
+      const mailchimpBase = `https://${dc}.api.mailchimp.com/3.0`;
+      const authHeader = { "Authorization": `Bearer ${mailchimpKey}`, "Content-Type": "application/json" };
+
+      try {
+        const listsRes = await fetch(`${mailchimpBase}/lists?count=1`, { headers: authHeader });
+        const listsData = await listsRes.json() as any;
+        let listId = listsData.lists?.[0]?.id;
+
+        if (!listId) {
+          const createListRes = await fetch(`${mailchimpBase}/lists`, {
+            method: "POST",
+            headers: authHeader,
+            body: JSON.stringify({
+              name: "Apex Contacts",
+              contact: { company: "Apex Marketing", address1: "123 Main St", city: "Orlando", state: "FL", zip: "32801", country: "US" },
+              permission_reminder: "You signed up via our platform.",
+              campaign_defaults: { from_name: "Apex Marketing", from_email: "noreply@apexmarketingautomations.com", subject: "", language: "en" },
+              email_type_option: false,
+            }),
+          });
+          const newList = await createListRes.json() as any;
+          listId = newList.id;
+        }
+
+        if (listId) {
+          const batchMembers = recipientEmails.map(r => ({
+            email_address: r.email,
+            status: "subscribed",
+            merge_fields: { FNAME: r.name },
+          }));
+          await fetch(`${mailchimpBase}/lists/${listId}`, {
+            method: "POST",
+            headers: authHeader,
+            body: JSON.stringify({ members: batchMembers, update_existing: true }),
+          });
+
+          const mcCampaignRes = await fetch(`${mailchimpBase}/campaigns`, {
+            method: "POST",
+            headers: authHeader,
+            body: JSON.stringify({
+              type: "regular",
+              recipients: { list_id: listId },
+              settings: {
+                subject_line: campaign.subject || "Update from Apex",
+                from_name: "Apex Marketing",
+                reply_to: "noreply@apexmarketingautomations.com",
+                title: campaign.name || "Campaign",
+              },
+            }),
+          });
+          const mcCampaign = await mcCampaignRes.json() as any;
+
+          if (mcCampaign.id) {
+            await fetch(`${mailchimpBase}/campaigns/${mcCampaign.id}/content`, {
+              method: "PUT",
+              headers: authHeader,
+              body: JSON.stringify({ html: campaign.body || "<p>No content</p>" }),
+            });
+
+            const sendRes = await fetch(`${mailchimpBase}/campaigns/${mcCampaign.id}/actions/send`, {
+              method: "POST",
+              headers: authHeader,
+            });
+
+            if (sendRes.ok || sendRes.status === 204) {
+              sentCount = recipientEmails.length;
+            } else {
+              const errBody = await sendRes.text();
+              sendError = `Mailchimp send failed: ${errBody}`;
+            }
+          } else {
+            sendError = `Mailchimp campaign creation failed: ${JSON.stringify(mcCampaign)}`;
+          }
+        }
+      } catch (err: any) {
+        sendError = `Mailchimp error: ${err.message}`;
+      }
+    }
+
+    if (sendError) {
+      console.error("[EMAIL]", sendError);
+    }
+
+    const updated = await storage.updateEmailCampaign(id, {
+      status: sentCount > 0 ? "sent" : "failed",
+      sentAt: new Date(),
+      sentCount: sentCount,
+      recipientCount: recipientEmails.length,
+    });
+    res.json({ ...updated, sentCount, recipientCount: recipientEmails.length, error: sendError });
   }));
 
   app.delete("/api/email-campaigns/:id", asyncHandler(async (req, res) => {
@@ -7782,6 +7951,87 @@ Return ONLY valid JSON.` },
     return result;
   }
 
+  async function fireAutomationTrigger(
+    triggerName: string,
+    subAccountId: number,
+    context: Record<string, any> = {}
+  ) {
+    try {
+      const automations = await storage.getLiveAutomations(subAccountId);
+      const matching = automations.filter((a: any) =>
+        (a.status === "compiled" || a.status === "active") &&
+        a.manifest?.trigger &&
+        a.manifest.trigger === triggerName
+      );
+
+      if (matching.length === 0) return;
+
+      const account = await storage.getSubAccount(subAccountId);
+
+      for (const automation of matching) {
+        try {
+          const steps = automation.manifest?.steps || [];
+          for (const step of steps) {
+            const action = step.action || step.type;
+            if (!action) continue;
+
+            if (action === "Wait" || action === "wait") {
+              const waitMs = (step.payload?.seconds || step.seconds || 5) * 1000;
+              await new Promise(resolve => setTimeout(resolve, Math.min(waitMs, 30000)));
+              continue;
+            }
+
+            if (action === "Condition" || action === "condition") {
+              continue;
+            }
+
+            const stepPayload = { ...step.payload };
+            if (stepPayload.body && typeof stepPayload.body === "string") {
+              stepPayload.body = stepPayload.body
+                .replace(/\{\{leadName\}\}/g, context.leadName || "there")
+                .replace(/\{\{leadPhone\}\}/g, context.leadPhone || "")
+                .replace(/\{\{leadEmail\}\}/g, context.leadEmail || "")
+                .replace(/\{\{location\}\}/g, context.location || "")
+                .replace(/\{\{source\}\}/g, context.source || "");
+            }
+            if (action === "send_sms" && !stepPayload.to && context.leadPhone) {
+              stepPayload.to = context.leadPhone;
+            }
+            await executeDispatchAction(action, {
+              ...stepPayload,
+              subAccountId,
+              from: account?.twilioNumber || process.env.TWILIO_PHONE_NUMBER,
+            });
+          }
+
+          await storage.updateLiveAutomation(automation.id, {
+            lastRunAt: new Date(),
+            runCount: (automation.runCount || 0) + 1,
+            runLogs: [...(automation.runLogs as any[] || []), {
+              timestamp: new Date().toISOString(),
+              trigger: triggerName,
+              context: { leadName: context.leadName, leadPhone: context.leadPhone },
+              status: "completed",
+            }].slice(-50),
+          });
+          console.log(`[AUTOMATION] "${automation.name}" fired on trigger "${triggerName}" for account ${subAccountId}`);
+        } catch (autoErr: any) {
+          console.error(`[AUTOMATION] "${automation.name}" failed: ${autoErr.message}`);
+          await storage.updateLiveAutomation(automation.id, {
+            runLogs: [...(automation.runLogs as any[] || []), {
+              timestamp: new Date().toISOString(),
+              trigger: triggerName,
+              status: "error",
+              error: autoErr.message,
+            }].slice(-50),
+          });
+        }
+      }
+    } catch (err: any) {
+      console.error(`[AUTOMATION] Trigger "${triggerName}" error for account ${subAccountId}: ${err.message}`);
+    }
+  }
+
   app.post("/api/v1/orchestrate", asyncHandler(async (req: Request, res: Response) => {
     const parsed = z.object({
       action: z.string().min(1),
@@ -8525,26 +8775,130 @@ function determineSeverity(description: string, keywords: string[]): string {
   return "low";
 }
 
-function simulateTraining(jobId: number) {
-  const steps = [
-    { delay: 1000, log: "Starting Scraper...", progress: 10 },
-    { delay: 2500, log: "Successfully scraped 45,201 characters", progress: 30 },
-    { delay: 4000, log: "Split into 12 knowledge chunks", progress: 50 },
-    { delay: 5500, log: "Generating OpenAI Embeddings...", progress: 70 },
-    { delay: 7000, log: "Saving to Postgres (PGVector)...", progress: 85 },
-    { delay: 8500, log: "Training Complete. Bot is ready.", progress: 100 },
-  ];
-
+async function runRealTraining(jobId: number) {
   const allLogs: string[] = [];
 
-  steps.forEach(({ delay, log, progress }) => {
-    setTimeout(async () => {
-      allLogs.push(log);
-      await storage.updateTrainingJob(jobId, {
-        logs: [...allLogs],
-        progress,
-        state: progress >= 100 ? "completed" : "processing",
+  async function updateJob(log: string, progress: number, extras: Record<string, any> = {}) {
+    allLogs.push(log);
+    await storage.updateTrainingJob(jobId, {
+      logs: [...allLogs],
+      progress,
+      state: progress >= 100 ? "completed" : "processing",
+      ...extras,
+    });
+  }
+
+  try {
+    const job = await storage.getTrainingJob(jobId);
+    if (!job) return;
+
+    await updateJob("Starting web scraper...", 10);
+
+    let scrapedText = "";
+    try {
+      const cheerio = await import("cheerio");
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+
+      const response = await fetch(job.url, {
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "Mozilla/5.0 (compatible; ApexBot/1.0)",
+          "Accept": "text/html,application/xhtml+xml",
+        },
       });
-    }, delay);
-  });
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} ${response.statusText}`);
+      }
+
+      const html = await response.text();
+      await updateJob(`Fetched page (${html.length.toLocaleString()} bytes)`, 25);
+
+      const $ = cheerio.load(html);
+      $("script, style, noscript, iframe, nav, footer, header").remove();
+
+      const textParts: string[] = [];
+      const title = $("title").text().trim();
+      if (title) textParts.push(`Page Title: ${title}`);
+
+      const metaDesc = $('meta[name="description"]').attr("content")?.trim();
+      if (metaDesc) textParts.push(`Description: ${metaDesc}`);
+
+      $("h1, h2, h3, h4, p, li, td, th, blockquote, span, div, a").each((_: any, el: any) => {
+        const t = $(el).clone().children().remove().end().text().trim();
+        if (t && t.length > 10 && t.length < 5000) {
+          textParts.push(t);
+        }
+      });
+
+      scrapedText = Array.from(new Set(textParts)).join("\n").substring(0, 50000);
+
+      await updateJob(`Extracted ${scrapedText.length.toLocaleString()} characters of text content`, 40);
+    } catch (scrapeErr: any) {
+      await updateJob(`Scrape warning: ${scrapeErr.message}. Continuing with persona only.`, 35);
+      scrapedText = `[Could not scrape ${job.url}: ${scrapeErr.message}]`;
+    }
+
+    const chunkSize = 1000;
+    const overlap = 200;
+    const chunks: string[] = [];
+    for (let i = 0; i < scrapedText.length; i += chunkSize - overlap) {
+      chunks.push(scrapedText.substring(i, i + chunkSize));
+    }
+    await updateJob(`Split into ${chunks.length} knowledge chunks (${chunkSize} chars, ${overlap} overlap)`, 55);
+
+    let generatedPersona: string | null = null;
+    if (isGeminiConfigured() && scrapedText.length > 50) {
+      try {
+        await updateJob("Generating AI persona from scraped content...", 70);
+        const personaPrompt = `Based on the following website content, generate a concise AI assistant persona/system prompt. The persona should:
+1. Identify the business name, industry, and key services
+2. Define a friendly, knowledgeable tone appropriate for the business
+3. List specific topics the assistant can help with based on the content
+4. Include instructions to guide conversations toward booking/contact
+
+Website content (first 8000 chars):
+${scrapedText.substring(0, 8000)}
+
+Original persona template:
+${job.persona}
+
+Generate ONLY the system prompt text, no explanations:`;
+
+        const personaResult = await geminiChat(
+          [{ role: "user", content: personaPrompt }],
+          { temperature: 0.5, maxTokens: 1024 }
+        );
+
+        if (personaResult && personaResult.length > 20) {
+          generatedPersona = personaResult;
+          await updateJob("AI persona generated successfully", 85);
+        }
+      } catch (aiErr: any) {
+        await updateJob(`Persona generation note: ${aiErr.message}. Using original persona.`, 80);
+      }
+    } else {
+      await updateJob("Skipping AI persona generation (no AI configured or insufficient content)", 85);
+    }
+
+    await updateJob("Saving knowledge base to database...", 90);
+    await storage.updateTrainingJob(jobId, {
+      scrapedContent: scrapedText,
+      generatedPersona: generatedPersona,
+    });
+
+    await updateJob("Training Complete. Bot is ready.", 100, {
+      scrapedContent: scrapedText,
+      generatedPersona: generatedPersona,
+    });
+  } catch (err: any) {
+    allLogs.push(`Training failed: ${err.message}`);
+    await storage.updateTrainingJob(jobId, {
+      logs: [...allLogs],
+      state: "failed",
+      progress: 0,
+    });
+  }
 }

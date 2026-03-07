@@ -2,9 +2,7 @@
 
 ## Overview
 
-Apex Marketing Automations is a multi-tenant SaaS platform designed to centralize and automate business communications, AI bot training, and workflow management. It functions as a white-label CRM, enabling client businesses (sub-accounts) to manage multi-channel messaging (SMS, Instagram), build automated workflows, train AI chatbots using their website content, and rapidly onboard new accounts with industry-specific blueprints. The platform aims to provide a comprehensive suite for enhancing client engagement, streamlining operations, and leveraging AI for competitive advantage in various industries.
-
-Key capabilities include a public sales funnel, command dashboard for real-time metrics, unified inbox, visual workflow builder, AI bot trainer with RAG and tool-calling, industry-specific onboarding, Stripe subscriptions, a snapshot marketplace for account configurations, affiliate program, agency command center, and white-label branding options.
+Apex Marketing Automations is a multi-tenant SaaS platform designed to centralize and automate business communications, AI bot training, and workflow management. It functions as a white-label CRM, enabling client businesses to manage multi-channel messaging (SMS, Instagram), build automated workflows, train AI chatbots using their website content, and rapidly onboard new accounts with industry-specific blueprints. The platform aims to provide a comprehensive suite for enhancing client engagement, streamlining operations, and leveraging AI for competitive advantage across various industries. Key capabilities include a public sales funnel, command dashboard, unified inbox, visual workflow builder, AI bot trainer with RAG and tool-calling, industry-specific onboarding, Stripe subscriptions, a snapshot marketplace, affiliate program, agency command center, and white-label branding options.
 
 ## User Preferences
 
@@ -14,75 +12,63 @@ Preferred communication style: Simple, everyday language.
 
 ### Frontend
 - **Framework**: React 18 with TypeScript
-- **Routing**: Wouter
-- **State Management**: TanStack React Query for server state; local React state for UI
-- **Styling**: Tailwind CSS v4 with CSS variables, shadcn/ui component library (New York style)
+- **State Management**: TanStack React Query for server state, local React state for UI
+- **Styling**: Tailwind CSS v4, shadcn/ui (New York style)
 - **Animations**: Framer Motion
 - **Forms**: React Hook Form with Zod validation
-- **Build Tool**: Vite with path aliases
-
-The frontend is structured with pages in `client/src/pages/`, UI components in `client/src/components/ui/`, and layout in `client/src/components/layout.tsx`.
+- **Build Tool**: Vite
 
 ### Backend
 - **Runtime**: Node.js with Express 5
-- **Language**: TypeScript, executed via `tsx`
-- **Architecture**: Monolithic Express server serving both API and built frontend
-- **API Pattern**: RESTful JSON API under `/api/*`
-- **Development**: Vite dev server integrated as middleware for HMR; static files served from `dist/public/` in production.
-
-Core server files include `server/index.ts` (Express setup), `server/routes.ts` (API definitions), `server/storage.ts` (data access), and `server/db.ts` (DB connection).
+- **Language**: TypeScript
+- **Architecture**: Monolithic Express server serving both API (RESTful JSON) and built frontend
+- **Development**: Vite dev server as middleware; static files served from `dist/public/` in production.
 
 ### Data Layer
 - **ORM**: Drizzle ORM with PostgreSQL dialect
-- **Database**: PostgreSQL (via `DATABASE_URL`)
-- **Schema**: Defined in `shared/schema.ts` using Drizzle's `pgTable` helpers
-- **Validation**: Zod schemas generated from Drizzle schemas via `drizzle-zod`
-- **Migrations**: Managed via `drizzle-kit push` (schema push strategy).
-
-Key database tables manage sub-accounts, messages, workflows, AI training jobs, blueprints, Sentinel configurations, incidents, client websites, CRM contacts, pipeline stages, deals, appointments, email campaigns, webhooks, white-label settings, Meta ad campaigns, leads, Instagram conversations/messages, webhook events, integration connections, portal tokens, notifications, live automations, and AI tool logs.
+- **Database**: PostgreSQL
+- **Schema**: Defined in `shared/schema.ts` with `drizzle-zod` for validation
+- **Migrations**: `drizzle-kit push`
 
 ### Shared Code
-The `shared/` directory centralizes database schema definitions, Zod validation schemas, and TypeScript types used by both frontend and backend.
+The `shared/` directory centralizes database schema definitions, Zod validation schemas, and TypeScript types for both frontend and backend.
 
 ### Build Process
 - Custom build script (`script/build.ts`)
-- Client: Built with Vite to `dist/public/`
-- Server: Bundled with esbuild to `dist/index.cjs`.
+- Client: Vite to `dist/public/`
+- Server: esbuild to `dist/index.cjs`.
 
 ### API Routes
-The API provides comprehensive endpoints for managing accounts, messages, workflows, AI bots (chat, training, generation), blueprints, onboarding, voice agents (Vapi integration), phone numbers (Twilio integration), reviews, usage logging, domains, Sentinel scanning, and authentication (Replit OIDC). Specific routes exist for `god-mode` operations, webhooks, white-label configurations, Universal Dispatcher (`/api/v1/orchestrate`), AI Orchestrator (`/api/v1/orchestrate/ai`), webhook event log, integration connections, portal tokens, and dashboard analytics.
+Comprehensive API for accounts, messages, workflows, AI bots, blueprints, onboarding, voice agents, phone numbers, reviews, usage logging, domains, Sentinel scanning, and authentication (Replit OIDC, Email/Password, Google OAuth). Includes `god-mode` operations, webhooks, white-label configurations, Universal Dispatcher, AI Orchestrator, webhook event log, integration connections, portal tokens, and dashboard analytics.
 
-### Recent Additions
-- **Monetization Engine**: Full credit wallet system (`credit_wallets`, `credit_transactions`), usage-based markup billing (3x multiplier on SMS/Vapi costs), Stripe checkout for credit top-ups, and automatic profit logging (`platform_profit_ledger`)
-- **Sponsorship Engine** (`/sponsorship-manager`): Geo-targeted native ads served as JSON via `GET /api/v1/serve-native-ad?lat=&lon=`, bid-per-click model with `POST /api/v1/ad-click/:id`, admin approval workflow
-- **Revenue Command** (`/revenue-command`): Admin-only profit dashboard showing total platform revenue, markup spread, ad click revenue, 7-day trend chart, and recent profit events
-- **Apex Wallet** (`/billing`): Redesigned billing page with live credit balance, quick top-up buttons ($10-$500), transaction history, usage breakdown tabs
-- **Integrations Hub** (`/integrations`): Full credential-based service connections with modal dialogs for entering API keys/tokens. Supports 16 providers (Google Maps, Calendar, Gmail, Sheets, Drive, Docs, Analytics, Business Profile, Slack, Zapier, QuickBooks, Twilio, Stripe, HubSpot, Mailchimp, Facebook). Config stored in `integration_connections.config` JSON field. Includes help links to credential pages.
-- **Webhook Event Log** (`/webhook-events`): Timeline of all webhook deliveries with status, duration, and request/response details
-- **Client Portal** (`/portal/:token`): Public page for end-clients to view their metrics, messages, and appointments via token-based access
-- **Dashboard Analytics**: ROI charts with Recharts showing daily leads/messages, pipeline overview, ad performance, conversion rates
-- **Live Demo** (`/demo`): Cinematic 5-scene walkthrough for prospects showing Sentinel detection, AI orchestrator, workflow execution, and results
-- **Mobile Responsive**: Hamburger menu sidebar on mobile with slide-out drawer, responsive layouts throughout
-- **Onboarding Wizard**: 5-step guided wizard (business info → connect phone → train AI → deploy workflow → completion)
-- **TapCard Funnel** (`/cards`): Standalone digital card sales page with $9.99/mo or $69.99/yr pricing, Stripe checkout via `POST /api/card-checkout` (public, no auth), TapCard Pro upsell to full platform ($48/mo). Every public card links back to `/cards` as growth loop.
-- **Liquid Website Protocol** (`/liquid`): Prompt-first AI landing page builder. User enters business name, industry, description, services, target audience, tone, and brand color. AI generates 5 sections (HERO, FEATURES, TESTIMONIALS, BOOKING, CTA) specifically for their business. Regenerate button returns to the prompt form. Template variable engine resolves `{{contact.first_name | default: 'Welcome'}}` and `{{url_param.heading}}` syntax. URL parameter injection from ad URLs. Sticky Contact via localStorage + CRM lookup (`POST /api/liquid/contact-lookup`, public). Form submissions wired to `/api/form-submit` creating CRM contacts with "Liquid Site Lead" tag. Rate-limited to 10 req/min/IP.
-- **Sentinel Geofence Ingest** (`POST /api/v1/sentinel-ingest`): MAID-to-CRM bridge. Accepts `{maid, location_tag, timestamp, phone?, email?, name?}` from geofence hardware. Two-step enrichment: (1) If phone/email/name provided alongside MAID, enriches via People Data Labs Enrich API (`IDENTITY_API_KEY` env var) to get full contact profile (name, phone, email, location, company). (2) Creates CRM contact tagged `Crash_Connect_Lead` + `Sentinel_Geofence`. Logs sentinel incident. Optionally pushes to LeadConnector V2 API using `APEX_CRM_URL` and `APEX_API_KEY` env vars. Returns 200 immediately; processing runs async. Falls back to storing raw MAID + any provided data if no PDL key configured or enrichment fails.
-- **Draggable UI**: Tutorial overlays and chat widgets are draggable via grab handles (`client/src/hooks/use-draggable.ts`). Bounds-clamped to prevent off-screen dragging.
-- **Sales Chatbot (Aria)**: AI-powered sales assistant (`client/src/components/sales-chatbot.tsx`) on all public landing/funnel pages. Uses `POST /api/sales-chat` (public, rate-limited 15 req/min/IP). Niche-aware context for 17 industries. Draggable, dark-themed floating widget.
-- **Crash Connect Webhook** (`POST /api/webhook/crashconnect`): HMAC-SHA256 authenticated webhook endpoint for receiving events from the external Crash Connect project. Signature format: `x-webhook-signature: timestamp.hmac_hex`. Validates signature freshness (5-min window). Handles `crash.detected`, `lead.created`, `lead.enriched` events — creates CRM contacts (deduplicated), logs sentinel incidents, and records webhook events for audit. Uses `APEX_WEBHOOK_SECRET` env var (matches Crash Connect's `OWNER_MASTER_KEY`). Auth-exempt (public endpoint). **Automation bridge**: After creating contacts, fires async automations: (1) SMS alert to account owner via Twilio with crash details, (2) AI-generated follow-up SMS to the lead using Gemini, (3) executes any matching live automations (trigger: `new_lead`, `crash_detected`, or event name). All SMS/AI usage is logged and charged through the credit wallet with 3x markup. Response returns immediately (200); automation runs async.
-- **External Sentinel Portal** (`/sentinel/:token`): Standalone, public Sentinel page for external partners (e.g., Crash Connect). Token-authenticated via `webhookToken` on the sub-account. Matches Crash Connect red/black branding. Full feature parity: stat cards, live incident stream, location filter, Scan Now, Deploy Geofence, SMS Alert, Acknowledge actions. External API at `/api/v1/external/sentinel/*` (incidents, stats, config, scan, actions). Scan rate-limited to 1 per 60 seconds per token.
-- **Multi-Page Site Builder**: Site Builder upgraded from single-page to multi-page support. `siteData` format: `{ theme, navigation: { logo, links }, pages: [{ id, slug, title, sections }] }`. Backward compatible — old `{ theme, sections }` format auto-migrated via `migrateSiteData()`. Page tab bar in edit mode with add/rename (double-click)/delete controls. 6 page presets (Home, About, Services, Contact, FAQ, Portfolio) each with default sections. `NavHeaderSection` component renders sticky nav bar with page links (desktop) and hamburger menu (mobile). Clicking nav links switches active page. Single-page sites work exactly as before.
+### Key Features and Implementations
+- **Monetization Engine**: Credit wallet system, usage-based markup billing (3x for SMS/Vapi), Stripe credit top-ups, profit logging.
+- **Sponsorship Engine**: Geo-targeted native ads, bid-per-click model, admin approval.
+- **Revenue Command**: Admin-only profit dashboard.
+- **Apex Wallet**: Redesigned billing with live credit balance, top-up options, transaction history.
+- **Integrations Hub**: Credential-based service connections for 16 providers (Google Suite, Slack, Zapier, QuickBooks, Twilio, Stripe, HubSpot, Mailchimp, Facebook), config stored in `integration_connections.config`.
+- **Webhook Event Log**: Timeline of webhook deliveries.
+- **Client Portal**: Public page for end-clients with token-based access to metrics, messages, appointments.
+- **Dashboard Analytics**: ROI charts (Recharts) for leads, messages, pipeline, ad performance.
+- **Live Demo**: Cinematic 5-scene walkthrough for prospects.
+- **Mobile Responsive**: Hamburger menu and responsive layouts.
+- **Onboarding Wizard**: 5-step guided setup.
+- **TapCard Funnel**: Standalone digital card sales page with Stripe checkout, upsell to full platform.
+- **Liquid Website Protocol**: AI landing page builder generating 5 sections based on user input, supporting template variables and URL parameter injection. Form submissions create CRM contacts.
+- **Sentinel Geofence Ingest**: MAID-to-CRM bridge accepting geofence data, enriching contacts via People Data Labs, creating CRM contacts, logging incidents, and optionally pushing to LeadConnector V2 API.
+- **Draggable UI**: Draggable tutorial overlays and chat widgets with `use-draggable.ts` hook.
+- **Sales Chatbot (Aria)**: AI-powered sales assistant on public pages, niche-aware context for 17 industries.
+- **Crash Connect Webhook**: HMAC-SHA256 authenticated webhook for Crash Connect events, handles `crash.detected`, `lead.created`, `lead.enriched` to create CRM contacts, log sentinel incidents, and trigger async automations (SMS alerts, AI-generated follow-ups).
+- **External Sentinel Portal**: Standalone, public Sentinel page for external partners with token-based authentication.
+- **Multi-Page Site Builder**: Upgraded site builder supporting multiple pages with navigation, presets, and backward compatibility for old `siteData` format.
 
 ### Access Control & Multi-Tenancy
-- **Triple authentication**: Supports Replit OIDC (admin), native email/password login (clients), and Google OAuth 2.0. `users` table has `passwordHash` and `authProvider` fields (values: "replit", "email", "google"). `isAuthenticated` middleware handles all session types — skips OIDC token refresh for `authProvider: "email"` or `"google"` users. Login page (`client/src/pages/login.tsx`) shows email/password form with register/login toggle, "Continue with Google" button, and "Continue with Replit" fallback.
-- **Auth routes**: `POST /api/auth/register` (bcryptjs hash, auto-login), `POST /api/auth/email-login` (email+password verify), `POST /api/auth/apex-logout` (session destroy without OIDC redirect), `GET /api/auth/user` (handles both OIDC claims.sub and local user.id), `GET /api/auth/google` (Google OAuth initiate), `GET /api/auth/google/callback` (Google OAuth callback). Google OAuth uses `passport-google-oauth20` strategy, configured via `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` env vars. Redirect URI: `https://www.apexmarketingautomations.com/api/auth/google/callback`.
-- **Plan-based feature gating**: Features are gated by plan tier (Starter/Pro/Enterprise) using `PLAN_TIERS` in `shared/schema.ts`. The `PlanGate` component (`client/src/components/plan-gate.tsx`) wraps protected pages and shows an upgrade overlay for locked features.
-- **Account ownership enforcement**: `verifyAccountOwnership()` helper in `server/routes.ts` validates that the logged-in user owns the requested sub-account before returning any data. Applied to all 30+ routes that accept `subAccountId`. Admin users (matched by `ADMIN_USER_ID` env var) bypass ownership checks.
-- **Strict account filtering**: `GET /api/accounts` returns only accounts where `ownerUserId === user.id`. Admin sees all. Non-owners get empty results (no leaked data from orphaned accounts).
-- **Active account context**: `useActiveSubAccountId()` hook (`client/src/components/account-required.tsx`) provides the current active sub-account ID with null safety. All pages guard queries with `enabled: !!subAccountId`.
-- **Sidebar gating**: Nav items with `requiredFeature` show lock icons and reduced opacity. Items with `adminOnly: true` are hidden from the sidebar entirely.
-- **Plan-gated pages**: workflow-builder, voice-agent, email-campaigns, white-label, webhooks, bot-trainer all use PlanGate wrapper with Inner function pattern.
-- **Stripe trial with card capture**: Subscription checkout uses `payment_method_collection: "always"` to require credit card info upfront even during the 60-day free trial period.
+- **Authentication**: Replit OIDC (admin), native email/password, Google OAuth 2.0. `isAuthenticated` middleware handles all session types.
+- **Plan-based Feature Gating**: Features gated by Starter/Pro/Enterprise tiers using `PlanGate` component.
+- **Account Ownership Enforcement**: `verifyAccountOwnership()` helper and strict account filtering ensure data isolation. Admin users bypass checks.
+- **Active Account Context**: `useActiveSubAccountId()` hook for current sub-account ID.
+- **Sidebar Gating**: Nav items show lock icons or are hidden based on plan and admin status.
+- **Stripe Trial**: 60-day free trial with upfront card capture.
 
 ## External Dependencies
 
@@ -90,11 +76,21 @@ The API provides comprehensive endpoints for managing accounts, messages, workfl
 - **PostgreSQL**: Primary data store.
 
 ### AI/ML
-- **Google Gemini API**: Used for site generation, ad campaign generation, bot chat, workflow AI generation, voice persona generation, chat widgets, and form builders. All calls log usage. Features include retry logic, streaming, image generation, JSON mode for structured output, industry-specific prompt tuning, and multi-language support. Architecture references pgvector for RAG.
+- **Google Gemini API**: Used for site generation, ad campaigns, bot chat, workflow AI, voice persona generation, chat widgets, and form builders. Features include retry, streaming, image generation, JSON mode, industry-specific tuning, and multi-language support. References pgvector for RAG.
 
 ### Communication Services
-- **Twilio**: Phone number provisioning (search, purchase), SMS webhook with AI auto-reply.
-- **Vapi**: Voice AI agent deployment, outbound calling, and browser demo calls. Utilizes a backend proxy pattern for API key security.
+- **Twilio**: Phone number provisioning, SMS webhook with AI auto-reply.
+- **Vapi**: Voice AI agent deployment, outbound calling, browser demo calls (backend proxy for API key security).
+- **Mailchimp**: Email campaign sending via Marketing API (audience management, contact batching, campaign creation/sending).
+
+### Automation Engine
+- **`fireAutomationTrigger`**: Reusable function to execute step sequences from `liveAutomations` table.
+- **Supported Triggers**: `new_lead`, `crash_detected`, `review_received`, `appointment_booked`, custom workflow triggers.
+- **Step Execution**: `send_sms`, `deploy_geofence_ad`, `start_vapi_call`, `create_contact`, `wait`, Universal Dispatcher actions.
+- **Template Variables**: SMS body text supports dynamic substitutions.
+- **Integration Points**: Form submissions, CRM contact creation, funnel lead submission, sentinel geofence ingest, review creation, appointment creation, Crash Connect webhook.
+- **Bot Trainer**: Real web scraping with `cheerio`, content chunking, AI persona generation via Gemini, stored content for RAG.
+- **Onboarding Wizard**: Fully wired, creating sub-accounts, saving phone numbers, initiating bot training, deploying live workflows via Universal Dispatcher.
 
 ### Frontend Libraries
 - **shadcn/ui**: Component library.
@@ -102,8 +98,3 @@ The API provides comprehensive endpoints for managing accounts, messages, workfl
 - **Recharts**: Charting library.
 - **Embla Carousel**: Carousel component.
 - **date-fns**: Date formatting utilities.
-
-### Dev Tools
-- **Vite**: Dev server and bundler.
-- **Drizzle Kit**: Database schema management.
-- **esbuild**: Server bundling for production.

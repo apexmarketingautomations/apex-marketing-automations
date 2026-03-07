@@ -85,6 +85,8 @@ export const trainingJobs = pgTable("training_jobs", {
   state: text("state").notNull().default("pending"),
   progress: integer("progress").notNull().default(0),
   logs: json("logs").notNull().default([]),
+  scrapedContent: text("scraped_content"),
+  generatedPersona: text("generated_persona"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
