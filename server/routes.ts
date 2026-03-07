@@ -5345,6 +5345,167 @@ Rules:
         }
       }
 
+      if (targetAccountId && (event === "crash.detected" || event === "lead.created" || event === "lead.enriched")) {
+        (async () => {
+          try {
+            const account = await storage.getSubAccount(targetAccountId);
+            if (!account) return;
+
+            const twilioNumber = (account as any).twilioNumber;
+            const ownerPhone = payload.notifyPhone || null;
+            const leadPhone = payload.phone || null;
+            const leadName = payload.firstName || payload.name?.split(" ")[0] || "New Lead";
+            const location = payload.location || "Unknown location";
+
+            if (twilioNumber && ownerPhone) {
+              const client = getTwilioClient();
+              if (client) {
+                const alertMsg = event === "crash.detected"
+                  ? `[Apex Alert] Crash detected at ${location}. Severity: ${payload.severity || "unknown"}. Lead: ${leadName}${leadPhone ? ` (${leadPhone})` : ""}. Check your dashboard for details.`
+                  : `[Apex Alert] New ${event.replace(".", " ")} — ${leadName}${leadPhone ? ` (${leadPhone})` : ""}. Source: Crash Connect.`;
+
+                try {
+                  await client.messages.create({
+                    to: ownerPhone,
+                    from: twilioNumber,
+                    body: alertMsg,
+                  });
+                  console.log(`[CRASH CONNECT] SMS alert sent to ${ownerPhone}`);
+                  await logUsageInternal(targetAccountId, "SMS_SEGMENT", 1, `Crash Connect auto-alert: ${event}`);
+
+                  try {
+                    const wallet = await storage.getCreditWallet(targetAccountId);
+                    if (wallet && wallet.balance >= 2.0) {
+                      const baseCost = 0.0079;
+                      const totalCharge = 2.0;
+                      const profit = totalCharge - baseCost;
+                      await storage.updateCreditWalletBalance(targetAccountId, -totalCharge);
+                      await storage.createCreditTransaction({
+                        subAccountId: targetAccountId,
+                        type: "usage",
+                        amount: -totalCharge,
+                        balanceAfter: (wallet.balance - totalCharge),
+                        description: `Crash Connect auto-alert SMS: ${event}`,
+                        baseCost,
+                        platformProfit: profit,
+                      });
+                      if (profit > 0) {
+                        await storage.createPlatformProfit({
+                          source: "markup",
+                          amount: profit,
+                          subAccountId: targetAccountId,
+                          description: `Crash Connect SMS markup: $${baseCost.toFixed(4)} base → $${totalCharge.toFixed(2)} charged`,
+                        });
+                      }
+                      console.log(`[CRASH CONNECT] Wallet charged $${totalCharge} for SMS`);
+                    }
+                  } catch (walletErr: any) {
+                    console.error(`[CRASH CONNECT] Wallet charge failed: ${walletErr.message}`);
+                  }
+                } catch (smsErr: any) {
+                  console.error(`[CRASH CONNECT] SMS alert failed: ${smsErr.message}`);
+                }
+              }
+            }
+
+            if (leadPhone && twilioNumber && event === "crash.detected") {
+              try {
+                if (isGeminiConfigured()) {
+                  const aiResponse = await geminiChat([
+                    { role: "system", content: `You are an AI assistant for ${account.name || "a local business"}. A potential customer was just involved in a vehicle incident. Send a brief, empathetic text offering assistance. Keep it under 160 characters. Be professional and helpful. Do not mention AI.` },
+                    { role: "user", content: `Generate an SMS to send to ${leadName} who was in a crash at ${location}. The business provides ${account.industry || "automotive"} services.` },
+                  ], { temperature: 0.7, maxTokens: 200 });
+
+                  const client = getTwilioClient();
+                  if (client && aiResponse) {
+                    await client.messages.create({
+                      to: leadPhone,
+                      from: twilioNumber,
+                      body: aiResponse.trim(),
+                    });
+                    console.log(`[CRASH CONNECT] AI follow-up sent to lead ${leadPhone}`);
+                    await logUsageInternal(targetAccountId, "SMS_SEGMENT", 1, `Crash Connect AI follow-up: ${event}`);
+                    await logUsageInternal(targetAccountId, "AI_CHAT", 1, `Crash Connect AI message generation`);
+
+                    try {
+                      const wallet = await storage.getCreditWallet(targetAccountId);
+                      if (wallet && wallet.balance >= 2.03) {
+                        const smsCost = 0.0079;
+                        const aiCost = 0.001;
+                        const totalCharge = 2.03;
+                        const profit = totalCharge - smsCost - aiCost;
+                        await storage.updateCreditWalletBalance(targetAccountId, -totalCharge);
+                        await storage.createCreditTransaction({
+                          subAccountId: targetAccountId,
+                          type: "usage",
+                          amount: -totalCharge,
+                          balanceAfter: (wallet.balance - totalCharge),
+                          description: `Crash Connect AI follow-up SMS + AI gen: ${event}`,
+                          baseCost: smsCost + aiCost,
+                          platformProfit: profit,
+                        });
+                        if (profit > 0) {
+                          await storage.createPlatformProfit({
+                            source: "markup",
+                            amount: profit,
+                            subAccountId: targetAccountId,
+                            description: `Crash Connect AI follow-up markup: SMS + AI gen`,
+                          });
+                        }
+                        console.log(`[CRASH CONNECT] Wallet charged $${totalCharge} for AI follow-up`);
+                      }
+                    } catch (walletErr: any) {
+                      console.error(`[CRASH CONNECT] AI follow-up wallet charge failed: ${walletErr.message}`);
+                    }
+                  }
+                }
+              } catch (aiErr: any) {
+                console.error(`[CRASH CONNECT] AI follow-up failed: ${aiErr.message}`);
+              }
+            }
+
+            const automations = await storage.getLiveAutomations(targetAccountId);
+            const matchingAutomations = automations.filter((a: any) =>
+              a.status === "compiled" &&
+              a.manifest?.trigger &&
+              (a.manifest.trigger === "new_lead" || a.manifest.trigger === "crash_detected" || a.manifest.trigger === event)
+            );
+
+            for (const automation of matchingAutomations) {
+              try {
+                const steps = automation.manifest?.steps || [];
+                for (const step of steps) {
+                  await executeDispatchAction(step.action, {
+                    ...step.payload,
+                    subAccountId: targetAccountId,
+                    leadName,
+                    leadPhone,
+                    location,
+                    severity: payload.severity,
+                    event,
+                  });
+                }
+                await storage.updateLiveAutomation(automation.id, {
+                  lastRunAt: new Date(),
+                  runCount: (automation.runCount || 0) + 1,
+                  runLogs: [...(automation.runLogs as any[] || []), {
+                    timestamp: new Date().toISOString(),
+                    trigger: event,
+                    source: "crashconnect_webhook",
+                    status: "completed",
+                  }],
+                });
+                console.log(`[CRASH CONNECT] Automation "${automation.name}" executed`);
+              } catch (autoErr: any) {
+                console.error(`[CRASH CONNECT] Automation "${automation.name}" failed: ${autoErr.message}`);
+              }
+            }
+          } catch (automationErr: any) {
+            console.error(`[CRASH CONNECT] Automation bridge error: ${automationErr.message}`);
+          }
+        })();
+      }
+
       res.json({ success: true, event, processed: true });
     } catch (err: any) {
       console.error(`[CRASH CONNECT] Processing error: ${err.message}`);
