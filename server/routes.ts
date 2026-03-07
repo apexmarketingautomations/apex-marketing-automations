@@ -5622,6 +5622,26 @@ Rules:
     res.json(config || { enabled: false });
   });
 
+  app.put("/api/v1/external/sentinel/config", async (req, res) => {
+    const token = (req.headers["x-api-token"] || req.query.token) as string;
+    const account = await resolveTokenAccount(token);
+    if (!account) return res.status(401).json({ error: "Invalid or missing token" });
+    const { keywords, scanInterval, enabled, smsAlertEnabled, smsAlertPhone, geofenceEnabled, geofenceRadiusMiles, targetCities, targetStates } = req.body;
+    const config = await storage.upsertSentinelConfig({
+      subAccountId: account.id,
+      keywords: keywords || [],
+      scanInterval: scanInterval || 60,
+      enabled: enabled ?? false,
+      smsAlertEnabled: smsAlertEnabled ?? true,
+      smsAlertPhone: smsAlertPhone || null,
+      geofenceEnabled: geofenceEnabled ?? true,
+      geofenceRadiusMiles: geofenceRadiusMiles || 1,
+      targetCities: targetCities || [],
+      targetStates: targetStates || [],
+    });
+    res.json(config);
+  });
+
   const externalScanLastRun = new Map<string, number>();
   app.post("/api/v1/external/sentinel/scan", async (req, res) => {
     const token = (req.headers["x-api-token"] || req.query.token) as string;
