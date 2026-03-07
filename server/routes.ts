@@ -2412,8 +2412,7 @@ Rules:
 
     const { phoneNumber, assistantId, subAccountId } = parsed.data;
 
-    const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || process.env.REPLIT_DEV_DOMAIN || "";
-    const smsWebhookUrl = domain ? `https://${domain}/api/sms-webhook` : "";
+    const smsWebhookUrl = `${req.protocol}://${req.get("host")}/api/sms-webhook`;
 
     let purchased;
     try {
@@ -2689,11 +2688,11 @@ Rules:
     }
   });
 
-  app.get("/api/phone-numbers/config", (_req, res) => {
+  app.get("/api/phone-numbers/config", (req, res) => {
     const hasTwilio = !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN);
     const hasVapi = vapiConfig.isConfigured;
-    const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || process.env.REPLIT_DEV_DOMAIN || "";
-    res.json({ hasTwilio, hasVapi, webhookDomain: domain ? `https://${domain}` : null });
+    const webhookDomain = `${req.protocol}://${req.get("host")}`;
+    res.json({ hasTwilio, hasVapi, webhookDomain });
   });
 
   // ── Stripe Paywall Routes ──────────────────────────────────────────
@@ -2767,8 +2766,7 @@ Rules:
     const { getUncachableStripeClient } = await import("./stripeClient");
     const stripe = await getUncachableStripeClient();
 
-    const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost:5000";
-    const baseUrl = `https://${domain}`;
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
@@ -2822,10 +2820,9 @@ Rules:
           });
           phoneNumber = purchased.phoneNumber;
 
-          const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || process.env.REPLIT_DEV_DOMAIN || "";
-          const smsUrl = domain ? `https://${domain}/api/sms-webhook` : "";
+          const smsUrl = `${req.protocol}://${req.get("host")}/api/sms-webhook`;
           const updateOpts: Record<string, string> = {};
-          if (smsUrl) { updateOpts.smsUrl = smsUrl; updateOpts.smsMethod = "POST"; }
+          updateOpts.smsUrl = smsUrl; updateOpts.smsMethod = "POST";
           updateOpts.voiceUrl = "https://api.vapi.ai/twilio/voice/handler";
           updateOpts.voiceMethod = "POST";
           await twilioClient.incomingPhoneNumbers(purchased.sid).update(updateOpts);
@@ -3155,8 +3152,8 @@ Rules:
           quantity: 1,
         }],
         metadata: { subAccountId: subAccountId.toString(), creditAmount: amount.toString(), type: "credit_topup" },
-        success_url: `${req.headers.origin || req.protocol + "://" + req.get("host")}/billing?topup=success`,
-        cancel_url: `${req.headers.origin || req.protocol + "://" + req.get("host")}/billing?topup=cancelled`,
+        success_url: `${req.protocol}://${req.get("host")}/billing?topup=success`,
+        cancel_url: `${req.protocol}://${req.get("host")}/billing?topup=cancelled`,
       });
 
       res.json({ url: session.url });
@@ -3874,8 +3871,8 @@ Rules:
             billingInterval: parsed.data.interval,
           },
         },
-        success_url: `${req.headers.origin || `https://${req.headers.host}`}/billing?success=true`,
-        cancel_url: `${req.headers.origin || `https://${req.headers.host}`}/billing?canceled=true`,
+        success_url: `${req.protocol}://${req.get("host")}/billing?success=true`,
+        cancel_url: `${req.protocol}://${req.get("host")}/billing?canceled=true`,
       });
 
       res.json({ url: session.url });
@@ -8019,8 +8016,7 @@ Return ONLY valid JSON.` },
       return res.status(400).json({ error: "Invalid plan" });
     }
 
-    const domain = process.env.REPLIT_DOMAINS?.split(",")[0] || process.env.REPLIT_DEV_DOMAIN || "localhost:5000";
-    const baseUrl = `https://${domain}`;
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
