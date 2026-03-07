@@ -6737,8 +6737,8 @@ Rules:
 
   // ---- Sitemap ----
 
-  app.get("/sitemap.xml", (_req: Request, res: Response) => {
-    const base = "https://apexmarketingautomations.com";
+  app.get("/sitemap.xml", (req: Request, res: Response) => {
+    const base = `${req.protocol}://${req.get("host")}`;
     const pages = [
       { loc: "/", priority: "1.0", changefreq: "daily" },
       { loc: "/demo", priority: "0.9", changefreq: "weekly" },

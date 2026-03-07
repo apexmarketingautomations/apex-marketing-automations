@@ -8,7 +8,7 @@ const LINKS = [
   { icon: Phone, label: "Call Me", value: "(239) 492-2698", href: "tel:+12394922698", bg: "bg-green-500/10", text: "text-green-400" },
   { icon: MessageSquare, label: "Text Me", value: "Send a message", href: "sms:+12394922698", bg: "bg-blue-500/10", text: "text-blue-400" },
   { icon: Mail, label: "Email Me", value: "Dante@apexmarketingautomations.com", href: "mailto:Dante@apexmarketingautomations.com", bg: "bg-purple-500/10", text: "text-purple-400" },
-  { icon: Globe, label: "Visit Website", value: "apexmarketingautomations.com", href: "https://apexmarketingautomations.com", bg: "bg-cyan-500/10", text: "text-cyan-400" },
+  { icon: Globe, label: "Visit Website", value: "apexmarketingautomations.com", href: "/", bg: "bg-cyan-500/10", text: "text-cyan-400" },
   { icon: Star, label: "Leave a Review", value: "Rate us on Google", href: "https://g.page/r/CY4EJ5F_Kli-EAI/review", bg: "bg-yellow-500/10", text: "text-yellow-400" },
 ];
 
@@ -33,7 +33,7 @@ const STATS = [
   { label: "Lines of Code", value: 45, suffix: "K" },
 ];
 
-const CARD_URL = "https://apexmarketingautomations.com/DanteS";
+const CARD_URL = `${window.location.origin}/DanteS`;
 
 function AnimatedCounter({ value, suffix }: { value: number; suffix: string }) {
   const [count, setCount] = useState(0);
