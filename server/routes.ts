@@ -5390,9 +5390,9 @@ Rules:
 
                   try {
                     const wallet = await storage.getCreditWallet(targetAccountId);
-                    if (wallet && wallet.balance >= 2.0) {
-                      const baseCost = 0.0079;
-                      const totalCharge = 2.0;
+                    const baseCost = 0.0079;
+                    const totalCharge = parseFloat((baseCost * 3).toFixed(4));
+                    if (wallet && wallet.balance >= totalCharge) {
                       const profit = totalCharge - baseCost;
                       await storage.updateCreditWalletBalance(targetAccountId, -totalCharge);
                       await storage.createCreditTransaction({
@@ -5444,10 +5444,10 @@ Rules:
 
                     try {
                       const wallet = await storage.getCreditWallet(targetAccountId);
-                      if (wallet && wallet.balance >= 2.03) {
-                        const smsCost = 0.0079;
-                        const aiCost = 0.001;
-                        const totalCharge = 2.03;
+                      const smsCost = 0.0079;
+                      const aiCost = 0.001;
+                      const totalCharge = parseFloat(((smsCost + aiCost) * 3).toFixed(4));
+                      if (wallet && wallet.balance >= totalCharge) {
                         const profit = totalCharge - smsCost - aiCost;
                         await storage.updateCreditWalletBalance(targetAccountId, -totalCharge);
                         await storage.createCreditTransaction({
