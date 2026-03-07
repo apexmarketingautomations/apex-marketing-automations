@@ -44,6 +44,7 @@ export const subAccounts = pgTable("sub_accounts", {
   aiPromptConfig: json("ai_prompt_config"),
   plan: text("plan").default("starter").notNull(),
   planFeatures: text("plan_features").array(),
+  webhookToken: text("webhook_token"),
 });
 
 export const insertSubAccountSchema = createInsertSchema(subAccounts).omit({ id: true });

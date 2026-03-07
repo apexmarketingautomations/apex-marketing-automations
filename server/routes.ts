@@ -5273,8 +5273,22 @@ Rules:
     console.log(`[CRASH CONNECT] Webhook received: ${event}`, JSON.stringify(payload).substring(0, 300));
 
     try {
-      const rawAccountId = payload.subAccountId || payload.accountId || null;
-      const targetAccountId = rawAccountId ? parseInt(String(rawAccountId)) : null;
+      let targetAccountId: number | null = null;
+      const token = payload.token || payload.webhookToken || null;
+      if (token) {
+        const [matchedAccount] = await db.select().from(subAccounts)
+          .where(eq(subAccounts.webhookToken, token))
+          .limit(1);
+        if (matchedAccount) {
+          targetAccountId = matchedAccount.id;
+        } else {
+          console.warn(`[CRASH CONNECT] No account found for token: ${token}`);
+        }
+      }
+      if (!targetAccountId) {
+        const rawAccountId = payload.subAccountId || payload.accountId || null;
+        targetAccountId = rawAccountId ? parseInt(String(rawAccountId)) : null;
+      }
 
       if (targetAccountId) {
         await db.insert(webhookEvents).values({
