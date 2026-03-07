@@ -597,6 +597,7 @@ ${sections.map(renderSection).join('\n')}
     if (fullPath === "/api/v1/sentinel-receiver") return next();
     if (fullPath === "/api/v1/sentinel-ingest") return next();
     if (fullPath === "/api/webhook/crashconnect") return next();
+    if (fullPath.startsWith("/api/v1/external/sentinel")) return next();
     if (fullPath === "/api/v1/dispatch") return next();
     if (fullPath === "/api/form-submit") return next();
     if (fullPath === "/api/card-checkout") return next();
@@ -5525,6 +5526,92 @@ Rules:
       console.error(`[CRASH CONNECT] Processing error: ${err.message}`);
       res.status(500).json({ error: "Processing failed", event });
     }
+  });
+
+  // ─── External Sentinel API (token-authenticated, for partner sites) ───
+  async function resolveTokenAccount(token: string | undefined) {
+    if (!token) return null;
+    const [account] = await db.select().from(subAccounts)
+      .where(eq(subAccounts.webhookToken, token))
+      .limit(1);
+    return account || null;
+  }
+
+  app.get("/api/v1/external/sentinel/incidents", async (req, res) => {
+    const token = (req.headers["x-api-token"] || req.query.token) as string;
+    const account = await resolveTokenAccount(token);
+    if (!account) return res.status(401).json({ error: "Invalid or missing token" });
+
+    const incidents = await storage.getSentinelIncidents(account.id);
+    res.json({
+      accountName: account.name,
+      incidents: incidents.map(i => ({
+        id: i.id,
+        title: i.title,
+        description: i.description,
+        location: i.location,
+        severity: i.severity,
+        actionStatus: i.actionStatus,
+        smsSent: i.smsSent,
+        geofenceDeployed: i.geofenceDeployed,
+        detectedAt: i.detectedAt,
+      })),
+    });
+  });
+
+  app.get("/api/v1/external/sentinel/incidents/:id", async (req, res) => {
+    const token = (req.headers["x-api-token"] || req.query.token) as string;
+    const account = await resolveTokenAccount(token);
+    if (!account) return res.status(401).json({ error: "Invalid or missing token" });
+
+    const incident = await storage.getSentinelIncident(parseInt(req.params.id));
+    if (!incident || incident.subAccountId !== account.id) {
+      return res.status(404).json({ error: "Incident not found" });
+    }
+    res.json({
+      id: incident.id,
+      title: incident.title,
+      description: incident.description,
+      location: incident.location,
+      severity: incident.severity,
+      actionStatus: incident.actionStatus,
+      smsSent: incident.smsSent,
+      geofenceDeployed: incident.geofenceDeployed,
+      rawPayload: incident.rawPayload,
+      detectedAt: incident.detectedAt,
+    });
+  });
+
+  app.get("/api/v1/external/sentinel/stats", async (req, res) => {
+    const token = (req.headers["x-api-token"] || req.query.token) as string;
+    const account = await resolveTokenAccount(token);
+    if (!account) return res.status(401).json({ error: "Invalid or missing token" });
+
+    const incidents = await storage.getSentinelIncidents(account.id);
+    const total = incidents.length;
+    const bySeverity = { low: 0, medium: 0, high: 0, critical: 0 };
+    const byStatus = { pending: 0, contacted: 0, resolved: 0, dismissed: 0 };
+    for (const i of incidents) {
+      if (i.severity in bySeverity) bySeverity[i.severity as keyof typeof bySeverity]++;
+      if (i.actionStatus && i.actionStatus in byStatus) byStatus[i.actionStatus as keyof typeof byStatus]++;
+    }
+    const last24h = incidents.filter(i => {
+      const dt = new Date(i.detectedAt).getTime();
+      return Date.now() - dt < 24 * 60 * 60 * 1000;
+    }).length;
+    const last7d = incidents.filter(i => {
+      const dt = new Date(i.detectedAt).getTime();
+      return Date.now() - dt < 7 * 24 * 60 * 60 * 1000;
+    }).length;
+
+    res.json({
+      accountName: account.name,
+      total,
+      last24h,
+      last7d,
+      bySeverity,
+      byStatus,
+    });
   });
 
   // ─── Client Website Integration ───────────────────────────────────
