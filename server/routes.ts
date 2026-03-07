@@ -5352,7 +5352,7 @@ Rules:
             if (!account) return;
 
             const twilioNumber = (account as any).twilioNumber;
-            const ownerPhone = payload.notifyPhone || null;
+            const ownerPhone = payload.notifyPhone || (account as any).ownerPhone || null;
             const leadPhone = payload.phone || null;
             const leadName = payload.firstName || payload.name?.split(" ")[0] || "New Lead";
             const location = payload.location || "Unknown location";
