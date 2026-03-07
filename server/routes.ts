@@ -1,8 +1,8 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains, insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, insertMetaAdCampaignSchema, insertMetaLeadSchema, insertInstagramConversationSchema, insertInstagramMessageSchema, insertNotificationSchema, contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings, metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications, messages, hasFeature, PLAN_TIERS, subAccounts, liveAutomations, insertLiveAutomationSchema, insertSponsorshipSchema, insertCreditWalletSchema, creditTransactions, platformProfitLedger, sponsorships, sponsorshipClicks, digitalCards } from "@shared/schema";
-import { sql, eq } from "drizzle-orm";
+import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains, insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, insertMetaAdCampaignSchema, insertMetaLeadSchema, insertInstagramConversationSchema, insertInstagramMessageSchema, insertNotificationSchema, contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings, metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications, messages, hasFeature, PLAN_TIERS, subAccounts, liveAutomations, insertLiveAutomationSchema, insertSponsorshipSchema, insertCreditWalletSchema, creditTransactions, platformProfitLedger, sponsorships, sponsorshipClicks, digitalCards, webhookEvents, sentinelIncidents } from "@shared/schema";
+import { sql, eq, and } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
 import { geminiChat, geminiChatStream, isGeminiConfigured, geminiGenerateImage } from "./gemini";
@@ -596,6 +596,7 @@ ${sections.map(renderSection).join('\n')}
     if (fullPath === "/api/sentinel-incoming") return next();
     if (fullPath === "/api/v1/sentinel-receiver") return next();
     if (fullPath === "/api/v1/sentinel-ingest") return next();
+    if (fullPath === "/api/webhook/crashconnect") return next();
     if (fullPath === "/api/v1/dispatch") return next();
     if (fullPath === "/api/form-submit") return next();
     if (fullPath === "/api/card-checkout") return next();
@@ -5244,6 +5245,112 @@ Rules:
       }
     }
   }));
+
+  // ─── Crash Connect Webhook ───────────────────────────────────────
+  app.post("/api/webhook/crashconnect", async (req, res) => {
+    const WEBHOOK_SECRET = process.env.APEX_WEBHOOK_SECRET;
+    if (!WEBHOOK_SECRET) return res.status(500).json({ error: "Webhook secret not configured" });
+
+    const sig = req.headers["x-webhook-signature"] as string;
+    if (!sig) return res.status(401).json({ error: "Missing signature" });
+
+    const [timestamp, hash] = sig.split(".");
+    if (!timestamp || !hash) return res.status(401).json({ error: "Invalid signature format" });
+
+    const payload = req.body.payload || req.body;
+    const expected = crypto.createHmac("sha256", WEBHOOK_SECRET)
+      .update(timestamp + ":" + JSON.stringify(payload))
+      .digest("hex");
+
+    const hashBuf = Buffer.from(hash);
+    const expectedBuf = Buffer.from(expected);
+    if (hashBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(hashBuf, expectedBuf)) return res.status(401).json({ error: "Invalid signature" });
+
+    const age = Math.abs(Date.now() - parseInt(timestamp));
+    if (age > 5 * 60 * 1000) return res.status(401).json({ error: "Signature expired" });
+
+    const { event } = req.body;
+    console.log(`[CRASH CONNECT] Webhook received: ${event}`, JSON.stringify(payload).substring(0, 300));
+
+    try {
+      const rawAccountId = payload.subAccountId || payload.accountId || null;
+      const targetAccountId = rawAccountId ? parseInt(String(rawAccountId)) : null;
+
+      if (targetAccountId) {
+        await db.insert(webhookEvents).values({
+          subAccountId: targetAccountId,
+          eventType: `crashconnect.${event}`,
+          url: "/api/webhook/crashconnect",
+          method: "POST",
+          requestBody: req.body,
+          responseStatus: 200,
+          status: "delivered",
+          duration: 0,
+        });
+      }
+
+      if (event === "crash.detected" || event === "lead.created" || event === "lead.enriched") {
+        const contactData: any = {
+          firstName: payload.firstName || payload.name?.split(" ")[0] || "Crash Lead",
+          lastName: payload.lastName || payload.name?.split(" ").slice(1).join(" ") || "",
+          phone: payload.phone || null,
+          email: payload.email || null,
+          tags: ["Crash_Connect_Lead", event.replace(".", "_")],
+          source: `Crash Connect: ${event}`,
+        };
+
+        if (payload.location) contactData.tags.push(`Location: ${payload.location}`);
+        if (payload.severity) contactData.tags.push(`Severity: ${payload.severity}`);
+
+        if (targetAccountId) {
+          let existingContacts: any[] = [];
+          if (payload.phone) {
+            existingContacts = await db.select().from(contacts)
+              .where(and(eq(contacts.subAccountId, targetAccountId), eq(contacts.phone, payload.phone)))
+              .limit(1);
+          } else if (payload.email) {
+            existingContacts = await db.select().from(contacts)
+              .where(and(eq(contacts.subAccountId, targetAccountId), eq(contacts.email, payload.email)))
+              .limit(1);
+          }
+
+          if (existingContacts.length === 0) {
+            await db.insert(contacts).values({
+              subAccountId: targetAccountId,
+              ...contactData,
+            });
+            console.log(`[CRASH CONNECT] CRM contact created: ${contactData.firstName} ${contactData.lastName}`);
+          } else {
+            console.log(`[CRASH CONNECT] Contact already exists, skipping duplicate`);
+          }
+        }
+      }
+
+      if (event === "crash.detected" && targetAccountId) {
+        try {
+          const account = await storage.getSubAccount(targetAccountId);
+          if (account) {
+            await db.insert(sentinelIncidents).values({
+              subAccountId: targetAccountId,
+              title: `Crash Detected: ${payload.location || "Unknown Location"}`,
+              description: payload.description || `Crash event from Crash Connect at ${payload.location || "unknown location"}`,
+              location: payload.location || `${payload.latitude || payload.lat || "0"},${payload.longitude || payload.lon || "0"}`,
+              severity: payload.severity || "medium",
+              rawPayload: payload,
+            });
+            console.log(`[CRASH CONNECT] Sentinel incident logged for account ${targetAccountId}`);
+          }
+        } catch (incErr: any) {
+          console.error(`[CRASH CONNECT] Failed to log incident: ${incErr.message}`);
+        }
+      }
+
+      res.json({ success: true, event, processed: true });
+    } catch (err: any) {
+      console.error(`[CRASH CONNECT] Processing error: ${err.message}`);
+      res.status(500).json({ error: "Processing failed", event });
+    }
+  });
 
   // ─── Client Website Integration ───────────────────────────────────
   app.get("/api/client-websites/:subAccountId", asyncHandler(async (req, res) => {

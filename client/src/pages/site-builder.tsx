@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Send,
   Smartphone,
@@ -65,6 +65,8 @@ import {
   ExternalLink,
   Calendar,
   MessageCircle,
+  FileText,
+  Menu,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -1182,6 +1184,160 @@ function ThemeEditor({ theme, onUpdate, onClose }: { theme: any; onUpdate: (them
   );
 }
 
+interface SitePage {
+  id: string;
+  slug: string;
+  title: string;
+  sections: any[];
+}
+
+interface MultiPageSiteData {
+  theme: any;
+  navigation?: { logo?: string; links: { label: string; pageId: string }[] };
+  pages: SitePage[];
+}
+
+const PAGE_PRESETS: Record<string, { title: string; slug: string; sections: any[] }> = {
+  home: {
+    title: "Home",
+    slug: "home",
+    sections: [
+      { type: "HERO", props: { title: "Welcome to Our Business", subtitle: "We help you achieve your goals", cta: "Get Started", image: "", badge: "New" } },
+      { type: "FEATURES", props: { title: "Our Features", subtitle: "What makes us different", features: [{ icon: "Star", title: "Feature 1", desc: "Description" }, { icon: "Zap", title: "Feature 2", desc: "Description" }, { icon: "Heart", title: "Feature 3", desc: "Description" }] } },
+      { type: "CTA", props: { title: "Ready to Get Started?", subtitle: "Join thousands of satisfied customers today.", cta: "Start Now" } },
+    ],
+  },
+  about: {
+    title: "About",
+    slug: "about",
+    sections: [
+      { type: "ABOUT", props: { title: "About Us", text: "We are passionate about delivering exceptional results. With years of experience and a dedicated team, we help businesses achieve their goals.", image: "" } },
+      { type: "TEAM", props: { title: "Meet Our Team", subtitle: "The people behind the magic", members: [{ name: "Alex Smith", role: "CEO" }, { name: "Jordan Lee", role: "CTO" }, { name: "Taylor Kim", role: "Design Lead" }] } },
+      { type: "TIMELINE", props: { title: "Our Journey", subtitle: "How we got here", events: [{ date: "2020", title: "Founded", desc: "Started with a vision" }, { date: "2022", title: "Growth", desc: "Expanded our team" }, { date: "2024", title: "Today", desc: "Serving hundreds of clients" }] } },
+    ],
+  },
+  services: {
+    title: "Services",
+    slug: "services",
+    sections: [
+      { type: "HERO", props: { title: "Our Services", subtitle: "Everything you need to succeed", cta: "View All", image: "" } },
+      { type: "FEATURES", props: { title: "What We Offer", subtitle: "Comprehensive solutions for your business", features: [{ icon: "ShieldCheck", title: "Service 1", desc: "Professional service" }, { icon: "Zap", title: "Service 2", desc: "Fast delivery" }, { icon: "Trophy", title: "Service 3", desc: "Award-winning results" }] } },
+      { type: "PRICING", props: { title: "Simple Pricing", subtitle: "Choose the plan that works for you", plans: [{ name: "Starter", description: "For individuals", price: 29, period: "mo", features: ["1 User", "5 Projects", "Basic Support"], cta: "Get Started" }, { name: "Pro", description: "For teams", price: 79, period: "mo", features: ["5 Users", "Unlimited Projects", "Priority Support"], cta: "Choose Pro", featured: true }] } },
+    ],
+  },
+  contact: {
+    title: "Contact",
+    slug: "contact",
+    sections: [
+      { type: "CONTACT", props: { title: "Get In Touch", subtitle: "We'd love to hear from you", fields: ["Name", "Email", "Phone", "Message"] } },
+      { type: "FAQ", props: { title: "Frequently Asked Questions", faqs: [{ q: "How can I reach you?", a: "Email us or fill out the contact form above." }, { q: "What are your hours?", a: "We're available Monday-Friday, 9am-5pm." }] } },
+    ],
+  },
+  faq: {
+    title: "FAQ",
+    slug: "faq",
+    sections: [
+      { type: "FAQ", props: { title: "Frequently Asked Questions", faqs: [{ q: "How does it work?", a: "Simply sign up and get started." }, { q: "Is there a free trial?", a: "Yes, we offer a 14-day free trial." }, { q: "Can I cancel anytime?", a: "Absolutely. No contracts." }] } },
+    ],
+  },
+  portfolio: {
+    title: "Portfolio",
+    slug: "portfolio",
+    sections: [
+      { type: "HERO", props: { title: "Our Work", subtitle: "See what we've done for our clients", cta: "View Projects", image: "" } },
+      { type: "TESTIMONIALS", props: { title: "Client Results", subtitle: "Real results from real people", testimonials: [{ name: "Sarah J.", role: "CEO", quote: "Transformed our business.", stars: 5 }, { name: "Mike C.", role: "Founder", quote: "Incredible ROI.", stars: 5 }] } },
+      { type: "STATS", props: { title: "By The Numbers", stats: [{ value: "500+", label: "Clients" }, { value: "98%", label: "Satisfaction" }, { value: "10+", label: "Years" }] } },
+    ],
+  },
+};
+
+function migrateSiteData(data: any): MultiPageSiteData {
+  if (data?.pages && Array.isArray(data.pages)) {
+    return data as MultiPageSiteData;
+  }
+  if (data?.theme && Array.isArray(data?.sections)) {
+    const homePageId = crypto.randomUUID();
+    return {
+      theme: data.theme,
+      navigation: { logo: "", links: [{ label: "Home", pageId: homePageId }] },
+      pages: [{
+        id: homePageId,
+        slug: "home",
+        title: "Home",
+        sections: data.sections,
+      }],
+    };
+  }
+  return data;
+}
+
+function NavHeaderSection({ pages, activePageId, onPageClick, theme, editMode }: {
+  pages: SitePage[];
+  activePageId: string;
+  onPageClick: (pageId: string) => void;
+  theme: any;
+  editMode: boolean;
+}) {
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  if (pages.length <= 1) return null;
+
+  return (
+    <div
+      className="sticky top-0 z-30 backdrop-blur-md border-b"
+      style={{ backgroundColor: theme.bg + "ee", borderColor: theme.text + "15" }}
+    >
+      <div className="max-w-6xl mx-auto px-6 flex items-center justify-between h-14">
+        <span className="text-sm font-bold tracking-wide" style={{ color: theme.primary, fontFamily: theme.font }}>
+          {pages[0]?.title || "My Site"}
+        </span>
+        <div className="hidden md:flex items-center gap-1">
+          {pages.map((page) => (
+            <button
+              key={page.id}
+              onClick={() => onPageClick(page.id)}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+              style={{
+                color: activePageId === page.id ? theme.primary : theme.text + "99",
+                backgroundColor: activePageId === page.id ? theme.primary + "15" : "transparent",
+              }}
+              data-testid={`nav-link-${page.slug}`}
+            >
+              {page.title}
+            </button>
+          ))}
+        </div>
+        <button
+          className="md:hidden p-1.5"
+          style={{ color: theme.text }}
+          onClick={() => setMobileOpen(!mobileOpen)}
+          data-testid="nav-mobile-toggle"
+        >
+          <Menu size={18} />
+        </button>
+      </div>
+      {mobileOpen && (
+        <div className="md:hidden border-t px-4 py-2 space-y-1" style={{ borderColor: theme.text + "15" }}>
+          {pages.map((page) => (
+            <button
+              key={page.id}
+              onClick={() => { onPageClick(page.id); setMobileOpen(false); }}
+              className="block w-full text-left px-3 py-2 rounded-lg text-xs font-medium"
+              style={{
+                color: activePageId === page.id ? theme.primary : theme.text + "99",
+                backgroundColor: activePageId === page.id ? theme.primary + "15" : "transparent",
+              }}
+              data-testid={`nav-mobile-link-${page.slug}`}
+            >
+              {page.title}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SiteBuilder() {
   const [prompt, setPrompt] = useState("");
   const [siteData, setSiteData] = useState<any>(null);
@@ -1202,6 +1358,10 @@ export default function SiteBuilder() {
   const [addSectionOpen, setAddSectionOpen] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showThemeEditor, setShowThemeEditor] = useState(false);
+  const [activePageId, setActivePageId] = useState<string>("");
+  const [showAddPage, setShowAddPage] = useState(false);
+  const [renamingPageId, setRenamingPageId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   const { showTutorial, startTutorial, closeTutorial } = useSiteBuilderTutorial();
 
@@ -1258,6 +1418,82 @@ export default function SiteBuilder() {
     }
   }, []);
 
+  const multiPageData = useMemo<MultiPageSiteData | null>(() => {
+    if (!siteData) return null;
+    return migrateSiteData(siteData);
+  }, [siteData]);
+
+  const activePage = useMemo(() => {
+    if (!multiPageData) return null;
+    return multiPageData.pages.find(p => p.id === activePageId) || multiPageData.pages[0] || null;
+  }, [multiPageData, activePageId]);
+
+  const activeSections = activePage?.sections || [];
+
+  const isMultiPage = (multiPageData?.pages?.length || 0) > 1;
+
+  const setActiveSections = useCallback((updater: (sections: any[]) => any[]) => {
+    setSiteData((prev: any) => {
+      const migrated = migrateSiteData(prev);
+      const pageIdx = migrated.pages.findIndex(p => p.id === (activePageId || migrated.pages[0]?.id));
+      if (pageIdx === -1) return prev;
+      const newPages = [...migrated.pages];
+      newPages[pageIdx] = { ...newPages[pageIdx], sections: updater(newPages[pageIdx].sections) };
+      return { ...migrated, pages: newPages, sections: newPages[0]?.sections || [] };
+    });
+  }, [activePageId]);
+
+  const handleAddPage = (presetKey: string) => {
+    const preset = PAGE_PRESETS[presetKey];
+    if (!preset) return;
+    const newPageId = crypto.randomUUID();
+    setSiteData((prev: any) => {
+      const migrated = migrateSiteData(prev);
+      const newPage: SitePage = { id: newPageId, slug: preset.slug, title: preset.title, sections: preset.sections };
+      const newPages = [...migrated.pages, newPage];
+      const nav = migrated.navigation || { logo: "", links: [] };
+      nav.links = [...nav.links, { label: preset.title, pageId: newPageId }];
+      return { ...migrated, pages: newPages, navigation: nav, sections: newPages[0]?.sections || [] };
+    });
+    setActivePageId(newPageId);
+    setShowAddPage(false);
+    toast({ title: "Page Added", description: `"${preset.title}" page added to your site.` });
+  };
+
+  const handleDeletePage = (pageId: string) => {
+    if (!multiPageData || multiPageData.pages.length <= 1) {
+      toast({ title: "Cannot Delete", description: "Your site must have at least one page.", variant: "destructive" });
+      return;
+    }
+    if (!confirm("Delete this page and all its sections?")) return;
+    setSiteData((prev: any) => {
+      const migrated = migrateSiteData(prev);
+      const newPages = migrated.pages.filter(p => p.id !== pageId);
+      const nav = migrated.navigation || { logo: "", links: [] };
+      nav.links = nav.links.filter(l => l.pageId !== pageId);
+      return { ...migrated, pages: newPages, navigation: nav, sections: newPages[0]?.sections || [] };
+    });
+    if (activePageId === pageId) {
+      setActivePageId(multiPageData.pages.find(p => p.id !== pageId)?.id || "");
+    }
+    toast({ title: "Page Deleted" });
+  };
+
+  const handleRenamePage = (pageId: string, newTitle: string) => {
+    if (!newTitle.trim()) return;
+    setSiteData((prev: any) => {
+      const migrated = migrateSiteData(prev);
+      const newPages = migrated.pages.map(p =>
+        p.id === pageId ? { ...p, title: newTitle.trim(), slug: newTitle.trim().toLowerCase().replace(/\s+/g, "-") } : p
+      );
+      const nav = migrated.navigation || { logo: "", links: [] };
+      nav.links = nav.links.map(l => l.pageId === pageId ? { ...l, label: newTitle.trim() } : l);
+      return { ...migrated, pages: newPages, navigation: nav, sections: newPages[0]?.sections || [] };
+    });
+    setRenamingPageId(null);
+    setRenameValue("");
+  };
+
   const handleGenerate = async (overridePrompt?: string) => {
     const text = overridePrompt || prompt.trim();
     if (!text) return;
@@ -1278,7 +1514,9 @@ export default function SiteBuilder() {
       }
 
       const data = await res.json();
-      setSiteData(data);
+      const migrated = migrateSiteData(data);
+      setSiteData(migrated);
+      setActivePageId(migrated.pages[0]?.id || "");
       setCurrentSiteId(null);
       markMilestoneComplete("generate");
       markMilestoneComplete("preview");
@@ -1335,11 +1573,13 @@ export default function SiteBuilder() {
 
   const handleLoad = (site: SavedSite) => {
     const data = site.siteData as any;
-    if (!data?.theme || !Array.isArray(data?.sections)) {
+    if (!data?.theme || (!Array.isArray(data?.sections) && !Array.isArray(data?.pages))) {
       toast({ title: "Invalid Design", description: "This saved design has missing data and can't be loaded.", variant: "destructive" });
       return;
     }
-    setSiteData(data);
+    const migrated = migrateSiteData(data);
+    setSiteData(migrated);
+    setActivePageId(migrated.pages[0]?.id || "");
     setLastPrompt(site.prompt);
     setCurrentSiteId(site.id);
     setHistory((prev) => [...prev, `Loaded: ${site.name}`]);
@@ -1368,11 +1608,13 @@ export default function SiteBuilder() {
 
   const handleRestoreVersion = (version: SiteVersion) => {
     const data = version.siteData as any;
-    if (!data?.theme || !Array.isArray(data?.sections)) {
+    if (!data?.theme || (!Array.isArray(data?.sections) && !Array.isArray(data?.pages))) {
       toast({ title: "Invalid Version", description: "This version has corrupt data.", variant: "destructive" });
       return;
     }
-    setSiteData(data);
+    const migrated = migrateSiteData(data);
+    setSiteData(migrated);
+    setActivePageId(migrated.pages[0]?.id || "");
     toast({ title: "Version Restored", description: `Restored to v${version.versionNumber}: ${version.label}` });
   };
 
@@ -1390,12 +1632,12 @@ export default function SiteBuilder() {
   const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
     if (dragIndex === null || dragIndex === index) return;
-    setSiteData((prev: any) => {
-      const sections = [...prev.sections];
-      const [moved] = sections.splice(dragIndex, 1);
-      sections.splice(index, 0, moved);
+    setActiveSections((sections) => {
+      const newSections = [...sections];
+      const [moved] = newSections.splice(dragIndex, 1);
+      newSections.splice(index, 0, moved);
       setDragIndex(index);
-      return { ...prev, sections };
+      return newSections;
     });
   };
 
@@ -1406,18 +1648,15 @@ export default function SiteBuilder() {
 
   const handleDeleteSection = (index: number) => {
     if (!confirm("Delete this section?")) return;
-    setSiteData((prev: any) => ({
-      ...prev,
-      sections: prev.sections.filter((_: any, i: number) => i !== index),
-    }));
+    setActiveSections((sections) => sections.filter((_: any, i: number) => i !== index));
     toast({ title: "Section Deleted" });
   };
 
   const handleUpdateSectionProps = (index: number, newProps: any) => {
-    setSiteData((prev: any) => {
-      const sections = [...prev.sections];
-      sections[index] = { ...sections[index], props: newProps };
-      return { ...prev, sections };
+    setActiveSections((sections) => {
+      const newSections = [...sections];
+      newSections[index] = { ...newSections[index], props: newProps };
+      return newSections;
     });
     toast({ title: "Section Updated" });
   };
@@ -1446,10 +1685,7 @@ export default function SiteBuilder() {
       PROCESS_STEPS: { title: "How It Works", subtitle: "Get started in 4 easy steps", steps: [{ title: "Sign Up", desc: "Create your free account" }, { title: "Customize", desc: "Set up your preferences" }, { title: "Launch", desc: "Go live in minutes" }, { title: "Grow", desc: "Watch your business thrive" }] },
       QR_CODE: { title: "Scan & Connect", subtitle: "Point your phone camera at the QR code to get started instantly", qrValue: "https://yoursite.com", qrLabel: "Works with any phone camera", cta: "Get Started" },
     };
-    setSiteData((prev: any) => ({
-      ...prev,
-      sections: [...prev.sections, { type, props: defaults[type] }],
-    }));
+    setActiveSections((sections) => [...sections, { type, props: defaults[type] }]);
     setAddSectionOpen(false);
     toast({ title: "Section Added", description: `Added ${type} section` });
   };
@@ -1750,7 +1986,9 @@ export default function SiteBuilder() {
   ];
 
   const handleLoadTemplate = (template: typeof SITE_TEMPLATES[0]) => {
-    setSiteData(template.siteData);
+    const migrated = migrateSiteData(template.siteData);
+    setSiteData(migrated);
+    setActivePageId(migrated.pages[0]?.id || "");
     setLastPrompt(`Template: ${template.name}`);
     setHistory((prev) => [...prev, `Loaded template: ${template.name}`]);
     setCurrentSiteId(null);
@@ -1883,7 +2121,7 @@ export default function SiteBuilder() {
               <span className="opacity-50 text-xs block mb-1 font-mono">AI</span>
               <div className="flex items-center gap-2 text-indigo-300">
                 <CheckCircle2 className="h-4 w-4" />
-                Site generated with {siteData.sections.length} sections.
+                Site generated with {activeSections.length} sections{isMultiPage ? ` across ${multiPageData?.pages.length} pages` : ""}.
               </div>
               <p className="text-xs text-slate-200 mt-1">
                 Theme: {siteData.theme.font} /{" "}
@@ -2057,7 +2295,121 @@ export default function SiteBuilder() {
               style={{ minHeight: "800px", backgroundColor: siteData.theme?.bg || "#0a0a0a" }}
               data-testid="preview-canvas"
             >
-              {siteData.sections.map((section: any, i: number) => {
+              {multiPageData && (
+                <NavHeaderSection
+                  pages={multiPageData.pages}
+                  activePageId={activePage?.id || ""}
+                  onPageClick={(id) => { setActivePageId(id); setEditingSectionIndex(null); }}
+                  theme={siteData.theme}
+                  editMode={editMode}
+                />
+              )}
+
+              {isMultiPage && editMode && (
+                <div className="flex items-center gap-1 px-4 py-2 bg-black/40 border-b border-white/10 overflow-x-auto">
+                  {multiPageData?.pages.map((page) => (
+                    <div key={page.id} className="flex items-center group">
+                      {renamingPageId === page.id ? (
+                        <form
+                          onSubmit={(e) => { e.preventDefault(); handleRenamePage(page.id, renameValue); }}
+                          className="flex items-center gap-1"
+                        >
+                          <input
+                            value={renameValue}
+                            onChange={(e) => setRenameValue(e.target.value)}
+                            className="bg-white/10 border border-indigo-500/50 rounded px-2 py-1 text-xs text-white w-24"
+                            autoFocus
+                            onBlur={() => { handleRenamePage(page.id, renameValue); }}
+                            data-testid={`input-rename-page-${page.slug}`}
+                          />
+                        </form>
+                      ) : (
+                        <button
+                          onClick={() => { setActivePageId(page.id); setEditingSectionIndex(null); }}
+                          onDoubleClick={() => { setRenamingPageId(page.id); setRenameValue(page.title); }}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                            activePage?.id === page.id
+                              ? "bg-indigo-600 text-white"
+                              : "bg-white/5 text-slate-300 hover:bg-white/10"
+                          }`}
+                          data-testid={`page-tab-${page.slug}`}
+                        >
+                          <FileText size={12} />
+                          {page.title}
+                        </button>
+                      )}
+                      {multiPageData.pages.length > 1 && (
+                        <button
+                          onClick={() => handleDeletePage(page.id)}
+                          className="ml-0.5 p-1 rounded text-red-400/60 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                          data-testid={`button-delete-page-${page.slug}`}
+                        >
+                          <X size={10} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowAddPage(!showAddPage)}
+                      className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs text-indigo-400 hover:bg-indigo-500/10 transition-colors"
+                      data-testid="button-add-page"
+                    >
+                      <Plus size={12} /> Add Page
+                    </button>
+                    {showAddPage && (
+                      <div className="absolute top-full left-0 mt-1 bg-neutral-900 border border-white/10 rounded-lg shadow-xl z-50 p-2 min-w-[160px]">
+                        {Object.entries(PAGE_PRESETS).filter(([key]) => !multiPageData?.pages.some(p => p.slug === key)).map(([key, preset]) => (
+                          <button
+                            key={key}
+                            onClick={() => handleAddPage(key)}
+                            className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-xs text-slate-200 hover:bg-white/10 transition-colors"
+                            data-testid={`button-add-page-${key}`}
+                          >
+                            <FileText size={12} className="text-indigo-400" />
+                            {preset.title}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {!isMultiPage && editMode && (
+                <div className="flex items-center gap-1 px-4 py-2 bg-black/40 border-b border-white/10">
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 text-white">
+                    <FileText size={12} />
+                    {activePage?.title || "Home"}
+                  </div>
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowAddPage(!showAddPage)}
+                      className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs text-indigo-400 hover:bg-indigo-500/10 transition-colors"
+                      data-testid="button-add-page"
+                    >
+                      <Plus size={12} /> Add Page
+                    </button>
+                    {showAddPage && (
+                      <div className="absolute top-full left-0 mt-1 bg-neutral-900 border border-white/10 rounded-lg shadow-xl z-50 p-2 min-w-[160px]">
+                        {Object.entries(PAGE_PRESETS).filter(([key]) => key !== "home").map(([key, preset]) => (
+                          <button
+                            key={key}
+                            onClick={() => handleAddPage(key)}
+                            className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-xs text-slate-200 hover:bg-white/10 transition-colors"
+                            data-testid={`button-add-page-${key}`}
+                          >
+                            <FileText size={12} className="text-indigo-400" />
+                            {preset.title}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {activeSections.map((section: any, i: number) => {
                 const Component = COMPONENT_MAP[section.type];
                 if (!Component) return null;
                 const props = { ...section.props, theme: siteData.theme };
@@ -2095,10 +2447,10 @@ export default function SiteBuilder() {
                         {i > 0 && (
                           <button
                             onClick={() => {
-                              setSiteData((prev: any) => {
-                                const s = [...prev.sections];
-                                [s[i - 1], s[i]] = [s[i], s[i - 1]];
-                                return { ...prev, sections: s };
+                              setActiveSections((s) => {
+                                const arr = [...s];
+                                [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]];
+                                return arr;
                               });
                             }}
                             className="p-1.5 rounded bg-white/10 text-white hover:bg-white/20"
@@ -2107,13 +2459,13 @@ export default function SiteBuilder() {
                             <ArrowUp size={14} />
                           </button>
                         )}
-                        {i < siteData.sections.length - 1 && (
+                        {i < activeSections.length - 1 && (
                           <button
                             onClick={() => {
-                              setSiteData((prev: any) => {
-                                const s = [...prev.sections];
-                                [s[i], s[i + 1]] = [s[i + 1], s[i]];
-                                return { ...prev, sections: s };
+                              setActiveSections((s) => {
+                                const arr = [...s];
+                                [arr[i], arr[i + 1]] = [arr[i + 1], arr[i]];
+                                return arr;
                               });
                             }}
                             className="p-1.5 rounded bg-white/10 text-white hover:bg-white/20"
