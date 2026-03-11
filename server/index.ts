@@ -74,34 +74,41 @@ app.post(
         return res.status(500).json({ error: "Webhook processing error" });
       }
 
+      await WebhookHandlers.processWebhook(req.body as Buffer, sig);
+
       const event = JSON.parse(req.body.toString());
+      const { storage } = await import("./storage");
+
       if (event?.type === "checkout.session.completed") {
         const session = event.data?.object;
         const meta = session?.metadata;
 
         if (meta?.type === "credit_topup" && meta?.subAccountId && meta?.creditAmount) {
-          const { storage } = await import("./storage");
           const subAccountId = parseInt(meta.subAccountId);
           const amount = parseFloat(meta.creditAmount);
 
-          let wallet = await storage.getCreditWallet(subAccountId);
-          if (!wallet) {
-            wallet = await storage.upsertCreditWallet({ subAccountId, balance: 0, lifetimeTopUp: 0, lifetimeSpend: 0 });
+          const existingTx = await storage.getCreditTransactionByStripeSession(session.id);
+          if (!existingTx) {
+            let wallet = await storage.getCreditWallet(subAccountId);
+            if (!wallet) {
+              wallet = await storage.upsertCreditWallet({ subAccountId, balance: 0, lifetimeTopUp: 0, lifetimeSpend: 0 });
+            }
+            const updated = await storage.updateCreditWalletBalance(subAccountId, amount);
+            await storage.createCreditTransaction({
+              subAccountId,
+              type: "topup",
+              amount,
+              balanceAfter: updated?.balance || amount,
+              description: `Credit top-up via Stripe`,
+              stripeSessionId: session.id,
+            });
+            console.log(`[WALLET] +$${amount} credited to account #${subAccountId}`);
+          } else {
+            console.log(`[WALLET] Duplicate webhook for session ${session.id}, skipping`);
           }
-          const updated = await storage.updateCreditWalletBalance(subAccountId, amount);
-          await storage.createCreditTransaction({
-            subAccountId,
-            type: "topup",
-            amount,
-            balanceAfter: updated?.balance || amount,
-            description: `Credit top-up via Stripe`,
-            stripeSessionId: session.id,
-          });
-          console.log(`[WALLET] +$${amount} credited to account #${subAccountId} (main webhook)`);
         }
 
         if (meta?.userId && meta?.tierName) {
-          const { storage } = await import("./storage");
           const existing = await storage.getSubscription(meta.userId);
           const isGrandfathered = meta.isGrandfathered === "true";
           const billingInterval = meta.billingInterval || "monthly";
@@ -125,11 +132,46 @@ app.post(
         }
       }
 
+      if (event?.type === "customer.subscription.updated" || event?.type === "customer.subscription.deleted") {
+        const subscription = event.data?.object;
+        const existing = await storage.getSubscriptionByStripeId(subscription.id);
+        if (existing) {
+          const updateData: any = {
+            status: subscription.status === "active" ? "active" : "inactive",
+            currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+          };
+          if (subscription.status === "active") {
+            updateData.paymentStatus = "ok";
+            updateData.paymentFailedAt = null;
+          }
+          await storage.updateSubscription(existing.id, updateData);
+          console.log(`[STRIPE] Subscription ${event.type} for ${subscription.id}`);
+        }
+
+        if (event.type === "customer.subscription.deleted" && existing?.isGrandfathered) {
+          await storage.updateSubscription(existing.id, {
+            isGrandfathered: false,
+            status: "inactive",
+            paymentStatus: "revoked",
+          });
+          await storage.createAuditLog({
+            action: "LEGACY_STATUS_REVOKED",
+            performedBy: existing.userId,
+            details: {
+              message: "Subscription lapsed. Grandfathered pricing permanently revoked.",
+              subscriptionId: existing.id,
+              planTier: existing.planTier,
+              originalBlitzDate: existing.blitzJoinedDate,
+            },
+          });
+          console.log(`[ENFORCEMENT] User ${existing.userId} has LOST Legacy status permanently.`);
+        }
+      }
+
       if (event?.type === "invoice.payment_failed") {
         const invoice = event.data?.object;
         const subId = invoice?.subscription;
         if (subId) {
-          const { storage } = await import("./storage");
           const existing = await storage.getSubscriptionByStripeId(subId as string);
           if (existing) {
             await storage.updateSubscription(existing.id, {
@@ -137,11 +179,23 @@ app.post(
               paymentFailedAt: new Date(),
             });
             console.log(`[STRIPE] Payment failed for subscription ${subId}`);
+
+            if (existing.isGrandfathered) {
+              console.log(`[ENFORCEMENT] Legacy user ${existing.userId} payment failed - 72hr grace period started`);
+              await storage.createAuditLog({
+                action: "LEGACY_PAYMENT_WARNING",
+                performedBy: existing.userId,
+                details: {
+                  message: "Payment failed. 72-hour grace period before Legacy status revocation.",
+                  subscriptionId: existing.id,
+                  planTier: existing.planTier,
+                },
+              });
+            }
           }
         }
       }
 
-      await WebhookHandlers.processWebhook(req.body as Buffer, sig);
       res.status(200).json({ received: true });
     } catch (error: any) {
       console.error("[STRIPE] Webhook error:", error.message);

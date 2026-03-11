@@ -591,7 +591,7 @@ ${sections.map(renderSection).join('\n')}
   // ---- Auth Middleware ----
   app.use("/api", (req, res, next) => {
     const fullPath = req.originalUrl || req.baseUrl + req.path;
-    const openPaths = ["/api/auth/", "/api/login", "/api/logout", "/api/callback", "/api/stripe/webhook", "/api/stripe/subscription-webhook", "/api/webhooks/", "/api/snapshots/marketplace", "/api/wallet/webhook", "/api/v1/serve-native-ad", "/api/v1/ad-click/"];
+    const openPaths = ["/api/auth/", "/api/login", "/api/logout", "/api/callback", "/api/stripe/webhook", "/api/webhooks/", "/api/snapshots/marketplace", "/api/v1/serve-native-ad", "/api/v1/ad-click/"];
     const openExact = ["/api/reviews", "/api/alert-owner", "/api/languages"];
 
     if (openPaths.some(p => fullPath.startsWith(p))) return next();
@@ -3203,33 +3203,6 @@ Rules:
     }
   }));
 
-  app.post("/api/wallet/webhook", asyncHandler(async (req, res) => {
-    const event = req.body;
-    if (event?.type === "checkout.session.completed") {
-      const session = event.data?.object;
-      const meta = session?.metadata;
-      if (meta?.type === "credit_topup" && meta?.subAccountId && meta?.creditAmount) {
-        const subAccountId = parseInt(meta.subAccountId);
-        const amount = parseFloat(meta.creditAmount);
-
-        let wallet = await storage.getCreditWallet(subAccountId);
-        if (!wallet) {
-          wallet = await storage.upsertCreditWallet({ subAccountId, balance: 0, lifetimeTopUp: 0, lifetimeSpend: 0 });
-        }
-        const updated = await storage.updateCreditWalletBalance(subAccountId, amount);
-        await storage.createCreditTransaction({
-          subAccountId,
-          type: "topup",
-          amount,
-          balanceAfter: updated?.balance || amount,
-          description: `Credit top-up via Stripe`,
-          stripeSessionId: session.id,
-        });
-        console.log(`[WALLET] +$${amount} credited to account #${subAccountId}`);
-      }
-    }
-    res.json({ received: true });
-  }));
 
   app.post("/api/wallet/deduct", asyncHandler(async (req, res) => {
     const schema = z.object({
@@ -3922,151 +3895,6 @@ Rules:
     }
   }));
 
-  app.post("/api/stripe/subscription-webhook", asyncHandler(async (req, res) => {
-    let event = req.body;
-
-    const endpointSecret = process.env.STRIPE_SUBSCRIPTION_WEBHOOK_SECRET;
-    if (endpointSecret) {
-      const signature = req.headers["stripe-signature"];
-      if (!signature) return res.status(400).json({ error: "Missing stripe signature" });
-      try {
-        const { getUncachableStripeClient } = await import("./stripeClient");
-        const stripe = await getUncachableStripeClient();
-        const rawBody = (req as any).rawBody;
-        if (!rawBody) return res.status(400).json({ error: "Missing raw body" });
-        event = stripe.webhooks.constructEvent(rawBody, Array.isArray(signature) ? signature[0] : signature, endpointSecret);
-      } catch (err: any) {
-        console.error("[STRIPE] Webhook signature verification failed:", err.message);
-        return res.status(400).json({ error: "Signature verification failed" });
-      }
-    }
-
-    if (!event || !event.type) return res.status(400).json({ error: "Invalid event" });
-
-    if (event.type === "checkout.session.completed") {
-      const session = event.data.object;
-      const meta = session.metadata;
-
-      if (meta?.type === "credit_topup" && meta?.subAccountId && meta?.creditAmount) {
-        const subAccountId = parseInt(meta.subAccountId);
-        const amount = parseFloat(meta.creditAmount);
-
-        let wallet = await storage.getCreditWallet(subAccountId);
-        if (!wallet) {
-          wallet = await storage.upsertCreditWallet({ subAccountId, balance: 0, lifetimeTopUp: 0, lifetimeSpend: 0 });
-        }
-        const updated = await storage.updateCreditWalletBalance(subAccountId, amount);
-        await storage.createCreditTransaction({
-          subAccountId,
-          type: "topup",
-          amount,
-          balanceAfter: updated?.balance || amount,
-          description: `Credit top-up via Stripe`,
-          stripeSessionId: session.id,
-        });
-        console.log(`[WALLET] +$${amount} credited to account #${subAccountId} (verified webhook)`);
-      }
-
-      const userId = meta?.userId;
-      const tierName = meta?.tierName;
-
-      if (userId && tierName) {
-        const existing = await storage.getSubscription(userId);
-        const isGrandfathered = meta?.isGrandfathered === "true";
-        const billingInterval = meta?.billingInterval || "monthly";
-        const subData: any = {
-          userId,
-          stripeCustomerId: session.customer,
-          stripeSubscriptionId: session.subscription,
-          planTier: tierName,
-          status: "active" as const,
-          aiCredits: 50,
-          isGrandfathered,
-          billingInterval,
-          ...(isGrandfathered ? { blitzJoinedDate: new Date() } : {}),
-        };
-
-        if (existing) {
-          await storage.updateSubscription(existing.id, subData);
-        } else {
-          await storage.createSubscription(subData);
-        }
-      }
-    }
-
-    if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
-      const subscription = event.data.object;
-      const existing = await storage.getSubscriptionByStripeId(subscription.id);
-      if (existing) {
-        const updateData: any = {
-          status: subscription.status === "active" ? "active" : "inactive",
-          currentPeriodEnd: new Date(subscription.current_period_end * 1000),
-        };
-
-        if (subscription.status === "active") {
-          updateData.paymentStatus = "ok";
-          updateData.paymentFailedAt = null;
-        }
-
-        await storage.updateSubscription(existing.id, updateData);
-      }
-    }
-
-    if (event.type === "invoice.payment_failed") {
-      const invoice = event.data.object;
-      const subId = invoice.subscription;
-      if (subId) {
-        const existing = await storage.getSubscriptionByStripeId(subId as string);
-        if (existing) {
-          await storage.updateSubscription(existing.id, {
-            paymentStatus: "failed",
-            paymentFailedAt: new Date(),
-          });
-
-          if (existing.isGrandfathered) {
-            console.log(`[ENFORCEMENT] Legacy user ${existing.userId} payment failed - 72hr grace period started`);
-            await storage.createAuditLog({
-              action: "LEGACY_PAYMENT_WARNING",
-              performedBy: existing.userId,
-              details: {
-                message: "Payment failed. 72-hour grace period before Legacy status revocation.",
-                subscriptionId: existing.id,
-                planTier: existing.planTier,
-              },
-            });
-          }
-        }
-      }
-    }
-
-    if (event.type === "customer.subscription.deleted") {
-      const subscription = event.data.object;
-      const existing = await storage.getSubscriptionByStripeId(subscription.id);
-
-      if (existing && existing.isGrandfathered) {
-        await storage.updateSubscription(existing.id, {
-          isGrandfathered: false,
-          status: "inactive",
-          paymentStatus: "revoked",
-        });
-
-        await storage.createAuditLog({
-          action: "LEGACY_STATUS_REVOKED",
-          performedBy: existing.userId,
-          details: {
-            message: "Subscription lapsed. Grandfathered pricing permanently revoked.",
-            subscriptionId: existing.id,
-            planTier: existing.planTier,
-            originalBlitzDate: existing.blitzJoinedDate,
-          },
-        });
-
-        console.log(`[ENFORCEMENT] User ${existing.userId} has LOST Legacy status permanently.`);
-      }
-    }
-
-    res.json({ received: true });
-  }));
 
   // ---- Snapshot CRUD ----
   app.get("/api/snapshots", asyncHandler(async (_req, res) => {

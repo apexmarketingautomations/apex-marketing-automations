@@ -1,26 +1,38 @@
 import { getUncachableStripeClient } from "./stripeClient";
 
-async function seedCreatorProducts() {
+async function seedProducts() {
   const stripe = await getUncachableStripeClient();
 
   const tiers = [
     {
-      name: "Basic Access",
-      description: "Entry-level subscription for fans",
-      price: 999,
-      metadata: { tier: "basic", category: "creator" },
+      name: "Starter AI",
+      description: "Complete automation for the solo entrepreneur.",
+      metadata: { tier: "starter", category: "subscription" },
+      prices: [
+        { nickname: "Starter AI Monthly", amount: 9700, interval: "month" as const },
+        { nickname: "Starter AI Yearly", amount: 7700, interval: "year" as const },
+        { nickname: "Starter AI Blitz", amount: 4800, interval: "month" as const },
+      ],
     },
     {
-      name: "Premium Access",
-      description: "Full content access with messaging",
-      price: 2500,
-      metadata: { tier: "premium", category: "creator" },
+      name: "Agency Pro",
+      description: "Build an empire with unlimited sub-accounts.",
+      metadata: { tier: "agency_pro", category: "subscription" },
+      prices: [
+        { nickname: "Agency Pro Monthly", amount: 29700, interval: "month" as const },
+        { nickname: "Agency Pro Yearly", amount: 23700, interval: "year" as const },
+        { nickname: "Agency Pro Blitz", amount: 14800, interval: "month" as const },
+      ],
     },
     {
-      name: "VIP Access",
-      description: "Everything unlocked with custom requests",
-      price: 5000,
-      metadata: { tier: "vip", category: "creator" },
+      name: "God Mode",
+      description: "Total White-Label dominance. Zero limits.",
+      metadata: { tier: "god_mode", category: "subscription" },
+      prices: [
+        { nickname: "God Mode Monthly", amount: 49700, interval: "month" as const },
+        { nickname: "God Mode Yearly", amount: 39700, interval: "year" as const },
+        { nickname: "God Mode Blitz", amount: 24800, interval: "month" as const },
+      ],
     },
   ];
 
@@ -37,17 +49,21 @@ async function seedCreatorProducts() {
       metadata: tier.metadata,
     });
 
-    const price = await stripe.prices.create({
-      product: product.id,
-      unit_amount: tier.price,
-      currency: "usd",
-      recurring: { interval: "month" },
-    });
+    for (const p of tier.prices) {
+      const price = await stripe.prices.create({
+        product: product.id,
+        nickname: p.nickname,
+        unit_amount: p.amount,
+        currency: "usd",
+        recurring: { interval: p.interval },
+      });
+      console.log(`  Price created: ${p.nickname} — ${price.id}`);
+    }
 
-    console.log(`Created: ${tier.name} - ${product.id} / ${price.id}`);
+    console.log(`Created product: ${tier.name} — ${product.id}`);
   }
 
-  console.log("Done seeding creator products");
+  console.log("Done seeding products");
 }
 
-seedCreatorProducts().catch(console.error);
+seedProducts().catch(console.error);

@@ -265,6 +265,7 @@ export interface IStorage {
   updateCreditWalletBalance(subAccountId: number, delta: number): Promise<CreditWallet | undefined>;
 
   getCreditTransactions(subAccountId: number): Promise<CreditTransaction[]>;
+  getCreditTransactionByStripeSession(sessionId: string): Promise<CreditTransaction | undefined>;
   createCreditTransaction(data: InsertCreditTransaction): Promise<CreditTransaction>;
 
   getSponsorships(): Promise<Sponsorship[]>;
@@ -1109,6 +1110,11 @@ export class DatabaseStorage implements IStorage {
 
   async getCreditTransactions(subAccountId: number) {
     return db.select().from(creditTransactions).where(eq(creditTransactions.subAccountId, subAccountId)).orderBy(desc(creditTransactions.createdAt));
+  }
+
+  async getCreditTransactionByStripeSession(sessionId: string) {
+    const [row] = await db.select().from(creditTransactions).where(eq(creditTransactions.stripeSessionId, sessionId));
+    return row;
   }
 
   async createCreditTransaction(data: InsertCreditTransaction) {
