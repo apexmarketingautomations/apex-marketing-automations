@@ -3418,8 +3418,14 @@ Rules:
       const sk = await getStripeSecretKey();
       if (sk) stripeConnected = true;
     } catch {
-      const stripeKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API_KEY;
-      if (stripeKey) stripeConnected = true;
+      try {
+        const { getStripeSync } = await import("./stripeClient");
+        const sync = await getStripeSync();
+        if (sync) stripeConnected = true;
+      } catch {
+        const stripeKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API_KEY;
+        if (stripeKey) stripeConnected = true;
+      }
     }
     if (!stripeConnected) billingChecks.push("Stripe not connected");
     const walletCount = await db.execute(sql`SELECT COUNT(*) as cnt FROM credit_wallets`).then(r => Number((r as any).rows?.[0]?.cnt ?? 0)).catch(() => -1);
