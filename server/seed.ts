@@ -7,10 +7,8 @@ import {
   creditWallets,
   digitalCards,
   integrationConnections,
-  sentinelIncidents,
-  notifications,
 } from "@shared/schema";
-import { eq, isNull, sql } from "drizzle-orm";
+import { eq, isNull } from "drizzle-orm";
 
 export async function seed() {
   await seedBlueprints();
@@ -20,6 +18,7 @@ export async function seed() {
 }
 
 async function syncAdminAccounts() {
+  try {
   const adminUserId = process.env.ADMIN_USER_ID;
   if (!adminUserId) return;
 
@@ -31,6 +30,14 @@ async function syncAdminAccounts() {
   const hasCrashConnect = existing.some((a) => a.name?.includes("Crash Connect") && a.name?.includes("Giovanni"));
 
   if (hasApex && hasCrashConnect) {
+    const orphanedRemaining = existing.filter((a) => !a.ownerUserId);
+    if (orphanedRemaining.length > 0) {
+      await db
+        .update(subAccounts)
+        .set({ ownerUserId: adminUserId })
+        .where(isNull(subAccounts.ownerUserId));
+      console.log(`[SYNC] Assigned ${orphanedRemaining.length} orphaned account(s) to admin`);
+    }
     return;
   }
 
@@ -38,17 +45,11 @@ async function syncAdminAccounts() {
 
   const orphaned = existing.filter((a) => !a.ownerUserId);
   if (orphaned.length > 0) {
-    for (const acct of orphaned) {
-      await db.delete(notifications).where(eq(notifications.subAccountId, acct.id));
-      await db.delete(sentinelIncidents).where(eq(sentinelIncidents.subAccountId, acct.id));
-      await db.delete(sentinelConfig).where(eq(sentinelConfig.subAccountId, acct.id));
-      await db.delete(creditWallets).where(eq(creditWallets.subAccountId, acct.id));
-      await db.delete(digitalCards).where(eq(digitalCards.subAccountId, acct.id));
-      await db.delete(integrationConnections).where(eq(integrationConnections.subAccountId, acct.id));
-      await db.delete(pipelineStages).where(eq(pipelineStages.subAccountId, acct.id));
-      await db.delete(subAccounts).where(eq(subAccounts.id, acct.id));
-    }
-    console.log(`[SYNC] Cleaned up ${orphaned.length} orphaned account(s)`);
+    await db
+      .update(subAccounts)
+      .set({ ownerUserId: adminUserId })
+      .where(isNull(subAccounts.ownerUserId));
+    console.log(`[SYNC] Reassigned ${orphaned.length} orphaned account(s) to admin`);
   }
 
   if (!hasApex) {
@@ -163,20 +164,10 @@ async function syncAdminAccounts() {
     console.log(`[SYNC] Crash Connect Account #${ccId} fully configured`);
   }
 
-  const orphanedRemaining = await db
-    .select({ id: subAccounts.id })
-    .from(subAccounts)
-    .where(isNull(subAccounts.ownerUserId));
-
-  if (orphanedRemaining.length > 0) {
-    await db
-      .update(subAccounts)
-      .set({ ownerUserId: adminUserId })
-      .where(isNull(subAccounts.ownerUserId));
-    console.log(`[SYNC] Assigned ${orphanedRemaining.length} remaining orphaned account(s) to admin`);
-  }
-
   console.log("[SYNC] Admin account sync complete");
+  } catch (error) {
+    console.warn("[SYNC] syncAdminAccounts failed (non-fatal):", error);
+  }
 }
 
 async function seedBlueprints() {

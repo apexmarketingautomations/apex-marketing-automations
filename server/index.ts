@@ -250,8 +250,17 @@ function validateEnvVars() {
 
 (async () => {
   validateEnvVars();
-  await initStripe();
-  await seed();
+  try {
+    await initStripe();
+  } catch (stripeErr) {
+    console.error("[STARTUP] Stripe init failed (non-fatal):", stripeErr);
+  }
+
+  try {
+    await seed();
+  } catch (seedErr) {
+    console.error("[STARTUP] Seed failed (non-fatal):", seedErr);
+  }
   await setupAuth(app);
   registerAuthRoutes(app);
   await registerRoutes(httpServer, app);
