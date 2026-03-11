@@ -29,28 +29,41 @@ async function syncAdminAccounts() {
   const hasApex = existing.some((a) => a.name === "APEX MARKETING Account");
   const hasCrashConnect = existing.some((a) => a.name?.includes("Crash Connect") && a.name?.includes("Giovanni"));
 
-  if (hasApex && hasCrashConnect) {
-    const orphanedRemaining = existing.filter((a) => !a.ownerUserId);
-    if (orphanedRemaining.length > 0) {
+  const isRealAccount = (name: string | null) =>
+    name === "APEX MARKETING Account" ||
+    (name?.includes("Crash Connect") && name?.includes("Giovanni"));
+
+  const junkAccounts = existing.filter(
+    (a) => a.ownerUserId === adminUserId && !isRealAccount(a.name),
+  );
+  if (junkAccounts.length > 0) {
+    for (const junk of junkAccounts) {
       await db
         .update(subAccounts)
-        .set({ ownerUserId: adminUserId })
-        .where(isNull(subAccounts.ownerUserId));
-      console.log(`[SYNC] Assigned ${orphanedRemaining.length} orphaned account(s) to admin`);
+        .set({ ownerUserId: "_archived" })
+        .where(eq(subAccounts.id, junk.id));
     }
-    return;
+    console.log(
+      `[SYNC] Archived ${junkAccounts.length} legacy account(s): ${junkAccounts.map((a) => `#${a.id} "${a.name}"`).join(", ")}`,
+    );
   }
-
-  console.log("[SYNC] Admin accounts missing — syncing dev data to this database...");
 
   const orphaned = existing.filter((a) => !a.ownerUserId);
   if (orphaned.length > 0) {
-    await db
-      .update(subAccounts)
-      .set({ ownerUserId: adminUserId })
-      .where(isNull(subAccounts.ownerUserId));
-    console.log(`[SYNC] Reassigned ${orphaned.length} orphaned account(s) to admin`);
+    for (const o of orphaned) {
+      await db
+        .update(subAccounts)
+        .set({ ownerUserId: "_archived" })
+        .where(eq(subAccounts.id, o.id));
+    }
+    console.log(`[SYNC] Archived ${orphaned.length} orphaned account(s)`);
   }
+
+  if (hasApex && hasCrashConnect) {
+    return;
+  }
+
+  console.log("[SYNC] Admin accounts missing — creating real accounts...");
 
   if (!hasApex) {
     const [apexAcct] = await db
