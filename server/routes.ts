@@ -750,9 +750,10 @@ ${sections.map(renderSection).join('\n')}
     const adminUserId = process.env.ADMIN_USER_ID;
     const isAdmin = adminUserId && userId === adminUserId;
     const allAccounts = await storage.getSubAccounts();
+    const activeAccounts = allAccounts.filter((a: any) => a.ownerUserId !== "_archived");
     const userAccounts = isAdmin
-      ? allAccounts
-      : allAccounts.filter((a: any) => a.ownerUserId === userId);
+      ? activeAccounts
+      : activeAccounts.filter((a: any) => a.ownerUserId === userId);
     res.json(userAccounts);
   }));
 
