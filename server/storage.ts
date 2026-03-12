@@ -1,4 +1,4 @@
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { db } from "./db";
 import {
   subAccounts, messages, workflows, trainingJobs, blueprints, savedSites, siteVersions, siteCollaborators, reviews, usageLogs, domains, owners,
@@ -291,7 +291,7 @@ export interface IStorage {
   getCrashReport(id: number): Promise<CrashReport | undefined>;
   getCrashReportByNumber(reportNumber: string): Promise<CrashReport | undefined>;
   updateCrashReport(id: number, data: Partial<InsertCrashReport>): Promise<CrashReport | undefined>;
-  getPendingCrashReports(limit?: number): Promise<CrashReport[]>;
+  getAndLockPendingReports(limit?: number): Promise<CrashReport[]>;
   getCrashReports(subAccountId?: number): Promise<CrashReport[]>;
 }
 
@@ -1235,11 +1235,19 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async getPendingCrashReports(limit = 10) {
-    return db.select().from(crashReports)
+  async getAndLockPendingReports(limit = 2) {
+    const pendingIds = await db.select({ id: crashReports.id })
+      .from(crashReports)
       .where(eq(crashReports.status, "PENDING"))
       .orderBy(crashReports.createdAt)
       .limit(limit);
+
+    if (pendingIds.length === 0) return [];
+
+    return db.update(crashReports)
+      .set({ status: "PROCESSING", updatedAt: new Date() })
+      .where(inArray(crashReports.id, pendingIds.map(p => p.id)))
+      .returning();
   }
 
   async getCrashReports(subAccountId?: number) {

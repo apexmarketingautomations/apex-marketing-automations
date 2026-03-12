@@ -5189,7 +5189,9 @@ Rules:
     };
 
     if (report.status === "COMPLETED" && report.data) {
-      response.data = typeof report.data === "string" ? JSON.parse(report.data as string) : report.data;
+      const rawData = typeof report.data === "string" ? JSON.parse(report.data as string) : report.data;
+      const { applyComplianceRedaction } = await import("./crashReportWorker");
+      response.data = applyComplianceRedaction(rawData, report.requesterRole);
     }
 
     if (report.status === "FAILED" || report.status === "NOT_FOUND") {
@@ -5222,9 +5224,14 @@ Rules:
     const report = await storage.getCrashReport(id);
     if (!report) return res.status(404).json({ error: "Report not found" });
 
-    const data = report.data && typeof report.data === "string"
+    let data = report.data && typeof report.data === "string"
       ? JSON.parse(report.data as string)
       : report.data;
+
+    if (data) {
+      const { applyComplianceRedaction } = await import("./crashReportWorker");
+      data = applyComplianceRedaction(data, report.requesterRole);
+    }
 
     res.json({ ...report, data });
   }));
