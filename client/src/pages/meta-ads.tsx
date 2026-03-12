@@ -101,6 +101,9 @@ export default function MetaAdsPage() {
       setAdText("");
       toast({ title: "Campaign created" });
     },
+    onError: (err: Error) => {
+      toast({ title: "Create Failed", description: err.message, variant: "destructive" });
+    },
   });
 
   const publishMutation = useMutation({
@@ -110,7 +113,10 @@ export default function MetaAdsPage() {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/meta/campaigns"] });
-      toast({ title: data.published ? "Published to Meta" : "Marked active locally", description: data.message });
+      toast({ title: "Published to Meta", description: data.message });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Publish Failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -121,7 +127,10 @@ export default function MetaAdsPage() {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/meta/campaigns"] });
-      toast({ title: data.synced ? "Insights synced" : "Sync skipped", description: data.message });
+      toast({ title: "Insights synced" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Sync Failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -132,6 +141,9 @@ export default function MetaAdsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/meta/campaigns"] });
       toast({ title: "Campaign deleted" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Delete Failed", description: err.message, variant: "destructive" });
     },
   });
 

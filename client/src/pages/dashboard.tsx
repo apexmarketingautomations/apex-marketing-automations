@@ -161,8 +161,12 @@ export default function DashboardPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
               {Object.entries(serviceStatus).map(([key, svc]) => (
                 <div key={key} className="flex items-center gap-2 p-2 rounded-lg bg-white/5" data-testid={`status-service-${key}`}>
-                  {svc.status === "configured" ? (
+                  {svc.status === "connected_verified" ? (
                     <CheckCircle2 size={14} className="text-green-400 shrink-0" />
+                  ) : svc.status === "configured" ? (
+                    <CheckCircle2 size={14} className="text-cyan-400 shrink-0" />
+                  ) : svc.status === "stored_unverified" ? (
+                    <AlertTriangle size={14} className="text-amber-400 shrink-0" />
                   ) : (
                     <XCircle size={14} className="text-red-400 shrink-0" />
                   )}

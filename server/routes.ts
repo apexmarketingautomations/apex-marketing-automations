@@ -2693,7 +2693,17 @@ Rules:
             const appSecret = process.env.META_APP_SECRET;
 
             if (!accessToken || !pageId) {
-              console.error(`[META DM] Cannot process ${channel} message from ${senderId} — META_ACCESS_TOKEN or META_PAGE_ID not configured. Raw event: ${JSON.stringify(event).substring(0, 500)}`);
+              const rawPayload = JSON.stringify(event).substring(0, 2000);
+              console.error(`[META DM] Cannot process ${channel} message from ${senderId} — META_ACCESS_TOKEN or META_PAGE_ID not configured. Raw event: ${rawPayload}`);
+              await db.insert(messages).values({
+                subAccountId,
+                channel,
+                direction: "inbound",
+                contactPhone: senderId,
+                body: `[UNPROCESSED - Missing META credentials] Raw: ${rawPayload.substring(0, 500)}`,
+                status: "failed",
+              });
+              continue;
             }
 
             let appsecretProof = "";
@@ -8659,10 +8669,32 @@ Return ONLY valid JSON.` },
       },
     ];
 
+    const allSubAccounts = await storage.getSubAccounts();
+    const providerConnections = new Map<string, string>();
+    for (const account of allSubAccounts) {
+      const conns = await storage.getIntegrationConnections(account.id);
+      for (const conn of conns) {
+        if (conn.status === "connected" && !providerConnections.has(conn.provider)) {
+          providerConnections.set(conn.provider, "connected");
+        }
+      }
+    }
+
     const result: Record<string, { status: string; label: string; description: string }> = {};
     for (const s of services) {
+      const hasConnection = providerConnections.has(s.provider);
+      let status: string;
+      if (s.configured && hasConnection) {
+        status = "connected_verified";
+      } else if (hasConnection) {
+        status = "stored_unverified";
+      } else if (s.configured) {
+        status = "configured";
+      } else {
+        status = "not_configured";
+      }
       result[s.provider] = {
-        status: s.configured ? "configured" : "not_configured",
+        status,
         label: s.name,
         description: s.description,
       };

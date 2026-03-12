@@ -62,7 +62,10 @@ export default function MetaLeadsPage() {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/meta/leads"] });
-      toast({ title: data.synced ? `Synced ${data.count} leads from Facebook` : "Sync skipped", description: data.message });
+      toast({ title: `Synced ${data.count || 0} leads from Facebook` });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Sync Failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -74,6 +77,9 @@ export default function MetaLeadsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/meta/leads"] });
       toast({ title: "Lead added to CRM" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "CRM Sync Failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -88,6 +94,9 @@ export default function MetaLeadsPage() {
     onSuccess: (count: number) => {
       queryClient.invalidateQueries({ queryKey: ["/api/meta/leads"] });
       toast({ title: `${count} leads synced to CRM` });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Bulk CRM Sync Failed", description: err.message, variant: "destructive" });
     },
   });
 
