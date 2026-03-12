@@ -1,0 +1,109 @@
+import { FLHSMVReportData } from "./types"; // Adjust import based on where your interface lives
+
+// 1. Define the ecosystem of occupations
+// These roles have legal permissible use under the DPPA to bypass the 60-day redaction.
+const EXEMPT_ROLES = new Set([
+  "attorney",
+  "insurer",
+  "adjuster",
+  "law_enforcement",
+  "investigator",
+  "fleet_manager",
+  "media"
+]);
+
+/**
+ * Calculates if a date string is within the last 60 days.
+ */
+function isWithin60Days(crashDateStr: string): boolean {
+  if (!crashDateStr) return false;
+  
+  const crashDate = new Date(crashDateStr);
+  const today = new Date();
+  
+  // Calculate difference in days
+  const diffTime = Math.abs(today.getTime() - crashDate.getTime());
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+  
+  return diffDays <= 60;
+}
+
+/**
+ * Masks a string, leaving only the last 4 characters visible.
+ * Example: "1HGCM82633A000000" -> "*************0000"
+ */
+function maskString(str: string | undefined | null, visibleChars = 4): string {
+  if (!str) return "";
+  if (str.length <= visibleChars) return "***";
+  return "*".repeat(str.length - visibleChars) + str.slice(-visibleChars);
+}
+
+/**
+ * Masks a full name, keeping only the first letter of each part.
+ * Example: "JOHN DOE PUBLIC" -> "J*** D** P*****"
+ */
+function maskName(name: string | undefined | null): string {
+  if (!name) return "";
+  return name
+    .split(" ")
+    .map(part => (part.length > 1 ? part[0] + "*".repeat(part.length - 1) : part))
+    .join(" ");
+}
+
+/**
+ * The core middleware logic. Applies Florida DPPA redaction rules based on user occupation.
+ */
+export function applyComplianceRedaction(
+  reportData: FLHSMVReportData, 
+  requesterRole: string
+): FLHSMVReportData {
+  
+  // 1. Normalize the role string (e.g., "Fleet Manager" -> "fleet_manager")
+  const normalizedRole = (requesterRole || "public")
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+
+  // 2. Check the two legal conditions: Is it a restricted role AND is it under 60 days old?
+  const isRestrictedRole = !EXEMPT_ROLES.has(normalizedRole);
+  const requiresRedaction = isRestrictedRole && isWithin60Days(reportData.CrashDate);
+
+  // If they are an exempt professional OR the report is public record (>60 days), return raw data
+  if (!requiresRedaction) {
+    return reportData;
+  }
+
+  // 3. Deep clone the data so we don't accidentally mutate the original database object in memory
+  const safeData: FLHSMVReportData = JSON.parse(JSON.stringify(reportData));
+
+  // 4. Apply heavy redaction to the PII arrays
+  if (Array.isArray(safeData.Vehicles)) {
+    safeData.Vehicles = safeData.Vehicles.map(vehicle => {
+      // Mask License Plate (Tag)
+      vehicle.TagNumber = maskString(vehicle.TagNumber, 2); 
+      
+      if (vehicle.Driver) {
+        vehicle.Driver.Name = maskName(vehicle.Driver.Name);
+        vehicle.Driver.Address = "REDACTED PER FL STATUTE 316.066";
+      }
+      return vehicle;
+    });
+  }
+
+  if (Array.isArray(safeData.Passengers)) {
+    safeData.Passengers = safeData.Passengers.map(passenger => {
+      passenger.Name = maskName(passenger.Name);
+      return passenger;
+    });
+  }
+
+  // Narratives often contain names, addresses, and medical info. 
+  // For restricted users within 60 days, hiding the narrative protects you legally.
+  if (safeData.Narrative) {
+    safeData.Narrative = "[NARRATIVE REDACTED - PENDING 60 DAY CONFIDENTIALITY PERIOD]";
+  }
+
+  // Flag the payload so the frontend knows it was modified
+  (safeData as any)._isRedacted = true;
+
+  return safeData;
+}
