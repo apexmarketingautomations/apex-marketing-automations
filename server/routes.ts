@@ -5132,6 +5132,13 @@ Rules:
     }
   }));
 
+  // ─── FLHSMV Health Check ────────────────────────────────────────
+  app.get("/api/crash-reports/health", asyncHandler(async (_req, res) => {
+    const { getFLHSMVHealth } = await import("./crashReportWorker");
+    const health = getFLHSMVHealth();
+    res.json(health);
+  }));
+
   // ─── Crash Report Retrieval API ─────────────────────────────────
   app.post("/api/crash-reports/request", asyncHandler(async (req, res) => {
     const { reportNumber, requesterRole, reason, subAccountId } = req.body;

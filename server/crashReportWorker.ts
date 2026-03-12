@@ -60,6 +60,60 @@ interface FLHSMVReportData {
 let sessionCookies: string = "";
 let sessionTimestamp: number = 0;
 
+interface FLHSMVHealthStatus {
+  status: "ok" | "degraded" | "blocked" | "down";
+  lastSuccessfulFetch: string | null;
+  lastError: string | null;
+  lastErrorCode: number | null;
+  lastErrorTime: string | null;
+  consecutiveFailures: number;
+  totalRequests: number;
+  totalSuccesses: number;
+  blockedCount: number;
+}
+
+const healthStatus: FLHSMVHealthStatus = {
+  status: "ok",
+  lastSuccessfulFetch: null,
+  lastError: null,
+  lastErrorCode: null,
+  lastErrorTime: null,
+  consecutiveFailures: 0,
+  totalRequests: 0,
+  totalSuccesses: 0,
+  blockedCount: 0,
+};
+
+function recordSuccess() {
+  healthStatus.totalRequests++;
+  healthStatus.totalSuccesses++;
+  healthStatus.consecutiveFailures = 0;
+  healthStatus.lastSuccessfulFetch = new Date().toISOString();
+  healthStatus.status = "ok";
+}
+
+function recordFailure(statusCode: number, message: string) {
+  healthStatus.totalRequests++;
+  healthStatus.consecutiveFailures++;
+  healthStatus.lastError = message;
+  healthStatus.lastErrorCode = statusCode;
+  healthStatus.lastErrorTime = new Date().toISOString();
+
+  if (statusCode === 401 || statusCode === 403 || statusCode === 429) {
+    healthStatus.blockedCount++;
+    healthStatus.status = "blocked";
+    console.error(`[CRASH-WORKER] ⚠️ FLAGGED — FLHSMV returned ${statusCode}. Blocked count: ${healthStatus.blockedCount}`);
+  } else if (statusCode === 503 || statusCode === 502) {
+    healthStatus.status = "down";
+  } else if (healthStatus.consecutiveFailures >= 3) {
+    healthStatus.status = "degraded";
+  }
+}
+
+export function getFLHSMVHealth(): FLHSMVHealthStatus {
+  return { ...healthStatus };
+}
+
 function parseCookies(response: Response): string {
   const raw = response.headers.getSetCookie?.() ?? [];
   if (raw.length === 0) {
@@ -163,15 +217,18 @@ async function searchReport(reportNumber: string): Promise<FLHSMVSearchResult | 
     });
 
     if (!response.ok) {
+      recordFailure(response.status, `FLHSMV search returned ${response.status} for ${reportNumber}`);
       console.log(`[CRASH-WORKER] FLHSMV search returned ${response.status} for ${reportNumber}`);
       return null;
     }
 
     const data = await response.json();
-    if (Array.isArray(data) && data.length > 0) return data[0];
-    if (data?.ReportNumber) return data;
+    if (Array.isArray(data) && data.length > 0) { recordSuccess(); return data[0]; }
+    if (data?.ReportNumber) { recordSuccess(); return data; }
+    recordFailure(200, `FLHSMV returned empty result for ${reportNumber}`);
     return null;
   } catch (err: any) {
+    recordFailure(0, `FLHSMV search error: ${err.message}`);
     console.error(`[CRASH-WORKER] FLHSMV search error for ${reportNumber}:`, err.message);
     return null;
   }
