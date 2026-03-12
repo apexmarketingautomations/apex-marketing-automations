@@ -4795,21 +4795,28 @@ Rules:
     const twilioSid = process.env.TWILIO_ACCOUNT_SID;
     const twilioToken = process.env.TWILIO_AUTH_TOKEN;
 
-    if (twilioSid && twilioToken && account?.twilioNumber) {
-      try {
-        const client = Twilio(twilioSid, twilioToken);
-        await client.messages.create({
-          body: smsBody,
-          from: account.twilioNumber,
-          to: lead.ownerPhone,
-        });
-      } catch (err: any) {
-        console.error("Property Radar SMS error:", err?.message);
-      }
+    if (!twilioSid || !twilioToken) {
+      return res.status(503).json({ error: "Twilio is not configured. Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN to send SMS." });
+    }
+    if (!account?.twilioNumber) {
+      return res.status(422).json({ error: "No Twilio phone number assigned to this account. Purchase a number first." });
+    }
+
+    try {
+      const client = Twilio(twilioSid, twilioToken);
+      await client.messages.create({
+        body: smsBody,
+        from: account.twilioNumber,
+        to: lead.ownerPhone,
+      });
+    } catch (err: any) {
+      console.error("Property Radar SMS error:", err?.message);
+      await storage.updatePropertyLead(id, { smsSent: false, lastContactedAt: new Date() });
+      return res.status(422).json({ error: `SMS failed: ${err.message}` });
     }
 
     await storage.updatePropertyLead(id, { smsSent: true, lastContactedAt: new Date() });
-    console.log(`🏠 PROPERTY RADAR: SMS sent to ${lead.ownerName} for ${lead.address}`);
+    console.log(`[PROPERTY RADAR] SMS sent to ${lead.ownerName} for ${lead.address}`);
 
     res.json({ success: true, message: `SMS sent to ${lead.ownerName}` });
   }));
@@ -8652,18 +8659,15 @@ Return ONLY valid JSON.` },
       },
     ];
 
-    const configured = services.filter(s => s.configured).length;
-    const total = services.length;
-
-    res.json({
-      services: services.map(s => ({
-        name: s.name,
-        provider: s.provider,
+    const result: Record<string, { status: string; label: string; description: string }> = {};
+    for (const s of services) {
+      result[s.provider] = {
+        status: s.configured ? "configured" : "not_configured",
+        label: s.name,
         description: s.description,
-        status: s.configured ? "connected" : "not_configured",
-      })),
-      summary: { configured, total, percentage: Math.round((configured / total) * 100) },
-    });
+      };
+    }
+    res.json(result);
   }));
 
   // ---- TapCard Checkout ----

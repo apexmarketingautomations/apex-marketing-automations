@@ -1598,12 +1598,27 @@ export default function SiteBuilder() {
     }
   };
 
-  const handlePublish = () => {
-    markMilestoneComplete("publish");
-    toast({
-      title: "Site Published!",
-      description: "Your landing page is now live.",
-    });
+  const handlePublish = async () => {
+    if (!currentSiteId) return;
+    try {
+      const res = await fetch(`/api/sites/${currentSiteId}/publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast({ title: "Publish Failed", description: data.error || "Could not publish site.", variant: "destructive" });
+        return;
+      }
+      markMilestoneComplete("publish");
+      const liveUrl = data.url || `/live/${currentSiteId}`;
+      toast({
+        title: "Site Published",
+        description: `Your site is live at: ${liveUrl}`,
+      });
+    } catch (err: any) {
+      toast({ title: "Publish Failed", description: err.message || "Network error.", variant: "destructive" });
+    }
   };
 
   const handleRestoreVersion = (version: SiteVersion) => {
