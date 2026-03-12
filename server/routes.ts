@@ -8553,15 +8553,39 @@ Return ONLY valid JSON.` },
         });
         if (!mcRes.ok) validationResult = { valid: false, error: "Invalid Mailchimp API key or server prefix." };
       } else if (provider === "facebook" && config?.pageAccessToken) {
-        const fbRes = await fetch(`https://graph.facebook.com/v19.0/me?access_token=${config.pageAccessToken}`, {
-          signal: AbortSignal.timeout(5000),
-        });
-        if (!fbRes.ok) validationResult = { valid: false, error: "Invalid Facebook Page Access Token." };
+        const appId = process.env.META_APP_ID;
+        const appSecret = process.env.META_APP_SECRET;
+        if (appId && appSecret) {
+          const debugRes = await fetch(`https://graph.facebook.com/v19.0/debug_token?input_token=${config.pageAccessToken}&access_token=${appId}|${appSecret}`, {
+            signal: AbortSignal.timeout(5000),
+          });
+          const debugData = await debugRes.json() as any;
+          if (!debugRes.ok || !debugData?.data?.is_valid) {
+            validationResult = { valid: false, error: `Invalid Facebook Page Access Token. ${debugData?.data?.error?.message || "Token validation failed."}` };
+          }
+        } else {
+          const fbRes = await fetch(`https://graph.facebook.com/v19.0/me?access_token=${config.pageAccessToken}`, {
+            signal: AbortSignal.timeout(5000),
+          });
+          if (!fbRes.ok) validationResult = { valid: false, error: "Invalid Facebook Page Access Token." };
+        }
       } else if (provider === "meta-ads" && config?.accessToken) {
-        const metaRes = await fetch(`https://graph.facebook.com/v19.0/me?access_token=${config.accessToken}`, {
-          signal: AbortSignal.timeout(5000),
-        });
-        if (!metaRes.ok) validationResult = { valid: false, error: "Invalid Meta Access Token." };
+        const appId = process.env.META_APP_ID;
+        const appSecret = process.env.META_APP_SECRET;
+        if (appId && appSecret) {
+          const debugRes = await fetch(`https://graph.facebook.com/v19.0/debug_token?input_token=${config.accessToken}&access_token=${appId}|${appSecret}`, {
+            signal: AbortSignal.timeout(5000),
+          });
+          const debugData = await debugRes.json() as any;
+          if (!debugRes.ok || !debugData?.data?.is_valid) {
+            validationResult = { valid: false, error: `Invalid Meta Access Token. ${debugData?.data?.error?.message || "Token validation failed."}` };
+          }
+        } else {
+          const metaRes = await fetch(`https://graph.facebook.com/v19.0/me?access_token=${config.accessToken}`, {
+            signal: AbortSignal.timeout(5000),
+          });
+          if (!metaRes.ok) validationResult = { valid: false, error: "Invalid Meta Access Token." };
+        }
       } else if (provider === "stripe" && config?.secretKey) {
         const stripeRes = await fetch("https://api.stripe.com/v1/products?limit=1", {
           headers: { "Authorization": `Bearer ${config.secretKey}` },
