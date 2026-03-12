@@ -5142,6 +5142,20 @@ Rules:
     const cleaned = reportNumber.trim().toUpperCase();
     const existing = await storage.getCrashReportByNumber(cleaned);
     if (existing) {
+      if (existing.status === "NOT_FOUND" || existing.status === "FAILED") {
+        await storage.updateCrashReport(existing.id, {
+          status: "PENDING",
+          retryCount: 0,
+          errorLog: null,
+        });
+        console.log(`[CRASH-REPORT] Re-queued report ${cleaned} (id=${existing.id})`);
+        return res.json({
+          id: existing.id,
+          reportNumber: existing.reportNumber,
+          status: "PENDING",
+          message: "Report re-queued for retrieval",
+        });
+      }
       return res.json({
         id: existing.id,
         reportNumber: existing.reportNumber,
