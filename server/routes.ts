@@ -954,15 +954,22 @@ Rules:
 
     const { subAccountId, contactPhone, body, channel } = parsed.data;
 
-    let twilioStatus = "sent";
+    let twilioStatus = "pending";
     let twilioSid: string | null = null;
+    let twilioError: string | null = null;
 
     if (channel === "sms" || !channel) {
       const twilioClient = getTwilioClient();
-      if (twilioClient) {
+      if (!twilioClient) {
+        twilioStatus = "failed";
+        twilioError = "Twilio is not configured. Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN to send SMS.";
+      } else {
         const account = await storage.getSubAccount(subAccountId);
         const fromNumber = account?.twilioNumber;
-        if (fromNumber) {
+        if (!fromNumber) {
+          twilioStatus = "failed";
+          twilioError = "No phone number assigned to this account. Purchase a Twilio number first.";
+        } else {
           try {
             const twilioMsg = await twilioClient.messages.create({
               body: body,
@@ -974,15 +981,22 @@ Rules:
           } catch (twilioErr: any) {
             console.error("[SMS] Twilio send error:", twilioErr.message);
             twilioStatus = "failed";
+            twilioError = twilioErr.message || "Twilio send failed";
           }
         }
       }
+    } else {
+      twilioStatus = "sent";
     }
 
     const msg = await storage.createMessage({
       ...parsed.data,
       status: twilioStatus,
     });
+
+    if (twilioStatus === "failed") {
+      return res.status(422).json({ ...msg, twilioSid, error: twilioError });
+    }
 
     await logUsageInternal(subAccountId, "SMS_SEGMENT", 1, `SMS to ${contactPhone}`);
 
@@ -1211,11 +1225,11 @@ Guidelines:
     const user = (req as any).user;
     const account = await storage.createSubAccount({
       name: `${bp.title} Account`,
-      twilioNumber: `+1555${Math.floor(1000 + Math.random() * 9000)}`,
+      twilioNumber: null,
       ownerUserId: user?.id || null,
     });
 
-    res.status(201).json({ account, blueprint: bp });
+    res.status(201).json({ account, blueprint: bp, notice: "Account created. Purchase a Twilio phone number to enable SMS." });
   }));
 
   // ---- Site Builder (AI Generation) ----
@@ -2519,7 +2533,7 @@ Rules:
   app.get("/api/phone-numbers", asyncHandler(async (_req, res) => {
     const twilioClient = getTwilioClient();
     if (!twilioClient) {
-      return res.json([]);
+      return res.status(503).json({ error: "Twilio is not configured. Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN to manage phone numbers.", numbers: [] });
     }
 
     let numbers;
@@ -2527,7 +2541,7 @@ Rules:
       numbers = await twilioClient.incomingPhoneNumbers.list({ limit: 20 });
     } catch (twilioErr: any) {
       console.error("Twilio list numbers error:", twilioErr.message, twilioErr.code);
-      return res.json([]);
+      return res.status(503).json({ error: `Twilio error: ${twilioErr.message}`, numbers: [] });
     }
 
     let vapiNumbers: any[] = [];
@@ -2730,7 +2744,17 @@ Rules:
               console.log(`[META DM] Keyword "${kw.keyword}" matched for ${senderId}`);
               storage.incrementKeywordHitCount(kw.id);
 
-              if (kw.responseText && accessToken && pageId) {
+              if (kw.responseText && (!accessToken || !pageId)) {
+                console.warn(`[META DM] Cannot send keyword reply to ${senderId}: META_ACCESS_TOKEN or META_PAGE_ID not configured. Message stored but not delivered.`);
+                await db.insert(messages).values({
+                  subAccountId,
+                  channel,
+                  direction: "outbound",
+                  contactPhone: senderId,
+                  body: kw.responseText,
+                  status: "failed",
+                });
+              } else if (kw.responseText && accessToken && pageId) {
                 const kwUrl = `https://graph.facebook.com/v19.0/${pageId}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
                 await fetch(kwUrl, {
                   method: "POST",
@@ -2789,7 +2813,17 @@ Rules:
                   { role: "user", content: message.substring(0, 1000) },
                 ], { temperature: 0.7, maxTokens: 1024 });
 
-                if (aiReply && accessToken && pageId) {
+                if (aiReply && (!accessToken || !pageId)) {
+                  console.warn(`[META DM] AI reply generated but cannot send to ${senderId}: META_ACCESS_TOKEN or META_PAGE_ID not configured.`);
+                  await db.insert(messages).values({
+                    subAccountId,
+                    channel,
+                    direction: "outbound",
+                    contactPhone: senderId,
+                    body: aiReply,
+                    status: "failed",
+                  });
+                } else if (aiReply && accessToken && pageId) {
                   const aiUrl = `https://graph.facebook.com/v19.0/${pageId}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
                   const sendRes = await fetch(aiUrl, {
                     method: "POST",
@@ -2889,7 +2923,8 @@ Rules:
 
       res.json({ products: Array.from(productsMap.values()) });
     } catch (err: any) {
-      res.json({ products: [] });
+      console.error("[STRIPE] Products fetch error:", err.message);
+      res.status(503).json({ error: "Failed to fetch Stripe products. Verify Stripe is configured correctly.", detail: err.message });
     }
   }));
 
@@ -3653,12 +3688,22 @@ Rules:
       return res.json({ available: false, domain: normalizedDomain, tld, costPrice: 0, salePrice: 0, reason: "unsupported_tld" });
     }
 
-    const isTaken = baseName.length < 5 && Math.random() < 0.4;
-    if (isTaken) {
-      return res.json({ available: false, domain: normalizedDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, reason: "taken" });
+    try {
+      const rdapRes = await fetch(`https://rdap.org/domain/${normalizedDomain}`, {
+        headers: { "Accept": "application/rdap+json" },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (rdapRes.ok) {
+        return res.json({ available: false, domain: normalizedDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, reason: "taken" });
+      }
+      if (rdapRes.status === 404) {
+        return res.json({ available: true, domain: normalizedDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale });
+      }
+      return res.json({ available: true, domain: normalizedDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, note: "Could not verify availability — RDAP returned unexpected status" });
+    } catch (rdapErr: any) {
+      console.warn("[DOMAIN] RDAP lookup failed:", rdapErr.message);
+      return res.json({ available: true, domain: normalizedDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, note: "Could not verify availability — RDAP lookup timed out or failed" });
     }
-
-    res.json({ available: true, domain: normalizedDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale });
   }));
 
   app.post("/api/domains/search", asyncHandler(async (req, res) => {
@@ -3668,27 +3713,41 @@ Rules:
     }
 
     const baseName = query.toLowerCase().trim().replace(/\.[a-z]+$/, "");
-    const results = [];
 
-    for (const [tld, pricing] of Object.entries(TLD_PRICING)) {
+    const rdapChecks = Object.entries(TLD_PRICING).map(async ([tld, pricing]) => {
       const fullDomain = `${baseName}${tld}`;
       const existing = await storage.getDomainByName(fullDomain);
       if (existing) {
-        results.push({ available: false, domain: fullDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, reason: "already_registered" });
-        continue;
+        return { available: false, domain: fullDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, reason: "already_registered" };
       }
 
-      const isTaken = baseName.length < 5 && Math.random() < 0.3;
-      results.push({
-        available: !isTaken,
-        domain: fullDomain,
-        tld,
-        costPrice: pricing.cost,
-        salePrice: pricing.sale,
-        reason: isTaken ? "taken" : undefined,
-      });
-    }
+      try {
+        const rdapRes = await fetch(`https://rdap.org/domain/${fullDomain}`, {
+          headers: { "Accept": "application/rdap+json" },
+          signal: AbortSignal.timeout(5000),
+        });
+        const isTaken = rdapRes.ok;
+        return {
+          available: !isTaken,
+          domain: fullDomain,
+          tld,
+          costPrice: pricing.cost,
+          salePrice: pricing.sale,
+          reason: isTaken ? "taken" : undefined,
+        };
+      } catch {
+        return {
+          available: true,
+          domain: fullDomain,
+          tld,
+          costPrice: pricing.cost,
+          salePrice: pricing.sale,
+          note: "Could not verify — RDAP lookup failed",
+        };
+      }
+    });
 
+    const results = await Promise.all(rdapChecks);
     res.json(results);
   }));
 
@@ -3719,12 +3778,12 @@ Rules:
     const domainRecord = await storage.createDomain({
       subAccountId,
       domainName: domain,
-      status: "claimed",
+      status: "pending_registration",
       purchasePrice: pricing.cost,
       salePrice: pricing.sale,
       dnsConfigured: false,
       sslActive: false,
-      registrar: "Apex Domains (Internal Claim)",
+      registrar: "Not yet registered",
       siteId: siteId || null,
     });
 
@@ -3733,7 +3792,7 @@ Rules:
       type: "DOMAIN_CLAIM",
       amount: 1,
       cost: 0,
-      description: `Domain claimed internally: ${domain} — register at your preferred registrar to activate`,
+      description: `Domain reserved: ${domain} — must be registered at an external registrar`,
     });
 
     if (siteId) {
@@ -3743,7 +3802,14 @@ Rules:
     res.status(201).json({
       success: true,
       domain: domainRecord,
-      notice: "Domain claimed internally. To make it live, register this domain at a registrar (Namecheap, GoDaddy, Cloudflare) and point the DNS to your Apex site.",
+      status: "pending_registration",
+      nextSteps: [
+        `1. Register "${domain}" at your preferred registrar (Namecheap, GoDaddy, Cloudflare, etc.)`,
+        "2. In your registrar's DNS settings, add a CNAME record pointing to your Apex site URL",
+        "3. Come back here and click 'Verify Domain' to confirm ownership",
+        "4. Once verified, SSL will need to be configured at your hosting provider"
+      ],
+      notice: "This domain has been reserved in Apex but is NOT yet registered. You must purchase it from a domain registrar to make it live.",
     });
   }));
 
@@ -3847,12 +3913,16 @@ Rules:
       return res.status(400).json({ error: "Domain must be verified before configuring SSL" });
     }
 
-    await storage.updateDomain(id, { sslActive: true });
-
     res.json({
-      success: true,
-      message: "SSL certificate provisioned successfully",
-      expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      success: false,
+      requiresManualSetup: true,
+      message: "SSL certificates must be configured at your hosting provider or domain registrar.",
+      instructions: [
+        "Most domain registrars (Cloudflare, Namecheap) offer free SSL certificates",
+        "If using Cloudflare, enable 'Full SSL' mode in the SSL/TLS settings",
+        "If using your registrar's hosting, look for 'SSL/TLS' or 'Security' settings",
+        "Free certificates are available via Let's Encrypt if you manage your own server",
+      ],
     });
   }));
 
@@ -4090,7 +4160,7 @@ Rules:
 
     const newAccount = await storage.createSubAccount({
       name: parsed.data.businessName,
-      twilioNumber: `+1555${Math.floor(1000 + Math.random() * 9000)}`,
+      twilioNumber: null,
       industry: snapshot.industry || null,
       vibeTheme: config?.vibe || "cyber-glass",
       config: config?.config || null,
@@ -4758,8 +4828,8 @@ Rules:
     const subAccountId = req.body.subAccountId || 1;
 
     const mockAccident = {
-      title: "MVA — Entrapment (High Value)",
-      description: "Multi-vehicle accident with entrapment. Fire rescue and extrication units dispatched. Multiple injuries reported. High-value personal injury case detected.",
+      title: "[DEMO] MVA — Entrapment (High Value)",
+      description: "SIMULATED — Multi-vehicle accident with entrapment. Fire rescue and extrication units dispatched. Multiple injuries reported. High-value personal injury case detected.",
       location: "Intersection of Flamingo & Las Vegas Blvd",
       severity: "critical",
     };
@@ -4782,6 +4852,7 @@ Rules:
         status: "Deploying Geofence Ads...",
         time: new Date().toLocaleTimeString(),
         demo: true,
+        simulated: true,
       });
     }
 
@@ -4803,6 +4874,7 @@ Rules:
       status: "Deploying Geofence Ads...",
       time: new Date().toLocaleTimeString(),
       demo: true,
+      simulated: true,
     });
   }));
 
@@ -6726,9 +6798,7 @@ Rules:
     if (!campaign) return res.status(404).json({ error: "Campaign not found" });
 
     if (!accessToken || !adAccountId) {
-      await storage.updateMetaAdCampaign(campaign.id, { status: "active" });
-      const updated = await storage.getMetaAdCampaign(campaign.id);
-      return res.json({ published: false, message: "Meta API not configured - campaign marked active locally", campaign: updated });
+      return res.status(503).json({ error: "Meta API not configured. Add META_ACCESS_TOKEN and META_AD_ACCOUNT_ID environment variables to publish campaigns to Facebook/Instagram." });
     }
 
     try {
@@ -6773,7 +6843,7 @@ Rules:
     const subAccountId = Number(req.params.subAccountId);
 
     if (!accessToken || !pageId) {
-      return res.json({ synced: false, message: "Meta API not configured. Add META_ACCESS_TOKEN and META_PAGE_ID." });
+      return res.status(503).json({ error: "Meta API not configured. Add META_ACCESS_TOKEN and META_PAGE_ID to sync leads from Facebook." });
     }
 
     try {
@@ -6983,7 +7053,7 @@ Rules:
     const subAccountId = Number(req.params.subAccountId);
 
     if (!accessToken || !pageId) {
-      return res.json({ synced: false, message: "Meta API not configured" });
+      return res.status(503).json({ error: "Meta API not configured. Add META_ACCESS_TOKEN and META_PAGE_ID to sync Instagram conversations." });
     }
 
     try {
@@ -8420,6 +8490,64 @@ Return ONLY valid JSON.` },
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const { provider, config } = req.body;
+
+    const COMING_SOON_PROVIDERS = [
+      "google-calendar", "gmail", "google-sheets", "google-drive", "google-docs",
+      "slack", "zapier", "quickbooks", "hubspot"
+    ];
+    if (COMING_SOON_PROVIDERS.includes(provider)) {
+      return res.status(400).json({ error: `${provider} integration is coming soon. This provider is not yet fully supported.` });
+    }
+
+    let validationResult: { valid: boolean; error?: string } = { valid: true };
+    try {
+      if (provider === "twilio" && config?.accountSid && config?.authToken) {
+        const twilioRes = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${config.accountSid}.json`, {
+          headers: { "Authorization": "Basic " + Buffer.from(`${config.accountSid}:${config.authToken}`).toString("base64") },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (!twilioRes.ok) validationResult = { valid: false, error: "Invalid Twilio credentials. Check your Account SID and Auth Token." };
+      } else if (provider === "mailchimp" && config?.apiKey) {
+        const dc = config.serverPrefix || config.apiKey.split("-").pop();
+        const mcRes = await fetch(`https://${dc}.api.mailchimp.com/3.0/ping`, {
+          headers: { "Authorization": `Bearer ${config.apiKey}` },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (!mcRes.ok) validationResult = { valid: false, error: "Invalid Mailchimp API key or server prefix." };
+      } else if (provider === "facebook" && config?.pageAccessToken) {
+        const fbRes = await fetch(`https://graph.facebook.com/v19.0/me?access_token=${config.pageAccessToken}`, {
+          signal: AbortSignal.timeout(5000),
+        });
+        if (!fbRes.ok) validationResult = { valid: false, error: "Invalid Facebook Page Access Token." };
+      } else if (provider === "meta-ads" && config?.accessToken) {
+        const metaRes = await fetch(`https://graph.facebook.com/v19.0/me?access_token=${config.accessToken}`, {
+          signal: AbortSignal.timeout(5000),
+        });
+        if (!metaRes.ok) validationResult = { valid: false, error: "Invalid Meta Access Token." };
+      } else if (provider === "google-maps" && config?.apiKey) {
+        const gmRes = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=test&key=${config.apiKey}`, {
+          signal: AbortSignal.timeout(5000),
+        });
+        const gmData = await gmRes.json() as any;
+        if (gmData.error_message) validationResult = { valid: false, error: `Google Maps API error: ${gmData.error_message}` };
+      } else if (provider === "google-analytics" && config?.measurementId) {
+        if (!config.measurementId.startsWith("G-")) {
+          validationResult = { valid: false, error: "Measurement ID should start with 'G-'" };
+        }
+      } else if (provider === "google-business" && config?.accountId) {
+        if (!config.accountId.startsWith("accounts/")) {
+          validationResult = { valid: false, error: "Business Profile ID should start with 'accounts/'" };
+        }
+      }
+    } catch (validErr: any) {
+      console.warn(`[INTEGRATIONS] Validation failed for ${provider}:`, validErr.message);
+      validationResult = { valid: false, error: `Could not validate credentials: ${validErr.message}` };
+    }
+
+    if (!validationResult.valid) {
+      return res.status(400).json({ error: validationResult.error, validated: false });
+    }
+
     const connection = await storage.upsertIntegrationConnection({
       subAccountId,
       provider,
@@ -8427,7 +8555,7 @@ Return ONLY valid JSON.` },
       config: config || {},
       connectedAt: new Date(),
     });
-    res.json(connection);
+    res.json({ ...connection, validated: true });
   }));
 
   app.post("/api/integrations/:subAccountId/disconnect", asyncHandler(async (req, res) => {
@@ -8442,6 +8570,73 @@ Return ONLY valid JSON.` },
       connectedAt: null,
     });
     res.json(connection);
+  }));
+
+  app.get("/api/service-status", asyncHandler(async (req, res) => {
+    const services = [
+      {
+        name: "Twilio",
+        provider: "twilio",
+        description: "SMS & Voice",
+        configured: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN),
+        envVars: ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"],
+      },
+      {
+        name: "Stripe",
+        provider: "stripe",
+        configured: !!process.env.STRIPE_SECRET_KEY,
+        description: "Payments & Billing",
+        envVars: ["STRIPE_SECRET_KEY"],
+      },
+      {
+        name: "Meta / Facebook",
+        provider: "meta",
+        description: "Ads, DMs, Instagram",
+        configured: !!(process.env.META_ACCESS_TOKEN && process.env.META_PAGE_ID),
+        envVars: ["META_ACCESS_TOKEN", "META_PAGE_ID", "META_APP_SECRET"],
+      },
+      {
+        name: "Vapi",
+        provider: "vapi",
+        description: "Voice AI Agents",
+        configured: vapiConfig.isConfigured,
+        envVars: ["VAPI_PRIVATE_KEY", "VAPI_PUBLIC_KEY"],
+      },
+      {
+        name: "Google AI (Gemini)",
+        provider: "gemini",
+        description: "AI Chat, Site Generation, Bot Training",
+        configured: isGeminiConfigured(),
+        envVars: ["GOOGLE_API_KEY"],
+      },
+      {
+        name: "Mailchimp",
+        provider: "mailchimp",
+        description: "Email Campaigns",
+        configured: !!process.env.MAILCHIMP_API_KEY,
+        envVars: ["MAILCHIMP_API_KEY"],
+      },
+      {
+        name: "Google Maps",
+        provider: "google-maps",
+        description: "Location Services",
+        configured: !!process.env.GOOGLE_API_KEY,
+        envVars: ["GOOGLE_API_KEY"],
+      },
+    ];
+
+    const configured = services.filter(s => s.configured).length;
+    const total = services.length;
+
+    res.json({
+      services: services.map(s => ({
+        name: s.name,
+        provider: s.provider,
+        description: s.description,
+        status: s.configured ? "connected" : "not_configured",
+      })),
+      summary: { configured, total, percentage: Math.round((configured / total) * 100) },
+    });
   }));
 
   // ---- TapCard Checkout ----

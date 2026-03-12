@@ -142,6 +142,8 @@ const PROVIDER_CREDENTIALS: Record<string, { fields: CredentialField[]; helpUrl?
   },
 };
 
+const COMING_SOON_PROVIDERS = ["google-calendar", "gmail", "google-sheets", "google-drive", "google-docs", "slack", "zapier", "quickbooks", "hubspot"];
+
 const INTEGRATIONS = [
   { provider: "google-maps", name: "Google Maps", description: "Embed maps, directions, and location services", icon: MapPin, color: "bg-green-500/20", iconColor: "text-green-400", category: "google" },
   { provider: "google-business", name: "Google Business Profile", description: "Manage your business listing, hours, and reviews", icon: Building2, color: "bg-blue-500/20", iconColor: "text-blue-400", category: "google" },
@@ -183,9 +185,11 @@ function IntegrationCard({
   onDisconnect: () => void;
   onConfigure: () => void;
 }) {
+  const isComingSoon = COMING_SOON_PROVIDERS.includes(integration.provider);
+
   return (
     <Card
-      className="bg-black/40 border-white/10 hover:border-white/20 transition-all"
+      className={`bg-black/40 border-white/10 transition-all ${isComingSoon ? "opacity-60" : "hover:border-white/20"}`}
       data-testid={`card-integration-${integration.provider}`}
     >
       <CardContent className="p-5">
@@ -193,20 +197,29 @@ function IntegrationCard({
           <div className={`w-12 h-12 rounded-xl ${integration.color} flex items-center justify-center`}>
             <integration.icon size={24} className={integration.iconColor} />
           </div>
-          <Badge
-            className={
-              connected
-                ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                : "bg-white/5 text-slate-400 border-white/10"
-            }
-            data-testid={`badge-status-${integration.provider}`}
-          >
-            {connected ? (
-              <span className="flex items-center gap-1"><Check size={12} /> Connected</span>
-            ) : (
-              <span className="flex items-center gap-1"><X size={12} /> Not Connected</span>
-            )}
-          </Badge>
+          {isComingSoon ? (
+            <Badge
+              className="bg-amber-500/20 text-amber-400 border-amber-500/30"
+              data-testid={`badge-status-${integration.provider}`}
+            >
+              Coming Soon
+            </Badge>
+          ) : (
+            <Badge
+              className={
+                connected
+                  ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                  : "bg-white/5 text-slate-400 border-white/10"
+              }
+              data-testid={`badge-status-${integration.provider}`}
+            >
+              {connected ? (
+                <span className="flex items-center gap-1"><Check size={12} /> Connected</span>
+              ) : (
+                <span className="flex items-center gap-1"><X size={12} /> Not Connected</span>
+              )}
+            </Badge>
+          )}
         </div>
         <h3 className="text-white font-bold text-base mb-1" data-testid={`text-name-${integration.provider}`}>
           {integration.name}
@@ -214,7 +227,15 @@ function IntegrationCard({
         <p className="text-slate-400 text-sm mb-4" data-testid={`text-desc-${integration.provider}`}>
           {integration.description}
         </p>
-        {connected ? (
+        {isComingSoon ? (
+          <Button
+            className="w-full bg-white/5 text-slate-500 font-bold cursor-not-allowed"
+            disabled
+            data-testid={`button-connect-${integration.provider}`}
+          >
+            Coming Soon
+          </Button>
+        ) : connected ? (
           <div className="flex gap-2">
             <Button
               variant="ghost"
