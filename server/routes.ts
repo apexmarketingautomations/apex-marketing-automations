@@ -5369,30 +5369,72 @@ Rules:
 
   // ─── Crash Connect Webhook ───────────────────────────────────────
   app.post("/api/webhook/crashconnect", async (req, res) => {
+    const startTime = Date.now();
     const WEBHOOK_SECRET = process.env.APEX_WEBHOOK_SECRET;
-    if (!WEBHOOK_SECRET) return res.status(500).json({ error: "Webhook secret not configured" });
+    const { event } = req.body || {};
+    const payload = req.body?.payload || req.body;
+
+    async function logWebhookFailure(reason: string, statusCode: number, accountId?: number | null) {
+      try {
+        const acctId = accountId || (payload?.subAccountId ? parseInt(String(payload.subAccountId)) : null) || (payload?.accountId ? parseInt(String(payload.accountId)) : null);
+        if (acctId) {
+          await storage.createWebhookEvent({
+            subAccountId: acctId,
+            eventType: `crashconnect.${event || "unknown"}`,
+            url: "/api/webhook/crashconnect",
+            method: "POST",
+            requestBody: req.body,
+            responseStatus: statusCode,
+            responseBody: JSON.stringify({ error: reason }),
+            status: "failed",
+            error: reason,
+            duration: Date.now() - startTime,
+          });
+        } else {
+          console.warn(`[CRASH CONNECT] Webhook failure (no account ID to log): ${reason}`);
+        }
+      } catch (logErr: any) {
+        console.error(`[CRASH CONNECT] Failed to log webhook failure event: ${logErr.message}`);
+      }
+    }
+
+    if (!WEBHOOK_SECRET) {
+      await logWebhookFailure("Webhook secret not configured", 500);
+      return res.status(500).json({ error: "Webhook secret not configured" });
+    }
 
     const sig = req.headers["x-webhook-signature"] as string;
-    if (!sig) return res.status(401).json({ error: "Missing signature" });
+    if (!sig) {
+      await logWebhookFailure("Missing signature", 401);
+      return res.status(401).json({ error: "Missing signature" });
+    }
 
     const [timestamp, hash] = sig.split(".");
-    if (!timestamp || !hash) return res.status(401).json({ error: "Invalid signature format" });
+    if (!timestamp || !hash) {
+      await logWebhookFailure("Invalid signature format", 401);
+      return res.status(401).json({ error: "Invalid signature format" });
+    }
 
-    const payload = req.body.payload || req.body;
     const expected = crypto.createHmac("sha256", WEBHOOK_SECRET)
       .update(timestamp + ":" + JSON.stringify(payload))
       .digest("hex");
 
     const hashBuf = Buffer.from(hash);
     const expectedBuf = Buffer.from(expected);
-    if (hashBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(hashBuf, expectedBuf)) return res.status(401).json({ error: "Invalid signature" });
+    if (hashBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(hashBuf, expectedBuf)) {
+      await logWebhookFailure("Invalid signature — HMAC mismatch", 401);
+      return res.status(401).json({ error: "Invalid signature" });
+    }
 
     const age = Math.abs(Date.now() - parseInt(timestamp));
-    if (age > 5 * 60 * 1000) return res.status(401).json({ error: "Signature expired" });
+    if (age > 5 * 60 * 1000) {
+      await logWebhookFailure(`Signature expired (age: ${Math.round(age / 1000)}s)`, 401);
+      return res.status(401).json({ error: "Signature expired" });
+    }
 
-    const { event } = req.body;
     console.log(`[CRASH CONNECT] Webhook received: ${event}`, JSON.stringify(payload).substring(0, 300));
 
+    let webhookEventId: number | null = null;
     try {
       let targetAccountId: number | null = null;
       const token = payload.token || payload.webhookToken || null;
@@ -5412,16 +5454,16 @@ Rules:
       }
 
       if (targetAccountId) {
-        await db.insert(webhookEvents).values({
+        const webhookEvent = await storage.createWebhookEvent({
           subAccountId: targetAccountId,
           eventType: `crashconnect.${event}`,
           url: "/api/webhook/crashconnect",
           method: "POST",
           requestBody: req.body,
-          responseStatus: 200,
-          status: "delivered",
+          status: "pending",
           duration: 0,
         });
+        webhookEventId = webhookEvent.id;
       }
 
       if (event === "crash.detected" || event === "lead.created" || event === "lead.enriched") {
@@ -5641,10 +5683,39 @@ Rules:
         })();
       }
 
-      res.json({ success: true, event, processed: true });
+      const responseBody = { success: true, event, processed: true };
+      const duration = Date.now() - startTime;
+
+      if (webhookEventId) {
+        await storage.updateWebhookEvent(webhookEventId, {
+          status: "delivered",
+          responseStatus: 200,
+          responseBody: JSON.stringify(responseBody),
+          duration,
+        });
+      }
+
+      res.json(responseBody);
     } catch (err: any) {
       console.error(`[CRASH CONNECT] Processing error: ${err.message}`);
-      res.status(500).json({ error: "Processing failed", event });
+      const errorBody = { error: "Processing failed", event, detail: err.message };
+      const duration = Date.now() - startTime;
+
+      if (webhookEventId) {
+        try {
+          await storage.updateWebhookEvent(webhookEventId, {
+            status: "failed",
+            responseStatus: 500,
+            responseBody: JSON.stringify(errorBody),
+            error: err.message,
+            duration,
+          });
+        } catch (updateErr: any) {
+          console.error(`[CRASH CONNECT] Failed to update webhook event: ${updateErr.message}`);
+        }
+      }
+
+      res.status(500).json(errorBody);
     }
   });
 

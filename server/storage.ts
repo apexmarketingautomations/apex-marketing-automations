@@ -246,6 +246,7 @@ export interface IStorage {
 
   getWebhookEvents(subAccountId: number): Promise<WebhookEvent[]>;
   createWebhookEvent(data: InsertWebhookEvent): Promise<WebhookEvent>;
+  updateWebhookEvent(id: number, data: Partial<InsertWebhookEvent>): Promise<WebhookEvent | undefined>;
 
   getIntegrationConnections(subAccountId: number): Promise<IntegrationConnection[]>;
   getIntegrationConnection(subAccountId: number, provider: string): Promise<IntegrationConnection | undefined>;
@@ -1019,6 +1020,11 @@ export class DatabaseStorage implements IStorage {
 
   async createWebhookEvent(data: InsertWebhookEvent) {
     const [row] = await db.insert(webhookEvents).values(data).returning();
+    return row;
+  }
+
+  async updateWebhookEvent(id: number, data: Partial<InsertWebhookEvent>) {
+    const [row] = await db.update(webhookEvents).set(data).where(eq(webhookEvents.id, id)).returning();
     return row;
   }
 
