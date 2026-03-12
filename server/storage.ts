@@ -50,7 +50,7 @@ import {
   dispatchSubscribers,
   type DispatchSubscriber, type InsertDispatchSubscriber,
   creditWallets, creditTransactions, sponsorships, sponsorshipClicks, platformProfitLedger,
-  funnelLeads, crashReports,
+  funnelLeads, crashReports, dmKeywordAutomations,
   type CreditWallet, type InsertCreditWallet,
   type CreditTransaction, type InsertCreditTransaction,
   type Sponsorship, type InsertSponsorship,
@@ -58,6 +58,7 @@ import {
   type PlatformProfit, type InsertPlatformProfit,
   type FunnelLead, type InsertFunnelLead,
   type CrashReport, type InsertCrashReport,
+  type DmKeywordAutomation, type InsertDmKeywordAutomation,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -286,6 +287,12 @@ export interface IStorage {
   updateFunnelLead(id: number, data: Partial<InsertFunnelLead>): Promise<FunnelLead | undefined>;
   getAbandonedFunnelLeads(staleMinutes: number): Promise<FunnelLead[]>;
   getFunnelLeads(slug?: string): Promise<FunnelLead[]>;
+
+  getDmKeywordAutomations(subAccountId: number, enabledOnly?: boolean): Promise<DmKeywordAutomation[]>;
+  createDmKeywordAutomation(data: InsertDmKeywordAutomation): Promise<DmKeywordAutomation>;
+  updateDmKeywordAutomation(id: number, data: Partial<InsertDmKeywordAutomation>): Promise<DmKeywordAutomation | undefined>;
+  deleteDmKeywordAutomation(id: number): Promise<void>;
+  incrementKeywordHitCount(id: number): Promise<void>;
 
   createCrashReport(data: InsertCrashReport): Promise<CrashReport>;
   getCrashReport(id: number): Promise<CrashReport | undefined>;
@@ -1213,6 +1220,34 @@ export class DatabaseStorage implements IStorage {
       return db.select().from(funnelLeads).where(eq(funnelLeads.slug, slug)).orderBy(desc(funnelLeads.createdAt));
     }
     return db.select().from(funnelLeads).orderBy(desc(funnelLeads.createdAt));
+  }
+
+  async getDmKeywordAutomations(subAccountId: number, enabledOnly = false) {
+    const conditions = [eq(dmKeywordAutomations.subAccountId, subAccountId)];
+    if (enabledOnly) conditions.push(eq(dmKeywordAutomations.enabled, true));
+    return db.select().from(dmKeywordAutomations)
+      .where(and(...conditions))
+      .orderBy(dmKeywordAutomations.createdAt);
+  }
+
+  async createDmKeywordAutomation(data: InsertDmKeywordAutomation) {
+    const [row] = await db.insert(dmKeywordAutomations).values(data).returning();
+    return row;
+  }
+
+  async updateDmKeywordAutomation(id: number, data: Partial<InsertDmKeywordAutomation>) {
+    const [row] = await db.update(dmKeywordAutomations).set(data).where(eq(dmKeywordAutomations.id, id)).returning();
+    return row;
+  }
+
+  async deleteDmKeywordAutomation(id: number) {
+    await db.delete(dmKeywordAutomations).where(eq(dmKeywordAutomations.id, id));
+  }
+
+  async incrementKeywordHitCount(id: number) {
+    await db.update(dmKeywordAutomations)
+      .set({ hitCount: sql`${dmKeywordAutomations.hitCount} + 1` })
+      .where(eq(dmKeywordAutomations.id, id));
   }
 
   async createCrashReport(data: InsertCrashReport) {

@@ -933,3 +933,21 @@ export const crashReports = pgTable("crash_reports", {
 export const insertCrashReportSchema = createInsertSchema(crashReports).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertCrashReport = z.infer<typeof insertCrashReportSchema>;
 export type CrashReport = typeof crashReports.$inferSelect;
+
+export const dmKeywordAutomations = pgTable("dm_keyword_automations", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  keyword: text("keyword").notNull(),
+  matchType: text("match_type").default("exact").notNull(),
+  channel: text("channel").default("all").notNull(),
+  responseText: text("response_text"),
+  responseType: text("response_type").default("text").notNull(),
+  actionPayload: json("action_payload"),
+  enabled: boolean("enabled").default(true).notNull(),
+  hitCount: integer("hit_count").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertDmKeywordAutomationSchema = createInsertSchema(dmKeywordAutomations).omit({ id: true, createdAt: true, hitCount: true });
+export type InsertDmKeywordAutomation = z.infer<typeof insertDmKeywordAutomationSchema>;
+export type DmKeywordAutomation = typeof dmKeywordAutomations.$inferSelect;

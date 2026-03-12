@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains, insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, insertMetaAdCampaignSchema, insertMetaLeadSchema, insertInstagramConversationSchema, insertInstagramMessageSchema, insertNotificationSchema, contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings, metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications, messages, hasFeature, PLAN_TIERS, subAccounts, liveAutomations, insertLiveAutomationSchema, insertSponsorshipSchema, insertCreditWalletSchema, creditTransactions, platformProfitLedger, sponsorships, sponsorshipClicks, digitalCards, webhookEvents, sentinelIncidents } from "@shared/schema";
+import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains, insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, insertMetaAdCampaignSchema, insertMetaLeadSchema, insertInstagramConversationSchema, insertInstagramMessageSchema, insertNotificationSchema, contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings, metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications, messages, hasFeature, PLAN_TIERS, subAccounts, liveAutomations, insertLiveAutomationSchema, insertSponsorshipSchema, insertCreditWalletSchema, creditTransactions, platformProfitLedger, sponsorships, sponsorshipClicks, digitalCards, webhookEvents, sentinelIncidents, dmKeywordAutomations } from "@shared/schema";
 import { sql, eq, and } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -2655,57 +2655,162 @@ Rules:
           for (const event of entry.messaging || []) {
             const senderId = event.sender?.id;
             const message = event.message?.text;
-            const timestamp = event.timestamp;
 
             if (!senderId || !message) continue;
 
-            console.log(`[META DM] From ${senderId}: ${message.substring(0, 100)}`);
-
             const channel = body.object === "instagram" ? "instagram" : "facebook";
+            console.log(`[META DM] ${channel} from ${senderId}: ${message.substring(0, 100)}`);
+
+            const accessToken = process.env.META_ACCESS_TOKEN;
+            const pageId = process.env.META_PAGE_ID;
+            const appSecret = process.env.META_APP_SECRET;
+
+            let appsecretProof = "";
+            if (accessToken && appSecret) {
+              const crypto = await import("crypto");
+              appsecretProof = crypto.createHmac("sha256", appSecret).update(accessToken).digest("hex");
+            }
+
+            const allAccounts = await storage.getSubAccounts();
+            const targetAccount = allAccounts.find(a => a.ownerUserId !== "_archived") || allAccounts[0];
+            const subAccountId = targetAccount?.id || 13;
 
             await db.insert(messages).values({
-              subAccountId: 13,
+              subAccountId,
               channel,
               direction: "inbound",
-              from: senderId,
-              to: process.env.META_PAGE_ID || "",
+              contactPhone: senderId,
               body: message,
               status: "received",
             });
 
-            if (isGeminiConfigured()) {
+            try {
+              const existingContact = await db.select().from(contacts)
+                .where(and(
+                  eq(contacts.subAccountId, subAccountId),
+                  eq(contacts.source, `${channel}_dm`),
+                  eq(contacts.phone, senderId)
+                )).limit(1);
+
+              if (existingContact.length === 0) {
+                const newContact = await storage.createContact({
+                  subAccountId,
+                  firstName: `${channel === "instagram" ? "IG" : "FB"} User ${senderId.slice(-4)}`,
+                  phone: senderId,
+                  source: `${channel}_dm`,
+                  tags: [channel, "dm_lead"],
+                });
+                console.log(`[META DM] Created CRM contact id=${newContact.id} for ${senderId}`);
+
+                fireAutomationTrigger("new_lead", subAccountId, {
+                  leadName: newContact.firstName,
+                  leadPhone: senderId,
+                  source: `${channel}_dm`,
+                });
+              }
+            } catch (contactErr: any) {
+              console.warn("[META DM] Contact creation skipped:", contactErr.message);
+            }
+
+            const keywords = await storage.getDmKeywordAutomations(subAccountId, true);
+            const msgLower = message.toLowerCase().trim();
+            let keywordMatched = false;
+
+            for (const kw of keywords) {
+              if (kw.channel !== "all" && kw.channel !== channel) continue;
+
+              const kwLower = kw.keyword.toLowerCase();
+              const matched = kw.matchType === "contains"
+                ? msgLower.includes(kwLower)
+                : msgLower === kwLower;
+
+              if (!matched) continue;
+
+              keywordMatched = true;
+              console.log(`[META DM] Keyword "${kw.keyword}" matched for ${senderId}`);
+              storage.incrementKeywordHitCount(kw.id);
+
+              if (kw.responseText && accessToken && pageId) {
+                const kwUrl = `https://graph.facebook.com/v19.0/${pageId}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
+                await fetch(kwUrl, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    recipient: { id: senderId },
+                    message: { text: kw.responseText },
+                    access_token: accessToken,
+                  }),
+                });
+
+                await db.insert(messages).values({
+                  subAccountId,
+                  channel,
+                  direction: "outbound",
+                  contactPhone: senderId,
+                  body: kw.responseText,
+                  status: "sent",
+                });
+                console.log(`[META DM] Keyword reply sent to ${senderId}`);
+              }
+
+              if (kw.actionPayload) {
+                const payload = typeof kw.actionPayload === "string" ? JSON.parse(kw.actionPayload) : kw.actionPayload;
+                if (payload.triggerName) {
+                  fireAutomationTrigger(payload.triggerName, subAccountId, {
+                    leadName: `${channel} User ${senderId.slice(-4)}`,
+                    leadPhone: senderId,
+                    source: `${channel}_dm_keyword:${kw.keyword}`,
+                    keyword: kw.keyword,
+                    message,
+                  });
+                }
+              }
+              break;
+            }
+
+            if (!keywordMatched && isGeminiConfigured()) {
               try {
+                let systemPrompt = `You are a helpful business assistant responding via ${channel} DM. Keep replies conversational and under 300 characters. Be warm, professional, and helpful.`;
+
+                try {
+                  const websites = await db.select().from(clientWebsites)
+                    .where(eq(clientWebsites.subAccountId, subAccountId)).limit(1);
+                  if (websites.length > 0 && websites[0].botPersona) {
+                    systemPrompt = `${websites[0].botPersona}\n\nYou are responding via ${channel} DM. Keep replies conversational and under 300 characters.`;
+                  }
+                } catch {}
+
+                if (targetAccount?.industry) {
+                  systemPrompt += ` The business is in the ${targetAccount.industry} industry.`;
+                }
+
                 const aiReply = await geminiChat([
-                  { role: "system", content: `You are a helpful business assistant for Apex Marketing Automations responding via ${channel} DM. Keep replies conversational and under 300 characters. Be warm, professional, and helpful.` },
+                  { role: "system", content: systemPrompt },
                   { role: "user", content: message.substring(0, 1000) },
                 ], { temperature: 0.7, maxTokens: 1024 });
 
-                if (aiReply) {
-                  const accessToken = process.env.META_ACCESS_TOKEN;
-                  const pageId = process.env.META_PAGE_ID;
-                  if (accessToken && pageId) {
-                    const sendRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}/messages`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        recipient: { id: senderId },
-                        message: { text: aiReply },
-                        access_token: accessToken,
-                      }),
-                    });
-                    const sendData = await sendRes.json() as any;
-                    console.log(`[META DM] AI reply sent to ${senderId}:`, sendData.message_id ? "OK" : JSON.stringify(sendData).substring(0, 200));
+                if (aiReply && accessToken && pageId) {
+                  const aiUrl = `https://graph.facebook.com/v19.0/${pageId}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
+                  const sendRes = await fetch(aiUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      recipient: { id: senderId },
+                      message: { text: aiReply },
+                      access_token: accessToken,
+                    }),
+                  });
+                  const sendData = await sendRes.json() as any;
+                  console.log(`[META DM] AI reply sent to ${senderId}:`, sendData.message_id ? "OK" : JSON.stringify(sendData).substring(0, 200));
 
-                    await db.insert(messages).values({
-                      subAccountId: 13,
-                      channel,
-                      direction: "outbound",
-                      from: pageId,
-                      to: senderId,
-                      body: aiReply,
-                      status: "sent",
-                    });
-                  }
+                  await db.insert(messages).values({
+                    subAccountId,
+                    channel,
+                    direction: "outbound",
+                    contactPhone: senderId,
+                    body: aiReply,
+                    status: "sent",
+                  });
                 }
               } catch (aiErr: any) {
                 console.error("[META DM] AI reply error:", aiErr.message);
@@ -6693,6 +6798,52 @@ Rules:
     res.json({ success: true, contact });
   }));
 
+  // ---- DM Keyword Automations CRUD ----
+  app.get("/api/dm-keywords/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = Number(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const keywords = await storage.getDmKeywordAutomations(subAccountId);
+    res.json(keywords);
+  }));
+
+  app.post("/api/dm-keywords", asyncHandler(async (req, res) => {
+    const { subAccountId, keyword, matchType, channel, responseText, responseType, actionPayload, enabled } = req.body;
+    if (!subAccountId || !keyword) {
+      return res.status(400).json({ error: "subAccountId and keyword are required" });
+    }
+    if (!(await verifyAccountOwnership(req, res, Number(subAccountId)))) return;
+    const created = await storage.createDmKeywordAutomation({
+      subAccountId: Number(subAccountId),
+      keyword: keyword.trim(),
+      matchType: matchType || "exact",
+      channel: channel || "all",
+      responseText: responseText || null,
+      responseType: responseType || "text",
+      actionPayload: actionPayload || null,
+      enabled: enabled !== false,
+    });
+    console.log(`[DM-KEYWORDS] Created keyword "${keyword}" for account ${subAccountId}`);
+    res.status(201).json(created);
+  }));
+
+  app.put("/api/dm-keywords/:id", asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const existing = await db.select().from(dmKeywordAutomations).where(eq(dmKeywordAutomations.id, id)).limit(1);
+    if (!existing.length) return res.status(404).json({ error: "Keyword automation not found" });
+    if (!(await verifyAccountOwnership(req, res, existing[0].subAccountId))) return;
+    const updated = await storage.updateDmKeywordAutomation(id, req.body);
+    res.json(updated);
+  }));
+
+  app.delete("/api/dm-keywords/:id", asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const existing = await db.select().from(dmKeywordAutomations).where(eq(dmKeywordAutomations.id, id)).limit(1);
+    if (!existing.length) return res.status(404).json({ error: "Keyword automation not found" });
+    if (!(await verifyAccountOwnership(req, res, existing[0].subAccountId))) return;
+    await storage.deleteDmKeywordAutomation(id);
+    res.json({ success: true });
+  }));
+
   // ---- Instagram DM Inbox ----
 
   app.get("/api/meta/instagram/conversations/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
@@ -6721,7 +6872,14 @@ Rules:
 
     if (accessToken && pageId && conversation.igUserId) {
       try {
-        await fetch(`https://graph.facebook.com/v19.0/${pageId}/messages`, {
+        const appSecret = process.env.META_APP_SECRET;
+        let proof = "";
+        if (appSecret) {
+          const crypto = await import("crypto");
+          proof = crypto.createHmac("sha256", appSecret).update(accessToken).digest("hex");
+        }
+        const sendUrl = `https://graph.facebook.com/v19.0/${pageId}/messages` + (proof ? `?appsecret_proof=${proof}` : "");
+        await fetch(sendUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -6753,7 +6911,13 @@ Rules:
     }
 
     try {
-      const convRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}/conversations?platform=instagram&fields=participants,messages{message,from,created_time}&access_token=${accessToken}`);
+      const appSecret = process.env.META_APP_SECRET;
+      let proof = "";
+      if (appSecret) {
+        const crypto = await import("crypto");
+        proof = crypto.createHmac("sha256", appSecret).update(accessToken).digest("hex");
+      }
+      const convRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}/conversations?platform=instagram&fields=participants,messages{message,from,created_time}&access_token=${accessToken}` + (proof ? `&appsecret_proof=${proof}` : ""));
       const convData = await convRes.json() as any;
       let count = 0;
 
