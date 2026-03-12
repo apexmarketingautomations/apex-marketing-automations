@@ -591,7 +591,7 @@ ${sections.map(renderSection).join('\n')}
   // ---- Auth Middleware ----
   app.use("/api", (req, res, next) => {
     const fullPath = req.originalUrl || req.baseUrl + req.path;
-    const openPaths = ["/api/auth/", "/api/login", "/api/logout", "/api/callback", "/api/stripe/webhook", "/api/webhooks/", "/api/snapshots/marketplace", "/api/v1/serve-native-ad", "/api/v1/ad-click/", "/api/crash-reports/"];
+    const openPaths = ["/api/auth/", "/api/login", "/api/logout", "/api/callback", "/api/stripe/webhook", "/api/webhooks/", "/api/snapshots/marketplace", "/api/v1/serve-native-ad", "/api/v1/ad-click/", "/api/crash-reports/health"];
     const openExact = ["/api/reviews", "/api/alert-owner", "/api/languages"];
 
     if (openPaths.some(p => fullPath.startsWith(p))) return next();
@@ -5246,10 +5246,15 @@ Rules:
 
   // ─── Crash Report Retrieval API ─────────────────────────────────
   app.post("/api/crash-reports/request", asyncHandler(async (req, res) => {
-    const { reportNumber, requesterRole, reason, subAccountId } = req.body;
+    const { reportNumber, reason, subAccountId } = req.body;
     if (!reportNumber || typeof reportNumber !== "string") {
       return res.status(400).json({ error: "reportNumber is required" });
     }
+
+    const user = (req as any).user;
+    const userId = user ? getUserId(user) : null;
+    const adminUserId = process.env.ADMIN_USER_ID;
+    const derivedRole = (adminUserId && userId === adminUserId) ? "admin" : "user";
 
     const cleaned = reportNumber.trim().toUpperCase();
     const existing = await storage.getCrashReportByNumber(cleaned);
@@ -5282,7 +5287,7 @@ Rules:
 
     const report = await storage.createCrashReport({
       reportNumber: cleaned,
-      requesterRole: requesterRole || "system",
+      requesterRole: derivedRole,
       reason: reason || null,
       subAccountId: subAccountId ? Number(subAccountId) : null,
       status: "PENDING",
