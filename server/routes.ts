@@ -2756,7 +2756,7 @@ Rules:
                 });
               } else if (kw.responseText && accessToken && pageId) {
                 const kwUrl = `https://graph.facebook.com/v19.0/${pageId}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
-                await fetch(kwUrl, {
+                const kwSendRes = await fetch(kwUrl, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
@@ -2765,6 +2765,11 @@ Rules:
                     access_token: accessToken,
                   }),
                 });
+                const kwSendData = await kwSendRes.json() as any;
+                const kwSendStatus = kwSendRes.ok ? "sent" : "failed";
+                if (!kwSendRes.ok) {
+                  console.error(`[META DM] Keyword reply FAILED to ${senderId}: ${JSON.stringify(kwSendData).substring(0, 300)}`);
+                }
 
                 await db.insert(messages).values({
                   subAccountId,
@@ -2772,9 +2777,9 @@ Rules:
                   direction: "outbound",
                   contactPhone: senderId,
                   body: kw.responseText,
-                  status: "sent",
+                  status: kwSendStatus,
                 });
-                console.log(`[META DM] Keyword reply sent to ${senderId}`);
+                if (kwSendRes.ok) console.log(`[META DM] Keyword reply sent to ${senderId}`);
               }
 
               if (kw.actionPayload) {
@@ -2835,7 +2840,12 @@ Rules:
                     }),
                   });
                   const sendData = await sendRes.json() as any;
-                  console.log(`[META DM] AI reply sent to ${senderId}:`, sendData.message_id ? "OK" : JSON.stringify(sendData).substring(0, 200));
+                  const aiSendStatus = sendRes.ok ? "sent" : "failed";
+                  if (!sendRes.ok) {
+                    console.error(`[META DM] AI reply FAILED to ${senderId}: ${JSON.stringify(sendData).substring(0, 300)}`);
+                  } else {
+                    console.log(`[META DM] AI reply sent to ${senderId}: OK`);
+                  }
 
                   await db.insert(messages).values({
                     subAccountId,
@@ -2843,7 +2853,7 @@ Rules:
                     direction: "outbound",
                     contactPhone: senderId,
                     body: aiReply,
-                    status: "sent",
+                    status: aiSendStatus,
                   });
                 }
               } catch (aiErr: any) {
@@ -6766,7 +6776,7 @@ Rules:
     if (!campaign) return res.status(404).json({ error: "Campaign not found" });
 
     if (!accessToken || !campaign.metaCampaignId) {
-      return res.json({ synced: false, message: "Meta API not configured or no campaign ID linked" });
+      return res.status(503).json({ error: "Meta API not configured or no campaign ID linked. Add META_ACCESS_TOKEN and publish the campaign to Meta first." });
     }
 
     try {
@@ -6787,7 +6797,7 @@ Rules:
       const updated = await storage.getMetaAdCampaign(campaign.id);
       res.json({ synced: true, campaign: updated });
     } catch (err: any) {
-      res.json({ synced: false, message: err.message });
+      res.status(500).json({ error: `Meta sync failed: ${err.message}` });
     }
   }));
 
@@ -6814,13 +6824,16 @@ Rules:
         }),
       });
       const fbData = await fbRes.json() as any;
-      if (fbData.id) {
-        await storage.updateMetaAdCampaign(campaign.id, { metaCampaignId: fbData.id, status: "active" });
+      if (!fbRes.ok || !fbData.id) {
+        const errorMsg = fbData?.error?.message || JSON.stringify(fbData).substring(0, 300);
+        console.error(`[META] Campaign publish failed: ${errorMsg}`);
+        return res.status(502).json({ error: `Meta API rejected the campaign: ${errorMsg}` });
       }
+      await storage.updateMetaAdCampaign(campaign.id, { metaCampaignId: fbData.id, status: "active" });
       const updated = await storage.getMetaAdCampaign(campaign.id);
       res.json({ published: true, campaign: updated });
     } catch (err: any) {
-      res.json({ published: false, message: err.message });
+      res.status(500).json({ error: `Campaign publish failed: ${err.message}` });
     }
   }));
 
@@ -6912,7 +6925,7 @@ Rules:
       }
       res.json({ synced: true, count: totalSynced });
     } catch (err: any) {
-      res.json({ synced: false, message: err.message });
+      res.status(500).json({ error: `Lead sync failed: ${err.message}` });
     }
   }));
 
@@ -7108,7 +7121,7 @@ Rules:
       }
       res.json({ synced: true, conversations: count });
     } catch (err: any) {
-      res.json({ synced: false, message: err.message });
+      res.status(500).json({ error: `Instagram sync failed: ${err.message}` });
     }
   }));
 
