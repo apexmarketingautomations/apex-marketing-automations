@@ -315,6 +315,14 @@ function validateEnvVars() {
   } catch (seedErr) {
     console.error("[STARTUP] Seed failed (non-fatal):", seedErr);
   }
+
+  try {
+    const { startCrashReportWorker } = await import("./crashReportWorker");
+    startCrashReportWorker();
+  } catch (workerErr) {
+    console.error("[STARTUP] Crash report worker failed (non-fatal):", workerErr);
+  }
+
   await setupAuth(app);
   registerAuthRoutes(app);
   await registerRoutes(httpServer, app);

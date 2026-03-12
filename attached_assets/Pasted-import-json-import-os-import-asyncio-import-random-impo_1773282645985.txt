@@ -1,0 +1,188 @@
+import json
+import os
+import asyncio
+import random
+import asyncpg
+from datetime import datetime
+from fake_useragent import UserAgent
+from playwright.async_api import async_playwright
+from playwright_stealth import stealth_async
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException
+
+# ==========================================
+# 1. THE COMPLIANCE & REDACTION ENGINE
+# ==========================================
+class RedactionService:
+    @staticmethod
+    def process_for_compliance(scraped_data, user_role):
+        if not scraped_data or 'incident_date' not in scraped_data:
+            return scraped_data
+            
+        incident_date = datetime.strptime(scraped_data['incident_date'], '%Y-%m-%d')
+        days_old = (datetime.now() - incident_date).days
+        
+        # Power users get the full file. The general public gets redacted PII if under 60 days.
+        power_roles = ['attorney', 'insurer', 'law_enforcement', 'fleet_manager']
+        if days_old < 60 and user_role.lower() not in power_roles:
+            return RedactionService._apply_heavy_redaction(scraped_data)
+        
+        return scraped_data
+
+    @staticmethod 
+    def _apply_heavy_redaction(data):
+        if data.get('vin'):
+            data['vin'] = "*" * (len(data['vin']) - 4) + data['vin'][-4:]
+        if data.get('driver_name'):
+            parts = data['driver_name'].split()
+            data['driver_name'] = " ".join([n[0] + "*" * (len(n)-1) for n in parts])
+        data['is_redacted'] = True 
+        return data
+
+# ==========================================
+# 2. THE STEALTH SCRAPER
+# ==========================================
+class FLHSMVProductionScraper:
+    def __init__(self, proxy_pool):
+        self.proxy_pool = proxy_pool
+        self.ua = UserAgent(browsers=['chrome', 'edge'], platforms='desktop')
+
+    async def fetch_and_validate(self, report_number):
+        async with async_playwright() as p:
+            proxy = {"server": random.choice(self.proxy_pool)} if self.proxy_pool else None
+            random_ua = self.ua.random
+            
+            browser = await p.chromium.launch(headless=True, proxy=proxy)
+            context = await browser.new_context(
+                user_agent=random_ua,
+                viewport={'width': 1920, 'height': 1080}
+            )
+            
+            page = await context.new_page()
+            await stealth_async(page)
+
+            try:
+                # Add human delay
+                await asyncio.sleep(random.uniform(1, 3))
+                url = f"https://flhsmv.fdot.gov/reports/{report_number}"
+                response = await page.goto(url, wait_until="networkidle", timeout=60000)
+
+                if response.status == 403:
+                    raise Exception("403 Forbidden - Proxy or UA blocked")
+                if response.status == 404:
+                    raise Exception("Report not found on state portal")
+
+                # --- EXTRACT DATA HERE ---
+                # Example extraction (Replace with actual FLHSMV HTML selectors)
+                content = await page.content()
+                
+                # Mock return for the final architecture
+                return {
+                    "report_id": report_number,
+                    "incident_date": "2024-02-15", 
+                    "vin": "1HGCM82633A000000",
+                    "driver_name": "JOHN DOE PUBLIC",
+                    "raw_html_length": len(content)
+                }
+
+            finally:
+                await browser.close()
+
+# ==========================================
+# 3. THE PERSISTENT TASK MANAGER
+# ==========================================
+class PersistentManager:
+    def __init__(self, scraper, db_pool, max_concurrent=2):
+        self.scraper = scraper
+        self.db = db_pool
+        self.semaphore = asyncio.BoundedSemaphore(max_concurrent)
+
+    async def worker(self):
+        while True:
+            async with self.db.acquire() as conn:
+                task = await conn.fetchrow(
+                    "SELECT report_number FROM crash_reports WHERE status = 'PENDING' LIMIT 1"
+                )
+            
+            if task:
+                async with self.semaphore:
+                    await self._process_task(task['report_number'])
+            else:
+                await asyncio.sleep(5) # Rest when queue is empty
+
+    async def _process_task(self, report_num):
+        async with self.db.acquire() as conn:
+            try:
+                await conn.execute("UPDATE crash_reports SET status = 'PROCESSING', updated_at = NOW() WHERE report_number = $1", report_num)
+                
+                result = await self.scraper.fetch_and_validate(report_num)
+                
+                await conn.execute(
+                    "UPDATE crash_reports SET data = $1, status = 'COMPLETED', updated_at = NOW() WHERE report_number = $2",
+                    json.dumps(result), report_num
+                )
+            except Exception as e:
+                await conn.execute(
+                    "UPDATE crash_reports SET status = 'FAILED', error_log = $1, updated_at = NOW() WHERE report_number = $2",
+                    str(e), report_num
+                )
+
+# ==========================================
+# 4. FASTAPI ROUTING & LIFESPAN
+# ==========================================
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 1. Initialize DB Connection
+    db_url = os.environ.get('DATABASE_URL')
+    if not db_url:
+        raise RuntimeError("DATABASE_URL secret is missing!")
+    app.state.db_pool = await asyncpg.create_pool(db_url)
+    
+    # 2. Initialize Scraper with Proxies
+    proxy_list = json.loads(os.environ.get('PROXY_LIST', '[]'))
+    scraper = FLHSMVProductionScraper(proxy_list)
+    
+    # 3. Start Manager & Worker
+    app.state.manager = PersistentManager(scraper, app.state.db_pool, max_concurrent=2)
+    worker_task = asyncio.create_task(app.state.manager.worker())
+    
+    yield
+    
+    # 4. Graceful Shutdown
+    worker_task.cancel()
+    await app.state.db_pool.close()
+
+app = FastAPI(lifespan=lifespan)
+
+@app.post("/request-report/{report_number}")
+async def trigger_scrape(report_number: str, occupation: str, reason: str):
+    async with app.state.db_pool.acquire() as conn:
+        existing = await conn.fetchrow(
+            "SELECT status FROM crash_reports WHERE report_number = $1", report_number
+        )
+        
+        if not existing:
+            await conn.execute(
+                "INSERT INTO crash_reports (report_number, status, requester_role, reason) VALUES ($1, 'PENDING', $2, $3)",
+                report_number, occupation.lower(), reason
+            )
+            return {"status": "queued", "report_number": report_number}
+        
+        return {"status": existing['status'], "report_number": report_number, "message": "Report already exists or is pending."}
+
+@app.get("/report-status/{report_number}")
+async def check_status(report_number: str, user_role: str = "public"):
+    async with app.state.db_pool.acquire() as conn:
+        report = await conn.fetchrow(
+            "SELECT status, data FROM crash_reports WHERE report_number = $1", report_number
+        )
+        
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+        
+    if report['status'] == 'COMPLETED':
+        raw_data = json.loads(report['data'])
+        safe_data = RedactionService.process_for_compliance(raw_data, user_role)
+        return {"status": "COMPLETED", "data": safe_data}
+        
+    return {"status": report['status'], "message": "Processing in background..."}

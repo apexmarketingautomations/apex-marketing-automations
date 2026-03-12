@@ -915,3 +915,21 @@ export const digitalCards = pgTable("digital_cards", {
 export const insertDigitalCardSchema = createInsertSchema(digitalCards).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertDigitalCard = z.infer<typeof insertDigitalCardSchema>;
 export type DigitalCard = typeof digitalCards.$inferSelect;
+
+export const crashReports = pgTable("crash_reports", {
+  id: serial("id").primaryKey(),
+  reportNumber: text("report_number").unique().notNull(),
+  status: text("status").default("PENDING").notNull(),
+  requesterRole: text("requester_role"),
+  reason: text("reason"),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id),
+  data: json("data"),
+  errorLog: text("error_log"),
+  retryCount: integer("retry_count").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCrashReportSchema = createInsertSchema(crashReports).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertCrashReport = z.infer<typeof insertCrashReportSchema>;
+export type CrashReport = typeof crashReports.$inferSelect;

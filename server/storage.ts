@@ -50,13 +50,14 @@ import {
   dispatchSubscribers,
   type DispatchSubscriber, type InsertDispatchSubscriber,
   creditWallets, creditTransactions, sponsorships, sponsorshipClicks, platformProfitLedger,
-  funnelLeads,
+  funnelLeads, crashReports,
   type CreditWallet, type InsertCreditWallet,
   type CreditTransaction, type InsertCreditTransaction,
   type Sponsorship, type InsertSponsorship,
   type SponsorshipClick, type InsertSponsorshipClick,
   type PlatformProfit, type InsertPlatformProfit,
   type FunnelLead, type InsertFunnelLead,
+  type CrashReport, type InsertCrashReport,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -285,6 +286,13 @@ export interface IStorage {
   updateFunnelLead(id: number, data: Partial<InsertFunnelLead>): Promise<FunnelLead | undefined>;
   getAbandonedFunnelLeads(staleMinutes: number): Promise<FunnelLead[]>;
   getFunnelLeads(slug?: string): Promise<FunnelLead[]>;
+
+  createCrashReport(data: InsertCrashReport): Promise<CrashReport>;
+  getCrashReport(id: number): Promise<CrashReport | undefined>;
+  getCrashReportByNumber(reportNumber: string): Promise<CrashReport | undefined>;
+  updateCrashReport(id: number, data: Partial<InsertCrashReport>): Promise<CrashReport | undefined>;
+  getPendingCrashReports(limit?: number): Promise<CrashReport[]>;
+  getCrashReports(subAccountId?: number): Promise<CrashReport[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1205,6 +1213,42 @@ export class DatabaseStorage implements IStorage {
       return db.select().from(funnelLeads).where(eq(funnelLeads.slug, slug)).orderBy(desc(funnelLeads.createdAt));
     }
     return db.select().from(funnelLeads).orderBy(desc(funnelLeads.createdAt));
+  }
+
+  async createCrashReport(data: InsertCrashReport) {
+    const [row] = await db.insert(crashReports).values(data).returning();
+    return row;
+  }
+
+  async getCrashReport(id: number) {
+    const [row] = await db.select().from(crashReports).where(eq(crashReports.id, id));
+    return row;
+  }
+
+  async getCrashReportByNumber(reportNumber: string) {
+    const [row] = await db.select().from(crashReports).where(eq(crashReports.reportNumber, reportNumber));
+    return row;
+  }
+
+  async updateCrashReport(id: number, data: Partial<InsertCrashReport>) {
+    const [row] = await db.update(crashReports).set({ ...data, updatedAt: new Date() }).where(eq(crashReports.id, id)).returning();
+    return row;
+  }
+
+  async getPendingCrashReports(limit = 10) {
+    return db.select().from(crashReports)
+      .where(eq(crashReports.status, "PENDING"))
+      .orderBy(crashReports.createdAt)
+      .limit(limit);
+  }
+
+  async getCrashReports(subAccountId?: number) {
+    if (subAccountId) {
+      return db.select().from(crashReports)
+        .where(eq(crashReports.subAccountId, subAccountId))
+        .orderBy(desc(crashReports.createdAt));
+    }
+    return db.select().from(crashReports).orderBy(desc(crashReports.createdAt));
   }
 }
 

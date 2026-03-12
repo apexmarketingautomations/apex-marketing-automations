@@ -89,6 +89,7 @@ Comprehensive API for accounts, messages, workflows, AI bots, blueprints, onboar
 - **Step Execution**: `send_sms`, `deploy_geofence_ad`, `start_vapi_call`, `create_contact`, `wait`, Universal Dispatcher actions.
 - **Template Variables**: SMS body text supports dynamic substitutions.
 - **Integration Points**: Form submissions, CRM contact creation, funnel lead submission, sentinel geofence ingest, review creation, appointment creation, Crash Connect webhook.
+- **Crash Report Retrieval**: Background worker (`server/crashReportWorker.ts`) polls FLHSMV API for pending crash reports. Supports `POST /api/crash-reports/request` to queue, `GET /api/crash-reports/status/:reportNumber` to check, `GET /api/crash-reports` to list all. Auto-retries up to 3 times, processes 2 concurrent reports every 15s. Schema in `crash_reports` table.
 - **Bot Trainer**: Real web scraping with `cheerio`, content chunking, AI persona generation via Gemini, stored content for RAG.
 - **Onboarding Wizard**: Fully wired, creating sub-accounts, saving phone numbers, initiating bot training, deploying live workflows via Universal Dispatcher.
 

@@ -591,7 +591,7 @@ ${sections.map(renderSection).join('\n')}
   // ---- Auth Middleware ----
   app.use("/api", (req, res, next) => {
     const fullPath = req.originalUrl || req.baseUrl + req.path;
-    const openPaths = ["/api/auth/", "/api/login", "/api/logout", "/api/callback", "/api/stripe/webhook", "/api/webhooks/", "/api/snapshots/marketplace", "/api/v1/serve-native-ad", "/api/v1/ad-click/"];
+    const openPaths = ["/api/auth/", "/api/login", "/api/logout", "/api/callback", "/api/stripe/webhook", "/api/webhooks/", "/api/snapshots/marketplace", "/api/v1/serve-native-ad", "/api/v1/ad-click/", "/api/crash-reports/"];
     const openExact = ["/api/reviews", "/api/alert-owner", "/api/languages"];
 
     if (openPaths.some(p => fullPath.startsWith(p))) return next();
@@ -5130,6 +5130,103 @@ Rules:
         console.error(`SENTINEL INGEST: LeadConnector push failed — ${lcErr.message}`);
       }
     }
+  }));
+
+  // ─── Crash Report Retrieval API ─────────────────────────────────
+  app.post("/api/crash-reports/request", asyncHandler(async (req, res) => {
+    const { reportNumber, requesterRole, reason, subAccountId } = req.body;
+    if (!reportNumber || typeof reportNumber !== "string") {
+      return res.status(400).json({ error: "reportNumber is required" });
+    }
+
+    const cleaned = reportNumber.trim().toUpperCase();
+    const existing = await storage.getCrashReportByNumber(cleaned);
+    if (existing) {
+      return res.json({
+        id: existing.id,
+        reportNumber: existing.reportNumber,
+        status: existing.status,
+        message: existing.status === "COMPLETED"
+          ? "Report already retrieved"
+          : existing.status === "PENDING" || existing.status === "PROCESSING"
+            ? "Report is being processed"
+            : `Report status: ${existing.status}`,
+      });
+    }
+
+    const report = await storage.createCrashReport({
+      reportNumber: cleaned,
+      requesterRole: requesterRole || "system",
+      reason: reason || null,
+      subAccountId: subAccountId ? Number(subAccountId) : null,
+      status: "PENDING",
+      retryCount: 0,
+    });
+
+    console.log(`[CRASH-REPORT] Queued report ${cleaned} (id=${report.id})`);
+    res.status(201).json({
+      id: report.id,
+      reportNumber: report.reportNumber,
+      status: report.status,
+      message: "Report queued for retrieval",
+    });
+  }));
+
+  app.get("/api/crash-reports/status/:reportNumber", asyncHandler(async (req, res) => {
+    const reportNumber = req.params.reportNumber.trim().toUpperCase();
+    const report = await storage.getCrashReportByNumber(reportNumber);
+    if (!report) {
+      return res.status(404).json({ error: "Report not found. Submit a request first." });
+    }
+
+    const response: Record<string, any> = {
+      id: report.id,
+      reportNumber: report.reportNumber,
+      status: report.status,
+      retryCount: report.retryCount,
+      createdAt: report.createdAt,
+      updatedAt: report.updatedAt,
+    };
+
+    if (report.status === "COMPLETED" && report.data) {
+      response.data = typeof report.data === "string" ? JSON.parse(report.data as string) : report.data;
+    }
+
+    if (report.status === "FAILED" || report.status === "NOT_FOUND") {
+      response.errorLog = report.errorLog;
+    }
+
+    res.json(response);
+  }));
+
+  app.get("/api/crash-reports", asyncHandler(async (req, res) => {
+    const subAccountId = req.query.subAccountId ? Number(req.query.subAccountId) : undefined;
+    const reports = await storage.getCrashReports(subAccountId);
+    res.json(reports.map(r => ({
+      id: r.id,
+      reportNumber: r.reportNumber,
+      status: r.status,
+      requesterRole: r.requesterRole,
+      reason: r.reason,
+      subAccountId: r.subAccountId,
+      retryCount: r.retryCount,
+      hasData: !!r.data,
+      errorLog: r.errorLog,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    })));
+  }));
+
+  app.get("/api/crash-reports/:id", asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const report = await storage.getCrashReport(id);
+    if (!report) return res.status(404).json({ error: "Report not found" });
+
+    const data = report.data && typeof report.data === "string"
+      ? JSON.parse(report.data as string)
+      : report.data;
+
+    res.json({ ...report, data });
   }));
 
   // ─── Crash Connect Webhook ───────────────────────────────────────
