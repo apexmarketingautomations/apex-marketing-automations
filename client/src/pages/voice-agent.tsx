@@ -131,7 +131,10 @@ function VoiceAgentInner() {
 
     fetch("/api/phone-numbers")
       .then((r) => r.json())
-      .then((data) => { if (Array.isArray(data)) setOwnedNumbers(data); })
+      .then((data) => {
+        if (Array.isArray(data)) setOwnedNumbers(data);
+        else if (data?.numbers && Array.isArray(data.numbers)) setOwnedNumbers(data.numbers);
+      })
       .catch(() => {});
   }, []);
 

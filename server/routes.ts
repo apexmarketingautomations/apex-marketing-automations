@@ -2545,35 +2545,45 @@ Rules:
     }
 
     let vapiNumbers: any[] = [];
-    if (vapiConfig.isConfigured) {
+    let vapiWarning: string | undefined;
+    if (!vapiConfig.isConfigured) {
+      vapiWarning = "Vapi is not configured. Add VAPI_PRIVATE_KEY to see voice agent status for phone numbers.";
+    } else {
       try {
         const vapiRes = await fetch("https://api.vapi.ai/phone-number", {
           headers: vapiConfig.privateHeaders(),
         });
         if (vapiRes.ok) {
           vapiNumbers = await vapiRes.json();
+        } else {
+          vapiWarning = `Vapi API returned ${vapiRes.status}. Voice agent status may be incomplete.`;
+          console.warn(`[PHONE-NUMBERS] Vapi fetch failed: ${vapiRes.status}`);
         }
-      } catch {}
+      } catch (vapiErr: any) {
+        vapiWarning = `Vapi connection failed: ${vapiErr.message}. Voice agent status may be incomplete.`;
+        console.warn(`[PHONE-NUMBERS] Vapi fetch error: ${vapiErr.message}`);
+      }
     }
 
     const normalizeNum = (num: string) => num?.replace(/[^\d+]/g, "") || "";
-    res.json(
-      numbers.map((n) => {
-        const twilioNorm = normalizeNum(n.phoneNumber);
-        const vapiMatch = vapiNumbers.find((v: any) =>
-          normalizeNum(v.number) === twilioNorm || normalizeNum(v.phoneNumber) === twilioNorm
-        );
-        return {
-          sid: n.sid,
-          phoneNumber: n.phoneNumber,
-          friendlyName: n.friendlyName,
-          smsUrl: n.smsUrl,
-          voiceUrl: n.voiceUrl,
-          dateCreated: n.dateCreated,
-          vapiPhoneId: vapiMatch?.id || null,
-        };
-      })
-    );
+    const phoneList = numbers.map((n) => {
+      const twilioNorm = normalizeNum(n.phoneNumber);
+      const vapiMatch = vapiNumbers.find((v: any) =>
+        normalizeNum(v.number) === twilioNorm || normalizeNum(v.phoneNumber) === twilioNorm
+      );
+      return {
+        sid: n.sid,
+        phoneNumber: n.phoneNumber,
+        friendlyName: n.friendlyName,
+        smsUrl: n.smsUrl,
+        voiceUrl: n.voiceUrl,
+        dateCreated: n.dateCreated,
+        vapiPhoneId: vapiMatch?.id || null,
+      };
+    });
+    const response: any = { numbers: phoneList };
+    if (vapiWarning) response.vapiWarning = vapiWarning;
+    res.json(response);
   }));
 
   // ---- Unified Webhook (Twilio inbound SMS/WhatsApp/Messenger -> AI auto-reply) ----
@@ -2670,7 +2680,10 @@ Rules:
             const senderId = event.sender?.id;
             const message = event.message?.text;
 
-            if (!senderId || !message) continue;
+            if (!senderId || !message) {
+              console.warn(`[META DM] Skipping event — missing sender (${senderId}) or message text`);
+              continue;
+            }
 
             const channel = body.object === "instagram" ? "instagram" : "facebook";
             console.log(`[META DM] ${channel} from ${senderId}: ${message.substring(0, 100)}`);
@@ -2678,6 +2691,10 @@ Rules:
             const accessToken = process.env.META_ACCESS_TOKEN;
             const pageId = process.env.META_PAGE_ID;
             const appSecret = process.env.META_APP_SECRET;
+
+            if (!accessToken || !pageId) {
+              console.error(`[META DM] Cannot process ${channel} message from ${senderId} — META_ACCESS_TOKEN or META_PAGE_ID not configured. Raw event: ${JSON.stringify(event).substring(0, 500)}`);
+            }
 
             let appsecretProof = "";
             if (accessToken && appSecret) {
@@ -3709,10 +3726,10 @@ Rules:
       if (rdapRes.status === 404) {
         return res.json({ available: true, domain: normalizedDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale });
       }
-      return res.json({ available: true, domain: normalizedDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, note: "Could not verify availability — RDAP returned unexpected status" });
+      return res.status(502).json({ available: null, domain: normalizedDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, error: "Could not verify availability — RDAP returned unexpected status. Try again or check manually." });
     } catch (rdapErr: any) {
       console.warn("[DOMAIN] RDAP lookup failed:", rdapErr.message);
-      return res.json({ available: true, domain: normalizedDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, note: "Could not verify availability — RDAP lookup timed out or failed" });
+      return res.status(502).json({ available: null, domain: normalizedDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, error: "Could not verify availability — RDAP lookup timed out or failed. Try again later." });
     }
   }));
 
@@ -3736,24 +3753,15 @@ Rules:
           headers: { "Accept": "application/rdap+json" },
           signal: AbortSignal.timeout(5000),
         });
-        const isTaken = rdapRes.ok;
-        return {
-          available: !isTaken,
-          domain: fullDomain,
-          tld,
-          costPrice: pricing.cost,
-          salePrice: pricing.sale,
-          reason: isTaken ? "taken" : undefined,
-        };
+        if (rdapRes.ok) {
+          return { available: false, domain: fullDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, reason: "taken" };
+        }
+        if (rdapRes.status === 404) {
+          return { available: true, domain: fullDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale };
+        }
+        return { available: null, domain: fullDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, error: "Could not verify — unexpected RDAP status" };
       } catch {
-        return {
-          available: true,
-          domain: fullDomain,
-          tld,
-          costPrice: pricing.cost,
-          salePrice: pricing.sale,
-          note: "Could not verify — RDAP lookup failed",
-        };
+        return { available: null, domain: fullDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, error: "Could not verify — RDAP lookup failed" };
       }
     });
 
@@ -8537,6 +8545,12 @@ Return ONLY valid JSON.` },
           signal: AbortSignal.timeout(5000),
         });
         if (!metaRes.ok) validationResult = { valid: false, error: "Invalid Meta Access Token." };
+      } else if (provider === "stripe" && config?.secretKey) {
+        const stripeRes = await fetch("https://api.stripe.com/v1/products?limit=1", {
+          headers: { "Authorization": `Bearer ${config.secretKey}` },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (!stripeRes.ok) validationResult = { valid: false, error: "Invalid Stripe Secret Key. Check your API key." };
       } else if (provider === "google-maps" && config?.apiKey) {
         const gmRes = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=test&key=${config.apiKey}`, {
           signal: AbortSignal.timeout(5000),

@@ -2953,6 +2953,7 @@ export default function SiteBuilder() {
                                     <p><span className="text-slate-300">CNAME:</span> Point <code className="bg-black/30 px-1 rounded">www.{site.customDomain}</code> to <code className="bg-black/30 px-1 rounded">cname.apex-sites.com</code></p>
                                   </div>
                                   <p className="text-slate-300">Changes may take up to 48 hours to propagate.</p>
+                                  <p className="text-amber-300/80">SSL: After DNS is configured, set up SSL through your hosting provider (e.g., Cloudflare, Let's Encrypt). Automatic SSL is not available yet.</p>
                                 </div>
                               )}
                             </div>

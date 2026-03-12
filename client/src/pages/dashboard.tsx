@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useActiveSubAccountId } from "@/components/account-required";
 import { Card, CardContent } from "@/components/ui/card";
-import { MessageSquare, Users, Kanban, CalendarDays, Mail, Megaphone, Target, Instagram, DollarSign, TrendingUp, Bell, Clock, BarChart3, PieChart, Zap, Eye, Rocket, Shield, Info } from "lucide-react";
+import { MessageSquare, Users, Kanban, CalendarDays, Mail, Megaphone, Target, Instagram, DollarSign, TrendingUp, Bell, Clock, BarChart3, PieChart, Zap, Eye, Rocket, Shield, Info, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { Link } from "wouter";
 import { TutorialCenter } from "@/components/tutorial-center";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
@@ -67,6 +67,17 @@ export default function DashboardPage() {
       const res = await fetch(`/api/analytics/${subAccountId}`);
       return res.json();
     },
+    enabled: !!subAccountId,
+  });
+
+  const { data: serviceStatus } = useQuery<Record<string, { status: string; label: string }>>({
+    queryKey: ["/api/service-status"],
+    queryFn: async () => {
+      const res = await fetch("/api/service-status");
+      if (!res.ok) return {};
+      return res.json();
+    },
+    refetchInterval: 60000,
     enabled: !!subAccountId,
   });
 
@@ -139,6 +150,29 @@ export default function DashboardPage() {
       </div>
 
       {isAdmin && <SystemPulse />}
+
+      {serviceStatus && Object.keys(serviceStatus).length > 0 && (
+        <Card className="bg-black/40 border-white/10" data-testid="card-service-status">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+              <Zap size={16} className="text-cyan-400" />
+              Service Status
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
+              {Object.entries(serviceStatus).map(([key, svc]) => (
+                <div key={key} className="flex items-center gap-2 p-2 rounded-lg bg-white/5" data-testid={`status-service-${key}`}>
+                  {svc.status === "configured" ? (
+                    <CheckCircle2 size={14} className="text-green-400 shrink-0" />
+                  ) : (
+                    <XCircle size={14} className="text-red-400 shrink-0" />
+                  )}
+                  <span className="text-xs text-slate-300 truncate">{svc.label}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <TutorialCenter />
 
