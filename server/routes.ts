@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains, insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, insertMetaAdCampaignSchema, insertMetaLeadSchema, insertInstagramConversationSchema, insertInstagramMessageSchema, insertNotificationSchema, contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings, metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications, messages, hasFeature, PLAN_TIERS, subAccounts, liveAutomations, insertLiveAutomationSchema, insertSponsorshipSchema, insertCreditWalletSchema, creditTransactions, platformProfitLedger, sponsorships, sponsorshipClicks, digitalCards, webhookEvents, sentinelIncidents, dmKeywordAutomations, propertyLeads } from "@shared/schema";
+import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains, insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, insertMetaAdCampaignSchema, insertMetaLeadSchema, insertInstagramConversationSchema, insertInstagramMessageSchema, insertNotificationSchema, contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings, metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications, messages, hasFeature, PLAN_TIERS, subAccounts, liveAutomations, insertLiveAutomationSchema, insertSponsorshipSchema, insertCreditWalletSchema, creditTransactions, platformProfitLedger, sponsorships, sponsorshipClicks, digitalCards, webhookEvents, sentinelIncidents, insertSentinelIncidentSchema, dmKeywordAutomations, propertyLeads } from "@shared/schema";
 import { sql, eq, and } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -665,7 +665,8 @@ ${sections.map(renderSection).join('\n')}
 
   app.get("/api/config/google-api-key", asyncHandler(async (req, res) => {
     const key = process.env.GOOGLE_API_KEY || "";
-    res.json({ apiKey: key ? key.substring(0, 4) + "..." : "", hasKey: !!key });
+    if (!key) return res.json({ apiKey: "", hasKey: false });
+    res.json({ apiKey: key, hasKey: true });
   }));
 
   app.get("/api/config/maps-key", asyncHandler(async (req, res) => {
@@ -4551,6 +4552,19 @@ Rules:
     });
 
     res.json({ source, found: created.length, incidents: created });
+  }));
+
+  app.post("/api/sentinel/incidents", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    const parsed = insertSentinelIncidentSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const userAccounts = await storage.getSubAccounts(user.id);
+    if (!userAccounts.some(a => a.id === parsed.data.subAccountId)) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+    const incident = await storage.createSentinelIncident(parsed.data);
+    res.status(201).json(incident);
   }));
 
   app.post("/api/sentinel/incidents/:id/deploy-geofence", asyncHandler(async (req, res) => {

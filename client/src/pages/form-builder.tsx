@@ -19,11 +19,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useAccount } from "@/hooks/use-account";
+import { AddressAutocomplete } from "@/components/address-autocomplete";
 
 interface FormField {
   id: string;
   label: string;
-  type: "text" | "email" | "phone" | "textarea" | "select" | "checkbox" | "date";
+  type: "text" | "email" | "phone" | "textarea" | "select" | "checkbox" | "date" | "address";
   required: boolean;
   placeholder: string;
   helpText?: string;
@@ -59,6 +60,7 @@ const FIELD_TYPES = [
   { value: "select", label: "Dropdown" },
   { value: "checkbox", label: "Checkbox" },
   { value: "date", label: "Date" },
+  { value: "address", label: "Address" },
 ];
 
 export default function FormBuilder() {
@@ -150,6 +152,14 @@ export default function FormBuilder() {
       <input type="checkbox" name="${f.id}"${req} style="margin-top:4px;" />
       <label style="color:#e2e8f0;font-size:14px;">${f.label}</label>${help}
     </div>`;
+          case "address":
+            return `    <div style="margin-bottom:16px;">
+      <label style="display:block;margin-bottom:4px;font-weight:600;color:#e2e8f0;">${f.label}${f.required ? ' *' : ''}</label>
+      <input type="text" name="${f.id}" id="apex-address-${f.id}" placeholder="${f.placeholder || 'Start typing an address...'}"${req} autocomplete="street-address" style="width:100%;padding:10px;border:1px solid #475569;border-radius:8px;background:#1e293b;color:#f1f5f9;font-size:14px;" />
+      <input type="hidden" name="${f.id}_city" id="apex-city-${f.id}" />
+      <input type="hidden" name="${f.id}_state" id="apex-state-${f.id}" />
+      <input type="hidden" name="${f.id}_zip" id="apex-zip-${f.id}" />${help}
+    </div>`;
           default:
             const inputType = f.type === "phone" ? "tel" : f.type;
             return `    <div style="margin-bottom:16px;">
@@ -160,6 +170,7 @@ export default function FormBuilder() {
       })
       .join("\n");
 
+    const addressFields = fields.filter(f => f.type === "address");
     const baseUrl = window.location.origin;
     return `<form id="apex-lead-form" style="max-width:480px;margin:0 auto;padding:32px;background:#0f172a;border-radius:16px;border:1px solid #334155;font-family:system-ui,-apple-system,sans-serif;">
   <h2 style="color:#f1f5f9;font-size:24px;font-weight:700;margin-bottom:8px;">Contact Us</h2>
@@ -200,7 +211,37 @@ ${formHtml}
       alert('Something went wrong. Please try again.');
     });
   });
-})();
+${addressFields.length > 0 ? `
+  function initApexAutocomplete() {
+    if (!window.google || !window.google.maps || !window.google.maps.places) return;
+${addressFields.map(f => `    var input_${f.id} = document.getElementById('apex-address-${f.id}');
+    if (input_${f.id}) {
+      var ac_${f.id} = new google.maps.places.Autocomplete(input_${f.id}, { componentRestrictions: { country: 'us' }, types: ['address'], fields: ['address_components','formatted_address'] });
+      ac_${f.id}.addListener('place_changed', function() {
+        var place = ac_${f.id}.getPlace();
+        if (!place.address_components) return;
+        var city='',state='',zip='';
+        place.address_components.forEach(function(c){
+          if(c.types[0]==='locality')city=c.long_name;
+          if(c.types[0]==='administrative_area_level_1')state=c.short_name;
+          if(c.types[0]==='postal_code')zip=c.long_name;
+        });
+        document.getElementById('apex-city-${f.id}').value=city;
+        document.getElementById('apex-state-${f.id}').value=state;
+        document.getElementById('apex-zip-${f.id}').value=zip;
+      });
+    }`).join('\n')}
+  }
+  fetch('${baseUrl}/api/config/google-api-key').then(function(r){return r.json()}).then(function(d){
+    if(d.apiKey){
+      var s=document.createElement('script');
+      s.src='https://maps.googleapis.com/maps/api/js?key='+d.apiKey+'&libraries=places&callback=__apexPlacesReady';
+      s.async=true;
+      window.__apexPlacesReady=initApexAutocomplete;
+      document.head.appendChild(s);
+    }
+  }).catch(function(){});
+` : ''}})();
 </script>`;
 
   };
@@ -602,6 +643,13 @@ ${formHtml}
                                 <SelectValue placeholder={field.placeholder || "Select..."} />
                               </SelectTrigger>
                             </Select>
+                          ) : field.type === "address" ? (
+                            <AddressAutocomplete
+                              onAddressSelect={() => {}}
+                              placeholder={field.placeholder || "Start typing an address..."}
+                              className="bg-slate-800 border-slate-700 text-white text-sm"
+                              data-testid={`preview-address-${field.id}`}
+                            />
                           ) : (
                             <Input
                               type={field.type === "phone" ? "tel" : field.type}

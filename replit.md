@@ -58,6 +58,7 @@ Comprehensive API for accounts, messages, workflows, AI bots, blueprints, onboar
 - **Sentinel Geofence Ingest**: MAID-to-CRM bridge accepting geofence data, enriching contacts via People Data Labs, creating CRM contacts, logging incidents, and optionally pushing to LeadConnector V2 API.
 - **Draggable UI**: Draggable tutorial overlays and chat widgets with `use-draggable.ts` hook.
 - **Sales Chatbot (Aria)**: AI-powered sales assistant on public pages, niche-aware context for 17 industries.
+- **Google Places Address Autocomplete**: Reusable `AddressAutocomplete` component (`client/src/components/address-autocomplete.tsx`) wrapping Google Places API, restricted to US addresses. Used in pipeline contact forms, sentinel location filtering/config, property radar lead details/config, and form builder. Google Maps script loaded dynamically via `/api/config/maps-key` with `libraries=places`. Contacts schema includes address/city/state/zip fields.
 - **Crash Connect Webhook**: HMAC-SHA256 authenticated webhook for Crash Connect events, handles `crash.detected`, `lead.created`, `lead.enriched` to create CRM contacts, log sentinel incidents, and trigger async automations (SMS alerts, AI-generated follow-ups).
 - **External Sentinel Portal**: Standalone, public Sentinel page for external partners with token-based authentication.
 - **Multi-Page Site Builder**: Upgraded site builder supporting multiple pages with navigation, presets, and backward compatibility for old `siteData` format.

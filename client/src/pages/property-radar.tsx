@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import type { SubAccount, PropertyLead, WholesalerConfig } from "@shared/schema";
+import { AddressAutocomplete } from "@/components/address-autocomplete";
 
 const PRIORITY_COLORS: Record<string, { bg: string; text: string; border: string; label: string; glow: string }> = {
   critical: { bg: "bg-red-500/20", text: "text-red-400", border: "border-red-500/30", label: "HOT LEAD", glow: "shadow-red-500/20" },
@@ -351,6 +352,17 @@ export default function PropertyRadar() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/property-radar/leads"] });
       toast({ title: "Ads Deployed", description: data.message });
+    },
+  });
+
+  const updateLeadAddressMutation = useMutation({
+    mutationFn: async ({ id, ...data }: { id: number; address: string; city: string; state: string; zip: string }) => {
+      const res = await apiRequest("PATCH", `/api/property-radar/leads/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/property-radar/leads"] });
+      toast({ title: "Address Updated" });
     },
   });
 
@@ -698,6 +710,26 @@ export default function PropertyRadar() {
                 </DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
+                <div>
+                  <p className="text-xs text-slate-500 mb-1">Property Address</p>
+                  <AddressAutocomplete
+                    value={`${selectedLead.address || ""}, ${selectedLead.city || ""}, ${selectedLead.state || ""} ${selectedLead.zip || ""}`}
+                    onAddressSelect={(data) => {
+                      if (data.address) {
+                        updateLeadAddressMutation.mutate({
+                          id: selectedLead.id,
+                          address: data.address,
+                          city: data.city,
+                          state: data.state,
+                          zip: data.zip,
+                        });
+                      }
+                    }}
+                    placeholder="Edit property address..."
+                    className="bg-slate-800 border-slate-700 text-white text-sm"
+                    data-testid="input-lead-address"
+                  />
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-slate-800/50 rounded-lg p-3">
                     <p className="text-xs text-slate-500">Owner</p>
@@ -799,11 +831,19 @@ export default function PropertyRadar() {
             </div>
             <div>
               <label className="text-xs text-slate-400 mb-1 block">Target Cities</label>
-              <Input
+              <AddressAutocomplete
                 value={configForm.targetCities}
-                onChange={(e) => setConfigForm(f => ({ ...f, targetCities: e.target.value }))}
+                onAddressSelect={(data) => {
+                  const current = configForm.targetCities ? configForm.targetCities.split(",").map(s => s.trim()).filter(Boolean) : [];
+                  if (data.city && !current.includes(data.city)) {
+                    current.push(data.city);
+                  }
+                  setConfigForm(f => ({ ...f, targetCities: current.join(", ") }));
+                }}
+                onChange={(val) => setConfigForm(f => ({ ...f, targetCities: val }))}
                 placeholder="Las Vegas, Henderson, North Las Vegas"
                 className="bg-slate-800 border-slate-700"
+                types={["(cities)"]}
                 data-testid="input-target-cities"
               />
             </div>

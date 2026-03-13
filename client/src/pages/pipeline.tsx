@@ -11,6 +11,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { Plus, Trash2, GripVertical, Users, Loader2, Layers, Info } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { PIPELINE_STEPS } from "@/components/tutorial-steps";
+import { AddressAutocomplete, type AddressData } from "@/components/address-autocomplete";
 
 
 interface PipelineStage {
@@ -33,13 +34,18 @@ interface Deal {
 interface Contact {
   id: number;
   subAccountId: number;
-  name: string;
+  firstName: string;
+  lastName?: string | null;
   email: string;
   phone?: string | null;
   company?: string | null;
   source?: string | null;
   tags?: string[] | null;
   notes?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
 }
 
 const DEFAULT_STAGES = [
@@ -69,6 +75,11 @@ export default function PipelinePage() {
   const [editTitle, setEditTitle] = useState("");
   const [editValue, setEditValue] = useState("");
   const [draggedDealId, setDraggedDealId] = useState<number | null>(null);
+  const [addContactOpen, setAddContactOpen] = useState(false);
+  const [contactForm, setContactForm] = useState({ firstName: "", lastName: "", email: "", phone: "", company: "", address: "", city: "", state: "", zip: "" });
+  const [editContactOpen, setEditContactOpen] = useState(false);
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const [editContactForm, setEditContactForm] = useState({ firstName: "", lastName: "", email: "", phone: "", company: "", address: "", city: "", state: "", zip: "" });
 
   const { data: stages = [], isLoading: stagesLoading } = useQuery<PipelineStage[]>({
     queryKey: ["/api/pipeline/stages", subAccountId],
@@ -148,6 +159,43 @@ export default function PipelinePage() {
     },
   });
 
+  const createContactMutation = useMutation({
+    mutationFn: async (data: typeof contactForm) => {
+      const res = await apiRequest("POST", "/api/contacts", {
+        subAccountId,
+        firstName: data.firstName,
+        lastName: data.lastName || undefined,
+        email: data.email || undefined,
+        phone: data.phone || undefined,
+        company: data.company || undefined,
+        address: data.address || undefined,
+        city: data.city || undefined,
+        state: data.state || undefined,
+        zip: data.zip || undefined,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts", subAccountId] });
+      toast({ title: "Contact created" });
+      setContactForm({ firstName: "", lastName: "", email: "", phone: "", company: "", address: "", city: "", state: "", zip: "" });
+      setAddContactOpen(false);
+    },
+  });
+
+  const updateContactMutation = useMutation({
+    mutationFn: async ({ id, ...data }: { id: number } & typeof editContactForm) => {
+      const res = await apiRequest("PATCH", `/api/contacts/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts", subAccountId] });
+      toast({ title: "Contact updated" });
+      setEditContactOpen(false);
+      setSelectedContact(null);
+    },
+  });
+
   const handleCreateDefaultStages = async () => {
     for (const stage of DEFAULT_STAGES) {
       await createStageMutation.mutateAsync(stage);
@@ -223,7 +271,7 @@ export default function PipelinePage() {
   const getContactName = (contactId?: number | null) => {
     if (!contactId) return null;
     const contact = contacts.find((c) => c.id === contactId);
-    return contact?.name || null;
+    return contact ? [contact.firstName, contact.lastName].filter(Boolean).join(" ") || null : null;
   };
 
   const sortedStages = [...stages].sort((a, b) => a.position - b.position);
@@ -335,7 +383,7 @@ export default function PipelinePage() {
                       >
                         <option value="" className="bg-slate-900">No contact</option>
                         {contacts.map((c) => (
-                          <option key={c.id} value={c.id} className="bg-slate-900">{c.name}</option>
+                          <option key={c.id} value={c.id} className="bg-slate-900">{[c.firstName, c.lastName].filter(Boolean).join(" ")}</option>
                         ))}
                       </select>
                       <Button onClick={handleAddDeal} className="w-full bg-cyan-600 hover:bg-cyan-500" data-testid="button-submit-deal">
@@ -463,11 +511,14 @@ export default function PipelinePage() {
         ) : (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
             <Card className="bg-white/5 border-white/10" data-testid="contacts-table">
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-white text-lg flex items-center gap-2">
                   <Users size={18} className="text-indigo-400" />
                   Contacts ({contacts.length})
                 </CardTitle>
+                <Button onClick={() => setAddContactOpen(true)} className="bg-cyan-600 hover:bg-cyan-500 text-white" data-testid="button-add-contact">
+                  <Plus size={16} className="mr-1" /> Add Contact
+                </Button>
               </CardHeader>
               <CardContent>
                 {contacts.length === 0 ? (
@@ -483,6 +534,7 @@ export default function PipelinePage() {
                           <th className="text-left py-3 px-3 text-slate-400 font-medium">Name</th>
                           <th className="text-left py-3 px-3 text-slate-400 font-medium">Email</th>
                           <th className="text-left py-3 px-3 text-slate-400 font-medium">Phone</th>
+                          <th className="text-left py-3 px-3 text-slate-400 font-medium">Address</th>
                           <th className="text-left py-3 px-3 text-slate-400 font-medium">Source</th>
                           <th className="text-left py-3 px-3 text-slate-400 font-medium">Tags</th>
                         </tr>
@@ -492,13 +544,32 @@ export default function PipelinePage() {
                           const isCrashLead = contact.tags?.includes("Crash_Connect_Lead");
                           const isGeofence = contact.tags?.includes("Sentinel_Geofence");
                           return (
-                          <tr key={contact.id} className={`border-b border-white/5 hover:bg-white/[0.03] transition-colors ${isCrashLead ? "bg-red-500/5" : ""}`} data-testid={`contact-row-${contact.id}`}>
+                          <tr key={contact.id} className={`border-b border-white/5 hover:bg-white/[0.03] transition-colors cursor-pointer ${isCrashLead ? "bg-red-500/5" : ""}`} onClick={() => {
+                            setSelectedContact(contact);
+                            setEditContactForm({
+                              firstName: contact.firstName || "",
+                              lastName: contact.lastName || "",
+                              email: contact.email || "",
+                              phone: contact.phone || "",
+                              company: contact.company || "",
+                              address: contact.address || "",
+                              city: contact.city || "",
+                              state: contact.state || "",
+                              zip: contact.zip || "",
+                            });
+                            setEditContactOpen(true);
+                          }} data-testid={`contact-row-${contact.id}`}>
                             <td className="py-3 px-3 text-white font-medium" data-testid={`contact-name-${contact.id}`}>
-                              {contact.name}
+                              {[contact.firstName, contact.lastName].filter(Boolean).join(" ") || "—"}
                               {isCrashLead && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30 uppercase font-bold">Crash Lead</span>}
                             </td>
                             <td className="py-3 px-3 text-slate-200" data-testid={`contact-email-${contact.id}`}>{contact.email || "—"}</td>
                             <td className="py-3 px-3 text-slate-200" data-testid={`contact-phone-${contact.id}`}>{contact.phone || "—"}</td>
+                            <td className="py-3 px-3 text-slate-200" data-testid={`contact-address-${contact.id}`}>
+                              {contact.address ? (
+                                <span className="text-xs">{contact.address}{contact.city ? `, ${contact.city}` : ""}{contact.state ? `, ${contact.state}` : ""} {contact.zip || ""}</span>
+                              ) : "—"}
+                            </td>
                             <td className="py-3 px-3">
                               <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30" data-testid={`contact-source-${contact.id}`}>
                                 {contact.source || "—"}
@@ -558,6 +629,173 @@ export default function PipelinePage() {
                   <Trash2 size={16} />
                 </Button>
               </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={addContactOpen} onOpenChange={setAddContactOpen}>
+          <DialogContent className="bg-slate-900 border-white/10">
+            <DialogHeader>
+              <DialogTitle className="text-white">Add Contact</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-2">
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  placeholder="First name *"
+                  value={contactForm.firstName}
+                  onChange={(e) => setContactForm(f => ({ ...f, firstName: e.target.value }))}
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                  data-testid="input-contact-first-name"
+                />
+                <Input
+                  placeholder="Last name"
+                  value={contactForm.lastName}
+                  onChange={(e) => setContactForm(f => ({ ...f, lastName: e.target.value }))}
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                  data-testid="input-contact-last-name"
+                />
+              </div>
+              <Input
+                placeholder="Email"
+                type="email"
+                value={contactForm.email}
+                onChange={(e) => setContactForm(f => ({ ...f, email: e.target.value }))}
+                className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                data-testid="input-contact-email"
+              />
+              <Input
+                placeholder="Phone"
+                value={contactForm.phone}
+                onChange={(e) => setContactForm(f => ({ ...f, phone: e.target.value }))}
+                className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                data-testid="input-contact-phone"
+              />
+              <Input
+                placeholder="Company"
+                value={contactForm.company}
+                onChange={(e) => setContactForm(f => ({ ...f, company: e.target.value }))}
+                className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                data-testid="input-contact-company"
+              />
+              <AddressAutocomplete
+                value={contactForm.address}
+                onAddressSelect={(data) => setContactForm(f => ({ ...f, address: data.address, city: data.city, state: data.state, zip: data.zip }))}
+                onChange={(val) => setContactForm(f => ({ ...f, address: val }))}
+                placeholder="Address"
+                className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                data-testid="input-contact-address"
+              />
+              <div className="grid grid-cols-3 gap-3">
+                <Input
+                  placeholder="City"
+                  value={contactForm.city}
+                  onChange={(e) => setContactForm(f => ({ ...f, city: e.target.value }))}
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                  data-testid="input-contact-city"
+                />
+                <Input
+                  placeholder="State"
+                  value={contactForm.state}
+                  onChange={(e) => setContactForm(f => ({ ...f, state: e.target.value }))}
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                  data-testid="input-contact-state"
+                />
+                <Input
+                  placeholder="ZIP"
+                  value={contactForm.zip}
+                  onChange={(e) => setContactForm(f => ({ ...f, zip: e.target.value }))}
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                  data-testid="input-contact-zip"
+                />
+              </div>
+              <Button
+                onClick={() => { if (contactForm.firstName.trim()) createContactMutation.mutate(contactForm); }}
+                disabled={!contactForm.firstName.trim() || createContactMutation.isPending}
+                className="w-full bg-cyan-600 hover:bg-cyan-500"
+                data-testid="button-submit-contact"
+              >
+                {createContactMutation.isPending ? "Creating..." : "Create Contact"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={editContactOpen} onOpenChange={setEditContactOpen}>
+          <DialogContent className="bg-slate-900 border-white/10">
+            <DialogHeader>
+              <DialogTitle className="text-white">Edit Contact</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-2">
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  placeholder="First name"
+                  value={editContactForm.firstName}
+                  onChange={(e) => setEditContactForm(f => ({ ...f, firstName: e.target.value }))}
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                  data-testid="input-edit-contact-first-name"
+                />
+                <Input
+                  placeholder="Last name"
+                  value={editContactForm.lastName}
+                  onChange={(e) => setEditContactForm(f => ({ ...f, lastName: e.target.value }))}
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                  data-testid="input-edit-contact-last-name"
+                />
+              </div>
+              <Input
+                placeholder="Email"
+                type="email"
+                value={editContactForm.email}
+                onChange={(e) => setEditContactForm(f => ({ ...f, email: e.target.value }))}
+                className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                data-testid="input-edit-contact-email"
+              />
+              <Input
+                placeholder="Phone"
+                value={editContactForm.phone}
+                onChange={(e) => setEditContactForm(f => ({ ...f, phone: e.target.value }))}
+                className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                data-testid="input-edit-contact-phone"
+              />
+              <AddressAutocomplete
+                value={editContactForm.address}
+                onAddressSelect={(data) => setEditContactForm(f => ({ ...f, address: data.address, city: data.city, state: data.state, zip: data.zip }))}
+                onChange={(val) => setEditContactForm(f => ({ ...f, address: val }))}
+                placeholder="Address"
+                className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                data-testid="input-edit-contact-address"
+              />
+              <div className="grid grid-cols-3 gap-3">
+                <Input
+                  placeholder="City"
+                  value={editContactForm.city}
+                  onChange={(e) => setEditContactForm(f => ({ ...f, city: e.target.value }))}
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                  data-testid="input-edit-contact-city"
+                />
+                <Input
+                  placeholder="State"
+                  value={editContactForm.state}
+                  onChange={(e) => setEditContactForm(f => ({ ...f, state: e.target.value }))}
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                  data-testid="input-edit-contact-state"
+                />
+                <Input
+                  placeholder="ZIP"
+                  value={editContactForm.zip}
+                  onChange={(e) => setEditContactForm(f => ({ ...f, zip: e.target.value }))}
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                  data-testid="input-edit-contact-zip"
+                />
+              </div>
+              <Button
+                onClick={() => { if (selectedContact) updateContactMutation.mutate({ id: selectedContact.id, ...editContactForm }); }}
+                disabled={updateContactMutation.isPending}
+                className="w-full bg-indigo-600 hover:bg-indigo-500"
+                data-testid="button-save-contact"
+              >
+                {updateContactMutation.isPending ? "Saving..." : "Save Changes"}
+              </Button>
             </div>
           </DialogContent>
         </Dialog>

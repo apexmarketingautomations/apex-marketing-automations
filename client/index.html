@@ -96,5 +96,20 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      (function() {
+        fetch('/api/config/google-api-key')
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            if (data.apiKey) {
+              var s = document.createElement('script');
+              s.src = 'https://maps.googleapis.com/maps/api/js?key=' + data.apiKey + '&libraries=places';
+              s.async = true;
+              document.head.appendChild(s);
+            }
+          })
+          .catch(function() {});
+      })();
+    </script>
   </body>
 </html>

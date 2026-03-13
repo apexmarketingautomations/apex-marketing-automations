@@ -6,13 +6,14 @@ import { useAccount } from "@/hooks/use-account";
 import { useToast } from "@/hooks/use-toast";
 import {
   Satellite, Radar, MapPin, Phone, Crosshair, AlertTriangle, CheckCircle2,
-  Settings, Play, Pause, Radio, Shield, Clock, ChevronRight, Send, Target, Zap, Eye, BookOpen, Lock, ArrowUpCircle
+  Settings, Play, Pause, Radio, Shield, Clock, ChevronRight, Send, Target, Zap, Eye, BookOpen, Lock, ArrowUpCircle, Plus
 } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { SENTINEL_STEPS } from "@/components/tutorial-steps";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { AddressAutocomplete } from "@/components/address-autocomplete";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import type { SubAccount, SentinelIncident, SentinelConfig } from "@shared/schema";
 import { hasFeature } from "@shared/schema";
@@ -60,6 +61,8 @@ export default function Sentinel() {
     targetStates: "",
   });
   const [locationFilter, setLocationFilter] = useState("");
+  const [showReportDialog, setShowReportDialog] = useState(false);
+  const [reportForm, setReportForm] = useState({ title: "", location: "", description: "", severity: "medium" });
 
   const { data: accounts = [] } = useQuery<SubAccount[]>({ queryKey: ["/api/accounts"] });
   const currentAccount = accounts.find(a => a.id === activeAccountId) || accounts[0];
@@ -186,6 +189,25 @@ export default function Sentinel() {
     },
   });
 
+  const reportMutation = useMutation({
+    mutationFn: async (data: typeof reportForm) => {
+      const res = await apiRequest("POST", "/api/sentinel/incidents", {
+        subAccountId: currentAccount!.id,
+        title: data.title,
+        location: data.location,
+        description: data.description || undefined,
+        severity: data.severity,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sentinel/incidents", currentAccount?.id] });
+      toast({ title: "Incident reported" });
+      setReportForm({ title: "", location: "", description: "", severity: "medium" });
+      setShowReportDialog(false);
+    },
+  });
+
   const filteredIncidents = locationFilter
     ? incidents.filter(i => (i.location || "").toLowerCase().includes(locationFilter.toLowerCase()))
     : incidents;
@@ -269,6 +291,14 @@ export default function Sentinel() {
               <Settings size={16} /> Config
             </Button>
             <Button
+              variant="outline"
+              onClick={() => setShowReportDialog(true)}
+              className="border-white/10 text-white hover:bg-white/10 gap-2"
+              data-testid="button-report-incident"
+            >
+              <Plus size={16} /> Report
+            </Button>
+            <Button
               onClick={() => scanMutation.mutate()}
               disabled={scanMutation.isPending || !currentAccount}
               className="bg-gradient-to-r from-red-600 to-orange-500 text-white font-bold gap-2 shadow-lg shadow-red-500/25"
@@ -340,12 +370,14 @@ export default function Sentinel() {
           </h2>
           <div className="flex items-center gap-3">
             <div className="relative">
-              <MapPin size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-              <Input
+              <MapPin size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 z-10" />
+              <AddressAutocomplete
                 value={locationFilter}
-                onChange={(e) => setLocationFilter(e.target.value)}
+                onAddressSelect={(data) => setLocationFilter(data.city || data.address || "")}
+                onChange={(val) => setLocationFilter(val)}
                 placeholder="Filter by location..."
                 className="bg-white/5 border-white/10 text-white pl-8 w-48 h-8 text-xs"
+                types={["geocode"]}
                 data-testid="input-location-filter"
               />
             </div>
@@ -456,11 +488,19 @@ export default function Sentinel() {
             </div>
             <div>
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Target Cities (comma-separated)</label>
-              <Input
+              <AddressAutocomplete
                 value={configForm.targetCities}
-                onChange={(e) => setConfigForm(f => ({ ...f, targetCities: e.target.value }))}
+                onAddressSelect={(data) => {
+                  const current = configForm.targetCities ? configForm.targetCities.split(",").map(s => s.trim()).filter(Boolean) : [];
+                  if (data.city && !current.includes(data.city)) {
+                    current.push(data.city);
+                  }
+                  setConfigForm(f => ({ ...f, targetCities: current.join(", ") }));
+                }}
+                onChange={(val) => setConfigForm(f => ({ ...f, targetCities: val }))}
                 placeholder="Las Vegas, Henderson, North Las Vegas"
                 className="bg-white/5 border-white/10 text-white"
+                types={["(cities)"]}
                 data-testid="input-target-cities"
               />
               <p className="text-[10px] text-slate-600 mt-1">Only show incidents from these cities. Leave empty for all.</p>
@@ -535,6 +575,76 @@ export default function Sentinel() {
               data-testid="button-save-config"
             >
               {configMutation.isPending ? "Saving..." : "Save Configuration"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={showReportDialog} onOpenChange={setShowReportDialog}>
+        <DialogContent className="bg-neutral-950 border-white/10 text-white max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle size={20} className="text-orange-400" /> Report Incident
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Title</label>
+              <Input
+                value={reportForm.title}
+                onChange={(e) => setReportForm(f => ({ ...f, title: e.target.value }))}
+                placeholder="e.g. Multi-vehicle collision on I-75"
+                className="bg-white/5 border-white/10 text-white"
+                data-testid="input-report-title"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Crash Location</label>
+              <AddressAutocomplete
+                value={reportForm.location}
+                onAddressSelect={(data) => {
+                  const parts = [data.address, data.city, data.state, data.zip].filter(Boolean);
+                  setReportForm(f => ({ ...f, location: parts.join(", ") }));
+                }}
+                onChange={(val) => setReportForm(f => ({ ...f, location: val }))}
+                placeholder="Search crash location address..."
+                className="bg-white/5 border-white/10 text-white"
+                data-testid="input-report-location"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Description</label>
+              <Input
+                value={reportForm.description}
+                onChange={(e) => setReportForm(f => ({ ...f, description: e.target.value }))}
+                placeholder="Brief description of the incident"
+                className="bg-white/5 border-white/10 text-white"
+                data-testid="input-report-description"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Severity</label>
+              <select
+                value={reportForm.severity}
+                onChange={(e) => setReportForm(f => ({ ...f, severity: e.target.value }))}
+                className="w-full bg-white/5 border border-white/10 text-white rounded-md px-3 py-2 text-sm"
+                data-testid="select-report-severity"
+              >
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="critical">Critical</option>
+              </select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowReportDialog(false)} className="border-white/10 text-white hover:bg-white/10">Cancel</Button>
+            <Button
+              onClick={() => reportMutation.mutate(reportForm)}
+              disabled={reportMutation.isPending || !reportForm.title}
+              className="bg-gradient-to-r from-red-600 to-orange-500 text-white font-bold gap-2"
+              data-testid="button-submit-report"
+            >
+              {reportMutation.isPending ? "Reporting..." : "Report Incident"}
             </Button>
           </DialogFooter>
         </DialogContent>
