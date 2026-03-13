@@ -1,6 +1,24 @@
 import Stripe from 'stripe';
 
 let connectionSettings: any;
+let _stripeConnectionVerified = false;
+
+export function isStripeConnectionVerified(): boolean {
+  return _stripeConnectionVerified;
+}
+
+export function invalidateStripeConnectionStatus(): void {
+  _stripeConnectionVerified = false;
+}
+
+function isStripeAuthError(error: any): boolean {
+  if (error?.type === 'StripeAuthenticationError') return true;
+  if (error?.statusCode === 401) return true;
+  if (error?.code === 'authentication_error') return true;
+  const msg = String(error?.message || '').toLowerCase();
+  if (msg.includes('invalid api key') || msg.includes('authentication')) return true;
+  return false;
+}
 
 async function getCredentials() {
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
@@ -37,6 +55,8 @@ async function getCredentials() {
     throw new Error(`Stripe ${targetEnvironment} connection not found`);
   }
 
+  _stripeConnectionVerified = true;
+
   return {
     publishableKey: connectionSettings.settings.publishable,
     secretKey: connectionSettings.settings.secret,
@@ -58,6 +78,12 @@ export async function getStripePublishableKey() {
 export async function getStripeSecretKey() {
   const { secretKey } = await getCredentials();
   return secretKey;
+}
+
+export function handleStripeError(error: any): void {
+  if (isStripeAuthError(error)) {
+    _stripeConnectionVerified = false;
+  }
 }
 
 let stripeSync: any = null;

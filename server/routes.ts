@@ -92,7 +92,12 @@ type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise
 
 function asyncHandler(fn: AsyncHandler) {
   return (req: Request, res: Response, next: NextFunction) => {
-    Promise.resolve(fn(req, res, next)).catch(next);
+    Promise.resolve(fn(req, res, next)).catch((err) => {
+      if (err?.type === 'StripeAuthenticationError' || err?.statusCode === 401 || err?.code === 'authentication_error') {
+        import("./stripeClient").then(({ handleStripeError }) => handleStripeError(err)).catch(() => {});
+      }
+      next(err);
+    });
   };
 }
 
@@ -3587,6 +3592,8 @@ Rules:
         },
       });
     } catch (e) {
+      const { handleStripeError } = await import("./stripeClient");
+      handleStripeError(e);
       console.log("[BILLING] Stripe meter event skipped:", (e as any).message);
     }
 
@@ -3890,18 +3897,21 @@ Rules:
     const billingChecks: string[] = [];
     let stripeConnected = false;
     try {
-      const { getStripeSecretKey } = await import("./stripeClient");
-      const sk = await getStripeSecretKey();
-      if (sk) stripeConnected = true;
-    } catch {
-      try {
-        const { getStripeSync } = await import("./stripeClient");
-        const sync = await getStripeSync();
-        if (sync) stripeConnected = true;
-      } catch {
-        const stripeKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API_KEY;
-        if (stripeKey) stripeConnected = true;
+      const { isStripeConnectionVerified, getStripeSecretKey } = await import("./stripeClient");
+      if (isStripeConnectionVerified()) {
+        stripeConnected = true;
+      } else {
+        try {
+          const sk = await getStripeSecretKey();
+          if (sk) stripeConnected = true;
+        } catch {
+          const stripeKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API_KEY;
+          if (stripeKey) stripeConnected = true;
+        }
       }
+    } catch {
+      const stripeKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API_KEY;
+      if (stripeKey) stripeConnected = true;
     }
     if (!stripeConnected) billingChecks.push("Stripe not connected");
     const walletCount = await db.execute(sql`SELECT COUNT(*) as cnt FROM credit_wallets`).then(r => Number((r as any).rows?.[0]?.cnt ?? 0)).catch(() => -1);
