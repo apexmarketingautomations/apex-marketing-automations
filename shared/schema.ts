@@ -1106,3 +1106,55 @@ export const whatsappTemplates = pgTable("whatsapp_templates", {
 export const insertWhatsappTemplateSchema = createInsertSchema(whatsappTemplates).omit({ id: true, createdAt: true });
 export type InsertWhatsappTemplate = z.infer<typeof insertWhatsappTemplateSchema>;
 export type WhatsappTemplate = typeof whatsappTemplates.$inferSelect;
+
+export const systemLogs = pgTable("system_logs", {
+  id: serial("id").primaryKey(),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+  severity: text("severity").notNull().default("error"),
+  module: text("module").notNull(),
+  message: text("message").notNull(),
+  metadata: json("metadata"),
+});
+
+export const insertSystemLogSchema = createInsertSchema(systemLogs).omit({ id: true, timestamp: true });
+export type InsertSystemLog = z.infer<typeof insertSystemLogSchema>;
+export type SystemLog = typeof systemLogs.$inferSelect;
+
+export const featureFlags = pgTable("feature_flags", {
+  id: serial("id").primaryKey(),
+  featureName: text("feature_name").notNull().unique(),
+  enabled: boolean("enabled").default(true).notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertFeatureFlagSchema = createInsertSchema(featureFlags).omit({ id: true, createdAt: true });
+export type InsertFeatureFlag = z.infer<typeof insertFeatureFlagSchema>;
+export type FeatureFlag = typeof featureFlags.$inferSelect;
+
+export const PLAN_LIMITS: Record<string, Record<string, number>> = {
+  starter: {
+    messages_per_month: 500,
+    automations: 5,
+    contacts: 1000,
+    ai_requests: 100,
+    voice_minutes: 30,
+    integrations: 3,
+  },
+  pro: {
+    messages_per_month: 5000,
+    automations: 50,
+    contacts: 10000,
+    ai_requests: 1000,
+    voice_minutes: 300,
+    integrations: 10,
+  },
+  enterprise: {
+    messages_per_month: 50000,
+    automations: 500,
+    contacts: 100000,
+    ai_requests: 10000,
+    voice_minutes: 3000,
+    integrations: 50,
+  },
+};

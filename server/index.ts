@@ -10,6 +10,9 @@ import Stripe from "stripe";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import path from "path";
 import fs from "fs";
+import { runStartupChecks } from "./startupChecks";
+import { logSystemError, logSystemEvent } from "./systemLogger";
+import { apiLimiter, authLimiter, webhookLimiter } from "./rateLimiter";
 
 const app = express();
 const httpServer = createServer(app);
@@ -64,6 +67,7 @@ async function initStripe() {
 
 app.post(
   "/api/stripe/webhook",
+  webhookLimiter,
   express.raw({ type: "application/json" }),
   async (req, res) => {
     const signature = req.headers["stripe-signature"];
@@ -143,11 +147,23 @@ app.post(
         const subscription = event.data?.object;
         const existing = await storage.getSubscriptionByStripeId(subscription.id);
         if (existing) {
+          const stripeStatus = subscription.status;
+          const statusMap: Record<string, string> = {
+            active: "active",
+            trialing: "active",
+            past_due: "past_due",
+            canceled: "canceled",
+            incomplete: "incomplete",
+            incomplete_expired: "canceled",
+            unpaid: "suspended",
+            paused: "inactive",
+          };
+          const mappedStatus = statusMap[stripeStatus] || "inactive";
           const updateData: any = {
-            status: subscription.status === "active" ? "active" : "inactive",
+            status: mappedStatus,
             currentPeriodEnd: new Date(subscription.current_period_end * 1000),
           };
-          if (subscription.status === "active") {
+          if (stripeStatus === "active" || stripeStatus === "trialing") {
             updateData.paymentStatus = "ok";
             updateData.paymentFailedAt = null;
           }
@@ -191,6 +207,21 @@ app.post(
         }
       }
 
+      if (event?.type === "customer.subscription.created") {
+        const subscription = event.data?.object;
+        const customerId = subscription.customer;
+        const existing = await storage.getSubscriptionByStripeCustomer?.(customerId);
+        if (existing) {
+          await storage.updateSubscription(existing.id, {
+            stripeSubscriptionId: subscription.id,
+            status: subscription.status === "active" || subscription.status === "trialing" ? "active" : existing.status,
+            currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+            trialEnd: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
+          });
+          console.log(`[STRIPE] Subscription created ${subscription.id} for customer ${customerId}`);
+        }
+      }
+
       if (event?.type === "invoice.payment_failed") {
         const invoice = event.data?.object;
         const subId = invoice?.subscription;
@@ -222,6 +253,7 @@ app.post(
       res.status(200).json({ received: true });
     } catch (error: any) {
       console.error("[STRIPE] Webhook error:", error.message);
+      logSystemError("stripe_webhook", error.message, { stack: error.stack?.substring(0, 500) });
       res.status(400).json({ error: "Webhook processing error" });
     }
   }
@@ -337,6 +369,7 @@ function validateEnvVars() {
 
 (async () => {
   validateEnvVars();
+  runStartupChecks();
   try {
     await initStripe();
   } catch (stripeErr) {
@@ -356,6 +389,11 @@ function validateEnvVars() {
     console.error("[STARTUP] Crash report worker failed (non-fatal):", workerErr);
   }
 
+  app.use("/api/auth/login", authLimiter);
+  app.use("/api/auth/register", authLimiter);
+  app.use("/api/auth/google", authLimiter);
+  app.use("/api", apiLimiter);
+
   await setupAuth(app);
   registerAuthRoutes(app);
   await registerRoutes(httpServer, app);
@@ -365,6 +403,13 @@ function validateEnvVars() {
     const message = err.message || "Internal Server Error";
 
     console.error("Internal Server Error:", err);
+    if (status >= 500) {
+      logSystemError("server", message, {
+        path: _req.path,
+        method: _req.method,
+        stack: err.stack?.substring(0, 500),
+      });
+    }
 
     if (res.headersSent) {
       return next(err);

@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { messagingLimiter } from "./rateLimiter";
 import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains, insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, insertMetaAdCampaignSchema, insertMetaLeadSchema, insertInstagramConversationSchema, insertInstagramMessageSchema, insertNotificationSchema, contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings, metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications, messages, hasFeature, PLAN_TIERS, subAccounts, liveAutomations, insertLiveAutomationSchema, insertSponsorshipSchema, insertCreditWalletSchema, creditTransactions, platformProfitLedger, sponsorships, sponsorshipClicks, digitalCards, webhookEvents, sentinelIncidents, insertSentinelIncidentSchema, dmKeywordAutomations, propertyLeads, whatsappTemplates, insertWhatsappTemplateSchema, integrationConnections } from "@shared/schema";
 import { sql, eq, and } from "drizzle-orm";
 import { db } from "./db";
@@ -623,6 +624,7 @@ ${sections.map(renderSection).join('\n')}
     if (fullPath === "/api/sales-chat") return next();
     if (fullPath === "/api/generate-liquid-site") return next();
     if (fullPath === "/api/liquid/contact-lookup") return next();
+    if (fullPath === "/api/system/health") return next();
     if (fullPath.startsWith("/api/portal/")) return next();
     if (fullPath.startsWith("/api/oauth/") && fullPath.includes("/callback")) return next();
 
@@ -829,7 +831,7 @@ ${sections.map(renderSection).join('\n')}
     res.json(msgs);
   }));
 
-  app.post("/api/messages", asyncHandler(async (req, res) => {
+  app.post("/api/messages", messagingLimiter, asyncHandler(async (req, res) => {
     const parsed = insertMessageSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const msg = await storage.createMessage(parsed.data);
@@ -9046,9 +9048,11 @@ Return ONLY valid JSON.` },
   async function fireAutomationTrigger(
     triggerName: string,
     subAccountId: number,
-    context: Record<string, any> = {}
+    context: Record<string, any> = {},
+    depth: number = 0
   ) {
     try {
+      const { checkAutomationSafety } = await import("./automationSafety");
       const automations = await storage.getLiveAutomations(subAccountId);
       const matching = automations.filter((a: any) =>
         (a.status === "compiled" || a.status === "active") &&
@@ -9061,6 +9065,18 @@ Return ONLY valid JSON.` },
       const account = await storage.getSubAccount(subAccountId);
 
       for (const automation of matching) {
+        const safety = checkAutomationSafety({
+          automationId: automation.id,
+          triggerId: `${triggerName}:${JSON.stringify(context).substring(0, 100)}`,
+          depth,
+          accountId: subAccountId,
+        });
+
+        if (!safety.safe) {
+          console.warn(`[AUTOMATION] Blocked: ${safety.reason}`);
+          continue;
+        }
+
         try {
           const steps = automation.manifest?.steps || [];
           for (const step of steps) {
@@ -11129,6 +11145,207 @@ Return ONLY valid JSON.` },
     res.json({
       dispatched: results.length,
       results,
+    });
+  }));
+
+  // ──── SYSTEM HEALTH ENDPOINT ────
+  app.get("/api/system/health", asyncHandler(async (_req, res) => {
+    const health: Record<string, string> = {};
+
+    try {
+      await db.execute(sql`SELECT 1`);
+      health.database = "ok";
+    } catch {
+      health.database = "error";
+    }
+
+    health.stripe = (process.env.STRIPE_API_SECRET || process.env.STRIPE_SECRET_KEY) ? "ok" : "missing";
+    health.twilio = (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) ? "ok" : "missing";
+    health.ai = isGeminiConfigured() ? "ok" : "missing";
+    health.meta = (process.env.META_ACCESS_TOKEN && process.env.META_PAGE_ID) ? "ok" : "missing";
+    health.mailchimp = process.env.MAILCHIMP_API_KEY ? "ok" : "missing";
+
+    const allOk = Object.values(health).every(v => v === "ok");
+    res.status(allOk ? 200 : 207).json({ status: allOk ? "healthy" : "degraded", services: health });
+  }));
+
+  // ──── SYSTEM LOGS (admin only) ────
+  app.get("/api/admin/system-logs", requireAdmin, asyncHandler(async (req, res) => {
+    const { getSystemLogs } = await import("./systemLogger");
+    const severity = req.query.severity as string | undefined;
+    const module = req.query.module as string | undefined;
+    const limit = parseInt(req.query.limit as string) || 100;
+    const offset = parseInt(req.query.offset as string) || 0;
+    const since = req.query.since ? new Date(req.query.since as string) : undefined;
+    const logs = await getSystemLogs({ severity, module, limit, offset, since });
+    res.json(logs);
+  }));
+
+  // ──── FEATURE FLAGS (admin only) ────
+  app.get("/api/admin/feature-flags", requireAdmin, asyncHandler(async (_req, res) => {
+    const { getAllFeatureFlags } = await import("./featureFlags");
+    const flags = await getAllFeatureFlags();
+    res.json(flags);
+  }));
+
+  app.put("/api/admin/feature-flags/:name", requireAdmin, asyncHandler(async (req, res) => {
+    const { setFeatureFlag } = await import("./featureFlags");
+    const { enabled, description } = req.body;
+    if (typeof enabled !== "boolean") return res.status(400).json({ error: "enabled must be a boolean" });
+    await setFeatureFlag(req.params.name, enabled, description);
+    res.json({ success: true, featureName: req.params.name, enabled });
+  }));
+
+  // ──── PLAN LIMITS & USAGE CHECK ────
+  app.get("/api/accounts/:accountId/usage-limits", asyncHandler(async (req, res) => {
+    const accountId = parseInt(req.params.accountId);
+    const user = (req as any).user;
+    const userId = getUserId(user);
+
+    if (!isUserAdmin(user)) {
+      const allowed = await verifyAccountOwnership(req, res, accountId);
+      if (!allowed) return;
+    }
+
+    const { checkPlanLimit } = await import("./subscriptionGuard");
+    const sub = await storage.getSubscription(userId);
+    const plan = sub?.planTier || "starter";
+
+    const { PLAN_LIMITS } = await import("@shared/schema");
+    const limits = PLAN_LIMITS[plan.toLowerCase()] || PLAN_LIMITS.starter;
+
+    const usage: Record<string, any> = {};
+    for (const metric of Object.keys(limits)) {
+      usage[metric] = await checkPlanLimit(accountId, metric, plan);
+    }
+
+    res.json({ plan, usage });
+  }));
+
+  // ──── STRIPE BILLING PORTAL ────
+  app.post("/api/billing/portal", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    const userId = getUserId(user);
+    const sub = await storage.getSubscription(userId);
+    if (!sub?.stripeCustomerId) {
+      return res.status(404).json({ error: "No billing account found" });
+    }
+
+    const stripeKey = process.env.STRIPE_API_SECRET || process.env.STRIPE_SECRET_KEY;
+    if (!stripeKey) return res.status(503).json({ error: "Stripe not configured" });
+
+    const Stripe = (await import("stripe")).default;
+    const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" as any });
+
+    const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
+    const session = await stripe.billingPortal.sessions.create({
+      customer: sub.stripeCustomerId,
+      return_url: domain ? `https://${domain}/settings/billing` : undefined,
+    });
+
+    res.json({ url: session.url });
+  }));
+
+  // ──── SUBSCRIPTION STATUS ────
+  app.get("/api/billing/status", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    const userId = getUserId(user);
+    const sub = await storage.getSubscription(userId);
+
+    if (!sub) {
+      return res.json({
+        status: "none",
+        plan: "free",
+        message: "No active subscription",
+      });
+    }
+
+    res.json({
+      status: sub.status,
+      plan: sub.planTier,
+      paymentStatus: sub.paymentStatus,
+      currentPeriodEnd: sub.currentPeriodEnd,
+      trialEnd: sub.trialEnd,
+      isGrandfathered: sub.isGrandfathered,
+      billingInterval: sub.billingInterval,
+    });
+  }));
+
+  // ──── UPGRADE / DOWNGRADE ────
+  app.post("/api/billing/change-plan", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    const userId = getUserId(user);
+    const { priceId, planTier } = req.body;
+    if (!priceId || !planTier) return res.status(400).json({ error: "priceId and planTier required" });
+
+    const VALID_PLANS = ["starter", "pro", "enterprise"];
+    const normalizedPlan = planTier.toLowerCase();
+    if (!VALID_PLANS.includes(normalizedPlan)) {
+      return res.status(400).json({ error: `Invalid plan. Must be one of: ${VALID_PLANS.join(", ")}` });
+    }
+
+    const sub = await storage.getSubscription(userId);
+    if (!sub?.stripeSubscriptionId) {
+      return res.status(404).json({ error: "No active subscription to change" });
+    }
+
+    const stripeKey = process.env.STRIPE_API_SECRET || process.env.STRIPE_SECRET_KEY;
+    if (!stripeKey) return res.status(503).json({ error: "Stripe not configured" });
+
+    const Stripe = (await import("stripe")).default;
+    const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" as any });
+
+    const currentSub = await stripe.subscriptions.retrieve(sub.stripeSubscriptionId);
+    const currentItemId = currentSub.items.data[0]?.id;
+    if (!currentItemId) return res.status(400).json({ error: "No subscription item found" });
+
+    const currentPlan = (sub.planTier || "starter").toLowerCase();
+    const planOrder = ["starter", "pro", "enterprise"];
+    const isUpgrade = planOrder.indexOf(normalizedPlan) > planOrder.indexOf(currentPlan);
+
+    await stripe.subscriptions.update(sub.stripeSubscriptionId, {
+      items: [{ id: currentItemId, price: priceId }],
+      proration_behavior: isUpgrade ? "always_invoice" : "none",
+      ...(isUpgrade ? {} : { billing_cycle_anchor: "unchanged" }),
+    });
+
+    if (isUpgrade) {
+      await storage.updateSubscription(sub.id, { planTier: normalizedPlan });
+    }
+
+    res.json({
+      success: true,
+      type: isUpgrade ? "upgrade" : "downgrade",
+      plan: normalizedPlan,
+      message: isUpgrade
+        ? `Upgraded to ${normalizedPlan}. Changes applied immediately.`
+        : `Downgrade to ${normalizedPlan} will take effect at next billing cycle.`,
+    });
+  }));
+
+  // ──── CANCEL SUBSCRIPTION ────
+  app.post("/api/billing/cancel", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    const userId = getUserId(user);
+    const sub = await storage.getSubscription(userId);
+    if (!sub?.stripeSubscriptionId) {
+      return res.status(404).json({ error: "No active subscription to cancel" });
+    }
+
+    const stripeKey = process.env.STRIPE_API_SECRET || process.env.STRIPE_SECRET_KEY;
+    if (!stripeKey) return res.status(503).json({ error: "Stripe not configured" });
+
+    const Stripe = (await import("stripe")).default;
+    const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" as any });
+
+    await stripe.subscriptions.update(sub.stripeSubscriptionId, {
+      cancel_at_period_end: true,
+    });
+
+    res.json({
+      success: true,
+      message: "Subscription will cancel at the end of the current billing period.",
+      currentPeriodEnd: sub.currentPeriodEnd,
     });
   }));
 
