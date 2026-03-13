@@ -44,6 +44,14 @@ function getEnvStripeSecretKey() {
 }
 
 async function getCredentials() {
+  const publishableKey = getEnvStripePublishableKey();
+  const secretKey = getEnvStripeSecretKey();
+
+  if (secretKey) {
+    _stripeConnectionVerified = true;
+    return { publishableKey, secretKey };
+  }
+
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
   const xReplitToken = process.env.REPL_IDENTITY
     ? `repl ${process.env.REPL_IDENTITY}`
@@ -51,7 +59,6 @@ async function getCredentials() {
       ? `depl ${process.env.WEB_REPL_RENEWAL}`
       : null;
 
-  // Prefer Replit Connections first when available
   if (hostname && xReplitToken) {
     const connectorName = "stripe";
     const isProduction = process.env.REPLIT_DEPLOYMENT === "1";
@@ -84,19 +91,9 @@ async function getCredentials() {
     }
   }
 
-  // Fallback to environment variables
-  const publishableKey = getEnvStripePublishableKey();
-  const secretKey = getEnvStripeSecretKey();
-
-  if (!secretKey) {
-    throw new Error(
-      "Stripe secret key not configured. Add STRIPE_API_SECRET (or connect Stripe in Replit Connections).",
-    );
-  }
-
-  _stripeConnectionVerified = true;
-
-  return { publishableKey, secretKey };
+  throw new Error(
+    "Stripe secret key not configured. Add STRIPE_API_SECRET (or connect Stripe in Replit Connections).",
+  );
 }
 
 export async function getUncachableStripeClient() {
@@ -121,6 +118,10 @@ export async function getStripePublishableKey() {
 export async function getStripeSecretKey() {
   const { secretKey } = await getCredentials();
   return secretKey;
+}
+
+export function getStripeWebhookSecret(): string | undefined {
+  return process.env.STRIPE_WEBHOOK_SECRET;
 }
 
 export function handleStripeError(error: any): void {

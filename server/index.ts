@@ -4,8 +4,9 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { seed } from "./seed";
 import { runMigrations } from "stripe-replit-sync";
-import { getStripeSync } from "./stripeClient";
+import { getStripeSync, getStripeWebhookSecret } from "./stripeClient";
 import { WebhookHandlers } from "./webhookHandlers";
+import Stripe from "stripe";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import path from "path";
 import fs from "fs";
@@ -72,6 +73,12 @@ app.post(
       const sig = Array.isArray(signature) ? signature[0] : signature;
       if (!Buffer.isBuffer(req.body)) {
         return res.status(500).json({ error: "Webhook processing error" });
+      }
+
+      const whSecret = getStripeWebhookSecret();
+      if (whSecret) {
+        const stripe = new Stripe(process.env.STRIPE_API_SECRET || "", { apiVersion: "2025-08-27.basil" as any });
+        stripe.webhooks.constructEvent(req.body, sig, whSecret);
       }
 
       await WebhookHandlers.processWebhook(req.body as Buffer, sig);

@@ -1,0 +1,110 @@
+No need to apologize.
+
+You’re fine to keep moving. What matters now is:
+
+Your code expects more than one Stripe value (it will ask for STRIPE_PUBLISHABLE_KEY, and a webhook handler will require STRIPE_WEBHOOK_SECRET).
+
+STRIPE_API_SECRET is only one piece of the puzzle.
+
+When you’re ready, add those two env vars on your side (don’t paste values here), and I’ll wire the webhook + billing sync logic into the actual TS/Express codebase so subscriptions stop getting “out of sync.”
+
+Tabs visited
+Apex Marketing Automations - Replit
+replit.com
+STRIPE_WEBHOOK_SECRET).
+
+i dont have a web hook secret
+
+That’s normal — you don’t “have” a Stripe webhook signing secret until you create the webhook endpoint in Stripe.
+
+Here’s what happens and what to do:
+
+We’ll wire the webhook route into your app (so Stripe has something real to call).
+
+In Stripe Dashboard: Developers → Webhooks → Add endpoint
+Endpoint URL (what we’ll use): /api/billing/webhook (we’ll confirm the exact route name in your code).
+
+After creating the endpoint, Stripe shows a Signing secret (starts with whsec_…).
+
+You paste that value into Replit as a new secret: STRIPE_WEBHOOK_SECRET (don’t paste it here).
+
+If you’d rather not deal with webhooks yet, tell me and I’ll make the code tolerate “no webhook secret” gracefully—just understand subscriptions won’t auto-sync without it.
+
+Tabs visited
+Apex Marketing Automations - Replit
+replit.com
+The webhook endpoint URL (https://…)
+
+Test mode or Live mode
+
+Which events you want to listen for (e.g., payment_intent.succeeded, invoice.paid, etc.)
+
+Here’s what to put into Stripe when you create the webhook endpoint.
+
+1) Endpoint URL
+
+Use your production deployed domain + the webhook path. Assuming your production domain is apexmarketingautomations.com, the endpoint URL would be:
+
+https://apexmarketingautomations.com/api/billing/webhook
+
+(If you’re not sure of your production domain, check Replit Deploy → Production → “Domain.” Use that instead of the placeholder.)
+
+2) Test mode vs Live mode
+
+Stripe webhooks are environment-specific, so you generally want two endpoints:
+
+Test mode endpoint (when you’re using Stripe test keys)
+
+Live mode endpoint (when you’re using Stripe live keys)
+
+For launch readiness, you’ll create the Live one once you flip everything to live keys.
+
+3) Events to listen for (simple + useful)
+
+Start with the subscription-critical events:
+
+checkout.session.completed
+
+invoice.payment_succeeded
+
+invoice.payment_failed (optional but helpful)
+
+customer.subscription.updated
+
+customer.subscription.deleted
+
+That’s enough to keep subscriptions in sync (creates/renews/fails/cancels).
+
+Tabs visited
+Apex Marketing Automations - Replit
+replit.com
+STRIPE_WEBHOOK_SECRET
+its done 
+
+Good—STRIPE_WEBHOOK_SECRET being set is the key blocker for verifying Stripe webhooks.
+
+Next critical step: make sure Stripe is calling the endpoint your code actually uses, which is:
+
+https://<your-domain>/api/stripe/webhook
+
+If you created the Stripe webhook using /api/billing/webhook, update it to /api/stripe/webhook (or add the correct endpoint alongside it).
+
+Also, if you haven’t already, add:
+
+STRIPE_PUBLISHABLE_KEY (needed by the frontend/checkout)
+
+Then restart the app and run a smoke test:
+
+create a test session
+
+“checkout.session.completed” fires
+
+the webhook logs 200 and updates your DB wallet/credits.
+
+If you want, I can walk you through using Stripe CLI to send a test webhook to confirm it’s verified end‑to‑end.
+
+Tabs visited
+Apex Marketing Automations - Replit
+replit.com
+server/stripeClient.ts - Apex Marketing Automations - Replit
+replit.com
