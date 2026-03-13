@@ -9091,6 +9091,35 @@ Return ONLY valid JSON.` },
     return crypto.createHmac("sha256", secret).update(payload).digest("hex");
   }
 
+  app.get("/api/geocode", asyncHandler(async (req: Request, res: Response) => {
+    const address = req.query.address as string;
+    if (!address || address.trim().length < 3) {
+      return res.status(400).json({ error: "Address parameter is required (min 3 characters)" });
+    }
+
+    const apiKey = process.env.GOOGLE_API_KEY;
+    if (!apiKey) {
+      return res.status(503).json({ error: "Google Maps API key is not configured" });
+    }
+
+    const gmRes = await fetch(
+      `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address.trim())}&key=${apiKey}`
+    );
+    const data = await gmRes.json() as any;
+
+    if (data.status !== "OK" || !data.results?.length) {
+      return res.status(404).json({ error: "Could not geocode address", status: data.status });
+    }
+
+    const result = data.results[0];
+    res.json({
+      lat: result.geometry.location.lat,
+      lng: result.geometry.location.lng,
+      formattedAddress: result.formatted_address,
+      placeId: result.place_id,
+    });
+  }));
+
   async function geocodeZip(zip: string): Promise<{ lat: number; lon: number } | null> {
     try {
       const resp = await fetch(`https://api.zippopotam.us/us/${zip}`);
