@@ -70,8 +70,14 @@ Comprehensive API for accounts, messages, workflows, AI bots, blueprints, onboar
 - **Authentication**: Replit OIDC (admin), native email/password, Google OAuth 2.0, Firebase Auth (Google popup). `isAuthenticated` middleware handles all session types including `firebase` provider.
 - **Session Idle Timeout**: 30-minute inactivity timeout. Server middleware tracks `lastActivity` on each session and destroys idle sessions. Client-side `useIdleTimeout` hook monitors mouse/keyboard/scroll/touch activity, shows a 2-minute warning dialog before auto-logout. Login page shows "logged out due to inactivity" message via `?reason=idle` query param. `GET /api/auth/session-info` returns remaining session time.
 - **Plan-based Feature Gating**: Features gated by Starter/Pro/Enterprise tiers using `PlanGate` component.
-- **Account Ownership Enforcement**: `verifyAccountOwnership()` helper and strict account filtering ensure data isolation. Admin users bypass checks.
+- **Account Ownership Enforcement**: `verifyAccountOwnership()` helper and strict account filtering ensure data isolation. Admin users bypass checks. Applied to: messages, usage logs, wallet, digital cards, workflows (CRUD + generate), WhatsApp templates, integrations, notifications, dashboard, analytics.
 - **Active Account Context**: `useActiveSubAccountId()` hook for current sub-account ID.
+- **Admin-Only Routes**: Project download, god-mode, global stats, master feed, profit report restricted to admin via `isUserAdmin`/`requireAdmin`.
+
+### Production Safety
+- **Honest Status Reporting**: Sentinel SMS returns proper HTTP errors (503/400/502) on failure instead of marking sent. Integration connections stored as `stored_unverified` when provider lacks validation. Unknown message channels rejected with 422 instead of silently marked sent.
+- **Stripe Direct Keys**: `STRIPE_API_SECRET`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` env vars prioritized over Replit connector. Webhook signature verification via `constructEvent`.
+- **Billing Webhook Events**: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_succeeded`, `invoice.payment_failed` all handled with proper state updates.
 - **Sidebar Gating**: Nav items show lock icons or are hidden based on plan and admin status.
 - **Stripe Trial**: 60-day free trial with upfront card capture.
 

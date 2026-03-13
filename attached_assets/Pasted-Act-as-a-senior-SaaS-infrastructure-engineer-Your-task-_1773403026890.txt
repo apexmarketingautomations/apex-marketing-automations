@@ -1,0 +1,331 @@
+Act as a senior SaaS infrastructure engineer. Your task is to harden Apex Marketing Automations so it is production-ready, stable under load, and safe to launch publicly.
+
+Do NOT add random new features. Focus only on critical platform infrastructure that real SaaS platforms require.
+
+--------------------------------
+
+PRIMARY OBJECTIVE
+
+Implement the missing operational systems that make the platform reliable:
+
+• global error logging  
+• background job processing  
+• rate limiting  
+• feature flag system  
+• admin control panel  
+• usage metering  
+• health monitoring  
+• webhook replay tools  
+• platform service status dashboard  
+• security validation  
+• startup health checks  
+• automation safeguards  
+
+These must be real systems, not placeholders.
+
+--------------------------------
+
+1. GLOBAL ERROR LOGGING
+
+Create a centralized logging system.
+
+Add a table:
+
+system_logs
+
+Fields:
+id
+timestamp
+severity
+module
+message
+metadata (json)
+
+Log errors from:
+
+• Stripe
+• Twilio
+• webhooks
+• automations
+• integrations
+• AI requests
+• background jobs
+
+All caught exceptions must write to this log.
+
+Create helper function:
+
+logSystemError(module, message, metadata)
+
+Add an admin log viewer page.
+
+--------------------------------
+
+2. BACKGROUND JOB QUEUE
+
+Long-running tasks must not run inside request handlers.
+
+Move the following into jobs:
+
+• sending SMS
+• sending email
+• AI processing
+• lead enrichment
+• skip tracing
+• crash report retrieval
+• webhook processing
+• automation execution
+
+Implement a job queue system.
+
+Options:
+BullMQ / Redis
+or a simple worker-based queue.
+
+Jobs must support:
+
+• retries
+• failure logging
+• status tracking
+
+--------------------------------
+
+3. RATE LIMITING
+
+Add API protection using express-rate-limit or equivalent.
+
+Protect:
+
+• login endpoints
+• API endpoints
+• webhook endpoints
+• messaging endpoints
+
+Example baseline:
+
+100 requests / minute per IP
+
+Sensitive endpoints lower.
+
+--------------------------------
+
+4. FEATURE FLAG SYSTEM
+
+Create table:
+
+feature_flags
+
+Fields:
+feature_name
+enabled
+description
+
+Examples:
+
+AI_AUTOMATION
+META_ADS
+SHOPIFY_SYNC
+VOICE_AGENT
+
+Add helper:
+
+isFeatureEnabled(feature)
+
+Allow admin to toggle features without redeploy.
+
+--------------------------------
+
+5. ADMIN CONTROL PANEL
+
+Create an internal admin area.
+
+Capabilities:
+
+• view all accounts
+• suspend accounts
+• view system logs
+• view billing status
+• view usage metrics
+• impersonate users
+• see integration health
+
+Restrict to admin user only.
+
+--------------------------------
+
+6. USAGE METERING
+
+Create table:
+
+usage_metrics
+
+Fields:
+
+account_id
+metric_type
+amount
+timestamp
+
+Track:
+
+sms_sent
+ai_requests
+voice_minutes
+automations_run
+api_calls
+
+Plan limits must be enforced server-side.
+
+--------------------------------
+
+7. SERVICE HEALTH MONITOR
+
+Create endpoint:
+
+/system/health
+
+Return status for:
+
+Database
+Stripe
+Twilio
+Mailchimp
+Meta
+AI services
+Queue system
+
+Example output:
+
+{
+ database: "ok",
+ stripe: "ok",
+ twilio: "ok",
+ ai: "ok",
+ queue: "ok"
+}
+
+Also show this in admin dashboard.
+
+--------------------------------
+
+8. WEBHOOK HISTORY + REPLAY
+
+Create table:
+
+webhook_events
+
+Fields:
+
+id
+provider
+payload
+status
+response
+duration
+error_message
+
+Add ability to:
+
+• view webhook history
+• replay failed webhooks
+
+--------------------------------
+
+9. PLATFORM STATUS DASHBOARD
+
+Create service status panel showing:
+
+Stripe: connected / error
+Twilio: connected / error
+Meta: configured / missing
+Mailchimp: connected / missing
+AI: connected / missing
+
+Show this in settings or dashboard.
+
+--------------------------------
+
+10. SECURITY HARDENING
+
+Verify:
+
+• webhook signature validation
+• input sanitization
+• tenant/org ownership checks
+• session security
+• secret handling
+• cross-account access prevention
+
+Fix any vulnerabilities discovered.
+
+--------------------------------
+
+11. STARTUP HEALTH CHECKS
+
+On server startup validate required services.
+
+Check:
+
+STRIPE_API_SECRET
+STRIPE_WEBHOOK_SECRET
+TWILIO_ACCOUNT_SID
+TWILIO_AUTH_TOKEN
+DATABASE connection
+
+If a critical service is missing, log a clear startup warning.
+
+--------------------------------
+
+12. AUTOMATION SAFETY
+
+Prevent infinite automation loops.
+
+Add:
+
+execution depth limit
+duplicate trigger protection
+loop detection
+
+--------------------------------
+
+13. FRONTEND ERROR VISIBILITY
+
+Ensure frontend displays real error states.
+
+Do not allow:
+
+fake success
+silent failures
+hidden errors
+
+All failures should produce:
+
+clear toast
+status badge
+or diagnostic message.
+
+--------------------------------
+
+FINAL STEP
+
+After implementation perform an end-to-end verification.
+
+Test:
+
+login
+account creation
+Stripe billing
+Stripe webhook
+Twilio message send
+AI request
+automation trigger
+integration status
+error logging
+service health endpoint
+
+Return a final report:
+
+1. systems implemented
+2. systems verified
+3. remaining risks
+4. launch readiness score

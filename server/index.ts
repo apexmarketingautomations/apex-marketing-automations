@@ -175,6 +175,22 @@ app.post(
         }
       }
 
+      if (event?.type === "invoice.payment_succeeded") {
+        const invoice = event.data?.object;
+        const subId = invoice?.subscription;
+        if (subId) {
+          const existing = await storage.getSubscriptionByStripeId(subId as string);
+          if (existing) {
+            await storage.updateSubscription(existing.id, {
+              status: "active",
+              paymentStatus: "ok",
+              paymentFailedAt: null,
+            });
+            console.log(`[STRIPE] Payment succeeded for subscription ${subId}`);
+          }
+        }
+      }
+
       if (event?.type === "invoice.payment_failed") {
         const invoice = event.data?.object;
         const subId = invoice?.subscription;

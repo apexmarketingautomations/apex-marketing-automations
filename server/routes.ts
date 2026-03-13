@@ -735,8 +735,11 @@ ${sections.map(renderSection).join('\n')}
     res.json({ received: true });
   });
 
-  // ---- Project Download ----
-  app.get("/api/download-project", asyncHandler(async (_req, res) => {
+  // ---- Project Download (Admin Only) ----
+  app.get("/api/download-project", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
+    const _req = req;
     const { execSync } = await import("child_process");
     const archivePath = path.resolve(process.cwd(), "apex-marketing-animation.tar.gz");
     execSync(
@@ -853,12 +856,14 @@ ${sections.map(renderSection).join('\n')}
     const id = parseIntParam(req.params.id, "id");
     const wf = await storage.getWorkflow(id);
     if (!wf) return res.status(404).json({ error: "Not found" });
+    if (wf.subAccountId && !(await verifyAccountOwnership(req, res, wf.subAccountId))) return;
     res.json(wf);
   }));
 
   app.post("/api/workflows", asyncHandler(async (req, res) => {
     const parsed = insertWorkflowSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    if (parsed.data.subAccountId && !(await verifyAccountOwnership(req, res, parsed.data.subAccountId))) return;
     const wf = await storage.createWorkflow(parsed.data);
     res.status(201).json(wf);
   }));
@@ -871,6 +876,9 @@ ${sections.map(renderSection).join('\n')}
 
   app.patch("/api/workflows/:id", asyncHandler(async (req, res) => {
     const id = parseIntParam(req.params.id, "id");
+    const existing = await storage.getWorkflow(id);
+    if (!existing) return res.status(404).json({ error: "Not found" });
+    if (existing.subAccountId && !(await verifyAccountOwnership(req, res, existing.subAccountId))) return;
     const parsed = workflowPatchSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const wf = await storage.updateWorkflow(id, parsed.data);
@@ -944,6 +952,7 @@ Rules:
     }
 
     const reqSubAccountId = req.body.subAccountId ? parseInt(req.body.subAccountId) : null;
+    if (reqSubAccountId && !(await verifyAccountOwnership(req, res, reqSubAccountId))) return;
     const wf = await storage.createWorkflow({
       name: workflowData.name || "AI Generated Workflow",
       trigger: workflowData.trigger || "manual_trigger",
@@ -1059,7 +1068,8 @@ Rules:
         }
       }
     } else {
-      twilioStatus = "sent";
+      twilioStatus = "unsupported";
+      twilioError = `Channel '${channel}' is not supported for outbound sending. Use 'sms' or 'whatsapp'.`;
     }
 
     const msg = await storage.createMessage({
@@ -1067,13 +1077,15 @@ Rules:
       status: twilioStatus,
     });
 
-    if (twilioStatus === "failed") {
+    if (twilioStatus === "failed" || twilioStatus === "unsupported") {
       return res.status(422).json({ ...msg, twilioSid, error: twilioError });
     }
 
-    const usageType = channel === "whatsapp" ? "WHATSAPP_MESSAGE" : "SMS_SEGMENT";
-    const usageDesc = channel === "whatsapp" ? `WhatsApp to ${contactPhone}` : `SMS to ${contactPhone}`;
-    await logUsageInternal(subAccountId, usageType, 1, usageDesc);
+    if (channel === "sms" || channel === "whatsapp") {
+      const usageType = channel === "whatsapp" ? "WHATSAPP_MESSAGE" : "SMS_SEGMENT";
+      const usageDesc = channel === "whatsapp" ? `WhatsApp to ${contactPhone}` : `SMS to ${contactPhone}`;
+      await logUsageInternal(subAccountId, usageType, 1, usageDesc);
+    }
 
     res.status(201).json({ ...msg, twilioSid });
   }));
@@ -1124,12 +1136,14 @@ Rules:
   // ---- WhatsApp Templates CRUD ----
   app.get("/api/whatsapp-templates/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const templates = await db.select().from(whatsappTemplates).where(eq(whatsappTemplates.subAccountId, subAccountId));
     res.json(templates);
   }));
 
   app.post("/api/whatsapp-templates/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const parsed = insertWhatsappTemplateSchema.safeParse({ ...req.body, subAccountId });
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -1139,6 +1153,7 @@ Rules:
 
   app.put("/api/whatsapp-templates/:subAccountId/:id", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const id = parseIntParam(req.params.id, "id");
 
     const updateSchema = insertWhatsappTemplateSchema.partial().omit({ subAccountId: true });
@@ -1158,6 +1173,7 @@ Rules:
 
   app.delete("/api/whatsapp-templates/:subAccountId/:id", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const id = parseIntParam(req.params.id, "id");
 
     await db.delete(whatsappTemplates)
@@ -3572,6 +3588,7 @@ Rules:
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
     const { subAccountId, type, amount, description } = parsed.data;
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const rate = MARKUP_RATES[type] ?? 0;
     const cost = (type === "AI_IMAGE_GEN" || type === "AI_CHAT" || type === "AI_STREAM") ? rate : amount * rate;
 
@@ -3584,15 +3601,21 @@ Rules:
     });
 
     try {
-      const { getUncachableStripeClient } = await import("./stripeClient");
-      const stripe = await getUncachableStripeClient();
-      await stripe.billing.meterEvents.create({
-        event_name: type.toLowerCase(),
-        payload: {
-          value: cost.toString(),
-          stripe_customer_id: "pending",
-        },
-      });
+      const user = (req as any).user;
+      const userId = getUserId(user);
+      const sub = userId ? await storage.getSubscription(userId) : null;
+      const stripeCustomerId = sub?.stripeCustomerId;
+      if (stripeCustomerId) {
+        const { getUncachableStripeClient } = await import("./stripeClient");
+        const stripe = await getUncachableStripeClient();
+        await stripe.billing.meterEvents.create({
+          event_name: type.toLowerCase(),
+          payload: {
+            value: cost.toString(),
+            stripe_customer_id: stripeCustomerId,
+          },
+        });
+      }
     } catch (e) {
       const { handleStripeError } = await import("./stripeClient");
       handleStripeError(e);
@@ -4952,17 +4975,24 @@ Rules:
     const twilioSid = process.env.TWILIO_ACCOUNT_SID;
     const twilioToken = process.env.TWILIO_AUTH_TOKEN;
 
-    if (twilioSid && twilioToken && account.twilioNumber) {
-      try {
-        const twilioClient = Twilio(twilioSid, twilioToken);
-        await twilioClient.messages.create({
-          body: alertMsg,
-          from: account.twilioNumber,
-          to: account.ownerPhone,
-        });
-      } catch (e) {
-        console.log("[SENTINEL] SMS send failed:", (e as any).message);
-      }
+    if (!twilioSid || !twilioToken) {
+      return res.status(503).json({ error: "Twilio is not configured. Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN to send SMS alerts." });
+    }
+    if (!account.twilioNumber) {
+      return res.status(400).json({ error: "No Twilio phone number assigned to this account. Add one in account settings." });
+    }
+
+    try {
+      const twilioClient = Twilio(twilioSid, twilioToken);
+      await twilioClient.messages.create({
+        body: alertMsg,
+        from: account.twilioNumber,
+        to: account.ownerPhone,
+      });
+    } catch (e) {
+      const errMsg = (e as any).message || "Unknown Twilio error";
+      console.error("[SENTINEL] SMS send failed:", errMsg);
+      return res.status(502).json({ error: `SMS delivery failed: ${errMsg}` });
     }
 
     await storage.updateSentinelIncident(id, {
@@ -9294,6 +9324,9 @@ Return ONLY valid JSON.` },
       return res.status(400).json({ error: `${provider} integration is coming soon. This provider is not yet fully supported.` });
     }
 
+    const VALIDATED_PROVIDERS = ["twilio", "mailchimp", "facebook", "meta-ads", "stripe", "google-maps", "shopify", "google-analytics", "google-business", "elevenlabs"];
+    const isValidatedProvider = VALIDATED_PROVIDERS.includes(provider);
+
     let validationResult: { valid: boolean; error?: string } = { valid: true };
     try {
       if (provider === "twilio" && config?.accountSid && config?.authToken) {
@@ -9386,14 +9419,16 @@ Return ONLY valid JSON.` },
       return res.status(400).json({ error: validationResult.error, validated: false });
     }
 
+    const connectionStatus = isValidatedProvider ? "connected" : "stored_unverified";
+
     const connection = await storage.upsertIntegrationConnection({
       subAccountId,
       provider,
-      status: "connected",
+      status: connectionStatus,
       config: config || {},
       connectedAt: new Date(),
     });
-    res.json({ ...connection, validated: true });
+    res.json({ ...connection, validated: isValidatedProvider, status: connectionStatus });
   }));
 
   app.post("/api/integrations/:subAccountId/disconnect", asyncHandler(async (req, res) => {
@@ -10226,9 +10261,9 @@ Return ONLY valid JSON.` },
       {
         name: "Stripe",
         provider: "stripe",
-        configured: !!process.env.STRIPE_SECRET_KEY,
+        configured: !!(process.env.STRIPE_API_SECRET || process.env.STRIPE_SECRET_KEY),
         description: "Payments & Billing",
-        envVars: ["STRIPE_SECRET_KEY"],
+        envVars: ["STRIPE_API_SECRET"],
       },
       {
         name: "Meta / Facebook",

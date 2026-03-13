@@ -1,0 +1,204 @@
+Act as a senior full-stack SaaS launch engineer. Your job is to audit, fix, and finish Apex Marketing Automations so it is truly turn-key, production-safe, and launch-ready — not just “looks complete.”
+
+PROJECT GOAL
+Make Apex fully operational for real users from signup to onboarding to billing to automation to integrations, with honest status reporting and no fake success states.
+
+NON-NEGOTIABLE RULES
+1. Do not simulate success.
+2. Do not leave placeholder logic, fake data, fake numbers, fake provisioning, or “active” statuses for features that are not actually working.
+3. Every module must either:
+   - work end-to-end for real, or
+   - return a clear, specific error explaining exactly what is missing or failing.
+4. Do not ask me for high-level direction unless absolutely blocked. Audit the codebase, determine what is incomplete, and fix it.
+5. Prefer direct environment secrets over connector magic when applicable.
+6. Keep tenant/account ownership checks strict on every protected route.
+7. Do not break existing working systems while fixing broken ones.
+
+CURRENT PRIORITY
+I need Apex fully running, structured correctly, and turn-key for launch.
+
+YOUR MISSION
+Perform a complete production-readiness audit, then implement all missing work needed to make the platform operate cleanly and honestly.
+
+PHASE 1 — FULL AUDIT
+Inspect the entire codebase and identify:
+- incomplete modules
+- fake or simulated logic
+- silent failures
+- broken routes
+- mismatched env var names
+- frontend flows that look connected but are not
+- billing gaps
+- onboarding gaps
+- webhook gaps
+- auth / tenancy / permissions gaps
+- integrations that store credentials without validation
+- anything marked complete that is not truly working
+
+Return findings grouped by:
+1. Critical blockers
+2. Launch risks
+3. Cosmetic / later improvements
+
+Then immediately begin fixing critical blockers without waiting.
+
+PHASE 2 — PLATFORM STRUCTURE
+Refactor and organize Apex into clean production boundaries if needed:
+- Auth / session / user / org
+- Billing
+- Integrations hub
+- Automation engine
+- Messaging
+- Lead capture / contacts / CRM
+- Webhooks
+- Background jobs / retries
+- Admin / status / diagnostics
+
+Keep file structure readable and maintainable. Reduce spaghetti logic. Centralize config handling and external service clients.
+
+PHASE 3 — BILLING / STRIPE
+Make Stripe fully correct and production-safe.
+
+Requirements:
+- Use only these direct Stripe secrets if present:
+  - STRIPE_API_SECRET
+  - STRIPE_PUBLISHABLE_KEY
+  - STRIPE_WEBHOOK_SECRET
+- Prioritize direct env usage over connector values
+- Ensure Stripe client boot is stable
+- Ensure checkout/session/subscription logic is real
+- Ensure webhook verification is real and uses raw body correctly
+- Ensure billing state sync is accurate
+- Ensure failed payments, cancellations, renewals, and completed checkout events update the database correctly
+- Ensure no fake “active” billing states
+- Add honest logs for billing failures
+- Confirm exact webhook route and make code and UI consistent with it
+
+PHASE 4 — INTEGRATIONS HUB
+The integrations area must be real and user-friendly.
+
+Requirements:
+- Users should not need to paste raw developer credentials for standard platform-managed integrations where OAuth should be used
+- For OAuth-capable integrations, implement proper connect/disconnect flow
+- Store tokens securely
+- Refresh tokens when needed
+- Validate integration immediately after connection
+- Show status as:
+  - connected and verified
+  - connected but needs attention
+  - not configured
+  - coming soon
+- Do not show working-looking forms for integrations that are not actually built
+- Mark unbuilt integrations clearly as Coming Soon
+- Add a service status / health view
+
+At minimum, audit and validate the current handling for:
+- Stripe
+- Twilio
+- Google
+- Meta
+- Mailchimp
+- Shopify
+- Vapi / voice
+
+PHASE 5 — SILENT FAILURE ELIMINATION
+Find and eliminate all dishonest backend and frontend behavior.
+
+Examples:
+- messages marked sent when provider failed
+- campaigns marked active locally without publishing remotely
+- fake phone provisioning
+- fake domain or SSL states
+- random success logic
+- swallowed exceptions
+- 200 responses hiding failures
+
+Replace with:
+- proper HTTP status codes
+- clear backend errors
+- frontend toasts / alerts / status badges
+- logs with actual reasons
+
+PHASE 6 — ONBOARDING / TURN-KEY USER FLOW
+Make Apex usable by a non-technical customer.
+
+Turn-key path should be:
+1. Sign up / log in
+2. Create or access account/workspace
+3. Choose plan / complete billing
+4. Connect key services with minimal friction
+5. Load a prebuilt automation/template
+6. Capture or import leads
+7. Send first automation
+8. View status and results
+
+Requirements:
+- remove technical friction where possible
+- avoid asking normal users for API jargon unless absolutely necessary
+- provide guided setup where needed
+- add empty states and setup prompts
+- make first success happen fast
+
+PHASE 7 — MESSAGING / AUTOMATION RELIABILITY
+Audit all outbound/inbound flows.
+
+Requirements:
+- Twilio messaging must use the correct sender for the correct account
+- failed sends must show failed, not sent
+- inbound messages/webhooks must be stored and processed
+- automation events need honest status tracking
+- no hidden drops
+- add retries or at least clear failure logging where needed
+- confirm webhook events are stored with real response bodies, durations, and statuses
+
+PHASE 8 — SECURITY / TENANCY / DATA SAFETY
+Audit and fix:
+- route ownership checks
+- org/account scoping
+- token storage safety
+- secret handling
+- session behavior
+- webhook auth/signature verification
+- any exposed admin-only functionality
+- any route that can access another tenant’s data
+
+PHASE 9 — FRONTEND HONESTY
+Fix the UI so it reflects reality.
+
+Requirements:
+- no false green states
+- no “connected” badges unless truly connected
+- no blank failures
+- no misleading placeholders
+- every broken config should surface a useful message
+- setup flows should clearly tell the user what to do next
+- add diagnostics where useful
+
+PHASE 10 — E2E VERIFICATION
+After fixes, run a real verification pass and document results.
+
+Test at minimum:
+- login
+- session persistence
+- signup / account access
+- billing flow
+- webhook processing
+- integration connection
+- sending SMS or equivalent real outbound action
+- lead creation / pipeline update
+- one complete automation flow
+- failure handling for a missing or invalid config
+
+OUTPUT FORMAT
+Do the work, then summarize with:
+1. What was broken
+2. What you fixed
+3. What is now truly working
+4. What still needs outside credentials / third-party approval / manual setup
+5. Exact launch checklist remaining, if any
+
+IMPORTANT
+Do not give me fluff.
+Do not tell me a module is done unless you verified it honestly.
+Do not leave fake success paths in place.
+Make Apex real, stable, and turn-key.

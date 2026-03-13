@@ -1,0 +1,197 @@
+Audit and rebuild the Apex Marketing Automations subscription and billing system so it follows a proper SaaS architecture using Stripe.
+
+The system must support real subscriptions, account access control, upgrades/downgrades, failed payments, and cancellation handling.
+
+Do not implement a simple checkout-only solution. Implement a full subscription lifecycle.
+
+--------------------------------
+
+SUBSCRIPTION MODEL
+
+The billing system must support:
+
+• Free trial or trial period (optional)
+• Monthly subscription plans
+• Plan upgrades
+• Plan downgrades
+• Cancel subscription
+• Billing failure handling
+• Account suspension when billing fails
+• Reactivation when payment resumes
+
+Plans should be controlled by Stripe products and prices.
+
+--------------------------------
+
+DATABASE STRUCTURE
+
+Ensure the database contains tables or fields for:
+
+users
+accounts / organizations
+subscriptions
+stripe_customer_id
+stripe_subscription_id
+stripe_price_id
+plan_name
+plan_status
+billing_cycle
+trial_end
+current_period_end
+
+Each user belongs to an account/org.
+Each account/org has one subscription.
+
+Never store sensitive card information in the database.
+
+--------------------------------
+
+STRIPE FLOW
+
+Billing must follow this structure:
+
+Signup
+→ create Stripe customer
+→ create checkout session
+→ user completes payment
+→ Stripe webhook confirms subscription
+→ account becomes active
+
+All subscription state changes must come from webhooks, not frontend assumptions.
+
+--------------------------------
+
+STRIPE WEBHOOK EVENTS
+
+Handle at minimum:
+
+checkout.session.completed
+customer.subscription.created
+customer.subscription.updated
+customer.subscription.deleted
+invoice.payment_succeeded
+invoice.payment_failed
+
+Webhook logic must:
+
+update subscription status
+update billing period
+activate or suspend accounts
+log failures
+
+Webhook verification must use STRIPE_WEBHOOK_SECRET.
+
+--------------------------------
+
+ACCESS CONTROL
+
+User access must depend on subscription status.
+
+Allowed states:
+
+active
+trialing
+past_due
+canceled
+incomplete
+
+If subscription is:
+
+active → full access  
+trialing → full access  
+past_due → warning but limited time  
+canceled → read-only or locked  
+
+--------------------------------
+
+PLAN LIMITS
+
+Each plan must define usage limits such as:
+
+messages per month
+automations
+contacts
+AI usage
+voice minutes
+integrations
+
+These limits must be enforced server-side.
+
+--------------------------------
+
+UPGRADES / DOWNGRADES
+
+When users change plans:
+
+Upgrade
+→ apply immediately
+
+Downgrade
+→ apply at next billing cycle
+
+Ensure Stripe proration settings are correct.
+
+--------------------------------
+
+ADMIN BILLING PANEL
+
+Add a billing section in the dashboard that shows:
+
+current plan
+next billing date
+usage stats
+upgrade/downgrade options
+cancel subscription button
+payment method management
+
+Use Stripe Customer Portal when possible.
+
+--------------------------------
+
+FAILURE HANDLING
+
+When Stripe payment fails:
+
+mark account past_due
+notify user
+retry based on Stripe retry rules
+
+If payment still fails:
+
+suspend automation and messaging
+keep data intact
+
+--------------------------------
+
+VERIFICATION
+
+After implementing, run an end-to-end test:
+
+signup
+checkout
+webhook
+subscription activation
+upgrade plan
+cancel subscription
+simulate failed payment
+
+Return a report showing:
+
+routes involved
+Stripe events processed
+database updates
+final account state
+
+--------------------------------
+
+FINAL RESULT
+
+The billing system must be:
+
+fully webhook-driven
+safe against fraud
+correct across all subscription states
+cleanly integrated with account access control
+
+Do not leave placeholder logic.
+Do not mark subscriptions active without Stripe confirmation.

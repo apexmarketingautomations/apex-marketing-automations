@@ -1,0 +1,135 @@
+Besides that master prompt, give Replit these 4 follow-up prompts in order so it doesn’t wander off into BS.
+
+1) Force an honest audit first
+
+Do not build anything new first. Audit the existing Apex codebase and identify what is genuinely working, what is partially working, what is fake, and what is broken.
+
+Return the results in 4 sections only:
+1. Working and verified
+2. Working but fragile
+3. Broken / incomplete
+4. Fake / simulated / misleading
+
+For every item, include:
+- file names
+- route names
+- exact issue
+- user impact
+- severity: critical / high / medium / low
+
+Then immediately start fixing only the critical and high severity items.
+Do not ask me for permission unless blocked by missing credentials or third-party approval.
+
+2) Force structure cleanup
+
+Refactor Apex into a clean production structure without breaking working features.
+
+Target architecture:
+- auth
+- users / orgs / tenancy
+- billing
+- integrations
+- messaging
+- automations
+- leads / crm
+- webhooks
+- jobs / retries
+- diagnostics / status
+
+Requirements:
+- centralize config/env loading
+- centralize external service clients
+- reduce duplicated logic
+- isolate provider-specific code
+- keep routes thin
+- move business logic into service layers
+- make error handling consistent
+- make the codebase easier to maintain and debug
+
+After refactoring, list:
+1. files changed
+2. why they changed
+3. what became cleaner / safer
+
+3) Force real end-to-end testing
+
+Do not claim completion without testing.
+
+Run a full end-to-end verification of Apex and report only what was actually verified.
+
+Test these flows:
+- login
+- session persistence
+- Stripe billing flow
+- Stripe webhook handling
+- Twilio outbound message
+- inbound webhook handling
+- integrations status reporting
+- one real automation from trigger to action
+- one failure scenario with honest user-facing error
+
+For each test, report:
+- pass / fail
+- exact route(s) involved
+- what was verified
+- screenshot or log evidence if available
+- what still blocks production use
+
+4) Force “turn-key for non-technical user”
+
+Make Apex usable by a normal business owner who does not understand APIs, OAuth, webhooks, DNS, or developer setup.
+
+Requirements:
+- reduce technical language in setup flows
+- add clear onboarding steps
+- add status badges that reflect reality
+- add guided prompts for missing setup
+- remove or hide unfinished integrations behind Coming Soon
+- make first success fast: signup -> billing -> connect essentials -> launch first automation
+
+Audit every major screen and answer:
+1. what would confuse a non-technical user
+2. what should be simplified
+3. what should be hidden
+4. what should be automated
+Then implement the improvements.
+
+Also tell Replit this one rule set
+
+Paste this too, because agents love lying politely:
+
+Rules:
+- no fake success
+- no placeholder completion claims
+- no saying “done” without testing
+- no green UI states unless verified
+- no 200 responses hiding backend failures
+- no storing credentials without validation
+- no marking incomplete features as active
+- no asking me broad strategy questions unless truly blocked
+
+Best order to run them
+
+Run them like this:
+	1.	Honest audit
+	2.	Structure cleanup
+	3.	Critical fixes
+	4.	E2E testing
+	5.	Non-technical onboarding polish
+
+One more prompt that helps a lot
+
+This keeps the agent from drifting:
+
+Work in this loop only:
+1. audit
+2. fix
+3. test
+4. report
+Then repeat until no critical blockers remain.
+
+Do not jump around randomly.
+Do not summarize plans without making code changes.
+Do not say “fully done” unless launch blockers are gone.
+
+The blunt truth: your biggest risk now is not lack of features. It’s false completion. Replit can make a lot of stuff look finished while still being held together with duct tape and caffeine.
