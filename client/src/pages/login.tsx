@@ -27,6 +27,8 @@ export default function Login() {
   const [firebaseLoading, setFirebaseLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const idleLogout = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("reason") === "idle";
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -231,6 +233,17 @@ export default function Login() {
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
+
+              {idleLogout && !error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-sm text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-4 py-2"
+                  data-testid="text-idle-logout-notice"
+                >
+                  You were logged out due to inactivity. Please sign in again.
+                </motion.div>
+              )}
 
               {error && (
                 <motion.div

@@ -8,6 +8,7 @@ import { SiteAssistant } from "@/components/site-assistant";
 import { VibeSwitcher } from "@/components/vibe-switcher";
 import { useAuth } from "@/hooks/use-auth";
 import { useAccount } from "@/hooks/use-account";
+import { useIdleTimeout } from "@/hooks/use-idle-timeout";
 import { BlitzBanner } from "@/components/blitz-banner";
 import { NotificationBell } from "@/components/notification-bell";
 import { WelcomeModal } from "@/components/welcome-modal";
@@ -179,6 +180,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { showWarning, remainingSeconds, dismissWarning } = useIdleTimeout(!!user);
 
   const { data: accounts = [] } = useQuery<SubAccount[]>({
     queryKey: ["/api/accounts"],
@@ -347,6 +349,52 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <CommandMenu />
       <SiteAssistant />
       <WelcomeModal />
+
+      <AnimatePresence>
+        {showWarning && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center"
+            data-testid="idle-timeout-overlay"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-slate-900 border border-white/10 rounded-2xl p-8 max-w-md w-full mx-4 text-center shadow-2xl"
+            >
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-amber-500/20 flex items-center justify-center">
+                <Shield className="w-8 h-8 text-amber-400" />
+              </div>
+              <h2 className="text-xl font-bold text-white mb-2">Session Expiring Soon</h2>
+              <p className="text-slate-400 mb-4">
+                You've been inactive for a while. For security, your session will end in{" "}
+                <span className="text-amber-400 font-bold" data-testid="text-idle-countdown">
+                  {Math.floor(remainingSeconds / 60)}:{String(remainingSeconds % 60).padStart(2, "0")}
+                </span>
+              </p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={dismissWarning}
+                  className="px-6 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-black font-bold rounded-lg transition-colors"
+                  data-testid="button-stay-logged-in"
+                >
+                  Stay Logged In
+                </button>
+                <button
+                  onClick={() => logout()}
+                  className="px-6 py-2.5 bg-white/10 hover:bg-white/20 text-white font-medium rounded-lg transition-colors"
+                  data-testid="button-logout-now"
+                >
+                  Log Out Now
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

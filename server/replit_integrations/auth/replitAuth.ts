@@ -61,11 +61,45 @@ async function upsertUser(claims: any) {
   });
 }
 
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes of inactivity
+
 export async function setupAuth(app: Express) {
   app.set("trust proxy", 1);
   app.use(getSession());
   app.use(passport.initialize());
   app.use(passport.session());
+
+  app.use((req: any, _res, next) => {
+    if (req.session && req.isAuthenticated && req.isAuthenticated()) {
+      const now = Date.now();
+      const lastActivity = req.session.lastActivity || now;
+      if (now - lastActivity > IDLE_TIMEOUT_MS) {
+        console.log(`[AUTH] Session idle timeout for user ${req.user?.id || req.user?.claims?.sub || 'unknown'} (${Math.round((now - lastActivity) / 60000)}m idle)`);
+        return req.logout(() => {
+          req.session?.destroy(() => {
+            next();
+          });
+        });
+      }
+      req.session.lastActivity = now;
+    }
+    next();
+  });
+
+  app.get("/api/auth/session-info", (req: any, res) => {
+    if (!req.isAuthenticated || !req.isAuthenticated()) {
+      return res.json({ authenticated: false });
+    }
+    const lastActivity = req.session?.lastActivity || Date.now();
+    const idleMs = Date.now() - lastActivity;
+    const remainingMs = Math.max(0, IDLE_TIMEOUT_MS - idleMs);
+    res.json({
+      authenticated: true,
+      idleTimeoutMs: IDLE_TIMEOUT_MS,
+      remainingMs,
+      lastActivity,
+    });
+  });
 
   const config = await getOidcConfig();
 

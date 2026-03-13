@@ -66,6 +66,7 @@ Comprehensive API for accounts, messages, workflows, AI bots, blueprints, onboar
 
 ### Access Control & Multi-Tenancy
 - **Authentication**: Replit OIDC (admin), native email/password, Google OAuth 2.0, Firebase Auth (Google popup). `isAuthenticated` middleware handles all session types including `firebase` provider.
+- **Session Idle Timeout**: 30-minute inactivity timeout. Server middleware tracks `lastActivity` on each session and destroys idle sessions. Client-side `useIdleTimeout` hook monitors mouse/keyboard/scroll/touch activity, shows a 2-minute warning dialog before auto-logout. Login page shows "logged out due to inactivity" message via `?reason=idle` query param. `GET /api/auth/session-info` returns remaining session time.
 - **Plan-based Feature Gating**: Features gated by Starter/Pro/Enterprise tiers using `PlanGate` component.
 - **Account Ownership Enforcement**: `verifyAccountOwnership()` helper and strict account filtering ensure data isolation. Admin users bypass checks.
 - **Active Account Context**: `useActiveSubAccountId()` hook for current sub-account ID.
