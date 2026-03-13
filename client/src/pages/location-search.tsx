@@ -61,7 +61,10 @@ export default function LocationSearch() {
 
   const mapRef = useRef<HTMLDivElement>(null);
   const googleMapRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+  const markersRef = useRef<google.maps.Marker[]>([]);
+  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+  const [mapReady, setMapReady] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
 
   const { data, isLoading, isFetching } = useQuery<SearchResponse>({
     queryKey: ["/api/location-search", searchParams?.toString()],
@@ -101,37 +104,60 @@ export default function LocationSearch() {
     setSelectedResult(null);
   }
 
-  const initMap = useCallback(() => {
-    if (!mapRef.current || googleMapRef.current) return;
-    if (!window.google?.maps) return;
-
-    googleMapRef.current = new google.maps.Map(mapRef.current, {
-      center: { lat: 26.6406, lng: -81.8723 },
-      zoom: 10,
-      mapId: "apex-location-search",
-      disableDefaultUI: false,
-      zoomControl: true,
-      mapTypeControl: false,
-      streetViewControl: false,
-      fullscreenControl: true,
-    });
-  }, []);
+  useEffect(() => {
+    if (viewMode !== "map") return;
+    if ((window as any).google?.maps) {
+      setMapReady(true);
+      return;
+    }
+    fetch("/api/config/maps-key", { credentials: "include" })
+      .then(r => r.json())
+      .then(data => {
+        if (!data.apiKey) { setMapError("No Maps API key"); return; }
+        if ((window as any).google?.maps) { setMapReady(true); return; }
+        const script = document.createElement("script");
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${data.apiKey}`;
+        script.async = true;
+        script.onload = () => setMapReady(true);
+        script.onerror = () => setMapError("Failed to load Google Maps");
+        document.head.appendChild(script);
+      })
+      .catch(() => setMapError("Failed to load Maps config"));
+  }, [viewMode]);
 
   useEffect(() => {
-    if (viewMode === "map") {
-      const timer = setTimeout(initMap, 100);
-      return () => clearTimeout(timer);
+    if (viewMode !== "map" || !mapReady || !mapRef.current) return;
+    if (!googleMapRef.current) {
+      googleMapRef.current = new google.maps.Map(mapRef.current, {
+        center: { lat: 26.6406, lng: -81.8723 },
+        zoom: 10,
+        disableDefaultUI: false,
+        zoomControl: true,
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: true,
+        styles: [
+          { elementType: "geometry", stylers: [{ color: "#1e293b" }] },
+          { elementType: "labels.text.stroke", stylers: [{ color: "#0f172a" }] },
+          { elementType: "labels.text.fill", stylers: [{ color: "#94a3b8" }] },
+          { featureType: "road", elementType: "geometry", stylers: [{ color: "#334155" }] },
+          { featureType: "water", elementType: "geometry", stylers: [{ color: "#0f172a" }] },
+        ],
+      });
+      infoWindowRef.current = new google.maps.InfoWindow();
     }
-  }, [viewMode, initMap]);
+  }, [viewMode, mapReady]);
 
   useEffect(() => {
     if (viewMode !== "map" || !googleMapRef.current || !data) return;
 
-    markersRef.current.forEach(m => m.map = null);
+    markersRef.current.forEach(m => m.setMap(null));
     markersRef.current = [];
 
     const bounds = new google.maps.LatLngBounds();
     let hasPoints = false;
+
+    function esc(s: string) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
 
     for (const r of data.results) {
       if (r.lat == null || r.lng == null) continue;
@@ -139,28 +165,31 @@ export default function LocationSearch() {
       const pos = { lat: r.lat, lng: r.lng };
       bounds.extend(pos);
 
-      const pinEl = document.createElement("div");
-      pinEl.style.cssText = `width:28px;height:28px;border-radius:50%;background:${TYPE_COLORS[r.type] || "#6366f1"};border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);cursor:pointer;display:flex;align-items:center;justify-content:center;`;
-      pinEl.innerHTML = `<span style="color:white;font-size:10px;font-weight:bold">${r.type[0].toUpperCase()}</span>`;
-
-      const marker = new google.maps.marker.AdvancedMarkerElement({
+      const marker = new google.maps.Marker({
         map: googleMapRef.current!,
         position: pos,
-        content: pinEl,
         title: r.name,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 10,
+          fillColor: TYPE_COLORS[r.type] || "#6366f1",
+          fillOpacity: 1,
+          strokeColor: "#ffffff",
+          strokeWeight: 2,
+        },
       });
 
       marker.addListener("click", () => {
         setSelectedResult(r);
-        const infoWindow = new google.maps.InfoWindow({
-          content: `<div style="padding:8px;min-width:160px">
-            <div style="font-weight:600;margin-bottom:4px">${r.name}</div>
-            <div style="font-size:12px;color:#666;margin-bottom:4px">${r.formattedAddress}</div>
-            <div style="display:inline-block;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;color:white;background:${TYPE_COLORS[r.type] || '#6366f1'}">${TYPE_LABELS[r.type] || r.type}</div>
+        if (infoWindowRef.current) {
+          infoWindowRef.current.setContent(`<div style="padding:8px;min-width:160px">
+            <div style="font-weight:600;margin-bottom:4px">${esc(r.name)}</div>
+            <div style="font-size:12px;color:#666;margin-bottom:4px">${esc(r.formattedAddress)}</div>
+            <div style="display:inline-block;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;color:white;background:${TYPE_COLORS[r.type] || '#6366f1'}">${esc(TYPE_LABELS[r.type] || r.type)}</div>
             ${r.distance != null ? `<div style="font-size:11px;color:#888;margin-top:4px">${r.distance} mi away</div>` : ""}
-          </div>`,
-        });
-        infoWindow.open(googleMapRef.current!, marker);
+          </div>`);
+          infoWindowRef.current.open(googleMapRef.current!, marker);
+        }
       });
 
       markersRef.current.push(marker);
@@ -438,7 +467,12 @@ export default function LocationSearch() {
             </div>
           ) : (
             <div className="h-full flex">
-              <div ref={mapRef} className="flex-1" data-testid="map-container" />
+              {mapError ? (
+                <div className="flex-1 flex items-center justify-center text-red-400">{mapError}</div>
+              ) : !mapReady && viewMode === "map" ? (
+                <div className="flex-1 flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-blue-400" /></div>
+              ) : null}
+              <div ref={mapRef} className={`flex-1 ${mapError || (!mapReady && viewMode === "map") ? "hidden" : ""}`} data-testid="map-container" />
               {selectedResult && (
                 <div className="w-72 border-l border-white/10 p-4 overflow-y-auto flex-shrink-0">
                   <div className="flex items-center justify-between mb-3">
