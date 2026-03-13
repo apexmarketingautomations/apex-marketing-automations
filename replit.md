@@ -46,8 +46,9 @@ Comprehensive API for accounts, messages, workflows, AI bots, blueprints, onboar
 - **Sponsorship Engine**: Geo-targeted native ads, bid-per-click model, admin approval.
 - **Revenue Command**: Admin-only profit dashboard.
 - **Apex Wallet**: Redesigned billing with live credit balance, top-up options, transaction history.
-- **Integrations Hub**: Credential-based service connections for 17 providers (Google Suite, Slack, Zapier, QuickBooks, Twilio, Stripe, HubSpot, Mailchimp, Facebook, ElevenLabs), config stored in `integration_connections.config`.
+- **Integrations Hub**: Credential-based service connections for 18 providers (Google Suite, Slack, Zapier, QuickBooks, Twilio, Stripe, HubSpot, Mailchimp, Facebook, ElevenLabs, WhatsApp Business), config stored in `integration_connections.config`.
 - **ElevenLabs Voice AI**: Text-to-speech synthesis integration with voice selection, TTS API endpoints (`/api/elevenlabs/config`, `/api/elevenlabs/voices`, `/api/elevenlabs/tts`), available as a voice provider option in Voice Agent Studio and as an `ElevenLabsTTS` workflow step in the Workflow Builder.
+- **WhatsApp Business API**: Dedicated WhatsApp Business integration via Twilio. Features: template message management (CRUD via `whatsapp_templates` table), interactive messages (buttons, quick replies, list messages), delivery status tracking (sent/delivered/read), WhatsApp-specific branding in unified inbox, SendWhatsApp workflow action type, OnWhatsAppReply trigger. Status webhook at `/api/whatsapp-status`.
 - **Webhook Event Log**: Timeline of webhook deliveries.
 - **Client Portal**: Public page for end-clients with token-based access to metrics, messages, appointments.
 - **Dashboard Analytics**: ROI charts (Recharts) for leads, messages, pipeline, ad performance.
@@ -83,7 +84,7 @@ Comprehensive API for accounts, messages, workflows, AI bots, blueprints, onboar
 - **Google Gemini API**: Used for site generation, ad campaigns, bot chat, workflow AI, voice persona generation, chat widgets, and form builders. Features include retry, streaming, image generation, JSON mode, industry-specific tuning, and multi-language support. References pgvector for RAG.
 
 ### Communication Services
-- **Twilio**: Phone number provisioning, SMS webhook with AI auto-reply.
+- **Twilio**: Phone number provisioning, SMS webhook with AI auto-reply, WhatsApp Business API messaging (templates, interactive messages, delivery tracking).
 - **Vapi**: Voice AI agent deployment, outbound calling, browser demo calls (backend proxy for API key security).
 - **Mailchimp**: Email campaign sending via Marketing API (audience management, contact batching, campaign creation/sending).
 

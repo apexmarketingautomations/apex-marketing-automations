@@ -1031,3 +1031,24 @@ export const dmKeywordAutomations = pgTable("dm_keyword_automations", {
 export const insertDmKeywordAutomationSchema = createInsertSchema(dmKeywordAutomations).omit({ id: true, createdAt: true, hitCount: true });
 export type InsertDmKeywordAutomation = z.infer<typeof insertDmKeywordAutomationSchema>;
 export type DmKeywordAutomation = typeof dmKeywordAutomations.$inferSelect;
+
+export const whatsappTemplates = pgTable("whatsapp_templates", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  name: text("name").notNull(),
+  category: text("category").notNull().default("marketing"),
+  language: text("language").notNull().default("en"),
+  headerType: text("header_type"),
+  headerContent: text("header_content"),
+  body: text("body").notNull(),
+  footerText: text("footer_text"),
+  buttons: json("buttons"),
+  variables: text("variables").array().default([]),
+  status: text("status").notNull().default("draft"),
+  twilioTemplateSid: text("twilio_template_sid"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertWhatsappTemplateSchema = createInsertSchema(whatsappTemplates).omit({ id: true, createdAt: true });
+export type InsertWhatsappTemplate = z.infer<typeof insertWhatsappTemplateSchema>;
+export type WhatsappTemplate = typeof whatsappTemplates.$inferSelect;

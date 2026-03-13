@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains, insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, insertMetaAdCampaignSchema, insertMetaLeadSchema, insertInstagramConversationSchema, insertInstagramMessageSchema, insertNotificationSchema, contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings, metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications, messages, hasFeature, PLAN_TIERS, subAccounts, liveAutomations, insertLiveAutomationSchema, insertSponsorshipSchema, insertCreditWalletSchema, creditTransactions, platformProfitLedger, sponsorships, sponsorshipClicks, digitalCards, webhookEvents, sentinelIncidents, insertSentinelIncidentSchema, dmKeywordAutomations, propertyLeads, integrationConnections } from "@shared/schema";
+import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains, insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, insertMetaAdCampaignSchema, insertMetaLeadSchema, insertInstagramConversationSchema, insertInstagramMessageSchema, insertNotificationSchema, contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings, metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications, messages, hasFeature, PLAN_TIERS, subAccounts, liveAutomations, insertLiveAutomationSchema, insertSponsorshipSchema, insertCreditWalletSchema, creditTransactions, platformProfitLedger, sponsorships, sponsorshipClicks, digitalCards, webhookEvents, sentinelIncidents, insertSentinelIncidentSchema, dmKeywordAutomations, propertyLeads, whatsappTemplates, insertWhatsappTemplateSchema, integrationConnections } from "@shared/schema";
 import { sql, eq, and } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -960,7 +960,71 @@ Rules:
     let twilioSid: string | null = null;
     let twilioError: string | null = null;
 
-    if (channel === "sms" || !channel) {
+    if (channel === "whatsapp") {
+      const twilioClient = getTwilioClient();
+      if (!twilioClient) {
+        twilioStatus = "failed";
+        twilioError = "Twilio is not configured. Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN to send WhatsApp messages.";
+      } else {
+        const account = await storage.getSubAccount(subAccountId);
+        const waConnections = await db.select().from(integrationConnections)
+          .where(and(
+            eq(integrationConnections.subAccountId, subAccountId),
+            eq(integrationConnections.provider, "whatsapp-business"),
+            eq(integrationConnections.status, "connected")
+          ))
+          .limit(1)
+          .execute()
+          .catch(() => []);
+        
+        let waNumber = account?.twilioNumber;
+        if (waConnections.length > 0) {
+          const waConfig = waConnections[0].config as any;
+          if (waConfig?.whatsappNumber) waNumber = waConfig.whatsappNumber;
+        }
+
+        if (!waNumber) {
+          twilioStatus = "failed";
+          twilioError = "No WhatsApp Business number configured. Connect WhatsApp in Integrations.";
+        } else {
+          try {
+            const msgOptions: any = {
+              body: body,
+              to: `whatsapp:${contactPhone}`,
+              from: `whatsapp:${waNumber}`,
+            };
+
+            const templateName = (req.body as any).templateName;
+            const templateVars = (req.body as any).templateVariables;
+            if (templateName) {
+              msgOptions.contentSid = templateName;
+              if (templateVars) {
+                msgOptions.contentVariables = JSON.stringify(templateVars);
+              }
+            }
+
+            const interactiveType = (req.body as any).interactiveType;
+            const interactiveButtons = (req.body as any).interactiveButtons;
+            if (interactiveType === "buttons" && interactiveButtons) {
+              msgOptions.persistentAction = interactiveButtons.map((b: string) => `button:${b}`);
+            }
+
+            const twilioMsg = await twilioClient.messages.create(msgOptions);
+            twilioStatus = twilioMsg.status || "sent";
+            twilioSid = twilioMsg.sid;
+
+            const statusCallback = (req.body as any).statusCallback;
+            if (statusCallback) {
+              console.log(`[WHATSAPP] Message ${twilioSid} sent, status callback: ${statusCallback}`);
+            }
+          } catch (twilioErr: any) {
+            console.error("[WHATSAPP] Twilio send error:", twilioErr.message);
+            twilioStatus = "failed";
+            twilioError = twilioErr.message || "WhatsApp send failed";
+          }
+        }
+      }
+    } else if (channel === "sms" || !channel) {
       const twilioClient = getTwilioClient();
       if (!twilioClient) {
         twilioStatus = "failed";
@@ -1000,9 +1064,99 @@ Rules:
       return res.status(422).json({ ...msg, twilioSid, error: twilioError });
     }
 
-    await logUsageInternal(subAccountId, "SMS_SEGMENT", 1, `SMS to ${contactPhone}`);
+    const usageType = channel === "whatsapp" ? "WHATSAPP_MESSAGE" : "SMS_SEGMENT";
+    const usageDesc = channel === "whatsapp" ? `WhatsApp to ${contactPhone}` : `SMS to ${contactPhone}`;
+    await logUsageInternal(subAccountId, usageType, 1, usageDesc);
 
     res.status(201).json({ ...msg, twilioSid });
+  }));
+
+  // ---- WhatsApp Status Webhook (delivery/read receipts) ----
+  app.post("/api/whatsapp-status", async (req, res) => {
+    try {
+      const { MessageSid, MessageStatus, To, From } = req.body;
+      if (!MessageSid || !MessageStatus) {
+        return res.type("text/xml").send("<Response></Response>");
+      }
+
+      console.log(`[WHATSAPP STATUS] SID: ${MessageSid}, Status: ${MessageStatus}`);
+
+      const statusMap: Record<string, string> = {
+        queued: "queued",
+        sent: "sent",
+        delivered: "delivered",
+        read: "read",
+        failed: "failed",
+        undelivered: "failed",
+      };
+
+      const normalizedStatus = statusMap[MessageStatus] || MessageStatus;
+      const cleanPhone = (To || "").replace(/^whatsapp:/, "");
+
+      if (cleanPhone && normalizedStatus) {
+        await db.execute(
+          sql`UPDATE messages SET status = ${normalizedStatus}
+              WHERE id = (
+                SELECT id FROM messages
+                WHERE contact_phone = ${cleanPhone}
+                  AND channel = 'whatsapp'
+                  AND direction = 'outbound'
+                ORDER BY created_at DESC
+                LIMIT 1
+              )`
+        );
+      }
+
+      res.type("text/xml").send("<Response></Response>");
+    } catch (err: any) {
+      console.error("[WHATSAPP STATUS] Error:", err.message);
+      res.type("text/xml").send("<Response></Response>");
+    }
+  });
+
+  // ---- WhatsApp Templates CRUD ----
+  app.get("/api/whatsapp-templates/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const templates = await db.select().from(whatsappTemplates).where(eq(whatsappTemplates.subAccountId, subAccountId));
+    res.json(templates);
+  }));
+
+  app.post("/api/whatsapp-templates/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const parsed = insertWhatsappTemplateSchema.safeParse({ ...req.body, subAccountId });
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const [template] = await db.insert(whatsappTemplates).values(parsed.data).returning();
+    res.status(201).json(template);
+  }));
+
+  app.put("/api/whatsapp-templates/:subAccountId/:id", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const id = parseIntParam(req.params.id, "id");
+
+    const updateSchema = insertWhatsappTemplateSchema.partial().omit({ subAccountId: true });
+    const parsed = updateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid template data", details: parsed.error.flatten() });
+    }
+
+    const [updated] = await db.update(whatsappTemplates)
+      .set(parsed.data)
+      .where(and(eq(whatsappTemplates.id, id), eq(whatsappTemplates.subAccountId, subAccountId)))
+      .returning();
+
+    if (!updated) return res.status(404).json({ error: "Template not found" });
+    res.json(updated);
+  }));
+
+  app.delete("/api/whatsapp-templates/:subAccountId/:id", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const id = parseIntParam(req.params.id, "id");
+
+    await db.delete(whatsappTemplates)
+      .where(and(eq(whatsappTemplates.id, id), eq(whatsappTemplates.subAccountId, subAccountId)));
+
+    res.json({ success: true });
   }));
 
   // ---- Bot Chat (Real OpenAI) ----
@@ -2733,6 +2887,31 @@ Rules:
       const senderClean = stripChannelPrefix(senderRaw);
 
       console.log(`[${channel.toUpperCase()}] from ${senderClean}: ${incomingMsg.substring(0, 100)}`);
+
+      const toClean = toRaw ? stripChannelPrefix(toRaw) : "";
+      const matchedAccounts = await db.select().from(subAccounts).where(eq(subAccounts.twilioNumber, toClean)).execute().catch(() => []);
+      const matchedAccountId = matchedAccounts.length > 0 ? matchedAccounts[0].id : 1;
+
+      try {
+        await storage.createMessage({
+          subAccountId: matchedAccountId,
+          contactPhone: senderClean,
+          body: incomingMsg,
+          direction: "inbound",
+          channel,
+          status: "received",
+        });
+      } catch (e: any) {
+        console.log(`[${channel.toUpperCase()}] Message storage error:`, e.message);
+      }
+
+      if (channel === "whatsapp") {
+        fireAutomationTrigger("OnWhatsAppReply", matchedAccountId, {
+          senderPhone: senderClean,
+          message: incomingMsg,
+          channel: "whatsapp",
+        }).catch(() => {});
+      }
 
       let aiReply = "Thanks for your message! We'll get back to you shortly.";
 
@@ -7709,11 +7888,13 @@ ${pages.map(p => `  <url>
     "OnAppointmentBooked",
     "OnReviewReceived",
     "OnSMSReply",
+    "OnWhatsAppReply",
     "Manual",
   ] as const;
 
   const VALID_ACTION_TYPES = [
     "SendTwilioSMS",
+    "SendWhatsApp",
     "Wait",
     "Condition",
     "DeployMetaAd",
@@ -7739,6 +7920,16 @@ ${pages.map(p => `  <url>
       to_role: z.string().optional(),
       body: z.string().min(1),
       from_number: z.string().optional(),
+    }),
+    SendWhatsApp: z.object({
+      to: z.string().optional(),
+      to_role: z.string().optional(),
+      body: z.string().min(1),
+      message_type: z.enum(["text", "template", "interactive_buttons", "interactive_list"]).optional(),
+      template_name: z.string().optional(),
+      template_variables: z.record(z.string()).optional(),
+      buttons: z.string().optional(),
+      list_items: z.string().optional(),
     }),
     Wait: z.object({
       duration_minutes: z.number().min(1).max(43200),
@@ -7941,10 +8132,12 @@ AVAILABLE TRIGGERS:
 - OnAppointmentBooked: Calendar appointment created.
 - OnReviewReceived: New review received.
 - OnSMSReply: Inbound SMS received.
+- OnWhatsAppReply: Inbound WhatsApp message received.
 - Manual: Manually triggered.
 
 AVAILABLE ACTIONS:
 - SendTwilioSMS: Send SMS via Twilio. Params: to (phone), to_role (e.g. "marketer", "attorney", "admin"), body (message text), from_number.
+- SendWhatsApp: Send WhatsApp message via Twilio WhatsApp Business API. Params: to (phone with country code), to_role, body (message text), message_type (text/template/interactive_buttons/interactive_list), template_name (for template messages), template_variables (key-value pairs for template vars), buttons (comma-separated button labels for interactive), list_items (comma-separated list items).
 - Wait: Pause execution. Params: duration_minutes (1-43200).
 - Condition: Branch logic. Params: check (description), field, operator (equals/not_equals/contains/greater_than/less_than/exists/not_exists), value, on_true (step id), on_false (step id).
 - DeployMetaAd: Launch a Meta/Facebook geo-targeted ad. Params: campaign_name, radius_miles, budget_daily, duration_days, use_incident_coords (boolean), ad_copy, target_audience.

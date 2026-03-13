@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Plug, CalendarDays, Mail, FileSpreadsheet, MessageSquare, Zap, Receipt, Phone, CreditCard, HardDrive, Users, Globe, Check, X, MapPin, BarChart3, Building2, FileText, Info, Settings, Key, ExternalLink, Target, Mic, ShoppingCart, Volume2 } from "lucide-react";
+import { Plug, CalendarDays, Mail, FileSpreadsheet, MessageSquare, Zap, Receipt, Phone, CreditCard, HardDrive, Users, Globe, Check, X, MapPin, BarChart3, Building2, FileText, Info, Settings, Key, ExternalLink, Target, Mic, ShoppingCart, Volume2, MessageCircle } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { INTEGRATIONS_STEPS } from "@/components/tutorial-steps";
 
@@ -173,6 +173,16 @@ const PROVIDER_CREDENTIALS: Record<string, { fields: CredentialField[]; helpUrl?
     helpUrl: "https://app.batchdata.com/",
     helpText: "Powers skip trace / people data lookups for Property Radar. Get your API key from BatchData.",
   },
+  "whatsapp-business": {
+    fields: [
+      { key: "whatsappNumber", label: "WhatsApp Business Number", placeholder: "+1234567890 (with country code)" },
+      { key: "accountSid", label: "Twilio Account SID", placeholder: "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
+      { key: "authToken", label: "Twilio Auth Token", placeholder: "Your Twilio auth token", type: "password" },
+      { key: "messagingServiceSid", label: "Messaging Service SID (optional)", placeholder: "MGxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
+    ],
+    helpUrl: "https://www.twilio.com/docs/whatsapp",
+    helpText: "Connect your WhatsApp Business number through Twilio. Requires a Twilio account with WhatsApp sender approved.",
+  },
 };
 
 const COMING_SOON_PROVIDERS: string[] = [];
@@ -199,6 +209,7 @@ const INTEGRATIONS = [
   { provider: "shopify", name: "Shopify", description: "E-commerce automation, abandoned carts, orders", icon: ShoppingCart, color: "bg-green-600/20", iconColor: "text-green-400", category: "tools" },
   { provider: "elevenlabs", name: "ElevenLabs", description: "AI voice synthesis and text-to-speech", icon: Volume2, color: "bg-fuchsia-500/20", iconColor: "text-fuchsia-400", category: "tools" },
   { provider: "skip-trace", name: "Skip Trace (BatchData)", description: "People data lookup for property owner contact info", icon: Users, color: "bg-violet-500/20", iconColor: "text-violet-400", category: "tools" },
+  { provider: "whatsapp-business", name: "WhatsApp Business", description: "WhatsApp messaging with templates and interactive messages", icon: MessageCircle, color: "bg-green-600/20", iconColor: "text-green-400", category: "messaging" },
 ];
 
 interface IntegrationConnection {
@@ -515,6 +526,11 @@ export default function IntegrationsPage() {
       </div>
 
       <div className="space-y-6" data-testid="integrations-grid">
+        {renderGrid(
+          "messaging",
+          "Messaging & Communications",
+          <MessageCircle size={20} className="text-green-400" />
+        )}
         {renderGrid(
           "google",
           "Google Workspace & Business",

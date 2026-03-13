@@ -1,6 +1,6 @@
 import { PlanGate } from "@/components/plan-gate";
 import { useState } from "react";
-import { Clock, MessageSquare, GitFork, MoreHorizontal, PlayCircle, CheckCircle2, AlertCircle, AlertTriangle, Sparkles, Loader2, Code2, Trash2, BookOpen, Target, Mail, UserPlus, TrendingUp, Bell, Globe, Zap, Terminal, Cpu, Brain, ChevronDown, Eye, Power, Archive, ShoppingCart, Volume2 } from "lucide-react";
+import { Clock, MessageSquare, GitFork, MoreHorizontal, PlayCircle, CheckCircle2, AlertCircle, AlertTriangle, Sparkles, Loader2, Code2, Trash2, BookOpen, Target, Mail, UserPlus, TrendingUp, Bell, Globe, Zap, Terminal, Cpu, Brain, ChevronDown, Eye, Power, Archive, ShoppingCart, Volume2, MessageCircle } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { WORKFLOW_STEPS } from "@/components/tutorial-steps";
 import { motion, AnimatePresence } from "framer-motion";
@@ -13,6 +13,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
@@ -42,6 +45,7 @@ const StepIcon = ({ type }: { type: string }) => {
     case "WebhookCall": return <Globe className="h-5 w-5 text-indigo-500" />;
     case "AIGenerate": return <Sparkles className="h-5 w-5 text-violet-500" />;
     case "ElevenLabsTTS": return <Volume2 className="h-5 w-5 text-fuchsia-500" />;
+    case "SendWhatsApp": return <MessageCircle className="h-5 w-5 text-green-500" />;
     case "Wait": return <Clock className="h-5 w-5 text-amber-500" />;
     default: return <CheckCircle2 className="h-5 w-5 text-gray-400" />;
   }
@@ -82,6 +86,7 @@ const StepCard = ({ step, index, onClick, isSelected }: { step: any, index: numb
                   {step.action_type === "WebhookCall" && <span className="text-indigo-400">{step.params.url?.slice(0, 30) || "Webhook"}</span>}
                   {step.action_type === "AIGenerate" && <span className="text-violet-400">AI Generate</span>}
                   {step.action_type === "ElevenLabsTTS" && <span className="text-fuchsia-400">{step.params.text?.slice(0, 40) || "Voice Message"}</span>}
+                  {step.action_type === "SendWhatsApp" && <span className="text-green-400">{step.params.template_name || step.params.body?.slice(0, 30) || "WhatsApp"}</span>}
                 </p>
               </div>
               <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -886,6 +891,7 @@ function WorkflowBuilderInner() {
                       { type: "SendEmail", label: "Email", icon: <Mail className="h-3 w-3" />, color: "text-cyan-500 border-cyan-500/30 hover:bg-cyan-500/10" },
                       { type: "WebhookCall", label: "Webhook", icon: <Globe className="h-3 w-3" />, color: "text-indigo-500 border-indigo-500/30 hover:bg-indigo-500/10" },
                       { type: "ElevenLabsTTS", label: "Voice TTS", icon: <Volume2 className="h-3 w-3" />, color: "text-fuchsia-500 border-fuchsia-500/30 hover:bg-fuchsia-500/10" },
+                      { type: "SendWhatsApp", label: "WhatsApp", icon: <MessageCircle className="h-3 w-3" />, color: "text-green-500 border-green-500/30 hover:bg-green-500/10" },
                     ].map(({ type, label, icon, color }) => (
                       <Button
                         key={type}
@@ -1018,6 +1024,61 @@ function WorkflowBuilderInner() {
                               <Input data-testid="input-webhook-method" value={selectedStep.params.method || "POST"}
                                 onChange={(e) => handleUpdateStep(selectedStepIndex, { ...selectedStep, params: { ...selectedStep.params, method: e.target.value } })} />
                             </div>
+                          </>
+                        )}
+
+                        {selectedStep.action_type === "SendWhatsApp" && (
+                          <>
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-medium">To (phone with country code)</label>
+                              <Input data-testid="input-whatsapp-to" value={selectedStep.params.to || ""}
+                                placeholder="+1234567890"
+                                onChange={(e) => handleUpdateStep(selectedStepIndex, { ...selectedStep, params: { ...selectedStep.params, to: e.target.value } })} />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-medium">Message Type</label>
+                              <Select value={selectedStep.params.message_type || "text"} onValueChange={(val) => handleUpdateStep(selectedStepIndex, { ...selectedStep, params: { ...selectedStep.params, message_type: val } })}>
+                                <SelectTrigger data-testid="select-whatsapp-type">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="text">Text Message</SelectItem>
+                                  <SelectItem value="template">Template Message</SelectItem>
+                                  <SelectItem value="interactive_buttons">Interactive (Buttons)</SelectItem>
+                                  <SelectItem value="interactive_list">Interactive (List)</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            {(selectedStep.params.message_type === "template") && (
+                              <div className="space-y-1.5">
+                                <label className="text-xs font-medium">Template Name</label>
+                                <Input data-testid="input-whatsapp-template" value={selectedStep.params.template_name || ""}
+                                  placeholder="e.g. appointment_reminder"
+                                  onChange={(e) => handleUpdateStep(selectedStepIndex, { ...selectedStep, params: { ...selectedStep.params, template_name: e.target.value } })} />
+                              </div>
+                            )}
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-medium">Message Body</label>
+                              <Textarea data-testid="input-whatsapp-body" value={selectedStep.params.body || ""} className="min-h-[80px]"
+                                placeholder="Hello {{1}}, your appointment is on {{2}}"
+                                onChange={(e) => handleUpdateStep(selectedStepIndex, { ...selectedStep, params: { ...selectedStep.params, body: e.target.value } })} />
+                            </div>
+                            {(selectedStep.params.message_type === "interactive_buttons") && (
+                              <div className="space-y-1.5">
+                                <label className="text-xs font-medium">Buttons (comma-separated)</label>
+                                <Input data-testid="input-whatsapp-buttons" value={selectedStep.params.buttons || ""}
+                                  placeholder="Confirm, Reschedule, Cancel"
+                                  onChange={(e) => handleUpdateStep(selectedStepIndex, { ...selectedStep, params: { ...selectedStep.params, buttons: e.target.value } })} />
+                              </div>
+                            )}
+                            {(selectedStep.params.message_type === "interactive_list") && (
+                              <div className="space-y-1.5">
+                                <label className="text-xs font-medium">List Items (comma-separated)</label>
+                                <Input data-testid="input-whatsapp-list" value={selectedStep.params.list_items || ""}
+                                  placeholder="Option A, Option B, Option C"
+                                  onChange={(e) => handleUpdateStep(selectedStepIndex, { ...selectedStep, params: { ...selectedStep.params, list_items: e.target.value } })} />
+                              </div>
+                            )}
                           </>
                         )}
 

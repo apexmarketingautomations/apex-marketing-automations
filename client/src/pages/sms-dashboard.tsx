@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { format } from "date-fns";
-import { Send, Phone, User, Building2, MessageSquare, Loader2, CheckCircle2, Clock, Instagram, Mail, Bell, BookOpen } from "lucide-react";
+import { Send, Phone, User, Building2, MessageSquare, Loader2, CheckCircle2, Clock, Instagram, Mail, Bell, BookOpen, MessageCircle, CheckCheck } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { INBOX_STEPS } from "@/components/tutorial-steps";
 import { motion, AnimatePresence } from "framer-motion";
@@ -47,7 +47,7 @@ const formSchema = z.object({
   subAccountId: z.string().min(1, "Please select an account"),
   contactPhone: z.string().min(10, "Phone number must be at least 10 digits"),
   messageBody: z.string().min(1, "Message cannot be empty").max(1600, "Message too long"),
-  channel: z.enum(["sms", "instagram"]).default("sms"),
+  channel: z.enum(["sms", "instagram", "whatsapp"]).default("sms"),
 });
 
 interface LocalMessage extends Message {
@@ -158,9 +158,10 @@ export default function SmsDashboard() {
       
       queryClient.invalidateQueries({ queryKey: ["/api/messages", numericAccountId] });
       form.resetField("messageBody");
+      const channelLabel = values.channel === 'whatsapp' ? 'WhatsApp' : values.channel === 'instagram' ? 'Instagram' : 'SMS';
       toast({
-        title: "Message sent via Twilio",
-        description: `SMS delivered to ${values.contactPhone}. Status: ${data.status || "sent"}.`,
+        title: `Message sent via ${channelLabel}`,
+        description: `${channelLabel} message to ${values.contactPhone}. Status: ${data.status || "sent"}.`,
       });
     } catch (error: any) {
       toast({
@@ -262,7 +263,7 @@ export default function SmsDashboard() {
                 <div>
                   <h3 className="font-semibold text-primary">Omnichannel Ready</h3>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Connected to Twilio (SMS) and Meta Graph API (Instagram).
+                    Connected to Twilio (SMS), WhatsApp Business API, and Meta Graph API (Instagram).
                   </p>
                 </div>
               </div>
@@ -294,6 +295,9 @@ export default function SmsDashboard() {
                  <Badge variant="outline" className="gap-1">
                    <Phone className="h-3 w-3" /> SMS
                  </Badge>
+                 <Badge variant="outline" className="gap-1 border-green-500/30 text-green-400" data-testid="badge-whatsapp">
+                   <MessageCircle className="h-3 w-3" /> WhatsApp
+                 </Badge>
                  <Badge variant="outline" className={`gap-1 ${!instagramConnected && 'opacity-50'}`}>
                    <Instagram className="h-3 w-3" /> Instagram
                  </Badge>
@@ -324,6 +328,8 @@ export default function SmsDashboard() {
                         <div className="flex items-center gap-1 mb-1 px-1">
                            {msg.channel === 'instagram' ? (
                              <Instagram className="h-3 w-3 text-pink-500" />
+                           ) : msg.channel === 'whatsapp' ? (
+                             <MessageCircle className="h-3 w-3 text-green-500" />
                            ) : (
                              <MessageSquare className="h-3 w-3 text-blue-500" />
                            )}
@@ -343,7 +349,9 @@ export default function SmsDashboard() {
                         }`}>
                           <span>{format(new Date(msg.createdAt), 'h:mm a')}</span>
                           {msg.direction === 'outbound' && (
-                             <span className="uppercase font-medium">• {msg.status}</span>
+                            <span className={`uppercase font-medium flex items-center gap-0.5 ${msg.status === 'read' ? 'text-blue-500' : msg.status === 'delivered' ? 'text-green-500' : ''}`}>
+                              • {msg.status === 'read' && msg.channel === 'whatsapp' ? <><CheckCheck className="h-2.5 w-2.5" /> Read</> : msg.status}
+                            </span>
                           )}
                         </div>
                       </div>
@@ -360,28 +368,40 @@ export default function SmsDashboard() {
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                   
                   {/* Channel Selector for Sending */}
-                  {instagramConnected && (
-                    <div className="flex gap-2 mb-2">
-                       <Button
-                        type="button"
-                        variant={form.watch("channel") === "sms" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => form.setValue("channel", "sms")}
-                        className="text-xs h-7"
-                       >
-                         <Phone className="mr-1.5 h-3 w-3" /> SMS
-                       </Button>
+                  <div className="flex gap-2 mb-2">
+                     <Button
+                      type="button"
+                      variant={form.watch("channel") === "sms" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => form.setValue("channel", "sms")}
+                      className="text-xs h-7"
+                      data-testid="button-channel-sms"
+                     >
+                       <Phone className="mr-1.5 h-3 w-3" /> SMS
+                     </Button>
+                     <Button
+                      type="button"
+                      variant={form.watch("channel") === "whatsapp" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => form.setValue("channel", "whatsapp")}
+                      className={`text-xs h-7 ${form.watch("channel") === "whatsapp" ? "bg-green-600 hover:bg-green-700" : ""}`}
+                      data-testid="button-channel-whatsapp"
+                     >
+                       <MessageCircle className="mr-1.5 h-3 w-3" /> WhatsApp
+                     </Button>
+                     {instagramConnected && (
                        <Button
                         type="button"
                         variant={form.watch("channel") === "instagram" ? "default" : "outline"}
                         size="sm"
                         onClick={() => form.setValue("channel", "instagram")}
                         className={`text-xs h-7 ${form.watch("channel") === "instagram" ? "bg-pink-600 hover:bg-pink-700" : ""}`}
+                        data-testid="button-channel-instagram"
                        >
                          <Instagram className="mr-1.5 h-3 w-3" /> Instagram
                        </Button>
-                    </div>
-                  )}
+                     )}
+                  </div>
 
                   <div className="relative">
                     <FormField
@@ -391,7 +411,7 @@ export default function SmsDashboard() {
                         <FormItem>
                           <FormControl>
                             <Textarea
-                              placeholder={`Type your ${form.watch("channel") === 'instagram' ? 'DM' : 'SMS'}...`}
+                              placeholder={`Type your ${form.watch("channel") === 'instagram' ? 'DM' : form.watch("channel") === 'whatsapp' ? 'WhatsApp message' : 'SMS'}...`}
                               className="min-h-[80px] resize-none pr-12 text-sm bg-muted/30 border-muted-foreground/20 focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
                               {...field}
                               onKeyDown={(e) => {
@@ -411,7 +431,7 @@ export default function SmsDashboard() {
                         type="submit" 
                         size="icon" 
                         disabled={isSending || !form.watch("messageBody")}
-                        className={`h-8 w-8 rounded-full shadow-sm ${form.watch("channel") === 'instagram' ? 'bg-pink-600 hover:bg-pink-700' : ''}`}
+                        className={`h-8 w-8 rounded-full shadow-sm ${form.watch("channel") === 'instagram' ? 'bg-pink-600 hover:bg-pink-700' : form.watch("channel") === 'whatsapp' ? 'bg-green-600 hover:bg-green-700' : ''}`}
                         data-testid="button-send"
                       >
                         {isSending ? (
