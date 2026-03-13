@@ -95,10 +95,11 @@ Comprehensive API for accounts, messages, workflows, AI bots, blueprints, onboar
 
 ### Automation Engine
 - **`fireAutomationTrigger`**: Reusable function to execute step sequences from `liveAutomations` table.
-- **Supported Triggers**: `new_lead`, `crash_detected`, `review_received`, `appointment_booked`, custom workflow triggers.
+- **Supported Triggers**: `new_lead`, `crash_detected`, `review_received`, `appointment_booked`, `shopify_abandoned_cart`, `shopify_order_created`, `shopify_order_fulfilled`, custom workflow triggers.
 - **Step Execution**: `send_sms`, `deploy_geofence_ad`, `start_vapi_call`, `create_contact`, `wait`, Universal Dispatcher actions.
-- **Template Variables**: SMS body text supports dynamic substitutions.
-- **Integration Points**: Form submissions, CRM contact creation, funnel lead submission, sentinel geofence ingest, review creation, appointment creation, Crash Connect webhook, Meta DM keyword automations.
+- **Template Variables**: SMS body text supports dynamic substitutions including `{{orderNumber}}`, `{{orderTotal}}`, `{{cartTotal}}`, `{{cartUrl}}`, `{{storeName}}` for Shopify events.
+- **Integration Points**: Form submissions, CRM contact creation, funnel lead submission, sentinel geofence ingest, review creation, appointment creation, Crash Connect webhook, Meta DM keyword automations, Shopify webhooks.
+- **Shopify Integration**: E-commerce automation via Shopify Admin API. Connects via store domain + Admin API access token. Webhook endpoints receive `checkouts/create`, `checkouts/update`, `orders/create`, `orders/fulfilled` events. HMAC-SHA256 verification with timing-safe comparison on raw body bytes. Syncs Shopify customers into CRM contacts. Schema: `shopify_events` table. Routes: `POST /api/shopify/webhooks/:subAccountId` (public webhook receiver), `GET /api/shopify/events/:subAccountId`, `POST /api/shopify/register-webhooks/:subAccountId`, `GET /api/shopify/status/:subAccountId`.
 - **Facebook/Instagram DM Bot**: Meta webhook handles per-account DM routing, auto-creates CRM contacts, matches keyword triggers (`dm_keyword_automations` table with exact/contains match, per-channel filtering), fires automation triggers, AI bot persona replies via Gemini. All Meta Graph API calls include `appsecret_proof` HMAC-SHA256. CRUD API: `GET/POST/PUT/DELETE /api/dm-keywords` with ownership verification.
 - **Crash Report Retrieval**: Background worker (`server/crashReportWorker.ts`) polls FLHSMV API for pending crash reports. Supports `POST /api/crash-reports/request` to queue, `GET /api/crash-reports/status/:reportNumber` to check, `GET /api/crash-reports` to list all. Auto-retries up to 3 times, processes 2 concurrent reports every 15s. Schema in `crash_reports` table.
 - **Bot Trainer**: Real web scraping with `cheerio`, content chunking, AI persona generation via Gemini, stored content for RAG.

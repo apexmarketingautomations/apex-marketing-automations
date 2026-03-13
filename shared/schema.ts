@@ -960,6 +960,23 @@ export const insertCrashReportSchema = createInsertSchema(crashReports).omit({ i
 export type InsertCrashReport = z.infer<typeof insertCrashReportSchema>;
 export type CrashReport = typeof crashReports.$inferSelect;
 
+// ---- Shopify Events ----
+
+export const shopifyEvents = pgTable("shopify_events", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  eventType: text("event_type").notNull(),
+  shopifyId: text("shopify_id"),
+  storeName: text("store_name"),
+  payload: json("payload"),
+  processed: boolean("processed").default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertShopifyEventSchema = createInsertSchema(shopifyEvents).omit({ id: true, createdAt: true });
+export type InsertShopifyEvent = z.infer<typeof insertShopifyEventSchema>;
+export type ShopifyEvent = typeof shopifyEvents.$inferSelect;
+
 export const dmKeywordAutomations = pgTable("dm_keyword_automations", {
   id: serial("id").primaryKey(),
   subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),

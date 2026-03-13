@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains, insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, insertMetaAdCampaignSchema, insertMetaLeadSchema, insertInstagramConversationSchema, insertInstagramMessageSchema, insertNotificationSchema, contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings, metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications, messages, hasFeature, PLAN_TIERS, subAccounts, liveAutomations, insertLiveAutomationSchema, insertSponsorshipSchema, insertCreditWalletSchema, creditTransactions, platformProfitLedger, sponsorships, sponsorshipClicks, digitalCards, webhookEvents, sentinelIncidents, insertSentinelIncidentSchema, dmKeywordAutomations, propertyLeads } from "@shared/schema";
+import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains, insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, insertMetaAdCampaignSchema, insertMetaLeadSchema, insertInstagramConversationSchema, insertInstagramMessageSchema, insertNotificationSchema, contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings, metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications, messages, hasFeature, PLAN_TIERS, subAccounts, liveAutomations, insertLiveAutomationSchema, insertSponsorshipSchema, insertCreditWalletSchema, creditTransactions, platformProfitLedger, sponsorships, sponsorshipClicks, digitalCards, webhookEvents, sentinelIncidents, insertSentinelIncidentSchema, dmKeywordAutomations, propertyLeads, integrationConnections } from "@shared/schema";
 import { sql, eq, and } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -8369,7 +8369,12 @@ Return ONLY valid JSON.` },
                 .replace(/\{\{leadPhone\}\}/g, context.leadPhone || "")
                 .replace(/\{\{leadEmail\}\}/g, context.leadEmail || "")
                 .replace(/\{\{location\}\}/g, context.location || "")
-                .replace(/\{\{source\}\}/g, context.source || "");
+                .replace(/\{\{source\}\}/g, context.source || "")
+                .replace(/\{\{orderNumber\}\}/g, context.orderNumber || "")
+                .replace(/\{\{orderTotal\}\}/g, context.orderTotal || "")
+                .replace(/\{\{cartTotal\}\}/g, context.cartTotal || "")
+                .replace(/\{\{cartUrl\}\}/g, context.cartUrl || "")
+                .replace(/\{\{storeName\}\}/g, context.storeName || "");
             }
             if (action === "send_sms" && !stepPayload.to && context.leadPhone) {
               stepPayload.to = context.leadPhone;
@@ -8664,6 +8669,13 @@ Return ONLY valid JSON.` },
         });
         const gmData = await gmRes.json() as any;
         if (gmData.error_message) validationResult = { valid: false, error: `Google Maps API error: ${gmData.error_message}` };
+      } else if (provider === "shopify" && config?.storeDomain && config?.accessToken) {
+        const domain = config.storeDomain.replace(/^https?:\/\//, "").replace(/\/$/, "");
+        const shopRes = await fetch(`https://${domain}/admin/api/2024-01/shop.json`, {
+          headers: { "X-Shopify-Access-Token": config.accessToken },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (!shopRes.ok) validationResult = { valid: false, error: "Invalid Shopify credentials. Check your store domain and access token." };
       } else if (provider === "google-analytics" && config?.measurementId) {
         if (!config.measurementId.startsWith("G-")) {
           validationResult = { valid: false, error: "Measurement ID should start with 'G-'" };
@@ -8704,6 +8716,240 @@ Return ONLY valid JSON.` },
       connectedAt: null,
     });
     res.json(connection);
+  }));
+
+  // ---- Shopify Webhook Endpoints ----
+  app.post("/api/shopify/webhooks/:subAccountId", express.raw({ type: "application/json" }), asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const topic = req.headers["x-shopify-topic"] as string;
+    const shopDomain = req.headers["x-shopify-shop-domain"] as string;
+    const hmacHeader = req.headers["x-shopify-hmac-sha256"] as string;
+
+    if (!topic) return res.status(400).json({ error: "Missing x-shopify-topic header" });
+
+    const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
+    let payload: any;
+    try {
+      payload = Buffer.isBuffer(req.body) ? JSON.parse(rawBody.toString("utf8")) : req.body;
+    } catch {
+      return res.status(400).json({ error: "Invalid JSON payload" });
+    }
+
+    const connection = await storage.getIntegrationConnection(subAccountId, "shopify");
+    if (!connection || connection.status !== "connected") {
+      return res.status(404).json({ error: "Shopify not connected for this account" });
+    }
+
+    const config = connection.config as Record<string, string>;
+
+    if (config?.webhookSecret) {
+      if (!hmacHeader) {
+        return res.status(401).json({ error: "Missing webhook signature" });
+      }
+      const hash = crypto.createHmac("sha256", config.webhookSecret).update(rawBody).digest("base64");
+      if (!crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(hmacHeader))) {
+        console.warn("[SHOPIFY] Webhook HMAC verification failed");
+        return res.status(401).json({ error: "Invalid webhook signature" });
+      }
+    }
+    const eventType = topic.replace(/\//g, "_");
+
+    const shopifyEvent = await storage.createShopifyEvent({
+      subAccountId,
+      eventType,
+      shopifyId: String(payload.id || ""),
+      storeName: shopDomain || config?.storeDomain || null,
+      payload,
+      processed: false,
+    });
+
+    console.log(`[SHOPIFY] Received ${topic} event for account ${subAccountId}, event ID: ${shopifyEvent.id}`);
+
+    if (topic === "checkouts/create" || topic === "checkouts/update") {
+      const checkout = payload;
+      if (checkout.email || checkout.phone) {
+        try {
+          await storage.createContact({
+            subAccountId,
+            firstName: checkout.billing_address?.first_name || checkout.shipping_address?.first_name || "Shopify Customer",
+            lastName: checkout.billing_address?.last_name || checkout.shipping_address?.last_name || null,
+            email: checkout.email || null,
+            phone: checkout.phone || checkout.billing_address?.phone || null,
+            source: "shopify",
+            tags: ["shopify", "abandoned-cart"],
+          });
+        } catch (e) {
+          console.log("[SHOPIFY] Contact creation skipped (may already exist):", (e as any).message);
+        }
+      }
+
+      if (checkout.abandoned_checkout_url) {
+        fireAutomationTrigger("shopify_abandoned_cart", subAccountId, {
+          leadName: checkout.billing_address?.first_name || "Customer",
+          leadEmail: checkout.email || "",
+          leadPhone: checkout.phone || "",
+          cartTotal: checkout.total_price || "0",
+          cartUrl: checkout.abandoned_checkout_url || "",
+          storeName: shopDomain || "",
+          source: "shopify",
+        }).catch((e) => console.warn("[SHOPIFY] Automation trigger error:", e.message));
+      }
+
+      await storage.updateShopifyEvent(shopifyEvent.id, { processed: true });
+    }
+
+    if (topic === "orders/create") {
+      const order = payload;
+      if (order.email || order.phone) {
+        try {
+          await storage.createContact({
+            subAccountId,
+            firstName: order.billing_address?.first_name || order.customer?.first_name || "Shopify Customer",
+            lastName: order.billing_address?.last_name || order.customer?.last_name || null,
+            email: order.email || order.customer?.email || null,
+            phone: order.phone || order.billing_address?.phone || order.customer?.phone || null,
+            source: "shopify",
+            tags: ["shopify", "customer", "order"],
+          });
+        } catch (e) {
+          console.log("[SHOPIFY] Contact creation skipped (may already exist):", (e as any).message);
+        }
+      }
+
+      fireAutomationTrigger("shopify_order_created", subAccountId, {
+        leadName: order.customer?.first_name || order.billing_address?.first_name || "Customer",
+        leadEmail: order.email || "",
+        leadPhone: order.phone || "",
+        orderNumber: order.order_number || order.name || "",
+        orderTotal: order.total_price || "0",
+        storeName: shopDomain || "",
+        source: "shopify",
+      }).catch((e) => console.warn("[SHOPIFY] Automation trigger error:", e.message));
+
+      await storage.updateShopifyEvent(shopifyEvent.id, { processed: true });
+    }
+
+    if (topic === "orders/fulfilled") {
+      const order = payload;
+
+      fireAutomationTrigger("shopify_order_fulfilled", subAccountId, {
+        leadName: order.customer?.first_name || order.billing_address?.first_name || "Customer",
+        leadEmail: order.email || "",
+        leadPhone: order.phone || "",
+        orderNumber: order.order_number || order.name || "",
+        orderTotal: order.total_price || "0",
+        storeName: shopDomain || "",
+        source: "shopify",
+      }).catch((e) => console.warn("[SHOPIFY] Automation trigger error:", e.message));
+
+      await storage.updateShopifyEvent(shopifyEvent.id, { processed: true });
+    }
+
+    res.status(200).json({ received: true, eventId: shopifyEvent.id });
+  }));
+
+  app.get("/api/shopify/events/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const events = await storage.getShopifyEvents(subAccountId);
+    res.json(events);
+  }));
+
+  app.post("/api/shopify/register-webhooks/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const connection = await storage.getIntegrationConnection(subAccountId, "shopify");
+    if (!connection || connection.status !== "connected") {
+      return res.status(400).json({ error: "Shopify is not connected" });
+    }
+
+    const config = connection.config as Record<string, string>;
+    const domain = (config.storeDomain || "").replace(/^https?:\/\//, "").replace(/\/$/, "");
+    const accessToken = config.accessToken;
+
+    if (!domain || !accessToken) {
+      return res.status(400).json({ error: "Missing Shopify store domain or access token" });
+    }
+
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const callbackUrl = `${baseUrl}/api/shopify/webhooks/${subAccountId}`;
+
+    const topics = [
+      "checkouts/create",
+      "checkouts/update",
+      "orders/create",
+      "orders/fulfilled",
+    ];
+
+    const results: { topic: string; status: string; error?: string }[] = [];
+
+    for (const topic of topics) {
+      try {
+        const webhookRes = await fetch(`https://${domain}/admin/api/2024-01/webhooks.json`, {
+          method: "POST",
+          headers: {
+            "X-Shopify-Access-Token": accessToken,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            webhook: {
+              topic,
+              address: callbackUrl,
+              format: "json",
+            },
+          }),
+          signal: AbortSignal.timeout(10000),
+        });
+
+        if (webhookRes.ok) {
+          results.push({ topic, status: "registered" });
+        } else {
+          const errData = await webhookRes.json().catch(() => ({})) as any;
+          const errMsg = errData?.errors ? JSON.stringify(errData.errors) : `HTTP ${webhookRes.status}`;
+          results.push({ topic, status: "failed", error: errMsg });
+        }
+      } catch (err: any) {
+        results.push({ topic, status: "failed", error: err.message });
+      }
+    }
+
+    res.json({ webhooks: results, callbackUrl });
+  }));
+
+  app.get("/api/shopify/status/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const connection = await storage.getIntegrationConnection(subAccountId, "shopify");
+    if (!connection || connection.status !== "connected") {
+      return res.json({ connected: false, storeName: null });
+    }
+
+    const config = connection.config as Record<string, string>;
+    const domain = (config.storeDomain || "").replace(/^https?:\/\//, "").replace(/\/$/, "");
+    let storeName = domain;
+
+    try {
+      const shopRes = await fetch(`https://${domain}/admin/api/2024-01/shop.json`, {
+        headers: { "X-Shopify-Access-Token": config.accessToken },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (shopRes.ok) {
+        const shopData = await shopRes.json() as any;
+        storeName = shopData.shop?.name || domain;
+      }
+    } catch {}
+
+    const events = await storage.getShopifyEvents(subAccountId);
+
+    res.json({
+      connected: true,
+      storeName,
+      domain,
+      connectedAt: connection.connectedAt,
+      eventCount: events.length,
+    });
   }));
 
   app.get("/api/service-status", asyncHandler(async (req, res) => {

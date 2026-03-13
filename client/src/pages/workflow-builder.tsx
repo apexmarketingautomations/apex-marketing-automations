@@ -1,6 +1,6 @@
 import { PlanGate } from "@/components/plan-gate";
 import { useState } from "react";
-import { Clock, MessageSquare, GitFork, MoreHorizontal, PlayCircle, CheckCircle2, AlertCircle, AlertTriangle, Sparkles, Loader2, Code2, Trash2, BookOpen, Target, Mail, UserPlus, TrendingUp, Bell, Globe, Zap, Terminal, Cpu, Brain, ChevronDown, Eye, Power, Archive } from "lucide-react";
+import { Clock, MessageSquare, GitFork, MoreHorizontal, PlayCircle, CheckCircle2, AlertCircle, AlertTriangle, Sparkles, Loader2, Code2, Trash2, BookOpen, Target, Mail, UserPlus, TrendingUp, Bell, Globe, Zap, Terminal, Cpu, Brain, ChevronDown, Eye, Power, Archive, ShoppingCart } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { WORKFLOW_STEPS } from "@/components/tutorial-steps";
 import { motion, AnimatePresence } from "framer-motion";
@@ -105,6 +105,8 @@ function AiArchitectPanel({ onAutomationCreated }: { onAutomationCreated: (autom
     "When a Big Rig crash is detected near Fort Myers, SMS the PI attorney team, wait 5 minutes, check if the lead was claimed, then deploy a geo-targeted Meta ad around the crash site.",
     "When a new lead fills out a form, wait 2 minutes, send a welcome SMS, then check if they replied. If yes, create a deal. If no, wait 1 hour and send a follow-up.",
     "When a review is received, alert the team via SMS. If rating is below 3, escalate to manager. Otherwise, send a thank you email.",
+    "When a Shopify cart is abandoned, wait 30 minutes, then send an SMS with their cart recovery link. If no purchase after 2 hours, send a follow-up email with a discount code.",
+    "When a Shopify order is fulfilled, wait 7 days then send a review request email to the customer.",
   ];
 
   const handleGenerate = async () => {
@@ -806,7 +808,11 @@ function WorkflowBuilderInner() {
               <div className="flex justify-between items-center">
                 <div className="flex justify-center flex-1">
                   <div className="bg-foreground text-background px-5 py-2.5 rounded-full text-sm font-medium shadow-lg flex items-center gap-2">
-                    <PlayCircle className="h-4 w-4" />
+                    {displayWorkflow.trigger?.startsWith("shopify_") ? (
+                      <ShoppingCart className="h-4 w-4 text-green-400" />
+                    ) : (
+                      <PlayCircle className="h-4 w-4" />
+                    )}
                     Trigger: {displayWorkflow.trigger}
                   </div>
                 </div>

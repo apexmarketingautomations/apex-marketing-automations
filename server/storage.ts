@@ -50,7 +50,7 @@ import {
   dispatchSubscribers,
   type DispatchSubscriber, type InsertDispatchSubscriber,
   creditWallets, creditTransactions, sponsorships, sponsorshipClicks, platformProfitLedger,
-  funnelLeads, crashReports, dmKeywordAutomations,
+  funnelLeads, crashReports, dmKeywordAutomations, shopifyEvents,
   type CreditWallet, type InsertCreditWallet,
   type CreditTransaction, type InsertCreditTransaction,
   type Sponsorship, type InsertSponsorship,
@@ -59,6 +59,7 @@ import {
   type FunnelLead, type InsertFunnelLead,
   type CrashReport, type InsertCrashReport,
   type DmKeywordAutomation, type InsertDmKeywordAutomation,
+  type ShopifyEvent, type InsertShopifyEvent,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -301,6 +302,10 @@ export interface IStorage {
   updateCrashReport(id: number, data: Partial<InsertCrashReport>): Promise<CrashReport | undefined>;
   getAndLockPendingReports(limit?: number): Promise<CrashReport[]>;
   getCrashReports(subAccountId?: number): Promise<CrashReport[]>;
+
+  getShopifyEvents(subAccountId: number): Promise<ShopifyEvent[]>;
+  createShopifyEvent(data: InsertShopifyEvent): Promise<ShopifyEvent>;
+  updateShopifyEvent(id: number, data: Partial<InsertShopifyEvent>): Promise<ShopifyEvent | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1298,6 +1303,21 @@ export class DatabaseStorage implements IStorage {
         .orderBy(desc(crashReports.createdAt));
     }
     return db.select().from(crashReports).orderBy(desc(crashReports.createdAt));
+  }
+  async getShopifyEvents(subAccountId: number) {
+    return db.select().from(shopifyEvents)
+      .where(eq(shopifyEvents.subAccountId, subAccountId))
+      .orderBy(desc(shopifyEvents.createdAt));
+  }
+
+  async createShopifyEvent(data: InsertShopifyEvent) {
+    const [row] = await db.insert(shopifyEvents).values(data).returning();
+    return row;
+  }
+
+  async updateShopifyEvent(id: number, data: Partial<InsertShopifyEvent>) {
+    const [row] = await db.update(shopifyEvents).set(data).where(eq(shopifyEvents.id, id)).returning();
+    return row;
   }
 }
 

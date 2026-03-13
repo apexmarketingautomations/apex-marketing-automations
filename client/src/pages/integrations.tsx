@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Plug, CalendarDays, Mail, FileSpreadsheet, MessageSquare, Zap, Receipt, Phone, CreditCard, HardDrive, Users, Globe, Check, X, MapPin, BarChart3, Building2, FileText, Info, Settings, Key, ExternalLink, Target, Mic } from "lucide-react";
+import { Plug, CalendarDays, Mail, FileSpreadsheet, MessageSquare, Zap, Receipt, Phone, CreditCard, HardDrive, Users, Globe, Check, X, MapPin, BarChart3, Building2, FileText, Info, Settings, Key, ExternalLink, Target, Mic, ShoppingCart } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { INTEGRATIONS_STEPS } from "@/components/tutorial-steps";
 
@@ -150,6 +150,15 @@ const PROVIDER_CREDENTIALS: Record<string, { fields: CredentialField[]; helpUrl?
     helpUrl: "https://dashboard.vapi.ai",
     helpText: "Powers voice AI agents, outbound calling, and browser demo calls. Get your keys from the Vapi dashboard.",
   },
+  "shopify": {
+    fields: [
+      { key: "storeDomain", label: "Store Domain", placeholder: "your-store.myshopify.com" },
+      { key: "accessToken", label: "Admin API Access Token", placeholder: "shpat_...", type: "password" },
+      { key: "webhookSecret", label: "Webhook Secret (optional)", placeholder: "For verifying webhook signatures", type: "password" },
+    ],
+    helpUrl: "https://admin.shopify.com/store/YOUR_STORE/settings/apps/development",
+    helpText: "Create a custom app in your Shopify admin to get your Admin API access token.",
+  },
 };
 
 const COMING_SOON_PROVIDERS: string[] = [];
@@ -173,6 +182,7 @@ const INTEGRATIONS = [
   { provider: "facebook", name: "Facebook", description: "Social media management", icon: Globe, color: "bg-sky-500/20", iconColor: "text-sky-400", category: "tools" },
   { provider: "meta-ads", name: "Meta Ads", description: "Geofence ad deployment for Sentinel", icon: Target, color: "bg-blue-600/20", iconColor: "text-blue-400", category: "tools" },
   { provider: "vapi", name: "Vapi", description: "Voice AI agents and outbound calling", icon: Mic, color: "bg-teal-500/20", iconColor: "text-teal-400", category: "tools" },
+  { provider: "shopify", name: "Shopify", description: "E-commerce automation, abandoned carts, orders", icon: ShoppingCart, color: "bg-green-600/20", iconColor: "text-green-400", category: "tools" },
 ];
 
 interface IntegrationConnection {
