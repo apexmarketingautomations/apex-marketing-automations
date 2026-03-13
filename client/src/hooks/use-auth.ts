@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { User } from "@shared/models/auth";
+import { firebaseSignOut } from "@/lib/firebase";
 
 async function fetchUser(): Promise<(User & { role?: string; authProvider?: string }) | null> {
   const response = await fetch("/api/auth/user", {
@@ -28,7 +29,12 @@ export function useAuth() {
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      if (user?.authProvider === "email") {
+      if (user?.authProvider === "email" || user?.authProvider === "google") {
+        await fetch("/api/auth/apex-logout", { method: "POST", credentials: "include" });
+        queryClient.setQueryData(["/api/auth/user"], null);
+        window.location.href = "/login";
+      } else if (user?.authProvider === "firebase") {
+        await firebaseSignOut();
         await fetch("/api/auth/apex-logout", { method: "POST", credentials: "include" });
         queryClient.setQueryData(["/api/auth/user"], null);
         window.location.href = "/login";

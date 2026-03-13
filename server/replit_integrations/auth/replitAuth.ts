@@ -195,7 +195,7 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
     return res.status(401).json({ message: "Unauthorized" });
   }
 
-  if (user.authProvider === "email" || user.authProvider === "google") {
+  if (user.authProvider === "email" || user.authProvider === "google" || user.authProvider === "firebase") {
     return next();
   }
 

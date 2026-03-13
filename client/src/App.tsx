@@ -10,6 +10,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { initVibe } from "@/components/vibe-switcher";
 import { useAuth } from "@/hooks/use-auth";
 import { AccountProvider } from "@/hooks/use-account";
+import { useFirebaseAnalytics, useFirebaseNotifications } from "@/hooks/use-firebase";
 
 const DigitalCard = lazy(() => import("@/pages/digital-card"));
 const DigitalCardBuilder = lazy(() => import("@/pages/digital-card-builder"));
@@ -121,6 +122,8 @@ function useAutoSaveContact() {
 
 function Router() {
   useAutoSaveContact();
+  useFirebaseAnalytics();
+  useFirebaseNotifications();
   const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) return <PageLoader />;

@@ -63,7 +63,7 @@ Comprehensive API for accounts, messages, workflows, AI bots, blueprints, onboar
 - **Multi-Page Site Builder**: Upgraded site builder supporting multiple pages with navigation, presets, and backward compatibility for old `siteData` format.
 
 ### Access Control & Multi-Tenancy
-- **Authentication**: Replit OIDC (admin), native email/password, Google OAuth 2.0. `isAuthenticated` middleware handles all session types.
+- **Authentication**: Replit OIDC (admin), native email/password, Google OAuth 2.0, Firebase Auth (Google popup). `isAuthenticated` middleware handles all session types including `firebase` provider.
 - **Plan-based Feature Gating**: Features gated by Starter/Pro/Enterprise tiers using `PlanGate` component.
 - **Account Ownership Enforcement**: `verifyAccountOwnership()` helper and strict account filtering ensure data isolation. Admin users bypass checks.
 - **Active Account Context**: `useActiveSubAccountId()` hook for current sub-account ID.
@@ -82,6 +82,13 @@ Comprehensive API for accounts, messages, workflows, AI bots, blueprints, onboar
 - **Twilio**: Phone number provisioning, SMS webhook with AI auto-reply.
 - **Vapi**: Voice AI agent deployment, outbound calling, browser demo calls (backend proxy for API key security).
 - **Mailchimp**: Email campaign sending via Marketing API (audience management, contact batching, campaign creation/sending).
+
+### Firebase
+- **Firebase SDK**: `firebase` (client) + `firebase-admin` (server) for Analytics, Push Notifications, and Auth.
+- **Firebase Analytics**: Auto-initialized, tracks page views on route changes (`client/src/lib/firebase.ts`, `client/src/hooks/use-firebase.ts`).
+- **Firebase Cloud Messaging (FCM)**: Push notification support with service worker (`client/public/firebase-messaging-sw.js`), foreground message toasts, FCM token registration via `POST /api/auth/fcm-token`.
+- **Firebase Auth**: Google popup sign-in via Firebase, token verified server-side with `firebase-admin`, creates/links user accounts with `authProvider: "firebase"`. Login button on `/login` page.
+- **Config**: projectId=`apex-ma`, Firebase API key from `GOOGLE_API_KEY_FIREBASE` env secret, passed to client via Vite `define` in `vite.config.ts`.
 
 ### Automation Engine
 - **`fireAutomationTrigger`**: Reusable function to execute step sequences from `liveAutomations` table.

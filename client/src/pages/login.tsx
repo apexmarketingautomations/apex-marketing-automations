@@ -1,8 +1,9 @@
 import { motion } from "framer-motion";
-import { Sparkles, Zap, MessageSquare, Bot, Globe, Phone, BarChart3, ArrowRight, Mail, Lock, User, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Sparkles, Zap, MessageSquare, Bot, Globe, Phone, BarChart3, ArrowRight, Mail, Lock, User, Eye, EyeOff, Loader2, Flame } from "lucide-react";
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
+import { signInWithGoogle as firebaseSignInWithGoogle, getFirebaseIdToken } from "@/lib/firebase";
 
 const FEATURES = [
   { icon: MessageSquare, title: "Unified Inbox", desc: "SMS, Instagram, WhatsApp & Messenger in one place" },
@@ -23,6 +24,7 @@ export default function Login() {
   const [lastName, setLastName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [firebaseLoading, setFirebaseLoading] = useState(false);
   const [error, setError] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
@@ -56,6 +58,37 @@ export default function Login() {
       setError("Connection error. Please try again.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleFirebaseLogin() {
+    setError("");
+    setFirebaseLoading(true);
+    try {
+      await firebaseSignInWithGoogle();
+      const idToken = await getFirebaseIdToken();
+      if (!idToken) {
+        setError("Failed to get Firebase credentials");
+        return;
+      }
+      const res = await fetch("/api/auth/firebase-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ idToken }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.message || "Firebase login failed");
+        return;
+      }
+      await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      navigate("/");
+    } catch (err: any) {
+      if (err?.code === "auth/popup-closed-by-user") return;
+      setError("Firebase login failed. Please try again.");
+    } finally {
+      setFirebaseLoading(false);
     }
   }
 
@@ -246,6 +279,20 @@ export default function Login() {
               </svg>
               Continue with Google
             </a>
+
+            <button
+              onClick={handleFirebaseLogin}
+              disabled={firebaseLoading}
+              className="mt-3 w-full py-3 border border-orange-500/30 bg-orange-500/10 hover:bg-orange-500/20 text-orange-300 font-medium rounded-xl transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50"
+              data-testid="button-firebase-login"
+            >
+              {firebaseLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Flame className="w-4 h-4" />
+              )}
+              Continue with Firebase
+            </button>
 
             <a
               href="/api/login"
