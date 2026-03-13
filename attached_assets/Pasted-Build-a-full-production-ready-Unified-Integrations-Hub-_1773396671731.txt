@@ -1,0 +1,210 @@
+Build a full production-ready “Unified Integrations Hub” for Apex Marketing Automations from scratch.
+
+Goal:
+Replace the current developer-style integration system that asks users for OAuth client IDs and secrets with a simple user-friendly platform-managed OAuth system.
+
+Core requirement:
+Users should NEVER have to enter their own API keys, OAuth client IDs, or client secrets for standard integrations like Google, Meta, Gmail, Calendar, Sheets, Drive, Google Business Profile, Facebook, Instagram, and Meta Ads.
+
+Instead, Apex must use platform-owned OAuth apps and one-click connect flows.
+
+Build this with a clean architecture, secure token handling, and scalable integration management.
+
+STACK:
+- Frontend: React + TypeScript
+- Backend: Node.js + Express or Next.js API routes
+- Database: PostgreSQL with Prisma ORM
+- Auth/session: secure server-side session handling
+- OAuth library: use official OAuth 2.0 patterns
+- UI: modern SaaS dashboard styling matching Apex brand
+- Write all code from scratch, fully structured, production-grade
+
+MAIN PRODUCT REQUIREMENTS:
+
+1. INTEGRATIONS HUB UI
+Create a new integrations page that groups services into simplified connection categories:
+
+- Connect Google
+  Covers:
+  - Gmail
+  - Google Calendar
+  - Google Sheets
+  - Google Drive
+  - Google Business Profile
+
+- Connect Meta
+  Covers:
+  - Facebook Pages
+  - Instagram
+  - Meta Ads
+  - Lead Forms
+
+- Connect Communication
+  Covers:
+  - Twilio
+  - WhatsApp via Twilio
+  - Vapi
+
+- Optional secondary tiles:
+  - Slack
+  - Zapier
+  - QuickBooks
+  - Mailchimp
+  - HubSpot
+
+Each connection card should show:
+- connection status
+- connected account email or business name
+- scopes granted
+- last synced timestamp
+- reconnect button
+- disconnect button
+- settings button
+
+2. PLATFORM-MANAGED OAUTH
+Implement platform-owned OAuth apps so that Apex stores the client IDs and secrets in environment variables and manages all auth flows centrally.
+
+The user flow should be:
+
+- user clicks “Connect Google”
+- user is redirected to Google OAuth consent
+- user approves scopes
+- user is returned to Apex callback URL
+- Apex securely stores tokens server-side
+- UI updates to connected state
+
+Do NOT ask the user to manually paste OAuth credentials.
+
+3. GOOGLE UNIFIED CONNECTION
+Create one Google OAuth flow that requests the proper scopes for:
+- Gmail
+- Google Calendar
+- Google Sheets
+- Google Drive
+- Google Business Profile if possible in same flow, otherwise separate but still platform-managed
+
+Show child services under the main Google connection card with active/inactive indicators.
+
+4. META UNIFIED CONNECTION
+Create one Meta connection flow that supports:
+- Facebook Pages
+- Instagram business account
+- Meta Ads account
+- Lead Forms
+
+After connect, fetch and display:
+- available pages
+- ad accounts
+- Instagram business profiles
+
+Allow user to select which assets/subaccounts to connect to their Apex workspace.
+
+5. DATABASE DESIGN
+Create proper tables for:
+- workspaces/accounts
+- integrations
+- integration_providers
+- oauth_tokens
+- sync_logs
+- provider_assets
+
+Token storage must include:
+- access token
+- refresh token where supported
+- token expiry
+- scopes
+- provider account ID
+- provider email or business name
+- encrypted at rest if possible
+
+6. TOKEN REFRESH + HEALTH CHECKS
+Build background logic or refresh-on-demand logic to:
+- refresh expired tokens automatically
+- detect broken integrations
+- mark connection as needing reconnect
+- write sync/error logs
+
+7. INTEGRATION SETTINGS PANEL
+For connected integrations, create settings modals or pages where user can:
+- pick connected Google calendar
+- choose Gmail sending identity if needed
+- select Google Business Profile location
+- select Facebook page
+- select Instagram business account
+- select Meta ad account
+- choose lead form sync options
+
+8. WEBHOOK + EVENT SUPPORT
+Create a generic internal integration event system so Apex modules can react to integrations.
+
+Examples:
+- new Gmail message received
+- calendar event created
+- Meta lead received
+- Google Business review posted
+- Twilio message received
+
+Store these in an internal event log table and expose them in UI.
+
+9. SECURITY
+Implement:
+- CSRF protection for OAuth state
+- encrypted token handling
+- secure callback validation
+- workspace-level ownership checks
+- audit logs for connect/disconnect actions
+
+10. UX / PRODUCT DESIGN
+The page must feel like a serious SaaS product, not a dev tool.
+
+Replace any fields like:
+- OAuth Client ID
+- OAuth Client Secret
+- API Key
+
+with:
+- Connect button
+- Connected account label
+- status badges
+- manage settings
+
+Use plain-English descriptions.
+Make the experience simple enough for non-technical business owners.
+
+11. MIGRATION PLAN
+If the current system already stores manual credentials, create a migration-safe structure that supports:
+- legacy manual integrations
+- new unified OAuth integrations
+- visible badge showing “legacy connection” vs “platform-managed connection”
+
+12. DELIVERABLES
+Generate:
+- full backend routes
+- OAuth callback handlers
+- database schema
+- frontend integrations dashboard
+- connection cards
+- settings modals
+- token service
+- integration service layer
+- event logging
+- sample seed data
+- env variable template
+- comments explaining structure
+
+13. BONUS
+Add a “Recommended Setup” onboarding checklist:
+- Connect Google
+- Connect Meta
+- Connect Twilio
+- Connect Stripe
+
+Show progress as a setup completion percentage.
+
+14. IMPORTANT PRODUCT RULE
+This is not a developer dashboard.
+This must be optimized for regular business owners and agencies with zero API knowledge.
+
+Build the entire feature from scratch with clean folder structure and production-ready code.
+Do not output partial snippets.
+Output full files and components.
