@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Building, MapPin, Phone, DollarSign, AlertTriangle, CheckCircle2,
   Settings, Play, Home, TrendingUp, Send, Target, Eye, Search, Filter,
-  ArrowRight, User, Mail, Hash, Layers, Zap, BarChart3, BookOpen
+  ArrowRight, User, Mail, Hash, Layers, Zap, BarChart3, BookOpen, Map
 } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { PROPERTY_RADAR_STEPS } from "@/components/tutorial-steps";
@@ -65,6 +65,183 @@ type LeadWithMetrics = PropertyLead & {
   dealMetrics?: { arv: number; maxOffer: number; assignmentFee: number; potentialProfit: number; equityPercentage: number };
 };
 
+const MARKER_COLORS: Record<string, string> = {
+  critical: "#EF4444",
+  high: "#F97316",
+  medium: "#F59E0B",
+  low: "#94A3B8",
+};
+
+const FORT_MYERS_CENTER = { lat: 26.6406, lng: -81.8723 };
+
+function escapeHtml(str: string): string {
+  const div = document.createElement("div");
+  div.appendChild(document.createTextNode(str));
+  return div.innerHTML;
+}
+
+let mapsApiPromise: Promise<void> | null = null;
+
+function loadGoogleMapsApi(): Promise<void> {
+  if ((window as any).google?.maps) return Promise.resolve();
+  if (mapsApiPromise) return mapsApiPromise;
+  mapsApiPromise = new Promise((resolve, reject) => {
+    fetch("/api/config/maps-key", { credentials: "include" })
+      .then(r => r.json())
+      .then(data => {
+        if (!data.apiKey) { reject(new Error("No Maps API key")); return; }
+        const script = document.createElement("script");
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${data.apiKey}`;
+        script.async = true;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error("Failed to load Google Maps"));
+        document.head.appendChild(script);
+      })
+      .catch(reject);
+  });
+  return mapsApiPromise;
+}
+
+function PropertyMapView({ leads, onSelectLead }: { leads: LeadWithMetrics[]; onSelectLead: (lead: LeadWithMetrics) => void }) {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<google.maps.Map | null>(null);
+  const markersRef = useRef<google.maps.Marker[]>([]);
+  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+  const [mapReady, setMapReady] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadGoogleMapsApi()
+      .then(() => setMapReady(true))
+      .catch(err => setMapError(err.message));
+  }, []);
+
+  useEffect(() => {
+    if (!mapReady || !mapRef.current || mapInstanceRef.current) return;
+    mapInstanceRef.current = new google.maps.Map(mapRef.current, {
+      center: FORT_MYERS_CENTER,
+      zoom: 11,
+      styles: [
+        { elementType: "geometry", stylers: [{ color: "#1e293b" }] },
+        { elementType: "labels.text.stroke", stylers: [{ color: "#0f172a" }] },
+        { elementType: "labels.text.fill", stylers: [{ color: "#64748b" }] },
+        { featureType: "road", elementType: "geometry", stylers: [{ color: "#334155" }] },
+        { featureType: "water", elementType: "geometry", stylers: [{ color: "#0c4a6e" }] },
+        { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] },
+      ],
+      mapTypeControl: false,
+      streetViewControl: false,
+      fullscreenControl: true,
+    });
+    infoWindowRef.current = new google.maps.InfoWindow();
+  }, [mapReady]);
+
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+    const map = mapInstanceRef.current;
+    const infoWindow = infoWindowRef.current!;
+
+    markersRef.current.forEach(m => m.setMap(null));
+    markersRef.current = [];
+
+    const geoLeads = leads.filter(l => l.lat != null && l.lng != null);
+
+    if (geoLeads.length === 0) {
+      map.setCenter(FORT_MYERS_CENTER);
+      map.setZoom(11);
+      return;
+    }
+
+    const bounds = new google.maps.LatLngBounds();
+
+    geoLeads.forEach(lead => {
+      const color = MARKER_COLORS[lead.priority || "medium"] || MARKER_COLORS.medium;
+      const marker = new google.maps.Marker({
+        position: { lat: lead.lat!, lng: lead.lng! },
+        map,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          fillColor: color,
+          fillOpacity: 0.9,
+          strokeColor: "#ffffff",
+          strokeWeight: 2,
+          scale: 10,
+        },
+        title: lead.address,
+      });
+
+      marker.addListener("mouseover", () => {
+        infoWindow.setContent(
+          `<div style="color:#1e293b;font-family:sans-serif;padding:4px 0;">
+            <div style="font-weight:600;font-size:13px;">${escapeHtml(lead.address)}</div>
+            <div style="font-size:12px;color:#64748b;">${escapeHtml(lead.city || "")}, ${escapeHtml(lead.state || "")} ${escapeHtml(lead.zip || "")}</div>
+            <div style="font-size:13px;font-weight:600;color:#059669;margin-top:4px;">${escapeHtml(formatCurrency(lead.estimatedValue || 0))}</div>
+          </div>`
+        );
+        infoWindow.open(map, marker);
+      });
+
+      marker.addListener("mouseout", () => {
+        infoWindow.close();
+      });
+
+      marker.addListener("click", () => {
+        infoWindow.close();
+        onSelectLead(lead);
+      });
+
+      markersRef.current.push(marker);
+      bounds.extend({ lat: lead.lat!, lng: lead.lng! });
+    });
+
+    map.fitBounds(bounds);
+    if (geoLeads.length === 1) {
+      map.setZoom(14);
+    }
+
+    return () => {
+      markersRef.current.forEach(m => {
+        google.maps.event.clearInstanceListeners(m);
+        m.setMap(null);
+      });
+      markersRef.current = [];
+    };
+  }, [leads, mapReady]);
+
+  if (mapError) {
+    return (
+      <div className="bg-slate-800/30 rounded-2xl border border-dashed border-slate-700/50 p-12 text-center" data-testid="map-error">
+        <MapPin className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+        <p className="text-slate-400">Unable to load map: {mapError}</p>
+        <p className="text-sm text-slate-500 mt-1">Ensure the Google Maps API key is configured.</p>
+      </div>
+    );
+  }
+
+  if (!mapReady) {
+    return (
+      <div className="flex items-center justify-center py-20" data-testid="map-loading">
+        <div className="animate-spin w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full" />
+        <p className="text-slate-400 ml-3">Loading map...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <div ref={mapRef} className="w-full rounded-xl overflow-hidden border border-slate-700/50" style={{ height: "600px" }} data-testid="map-container" />
+      <div className="absolute bottom-4 left-4 bg-slate-900/90 backdrop-blur-sm rounded-lg border border-slate-700/50 p-3 flex items-center gap-4" data-testid="map-legend">
+        {Object.entries(MARKER_COLORS).map(([priority, color]) => (
+          <div key={priority} className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-full border border-white/50" style={{ backgroundColor: color }} />
+            <span className="text-xs text-slate-300 capitalize">{priority === "critical" ? "Hot" : priority}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function PropertyRadar() {
   const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_property_radar");
   const { toast } = useToast();
@@ -72,7 +249,7 @@ export default function PropertyRadar() {
   const { activeAccountId } = useAccount();
   const [showConfig, setShowConfig] = useState(false);
   const [scanPulse, setScanPulse] = useState(false);
-  const [viewMode, setViewMode] = useState<"feed" | "pipeline">("feed");
+  const [viewMode, setViewMode] = useState<"feed" | "pipeline" | "map">("feed");
   const [selectedLead, setSelectedLead] = useState<LeadWithMetrics | null>(null);
   const [dataSource, setDataSource] = useState<string>("");
   const [configForm, setConfigForm] = useState({
@@ -256,6 +433,13 @@ export default function PropertyRadar() {
             >
               Pipeline
             </button>
+            <button
+              onClick={() => setViewMode("map")}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition flex items-center gap-1 ${viewMode === "map" ? "bg-emerald-500/20 text-emerald-400" : "text-slate-400 hover:text-white"}`}
+              data-testid="button-view-map"
+            >
+              <Map className="w-3.5 h-3.5" /> Map
+            </button>
           </div>
           <Button variant="outline" size="sm" onClick={() => setShowConfig(true)} className="border-slate-700 text-slate-300" data-testid="button-config">
             <Settings className="w-4 h-4 mr-1" /> Config
@@ -339,7 +523,9 @@ export default function PropertyRadar() {
       </div>
 
       {/* Main Content */}
-      {viewMode === "feed" ? (
+      {viewMode === "map" ? (
+        <PropertyMapView leads={leads} onSelectLead={setSelectedLead} />
+      ) : viewMode === "feed" ? (
         <div className="space-y-4">
           {loadingLeads ? (
             <div className="text-center py-20">

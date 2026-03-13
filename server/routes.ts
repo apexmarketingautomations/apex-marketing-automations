@@ -4747,6 +4747,16 @@ Rules:
       const hash = Buffer.from(`${prop.id}-${prop.address}`).toString("base64").substring(0, 64);
       const existing = await storage.getPropertyLeadByHash(parsed.data.subAccountId, hash);
       if (!existing) {
+        let leadLat = prop.lat;
+        let leadLng = prop.lng;
+        if ((leadLat == null || leadLng == null) && prop.address) {
+          const fullAddress = [prop.address, prop.city, prop.state, prop.zip].filter(Boolean).join(", ");
+          const geo = await geocodeAddress(fullAddress);
+          if (geo) {
+            leadLat = geo.lat;
+            leadLng = geo.lng;
+          }
+        }
         const record = await storage.createPropertyLead({
           subAccountId: parsed.data.subAccountId,
           address: prop.address,
@@ -4762,8 +4772,8 @@ Rules:
           sourceHash: hash,
           pipelineStage: "new",
           priority: prop.priority,
-          lat: prop.lat,
-          lng: prop.lng,
+          lat: leadLat,
+          lng: leadLng,
         });
         created.push({
           ...record,
