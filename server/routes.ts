@@ -8598,10 +8598,7 @@ Return ONLY valid JSON.` },
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const { provider, config } = req.body;
 
-    const COMING_SOON_PROVIDERS = [
-      "google-calendar", "gmail", "google-sheets", "google-drive", "google-docs",
-      "slack", "zapier", "quickbooks", "hubspot"
-    ];
+    const COMING_SOON_PROVIDERS: string[] = [];
     if (COMING_SOON_PROVIDERS.includes(provider)) {
       return res.status(400).json({ error: `${provider} integration is coming soon. This provider is not yet fully supported.` });
     }

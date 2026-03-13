@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Plug, CalendarDays, Mail, FileSpreadsheet, MessageSquare, Zap, Receipt, Phone, CreditCard, HardDrive, Users, Globe, Check, X, MapPin, BarChart3, Building2, FileText, Info, Settings, Key, ExternalLink, Target } from "lucide-react";
+import { Plug, CalendarDays, Mail, FileSpreadsheet, MessageSquare, Zap, Receipt, Phone, CreditCard, HardDrive, Users, Globe, Check, X, MapPin, BarChart3, Building2, FileText, Info, Settings, Key, ExternalLink, Target, Mic } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { INTEGRATIONS_STEPS } from "@/components/tutorial-steps";
 
@@ -140,9 +140,19 @@ const PROVIDER_CREDENTIALS: Record<string, { fields: CredentialField[]; helpUrl?
     helpUrl: "https://developers.facebook.com/tools/explorer/",
     helpText: "Required for Sentinel geofence ad deployment. Get a token from Meta Business Suite or the Graph API Explorer.",
   },
+  "vapi": {
+    fields: [
+      { key: "privateKey", label: "Private Key", placeholder: "Your Vapi private API key", type: "password" },
+      { key: "publicKey", label: "Public Key", placeholder: "Your Vapi public key (for browser calls)", type: "password" },
+      { key: "orgId", label: "Organization ID", placeholder: "Your Vapi org ID" },
+      { key: "phoneNumberId", label: "Default Phone Number ID", placeholder: "Auto-injected for outbound calls" },
+    ],
+    helpUrl: "https://dashboard.vapi.ai",
+    helpText: "Powers voice AI agents, outbound calling, and browser demo calls. Get your keys from the Vapi dashboard.",
+  },
 };
 
-const COMING_SOON_PROVIDERS = ["google-calendar", "gmail", "google-sheets", "google-drive", "google-docs", "slack", "zapier", "quickbooks", "hubspot"];
+const COMING_SOON_PROVIDERS: string[] = [];
 
 const INTEGRATIONS = [
   { provider: "google-maps", name: "Google Maps", description: "Embed maps, directions, and location services", icon: MapPin, color: "bg-green-500/20", iconColor: "text-green-400", category: "google" },
@@ -162,6 +172,7 @@ const INTEGRATIONS = [
   { provider: "mailchimp", name: "Mailchimp", description: "Email marketing", icon: Mail, color: "bg-amber-500/20", iconColor: "text-amber-400", category: "tools" },
   { provider: "facebook", name: "Facebook", description: "Social media management", icon: Globe, color: "bg-sky-500/20", iconColor: "text-sky-400", category: "tools" },
   { provider: "meta-ads", name: "Meta Ads", description: "Geofence ad deployment for Sentinel", icon: Target, color: "bg-blue-600/20", iconColor: "text-blue-400", category: "tools" },
+  { provider: "vapi", name: "Vapi", description: "Voice AI agents and outbound calling", icon: Mic, color: "bg-teal-500/20", iconColor: "text-teal-400", category: "tools" },
 ];
 
 interface IntegrationConnection {
