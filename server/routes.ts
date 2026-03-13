@@ -16,6 +16,7 @@ import { scanDistressedProperties, calculateDealMetrics } from "./property-radar
 import { skipTraceLookup, getCurrentMonthYear } from "./skip-trace";
 import crypto from "crypto";
 import dns from "dns";
+import { getValidToken, revokeToken, checkTokenHealth } from "./tokenService";
 
 const INDUSTRY_PROMPTS: Record<string, { tone: string; vocabulary: string[]; focus: string }> = {
   "personal-injury": {
@@ -623,6 +624,7 @@ ${sections.map(renderSection).join('\n')}
     if (fullPath === "/api/generate-liquid-site") return next();
     if (fullPath === "/api/liquid/contact-lookup") return next();
     if (fullPath.startsWith("/api/portal/")) return next();
+    if (fullPath.startsWith("/api/oauth/") && fullPath.includes("/callback")) return next();
 
     if (!req.isAuthenticated || !req.isAuthenticated()) {
       return res.status(401).json({ error: "Not authenticated" });
@@ -9277,6 +9279,7 @@ Return ONLY valid JSON.` },
       provider: c.provider,
       connected: c.status === "connected",
       config: c.config || {},
+      connectionType: c.connectionType || "legacy",
     }));
     res.json(formatted);
   }));
@@ -9397,14 +9400,584 @@ Return ONLY valid JSON.` },
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const { provider } = req.body;
+
+    const existingConnection = await storage.getIntegrationConnection(subAccountId, provider);
+    if (existingConnection?.connectionType === "oauth") {
+      await revokeToken(subAccountId, provider);
+      await storage.deleteProviderAssets(subAccountId, provider);
+    }
+
     const connection = await storage.upsertIntegrationConnection({
       subAccountId,
       provider,
       status: "disconnected",
       config: {},
+      connectionType: existingConnection?.connectionType || "legacy",
       connectedAt: null,
     });
+
+    await storage.createIntegrationEvent({
+      subAccountId,
+      provider,
+      eventType: "disconnected",
+      payload: { connectionType: existingConnection?.connectionType || "legacy" },
+    });
+
     res.json(connection);
+  }));
+
+  // ---- OAuth Initiation Endpoints ----
+
+  interface OAuthTokenExchangeResponse {
+    access_token: string;
+    refresh_token?: string;
+    expires_in?: number;
+    token_type?: string;
+  }
+
+  interface GoogleUserInfo {
+    id?: string;
+    email?: string;
+    name?: string;
+  }
+
+  interface MetaUserInfo {
+    id?: string;
+    email?: string;
+    name?: string;
+  }
+
+  interface GoogleCalendarListResponse {
+    items?: Array<{ id: string; summary?: string }>;
+  }
+
+  interface GoogleDriveFilesResponse {
+    files?: Array<{ id: string; name: string; mimeType: string }>;
+  }
+
+  interface GoogleBusinessAccountsResponse {
+    accounts?: Array<{ name: string; accountName?: string }>;
+  }
+
+  interface MetaAccountsResponse {
+    data?: Array<{ id: string; name: string; instagram_business_account?: { id: string; name?: string; username?: string } }>;
+  }
+
+  interface MetaAdAccountsResponse {
+    data?: Array<{ id: string; name?: string; account_status?: number }>;
+  }
+
+  const GOOGLE_OAUTH_SCOPES = [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/calendar.readonly",
+    "https://www.googleapis.com/auth/calendar.events",
+    "https://www.googleapis.com/auth/spreadsheets.readonly",
+    "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/business.manage",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+  ];
+
+  const META_OAUTH_SCOPES = [
+    "pages_manage_metadata",
+    "pages_read_engagement",
+    "pages_messaging",
+    "instagram_basic",
+    "instagram_manage_messages",
+    "ads_read",
+    "leads_retrieval",
+    "pages_manage_ads",
+    "email",
+    "public_profile",
+  ];
+
+  app.get("/api/oauth/google/authorize/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      return res.status(500).json({ error: "Google OAuth not configured" });
+    }
+
+    const state = crypto.randomBytes(32).toString("hex");
+    (req.session as any).oauthState = state;
+    (req.session as any).oauthSubAccountId = subAccountId;
+    (req.session as any).oauthProvider = "google";
+
+    const redirectUri = `${req.protocol}://${req.get("host")}/api/oauth/google/callback`;
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: GOOGLE_OAUTH_SCOPES.join(" "),
+      access_type: "offline",
+      prompt: "consent",
+      state,
+    });
+
+    res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+  }));
+
+  app.get("/api/oauth/meta/authorize/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const appId = process.env.META_APP_ID;
+    if (!appId) {
+      return res.status(500).json({ error: "Meta OAuth not configured" });
+    }
+
+    const state = crypto.randomBytes(32).toString("hex");
+    (req.session as any).oauthState = state;
+    (req.session as any).oauthSubAccountId = subAccountId;
+    (req.session as any).oauthProvider = "meta";
+
+    const redirectUri = `${req.protocol}://${req.get("host")}/api/oauth/meta/callback`;
+    const params = new URLSearchParams({
+      client_id: appId,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: META_OAUTH_SCOPES.join(","),
+      state,
+    });
+
+    res.redirect(`https://www.facebook.com/v19.0/dialog/oauth?${params}`);
+  }));
+
+  // ---- OAuth Callback Handlers ----
+
+  app.get("/api/oauth/google/callback", asyncHandler(async (req, res) => {
+    const { code, state, error } = req.query;
+
+    if (error) {
+      console.error("[OAUTH] Google OAuth error:", error);
+      return res.redirect("/integrations?error=google_oauth_denied");
+    }
+
+    if (!code || typeof code !== "string") {
+      return res.redirect("/integrations?error=missing_code");
+    }
+
+    const sessionState = (req.session as any).oauthState;
+    const subAccountId = parseInt((req.session as any).oauthSubAccountId, 10);
+    const sessionProvider = (req.session as any).oauthProvider;
+
+    if (!state || state !== sessionState || sessionProvider !== "google" || isNaN(subAccountId) || subAccountId < 1) {
+      return res.redirect("/integrations?error=invalid_state");
+    }
+
+    delete (req.session as any).oauthState;
+    delete (req.session as any).oauthSubAccountId;
+    delete (req.session as any).oauthProvider;
+
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      return res.redirect("/integrations?error=google_not_configured");
+    }
+
+    const redirectUri = `${req.protocol}://${req.get("host")}/api/oauth/google/callback`;
+    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code: code as string,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code",
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!tokenResponse.ok) {
+      const errText = await tokenResponse.text();
+      console.error("[OAUTH] Google token exchange failed:", errText);
+      return res.redirect("/integrations?error=google_token_exchange_failed");
+    }
+
+    const tokenData = await tokenResponse.json() as OAuthTokenExchangeResponse;
+
+    let providerEmail = "";
+    let providerAccountId = "";
+    try {
+      const profileRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (profileRes.ok) {
+        const profile = await profileRes.json() as GoogleUserInfo;
+        providerEmail = profile.email || "";
+        providerAccountId = profile.id || "";
+      }
+    } catch (err) {
+      console.warn("[OAUTH] Failed to fetch Google profile:", err);
+    }
+
+    const expiresIn = tokenData.expires_in || 3600;
+
+    await storage.upsertOAuthToken({
+      provider: "google",
+      subAccountId,
+      accessToken: tokenData.access_token,
+      refreshToken: tokenData.refresh_token || null,
+      tokenExpiry: new Date(Date.now() + expiresIn * 1000),
+      scopes: GOOGLE_OAUTH_SCOPES.join(" "),
+      providerAccountId,
+      providerEmail,
+      connectionType: "oauth",
+    });
+
+    await storage.upsertIntegrationConnection({
+      subAccountId,
+      provider: "google",
+      status: "connected",
+      config: { email: providerEmail, accountId: providerAccountId },
+      connectionType: "oauth",
+      connectedAt: new Date(),
+    });
+
+    await storage.createIntegrationEvent({
+      subAccountId,
+      provider: "google",
+      eventType: "oauth_connected",
+      payload: { email: providerEmail },
+    });
+
+    res.redirect("/integrations?success=google_connected");
+  }));
+
+  app.get("/api/oauth/meta/callback", asyncHandler(async (req, res) => {
+    const { code, state, error, error_reason } = req.query;
+
+    if (error) {
+      console.error("[OAUTH] Meta OAuth error:", error, error_reason);
+      return res.redirect("/integrations?error=meta_oauth_denied");
+    }
+
+    if (!code || typeof code !== "string") {
+      return res.redirect("/integrations?error=missing_code");
+    }
+
+    const sessionState = (req.session as any).oauthState;
+    const subAccountId = parseInt((req.session as any).oauthSubAccountId, 10);
+    const sessionProvider = (req.session as any).oauthProvider;
+
+    if (!state || state !== sessionState || sessionProvider !== "meta" || isNaN(subAccountId) || subAccountId < 1) {
+      return res.redirect("/integrations?error=invalid_state");
+    }
+
+    delete (req.session as any).oauthState;
+    delete (req.session as any).oauthSubAccountId;
+    delete (req.session as any).oauthProvider;
+
+    const appId = process.env.META_APP_ID;
+    const appSecret = process.env.META_APP_SECRET;
+    if (!appId || !appSecret) {
+      return res.redirect("/integrations?error=meta_not_configured");
+    }
+
+    const redirectUri = `${req.protocol}://${req.get("host")}/api/oauth/meta/callback`;
+
+    const tokenResponse = await fetch("https://graph.facebook.com/v19.0/oauth/access_token?" +
+      new URLSearchParams({
+        client_id: appId,
+        client_secret: appSecret,
+        redirect_uri: redirectUri,
+        code: code as string,
+      }),
+      { signal: AbortSignal.timeout(10000) }
+    );
+
+    if (!tokenResponse.ok) {
+      const errText = await tokenResponse.text();
+      console.error("[OAUTH] Meta token exchange failed:", errText);
+      return res.redirect("/integrations?error=meta_token_exchange_failed");
+    }
+
+    const shortLivedData = await tokenResponse.json() as OAuthTokenExchangeResponse;
+
+    const longLivedResponse = await fetch("https://graph.facebook.com/v19.0/oauth/access_token?" +
+      new URLSearchParams({
+        grant_type: "fb_exchange_token",
+        client_id: appId,
+        client_secret: appSecret,
+        fb_exchange_token: shortLivedData.access_token,
+      }),
+      { signal: AbortSignal.timeout(10000) }
+    );
+
+    let accessToken = shortLivedData.access_token;
+    let expiresIn = shortLivedData.expires_in || 3600;
+
+    if (longLivedResponse.ok) {
+      const longLivedData = await longLivedResponse.json() as OAuthTokenExchangeResponse;
+      accessToken = longLivedData.access_token;
+      expiresIn = longLivedData.expires_in || 5184000;
+    }
+
+    let providerEmail = "";
+    let providerAccountId = "";
+    try {
+      const profileRes = await fetch("https://graph.facebook.com/v19.0/me?fields=id,name,email", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (profileRes.ok) {
+        const profile = await profileRes.json() as MetaUserInfo;
+        providerEmail = profile.email || "";
+        providerAccountId = profile.id || "";
+      }
+    } catch (err) {
+      console.warn("[OAUTH] Failed to fetch Meta profile:", err);
+    }
+
+    await storage.upsertOAuthToken({
+      provider: "meta",
+      subAccountId,
+      accessToken,
+      refreshToken: null,
+      tokenExpiry: new Date(Date.now() + expiresIn * 1000),
+      scopes: META_OAUTH_SCOPES.join(","),
+      providerAccountId,
+      providerEmail,
+      connectionType: "oauth",
+    });
+
+    await storage.upsertIntegrationConnection({
+      subAccountId,
+      provider: "meta",
+      status: "connected",
+      config: { email: providerEmail, accountId: providerAccountId },
+      connectionType: "oauth",
+      connectedAt: new Date(),
+    });
+
+    await storage.createIntegrationEvent({
+      subAccountId,
+      provider: "meta",
+      eventType: "oauth_connected",
+      payload: { email: providerEmail },
+    });
+
+    res.redirect("/integrations?success=meta_connected");
+  }));
+
+  // ---- Provider Asset Endpoints ----
+
+  app.get("/api/integrations/:subAccountId/google/assets", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const token = await getValidToken(subAccountId, "google");
+    if (!token) {
+      return res.status(401).json({ error: "Google not connected or token expired" });
+    }
+
+    const assets: any[] = [];
+
+    try {
+      const calRes = await fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList", {
+        headers: { Authorization: `Bearer ${token.accessToken}` },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (calRes.ok) {
+        const calData = await calRes.json() as GoogleCalendarListResponse;
+        for (const cal of (calData.items || [])) {
+          assets.push({ type: "calendar", id: cal.id, name: cal.summary || cal.id });
+        }
+      }
+    } catch (err) {
+      console.warn("[ASSETS] Failed to fetch Google calendars:", err);
+    }
+
+    try {
+      const driveRes = await fetch("https://www.googleapis.com/drive/v3/files?pageSize=20&fields=files(id,name,mimeType)", {
+        headers: { Authorization: `Bearer ${token.accessToken}` },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (driveRes.ok) {
+        const driveData = await driveRes.json() as GoogleDriveFilesResponse;
+        for (const file of (driveData.files || [])) {
+          if (file.mimeType === "application/vnd.google-apps.spreadsheet") {
+            assets.push({ type: "sheet", id: file.id, name: file.name });
+          } else {
+            assets.push({ type: "drive_file", id: file.id, name: file.name });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("[ASSETS] Failed to fetch Google Drive files:", err);
+    }
+
+    try {
+      const bizRes = await fetch("https://mybusinessaccountmanagement.googleapis.com/v1/accounts", {
+        headers: { Authorization: `Bearer ${token.accessToken}` },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (bizRes.ok) {
+        const bizData = await bizRes.json() as GoogleBusinessAccountsResponse;
+        for (const account of (bizData.accounts || [])) {
+          assets.push({ type: "business_profile", id: account.name, name: account.accountName || account.name });
+        }
+      }
+    } catch (err) {
+      console.warn("[ASSETS] Failed to fetch Google Business profiles:", err);
+    }
+
+    const savedAssets = await storage.getProviderAssets(subAccountId, "google");
+    const selectedIds = new Set(savedAssets.filter(a => a.selected).map(a => a.assetId));
+
+    const enriched = assets.map(a => ({
+      ...a,
+      selected: selectedIds.has(a.id),
+    }));
+
+    res.json(enriched);
+  }));
+
+  app.get("/api/integrations/:subAccountId/meta/assets", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const token = await getValidToken(subAccountId, "meta");
+    if (!token) {
+      return res.status(401).json({ error: "Meta not connected or token expired" });
+    }
+
+    const assets: any[] = [];
+
+    try {
+      const pagesRes = await fetch("https://graph.facebook.com/v19.0/me/accounts", {
+        headers: { Authorization: `Bearer ${token.accessToken}` },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (pagesRes.ok) {
+        const pagesData = await pagesRes.json() as MetaAccountsResponse;
+        for (const page of (pagesData.data || [])) {
+          assets.push({ type: "page", id: page.id, name: page.name });
+        }
+      }
+    } catch (err) {
+      console.warn("[ASSETS] Failed to fetch Meta pages:", err);
+    }
+
+    try {
+      const adsRes = await fetch("https://graph.facebook.com/v19.0/me/adaccounts?fields=id,name,account_status", {
+        headers: { Authorization: `Bearer ${token.accessToken}` },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (adsRes.ok) {
+        const adsData = await adsRes.json() as MetaAdAccountsResponse;
+        for (const account of (adsData.data || [])) {
+          assets.push({ type: "ad_account", id: account.id, name: account.name || account.id });
+        }
+      }
+    } catch (err) {
+      console.warn("[ASSETS] Failed to fetch Meta ad accounts:", err);
+    }
+
+    try {
+      const igRes = await fetch("https://graph.facebook.com/v19.0/me/accounts?fields=instagram_business_account{id,name,username}", {
+        headers: { Authorization: `Bearer ${token.accessToken}` },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (igRes.ok) {
+        const igData = await igRes.json() as MetaAccountsResponse;
+        for (const page of (igData.data || [])) {
+          const igAccount = page.instagram_business_account;
+          if (igAccount) {
+            assets.push({ type: "instagram", id: igAccount.id, name: igAccount.username || igAccount.name || igAccount.id });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("[ASSETS] Failed to fetch Instagram profiles:", err);
+    }
+
+    const savedAssets = await storage.getProviderAssets(subAccountId, "meta");
+    const selectedIds = new Set(savedAssets.filter(a => a.selected).map(a => a.assetId));
+
+    const enriched = assets.map(a => ({
+      ...a,
+      selected: selectedIds.has(a.id),
+    }));
+
+    res.json(enriched);
+  }));
+
+  app.post("/api/integrations/:subAccountId/assets/select", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { provider, assets: assetSelections } = req.body;
+    if (!provider || !Array.isArray(assetSelections)) {
+      return res.status(400).json({ error: "provider and assets array are required" });
+    }
+
+    const results = [];
+    for (const asset of assetSelections) {
+      const saved = await storage.upsertProviderAsset({
+        subAccountId,
+        provider,
+        assetType: asset.type,
+        assetId: asset.id,
+        assetName: asset.name,
+        selected: asset.selected ?? true,
+      });
+      results.push(saved);
+    }
+
+    res.json(results);
+  }));
+
+  // ---- Integration Event Endpoints ----
+
+  app.post("/api/integrations/events", asyncHandler(async (req, res) => {
+    const { subAccountId, provider, eventType, payload } = req.body;
+    if (!subAccountId || !provider || !eventType) {
+      return res.status(400).json({ error: "subAccountId, provider, and eventType are required" });
+    }
+
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const event = await storage.createIntegrationEvent({
+      subAccountId,
+      provider,
+      eventType,
+      payload: payload || {},
+    });
+
+    res.json(event);
+  }));
+
+  app.get("/api/integrations/:subAccountId/events", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const limit = parseInt(req.query.limit as string) || 50;
+    const events = await storage.getIntegrationEvents(subAccountId, Math.min(limit, 200));
+    res.json(events);
+  }));
+
+  // ---- Integration Health Check ----
+
+  app.get("/api/integrations/:subAccountId/health", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const connections = await storage.getIntegrationConnections(subAccountId);
+    const oauthConnections = connections.filter(c => c.connectionType === "oauth" && c.status === "connected");
+
+    const healthResults: Record<string, { healthy: boolean; error?: string }> = {};
+
+    for (const conn of oauthConnections) {
+      healthResults[conn.provider] = await checkTokenHealth(subAccountId, conn.provider);
+    }
+
+    res.json(healthResults);
   }));
 
   // ---- Shopify Webhook Endpoints ----

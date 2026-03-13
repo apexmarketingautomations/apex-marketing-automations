@@ -798,6 +798,7 @@ export const integrationConnections = pgTable("integration_connections", {
   provider: text("provider").notNull(),
   status: text("status").notNull().default("disconnected"),
   config: json("config"),
+  connectionType: text("connection_type").notNull().default("legacy"),
   connectedAt: timestamp("connected_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -805,6 +806,59 @@ export const integrationConnections = pgTable("integration_connections", {
 export const insertIntegrationConnectionSchema = createInsertSchema(integrationConnections).omit({ id: true, createdAt: true });
 export type InsertIntegrationConnection = z.infer<typeof insertIntegrationConnectionSchema>;
 export type IntegrationConnection = typeof integrationConnections.$inferSelect;
+
+// ---- OAuth Tokens ----
+
+export const oauthTokens = pgTable("oauth_tokens", {
+  id: serial("id").primaryKey(),
+  provider: text("provider").notNull(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token"),
+  tokenExpiry: timestamp("token_expiry"),
+  scopes: text("scopes"),
+  providerAccountId: text("provider_account_id"),
+  providerEmail: text("provider_email"),
+  connectionType: text("connection_type").notNull().default("oauth"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertOAuthTokenSchema = createInsertSchema(oauthTokens).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertOAuthToken = z.infer<typeof insertOAuthTokenSchema>;
+export type OAuthToken = typeof oauthTokens.$inferSelect;
+
+// ---- Integration Events ----
+
+export const integrationEvents = pgTable("integration_events", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  provider: text("provider").notNull(),
+  eventType: text("event_type").notNull(),
+  payload: json("payload"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertIntegrationEventSchema = createInsertSchema(integrationEvents).omit({ id: true, createdAt: true });
+export type InsertIntegrationEvent = z.infer<typeof insertIntegrationEventSchema>;
+export type IntegrationEvent = typeof integrationEvents.$inferSelect;
+
+// ---- Provider Assets ----
+
+export const providerAssets = pgTable("provider_assets", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  provider: text("provider").notNull(),
+  assetType: text("asset_type").notNull(),
+  assetId: text("asset_id").notNull(),
+  assetName: text("asset_name").notNull(),
+  selected: boolean("selected").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertProviderAssetSchema = createInsertSchema(providerAssets).omit({ id: true, createdAt: true });
+export type InsertProviderAsset = z.infer<typeof insertProviderAssetSchema>;
+export type ProviderAsset = typeof providerAssets.$inferSelect;
 
 // ---- Client Portal Tokens ----
 

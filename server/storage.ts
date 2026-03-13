@@ -46,6 +46,9 @@ import {
   type AiToolLog, type InsertAiToolLog,
   type WebhookEvent, type InsertWebhookEvent,
   type IntegrationConnection, type InsertIntegrationConnection,
+  oauthTokens, type OAuthToken, type InsertOAuthToken,
+  integrationEvents, type IntegrationEvent, type InsertIntegrationEvent,
+  providerAssets, type ProviderAsset, type InsertProviderAsset,
   type PortalToken, type InsertPortalToken,
   dispatchSubscribers,
   type DispatchSubscriber, type InsertDispatchSubscriber,
@@ -254,6 +257,19 @@ export interface IStorage {
   getIntegrationConnections(subAccountId: number): Promise<IntegrationConnection[]>;
   getIntegrationConnection(subAccountId: number, provider: string): Promise<IntegrationConnection | undefined>;
   upsertIntegrationConnection(data: InsertIntegrationConnection): Promise<IntegrationConnection>;
+
+  getOAuthToken(subAccountId: number, provider: string): Promise<OAuthToken | undefined>;
+  upsertOAuthToken(data: InsertOAuthToken): Promise<OAuthToken>;
+  deleteOAuthToken(subAccountId: number, provider: string): Promise<boolean>;
+  getOAuthTokensBySubAccount(subAccountId: number): Promise<OAuthToken[]>;
+
+  createIntegrationEvent(data: InsertIntegrationEvent): Promise<IntegrationEvent>;
+  getIntegrationEvents(subAccountId: number, limit?: number): Promise<IntegrationEvent[]>;
+
+  getProviderAssets(subAccountId: number, provider: string): Promise<ProviderAsset[]>;
+  upsertProviderAsset(data: InsertProviderAsset): Promise<ProviderAsset>;
+  updateProviderAssetSelection(id: number, selected: boolean): Promise<ProviderAsset | undefined>;
+  deleteProviderAssets(subAccountId: number, provider: string): Promise<boolean>;
 
   getPortalTokens(subAccountId: number): Promise<PortalToken[]>;
   getPortalTokenByToken(token: string): Promise<PortalToken | undefined>;
@@ -1060,6 +1076,67 @@ export class DatabaseStorage implements IStorage {
     }
     const [row] = await db.insert(integrationConnections).values(data).returning();
     return row;
+  }
+
+  async getOAuthToken(subAccountId: number, provider: string) {
+    const [row] = await db.select().from(oauthTokens).where(and(eq(oauthTokens.subAccountId, subAccountId), eq(oauthTokens.provider, provider)));
+    return row;
+  }
+
+  async upsertOAuthToken(data: InsertOAuthToken) {
+    const existing = await this.getOAuthToken(data.subAccountId, data.provider);
+    if (existing) {
+      const [row] = await db.update(oauthTokens).set({ ...data, updatedAt: new Date() }).where(eq(oauthTokens.id, existing.id)).returning();
+      return row;
+    }
+    const [row] = await db.insert(oauthTokens).values(data).returning();
+    return row;
+  }
+
+  async deleteOAuthToken(subAccountId: number, provider: string) {
+    const result = await db.delete(oauthTokens).where(and(eq(oauthTokens.subAccountId, subAccountId), eq(oauthTokens.provider, provider)));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async getOAuthTokensBySubAccount(subAccountId: number) {
+    return db.select().from(oauthTokens).where(eq(oauthTokens.subAccountId, subAccountId));
+  }
+
+  async createIntegrationEvent(data: InsertIntegrationEvent) {
+    const [row] = await db.insert(integrationEvents).values(data).returning();
+    return row;
+  }
+
+  async getIntegrationEvents(subAccountId: number, limit = 50) {
+    return db.select().from(integrationEvents).where(eq(integrationEvents.subAccountId, subAccountId)).orderBy(desc(integrationEvents.createdAt)).limit(limit);
+  }
+
+  async getProviderAssets(subAccountId: number, provider: string) {
+    return db.select().from(providerAssets).where(and(eq(providerAssets.subAccountId, subAccountId), eq(providerAssets.provider, provider)));
+  }
+
+  async upsertProviderAsset(data: InsertProviderAsset) {
+    const existing = await db.select().from(providerAssets).where(and(
+      eq(providerAssets.subAccountId, data.subAccountId),
+      eq(providerAssets.provider, data.provider),
+      eq(providerAssets.assetId, data.assetId)
+    ));
+    if (existing.length > 0) {
+      const [row] = await db.update(providerAssets).set(data).where(eq(providerAssets.id, existing[0].id)).returning();
+      return row;
+    }
+    const [row] = await db.insert(providerAssets).values(data).returning();
+    return row;
+  }
+
+  async updateProviderAssetSelection(id: number, selected: boolean) {
+    const [row] = await db.update(providerAssets).set({ selected }).where(eq(providerAssets.id, id)).returning();
+    return row;
+  }
+
+  async deleteProviderAssets(subAccountId: number, provider: string) {
+    const result = await db.delete(providerAssets).where(and(eq(providerAssets.subAccountId, subAccountId), eq(providerAssets.provider, provider)));
+    return (result.rowCount ?? 0) > 0;
   }
 
   async getPortalTokens(subAccountId: number) {
