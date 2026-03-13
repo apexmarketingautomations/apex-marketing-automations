@@ -75,12 +75,27 @@ export default function InstagramInboxPage() {
 
   const syncMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/meta/instagram/sync/${subAccountId}`, {});
-      return res.json();
+      const res = await fetch(`/api/meta/instagram/sync/${subAccountId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || `Sync failed (${res.status})`);
+      }
+      return data;
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/meta/instagram/conversations"] });
-      toast({ title: data.synced ? `Synced ${data.conversations} conversations` : "Sync skipped", description: data.message });
+      toast({ title: `Synced ${data.conversations} conversations`, description: "Instagram inbox updated successfully" });
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Sync Failed",
+        description: err.message,
+        variant: "destructive",
+      });
     },
   });
 
@@ -134,7 +149,8 @@ export default function InstagramInboxPage() {
 
       {!config?.hasAccessToken && (
         <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 text-yellow-300 text-sm mb-4" data-testid="text-ig-warning">
-          Meta API keys not configured. Add META_ACCESS_TOKEN and META_PAGE_ID to connect your Instagram account and sync messages.
+          <strong>Meta API credentials missing.</strong> Instagram sync requires META_ACCESS_TOKEN and META_PAGE_ID environment variables.
+          Visit the <a href="/integrations" className="underline font-semibold hover:text-yellow-200">Integrations page</a> for a step-by-step setup guide and diagnostics.
         </div>
       )}
 

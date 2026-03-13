@@ -2991,9 +2991,13 @@ Rules:
             const pageId = process.env.META_PAGE_ID;
             const appSecret = process.env.META_APP_SECRET;
 
+            const allAccounts = await storage.getSubAccounts();
+            const targetAccount = allAccounts.find(a => a.ownerUserId !== "_archived") || allAccounts[0];
+            const subAccountId = targetAccount?.id || 13;
+
             if (!accessToken || !pageId) {
               const rawPayload = JSON.stringify(event).substring(0, 2000);
-              console.error(`[META DM] Cannot process ${channel} message from ${senderId} — META_ACCESS_TOKEN or META_PAGE_ID not configured. Raw event: ${rawPayload}`);
+              console.error(`[META DM] Cannot process ${channel} message from ${senderId} — META_ACCESS_TOKEN or META_PAGE_ID not configured. Set these environment variables in your Replit project. Visit the Integrations page for a setup guide. Raw event: ${rawPayload}`);
               await db.insert(messages).values({
                 subAccountId,
                 channel,
@@ -3010,10 +3014,6 @@ Rules:
               const crypto = await import("crypto");
               appsecretProof = crypto.createHmac("sha256", appSecret).update(accessToken).digest("hex");
             }
-
-            const allAccounts = await storage.getSubAccounts();
-            const targetAccount = allAccounts.find(a => a.ownerUserId !== "_archived") || allAccounts[0];
-            const subAccountId = targetAccount?.id || 13;
 
             await db.insert(messages).values({
               subAccountId,
@@ -7683,7 +7683,12 @@ Rules:
     const subAccountId = Number(req.params.subAccountId);
 
     if (!accessToken || !pageId) {
-      return res.status(503).json({ error: "Meta API not configured. Add META_ACCESS_TOKEN and META_PAGE_ID to sync Instagram conversations." });
+      const missing = [];
+      if (!accessToken) missing.push("META_ACCESS_TOKEN");
+      if (!pageId) missing.push("META_PAGE_ID");
+      return res.status(503).json({
+        error: `Instagram sync requires ${missing.join(" and ")} to be configured. Go to the Integrations page for a step-by-step setup guide to connect your Meta/Facebook account.`
+      });
     }
 
     try {
@@ -7695,6 +7700,13 @@ Rules:
       }
       const convRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}/conversations?platform=instagram&fields=participants,messages{message,from,created_time}&access_token=${accessToken}` + (proof ? `&appsecret_proof=${proof}` : ""));
       const convData = await convRes.json() as any;
+
+      if (convData.error) {
+        const errMsg = convData.error.message || JSON.stringify(convData.error).substring(0, 300);
+        console.error(`[META INSTAGRAM] API error during sync: ${errMsg}`);
+        return res.status(502).json({ error: `Meta API error: ${errMsg}. Check that your access token has the required permissions and hasn't expired.` });
+      }
+
       let count = 0;
 
       if (convData.data) {
@@ -7750,6 +7762,99 @@ Rules:
       hasPageId: !!process.env.META_PAGE_ID,
       hasAppId: !!process.env.META_APP_ID,
     });
+  }));
+
+  // ---- Meta DM Diagnostics ----
+  app.get("/api/meta/dm-diagnostics", asyncHandler(async (_req: Request, res: Response) => {
+    const accessToken = process.env.META_ACCESS_TOKEN;
+    const pageId = process.env.META_PAGE_ID;
+    const appSecret = process.env.META_APP_SECRET;
+    const verifyToken = process.env.META_VERIFY_TOKEN || "apex_verify_2026";
+
+    const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
+    const webhookUrl = domain ? `https://${domain}/api/meta-webhook` : null;
+
+    const result: any = {
+      credentials: {
+        accessToken: { set: !!accessToken, valid: false, detail: "" },
+        pageId: { set: !!pageId, value: pageId || null },
+        appSecret: { set: !!appSecret },
+      },
+      webhook: {
+        url: webhookUrl,
+        verifyToken,
+      },
+    };
+
+    if (accessToken) {
+      try {
+        const debugRes = await fetch(`https://graph.facebook.com/debug_token?input_token=${accessToken}&access_token=${accessToken}`);
+        const debugData = await debugRes.json() as any;
+        if (debugData.data) {
+          const d = debugData.data;
+          result.credentials.accessToken.valid = d.is_valid === true;
+          result.credentials.accessToken.detail = d.is_valid
+            ? `Valid. App ID: ${d.app_id || "unknown"}, expires: ${d.expires_at ? (d.expires_at === 0 ? "never" : new Date(d.expires_at * 1000).toISOString()) : "unknown"}`
+            : `Invalid or expired: ${d.error?.message || "unknown error"}`;
+          result.credentials.accessToken.appId = d.app_id;
+          result.credentials.accessToken.expiresAt = d.expires_at;
+          result.credentials.accessToken.scopes = d.scopes;
+        } else {
+          result.credentials.accessToken.detail = debugData.error?.message || "Could not validate token";
+        }
+      } catch (err: any) {
+        result.credentials.accessToken.detail = `Validation request failed: ${err.message}`;
+      }
+    } else {
+      result.credentials.accessToken.detail = "Not configured";
+    }
+
+    if (accessToken && pageId) {
+      try {
+        let proof = "";
+        if (appSecret) {
+          const crypto = await import("crypto");
+          proof = crypto.createHmac("sha256", appSecret).update(accessToken).digest("hex");
+        }
+        const pageRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}?fields=name,id&access_token=${accessToken}${proof ? `&appsecret_proof=${proof}` : ""}`);
+        const pageData = await pageRes.json() as any;
+        if (pageData.name) {
+          result.credentials.pageId.valid = true;
+          result.credentials.pageId.pageName = pageData.name;
+        } else {
+          result.credentials.pageId.valid = false;
+          result.credentials.pageId.error = pageData.error?.message || "Could not fetch page info";
+        }
+      } catch (err: any) {
+        result.credentials.pageId.valid = false;
+        result.credentials.pageId.error = `Page check failed: ${err.message}`;
+      }
+    }
+
+    res.json(result);
+  }));
+
+  app.post("/api/meta/dm-diagnostics/test-webhook", asyncHandler(async (req: Request, res: Response) => {
+    const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
+    if (!domain) {
+      return res.status(400).json({ success: false, error: "No public domain available to test webhook" });
+    }
+
+    const verifyToken = process.env.META_VERIFY_TOKEN || "apex_verify_2026";
+    const testChallenge = "apex_test_" + Date.now();
+    const webhookUrl = `https://${domain}/api/meta-webhook?hub.mode=subscribe&hub.verify_token=${encodeURIComponent(verifyToken)}&hub.challenge=${testChallenge}`;
+
+    try {
+      const testRes = await fetch(webhookUrl);
+      const body = await testRes.text();
+      if (testRes.ok && body === testChallenge) {
+        res.json({ success: true, message: "Webhook verification endpoint is reachable and responding correctly" });
+      } else {
+        res.json({ success: false, error: `Webhook returned status ${testRes.status}, body: ${body.substring(0, 200)}` });
+      }
+    } catch (err: any) {
+      res.json({ success: false, error: `Could not reach webhook: ${err.message}` });
+    }
   }));
 
   // ---- Notifications ----

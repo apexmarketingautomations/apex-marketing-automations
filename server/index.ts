@@ -274,6 +274,9 @@ function validateEnvVars() {
     { key: "TWILIO_AUTH_TOKEN", label: "Twilio Auth Token (phone provisioning)", critical: false },
     { key: "Gemini_API_Key_saas", label: "Gemini API Key (AI features)", critical: false },
     { key: "GOOGLE_API_KEY", label: "Google API Key (Maps, Places, etc.)", critical: false },
+    { key: "META_ACCESS_TOKEN", label: "Meta/Facebook Access Token (DMs, Instagram)", critical: false },
+    { key: "META_PAGE_ID", label: "Meta Page ID (required for DM replies)", critical: false },
+    { key: "META_APP_SECRET", label: "Meta App Secret (recommended for API security)", critical: false },
   ];
 
   let missingCritical = false;
@@ -297,6 +300,13 @@ function validateEnvVars() {
   }
   if (!process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
     console.log("[WARN] TWILIO_AUTH_TOKEN is set but TWILIO_ACCOUNT_SID is missing — Twilio will not work.");
+  }
+
+  if (!process.env.META_ACCESS_TOKEN || !process.env.META_PAGE_ID) {
+    console.log("[WARN] META_ACCESS_TOKEN or META_PAGE_ID missing — Facebook/Instagram DMs will not be processed. Webhook events will be logged but replies cannot be sent.");
+  }
+  if (process.env.META_ACCESS_TOKEN && !process.env.META_APP_SECRET) {
+    console.log("[WARN] META_APP_SECRET not set — recommended for secure API calls (appsecret_proof).");
   }
 
   console.log("=".repeat(60));

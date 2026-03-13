@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Plug, CalendarDays, Mail, FileSpreadsheet, MessageSquare, Zap, Receipt, Phone, CreditCard, HardDrive, Users, Globe, Check, X, MapPin, BarChart3, Building2, FileText, Info, Settings, Key, ExternalLink, Target, Mic, ShoppingCart, Volume2, MessageCircle } from "lucide-react";
+import { Plug, CalendarDays, Mail, FileSpreadsheet, MessageSquare, Zap, Receipt, Phone, CreditCard, HardDrive, Users, Globe, Check, X, MapPin, BarChart3, Building2, FileText, Info, Settings, Key, ExternalLink, Target, Mic, ShoppingCart, Volume2, MessageCircle, Facebook, Copy, CheckCircle, AlertTriangle, XCircle, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { INTEGRATIONS_STEPS } from "@/components/tutorial-steps";
 
@@ -413,6 +413,265 @@ function ConnectDialog({
   );
 }
 
+interface DiagnosticsData {
+  credentials: {
+    accessToken: { set: boolean; valid: boolean; detail: string; scopes?: string[] };
+    pageId: { set: boolean; value: string | null; valid?: boolean; pageName?: string; error?: string };
+    appSecret: { set: boolean };
+  };
+  webhook: {
+    url: string | null;
+    verifyToken: string;
+  };
+}
+
+function MetaDmDiagnostics() {
+  const { toast } = useToast();
+  const [expanded, setExpanded] = useState(true);
+  const [showGuide, setShowGuide] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const { data: diagnostics, isLoading, refetch, isFetching } = useQuery<DiagnosticsData>({
+    queryKey: ["/api/meta/dm-diagnostics"],
+    queryFn: async () => {
+      const res = await fetch("/api/meta/dm-diagnostics");
+      if (!res.ok) throw new Error("Failed to fetch diagnostics");
+      return res.json();
+    },
+  });
+
+  const testWebhookMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/meta/dm-diagnostics/test-webhook", {});
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      if (data.success) {
+        toast({ title: "Webhook Test Passed", description: data.message });
+      } else {
+        toast({ title: "Webhook Test Failed", description: data.error, variant: "destructive" });
+      }
+    },
+    onError: (err: Error) => {
+      toast({ title: "Test Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const copyToClipboard = (text: string, field: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
+    toast({ title: "Copied", description: `${field} copied to clipboard` });
+  };
+
+  const StatusIcon = ({ ok }: { ok: boolean }) =>
+    ok ? <CheckCircle size={16} className="text-emerald-400 flex-shrink-0" /> : <XCircle size={16} className="text-red-400 flex-shrink-0" />;
+
+  const WarnIcon = () => <AlertTriangle size={16} className="text-amber-400 flex-shrink-0" />;
+
+  const creds = diagnostics?.credentials;
+  const webhook = diagnostics?.webhook;
+
+  return (
+    <Card className="bg-black/40 border-white/10" data-testid="card-meta-dm-diagnostics">
+      <CardContent className="p-5">
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="w-full flex items-center justify-between"
+          data-testid="button-toggle-meta-diagnostics"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-600/20 flex items-center justify-center">
+              <Facebook size={20} className="text-blue-400" />
+            </div>
+            <div className="text-left">
+              <h3 className="text-white font-bold text-base">Meta/Facebook DM Setup</h3>
+              <p className="text-slate-400 text-xs">Configure webhooks and credentials for Facebook & Instagram DMs</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {diagnostics && (
+              <Badge className={
+                creds?.accessToken.set && creds?.accessToken.valid && creds?.pageId.set
+                  ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                  : "bg-amber-500/20 text-amber-400 border-amber-500/30"
+              } data-testid="badge-meta-dm-status">
+                {creds?.accessToken.set && creds?.accessToken.valid && creds?.pageId.set ? "Configured" : "Setup Needed"}
+              </Badge>
+            )}
+            {expanded ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
+          </div>
+        </button>
+
+        {expanded && (
+          <div className="mt-5 space-y-5">
+            {isLoading ? (
+              <div className="flex items-center gap-2 text-slate-400 text-sm">
+                <Loader2 size={16} className="animate-spin" /> Loading diagnostics...
+              </div>
+            ) : diagnostics ? (
+              <>
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold text-white">Credential Status</h4>
+                  <div className="space-y-2 bg-white/5 rounded-xl p-4">
+                    <div className="flex items-center gap-2 text-sm" data-testid="status-access-token">
+                      {creds?.accessToken.set ? (creds.accessToken.valid ? <StatusIcon ok={true} /> : <WarnIcon />) : <StatusIcon ok={false} />}
+                      <span className="text-slate-300">META_ACCESS_TOKEN</span>
+                      <span className="text-slate-500 text-xs ml-auto">
+                        {!creds?.accessToken.set ? "Not set" : creds.accessToken.valid ? "Valid" : "Invalid/Expired"}
+                      </span>
+                    </div>
+                    {creds?.accessToken.set && creds.accessToken.detail && (
+                      <p className="text-xs text-slate-500 ml-6">{creds.accessToken.detail}</p>
+                    )}
+
+                    <div className="flex items-center gap-2 text-sm" data-testid="status-page-id">
+                      <StatusIcon ok={!!creds?.pageId.set} />
+                      <span className="text-slate-300">META_PAGE_ID</span>
+                      <span className="text-slate-500 text-xs ml-auto">
+                        {!creds?.pageId.set ? "Not set" : creds.pageId.pageName ? `Page: ${creds.pageId.pageName}` : creds.pageId.value}
+                      </span>
+                    </div>
+                    {creds?.pageId.set && creds.pageId.error && (
+                      <p className="text-xs text-red-400 ml-6">{creds.pageId.error}</p>
+                    )}
+
+                    <div className="flex items-center gap-2 text-sm" data-testid="status-app-secret">
+                      {creds?.appSecret.set ? <StatusIcon ok={true} /> : <WarnIcon />}
+                      <span className="text-slate-300">META_APP_SECRET</span>
+                      <span className="text-slate-500 text-xs ml-auto">
+                        {creds?.appSecret.set ? "Set" : "Not set (optional but recommended)"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold text-white">Webhook Configuration</h4>
+                  <div className="space-y-3 bg-white/5 rounded-xl p-4">
+                    <div>
+                      <Label className="text-slate-400 text-xs">Callback URL (paste into Meta Developer Console)</Label>
+                      <div className="flex items-center gap-2 mt-1">
+                        <code className="flex-1 bg-black/40 text-cyan-300 text-xs p-2 rounded-lg border border-white/10 truncate" data-testid="text-webhook-url">
+                          {webhook?.url || "No public domain available"}
+                        </code>
+                        {webhook?.url && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="border border-white/10 text-slate-400 hover:text-white h-8 px-2"
+                            onClick={() => copyToClipboard(webhook.url!, "Webhook URL")}
+                            data-testid="button-copy-webhook-url"
+                          >
+                            {copiedField === "Webhook URL" ? <Check size={14} /> : <Copy size={14} />}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-slate-400 text-xs">Verify Token</Label>
+                      <div className="flex items-center gap-2 mt-1">
+                        <code className="flex-1 bg-black/40 text-cyan-300 text-xs p-2 rounded-lg border border-white/10" data-testid="text-verify-token">
+                          {webhook?.verifyToken}
+                        </code>
+                        {webhook?.verifyToken && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="border border-white/10 text-slate-400 hover:text-white h-8 px-2"
+                            onClick={() => copyToClipboard(webhook.verifyToken, "Verify Token")}
+                            data-testid="button-copy-verify-token"
+                          >
+                            {copiedField === "Verify Token" ? <Check size={14} /> : <Copy size={14} />}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => refetch()}
+                    disabled={isFetching}
+                    variant="outline"
+                    className="border-white/10 text-slate-300 hover:bg-white/5"
+                    data-testid="button-test-connection"
+                  >
+                    {isFetching ? <Loader2 size={14} className="mr-1 animate-spin" /> : <CheckCircle size={14} className="mr-1" />}
+                    Test Connection
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => testWebhookMutation.mutate()}
+                    disabled={testWebhookMutation.isPending}
+                    variant="outline"
+                    className="border-white/10 text-slate-300 hover:bg-white/5"
+                    data-testid="button-test-webhook"
+                  >
+                    {testWebhookMutation.isPending ? <Loader2 size={14} className="mr-1 animate-spin" /> : <Globe size={14} className="mr-1" />}
+                    Test Webhook
+                  </Button>
+                </div>
+
+                <div>
+                  <button
+                    onClick={() => setShowGuide(!showGuide)}
+                    className="flex items-center gap-1 text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
+                    data-testid="button-toggle-setup-guide"
+                  >
+                    <Info size={14} />
+                    {showGuide ? "Hide Setup Guide" : "Show Setup Guide"}
+                  </button>
+
+                  {showGuide && (
+                    <div className="mt-3 bg-white/5 rounded-xl p-4 space-y-3" data-testid="meta-setup-guide">
+                      <h4 className="text-sm font-semibold text-white">Step-by-Step Setup</h4>
+                      <ol className="space-y-2 text-sm text-slate-300">
+                        <li className="flex gap-2">
+                          <span className="text-indigo-400 font-bold flex-shrink-0">1.</span>
+                          <span>Go to <a href="https://developers.facebook.com/" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">developers.facebook.com</a> and create a Meta App (type: Business). Select your Facebook Page.</span>
+                        </li>
+                        <li className="flex gap-2">
+                          <span className="text-indigo-400 font-bold flex-shrink-0">2.</span>
+                          <span>In the app dashboard, click "Add Product" and add <strong className="text-white">Messenger</strong> (and/or Instagram if needed).</span>
+                        </li>
+                        <li className="flex gap-2">
+                          <span className="text-indigo-400 font-bold flex-shrink-0">3.</span>
+                          <span>Under Messenger Settings, generate a <strong className="text-white">Page Access Token</strong> for your Facebook Page. Copy it.</span>
+                        </li>
+                        <li className="flex gap-2">
+                          <span className="text-indigo-400 font-bold flex-shrink-0">4.</span>
+                          <span>Set the following environment variables in your Replit project:<br />
+                            <code className="text-cyan-300 text-xs">META_ACCESS_TOKEN</code> = your page access token<br />
+                            <code className="text-cyan-300 text-xs">META_PAGE_ID</code> = your Facebook Page ID<br />
+                            <code className="text-cyan-300 text-xs">META_APP_SECRET</code> = your app secret (from App Settings &gt; Basic)
+                          </span>
+                        </li>
+                        <li className="flex gap-2">
+                          <span className="text-indigo-400 font-bold flex-shrink-0">5.</span>
+                          <span>In Messenger Settings &gt; Webhooks, click "Add Callback URL". Paste the <strong className="text-white">Callback URL</strong> and <strong className="text-white">Verify Token</strong> shown above.</span>
+                        </li>
+                        <li className="flex gap-2">
+                          <span className="text-indigo-400 font-bold flex-shrink-0">6.</span>
+                          <span>Subscribe to the <strong className="text-white">messages</strong> webhook field for your page. You should now receive DMs through this app.</span>
+                        </li>
+                      </ol>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-red-400">Failed to load diagnostics. Please try again.</p>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function IntegrationsPage() {
   const subAccountId = useActiveSubAccountId();
   const { toast } = useToast();
@@ -524,6 +783,8 @@ export default function IntegrationsPage() {
           <button onClick={startTutorial} className="flex items-center gap-1 text-xs text-slate-500 hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-white/5" data-testid="button-start-tutorial"><Info size={14} className="mr-1" /> Tutorial</button>
         </div>
       </div>
+
+      <MetaDmDiagnostics />
 
       <div className="space-y-6" data-testid="integrations-grid">
         {renderGrid(
