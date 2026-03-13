@@ -69,6 +69,16 @@ const VOICE_OPTIONS = [
   { id: "pNInz6obpgDQGcFmaJgB", name: "Adam", desc: "Dominant, firm male", previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/pNInz6obpgDQGcFmaJgB/d6905d7a-dd26-4187-bfff-1bd3a5ea7cac.mp3" },
 ];
 
+type VoiceProvider = "11labs" | "elevenlabs";
+
+interface ElevenLabsVoice {
+  voice_id: string;
+  name: string;
+  category: string;
+  description: string;
+  preview_url: string;
+}
+
 function VoiceAgentInner() {
   const [step, setStep] = useState<"describe" | "configure" | "deployed">("describe");
   const [businessPrompt, setBusinessPrompt] = useState("");
@@ -102,10 +112,41 @@ function VoiceAgentInner() {
   const [callLogs, setCallLogs] = useState<any[]>([]);
   const [loadingCallLogs, setLoadingCallLogs] = useState(false);
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
+  const [voiceProvider, setVoiceProvider] = useState<VoiceProvider>("11labs");
+  const [hasElevenLabsKey, setHasElevenLabsKey] = useState<boolean | null>(null);
+  const [elevenLabsVoices, setElevenLabsVoices] = useState<ElevenLabsVoice[]>([]);
+  const [loadingElevenLabsVoices, setLoadingElevenLabsVoices] = useState(false);
   const vapiRef = useRef<Vapi | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const { toast } = useToast();
   const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_voice_agent");
+
+  useEffect(() => {
+    fetch("/api/elevenlabs/config")
+      .then((r) => r.json())
+      .then((data) => setHasElevenLabsKey(data.isConfigured))
+      .catch(() => setHasElevenLabsKey(false));
+  }, []);
+
+  useEffect(() => {
+    if (voiceProvider === "elevenlabs" && elevenLabsVoices.length === 0 && !loadingElevenLabsVoices) {
+      setLoadingElevenLabsVoices(true);
+      fetch("/api/elevenlabs/voices")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.voices && Array.isArray(data.voices)) {
+            setElevenLabsVoices(data.voices);
+            if (data.voices.length > 0) {
+              setSelectedVoice(data.voices[0].voice_id);
+            }
+          }
+        })
+        .catch(() => {
+          toast({ title: "Error", description: "Could not load ElevenLabs voices.", variant: "destructive" });
+        })
+        .finally(() => setLoadingElevenLabsVoices(false));
+    }
+  }, [voiceProvider]);
 
   useEffect(() => {
     fetch("/api/vapi/get-config")
@@ -699,45 +740,136 @@ function VoiceAgentInner() {
 
                   <div>
                     <label className="text-sm text-neutral-400 mb-2 block flex items-center gap-2">
+                      <Volume2 size={14} /> Voice Provider
+                    </label>
+                    <div className="flex gap-2 mb-4">
+                      <button
+                        onClick={() => { setVoiceProvider("11labs"); setSelectedVoice(VOICE_OPTIONS[0].id); }}
+                        className={`flex-1 p-3 rounded-xl border text-center transition-all ${
+                          voiceProvider === "11labs"
+                            ? "border-violet-500 bg-violet-500/10 text-white"
+                            : "border-white/10 bg-white/5 text-neutral-400 hover:border-white/20"
+                        }`}
+                        data-testid="button-provider-vapi"
+                      >
+                        <p className="text-sm font-medium">Vapi (Default)</p>
+                        <p className="text-xs text-neutral-500">Built-in voices</p>
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (!hasElevenLabsKey) {
+                            toast({ title: "Not Connected", description: "Connect ElevenLabs in the Integrations Hub first.", variant: "destructive" });
+                            return;
+                          }
+                          setVoiceProvider("elevenlabs");
+                        }}
+                        className={`flex-1 p-3 rounded-xl border text-center transition-all ${
+                          voiceProvider === "elevenlabs"
+                            ? "border-fuchsia-500 bg-fuchsia-500/10 text-white"
+                            : "border-white/10 bg-white/5 text-neutral-400 hover:border-white/20"
+                        }`}
+                        data-testid="button-provider-elevenlabs"
+                      >
+                        <p className="text-sm font-medium">ElevenLabs</p>
+                        <p className="text-xs text-neutral-500">{hasElevenLabsKey ? "Connected" : "Not connected"}</p>
+                      </button>
+                    </div>
+
+                    <label className="text-sm text-neutral-400 mb-2 block flex items-center gap-2">
                       <Volume2 size={14} /> Voice
                     </label>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                      {VOICE_OPTIONS.map((voice) => (
-                        <div
-                          key={voice.id}
-                          className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                            selectedVoice === voice.id
-                              ? "border-violet-500 bg-violet-500/10"
-                              : "border-white/10 bg-white/5 hover:border-white/20"
-                          }`}
-                          onClick={() => setSelectedVoice(voice.id)}
-                          data-testid={`button-voice-${voice.name.toLowerCase()}`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-sm font-medium">{voice.name}</p>
-                              <p className="text-xs text-neutral-400">{voice.desc}</p>
+
+                    {voiceProvider === "11labs" ? (
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        {VOICE_OPTIONS.map((voice) => (
+                          <div
+                            key={voice.id}
+                            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                              selectedVoice === voice.id
+                                ? "border-violet-500 bg-violet-500/10"
+                                : "border-white/10 bg-white/5 hover:border-white/20"
+                            }`}
+                            onClick={() => setSelectedVoice(voice.id)}
+                            data-testid={`button-voice-${voice.name.toLowerCase()}`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-sm font-medium">{voice.name}</p>
+                                <p className="text-xs text-neutral-400">{voice.desc}</p>
+                              </div>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); playVoicePreview(voice.id, voice.previewUrl); }}
+                                className={`p-2 rounded-lg transition-colors flex-shrink-0 ${
+                                  playingVoiceId === voice.id
+                                    ? "bg-fuchsia-500/20 text-fuchsia-400"
+                                    : "bg-white/5 text-neutral-400 hover:text-white hover:bg-white/10"
+                                }`}
+                                title={playingVoiceId === voice.id ? "Stop preview" : `Listen to ${voice.name}`}
+                                data-testid={`button-preview-${voice.name.toLowerCase()}`}
+                              >
+                                {playingVoiceId === voice.id ? (
+                                  <Volume2 size={16} className="animate-pulse" />
+                                ) : (
+                                  <Volume2 size={16} />
+                                )}
+                              </button>
                             </div>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); playVoicePreview(voice.id, voice.previewUrl); }}
-                              className={`p-2 rounded-lg transition-colors flex-shrink-0 ${
-                                playingVoiceId === voice.id
-                                  ? "bg-fuchsia-500/20 text-fuchsia-400"
-                                  : "bg-white/5 text-neutral-400 hover:text-white hover:bg-white/10"
-                              }`}
-                              title={playingVoiceId === voice.id ? "Stop preview" : `Listen to ${voice.name}`}
-                              data-testid={`button-preview-${voice.name.toLowerCase()}`}
-                            >
-                              {playingVoiceId === voice.id ? (
-                                <Volume2 size={16} className="animate-pulse" />
-                              ) : (
-                                <Volume2 size={16} />
-                              )}
-                            </button>
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div>
+                        {loadingElevenLabsVoices ? (
+                          <div className="flex items-center justify-center p-8 text-neutral-400">
+                            <Loader2 className="animate-spin mr-2" size={16} /> Loading ElevenLabs voices...
+                          </div>
+                        ) : elevenLabsVoices.length === 0 ? (
+                          <div className="text-center p-6 text-neutral-500 border border-white/10 rounded-xl">
+                            <p>No voices available. Check your ElevenLabs API key.</p>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-[300px] overflow-y-auto">
+                            {elevenLabsVoices.map((voice) => (
+                              <div
+                                key={voice.voice_id}
+                                className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                                  selectedVoice === voice.voice_id
+                                    ? "border-fuchsia-500 bg-fuchsia-500/10"
+                                    : "border-white/10 bg-white/5 hover:border-white/20"
+                                }`}
+                                onClick={() => setSelectedVoice(voice.voice_id)}
+                                data-testid={`button-voice-el-${voice.voice_id}`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <p className="text-sm font-medium">{voice.name}</p>
+                                    <p className="text-xs text-neutral-400">{voice.description || voice.category}</p>
+                                  </div>
+                                  {voice.preview_url && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); playVoicePreview(voice.voice_id, voice.preview_url); }}
+                                      className={`p-2 rounded-lg transition-colors flex-shrink-0 ${
+                                        playingVoiceId === voice.voice_id
+                                          ? "bg-fuchsia-500/20 text-fuchsia-400"
+                                          : "bg-white/5 text-neutral-400 hover:text-white hover:bg-white/10"
+                                      }`}
+                                      title={playingVoiceId === voice.voice_id ? "Stop preview" : `Listen to ${voice.name}`}
+                                      data-testid={`button-preview-el-${voice.voice_id}`}
+                                    >
+                                      {playingVoiceId === voice.voice_id ? (
+                                        <Volume2 size={16} className="animate-pulse" />
+                                      ) : (
+                                        <Volume2 size={16} />
+                                      )}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 

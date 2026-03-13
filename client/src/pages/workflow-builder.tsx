@@ -1,6 +1,6 @@
 import { PlanGate } from "@/components/plan-gate";
 import { useState } from "react";
-import { Clock, MessageSquare, GitFork, MoreHorizontal, PlayCircle, CheckCircle2, AlertCircle, AlertTriangle, Sparkles, Loader2, Code2, Trash2, BookOpen, Target, Mail, UserPlus, TrendingUp, Bell, Globe, Zap, Terminal, Cpu, Brain, ChevronDown, Eye, Power, Archive, ShoppingCart } from "lucide-react";
+import { Clock, MessageSquare, GitFork, MoreHorizontal, PlayCircle, CheckCircle2, AlertCircle, AlertTriangle, Sparkles, Loader2, Code2, Trash2, BookOpen, Target, Mail, UserPlus, TrendingUp, Bell, Globe, Zap, Terminal, Cpu, Brain, ChevronDown, Eye, Power, Archive, ShoppingCart, Volume2 } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { WORKFLOW_STEPS } from "@/components/tutorial-steps";
 import { motion, AnimatePresence } from "framer-motion";
@@ -41,6 +41,7 @@ const StepIcon = ({ type }: { type: string }) => {
     case "UpdateDeal": return <TrendingUp className="h-5 w-5 text-orange-500" />;
     case "WebhookCall": return <Globe className="h-5 w-5 text-indigo-500" />;
     case "AIGenerate": return <Sparkles className="h-5 w-5 text-violet-500" />;
+    case "ElevenLabsTTS": return <Volume2 className="h-5 w-5 text-fuchsia-500" />;
     case "Wait": return <Clock className="h-5 w-5 text-amber-500" />;
     default: return <CheckCircle2 className="h-5 w-5 text-gray-400" />;
   }
@@ -80,6 +81,7 @@ const StepCard = ({ step, index, onClick, isSelected }: { step: any, index: numb
                   {step.action_type === "CreateContact" && <span className="text-emerald-400">{step.params.first_name || "Contact"}</span>}
                   {step.action_type === "WebhookCall" && <span className="text-indigo-400">{step.params.url?.slice(0, 30) || "Webhook"}</span>}
                   {step.action_type === "AIGenerate" && <span className="text-violet-400">AI Generate</span>}
+                  {step.action_type === "ElevenLabsTTS" && <span className="text-fuchsia-400">{step.params.text?.slice(0, 40) || "Voice Message"}</span>}
                 </p>
               </div>
               <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -730,6 +732,7 @@ function WorkflowBuilderInner() {
       SendEmail: { action_type: "SendEmail", params: { subject: "Follow Up", body: "Hello!" } },
       WebhookCall: { action_type: "WebhookCall", params: { url: "https://", method: "POST" } },
       AIGenerate: { action_type: "AIGenerate", params: { prompt: "Generate a response", output_field: "ai_message" } },
+      ElevenLabsTTS: { action_type: "ElevenLabsTTS", params: { text: "Hello, this is a voice message.", voice_id: "EXAVITQu4vr4xnSDxMaL" } },
     };
 
     const newStep = stepDefaults[type];
@@ -882,6 +885,7 @@ function WorkflowBuilderInner() {
                       { type: "DeployMetaAd", label: "Meta Ad", icon: <Target className="h-3 w-3" />, color: "text-pink-500 border-pink-500/30 hover:bg-pink-500/10" },
                       { type: "SendEmail", label: "Email", icon: <Mail className="h-3 w-3" />, color: "text-cyan-500 border-cyan-500/30 hover:bg-cyan-500/10" },
                       { type: "WebhookCall", label: "Webhook", icon: <Globe className="h-3 w-3" />, color: "text-indigo-500 border-indigo-500/30 hover:bg-indigo-500/10" },
+                      { type: "ElevenLabsTTS", label: "Voice TTS", icon: <Volume2 className="h-3 w-3" />, color: "text-fuchsia-500 border-fuchsia-500/30 hover:bg-fuchsia-500/10" },
                     ].map(({ type, label, icon, color }) => (
                       <Button
                         key={type}

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Plug, CalendarDays, Mail, FileSpreadsheet, MessageSquare, Zap, Receipt, Phone, CreditCard, HardDrive, Users, Globe, Check, X, MapPin, BarChart3, Building2, FileText, Info, Settings, Key, ExternalLink, Target, Mic, ShoppingCart } from "lucide-react";
+import { Plug, CalendarDays, Mail, FileSpreadsheet, MessageSquare, Zap, Receipt, Phone, CreditCard, HardDrive, Users, Globe, Check, X, MapPin, BarChart3, Building2, FileText, Info, Settings, Key, ExternalLink, Target, Mic, ShoppingCart, Volume2 } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { INTEGRATIONS_STEPS } from "@/components/tutorial-steps";
 
@@ -159,6 +159,13 @@ const PROVIDER_CREDENTIALS: Record<string, { fields: CredentialField[]; helpUrl?
     helpUrl: "https://admin.shopify.com/store/YOUR_STORE/settings/apps/development",
     helpText: "Create a custom app in your Shopify admin to get your Admin API access token.",
   },
+  "elevenlabs": {
+    fields: [
+      { key: "apiKey", label: "API Key", placeholder: "Your ElevenLabs API key", type: "password" },
+    ],
+    helpUrl: "https://elevenlabs.io/app/settings/api-keys",
+    helpText: "High-quality AI voice synthesis for text-to-speech. Get your API key from ElevenLabs settings.",
+  },
 };
 
 const COMING_SOON_PROVIDERS: string[] = [];
@@ -183,6 +190,7 @@ const INTEGRATIONS = [
   { provider: "meta-ads", name: "Meta Ads", description: "Geofence ad deployment for Sentinel", icon: Target, color: "bg-blue-600/20", iconColor: "text-blue-400", category: "tools" },
   { provider: "vapi", name: "Vapi", description: "Voice AI agents and outbound calling", icon: Mic, color: "bg-teal-500/20", iconColor: "text-teal-400", category: "tools" },
   { provider: "shopify", name: "Shopify", description: "E-commerce automation, abandoned carts, orders", icon: ShoppingCart, color: "bg-green-600/20", iconColor: "text-green-400", category: "tools" },
+  { provider: "elevenlabs", name: "ElevenLabs", description: "AI voice synthesis and text-to-speech", icon: Volume2, color: "bg-fuchsia-500/20", iconColor: "text-fuchsia-400", category: "tools" },
 ];
 
 interface IntegrationConnection {

@@ -2359,6 +2359,124 @@ Rules:
     res.json({ webCallUrl, callId: callData.id });
   }));
 
+  // ---- ElevenLabs Voice AI Integration ----
+
+  function getElevenLabsApiKey(): string | null {
+    return process.env.ELEVENLABS_API_KEY || null;
+  }
+
+  async function resolveElevenLabsApiKey(subAccountId?: number): Promise<string | null> {
+    if (subAccountId) {
+      try {
+        const connections = await storage.getIntegrationConnections(subAccountId);
+        const elConn = connections.find((c: any) => c.provider === "elevenlabs" && c.status === "connected");
+        if (elConn?.config && (elConn.config as any).apiKey) {
+          return (elConn.config as any).apiKey;
+        }
+      } catch {}
+    }
+    return getElevenLabsApiKey();
+  }
+
+  async function elevenLabsTtsRequest(apiKey: string, voiceId: string, text: string, options?: { modelId?: string; stability?: number; similarityBoost?: number }) {
+    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      method: "POST",
+      headers: {
+        "xi-api-key": apiKey,
+        "Content-Type": "application/json",
+        "Accept": "audio/mpeg",
+      },
+      body: JSON.stringify({
+        text,
+        model_id: options?.modelId || "eleven_multilingual_v2",
+        voice_settings: {
+          stability: options?.stability ?? 0.5,
+          similarity_boost: options?.similarityBoost ?? 0.75,
+        },
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      let detail = "ElevenLabs TTS failed";
+      try { const p = JSON.parse(errText); detail = p.detail?.message || p.detail || detail; } catch {}
+      throw new Error(detail);
+    }
+
+    return Buffer.from(await response.arrayBuffer());
+  }
+
+  app.get("/api/elevenlabs/config", asyncHandler(async (req, res) => {
+    const subAccountId = req.query.subAccountId ? parseInt(req.query.subAccountId as string) : undefined;
+    const apiKey = await resolveElevenLabsApiKey(subAccountId);
+    res.json({ isConfigured: !!apiKey });
+  }));
+
+  app.get("/api/elevenlabs/voices", asyncHandler(async (req, res) => {
+    const subAccountId = req.query.subAccountId ? parseInt(req.query.subAccountId as string) : undefined;
+    const apiKey = await resolveElevenLabsApiKey(subAccountId);
+    if (!apiKey) {
+      return res.status(503).json({ error: "ElevenLabs API key is not configured. Connect it in the Integrations Hub." });
+    }
+
+    const response = await fetch("https://api.elevenlabs.io/v1/voices", {
+      headers: { "xi-api-key": apiKey },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: "Failed to fetch voices from ElevenLabs." });
+    }
+
+    const data = await response.json() as any;
+    const voices = (data.voices || []).map((v: any) => ({
+      voice_id: v.voice_id,
+      name: v.name,
+      category: v.category,
+      description: v.labels?.description || v.labels?.accent || "",
+      preview_url: v.preview_url,
+      labels: v.labels || {},
+    }));
+
+    res.json({ voices });
+  }));
+
+  app.post("/api/elevenlabs/tts", asyncHandler(async (req, res) => {
+    const schema = z.object({
+      text: z.string().min(1).max(5000),
+      voiceId: z.string().min(1),
+      subAccountId: z.number().optional(),
+      modelId: z.string().optional().default("eleven_multilingual_v2"),
+      stability: z.number().min(0).max(1).optional().default(0.5),
+      similarityBoost: z.number().min(0).max(1).optional().default(0.75),
+    });
+
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const { text, voiceId, subAccountId, modelId, stability, similarityBoost } = parsed.data;
+
+    const apiKey = await resolveElevenLabsApiKey(subAccountId);
+    if (!apiKey) {
+      return res.status(503).json({ error: "ElevenLabs API key is not configured. Connect it in the Integrations Hub." });
+    }
+
+    try {
+      const audioBuffer = await elevenLabsTtsRequest(apiKey, voiceId, text, { modelId, stability, similarityBoost });
+      const base64Audio = audioBuffer.toString("base64");
+
+      res.json({
+        audio: base64Audio,
+        contentType: "audio/mpeg",
+        voiceId,
+        characterCount: text.length,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  }));
+
   const personaSchema = z.object({
     businessDescription: z.string().min(1, "businessDescription is required").max(2000),
     industry: z.string().max(100).optional(),
@@ -8083,6 +8201,7 @@ Return ONLY valid JSON.` },
     "update_settings", "generate_site", "create_contact", "create_deal",
     "deploy_geofence_ad", "provision_vapi_line", "check_workflow_status",
     "get_crash_logs", "update_user_role", "save_workflow_manifest",
+    "elevenlabs_tts",
   ] as const;
 
   async function executeDispatchAction(action: string, payload: Record<string, any>): Promise<any> {
@@ -8308,6 +8427,36 @@ Return ONLY valid JSON.` },
           break;
         }
 
+        case "elevenlabs_tts":
+        case "ElevenLabsTTS": {
+          const elSubAccountId = payload.subAccountId || payload.sub_account_id;
+          const elApiKey = await resolveElevenLabsApiKey(elSubAccountId);
+          if (!elApiKey) {
+            result = { status: "Error", message: "ElevenLabs API key not configured. Connect it in the Integrations Hub." };
+          } else if (!payload.text) {
+            result = { status: "Error", message: "Missing 'text' for TTS synthesis" };
+          } else {
+            try {
+              const elVoiceId = payload.voice_id || payload.voiceId || "EXAVITQu4vr4xnSDxMaL";
+              const audioBuffer = await elevenLabsTtsRequest(elApiKey, elVoiceId, payload.text, {
+                modelId: payload.model_id,
+                stability: payload.stability,
+                similarityBoost: payload.similarity_boost,
+              });
+              result = {
+                status: "Success",
+                message: "TTS audio generated",
+                audioBase64: audioBuffer.toString("base64"),
+                contentType: "audio/mpeg",
+                characterCount: payload.text.length,
+              };
+            } catch (err: any) {
+              result = { status: "Error", message: `ElevenLabs TTS error: ${err.message}` };
+            }
+          }
+          break;
+        }
+
         case "check_workflow_status": {
           const automations = await storage.getLiveAutomations(payload.sub_account_id);
           const workflows = (await storage.getWorkflows()).filter(w =>
@@ -8489,7 +8638,7 @@ When building a workflow manifest, use this structure:
   "name": "Workflow Name",
   "trigger": { "type": "OnCrashDetected|OnNewLead|OnMissedCall|OnFormSubmit|Manual", "filters": {} },
   "steps": [
-    { "id": "step_1", "action_type": "SendTwilioSMS|Wait|Condition|DeployMetaAd|AlertTeam|CreateContact|SendEmail|WebhookCall|AIGenerate", "label": "...", "params": {...} }
+    { "id": "step_1", "action_type": "SendTwilioSMS|Wait|Condition|DeployMetaAd|AlertTeam|CreateContact|SendEmail|WebhookCall|AIGenerate|ElevenLabsTTS", "label": "...", "params": {...} }
   ]
 }
 
@@ -8684,6 +8833,12 @@ Return ONLY valid JSON.` },
         if (!config.accountId.startsWith("accounts/")) {
           validationResult = { valid: false, error: "Business Profile ID should start with 'accounts/'" };
         }
+      } else if (provider === "elevenlabs" && config?.apiKey) {
+        const elRes = await fetch("https://api.elevenlabs.io/v1/user", {
+          headers: { "xi-api-key": config.apiKey },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (!elRes.ok) validationResult = { valid: false, error: "Invalid ElevenLabs API key. Check your key in ElevenLabs settings." };
       }
     } catch (validErr: any) {
       console.warn(`[INTEGRATIONS] Validation failed for ${provider}:`, validErr.message);
@@ -8981,6 +9136,13 @@ Return ONLY valid JSON.` },
         description: "Voice AI Agents",
         configured: vapiConfig.isConfigured,
         envVars: ["VAPI_PRIVATE_KEY", "VAPI_PUBLIC_KEY"],
+      },
+      {
+        name: "ElevenLabs",
+        provider: "elevenlabs",
+        description: "AI Voice Synthesis & TTS",
+        configured: !!process.env.ELEVENLABS_API_KEY,
+        envVars: ["ELEVENLABS_API_KEY"],
       },
       {
         name: "Google AI (Gemini)",
