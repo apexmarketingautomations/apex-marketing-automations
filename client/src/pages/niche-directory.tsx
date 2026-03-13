@@ -53,7 +53,7 @@ export default function NicheDirectory() {
           </Link>
           <div className="flex items-center gap-3">
             <Link href="/pricing"><span className="text-sm text-slate-400 hover:text-white transition-colors cursor-pointer" data-testid="link-pricing">Pricing</span></Link>
-            <a href="/api/login" className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-indigo-600 text-white text-sm font-bold hover:opacity-90 transition-opacity" data-testid="button-get-started">
+            <a href="/login" className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-indigo-600 text-white text-sm font-bold hover:opacity-90 transition-opacity" data-testid="button-get-started">
               Get Started <ArrowRight size={14} />
             </a>
           </div>
@@ -114,7 +114,7 @@ export default function NicheDirectory() {
         <div className="max-w-3xl mx-auto text-center">
           <h2 className="text-3xl font-black mb-4">Don't See Your Industry?</h2>
           <p className="text-slate-400 mb-6">Apex works for any business that needs AI-powered communication, automation, and growth tools. Start your free trial and customize it for your niche.</p>
-          <a href="/api/login" className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 text-white font-bold text-lg hover:opacity-90 transition-all" data-testid="button-cta-start">
+          <a href="/login" className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 text-white font-bold text-lg hover:opacity-90 transition-all" data-testid="button-cta-start">
             Start Free Trial <ArrowRight size={18} />
           </a>
         </div>

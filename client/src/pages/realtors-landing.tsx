@@ -171,7 +171,7 @@ export default function RealtorsLanding() {
             <Link href="/demo" className="hidden sm:flex items-center gap-2 px-4 py-2 text-sm text-slate-300 hover:text-white transition-colors">
               <Play size={14} /> Live Demo
             </Link>
-            <a href="/api/login" className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-sm font-bold rounded-xl transition-all shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/40" data-testid="button-nav-get-started">
+            <a href="/login" className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-sm font-bold rounded-xl transition-all shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/40" data-testid="button-nav-get-started">
               Get Started Free
             </a>
           </div>
@@ -201,7 +201,7 @@ export default function RealtorsLanding() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <a href="/api/login" className="w-full sm:w-auto px-10 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-2xl transition-all shadow-lg shadow-emerald-500/25 text-lg flex items-center justify-center gap-2 hover:scale-[1.03] active:scale-[0.98]" data-testid="button-hero-cta">
+            <a href="/login" className="w-full sm:w-auto px-10 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-2xl transition-all shadow-lg shadow-emerald-500/25 text-lg flex items-center justify-center gap-2 hover:scale-[1.03] active:scale-[0.98]" data-testid="button-hero-cta">
               Start Your Free Trial <ArrowRight size={20} />
             </a>
             <Link href="/demo" className="w-full sm:w-auto px-10 py-4 border border-white/10 hover:border-white/20 bg-white/[0.03] hover:bg-white/[0.06] text-white font-bold rounded-2xl transition-all text-lg flex items-center justify-center gap-2" data-testid="button-hero-demo">
@@ -429,7 +429,7 @@ export default function RealtorsLanding() {
           </div>
 
           <div className="mt-10 text-center">
-            <a href="/api/login" className="inline-flex items-center gap-2 px-10 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-2xl transition-all shadow-lg shadow-emerald-500/25 text-lg hover:scale-[1.03] active:scale-[0.98]" data-testid="button-pricing-cta">
+            <a href="/login" className="inline-flex items-center gap-2 px-10 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-2xl transition-all shadow-lg shadow-emerald-500/25 text-lg hover:scale-[1.03] active:scale-[0.98]" data-testid="button-pricing-cta">
               Start Closing More Deals <ArrowRight size={20} />
             </a>
             <p className="text-xs text-slate-500 mt-4">60-day free trial. No credit card required.</p>
@@ -476,7 +476,7 @@ export default function RealtorsLanding() {
                 Join top-producing agents who let AI handle the busywork while they focus on closing.
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <a href="/api/login" className="w-full sm:w-auto px-10 py-4 bg-white text-black font-bold rounded-2xl transition-all text-lg flex items-center justify-center gap-2 hover:bg-emerald-100 hover:scale-[1.03] active:scale-[0.98]" data-testid="button-final-cta">
+                <a href="/login" className="w-full sm:w-auto px-10 py-4 bg-white text-black font-bold rounded-2xl transition-all text-lg flex items-center justify-center gap-2 hover:bg-emerald-100 hover:scale-[1.03] active:scale-[0.98]" data-testid="button-final-cta">
                   Get Started Free <ArrowRight size={20} />
                 </a>
                 <Link href="/demo" className="w-full sm:w-auto px-10 py-4 border border-white/20 hover:border-white/30 text-white font-bold rounded-2xl transition-all text-lg flex items-center justify-center gap-2" data-testid="button-final-demo">

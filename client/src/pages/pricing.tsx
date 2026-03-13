@@ -94,7 +94,7 @@ export default function Pricing() {
   const checkoutMutation = useMutation({
     mutationFn: async ({ tier, interval }: { tier: string; interval: string }) => {
       if (!isAuthenticated) {
-        window.location.href = "/api/login";
+        window.location.href = "/login";
         return;
       }
       const res = await apiRequest("POST", "/api/subscription/checkout", { tier, interval, isBlitz: BLITZ_ACTIVE });
@@ -131,7 +131,7 @@ export default function Pricing() {
                 <img src="/apex-logo.png" alt="Apex" className="w-8 h-8" />
                 <span className="font-black text-white tracking-tight hidden sm:block">APEX <span className="text-indigo-400 font-light text-xs">MARKETING AUTOMATIONS</span></span>
               </Link>
-              <a href="/api/login" className="px-5 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-bold rounded-lg" data-testid="button-pricing-login">Sign In</a>
+              <a href="/login" className="px-5 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-bold rounded-lg" data-testid="button-pricing-login">Sign In</a>
             </div>
           </nav>
         </>

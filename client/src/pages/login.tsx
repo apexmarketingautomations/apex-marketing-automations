@@ -307,18 +307,6 @@ export default function Login() {
               Continue with Firebase
             </button>
 
-            <a
-              href="/api/login"
-              className="mt-3 w-full py-3 border border-white/10 bg-white/5 hover:bg-white/10 text-white/80 font-medium rounded-xl transition-all flex items-center justify-center gap-2 text-sm"
-              data-testid="button-replit-login"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M2 6a4 4 0 0 1 4-4h4.5a1.5 1.5 0 0 1 0 3H6a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-4.5a1.5 1.5 0 0 1 3 0V18a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V6z" />
-                <path d="M14.5 2a1.5 1.5 0 0 0 0 3H18l-7.793 7.793a1.5 1.5 0 0 0 2.122 2.122L20 7.12V10.5a1.5 1.5 0 0 0 3 0V4a2 2 0 0 0-2-2h-6.5z" />
-              </svg>
-              Continue with Replit
-            </a>
-
             <div className="mt-5 text-center">
               <button
                 onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}

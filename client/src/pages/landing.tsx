@@ -151,7 +151,7 @@ export default function LandingPage() {
             <Link href="/demo" className="hover:text-white transition-colors">Live Demo</Link>
           </div>
           <a
-            href="/api/login"
+            href="/login"
             className="px-5 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-sm font-bold rounded-lg transition-all shadow-lg shadow-indigo-500/20"
             data-testid="button-nav-login"
           >
@@ -201,7 +201,7 @@ export default function LandingPage() {
             className="flex flex-col sm:flex-row items-center justify-center gap-4"
           >
             <a
-              href="/api/login"
+              href="/login"
               className="px-10 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-indigo-500/25 text-lg flex items-center gap-2 hover:scale-105 active:scale-95"
               data-testid="button-hero-cta"
             >
@@ -385,7 +385,7 @@ export default function LandingPage() {
                     </ul>
 
                     <a
-                      href="/api/login"
+                      href="/login"
                       className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all shadow-lg text-center block ${
                         tier.popular
                           ? "bg-white text-black hover:bg-cyan-400"
@@ -532,7 +532,7 @@ export default function LandingPage() {
                   Join founders who are automating their growth with AI. Start your 60-day free trial today.
                 </p>
                 <a
-                  href="/api/login"
+                  href="/login"
                   className="inline-flex items-center gap-2 px-10 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-indigo-500/25 text-lg hover:scale-105 active:scale-95"
                   data-testid="button-final-cta"
                 >
@@ -591,7 +591,7 @@ export default function LandingPage() {
           <div className="border-t border-white/5 pt-6 flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-xs text-slate-600">&copy; {new Date().getFullYear()} Apex Marketing Automations. All rights reserved.</p>
             <a
-              href="/api/login"
+              href="/login"
               className="text-indigo-400 hover:text-indigo-300 text-sm font-medium transition-colors"
               data-testid="link-footer-login"
             >

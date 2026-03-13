@@ -176,7 +176,7 @@ export default function MarketersLanding() {
               <Play size={14} /> Live Demo
             </Link>
             <a
-              href="/api/login"
+              href="/login"
               className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-sm font-bold rounded-xl transition-all shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/40"
               data-testid="button-nav-get-started"
             >
@@ -220,7 +220,7 @@ export default function MarketersLanding() {
             className="flex flex-col sm:flex-row items-center justify-center gap-4"
           >
             <a
-              href="/api/login"
+              href="/login"
               className="w-full sm:w-auto px-10 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded-2xl transition-all shadow-lg shadow-indigo-500/25 text-lg flex items-center justify-center gap-2 hover:scale-[1.03] active:scale-[0.98]"
               data-testid="button-hero-cta"
             >
@@ -500,7 +500,7 @@ export default function MarketersLanding() {
             className="mt-10 text-center"
           >
             <a
-              href="/api/login"
+              href="/login"
               className="inline-flex items-center gap-2 px-10 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded-2xl transition-all shadow-lg shadow-indigo-500/25 text-lg hover:scale-[1.03] active:scale-[0.98]"
               data-testid="button-pricing-cta"
             >
@@ -573,7 +573,7 @@ export default function MarketersLanding() {
                 className="flex flex-col sm:flex-row items-center justify-center gap-4"
               >
                 <a
-                  href="/api/login"
+                  href="/login"
                   className="w-full sm:w-auto px-10 py-4 bg-white text-black font-bold rounded-2xl transition-all text-lg flex items-center justify-center gap-2 hover:bg-indigo-100 hover:scale-[1.03] active:scale-[0.98]"
                   data-testid="button-final-cta"
                 >

@@ -58,7 +58,7 @@ export default function CardsLanding() {
             <span className="text-xl font-bold bg-gradient-to-r from-cyan-400 to-indigo-400 bg-clip-text text-transparent">TapCard</span>
             <span className="text-xs text-slate-500 ml-1">by Apex</span>
           </div>
-          <a href="/api/login">
+          <a href="/login">
             <Button variant="outline" className="border-white/10 text-slate-300 hover:bg-white/5" data-testid="button-login">
               Log In
             </Button>
