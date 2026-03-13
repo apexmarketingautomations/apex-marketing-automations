@@ -166,6 +166,13 @@ const PROVIDER_CREDENTIALS: Record<string, { fields: CredentialField[]; helpUrl?
     helpUrl: "https://elevenlabs.io/app/settings/api-keys",
     helpText: "High-quality AI voice synthesis for text-to-speech. Get your API key from ElevenLabs settings.",
   },
+  "skip-trace": {
+    fields: [
+      { key: "apiKey", label: "BatchData API Key", placeholder: "Your BatchData API key", type: "password" },
+    ],
+    helpUrl: "https://app.batchdata.com/",
+    helpText: "Powers skip trace / people data lookups for Property Radar. Get your API key from BatchData.",
+  },
 };
 
 const COMING_SOON_PROVIDERS: string[] = [];
@@ -191,6 +198,7 @@ const INTEGRATIONS = [
   { provider: "vapi", name: "Vapi", description: "Voice AI agents and outbound calling", icon: Mic, color: "bg-teal-500/20", iconColor: "text-teal-400", category: "tools" },
   { provider: "shopify", name: "Shopify", description: "E-commerce automation, abandoned carts, orders", icon: ShoppingCart, color: "bg-green-600/20", iconColor: "text-green-400", category: "tools" },
   { provider: "elevenlabs", name: "ElevenLabs", description: "AI voice synthesis and text-to-speech", icon: Volume2, color: "bg-fuchsia-500/20", iconColor: "text-fuchsia-400", category: "tools" },
+  { provider: "skip-trace", name: "Skip Trace (BatchData)", description: "People data lookup for property owner contact info", icon: Users, color: "bg-violet-500/20", iconColor: "text-violet-400", category: "tools" },
 ];
 
 interface IntegrationConnection {

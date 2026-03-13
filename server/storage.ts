@@ -50,7 +50,7 @@ import {
   dispatchSubscribers,
   type DispatchSubscriber, type InsertDispatchSubscriber,
   creditWallets, creditTransactions, sponsorships, sponsorshipClicks, platformProfitLedger,
-  funnelLeads, crashReports, dmKeywordAutomations, shopifyEvents,
+  funnelLeads, crashReports, dmKeywordAutomations, shopifyEvents, skipTraceResults, skipTraceUsage,
   type CreditWallet, type InsertCreditWallet,
   type CreditTransaction, type InsertCreditTransaction,
   type Sponsorship, type InsertSponsorship,
@@ -60,6 +60,8 @@ import {
   type CrashReport, type InsertCrashReport,
   type DmKeywordAutomation, type InsertDmKeywordAutomation,
   type ShopifyEvent, type InsertShopifyEvent,
+  type SkipTraceResult, type InsertSkipTraceResult,
+  type SkipTraceUsage, type InsertSkipTraceUsage,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -306,6 +308,14 @@ export interface IStorage {
   getShopifyEvents(subAccountId: number): Promise<ShopifyEvent[]>;
   createShopifyEvent(data: InsertShopifyEvent): Promise<ShopifyEvent>;
   updateShopifyEvent(id: number, data: Partial<InsertShopifyEvent>): Promise<ShopifyEvent | undefined>;
+
+  getSkipTraceResults(subAccountId: number): Promise<SkipTraceResult[]>;
+  getSkipTraceResultByLeadId(propertyLeadId: number): Promise<SkipTraceResult | undefined>;
+  createSkipTraceResult(data: InsertSkipTraceResult): Promise<SkipTraceResult>;
+  updateSkipTraceResult(id: number, data: Partial<InsertSkipTraceResult>): Promise<SkipTraceResult | undefined>;
+
+  getSkipTraceUsage(subAccountId: number, monthYear: string): Promise<SkipTraceUsage | undefined>;
+  incrementSkipTraceUsage(subAccountId: number, monthYear: string): Promise<SkipTraceUsage>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1317,6 +1327,49 @@ export class DatabaseStorage implements IStorage {
 
   async updateShopifyEvent(id: number, data: Partial<InsertShopifyEvent>) {
     const [row] = await db.update(shopifyEvents).set(data).where(eq(shopifyEvents.id, id)).returning();
+    return row;
+  }
+
+  async getSkipTraceResults(subAccountId: number) {
+    return db.select().from(skipTraceResults)
+      .where(eq(skipTraceResults.subAccountId, subAccountId))
+      .orderBy(desc(skipTraceResults.createdAt));
+  }
+
+  async getSkipTraceResultByLeadId(propertyLeadId: number) {
+    const [row] = await db.select().from(skipTraceResults)
+      .where(eq(skipTraceResults.propertyLeadId, propertyLeadId));
+    return row;
+  }
+
+  async createSkipTraceResult(data: InsertSkipTraceResult) {
+    const [row] = await db.insert(skipTraceResults).values(data).returning();
+    return row;
+  }
+
+  async updateSkipTraceResult(id: number, data: Partial<InsertSkipTraceResult>) {
+    const [row] = await db.update(skipTraceResults).set(data).where(eq(skipTraceResults.id, id)).returning();
+    return row;
+  }
+
+  async getSkipTraceUsage(subAccountId: number, monthYear: string) {
+    const [row] = await db.select().from(skipTraceUsage)
+      .where(and(eq(skipTraceUsage.subAccountId, subAccountId), eq(skipTraceUsage.monthYear, monthYear)));
+    return row;
+  }
+
+  async incrementSkipTraceUsage(subAccountId: number, monthYear: string) {
+    const existing = await this.getSkipTraceUsage(subAccountId, monthYear);
+    if (existing) {
+      const [row] = await db.update(skipTraceUsage)
+        .set({ lookupCount: (existing.lookupCount || 0) + 1 })
+        .where(eq(skipTraceUsage.id, existing.id))
+        .returning();
+      return row;
+    }
+    const [row] = await db.insert(skipTraceUsage)
+      .values({ subAccountId, monthYear, lookupCount: 1 })
+      .returning();
     return row;
   }
 }

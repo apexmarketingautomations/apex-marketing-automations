@@ -7,7 +7,8 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Building, MapPin, Phone, DollarSign, AlertTriangle, CheckCircle2,
   Settings, Play, Home, TrendingUp, Send, Target, Eye, Search, Filter,
-  ArrowRight, User, Mail, Hash, Layers, Zap, BarChart3, BookOpen, Map
+  ArrowRight, User, Mail, Hash, Layers, Zap, BarChart3, BookOpen, Map,
+  UserSearch, Save, Users, Loader2, CheckSquare, Square
 } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { PROPERTY_RADAR_STEPS } from "@/components/tutorial-steps";
@@ -15,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import type { SubAccount, PropertyLead, WholesalerConfig } from "@shared/schema";
+import type { SubAccount, PropertyLead, WholesalerConfig, SkipTraceResult } from "@shared/schema";
 import { AddressAutocomplete } from "@/components/address-autocomplete";
 
 const PRIORITY_COLORS: Record<string, { bg: string; text: string; border: string; label: string; glow: string }> = {
@@ -253,6 +254,9 @@ export default function PropertyRadar() {
   const [viewMode, setViewMode] = useState<"feed" | "pipeline" | "map">("feed");
   const [selectedLead, setSelectedLead] = useState<LeadWithMetrics | null>(null);
   const [dataSource, setDataSource] = useState<string>("");
+  const [skipTraceResult, setSkipTraceResult] = useState<SkipTraceResult | null>(null);
+  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<number>>(new Set());
+  const [bulkMode, setBulkMode] = useState(false);
   const [configForm, setConfigForm] = useState({
     targetZips: "",
     targetCities: "",
@@ -355,6 +359,88 @@ export default function PropertyRadar() {
     },
   });
 
+  const { data: skipTraceUsage } = useQuery<{ monthYear: string; lookupCount: number }>({
+    queryKey: ["/api/skip-trace/usage", currentAccount?.id],
+    enabled: !!currentAccount?.id,
+    queryFn: async () => {
+      const res = await fetch(`/api/skip-trace/usage/${currentAccount!.id}`, { credentials: "include" });
+      return res.json();
+    },
+  });
+
+  const skipTraceMutation = useMutation({
+    mutationFn: async (propertyLeadId: number) => {
+      const res = await apiRequest("POST", "/api/skip-trace/lookup", { subAccountId: currentAccount!.id, propertyLeadId });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setSkipTraceResult(data.result);
+      queryClient.invalidateQueries({ queryKey: ["/api/property-radar/leads"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/skip-trace/usage"] });
+      toast({
+        title: data.cached ? "Skip Trace (Cached)" : "Skip Trace Complete",
+        description: data.result.ownerPhone ? `Found: ${data.result.ownerName || "Owner"} — ${data.result.ownerPhone}` : "Lookup complete — limited data found",
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Skip Trace Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const bulkSkipTraceMutation = useMutation({
+    mutationFn: async (propertyLeadIds: number[]) => {
+      const res = await apiRequest("POST", "/api/skip-trace/bulk", { subAccountId: currentAccount!.id, propertyLeadIds });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/property-radar/leads"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/skip-trace/usage"] });
+      setSelectedLeadIds(new Set());
+      setBulkMode(false);
+      toast({
+        title: "Bulk Skip Trace Complete",
+        description: `${data.completed} lookups completed, ${data.failed} failed`,
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Bulk Skip Trace Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const saveAsContactMutation = useMutation({
+    mutationFn: async (skipTraceResultId: number) => {
+      const res = await apiRequest("POST", "/api/skip-trace/save-contact", { subAccountId: currentAccount!.id, skipTraceResultId });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast({
+        title: data.alreadySaved ? "Already Saved" : "Contact Created",
+        description: `${data.contact.firstName} ${data.contact.lastName || ""} saved to CRM`,
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Save Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const toggleLeadSelection = (id: number) => {
+    setSelectedLeadIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllLeads = () => {
+    if (selectedLeadIds.size === leads.length) {
+      setSelectedLeadIds(new Set());
+    } else {
+      setSelectedLeadIds(new Set(leads.map(l => l.id)));
+    }
+  };
+
   const updateLeadAddressMutation = useMutation({
     mutationFn: async ({ id, ...data }: { id: number; address: string; city: string; state: string; zip: string }) => {
       const res = await apiRequest("PATCH", `/api/property-radar/leads/${id}`, data);
@@ -453,6 +539,34 @@ export default function PropertyRadar() {
               <Map className="w-3.5 h-3.5" /> Map
             </button>
           </div>
+          {skipTraceUsage && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-500/10 border border-violet-500/20 rounded-lg" data-testid="text-skip-trace-usage">
+              <UserSearch className="w-3.5 h-3.5 text-violet-400" />
+              <span className="text-xs text-violet-300 font-medium">{skipTraceUsage.lookupCount} lookups this month</span>
+            </div>
+          )}
+          {viewMode === "feed" && leads.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setBulkMode(!bulkMode); setSelectedLeadIds(new Set()); }}
+              className={`border-slate-700 ${bulkMode ? "text-violet-400 border-violet-500/30" : "text-slate-300"}`}
+              data-testid="button-bulk-mode"
+            >
+              <Users className="w-4 h-4 mr-1" /> {bulkMode ? "Cancel Bulk" : "Bulk Select"}
+            </Button>
+          )}
+          {bulkMode && selectedLeadIds.size > 0 && (
+            <Button
+              onClick={() => bulkSkipTraceMutation.mutate(Array.from(selectedLeadIds))}
+              disabled={bulkSkipTraceMutation.isPending}
+              className="bg-violet-600 hover:bg-violet-500 text-white"
+              data-testid="button-bulk-skip-trace"
+            >
+              <UserSearch className="w-4 h-4 mr-1" />
+              {bulkSkipTraceMutation.isPending ? "Looking up..." : `Skip Trace ${selectedLeadIds.size} Leads`}
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => setShowConfig(true)} className="border-slate-700 text-slate-300" data-testid="button-config">
             <Settings className="w-4 h-4 mr-1" /> Config
           </Button>
@@ -554,6 +668,16 @@ export default function PropertyRadar() {
               </Button>
             </motion.div>
           ) : (
+            <>
+            {bulkMode && (
+              <div className="flex items-center gap-3 bg-violet-500/10 border border-violet-500/20 rounded-xl px-4 py-3" data-testid="bulk-select-bar">
+                <button onClick={selectAllLeads} className="flex items-center gap-2 text-sm text-violet-300 hover:text-violet-200" data-testid="button-select-all">
+                  {selectedLeadIds.size === leads.length ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                  {selectedLeadIds.size === leads.length ? "Deselect All" : "Select All"}
+                </button>
+                <span className="text-xs text-slate-400">{selectedLeadIds.size} of {leads.length} selected</span>
+              </div>
+            )}
             <AnimatePresence>
               {leads.map((lead, idx) => {
                 const prio = PRIORITY_COLORS[lead.priority || "medium"];
@@ -564,10 +688,23 @@ export default function PropertyRadar() {
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: idx * 0.05 }}
                     className={`bg-slate-800/50 rounded-xl border ${prio.border} p-5 hover:bg-slate-800/70 transition-all cursor-pointer shadow-lg ${prio.glow}`}
-                    onClick={() => setSelectedLead(lead)}
+                    onClick={() => !bulkMode && setSelectedLead(lead)}
                     data-testid={`card-lead-${lead.id}`}
                   >
                     <div className="flex items-start justify-between">
+                      {bulkMode && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); toggleLeadSelection(lead.id); }}
+                          className="mr-3 mt-1 flex-shrink-0"
+                          data-testid={`checkbox-lead-${lead.id}`}
+                        >
+                          {selectedLeadIds.has(lead.id) ? (
+                            <CheckSquare className="w-5 h-5 text-violet-400" />
+                          ) : (
+                            <Square className="w-5 h-5 text-slate-500" />
+                          )}
+                        </button>
+                      )}
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
                           <span className={`px-2 py-0.5 text-xs font-bold rounded ${prio.bg} ${prio.text}`}>
@@ -617,6 +754,17 @@ export default function PropertyRadar() {
                       <Button
                         size="sm"
                         variant="outline"
+                        className="border-violet-500/30 text-violet-400 hover:bg-violet-500/10"
+                        onClick={(e) => { e.stopPropagation(); skipTraceMutation.mutate(lead.id); }}
+                        disabled={skipTraceMutation.isPending}
+                        data-testid={`button-skip-trace-${lead.id}`}
+                      >
+                        {skipTraceMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <UserSearch className="w-3 h-3 mr-1" />}
+                        Skip Trace
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
                         className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
                         onClick={(e) => { e.stopPropagation(); smsMutation.mutate(lead.id); }}
                         disabled={lead.smsSent || !lead.ownerPhone}
@@ -651,6 +799,7 @@ export default function PropertyRadar() {
                 );
               })}
             </AnimatePresence>
+            </>
           )}
         </div>
       ) : (
@@ -699,8 +848,8 @@ export default function PropertyRadar() {
       )}
 
       {/* Lead Detail Dialog */}
-      <Dialog open={!!selectedLead} onOpenChange={() => setSelectedLead(null)}>
-        <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-lg">
+      <Dialog open={!!selectedLead} onOpenChange={() => { setSelectedLead(null); setSkipTraceResult(null); }}>
+        <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-lg max-h-[90vh] overflow-y-auto">
           {selectedLead && (
             <>
               <DialogHeader>
@@ -734,6 +883,8 @@ export default function PropertyRadar() {
                   <div className="bg-slate-800/50 rounded-lg p-3">
                     <p className="text-xs text-slate-500">Owner</p>
                     <p className="text-sm font-medium text-white">{selectedLead.ownerName || "Unknown"}</p>
+                    {selectedLead.ownerPhone && <p className="text-xs text-emerald-400 mt-1"><Phone className="w-3 h-3 inline mr-1" />{selectedLead.ownerPhone}</p>}
+                    {selectedLead.ownerEmail && <p className="text-xs text-blue-400 mt-0.5"><Mail className="w-3 h-3 inline mr-1" />{selectedLead.ownerEmail}</p>}
                   </div>
                   <div className="bg-slate-800/50 rounded-lg p-3">
                     <p className="text-xs text-slate-500">Property Type</p>
@@ -783,6 +934,81 @@ export default function PropertyRadar() {
                       );
                     })}
                   </div>
+                </div>
+
+                {/* Skip Trace Section */}
+                <div className="bg-violet-500/10 rounded-lg border border-violet-500/20 p-4">
+                  <h4 className="text-sm font-bold text-violet-400 mb-3 flex items-center gap-2">
+                    <UserSearch className="w-4 h-4" /> Owner Lookup (Skip Trace)
+                  </h4>
+                  {skipTraceResult ? (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <p className="text-xs text-slate-500">Name</p>
+                          <p className="text-sm font-medium text-white" data-testid="text-skip-name">{skipTraceResult.ownerName || "N/A"}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-500">Phone</p>
+                          <p className="text-sm font-medium text-emerald-400" data-testid="text-skip-phone">
+                            {skipTraceResult.ownerPhone ? (
+                              <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{skipTraceResult.ownerPhone}</span>
+                            ) : "N/A"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-500">Email</p>
+                          <p className="text-sm font-medium text-blue-400" data-testid="text-skip-email">
+                            {skipTraceResult.ownerEmail ? (
+                              <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{skipTraceResult.ownerEmail}</span>
+                            ) : "N/A"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-500">Mailing Address</p>
+                          <p className="text-sm text-slate-300" data-testid="text-skip-mailing">{skipTraceResult.mailingAddress || "N/A"}</p>
+                        </div>
+                      </div>
+                      {(skipTraceResult.additionalPhones?.length > 0 || skipTraceResult.additionalEmails?.length > 0) && (
+                        <div className="border-t border-violet-500/20 pt-2">
+                          {skipTraceResult.additionalPhones?.length > 0 && (
+                            <p className="text-xs text-slate-400">Other phones: {skipTraceResult.additionalPhones.join(", ")}</p>
+                          )}
+                          {skipTraceResult.additionalEmails?.length > 0 && (
+                            <p className="text-xs text-slate-400 mt-1">Other emails: {skipTraceResult.additionalEmails.join(", ")}</p>
+                          )}
+                        </div>
+                      )}
+                      <Button
+                        size="sm"
+                        className="w-full bg-violet-600 hover:bg-violet-500"
+                        onClick={() => saveAsContactMutation.mutate(skipTraceResult.id)}
+                        disabled={saveAsContactMutation.isPending || !!skipTraceResult.savedAsContactId}
+                        data-testid="button-save-contact"
+                      >
+                        {skipTraceResult.savedAsContactId ? (
+                          <><CheckCircle2 className="w-4 h-4 mr-2" /> Saved to CRM</>
+                        ) : saveAsContactMutation.isPending ? (
+                          <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</>
+                        ) : (
+                          <><Save className="w-4 h-4 mr-2" /> Save as CRM Contact</>
+                        )}
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      className="w-full bg-violet-600 hover:bg-violet-500"
+                      onClick={() => skipTraceMutation.mutate(selectedLead.id)}
+                      disabled={skipTraceMutation.isPending}
+                      data-testid="button-detail-skip-trace"
+                    >
+                      {skipTraceMutation.isPending ? (
+                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Looking up owner...</>
+                      ) : (
+                        <><UserSearch className="w-4 h-4 mr-2" /> Look Up Owner Info</>
+                      )}
+                    </Button>
+                  )}
                 </div>
 
                 <div className="flex gap-2 pt-2">

@@ -421,6 +421,43 @@ export const insertWholesalerConfigSchema = createInsertSchema(wholesalerConfig)
 export type InsertWholesalerConfig = z.infer<typeof insertWholesalerConfigSchema>;
 export type WholesalerConfig = typeof wholesalerConfig.$inferSelect;
 
+// ---- Skip Trace Results ----
+
+export const skipTraceResults = pgTable("skip_trace_results", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  propertyLeadId: integer("property_lead_id").references(() => propertyLeads.id),
+  address: text("address").notNull(),
+  ownerName: text("owner_name"),
+  ownerPhone: text("owner_phone"),
+  ownerEmail: text("owner_email"),
+  mailingAddress: text("mailing_address"),
+  additionalPhones: text("additional_phones").array().default([]),
+  additionalEmails: text("additional_emails").array().default([]),
+  provider: text("provider").default("batchdata"),
+  rawResponse: json("raw_response"),
+  savedAsContactId: integer("saved_as_contact_id").references(() => contacts.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSkipTraceResultSchema = createInsertSchema(skipTraceResults).omit({ id: true, createdAt: true });
+export type InsertSkipTraceResult = z.infer<typeof insertSkipTraceResultSchema>;
+export type SkipTraceResult = typeof skipTraceResults.$inferSelect;
+
+// ---- Skip Trace Usage Tracking ----
+
+export const skipTraceUsage = pgTable("skip_trace_usage", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  lookupCount: integer("lookup_count").default(0),
+  monthYear: text("month_year").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSkipTraceUsageSchema = createInsertSchema(skipTraceUsage).omit({ id: true, createdAt: true });
+export type InsertSkipTraceUsage = z.infer<typeof insertSkipTraceUsageSchema>;
+export type SkipTraceUsage = typeof skipTraceUsage.$inferSelect;
+
 export const clientWebsites = pgTable("client_websites", {
   id: serial("id").primaryKey(),
   subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),

@@ -13,6 +13,7 @@ import fs from "fs";
 import express from "express";
 import { processLiveSentinelFeed, deployGeofenceAd } from "./sentinel";
 import { scanDistressedProperties, calculateDealMetrics } from "./property-radar";
+import { skipTraceLookup, getCurrentMonthYear } from "./skip-trace";
 import crypto from "crypto";
 import dns from "dns";
 
@@ -4822,6 +4823,7 @@ Rules:
       hasRentcastKey: !!process.env.RENTCAST_API_KEY,
       hasTwilioSid: !!process.env.TWILIO_ACCOUNT_SID,
       hasTwilioToken: !!process.env.TWILIO_AUTH_TOKEN,
+      hasSkipTraceKey: !!process.env.BATCHDATA_API_KEY,
     });
   }));
 
@@ -4998,6 +5000,230 @@ Rules:
       metaAdsStatus: geoResult.status,
       targeting: { center: lead.address, lat: lead.lat, lng: lead.lng },
     });
+  }));
+
+  // ---- Skip Trace Routes ----
+
+  app.get("/api/skip-trace/status", asyncHandler(async (req: Request, res: Response) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    res.json({ hasSkipTraceKey: !!process.env.BATCHDATA_API_KEY });
+  }));
+
+  app.get("/api/skip-trace/usage/:subAccountId", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const monthYear = getCurrentMonthYear();
+    const usage = await storage.getSkipTraceUsage(subAccountId, monthYear);
+    res.json({ monthYear, lookupCount: usage?.lookupCount || 0 });
+  }));
+
+  app.get("/api/skip-trace/results/:subAccountId", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const results = await storage.getSkipTraceResults(subAccountId);
+    res.json(results);
+  }));
+
+  app.post("/api/skip-trace/lookup", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const parsed = z.object({
+      subAccountId: z.number().int().positive(),
+      propertyLeadId: z.number().int().positive(),
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const { subAccountId, propertyLeadId } = parsed.data;
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const lead = await storage.getPropertyLead(propertyLeadId);
+    if (!lead) return res.status(404).json({ error: "Property lead not found" });
+    if (lead.subAccountId !== subAccountId) return res.status(403).json({ error: "Access denied" });
+
+    const existing = await storage.getSkipTraceResultByLeadId(propertyLeadId);
+    if (existing && existing.subAccountId === subAccountId) {
+      return res.json({ result: existing, cached: true });
+    }
+
+    let apiKey = process.env.BATCHDATA_API_KEY;
+    if (!apiKey) {
+      const conn = await storage.getIntegrationConnection(subAccountId, "skip-trace");
+      apiKey = (conn?.config as any)?.apiKey;
+    }
+    if (!apiKey) {
+      return res.status(422).json({ error: "No skip trace API key configured. Add your BatchData API key in Integrations Hub or set BATCHDATA_API_KEY." });
+    }
+
+    const result = await skipTraceLookup({
+      address: lead.address,
+      city: lead.city || undefined,
+      state: lead.state || undefined,
+      zip: lead.zip || undefined,
+      ownerName: lead.ownerName || undefined,
+    }, apiKey);
+
+    const saved = await storage.createSkipTraceResult({
+      subAccountId,
+      propertyLeadId,
+      address: lead.address,
+      ownerName: result.ownerName,
+      ownerPhone: result.ownerPhone,
+      ownerEmail: result.ownerEmail,
+      mailingAddress: result.mailingAddress,
+      additionalPhones: result.additionalPhones,
+      additionalEmails: result.additionalEmails,
+      provider: "batchdata",
+      rawResponse: result.raw,
+    });
+
+    if (result.ownerName || result.ownerPhone || result.ownerEmail) {
+      await storage.updatePropertyLead(propertyLeadId, {
+        ownerName: result.ownerName || lead.ownerName,
+        ownerPhone: result.ownerPhone || lead.ownerPhone,
+        ownerEmail: result.ownerEmail || lead.ownerEmail,
+      });
+    }
+
+    await storage.incrementSkipTraceUsage(subAccountId, getCurrentMonthYear());
+
+    await logUsageInternal(subAccountId, "SKIP_TRACE", 1, `Skip trace for ${lead.address}`);
+
+    res.json({ result: saved, cached: false });
+  }));
+
+  app.post("/api/skip-trace/bulk", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const parsed = z.object({
+      subAccountId: z.number().int().positive(),
+      propertyLeadIds: z.array(z.number().int().positive()).min(1).max(50),
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const { subAccountId, propertyLeadIds } = parsed.data;
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    let apiKey = process.env.BATCHDATA_API_KEY;
+    if (!apiKey) {
+      const conn = await storage.getIntegrationConnection(subAccountId, "skip-trace");
+      apiKey = (conn?.config as any)?.apiKey;
+    }
+    if (!apiKey) {
+      return res.status(422).json({ error: "No skip trace API key configured." });
+    }
+
+    const results: any[] = [];
+    const errors: any[] = [];
+
+    for (const leadId of propertyLeadIds) {
+      try {
+        const lead = await storage.getPropertyLead(leadId);
+        if (!lead || lead.subAccountId !== subAccountId) { errors.push({ leadId, error: "Not found or access denied" }); continue; }
+
+        const existing = await storage.getSkipTraceResultByLeadId(leadId);
+        if (existing && existing.subAccountId === subAccountId) { results.push({ result: existing, cached: true, leadId }); continue; }
+
+        const result = await skipTraceLookup({
+          address: lead.address,
+          city: lead.city || undefined,
+          state: lead.state || undefined,
+          zip: lead.zip || undefined,
+          ownerName: lead.ownerName || undefined,
+        }, apiKey);
+
+        const saved = await storage.createSkipTraceResult({
+          subAccountId,
+          propertyLeadId: leadId,
+          address: lead.address,
+          ownerName: result.ownerName,
+          ownerPhone: result.ownerPhone,
+          ownerEmail: result.ownerEmail,
+          mailingAddress: result.mailingAddress,
+          additionalPhones: result.additionalPhones,
+          additionalEmails: result.additionalEmails,
+          provider: "batchdata",
+          rawResponse: result.raw,
+        });
+
+        if (result.ownerName || result.ownerPhone || result.ownerEmail) {
+          await storage.updatePropertyLead(leadId, {
+            ownerName: result.ownerName || lead.ownerName,
+            ownerPhone: result.ownerPhone || lead.ownerPhone,
+            ownerEmail: result.ownerEmail || lead.ownerEmail,
+          });
+        }
+
+        await storage.incrementSkipTraceUsage(subAccountId, getCurrentMonthYear());
+        results.push({ result: saved, cached: false, leadId });
+      } catch (err: any) {
+        errors.push({ leadId, error: err.message });
+      }
+    }
+
+    await logUsageInternal(subAccountId, "SKIP_TRACE", results.filter(r => !r.cached).length, `Bulk skip trace: ${results.length} lookups`);
+
+    res.json({ results, errors, total: propertyLeadIds.length, completed: results.length, failed: errors.length });
+  }));
+
+  app.post("/api/skip-trace/save-contact", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const parsed = z.object({
+      subAccountId: z.number().int().positive(),
+      skipTraceResultId: z.number().int().positive(),
+      triggerOutreach: z.boolean().optional(),
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const { subAccountId, skipTraceResultId, triggerOutreach } = parsed.data;
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const results = await storage.getSkipTraceResults(subAccountId);
+    const skipResult = results.find(r => r.id === skipTraceResultId);
+    if (!skipResult) return res.status(404).json({ error: "Skip trace result not found" });
+
+    if (skipResult.savedAsContactId) {
+      const existingContact = await storage.getContactById(skipResult.savedAsContactId);
+      if (existingContact) {
+        return res.json({ contact: existingContact, alreadySaved: true });
+      }
+    }
+
+    const nameParts = (skipResult.ownerName || "Property Owner").split(" ");
+    const firstName = nameParts[0] || "Property";
+    const lastName = nameParts.slice(1).join(" ") || "Owner";
+
+    const contact = await storage.createContact({
+      subAccountId,
+      firstName,
+      lastName,
+      phone: skipResult.ownerPhone || null,
+      email: skipResult.ownerEmail || null,
+      source: "skip_trace",
+      tags: ["skip-trace", "property-lead"],
+      address: skipResult.address || null,
+      notes: skipResult.mailingAddress ? `Mailing: ${skipResult.mailingAddress}` : null,
+    });
+
+    await storage.updateSkipTraceResult(skipResult.id, { savedAsContactId: contact.id });
+
+    if (skipResult.propertyLeadId) {
+      await storage.updatePropertyLead(skipResult.propertyLeadId, {
+        ownerName: skipResult.ownerName || undefined,
+        ownerPhone: skipResult.ownerPhone || undefined,
+        ownerEmail: skipResult.ownerEmail || undefined,
+      });
+    }
+
+    res.json({ contact, alreadySaved: false });
   }));
 
   app.post("/api/sentinel/test-trigger", asyncHandler(async (req, res) => {
