@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains, insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, insertMetaAdCampaignSchema, insertMetaLeadSchema, insertInstagramConversationSchema, insertInstagramMessageSchema, insertNotificationSchema, contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings, metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications, messages, hasFeature, PLAN_TIERS, subAccounts, liveAutomations, insertLiveAutomationSchema, insertSponsorshipSchema, insertCreditWalletSchema, creditTransactions, platformProfitLedger, sponsorships, sponsorshipClicks, digitalCards, webhookEvents, sentinelIncidents, dmKeywordAutomations } from "@shared/schema";
+import { insertMessageSchema, insertWorkflowSchema, insertSubAccountSchema, insertSavedSiteSchema, insertReviewSchema, insertUsageLogSchema, insertDomainSchema, insertSnapshotSchema, insertSnapshotVersionSchema, reviews, domains, insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, insertMetaAdCampaignSchema, insertMetaLeadSchema, insertInstagramConversationSchema, insertInstagramMessageSchema, insertNotificationSchema, contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings, metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications, messages, hasFeature, PLAN_TIERS, subAccounts, liveAutomations, insertLiveAutomationSchema, insertSponsorshipSchema, insertCreditWalletSchema, creditTransactions, platformProfitLedger, sponsorships, sponsorshipClicks, digitalCards, webhookEvents, sentinelIncidents, dmKeywordAutomations, propertyLeads } from "@shared/schema";
 import { sql, eq, and } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -6345,7 +6345,28 @@ Rules:
   app.post("/api/contacts", asyncHandler(async (req, res) => {
     const parsed = insertContactSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-    const contact = await storage.createContact(parsed.data);
+
+    let contactData = { ...parsed.data };
+    if (contactData.address && !contactData.lat) {
+      const geo = await geocodeAddress(contactData.address);
+      if (geo) {
+        contactData = {
+          ...contactData,
+          formattedAddress: geo.formattedAddress,
+          city: contactData.city || geo.city,
+          state: contactData.state || geo.state,
+          zip: contactData.zip || geo.zip,
+          lat: geo.lat,
+          lng: geo.lng,
+          geocodeStatus: "success",
+          geocodedAt: new Date(),
+        };
+      } else {
+        contactData.geocodeStatus = "failed";
+      }
+    }
+
+    const contact = await storage.createContact(contactData);
     if (contact.subAccountId) {
       fireAutomationTrigger("new_lead", contact.subAccountId, {
         leadName: contact.firstName || "Lead",
@@ -6359,7 +6380,31 @@ Rules:
 
   app.patch("/api/contacts/:id", asyncHandler(async (req, res) => {
     const id = parseIntParam(req.params.id, "id");
-    const updated = await storage.updateContact(id, req.body);
+
+    let updateData = { ...req.body };
+    if (updateData.address) {
+      const existing = await storage.getContactById(id);
+      if (existing && existing.address !== updateData.address) {
+        const geo = await geocodeAddress(updateData.address);
+        if (geo) {
+          updateData = {
+            ...updateData,
+            formattedAddress: geo.formattedAddress,
+            city: updateData.city || geo.city,
+            state: updateData.state || geo.state,
+            zip: updateData.zip || geo.zip,
+            lat: geo.lat,
+            lng: geo.lng,
+            geocodeStatus: "success",
+            geocodedAt: new Date(),
+          };
+        } else {
+          updateData.geocodeStatus = "failed";
+        }
+      }
+    }
+
+    const updated = await storage.updateContact(id, updateData);
     if (!updated) return res.status(404).json({ error: "Contact not found" });
     res.json(updated);
   }));
@@ -9091,32 +9136,273 @@ Return ONLY valid JSON.` },
     return crypto.createHmac("sha256", secret).update(payload).digest("hex");
   }
 
+  interface GeoResult {
+    lat: number;
+    lng: number;
+    formattedAddress: string;
+    city: string;
+    state: string;
+    zip: string;
+    status: "success" | "failed";
+  }
+
+  async function geocodeAddress(address: string): Promise<GeoResult | null> {
+    const apiKey = process.env.GOOGLE_API_KEY;
+    if (!apiKey) return null;
+    try {
+      const gmRes = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address.trim())}&key=${apiKey}`
+      );
+      const data = await gmRes.json() as any;
+      if (data.status !== "OK" || !data.results?.length) return null;
+      const r = data.results[0];
+      const comp = (type: string) => {
+        const c = r.address_components?.find((ac: any) => ac.types?.includes(type));
+        return c?.long_name || c?.short_name || "";
+      };
+      return {
+        lat: r.geometry.location.lat,
+        lng: r.geometry.location.lng,
+        formattedAddress: r.formatted_address,
+        city: comp("locality") || comp("sublocality") || comp("administrative_area_level_2"),
+        state: r.address_components?.find((ac: any) => ac.types?.includes("administrative_area_level_1"))?.short_name || "",
+        zip: comp("postal_code"),
+        status: "success",
+      };
+    } catch (err) {
+      console.error("[GEOCODE] Error:", err);
+      return null;
+    }
+  }
+
+  function haversineDistanceMiles(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 3958.8;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
   app.get("/api/geocode", asyncHandler(async (req: Request, res: Response) => {
     const address = req.query.address as string;
     if (!address || address.trim().length < 3) {
       return res.status(400).json({ error: "Address parameter is required (min 3 characters)" });
     }
+    const result = await geocodeAddress(address);
+    if (!result) return res.status(404).json({ error: "Could not geocode address" });
+    res.json(result);
+  }));
 
-    const apiKey = process.env.GOOGLE_API_KEY;
-    if (!apiKey) {
-      return res.status(503).json({ error: "Google Maps API key is not configured" });
+  app.post("/api/geocode", asyncHandler(async (req: Request, res: Response) => {
+    const { address } = req.body;
+    if (!address || typeof address !== "string" || address.trim().length < 3) {
+      return res.status(400).json({ error: "Address is required (min 3 characters)" });
+    }
+    const result = await geocodeAddress(address);
+    if (!result) return res.status(404).json({ error: "Could not geocode address" });
+    res.json(result);
+  }));
+
+  app.get("/api/location-search", asyncHandler(async (req: Request, res: Response) => {
+    const {
+      type,
+      lat: latStr,
+      lng: lngStr,
+      radius: radiusStr,
+      city,
+      zip,
+      state: stateFilter,
+      status,
+      address,
+      q,
+    } = req.query as Record<string, string | undefined>;
+
+    const user = (req as any).user;
+    const userId = getUserId(user);
+    const isAdmin = isUserAdmin(user);
+
+    let searchLat: number | null = latStr ? parseFloat(latStr) : null;
+    let searchLng: number | null = lngStr ? parseFloat(lngStr) : null;
+    const radiusMiles = radiusStr ? parseFloat(radiusStr) : 25;
+
+    if (address && (!searchLat || !searchLng)) {
+      const geo = await geocodeAddress(address);
+      if (geo) {
+        searchLat = geo.lat;
+        searchLng = geo.lng;
+      }
     }
 
-    const gmRes = await fetch(
-      `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address.trim())}&key=${apiKey}`
-    );
-    const data = await gmRes.json() as any;
-
-    if (data.status !== "OK" || !data.results?.length) {
-      return res.status(404).json({ error: "Could not geocode address", status: data.status });
+    const accountIds: number[] = [];
+    if (isAdmin) {
+      const allAccounts = await db.select({ id: subAccounts.id }).from(subAccounts);
+      accountIds.push(...allAccounts.map(a => a.id));
+    } else {
+      const userAccounts = await db.select({ id: subAccounts.id }).from(subAccounts)
+        .where(eq(subAccounts.ownerUserId, userId));
+      accountIds.push(...userAccounts.map(a => a.id));
     }
 
-    const result = data.results[0];
+    if (accountIds.length === 0) {
+      return res.json({ count: 0, results: [], center: searchLat && searchLng ? { lat: searchLat, lng: searchLng } : null });
+    }
+
+    const results: any[] = [];
+    const searchTypes = type && type !== "all" ? [type] : ["contact", "lead", "crash", "business"];
+
+    for (const t of searchTypes) {
+      if (t === "contact") {
+        const rows = await db.select().from(contacts)
+          .where(sql`${contacts.subAccountId} = ANY(${accountIds})`);
+        for (const r of rows) {
+          if (city && r.city?.toLowerCase() !== city.toLowerCase()) continue;
+          if (zip && r.zip !== zip) continue;
+          if (stateFilter && r.state?.toLowerCase() !== stateFilter.toLowerCase()) continue;
+          if (q && !`${r.firstName} ${r.lastName} ${r.company || ""}`.toLowerCase().includes(q.toLowerCase())) continue;
+
+          let distance: number | null = null;
+          if (searchLat != null && searchLng != null && r.lat != null && r.lng != null) {
+            distance = haversineDistanceMiles(searchLat, searchLng, r.lat, r.lng);
+            if (distance > radiusMiles) continue;
+          } else if (searchLat != null && searchLng != null && r.lat == null) {
+            continue;
+          }
+
+          results.push({
+            id: r.id,
+            type: "contact",
+            name: `${r.firstName} ${r.lastName || ""}`.trim(),
+            formattedAddress: r.formattedAddress || r.address || "",
+            city: r.city,
+            state: r.state,
+            zip: r.zip,
+            lat: r.lat,
+            lng: r.lng,
+            distance: distance != null ? Math.round(distance * 10) / 10 : null,
+            status: r.source,
+            subAccountId: r.subAccountId,
+          });
+        }
+      }
+
+      if (t === "lead") {
+        const rows = await db.select().from(propertyLeads)
+          .where(sql`${propertyLeads.subAccountId} = ANY(${accountIds})`);
+        for (const r of rows) {
+          if (city && r.city?.toLowerCase() !== city.toLowerCase()) continue;
+          if (zip && r.zip !== zip) continue;
+          if (stateFilter && r.state?.toLowerCase() !== stateFilter.toLowerCase()) continue;
+          if (status && r.pipelineStage !== status) continue;
+          if (q && !`${r.ownerName || ""} ${r.address}`.toLowerCase().includes(q.toLowerCase())) continue;
+
+          let distance: number | null = null;
+          if (searchLat != null && searchLng != null && r.lat != null && r.lng != null) {
+            distance = haversineDistanceMiles(searchLat, searchLng, r.lat, r.lng);
+            if (distance > radiusMiles) continue;
+          } else if (searchLat != null && searchLng != null && r.lat == null) {
+            continue;
+          }
+
+          results.push({
+            id: r.id,
+            type: "lead",
+            name: r.ownerName || r.address,
+            formattedAddress: r.address || "",
+            city: r.city,
+            state: r.state,
+            zip: r.zip,
+            lat: r.lat,
+            lng: r.lng,
+            distance: distance != null ? Math.round(distance * 10) / 10 : null,
+            status: r.pipelineStage,
+            subAccountId: r.subAccountId,
+          });
+        }
+      }
+
+      if (t === "crash") {
+        const rows = await db.select().from(sentinelIncidents)
+          .where(sql`${sentinelIncidents.subAccountId} = ANY(${accountIds})`);
+        for (const r of rows) {
+          if (city && r.city?.toLowerCase() !== city.toLowerCase()) continue;
+          if (zip && r.zip !== zip) continue;
+          if (stateFilter && r.state?.toLowerCase() !== stateFilter.toLowerCase()) continue;
+          if (status && r.actionStatus !== status) continue;
+          if (q && !`${r.title} ${r.location || ""}`.toLowerCase().includes(q.toLowerCase())) continue;
+
+          let distance: number | null = null;
+          if (searchLat != null && searchLng != null && r.lat != null && r.lng != null) {
+            distance = haversineDistanceMiles(searchLat, searchLng, r.lat, r.lng);
+            if (distance > radiusMiles) continue;
+          } else if (searchLat != null && searchLng != null && r.lat == null) {
+            continue;
+          }
+
+          results.push({
+            id: r.id,
+            type: "crash",
+            name: r.title,
+            formattedAddress: r.formattedAddress || r.location || "",
+            city: r.city,
+            state: r.state,
+            zip: r.zip,
+            lat: r.lat,
+            lng: r.lng,
+            distance: distance != null ? Math.round(distance * 10) / 10 : null,
+            status: r.actionStatus,
+            subAccountId: r.subAccountId,
+          });
+        }
+      }
+
+      if (t === "business") {
+        const rows = await db.select().from(subAccounts)
+          .where(sql`${subAccounts.id} = ANY(${accountIds})`);
+        for (const r of rows) {
+          if (city && r.city?.toLowerCase() !== city.toLowerCase()) continue;
+          if (zip && r.zip !== zip) continue;
+          if (stateFilter && r.state?.toLowerCase() !== stateFilter.toLowerCase()) continue;
+          if (q && !r.name.toLowerCase().includes(q.toLowerCase())) continue;
+
+          let distance: number | null = null;
+          if (searchLat != null && searchLng != null && r.lat != null && r.lng != null) {
+            distance = haversineDistanceMiles(searchLat, searchLng, r.lat, r.lng);
+            if (distance > radiusMiles) continue;
+          } else if (searchLat != null && searchLng != null && r.lat == null) {
+            continue;
+          }
+
+          results.push({
+            id: r.id,
+            type: "business",
+            name: r.name,
+            formattedAddress: r.formattedAddress || r.address || "",
+            city: r.city,
+            state: r.state,
+            zip: r.zip,
+            lat: r.lat,
+            lng: r.lng,
+            distance: distance != null ? Math.round(distance * 10) / 10 : null,
+            status: r.industry,
+            subAccountId: r.id,
+          });
+        }
+      }
+    }
+
+    results.sort((a, b) => {
+      if (a.distance != null && b.distance != null) return a.distance - b.distance;
+      if (a.distance != null) return -1;
+      if (b.distance != null) return 1;
+      return 0;
+    });
+
     res.json({
-      lat: result.geometry.location.lat,
-      lng: result.geometry.location.lng,
-      formattedAddress: result.formatted_address,
-      placeId: result.place_id,
+      count: results.length,
+      results,
+      center: searchLat != null && searchLng != null ? { lat: searchLat, lng: searchLng } : null,
     });
   }));
 

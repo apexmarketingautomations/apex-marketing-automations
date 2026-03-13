@@ -1,0 +1,382 @@
+Here’s the **feature spec** to hand straight into Replit.
+
+## Apex Feature Spec: Location Search + Map Layer
+
+**Goal:** Apex is the master system. CrashConnect reads all location data from Apex.
+
+---
+
+## 1. Core rule
+
+* **Apex owns all geolocation data**
+* **CrashConnect never becomes the source of truth**
+* CrashConnect only:
+
+  * reads Apex records
+  * displays results
+  * filters/searches
+  * writes updates back through Apex API
+
+---
+
+## 2. What to build first
+
+### Feature name:
+
+**Location-Based Search**
+
+### Purpose:
+
+Allow Apex to search:
+
+* contacts
+* leads
+* clients
+* crashes
+* businesses
+
+by:
+
+* city
+* ZIP
+* state
+* address
+* radius from point
+* optional type/status filters
+
+---
+
+## 3. Data model
+
+Every relevant record should store:
+
+```json
+{
+  "id": "uuid",
+  "type": "contact",
+  "name": "John Smith",
+  "address": "123 Main St, Fort Myers, FL 33901",
+  "formattedAddress": "123 Main St, Fort Myers, FL 33901, USA",
+  "city": "Fort Myers",
+  "state": "FL",
+  "zip": "33901",
+  "lat": 26.6406,
+  "lng": -81.8723,
+  "geocodeStatus": "success",
+  "geocodedAt": "2026-03-13T12:00:00Z"
+}
+```
+
+### Add these fields to:
+
+* contacts
+* leads
+* clients
+* crash records
+* businesses / accounts
+
+---
+
+## 4. Backend flow
+
+### When a record is created or address changes:
+
+1. User submits address
+2. Apex calls geocoding endpoint
+3. Apex saves:
+
+   * formatted address
+   * city
+   * state
+   * ZIP
+   * lat
+   * lng
+   * geocode status
+4. Record becomes searchable by location
+
+---
+
+## 5. API routes
+
+Build these first.
+
+### Create / update with geocoding
+
+```http
+POST /api/contacts
+PUT /api/contacts/:id
+POST /api/leads
+PUT /api/leads/:id
+POST /api/crashes
+PUT /api/crashes/:id
+```
+
+When address is present, backend geocodes before saving.
+
+---
+
+### Standalone geocode route
+
+```http
+POST /api/geocode
+```
+
+**Input**
+
+```json
+{
+  "address": "123 Main St, Fort Myers, FL 33901"
+}
+```
+
+**Output**
+
+```json
+{
+  "formattedAddress": "123 Main St, Fort Myers, FL 33901, USA",
+  "city": "Fort Myers",
+  "state": "FL",
+  "zip": "33901",
+  "lat": 26.6406,
+  "lng": -81.8723,
+  "status": "success"
+}
+```
+
+---
+
+### Radius search route
+
+```http
+GET /api/location-search
+```
+
+**Query params**
+
+```txt
+type=contact
+lat=26.6406
+lng=-81.8723
+radius=10
+city=Fort Myers
+zip=33901
+status=open
+```
+
+### Return
+
+```json
+{
+  "count": 2,
+  "results": [
+    {
+      "id": "1",
+      "type": "contact",
+      "name": "John Smith",
+      "formattedAddress": "123 Main St, Fort Myers, FL 33901, USA",
+      "lat": 26.6406,
+      "lng": -81.8723
+    }
+  ]
+}
+```
+
+---
+
+## 6. Search modes
+
+Support these 4 first:
+
+### A. Search by city
+
+Example:
+
+* all leads in Fort Myers
+
+### B. Search by ZIP
+
+Example:
+
+* all contacts in 33904
+
+### C. Search by address + radius
+
+Example:
+
+* all crashes within 10 miles of an address
+
+### D. Search by coordinates + radius
+
+Example:
+
+* all clients within 25 miles of current pin
+
+That’s enough to make it actually useful.
+
+---
+
+## 7. Frontend UI: first version
+
+Build a simple panel with:
+
+### Filters
+
+* record type dropdown
+
+  * all
+  * contacts
+  * leads
+  * clients
+  * crashes
+* address field
+* city field
+* ZIP field
+* radius dropdown
+
+  * 5 mi
+  * 10 mi
+  * 25 mi
+  * 50 mi
+* status filter
+* search button
+
+### Results area
+
+Show:
+
+* name/title
+* type
+* address
+* distance
+* status
+* open record button
+
+Do **list view first**.
+
+---
+
+## 8. Map layer: second step
+
+After location search works, add:
+
+### Map features
+
+* plot search results as pins
+* click pin opens record summary
+* click result centers map on pin
+* cluster pins
+* color by type
+
+### Pin colors example
+
+* contacts = blue
+* leads = green
+* crashes = red
+* clients = purple
+
+Map should consume the same search results endpoint.
+No separate map logic spaghetti nonsense.
+
+---
+
+## 9. CrashConnect relationship
+
+CrashConnect uses Apex endpoints like:
+
+```http
+GET /api/location-search?type=crash&radius=10&lat=...
+GET /api/crashes/:id
+POST /api/crashes
+PUT /api/crashes/:id
+```
+
+So CrashConnect is just a specialized frontend module.
+
+### Rule:
+
+* CrashConnect can create or update crash records
+* Apex stores them
+* Apex geocodes them
+* CrashConnect reads them back
+
+---
+
+## 10. Database recommendation
+
+If you can, store lat/lng in a way that supports geo queries.
+
+### If using Postgres
+
+Best move:
+
+* `latitude NUMERIC`
+* `longitude NUMERIC`
+* later upgrade to **PostGIS** if needed
+
+### If using Supabase/Postgres
+
+Even better later for:
+
+* radius search
+* nearby queries
+* indexing
+
+### If using basic Replit DB / JSON for now
+
+Still fine for MVP:
+
+* store lat/lng
+* do radius math server-side
+
+---
+
+## 11. Radius search math
+
+Use Haversine formula on backend if you don’t have geo indexes yet.
+
+Server does:
+
+* get candidate records
+* calculate distance from source point
+* return only records inside radius
+* sort nearest first
+
+---
+
+## 12. MVP order
+
+### Build in this order:
+
+1. `POST /api/geocode`
+2. save lat/lng on records
+3. `GET /api/location-search`
+4. list results UI
+5. map view using same results
+6. CrashConnect consumes Apex search
+
+That’s the clean path.
+
+---
+
+## 13. What to tell Replit
+
+Paste this:
+
+```text
+Build a location-based search feature for Apex as the source of truth. Apex should geocode record addresses and store formattedAddress, city, state, zip, lat, lng, geocodeStatus, and geocodedAt on contacts, leads, clients, businesses, and crashes. Create a POST /api/geocode endpoint and a GET /api/location-search endpoint that supports filtering by type, city, zip, status, address-origin, lat/lng, and radius in miles. Build the UI as a list-first search interface with filters for record type, address, city, zip, radius, and status. Then add a map view that uses the exact same search results and plots them as color-coded pins. CrashConnect must read all location data from Apex and never manage its own separate geolocation source of truth.
+```
+
+---
+
+## 14. My blunt recommendation
+
+Do **not** start with a fancy map.
+Start with:
+
+* clean geocoded records
+* working radius search
+* list results
+
+Because if search logic is sloppy, the map is just expensive decoration.
+
+Next move after this: I can write the **full backend + frontend build prompt** for Replit with routes, schema, and component structure from scratch.

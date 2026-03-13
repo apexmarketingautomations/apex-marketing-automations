@@ -45,6 +45,15 @@ export const subAccounts = pgTable("sub_accounts", {
   plan: text("plan").default("starter").notNull(),
   planFeatures: text("plan_features").array(),
   webhookToken: text("webhook_token"),
+  address: text("address"),
+  formattedAddress: text("formatted_address"),
+  city: text("city"),
+  state: text("state"),
+  zip: text("zip"),
+  lat: real("lat"),
+  lng: real("lng"),
+  geocodeStatus: text("geocode_status"),
+  geocodedAt: timestamp("geocoded_at"),
 });
 
 export const insertSubAccountSchema = createInsertSchema(subAccounts).omit({ id: true });
@@ -342,6 +351,14 @@ export const sentinelIncidents = pgTable("sentinel_incidents", {
   actionStatus: text("action_status").default("pending"),
   smsSent: boolean("sms_sent").default(false),
   geofenceDeployed: boolean("geofence_deployed").default(false),
+  formattedAddress: text("formatted_address"),
+  city: text("city"),
+  state: text("state"),
+  zip: text("zip"),
+  lat: real("lat"),
+  lng: real("lng"),
+  geocodeStatus: text("geocode_status"),
+  geocodedAt: timestamp("geocoded_at"),
   detectedAt: timestamp("detected_at").defaultNow().notNull(),
 });
 
@@ -452,6 +469,15 @@ export const contacts = pgTable("contacts", {
   source: text("source").default("manual"),
   tags: text("tags").array().default([]),
   notes: text("notes"),
+  address: text("address"),
+  formattedAddress: text("formatted_address"),
+  city: text("city"),
+  state: text("state"),
+  zip: text("zip"),
+  lat: real("lat"),
+  lng: real("lng"),
+  geocodeStatus: text("geocode_status"),
+  geocodedAt: timestamp("geocoded_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

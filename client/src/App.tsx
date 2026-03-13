@@ -60,6 +60,7 @@ const IntegrationsPage = lazy(() => import("@/pages/integrations"));
 const WebhookEventsPage = lazy(() => import("@/pages/webhook-events"));
 const SponsorshipManager = lazy(() => import("@/pages/sponsorship-manager"));
 const RevenueCommand = lazy(() => import("@/pages/revenue-command"));
+const LocationSearchPage = lazy(() => import("@/pages/location-search"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const LandingPage = lazy(() => import("@/pages/landing"));
 const MarketersLanding = lazy(() => import("@/pages/marketers-landing"));
@@ -253,6 +254,7 @@ function Router() {
                   <Route path="/webhook-events" component={WebhookEventsPage} />
                   <Route path="/sponsorship-manager" component={SponsorshipManager} />
                   <Route path="/revenue-command" component={RevenueCommand} />
+                  <Route path="/location-search" component={LocationSearchPage} />
                   <Route component={NotFound} />
                 </Switch>
               </Suspense>

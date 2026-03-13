@@ -61,6 +61,7 @@ Comprehensive API for accounts, messages, workflows, AI bots, blueprints, onboar
 - **Crash Connect Webhook**: HMAC-SHA256 authenticated webhook for Crash Connect events, handles `crash.detected`, `lead.created`, `lead.enriched` to create CRM contacts, log sentinel incidents, and trigger async automations (SMS alerts, AI-generated follow-ups).
 - **External Sentinel Portal**: Standalone, public Sentinel page for external partners with token-based authentication.
 - **Multi-Page Site Builder**: Upgraded site builder supporting multiple pages with navigation, presets, and backward compatibility for old `siteData` format.
+- **Location-Based Search**: Geocoded records (contacts, leads, crashes, businesses) with `lat`, `lng`, `formattedAddress`, `city`, `state`, `zip`, `geocodeStatus`, `geocodedAt` fields. `GET /api/location-search` supports filtering by type, city, zip, state, address, radius (Haversine), and text query. `POST /api/geocode` returns structured geo data. Auto-geocoding on contact create/update. Map view with color-coded pins (contacts=blue, leads=green, crashes=red, businesses=purple) via Google Maps JS API.
 
 ### Access Control & Multi-Tenancy
 - **Authentication**: Replit OIDC (admin), native email/password, Google OAuth 2.0, Firebase Auth (Google popup). `isAuthenticated` middleware handles all session types including `firebase` provider.

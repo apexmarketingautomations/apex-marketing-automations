@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2, History, Satellite, Building, BarChart3, Kanban, CalendarDays, Mail, Palette, Webhook, FileBarChart, Instagram, Target, Lock, Plug, Activity, Menu, X, ContactRound } from "lucide-react";
+import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2, History, Satellite, Building, BarChart3, Kanban, CalendarDays, Mail, Palette, Webhook, FileBarChart, Instagram, Target, Lock, Plug, Activity, Menu, X, ContactRound, MapPin } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { CommandMenu } from "@/components/command-menu";
@@ -31,6 +31,7 @@ const navSections = [
       { href: "/growth", icon: TrendingUp, label: "Growth Center" },
       { href: "/reputation", icon: Star, label: "Reputation" },
       { href: "/sentinel", icon: Satellite, label: "Sentinel", requiredFeature: "sentinel" },
+      { href: "/location-search", icon: MapPin, label: "Location Search" },
       { href: "/property-radar", icon: Building, label: "Property Radar" },
       { href: "/website-integration", icon: Globe, label: "Website Integration" },
       { href: "/form-builder", icon: LayoutTemplate, label: "Form Builder" },
