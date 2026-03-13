@@ -515,6 +515,9 @@ export const contacts = pgTable("contacts", {
   lng: real("lng"),
   geocodeStatus: text("geocode_status"),
   geocodedAt: timestamp("geocoded_at"),
+  smsOptOut: boolean("sms_opt_out").default(false).notNull(),
+  emailOptOut: boolean("email_opt_out").default(false).notNull(),
+  optOutAt: timestamp("opt_out_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -974,6 +974,12 @@ Rules:
 
     const { subAccountId, contactPhone, body, channel } = parsed.data;
 
+    const { checkPhoneOptOut } = await import("./optOutGuard");
+    const smsOptedOut = await checkPhoneOptOut(contactPhone, subAccountId);
+    if (smsOptedOut && (channel === "sms" || !channel)) {
+      return res.status(403).json({ error: "Recipient has opted out of SMS communications" });
+    }
+
     let twilioStatus = "pending";
     let twilioSid: string | null = null;
     let twilioError: string | null = null;
@@ -2916,6 +2922,41 @@ Rules:
       const toClean = toRaw ? stripChannelPrefix(toRaw) : "";
       const matchedAccounts = await db.select().from(subAccounts).where(eq(subAccounts.twilioNumber, toClean)).execute().catch(() => []);
       const matchedAccountId = matchedAccounts.length > 0 ? matchedAccounts[0].id : 1;
+
+      const { isOptOutMessage, isOptInMessage, handleSmsOptOut, handleSmsOptIn } = await import("./optOutGuard");
+      if (isOptOutMessage(incomingMsg)) {
+        await handleSmsOptOut(senderClean, matchedAccountId);
+        console.log(`[OPT-OUT] ${senderClean} opted out of SMS`);
+
+        const twilioClient = getTwilioClient();
+        if (twilioClient && toRaw) {
+          await twilioClient.messages.create({
+            body: "You have been unsubscribed and will no longer receive messages from us. Reply START to re-subscribe.",
+            from: toRaw,
+            to: senderRaw,
+          });
+        }
+
+        res.type("text/xml").send("<Response></Response>");
+        return;
+      }
+
+      if (isOptInMessage(incomingMsg)) {
+        await handleSmsOptIn(senderClean, matchedAccountId);
+        console.log(`[OPT-IN] ${senderClean} opted back in to SMS`);
+
+        const twilioClient = getTwilioClient();
+        if (twilioClient && toRaw) {
+          await twilioClient.messages.create({
+            body: "You have been re-subscribed and will receive messages from us again.",
+            from: toRaw,
+            to: senderRaw,
+          });
+        }
+
+        res.type("text/xml").send("<Response></Response>");
+        return;
+      }
 
       try {
         await storage.createMessage({
@@ -8860,16 +8901,25 @@ Return ONLY valid JSON.` },
           } else if (!payload.to || !payload.body) {
             result = { status: "Error", message: "Missing 'to' phone number or 'body'" };
           } else {
-            try {
-              const twilio = Twilio(twilioSid, twilioAuth);
-              const msg = await twilio.messages.create({
-                to: payload.to,
-                from: payload.from || process.env.TWILIO_PHONE_NUMBER || "+18001234567",
-                body: payload.body,
-              });
-              result = { status: "Success", message: "SMS Sent", sid: msg.sid };
-            } catch (err: any) {
-              result = { status: "Error", message: `SMS failed: ${err.message}` };
+            const { checkPhoneOptOut } = await import("./optOutGuard");
+            const isOptedOut = payload.subAccountId
+              ? await checkPhoneOptOut(payload.to, payload.subAccountId)
+              : false;
+
+            if (isOptedOut) {
+              result = { status: "Blocked", message: "Recipient has opted out of SMS" };
+            } else {
+              try {
+                const twilio = Twilio(twilioSid, twilioAuth);
+                const msg = await twilio.messages.create({
+                  to: payload.to,
+                  from: payload.from || process.env.TWILIO_PHONE_NUMBER || "+18001234567",
+                  body: payload.body,
+                });
+                result = { status: "Success", message: "SMS Sent", sid: msg.sid };
+              } catch (err: any) {
+                result = { status: "Error", message: `SMS failed: ${err.message}` };
+              }
             }
           }
           break;
@@ -11346,6 +11396,90 @@ Return ONLY valid JSON.` },
       success: true,
       message: "Subscription will cancel at the end of the current billing period.",
       currentPeriodEnd: sub.currentPeriodEnd,
+    });
+  }));
+
+  // ──── AUDIT TRAIL (admin only) ────
+  app.get("/api/admin/audit-logs", requireAdmin, asyncHandler(async (req, res) => {
+    const { getAuditLogs } = await import("./auditTrail");
+    const action = req.query.action as string | undefined;
+    const performedBy = req.query.performedBy as string | undefined;
+    const limit = parseInt(req.query.limit as string) || 100;
+    const offset = parseInt(req.query.offset as string) || 0;
+    const since = req.query.since ? new Date(req.query.since as string) : undefined;
+    const logs = await getAuditLogs({ action, performedBy, limit, offset, since });
+    res.json(logs);
+  }));
+
+  // ──── DATABASE BACKUP (admin only) ────
+  app.post("/api/admin/db-snapshot", requireAdmin, asyncHandler(async (_req, res) => {
+    const { createDatabaseSnapshot } = await import("./dbBackup");
+    const result = await createDatabaseSnapshot();
+    if (!result.success) return res.status(500).json({ error: "Snapshot failed" });
+    res.json(result);
+  }));
+
+  app.get("/api/admin/db-snapshots", requireAdmin, asyncHandler(async (_req, res) => {
+    const { listSnapshots } = await import("./dbBackup");
+    const snapshots = await listSnapshots();
+    res.json(snapshots);
+  }));
+
+  app.get("/api/admin/db-health", requireAdmin, asyncHandler(async (_req, res) => {
+    const { getDatabaseHealth } = await import("./dbBackup");
+    const health = await getDatabaseHealth();
+    res.json(health);
+  }));
+
+  // ──── LAUNCH READINESS (admin only) ────
+  app.get("/api/admin/launch-readiness", requireAdmin, asyncHandler(async (_req, res) => {
+    const { runLaunchReadinessChecks } = await import("./launchReadiness");
+    const result = await runLaunchReadinessChecks();
+    res.json(result);
+  }));
+
+  // ──── SUPPORT DEBUG TOOLS (admin only) ────
+  app.get("/api/admin/debug/account/:accountId", requireAdmin, asyncHandler(async (req, res) => {
+    const accountId = parseInt(req.params.accountId);
+    const account = await storage.getSubAccount(accountId);
+    if (!account) return res.status(404).json({ error: "Account not found" });
+
+    const conns = await storage.getIntegrationConnections(accountId);
+    const automations = await storage.getLiveAutomations(accountId);
+    const contactCount = (await storage.getContacts(accountId)).length;
+    const msgCount = (await storage.getMessages(accountId)).length;
+
+    let subscription = null;
+    if (account.ownerUserId) {
+      subscription = await storage.getSubscription(account.ownerUserId);
+    }
+
+    res.json({
+      account,
+      subscription: subscription ? {
+        status: subscription.status,
+        plan: subscription.planTier,
+        paymentStatus: subscription.paymentStatus,
+        currentPeriodEnd: subscription.currentPeriodEnd,
+      } : null,
+      integrations: conns.map(c => ({ provider: c.provider, status: c.status })),
+      automations: automations.map(a => ({ id: a.id, name: a.name, status: a.status })),
+      stats: { contacts: contactCount, messages: msgCount },
+    });
+  }));
+
+  app.get("/api/admin/debug/user/:userId", requireAdmin, asyncHandler(async (req, res) => {
+    const userId = req.params.userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const subscription = await storage.getSubscription(userId);
+    const ownedAccounts = await storage.getSubAccountsByUser(userId);
+
+    res.json({
+      user: { id: user.id, email: (user as any).email, role: (user as any).role, createdAt: (user as any).createdAt },
+      subscription: subscription || null,
+      ownedAccounts: ownedAccounts.map(a => ({ id: a.id, name: a.name, plan: a.plan })),
     });
   }));
 

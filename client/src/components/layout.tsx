@@ -70,6 +70,7 @@ const navSections = [
       { href: "/webhook-events", icon: Activity, label: "Event Log" },
       { href: "/white-label", icon: Palette, label: "White Label", requiredFeature: "white_label" },
       { href: "/reports", icon: FileBarChart, label: "Reports" },
+      { href: "/launch-readiness", icon: Activity, label: "Launch Readiness", adminOnly: true },
       { href: "/god-mode", icon: Rocket, label: "God Mode", adminOnly: true },
     ],
   },

@@ -60,6 +60,11 @@ Preferred communication style: Simple, everyday language.
 - **Startup Health Checks**: Validation of critical services on boot.
 - **Health Endpoint**: Public endpoint for real-time service status.
 - **Subscription Lifecycle**: Full Stripe webhook-driven billing with handling of various subscription events (e.g., `checkout.session.completed`, `customer.subscription.updated`, `invoice.payment_succeeded`).
+- **SMS Opt-Out Guard**: STOP/START keyword detection with phone normalization (E.164 variants), enforced on `/api/messages/send` and workflow dispatch; confirmation replies sent automatically.
+- **Audit Trail**: Typed audit actions logged to `audit_trail` table with admin query API (`/api/admin/audit-logs`).
+- **Database Backup**: JSON snapshot manifests with table counts; health check endpoint for DB connectivity and record stats.
+- **Launch Readiness Dashboard**: Admin-only page (`/launch-readiness`) with 22-check scored readiness report, DB health/snapshots, system logs viewer, audit trail viewer, and feature flag toggle UI.
+- **Support Debug Tools**: Admin endpoints to inspect any account or user with subscription, integrations, automations, and contact/message stats.
 
 ## External Dependencies
 
