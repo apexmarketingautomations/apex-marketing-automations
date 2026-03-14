@@ -275,18 +275,25 @@ function Router() {
 }
 
 function App() {
-  const [showSplash, setShowSplash] = useState(true);
+  const [showSplash, setShowSplash] = useState(() => {
+    return !localStorage.getItem("apex_intro_seen");
+  });
 
   useEffect(() => {
     initVibe();
   }, []);
+
+  const handleSplashComplete = () => {
+    localStorage.setItem("apex_intro_seen", "true");
+    setShowSplash(false);
+  };
 
   return (
     <QueryClientProvider client={queryClient}>
       <AccountProvider>
         <TooltipProvider>
           <Toaster />
-          {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
+          {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
           <Router />
         </TooltipProvider>
       </AccountProvider>

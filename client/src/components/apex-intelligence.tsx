@@ -675,14 +675,14 @@ export function ApexIntelligence() {
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setIsOpen(!isOpen)}
-        className="group relative w-14 h-14 rounded-2xl flex items-center justify-center transition-all"
+        className="group relative w-20 h-20 rounded-3xl flex items-center justify-center transition-all"
         style={{
           background: isOpen
             ? "linear-gradient(135deg, rgba(139,92,246,0.2), rgba(6,182,212,0.15))"
             : "linear-gradient(135deg, rgba(10,10,26,0.95), rgba(15,15,35,0.95))",
           boxShadow: isOpen
             ? "0 0 0 1px rgba(139,92,246,0.3), 0 8px 32px rgba(139,92,246,0.15)"
-            : "0 0 0 1px rgba(139,92,246,0.15), 0 8px 32px rgba(0,0,0,0.4), 0 0 60px rgba(139,92,246,0.06)",
+            : "0 0 0 1px rgba(139,92,246,0.15), 0 12px 40px rgba(0,0,0,0.5), 0 0 80px rgba(139,92,246,0.1), 0 0 120px rgba(139,92,246,0.05)",
           backdropFilter: "blur(16px)",
         }}
         data-testid="button-intel-toggle"
@@ -690,13 +690,21 @@ export function ApexIntelligence() {
         <AnimatePresence mode="wait">
           {isOpen ? (
             <motion.div key="close" initial={{ rotate: -90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: 90, opacity: 0 }} transition={{ duration: 0.15 }}>
-              <X size={22} className="text-violet-400" />
+              <X size={32} className="text-violet-400" />
             </motion.div>
           ) : (
-            <motion.div key="brain" initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.8, opacity: 0 }} transition={{ duration: 0.15 }} className="relative">
-              <Brain size={22} className="text-violet-400 group-hover:text-violet-300 transition-colors" />
+            <motion.div
+              key="brain"
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: [1, 1.15, 1], opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              transition={{ scale: { duration: 2, repeat: Infinity, ease: "easeInOut" }, opacity: { duration: 0.15 } }}
+              className="relative"
+              style={{ filter: "drop-shadow(0 0 12px rgba(139,92,246,0.5))" }}
+            >
+              <Brain size={40} className="text-violet-400 group-hover:text-violet-300 transition-colors" />
               {nudgeCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-violet-500 text-white text-[8px] font-bold flex items-center justify-center shadow-lg shadow-violet-500/30">
+                <span className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-violet-500 text-white text-[9px] font-bold flex items-center justify-center shadow-lg shadow-violet-500/40">
                   {nudgeCount > 9 ? "9+" : nudgeCount}
                 </span>
               )}
@@ -706,8 +714,9 @@ export function ApexIntelligence() {
 
         {!isOpen && (
           <>
-            <span className="absolute inset-0 rounded-2xl border border-violet-500/20 opacity-0 group-hover:opacity-100 transition-opacity" />
-            <span className="absolute inset-[-3px] rounded-[18px] border border-violet-400/10 animate-pulse" />
+            <span className="absolute inset-0 rounded-3xl border border-violet-500/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <span className="absolute inset-[-4px] rounded-[22px] border border-violet-400/15 animate-pulse" />
+            <span className="absolute inset-[-8px] rounded-[26px] border border-violet-400/5 animate-pulse" style={{ animationDelay: "0.5s" }} />
           </>
         )}
       </motion.button>
