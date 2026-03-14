@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useActiveSubAccountId } from "@/components/account-required";
 import { Card, CardContent } from "@/components/ui/card";
-import { MessageSquare, Users, Kanban, CalendarDays, Mail, Megaphone, Target, Instagram, DollarSign, TrendingUp, Bell, Clock, BarChart3, PieChart, Zap, Eye, Rocket, Shield, Info, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
+import { MessageSquare, Users, Kanban, CalendarDays, Mail, Megaphone, Target, Instagram, DollarSign, TrendingUp, Bell, Clock, BarChart3, PieChart, Zap, Eye, Rocket, Shield, Info, CheckCircle2, XCircle, AlertTriangle, ArrowUp, ArrowDown, Minus, Trophy } from "lucide-react";
 import { Link } from "wouter";
 import { TutorialCenter } from "@/components/tutorial-center";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
@@ -67,6 +67,30 @@ export default function DashboardPage() {
       const res = await fetch(`/api/analytics/${subAccountId}`);
       return res.json();
     },
+    enabled: !!subAccountId,
+  });
+
+  const { data: benchmarkData } = useQuery<{
+    industry: string;
+    metrics: Array<{
+      key: string;
+      label: string;
+      yours: string;
+      industryAvg: string;
+      industryMedian: string;
+      industryP75: string;
+      status: "above" | "at" | "below";
+      percentile: string;
+      unit: string;
+    }>;
+  }>({
+    queryKey: ["/api/benchmarks", subAccountId],
+    queryFn: async () => {
+      const res = await fetch(`/api/benchmarks/${subAccountId}`);
+      if (!res.ok) return { industry: "", metrics: [] };
+      return res.json();
+    },
+    refetchInterval: 120000,
     enabled: !!subAccountId,
   });
 
@@ -257,6 +281,64 @@ export default function DashboardPage() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {benchmarkData && benchmarkData.metrics && benchmarkData.metrics.length > 0 && (
+        <div className="space-y-4" data-testid="section-benchmarks">
+          <h2 className="text-2xl font-black text-white flex items-center gap-3" data-testid="text-benchmarks-title">
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-gradient-to-br from-amber-500 to-orange-600">
+              <Trophy size={18} className="text-white" />
+            </div>
+            How You Compare
+          </h2>
+          <p className="text-slate-300 text-sm">Your key metrics vs. anonymized industry benchmarks from businesses like yours on Apex</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {benchmarkData.metrics.map((metric) => (
+              <Card key={metric.key} className="bg-black/40 border-white/10" data-testid={`benchmark-${metric.key}`}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-semibold text-slate-200">{metric.label}</span>
+                    <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${
+                      metric.status === "above"
+                        ? "bg-green-500/20 text-green-400"
+                        : metric.status === "at"
+                        ? "bg-amber-500/20 text-amber-400"
+                        : "bg-red-500/20 text-red-400"
+                    }`} data-testid={`benchmark-status-${metric.key}`}>
+                      {metric.status === "above" ? <ArrowUp size={12} /> : metric.status === "at" ? <Minus size={12} /> : <ArrowDown size={12} />}
+                      {metric.percentile}
+                    </span>
+                  </div>
+                  <div className="flex items-end justify-between">
+                    <div>
+                      <p className="text-2xl font-black text-white">{metric.yours}</p>
+                      <p className="text-xs text-slate-400 mt-1">Your value</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-slate-300">{metric.industryAvg}</p>
+                      <p className="text-xs text-slate-400 mt-1">Industry Avg</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 h-2 bg-white/5 rounded-full overflow-hidden">
+                    {(() => {
+                      const yourNum = parseFloat(metric.yours.replace(/[^0-9.]/g, '')) || 0;
+                      const avgNum = parseFloat(metric.industryAvg.replace(/[^0-9.]/g, '')) || 1;
+                      const pct = Math.min(100, Math.round((yourNum / Math.max(avgNum, 1)) * 50));
+                      return (
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            metric.status === "above" ? "bg-green-500" : metric.status === "at" ? "bg-amber-500" : "bg-red-500"
+                          }`}
+                          style={{ width: `${Math.max(5, pct)}%` }}
+                        />
+                      );
+                    })()}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </div>
       )}

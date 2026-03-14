@@ -115,6 +115,15 @@ export interface ContextPacket {
   diagnosticsSummary: string;
   industryKnowledge?: IndustryKnowledge;
   pastExperiences?: EpisodicMemory[];
+  crossAccountBenchmarks?: Record<string, {
+    avg: number;
+    median: number;
+    p25: number;
+    p75: number;
+    p90: number;
+    sampleSize: number;
+    unit: string;
+  }>;
 }
 
 export interface IndustryKnowledge {

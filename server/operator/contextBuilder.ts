@@ -2,6 +2,7 @@ import type { ContextPacket } from "./cognitiveTypes";
 import { buildWorkspaceProfile, buildBehaviorProfile, buildPerformanceSnapshot, getPatterns } from "./memoryEngine";
 import { recallRelevantMemories, buildPastExperiencePrompt } from "./episodicMemory";
 import { getIndustryKnowledge } from "./industryKnowledge";
+import { getBenchmarksForIndustry } from "./benchmarkAggregator";
 import { eventBus } from "../eventBus";
 import { runDiagnostics } from "./diagnostics";
 import { db } from "../db";
@@ -49,6 +50,14 @@ export async function buildContext(subAccountId: number): Promise<ContextPacket>
 
   const industryKnowledge = getIndustryKnowledge(workspace.industry);
 
+  let crossAccountBenchmarks: ContextPacket["crossAccountBenchmarks"];
+  try {
+    crossAccountBenchmarks = await getBenchmarksForIndustry(workspace.industry);
+    if (Object.keys(crossAccountBenchmarks || {}).length === 0) crossAccountBenchmarks = undefined;
+  } catch {
+    crossAccountBenchmarks = undefined;
+  }
+
   return {
     workspace,
     behavior,
@@ -59,6 +68,7 @@ export async function buildContext(subAccountId: number): Promise<ContextPacket>
     diagnosticsSummary,
     industryKnowledge,
     pastExperiences,
+    crossAccountBenchmarks,
   };
 }
 
@@ -82,6 +92,14 @@ export function buildPromptContext(context: ContextPacket): string {
     parts.push(`Industry: ${ik.industry}`);
     parts.push(`Response time benchmark: ${ik.avgResponseTimeBenchmark}s`);
     if (ik.tips.length > 0) parts.push(`Key insight: ${ik.tips[0]}`);
+  }
+
+  if (context.crossAccountBenchmarks && Object.keys(context.crossAccountBenchmarks).length > 0) {
+    parts.push("--- Cross-Account Industry Benchmarks (anonymized) ---");
+    for (const [key, bm] of Object.entries(context.crossAccountBenchmarks)) {
+      const b = bm as any;
+      parts.push(`  ${key}: avg=${b.avg}, median=${b.median}, p75=${b.p75} (${b.sampleSize} accounts)`);
+    }
   }
 
   if (context.patterns.length > 0) {

@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import type { ContextPacket, WorkspaceProfile, PerformanceSnapshot, IndustryKnowledge } from "./cognitiveTypes";
+import { getBenchmarksForIndustry } from "./benchmarkAggregator";
 
 export interface HealthScore {
   overall: number;
@@ -330,6 +331,43 @@ export function generateStrategicInsights(context: ContextPacket): StrategicInsi
     }
   }
 
+  if (context.crossAccountBenchmarks) {
+    const cab = context.crossAccountBenchmarks;
+
+    if (cab.response_rate && performance.inboundMessages > 5) {
+      const responseRate = Math.round((performance.outboundMessages / performance.inboundMessages) * 100);
+      if (responseRate < cab.response_rate.median) {
+        insights.push({
+          id: crypto.randomUUID(), category: "growth", priority: 86, confidence: 0.88, impact: "high", effort: "quick-win",
+          observation: `Your response rate is ${responseRate}%. The ${industryKnowledge?.industry || "industry"} average on Apex is ${Math.round(cab.response_rate.avg)}%.`,
+          insight: `Businesses in your industry on Apex that respond to ${Math.round(cab.response_rate.p75)}%+ of messages convert significantly more leads. You're below the median — closing this gap is one of the fastest ways to grow.`,
+          suggestion: "Set up auto-response workflows and assign team members to handle inbound messages within 5 minutes.",
+          action: { label: "Improve Response Rate", tool: "createWorkflow", link: "/workflows" },
+        });
+      }
+    }
+
+    if (cab.automation_count && workspace.automationCount < (cab.automation_count.median || 1)) {
+      insights.push({
+        id: crypto.randomUUID(), category: "automation", priority: 75, confidence: 0.82, impact: "medium", effort: "moderate",
+        observation: `You have ${workspace.automationCount} automations. Similar businesses on Apex average ${Math.round(cab.automation_count.avg)}.`,
+        insight: `Top performers in your industry run ${Math.round(cab.automation_count.p75)}+ automations. More automations means more consistent follow-up and less manual work.`,
+        suggestion: "Add automated follow-up sequences for new leads and post-service review requests.",
+        action: { label: "Add Automations", link: "/workflows" },
+      });
+    }
+
+    if (cab.integration_count && workspace.integrationCount < (cab.integration_count.median || 1)) {
+      insights.push({
+        id: crypto.randomUUID(), category: "system", priority: 60, confidence: 0.75, impact: "medium", effort: "moderate",
+        observation: `You have ${workspace.integrationCount} integrations connected. The industry average is ${Math.round(cab.integration_count.avg)}.`,
+        insight: "More integrations mean more automated data flow and fewer manual tasks. Top accounts connect ${Math.round(cab.integration_count.p75)}+ services.",
+        suggestion: "Review available integrations and connect your most-used business tools.",
+        action: { label: "Connect More Tools", link: "/integrations" },
+      });
+    }
+  }
+
   if (workspace.contactCount > 100 && performance.outboundMessages < workspace.contactCount * 0.1) {
     insights.push({
       id: crypto.randomUUID(), category: "retention", priority: 72, confidence: 0.78, impact: "medium", effort: "moderate",
@@ -425,7 +463,7 @@ export function detectMissedOpportunities(context: ContextPacket): StrategicInsi
   return missed.sort((a, b) => b.priority - a.priority);
 }
 
-export function generateGrowthReport(context: ContextPacket): GrowthReport {
+export async function generateGrowthReport(context: ContextPacket): Promise<GrowthReport> {
   const healthScore = calculateHealthScore(context);
   const strategicInsights = generateStrategicInsights(context);
   const missedOpportunities = detectMissedOpportunities(context);
@@ -433,15 +471,78 @@ export function generateGrowthReport(context: ContextPacket): GrowthReport {
   const growthStage = getGrowthStage(context);
 
   const benchmarks: GrowthReport["industryBenchmarks"] = {};
+
+  let crossAccountBenchmarks: Record<string, any> = {};
+  try {
+    crossAccountBenchmarks = await getBenchmarksForIndustry(context.workspace.industry);
+  } catch {}
+
+  if (Object.keys(crossAccountBenchmarks).length > 0) {
+    const cab = crossAccountBenchmarks;
+
+    if (cab.response_rate) {
+      const responseRate = context.performance.inboundMessages > 0
+        ? Math.round((context.performance.outboundMessages / context.performance.inboundMessages) * 100)
+        : 0;
+      benchmarks["response_rate"] = {
+        yours: `${responseRate}%`,
+        benchmark: `${Math.round(cab.response_rate.avg)}%`,
+        status: responseRate >= cab.response_rate.median ? "above" : responseRate >= cab.response_rate.p25 ? "at" : "below",
+      };
+    }
+
+    if (cab.contact_count) {
+      benchmarks["contact_count"] = {
+        yours: `${context.workspace.contactCount}`,
+        benchmark: `${Math.round(cab.contact_count.avg)}`,
+        status: context.workspace.contactCount >= cab.contact_count.median ? "above" : context.workspace.contactCount >= cab.contact_count.p25 ? "at" : "below",
+      };
+    }
+
+    if (cab.automation_count) {
+      benchmarks["automation_count"] = {
+        yours: `${context.workspace.automationCount}`,
+        benchmark: `${Math.round(cab.automation_count.avg)}`,
+        status: context.workspace.automationCount >= cab.automation_count.median ? "above" : context.workspace.automationCount >= cab.automation_count.p25 ? "at" : "below",
+      };
+    }
+
+    if (cab.review_count) {
+      benchmarks["review_count"] = {
+        yours: "N/A",
+        benchmark: `${Math.round(cab.review_count.avg)}`,
+        status: "below",
+      };
+    }
+
+    if (cab.monthly_message_volume) {
+      benchmarks["monthly_messages"] = {
+        yours: `${context.performance.messageCount}`,
+        benchmark: `${Math.round(cab.monthly_message_volume.avg)}`,
+        status: context.performance.messageCount >= cab.monthly_message_volume.median ? "above" : context.performance.messageCount >= cab.monthly_message_volume.p25 ? "at" : "below",
+      };
+    }
+
+    if (cab.integration_count) {
+      benchmarks["integrations"] = {
+        yours: `${context.workspace.integrationCount}`,
+        benchmark: `${Math.round(cab.integration_count.avg)}`,
+        status: context.workspace.integrationCount >= cab.integration_count.median ? "above" : context.workspace.integrationCount >= cab.integration_count.p25 ? "at" : "below",
+      };
+    }
+  }
+
   if (context.industryKnowledge) {
     const ik = context.industryKnowledge;
-    benchmarks["response_time"] = {
-      yours: context.performance.avgResponseTimeSec ? `${Math.round(context.performance.avgResponseTimeSec)}s` : "N/A",
-      benchmark: `${ik.avgResponseTimeBenchmark}s`,
-      status: !context.performance.avgResponseTimeSec ? "below" : context.performance.avgResponseTimeSec <= ik.avgResponseTimeBenchmark ? "above" : "below",
-    };
+    if (!benchmarks["response_time"]) {
+      benchmarks["response_time"] = {
+        yours: context.performance.avgResponseTimeSec ? `${Math.round(context.performance.avgResponseTimeSec)}s` : "N/A",
+        benchmark: `${ik.avgResponseTimeBenchmark}s`,
+        status: !context.performance.avgResponseTimeSec ? "below" : context.performance.avgResponseTimeSec <= ik.avgResponseTimeBenchmark ? "above" : "below",
+      };
+    }
     for (const [key, val] of Object.entries(ik.conversionBenchmarks)) {
-      if (key !== "target_response_time_sec") {
+      if (key !== "target_response_time_sec" && !benchmarks[key]) {
         benchmarks[key] = { yours: "N/A", benchmark: `${Math.round(val * 100)}%`, status: "below" };
       }
     }

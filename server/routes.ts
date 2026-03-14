@@ -12578,15 +12578,35 @@ Return ONLY valid JSON.` },
       else growthStage = "Mature";
 
       const benchmarks: Record<string, any> = {};
+      try {
+        const { getBenchmarksForIndustry } = await import("./operator/benchmarkAggregator");
+        const crossBenchmarks = await getBenchmarksForIndustry(context.workspace.industry);
+        if (crossBenchmarks.response_rate) {
+          const rr = context.performance.inboundMessages > 0 ? Math.round((context.performance.outboundMessages / context.performance.inboundMessages) * 100) : 0;
+          benchmarks["response_rate"] = { yours: `${rr}%`, benchmark: `${Math.round(crossBenchmarks.response_rate.avg)}%`, status: rr >= crossBenchmarks.response_rate.median ? "above" : "below" };
+        }
+        if (crossBenchmarks.contact_count) {
+          benchmarks["contact_count"] = { yours: `${workspace.contactCount}`, benchmark: `${Math.round(crossBenchmarks.contact_count.avg)}`, status: workspace.contactCount >= crossBenchmarks.contact_count.median ? "above" : "below" };
+        }
+        if (crossBenchmarks.automation_count) {
+          benchmarks["automation_count"] = { yours: `${workspace.automationCount}`, benchmark: `${Math.round(crossBenchmarks.automation_count.avg)}`, status: workspace.automationCount >= crossBenchmarks.automation_count.median ? "above" : "below" };
+        }
+        if (crossBenchmarks.monthly_message_volume) {
+          benchmarks["monthly_messages"] = { yours: `${performance.messageCount}`, benchmark: `${Math.round(crossBenchmarks.monthly_message_volume.avg)}`, status: performance.messageCount >= crossBenchmarks.monthly_message_volume.median ? "above" : "below" };
+        }
+      } catch {}
+
       if (context.industryKnowledge) {
         const ik = context.industryKnowledge;
-        benchmarks["response_time"] = {
-          yours: performance.avgResponseTimeSec ? `${Math.round(performance.avgResponseTimeSec)}s` : "N/A",
-          benchmark: `${ik.avgResponseTimeBenchmark}s`,
-          status: !performance.avgResponseTimeSec ? "below" : performance.avgResponseTimeSec <= ik.avgResponseTimeBenchmark ? "above" : "below",
-        };
+        if (!benchmarks["response_time"]) {
+          benchmarks["response_time"] = {
+            yours: performance.avgResponseTimeSec ? `${Math.round(performance.avgResponseTimeSec)}s` : "N/A",
+            benchmark: `${ik.avgResponseTimeBenchmark}s`,
+            status: !performance.avgResponseTimeSec ? "below" : performance.avgResponseTimeSec <= ik.avgResponseTimeBenchmark ? "above" : "below",
+          };
+        }
         for (const [key, val] of Object.entries(ik.conversionBenchmarks)) {
-          if (key !== "target_response_time_sec") {
+          if (key !== "target_response_time_sec" && !benchmarks[key]) {
             benchmarks[key] = { yours: "N/A", benchmark: `${Math.round((val as number) * 100)}%`, status: "below" };
           }
         }
@@ -12818,6 +12838,28 @@ Return ONLY valid JSON.` },
     const { generateBriefing } = await import("./operator/agentBrain");
     const briefing = await generateBriefing(subAccountId);
     res.json(briefing || { summary: "No new activity to report.", tasksCompleted: 0, tasksFailed: 0, highlights: [] });
+  }));
+
+  // ──── INDUSTRY BENCHMARKS (Cross-Account Intelligence) ────
+  app.get("/api/benchmarks/industry/:industry", asyncHandler(async (req, res) => {
+    const { getBenchmarksForIndustry } = await import("./operator/benchmarkAggregator");
+    const benchmarks = await getBenchmarksForIndustry(req.params.industry);
+    res.json(benchmarks);
+  }));
+
+  app.post("/api/benchmarks/refresh", requireAdmin, asyncHandler(async (_req, res) => {
+    const { runBenchmarkAggregation } = await import("./operator/benchmarkAggregator");
+    const result = await runBenchmarkAggregation();
+    res.json({ success: true, ...result });
+  }));
+
+  app.get("/api/benchmarks/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { getAccountBenchmarkComparison } = await import("./operator/benchmarkAggregator");
+    const comparison = await getAccountBenchmarkComparison(subAccountId);
+    res.json(comparison);
   }));
 
   // ──── EVENT BUS & JOB QUEUE (admin only) ────

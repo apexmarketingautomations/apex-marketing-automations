@@ -1349,6 +1349,28 @@ export const insertAbEventSchema = createInsertSchema(abEvents).omit({ id: true,
 export type InsertAbEvent = z.infer<typeof insertAbEventSchema>;
 export type AbEvent = typeof abEvents.$inferSelect;
 
+// ---- Industry Benchmarks (Cross-Account Intelligence) ----
+
+export const industryBenchmarks = pgTable("industry_benchmarks", {
+  id: serial("id").primaryKey(),
+  industry: text("industry").notNull(),
+  metricKey: text("metric_key").notNull(),
+  avgValue: real("avg_value").notNull(),
+  medianValue: real("median_value"),
+  p25Value: real("p25_value"),
+  p75Value: real("p75_value"),
+  p90Value: real("p90_value"),
+  minValue: real("min_value"),
+  maxValue: real("max_value"),
+  sampleSize: integer("sample_size").notNull().default(0),
+  unit: text("unit").default("number"),
+  computedAt: timestamp("computed_at").defaultNow().notNull(),
+});
+
+export const insertIndustryBenchmarkSchema = createInsertSchema(industryBenchmarks).omit({ id: true, computedAt: true });
+export type InsertIndustryBenchmark = z.infer<typeof insertIndustryBenchmarkSchema>;
+export type IndustryBenchmark = typeof industryBenchmarks.$inferSelect;
+
 export const PLAN_LIMITS: Record<string, Record<string, number>> = {
   starter: {
     messages_per_month: 500,
