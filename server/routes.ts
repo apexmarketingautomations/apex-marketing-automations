@@ -391,6 +391,41 @@ ${sections.map(renderSection).join('\n')}
     res.status(204).send();
   });
 
+  // ---- Facebook Deauthorize Callback (Meta compliance, public) ----
+  app.post("/api/auth/facebook/deauthorize", express.json(), asyncHandler(async (req, res) => {
+    const { signed_request } = req.body;
+    let userId = "unknown";
+
+    if (signed_request) {
+      try {
+        const parts = signed_request.split(".");
+        if (parts.length === 2) {
+          const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf8"));
+          userId = payload.user_id || "unknown";
+        }
+      } catch {}
+    }
+
+    console.log(`[META-DEAUTH] Facebook user ${userId} removed the app`);
+
+    try {
+      await storage.createSystemLog({
+        level: "warn",
+        source: "meta-deauth",
+        message: `Facebook user ${userId} deauthorized the app`,
+        details: { facebookUserId: userId, deauthorizedAt: new Date().toISOString() },
+      });
+    } catch (e) {
+      console.error("[META-DEAUTH] Failed to log:", e);
+    }
+
+    const confirmationCode = "DEAUTH-" + Date.now().toString(36).toUpperCase() + "-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+    res.json({
+      url: "https://apexmarketingautomations.com/data-deletion",
+      confirmation_code: confirmationCode,
+    });
+  }));
+
   // ---- User Data Deletion (Meta compliance, public) ----
   app.post("/api/data-deletion", express.json(), asyncHandler(async (req, res) => {
     const { email, signed_request } = req.body;
@@ -667,6 +702,7 @@ ${sections.map(renderSection).join('\n')}
     if (fullPath === "/api/liquid/contact-lookup") return next();
     if (fullPath === "/api/system/health") return next();
     if (fullPath === "/api/data-deletion") return next();
+    if (fullPath === "/api/auth/facebook/deauthorize") return next();
     if (fullPath.startsWith("/api/portal/")) return next();
     if (fullPath.startsWith("/api/oauth/") && fullPath.includes("/callback")) return next();
 
