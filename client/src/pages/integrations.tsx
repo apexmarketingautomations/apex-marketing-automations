@@ -134,7 +134,7 @@ const LEGACY_PROVIDER_CREDENTIALS: Record<string, { fields: CredentialField[]; h
 const GOOGLE_CHILD_SERVICES = [
   { id: "gmail", name: "Gmail", description: "Send and receive emails", icon: Mail, scope: "gmail.readonly gmail.send" },
   { id: "google-calendar", name: "Calendar", description: "Sync appointments and events", icon: CalendarDays, scope: "calendar.readonly calendar.events" },
-  { id: "google-sheets", name: "Sheets", description: "Export data and reports", icon: FileSpreadsheet, scope: "spreadsheets" },
+  { id: "google-sheets", name: "Sheets", description: "Export data and reports", icon: FileSpreadsheet, scope: "spreadsheets.readonly spreadsheets" },
   { id: "google-drive", name: "Drive", description: "File storage and sharing", icon: HardDrive, scope: "drive.readonly" },
   { id: "google-business", name: "Business Profile", description: "Manage listing and reviews", icon: Building2, scope: "business.manage" },
 ];
