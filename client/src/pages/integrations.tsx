@@ -19,6 +19,8 @@ import {
   ShoppingCart, Volume2, MessageCircle, Copy, CheckCircle, AlertTriangle,
   XCircle, Loader2, ChevronDown, ChevronUp, Shield, Link2, Clock, Activity,
   RefreshCw, Instagram, Megaphone, FileSearch, ChevronRight,
+  Briefcase, Video, PlayCircle, LayoutGrid, TrendingUp, Calendar,
+  MailOpen, BookOpen, Contact, Radio,
   type LucideIcon
 } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
@@ -139,11 +141,41 @@ const GOOGLE_CHILD_SERVICES = [
   { id: "google-business", name: "Business Profile", description: "Manage listing and reviews", icon: Building2, scope: "business.manage" },
 ];
 
+const GOOGLE_YOUTUBE_SERVICES = [
+  { id: "youtube-analytics", name: "Analytics", description: "Video performance and audience insights", icon: TrendingUp, scope: "youtube.readonly yt-analytics.readonly" },
+  { id: "youtube-manage", name: "Channel Management", description: "Upload and manage video content", icon: Video, scope: "youtube youtube.upload" },
+];
+
 const META_CHILD_SERVICES = [
   { id: "facebook-pages", name: "Facebook Pages", description: "Manage your business pages", icon: Globe, scope: "pages_manage_posts pages_read_engagement" },
   { id: "instagram", name: "Instagram", description: "Business account management", icon: Instagram, scope: "instagram_basic instagram_content_publish" },
   { id: "meta-ads", name: "Meta Ads", description: "Ad campaign management", icon: Megaphone, scope: "ads_management ads_read" },
   { id: "meta-leads", name: "Lead Forms", description: "Capture and manage leads", icon: FileSearch, scope: "leads_retrieval" },
+];
+
+const LINKEDIN_CHILD_SERVICES = [
+  { id: "linkedin-profile", name: "Profile", description: "Access profile and connections", icon: Contact, scope: "openid profile email" },
+  { id: "linkedin-posts", name: "Posts & Sharing", description: "Share updates and content", icon: FileText, scope: "w_member_social" },
+  { id: "linkedin-pages", name: "Company Pages", description: "Manage organization pages", icon: Building2, scope: "w_organization_social r_organization_social" },
+  { id: "linkedin-leads", name: "Lead Gen Forms", description: "Capture leads from ads", icon: FileSearch, scope: "r_marketing_leadgen_automation" },
+];
+
+const TIKTOK_CHILD_SERVICES = [
+  { id: "tiktok-ads", name: "Ad Management", description: "Create and manage ad campaigns", icon: Megaphone, scope: "ad.operation.read ad.operation.write" },
+  { id: "tiktok-audience", name: "Audiences", description: "Custom and lookalike audiences", icon: Users, scope: "audience.read audience.write" },
+  { id: "tiktok-reporting", name: "Reporting", description: "Campaign analytics and insights", icon: BarChart3, scope: "report.read" },
+];
+
+const MICROSOFT_CHILD_SERVICES = [
+  { id: "outlook-mail", name: "Outlook Mail", description: "Send and receive emails", icon: Mail, scope: "Mail.ReadWrite Mail.Send" },
+  { id: "outlook-calendar", name: "Outlook Calendar", description: "Sync events and appointments", icon: Calendar, scope: "Calendars.ReadWrite" },
+  { id: "onedrive", name: "OneDrive", description: "File storage and sharing", icon: HardDrive, scope: "Files.ReadWrite" },
+  { id: "teams", name: "Teams", description: "Team messaging and notifications", icon: MessageSquare, scope: "ChannelMessage.Send" },
+];
+
+const CALENDLY_CHILD_SERVICES = [
+  { id: "calendly-events", name: "Events", description: "View and manage scheduled events", icon: Calendar, scope: "events" },
+  { id: "calendly-scheduling", name: "Scheduling", description: "Booking links and availability", icon: Clock, scope: "scheduling_links" },
 ];
 
 interface LegacyIntegration {
@@ -710,6 +742,14 @@ function GoogleSettingsModal({
     "google-business": { title: "Business Profile Settings", assetLabel: "Location", description: "Choose which business location to manage" },
     "google-sheets": { title: "Sheets Settings", assetLabel: "Spreadsheet", description: "Select default spreadsheet" },
     "google-drive": { title: "Drive Settings", assetLabel: "Folder", description: "Choose default folder" },
+    "youtube-analytics": { title: "YouTube Analytics", assetLabel: "Channel", description: "Select which channel to track" },
+    "youtube-manage": { title: "YouTube Management", assetLabel: "Channel", description: "Choose which channel to manage" },
+    "linkedin-profile": { title: "LinkedIn Profile", assetLabel: "Profile", description: "Connected LinkedIn profile" },
+    "linkedin-pages": { title: "LinkedIn Pages", assetLabel: "Company Page", description: "Select company page to manage" },
+    "outlook-mail": { title: "Outlook Mail", assetLabel: "Mailbox", description: "Choose mailbox for sending" },
+    "outlook-calendar": { title: "Outlook Calendar", assetLabel: "Calendar", description: "Select calendar to sync" },
+    "calendly-events": { title: "Calendly Events", assetLabel: "Event Type", description: "Select event type to sync" },
+    "calendly-scheduling": { title: "Calendly Scheduling", assetLabel: "Scheduling Link", description: "Choose scheduling link" },
   };
 
   const config = settingsConfig[serviceId] || { title: "Settings", assetLabel: "Asset", description: "Configure this service" };
@@ -949,6 +989,41 @@ const MetaIcon = () => (
   </svg>
 );
 
+const LinkedInIcon = () => (
+  <svg className="w-7 h-7" viewBox="0 0 24 24" fill="#0A66C2">
+    <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+  </svg>
+);
+
+const TikTokIcon = () => (
+  <svg className="w-7 h-7" viewBox="0 0 24 24" fill="white">
+    <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.27 6.27 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.34-6.34V8.75a8.18 8.18 0 0 0 4.76 1.52V6.84a4.83 4.83 0 0 1-1-.15z"/>
+  </svg>
+);
+
+const MicrosoftIcon = () => (
+  <svg className="w-7 h-7" viewBox="0 0 24 24">
+    <rect x="1" y="1" width="10" height="10" fill="#F25022"/>
+    <rect x="13" y="1" width="10" height="10" fill="#7FBA00"/>
+    <rect x="1" y="13" width="10" height="10" fill="#00A4EF"/>
+    <rect x="13" y="13" width="10" height="10" fill="#FFB900"/>
+  </svg>
+);
+
+const CalendlyIcon = () => (
+  <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none">
+    <circle cx="12" cy="12" r="10" fill="#006BFF"/>
+    <path d="M15.5 8.5a3.5 3.5 0 0 0-7 0v3.5h3.5a3.5 3.5 0 0 0 3.5-3.5z" fill="white"/>
+    <path d="M8.5 15.5a3.5 3.5 0 0 0 7 0V12H12a3.5 3.5 0 0 0-3.5 3.5z" fill="white"/>
+  </svg>
+);
+
+const YouTubeIcon = () => (
+  <svg className="w-7 h-7" viewBox="0 0 24 24" fill="#FF0000">
+    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+  </svg>
+);
+
 export default function IntegrationsPage() {
   const subAccountId = useActiveSubAccountId();
   const { toast } = useToast();
@@ -956,7 +1031,7 @@ export default function IntegrationsPage() {
   const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_integrations_tutorial_completed");
   const [connectingProvider, setConnectingProvider] = useState<string | null>(null);
   const [configuringProvider, setConfiguringProvider] = useState<string | null>(null);
-  const [settingsService, setSettingsService] = useState<{ serviceId: string; provider: "google" | "meta" } | null>(null);
+  const [settingsService, setSettingsService] = useState<{ serviceId: string; provider: string } | null>(null);
   const [activeTab, setActiveTab] = useState("connections");
 
   const { data: connections = [] } = useQuery<IntegrationConnection[]>({
@@ -1086,6 +1161,91 @@ export default function IntegrationsPage() {
               onDisconnect={() => disconnectMutation.mutate("meta")}
               onReconnect={() => {
                 window.location.href = `/api/oauth/meta/authorize/${subAccountId}`;
+              }}
+            />
+
+            <OAuthConnectionCard
+              provider="youtube"
+              title="YouTube"
+              description="Video marketing, analytics, channel management"
+              icon={<YouTubeIcon />}
+              gradientFrom="from-red-600"
+              gradientTo="to-red-400"
+              childServices={GOOGLE_YOUTUBE_SERVICES}
+              connection={getConnection("youtube")}
+              subAccountId={subAccountId}
+              onSettingsOpen={(serviceId) => setSettingsService({ serviceId, provider: "youtube" })}
+              onDisconnect={() => disconnectMutation.mutate("youtube")}
+              onReconnect={() => {
+                window.location.href = `/api/oauth/youtube/authorize/${subAccountId}`;
+              }}
+            />
+
+            <OAuthConnectionCard
+              provider="linkedin"
+              title="LinkedIn"
+              description="Company pages, posts, lead gen forms"
+              icon={<LinkedInIcon />}
+              gradientFrom="from-blue-700"
+              gradientTo="to-cyan-500"
+              childServices={LINKEDIN_CHILD_SERVICES}
+              connection={getConnection("linkedin")}
+              subAccountId={subAccountId}
+              onSettingsOpen={(serviceId) => setSettingsService({ serviceId, provider: "linkedin" })}
+              onDisconnect={() => disconnectMutation.mutate("linkedin")}
+              onReconnect={() => {
+                window.location.href = `/api/oauth/linkedin/authorize/${subAccountId}`;
+              }}
+            />
+
+            <OAuthConnectionCard
+              provider="tiktok"
+              title="TikTok for Business"
+              description="Ad campaigns, audiences, reporting"
+              icon={<TikTokIcon />}
+              gradientFrom="from-pink-500"
+              gradientTo="to-cyan-400"
+              childServices={TIKTOK_CHILD_SERVICES}
+              connection={getConnection("tiktok")}
+              subAccountId={subAccountId}
+              onSettingsOpen={(serviceId) => setSettingsService({ serviceId, provider: "tiktok" })}
+              onDisconnect={() => disconnectMutation.mutate("tiktok")}
+              onReconnect={() => {
+                window.location.href = `/api/oauth/tiktok/authorize/${subAccountId}`;
+              }}
+            />
+
+            <OAuthConnectionCard
+              provider="microsoft"
+              title="Microsoft 365"
+              description="Outlook mail, calendar, OneDrive, Teams"
+              icon={<MicrosoftIcon />}
+              gradientFrom="from-blue-500"
+              gradientTo="to-yellow-400"
+              childServices={MICROSOFT_CHILD_SERVICES}
+              connection={getConnection("microsoft")}
+              subAccountId={subAccountId}
+              onSettingsOpen={(serviceId) => setSettingsService({ serviceId, provider: "microsoft" })}
+              onDisconnect={() => disconnectMutation.mutate("microsoft")}
+              onReconnect={() => {
+                window.location.href = `/api/oauth/microsoft/authorize/${subAccountId}`;
+              }}
+            />
+
+            <OAuthConnectionCard
+              provider="calendly"
+              title="Calendly"
+              description="Scheduling, booking links, event sync"
+              icon={<CalendlyIcon />}
+              gradientFrom="from-blue-500"
+              gradientTo="to-blue-300"
+              childServices={CALENDLY_CHILD_SERVICES}
+              connection={getConnection("calendly")}
+              subAccountId={subAccountId}
+              onSettingsOpen={(serviceId) => setSettingsService({ serviceId, provider: "calendly" })}
+              onDisconnect={() => disconnectMutation.mutate("calendly")}
+              onReconnect={() => {
+                window.location.href = `/api/oauth/calendly/authorize/${subAccountId}`;
               }}
             />
           </div>

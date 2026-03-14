@@ -29,7 +29,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Key Features and Implementations
 - **Monetization Engine**: Credit wallet system, usage-based markup billing, Stripe credit top-ups.
-- **Integrations Hub**: Credential-based and OAuth service connections (Google Suite, Slack, Zapier, QuickBooks, Twilio, Stripe, HubSpot, Mailchimp, Facebook, ElevenLabs, WhatsApp Business). Includes platform-managed OAuth for Google and Meta with token refresh, asset listing, and health checks.
+- **Integrations Hub**: Credential-based and OAuth service connections. OAuth providers: Google Suite, Meta (Facebook/Instagram), YouTube, LinkedIn, TikTok for Business, Microsoft 365 (Outlook/OneDrive/Teams), Calendly. Legacy credential providers: Slack, Zapier, QuickBooks, Twilio, Stripe, HubSpot, Mailchimp, ElevenLabs, WhatsApp Business, Shopify, Skip Trace. Includes platform-managed OAuth with token refresh, asset listing, and health checks.
 - **ElevenLabs Voice AI**: Text-to-speech synthesis integration for voice agents and workflow steps.
 - **WhatsApp Business API**: Dedicated integration via Twilio for template messages, interactive messages, delivery tracking, and WhatsApp-specific workflow triggers.
 - **Client Portal**: Public page for end-clients with token-based access to metrics and messages.

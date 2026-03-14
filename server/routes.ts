@@ -9732,6 +9732,299 @@ Return ONLY valid JSON.` },
     res.redirect(`https://www.facebook.com/v19.0/dialog/oauth?${params}`);
   }));
 
+  // ---- YouTube OAuth ----
+  const YOUTUBE_OAUTH_SCOPES = [
+    "https://www.googleapis.com/auth/youtube.readonly",
+    "https://www.googleapis.com/auth/youtube",
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/yt-analytics.readonly",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+  ];
+
+  app.get("/api/oauth/youtube/authorize/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) return res.status(500).json({ error: "Google OAuth not configured" });
+    const state = crypto.randomBytes(32).toString("hex");
+    (req.session as any).oauthState = state;
+    (req.session as any).oauthSubAccountId = subAccountId;
+    (req.session as any).oauthProvider = "youtube";
+    const redirectUri = `${req.protocol}://${req.get("host")}/api/oauth/youtube/callback`;
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: YOUTUBE_OAUTH_SCOPES.join(" "),
+      access_type: "offline",
+      prompt: "consent",
+      state,
+    });
+    res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+  }));
+
+  app.get("/api/oauth/youtube/callback", asyncHandler(async (req, res) => {
+    const { code, state, error } = req.query;
+    if (error) return res.redirect("/integrations?error=youtube_oauth_denied");
+    const sessionState = (req.session as any)?.oauthState;
+    const subAccountId = (req.session as any)?.oauthSubAccountId;
+    if (!code || !state || state !== sessionState || !subAccountId) {
+      return res.redirect("/integrations?error=youtube_oauth_invalid_state");
+    }
+    const clientId = process.env.GOOGLE_CLIENT_ID!;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET!;
+    const redirectUri = `${req.protocol}://${req.get("host")}/api/oauth/youtube/callback`;
+    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ code: code as string, client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri, grant_type: "authorization_code" }),
+    });
+    const tokenData = await tokenResponse.json() as any;
+    if (!tokenResponse.ok || !tokenData.access_token) {
+      return res.redirect("/integrations?error=youtube_token_failed");
+    }
+    let providerEmail = "", providerAccountId = "";
+    try {
+      const profileRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", { headers: { Authorization: `Bearer ${tokenData.access_token}` } });
+      const profile = await profileRes.json() as any;
+      providerEmail = profile.email || "";
+      providerAccountId = profile.id || "";
+    } catch {}
+    const expiresIn = tokenData.expires_in || 3600;
+    await storage.upsertOAuthToken({
+      provider: "youtube", subAccountId, accessToken: tokenData.access_token, refreshToken: tokenData.refresh_token || null,
+      tokenExpiry: new Date(Date.now() + expiresIn * 1000), scopes: YOUTUBE_OAUTH_SCOPES.join(" "), providerAccountId, providerEmail, connectionType: "oauth",
+    });
+    await storage.upsertIntegrationConnection({
+      subAccountId, provider: "youtube", status: "connected", config: { email: providerEmail }, connectionType: "oauth", connectedAt: new Date(),
+    });
+    await storage.createIntegrationEvent({ subAccountId, provider: "youtube", eventType: "oauth_connected", payload: { email: providerEmail } });
+    res.redirect("/integrations?success=youtube_connected");
+  }));
+
+  // ---- LinkedIn OAuth ----
+  app.get("/api/oauth/linkedin/authorize/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const clientId = process.env.LINKEDIN_CLIENT_ID;
+    if (!clientId) return res.status(500).json({ error: "LinkedIn OAuth not configured. Add LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET to your secrets." });
+    const state = crypto.randomBytes(32).toString("hex");
+    (req.session as any).oauthState = state;
+    (req.session as any).oauthSubAccountId = subAccountId;
+    (req.session as any).oauthProvider = "linkedin";
+    const redirectUri = `${req.protocol}://${req.get("host")}/api/oauth/linkedin/callback`;
+    const scopes = ["openid", "profile", "email", "w_member_social", "r_organization_social", "w_organization_social"];
+    const params = new URLSearchParams({
+      response_type: "code", client_id: clientId, redirect_uri: redirectUri, state, scope: scopes.join(" "),
+    });
+    res.redirect(`https://www.linkedin.com/oauth/v2/authorization?${params}`);
+  }));
+
+  app.get("/api/oauth/linkedin/callback", asyncHandler(async (req, res) => {
+    const { code, state, error } = req.query;
+    if (error) return res.redirect("/integrations?error=linkedin_oauth_denied");
+    const sessionState = (req.session as any)?.oauthState;
+    const subAccountId = (req.session as any)?.oauthSubAccountId;
+    if (!code || !state || state !== sessionState || !subAccountId) {
+      return res.redirect("/integrations?error=linkedin_oauth_invalid_state");
+    }
+    const clientId = process.env.LINKEDIN_CLIENT_ID!;
+    const clientSecret = process.env.LINKEDIN_CLIENT_SECRET!;
+    const redirectUri = `${req.protocol}://${req.get("host")}/api/oauth/linkedin/callback`;
+    const tokenResponse = await fetch("https://www.linkedin.com/oauth/v2/accessToken", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ grant_type: "authorization_code", code: code as string, client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri }),
+    });
+    const tokenData = await tokenResponse.json() as any;
+    if (!tokenResponse.ok || !tokenData.access_token) {
+      return res.redirect("/integrations?error=linkedin_token_failed");
+    }
+    let providerEmail = "", providerName = "";
+    try {
+      const profileRes = await fetch("https://api.linkedin.com/v2/userinfo", { headers: { Authorization: `Bearer ${tokenData.access_token}` } });
+      const profile = await profileRes.json() as any;
+      providerEmail = profile.email || "";
+      providerName = profile.name || "";
+    } catch {}
+    const scopes = ["openid", "profile", "email", "w_member_social", "r_organization_social", "w_organization_social"];
+    const expiresIn = tokenData.expires_in || 5184000;
+    await storage.upsertOAuthToken({
+      provider: "linkedin", subAccountId, accessToken: tokenData.access_token, refreshToken: tokenData.refresh_token || null,
+      tokenExpiry: new Date(Date.now() + expiresIn * 1000), scopes: scopes.join(" "), providerAccountId: providerName, providerEmail, connectionType: "oauth",
+    });
+    await storage.upsertIntegrationConnection({
+      subAccountId, provider: "linkedin", status: "connected", config: { email: providerEmail, name: providerName }, connectionType: "oauth", connectedAt: new Date(),
+    });
+    await storage.createIntegrationEvent({ subAccountId, provider: "linkedin", eventType: "oauth_connected", payload: { email: providerEmail } });
+    res.redirect("/integrations?success=linkedin_connected");
+  }));
+
+  // ---- TikTok for Business OAuth ----
+  app.get("/api/oauth/tiktok/authorize/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const appId = process.env.TIKTOK_APP_ID;
+    if (!appId) return res.status(500).json({ error: "TikTok OAuth not configured. Add TIKTOK_APP_ID and TIKTOK_APP_SECRET to your secrets." });
+    const state = crypto.randomBytes(32).toString("hex");
+    (req.session as any).oauthState = state;
+    (req.session as any).oauthSubAccountId = subAccountId;
+    (req.session as any).oauthProvider = "tiktok";
+    const redirectUri = `${req.protocol}://${req.get("host")}/api/oauth/tiktok/callback`;
+    const params = new URLSearchParams({
+      app_id: appId, redirect_uri: redirectUri, state,
+    });
+    res.redirect(`https://business-api.tiktok.com/portal/auth?${params}`);
+  }));
+
+  app.get("/api/oauth/tiktok/callback", asyncHandler(async (req, res) => {
+    const { auth_code, state, error } = req.query;
+    if (error) return res.redirect("/integrations?error=tiktok_oauth_denied");
+    const sessionState = (req.session as any)?.oauthState;
+    const subAccountId = (req.session as any)?.oauthSubAccountId;
+    if (!auth_code || !state || state !== sessionState || !subAccountId) {
+      return res.redirect("/integrations?error=tiktok_oauth_invalid_state");
+    }
+    const appId = process.env.TIKTOK_APP_ID!;
+    const appSecret = process.env.TIKTOK_APP_SECRET!;
+    const tokenResponse = await fetch("https://business-api.tiktok.com/open_api/v1.3/oauth2/access_token/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ app_id: appId, secret: appSecret, auth_code }),
+    });
+    const tokenResult = await tokenResponse.json() as any;
+    const tokenData = tokenResult.data;
+    if (!tokenData?.access_token) {
+      return res.redirect("/integrations?error=tiktok_token_failed");
+    }
+    const scopes = ["ad.operation.read", "ad.operation.write", "audience.read", "audience.write", "report.read"];
+    await storage.upsertOAuthToken({
+      provider: "tiktok", subAccountId, accessToken: tokenData.access_token, refreshToken: null,
+      tokenExpiry: new Date(Date.now() + 86400 * 1000), scopes: scopes.join(" "), providerAccountId: tokenData.advertiser_id || "", providerEmail: "", connectionType: "oauth",
+    });
+    await storage.upsertIntegrationConnection({
+      subAccountId, provider: "tiktok", status: "connected", config: { advertiserId: tokenData.advertiser_id || "" }, connectionType: "oauth", connectedAt: new Date(),
+    });
+    await storage.createIntegrationEvent({ subAccountId, provider: "tiktok", eventType: "oauth_connected", payload: { advertiserId: tokenData.advertiser_id } });
+    res.redirect("/integrations?success=tiktok_connected");
+  }));
+
+  // ---- Microsoft 365 OAuth ----
+  app.get("/api/oauth/microsoft/authorize/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const clientId = process.env.MICROSOFT_CLIENT_ID;
+    if (!clientId) return res.status(500).json({ error: "Microsoft OAuth not configured. Add MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET to your secrets." });
+    const state = crypto.randomBytes(32).toString("hex");
+    (req.session as any).oauthState = state;
+    (req.session as any).oauthSubAccountId = subAccountId;
+    (req.session as any).oauthProvider = "microsoft";
+    const redirectUri = `${req.protocol}://${req.get("host")}/api/oauth/microsoft/callback`;
+    const scopes = ["openid", "profile", "email", "Mail.ReadWrite", "Mail.Send", "Calendars.ReadWrite", "Files.ReadWrite", "ChannelMessage.Send", "offline_access"];
+    const params = new URLSearchParams({
+      client_id: clientId, redirect_uri: redirectUri, response_type: "code", scope: scopes.join(" "), state, response_mode: "query",
+    });
+    res.redirect(`https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${params}`);
+  }));
+
+  app.get("/api/oauth/microsoft/callback", asyncHandler(async (req, res) => {
+    const { code, state, error } = req.query;
+    if (error) return res.redirect("/integrations?error=microsoft_oauth_denied");
+    const sessionState = (req.session as any)?.oauthState;
+    const subAccountId = (req.session as any)?.oauthSubAccountId;
+    if (!code || !state || state !== sessionState || !subAccountId) {
+      return res.redirect("/integrations?error=microsoft_oauth_invalid_state");
+    }
+    const clientId = process.env.MICROSOFT_CLIENT_ID!;
+    const clientSecret = process.env.MICROSOFT_CLIENT_SECRET!;
+    const redirectUri = `${req.protocol}://${req.get("host")}/api/oauth/microsoft/callback`;
+    const tokenResponse = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, code: code as string, redirect_uri: redirectUri, grant_type: "authorization_code" }),
+    });
+    const tokenData = await tokenResponse.json() as any;
+    if (!tokenResponse.ok || !tokenData.access_token) {
+      return res.redirect("/integrations?error=microsoft_token_failed");
+    }
+    let providerEmail = "", providerName = "";
+    try {
+      const profileRes = await fetch("https://graph.microsoft.com/v1.0/me", { headers: { Authorization: `Bearer ${tokenData.access_token}` } });
+      const profile = await profileRes.json() as any;
+      providerEmail = profile.mail || profile.userPrincipalName || "";
+      providerName = profile.displayName || "";
+    } catch {}
+    const scopes = ["Mail.ReadWrite", "Mail.Send", "Calendars.ReadWrite", "Files.ReadWrite", "ChannelMessage.Send"];
+    const expiresIn = tokenData.expires_in || 3600;
+    await storage.upsertOAuthToken({
+      provider: "microsoft", subAccountId, accessToken: tokenData.access_token, refreshToken: tokenData.refresh_token || null,
+      tokenExpiry: new Date(Date.now() + expiresIn * 1000), scopes: scopes.join(" "), providerAccountId: providerName, providerEmail, connectionType: "oauth",
+    });
+    await storage.upsertIntegrationConnection({
+      subAccountId, provider: "microsoft", status: "connected", config: { email: providerEmail, name: providerName }, connectionType: "oauth", connectedAt: new Date(),
+    });
+    await storage.createIntegrationEvent({ subAccountId, provider: "microsoft", eventType: "oauth_connected", payload: { email: providerEmail } });
+    res.redirect("/integrations?success=microsoft_connected");
+  }));
+
+  // ---- Calendly OAuth ----
+  app.get("/api/oauth/calendly/authorize/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const clientId = process.env.CALENDLY_CLIENT_ID;
+    if (!clientId) return res.status(500).json({ error: "Calendly OAuth not configured. Add CALENDLY_CLIENT_ID and CALENDLY_CLIENT_SECRET to your secrets." });
+    const state = crypto.randomBytes(32).toString("hex");
+    (req.session as any).oauthState = state;
+    (req.session as any).oauthSubAccountId = subAccountId;
+    (req.session as any).oauthProvider = "calendly";
+    const redirectUri = `${req.protocol}://${req.get("host")}/api/oauth/calendly/callback`;
+    const params = new URLSearchParams({
+      client_id: clientId, redirect_uri: redirectUri, response_type: "code", state,
+    });
+    res.redirect(`https://auth.calendly.com/oauth/authorize?${params}`);
+  }));
+
+  app.get("/api/oauth/calendly/callback", asyncHandler(async (req, res) => {
+    const { code, state, error } = req.query;
+    if (error) return res.redirect("/integrations?error=calendly_oauth_denied");
+    const sessionState = (req.session as any)?.oauthState;
+    const subAccountId = (req.session as any)?.oauthSubAccountId;
+    if (!code || !state || state !== sessionState || !subAccountId) {
+      return res.redirect("/integrations?error=calendly_oauth_invalid_state");
+    }
+    const clientId = process.env.CALENDLY_CLIENT_ID!;
+    const clientSecret = process.env.CALENDLY_CLIENT_SECRET!;
+    const redirectUri = `${req.protocol}://${req.get("host")}/api/oauth/calendly/callback`;
+    const tokenResponse = await fetch("https://auth.calendly.com/oauth/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ grant_type: "authorization_code", code: code as string, client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri }),
+    });
+    const tokenData = await tokenResponse.json() as any;
+    if (!tokenResponse.ok || !tokenData.access_token) {
+      return res.redirect("/integrations?error=calendly_token_failed");
+    }
+    let providerEmail = "", providerName = "";
+    try {
+      const meRes = await fetch("https://api.calendly.com/users/me", { headers: { Authorization: `Bearer ${tokenData.access_token}` } });
+      const meData = await meRes.json() as any;
+      providerEmail = meData.resource?.email || "";
+      providerName = meData.resource?.name || "";
+    } catch {}
+    const scopes = ["events", "scheduling_links"];
+    const expiresIn = tokenData.expires_in || 7200;
+    await storage.upsertOAuthToken({
+      provider: "calendly", subAccountId, accessToken: tokenData.access_token, refreshToken: tokenData.refresh_token || null,
+      tokenExpiry: new Date(Date.now() + expiresIn * 1000), scopes: scopes.join(" "), providerAccountId: providerName, providerEmail, connectionType: "oauth",
+    });
+    await storage.upsertIntegrationConnection({
+      subAccountId, provider: "calendly", status: "connected", config: { email: providerEmail, name: providerName }, connectionType: "oauth", connectedAt: new Date(),
+    });
+    await storage.createIntegrationEvent({ subAccountId, provider: "calendly", eventType: "oauth_connected", payload: { email: providerEmail } });
+    res.redirect("/integrations?success=calendly_connected");
+  }));
+
   // ---- OAuth Callback Handlers ----
 
   app.get("/api/oauth/google/callback", asyncHandler(async (req, res) => {
