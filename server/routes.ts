@@ -12083,6 +12083,44 @@ Return ONLY valid JSON.` },
     res.json({ success: true });
   }));
 
+  // ──── AUTONOMOUS TASK AGENT ────
+  app.get("/api/agent/tasks/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { getTaskHistory } = await import("./operator/taskAgent");
+    const limit = parseInt(req.query.limit as string) || 50;
+    const tasks = await getTaskHistory(subAccountId, limit);
+    res.json({ tasks });
+  }));
+
+  app.get("/api/agent/stats/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { getTaskStats } = await import("./operator/taskAgent");
+    const stats = await getTaskStats(subAccountId);
+    res.json(stats);
+  }));
+
+  app.post("/api/agent/scan/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { manualScan } = await import("./operator/taskAgent");
+    const result = await manualScan(subAccountId);
+    res.json(result);
+  }));
+
+  app.put("/api/agent/config/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { updateAgentConfig } = await import("./operator/taskAgent");
+    const config = await updateAgentConfig(subAccountId, req.body);
+    res.json(config);
+  }));
+
   // ──── EVENT BUS & JOB QUEUE (admin only) ────
   app.get("/api/admin/event-bus/stats", requireAdmin, asyncHandler(async (_req, res) => {
     res.json(eventBus.getStats());

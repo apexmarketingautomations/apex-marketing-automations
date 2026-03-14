@@ -12,6 +12,9 @@ import { publishEventAsync } from "../eventBus";
 export function initOperator(): void {
   initOperatorEventHooks();
   import("./cognitiveLayer").then(m => m.initCognitiveLayer()).catch(() => {});
+  import("./taskAgent").then(m => m.startTaskAgent()).catch((e) => {
+    console.error("[TASK-AGENT] Failed to start:", e?.message);
+  });
   console.log(`[OPERATOR] Apex Operator initialized — ${getToolManifest().length} tools available`);
 }
 

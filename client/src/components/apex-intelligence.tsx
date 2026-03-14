@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Brain, X, Send, Loader2, Sparkles, TrendingUp, TrendingDown, Lightbulb, AlertTriangle, CheckCircle2, ChevronRight, Bell, Zap, BarChart3, MessageSquare, ArrowRight, Eye, Target, Shield, Clock, RefreshCw, Activity, Crosshair, Award, Terminal, ChevronDown, ArrowUpRight, Gauge, Layers, Factory, Radar, Heart } from "lucide-react";
+import { Brain, X, Send, Loader2, Sparkles, TrendingUp, TrendingDown, Lightbulb, AlertTriangle, CheckCircle2, ChevronRight, Bell, Zap, BarChart3, MessageSquare, ArrowRight, Eye, Target, Shield, Clock, RefreshCw, Activity, Crosshair, Award, Terminal, ChevronDown, ArrowUpRight, Gauge, Layers, Factory, Radar, Heart, Bot, Play, Settings2, Power } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAccount } from "@/hooks/use-account";
 
-type TabId = "command" | "insights" | "nudges" | "industry" | "trends" | "chat";
+type TabId = "command" | "insights" | "nudges" | "industry" | "trends" | "chat" | "agent";
 
 interface HealthScore {
   overall: number;
@@ -1083,6 +1083,223 @@ function ChatTab({ subAccountId }: { subAccountId: number }) {
   );
 }
 
+function AgentTab({ subAccountId }: { subAccountId: number }) {
+  const queryClient = useQueryClient();
+  const [showConfig, setShowConfig] = useState(false);
+
+  const { data: stats, isLoading: statsLoading } = useQuery({
+    queryKey: ["/api/agent/stats", subAccountId],
+    queryFn: async () => {
+      const res = await fetch(`/api/agent/stats/${subAccountId}`);
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!subAccountId,
+    refetchInterval: 15000,
+  });
+
+  const { data: tasksData, isLoading: tasksLoading } = useQuery({
+    queryKey: ["/api/agent/tasks", subAccountId],
+    queryFn: async () => {
+      const res = await fetch(`/api/agent/tasks/${subAccountId}?limit=20`);
+      if (!res.ok) return { tasks: [] };
+      return res.json();
+    },
+    enabled: !!subAccountId,
+    refetchInterval: 15000,
+  });
+
+  const scanMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/agent/scan/${subAccountId}`, { method: "POST" });
+      if (!res.ok) throw new Error("Scan failed");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agent/stats", subAccountId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agent/tasks", subAccountId] });
+    },
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const res = await fetch(`/api/agent/config/${subAccountId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      if (!res.ok) throw new Error("Config update failed");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agent/stats", subAccountId] });
+    },
+  });
+
+  const isEnabled = stats?.config?.enabled !== false;
+  const tasks = tasksData?.tasks || [];
+
+  const statusIcon = (status: string) => {
+    if (status === "completed") return <CheckCircle2 size={12} className="text-emerald-400" />;
+    if (status === "failed") return <AlertTriangle size={12} className="text-red-400" />;
+    if (status === "running") return <Loader2 size={12} className="text-cyan-400 animate-spin" />;
+    return <Clock size={12} className="text-slate-500" />;
+  };
+
+  const priorityColor = (p: number) => {
+    if (p >= 90) return "text-red-400";
+    if (p >= 70) return "text-amber-400";
+    if (p >= 40) return "text-cyan-400";
+    return "text-slate-500";
+  };
+
+  if (statsLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <Loader2 size={20} className="animate-spin text-violet-400" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden" data-testid="panel-agent-tab">
+      <div className="px-3 py-2 flex items-center justify-between border-b border-white/[0.04]">
+        <div className="flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${isEnabled ? "bg-emerald-400" : "bg-slate-600"}`} />
+          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+            {isEnabled ? "Active" : "Paused"}
+          </span>
+          {stats && (
+            <span className="text-[9px] text-slate-600">
+              {stats.todayCount}/{stats.config?.maxTasksPerDay || 10} today
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => toggleMutation.mutate(!isEnabled)}
+            className={`p-1 rounded transition-colors ${isEnabled ? "text-emerald-400 hover:bg-emerald-400/10" : "text-slate-600 hover:bg-white/5"}`}
+            title={isEnabled ? "Pause Agent" : "Enable Agent"}
+            data-testid="button-agent-toggle"
+          >
+            <Power size={12} />
+          </button>
+          <button
+            onClick={() => setShowConfig(!showConfig)}
+            className="p-1 rounded text-slate-500 hover:text-slate-300 hover:bg-white/5 transition-colors"
+            data-testid="button-agent-settings"
+          >
+            <Settings2 size={12} />
+          </button>
+          <button
+            onClick={() => scanMutation.mutate()}
+            disabled={scanMutation.isPending}
+            className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-violet-500/15 text-violet-400 border border-violet-500/20 hover:bg-violet-500/25 transition-all disabled:opacity-50"
+            data-testid="button-agent-scan"
+          >
+            {scanMutation.isPending ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
+            Scan Now
+          </button>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {showConfig && stats?.config && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden border-b border-white/[0.04]"
+          >
+            <div className="p-3 space-y-2 bg-violet-500/[0.03]">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-slate-500">Autonomy</span>
+                <span className="text-[10px] text-violet-400 font-medium capitalize">{stats.config.autonomyLevel}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-slate-500">Scan Interval</span>
+                <span className="text-[10px] text-slate-400">{stats.config.scanIntervalMinutes}min</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-slate-500">Max Tasks/Day</span>
+                <span className="text-[10px] text-slate-400">{stats.config.maxTasksPerDay}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-slate-500">Last Scan</span>
+                <span className="text-[10px] text-slate-400">{stats.config.lastScanAt ? new Date(stats.config.lastScanAt).toLocaleTimeString() : "Never"}</span>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {stats && (
+        <div className="px-3 py-2 grid grid-cols-4 gap-1 border-b border-white/[0.04]">
+          {[
+            { label: "Total", value: stats.totalTasks, color: "text-white" },
+            { label: "Done", value: stats.completed, color: "text-emerald-400" },
+            { label: "Failed", value: stats.failed, color: "text-red-400" },
+            { label: "Queued", value: stats.queued + stats.running, color: "text-cyan-400" },
+          ].map((s) => (
+            <div key={s.label} className="text-center">
+              <p className={`text-sm font-bold ${s.color}`}>{s.value}</p>
+              <p className="text-[8px] text-slate-600 uppercase tracking-wider">{s.label}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex-1 overflow-y-auto scrollbar-thin" data-testid="list-agent-tasks">
+        {tasks.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center p-8 text-center">
+            <div className="space-y-2">
+              <Bot size={28} className="mx-auto text-slate-700" />
+              <p className="text-[11px] text-slate-600">No tasks yet</p>
+              <p className="text-[9px] text-slate-700">Click "Scan Now" to let the agent analyze your account</p>
+            </div>
+          </div>
+        ) : (
+          <div className="divide-y divide-white/[0.03]">
+            {tasks.map((task: any) => (
+              <motion.div
+                key={task.id}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="px-3 py-2 hover:bg-white/[0.02] transition-colors cursor-default group"
+                data-testid={`task-item-${task.id}`}
+              >
+                <div className="flex items-start gap-2">
+                  <div className="mt-0.5">{statusIcon(task.status)}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-[11px] text-white font-medium truncate">{task.title}</p>
+                      <span className={`text-[8px] font-bold ${priorityColor(task.priority)}`}>P{task.priority}</span>
+                    </div>
+                    {task.description && (
+                      <p className="text-[9px] text-slate-500 mt-0.5 line-clamp-2">{task.description}</p>
+                    )}
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[8px] text-slate-700">{new Date(task.createdAt).toLocaleTimeString()}</span>
+                      {task.toolUsed && (
+                        <span className="text-[8px] text-violet-500/60 flex items-center gap-0.5">
+                          <Zap size={7} /> {task.toolUsed}
+                        </span>
+                      )}
+                      {task.status === "failed" && task.error && (
+                        <span className="text-[8px] text-red-400/60 truncate max-w-[150px]">{task.error}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const TABS: { id: TabId; label: string; icon: typeof Brain }[] = [
   { id: "command", label: "Command", icon: Terminal },
   { id: "insights", label: "Strategy", icon: Crosshair },
@@ -1090,6 +1307,7 @@ const TABS: { id: TabId; label: string; icon: typeof Brain }[] = [
   { id: "industry", label: "Industry", icon: Factory },
   { id: "trends", label: "Trends", icon: TrendingUp },
   { id: "chat", label: "Advisor", icon: Brain },
+  { id: "agent", label: "Agent", icon: Bot },
 ];
 
 export function ApexIntelligence() {
@@ -1229,6 +1447,7 @@ export function ApexIntelligence() {
                   {activeTab === "industry" && <IndustryTab subAccountId={subAccountId} />}
                   {activeTab === "trends" && <TrendsTab subAccountId={subAccountId} />}
                   {activeTab === "chat" && <ChatTab subAccountId={subAccountId} />}
+                  {activeTab === "agent" && <AgentTab subAccountId={subAccountId} />}
                 </>
               )}
             </div>

@@ -1172,6 +1172,49 @@ export const insertOperatorNudgeSchema = createInsertSchema(operatorNudges).omit
 export type InsertOperatorNudge = z.infer<typeof insertOperatorNudgeSchema>;
 export type OperatorNudge = typeof operatorNudges.$inferSelect;
 
+export const agentTasks = pgTable("agent_tasks", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  taskType: text("task_type").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  status: text("status").default("queued").notNull(),
+  priority: integer("priority").default(50),
+  result: json("result"),
+  error: text("error"),
+  toolUsed: text("tool_used"),
+  triggeredBy: text("triggered_by").default("system").notNull(),
+  attempts: integer("attempts").default(0),
+  maxAttempts: integer("max_attempts").default(3),
+  scheduledAt: timestamp("scheduled_at"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertAgentTaskSchema = createInsertSchema(agentTasks).omit({ id: true, createdAt: true });
+export type InsertAgentTask = z.infer<typeof insertAgentTaskSchema>;
+export type AgentTask = typeof agentTasks.$inferSelect;
+
+export const agentConfig = pgTable("agent_config", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  enabled: boolean("enabled").default(true),
+  autonomyLevel: text("autonomy_level").default("draft").notNull(),
+  scanIntervalMinutes: integer("scan_interval_minutes").default(30),
+  maxTasksPerDay: integer("max_tasks_per_day").default(10),
+  tasksRunToday: integer("tasks_run_today").default(0),
+  lastScanAt: timestamp("last_scan_at"),
+  lastResetAt: timestamp("last_reset_at"),
+  allowedTaskTypes: text("allowed_task_types").array().default([]),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertAgentConfigSchema = createInsertSchema(agentConfig).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertAgentConfig = z.infer<typeof insertAgentConfigSchema>;
+export type AgentConfig = typeof agentConfig.$inferSelect;
+
 export const PLAN_LIMITS: Record<string, Record<string, number>> = {
   starter: {
     messages_per_month: 500,
