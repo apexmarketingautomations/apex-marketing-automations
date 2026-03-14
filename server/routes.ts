@@ -9449,12 +9449,19 @@ Return ONLY valid JSON.` },
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const connections = await storage.getIntegrationConnections(subAccountId);
-    const formatted = connections.map((c: any) => ({
-      provider: c.provider,
-      connected: c.status === "connected",
-      config: c.config || {},
-      connectionType: c.connectionType || "legacy",
-    }));
+    const oauthTokens = await storage.getOAuthTokensBySubAccount(subAccountId);
+    const tokenMap = new Map(oauthTokens.map((t: any) => [t.provider, t]));
+    const formatted = connections.map((c: any) => {
+      const token = tokenMap.get(c.provider);
+      return {
+        provider: c.provider,
+        connected: c.status === "connected",
+        status: c.status,
+        config: c.config || {},
+        connectionType: c.connectionType || "legacy",
+        scopes: token?.scopes ? token.scopes.split(" ") : [],
+      };
+    });
     res.json(formatted);
   }));
 

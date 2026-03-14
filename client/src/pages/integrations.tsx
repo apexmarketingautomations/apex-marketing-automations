@@ -329,7 +329,13 @@ function OAuthConnectionCard({
 
   const hasScope = (scope: string) => {
     if (!connection?.scopes || connection.scopes.length === 0) return false;
-    return scope.split(" ").some((s) => connection.scopes!.includes(s));
+    const normalizedScopes = connection.scopes.map((s: string) => {
+      const match = s.match(/googleapis\.com\/auth\/(.+)/);
+      return match ? match[1] : s;
+    });
+    return scope.split(" ").some((s) => 
+      normalizedScopes.includes(s) || connection.scopes!.includes(s)
+    );
   };
 
   return (
