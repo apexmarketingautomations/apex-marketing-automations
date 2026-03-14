@@ -65,6 +65,9 @@ import {
   type ShopifyEvent, type InsertShopifyEvent,
   type SkipTraceResult, type InsertSkipTraceResult,
   type SkipTraceUsage, type InsertSkipTraceUsage,
+  pushSubscriptions, notificationPreferences,
+  type PushSubscription, type InsertPushSubscription,
+  type NotificationPreference, type InsertNotificationPreference,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -334,6 +337,13 @@ export interface IStorage {
 
   getSkipTraceUsage(subAccountId: number, monthYear: string): Promise<SkipTraceUsage | undefined>;
   incrementSkipTraceUsage(subAccountId: number, monthYear: string): Promise<SkipTraceUsage>;
+
+  getPushSubscriptions(subAccountId: number): Promise<PushSubscription[]>;
+  createPushSubscription(data: InsertPushSubscription): Promise<PushSubscription>;
+  deletePushSubscription(endpoint: string, subAccountId: number): Promise<boolean>;
+
+  getNotificationPreferences(subAccountId: number): Promise<NotificationPreference | undefined>;
+  upsertNotificationPreferences(data: InsertNotificationPreference): Promise<NotificationPreference>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1458,6 +1468,44 @@ export class DatabaseStorage implements IStorage {
     const [row] = await db.insert(skipTraceUsage)
       .values({ subAccountId, monthYear, lookupCount: 1 })
       .returning();
+    return row;
+  }
+
+  async getPushSubscriptions(subAccountId: number) {
+    return db.select().from(pushSubscriptions).where(eq(pushSubscriptions.subAccountId, subAccountId));
+  }
+
+  async createPushSubscription(data: InsertPushSubscription) {
+    const existing = await db.select().from(pushSubscriptions)
+      .where(and(eq(pushSubscriptions.subAccountId, data.subAccountId), eq(pushSubscriptions.endpoint, data.endpoint)));
+    if (existing.length > 0) return existing[0];
+    const [row] = await db.insert(pushSubscriptions).values(data).returning();
+    return row;
+  }
+
+  async deletePushSubscription(endpoint: string, subAccountId: number) {
+    const rows = await db.delete(pushSubscriptions)
+      .where(and(eq(pushSubscriptions.endpoint, endpoint), eq(pushSubscriptions.subAccountId, subAccountId)))
+      .returning();
+    return rows.length > 0;
+  }
+
+  async getNotificationPreferences(subAccountId: number) {
+    const [row] = await db.select().from(notificationPreferences)
+      .where(eq(notificationPreferences.subAccountId, subAccountId));
+    return row;
+  }
+
+  async upsertNotificationPreferences(data: InsertNotificationPreference) {
+    const existing = await this.getNotificationPreferences(data.subAccountId);
+    if (existing) {
+      const [row] = await db.update(notificationPreferences)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(notificationPreferences.id, existing.id))
+        .returning();
+      return row;
+    }
+    const [row] = await db.insert(notificationPreferences).values(data).returning();
     return row;
   }
 }

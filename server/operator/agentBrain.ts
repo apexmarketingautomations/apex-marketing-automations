@@ -47,11 +47,18 @@ RESPONSE FORMAT (JSON array):
     "title": "Short human-readable title",
     "description": "2-3 sentence explanation of WHY this task matters and what it will do",
     "priority": 85,
+    "urgent": false,
     "toolName": "toolRegistryName or null",
     "toolParams": { ... } or {},
     "reasoning": "1 sentence on why you chose this task and priority level"
   }
 ]
+
+URGENCY FLAG:
+- Set "urgent": true ONLY for time-sensitive situations requiring immediate human attention
+- Examples: messaging system down, payment processing failing, integrations suddenly disconnected, active campaign burning budget with zero conversions
+- Urgent tasks trigger immediate push notifications and SMS alerts to the business owner
+- Do NOT mark routine maintenance or optimization tasks as urgent
 
 RULES:
 - Return 1-5 tasks maximum per scan
@@ -67,6 +74,7 @@ interface AITaskSuggestion {
   title: string;
   description: string;
   priority: number;
+  urgent?: boolean;
   toolName?: string;
   toolParams?: Record<string, any>;
   reasoning: string;

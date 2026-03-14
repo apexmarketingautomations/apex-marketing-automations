@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, json, timestamp, boolean, real } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, json, timestamp, boolean, real, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -1186,6 +1186,7 @@ export const agentTasks = pgTable("agent_tasks", {
   triggeredBy: text("triggered_by").default("system").notNull(),
   attempts: integer("attempts").default(0),
   maxAttempts: integer("max_attempts").default(3),
+  urgent: boolean("urgent").default(false),
   scheduledAt: timestamp("scheduled_at"),
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
@@ -1231,6 +1232,55 @@ export const agentBriefings = pgTable("agent_briefings", {
 export const insertAgentBriefingSchema = createInsertSchema(agentBriefings).omit({ id: true, createdAt: true });
 export type InsertAgentBriefing = z.infer<typeof insertAgentBriefingSchema>;
 export type AgentBriefing = typeof agentBriefings.$inferSelect;
+
+// ---- Push Subscriptions (Web Push API) ----
+
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  endpoint: text("endpoint").notNull(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("push_sub_account_endpoint_idx").on(table.subAccountId, table.endpoint),
+]);
+
+export const insertPushSubscriptionSchema = createInsertSchema(pushSubscriptions).omit({ id: true, createdAt: true });
+export type InsertPushSubscription = z.infer<typeof insertPushSubscriptionSchema>;
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+
+// ---- Notification Preferences ----
+
+export const notificationPreferences = pgTable("notification_preferences", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull().unique(),
+  newLeadPush: boolean("new_lead_push").default(true).notNull(),
+  newLeadSms: boolean("new_lead_sms").default(false).notNull(),
+  missedCallPush: boolean("missed_call_push").default(true).notNull(),
+  missedCallSms: boolean("missed_call_sms").default(true).notNull(),
+  paymentFailedPush: boolean("payment_failed_push").default(true).notNull(),
+  paymentFailedSms: boolean("payment_failed_sms").default(true).notNull(),
+  incidentPush: boolean("incident_push").default(true).notNull(),
+  incidentSms: boolean("incident_sms").default(true).notNull(),
+  nudgeHighPush: boolean("nudge_high_push").default(true).notNull(),
+  nudgeHighSms: boolean("nudge_high_sms").default(false).notNull(),
+  agentUrgentPush: boolean("agent_urgent_push").default(true).notNull(),
+  agentUrgentSms: boolean("agent_urgent_sms").default(true).notNull(),
+  campaignAlertPush: boolean("campaign_alert_push").default(true).notNull(),
+  campaignAlertSms: boolean("campaign_alert_sms").default(false).notNull(),
+  systemAlertPush: boolean("system_alert_push").default(true).notNull(),
+  systemAlertSms: boolean("system_alert_sms").default(false).notNull(),
+  smsAlertPhone: text("sms_alert_phone"),
+  quietHoursEnabled: boolean("quiet_hours_enabled").default(false).notNull(),
+  quietHoursStart: text("quiet_hours_start").default("22:00").notNull(),
+  quietHoursEnd: text("quiet_hours_end").default("08:00").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertNotificationPreferenceSchema = createInsertSchema(notificationPreferences).omit({ id: true, updatedAt: true });
+export type InsertNotificationPreference = z.infer<typeof insertNotificationPreferenceSchema>;
+export type NotificationPreference = typeof notificationPreferences.$inferSelect;
 
 export const PLAN_LIMITS: Record<string, Record<string, number>> = {
   starter: {

@@ -13,6 +13,7 @@ import fs from "fs";
 import { runStartupChecks } from "./startupChecks";
 import { logSystemError, logSystemEvent } from "./systemLogger";
 import { apiLimiter, authLimiter, webhookLimiter } from "./rateLimiter";
+import { dispatchAlert, generateDeepLink } from "./pushAlertService";
 import { initEventSubscribers } from "./eventSubscribers";
 import { eventBus } from "./eventBus";
 
@@ -235,6 +236,21 @@ app.post(
               paymentFailedAt: new Date(),
             });
             console.log(`[STRIPE] Payment failed for subscription ${subId}`);
+
+            try {
+              const userAccounts = await storage.getSubAccountsByUser(existing.userId);
+              for (const acct of userAccounts) {
+                dispatchAlert(acct.id, "payment_failed", {
+                  title: "Payment Failed",
+                  body: `Your subscription payment could not be processed. Please update your payment method.`,
+                  link: generateDeepLink("/billing"),
+                  tag: `payment-fail-${existing.id}`,
+                  urgency: "high",
+                }).catch(e => console.error("[PUSH-ALERT] payment failed dispatch error:", e instanceof Error ? e.message : e));
+              }
+            } catch (e) {
+              console.error("[PUSH-ALERT] payment failed alert lookup error:", e instanceof Error ? (e as Error).message : e);
+            }
 
             if (existing.isGrandfathered) {
               console.log(`[ENFORCEMENT] Legacy user ${existing.userId} payment failed - 72hr grace period started`);

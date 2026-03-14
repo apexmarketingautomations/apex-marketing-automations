@@ -7,6 +7,7 @@ import { executeTool } from "./toolRegistry";
 import { generateNudges } from "./nudgeSystem";
 import { publishEventAsync } from "../eventBus";
 import { generateAITaskPlan, generateBriefing } from "./agentBrain";
+import { dispatchAlert, generateDeepLink } from "../pushAlertService";
 import { isGeminiConfigured } from "../gemini";
 import type { ContextPacket } from "./cognitiveTypes";
 
@@ -22,6 +23,7 @@ interface TaskDefinition {
   title: string;
   description: string;
   priority: number;
+  urgent?: boolean;
   toolName?: string;
   toolParams?: Record<string, any>;
   condition: (ctx: ContextPacket) => boolean;
@@ -175,6 +177,7 @@ async function createTask(subAccountId: number, def: TaskDefinition): Promise<nu
     description: def.description,
     status: "queued",
     priority: def.priority,
+    urgent: def.urgent || false,
     toolUsed: def.toolName || null,
     result: def.toolParams ? { _params: def.toolParams } : null,
     triggeredBy: "autonomous-agent",
@@ -182,6 +185,17 @@ async function createTask(subAccountId: number, def: TaskDefinition): Promise<nu
   }).returning().execute();
 
   console.log(`[TASK-AGENT] Created task: ${def.title} (${def.taskType}) for account #${subAccountId}`);
+
+  if (def.urgent) {
+    dispatchAlert(subAccountId, "agent_urgent", {
+      title: `Urgent: ${def.title}`,
+      body: (def.description || "").substring(0, 200),
+      link: generateDeepLink("/dashboard"),
+      tag: `urgent-task-${task.id}`,
+      urgency: "high",
+    }).catch(err => console.error("[TASK-AGENT] Urgent push alert failed:", err.message));
+  }
+
   return task.id;
 }
 
@@ -311,6 +325,7 @@ async function scanAccount(subAccountId: number): Promise<void> {
             title: s.title,
             description: `${s.description}\n\nAI Reasoning: ${s.reasoning}`,
             priority: s.priority,
+            urgent: s.urgent || false,
             toolName: s.toolName || undefined,
             toolParams: s.toolParams || {},
             condition: () => true,

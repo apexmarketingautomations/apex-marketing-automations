@@ -1,4 +1,5 @@
 import { eventBus, EVENT_TYPES, type ApexEvent } from "./eventBus";
+import { dispatchAlert, generateDeepLink } from "./pushAlertService";
 
 let storageRef: any = null;
 let systemLoggerRef: any = null;
@@ -67,6 +68,14 @@ export function initEventSubscribers(storage: any, systemLogger?: any) {
 
   eventBus.subscribe(EVENT_TYPES.AD_CAMPAIGN_LAUNCHED, "analytics", async (event) => {
     console.log(`[EVENT-SUB:analytics] Ad campaign launched: ${event.payload.campaignId || "unknown"} targeting ${event.payload.platform || "meta"}`);
+    if (event.payload.subAccountId) {
+      dispatchAlert(event.payload.subAccountId, "campaign_alert", {
+        title: "Campaign Launched",
+        body: `Your ${event.payload.platform || "ad"} campaign has been launched.`,
+        link: generateDeepLink("/meta-ads"),
+        tag: `campaign-${event.payload.campaignId || Date.now()}`,
+      }).catch(e => console.error("[PUSH-ALERT] campaign launch dispatch error:", e instanceof Error ? e.message : e));
+    }
   });
 
   eventBus.subscribe(EVENT_TYPES.SENTINEL_ALERT, "analytics", async (event) => {

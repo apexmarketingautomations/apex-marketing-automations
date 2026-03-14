@@ -21,6 +21,7 @@ import { skipTraceLookup, getCurrentMonthYear } from "./skip-trace";
 import crypto from "crypto";
 import dns from "dns";
 import { getValidToken, revokeToken, checkTokenHealth } from "./tokenService";
+import { dispatchAlert, generateDeepLink, type AlertEventType } from "./pushAlertService";
 
 const INDUSTRY_PROMPTS: Record<string, { tone: string; vocabulary: string[]; focus: string }> = {
   "personal-injury": {
@@ -5638,6 +5639,9 @@ Rules:
   }));
 
   // ─── Sentinel Geofence Engine — Incoming Crash Feed ────────────────
+  const sentinelAlertDedup = new Map<string, number>();
+  setInterval(() => { const cutoff = Date.now() - 300_000; sentinelAlertDedup.forEach((t, k) => { if (t < cutoff) sentinelAlertDedup.delete(k); }); }, 60_000);
+
   app.post("/api/sentinel/incoming-crash", asyncHandler(async (req, res) => {
     const geolib = await import("geolib");
     const axiosLib = await import("axios");
@@ -5708,6 +5712,17 @@ Rules:
       link: "/sentinel",
       read: false,
     });
+    const alertKey = `sentinel-${crashId}`;
+    if (!sentinelAlertDedup.has(alertKey)) {
+      sentinelAlertDedup.set(alertKey, Date.now());
+      dispatchAlert(subAccountId, "incident", {
+        title: "Sentinel: Crash Detected",
+        body: `Crash ${crashId} detected ${distanceInMiles} mi away. Severity: ${severity || "unknown"}.`,
+        link: generateDeepLink("/sentinel"),
+        tag: `incident-${crashId}`,
+        urgency: "high",
+      }).catch(e => console.error("[PUSH-ALERT] sentinel crash dispatch failed:", e instanceof Error ? e.message : e));
+    }
 
     if (APEX_WEBHOOK_URL) {
       try {
@@ -5822,6 +5837,17 @@ Rules:
         link: "/sentinel",
         read: false,
       });
+      const alertKey2 = `sentinel-recv-${crashId}`;
+      if (!sentinelAlertDedup.has(alertKey2)) {
+        sentinelAlertDedup.set(alertKey2, Date.now());
+        dispatchAlert(subAccountId, "incident", {
+          title: "Sentinel: Crash Received",
+          body: `Crash ${crashId} — ${distanceMiles} mi away. Severity: ${severity}.`,
+          link: generateDeepLink("/sentinel"),
+          tag: `incident-${crashId}`,
+          urgency: "high",
+        }).catch(e => console.error("[PUSH-ALERT] sentinel recv dispatch failed:", e instanceof Error ? e.message : e));
+      }
     }
 
     const twilioSid = process.env.TWILIO_ACCOUNT_SID;
@@ -6027,6 +6053,12 @@ Rules:
         link: "/pipeline",
         read: false,
       });
+      dispatchAlert(SUB_ACCOUNT_ID, "new_lead", {
+        title: "Geofence Lead Captured",
+        body: `${firstName} ${lastName} intercepted at ${locationTag}`,
+        link: generateDeepLink("/pipeline"),
+        tag: `lead-geofence-${maid}`,
+      }).catch(e => console.error("[PUSH-ALERT] geofence lead dispatch failed:", e instanceof Error ? e.message : e));
 
       await storage.createSentinelIncident({
         subAccountId: SUB_ACCOUNT_ID,
@@ -7700,6 +7732,12 @@ Rules:
                 body: `${name}${email ? ` (${email})` : ""} submitted a lead form`,
                 link: "/meta-leads",
               }).catch(() => {});
+              dispatchAlert(subAccountId, "new_lead", {
+                title: "New Facebook Lead",
+                body: `${name}${email ? ` (${email})` : ""} submitted a lead form`,
+                link: generateDeepLink("/meta-leads"),
+                tag: `fb-lead-${Date.now()}`,
+              }).catch(e => console.error("[PUSH-ALERT] fb lead dispatch failed:", e instanceof Error ? e.message : e));
 
               const account = await storage.getSubAccount(subAccountId);
               if (account?.twilioNumber && getName("phone_number")) {
@@ -8064,6 +8102,93 @@ Rules:
   app.post("/api/notifications/:subAccountId/read-all", asyncHandler(async (req: Request, res: Response) => {
     await storage.markAllNotificationsRead(Number(req.params.subAccountId));
     res.json({ success: true });
+  }));
+
+  // ---- Push Subscriptions ----
+
+  app.post("/api/push-subscriptions", asyncHandler(async (req: Request, res: Response) => {
+    const { subAccountId, endpoint, p256dh, auth } = req.body;
+    if (!subAccountId || !endpoint || !p256dh || !auth) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const sub = await storage.createPushSubscription({ subAccountId, endpoint, p256dh, auth });
+    res.json(sub);
+  }));
+
+  app.delete("/api/push-subscriptions", asyncHandler(async (req: Request, res: Response) => {
+    const { subAccountId, endpoint } = req.body;
+    if (!subAccountId || !endpoint) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const deleted = await storage.deletePushSubscription(endpoint, subAccountId);
+    res.json({ success: deleted });
+  }));
+
+  app.get("/api/push-config", asyncHandler(async (_req: Request, res: Response) => {
+    const publicKey = process.env.VAPID_PUBLIC_KEY || "";
+    res.json({ publicKey });
+  }));
+
+  // ---- Notification Preferences ----
+
+  app.get("/api/notification-preferences/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
+    const subAccountId = Number(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const prefs = await storage.getNotificationPreferences(subAccountId);
+    if (!prefs) {
+      return res.json({
+        subAccountId,
+        newLeadPush: true, newLeadSms: false,
+        missedCallPush: true, missedCallSms: true,
+        paymentFailedPush: true, paymentFailedSms: true,
+        incidentPush: true, incidentSms: true,
+        nudgeHighPush: true, nudgeHighSms: false,
+        agentUrgentPush: true, agentUrgentSms: true,
+        campaignAlertPush: true, campaignAlertSms: false,
+        systemAlertPush: true, systemAlertSms: false,
+        smsAlertPhone: null,
+        quietHoursEnabled: false,
+        quietHoursStart: "22:00",
+        quietHoursEnd: "08:00",
+      });
+    }
+    res.json(prefs);
+  }));
+
+  const notificationPrefsSchema = z.object({
+    newLeadPush: z.boolean().optional(),
+    newLeadSms: z.boolean().optional(),
+    missedCallPush: z.boolean().optional(),
+    missedCallSms: z.boolean().optional(),
+    paymentFailedPush: z.boolean().optional(),
+    paymentFailedSms: z.boolean().optional(),
+    incidentPush: z.boolean().optional(),
+    incidentSms: z.boolean().optional(),
+    nudgeHighPush: z.boolean().optional(),
+    nudgeHighSms: z.boolean().optional(),
+    agentUrgentPush: z.boolean().optional(),
+    agentUrgentSms: z.boolean().optional(),
+    campaignAlertPush: z.boolean().optional(),
+    campaignAlertSms: z.boolean().optional(),
+    systemAlertPush: z.boolean().optional(),
+    systemAlertSms: z.boolean().optional(),
+    smsAlertPhone: z.string().nullable().optional(),
+    quietHoursEnabled: z.boolean().optional(),
+    quietHoursStart: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+    quietHoursEnd: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  });
+
+  app.put("/api/notification-preferences/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
+    const subAccountId = Number(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const parsed = notificationPrefsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid preference data", details: parsed.error.flatten() });
+    }
+    const prefs = await storage.upsertNotificationPreferences({ ...parsed.data, subAccountId });
+    res.json(prefs);
   }));
 
   // ---- Dashboard Metrics ----

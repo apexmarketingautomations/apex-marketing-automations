@@ -5,6 +5,7 @@ import type { AdvisoryInsight, NudgeConfig, ContextPacket } from "./cognitiveTyp
 import { generateInsights, adaptMessage } from "./advisoryEngine";
 import { recordNudgeResponse } from "./memoryEngine";
 import { publishEventAsync } from "../eventBus";
+import { dispatchAlert, generateDeepLink } from "../pushAlertService";
 
 const DEFAULT_CONFIG: NudgeConfig = {
   maxPerDay: 3,
@@ -84,6 +85,18 @@ export async function generateNudges(subAccountId: number, context: ContextPacke
     publishEventAsync("operator.nudges.generated", {
       subAccountId, count: created.length, types: created.map(c => c.type),
     }, "nudge-system");
+
+    for (const nudge of created) {
+      if (nudge.priority >= 70) {
+        dispatchAlert(subAccountId, "nudge_high", {
+          title: nudge.title,
+          body: nudge.message.substring(0, 200),
+          link: generateDeepLink("/dashboard"),
+          tag: `nudge-${nudge.id}`,
+          urgency: nudge.priority >= 90 ? "high" : "normal",
+        }).catch(err => console.error("[NUDGE] Push alert failed:", err.message));
+      }
+    }
   }
 
   return created;
