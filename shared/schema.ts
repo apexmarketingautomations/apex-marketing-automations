@@ -1371,6 +1371,48 @@ export const insertIndustryBenchmarkSchema = createInsertSchema(industryBenchmar
 export type InsertIndustryBenchmark = z.infer<typeof insertIndustryBenchmarkSchema>;
 export type IndustryBenchmark = typeof industryBenchmarks.$inferSelect;
 
+// ---- Workflow Step Metrics ----
+
+export const workflowStepMetrics = pgTable("workflow_step_metrics", {
+  id: serial("id").primaryKey(),
+  workflowId: integer("workflow_id").references(() => workflows.id).notNull(),
+  stepIndex: integer("step_index").notNull(),
+  stepType: text("step_type").notNull(),
+  executionCount: integer("execution_count").default(0).notNull(),
+  successCount: integer("success_count").default(0).notNull(),
+  failureCount: integer("failure_count").default(0).notNull(),
+  responseCount: integer("response_count").default(0).notNull(),
+  totalDurationMs: integer("total_duration_ms").default(0).notNull(),
+  avgTimeToNextMs: integer("avg_time_to_next_ms").default(0),
+  lastExecutedAt: timestamp("last_executed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertWorkflowStepMetricSchema = createInsertSchema(workflowStepMetrics).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertWorkflowStepMetric = z.infer<typeof insertWorkflowStepMetricSchema>;
+export type WorkflowStepMetric = typeof workflowStepMetrics.$inferSelect;
+
+// ---- Workflow Optimization Logs ----
+
+export const workflowOptimizationLogs = pgTable("workflow_optimization_logs", {
+  id: serial("id").primaryKey(),
+  workflowId: integer("workflow_id").references(() => workflows.id).notNull(),
+  stepIndex: integer("step_index"),
+  changeType: text("change_type").notNull(),
+  previousValue: json("previous_value"),
+  newValue: json("new_value"),
+  reason: text("reason").notNull(),
+  appliedBy: text("applied_by").notNull().default("agent"),
+  reverted: boolean("reverted").default(false),
+  revertedAt: timestamp("reverted_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertWorkflowOptimizationLogSchema = createInsertSchema(workflowOptimizationLogs).omit({ id: true, createdAt: true });
+export type InsertWorkflowOptimizationLog = z.infer<typeof insertWorkflowOptimizationLogSchema>;
+export type WorkflowOptimizationLog = typeof workflowOptimizationLogs.$inferSelect;
+
 export const PLAN_LIMITS: Record<string, Record<string, number>> = {
   starter: {
     messages_per_month: 500,

@@ -168,4 +168,30 @@ export const api = {
     const res = await apiRequest("POST", "/api/v1/orchestrate/ai", { command, subAccountId, autoExecute });
     return res.json();
   },
+
+  getWorkflowAnalytics: async (workflowId: number, includeAi = false) => {
+    const url = `/api/workflows/${workflowId}/analytics${includeAi ? '?includeAi=true' : ''}`;
+    const res = await apiRequest("GET", url);
+    return res.json();
+  },
+
+  recordStepMetric: async (workflowId: number, data: { stepIndex: number; stepType: string; success: boolean; durationMs?: number; responseReceived?: boolean }) => {
+    const res = await apiRequest("POST", `/api/workflows/${workflowId}/step-metrics`, data);
+    return res.json();
+  },
+
+  getOptimizationLog: async (workflowId: number) => {
+    const res = await apiRequest("GET", `/api/workflows/${workflowId}/optimization-log`);
+    return res.json();
+  },
+
+  runAutoOptimize: async (workflowId: number) => {
+    const res = await apiRequest("POST", `/api/workflows/${workflowId}/auto-optimize`);
+    return res.json();
+  },
+
+  revertOptimization: async (workflowId: number, logId: number) => {
+    const res = await apiRequest("POST", `/api/workflows/${workflowId}/optimization-log/${logId}/revert`);
+    return res.json();
+  },
 };

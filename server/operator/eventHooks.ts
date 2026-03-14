@@ -14,6 +14,20 @@ export function initOperatorEventHooks(): void {
       subAccountId: event.payload.subAccountId,
     }, "operator-monitor");
 
+    if (event.payload.workflowId && typeof event.payload.stepIndex === 'number') {
+      try {
+        const { recordStepExecution } = await import("./workflowAnalytics");
+        await recordStepExecution(
+          event.payload.workflowId,
+          event.payload.stepIndex,
+          event.payload.stepType || 'unknown',
+          false,
+          event.payload.durationMs || 0,
+          false,
+        );
+      } catch {}
+    }
+
     if (event.payload.subAccountId) {
       const failures = (await import("./memory")).getMemory(event.payload.subAccountId, "recent_workflow_failures") || [];
       failures.push({ workflowId: event.payload.workflowId, error: event.payload.error, at: new Date().toISOString() });

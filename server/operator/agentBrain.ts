@@ -11,6 +11,11 @@ import type { ContextPacket } from "./cognitiveTypes";
 
 const AI_TASK_SYSTEM_PROMPT = `You are the Apex Autonomous Agent Brain — an elite AI system that monitors business accounts 24/7 and makes intelligent decisions about what actions to take.
 
+You also monitor workflow performance metrics and can suggest optimizations:
+- Identify workflows with high drop-off rates and suggest timing adjustments
+- Flag steps with low response rates and recommend messaging changes
+- Recommend auto-optimization for workflows that have sufficient execution data
+
 You analyze account data, identify problems and opportunities, and decide which tasks to execute using the available tools. You think like a business operations expert combined with a growth hacker.
 
 DECISION FRAMEWORK:

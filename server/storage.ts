@@ -67,10 +67,13 @@ import {
   type SkipTraceUsage, type InsertSkipTraceUsage,
   pushSubscriptions, notificationPreferences,
   abExperiments, abEvents,
+  workflowStepMetrics, workflowOptimizationLogs,
   type PushSubscription, type InsertPushSubscription,
   type NotificationPreference, type InsertNotificationPreference,
   type AbExperiment, type InsertAbExperiment,
   type AbEvent, type InsertAbEvent,
+  type WorkflowStepMetric, type InsertWorkflowStepMetric,
+  type WorkflowOptimizationLog, type InsertWorkflowOptimizationLog,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -358,6 +361,14 @@ export interface IStorage {
 
   createAbEvent(data: InsertAbEvent): Promise<AbEvent>;
   getAbEvents(experimentId: number): Promise<AbEvent[]>;
+
+  getWorkflowStepMetrics(workflowId: number): Promise<WorkflowStepMetric[]>;
+  upsertWorkflowStepMetric(data: InsertWorkflowStepMetric): Promise<WorkflowStepMetric>;
+  incrementStepMetric(workflowId: number, stepIndex: number, field: 'executionCount' | 'successCount' | 'failureCount' | 'responseCount', amount?: number): Promise<void>;
+
+  getWorkflowOptimizationLogs(workflowId: number): Promise<WorkflowOptimizationLog[]>;
+  createWorkflowOptimizationLog(data: InsertWorkflowOptimizationLog): Promise<WorkflowOptimizationLog>;
+  revertOptimization(logId: number): Promise<WorkflowOptimizationLog | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1574,6 +1585,83 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(abEvents)
       .where(eq(abEvents.experimentId, experimentId))
       .orderBy(desc(abEvents.createdAt));
+  }
+
+  async getWorkflowStepMetrics(workflowId: number) {
+    return db.select().from(workflowStepMetrics)
+      .where(eq(workflowStepMetrics.workflowId, workflowId))
+      .orderBy(workflowStepMetrics.stepIndex);
+  }
+
+  async upsertWorkflowStepMetric(data: InsertWorkflowStepMetric) {
+    const existing = await db.select().from(workflowStepMetrics)
+      .where(and(
+        eq(workflowStepMetrics.workflowId, data.workflowId),
+        eq(workflowStepMetrics.stepIndex, data.stepIndex),
+      ))
+      .limit(1);
+
+    if (existing.length > 0) {
+      const [row] = await db.update(workflowStepMetrics)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(workflowStepMetrics.id, existing[0].id))
+        .returning();
+      return row;
+    }
+    const [row] = await db.insert(workflowStepMetrics).values(data).returning();
+    return row;
+  }
+
+  async incrementStepMetric(workflowId: number, stepIndex: number, field: 'executionCount' | 'successCount' | 'failureCount' | 'responseCount', amount = 1) {
+    const existing = await db.select().from(workflowStepMetrics)
+      .where(and(
+        eq(workflowStepMetrics.workflowId, workflowId),
+        eq(workflowStepMetrics.stepIndex, stepIndex),
+      ))
+      .limit(1);
+
+    if (existing.length > 0) {
+      const col = workflowStepMetrics[field];
+      await db.update(workflowStepMetrics)
+        .set({
+          [field]: sql`${col} + ${amount}`,
+          lastExecutedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(workflowStepMetrics.id, existing[0].id));
+    } else {
+      await db.insert(workflowStepMetrics).values({
+        workflowId,
+        stepIndex,
+        stepType: 'unknown',
+        [field]: amount,
+        executionCount: field === 'executionCount' ? amount : 0,
+        successCount: field === 'successCount' ? amount : 0,
+        failureCount: field === 'failureCount' ? amount : 0,
+        responseCount: field === 'responseCount' ? amount : 0,
+        totalDurationMs: 0,
+        lastExecutedAt: new Date(),
+      });
+    }
+  }
+
+  async getWorkflowOptimizationLogs(workflowId: number) {
+    return db.select().from(workflowOptimizationLogs)
+      .where(eq(workflowOptimizationLogs.workflowId, workflowId))
+      .orderBy(desc(workflowOptimizationLogs.createdAt));
+  }
+
+  async createWorkflowOptimizationLog(data: InsertWorkflowOptimizationLog) {
+    const [row] = await db.insert(workflowOptimizationLogs).values(data).returning();
+    return row;
+  }
+
+  async revertOptimization(logId: number) {
+    const [row] = await db.update(workflowOptimizationLogs)
+      .set({ reverted: true, revertedAt: new Date() })
+      .where(eq(workflowOptimizationLogs.id, logId))
+      .returning();
+    return row;
   }
 }
 

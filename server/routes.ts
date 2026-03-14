@@ -978,6 +978,98 @@ ${sections.map(renderSection).join('\n')}
     res.json(wf);
   }));
 
+  // ---- Workflow Analytics & Self-Optimization ----
+
+  app.get("/api/workflows/:id/analytics", asyncHandler(async (req: Request, res: Response) => {
+    const id = parseIntParam(req.params.id, "id");
+    const wf = await storage.getWorkflow(id);
+    if (!wf) return res.status(404).json({ error: "Not found" });
+    if (wf.subAccountId && !(await verifyAccountOwnership(req, res, wf.subAccountId))) return;
+
+    const { getWorkflowFunnelAnalytics, generateAISuggestions } = await import("./operator/workflowAnalytics");
+    const analytics = await getWorkflowFunnelAnalytics(id);
+    if (!analytics) return res.status(404).json({ error: "Analytics not available" });
+
+    let aiSuggestions: any[] = [];
+    if (req.query.includeAi === "true") {
+      aiSuggestions = await generateAISuggestions(id);
+    }
+
+    res.json({ ...analytics, aiSuggestions });
+  }));
+
+  app.post("/api/workflows/:id/step-metrics", asyncHandler(async (req: Request, res: Response) => {
+    const id = parseIntParam(req.params.id, "id");
+    const wf = await storage.getWorkflow(id);
+    if (!wf) return res.status(404).json({ error: "Not found" });
+    if (wf.subAccountId && !(await verifyAccountOwnership(req, res, wf.subAccountId))) return;
+
+    const parsed = z.object({
+      stepIndex: z.number().min(0),
+      stepType: z.string().min(1),
+      success: z.boolean(),
+      durationMs: z.number().min(0).optional().default(0),
+      responseReceived: z.boolean().optional().default(false),
+    }).safeParse(req.body);
+
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const { recordStepExecution } = await import("./operator/workflowAnalytics");
+    await recordStepExecution(id, parsed.data.stepIndex, parsed.data.stepType, parsed.data.success, parsed.data.durationMs, parsed.data.responseReceived);
+
+    res.json({ recorded: true });
+  }));
+
+  app.get("/api/workflows/:id/optimization-log", asyncHandler(async (req: Request, res: Response) => {
+    const id = parseIntParam(req.params.id, "id");
+    const wf = await storage.getWorkflow(id);
+    if (!wf) return res.status(404).json({ error: "Not found" });
+    if (wf.subAccountId && !(await verifyAccountOwnership(req, res, wf.subAccountId))) return;
+
+    const logs = await storage.getWorkflowOptimizationLogs(id);
+    res.json(logs);
+  }));
+
+  app.post("/api/workflows/:id/auto-optimize", asyncHandler(async (req: Request, res: Response) => {
+    const id = parseIntParam(req.params.id, "id");
+    const wf = await storage.getWorkflow(id);
+    if (!wf) return res.status(404).json({ error: "Not found" });
+    if (wf.subAccountId && !(await verifyAccountOwnership(req, res, wf.subAccountId))) return;
+
+    const { applyAutoOptimization } = await import("./operator/workflowAnalytics");
+    const changes = await applyAutoOptimization(id);
+
+    res.json({
+      optimized: changes.length > 0,
+      changesApplied: changes.length,
+      changes,
+    });
+  }));
+
+  app.post("/api/workflows/:id/optimization-log/:logId/revert", asyncHandler(async (req: Request, res: Response) => {
+    const workflowId = parseIntParam(req.params.id, "id");
+    const logId = parseIntParam(req.params.logId, "logId");
+    const wf = await storage.getWorkflow(workflowId);
+    if (!wf) return res.status(404).json({ error: "Not found" });
+    if (wf.subAccountId && !(await verifyAccountOwnership(req, res, wf.subAccountId))) return;
+
+    const logs = await storage.getWorkflowOptimizationLogs(workflowId);
+    const targetLog = logs.find(l => l.id === logId);
+    if (!targetLog) return res.status(404).json({ error: "Optimization log not found" });
+    if (targetLog.reverted) return res.status(400).json({ error: "Already reverted" });
+
+    if (targetLog.changeType === 'timing_adjustment' && targetLog.previousValue && targetLog.stepIndex !== null) {
+      const steps = Array.isArray(wf.steps) ? [...(wf.steps as any[])] : [];
+      if (steps[targetLog.stepIndex]) {
+        steps[targetLog.stepIndex].params = { ...steps[targetLog.stepIndex].params, ...(targetLog.previousValue as any) };
+        await storage.updateWorkflow(workflowId, { steps });
+      }
+    }
+
+    const reverted = await storage.revertOptimization(logId);
+    res.json({ reverted: true, log: reverted });
+  }));
+
   // ---- Workflow AI Generation ----
   const WORKFLOW_AI_SYSTEM_PROMPT = `You are a workflow automation architect. Given a plain-English description, generate a structured workflow.
 

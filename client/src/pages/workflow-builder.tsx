@@ -1,6 +1,6 @@
 import { PlanGate } from "@/components/plan-gate";
 import { useState, useCallback } from "react";
-import { Clock, MessageSquare, GitFork, MoreHorizontal, PlayCircle, CheckCircle2, AlertCircle, AlertTriangle, Sparkles, Loader2, Code2, Trash2, BookOpen, Target, Mail, UserPlus, TrendingUp, Bell, Globe, Zap, Terminal, Cpu, Brain, ChevronDown, Eye, Power, Archive, ShoppingCart, Volume2, MessageCircle } from "lucide-react";
+import { Clock, MessageSquare, GitFork, MoreHorizontal, PlayCircle, CheckCircle2, AlertCircle, AlertTriangle, Sparkles, Loader2, Code2, Trash2, BookOpen, Target, Mail, UserPlus, TrendingUp, Bell, Globe, Zap, Terminal, Cpu, Brain, ChevronDown, Eye, Power, Archive, ShoppingCart, Volume2, MessageCircle, BarChart3, Undo2, Wand2, ArrowDown, Activity } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { WORKFLOW_STEPS } from "@/components/tutorial-steps";
 import { motion, AnimatePresence } from "framer-motion";
@@ -711,6 +711,292 @@ function LiveAutomationsPanel() {
   );
 }
 
+function WorkflowAnalyticsPanel({ workflowId, workflowName }: { workflowId?: number; workflowName?: string }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: analytics, isLoading: analyticsLoading } = useQuery({
+    queryKey: ["/api/workflows/analytics", workflowId],
+    queryFn: () => workflowId ? api.getWorkflowAnalytics(workflowId, true) : null,
+    enabled: !!workflowId,
+  });
+
+  const { data: optimizationLogs = [], isLoading: logsLoading } = useQuery({
+    queryKey: ["/api/workflows/optimization-log", workflowId],
+    queryFn: () => workflowId ? api.getOptimizationLog(workflowId) : [],
+    enabled: !!workflowId,
+  });
+
+  const optimizeMutation = useMutation({
+    mutationFn: () => api.runAutoOptimize(workflowId!),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/workflows/analytics", workflowId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/workflows/optimization-log", workflowId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/workflows"] });
+      toast({
+        title: data.changesApplied > 0 ? "Optimizations applied" : "No optimizations needed",
+        description: data.changesApplied > 0
+          ? `${data.changesApplied} change(s) applied to improve workflow performance.`
+          : "Workflow is performing well or needs more execution data.",
+      });
+    },
+    onError: (err: any) => {
+      toast({ variant: "destructive", title: "Optimization failed", description: err.message });
+    },
+  });
+
+  const revertMutation = useMutation({
+    mutationFn: (logId: number) => api.revertOptimization(workflowId!, logId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/workflows/optimization-log", workflowId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/workflows"] });
+      toast({ title: "Change reverted" });
+    },
+  });
+
+  if (!workflowId) {
+    return (
+      <div className="text-center py-12 text-muted-foreground border border-dashed border-white/10 rounded-xl" data-testid="analytics-no-workflow">
+        <BarChart3 className="h-10 w-10 mx-auto mb-3 opacity-20" />
+        <p className="text-sm">No workflow selected.</p>
+        <p className="text-xs mt-1">Create or select a workflow to see analytics.</p>
+      </div>
+    );
+  }
+
+  if (analyticsLoading) {
+    return (
+      <div className="flex justify-center p-8">
+        <Loader2 className="h-6 w-6 animate-spin text-white/30" />
+      </div>
+    );
+  }
+
+  const funnelSteps = analytics?.steps || [];
+  const maxExec = Math.max(1, ...funnelSteps.map((s: any) => s.executionCount));
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-foreground flex items-center gap-2" data-testid="text-analytics-title">
+            <BarChart3 className="h-5 w-5 text-orange-400" />
+            Workflow Analytics
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            {workflowName || "Workflow"} — {analytics?.totalExecutions || 0} total executions
+          </p>
+        </div>
+        <Button
+          data-testid="button-auto-optimize"
+          onClick={() => optimizeMutation.mutate()}
+          disabled={optimizeMutation.isPending || (analytics?.totalExecutions || 0) < 10}
+          className="bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white border-0"
+          size="sm"
+        >
+          {optimizeMutation.isPending ? (
+            <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Optimizing...</>
+          ) : (
+            <><Wand2 className="mr-1.5 h-3.5 w-3.5" />Auto-Optimize</>
+          )}
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <Card className="border-border">
+          <CardContent className="p-4 text-center">
+            <p className="text-2xl font-bold text-foreground" data-testid="text-total-executions">{analytics?.totalExecutions || 0}</p>
+            <p className="text-xs text-muted-foreground">Total Executions</p>
+          </CardContent>
+        </Card>
+        <Card className="border-border">
+          <CardContent className="p-4 text-center">
+            <p className="text-2xl font-bold text-foreground" data-testid="text-completion-rate">{analytics?.overallCompletionRate || 0}%</p>
+            <p className="text-xs text-muted-foreground">Completion Rate</p>
+          </CardContent>
+        </Card>
+        <Card className="border-border">
+          <CardContent className="p-4 text-center">
+            <p className="text-2xl font-bold text-foreground" data-testid="text-bottleneck-count">{analytics?.bottleneckSteps?.length || 0}</p>
+            <p className="text-xs text-muted-foreground">Bottlenecks</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="border-border">
+        <CardContent className="p-5">
+          <h3 className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
+            <Activity className="h-4 w-4 text-orange-400" />
+            Step Funnel
+          </h3>
+          {funnelSteps.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4" data-testid="text-no-metrics">No execution data yet. Run the workflow to see analytics.</p>
+          ) : (
+            <div className="space-y-3" data-testid="funnel-steps">
+              {funnelSteps.map((step: any, i: number) => {
+                const barWidth = maxExec > 0 ? Math.max(5, (step.executionCount / maxExec) * 100) : 5;
+                return (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.1 }}
+                    className="space-y-1"
+                    data-testid={`funnel-step-${i}`}
+                  >
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-muted-foreground">Step {i + 1}</span>
+                        <StepIcon type={step.stepType} />
+                        <span className="font-medium text-foreground">{step.stepType}</span>
+                        {step.isBottleneck && (
+                          <Badge variant="outline" className="text-[8px] border-red-500/30 text-red-400">BOTTLENECK</Badge>
+                        )}
+                      </div>
+                      <span className="text-muted-foreground">{step.executionCount} exec</span>
+                    </div>
+                    <div className="relative h-7 rounded-md bg-secondary/30 overflow-hidden">
+                      <motion.div
+                        className={`absolute inset-y-0 left-0 rounded-md ${step.isBottleneck ? 'bg-gradient-to-r from-red-500/60 to-red-400/40' : 'bg-gradient-to-r from-orange-500/60 to-amber-400/40'}`}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${barWidth}%` }}
+                        transition={{ duration: 0.6, delay: i * 0.1 }}
+                      />
+                      <div className="absolute inset-0 flex items-center justify-between px-3 text-[10px]">
+                        <span className="text-foreground/70 font-medium">
+                          {step.successRate}% success
+                          {step.responseRate > 0 && ` | ${step.responseRate}% response`}
+                        </span>
+                        {step.dropOffRate > 0 && i < funnelSteps.length - 1 && (
+                          <span className="text-red-400 flex items-center gap-0.5">
+                            <ArrowDown className="h-2.5 w-2.5" />{step.dropOffRate}% drop-off
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {((analytics?.suggestions && analytics.suggestions.length > 0) || (analytics?.aiSuggestions && analytics.aiSuggestions.length > 0)) && (
+        <Card className="border-border">
+          <CardContent className="p-5">
+            <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-amber-400" />
+              Optimization Suggestions
+            </h3>
+            <div className="space-y-2" data-testid="optimization-suggestions">
+              {(analytics.suggestions || []).map((s: any, i: number) => (
+                <div
+                  key={`rule-${i}`}
+                  className={`p-3 rounded-lg border ${
+                    s.priority >= 85 ? 'border-red-500/20 bg-red-500/5' :
+                    s.priority >= 70 ? 'border-amber-500/20 bg-amber-500/5' :
+                    'border-white/10 bg-white/5'
+                  }`}
+                  data-testid={`suggestion-${i}`}
+                >
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className={`h-3.5 w-3.5 mt-0.5 shrink-0 ${
+                      s.priority >= 85 ? 'text-red-400' : s.priority >= 70 ? 'text-amber-400' : 'text-white/40'
+                    }`} />
+                    <div>
+                      <p className="text-xs font-medium text-foreground">{s.issue}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{s.suggestion}</p>
+                      <Badge variant="outline" className="text-[8px] mt-1 border-white/10 text-muted-foreground">{s.category}</Badge>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {(analytics.aiSuggestions || []).map((s: any, i: number) => (
+                <div
+                  key={`ai-${i}`}
+                  className="p-3 rounded-lg border border-violet-500/20 bg-violet-500/5"
+                  data-testid={`ai-suggestion-${i}`}
+                >
+                  <div className="flex items-start gap-2">
+                    <Brain className="h-3.5 w-3.5 mt-0.5 shrink-0 text-violet-400" />
+                    <div>
+                      <p className="text-xs font-medium text-foreground">{s.issue || s.suggestion}</p>
+                      {s.issue && <p className="text-[11px] text-muted-foreground mt-0.5">{s.suggestion}</p>}
+                      <Badge variant="outline" className="text-[8px] mt-1 border-violet-500/20 text-violet-400">AI Insight</Badge>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card className="border-border">
+        <CardContent className="p-5">
+          <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
+            <Wand2 className="h-4 w-4 text-violet-400" />
+            Optimization Change Log
+          </h3>
+          {logsLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="h-4 w-4 animate-spin text-white/30" /></div>
+          ) : optimizationLogs.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4" data-testid="text-no-optimization-logs">
+              No optimization changes yet. Use Auto-Optimize to let the agent improve your workflow.
+            </p>
+          ) : (
+            <div className="space-y-2" data-testid="optimization-logs">
+              {optimizationLogs.map((log: any) => (
+                <div
+                  key={log.id}
+                  className={`p-3 rounded-lg border ${log.reverted ? 'border-white/5 bg-white/2 opacity-60' : 'border-violet-500/20 bg-violet-500/5'}`}
+                  data-testid={`optimization-log-${log.id}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-[8px] border-violet-500/30 text-violet-400">{log.changeType}</Badge>
+                        {log.stepIndex !== null && (
+                          <span className="text-[10px] text-muted-foreground">Step {log.stepIndex + 1}</span>
+                        )}
+                        {log.reverted && (
+                          <Badge variant="outline" className="text-[8px] border-white/20 text-white/40">REVERTED</Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-foreground mt-1">{log.reason}</p>
+                      {log.previousValue && log.newValue && (
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          Changed: {JSON.stringify(log.previousValue)} &rarr; {JSON.stringify(log.newValue)}
+                        </p>
+                      )}
+                      <p className="text-[9px] text-muted-foreground mt-1">
+                        {new Date(log.createdAt).toLocaleString()} by {log.appliedBy}
+                      </p>
+                    </div>
+                    {!log.reverted && log.changeType === 'timing_adjustment' && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs text-white/40 hover:text-red-400 shrink-0"
+                        onClick={() => revertMutation.mutate(log.id)}
+                        disabled={revertMutation.isPending}
+                        data-testid={`button-revert-${log.id}`}
+                      >
+                        <Undo2 className="h-3 w-3 mr-1" /> Revert
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function WorkflowBuilderInner() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -875,6 +1161,9 @@ function WorkflowBuilderInner() {
           </TabsTrigger>
           <TabsTrigger value="live" className="data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400 gap-1.5" data-testid="tab-live">
             <Zap className="h-3.5 w-3.5" /> Live Automations
+          </TabsTrigger>
+          <TabsTrigger value="analytics" className="data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-400 gap-1.5" data-testid="tab-analytics">
+            <BarChart3 className="h-3.5 w-3.5" /> Analytics
           </TabsTrigger>
         </TabsList>
 
@@ -1209,6 +1498,12 @@ function WorkflowBuilderInner() {
         <TabsContent value="live">
           <div className="max-w-3xl mx-auto">
             <LiveAutomationsPanel />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="analytics">
+          <div className="max-w-4xl mx-auto">
+            <WorkflowAnalyticsPanel workflowId={currentWorkflow?.id} workflowName={currentWorkflow?.name} />
           </div>
         </TabsContent>
       </Tabs>
