@@ -81,6 +81,8 @@ const PhotographyLanding = lazy(() => import("@/pages/photography-landing"));
 const WeddingLanding = lazy(() => import("@/pages/wedding-landing"));
 const NicheDirectory = lazy(() => import("@/pages/niche-directory"));
 const LoginPage = lazy(() => import("@/pages/login"));
+const PrivacyPage = lazy(() => import("@/pages/privacy"));
+const TermsPage = lazy(() => import("@/pages/terms"));
 const LawyersFunnel = lazy(() => import("@/pages/lawyers-funnel"));
 const RestaurantsFunnel = lazy(() => import("@/pages/restaurants-funnel"));
 const DentistsFunnel = lazy(() => import("@/pages/dentists-funnel"));
@@ -141,6 +143,8 @@ function Router() {
         <Route path="/sentinel/:token" component={ExternalSentinelPage} />
         <Route path="/review/:subAccountId" component={ReviewBuffer} />
         <Route path="/login" component={LoginPage} />
+        <Route path="/privacy" component={PrivacyPage} />
+        <Route path="/terms" component={TermsPage} />
         <Route path="/demo" component={NexusDemo} />
         <Route path="/pricing" component={Pricing} />
         <Route path="/gym" component={GymLanding} />

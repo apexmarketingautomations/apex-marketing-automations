@@ -590,13 +590,17 @@ export default function LandingPage() {
           </div>
           <div className="border-t border-white/5 pt-6 flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-xs text-slate-600">&copy; {new Date().getFullYear()} Apex Marketing Automations. All rights reserved.</p>
-            <a
-              href="/login"
-              className="text-indigo-400 hover:text-indigo-300 text-sm font-medium transition-colors"
-              data-testid="link-footer-login"
-            >
-              Sign In &rarr;
-            </a>
+            <div className="flex items-center gap-4">
+              <a href="/privacy" className="text-slate-500 hover:text-slate-300 text-xs transition-colors" data-testid="link-footer-privacy">Privacy Policy</a>
+              <a href="/terms" className="text-slate-500 hover:text-slate-300 text-xs transition-colors" data-testid="link-footer-terms">Terms of Service</a>
+              <a
+                href="/login"
+                className="text-indigo-400 hover:text-indigo-300 text-sm font-medium transition-colors"
+                data-testid="link-footer-login"
+              >
+                Sign In &rarr;
+              </a>
+            </div>
           </div>
         </div>
       </footer>
