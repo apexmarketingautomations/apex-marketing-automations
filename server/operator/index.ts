@@ -11,6 +11,7 @@ import { publishEventAsync } from "../eventBus";
 
 export function initOperator(): void {
   initOperatorEventHooks();
+  import("./cognitiveLayer").then(m => m.initCognitiveLayer()).catch(() => {});
   console.log(`[OPERATOR] Apex Operator initialized — ${getToolManifest().length} tools available`);
 }
 

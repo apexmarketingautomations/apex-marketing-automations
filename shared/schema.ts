@@ -1135,6 +1135,43 @@ export const insertFeatureFlagSchema = createInsertSchema(featureFlags).omit({ i
 export type InsertFeatureFlag = z.infer<typeof insertFeatureFlagSchema>;
 export type FeatureFlag = typeof featureFlags.$inferSelect;
 
+export const operatorMemories = pgTable("operator_memories", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  memoryType: text("memory_type").notNull(),
+  key: text("key").notNull(),
+  value: json("value").notNull(),
+  confidence: real("confidence").default(0.5),
+  source: text("source"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at"),
+  version: integer("version").default(1),
+});
+
+export const insertOperatorMemorySchema = createInsertSchema(operatorMemories).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertOperatorMemory = z.infer<typeof insertOperatorMemorySchema>;
+export type OperatorMemoryRecord = typeof operatorMemories.$inferSelect;
+
+export const operatorNudges = pgTable("operator_nudges", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  nudgeType: text("nudge_type").notNull(),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  priority: integer("priority").default(0),
+  status: text("status").default("pending").notNull(),
+  metadata: json("metadata"),
+  dismissedAt: timestamp("dismissed_at"),
+  actedOnAt: timestamp("acted_on_at"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertOperatorNudgeSchema = createInsertSchema(operatorNudges).omit({ id: true, createdAt: true });
+export type InsertOperatorNudge = z.infer<typeof insertOperatorNudgeSchema>;
+export type OperatorNudge = typeof operatorNudges.$inferSelect;
+
 export const PLAN_LIMITS: Record<string, Record<string, number>> = {
   starter: {
     messages_per_month: 500,

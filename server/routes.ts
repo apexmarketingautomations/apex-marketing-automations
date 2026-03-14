@@ -11931,6 +11931,104 @@ Return ONLY valid JSON.` },
     res.json(getSessionContext(subAccountId));
   }));
 
+  // ──── COGNITIVE INTELLIGENCE LAYER ────
+  app.get("/api/operator/cognitive/context/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { getCognitiveContext } = await import("./operator/cognitiveLayer");
+    const context = await getCognitiveContext(subAccountId);
+    res.json(context);
+  }));
+
+  app.get("/api/operator/cognitive/insights/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { getCognitiveInsights } = await import("./operator/cognitiveLayer");
+    const insights = await getCognitiveInsights(subAccountId);
+    res.json({ insights, timestamp: new Date().toISOString() });
+  }));
+
+  app.get("/api/operator/cognitive/trends/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { runTrendDetection } = await import("./operator/cognitiveLayer");
+    const trends = await runTrendDetection(subAccountId);
+    res.json({ trends, timestamp: new Date().toISOString() });
+  }));
+
+  app.get("/api/operator/cognitive/nudges/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { getCognitiveNudges } = await import("./operator/cognitiveLayer");
+    const nudges = await getCognitiveNudges(subAccountId);
+    res.json({ nudges });
+  }));
+
+  app.get("/api/operator/cognitive/nudges/:subAccountId/pending", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { getPendingNudges } = await import("./operator/cognitiveLayer");
+    const nudges = await getPendingNudges(subAccountId);
+    res.json({ nudges });
+  }));
+
+  app.post("/api/operator/cognitive/nudges/:nudgeId/dismiss", asyncHandler(async (req, res) => {
+    const nudgeId = parseInt(req.params.nudgeId);
+    const subAccountId = parseInt(req.body.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { handleNudgeDismiss } = await import("./operator/cognitiveLayer");
+    const success = await handleNudgeDismiss(nudgeId, subAccountId);
+    if (!success) return res.status(400).json({ error: "Failed to dismiss nudge" });
+    res.json({ success: true });
+  }));
+
+  app.post("/api/operator/cognitive/nudges/:nudgeId/act", asyncHandler(async (req, res) => {
+    const nudgeId = parseInt(req.params.nudgeId);
+    const subAccountId = parseInt(req.body.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { handleNudgeAction } = await import("./operator/cognitiveLayer");
+    const success = await handleNudgeAction(nudgeId, subAccountId);
+    if (!success) return res.status(400).json({ error: "Failed to act on nudge" });
+    res.json({ success: true });
+  }));
+
+  app.get("/api/operator/cognitive/nudges/:subAccountId/history", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { getCognitiveNudgeHistory } = await import("./operator/cognitiveLayer");
+    const history = await getCognitiveNudgeHistory(subAccountId);
+    res.json({ history });
+  }));
+
+  app.get("/api/operator/cognitive/industry/:industry", asyncHandler(async (req, res) => {
+    const { getIndustryInfo } = await import("./operator/cognitiveLayer");
+    const knowledge = await getIndustryInfo(req.params.industry);
+    res.json(knowledge);
+  }));
+
+  app.get("/api/operator/cognitive/industries", asyncHandler(async (_req, res) => {
+    const { listIndustries } = await import("./operator/cognitiveLayer");
+    const industries = await listIndustries();
+    res.json({ industries });
+  }));
+
+  app.post("/api/operator/cognitive/track", asyncHandler(async (req, res) => {
+    const { subAccountId, action, value } = req.body;
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { trackUserAction } = await import("./operator/cognitiveLayer");
+    await trackUserAction(subAccountId, action, value);
+    res.json({ success: true });
+  }));
+
   // ──── EVENT BUS & JOB QUEUE (admin only) ────
   app.get("/api/admin/event-bus/stats", requireAdmin, asyncHandler(async (_req, res) => {
     res.json(eventBus.getStats());

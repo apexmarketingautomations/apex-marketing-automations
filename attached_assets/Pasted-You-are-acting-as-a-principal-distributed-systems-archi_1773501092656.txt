@@ -1,0 +1,329 @@
+You are acting as a **principal distributed-systems architect and AI systems engineer** responsible for extending the Apex Marketing Automations platform.
+
+Your task is to design and implement a **Cognitive Intelligence Layer** for the existing Apex Operator.
+
+IMPORTANT CONSTRAINTS
+
+Do NOT rewrite or destabilize the existing platform.
+
+The system already contains:
+
+Event Bus
+Workflow Engine
+CRM Core
+Messaging Engine
+Integrations Layer
+Sentinel
+Worker Queue
+Telemetry
+Template Engine
+Operator Tool Registry
+
+Your task is to **augment these systems** by introducing a **memory and advisory brain** that allows the Apex Operator to behave like a high-level business advisor while remaining safe, modular, and production-grade.
+
+The new system must integrate cleanly with the existing **event-driven architecture**.
+
+---
+
+CORE OBJECTIVE
+
+Transform the Apex Operator from a reactive automation assistant into an **Adaptive Business Intelligence Advisor** that:
+
+• learns the user's business
+• learns how the user behaves and responds
+• tracks system performance patterns
+• understands industry trends
+• suggests improvements intelligently
+• nudges users toward better decisions without being intrusive
+
+The operator should feel like a **trusted strategic partner**, not a pushy salesperson.
+
+---
+
+SYSTEM COMPONENTS TO DESIGN
+
+You will implement the following layers.
+
+---
+
+1. MEMORY ENGINE
+
+Create a persistent multi-layer memory system.
+
+Memory types:
+
+SESSION MEMORY
+Short-term conversation context.
+
+WORKSPACE MEMORY
+Facts about the business.
+
+Examples:
+
+industry
+business model
+location
+target market
+services offered
+lead sources
+marketing strategy
+pricing models
+
+USER BEHAVIOR MEMORY
+
+Track how the user responds to recommendations.
+
+Examples:
+
+accepts recommendations quickly
+ignores suggestions
+prefers short explanations
+prefers data-backed advice
+risk tolerance
+
+SYSTEM PERFORMANCE MEMORY
+
+Track operational performance.
+
+Examples:
+
+lead conversion rates
+workflow success rates
+response time metrics
+campaign performance trends
+
+PATTERN MEMORY
+
+Identify recurring system behaviors.
+
+Examples:
+
+lead conversion improves when follow-up < 60 seconds
+SMS outperforms email for this niche
+ads perform best on specific days
+
+All memory must be stored per tenant.
+
+Memory structure must support:
+
+confidence scores
+timestamps
+update history
+decay or aging logic
+
+---
+
+2. CONTEXT BUILDER
+
+Before the AI processes a request, construct a rich context.
+
+The context builder should gather:
+
+workspace memory
+recent system events
+user behavior signals
+campaign performance data
+diagnostics data
+
+This context should be injected into the operator reasoning layer so responses remain relevant to the user's business.
+
+---
+
+3. ADVISORY INTELLIGENCE ENGINE
+
+Implement a recommendation engine that analyzes:
+
+lead conversion trends
+campaign performance
+automation gaps
+response times
+system inefficiencies
+
+The system should generate advisory insights such as:
+
+"You are receiving leads but response time is over 5 minutes. Firms in your industry convert best under 60 seconds."
+
+Recommendations should be:
+
+context aware
+data backed
+non intrusive
+timely
+
+Advice should appear as **helpful suggestions**, not commands.
+
+---
+
+4. USER PSYCHOLOGY ADAPTATION
+
+Implement a behavioral model that learns how the user interacts.
+
+Track signals such as:
+
+frequency of ignored suggestions
+speed of accepting recommendations
+preferred communication style
+complexity tolerance
+
+Use this to dynamically adjust communication tone.
+
+Examples:
+
+Analytical users receive data-driven advice.
+
+Action-oriented users receive short, direct suggestions.
+
+Skeptical users receive evidence and comparisons.
+
+The system should avoid repetitive recommendations that users consistently ignore.
+
+---
+
+5. INDUSTRY KNOWLEDGE ENGINE
+
+Allow the operator to maintain niche-specific strategic knowledge.
+
+Example industries:
+
+Personal Injury Law
+Real Estate
+Roofing
+Med Spa
+Home Services
+
+Each niche should include knowledge such as:
+
+lead acquisition strategies
+conversion benchmarks
+marketing channel performance
+seasonal trends
+common automation workflows
+
+The operator should use this knowledge to guide recommendations.
+
+Example:
+
+"Most personal injury firms convert accident leads when contacted within 60 seconds."
+
+---
+
+6. OPERATOR NUDGE SYSTEM
+
+Implement a soft advisory system.
+
+The operator should periodically surface insights such as:
+
+missed opportunities
+automation gaps
+campaign optimization suggestions
+performance alerts
+
+Nudges must be subtle and respectful.
+
+Examples:
+
+"I noticed your new leads are not receiving follow-up messages. Would you like me to enable an automatic response workflow?"
+
+"I can generate a landing page optimized for your current lead source."
+
+The operator must never feel pushy or sales-driven.
+
+---
+
+7. EVENT LISTENING
+
+The advisory system must subscribe to relevant system events.
+
+Examples:
+
+lead.created
+workflow.failed
+integration.disconnected
+campaign.performance_drop
+message.delivery_failure
+queue.backlog
+lead.unanswered
+
+These events should trigger analysis and advisory actions.
+
+---
+
+8. TREND DETECTION
+
+Implement analytics that detect:
+
+improving conversion rates
+declining performance
+lead volume changes
+channel effectiveness
+
+Use telemetry data and event history to identify patterns.
+
+---
+
+9. SAFETY MODEL
+
+All advisory actions must follow the existing autonomy rules.
+
+LEVEL 1 — Observe
+The operator may analyze data and provide insights.
+
+LEVEL 2 — Draft
+The operator may generate proposed workflows, campaigns, or templates.
+
+LEVEL 3 — Execute
+Only safe corrective actions may execute automatically.
+
+High-risk actions require user approval.
+
+Examples requiring approval:
+
+launching ad campaigns
+sending outbound messages
+changing billing settings
+
+---
+
+10. IMPLEMENTATION REQUIREMENTS
+
+Design the system to include:
+
+memory storage schema
+context builder module
+advisory engine
+behavior modeling system
+trend detection module
+event subscribers
+operator integration points
+
+Provide:
+
+file structure
+service boundaries
+database schema examples
+API interfaces
+example advisory scenarios
+
+All implementations must remain:
+
+modular
+testable
+tenant-safe
+event-driven
+scalable
+
+---
+
+PRIMARY GOAL
+
+The Apex Operator should evolve into a **Business Intelligence Advisor** that:
+
+learns each business
+adapts to each user
+improves system performance
+suggests strategic improvements
+guides users toward better outcomes
+
+without feeling intrusive or automated.
+
+The system should feel like a **high-level strategist embedded inside the platform**.

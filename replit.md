@@ -81,6 +81,19 @@ The Apex Operator (`server/operator/`) is an AI-native command layer that interp
 - **Autonomy Levels**: Level 1 (Observe) — inspect only; Level 2 (Draft) — create drafts with approval; Level 3 (Execute) — auto-fix safe issues.
 - **API Routes**: `POST /api/operator/command`, `POST /api/operator/approve`, `GET /api/operator/plans`, `GET /api/operator/tools`, `GET /api/operator/approvals`, `GET /api/operator/diagnostics`, `GET /api/operator/telemetry`, `GET /api/operator/memory/:subAccountId`.
 
+### Cognitive Intelligence Layer
+The Cognitive Intelligence Layer (`server/operator/cognitive*.ts`, `memoryEngine.ts`, `advisoryEngine.ts`, `trendDetection.ts`, `nudgeSystem.ts`, `industryKnowledge.ts`) adds persistent memory, proactive advisory, and behavior-aware intelligence on top of the Operator.
+
+- **Memory Engine** (`server/operator/memoryEngine.ts`): Persistent DB-backed memory (replaces in-memory KV). Stores workspace profiles, behavior signals, performance snapshots, and pattern insights with versioning and TTL. Tables: `operator_memories`.
+- **Context Builder** (`server/operator/contextBuilder.ts`): Assembles a full `ContextPacket` for any sub-account — workspace profile, behavior profile, performance snapshot, detected patterns, recent events, diagnostics summary, and industry knowledge.
+- **Advisory Engine** (`server/operator/advisoryEngine.ts`): Generates prioritized, data-backed insights (opportunities, warnings, optimizations, milestones). Adapts message tone to user behavior profile. Filters low-priority insights when user has high dismiss rate.
+- **Industry Knowledge** (`server/operator/industryKnowledge.ts`): Built-in knowledge base for 7 industries (Personal Injury, Real Estate, Roofing, Med Spa, Home Services, Legal, General). Includes lead strategies, conversion benchmarks, best channels, seasonal trends, common workflows, and response time benchmarks.
+- **Trend Detection** (`server/operator/trendDetection.ts`): Analyzes performance snapshots over time to detect contact growth/decline, high failure rates, response gaps, inactive automations, and volume shifts.
+- **Nudge System** (`server/operator/nudgeSystem.ts`): Rate-limited proactive notifications (max 3/day, 4h interval). Respects dismissal patterns. Persisted to `operator_nudges` table with dismiss/act tracking.
+- **Cognitive Orchestrator** (`server/operator/cognitiveLayer.ts`): Unified facade for all cognitive modules. Used by API routes.
+- **DB Tables**: `operator_memories` (versioned KV with TTL), `operator_nudges` (persistent nudge queue with status tracking).
+- **Cognitive API Routes**: `GET /api/operator/cognitive/context/:id`, `/insights/:id`, `/trends/:id`, `/nudges/:id`, `/nudges/:id/pending`, `POST /nudges/:nudgeId/dismiss`, `POST /nudges/:nudgeId/act`, `GET /nudges/:id/history`, `GET /industry/:industry`, `GET /industries`, `POST /cognitive/track`.
+
 ## External Dependencies
 
 ### Database
