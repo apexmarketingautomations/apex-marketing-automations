@@ -7,6 +7,7 @@ import { sql, eq, and } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
 import { geminiChat, geminiChatStream, isGeminiConfigured, geminiGenerateImage } from "./gemini";
+import { streamGeminiResponse, ProgressStream, initSSE, sendSSEData } from "./streaming";
 import Twilio from "twilio";
 import multer from "multer";
 import path from "path";
@@ -1392,6 +1393,45 @@ Rules:
         res.status(500).json({ error: error.message || "Streaming failed" });
       } else {
         res.write(`data: ${JSON.stringify({ error: error.message || "Streaming failed" })}\n\n`);
+        res.end();
+      }
+    }
+  }));
+
+  app.post("/api/bot/chat/advisor-stream", asyncHandler(async (req, res) => {
+    try {
+      if (!isGeminiConfigured()) {
+        return res.status(503).json({ error: "AI service is not configured" });
+      }
+
+      const parsed = botChatSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+      const basePrompt = parsed.data.persona || "You are a helpful AI assistant.";
+      const systemPrompt = basePrompt + getIndustryContext(parsed.data.industry) + getLanguageInstruction(parsed.data.language);
+
+      const chatMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
+        { role: "system", content: systemPrompt },
+      ];
+
+      if (parsed.data.conversationHistory) {
+        for (const msg of parsed.data.conversationHistory.slice(-10)) {
+          chatMessages.push({
+            role: msg.role === "user" ? "user" : "assistant",
+            content: msg.content,
+          });
+        }
+      }
+
+      chatMessages.push({ role: "user", content: parsed.data.message });
+
+      await streamGeminiResponse(res, chatMessages, { temperature: 0.7, maxTokens: 4096 });
+      await logUsageInternal(null, "AI_CHAT", 1, "Strategic advisor chat (stream)");
+    } catch (error: any) {
+      if (!res.headersSent) {
+        res.status(500).json({ error: error.message || "Streaming failed" });
+      } else {
+        sendSSEData(res, { error: error.message || "Streaming failed" });
         res.end();
       }
     }
@@ -3614,6 +3654,194 @@ Rules:
 
     results.status = "complete";
     res.json(results);
+  }));
+
+  app.post("/api/god-mode/stream", requireAdmin, asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    const schema = z.object({
+      businessName: z.string().min(1),
+      industry: z.string().min(1),
+      website: z.string().optional(),
+      areaCode: z.string().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const { businessName, industry, website, areaCode } = parsed.data;
+    const stream = new ProgressStream(res);
+
+    try {
+      const results: any = { businessName, industry };
+
+      stream.sendStep("account", "running", "Creating Sub-Account");
+      const account = await storage.createSubAccount({
+        name: `${businessName} Account`,
+        twilioNumber: "",
+        ownerUserId: getUserId(user),
+      });
+      results.accountId = account.id;
+      stream.sendStep("account", "done", "Creating Sub-Account", `Account #${account.id} created`);
+
+      stream.sendStep("phone", "running", "Provisioning AI Phone Line");
+      let phoneNumber = null;
+      const twilioClient = getTwilioClient();
+      if (twilioClient) {
+        try {
+          const numbers = await twilioClient.availablePhoneNumbers("US").local.list({
+            areaCode: parseInt(areaCode || "239", 10),
+            limit: 1,
+          });
+          if (numbers.length > 0) {
+            const purchased = await twilioClient.incomingPhoneNumbers.create({
+              phoneNumber: numbers[0].phoneNumber,
+            });
+            phoneNumber = purchased.phoneNumber;
+
+            const smsUrl = `${req.protocol}://${req.get("host")}/api/sms-webhook`;
+            const updateOpts: Record<string, string> = {};
+            updateOpts.smsUrl = smsUrl; updateOpts.smsMethod = "POST";
+            updateOpts.voiceUrl = "https://api.vapi.ai/twilio/voice/handler";
+            updateOpts.voiceMethod = "POST";
+            await twilioClient.incomingPhoneNumbers(purchased.sid).update(updateOpts);
+          }
+        } catch (err: any) {
+          console.error("God Mode phone error:", err.message);
+        }
+      }
+      if (phoneNumber) {
+        await storage.updateSubAccount(account.id, { twilioNumber: phoneNumber });
+      }
+      results.phoneNumber = phoneNumber;
+      stream.sendStep("phone", phoneNumber ? "done" : "skipped", "Provisioning AI Phone Line",
+        phoneNumber ? `Number: ${phoneNumber}` : "Twilio not configured");
+
+      stream.sendStep("voice", "running", "Deploying Voice Agent");
+      let agentId = null;
+      if (vapiConfig.isConfigured) {
+        try {
+          const payload = {
+            transcriber: { provider: "deepgram" },
+            model: {
+              provider: "openai",
+              model: "gpt-4",
+              messages: [{
+                role: "system",
+                content: `You are the AI receptionist for ${businessName}, a ${industry} business. Be professional, friendly, and help with bookings and FAQs. Keep responses short and natural.`,
+              }],
+            },
+            voice: { provider: "11labs", voiceId: "21m00Tcm4TlvDq8ikWAM" },
+            firstMessage: `Hello! Thanks for calling ${businessName}. How can I help you today?`,
+            name: `${businessName} AI Receptionist`,
+          };
+          const vapiRes = await fetch("https://api.vapi.ai/assistant", {
+            method: "POST",
+            headers: vapiConfig.privateHeaders(),
+            body: JSON.stringify(payload),
+          });
+          if (vapiRes.ok) {
+            const agent = await vapiRes.json();
+            agentId = agent.id;
+          }
+        } catch (err: any) {
+          console.error("God Mode voice agent error:", err.message);
+        }
+      }
+      results.agentId = agentId;
+      stream.sendStep("voice", agentId ? "done" : "skipped", "Deploying Voice Agent",
+        agentId ? `Agent: ${agentId.slice(0, 12)}...` : "Vapi not configured");
+
+      stream.sendStep("bot", "running", "Training AI Knowledge Bot");
+      let jobId = null;
+      if (website) {
+        try {
+          const job = await storage.createTrainingJob({
+            url: website,
+            persona: `Helpful assistant for ${businessName}`,
+          });
+          jobId = job.id;
+          runRealTraining(job.id);
+        } catch (err: any) {
+          console.error("God Mode bot training error:", err.message);
+        }
+      }
+      results.jobId = jobId;
+      stream.sendStep("bot", jobId ? "done" : "skipped", "Training AI Knowledge Bot",
+        jobId ? `Training job #${jobId} started` : "No website provided");
+
+      stream.sendStep("site", "running", "Generating Landing Page");
+      let siteData = null;
+      if (isGeminiConfigured()) {
+        try {
+          const godModePrompt = `Create a premium landing page for "${businessName}", a ${industry} business. Make it look high-end and professional with compelling copy.`;
+          let siteParsed: any = null;
+          for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+              const raw = await geminiChat([
+                { role: "system", content: SITE_SYSTEM_PROMPT },
+                { role: "user", content: attempt === 0 ? godModePrompt : godModePrompt + "\n\nIMPORTANT: Return ONLY valid JSON." },
+              ], { temperature: attempt === 0 ? 0.7 : 0.3, maxTokens: 4096, jsonMode: true });
+              let cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+              const fb = cleaned.indexOf("{"); const lb = cleaned.lastIndexOf("}");
+              if (fb !== -1 && lb > fb) cleaned = cleaned.substring(fb, lb + 1);
+              cleaned = cleaned.replace(/,\s*([}\]])/g, "$1");
+              siteParsed = JSON.parse(cleaned);
+              break;
+            } catch { if (attempt === 1) throw new Error("JSON parse failed"); }
+          }
+          if (siteParsed.theme && Array.isArray(siteParsed.sections)) {
+            siteParsed.sections = siteParsed.sections.map((s: any) => {
+              if (s.props) return s;
+              const { type, ...props } = s;
+              return { type, props };
+            });
+            siteData = siteParsed;
+            await storage.createSavedSite({
+              name: `${businessName} — God Mode`,
+              prompt: `${industry} landing page for ${businessName}`,
+              siteData,
+            });
+          }
+        } catch (err: any) {
+          console.error("God Mode site generation error:", err.message);
+        }
+      }
+      results.siteGenerated = !!siteData;
+      stream.sendStep("site", siteData ? "done" : "skipped", "Generating Landing Page",
+        siteData ? "Landing page generated & saved" : "AI not configured");
+
+      stream.sendStep("workflow", "running", "Creating Missed-Call Workflow");
+      try {
+        await storage.createWorkflow({
+          name: `${businessName} - Missed Call Text Back`,
+          trigger: "missed_call",
+          steps: [
+            { type: "DELAY", config: { seconds: 10 } },
+            { type: "SMS", config: { template: `Hey! This is ${businessName}. Sorry we missed your call. How can we help? Reply to this text and we'll get right back to you.` } },
+          ],
+        });
+      } catch (err: any) {
+        console.error("God Mode workflow error:", err.message);
+      }
+      stream.sendStep("workflow", "done", "Creating Missed-Call Workflow", "Missed-Call Text Back active");
+
+      stream.end({
+        ...results,
+        siteGenerated: !!siteData,
+        status: "complete",
+        steps: [
+          { id: "account", status: "done", label: "Creating Sub-Account" },
+          { id: "phone", status: phoneNumber ? "done" : "skipped", label: "Provisioning Phone Line" },
+          { id: "voice", status: agentId ? "done" : "skipped", label: "Deploying Voice Agent" },
+          { id: "bot", status: jobId ? "done" : "skipped", label: "Training AI Bot" },
+          { id: "site", status: siteData ? "done" : "skipped", label: "Generating Landing Page" },
+          { id: "workflow", status: "done", label: "Creating Missed-Call Workflow" },
+        ],
+      });
+    } catch (err: any) {
+      stream.sendError(err.message || "God Mode launch failed");
+      stream.end();
+    }
   }));
 
   // ---- Reviews / Reputation Management ----
@@ -9584,6 +9812,152 @@ Return ONLY valid JSON.` },
     });
   }));
 
+  app.post("/api/v1/orchestrate/ai/stream", asyncHandler(async (req: Request, res: Response) => {
+    if (!isGeminiConfigured()) {
+      return res.status(503).json({ error: "AI service is not configured" });
+    }
+
+    const parsed = z.object({
+      command: z.string().min(1).max(3000),
+      subAccountId: z.number().optional(),
+      autoExecute: z.boolean().optional().default(true),
+    }).safeParse(req.body);
+
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const { command, subAccountId, autoExecute } = parsed.data;
+    const stream = new ProgressStream(res);
+
+    try {
+      stream.sendProgress("Planning execution strategy...");
+
+      const orchestrateActions = ORCHESTRATE_ACTIONS.join(", ");
+      const toolList = AI_TOOLS.map(t => `- ${t.name}: ${t.description}`).join("\n");
+
+      const raw = await geminiChat([
+        { role: "system", content: `You are the Apex OS Architect. You orchestrate the Apex Marketing Automations ecosystem by issuing commands to the backend API.
+
+RULES OF ENGAGEMENT:
+- You do NOT just chat; you ORCHESTRATE.
+- If a user asks for a workflow, you generate the JSON manifest.
+- You turn natural language into executable action plans.
+
+AVAILABLE ORCHESTRATE ACTIONS (use these as "action" values):
+${orchestrateActions}
+
+AVAILABLE TOOLS (for toolbelt operations):
+${toolList}
+
+When building a workflow manifest, use this structure:
+{
+  "name": "Workflow Name",
+  "trigger": { "type": "OnCrashDetected|OnNewLead|OnMissedCall|OnFormSubmit|Manual", "filters": {} },
+  "steps": [
+    { "id": "step_1", "action_type": "SendTwilioSMS|Wait|Condition|DeployMetaAd|AlertTeam|CreateContact|SendEmail|WebhookCall|AIGenerate|ElevenLabsTTS", "label": "...", "params": {...} }
+  ]
+}
+
+Return a JSON execution plan:
+{
+  "interpretation": "What the user wants in one sentence",
+  "steps": [
+    { "action": "<orchestrate_action>", "payload": { ... }, "description": "What this step does" }
+  ],
+  "summary": "Brief completion message to show the user"
+}
+
+For workflow creation, use action "save_workflow_manifest" with payload.manifest containing the full manifest.
+
+${subAccountId ? `Context: Operating on sub-account #${subAccountId}` : ""}
+
+Return ONLY valid JSON.` },
+        { role: "user", content: command },
+      ], { temperature: 0.3, maxTokens: 4096, jsonMode: true });
+
+      const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      let plan: any;
+      try {
+        plan = JSON.parse(cleaned);
+      } catch {
+        stream.sendError("AI returned invalid plan");
+        stream.end();
+        return;
+      }
+
+      stream.sendResult({ interpretation: plan.interpretation || plan.explanation });
+
+      if (!autoExecute) {
+        stream.end({ plan, executed: false, message: "Plan generated. Set autoExecute=true to run." });
+        return;
+      }
+
+      const planSteps = plan.steps || (plan.action ? [plan] : []);
+      const executionResults: any[] = [];
+
+      for (let i = 0; i < planSteps.length; i++) {
+        const step = planSteps[i];
+        const stepAction = step.action;
+        const stepPayload = step.payload || step.args || {};
+
+        if (subAccountId && !stepPayload.sub_account_id && !stepPayload.subAccountId) {
+          stepPayload.subAccountId = subAccountId;
+          stepPayload.sub_account_id = subAccountId;
+        }
+
+        stream.sendStep(`step_${i}`, "running", step.description || stepAction, `Executing: ${stepAction}`);
+
+        try {
+          const stepResult = await executeDispatchAction(stepAction, stepPayload);
+
+          await storage.createAiToolLog({
+            subAccountId: subAccountId || null,
+            toolName: `orchestrate:${stepAction}`,
+            input: stepPayload,
+            output: stepResult,
+            status: stepResult?.status === "Error" ? "error" : "success",
+            executionMs: 0,
+          });
+
+          executionResults.push({
+            step: i + 1,
+            action: stepAction,
+            description: step.description || step.explanation,
+            status: stepResult?.status || "Success",
+            result: stepResult,
+          });
+
+          stream.sendStep(`step_${i}`, stepResult?.status === "Error" ? "error" : "done",
+            step.description || stepAction,
+            stepResult?.status === "Error" ? `Error: ${stepResult.message}` : "Completed");
+        } catch (err: any) {
+          executionResults.push({
+            step: i + 1,
+            action: stepAction,
+            description: step.description || step.explanation,
+            status: "Error",
+            result: { error: err.message },
+          });
+
+          stream.sendStep(`step_${i}`, "error", step.description || stepAction, err.message);
+        }
+      }
+
+      await logUsageInternal(subAccountId || null, "AI_ORCHESTRATE", planSteps.length, `Orchestrated: ${command.slice(0, 100)}`);
+
+      stream.end({
+        interpretation: plan.interpretation || plan.explanation,
+        summary: plan.summary || `Executed ${executionResults.length} actions.`,
+        steps: executionResults,
+        totalSteps: executionResults.length,
+        successCount: executionResults.filter(r => r.status === "Success").length,
+        executed: true,
+      });
+    } catch (err: any) {
+      stream.sendError(err.message || "Orchestration failed");
+      stream.end();
+    }
+  }));
+
   // ---- Webhook Events ----
   app.get("/api/webhook-events/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
@@ -12161,6 +12535,78 @@ Return ONLY valid JSON.` },
     const { getGrowthReport } = await import("./operator/cognitiveLayer");
     const report = await getGrowthReport(subAccountId);
     res.json(report);
+  }));
+
+  app.get("/api/operator/cognitive/growth-report/:subAccountId/stream", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const stream = new ProgressStream(res);
+
+    try {
+      stream.sendProgress("Calculating health scores...", 10);
+
+      const { buildContext } = await import("./operator/contextBuilder");
+      const context = await buildContext(subAccountId);
+      stream.sendProgress("Building context...", 25);
+
+      const { calculateHealthScore, generateStrategicInsights, detectMissedOpportunities } = await import("./operator/strategicAdvisor");
+
+      const healthScore = calculateHealthScore(context);
+      stream.sendResult({ section: "healthScore", data: healthScore });
+      stream.sendProgress("Health score calculated", 40);
+
+      const strategicInsights = generateStrategicInsights(context);
+      stream.sendResult({ section: "strategicInsights", data: strategicInsights });
+      stream.sendProgress("Strategic insights generated", 60);
+
+      const missedOpportunities = detectMissedOpportunities(context);
+      stream.sendResult({ section: "missedOpportunities", data: missedOpportunities });
+      stream.sendProgress("Missed opportunities identified", 75);
+
+      const quickWins = strategicInsights.filter(i => i.effort === "quick-win");
+      stream.sendResult({ section: "quickWins", data: quickWins });
+      stream.sendProgress("Quick wins compiled", 85);
+
+      const { workspace, performance } = context;
+      let growthStage = "Setup";
+      if (workspace.contactCount === 0 && workspace.automationCount === 0) growthStage = "Setup";
+      else if (workspace.contactCount < 20 && workspace.automationCount <= 1) growthStage = "Foundation";
+      else if (workspace.contactCount < 100 && performance.messageCount < 50) growthStage = "Early Growth";
+      else if (workspace.contactCount < 500) growthStage = "Growth";
+      else if (workspace.contactCount < 2000) growthStage = "Scaling";
+      else growthStage = "Mature";
+
+      const benchmarks: Record<string, any> = {};
+      if (context.industryKnowledge) {
+        const ik = context.industryKnowledge;
+        benchmarks["response_time"] = {
+          yours: performance.avgResponseTimeSec ? `${Math.round(performance.avgResponseTimeSec)}s` : "N/A",
+          benchmark: `${ik.avgResponseTimeBenchmark}s`,
+          status: !performance.avgResponseTimeSec ? "below" : performance.avgResponseTimeSec <= ik.avgResponseTimeBenchmark ? "above" : "below",
+        };
+        for (const [key, val] of Object.entries(ik.conversionBenchmarks)) {
+          if (key !== "target_response_time_sec") {
+            benchmarks[key] = { yours: "N/A", benchmark: `${Math.round((val as number) * 100)}%`, status: "below" };
+          }
+        }
+      }
+
+      stream.sendProgress("Report complete", 100);
+
+      stream.end({
+        generatedAt: new Date().toISOString(),
+        healthScore,
+        growthStage,
+        strategicInsights,
+        missedOpportunities,
+        quickWins,
+        industryBenchmarks: benchmarks,
+      });
+    } catch (err: any) {
+      stream.sendError(err.message || "Growth report generation failed");
+      stream.end();
+    }
   }));
 
   app.get("/api/operator/cognitive/strategic/:subAccountId", asyncHandler(async (req, res) => {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import {
   Rocket,
@@ -26,6 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { GOD_MODE_STEPS } from "@/components/tutorial-steps";
+import { useStreamingResponse } from "@/hooks/use-streaming";
 
 const INDUSTRIES = [
   { id: "fitness", label: "Fitness / Gym", icon: "\u{1F4AA}" },
@@ -121,13 +122,15 @@ export default function GodMode() {
   const [steps, setSteps] = useState<LaunchStep[]>([]);
   const [results, setResults] = useState<any>(null);
 
-  const handleLaunch = async () => {
+  const { startStream } = useStreamingResponse();
+
+  const handleLaunch = useCallback(async () => {
     if (!businessName.trim() || !industry) return;
     setIsLaunching(true);
     setLaunched(false);
 
     const initialSteps: LaunchStep[] = [
-      { id: "account", label: "Creating Sub-Account", status: "running", icon: Users },
+      { id: "account", label: "Creating Sub-Account", status: "pending", icon: Users },
       { id: "phone", label: "Provisioning AI Phone Line", status: "pending", icon: Phone },
       { id: "voice", label: "Deploying Voice Agent", status: "pending", icon: Bot },
       { id: "bot", label: "Training AI Knowledge Bot", status: "pending", icon: Sparkles },
@@ -136,60 +139,49 @@ export default function GodMode() {
     ];
     setSteps(initialSteps);
 
-    let stepIdx = 0;
-    const animateSteps = setInterval(() => {
-      stepIdx++;
-      if (stepIdx < initialSteps.length) {
-        setSteps(prev => prev.map((s, i) =>
-          i === stepIdx ? { ...s, status: "running" } :
-          i < stepIdx ? { ...s, status: "done" } : s
-        ));
-      }
-    }, 2500);
-
     try {
-      const res = await fetch("/api/god-mode", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          businessName: businessName.trim(),
-          industry,
-          website: website.trim() || undefined,
-          areaCode: areaCode.trim() || undefined,
-        }),
+      await startStream("/api/god-mode/stream", {
+        businessName: businessName.trim(),
+        industry,
+        website: website.trim() || undefined,
+        areaCode: areaCode.trim() || undefined,
+      }, {
+        onStep: (step) => {
+          setSteps(prev => prev.map(s =>
+            s.id === step.stepId ? { ...s, status: step.status as StepStatus, label: step.label } : s
+          ));
+        },
+        onDone: (_fullText, rawData) => {
+          if (rawData) {
+            setResults(rawData);
+            if (rawData.steps) {
+              const finalSteps = rawData.steps.map((s: any) => ({
+                id: s.id,
+                label: s.label,
+                status: s.status as StepStatus,
+                icon: STEP_ICONS[s.id] || Zap,
+              }));
+              setSteps(finalSteps);
+            }
+            setLaunched(true);
+            queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/workflows"] });
+            toast({ title: "God Mode Activated!", description: `${businessName} is fully deployed.` });
+          }
+          setIsLaunching(false);
+        },
+        onError: (error) => {
+          toast({ title: "Launch Error", description: error, variant: "destructive" });
+          setSteps(prev => prev.map(s => s.status === "running" ? { ...s, status: "error" } : s));
+          setIsLaunching(false);
+        },
       });
-
-      clearInterval(animateSteps);
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Launch failed");
-      }
-
-      const data = await res.json();
-      setResults(data);
-
-      const finalSteps = data.steps.map((s: any) => ({
-        id: s.id,
-        label: s.label,
-        status: s.status as StepStatus,
-        icon: STEP_ICONS[s.id] || Zap,
-      }));
-      setSteps(finalSteps);
-      setLaunched(true);
-
-      queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/workflows"] });
-
-      toast({ title: "God Mode Activated!", description: `${businessName} is fully deployed.` });
     } catch (err: any) {
-      clearInterval(animateSteps);
       toast({ title: "Launch Error", description: err.message, variant: "destructive" });
       setSteps(prev => prev.map(s => s.status === "running" ? { ...s, status: "error" } : s));
-    } finally {
       setIsLaunching(false);
     }
-  };
+  }, [businessName, industry, website, areaCode, startStream, queryClient, toast]);
 
   const handleReset = () => {
     setBusinessName("");

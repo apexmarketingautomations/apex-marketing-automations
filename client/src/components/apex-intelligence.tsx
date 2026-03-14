@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAccount } from "@/hooks/use-account";
+import { useStreamingResponse } from "@/hooks/use-streaming";
 
 type TabId = "command" | "insights" | "nudges" | "industry" | "trends" | "chat" | "agent";
 
@@ -208,17 +209,11 @@ function CategoryBar({ label, score, icon: Icon }: { label: string; score: numbe
 
 function CommandTab({ subAccountId }: { subAccountId: number }) {
   const [, setLocation] = useLocation();
-
-  const { data: reportData, isLoading } = useQuery<GrowthReport>({
-    queryKey: ["/api/operator/cognitive/growth-report", subAccountId],
-    queryFn: async () => {
-      const res = await fetch(`/api/operator/cognitive/growth-report/${subAccountId}`);
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
-    },
-    enabled: !!subAccountId,
-    staleTime: 120000,
-  });
+  const { startStream } = useStreamingResponse();
+  const [reportData, setReportData] = useState<GrowthReport | null>(null);
+  const [streamProgress, setStreamProgress] = useState<{ message: string; percent: number }>({ message: "", percent: 0 });
+  const [isLoading, setIsLoading] = useState(false);
+  const lastFetchedAccountRef = useRef<number | null>(null);
 
   const { data: contextData } = useQuery({
     queryKey: ["/api/operator/cognitive/context", subAccountId],
@@ -231,7 +226,42 @@ function CommandTab({ subAccountId }: { subAccountId: number }) {
     staleTime: 120000,
   });
 
-  if (isLoading) {
+  useEffect(() => {
+    if (!subAccountId || lastFetchedAccountRef.current === subAccountId) return;
+    lastFetchedAccountRef.current = subAccountId;
+    setReportData(null);
+    setStreamProgress({ message: "", percent: 0 });
+    setIsLoading(true);
+
+    startStream(`/api/operator/cognitive/growth-report/${subAccountId}/stream`, {}, {
+      method: "GET",
+      onProgress: (progress) => {
+        setStreamProgress({ message: progress.message, percent: progress.percent || 0 });
+      },
+      onResult: (data) => {
+        if (data.section === "healthScore") {
+          setReportData(prev => ({ ...prev, healthScore: data.data } as GrowthReport));
+        } else if (data.section === "strategicInsights") {
+          setReportData(prev => ({ ...prev, strategicInsights: data.data } as GrowthReport));
+        } else if (data.section === "missedOpportunities") {
+          setReportData(prev => ({ ...prev, missedOpportunities: data.data } as GrowthReport));
+        } else if (data.section === "quickWins") {
+          setReportData(prev => ({ ...prev, quickWins: data.data } as GrowthReport));
+        }
+      },
+      onDone: (_fullText, rawData) => {
+        if (rawData) {
+          setReportData(rawData as GrowthReport);
+        }
+        setIsLoading(false);
+      },
+      onError: () => {
+        setIsLoading(false);
+      },
+    });
+  }, [subAccountId, startStream]);
+
+  if (isLoading && !reportData) {
     return (
       <div className="flex-1 flex items-center justify-center" data-testid="command-loading">
         <div className="text-center space-y-3">
@@ -242,7 +272,17 @@ function CommandTab({ subAccountId }: { subAccountId: number }) {
           >
             <Brain className="w-6 h-6 text-violet-400" />
           </motion.div>
-          <p className="text-xs text-slate-500">Analyzing your business...</p>
+          <p className="text-xs text-slate-500">{streamProgress.message || "Analyzing your business..."}</p>
+          {streamProgress.percent > 0 && (
+            <div className="w-48 mx-auto h-1 bg-slate-800 rounded-full overflow-hidden">
+              <motion.div
+                className="h-full bg-gradient-to-r from-violet-500 to-cyan-500 rounded-full"
+                initial={{ width: 0 }}
+                animate={{ width: `${streamProgress.percent}%` }}
+                transition={{ duration: 0.3 }}
+              />
+            </div>
+          )}
           <p className="text-[10px] text-slate-600">Running health checks, detecting patterns, building insights</p>
         </div>
       </div>
@@ -877,25 +917,24 @@ function ChatTab({ subAccountId }: { subAccountId: number }) {
     { role: "assistant", content: "I'm your Apex Strategic Advisor. I analyze your business data in real-time and provide actionable growth strategies.\n\nI can help you identify blind spots, optimize your funnel, plan automations, and find revenue opportunities.\n\nWhat would you like to explore?" },
   ]);
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [, setLocation] = useLocation();
+  const { text: streamingText, isStreaming, startStream } = useStreamingResponse();
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
-  useEffect(() => { scrollToBottom(); }, [messages, isLoading, scrollToBottom]);
+  useEffect(() => { scrollToBottom(); }, [messages, isStreaming, streamingText, scrollToBottom]);
   useEffect(() => { setTimeout(() => inputRef.current?.focus(), 200); }, []);
 
   const sendMessage = async (text: string) => {
-    if (!text.trim() || isLoading) return;
+    if (!text.trim() || isStreaming) return;
     const userMessage: ChatMessage = { role: "user", content: text.trim() };
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
     setInput("");
-    setIsLoading(true);
 
     try {
       const [contextRes, reportRes, insightsRes] = await Promise.all([
@@ -986,17 +1025,20 @@ function ChatTab({ subAccountId }: { subAccountId: number }) {
       contextPrompt = "\n\n" + parts.join("\n");
 
       const history = updatedMessages.map(m => ({ role: m.role, content: m.content }));
-      const response = await fetch("/api/bot/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text.trim(), persona: STRATEGIC_PROMPT + contextPrompt, conversationHistory: history }),
+      await startStream("/api/bot/chat/advisor-stream", {
+        message: text.trim(),
+        persona: STRATEGIC_PROMPT + contextPrompt,
+        conversationHistory: history,
+      }, {
+        onDone: (fullText) => {
+          setMessages(prev => [...prev, { role: "assistant", content: fullText }]);
+        },
+        onError: () => {
+          setMessages(prev => [...prev, { role: "assistant", content: "Connection issue. Please try again in a moment." }]);
+        },
       });
-      const data = await response.json();
-      setMessages(prev => [...prev, { role: "assistant", content: data.reply }]);
     } catch {
       setMessages(prev => [...prev, { role: "assistant", content: "Connection issue. Please try again in a moment." }]);
-    } finally {
-      setIsLoading(false);
     }
 
     try {
@@ -1026,7 +1068,19 @@ function ChatTab({ subAccountId }: { subAccountId: number }) {
           </div>
         ))}
 
-        {isLoading && (
+        {isStreaming && streamingText && (
+          <div className="flex justify-start">
+            <div
+              className="max-w-[88%] p-3 text-[11px] rounded-xl whitespace-pre-wrap leading-relaxed bg-white/[0.03] text-slate-300 rounded-bl-sm border border-white/[0.06]"
+              data-testid="intel-message-streaming"
+            >
+              {parseLinks(streamingText, setLocation)}
+              <span className="inline-block w-1.5 h-3.5 bg-violet-400 animate-pulse ml-0.5 align-middle rounded-sm" />
+            </div>
+          </div>
+        )}
+
+        {isStreaming && !streamingText && (
           <div className="flex justify-start">
             <div className="bg-white/[0.03] border border-white/[0.06] text-slate-500 rounded-xl rounded-bl-sm p-3 text-[11px] flex items-center gap-2">
               <div className="flex gap-1">
@@ -1039,7 +1093,7 @@ function ChatTab({ subAccountId }: { subAccountId: number }) {
           </div>
         )}
 
-        {messages.length === 1 && !isLoading && (
+        {messages.length === 1 && !isStreaming && (
           <div className="space-y-1.5 pt-1">
             {QUICK_COMMANDS.map(({ label, icon: QIcon }) => (
               <button
@@ -1067,12 +1121,12 @@ function ChatTab({ subAccountId }: { subAccountId: number }) {
           onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); } }}
           placeholder="Ask your strategic advisor..."
           className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-2 text-[11px] text-white placeholder:text-slate-600 focus:outline-none focus:border-violet-500/40 transition-colors"
-          disabled={isLoading}
+          disabled={isStreaming}
           data-testid="input-intel-message"
         />
         <button
           onClick={() => sendMessage(input)}
-          disabled={isLoading || !input.trim()}
+          disabled={isStreaming || !input.trim()}
           className="p-2 rounded-lg bg-gradient-to-br from-violet-500/20 to-cyan-500/20 border border-violet-500/25 text-violet-400 hover:from-violet-500/30 hover:to-cyan-500/30 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
           data-testid="button-intel-send"
         >

@@ -42,6 +42,7 @@ Preferred communication style: Simple, everyday language.
 - **Event Bus**: An in-memory pub/sub system with priority queuing, dedup, retry logic, and a comprehensive log.
 - **Job Queue**: A background async task processor with retry mechanisms, concurrency control, and history tracking.
 - **UI/UX**: Mobile-responsive design, guided 5-step onboarding wizard, Apex Intelligence premium panel with advanced analytics and AI interaction features.
+- **Real-time Streaming**: SSE-based streaming infrastructure (`server/streaming.ts`) with shared utilities (`streamGeminiResponse`, `ProgressStream`) for AI text streaming and step-by-step progress events. Frontend hook (`client/src/hooks/use-streaming.ts`) with `useStreamingResponse` for consuming SSE streams with progressive text rendering. Used by strategic advisor chat, God Mode deployment, and AI orchestrator.
 
 ## External Dependencies
 

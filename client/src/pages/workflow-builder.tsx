@@ -1,5 +1,5 @@
 import { PlanGate } from "@/components/plan-gate";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Clock, MessageSquare, GitFork, MoreHorizontal, PlayCircle, CheckCircle2, AlertCircle, AlertTriangle, Sparkles, Loader2, Code2, Trash2, BookOpen, Target, Mail, UserPlus, TrendingUp, Bell, Globe, Zap, Terminal, Cpu, Brain, ChevronDown, Eye, Power, Archive, ShoppingCart, Volume2, MessageCircle } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { WORKFLOW_STEPS } from "@/components/tutorial-steps";
@@ -22,6 +22,7 @@ import { api } from "@/lib/api";
 import { apiRequest } from "@/lib/queryClient";
 import type { Workflow, LiveAutomation } from "@shared/schema";
 import { WorkflowCompilerVisualizer, type Manifest } from "@/components/workflow-compiler-visualizer";
+import { useStreamingResponse } from "@/hooks/use-streaming";
 
 const DEFAULT_WORKFLOW = {
   trigger: "manual_trigger",
@@ -236,28 +237,63 @@ function AiToolbeltPanel() {
     "Deploy a geo-targeted ad around Fort Myers with $50 daily budget for PI leads.",
   ];
 
-  const handleOrchestrate = async () => {
+  const { startStream } = useStreamingResponse();
+  const [streamingSteps, setStreamingSteps] = useState<any[]>([]);
+  const [planInterpretation, setPlanInterpretation] = useState<string>("");
+
+  const handleOrchestrate = useCallback(async () => {
     if (!command.trim()) return;
     setIsProcessing(true);
     setExecutionResult(null);
+    setStreamingSteps([]);
+    setPlanInterpretation("");
 
     try {
-      const result = await api.orchestrateAi(command);
-      setExecutionResult(result);
-
-      const successCount = result.successCount || 0;
-      const totalSteps = result.totalSteps || 0;
-
-      toast({
-        title: successCount === totalSteps ? "All actions completed" : `${successCount}/${totalSteps} actions completed`,
-        description: result.summary || result.interpretation,
+      await startStream("/api/v1/orchestrate/ai/stream", {
+        command,
+        autoExecute: true,
+      }, {
+        onStep: (step) => {
+          setStreamingSteps(prev => {
+            const existing = prev.findIndex(s => s.stepId === step.stepId);
+            if (existing >= 0) {
+              const updated = [...prev];
+              updated[existing] = { ...updated[existing], status: step.status, detail: step.detail };
+              return updated;
+            }
+            return [...prev, { stepId: step.stepId, label: step.label, status: step.status, detail: step.detail }];
+          });
+        },
+        onResult: (data) => {
+          if (data.interpretation) {
+            setPlanInterpretation(data.interpretation);
+          }
+        },
+        onDone: (_fullText, rawData) => {
+          if (rawData) {
+            setExecutionResult(rawData);
+            const successCount = rawData.successCount || 0;
+            const totalSteps = rawData.totalSteps || 0;
+            toast({
+              title: successCount === totalSteps ? "All actions completed" : `${successCount}/${totalSteps} actions completed`,
+              description: rawData.summary || rawData.interpretation,
+            });
+          }
+          setIsProcessing(false);
+          setStreamingSteps([]);
+        },
+        onError: (error) => {
+          toast({ variant: "destructive", title: "Orchestration failed", description: error });
+          setIsProcessing(false);
+          setStreamingSteps([]);
+        },
       });
     } catch (err: any) {
       toast({ variant: "destructive", title: "Orchestration failed", description: err.message });
-    } finally {
       setIsProcessing(false);
+      setStreamingSteps([]);
     }
-  };
+  }, [command, startStream, toast]);
 
   const handleDirectAction = async (action: string, payload: any = {}) => {
     setIsProcessing(true);
@@ -339,7 +375,7 @@ function AiToolbeltPanel() {
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="border border-cyan-500/20 rounded-xl bg-black/30 p-4"
+          className="border border-cyan-500/20 rounded-xl bg-black/30 p-4 space-y-3"
         >
           <div className="flex items-center gap-3">
             <div className="relative">
@@ -353,10 +389,42 @@ function AiToolbeltPanel() {
               />
             </div>
             <div>
-              <p className="text-sm text-cyan-400 font-medium">Apex is thinking...</p>
-              <p className="text-[10px] text-white/30">AI is analyzing your command and building an execution plan</p>
+              <p className="text-sm text-cyan-400 font-medium">
+                {streamingSteps.length > 0 ? "Executing plan..." : "Apex is thinking..."}
+              </p>
+              <p className="text-[10px] text-white/30">
+                {planInterpretation || "AI is analyzing your command and building an execution plan"}
+              </p>
             </div>
           </div>
+
+          {streamingSteps.length > 0 && (
+            <div className="space-y-1.5 pl-11">
+              {streamingSteps.map((step, i) => (
+                <motion.div
+                  key={step.stepId}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  className="flex items-center gap-2 text-[11px]"
+                >
+                  {step.status === "done" ? (
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                  ) : step.status === "error" ? (
+                    <AlertCircle className="h-3.5 w-3.5 text-red-400 shrink-0" />
+                  ) : (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-400 shrink-0" />
+                  )}
+                  <span className={step.status === "done" ? "text-emerald-400/80" : step.status === "error" ? "text-red-400/80" : "text-white/60"}>
+                    {step.label}
+                  </span>
+                  {step.detail && step.status !== "running" && (
+                    <span className="text-white/20 text-[9px]">— {step.detail}</span>
+                  )}
+                </motion.div>
+              ))}
+            </div>
+          )}
         </motion.div>
       )}
 
