@@ -83,15 +83,21 @@ You think like a hybrid of:
 
 PERSONALITY: You are a seasoned startup advisor. Calm, insightful, slightly analytical, confident but never arrogant. Never sound robotic or salesy. You use subtle influence: curiosity, data-driven insights, suggestion framing, behavioral nudges.
 
+CRITICAL RULES:
+- You have REAL account data injected below. ALWAYS use the actual numbers in your responses.
+- NEVER just send a link and say "go check this page". That is lazy and useless.
+- When asked about account performance, give a DIRECT analysis using the real data provided. Show the actual numbers: contacts, messages, automations, health scores, etc.
+- When asked "how's my account", give a full strategic breakdown with real metrics, not a redirect.
+- Every response must contain SUBSTANCE — real data, real analysis, real recommendations.
+- You are an advisor who has already looked at all their data. Act like it.
+
 RESPONSE FORMAT — Always follow this structure:
-1. Quick Insight (1 sentence observation)
-2. Why It Matters (2-3 sentences explaining impact)
-3. Suggested Improvement (actionable recommendation)
-4. Optional Action (link or tool suggestion)
+1. Quick Insight (1 sentence observation using REAL metrics from the data below)
+2. Why It Matters (2-3 sentences explaining impact with specific numbers)
+3. Suggested Improvement (actionable, specific recommendation)
+4. Optional: mention which platform feature helps, but DO NOT just say "go to X page"
 
-Keep responses concise but strategic. Use data when available. Reference the user's actual metrics.
-
-Platform Features & Navigation:
+Platform Features (for reference only — do not redirect users to these):
 1. **Unified Inbox** (/) — Multi-channel messaging hub
 2. **Workflows** (/workflows) — Visual automation builder
 3. **Neural Trainer** (/bot-trainer) — AI chatbot training
@@ -892,19 +898,92 @@ function ChatTab({ subAccountId }: { subAccountId: number }) {
     setIsLoading(true);
 
     try {
-      const contextRes = await fetch(`/api/operator/cognitive/context/${subAccountId}`);
+      const [contextRes, reportRes, insightsRes] = await Promise.all([
+        fetch(`/api/operator/cognitive/context/${subAccountId}`),
+        fetch(`/api/operator/cognitive/growth-report/${subAccountId}`),
+        fetch(`/api/operator/cognitive/strategic/${subAccountId}`),
+      ]);
+
       let contextPrompt = "";
+      const parts: string[] = [];
+
       if (contextRes.ok) {
         const ctx = await contextRes.json();
-        const parts = [];
-        parts.push(`Business: ${ctx.workspace?.businessName} (${ctx.workspace?.industry})`);
-        parts.push(`Contacts: ${ctx.workspace?.contactCount} | Automations: ${ctx.workspace?.automationCount} | Integrations: ${ctx.workspace?.integrationCount}`);
-        parts.push(`Messages sent: ${ctx.performance?.messageCount} | Failed: ${ctx.performance?.failedMessages}`);
-        parts.push(`Phone: ${ctx.workspace?.phoneConfigured ? "Connected" : "Not connected"} | Sites: ${ctx.workspace?.siteCount}`);
-        parts.push(`Growth stage: ${ctx.workspace?.contactCount > 200 ? "Growth" : ctx.workspace?.contactCount > 50 ? "Early Growth" : "Foundation"}`);
-        if (ctx.diagnosticsSummary !== "healthy") parts.push(`Health: ${ctx.diagnosticsSummary}`);
-        contextPrompt = "\n\nCURRENT ACCOUNT DATA:\n" + parts.join("\n");
+        parts.push("=== ACCOUNT OVERVIEW ===");
+        parts.push(`Business Name: ${ctx.workspace?.businessName || "Not set"}`);
+        parts.push(`Industry: ${ctx.workspace?.industry || "General"}`);
+        parts.push(`Total Contacts: ${ctx.workspace?.contactCount ?? 0}`);
+        parts.push(`Active Automations: ${ctx.performance?.activeAutomations ?? 0} of ${ctx.workspace?.automationCount ?? 0} total`);
+        parts.push(`Connected Integrations: ${ctx.workspace?.integrationCount ?? 0}`);
+        parts.push(`Landing Pages: ${ctx.workspace?.siteCount ?? 0}`);
+        parts.push(`Phone Connected: ${ctx.workspace?.phoneConfigured ? "Yes" : "No"}`);
+        parts.push("");
+        parts.push("=== MESSAGING METRICS ===");
+        parts.push(`Total Messages: ${ctx.performance?.messageCount ?? 0}`);
+        parts.push(`Inbound: ${ctx.performance?.inboundMessages ?? 0}`);
+        parts.push(`Outbound: ${ctx.performance?.outboundMessages ?? 0}`);
+        parts.push(`Failed: ${ctx.performance?.failedMessages ?? 0}`);
+        if (ctx.performance?.avgResponseTimeSec) parts.push(`Avg Response Time: ${Math.round(ctx.performance.avgResponseTimeSec)}s`);
+        parts.push("");
+        parts.push("=== SYSTEM STATUS ===");
+        parts.push(`Diagnostics: ${ctx.diagnosticsSummary || "healthy"}`);
+        parts.push(`Active Nudges: ${ctx.activeNudges ?? 0}`);
+        if (ctx.behavior) {
+          parts.push(`User Style: ${ctx.behavior.preferredStyle}`);
+          parts.push(`Recommendation Accept Rate: ${Math.round((ctx.behavior.recommendationAcceptRate || 0) * 100)}%`);
+        }
+        if (ctx.industryKnowledge) {
+          parts.push("");
+          parts.push("=== INDUSTRY BENCHMARKS ===");
+          parts.push(`Industry: ${ctx.industryKnowledge.industry}`);
+          parts.push(`Response Time Benchmark: ${ctx.industryKnowledge.avgResponseTimeBenchmark}s`);
+          parts.push(`Best Channels: ${ctx.industryKnowledge.bestChannels?.join(", ") || "N/A"}`);
+        }
       }
+
+      if (reportRes.ok) {
+        const report = await reportRes.json();
+        parts.push("");
+        parts.push("=== HEALTH SCORE ===");
+        parts.push(`Overall Score: ${report.healthScore?.overall ?? "N/A"}/100 (Grade: ${report.healthScore?.grade || "N/A"})`);
+        parts.push(`Growth Stage: ${report.growthStage || "Unknown"}`);
+        parts.push(`Summary: ${report.healthScore?.summary || ""}`);
+        if (report.healthScore?.categories) {
+          parts.push("Category Breakdown:");
+          for (const [key, cat] of Object.entries(report.healthScore.categories) as [string, any][]) {
+            parts.push(`  - ${key}: ${cat.score}/100 (${cat.label}) — ${cat.detail}`);
+          }
+        }
+        if (report.quickWins?.length > 0) {
+          parts.push("");
+          parts.push("=== QUICK WINS AVAILABLE ===");
+          report.quickWins.forEach((w: any, i: number) => {
+            parts.push(`${i + 1}. ${w.observation} → ${w.suggestion}`);
+          });
+        }
+        if (report.missedOpportunities?.length > 0) {
+          parts.push("");
+          parts.push("=== MISSED OPPORTUNITIES ===");
+          report.missedOpportunities.forEach((o: any, i: number) => {
+            parts.push(`${i + 1}. ${o.observation}: ${o.insight}`);
+          });
+        }
+      }
+
+      if (insightsRes.ok) {
+        const insData = await insightsRes.json();
+        if (insData.insights?.length > 0) {
+          parts.push("");
+          parts.push("=== TOP STRATEGIC INSIGHTS ===");
+          insData.insights.slice(0, 5).forEach((ins: any, i: number) => {
+            parts.push(`${i + 1}. [${ins.impact?.toUpperCase()} IMPACT] ${ins.observation}`);
+            parts.push(`   Why: ${ins.insight}`);
+            parts.push(`   Do: ${ins.suggestion}`);
+          });
+        }
+      }
+
+      contextPrompt = "\n\n" + parts.join("\n");
 
       const history = updatedMessages.map(m => ({ role: m.role, content: m.content }));
       const response = await fetch("/api/bot/chat", {
