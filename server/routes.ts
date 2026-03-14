@@ -391,6 +391,47 @@ ${sections.map(renderSection).join('\n')}
     res.status(204).send();
   });
 
+  // ---- User Data Deletion (Meta compliance, public) ----
+  app.post("/api/data-deletion", express.json(), asyncHandler(async (req, res) => {
+    const { email, signed_request } = req.body;
+
+    let userEmail = email;
+    if (!userEmail && signed_request) {
+      try {
+        const parts = signed_request.split(".");
+        if (parts.length === 2) {
+          const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf8"));
+          userEmail = payload.email || payload.user_id || "meta-user";
+        }
+      } catch {}
+    }
+
+    if (!userEmail) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    const confirmationCode = "DEL-" + Date.now().toString(36).toUpperCase() + "-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+    console.log(`[DATA-DELETION] Request received for ${userEmail}, confirmation: ${confirmationCode}`);
+
+    try {
+      await storage.createSystemLog({
+        level: "warn",
+        source: "data-deletion",
+        message: `Data deletion requested for ${userEmail}`,
+        details: { email: userEmail, confirmationCode, requestedAt: new Date().toISOString() },
+      });
+    } catch (e) {
+      console.error("[DATA-DELETION] Failed to log:", e);
+    }
+
+    res.json({
+      url: "https://apexmarketingautomations.com/data-deletion",
+      confirmation_code: confirmationCode,
+      status: "pending",
+      message: "Your data deletion request has been received and will be processed within 30 days.",
+    });
+  }));
+
   // ---- Funnel Lead API (public, no auth required) ----
   const funnelCors = (_req: any, res: any, next: any) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -625,6 +666,7 @@ ${sections.map(renderSection).join('\n')}
     if (fullPath === "/api/generate-liquid-site") return next();
     if (fullPath === "/api/liquid/contact-lookup") return next();
     if (fullPath === "/api/system/health") return next();
+    if (fullPath === "/api/data-deletion") return next();
     if (fullPath.startsWith("/api/portal/")) return next();
     if (fullPath.startsWith("/api/oauth/") && fullPath.includes("/callback")) return next();
 
