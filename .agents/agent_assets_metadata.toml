@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "QXBXGYS_Go_h6DANI1mYf"
+uri = "file://client/public/apex-logo-120.png"
+type = "image"
+title = "Apex Logo - 120x120px (for Google Cloud Console)"
