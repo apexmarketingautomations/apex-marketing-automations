@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2, History, Satellite, Building, BarChart3, Kanban, CalendarDays, Mail, Palette, Webhook, FileBarChart, Instagram, Target, Lock, Plug, Activity, Menu, X, ContactRound, MapPin, BellRing } from "lucide-react";
+import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2, History, Satellite, Building, BarChart3, Kanban, CalendarDays, Mail, Palette, Webhook, FileBarChart, Instagram, Target, Lock, Plug, Activity, Menu, X, ContactRound, MapPin, BellRing, FlaskConical } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { CommandMenu } from "@/components/command-menu";
@@ -36,6 +36,7 @@ const navSections = [
       { href: "/property-radar", icon: Building, label: "Property Radar" },
       { href: "/website-integration", icon: Globe, label: "Website Integration" },
       { href: "/form-builder", icon: LayoutTemplate, label: "Form Builder" },
+      { href: "/ab-testing", icon: FlaskConical, label: "A/B Testing" },
       { href: "/analytics", icon: BarChart3, label: "Analytics" },
       { href: "/pipeline", icon: Kanban, label: "Pipeline & CRM" },
       { href: "/calendar", icon: CalendarDays, label: "Calendar" },

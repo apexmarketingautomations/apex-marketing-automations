@@ -1305,6 +1305,50 @@ export const insertAgentMemorySchema = createInsertSchema(agentMemories).omit({ 
 export type InsertAgentMemory = z.infer<typeof insertAgentMemorySchema>;
 export type AgentMemory = typeof agentMemories.$inferSelect;
 
+// ---- A/B Testing Engine ----
+
+export const abExperiments = pgTable("ab_experiments", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id),
+  name: text("name").notNull(),
+  description: text("description"),
+  contentType: text("content_type").notNull(),
+  contentId: integer("content_id"),
+  status: text("status").default("running").notNull(),
+  variantA: json("variant_a").notNull(),
+  variantB: json("variant_b").notNull(),
+  trafficSplit: real("traffic_split").default(50).notNull(),
+  metric: text("metric").default("conversion_rate").notNull(),
+  impressionsA: integer("impressions_a").default(0).notNull(),
+  impressionsB: integer("impressions_b").default(0).notNull(),
+  conversionsA: integer("conversions_a").default(0).notNull(),
+  conversionsB: integer("conversions_b").default(0).notNull(),
+  winnerVariant: text("winner_variant"),
+  confidenceLevel: real("confidence_level").default(0),
+  autoPromote: boolean("auto_promote").default(true).notNull(),
+  minSampleSize: integer("min_sample_size").default(100).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+});
+
+export const insertAbExperimentSchema = createInsertSchema(abExperiments).omit({ id: true, createdAt: true });
+export type InsertAbExperiment = z.infer<typeof insertAbExperimentSchema>;
+export type AbExperiment = typeof abExperiments.$inferSelect;
+
+export const abEvents = pgTable("ab_events", {
+  id: serial("id").primaryKey(),
+  experimentId: integer("experiment_id").references(() => abExperiments.id).notNull(),
+  variant: text("variant").notNull(),
+  eventType: text("event_type").notNull(),
+  visitorId: text("visitor_id"),
+  metadata: json("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertAbEventSchema = createInsertSchema(abEvents).omit({ id: true, createdAt: true });
+export type InsertAbEvent = z.infer<typeof insertAbEventSchema>;
+export type AbEvent = typeof abEvents.$inferSelect;
+
 export const PLAN_LIMITS: Record<string, Record<string, number>> = {
   starter: {
     messages_per_month: 500,

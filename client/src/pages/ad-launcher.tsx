@@ -21,6 +21,7 @@ import {
   Upload,
   X,
   BookOpen,
+  FlaskConical,
 } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { AD_LAUNCHER_STEPS } from "@/components/tutorial-steps";
@@ -451,6 +452,18 @@ export default function AdLauncher() {
               data-testid="button-regenerate-campaign"
             >
               <RefreshCcw size={14} className="mr-2" /> Regenerate
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-cyan-500/30 hover:bg-cyan-500/10 text-cyan-400"
+              onClick={() => {
+                window.location.href = `/ab-testing?contentType=ad_copy&name=${encodeURIComponent(campaign?.campaign_name || 'Ad Copy')}`;
+              }}
+              disabled={!campaign}
+              data-testid="button-ab-test-ad"
+            >
+              <FlaskConical size={14} className="mr-1" /> A/B Test
             </Button>
             <Button
               size="sm"

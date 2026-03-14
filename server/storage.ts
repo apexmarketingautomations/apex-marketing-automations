@@ -66,8 +66,11 @@ import {
   type SkipTraceResult, type InsertSkipTraceResult,
   type SkipTraceUsage, type InsertSkipTraceUsage,
   pushSubscriptions, notificationPreferences,
+  abExperiments, abEvents,
   type PushSubscription, type InsertPushSubscription,
   type NotificationPreference, type InsertNotificationPreference,
+  type AbExperiment, type InsertAbExperiment,
+  type AbEvent, type InsertAbEvent,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -344,6 +347,17 @@ export interface IStorage {
 
   getNotificationPreferences(subAccountId: number): Promise<NotificationPreference | undefined>;
   upsertNotificationPreferences(data: InsertNotificationPreference): Promise<NotificationPreference>;
+
+  getAbExperiments(subAccountId?: number): Promise<AbExperiment[]>;
+  getAbExperiment(id: number): Promise<AbExperiment | undefined>;
+  getAbExperimentsByContent(contentType: string, contentId: number): Promise<AbExperiment[]>;
+  getRunningAbExperiments(): Promise<AbExperiment[]>;
+  createAbExperiment(data: InsertAbExperiment): Promise<AbExperiment>;
+  updateAbExperiment(id: number, data: Partial<InsertAbExperiment>): Promise<AbExperiment | undefined>;
+  deleteAbExperiment(id: number): Promise<boolean>;
+
+  createAbEvent(data: InsertAbEvent): Promise<AbEvent>;
+  getAbEvents(experimentId: number): Promise<AbEvent[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1507,6 +1521,59 @@ export class DatabaseStorage implements IStorage {
     }
     const [row] = await db.insert(notificationPreferences).values(data).returning();
     return row;
+  }
+
+  async getAbExperiments(subAccountId?: number) {
+    if (subAccountId) {
+      return db.select().from(abExperiments)
+        .where(eq(abExperiments.subAccountId, subAccountId))
+        .orderBy(desc(abExperiments.createdAt));
+    }
+    return db.select().from(abExperiments).orderBy(desc(abExperiments.createdAt));
+  }
+
+  async getAbExperiment(id: number) {
+    const [row] = await db.select().from(abExperiments).where(eq(abExperiments.id, id));
+    return row;
+  }
+
+  async getAbExperimentsByContent(contentType: string, contentId: number) {
+    return db.select().from(abExperiments)
+      .where(and(eq(abExperiments.contentType, contentType), eq(abExperiments.contentId, contentId)))
+      .orderBy(desc(abExperiments.createdAt));
+  }
+
+  async getRunningAbExperiments() {
+    return db.select().from(abExperiments)
+      .where(eq(abExperiments.status, "running"))
+      .orderBy(desc(abExperiments.createdAt));
+  }
+
+  async createAbExperiment(data: InsertAbExperiment) {
+    const [row] = await db.insert(abExperiments).values(data).returning();
+    return row;
+  }
+
+  async updateAbExperiment(id: number, data: Partial<InsertAbExperiment>) {
+    const [row] = await db.update(abExperiments).set(data).where(eq(abExperiments.id, id)).returning();
+    return row;
+  }
+
+  async deleteAbExperiment(id: number) {
+    await db.delete(abEvents).where(eq(abEvents.experimentId, id));
+    const rows = await db.delete(abExperiments).where(eq(abExperiments.id, id)).returning();
+    return rows.length > 0;
+  }
+
+  async createAbEvent(data: InsertAbEvent) {
+    const [row] = await db.insert(abEvents).values(data).returning();
+    return row;
+  }
+
+  async getAbEvents(experimentId: number) {
+    return db.select().from(abEvents)
+      .where(eq(abEvents.experimentId, experimentId))
+      .orderBy(desc(abEvents.createdAt));
   }
 }
 

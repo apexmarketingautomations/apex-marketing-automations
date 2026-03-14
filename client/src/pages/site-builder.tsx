@@ -67,6 +67,7 @@ import {
   MessageCircle,
   FileText,
   Menu,
+  FlaskConical,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -2283,6 +2284,22 @@ export default function SiteBuilder() {
               data-testid="button-publish"
             >
               Publish
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-cyan-500/30 hover:bg-cyan-500/10 text-cyan-400 hover:text-cyan-300"
+              onClick={() => {
+                if (currentSiteId) {
+                  window.location.href = `/ab-testing?contentType=landing_page&contentId=${currentSiteId}&name=${encodeURIComponent((siteData as any)?.pages?.[0]?.name || 'Landing Page')}`;
+                } else {
+                  window.location.href = '/ab-testing?contentType=landing_page';
+                }
+              }}
+              disabled={!siteData}
+              data-testid="button-ab-test-site"
+            >
+              <FlaskConical size={14} className="mr-1" /> A/B Test
             </Button>
             <Button
               variant="outline"

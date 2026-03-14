@@ -156,6 +156,22 @@ export function generateInsights(context: ContextPacket): AdvisoryInsight[] {
     });
   }
 
+  if (workspace.siteCount > 0 && performance.conversionRate !== undefined && performance.conversionRate < 5) {
+    insights.push({
+      id: crypto.randomUUID(),
+      subAccountId: performance.subAccountId,
+      category: "optimization",
+      title: "A/B test your landing page",
+      message: `Your landing page has a ${performance.conversionRate.toFixed(1)}% conversion rate. Running an A/B test with a variant could improve this. Want me to create a test?`,
+      dataBacking: { conversionRate: performance.conversionRate, siteCount: workspace.siteCount },
+      confidence: 0.85,
+      priority: 65,
+      actionable: true,
+      suggestedTool: "navigate",
+      suggestedParams: { path: "/ab-testing?contentType=landing_page" },
+    });
+  }
+
   for (const pattern of patterns) {
     if (pattern.confidence > 0.7 && pattern.category === "conversion") {
       insights.push({
