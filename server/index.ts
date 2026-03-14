@@ -399,6 +399,13 @@ function validateEnvVars() {
     console.error("[STARTUP] Event bus init failed (non-fatal):", ebErr);
   }
 
+  try {
+    const { initOperator } = await import("./operator/index");
+    initOperator();
+  } catch (opErr) {
+    console.error("[STARTUP] Operator init failed (non-fatal):", opErr);
+  }
+
   app.use("/api/auth/login", authLimiter);
   app.use("/api/auth/register", authLimiter);
   app.use("/api/auth/google", authLimiter);

@@ -11812,6 +11812,125 @@ Return ONLY valid JSON.` },
     res.json(logs);
   }));
 
+  // ──── APEX OPERATOR ────
+  app.post("/api/operator/command", asyncHandler(async (req, res) => {
+    const { intent, subAccountId } = req.body;
+    if (!intent || !subAccountId) return res.status(400).json({ error: "Missing intent or subAccountId" });
+
+    if (!(await verifyAccountOwnership(req, res, parseInt(subAccountId)))) return;
+    const userId = getUserId((req as any).user);
+
+    const { processCommand, createOperatorContext } = await import("./operator/index");
+    const context = createOperatorContext(parseInt(subAccountId), userId, "draft");
+    const result = await processCommand(intent, context);
+    res.json(result);
+  }));
+
+  app.post("/api/operator/approve", asyncHandler(async (req, res) => {
+    const { planId, stepId, subAccountId, action } = req.body;
+    if (!planId || !stepId || !subAccountId) return res.status(400).json({ error: "Missing planId, stepId, or subAccountId" });
+
+    if (!(await verifyAccountOwnership(req, res, parseInt(subAccountId)))) return;
+    const userId = getUserId((req as any).user);
+
+    const { approveAndContinue, rejectStep, createOperatorContext, getPlan } = await import("./operator/index");
+
+    const plan = getPlan(planId);
+    if (!plan || plan.subAccountId !== parseInt(subAccountId)) return res.status(404).json({ error: "Plan not found" });
+
+    if (action === "reject") {
+      const updated = await rejectStep(planId, stepId);
+      return res.json({ plan: updated, message: "Step rejected" });
+    }
+
+    const context = createOperatorContext(parseInt(subAccountId), userId, "execute");
+    const updated = await approveAndContinue(planId, stepId, context);
+    res.json({ plan: updated, message: "Step approved and executed" });
+  }));
+
+  app.get("/api/operator/plans", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.query.subAccountId as string);
+    if (!subAccountId) return res.status(400).json({ error: "subAccountId is required" });
+
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { getActivePlans, getPlanHistory } = await import("./operator/index");
+    const active = getActivePlans(subAccountId);
+    const history = getPlanHistory(20, subAccountId);
+    res.json({ active, history });
+  }));
+
+  app.get("/api/operator/plan/:planId", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const { getPlan } = await import("./operator/index");
+    const plan = getPlan(req.params.planId);
+    if (!plan) return res.status(404).json({ error: "Plan not found" });
+
+    if (!(await verifyAccountOwnership(req, res, plan.subAccountId))) return;
+    res.json(plan);
+  }));
+
+  app.get("/api/operator/tools", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const { getToolManifest } = await import("./operator/index");
+    res.json(getToolManifest());
+  }));
+
+  app.get("/api/operator/approvals", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.query.subAccountId as string);
+    if (!subAccountId) return res.status(400).json({ error: "subAccountId is required" });
+
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { getPendingApprovals, getApprovalHistory } = await import("./operator/index");
+    res.json({
+      pending: getPendingApprovals(subAccountId),
+      history: getApprovalHistory(subAccountId, 20),
+    });
+  }));
+
+  app.get("/api/operator/diagnostics", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.query.subAccountId as string);
+    if (!subAccountId) return res.status(400).json({ error: "subAccountId is required" });
+
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { runDiagnostics } = await import("./operator/index");
+    const checks = await runDiagnostics(subAccountId);
+    res.json({ checks, timestamp: new Date().toISOString() });
+  }));
+
+  app.get("/api/operator/diagnostics/history", requireAdmin, asyncHandler(async (req, res) => {
+    const { getDiagnosticHistory } = await import("./operator/index");
+    const category = req.query.category as string | undefined;
+    res.json(getDiagnosticHistory(100, category));
+  }));
+
+  app.get("/api/operator/telemetry", requireAdmin, asyncHandler(async (_req, res) => {
+    const { collectSystemMetrics } = await import("./operator/index");
+    res.json(collectSystemMetrics());
+  }));
+
+  app.get("/api/operator/telemetry/metrics", requireAdmin, asyncHandler(async (req, res) => {
+    const { getMetrics } = await import("./operator/index");
+    const name = req.query.name as string | undefined;
+    const limit = parseInt(req.query.limit as string) || 200;
+    const since = req.query.since as string | undefined;
+    res.json(getMetrics({ name, limit, since }));
+  }));
+
+  app.get("/api/operator/memory/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { getSessionContext } = await import("./operator/index");
+    res.json(getSessionContext(subAccountId));
+  }));
+
   // ──── EVENT BUS & JOB QUEUE (admin only) ────
   app.get("/api/admin/event-bus/stats", requireAdmin, asyncHandler(async (_req, res) => {
     res.json(eventBus.getStats());

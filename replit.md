@@ -68,6 +68,19 @@ Preferred communication style: Simple, everyday language.
 - **Event Bus**: In-memory pub/sub system (`server/eventBus.ts`) with priority queuing, dedup, retry with backoff, and 5000-entry log. Subscribers in `server/eventSubscribers.ts`. Events published from form submissions, Sentinel ingest, and messaging. Admin API: `/api/admin/event-bus/stats`, `/api/admin/event-bus/log`.
 - **Job Queue**: Background async task processor (`server/jobQueue.ts`) with retry, concurrency control (5 workers), and history tracking. Admin API: `/api/admin/job-queue/stats`, `/api/admin/job-queue/history`.
 
+### Apex Operator (AI-Native Business OS Layer)
+The Apex Operator (`server/operator/`) is an AI-native command layer that interprets natural language business tasks, plans multi-step execution, validates safety, and executes using internal tools. It sits on top of the event bus architecture.
+
+- **Tool Registry** (`server/operator/toolRegistry.ts`): 11 registered tools — `createPipeline`, `createContact`, `createWorkflow`, `generateLandingPage`, `checkIntegrationHealth`, `detectMissingSetup`, `sendTestSMS`, `diagnoseWorkflow`, `getAccountSummary`, `connectIntegration`, `launchCampaignDraft`. Each tool declares required autonomy level, approval requirements, parameters, and validation.
+- **Planner/Executor** (`server/operator/planner.ts`): Pattern-matching intent interpreter that builds multi-step plans from natural language. Supports plan creation, execution, approval gates, and step-by-step validation.
+- **Approval System** (`server/operator/approvals.ts`): Pending approval queue with 24h expiry. High-risk actions (workflow creation, landing pages, campaigns, SMS) require explicit user approval before execution.
+- **Diagnostics Engine** (`server/operator/diagnostics.ts`): Real-time health scanning for event bus, job queue, integrations, workflows, messaging, and account configuration. Fires `system.diagnostic.critical` events.
+- **Telemetry** (`server/operator/telemetry.ts`): Counters, gauges, and timing metrics. Collects system-wide metrics including event throughput, queue depth, memory usage, and module error rates.
+- **Memory/State** (`server/operator/memory.ts`): Per-tenant key-value memory with TTL support for operator session context, action history, and failure tracking.
+- **Event Hooks** (`server/operator/eventHooks.ts`): Reactive subscriptions to workflow failures, integration disconnections, message failures, and all CRM/form/payment events for telemetry.
+- **Autonomy Levels**: Level 1 (Observe) — inspect only; Level 2 (Draft) — create drafts with approval; Level 3 (Execute) — auto-fix safe issues.
+- **API Routes**: `POST /api/operator/command`, `POST /api/operator/approve`, `GET /api/operator/plans`, `GET /api/operator/tools`, `GET /api/operator/approvals`, `GET /api/operator/diagnostics`, `GET /api/operator/telemetry`, `GET /api/operator/memory/:subAccountId`.
+
 ## External Dependencies
 
 ### Database

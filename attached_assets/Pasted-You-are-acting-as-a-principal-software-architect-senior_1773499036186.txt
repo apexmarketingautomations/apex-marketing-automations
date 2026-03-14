@@ -1,0 +1,304 @@
+You are acting as a principal software architect, senior staff engineer, product systems designer, and implementation lead inside this Replit project for Apex Marketing Automations.
+
+Your job is not to give shallow advice. Your job is to inspect this actual codebase, understand the current architecture, identify coupling, technical debt, scaling risks, schema inconsistencies, and incomplete systems, then design and begin implementing a production-grade evolution of Apex into an event-driven AI-native business operating system.
+
+You must use the full capabilities available to you inside Replit:
+- inspect the real repository structure
+- trace imports and dependencies
+- inspect server routes, background jobs, DB models, workflow engine logic, integrations, and UI bindings
+- identify existing patterns already in use
+- reuse what is solid
+- refactor what is fragile
+- avoid breaking production behavior
+- propose and implement changes incrementally and safely
+
+Do not give generic best-practice fluff.
+Do not give placeholder architecture.
+Do not pretend code exists if it does not.
+Do not recommend a full rewrite unless absolutely unavoidable.
+Work with the actual repo in front of you.
+
+PROJECT GOAL
+
+Apex must evolve from a feature-heavy automation platform into a true AI-native business operating system.
+
+That means:
+- modules must no longer be tightly coupled through direct calls everywhere
+- system actions must be driven through a central event architecture
+- workflows, CRM, messaging, Sentinel, forms, ads, voice, analytics, and integrations must be able to react to shared events
+- the platform must support a future Apex Operator agent that can observe system state, detect failures/opportunities, and take safe actions
+- users should eventually be able to command the system in natural language while the platform executes safely in the background
+
+PRIMARY OBJECTIVE
+
+Design and begin implementing an incremental migration toward a centralized event-driven core.
+
+This must be done safely, with minimal disruption, and in a way that supports:
+- always-on background execution while users are offline
+- auditability
+- retry safety
+- observability
+- future AI operator integration
+- maintainable scaling
+
+DO THIS IN PHASES
+
+PHASE 1 — REPO AUDIT
+Inspect the codebase and produce a real assessment of:
+
+1. Current backend architecture
+2. Current workflow execution model
+3. Current database access patterns
+4. Current module-to-module coupling
+5. Existing queue/background job mechanisms if any
+6. Existing event-like behavior if any
+7. Where direct calls should later become published events
+8. Existing schema or migration risks
+9. Existing logging / telemetry / audit trail systems
+10. Which modules are most ready for migration first
+
+Be specific and cite actual files, functions, services, routes, and components from this repo.
+
+PHASE 2 — TARGET ARCHITECTURE
+Design a production-grade event-driven core for Apex.
+
+Create a central Event Bus architecture with the following capabilities:
+
+1. Standard event publishing
+2. Standard event subscription
+3. Event validation
+4. Event deduplication
+5. Event persistence / logging
+6. Worker-safe asynchronous dispatch
+7. Retry/error handling
+8. Loop prevention / recursion guard
+9. Per-module subscriber registration
+10. Audit visibility
+
+Use a clean event envelope such as:
+
+{
+  event_id: string,
+  event_type: string,
+  source_module: string,
+  tenant_id?: string,
+  entity_id?: string,
+  timestamp: ISO string,
+  payload: object,
+  metadata?: object,
+  correlation_id?: string,
+  causation_id?: string,
+  version?: number
+}
+
+If the repo already has a better pattern, adapt intelligently rather than forcing this exact one.
+
+PHASE 3 — IMPLEMENTATION PLAN
+Map current Apex features into event-driven flows.
+
+Target modules include:
+- CRM / Pipeline
+- Workflows
+- Messaging (SMS / Email)
+- Sentinel
+- Forms
+- Ad Launcher
+- Integrations
+- Voice AI
+- Analytics
+- future AI Operator
+
+Define event candidates such as:
+- lead.created
+- lead.updated
+- form.submitted
+- message.received
+- message.sent
+- call.missed
+- call.completed
+- appointment.booked
+- appointment.canceled
+- payment.completed
+- payment.failed
+- workflow.created
+- workflow.executed
+- workflow.failed
+- integration.connected
+- integration.disconnected
+- crash.detected
+- campaign.created
+- page.generated
+- contact.tagged
+
+For each major module, identify:
+- which events it should publish
+- which events it should subscribe to
+- which direct calls can be wrapped first
+- what should remain untouched until later
+
+PHASE 4 — SAFE FIRST IMPLEMENTATION
+Implement the first safe slice of the event system in this repo.
+
+Start with a minimal but real working core:
+1. event bus service
+2. event publisher helper
+3. event subscriber registry
+4. event log persistence
+5. at least one real event flow migrated safely
+6. tests or validation path if test framework exists
+7. readable error logging
+
+Choose one of the safest candidate flows, such as:
+- form submission -> CRM -> workflow evaluation -> SMS auto response
+or
+- Sentinel crash detection -> internal alerting -> incident creation
+or
+- integration connected/disconnected -> audit/event logging
+
+Pick the best first slice based on the actual repo.
+
+PHASE 5 — AI OPERATOR READINESS
+Prepare the system for a future Apex Operator layer.
+
+Do not build fake chat UX.
+Do not build gimmicks.
+Instead, create the architectural hooks needed so an agent can later observe and act safely.
+
+The future operator should be able to react to events like:
+- workflow.failed
+- integration.disconnected
+- lead.unanswered
+- campaign.stalled
+- message.delivery_failed
+- queue.backed_up
+
+Design the architecture so the future operator can:
+- inspect state
+- recommend action
+- create drafts
+- repair safe configuration issues
+- escalate risky actions for approval
+
+Separate:
+- observation
+- recommendation
+- execution
+- approval-required actions
+
+PHASE 6 — OPERATING SYSTEM DIRECTION
+Keep the long-term direction in mind:
+Apex is not just becoming a set of tools. It is becoming a business operating system.
+
+That means your decisions should support:
+- shared data model thinking
+- system-wide events
+- modular extensibility
+- agent orchestration
+- background execution
+- auditability
+- multi-tenant safety
+- future marketplace/templates
+- future autonomous onboarding flows
+
+GUARDRAILS
+
+You must obey these constraints:
+- do not break production
+- do not wipe data
+- do not create destructive migrations unless explicitly justified
+- do not remove working features just because they are messy
+- prefer wrappers, adapters, and incremental refactors
+- preserve backward compatibility wherever practical
+- do not invent infrastructure this repo clearly does not support unless you also provide the minimal implementation path
+- do not hardcode secrets
+- do not introduce architecture that is wildly overbuilt for the repo’s current state
+- do not use placeholders like TODO architecture with no code grounding
+- do not give me fake confidence
+
+IMPLEMENTATION EXPECTATIONS
+
+I want real engineering work, not theory-only output.
+
+When possible:
+- inspect actual files
+- show me what exists now
+- tell me what should be changed and why
+- propose file-by-file additions/changes
+- implement safe parts directly
+- explain risks before doing dangerous changes
+- produce a migration path, not just an ideal diagram
+
+OUTPUT FORMAT
+
+Return your work in this order:
+
+1. REPO ASSESSMENT
+- actual current architecture summary
+- key risks
+- coupling issues
+- production risks
+- current strengths worth preserving
+
+2. TARGET EVENT ARCHITECTURE
+- core design
+- event model
+- subscriber model
+- async model
+- logging/audit model
+
+3. FILE-BY-FILE PLAN
+- files to add
+- files to modify
+- why each change is needed
+
+4. FIRST SAFE IMPLEMENTATION
+- implement the event bus core
+- implement one real migrated flow
+- show exact code changes
+
+5. MIGRATION ROADMAP
+- phase-by-phase path to migrate the rest of Apex
+- priority order by module
+- what to defer
+
+6. AI OPERATOR READINESS PLAN
+- what hooks/events/interfaces the future agent layer needs
+- how to keep agent actions safe
+
+7. RISK REPORT
+- schema risks
+- performance risks
+- retry/idempotency risks
+- tenant isolation risks
+- logging/observability gaps
+
+8. EXECUTIVE SUMMARY
+- blunt summary of what Apex is architecturally right now
+- what it becomes after this work
+- what the next smartest engineering move is
+
+CODING PREFERENCES
+
+Prefer:
+- clear modular code
+- production-safe patterns
+- defensive programming
+- typed schemas if stack supports them
+- idempotent handlers
+- clean interfaces
+- explicit logging
+- incremental adoption
+
+If there is already a queue/job framework in the repo, use it.
+If there is no queue, design the thinnest viable abstraction for one rather than overengineering.
+
+SUCCESS CRITERIA
+
+This task is successful only if:
+- the recommendations clearly come from the real repo
+- the architecture is actually usable
+- at least one real event-driven slice is implemented or prepared cleanly
+- the path toward an Apex Operator becomes structurally possible
+- the changes make Apex feel more like an AI-native business OS and less like a pile of disconnected modules
+
+Start by auditing the existing repo and identifying the best first migration slice.
