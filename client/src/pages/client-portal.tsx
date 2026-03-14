@@ -143,7 +143,7 @@ export default function ClientPortalPage() {
                   <MessageSquare size={16} className="text-blue-400" />
                   Recent Messages
                 </h2>
-                {data.recentMessages.length === 0 ? (
+                {(!data.recentMessages || data.recentMessages.length === 0) ? (
                   <p className="text-slate-500 text-sm" data-testid="text-no-messages">No recent messages</p>
                 ) : (
                   <div className="space-y-2">
@@ -181,7 +181,7 @@ export default function ClientPortalPage() {
                   <CalendarDays size={16} className="text-rose-400" />
                   Upcoming Appointments
                 </h2>
-                {data.appointments.length === 0 ? (
+                {(!data.appointments || data.appointments.length === 0) ? (
                   <p className="text-slate-500 text-sm" data-testid="text-no-appointments">No upcoming appointments</p>
                 ) : (
                   <div className="space-y-2">

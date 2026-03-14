@@ -420,7 +420,7 @@ export default function LocationSearch() {
                 <div className="flex items-center justify-center h-full">
                   <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
                 </div>
-              ) : data && data.results.length === 0 ? (
+              ) : data && (!data.results || data.results.length === 0) ? (
                 <div className="flex flex-col items-center justify-center h-full text-center p-8">
                   <MapPin className="w-12 h-12 text-slate-600 mb-3" />
                   <p className="text-slate-400">No results found. Try broadening your search.</p>

@@ -214,7 +214,7 @@ export default function DashboardPage() {
             <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
               <MessageSquare size={18} className="text-cyan-400" /> Recent Messages
             </h2>
-            {metrics.recentMessages.length === 0 ? (
+            {(!metrics.recentMessages || metrics.recentMessages.length === 0) ? (
               <p className="text-slate-300 text-sm">No messages today</p>
             ) : (
               <div className="space-y-3">
@@ -237,7 +237,7 @@ export default function DashboardPage() {
             <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
               <Megaphone size={18} className="text-green-400" /> Recent Leads
             </h2>
-            {metrics.recentLeads.length === 0 ? (
+            {(!metrics.recentLeads || metrics.recentLeads.length === 0) ? (
               <p className="text-slate-300 text-sm">No recent leads</p>
             ) : (
               <div className="space-y-3">
