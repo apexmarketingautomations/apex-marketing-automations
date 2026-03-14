@@ -12020,6 +12020,60 @@ Return ONLY valid JSON.` },
     res.json({ industries });
   }));
 
+  app.get("/api/operator/cognitive/health/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { getHealthScore } = await import("./operator/cognitiveLayer");
+    const healthScore = await getHealthScore(subAccountId);
+    res.json(healthScore);
+  }));
+
+  app.get("/api/operator/cognitive/growth-report/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { getGrowthReport } = await import("./operator/cognitiveLayer");
+    const report = await getGrowthReport(subAccountId);
+    res.json(report);
+  }));
+
+  app.get("/api/operator/cognitive/strategic/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { getStrategicInsights } = await import("./operator/cognitiveLayer");
+    const insights = await getStrategicInsights(subAccountId);
+    res.json({ insights, timestamp: new Date().toISOString() });
+  }));
+
+  app.get("/api/operator/cognitive/opportunities/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { getMissedOpportunities } = await import("./operator/cognitiveLayer");
+    const opportunities = await getMissedOpportunities(subAccountId);
+    res.json({ opportunities, timestamp: new Date().toISOString() });
+  }));
+
+  app.get("/api/operator/cognitive/profile/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { getUserProfile } = await import("./operator/cognitiveLayer");
+    const profile = await getUserProfile(subAccountId);
+    res.json({ profile });
+  }));
+
+  app.post("/api/operator/cognitive/profile/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { updateUserProfile } = await import("./operator/cognitiveLayer");
+    await updateUserProfile(subAccountId, req.body);
+    res.json({ success: true });
+  }));
+
   app.post("/api/operator/cognitive/track", asyncHandler(async (req, res) => {
     const { subAccountId, action, value } = req.body;
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
