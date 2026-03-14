@@ -97,6 +97,31 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
+      window.addEventListener('error', function(e) {
+        if (e.message && e.message.indexOf('Failed to fetch dynamically imported module') !== -1) {
+          var reloaded = sessionStorage.getItem('chunk-reload');
+          if (!reloaded) {
+            sessionStorage.setItem('chunk-reload', '1');
+            window.location.reload();
+          } else {
+            sessionStorage.removeItem('chunk-reload');
+          }
+        }
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        var msg = e.reason && (e.reason.message || String(e.reason));
+        if (msg && msg.indexOf('Failed to fetch dynamically imported module') !== -1) {
+          var reloaded = sessionStorage.getItem('chunk-reload');
+          if (!reloaded) {
+            sessionStorage.setItem('chunk-reload', '1');
+            window.location.reload();
+          } else {
+            sessionStorage.removeItem('chunk-reload');
+          }
+        }
+      });
+    </script>
+    <script>
       (function() {
         fetch('/api/config/google-api-key')
           .then(function(r) { return r.json(); })
