@@ -6,6 +6,8 @@ import { generateStrategicInsights, calculateHealthScore } from "./strategicAdvi
 import { executeTool } from "./toolRegistry";
 import { generateNudges } from "./nudgeSystem";
 import { publishEventAsync } from "../eventBus";
+import { generateAITaskPlan, generateBriefing } from "./agentBrain";
+import { isGeminiConfigured } from "../gemini";
 import type { ContextPacket } from "./cognitiveTypes";
 
 const SCAN_INTERVAL_MS = 60_000;
@@ -295,16 +297,44 @@ async function scanAccount(subAccountId: number): Promise<void> {
 
   try {
     const context = await buildContext(subAccountId);
-    const taskDefs = getAutoTaskDefinitions(context);
+    let allDefs: TaskDefinition[] = [];
+
+    const ruleDefs = getAutoTaskDefinitions(context);
+    allDefs.push(...ruleDefs.filter(d => d.condition(context)));
+
+    if (isGeminiConfigured()) {
+      try {
+        const aiSuggestions = await generateAITaskPlan(subAccountId, context);
+        for (const s of aiSuggestions) {
+          allDefs.push({
+            taskType: s.taskType,
+            title: s.title,
+            description: `${s.description}\n\nAI Reasoning: ${s.reasoning}`,
+            priority: s.priority,
+            toolName: s.toolName || undefined,
+            toolParams: s.toolParams || {},
+            condition: () => true,
+          });
+        }
+        if (aiSuggestions.length > 0) {
+          console.log(`[AGENT-BRAIN] AI suggested ${aiSuggestions.length} tasks for account #${subAccountId}`);
+        }
+      } catch (aiErr: any) {
+        console.error(`[AGENT-BRAIN] AI reasoning failed for account #${subAccountId}: ${aiErr.message}`);
+      }
+    }
+
+    const deduped = new Map<string, TaskDefinition>();
+    for (const def of allDefs.sort((a, b) => b.priority - a.priority)) {
+      if (!deduped.has(def.taskType)) {
+        deduped.set(def.taskType, def);
+      }
+    }
 
     let tasksCreated = 0;
     const remaining = (config.maxTasksPerDay || DEFAULT_MAX_TASKS_PER_DAY) - (config.tasksRunToday || 0);
 
-    const sortedDefs = taskDefs
-      .filter(d => d.condition(context))
-      .sort((a, b) => b.priority - a.priority);
-
-    for (const def of sortedDefs) {
+    for (const def of Array.from(deduped.values()).sort((a, b) => b.priority - a.priority)) {
       if (tasksCreated >= remaining) break;
 
       if (config.allowedTaskTypes && config.allowedTaskTypes.length > 0) {
@@ -328,7 +358,11 @@ async function scanAccount(subAccountId: number): Promise<void> {
       .execute();
 
     if (tasksCreated > 0) {
-      console.log(`[TASK-AGENT] Account #${subAccountId}: ${tasksCreated} tasks executed`);
+      console.log(`[TASK-AGENT] Account #${subAccountId}: ${tasksCreated} tasks executed (AI-enhanced)`);
+
+      try {
+        await generateBriefing(subAccountId);
+      } catch {}
     }
   } catch (err: any) {
     console.error(`[TASK-AGENT] Scan error for account #${subAccountId}: ${err.message}`);

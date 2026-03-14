@@ -1215,6 +1215,23 @@ export const insertAgentConfigSchema = createInsertSchema(agentConfig).omit({ id
 export type InsertAgentConfig = z.infer<typeof insertAgentConfigSchema>;
 export type AgentConfig = typeof agentConfig.$inferSelect;
 
+export const agentBriefings = pgTable("agent_briefings", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  summary: text("summary").notNull(),
+  tasksCompleted: integer("tasks_completed").default(0),
+  tasksFailed: integer("tasks_failed").default(0),
+  highlights: json("highlights"),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  seen: boolean("seen").default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertAgentBriefingSchema = createInsertSchema(agentBriefings).omit({ id: true, createdAt: true });
+export type InsertAgentBriefing = z.infer<typeof insertAgentBriefingSchema>;
+export type AgentBriefing = typeof agentBriefings.$inferSelect;
+
 export const PLAN_LIMITS: Record<string, Record<string, number>> = {
   starter: {
     messages_per_month: 500,

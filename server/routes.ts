@@ -12121,6 +12121,40 @@ Return ONLY valid JSON.` },
     res.json(config);
   }));
 
+  app.get("/api/agent/briefings/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { getUnseenBriefings } = await import("./operator/agentBrain");
+    const briefings = await getUnseenBriefings(subAccountId);
+    res.json({ briefings });
+  }));
+
+  app.post("/api/agent/briefings/:briefingId/seen", asyncHandler(async (req, res) => {
+    const briefingId = parseInt(req.params.briefingId);
+    const { markBriefingSeen } = await import("./operator/agentBrain");
+    await markBriefingSeen(briefingId);
+    res.json({ success: true });
+  }));
+
+  app.get("/api/agent/outcomes/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { getOutcomeStats } = await import("./operator/agentBrain");
+    const stats = await getOutcomeStats(subAccountId);
+    res.json(stats);
+  }));
+
+  app.post("/api/agent/briefing/generate/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { generateBriefing } = await import("./operator/agentBrain");
+    const briefing = await generateBriefing(subAccountId);
+    res.json(briefing || { summary: "No new activity to report.", tasksCompleted: 0, tasksFailed: 0, highlights: [] });
+  }));
+
   // ──── EVENT BUS & JOB QUEUE (admin only) ────
   app.get("/api/admin/event-bus/stats", requireAdmin, asyncHandler(async (_req, res) => {
     res.json(eventBus.getStats());
