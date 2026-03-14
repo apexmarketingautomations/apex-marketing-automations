@@ -13,6 +13,9 @@ import path from "path";
 import fs from "fs";
 import express from "express";
 import { processLiveSentinelFeed, deployGeofenceAd } from "./sentinel";
+import { publishEventAsync, EVENT_TYPES } from "./eventBus";
+import { eventBus } from "./eventBus";
+import { jobQueue } from "./jobQueue";
 import { scanDistressedProperties, calculateDealMetrics } from "./property-radar";
 import { skipTraceLookup, getCurrentMonthYear } from "./skip-trace";
 import crypto from "crypto";
@@ -379,6 +382,13 @@ ${sections.map(renderSection).join('\n')}
       direction: "inbound",
       channel: "form",
       status: "received",
+    });
+
+    publishEventAsync(EVENT_TYPES.FORM_SUBMITTED, "form-endpoint", {
+      subAccountId: accountId, formName, contactName, contactPhone, contactEmail, source: "public_form",
+    });
+    publishEventAsync(EVENT_TYPES.CONTACT_CREATED, "form-endpoint", {
+      subAccountId: accountId, name: contactName, phone: contactPhone, email: contactEmail, source: "form",
     });
 
     res.json({ success: true, message: "Thank you! Your submission has been received." });
@@ -1172,6 +1182,10 @@ Rules:
       const usageDesc = channel === "whatsapp" ? `WhatsApp to ${contactPhone}` : `SMS to ${contactPhone}`;
       await logUsageInternal(subAccountId, usageType, 1, usageDesc);
     }
+
+    publishEventAsync(EVENT_TYPES.MESSAGE_SENT, "messaging", {
+      subAccountId, to: contactPhone, channel: channel || "sms", status: twilioStatus, messageId: msg.id,
+    });
 
     res.status(201).json({ ...msg, twilioSid });
   }));
@@ -5995,6 +6009,15 @@ Rules:
         leadPhone: phoneNumber,
         location: locationTag,
       }).catch(() => {});
+
+      publishEventAsync(EVENT_TYPES.CRASH_DETECTED, "sentinel-ingest", {
+        subAccountId: SUB_ACCOUNT_ID, contactId: contact.id, maid,
+        name: `${firstName} ${lastName}`.trim(), phone: phoneNumber, location: locationTag,
+      });
+      publishEventAsync(EVENT_TYPES.CONTACT_CREATED, "sentinel-ingest", {
+        subAccountId: SUB_ACCOUNT_ID, contactId: contact.id, name: `${firstName} ${lastName}`.trim(),
+        phone: phoneNumber, email, source: "sentinel_geofence",
+      });
 
       await storage.createNotification({
         subAccountId: SUB_ACCOUNT_ID,
@@ -11787,6 +11810,27 @@ Return ONLY valid JSON.` },
     const since = req.query.since ? new Date(req.query.since as string) : undefined;
     const logs = await getAuditLogs({ action, performedBy, limit, offset, since });
     res.json(logs);
+  }));
+
+  // ──── EVENT BUS & JOB QUEUE (admin only) ────
+  app.get("/api/admin/event-bus/stats", requireAdmin, asyncHandler(async (_req, res) => {
+    res.json(eventBus.getStats());
+  }));
+
+  app.get("/api/admin/event-bus/log", requireAdmin, asyncHandler(async (req, res) => {
+    const limit = parseInt(req.query.limit as string) || 100;
+    const eventType = req.query.eventType as string | undefined;
+    res.json(eventBus.getLog(limit, eventType));
+  }));
+
+  app.get("/api/admin/job-queue/stats", requireAdmin, asyncHandler(async (_req, res) => {
+    res.json(jobQueue.getStats());
+  }));
+
+  app.get("/api/admin/job-queue/history", requireAdmin, asyncHandler(async (req, res) => {
+    const limit = parseInt(req.query.limit as string) || 50;
+    const jobType = req.query.jobType as string | undefined;
+    res.json(jobQueue.getHistory(limit, jobType));
   }));
 
   // ──── DATABASE BACKUP (admin only) ────

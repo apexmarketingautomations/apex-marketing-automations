@@ -1,0 +1,160 @@
+You are a senior distributed-systems software engineer tasked with improving the architecture of the Apex Marketing Automations platform.
+
+Goal: convert the internal system architecture toward an **event-driven platform core** so all modules (CRM, Workflows, Sentinel, Messaging, Ads, Integrations, AI Agent) communicate through a centralized event bus instead of direct module-to-module calls.
+
+Important:
+Do NOT rewrite the entire platform. Implement this incrementally and safely.
+
+---
+
+SYSTEM CONTEXT
+
+The Apex platform currently contains modules including:
+
+* CRM / Pipeline
+* Workflows
+* Messaging (SMS / Email)
+* Sentinel (incident detection)
+* Integrations (Google, Meta, Twilio, Stripe)
+* Ad Launcher
+* Voice AI
+* Forms
+* Analytics
+
+These modules currently trigger actions directly. This creates tight coupling and scaling problems.
+
+We want to introduce a **central event system**.
+
+---
+
+PRIMARY TASK
+
+Design and implement a **Core Event Bus layer** that allows modules to publish and subscribe to events.
+
+---
+
+ARCHITECTURE REQUIREMENTS
+
+1. Create a central **Event Bus service**.
+
+Responsibilities:
+
+* publish events
+* register event listeners
+* route events to subscribers
+* log event activity
+* prevent duplicate execution
+
+2. Define a standard event schema.
+
+Example:
+
+{
+event_id: string,
+event_type: string,
+source_module: string,
+timestamp: ISO date,
+payload: object,
+metadata: object
+}
+
+3. Implement event publishing helpers:
+
+publishEvent(eventType, payload, sourceModule)
+
+Example events:
+
+lead.created
+lead.updated
+form.submitted
+message.received
+call.missed
+appointment.booked
+payment.completed
+workflow.failed
+crash.detected
+
+4. Implement event subscribers.
+
+Example modules that should subscribe:
+
+CRM
+Workflows
+Messaging
+Analytics
+AI Operator
+
+Example flow:
+
+form.submitted
+→ event bus publishes event
+→ CRM creates contact
+→ Workflow engine checks triggers
+→ Messaging module sends auto response
+→ Analytics logs conversion
+
+No module should call another module directly.
+
+5. Add event logging.
+
+Store event history including:
+
+* event type
+* payload
+* module triggered
+* execution status
+* errors
+
+This should appear in the admin panel later.
+
+6. Add a job queue / worker system for asynchronous processing.
+
+Events that trigger heavy tasks (SMS sending, email, ads, AI tasks) should be handled through background workers.
+
+7. Implement safety guards.
+
+* deduplicate events
+* prevent infinite loops
+* retry failed tasks
+* log errors clearly
+
+---
+
+AI OPERATOR INTEGRATION
+
+Prepare the system so an AI operator can listen to events such as:
+
+workflow.failed
+lead.unanswered
+integration.disconnected
+
+The operator should be able to suggest or perform corrective actions.
+
+Do not implement full AI logic yet. Just ensure the event bus allows this later.
+
+---
+
+CONSTRAINTS
+
+* Do not break existing workflows
+* Do not remove current modules
+* Wrap existing triggers with event publishing instead
+* Maintain backward compatibility
+* Avoid destructive database changes
+* Prefer modular and maintainable code
+
+---
+
+OUTPUT REQUIRED
+
+Provide:
+
+1. Proposed event bus architecture
+2. Code structure
+3. Event schema definition
+4. Example implementation of publish + subscribe
+5. Migration strategy for current modules
+6. Any recommended background worker system
+7. Security and performance considerations
+
+Focus on production-grade architecture suitable for a large SaaS platform.

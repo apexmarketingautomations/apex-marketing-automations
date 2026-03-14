@@ -65,6 +65,8 @@ Preferred communication style: Simple, everyday language.
 - **Database Backup**: JSON snapshot manifests with table counts; health check endpoint for DB connectivity and record stats.
 - **Launch Readiness Dashboard**: Admin-only page (`/launch-readiness`) with 22-check scored readiness report, DB health/snapshots, system logs viewer, audit trail viewer, and feature flag toggle UI.
 - **Support Debug Tools**: Admin endpoints to inspect any account or user with subscription, integrations, automations, and contact/message stats.
+- **Event Bus**: In-memory pub/sub system (`server/eventBus.ts`) with priority queuing, dedup, retry with backoff, and 5000-entry log. Subscribers in `server/eventSubscribers.ts`. Events published from form submissions, Sentinel ingest, and messaging. Admin API: `/api/admin/event-bus/stats`, `/api/admin/event-bus/log`.
+- **Job Queue**: Background async task processor (`server/jobQueue.ts`) with retry, concurrency control (5 workers), and history tracking. Admin API: `/api/admin/job-queue/stats`, `/api/admin/job-queue/history`.
 
 ## External Dependencies
 

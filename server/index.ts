@@ -13,6 +13,8 @@ import fs from "fs";
 import { runStartupChecks } from "./startupChecks";
 import { logSystemError, logSystemEvent } from "./systemLogger";
 import { apiLimiter, authLimiter, webhookLimiter } from "./rateLimiter";
+import { initEventSubscribers } from "./eventSubscribers";
+import { eventBus } from "./eventBus";
 
 const app = express();
 const httpServer = createServer(app);
@@ -387,6 +389,14 @@ function validateEnvVars() {
     startCrashReportWorker();
   } catch (workerErr) {
     console.error("[STARTUP] Crash report worker failed (non-fatal):", workerErr);
+  }
+
+  try {
+    const { storage } = await import("./storage");
+    initEventSubscribers(storage);
+    console.log("[STARTUP] Event bus initialized");
+  } catch (ebErr) {
+    console.error("[STARTUP] Event bus init failed (non-fatal):", ebErr);
   }
 
   app.use("/api/auth/login", authLimiter);
