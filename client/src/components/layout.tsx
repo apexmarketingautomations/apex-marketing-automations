@@ -4,7 +4,7 @@ import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphon
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { CommandMenu } from "@/components/command-menu";
-import { SiteAssistant } from "@/components/site-assistant";
+import { ApexIntelligence } from "@/components/apex-intelligence";
 import { VibeSwitcher } from "@/components/vibe-switcher";
 import { useAuth } from "@/hooks/use-auth";
 import { useAccount } from "@/hooks/use-account";
@@ -348,7 +348,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </main>
 
       <CommandMenu />
-      <SiteAssistant />
+      <ApexIntelligence />
       <WelcomeModal />
 
       <AnimatePresence>
