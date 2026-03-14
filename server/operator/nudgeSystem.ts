@@ -4,6 +4,7 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import type { AdvisoryInsight, NudgeConfig, ContextPacket } from "./cognitiveTypes";
 import { generateInsights, adaptMessage } from "./advisoryEngine";
 import { recordNudgeResponse } from "./memoryEngine";
+import { recordPreferenceMemory } from "./episodicMemory";
 import { publishEventAsync } from "../eventBus";
 import { dispatchAlert, generateDeepLink } from "../pushAlertService";
 
@@ -119,6 +120,15 @@ export async function getActiveNudges(subAccountId: number): Promise<any[]> {
 
 export async function dismissNudge(nudgeId: number, subAccountId: number): Promise<boolean> {
   try {
+    const [nudge] = await db.select().from(operatorNudges)
+      .where(and(
+        eq(operatorNudges.id, nudgeId),
+        eq(operatorNudges.subAccountId, subAccountId),
+      ))
+      .limit(1).execute();
+
+    if (!nudge) return false;
+
     await db.update(operatorNudges)
       .set({ status: "dismissed", dismissedAt: new Date() })
       .where(and(
@@ -127,6 +137,14 @@ export async function dismissNudge(nudgeId: number, subAccountId: number): Promi
       ))
       .execute();
     await recordNudgeResponse(subAccountId, false);
+
+    recordPreferenceMemory(
+      subAccountId,
+      `User dismissed nudge: "${nudge.title}" (type: ${nudge.nudgeType}). This type of suggestion may not resonate well.`,
+      { nudgeType: nudge.nudgeType, nudgeId },
+      "nudge-dismiss"
+    ).catch(() => {});
+
     return true;
   } catch {
     return false;
@@ -135,6 +153,15 @@ export async function dismissNudge(nudgeId: number, subAccountId: number): Promi
 
 export async function actOnNudge(nudgeId: number, subAccountId: number): Promise<boolean> {
   try {
+    const [nudge] = await db.select().from(operatorNudges)
+      .where(and(
+        eq(operatorNudges.id, nudgeId),
+        eq(operatorNudges.subAccountId, subAccountId),
+      ))
+      .limit(1).execute();
+
+    if (!nudge) return false;
+
     await db.update(operatorNudges)
       .set({ status: "acted_on", actedOnAt: new Date() })
       .where(and(
@@ -143,6 +170,14 @@ export async function actOnNudge(nudgeId: number, subAccountId: number): Promise
       ))
       .execute();
     await recordNudgeResponse(subAccountId, true);
+
+    recordPreferenceMemory(
+      subAccountId,
+      `User acted on nudge: "${nudge.title}" (type: ${nudge.nudgeType}). This type of suggestion resonates well with the user.`,
+      { nudgeType: nudge.nudgeType, nudgeId },
+      "nudge-action"
+    ).catch(() => {});
+
     return true;
   } catch {
     return false;

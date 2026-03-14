@@ -6,7 +6,7 @@ import { generateStrategicInsights, calculateHealthScore } from "./strategicAdvi
 import { executeTool } from "./toolRegistry";
 import { generateNudges } from "./nudgeSystem";
 import { publishEventAsync } from "../eventBus";
-import { generateAITaskPlan, generateBriefing } from "./agentBrain";
+import { generateAITaskPlan, generateBriefing, recordTaskOutcomeAsMemory } from "./agentBrain";
 import { dispatchAlert, generateDeepLink } from "../pushAlertService";
 import { isGeminiConfigured } from "../gemini";
 import type { ContextPacket } from "./cognitiveTypes";
@@ -261,6 +261,14 @@ async function executeTask(taskId: number): Promise<void> {
       }, "task-agent");
     } catch {}
 
+    recordTaskOutcomeAsMemory(task.subAccountId, {
+      taskType: task.taskType,
+      title: task.title,
+      status: "completed",
+      toolUsed: task.toolUsed,
+      priority: task.priority,
+    }).catch(() => {});
+
   } catch (err: any) {
     const errorMsg = err?.message || String(err);
     const shouldRetry = (task.attempts || 0) + 1 < (task.maxAttempts || 3);
@@ -273,6 +281,17 @@ async function executeTask(taskId: number): Promise<void> {
       })
       .where(eq(agentTasks.id, taskId))
       .execute();
+
+    if (!shouldRetry) {
+      recordTaskOutcomeAsMemory(task.subAccountId, {
+        taskType: task.taskType,
+        title: task.title,
+        status: "failed",
+        error: errorMsg,
+        toolUsed: task.toolUsed,
+        priority: task.priority,
+      }).catch(() => {});
+    }
 
     console.error(`[TASK-AGENT] ${shouldRetry ? "Retry scheduled" : "Failed"}: ${task.title} — ${errorMsg}`);
   }

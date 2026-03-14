@@ -1282,6 +1282,29 @@ export const insertNotificationPreferenceSchema = createInsertSchema(notificatio
 export type InsertNotificationPreference = z.infer<typeof insertNotificationPreferenceSchema>;
 export type NotificationPreference = typeof notificationPreferences.$inferSelect;
 
+// ---- Agent Episodic Memories ----
+
+export const agentMemories = pgTable("agent_memories", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  memoryType: text("memory_type").notNull(),
+  content: text("content").notNull(),
+  category: text("category"),
+  relevanceScore: real("relevance_score").default(1.0).notNull(),
+  decayRate: real("decay_rate").default(0.01).notNull(),
+  sourceEvent: text("source_event"),
+  sourceContext: json("source_context"),
+  outcome: text("outcome"),
+  tags: text("tags").array().default([]),
+  accessCount: integer("access_count").default(0),
+  lastAccessedAt: timestamp("last_accessed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertAgentMemorySchema = createInsertSchema(agentMemories).omit({ id: true, createdAt: true });
+export type InsertAgentMemory = z.infer<typeof insertAgentMemorySchema>;
+export type AgentMemory = typeof agentMemories.$inferSelect;
+
 export const PLAN_LIMITS: Record<string, Record<string, number>> = {
   starter: {
     messages_per_month: 500,

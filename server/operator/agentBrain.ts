@@ -6,6 +6,7 @@ import { buildContext } from "./contextBuilder";
 import { buildPromptContext } from "./contextBuilder";
 import { calculateHealthScore, generateGrowthReport } from "./strategicAdvisor";
 import { getToolManifest } from "./toolRegistry";
+import { recordDecisionMemory, recordOutcomeMemory } from "./episodicMemory";
 import type { ContextPacket } from "./cognitiveTypes";
 
 const AI_TASK_SYSTEM_PROMPT = `You are the Apex Autonomous Agent Brain — an elite AI system that monitors business accounts 24/7 and makes intelligent decisions about what actions to take.
@@ -39,6 +40,15 @@ You will be given the history of past tasks and their outcomes (success/failure)
 - Avoid repeating tasks that failed recently (wait at least 24h before retrying similar tasks)
 - Prioritize task types that have historically succeeded
 - Adapt your approach based on what worked
+
+EPISODIC MEMORY:
+You have access to a persistent memory system that stores past decisions, outcomes, user preferences, and observations.
+When "Past Experiences" are provided in the account state, you MUST:
+- Reference relevant past experiences when making new recommendations (e.g., "Based on your last campaign, I suggest...")
+- Avoid strategies that led to poor outcomes in the past
+- Leverage learned user preferences for timing, channels, and communication style
+- Weight decisions that previously succeeded higher in your reasoning
+- Explicitly cite which past experience informed each task suggestion in your reasoning field
 
 RESPONSE FORMAT (JSON array):
 [
@@ -152,7 +162,7 @@ Based on this data, what tasks should the autonomous agent execute? Return a JSO
       return [];
     }
 
-    return suggestions
+    const validated = suggestions
       .filter(s => s.taskType && s.title && typeof s.priority === "number")
       .map(s => ({
         ...s,
@@ -160,6 +170,17 @@ Based on this data, what tasks should the autonomous agent execute? Return a JSO
         toolParams: s.toolParams || {},
       }))
       .slice(0, 5);
+
+    for (const task of validated) {
+      recordDecisionMemory(
+        subAccountId,
+        `AI decided to execute "${task.title}" (${task.taskType}) at priority ${task.priority}. Reasoning: ${task.reasoning}`,
+        { taskType: task.taskType, priority: task.priority, tool: task.toolName, healthScore: healthScore.overall },
+        "agent-brain-scan"
+      ).catch(() => {});
+    }
+
+    return validated;
 
   } catch (err: any) {
     console.error(`[AGENT-BRAIN] AI reasoning error: ${err.message}`);
@@ -286,6 +307,22 @@ export async function markBriefingSeen(briefingId: number): Promise<void> {
     .set({ seen: true })
     .where(eq(agentBriefings.id, briefingId))
     .execute();
+}
+
+export async function recordTaskOutcomeAsMemory(
+  subAccountId: number,
+  task: { taskType: string; title: string; status: string; error?: string | null; toolUsed?: string | null; priority?: number | null }
+): Promise<void> {
+  try {
+    const isSuccess = task.status === "completed";
+    await recordOutcomeMemory(
+      subAccountId,
+      `Task "${task.title}" (${task.taskType})${task.toolUsed ? ` using ${task.toolUsed}` : ""} — ${isSuccess ? "succeeded" : "failed"}${task.error ? `: ${task.error.substring(0, 200)}` : ""}`,
+      isSuccess ? "success" : "failed",
+      { taskType: task.taskType, tool: task.toolUsed, priority: task.priority },
+      "task-completion"
+    );
+  } catch {}
 }
 
 export async function getOutcomeStats(subAccountId: number): Promise<{

@@ -12654,6 +12654,100 @@ Return ONLY valid JSON.` },
     res.json({ success: true });
   }));
 
+  // ──── AGENT EPISODIC MEMORY ────
+  app.get("/api/operator/cognitive/memories/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (isNaN(subAccountId)) return res.status(400).json({ error: "Invalid subAccountId" });
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { getAgentMemories } = await import("./operator/cognitiveLayer");
+    const validTypes = ["decision", "outcome", "preference", "observation"];
+    const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 50, 1), 200);
+    const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
+    const memoryType = req.query.memoryType as string || undefined;
+    if (memoryType && !validTypes.includes(memoryType)) {
+      return res.status(400).json({ error: "Invalid memoryType filter" });
+    }
+    const result = await getAgentMemories(subAccountId, { limit, offset, memoryType });
+    res.json(result);
+  }));
+
+  app.post("/api/operator/cognitive/memories/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (isNaN(subAccountId)) return res.status(400).json({ error: "Invalid subAccountId" });
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { memoryType, content, category, tags } = req.body;
+    const validTypes = ["decision", "outcome", "preference", "observation"];
+    if (!memoryType || !validTypes.includes(memoryType)) {
+      return res.status(400).json({ error: "Invalid memoryType. Must be one of: decision, outcome, preference, observation" });
+    }
+    if (!content || typeof content !== "string" || content.length > 2000) {
+      return res.status(400).json({ error: "Content is required and must be a string (max 2000 chars)" });
+    }
+    if (category && (typeof category !== "string" || category.length > 100)) {
+      return res.status(400).json({ error: "Category must be a string (max 100 chars)" });
+    }
+    if (tags && (!Array.isArray(tags) || tags.some((t: unknown) => typeof t !== "string"))) {
+      return res.status(400).json({ error: "Tags must be an array of strings" });
+    }
+
+    const { createAgentMemory } = await import("./operator/cognitiveLayer");
+    const id = await createAgentMemory(subAccountId, { memoryType, content, category, tags });
+    if (!id) return res.status(500).json({ error: "Failed to create memory" });
+    res.json({ success: true, id });
+  }));
+
+  app.post("/api/operator/cognitive/memories/:subAccountId/extract-preferences", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (isNaN(subAccountId)) return res.status(400).json({ error: "Invalid subAccountId" });
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { message } = req.body;
+    if (!message || typeof message !== "string") {
+      return res.status(400).json({ error: "Message is required" });
+    }
+
+    const { extractChatPreferences } = await import("./operator/cognitiveLayer");
+    const id = await extractChatPreferences(subAccountId, message);
+    res.json({ extracted: !!id, memoryId: id });
+  }));
+
+  app.put("/api/operator/cognitive/memories/:subAccountId/:memoryId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    const memoryId = parseInt(req.params.memoryId);
+    if (isNaN(subAccountId) || isNaN(memoryId)) return res.status(400).json({ error: "Invalid ID parameter" });
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { content, relevanceScore, outcome } = req.body;
+    if (content !== undefined && (typeof content !== "string" || content.length > 2000)) {
+      return res.status(400).json({ error: "Content must be a string (max 2000 chars)" });
+    }
+    if (relevanceScore !== undefined && (typeof relevanceScore !== "number" || relevanceScore < 0 || relevanceScore > 1)) {
+      return res.status(400).json({ error: "relevanceScore must be a number between 0 and 1" });
+    }
+    if (outcome !== undefined && (typeof outcome !== "string" || outcome.length > 200)) {
+      return res.status(400).json({ error: "Outcome must be a string (max 200 chars)" });
+    }
+
+    const { updateAgentMemory } = await import("./operator/cognitiveLayer");
+    const success = await updateAgentMemory(memoryId, subAccountId, { content, relevanceScore, outcome });
+    if (!success) return res.status(404).json({ error: "Memory not found" });
+    res.json({ success: true });
+  }));
+
+  app.delete("/api/operator/cognitive/memories/:subAccountId/:memoryId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    const memoryId = parseInt(req.params.memoryId);
+    if (isNaN(subAccountId) || isNaN(memoryId)) return res.status(400).json({ error: "Invalid ID parameter" });
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { deleteAgentMemory } = await import("./operator/cognitiveLayer");
+    const success = await deleteAgentMemory(memoryId, subAccountId);
+    if (!success) return res.status(404).json({ error: "Memory not found" });
+    res.json({ success: true });
+  }));
+
   // ──── AUTONOMOUS TASK AGENT ────
   app.get("/api/agent/tasks/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseInt(req.params.subAccountId);

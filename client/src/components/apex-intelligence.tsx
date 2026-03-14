@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Brain, X, Send, Loader2, Sparkles, TrendingUp, TrendingDown, Lightbulb, AlertTriangle, CheckCircle2, ChevronRight, Bell, Zap, BarChart3, MessageSquare, ArrowRight, Eye, Target, Shield, Clock, RefreshCw, Activity, Crosshair, Award, Terminal, ChevronDown, ArrowUpRight, Gauge, Layers, Factory, Radar, Heart, Bot, Play, Settings2, Power } from "lucide-react";
+import { Brain, X, Send, Loader2, Sparkles, TrendingUp, TrendingDown, Lightbulb, AlertTriangle, CheckCircle2, ChevronRight, Bell, Zap, BarChart3, MessageSquare, ArrowRight, Eye, Target, Shield, Clock, RefreshCw, Activity, Crosshair, Award, Terminal, ChevronDown, ArrowUpRight, Gauge, Layers, Factory, Radar, Heart, Bot, Play, Settings2, Power, BookOpen, Trash2, Edit3, Plus, Filter } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAccount } from "@/hooks/use-account";
 import { useStreamingResponse } from "@/hooks/use-streaming";
 
-type TabId = "command" | "insights" | "nudges" | "industry" | "trends" | "chat" | "agent";
+type TabId = "command" | "insights" | "nudges" | "industry" | "trends" | "chat" | "agent" | "memory";
 
 interface HealthScore {
   overall: number;
@@ -978,6 +978,14 @@ function ChatTab({ subAccountId }: { subAccountId: number }) {
           parts.push(`Response Time Benchmark: ${ctx.industryKnowledge.avgResponseTimeBenchmark}s`);
           parts.push(`Best Channels: ${ctx.industryKnowledge.bestChannels?.join(", ") || "N/A"}`);
         }
+        if (ctx.pastExperiences?.length > 0) {
+          parts.push("");
+          parts.push("=== PAST EXPERIENCES (Agent Memory) ===");
+          ctx.pastExperiences.slice(0, 10).forEach((mem: { memoryType: string; content: string; outcome?: string; relevanceScore: number }) => {
+            parts.push(`  [${mem.memoryType.toUpperCase()}] ${mem.content}${mem.outcome ? ` (outcome: ${mem.outcome})` : ""} — ${Math.round(mem.relevanceScore * 100)}% relevance`);
+          });
+          parts.push("Use these past experiences to inform your recommendations. Reference specific past outcomes when relevant.");
+        }
       }
 
       if (reportRes.ok) {
@@ -1047,6 +1055,11 @@ function ChatTab({ subAccountId }: { subAccountId: number }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subAccountId, action: "last_interaction", value: new Date().toISOString() }),
       });
+      fetch(`/api/operator/cognitive/memories/${subAccountId}/extract-preferences`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text.trim() }),
+      }).catch(() => {});
     } catch {}
   };
 
@@ -1376,7 +1389,7 @@ function AgentTab({ subAccountId }: { subAccountId: number }) {
                     <span className="text-[10px] text-slate-500">Best Streak</span>
                     <span className="text-[10px] text-slate-400">{outcomes.streaks?.longestSuccess || 0} tasks</span>
                   </div>
-                  {outcomes.topSuccessTypes?.slice(0, 2).map((t: any) => (
+                  {outcomes.topSuccessTypes?.slice(0, 2).map((t: { type: string; count: number }) => (
                     <div key={t.type} className="flex items-center justify-between">
                       <span className="text-[10px] text-slate-500 truncate">{t.type}</span>
                       <span className="text-[10px] text-emerald-400/70">{t.count}x</span>
@@ -1467,6 +1480,233 @@ function AgentTab({ subAccountId }: { subAccountId: number }) {
   );
 }
 
+interface AgentMemory {
+  id: number;
+  memoryType: string;
+  content: string;
+  category?: string;
+  relevanceScore: number;
+  decayRate: number;
+  sourceEvent?: string;
+  outcome?: string;
+  tags?: string[];
+  accessCount?: number;
+  createdAt?: string;
+}
+
+function MemoryTab({ subAccountId }: { subAccountId: number }) {
+  const queryClient = useQueryClient();
+  const [typeFilter, setTypeFilter] = useState<string>("");
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editContent, setEditContent] = useState("");
+
+  const { data, isLoading, refetch } = useQuery<{ memories: AgentMemory[]; total: number }>({
+    queryKey: ["/api/operator/cognitive/memories", subAccountId, typeFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams({ limit: "50" });
+      if (typeFilter) params.set("memoryType", typeFilter);
+      const res = await fetch(`/api/operator/cognitive/memories/${subAccountId}?${params}`);
+      if (!res.ok) return { memories: [], total: 0 };
+      return res.json();
+    },
+    enabled: !!subAccountId,
+    staleTime: 30000,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (memoryId: number) => {
+      const res = await fetch(`/api/operator/cognitive/memories/${subAccountId}/${memoryId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/operator/cognitive/memories", subAccountId, typeFilter] }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ memoryId, content }: { memoryId: number; content: string }) => {
+      const res = await fetch(`/api/operator/cognitive/memories/${subAccountId}/${memoryId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    onSuccess: () => {
+      setEditingId(null);
+      setEditContent("");
+      queryClient.invalidateQueries({ queryKey: ["/api/operator/cognitive/memories", subAccountId, typeFilter] });
+    },
+  });
+
+  const memories = data?.memories || [];
+  const total = data?.total || 0;
+
+  const typeColors: Record<string, { bg: string; text: string; border: string }> = {
+    decision: { bg: "bg-violet-500/10", text: "text-violet-400", border: "border-violet-500/15" },
+    outcome: { bg: "bg-cyan-500/10", text: "text-cyan-400", border: "border-cyan-500/15" },
+    preference: { bg: "bg-amber-500/10", text: "text-amber-400", border: "border-amber-500/15" },
+    observation: { bg: "bg-emerald-500/10", text: "text-emerald-400", border: "border-emerald-500/15" },
+  };
+
+  const typeIcons: Record<string, typeof Brain> = {
+    decision: Crosshair,
+    outcome: Target,
+    preference: Heart,
+    observation: Eye,
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center" data-testid="memory-loading">
+        <div className="text-center space-y-3">
+          <Loader2 className="w-6 h-6 text-violet-400 animate-spin mx-auto" />
+          <p className="text-xs text-slate-500">Loading agent memories...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden" data-testid="memory-tab">
+      <div className="px-3 py-2 border-b border-white/[0.04] space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <BookOpen size={11} className="text-violet-400" />
+            <p className="text-[9px] font-bold uppercase tracking-widest text-violet-400">{total} Memor{total !== 1 ? "ies" : "y"}</p>
+          </div>
+          <button onClick={() => refetch()} className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-slate-300 transition-colors" data-testid="button-refresh-memories">
+            <RefreshCw size={12} />
+          </button>
+        </div>
+        <div className="flex gap-1">
+          {["", "decision", "outcome", "preference", "observation"].map(t => (
+            <button
+              key={t}
+              onClick={() => setTypeFilter(t)}
+              className={`px-2 py-0.5 rounded-md text-[9px] font-medium transition-colors ${
+                typeFilter === t
+                  ? "bg-violet-500/20 text-violet-400 border border-violet-500/30"
+                  : "bg-white/[0.03] text-slate-500 border border-white/[0.06] hover:text-slate-300"
+              }`}
+              data-testid={`button-filter-${t || "all"}`}
+            >
+              {t || "All"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-3 space-y-2" data-testid="list-memories">
+        {memories.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center p-8 text-center">
+            <div className="space-y-2">
+              <BookOpen size={28} className="mx-auto text-slate-700" />
+              <p className="text-[11px] text-slate-600">No memories yet</p>
+              <p className="text-[9px] text-slate-700">The agent will learn from decisions, outcomes, and your interactions</p>
+            </div>
+          </div>
+        ) : (
+          memories.map((memory, i) => {
+            const colors = typeColors[memory.memoryType] || typeColors.observation;
+            const MemIcon = typeIcons[memory.memoryType] || Eye;
+            const isEditing = editingId === memory.id;
+
+            return (
+              <motion.div
+                key={memory.id}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.03 }}
+                className={`p-3 rounded-xl ${colors.bg} border ${colors.border} transition-all`}
+                data-testid={`memory-card-${memory.id}`}
+              >
+                <div className="flex items-start gap-2">
+                  <div className={`w-6 h-6 rounded-lg ${colors.bg} flex items-center justify-center shrink-0 mt-0.5 border ${colors.border}`}>
+                    <MemIcon size={11} className={colors.text} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className={`text-[8px] font-bold uppercase tracking-wider ${colors.text}`}>{memory.memoryType}</span>
+                      {memory.outcome && (
+                        <span className={`text-[8px] px-1 py-px rounded ${memory.outcome === "success" ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"}`}>
+                          {memory.outcome}
+                        </span>
+                      )}
+                      <span className="text-[8px] text-slate-600 ml-auto">
+                        {Math.round(memory.relevanceScore * 100)}% relevant
+                      </span>
+                    </div>
+                    {isEditing ? (
+                      <div className="space-y-1.5">
+                        <textarea
+                          value={editContent}
+                          onChange={e => setEditContent(e.target.value)}
+                          className="w-full bg-white/[0.05] border border-white/[0.1] rounded-md px-2 py-1.5 text-[10px] text-white focus:outline-none focus:border-violet-500/40 resize-none"
+                          rows={3}
+                          data-testid={`input-edit-memory-${memory.id}`}
+                        />
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={() => updateMutation.mutate({ memoryId: memory.id, content: editContent })}
+                            disabled={updateMutation.isPending}
+                            className="px-2 py-0.5 rounded text-[9px] font-medium bg-violet-500/20 text-violet-400 border border-violet-500/30 hover:bg-violet-500/30 transition-colors disabled:opacity-50"
+                            data-testid={`button-save-memory-${memory.id}`}
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={() => { setEditingId(null); setEditContent(""); }}
+                            className="px-2 py-0.5 rounded text-[9px] text-slate-500 hover:text-slate-300 transition-colors"
+                            data-testid={`button-cancel-edit-${memory.id}`}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-slate-300 leading-relaxed">{memory.content}</p>
+                    )}
+                    <div className="flex items-center gap-2 mt-1.5">
+                      {memory.sourceEvent && (
+                        <span className="text-[8px] text-slate-600">{memory.sourceEvent}</span>
+                      )}
+                      {memory.createdAt && (
+                        <span className="text-[8px] text-slate-700">
+                          {new Date(memory.createdAt).toLocaleDateString()}
+                        </span>
+                      )}
+                      <div className="flex items-center gap-1 ml-auto">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setEditingId(memory.id); setEditContent(memory.content); }}
+                          className="p-0.5 rounded text-slate-600 hover:text-slate-400 transition-colors"
+                          title="Edit memory"
+                          data-testid={`button-edit-memory-${memory.id}`}
+                        >
+                          <Edit3 size={10} />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); if (window.confirm("Delete this memory? This cannot be undone.")) deleteMutation.mutate(memory.id); }}
+                          disabled={deleteMutation.isPending}
+                          className="p-0.5 rounded text-slate-600 hover:text-red-400 transition-colors disabled:opacity-50"
+                          title="Delete memory"
+                          data-testid={`button-delete-memory-${memory.id}`}
+                        >
+                          <Trash2 size={10} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
 const TABS: { id: TabId; label: string; icon: typeof Brain }[] = [
   { id: "command", label: "Command", icon: Terminal },
   { id: "insights", label: "Strategy", icon: Crosshair },
@@ -1475,6 +1715,7 @@ const TABS: { id: TabId; label: string; icon: typeof Brain }[] = [
   { id: "trends", label: "Trends", icon: TrendingUp },
   { id: "chat", label: "Advisor", icon: Brain },
   { id: "agent", label: "Agent", icon: Bot },
+  { id: "memory", label: "Memory", icon: BookOpen },
 ];
 
 export function ApexIntelligence() {
@@ -1615,6 +1856,7 @@ export function ApexIntelligence() {
                   {activeTab === "trends" && <TrendsTab subAccountId={subAccountId} />}
                   {activeTab === "chat" && <ChatTab subAccountId={subAccountId} />}
                   {activeTab === "agent" && <AgentTab subAccountId={subAccountId} />}
+                  {activeTab === "memory" && <MemoryTab subAccountId={subAccountId} />}
                 </>
               )}
             </div>

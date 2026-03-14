@@ -1,5 +1,6 @@
 import type { ContextPacket } from "./cognitiveTypes";
 import { buildWorkspaceProfile, buildBehaviorProfile, buildPerformanceSnapshot, getPatterns } from "./memoryEngine";
+import { recallRelevantMemories, buildPastExperiencePrompt } from "./episodicMemory";
 import { getIndustryKnowledge } from "./industryKnowledge";
 import { eventBus } from "../eventBus";
 import { runDiagnostics } from "./diagnostics";
@@ -8,11 +9,12 @@ import { operatorNudges } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 
 export async function buildContext(subAccountId: number): Promise<ContextPacket> {
-  const [workspace, behavior, performance, patterns] = await Promise.all([
+  const [workspace, behavior, performance, patterns, pastExperiences] = await Promise.all([
     buildWorkspaceProfile(subAccountId),
     buildBehaviorProfile(subAccountId),
     buildPerformanceSnapshot(subAccountId),
     getPatterns(subAccountId),
+    recallRelevantMemories(subAccountId, { limit: 15, minRelevance: 0.1 }),
   ]);
 
   const recentLog = eventBus.getLog(20);
@@ -56,6 +58,7 @@ export async function buildContext(subAccountId: number): Promise<ContextPacket>
     activeNudges,
     diagnosticsSummary,
     industryKnowledge,
+    pastExperiences,
   };
 }
 
@@ -88,6 +91,11 @@ export function buildPromptContext(context: ContextPacket): string {
 
   if (context.behavior.preferredStyle !== "balanced") {
     parts.push(`User prefers ${context.behavior.preferredStyle} communication style`);
+  }
+
+  if (context.pastExperiences && context.pastExperiences.length > 0) {
+    parts.push("");
+    parts.push(buildPastExperiencePrompt(context.pastExperiences));
   }
 
   return parts.join("\n");

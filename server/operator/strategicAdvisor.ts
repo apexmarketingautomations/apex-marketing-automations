@@ -222,7 +222,7 @@ export function calculateHealthScore(context: ContextPacket): HealthScore {
 
 export function generateStrategicInsights(context: ContextPacket): StrategicInsight[] {
   const insights: StrategicInsight[] = [];
-  const { workspace, performance, industryKnowledge } = context;
+  const { workspace, performance, industryKnowledge, pastExperiences } = context;
 
   if (workspace.automationCount === 0) {
     insights.push({
@@ -340,12 +340,35 @@ export function generateStrategicInsights(context: ContextPacket): StrategicInsi
     });
   }
 
+  if (pastExperiences && pastExperiences.length > 0) {
+    const failedOutcomes = pastExperiences.filter(m => m.memoryType === "outcome" && m.outcome && /fail|error|low|poor|decline/i.test(m.outcome));
+    if (failedOutcomes.length >= 2) {
+      insights.push({
+        id: crypto.randomUUID(), category: "system", priority: 78, confidence: 0.85, impact: "medium", effort: "moderate",
+        observation: `${failedOutcomes.length} past actions resulted in suboptimal outcomes.`,
+        insight: `Review previous approaches that didn't work well: ${failedOutcomes.slice(0, 2).map(m => m.content).join("; ")}. Avoiding repeated patterns is key to improving results.`,
+        suggestion: "Consider alternative strategies for areas that have shown poor results previously. The system will remember what works better.",
+      });
+    }
+
+    const preferences = pastExperiences.filter(m => m.memoryType === "preference");
+    if (preferences.length > 0) {
+      const topPref = preferences[0];
+      insights.push({
+        id: crypto.randomUUID(), category: "growth", priority: 60, confidence: 0.7, impact: "medium", effort: "quick-win",
+        observation: `User preference detected: "${topPref.content}".`,
+        insight: "Aligning strategies with stated preferences improves adoption and satisfaction. Tailor recommendations to match the user's working style.",
+        suggestion: `Ensure upcoming actions respect the preference: ${topPref.content}`,
+      });
+    }
+  }
+
   return insights.sort((a, b) => b.priority - a.priority).slice(0, 8);
 }
 
 export function detectMissedOpportunities(context: ContextPacket): StrategicInsight[] {
   const missed: StrategicInsight[] = [];
-  const { workspace, performance, industryKnowledge } = context;
+  const { workspace, performance, industryKnowledge, pastExperiences } = context;
 
   if (workspace.automationCount === 0) {
     missed.push({
@@ -385,6 +408,18 @@ export function detectMissedOpportunities(context: ContextPacket): StrategicInsi
       suggestion: "Set up post-service review request automation.",
       action: { label: "Set Up Reviews", link: "/reputation" },
     });
+  }
+
+  if (pastExperiences && pastExperiences.length > 0) {
+    const successfulOutcomes = pastExperiences.filter(m => m.memoryType === "outcome" && m.outcome && /success|complet|improv|good/i.test(m.outcome));
+    if (successfulOutcomes.length > 0 && workspace.automationCount > 0) {
+      missed.push({
+        id: crypto.randomUUID(), category: "growth", priority: 55, confidence: 0.7, impact: "medium", effort: "moderate",
+        observation: `${successfulOutcomes.length} past actions yielded positive outcomes.`,
+        insight: `Successful approaches: ${successfulOutcomes.slice(0, 2).map(m => m.content).join("; ")}. Building on what worked accelerates growth.`,
+        suggestion: "Replicate and expand on proven strategies that have yielded positive results.",
+      });
+    }
   }
 
   return missed.sort((a, b) => b.priority - a.priority);

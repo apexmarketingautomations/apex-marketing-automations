@@ -1,5 +1,24 @@
 export type MemoryType = "session" | "workspace" | "behavior" | "performance" | "pattern";
 
+export type EpisodicMemoryType = "decision" | "outcome" | "preference" | "observation";
+
+export interface EpisodicMemory {
+  id?: number;
+  subAccountId: number;
+  memoryType: EpisodicMemoryType;
+  content: string;
+  category?: string;
+  relevanceScore: number;
+  decayRate: number;
+  sourceEvent?: string;
+  sourceContext?: Record<string, unknown>;
+  outcome?: string;
+  tags?: string[];
+  accessCount?: number;
+  lastAccessedAt?: string;
+  createdAt?: string;
+}
+
 export interface MemoryEntry {
   id?: number;
   subAccountId: number;
@@ -95,6 +114,7 @@ export interface ContextPacket {
   activeNudges: number;
   diagnosticsSummary: string;
   industryKnowledge?: IndustryKnowledge;
+  pastExperiences?: EpisodicMemory[];
 }
 
 export interface IndustryKnowledge {

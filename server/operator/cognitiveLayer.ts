@@ -3,9 +3,10 @@ import { generateInsights } from "./advisoryEngine";
 import { detectTrends } from "./trendDetection";
 import { generateNudges, getActiveNudges, dismissNudge, actOnNudge, getNudgeHistory } from "./nudgeSystem";
 import { recordBehaviorSignal, buildPerformanceSnapshot, storeMemory, recallMemory } from "./memoryEngine";
+import { getAllMemories, deleteMemory, updateMemoryContent, recordEpisodicMemory, recallRelevantMemories, extractPreferencesFromChat } from "./episodicMemory";
 import { getIndustryKnowledge, getAvailableIndustries } from "./industryKnowledge";
 import { calculateHealthScore, generateGrowthReport, generateStrategicInsights, detectMissedOpportunities } from "./strategicAdvisor";
-import type { ContextPacket, AdvisoryInsight } from "./cognitiveTypes";
+import type { ContextPacket, AdvisoryInsight, EpisodicMemory, EpisodicMemoryType } from "./cognitiveTypes";
 import type { HealthScore, GrowthReport, StrategicInsight } from "./strategicAdvisor";
 
 export async function getCognitiveContext(subAccountId: number): Promise<ContextPacket> {
@@ -103,7 +104,46 @@ export async function getUserProfile(subAccountId: number): Promise<Record<strin
   return profile;
 }
 
+export async function getAgentMemories(
+  subAccountId: number,
+  options: { limit?: number; offset?: number; memoryType?: string } = {}
+): Promise<{ memories: EpisodicMemory[]; total: number }> {
+  return getAllMemories(subAccountId, options);
+}
+
+export async function deleteAgentMemory(memoryId: number, subAccountId: number): Promise<boolean> {
+  return deleteMemory(memoryId, subAccountId);
+}
+
+export async function updateAgentMemory(
+  memoryId: number,
+  subAccountId: number,
+  updates: { content?: string; relevanceScore?: number; outcome?: string }
+): Promise<boolean> {
+  return updateMemoryContent(memoryId, subAccountId, updates);
+}
+
+export async function createAgentMemory(
+  subAccountId: number,
+  data: { memoryType: EpisodicMemoryType; content: string; category?: string; tags?: string[] }
+): Promise<number | null> {
+  return recordEpisodicMemory({
+    subAccountId,
+    memoryType: data.memoryType,
+    content: data.content,
+    category: data.category,
+    relevanceScore: 0.8,
+    decayRate: 0.005,
+    sourceEvent: "user-created",
+    tags: data.tags || [],
+  });
+}
+
+export async function extractChatPreferences(subAccountId: number, message: string): Promise<number | null> {
+  return extractPreferencesFromChat(subAccountId, message);
+}
+
 export function initCognitiveLayer(): void {
-  console.log("[COGNITIVE] Cognitive Intelligence Layer v2 initialized");
-  console.log("[COGNITIVE] Modules: memoryEngine, contextBuilder, advisoryEngine, strategicAdvisor, trendDetection, nudgeSystem, industryKnowledge");
+  console.log("[COGNITIVE] Cognitive Intelligence Layer v3 initialized");
+  console.log("[COGNITIVE] Modules: memoryEngine, episodicMemory, contextBuilder, advisoryEngine, strategicAdvisor, trendDetection, nudgeSystem, industryKnowledge");
 }
