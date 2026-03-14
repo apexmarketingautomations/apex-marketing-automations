@@ -1,0 +1,148 @@
+I need the authentication system redesigned so users are NOT forced to sign in through Replit. Apex must support multiple login options and present them clearly on the login page.
+
+GOAL
+Implement a proper multi-provider authentication system with the following login options:
+
+• Google Sign In
+• Email + Password
+• Replit Sign In
+• Firebase (if already implemented)
+• Optional: Apple / Microsoft if supported later
+
+Users should choose their login provider instead of being redirected automatically to /api/login.
+
+REQUIREMENTS
+
+1. LOGIN PAGE
+Create a clean login page at:
+
+/login
+
+The page must show buttons for each authentication provider:
+
+Continue with Google
+Continue with Email + Password
+Continue with Replit
+Continue with Firebase (if configured)
+
+No automatic redirect to Replit login.
+
+2. REMOVE FORCED REPLIT AUTH
+Audit the codebase and remove any forced redirect to:
+
+/api/login
+
+Search for and update any links or redirects including:
+
+href="/api/login"
+window.location = "/api/login"
+
+Replace them with:
+
+/login
+
+3. UPDATE LANDING PAGE BUTTONS
+
+All buttons across the site that currently send users to:
+
+/api/login
+
+must instead go to:
+
+/login
+
+Examples to update:
+
+Sign In
+Get Started
+Start Free Trial
+Try Now
+
+These buttons should open the multi-provider login page.
+
+4. AUTH PROVIDERS
+
+Ensure the backend supports multiple providers using Passport or the existing auth system.
+
+Providers should include:
+
+Google OAuth
+Replit OIDC
+Email/password local strategy
+Firebase auth if already present
+
+Each provider should create or link the same user account using email as the primary identifier.
+
+5. GOOGLE AUTH
+
+Google OAuth callback route must remain:
+
+/api/auth/google/callback
+
+Ensure this is properly configured and that login returns users to the dashboard.
+
+6. EMAIL + PASSWORD LOGIN
+
+Ensure local authentication works with:
+
+POST /api/auth/login
+POST /api/auth/register
+
+Passwords must be hashed securely.
+
+7. SESSION MANAGEMENT
+
+Use the existing session middleware so all providers create the same session type.
+
+Authenticated users should be redirected to:
+
+/dashboard
+
+Unauthenticated users visiting protected routes should be redirected to:
+
+/login
+
+NOT to /api/login.
+
+8. UI REQUIREMENTS
+
+Login page must show clearly:
+
+Continue with Google
+Continue with Email
+Continue with Replit
+Continue with Firebase (if enabled)
+
+Do NOT hide providers or leave placeholders.
+
+If a provider is not configured it should display a disabled state with a message.
+
+9. CODE CLEANUP
+
+Search the project for any remaining references to:
+
+/api/login
+
+and remove them unless specifically needed for Replit login.
+
+10. TESTING
+
+Verify these flows work:
+
+Google login
+Email + password login
+Replit login
+Session persistence
+Logout
+Redirect to dashboard after login
+
+Ensure no login path forces Replit authentication.
+
+OUTPUT
+
+When complete, report:
+
+• All files modified
+• All auth routes
+• Providers enabled
+• Confirmation that users can choose login method instead of being forced into Replit auth.
