@@ -1,0 +1,265 @@
+Here is the full, production-hardened codebase. I’ve broken this down into four files: `schema.ts`, `db.ts` (setup), `storage.ts` (logic), and `worker.ts` (execution).
+
+This code is designed to run 24/7. It handles database locking so you can spin up 10 instances of this worker on different servers and they won't step on each other's toes.
+
+### Prerequisites
+You need `drizzle-orm`, `drizzle-zod`, `pg`, and `zod`.
+`npm install drizzle-orm drizzle-zod pg zod`
+
+### 1. `schema.ts` (The Blueprint)
+We need strict types and tracking columns (`lockedAt`, `retryCount`) to manage the queue state.
+
+```typescript
+import { pgTable, serial, text, integer, json, timestamp } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod";
+
+export const crashReports = pgTable("crash_reports", {
+  id: serial("id").primaryKey(),
+  // Normalized: Upper case, no spaces/dashes
+  reportNumber: text("report_number").unique().notNull(), 
+  
+  // Status Flow: PENDING -> PROCESSING -> COMPLETED (or FAILED/NOT_FOUND)
+  status: text("status").default("PENDING").notNull(), 
+  
+  requesterRole: text("requester_role"),
+  reason: text("reason"),
+  subAccountId: integer("sub_account_id"),
+  
+  // The Gold: The actual scraped data
+  data: json("data"), 
+  
+  // Debugging: Why did it fail?
+  errorLog: text("error_log"), 
+  retryCount: integer("retry_count").default(0).notNull(),
+  
+  // CONCURRENCY LOCKS
+  // If lockedAt is set, a worker is currently chewing on this row.
+  lockedAt: timestamp("locked_at"), 
+  lockedBy: text("locked_by"), // Worker ID (UUID)
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Zod schemas for validation
+export const insertCrashReportSchema = createInsertSchema(crashReports).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true, 
+  lockedAt: true, 
+  lockedBy: true 
+});
+
+export type InsertCrashReport = z.infer<typeof insertCrashReportSchema>;
+export type CrashReport = typeof crashReports.$inferSelect;
+```
+
+### 2. `db.ts` (The Connection)
+Standard Drizzle setup. Replace the connection string with your env var.
+
+```typescript
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
+import * as schema from "./schema";
+
+// In production, use a connection pool, not a single client
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL || "postgres://user:pass@localhost:5432/db",
+  max: 20, // Allow enough connections for workers + API
+  idleTimeoutMillis: 30000,
+});
+
+export const db = drizzle(pool, { schema });
+```
+
+### 3. `storage.ts` (The Brains)
+This is where the magic happens. The `claimPendingCrashReports` function uses a transaction with `SKIP LOCKED`. This is the "fail-proof" part that allows concurrency.
+
+```typescript
+import { eq, lt, and, isNull, sql } from "drizzle-orm";
+import { db } from "./db";
+import { crashReports, type InsertCrashReport, type CrashReport } from "./schema";
+
+export const storage = {
+  // 1. Get a report by number (for API checks)
+  async getCrashReportByNumber(reportNumber: string) {
+    const [row] = await db.select()
+      .from(crashReports)
+      .where(eq(crashReports.reportNumber, reportNumber));
+    return row;
+  },
+
+  // 2. Create or Return Existing (Idempotent)
+  async createCrashReport(data: InsertCrashReport) {
+    const [row] = await db.insert(crashReports)
+      .values(data)
+      .onConflictDoNothing({ target: crashReports.reportNumber })
+      .returning();
+      
+    if (!row) {
+      return await this.getCrashReportByNumber(data.reportNumber);
+    }
+    return row;
+  },
+
+  // 3. General Update
+  async updateCrashReport(id: number, data: Partial<InsertCrashReport> & { status?: string }) {
+    const [row] = await db.update(crashReports)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(crashReports.id, id))
+      .returning();
+    return row;
+  },
+
+  // 4. ATOMIC CLAIM (The Critical Part)
+  // Finds PENDING items, locks them, and assigns them to this worker
+  async claimPendingCrashReports(limit: number, workerId: string): Promise<CrashReport[]> {
+    return await db.transaction(async (tx) => {
+      // Find rows that are PENDING and NOT locked by anyone else
+      const pending = await tx.select({ id: crashReports.id })
+        .from(crashReports)
+        .where(and(
+          eq(crashReports.status, "PENDING"),
+          isNull(crashReports.lockedAt)
+        ))
+        .limit(limit)
+        .for("update", { skipLocked: true }); // Postgres magic: skip rows other workers are touching
+
+      if (pending.length === 0) return [];
+
+      const ids = pending.map(p => p.id);
+
+      // Mark them as PROCESSING
+      await tx.update(crashReports)
+        .set({ 
+          status: "PROCESSING", 
+          lockedAt: new Date(), 
+          lockedBy: workerId,
+          updatedAt: new Date()
+        })
+        .where(sql`${crashReports.id} IN ${ids}`);
+
+      // Return the full objects to the worker
+      return await tx.select().from(crashReports).where(sql`${crashReports.id} IN ${ids}`);
+    });
+  },
+
+  // 5. ZOMBIE KILLER
+  // Resets jobs that have been "PROCESSING" for too long (e.g., server crash)
+  async resetStuckJobs(timeoutMinutes: number) {
+    const timeoutThreshold = new Date(Date.now() - timeoutMinutes * 60 * 1000);
+    
+    const result = await db.update(crashReports)
+      .set({ 
+        status: "PENDING", 
+        lockedAt: null, 
+        lockedBy: null, 
+        errorLog: "Reset after worker timeout/crash" 
+      })
+      .where(and(
+        eq(crashReports.status, "PROCESSING"),
+        lt(crashReports.lockedAt, timeoutThreshold)
+      ))
+      .returning({ id: crashReports.id });
+      
+    if (result.length > 0) {
+      console.log(`[STORAGE] Reset ${result.length} stuck jobs.`);
+    }
+  }
+};
+```
+
+### 4. `worker.ts` (The Muscle)
+This runs independently from your API. It polls the DB, grabs work, and executes the scrape with header rotation and retry backoff.
+
+```typescript
+import { storage } from "./storage";
+import { randomUUID } from "crypto";
+
+// --- CONFIG ---
+const FLHSMV_SEARCH_URL = "https://services.flhsmv.gov/CRRService/api/CrashReport/SearchReport";
+const FLHSMV_DETAIL_URL = "https://services.flhsmv.gov/CRRService/api/CrashReport/GetReport";
+const WORKER_ID = `worker-${randomUUID().split('-')[0]}`; // Short ID
+const POLL_INTERVAL_MS = 5000; // Check DB every 5s
+const CONCURRENCY = 2; // Process 2 reports at once per worker instance
+const MAX_RETRIES = 5;
+const STUCK_JOB_TIMEOUT_MIN = 15;
+
+// --- STEALTH ---
+const USER_AGENTS = [
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0"
+];
+
+function getRandomHeaders() {
+  return {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    "User-Agent": USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)],
+    "Origin": "https://services.flhsmv.gov",
+    "Referer": "https://services.flhsmv.gov/crashreportrequest/",
+    "Connection": "keep-alive"
+  };
+}
+
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+// --- NETWORK LAYER ---
+async function fetchWithBackoff(url: string, options: RequestInit, retries = 3): Promise<Response> {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s hard timeout
+      
+      const res = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      // Rate Limit Handling
+      if (res.status === 429) {
+        const wait = 5000 * (i + 1);
+        console.warn(`[WORKER] 429 Rate Limit. Cooling down for ${wait}ms...`);
+        await sleep(wait);
+        continue;
+      }
+      
+      // Server Error Handling (Retry these)
+      if (res.status >= 500) throw new Error(`Server error: ${res.status}`);
+      
+      return res;
+    } catch (e: any) {
+      if (i === retries) throw e;
+      // Exponential backoff
+      await sleep(2000 * Math.pow(2, i)); 
+    }
+  }
+  throw new Error("Max retries exhausted");
+}
+
+// --- LOGIC ---
+async function processSingleReport(report: any) {
+  const logPrefix = `[${WORKER_ID}][${report.reportNumber}]`;
+  console.log(`${logPrefix} Processing...`);
+
+  try {
+    const headers = getRandomHeaders();
+    
+    // 1. SEARCH
+    const searchRes = await fetchWithBackoff(FLHSMV_SEARCH_URL, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ ReportNumber: report.reportNumber }),
+    });
+
+    if (!searchRes.ok) throw new Error(`Search HTTP ${searchRes.status}`);
+    const searchData = await searchRes.json();
+    
+    // Check if report exists in their system
+    let targetReport = null;
+    if (Array.isArray(searchData) && searchData.length > 0) targetReport = searchData[0];
+    else if (searchData?.ReportNumber) targetReport = searchData;
+
+    if (!targetReport) {
+      // NOT FOUND LOGIC
+      if (report.retryCount >=
