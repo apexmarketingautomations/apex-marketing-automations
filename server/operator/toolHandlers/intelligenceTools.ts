@@ -1,0 +1,522 @@
+import type { OperatorTool, ValidationResult, ToolResult, OperatorContext } from "../types";
+import { storage } from "../../storage";
+
+function noopValidate(): ValidationResult {
+  return { valid: true, errors: [], warnings: [] };
+}
+
+export const intelligenceTools: OperatorTool[] = [
+  {
+    name: "detectMissingSetup",
+    description: "Scan account configuration and detect missing setup pieces",
+    category: "intelligence",
+    autonomyRequired: "observe",
+    requiresApproval: false,
+    parameters: [],
+    validate: noopValidate,
+    execute: async (_params, ctx) => {
+      const account = await storage.getSubAccount(ctx.subAccountId);
+      if (!account) return { success: false, error: "Account not found" };
+
+      const missing: string[] = [];
+      const recommendations: string[] = [];
+
+      if (!account.twilioNumber) {
+        missing.push("No phone number assigned — SMS and voice calls won't work");
+        recommendations.push("Connect a Twilio phone number in Integrations");
+      }
+
+      const connections = await storage.getIntegrationConnections(ctx.subAccountId);
+      const connectedProviders = new Set(connections.filter(c => c.status === "connected").map(c => c.provider));
+
+      if (!connectedProviders.has("twilio")) {
+        missing.push("Twilio not connected — no SMS capability");
+        recommendations.push("Add Twilio credentials in Integrations");
+      }
+
+      const automations = await storage.getLiveAutomations(ctx.subAccountId);
+      if (!automations || automations.length === 0) {
+        missing.push("No active automations — leads won't receive auto-responses");
+        recommendations.push("Create a lead auto-response workflow");
+      }
+
+      const contacts = await storage.getContacts(ctx.subAccountId);
+      if (!contacts || contacts.length === 0) {
+        missing.push("No contacts in CRM");
+        recommendations.push("Import contacts or set up a lead capture form");
+      }
+
+      const stages = await storage.getPipelineStages(ctx.subAccountId);
+      if (!stages || stages.length === 0) {
+        missing.push("No pipeline stages — deal tracking disabled");
+        recommendations.push("Create a sales pipeline with stages");
+      }
+
+      const sites = await storage.getSavedSites();
+      if (!sites || sites.length === 0) {
+        missing.push("No landing pages — no online presence");
+        recommendations.push("Generate a landing page for your business");
+      }
+
+      return {
+        success: true,
+        data: {
+          accountName: account.name,
+          industry: account.industry,
+          missing,
+          recommendations,
+          completionScore: Math.round(((6 - missing.length) / 6) * 100),
+          hasPhone: !!account.twilioNumber,
+          integrationCount: connectedProviders.size,
+          automationCount: automations?.length || 0,
+          contactCount: contacts?.length || 0,
+          pipelineConfigured: (stages?.length || 0) > 0,
+          hasSite: (sites?.length || 0) > 0,
+        },
+      };
+    },
+    summarizeForAudit: (_params, result) => `Setup scan: ${result.data?.missing?.length || 0} missing items, score ${result.data?.completionScore || 0}%.`,
+  },
+  {
+    name: "checkIntegrationHealth",
+    description: "Check the health status of all connected integrations for an account",
+    category: "intelligence",
+    autonomyRequired: "observe",
+    requiresApproval: false,
+    parameters: [],
+    validate: noopValidate,
+    execute: async (_params, ctx) => {
+      const connections = await storage.getIntegrationConnections(ctx.subAccountId);
+      const report = connections.map(c => ({
+        provider: c.provider,
+        status: c.status,
+        type: c.connectionType,
+        lastChecked: c.createdAt,
+      }));
+      return { success: true, data: { connections: report, total: report.length, healthy: report.filter(r => r.status === "connected").length } };
+    },
+    summarizeForAudit: (_params, result) => `Integration health: ${result.data?.healthy || 0}/${result.data?.total || 0} healthy.`,
+  },
+  {
+    name: "getAccountSummary",
+    description: "Get a comprehensive summary of account state and metrics",
+    category: "intelligence",
+    autonomyRequired: "observe",
+    requiresApproval: false,
+    parameters: [],
+    validate: noopValidate,
+    execute: async (_params, ctx) => {
+      const account = await storage.getSubAccount(ctx.subAccountId);
+      if (!account) return { success: false, error: "Account not found" };
+
+      const contacts = await storage.getContacts(ctx.subAccountId);
+      const messages = await storage.getMessages(ctx.subAccountId);
+      const automations = await storage.getLiveAutomations(ctx.subAccountId);
+      const connections = await storage.getIntegrationConnections(ctx.subAccountId);
+      const stages = await storage.getPipelineStages(ctx.subAccountId);
+      const sites = await storage.getSavedSites();
+
+      return {
+        success: true,
+        data: {
+          business: { name: account.name, industry: account.industry, phone: account.twilioNumber },
+          metrics: {
+            contacts: contacts?.length || 0,
+            messages: messages?.length || 0,
+            automations: automations?.length || 0,
+            integrations: connections?.filter(c => c.status === "connected").length || 0,
+            pipelineStages: stages?.length || 0,
+            sites: sites?.length || 0,
+          },
+        },
+      };
+    },
+    summarizeForAudit: (_params, result) => `Account summary: ${result.data?.metrics?.contacts || 0} contacts, ${result.data?.metrics?.automations || 0} automations.`,
+  },
+  {
+    name: "auditConversionLeaks",
+    description: "Audit the sales funnel for conversion leaks and drop-off points",
+    category: "intelligence",
+    autonomyRequired: "observe",
+    requiresApproval: false,
+    parameters: [],
+    validate: noopValidate,
+    execute: async (_params, ctx) => {
+      const contacts = await storage.getContacts(ctx.subAccountId);
+      const deals = await storage.getDeals(ctx.subAccountId);
+      const appointments = await storage.getAppointments(ctx.subAccountId);
+      const messages = await storage.getMessages(ctx.subAccountId);
+
+      const leaks: string[] = [];
+      const recommendations: string[] = [];
+
+      const contactCount = contacts?.length || 0;
+      const dealCount = deals?.length || 0;
+      const appointmentCount = appointments?.length || 0;
+
+      if (contactCount > 0 && dealCount === 0) {
+        leaks.push("No deals created — contacts are not being converted into opportunities");
+        recommendations.push("Create deals for qualified leads and assign pipeline stages");
+      }
+
+      if (contactCount > 10 && appointmentCount === 0) {
+        leaks.push("No appointments scheduled — missing personal engagement step");
+        recommendations.push("Add appointment booking to your lead follow-up workflow");
+      }
+
+      const outboundMessages = messages?.filter(m => m.direction === "outbound") || [];
+      if (contactCount > 5 && outboundMessages.length === 0) {
+        leaks.push("No outbound messages — leads are not being followed up");
+        recommendations.push("Create an automated follow-up sequence for new leads");
+      }
+
+      const contactToDealRate = contactCount > 0 ? Math.round((dealCount / contactCount) * 100) : 0;
+
+      return {
+        success: true,
+        data: {
+          funnel: {
+            contacts: contactCount,
+            deals: dealCount,
+            appointments: appointmentCount,
+            messages: messages?.length || 0,
+          },
+          conversionRate: contactToDealRate,
+          leaks,
+          recommendations,
+          severity: leaks.length >= 3 ? "critical" : leaks.length >= 1 ? "warning" : "healthy",
+        },
+      };
+    },
+    summarizeForAudit: (_params, result) => `Conversion audit: ${result.data?.leaks?.length || 0} leaks found, ${result.data?.conversionRate || 0}% conversion.`,
+  },
+  {
+    name: "auditResponseSpeed",
+    description: "Audit how quickly the business responds to incoming messages",
+    category: "intelligence",
+    autonomyRequired: "observe",
+    requiresApproval: false,
+    parameters: [],
+    validate: noopValidate,
+    execute: async (_params, ctx) => {
+      const messages = await storage.getMessages(ctx.subAccountId);
+      if (!messages || messages.length === 0) {
+        return {
+          success: true,
+          data: {
+            messageCount: 0,
+            averageResponseMinutes: null,
+            grade: "N/A",
+            note: "No messages to analyze",
+          },
+        };
+      }
+
+      const inbound = messages.filter(m => m.direction === "inbound");
+      const outbound = messages.filter(m => m.direction === "outbound");
+
+      let totalResponseTime = 0;
+      let responsePairs = 0;
+
+      for (const inMsg of inbound) {
+        const response = outbound.find(o =>
+          o.contactPhone === inMsg.contactPhone &&
+          new Date(o.createdAt) > new Date(inMsg.createdAt)
+        );
+        if (response) {
+          const diff = new Date(response.createdAt).getTime() - new Date(inMsg.createdAt).getTime();
+          totalResponseTime += diff;
+          responsePairs++;
+        }
+      }
+
+      const avgMs = responsePairs > 0 ? totalResponseTime / responsePairs : null;
+      const avgMinutes = avgMs ? Math.round(avgMs / 60000) : null;
+
+      let grade = "N/A";
+      if (avgMinutes !== null) {
+        if (avgMinutes <= 5) grade = "A+";
+        else if (avgMinutes <= 15) grade = "A";
+        else if (avgMinutes <= 30) grade = "B";
+        else if (avgMinutes <= 60) grade = "C";
+        else grade = "D";
+      }
+
+      const responseRate = inbound.length > 0 ? Math.round((responsePairs / inbound.length) * 100) : 0;
+
+      return {
+        success: true,
+        data: {
+          messageCount: messages.length,
+          inboundCount: inbound.length,
+          responsePairs,
+          responseRate,
+          averageResponseMinutes: avgMinutes,
+          grade,
+          benchmark: "Industry average: 15-30 minutes",
+        },
+      };
+    },
+    summarizeForAudit: (_params, result) => `Response speed audit: grade ${result.data?.grade}, avg ${result.data?.averageResponseMinutes || "N/A"} min.`,
+  },
+  {
+    name: "recommendNextBestAction",
+    description: "Recommend the single most impactful next action for the account",
+    category: "intelligence",
+    autonomyRequired: "observe",
+    requiresApproval: false,
+    parameters: [],
+    validate: noopValidate,
+    execute: async (_params, ctx) => {
+      const account = await storage.getSubAccount(ctx.subAccountId);
+      if (!account) return { success: false, error: "Account not found" };
+
+      const contacts = await storage.getContacts(ctx.subAccountId);
+      const automations = await storage.getLiveAutomations(ctx.subAccountId);
+      const connections = await storage.getIntegrationConnections(ctx.subAccountId);
+      const stages = await storage.getPipelineStages(ctx.subAccountId);
+      const reviews = await storage.getReviews(ctx.subAccountId);
+
+      const connectedCount = connections?.filter(c => c.status === "connected").length || 0;
+
+      let action: string;
+      let reason: string;
+      let toolSuggestion: string;
+      let priority: "high" | "medium" | "low";
+
+      if (connectedCount === 0) {
+        action = "Connect your first integration (Twilio for SMS)";
+        reason = "No integrations connected — the platform can't communicate with customers";
+        toolSuggestion = "connectIntegration";
+        priority = "high";
+      } else if (!contacts || contacts.length === 0) {
+        action = "Add your first contacts to the CRM";
+        reason = "Empty CRM means no leads to nurture";
+        toolSuggestion = "createContact";
+        priority = "high";
+      } else if (!stages || stages.length === 0) {
+        action = "Create a sales pipeline";
+        reason = "No pipeline means deals can't be tracked";
+        toolSuggestion = "createPipeline";
+        priority = "high";
+      } else if (!automations || automations.length === 0) {
+        action = "Create an auto-response workflow for new leads";
+        reason = "No automations — leads are not being followed up automatically";
+        toolSuggestion = "generateAutoResponseWorkflow";
+        priority = "high";
+      } else if (reviews && reviews.filter(r => r.rating <= 2 && !(r as Record<string, unknown>).aiResponse).length > 0) {
+        action = "Respond to unanswered negative reviews";
+        reason = "Negative reviews without responses hurt reputation";
+        toolSuggestion = "respondToReviewDraft";
+        priority = "high";
+      } else {
+        action = "Optimize your existing workflows for better timing";
+        reason = "All basics are covered — now it's time to optimize";
+        toolSuggestion = "optimizeWorkflowTiming";
+        priority = "medium";
+      }
+
+      return {
+        success: true,
+        data: { action, reason, toolSuggestion, priority },
+      };
+    },
+    summarizeForAudit: (_params, result) => `Recommended: "${result.data?.action}" (${result.data?.priority}).`,
+  },
+  {
+    name: "diagnoseMessaging",
+    description: "Diagnose messaging channel health and delivery issues",
+    category: "intelligence",
+    autonomyRequired: "observe",
+    requiresApproval: false,
+    parameters: [],
+    validate: noopValidate,
+    execute: async (_params, ctx) => {
+      const messages = await storage.getMessages(ctx.subAccountId);
+      const connections = await storage.getIntegrationConnections(ctx.subAccountId);
+
+      const channels: Record<string, { total: number; sent: number; failed: number; pending: number }> = {};
+      for (const msg of (messages || [])) {
+        const ch = msg.channel || "sms";
+        if (!channels[ch]) channels[ch] = { total: 0, sent: 0, failed: 0, pending: 0 };
+        channels[ch].total++;
+        if (msg.status === "sent" || msg.status === "delivered") channels[ch].sent++;
+        else if (msg.status === "failed") channels[ch].failed++;
+        else channels[ch].pending++;
+      }
+
+      const issues: string[] = [];
+      for (const [ch, stats] of Object.entries(channels)) {
+        if (stats.failed > 0 && stats.failed / stats.total > 0.1) {
+          issues.push(`${ch}: ${Math.round((stats.failed / stats.total) * 100)}% failure rate (${stats.failed}/${stats.total})`);
+        }
+      }
+
+      const twilioConnected = connections?.some(c => c.provider === "twilio" && c.status === "connected");
+      if (!twilioConnected) issues.push("Twilio not connected — SMS sending will fail");
+
+      return {
+        success: true,
+        data: {
+          channels,
+          issues,
+          twilioConnected,
+          totalMessages: messages?.length || 0,
+          healthy: issues.length === 0,
+        },
+      };
+    },
+    summarizeForAudit: (_params, result) => `Messaging diagnosis: ${result.data?.issues?.length || 0} issues, ${result.data?.totalMessages || 0} messages.`,
+  },
+  {
+    name: "restoreBrokenIntegrationDraft",
+    description: "Create a draft plan to restore a broken integration connection",
+    category: "intelligence",
+    autonomyRequired: "draft",
+    requiresApproval: true,
+    parameters: [
+      { name: "provider", type: "string", required: true, description: "Integration provider name" },
+    ],
+    validate: noopValidate,
+    execute: async (params, ctx) => {
+      const connection = await storage.getIntegrationConnection(ctx.subAccountId, params.provider);
+
+      const steps: string[] = [];
+      if (!connection) {
+        steps.push(`No ${params.provider} connection found — needs initial setup`);
+        steps.push(`Go to Integrations and add ${params.provider} credentials`);
+      } else if (connection.status !== "connected") {
+        steps.push(`${params.provider} status: ${connection.status}`);
+        steps.push("Verify API credentials are still valid");
+        steps.push("Check if the provider account is active and in good standing");
+        steps.push("Re-authenticate or update credentials");
+        steps.push("Test connection after update");
+      } else {
+        steps.push(`${params.provider} appears to be connected and healthy`);
+      }
+
+      return {
+        success: true,
+        data: {
+          provider: params.provider,
+          currentStatus: connection?.status || "not_found",
+          recoverySteps: steps,
+          note: "Recovery plan saved as draft. Manual action may be required.",
+        },
+        sideEffects: [`Generated recovery plan for ${params.provider}`],
+      };
+    },
+    summarizeForAudit: (params) => `Generated recovery plan for ${params.provider} integration.`,
+  },
+  {
+    name: "generateAccountSetupPlan",
+    description: "Generate a step-by-step account setup plan based on industry",
+    category: "intelligence",
+    autonomyRequired: "observe",
+    requiresApproval: false,
+    parameters: [
+      { name: "industry", type: "string", required: false, description: "Industry vertical" },
+    ],
+    validate: noopValidate,
+    execute: async (params, ctx) => {
+      const account = await storage.getSubAccount(ctx.subAccountId);
+      const industry = params.industry || account?.industry || "general";
+
+      const plan = [
+        { step: 1, action: "Connect Twilio for SMS", tool: "connectIntegration", completed: !!account?.twilioNumber },
+        { step: 2, action: "Import or create contacts", tool: "createContact", completed: false },
+        { step: 3, action: "Create sales pipeline stages", tool: "createPipeline", completed: false },
+        { step: 4, action: "Set up auto-response workflow", tool: "generateAutoResponseWorkflow", completed: false },
+        { step: 5, action: "Generate a landing page", tool: "generateLandingPage", completed: false },
+        { step: 6, action: "Configure review collection", tool: "sendReviewRequestDraft", completed: false },
+      ];
+
+      const contacts = await storage.getContacts(ctx.subAccountId);
+      if (contacts && contacts.length > 0) plan[1].completed = true;
+
+      const stages = await storage.getPipelineStages(ctx.subAccountId);
+      if (stages && stages.length > 0) plan[2].completed = true;
+
+      const automations = await storage.getLiveAutomations(ctx.subAccountId);
+      if (automations && automations.length > 0) plan[3].completed = true;
+
+      const sites = await storage.getSavedSites();
+      if (sites && sites.length > 0) plan[4].completed = true;
+
+      const completedCount = plan.filter(s => s.completed).length;
+
+      return {
+        success: true,
+        data: {
+          industry,
+          plan,
+          completedCount,
+          totalSteps: plan.length,
+          progressPct: Math.round((completedCount / plan.length) * 100),
+        },
+      };
+    },
+    summarizeForAudit: (params, result) => `Generated setup plan: ${result.data?.completedCount}/${result.data?.totalSteps} complete.`,
+  },
+  {
+    name: "compareToIndustryBenchmark",
+    description: "Compare account metrics to industry benchmarks",
+    category: "intelligence",
+    autonomyRequired: "observe",
+    requiresApproval: false,
+    parameters: [
+      { name: "industry", type: "string", required: false, description: "Industry to compare against" },
+    ],
+    validate: noopValidate,
+    execute: async (params, ctx) => {
+      const account = await storage.getSubAccount(ctx.subAccountId);
+      const industry = params.industry || account?.industry || "general";
+
+      const benchmarks: Record<string, { responseTimeMin: number; automationCount: number; reviewRating: number; contactGrowthMonthly: number }> = {
+        dental: { responseTimeMin: 10, automationCount: 5, reviewRating: 4.5, contactGrowthMonthly: 20 },
+        legal: { responseTimeMin: 15, automationCount: 3, reviewRating: 4.3, contactGrowthMonthly: 10 },
+        hvac: { responseTimeMin: 8, automationCount: 4, reviewRating: 4.4, contactGrowthMonthly: 15 },
+        real_estate: { responseTimeMin: 5, automationCount: 6, reviewRating: 4.6, contactGrowthMonthly: 25 },
+        general: { responseTimeMin: 15, automationCount: 3, reviewRating: 4.0, contactGrowthMonthly: 10 },
+      };
+
+      const benchmark = benchmarks[industry] || benchmarks.general;
+      const contacts = await storage.getContacts(ctx.subAccountId);
+      const automations = await storage.getLiveAutomations(ctx.subAccountId);
+      const reviews = await storage.getReviews(ctx.subAccountId);
+      const avgRating = reviews && reviews.length > 0
+        ? Math.round((reviews.reduce((sum: number, r) => sum + r.rating, 0) / reviews.length) * 10) / 10
+        : 0;
+
+      const comparison = {
+        automations: {
+          yours: automations?.length || 0,
+          benchmark: benchmark.automationCount,
+          status: (automations?.length || 0) >= benchmark.automationCount ? "above" as const : "below" as const,
+        },
+        reviewRating: {
+          yours: avgRating,
+          benchmark: benchmark.reviewRating,
+          status: avgRating >= benchmark.reviewRating ? "above" as const : "below" as const,
+        },
+        contactCount: {
+          yours: contacts?.length || 0,
+          benchmark: benchmark.contactGrowthMonthly,
+          note: `Industry average adds ~${benchmark.contactGrowthMonthly} contacts/month`,
+        },
+      };
+
+      const aboveCount = [comparison.automations, comparison.reviewRating].filter(c => c.status === "above").length;
+      return {
+        success: true,
+        data: {
+          industry,
+          benchmark,
+          comparison,
+          overallGrade: aboveCount >= 2 ? "Above Average" : "Below Average",
+        },
+      };
+    },
+    summarizeForAudit: (params, result) => `Industry benchmark comparison (${result.data?.industry}): ${result.data?.overallGrade}.`,
+  },
+];

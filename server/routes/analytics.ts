@@ -1402,6 +1402,15 @@ export function registerAnalyticsRoutes(app: Express) {
     res.json(briefing || { summary: "No new activity to report.", tasksCompleted: 0, tasksFailed: 0, highlights: [] });
   }));
 
+  app.get("/api/agent/tools", asyncHandler(async (_req, res) => {
+    const { getToolCategories, getToolManifest } = await import("../operator/toolRegistry");
+    res.json({
+      categories: getToolCategories(),
+      tools: getToolManifest(),
+      totalTools: getToolManifest().length,
+    });
+  }));
+
   // ──── INDUSTRY BENCHMARKS (Cross-Account Intelligence) ────
   app.get("/api/benchmarks/industry/:industry", asyncHandler(async (req, res) => {
     const { getBenchmarksForIndustry } = await import("../operator/benchmarkAggregator");

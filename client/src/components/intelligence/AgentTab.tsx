@@ -1,11 +1,39 @@
 import { useState } from "react";
-import { Brain, X, Loader2, Sparkles, AlertTriangle, CheckCircle2, Zap, Eye, Clock, Bot, Settings2, Power } from "lucide-react";
+import { Brain, X, Loader2, Sparkles, AlertTriangle, CheckCircle2, Zap, Eye, Clock, Bot, Settings2, Power, Shield, FileEdit, Search, ChevronDown, ChevronRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+
+const CATEGORY_LABELS: Record<string, { label: string; color: string }> = {
+  crm: { label: "CRM", color: "text-blue-400" },
+  messaging: { label: "Messaging", color: "text-green-400" },
+  workflow: { label: "Workflows", color: "text-amber-400" },
+  appointment: { label: "Appointments", color: "text-pink-400" },
+  campaign: { label: "Campaigns", color: "text-orange-400" },
+  creative: { label: "Creative", color: "text-purple-400" },
+  review: { label: "Reviews", color: "text-yellow-400" },
+  intelligence: { label: "Intelligence", color: "text-cyan-400" },
+  integration: { label: "Integrations", color: "text-teal-400" },
+  site: { label: "Sites", color: "text-indigo-400" },
+  system: { label: "System", color: "text-slate-400" },
+  diagnostics: { label: "Diagnostics", color: "text-red-400" },
+};
+
+function AutonomyBadge({ level }: { level: string }) {
+  if (level === "observe") return <span className="text-[7px] px-1 py-px rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 font-semibold" data-testid="badge-observe"><Search size={6} className="inline mr-0.5" />observe</span>;
+  if (level === "draft") return <span className="text-[7px] px-1 py-px rounded bg-amber-500/15 text-amber-400 border border-amber-500/20 font-semibold" data-testid="badge-draft"><FileEdit size={6} className="inline mr-0.5" />draft</span>;
+  return <span className="text-[7px] px-1 py-px rounded bg-red-500/15 text-red-400 border border-red-500/20 font-semibold" data-testid="badge-execute"><Zap size={6} className="inline mr-0.5" />execute</span>;
+}
+
+function ApprovalBadge({ required }: { required: boolean }) {
+  if (!required) return null;
+  return <span className="text-[7px] px-1 py-px rounded bg-violet-500/15 text-violet-400 border border-violet-500/20 font-semibold" data-testid="badge-approval"><Shield size={6} className="inline mr-0.5" />approval</span>;
+}
 
 export function AgentTab({ subAccountId }: { subAccountId: number }) {
   const queryClient = useQueryClient();
   const [showConfig, setShowConfig] = useState(false);
+  const [showToolkit, setShowToolkit] = useState(false);
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [expandedTask, setExpandedTask] = useState<number | null>(null);
 
   const { data: stats, isLoading: statsLoading } = useQuery({
@@ -50,6 +78,16 @@ export function AgentTab({ subAccountId }: { subAccountId: number }) {
     },
     enabled: !!subAccountId,
     staleTime: 120000,
+  });
+
+  const { data: toolsData } = useQuery({
+    queryKey: ["/api/agent/tools"],
+    queryFn: async () => {
+      const res = await fetch("/api/agent/tools");
+      if (!res.ok) return null;
+      return res.json();
+    },
+    staleTime: 300000,
   });
 
   const scanMutation = useMutation({
@@ -268,6 +306,79 @@ export function AgentTab({ subAccountId }: { subAccountId: number }) {
               <p className="text-[8px] text-slate-600 uppercase tracking-wider">{s.label}</p>
             </div>
           ))}
+        </div>
+      )}
+
+      {toolsData && (
+        <div className="border-b border-white/[0.04]">
+          <button
+            onClick={() => setShowToolkit(!showToolkit)}
+            className="w-full px-3 py-1.5 flex items-center justify-between hover:bg-white/[0.02] transition-colors"
+            data-testid="button-toggle-toolkit"
+          >
+            <div className="flex items-center gap-1.5">
+              <Zap size={10} className="text-violet-400" />
+              <span className="text-[9px] font-bold text-violet-400 uppercase tracking-wider">Toolkit</span>
+              <span className="text-[8px] text-slate-600">{toolsData.totalTools} tools</span>
+            </div>
+            {showToolkit ? <ChevronDown size={10} className="text-slate-600" /> : <ChevronRight size={10} className="text-slate-600" />}
+          </button>
+          <AnimatePresence>
+            {showToolkit && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="px-3 pb-2 space-y-1" data-testid="panel-toolkit">
+                  {toolsData.categories?.map((cat: any) => {
+                    const catInfo = CATEGORY_LABELS[cat.category] || { label: cat.category, color: "text-slate-400" };
+                    const isExpanded = expandedCategory === cat.category;
+                    return (
+                      <div key={cat.category}>
+                        <button
+                          onClick={() => setExpandedCategory(isExpanded ? null : cat.category)}
+                          className="w-full flex items-center justify-between py-1 hover:bg-white/[0.02] rounded px-1 transition-colors"
+                          data-testid={`category-${cat.category}`}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-[9px] font-semibold ${catInfo.color}`}>{catInfo.label}</span>
+                            <span className="text-[8px] text-slate-700">{cat.count}</span>
+                          </div>
+                          {isExpanded ? <ChevronDown size={8} className="text-slate-600" /> : <ChevronRight size={8} className="text-slate-600" />}
+                        </button>
+                        <AnimatePresence>
+                          {isExpanded && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="pl-3 space-y-0.5 pb-1">
+                                {toolsData.tools
+                                  .filter((t: any) => t.category === cat.category)
+                                  .map((tool: any) => (
+                                    <div key={tool.name} className="flex items-center justify-between py-0.5" data-testid={`tool-${tool.name}`}>
+                                      <span className="text-[9px] text-slate-400 truncate max-w-[140px]">{tool.name}</span>
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        <AutonomyBadge level={tool.autonomyRequired} />
+                                        <ApprovalBadge required={tool.requiresApproval} />
+                                      </div>
+                                    </div>
+                                  ))}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
 

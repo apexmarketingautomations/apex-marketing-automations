@@ -2,15 +2,19 @@ export type AutonomyLevel = "observe" | "draft" | "execute";
 
 export type ApprovalStatus = "pending" | "approved" | "rejected" | "auto_approved" | "expired";
 
+export type ToolCategory = "crm" | "workflow" | "site" | "messaging" | "campaign" | "system" | "diagnostics" | "appointment" | "creative" | "review" | "intelligence";
+
 export interface OperatorTool {
   name: string;
   description: string;
-  category: "crm" | "workflow" | "integration" | "site" | "messaging" | "campaign" | "system" | "diagnostics";
+  category: ToolCategory;
   autonomyRequired: AutonomyLevel;
   requiresApproval: boolean;
   parameters: ToolParameter[];
   validate: (params: Record<string, any>, context: OperatorContext) => ValidationResult;
   execute: (params: Record<string, any>, context: OperatorContext) => Promise<ToolResult>;
+  summarizeForAudit?: (params: Record<string, any>, result: ToolResult) => string;
+  idempotencyKey?: (params: Record<string, any>) => string;
 }
 
 export interface ToolParameter {
@@ -33,6 +37,16 @@ export interface ToolResult {
   error?: string;
   sideEffects?: string[];
   eventsFired?: string[];
+}
+
+export interface ToolExecutionResult {
+  toolName: string;
+  status: "success" | "failure" | "validation_error" | "approval_required" | "autonomy_blocked";
+  result: ToolResult;
+  auditLog: string;
+  error?: string;
+  durationMs: number;
+  timestamp: string;
 }
 
 export interface OperatorContext {
@@ -109,4 +123,13 @@ export interface OperatorMemory {
   value: any;
   updatedAt: string;
   expiresAt?: string;
+}
+
+export interface PlannerToolMeta {
+  name: string;
+  description: string;
+  category: ToolCategory;
+  autonomyLevel: AutonomyLevel;
+  requiresApproval: boolean;
+  parameterNames: string[];
 }
