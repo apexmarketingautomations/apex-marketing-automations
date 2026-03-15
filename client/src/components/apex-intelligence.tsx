@@ -50,6 +50,14 @@ export function ApexIntelligence() {
   const healthScore = healthData?.overall;
 
   return (
+    <>
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/30 md:bg-transparent"
+          onClick={() => setIsOpen(false)}
+          data-testid="intel-backdrop"
+        />
+      )}
     <div className="fixed bottom-6 left-6 md:left-[304px] z-50 flex flex-col items-start">
       <AnimatePresence>
         {isOpen && (
@@ -59,6 +67,7 @@ export function ApexIntelligence() {
             exit={{ opacity: 0, y: 20, scale: 0.96 }}
             transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
             className="mb-4 w-[420px] max-w-[92vw] rounded-2xl overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
             style={{
               maxHeight: "min(620px, calc(100vh - 120px))",
               height: "620px",
@@ -97,10 +106,10 @@ export function ApexIntelligence() {
                 </div>
                 <button
                   onClick={() => setIsOpen(false)}
-                  className="p-1.5 rounded-lg hover:bg-white/5 transition-colors text-slate-500 hover:text-white"
+                  className="p-2.5 rounded-xl hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
                   data-testid="button-intel-close"
                 >
-                  <X size={16} />
+                  <X size={20} />
                 </button>
               </div>
 
@@ -232,5 +241,6 @@ export function ApexIntelligence() {
         )}
       </motion.button>
     </div>
+    </>
   );
 }

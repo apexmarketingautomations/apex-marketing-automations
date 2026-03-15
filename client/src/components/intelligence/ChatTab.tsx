@@ -134,12 +134,12 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
         onDone: (fullText) => {
           setMessages(prev => [...prev, { role: "assistant", content: fullText }]);
         },
-        onError: () => {
-          setMessages(prev => [...prev, { role: "assistant", content: "Connection issue. Please try again in a moment." }]);
+        onError: (err) => {
+          setMessages(prev => [...prev, { role: "assistant", content: `I'm having trouble connecting right now. This could be a temporary issue with the AI service.\n\nError: ${err || "Unknown"}\n\nPlease try again in a few seconds.` }]);
         },
       });
-    } catch {
-      setMessages(prev => [...prev, { role: "assistant", content: "Connection issue. Please try again in a moment." }]);
+    } catch (err: any) {
+      setMessages(prev => [...prev, { role: "assistant", content: `I'm having trouble connecting right now. This could be a temporary issue with the AI service.\n\nError: ${err?.message || "Unknown"}\n\nPlease try again in a few seconds.` }]);
     }
 
     try {

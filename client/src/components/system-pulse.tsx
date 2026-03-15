@@ -91,23 +91,7 @@ export function SystemPulse() {
   }
 
   if (isError || !pulse) {
-    return (
-      <div className="bg-black/60 border border-red-500/30 rounded-2xl p-4 ring-1 ring-red-500/20" data-testid="widget-pulse-error">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-3 h-3 rounded-full bg-red-500 shadow-[0_0_15px_rgba(255,50,50,0.6)]" />
-            <span className="text-red-400 text-sm font-bold">System Pulse unavailable</span>
-          </div>
-          <button
-            onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/admin/pulse"] })}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-slate-300 hover:text-white transition-all border border-white/10"
-            data-testid="button-retry-pulse"
-          >
-            <RefreshCw size={12} /> Retry
-          </button>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   const overallColors = pulse?.status === "healthy" ? STATUS_COLORS.healthy : pulse?.status === "critical" ? STATUS_COLORS.down : STATUS_COLORS.degraded;
