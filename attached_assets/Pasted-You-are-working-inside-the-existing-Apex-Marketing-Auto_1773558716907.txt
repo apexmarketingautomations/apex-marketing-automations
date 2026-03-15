@@ -1,0 +1,574 @@
+You are working inside the existing Apex Marketing Automations codebase.
+
+Do not give me a high-level explanation.
+Do not summarize the idea back to me.
+Do not stay conceptual.
+Do the implementation work.
+
+MISSION
+
+Expand the current Apex autonomous agent from its small tool registry into a serious operator-grade action system.
+
+Right now Apex has a strong brain:
+- scan loop
+- agent reasoning
+- episodic memory
+- goal planning
+- event hooks
+- task execution flow
+
+But its hands are still too limited.
+
+I want you to build a LARGE, STRUCTURED TOOL EXPANSION for the agent so it can actually operate the platform, not just observe and suggest.
+
+The target is:
+- expand from the current 11 tools
+- to approximately 50 total tools
+- grouped by domain
+- integrated into the existing tool registry
+- compatible with existing autonomy / approval rules
+- usable by goalPlanner, goalEngine, planExecutor, taskAgent, and agentBrain
+
+This is not just a list.
+I want actual server-side implementation scaffolding, registry wiring, validation, execution handlers, and safe approval logic.
+
+==================================================
+CORE REQUIREMENTS
+==================================================
+
+1. Do NOT replace the current tool registry.
+   Extend it.
+
+2. Do NOT make fake placeholder tools with empty bodies.
+   Every tool must have:
+   - a schema
+   - a handler
+   - a return structure
+   - logging
+   - approval classification
+   - error handling
+
+3. Reuse existing storage/services/routes wherever possible.
+
+4. If a tool cannot be fully completed because the underlying service does not yet exist, then:
+   - build a safe stub handler
+   - clearly mark it as stubbed
+   - return deterministic mock-safe output
+   - wire it into the registry anyway
+   - include exact TODO comments for the missing dependency
+
+5. Keep the registry inspectable and strongly typed.
+
+6. The new tools must be grouped into categories.
+
+7. Every tool must define:
+   - name
+   - description
+   - category
+   - autonomyLevel
+   - requiresApproval
+   - input schema
+   - execution handler
+   - idempotency guidance
+   - audit log summary function
+
+==================================================
+TARGET TOOL CATEGORIES
+==================================================
+
+Create tools across these 8 categories:
+
+1. CRM / PIPELINE
+2. MESSAGING
+3. WORKFLOWS / AUTOMATIONS
+4. APPOINTMENTS / CALENDAR
+5. CAMPAIGNS / ADS
+6. CONTENT / CREATIVE
+7. REVIEWS / REPUTATION
+8. ACCOUNT / DIAGNOSTICS / INTELLIGENCE
+
+==================================================
+TARGET TOOL LIST
+==================================================
+
+Implement these tools.
+
+-----------------------------------
+CATEGORY 1: CRM / PIPELINE
+-----------------------------------
+
+1. createContact
+2. updateContact
+3. tagContact
+4. untagContact
+5. createTask
+6. assignTask
+7. createPipeline
+8. createPipelineStage
+9. advanceDealStage
+10. createDeal
+11. updateDealValue
+12. assignLeadOwner
+13. scoreLead
+14. segmentContacts
+
+-----------------------------------
+CATEGORY 2: MESSAGING
+-----------------------------------
+
+15. sendTestSMS
+16. sendLiveSMSDraft
+17. sendWhatsAppMessageDraft
+18. sendEmailDraft
+19. createEmailCampaignDraft
+20. replyToInstagramDMDraft
+21. sendReviewRequestDraft
+22. createNurtureSequenceDraft
+
+-----------------------------------
+CATEGORY 3: WORKFLOWS / AUTOMATIONS
+-----------------------------------
+
+23. diagnoseWorkflow
+24. createWorkflow
+25. duplicateWorkflow
+26. pauseWorkflow
+27. resumeWorkflow
+28. optimizeWorkflowTiming
+29. generateAutoResponseWorkflow
+30. generateReactivationWorkflow
+
+-----------------------------------
+CATEGORY 4: APPOINTMENTS / CALENDAR
+-----------------------------------
+
+31. createAppointmentDraft
+32. rescheduleAppointmentDraft
+33. cancelAppointmentDraft
+34. sendAppointmentReminderDraft
+35. confirmAppointmentDraft
+
+-----------------------------------
+CATEGORY 5: CAMPAIGNS / ADS
+-----------------------------------
+
+36. launchCampaignDraft
+37. pauseCampaignDraft
+38. duplicateCampaignDraft
+39. adjustAdBudgetDraft
+40. rotateAdCreativeDraft
+41. createRetargetingCampaignDraft
+42. createLeadFormDraft
+
+-----------------------------------
+CATEGORY 6: CONTENT / CREATIVE
+-----------------------------------
+
+43. generateLandingPage
+44. generateOfferAngles
+45. generateAdCopyVariants
+46. generateSMSCopyVariants
+47. generateEmailCopyVariants
+48. generateSocialPostDrafts
+49. generateReviewResponseDraft
+
+-----------------------------------
+CATEGORY 7: REVIEWS / REPUTATION
+-----------------------------------
+
+50. respondToReviewDraft
+51. classifyReviewSentiment
+52. escalateNegativeReview
+53. generateReviewRecoveryPlan
+
+-----------------------------------
+CATEGORY 8: ACCOUNT / DIAGNOSTICS / INTELLIGENCE
+-----------------------------------
+
+54. detectMissingSetup
+55. checkIntegrationHealth
+56. getAccountSummary
+57. auditConversionLeaks
+58. auditResponseSpeed
+59. recommendNextBestAction
+60. diagnoseMessaging
+61. restoreBrokenIntegrationDraft
+62. generateAccountSetupPlan
+63. compareToIndustryBenchmark
+
+Yes, this is more than 50. Keep them all. I want breadth.
+
+==================================================
+IMPLEMENTATION STRUCTURE
+==================================================
+
+Create or update these files:
+
+- server/operator/toolRegistry.ts
+- server/operator/toolSchemas.ts
+- server/operator/toolTypes.ts
+- server/operator/toolHandlers/
+  - crmTools.ts
+  - messagingTools.ts
+  - workflowTools.ts
+  - appointmentTools.ts
+  - campaignTools.ts
+  - creativeTools.ts
+  - reviewTools.ts
+  - intelligenceTools.ts
+
+If a toolHandlers directory does not exist, create it.
+
+==================================================
+TYPE SYSTEM
+==================================================
+
+Create a strong tool typing system.
+
+Define:
+
+ToolCategory =
+- "crm"
+- "messaging"
+- "workflow"
+- "appointment"
+- "campaign"
+- "creative"
+- "review"
+- "intelligence"
+
+AutonomyLevel =
+- "observe"
+- "draft"
+- "execute"
+
+ToolExecutionResult must include:
+- success: boolean
+- toolName: string
+- accountId: number
+- status: "completed" | "drafted" | "blocked" | "failed" | "stubbed"
+- summary: string
+- data?: any
+- requiresApproval?: boolean
+- auditLog?: {
+    message: string
+    severity: "info" | "warning" | "critical"
+    metadata?: Record<string, any>
+  }
+- error?: {
+    code: string
+    message: string
+    retryable: boolean
+  }
+
+ToolDefinition must include:
+- name
+- description
+- category
+- autonomyLevel
+- requiresApproval
+- schema
+- execute
+- summarizeForAudit
+
+==================================================
+VALIDATION
+==================================================
+
+Use zod for every tool input schema.
+
+Create a central schema file:
+- server/operator/toolSchemas.ts
+
+Every tool must validate its input before execution.
+Validation failures must return structured errors, not throw unhandled exceptions.
+
+==================================================
+APPROVAL RULES
+==================================================
+
+Use these defaults unless already stricter rules exist:
+
+OBSERVE tools
+- requiresApproval: false
+
+DRAFT tools
+- requiresApproval: false if they only create internal drafts
+- requiresApproval: true if they generate customer-facing content or ads
+
+EXECUTE tools
+- requiresApproval: true by default
+- unless they are explicitly low-risk diagnostics or internal bookkeeping
+
+Do NOT weaken any existing safety rule.
+
+==================================================
+LOGGING / AUDIT
+==================================================
+
+Every tool execution must:
+- create an audit summary
+- be loggable by planExecutor / taskAgent
+- produce a human-readable summary
+
+Examples:
+- "Created draft workflow 'Lead Reactivation Sequence' for account 12"
+- "Flagged negative review for escalation on account 7"
+- "Generated 5 SMS copy variants for roofing campaign"
+
+==================================================
+IDEMPOTENCY / SAFETY
+==================================================
+
+For tools that could duplicate work, support a simple idempotency pattern.
+
+Examples:
+- createTask should optionally accept an idempotencyKey
+- createWorkflow should optionally accept a templateKey
+- launchCampaignDraft should optionally accept a campaignKey
+
+If duplicate intent is detected, return existing/deduplicated result rather than creating duplicate records.
+
+==================================================
+CRM TOOL REQUIREMENTS
+==================================================
+
+Implement real handlers where possible using existing storage/db patterns.
+
+Examples:
+- createContact -> insert contact
+- updateContact -> patch contact fields
+- tagContact / untagContact -> update tag arrays or tag storage structure
+- createTask -> create internal task record if task table exists, otherwise build safe task stub
+- advanceDealStage -> move deal to next stage with audit trail
+- assignLeadOwner -> assign owner/user id and log
+- scoreLead -> calculate rule-based score using recent activity, source, tags, responsiveness
+- segmentContacts -> return matching IDs + summary based on rules
+
+If no task table exists, create a lightweight internal tasks table or safe task draft implementation.
+
+==================================================
+MESSAGING TOOL REQUIREMENTS
+==================================================
+
+Implement draft-first behavior.
+
+Examples:
+- sendLiveSMSDraft -> create a draft outbound message, not auto-send
+- sendWhatsAppMessageDraft -> build draft payload only
+- sendEmailDraft -> build/sendable draft object
+- createEmailCampaignDraft -> generate campaign draft record if campaign model exists
+- replyToInstagramDMDraft -> build suggested DM reply linked to thread if possible
+- sendReviewRequestDraft -> create templated review request draft
+- createNurtureSequenceDraft -> draft sequence of messages, not auto-send
+
+If a live send path already exists and is safe, keep it behind approval.
+
+==================================================
+WORKFLOW TOOL REQUIREMENTS
+==================================================
+
+Implement:
+- diagnoseWorkflow -> inspect existing workflow config and detect missing triggers / dead ends
+- createWorkflow -> existing logic if available
+- duplicateWorkflow -> copy existing workflow
+- pauseWorkflow / resumeWorkflow -> toggle active state
+- optimizeWorkflowTiming -> adjust wait timings using recommendations
+- generateAutoResponseWorkflow -> draft a standard immediate-response workflow
+- generateReactivationWorkflow -> draft a stale-lead reactivation workflow
+
+==================================================
+APPOINTMENT TOOL REQUIREMENTS
+==================================================
+
+Implement draft-first calendar actions:
+- createAppointmentDraft
+- rescheduleAppointmentDraft
+- cancelAppointmentDraft
+- sendAppointmentReminderDraft
+- confirmAppointmentDraft
+
+If live calendar integration is incomplete:
+- create structured draft actions
+- mark as requiresApproval
+- clearly return stubbed if no backend service exists
+
+==================================================
+CAMPAIGN TOOL REQUIREMENTS
+==================================================
+
+Implement draft-first ad operations:
+- launchCampaignDraft
+- pauseCampaignDraft
+- duplicateCampaignDraft
+- adjustAdBudgetDraft
+- rotateAdCreativeDraft
+- createRetargetingCampaignDraft
+- createLeadFormDraft
+
+If Meta integration already exists, use existing campaign/ad draft models.
+Do not auto-publish live budget changes.
+
+==================================================
+CREATIVE TOOL REQUIREMENTS
+==================================================
+
+Implement content generation tools that the planner can use as real deliverables.
+
+Examples:
+- generateOfferAngles
+- generateAdCopyVariants
+- generateSMSCopyVariants
+- generateEmailCopyVariants
+- generateSocialPostDrafts
+- generateReviewResponseDraft
+
+Use existing Gemini content generation patterns.
+Outputs must be structured arrays/objects, not raw unstructured blobs.
+
+==================================================
+REVIEW TOOL REQUIREMENTS
+==================================================
+
+Implement:
+- respondToReviewDraft
+- classifyReviewSentiment
+- escalateNegativeReview
+- generateReviewRecoveryPlan
+
+Negative review handling should:
+- classify sentiment
+- flag urgent cases
+- recommend next steps
+- never auto-post a live reply without approval
+
+==================================================
+INTELLIGENCE TOOL REQUIREMENTS
+==================================================
+
+Implement:
+- auditConversionLeaks
+- auditResponseSpeed
+- recommendNextBestAction
+- diagnoseMessaging
+- restoreBrokenIntegrationDraft
+- generateAccountSetupPlan
+- compareToIndustryBenchmark
+
+These should return structured intelligence outputs the agent can use in plans.
+
+==================================================
+TOOL REGISTRY REQUIREMENTS
+==================================================
+
+Update toolRegistry.ts so that:
+- all tools are centrally registered
+- tools can be retrieved by name
+- tools can be filtered by category
+- tools can be filtered by autonomyLevel
+- getToolRegistry() returns all tools
+- getTool(name) returns one tool
+- executeTool(name, input, context) validates input and runs the handler
+- listToolsForPlanner() returns planner-safe metadata only
+
+Planner-safe metadata should include:
+- name
+- description
+- category
+- autonomyLevel
+- requiresApproval
+
+==================================================
+PLANNER INTEGRATION
+==================================================
+
+Update goalPlanner / planExecutor / taskAgent integration so they can use the new tools.
+
+Requirements:
+- planner should have access to the expanded list
+- plan steps can map to these tools
+- executor must respect requiresApproval
+- audit summaries must flow into memory/logging
+
+==================================================
+UI / INTELLIGENCE PANEL SUPPORT
+==================================================
+
+If the Apex Intelligence UI already shows tools or action summaries, update it to support:
+- category labels
+- approval labels
+- draft vs execute distinction
+- richer action summaries
+
+Do not do a giant UI redesign.
+Only update what is necessary to expose the expanded tool set clearly.
+
+==================================================
+TESTS
+==================================================
+
+Create tests for:
+- registry loading
+- schema validation
+- successful execution of representative tools
+- approval gating
+- idempotency behavior
+- stubbed tool behavior
+- planner-safe metadata generation
+
+Minimum representative tested tools:
+- createContact
+- createWorkflow
+- generateLandingPage
+- generateAdCopyVariants
+- respondToReviewDraft
+- compareToIndustryBenchmark
+- adjustAdBudgetDraft
+
+==================================================
+DEFINITION OF DONE
+==================================================
+
+This task is complete only when:
+
+1. The codebase contains a structured multi-file tool system
+2. The registry contains all requested tools
+3. Tools are categorized and strongly typed
+4. Validation works
+5. Planner/executor can discover and call them
+6. Approval requirements are preserved
+7. Representative tests pass
+8. The system can now do substantially more than the original 11-tool registry
+
+==================================================
+IMPORTANT IMPLEMENTATION RULES
+==================================================
+
+- Reuse existing services where possible
+- Do not break the running app
+- Keep code strongly typed
+- Prefer deterministic results
+- Prefer draft creation over risky live execution
+- Favor operational usefulness over fake AI magic
+- Make the tools inspectable and auditable
+- If something is stubbed, say it clearly in code and responses
+- Do not leave the registry half-finished
+
+==================================================
+OUTPUT FORMAT I WANT FROM YOU
+==================================================
+
+When done, report back in exactly this format:
+
+1. Files created
+2. Files modified
+3. Total tools registered
+4. Tools fully implemented
+5. Tools stubbed safely
+6. Approval-gated tools
+7. Tests added
+8. Planner integration changes
+9. Any missing backend dependencies
+10. Example executions for 5 representative tools
+
+Start implementing now.
