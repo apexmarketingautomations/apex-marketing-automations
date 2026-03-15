@@ -329,7 +329,8 @@ export interface IStorage {
   getCrashReport(id: number): Promise<CrashReport | undefined>;
   getCrashReportByNumber(reportNumber: string): Promise<CrashReport | undefined>;
   updateCrashReport(id: number, data: Partial<InsertCrashReport>): Promise<CrashReport | undefined>;
-  getAndLockPendingReports(limit?: number): Promise<CrashReport[]>;
+  getAndLockPendingReports(limit: number, workerId: string): Promise<CrashReport[]>;
+  resetStuckJobs(timeoutMinutes: number): Promise<number>;
   getCrashReports(subAccountId?: number): Promise<CrashReport[]>;
 
   getShopifyEvents(subAccountId: number): Promise<ShopifyEvent[]>;
@@ -1395,8 +1396,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createCrashReport(data: InsertCrashReport) {
-    const [row] = await db.insert(crashReports).values(data).returning();
-    return row;
+    const [row] = await db.insert(crashReports).values(data).onConflictDoNothing({ target: crashReports.reportNumber }).returning();
+    if (row) return row;
+    const [existing] = await db.select().from(crashReports).where(eq(crashReports.reportNumber, data.reportNumber));
+    return existing;
   }
 
   async getCrashReport(id: number) {
@@ -1410,23 +1413,46 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateCrashReport(id: number, data: Partial<InsertCrashReport>) {
-    const [row] = await db.update(crashReports).set({ ...data, updatedAt: new Date() }).where(eq(crashReports.id, id)).returning();
+    const clearLockStatuses = ["COMPLETED", "FAILED", "NOT_FOUND", "PENDING"];
+    const shouldClearLock = data.status && clearLockStatuses.includes(data.status);
+    const updatePayload: Partial<InsertCrashReport> & { updatedAt: Date; lockedAt?: null; lockedBy?: null } = {
+      ...data,
+      updatedAt: new Date(),
+      ...(shouldClearLock ? { lockedAt: null, lockedBy: null } : {}),
+    };
+    const [row] = await db.update(crashReports).set(updatePayload).where(eq(crashReports.id, id)).returning();
     return row;
   }
 
-  async getAndLockPendingReports(limit = 2) {
-    const pendingIds = await db.select({ id: crashReports.id })
-      .from(crashReports)
-      .where(eq(crashReports.status, "PENDING"))
-      .orderBy(crashReports.createdAt)
-      .limit(limit);
+  async getAndLockPendingReports(limit = 2, workerId = "default") {
+    const now = new Date();
+    return await db.transaction(async (tx) => {
+      const pending = await tx.execute(sql`
+        SELECT id FROM crash_reports
+        WHERE status = 'PENDING' AND locked_at IS NULL
+        ORDER BY created_at ASC
+        LIMIT ${limit}
+        FOR UPDATE SKIP LOCKED
+      `);
+      const ids = (pending.rows || []).map((r: { id: number }) => r.id);
+      if (ids.length === 0) return [];
+      return tx.update(crashReports)
+        .set({ status: "PROCESSING", lockedAt: now, lockedBy: workerId, updatedAt: now })
+        .where(inArray(crashReports.id, ids))
+        .returning();
+    });
+  }
 
-    if (pendingIds.length === 0) return [];
-
-    return db.update(crashReports)
-      .set({ status: "PROCESSING", updatedAt: new Date() })
-      .where(inArray(crashReports.id, pendingIds.map(p => p.id)))
+  async resetStuckJobs(timeoutMinutes: number) {
+    const cutoff = new Date(Date.now() - timeoutMinutes * 60 * 1000);
+    const result = await db.update(crashReports)
+      .set({ status: "PENDING", lockedAt: null, lockedBy: null, updatedAt: new Date() })
+      .where(and(
+        eq(crashReports.status, "PROCESSING"),
+        sql`(${crashReports.lockedAt} IS NULL OR ${crashReports.lockedAt} < ${cutoff})`
+      ))
       .returning();
+    return result.length;
   }
 
   async getCrashReports(subAccountId?: number) {

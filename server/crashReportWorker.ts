@@ -1,13 +1,30 @@
 import { storage } from "./storage";
+import crypto from "crypto";
 
 const FLHSMV_BASE = "https://services.flhsmv.gov";
 const FLHSMV_HOME = `${FLHSMV_BASE}/crashreportrequest/`;
 const FLHSMV_SEARCH_URL = `${FLHSMV_BASE}/CRRService/api/CrashReport/SearchReport`;
 const FLHSMV_DETAIL_URL = `${FLHSMV_BASE}/CRRService/api/CrashReport/GetReport`;
 const WORKER_INTERVAL_MS = 15_000;
-const MAX_RETRIES = 3;
+const MAX_RETRIES = 5;
 const MAX_CONCURRENT = 2;
 const SESSION_TTL_MS = 5 * 60 * 1000;
+const STUCK_JOB_TIMEOUT_MINUTES = 15;
+const WORKER_ID = crypto.randomUUID().slice(0, 8);
+
+const USER_AGENTS = [
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+];
+
+let uaIndex = 0;
+function getNextUserAgent(): string {
+  const ua = USER_AGENTS[uaIndex % USER_AGENTS.length];
+  uaIndex++;
+  return ua;
+}
 
 interface FLHSMVSearchResult {
   ReportNumber: string;
@@ -136,7 +153,7 @@ async function refreshSession(): Promise<void> {
     const response = await fetch(FLHSMV_HOME, {
       method: "GET",
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": getNextUserAgent(),
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
       },
@@ -164,7 +181,7 @@ function getHeaders(): Record<string, string> {
   const h: Record<string, string> = {
     "Content-Type": "application/json",
     "Accept": "application/json",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "User-Agent": getNextUserAgent(),
     "Origin": FLHSMV_BASE,
     "Referer": FLHSMV_HOME,
     "Accept-Language": "en-US,en;q=0.5",
@@ -357,7 +374,7 @@ async function processReport(reportId: number, reportNumber: string): Promise<vo
 }
 
 async function processBatch(): Promise<number> {
-  const locked = await storage.getAndLockPendingReports(MAX_CONCURRENT);
+  const locked = await storage.getAndLockPendingReports(MAX_CONCURRENT, WORKER_ID);
   if (locked.length === 0) return 0;
 
   console.log(`[CRASH-WORKER] Locked & processing batch of ${locked.length} report(s)`);
@@ -381,10 +398,14 @@ export function startCrashReportWorker(): void {
     return;
   }
   workerRunning = true;
-  console.log(`[CRASH-WORKER] Started — polling every ${WORKER_INTERVAL_MS / 1000}s, max ${MAX_CONCURRENT} concurrent, session-aware`);
+  console.log(`[CRASH-WORKER] Started (id=${WORKER_ID}) — polling every ${WORKER_INTERVAL_MS / 1000}s, max ${MAX_CONCURRENT} concurrent, max retries ${MAX_RETRIES}`);
 
   const tick = async () => {
     try {
+      const reset = await storage.resetStuckJobs(STUCK_JOB_TIMEOUT_MINUTES);
+      if (reset > 0) {
+        console.log(`[CRASH-WORKER] Reset ${reset} stuck job(s) older than ${STUCK_JOB_TIMEOUT_MINUTES}m`);
+      }
       await processBatch();
     } catch (err: any) {
       console.error("[CRASH-WORKER] Tick error:", err.message);
