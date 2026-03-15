@@ -475,7 +475,9 @@ export async function generateGrowthReport(context: ContextPacket): Promise<Grow
   let crossAccountBenchmarks: Record<string, any> = {};
   try {
     crossAccountBenchmarks = await getBenchmarksForIndustry(context.workspace.industry);
-  } catch {}
+  } catch (err: any) {
+    console.error("[ADVISOR] Cross-account benchmark fetch failed:", err.message);
+  }
 
   if (Object.keys(crossAccountBenchmarks).length > 0) {
     const cab = crossAccountBenchmarks;

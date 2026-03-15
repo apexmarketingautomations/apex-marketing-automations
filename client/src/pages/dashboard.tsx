@@ -55,6 +55,7 @@ export default function DashboardPage() {
     queryKey: ["/api/dashboard", subAccountId],
     queryFn: async () => {
       const res = await fetch(`/api/dashboard/${subAccountId}`);
+      if (!res.ok) throw new Error(`Dashboard fetch failed: ${res.status}`);
       return res.json();
     },
     refetchInterval: 30000,
@@ -65,6 +66,7 @@ export default function DashboardPage() {
     queryKey: ["/api/analytics", subAccountId],
     queryFn: async () => {
       const res = await fetch(`/api/analytics/${subAccountId}`);
+      if (!res.ok) throw new Error(`Analytics fetch failed: ${res.status}`);
       return res.json();
     },
     enabled: !!subAccountId,

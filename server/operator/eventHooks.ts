@@ -25,7 +25,9 @@ export function initOperatorEventHooks(): void {
           event.payload.durationMs || 0,
           false,
         );
-      } catch {}
+      } catch (err: any) {
+        console.error("[EVENT-HOOKS] Workflow step metric recording failed:", err.message);
+      }
     }
 
     if (event.payload.subAccountId) {
@@ -47,7 +49,7 @@ export function initOperatorEventHooks(): void {
         "failed",
         { workflowId: event.payload.workflowId, errorType: String(event.payload.error || "").substring(0, 100) },
         "workflow.failed"
-      ).catch(() => {});
+      ).catch(e => console.error("[EVENT-HOOKS] Outcome memory failed:", e instanceof Error ? e.message : e));
     }
   }, 10);
 
@@ -101,7 +103,7 @@ export function initOperatorEventHooks(): void {
         `Payment completed: ${event.payload.amount ? `$${event.payload.amount}` : "amount unknown"}`,
         { amount: event.payload.amount, paymentId: event.payload.paymentId },
         "payment.completed"
-      ).catch(() => {});
+      ).catch(e => console.error("[EVENT-HOOKS] Payment memory failed:", e instanceof Error ? e.message : e));
     }
   }, -10);
 
@@ -114,7 +116,7 @@ export function initOperatorEventHooks(): void {
         "failed",
         { crashType: event.payload.type },
         "crash.detected"
-      ).catch(() => {});
+      ).catch(e => console.error("[EVENT-HOOKS] Crash memory failed:", e instanceof Error ? e.message : e));
     }
   }, -10);
 
@@ -126,7 +128,7 @@ export function initOperatorEventHooks(): void {
         `New deal created: ${event.payload.title || event.payload.dealId || "untitled"}`,
         { dealId: event.payload.dealId, stage: event.payload.stage },
         "deal.created"
-      ).catch(() => {});
+      ).catch(e => console.error("[EVENT-HOOKS] Deal memory failed:", e instanceof Error ? e.message : e));
     }
   }, -10);
 
@@ -139,7 +141,7 @@ export function initOperatorEventHooks(): void {
         "success",
         { siteId: event.payload.siteId },
         "site.generated"
-      ).catch(() => {});
+      ).catch(e => console.error("[EVENT-HOOKS] Site memory failed:", e instanceof Error ? e.message : e));
     }
   }, -10);
 
@@ -151,7 +153,7 @@ export function initOperatorEventHooks(): void {
         "success",
         { campaignId: event.payload.campaignId, platform: event.payload.platform },
         "ad.campaign.launched"
-      ).catch(() => {});
+      ).catch(e => console.error("[EVENT-HOOKS] Campaign memory failed:", e instanceof Error ? e.message : e));
     }
   }, -10);
 

@@ -30,6 +30,7 @@ export function NotificationBell() {
     queryKey: ["/api/notifications/unread-count", subAccountId],
     queryFn: async () => {
       const res = await fetch(`/api/notifications/${subAccountId}/unread-count`);
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       return res.json();
     },
     refetchInterval: 15000,
@@ -39,6 +40,7 @@ export function NotificationBell() {
     queryKey: ["/api/notifications", subAccountId],
     queryFn: async () => {
       const res = await fetch(`/api/notifications/${subAccountId}`);
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       return res.json();
     },
     enabled: open,

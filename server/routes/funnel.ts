@@ -34,7 +34,7 @@ export function registerFunnelRoutes(app: Express) {
           leadPhone: contactPhone,
           leadEmail: contactEmail,
           source: "form_submit",
-        }).catch(() => {});
+        }).catch(e => console.error("[FUNNEL] Automation trigger failed:", e instanceof Error ? e.message : e));
       } catch (e) {
         console.log("[FORM] Contact creation skipped (may already exist):", (e as any).message);
       }
@@ -158,7 +158,7 @@ export function registerFunnelRoutes(app: Express) {
         leadPhone: fd.phone,
         leadEmail: fd.email,
         source: "funnel",
-      }).catch(() => {});
+      }).catch(e => console.error("[FUNNEL] Automation trigger failed:", e instanceof Error ? e.message : e));
     } catch (e) {
       console.log("[FUNNEL] Contact creation skipped:", (e as any).message);
     }

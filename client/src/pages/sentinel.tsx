@@ -74,6 +74,7 @@ export default function Sentinel() {
     enabled: !!currentAccount?.id && hasSentinelAccess,
     queryFn: async () => {
       const res = await fetch(`/api/sentinel/config/${currentAccount!.id}`);
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       return res.json();
     },
   });
@@ -83,6 +84,7 @@ export default function Sentinel() {
     enabled: !!currentAccount?.id && hasSentinelAccess,
     queryFn: async () => {
       const res = await fetch(`/api/sentinel/incidents/${currentAccount!.id}`);
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       return res.json();
     },
     refetchInterval: 30000,

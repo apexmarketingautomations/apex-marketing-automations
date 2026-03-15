@@ -1156,7 +1156,9 @@ export function registerAnalyticsRoutes(app: Express) {
         if (crossBenchmarks.monthly_message_volume) {
           benchmarks["monthly_messages"] = { yours: `${performance.messageCount}`, benchmark: `${Math.round(crossBenchmarks.monthly_message_volume.avg)}`, status: performance.messageCount >= crossBenchmarks.monthly_message_volume.median ? "above" : "below" };
         }
-      } catch {}
+      } catch (err: any) {
+        console.error("[ANALYTICS] Cross-benchmark aggregation failed:", err.message);
+      }
 
       if (context.industryKnowledge) {
         const ik = context.industryKnowledge;

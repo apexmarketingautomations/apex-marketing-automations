@@ -362,7 +362,9 @@ export function registerIntegrationsRoutes(app: Express) {
       const profile = await profileRes.json() as any;
       providerEmail = profile.email || "";
       providerAccountId = profile.id || "";
-    } catch {}
+    } catch (err: any) {
+      console.error("[INTEGRATIONS] YouTube profile fetch failed:", err.message);
+    }
     const expiresIn = tokenData.expires_in || 3600;
     await storage.upsertOAuthToken({
       provider: "youtube", subAccountId, accessToken: tokenData.access_token, refreshToken: tokenData.refresh_token || null,
@@ -419,7 +421,9 @@ export function registerIntegrationsRoutes(app: Express) {
       const profile = await profileRes.json() as any;
       providerEmail = profile.email || "";
       providerName = profile.name || "";
-    } catch {}
+    } catch (err: any) {
+      console.error("[INTEGRATIONS] LinkedIn profile fetch failed:", err.message);
+    }
     const scopes = ["openid", "profile", "email", "w_member_social", "r_organization_social", "w_organization_social"];
     const expiresIn = tokenData.expires_in || 5184000;
     await storage.upsertOAuthToken({
@@ -526,7 +530,9 @@ export function registerIntegrationsRoutes(app: Express) {
       const profile = await profileRes.json() as any;
       providerEmail = profile.mail || profile.userPrincipalName || "";
       providerName = profile.displayName || "";
-    } catch {}
+    } catch (err: any) {
+      console.error("[INTEGRATIONS] Microsoft profile fetch failed:", err.message);
+    }
     const scopes = ["Mail.ReadWrite", "Mail.Send", "Calendars.ReadWrite", "Files.ReadWrite", "ChannelMessage.Send"];
     const expiresIn = tokenData.expires_in || 3600;
     await storage.upsertOAuthToken({
@@ -583,7 +589,9 @@ export function registerIntegrationsRoutes(app: Express) {
       const meData = await meRes.json() as any;
       providerEmail = meData.resource?.email || "";
       providerName = meData.resource?.name || "";
-    } catch {}
+    } catch (err: any) {
+      console.error("[INTEGRATIONS] Calendly profile fetch failed:", err.message);
+    }
     const scopes = ["events", "scheduling_links"];
     const expiresIn = tokenData.expires_in || 7200;
     await storage.upsertOAuthToken({
@@ -1252,7 +1260,9 @@ export function registerIntegrationsRoutes(app: Express) {
         const shopData = await shopRes.json() as any;
         storeName = shopData.shop?.name || domain;
       }
-    } catch {}
+    } catch (err: any) {
+      console.error("[INTEGRATIONS] Shopify store name fetch failed:", err.message);
+    }
 
     const events = await storage.getShopifyEvents(subAccountId);
 

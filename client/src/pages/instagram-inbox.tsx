@@ -50,6 +50,7 @@ export default function InstagramInboxPage() {
     queryKey: ["/api/meta/instagram/conversations", subAccountId],
     queryFn: async () => {
       const res = await fetch(`/api/meta/instagram/conversations/${subAccountId}`);
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       return res.json();
     },
     enabled: !!subAccountId,
@@ -60,6 +61,7 @@ export default function InstagramInboxPage() {
     queryFn: async () => {
       if (!selectedConversation) return [];
       const res = await fetch(`/api/meta/instagram/messages/${selectedConversation.id}`);
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       return res.json();
     },
     enabled: !!selectedConversation,
@@ -69,6 +71,7 @@ export default function InstagramInboxPage() {
     queryKey: ["/api/meta/config"],
     queryFn: async () => {
       const res = await fetch("/api/meta/config");
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       return res.json();
     },
   });

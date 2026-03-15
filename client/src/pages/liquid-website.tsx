@@ -203,7 +203,9 @@ function BookingSection({ title, theme, subAccountId, templateVars, stickyContac
       setStickyContact({ firstName: formData.name, email: formData.email, phone: formData.phone });
       if (onFormSubmit) onFormSubmit({ firstName: formData.name, email: formData.email, phone: formData.phone });
       setSubmitted(true);
-    } catch {} finally {
+    } catch (err) {
+      console.error("Booking form submission failed:", err);
+    } finally {
       setSubmitting(false);
     }
   };
@@ -402,7 +404,7 @@ function LiquidSectionEditor({ section, index, onUpdate, onClose }: { section: a
                 <Input value={String(value || "")} onChange={(e) => handleChange(key, e.target.value)} className="bg-white/5 border-white/10 text-sm mb-1" data-testid={`liquid-input-edit-${key}-${index}`} />
                 <label className="cursor-pointer px-2 py-1 bg-indigo-600/30 hover:bg-indigo-600/50 rounded text-[10px] text-indigo-300 inline-flex items-center gap-1">
                   <Upload size={10} /> Upload
-                  <input type="file" accept="image/*" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; const fd = new FormData(); fd.append("image", file); try { const res = await fetch("/api/upload-ad-image", { method: "POST", body: fd }); const d = await res.json(); if (d.url) handleChange("image", d.url); } catch {} e.target.value = ""; }} />
+                  <input type="file" accept="image/*" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; const fd = new FormData(); fd.append("image", file); try { const res = await fetch("/api/upload-ad-image", { method: "POST", body: fd }); const d = await res.json(); if (d.url) handleChange("image", d.url); } catch (err) { console.error("Image upload failed:", err); } e.target.value = ""; }} />
                 </label>
               </div>
             );
@@ -1019,7 +1021,9 @@ export default function LiquidWebsite() {
           setStickyContact({ firstName: lookupData.contact.firstName, email: lookupData.contact.email, phone: lookupData.contact.phone });
           setStickyContactState({ firstName: lookupData.contact.firstName, email: lookupData.contact.email, phone: lookupData.contact.phone });
         }
-      } catch {}
+      } catch (err) {
+        console.error("CRM contact lookup failed:", err);
+      }
     }
 
     try {

@@ -168,7 +168,9 @@ export async function runLaunchReadinessChecks(): Promise<{
   try {
     const subResult = await db.execute(sql`SELECT COUNT(*) as count FROM subscriptions WHERE status = 'active'`);
     hasSubscription = parseInt((subResult.rows[0] as any).count, 10) > 0;
-  } catch {}
+  } catch (err: any) {
+    console.error("[LAUNCH-READINESS] Subscription check failed:", err.message);
+  }
 
   checks.push({
     category: "Billing",
@@ -181,7 +183,9 @@ export async function runLaunchReadinessChecks(): Promise<{
   try {
     const autoResult = await db.execute(sql`SELECT COUNT(*) as count FROM live_automations WHERE status IN ('compiled', 'active')`);
     hasAutomation = parseInt((autoResult.rows[0] as any).count, 10) > 0;
-  } catch {}
+  } catch (err: any) {
+    console.error("[LAUNCH-READINESS] Automation check failed:", err.message);
+  }
 
   checks.push({
     category: "Features",

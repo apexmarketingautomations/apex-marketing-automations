@@ -95,7 +95,7 @@ export function registerWebhooksRoutes(app: Express) {
           senderPhone: senderClean,
           message: incomingMsg,
           channel: "whatsapp",
-        }).catch(() => {});
+        }).catch(e => console.error("[WEBHOOKS] WhatsApp automation trigger failed:", e instanceof Error ? e.message : e));
       }
 
       let aiReply = "Thanks for your message! We'll get back to you shortly.";
@@ -318,7 +318,9 @@ export function registerWebhooksRoutes(app: Express) {
                   if (websites.length > 0 && websites[0].botPersona) {
                     systemPrompt = `${websites[0].botPersona}\n\nYou are responding via ${channel} DM. Keep replies conversational and under 300 characters.`;
                   }
-                } catch {}
+                } catch (err: any) {
+                  console.error("[WEBHOOKS] Bot persona fetch failed:", err.message);
+                }
 
                 if (targetAccount?.industry) {
                   systemPrompt += ` The business is in the ${targetAccount.industry} industry.`;

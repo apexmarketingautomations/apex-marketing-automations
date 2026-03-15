@@ -26,7 +26,7 @@ export function registerReviewsRoutes(app: Express) {
         rating: review.rating,
         customerName: review.customerName,
         comment: review.comment,
-      }).catch(() => {});
+      }).catch(e => console.error("[REVIEWS] Automation trigger failed:", e instanceof Error ? e.message : e));
     }
     res.status(201).json(review);
   }));

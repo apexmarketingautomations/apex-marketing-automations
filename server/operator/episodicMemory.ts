@@ -91,7 +91,7 @@ export async function recallRelevantMemories(
           lastAccessedAt: new Date(),
         })
         .where(sql`${agentMemories.id} = ANY(${ids})`)
-        .execute().catch(() => {});
+        .execute().catch(e => console.error("[EPISODIC-MEMORY] DB operation failed:", e instanceof Error ? e.message : e));
     }
 
     return rows.map(mapRowToMemory);
@@ -305,7 +305,9 @@ async function pruneOldMemories(subAccountId: number): Promise<void> {
         LIMIT ${toDelete}
       )
     `);
-  } catch {}
+  } catch (err: any) {
+    console.error("[MEMORY] Memory cleanup failed:", err.message);
+  }
 }
 
 export function buildPastExperiencePrompt(memories: EpisodicMemory[]): string {

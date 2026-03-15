@@ -20,6 +20,7 @@ export default function DataDeletion() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim() }),
       });
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       const data = await res.json();
       if (data.confirmation_code) {
         setConfirmationCode(data.confirmation_code);

@@ -190,7 +190,7 @@ Based on this data, what tasks should the autonomous agent execute? Return a JSO
         `AI decided to execute "${task.title}" (${task.taskType}) at priority ${task.priority}. Reasoning: ${task.reasoning}`,
         { taskType: task.taskType, priority: task.priority, tool: task.toolName, healthScore: healthScore.overall },
         "agent-brain-scan"
-      ).catch(() => {});
+      ).catch(e => console.error("[AGENT-BRAIN] Decision memory recording failed:", e instanceof Error ? e.message : e));
     }
 
     return validated;
@@ -335,7 +335,9 @@ export async function recordTaskOutcomeAsMemory(
       { taskType: task.taskType, tool: task.toolUsed, priority: task.priority },
       "task-completion"
     );
-  } catch {}
+  } catch (err: any) {
+    console.error("[AGENT-BRAIN] Outcome memory recording failed:", err.message);
+  }
 }
 
 export async function getOutcomeStats(subAccountId: number): Promise<{

@@ -38,7 +38,9 @@ export function initEventSubscribers(storage: any, systemLogger?: any) {
           message: `Workflow ${event.payload.workflowId} failed: ${event.payload.error || "unknown"}`,
           details: event.payload,
         });
-      } catch {}
+      } catch (err: any) {
+        console.error("[EVENT-SUB] Workflow failure log failed:", err.message);
+      }
     }
   });
 
@@ -91,7 +93,9 @@ export function initEventSubscribers(storage: any, systemLogger?: any) {
           message: `Event: ${event.event_type} from ${event.source_module}`,
           details: { event_id: event.event_id, payload_keys: Object.keys(event.payload) },
         });
-      } catch {}
+      } catch (err: any) {
+        console.error("[EVENT-SUB] Event log failed:", err.message);
+      }
     }
   }, -100);
 

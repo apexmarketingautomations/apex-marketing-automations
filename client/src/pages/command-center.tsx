@@ -34,9 +34,12 @@ export default function CommandCenter() {
       for (const acc of accounts.slice(0, 10)) {
         try {
           const res = await fetch(`/api/versions/${acc.id}`);
+          if (!res.ok) throw new Error(`Version fetch failed: ${res.status}`);
           const versions = await res.json();
           all.push(...versions);
-        } catch {}
+        } catch (err) {
+          console.error(`Failed to fetch versions for account ${acc.id}:`, err);
+        }
       }
       return all;
     },

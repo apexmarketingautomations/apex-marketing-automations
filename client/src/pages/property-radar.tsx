@@ -277,6 +277,7 @@ export default function PropertyRadar() {
     enabled: !!currentAccount?.id,
     queryFn: async () => {
       const res = await fetch(`/api/property-radar/config/${currentAccount!.id}`, { credentials: "include" });
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       return res.json();
     },
   });
@@ -285,6 +286,7 @@ export default function PropertyRadar() {
     queryKey: ["/api/property-radar/status"],
     queryFn: async () => {
       const res = await fetch("/api/property-radar/status", { credentials: "include" });
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       return res.json();
     },
   });
@@ -294,6 +296,7 @@ export default function PropertyRadar() {
     enabled: !!currentAccount?.id,
     queryFn: async () => {
       const res = await fetch(`/api/property-radar/leads/${currentAccount!.id}`, { credentials: "include" });
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       return res.json();
     },
     refetchInterval: 30000,
@@ -364,6 +367,7 @@ export default function PropertyRadar() {
     enabled: !!currentAccount?.id,
     queryFn: async () => {
       const res = await fetch(`/api/skip-trace/usage/${currentAccount!.id}`, { credentials: "include" });
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       return res.json();
     },
   });

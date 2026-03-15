@@ -7,7 +7,10 @@ import { asyncHandler, getUserId, isUserAdmin, requireAdmin } from "./helpers";
 export function registerAuthRoutes(app: Express) {
   // ---- Facebook Deauthorize Callback (Meta compliance, public) ----
   app.post("/api/auth/facebook/deauthorize", express.json(), asyncHandler(async (req, res) => {
-    const { signed_request } = req.body;
+    const deauthSchema = z.object({ signed_request: z.string().optional() }).passthrough();
+    const parsed = deauthSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid request body" });
+    const { signed_request } = parsed.data;
     let userId = "unknown";
 
     if (signed_request) {
@@ -17,7 +20,9 @@ export function registerAuthRoutes(app: Express) {
           const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf8"));
           userId = payload.user_id || "unknown";
         }
-      } catch {}
+      } catch (err: any) {
+        console.error("[META-DEAUTH] Failed to parse signed_request:", err.message);
+      }
     }
 
     console.log(`[META-DEAUTH] Facebook user ${userId} removed the app`);
@@ -42,7 +47,10 @@ export function registerAuthRoutes(app: Express) {
 
   // ---- User Data Deletion (Meta compliance, public) ----
   app.post("/api/data-deletion", express.json(), asyncHandler(async (req, res) => {
-    const { email, signed_request } = req.body;
+    const deletionSchema = z.object({ email: z.string().optional(), signed_request: z.string().optional() }).passthrough();
+    const dparsed = deletionSchema.safeParse(req.body);
+    if (!dparsed.success) return res.status(400).json({ error: "Invalid request body" });
+    const { email, signed_request } = dparsed.data;
 
     let userEmail = email;
     if (!userEmail && signed_request) {
@@ -52,7 +60,9 @@ export function registerAuthRoutes(app: Express) {
           const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf8"));
           userEmail = payload.email || payload.user_id || "meta-user";
         }
-      } catch {}
+      } catch (err: any) {
+        console.error("[DATA-DELETION] Failed to parse signed_request:", err.message);
+      }
     }
 
     if (!userEmail) {

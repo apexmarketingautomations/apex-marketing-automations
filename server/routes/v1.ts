@@ -914,7 +914,9 @@ export function registerV1Routes(app: Express) {
                     timestamp: new Date().toISOString(),
                   }),
                 });
-              } catch {}
+              } catch (err: any) {
+                console.error("[V1] Broadcast alert push failed:", err.message);
+              }
             }
             result = { status: "Success", message: "Alert Broadcast", alert: payload.message, channel: payload.channel || "all" };
           }

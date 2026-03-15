@@ -68,6 +68,7 @@ export default function MetaAdsPage() {
     queryKey: ["/api/meta/campaigns", subAccountId],
     queryFn: async () => {
       const res = await fetch(`/api/meta/campaigns/${subAccountId}`);
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       return res.json();
     },
     enabled: !!subAccountId,
@@ -77,6 +78,7 @@ export default function MetaAdsPage() {
     queryKey: ["/api/meta/config"],
     queryFn: async () => {
       const res = await fetch("/api/meta/config");
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       return res.json();
     },
   });

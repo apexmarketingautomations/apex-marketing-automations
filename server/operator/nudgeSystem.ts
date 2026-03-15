@@ -143,7 +143,7 @@ export async function dismissNudge(nudgeId: number, subAccountId: number): Promi
       `User dismissed nudge: "${nudge.title}" (type: ${nudge.nudgeType}). This type of suggestion may not resonate well.`,
       { nudgeType: nudge.nudgeType, nudgeId },
       "nudge-dismiss"
-    ).catch(() => {});
+    ).catch(e => console.error("[NUDGE] Preference memory recording failed:", e instanceof Error ? e.message : e));
 
     return true;
   } catch {
@@ -176,7 +176,7 @@ export async function actOnNudge(nudgeId: number, subAccountId: number): Promise
       `User acted on nudge: "${nudge.title}" (type: ${nudge.nudgeType}). This type of suggestion resonates well with the user.`,
       { nudgeType: nudge.nudgeType, nudgeId },
       "nudge-action"
-    ).catch(() => {});
+    ).catch(e => console.error("[NUDGE] Preference memory recording failed:", e instanceof Error ? e.message : e));
 
     return true;
   } catch {

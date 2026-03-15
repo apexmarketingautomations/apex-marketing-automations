@@ -37,7 +37,9 @@ export async function buildContext(subAccountId: number): Promise<ContextPacket>
       ))
       .execute();
     activeNudges = nudges.length;
-  } catch {}
+  } catch (err: any) {
+    console.error("[CONTEXT] Nudge count query failed:", err.message);
+  }
 
   let diagnosticsSummary = "healthy";
   try {
@@ -46,7 +48,9 @@ export async function buildContext(subAccountId: number): Promise<ContextPacket>
     const warnings = checks.filter(c => c.severity === "warning").length;
     if (critical > 0) diagnosticsSummary = `${critical} critical issues`;
     else if (warnings > 0) diagnosticsSummary = `${warnings} warnings`;
-  } catch {}
+  } catch (err: any) {
+    console.error("[CONTEXT] Diagnostics run failed:", err.message);
+  }
 
   const industryKnowledge = getIndustryKnowledge(workspace.industry);
 

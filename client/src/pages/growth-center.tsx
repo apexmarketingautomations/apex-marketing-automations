@@ -48,7 +48,7 @@ export default function GrowthCenter() {
           setAssistantId(data[0].id);
         }
       })
-      .catch(() => {});
+      .catch(e => console.error("Failed to load voice agents:", e));
   }, []);
 
   useEffect(() => {

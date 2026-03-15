@@ -8,7 +8,7 @@ export function asyncHandler(fn: AsyncHandler) {
   return (req: Request, res: Response, next: NextFunction) => {
     Promise.resolve(fn(req, res, next)).catch((err) => {
       if (err?.type === 'StripeAuthenticationError' || err?.statusCode === 401 || err?.code === 'authentication_error') {
-        import("../stripeClient").then(({ handleStripeError }) => handleStripeError(err)).catch(() => {});
+        import("../stripeClient").then(({ handleStripeError }) => handleStripeError(err)).catch(e => console.error("[HELPERS] Stripe error handler failed:", e instanceof Error ? e.message : e));
       }
       next(err);
     });

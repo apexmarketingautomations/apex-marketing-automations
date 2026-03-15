@@ -435,7 +435,9 @@ export function registerVoiceRoutes(app: Express) {
         if (elConn?.config && (elConn.config as any).apiKey) {
           return (elConn.config as any).apiKey;
         }
-      } catch {}
+      } catch (err: any) {
+        console.error(`[VOICE] Failed to resolve ElevenLabs key for account ${subAccountId}:`, err.message);
+      }
     }
     return getElevenLabsApiKey();
   }

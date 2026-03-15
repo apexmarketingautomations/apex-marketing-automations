@@ -126,6 +126,7 @@ export default function NotificationPreferencesPage() {
     queryKey: ["/api/notification-preferences", subAccountId],
     queryFn: async () => {
       const res = await fetch(`/api/notification-preferences/${subAccountId}`);
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       return res.json();
     },
   });
@@ -134,6 +135,7 @@ export default function NotificationPreferencesPage() {
     queryKey: ["/api/push-config"],
     queryFn: async () => {
       const res = await fetch("/api/push-config");
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       return res.json();
     },
   });

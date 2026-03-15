@@ -78,7 +78,7 @@ async function advanceSingleGoal(goal: OperatorGoal): Promise<{ stepsExecuted: n
         sourceEvent: "goal_achieved",
         outcome: "success",
         context: { goalId: goal.id },
-      }).catch(() => {});
+      }).catch(e => console.error("[GOAL-ENGINE] Achievement memory failed:", e instanceof Error ? e.message : e));
 
       console.log(`[GOAL-ENGINE] Goal #${goal.id} completed!`);
       return { stepsExecuted: 0 };
@@ -119,7 +119,7 @@ export async function createGoal(data: InsertOperatorGoal): Promise<OperatorGoal
     tags: ["goal", "created", goal.goalType],
     sourceEvent: "goal_created",
     context: { goalId: goal.id },
-  }).catch(() => {});
+  }).catch(e => console.error("[GOAL-ENGINE] Goal creation memory failed:", e instanceof Error ? e.message : e));
 
   console.log(`[GOAL-ENGINE] Goal #${goal.id} created: "${goal.title}"`);
   return goal;

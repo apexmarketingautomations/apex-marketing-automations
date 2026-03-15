@@ -39,7 +39,16 @@ export function registerPropertyRoutes(app: Express) {
     if (!user) return res.status(401).json({ error: "Not authenticated" });
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
-    const config = await storage.upsertWholesalerConfig({ ...req.body, subAccountId });
+    const configSchema = z.object({
+      companyName: z.string().optional(),
+      targetAreas: z.array(z.string()).optional(),
+      skipTraceEnabled: z.boolean().optional(),
+      autoSmsEnabled: z.boolean().optional(),
+      smsTemplate: z.string().optional(),
+    });
+    const parsed = configSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid config data", details: parsed.error.flatten() });
+    const config = await storage.upsertWholesalerConfig({ ...parsed.data, subAccountId });
     res.json(config);
   }));
 
@@ -127,7 +136,16 @@ export function registerPropertyRoutes(app: Express) {
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "Not authenticated" });
     const id = parseIntParam(req.params.id, "id");
-    const lead = await storage.updatePropertyLead(id, req.body);
+    const leadUpdateSchema = z.object({
+      status: z.string().optional(),
+      notes: z.string().optional(),
+      assignedTo: z.string().optional(),
+      estimatedValue: z.number().optional(),
+      estimatedEquity: z.number().optional(),
+    });
+    const parsed = leadUpdateSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid lead data", details: parsed.error.flatten() });
+    const lead = await storage.updatePropertyLead(id, parsed.data);
     if (!lead) return res.status(404).json({ error: "Lead not found" });
     res.json({ ...lead, dealMetrics: calculateDealMetrics(lead.estimatedValue || 0, lead.estimatedEquity || 0) });
   }));
@@ -426,7 +444,9 @@ export function registerPropertyRoutes(app: Express) {
 
   app.post("/api/sentinel/test-trigger", asyncHandler(async (req, res) => {
     // No auth required — demo endpoint for live meeting triggers
-    const subAccountId = req.body.subAccountId || 1;
+    const testSchema = z.object({ subAccountId: z.number().optional() }).passthrough();
+    const parsed = testSchema.safeParse(req.body);
+    const subAccountId = parsed.success ? (parsed.data.subAccountId || 1) : 1;
 
     const mockAccident = {
       title: "[DEMO] MVA — Entrapment (High Value)",
@@ -494,7 +514,16 @@ export function registerPropertyRoutes(app: Express) {
     const GEOFENCE_RADIUS = parseInt(process.env.RADIUS_METERS || "16093");
     const APEX_WEBHOOK_URL = process.env.APEX_WEBHOOK_URL;
 
-    const { crashId, latitude, longitude, severity, timestamp } = req.body;
+    const crashSchema = z.object({
+      crashId: z.string().optional(),
+      latitude: z.union([z.string(), z.number()]),
+      longitude: z.union([z.string(), z.number()]),
+      severity: z.string().optional(),
+      timestamp: z.string().optional(),
+    }).passthrough();
+    const parsed = crashSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid crash data", details: parsed.error.flatten() });
+    const { crashId, latitude, longitude, severity, timestamp } = parsed.data;
 
     if (!latitude || !longitude) {
       console.error("SENTINEL: Incoming data missing coordinates.");
@@ -600,7 +629,17 @@ export function registerPropertyRoutes(app: Express) {
 
   // ─── Sentinel Incoming — Apex Catch Endpoint ────────────────────────
   app.post("/api/sentinel-incoming", asyncHandler(async (req, res) => {
-    const data = req.body;
+    const incomingSchema = z.object({
+      customData: z.record(z.unknown()).optional(),
+      crash_id: z.string().optional(),
+      crashId: z.string().optional(),
+      distance_miles: z.union([z.string(), z.number()]).optional(),
+      severity: z.string().optional(),
+      google_maps_link: z.string().optional(),
+    }).passthrough();
+    const parsed = incomingSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid sentinel data", details: parsed.error.flatten() });
+    const data = parsed.data;
     console.log("APEX RECEIVED CRASH DATA:", JSON.stringify(data));
 
     const customData = data.customData || data;
@@ -641,7 +680,21 @@ export function registerPropertyRoutes(app: Express) {
 
   // ─── Sentinel Receiver v1 — External Crash Data Intake ────────────
   app.post("/api/v1/sentinel-receiver", asyncHandler(async (req, res) => {
-    const crashData = req.body;
+    const receiverSchema = z.object({
+      crash_id: z.string().optional(),
+      crashId: z.string().optional(),
+      latitude: z.union([z.string(), z.number()]).optional(),
+      lat: z.union([z.string(), z.number()]).optional(),
+      longitude: z.union([z.string(), z.number()]).optional(),
+      lng: z.union([z.string(), z.number()]).optional(),
+      lon: z.union([z.string(), z.number()]).optional(),
+      severity: z.string().optional(),
+      distance_miles: z.union([z.string(), z.number()]).optional(),
+      subAccountId: z.number().optional(),
+    }).passthrough();
+    const parsed = receiverSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid crash data", details: parsed.error.flatten() });
+    const crashData = parsed.data;
     console.log("APEX RECEIVED CRASH DATA:", JSON.stringify(crashData));
 
     const subAccountId = crashData.subAccountId || 13;
@@ -870,12 +923,12 @@ export function registerPropertyRoutes(app: Express) {
         leadEmail: email,
         source: "sentinel_geofence",
         location: locationTag,
-      }).catch(() => {});
+      }).catch(e => console.error("[SENTINEL-INGEST] new_lead trigger failed:", e instanceof Error ? e.message : e));
       fireAutomationTrigger("crash_detected", SUB_ACCOUNT_ID, {
         leadName: `${firstName} ${lastName}`.trim(),
         leadPhone: phoneNumber,
         location: locationTag,
-      }).catch(() => {});
+      }).catch(e => console.error("[SENTINEL-INGEST] crash_detected trigger failed:", e instanceof Error ? e.message : e));
 
       publishEventAsync(EVENT_TYPES.CRASH_DETECTED, "sentinel-ingest", {
         subAccountId: SUB_ACCOUNT_ID, contactId: contact.id, maid,
@@ -2054,7 +2107,7 @@ export function registerPropertyRoutes(app: Express) {
         leadPhone: contact.phone,
         leadEmail: contact.email,
         source: contact.source || "manual",
-      }).catch(() => {});
+      }).catch(e => console.error("[CONTACTS] Automation trigger failed:", e instanceof Error ? e.message : e));
     }
     res.status(201).json(contact);
   }));
@@ -2180,7 +2233,7 @@ export function registerPropertyRoutes(app: Express) {
         appointmentTitle: appt.title,
         appointmentTime: appt.startTime,
         contactId: appt.contactId,
-      }).catch(() => {});
+      }).catch(e => console.error("[APPOINTMENTS] Automation trigger failed:", e instanceof Error ? e.message : e));
     }
     res.status(201).json(appt);
   }));

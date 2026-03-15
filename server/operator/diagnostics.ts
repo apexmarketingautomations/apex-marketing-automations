@@ -71,7 +71,9 @@ export async function runDiagnostics(subAccountId?: number): Promise<DiagnosticC
       autoFixable: false,
       timestamp: now,
     });
-  } catch {}
+  } catch (err: any) {
+    console.error("[DIAGNOSTICS] Job queue check failed:", err.message);
+  }
 
   if (subAccountId) {
     try {
@@ -93,7 +95,9 @@ export async function runDiagnostics(subAccountId?: number): Promise<DiagnosticC
         autoFixable: false,
         timestamp: now,
       });
-    } catch {}
+    } catch (err: any) {
+      console.error("[DIAGNOSTICS] Integration health check failed:", err.message);
+    }
 
     try {
       const automations = await storage.getLiveAutomations(subAccountId);
@@ -117,7 +121,9 @@ export async function runDiagnostics(subAccountId?: number): Promise<DiagnosticC
           timestamp: now,
         });
       }
-    } catch {}
+    } catch (err: any) {
+      console.error("[DIAGNOSTICS] Workflow health check failed:", err.message);
+    }
 
     try {
       const messages = await storage.getMessages(subAccountId);
@@ -137,7 +143,9 @@ export async function runDiagnostics(subAccountId?: number): Promise<DiagnosticC
           timestamp: now,
         });
       }
-    } catch {}
+    } catch (err: any) {
+      console.error("[DIAGNOSTICS] Messaging health check failed:", err.message);
+    }
 
     try {
       const account = await storage.getSubAccount(subAccountId);
@@ -157,7 +165,9 @@ export async function runDiagnostics(subAccountId?: number): Promise<DiagnosticC
           timestamp: now,
         });
       }
-    } catch {}
+    } catch (err: any) {
+      console.error("[DIAGNOSTICS] Account config check failed:", err.message);
+    }
   }
 
   for (const check of checks) {

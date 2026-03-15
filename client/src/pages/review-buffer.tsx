@@ -30,7 +30,7 @@ export default function ReviewBuffer() {
         setGoogleLink(data.googleReviewLink || "");
         setTrustpilotLink(data.trustpilotLink || "");
       })
-      .catch(() => {});
+      .catch(e => console.error("Failed to load review config:", e));
   }, [subAccountId]);
 
   const hasGoogle = !!googleLink;

@@ -163,12 +163,12 @@ function VoiceAgentInner() {
           setExistingAgents(data);
         }
       })
-      .catch(() => {});
+      .catch(e => console.error("Failed to load voice agents:", e));
 
     fetch("/api/phone-numbers/config")
       .then((r) => r.json())
       .then((data) => setPhoneConfig(data))
-      .catch(() => {});
+      .catch(e => console.error("Failed to load phone config:", e));
 
     fetch("/api/phone-numbers")
       .then((r) => r.json())
@@ -176,7 +176,7 @@ function VoiceAgentInner() {
         if (Array.isArray(data)) setOwnedNumbers(data);
         else if (data?.numbers && Array.isArray(data.numbers)) setOwnedNumbers(data.numbers);
       })
-      .catch(() => {});
+      .catch(e => console.error("Failed to load phone numbers:", e));
   }, []);
 
   useEffect(() => {
@@ -222,6 +222,7 @@ function VoiceAgentInner() {
     try {
       const url = agentId ? `/api/voice-agents/calls?assistantId=${agentId}&limit=10` : "/api/voice-agents/calls?limit=10";
       const res = await fetch(url);
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       const data = await res.json();
       if (Array.isArray(data)) setCallLogs(data);
     } catch {

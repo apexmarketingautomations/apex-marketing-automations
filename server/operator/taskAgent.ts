@@ -260,7 +260,9 @@ async function executeTask(taskId: number): Promise<void> {
         subAccountId: task.subAccountId,
         result,
       }, "task-agent");
-    } catch {}
+    } catch (err: any) {
+      console.error("[TASK-AGENT] Event publish failed:", err.message);
+    }
 
     recordTaskOutcomeAsMemory(task.subAccountId, {
       taskType: task.taskType,
@@ -268,7 +270,7 @@ async function executeTask(taskId: number): Promise<void> {
       status: "completed",
       toolUsed: task.toolUsed,
       priority: task.priority,
-    }).catch(() => {});
+    }).catch(e => console.error("[TASK-AGENT] Outcome memory failed:", e instanceof Error ? e.message : e));
 
   } catch (err: any) {
     const errorMsg = err?.message || String(err);
@@ -291,7 +293,7 @@ async function executeTask(taskId: number): Promise<void> {
         error: errorMsg,
         toolUsed: task.toolUsed,
         priority: task.priority,
-      }).catch(() => {});
+      }).catch(e => console.error("[TASK-AGENT] Failure memory failed:", e instanceof Error ? e.message : e));
     }
 
     console.error(`[TASK-AGENT] ${shouldRetry ? "Retry scheduled" : "Failed"}: ${task.title} — ${errorMsg}`);
@@ -406,7 +408,9 @@ async function scanAccount(subAccountId: number): Promise<void> {
 
       try {
         await generateBriefing(subAccountId);
-      } catch {}
+      } catch (err: any) {
+        console.error(`[TASK-AGENT] Briefing generation failed for account #${subAccountId}:`, err.message);
+      }
     }
   } catch (err: any) {
     console.error(`[TASK-AGENT] Scan error for account #${subAccountId}: ${err.message}`);

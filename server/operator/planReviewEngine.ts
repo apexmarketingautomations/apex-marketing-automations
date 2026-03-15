@@ -143,7 +143,7 @@ async function applyReviewDecision(goal: any, planId: number, review: ReviewResu
         sourceEvent: "goal_completed",
         outcome: "success",
         context: { goalId: goal.id },
-      }).catch(() => {});
+      }).catch(e => console.error("[PLAN-REVIEW] Goal completion memory failed:", e instanceof Error ? e.message : e));
       break;
 
     case "replan":
@@ -155,7 +155,7 @@ async function applyReviewDecision(goal: any, planId: number, review: ReviewResu
         tags: ["goal", "replan", goal.goalType],
         sourceEvent: "goal_replanned",
         context: { goalId: goal.id, reason: review.reasoning },
-      }).catch(() => {});
+      }).catch(e => console.error("[PLAN-REVIEW] Goal replan memory failed:", e instanceof Error ? e.message : e));
       break;
 
     case "pause":
@@ -167,7 +167,7 @@ async function applyReviewDecision(goal: any, planId: number, review: ReviewResu
         tags: ["goal", "paused", goal.goalType],
         sourceEvent: "goal_paused",
         context: { goalId: goal.id },
-      }).catch(() => {});
+      }).catch(e => console.error("[PLAN-REVIEW] Goal pause memory failed:", e instanceof Error ? e.message : e));
       break;
 
     case "escalate":

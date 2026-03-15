@@ -158,7 +158,7 @@ export function registerMetaRoutes(app: Express) {
                 title: "New Facebook Lead",
                 body: `${name}${email ? ` (${email})` : ""} submitted a lead form`,
                 link: "/meta-leads",
-              }).catch(() => {});
+              }).catch(e => console.error("[META] Notification creation failed:", e instanceof Error ? e.message : e));
               dispatchAlert(subAccountId, "new_lead", {
                 title: "New Facebook Lead",
                 body: `${name}${email ? ` (${email})` : ""} submitted a lead form`,

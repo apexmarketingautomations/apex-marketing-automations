@@ -26,7 +26,7 @@ export async function storeMemory(entry: Omit<MemoryEntry, "id" | "createdAt" | 
         expiresAt: entry.expiresAt ? new Date(entry.expiresAt) : null,
       })
       .where(eq(operatorMemories.id, existing[0].id))
-      .execute().catch(() => {});
+      .execute().catch(e => console.error("[MEMORY-ENGINE] DB operation failed:", e instanceof Error ? e.message : e));
   } else {
     await db.insert(operatorMemories).values({
       subAccountId: entry.subAccountId,
@@ -37,7 +37,7 @@ export async function storeMemory(entry: Omit<MemoryEntry, "id" | "createdAt" | 
       source: entry.source,
       version: entry.version || 1,
       expiresAt: entry.expiresAt ? new Date(entry.expiresAt) : null,
-    }).execute().catch(() => {});
+    }).execute().catch(e => console.error("[MEMORY-ENGINE] DB operation failed:", e instanceof Error ? e.message : e));
   }
 }
 

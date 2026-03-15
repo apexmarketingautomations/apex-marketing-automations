@@ -231,7 +231,7 @@ function PaywallSection({ title, tiers, theme }: any) {
       .then((data) => {
         if (data.products) setStripeProducts(data.products);
       })
-      .catch(() => {});
+      .catch(e => console.error("Failed to load Stripe products:", e));
   }, []);
 
   const handleSubscribe = async (tier: any, index: number) => {
@@ -246,9 +246,12 @@ function PaywallSection({ title, tiers, theme }: any) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ priceId }),
       });
+      if (!res.ok) throw new Error(`Checkout failed: ${res.status}`);
       const data = await res.json();
       if (data.url) window.open(data.url, "_blank");
-    } catch {} finally {
+    } catch (err) {
+      console.error("Stripe checkout failed:", err);
+    } finally {
       setCheckoutLoading(null);
     }
   };
@@ -1019,7 +1022,7 @@ function SectionEditor({ section, index, onUpdate, onClose }: { section: any; in
                   {key === "image" && (
                     <label className="cursor-pointer px-2 py-1 bg-indigo-600/30 hover:bg-indigo-600/50 rounded text-[10px] text-indigo-300 transition-colors inline-flex items-center gap-1">
                       <Upload size={10} /> Upload
-                      <input type="file" accept="image/*" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; const formData = new FormData(); formData.append("image", file); try { const res = await fetch("/api/upload-ad-image", { method: "POST", body: formData }); const data = await res.json(); if (data.url) handleChange("image", data.url); } catch {} e.target.value = ""; }} />
+                      <input type="file" accept="image/*" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; const formData = new FormData(); formData.append("image", file); try { const res = await fetch("/api/upload-ad-image", { method: "POST", body: formData }); const data = await res.json(); if (data.url) handleChange("image", data.url); } catch (err) { console.error("Image upload failed:", err); } e.target.value = ""; }} />
                     </label>
                   )}
                 </div>
@@ -1396,7 +1399,9 @@ export default function SiteBuilder() {
         const data = await res.json();
         setSavedSites(data);
       }
-    } catch {}
+    } catch (err) {
+      console.error("Failed to fetch saved sites:", err);
+    }
   };
 
   const fetchVersions = useCallback(async (siteId: number) => {
@@ -1404,7 +1409,9 @@ export default function SiteBuilder() {
     try {
       const res = await fetch(`/api/sites/${siteId}/versions`);
       if (res.ok) setVersions(await res.json());
-    } catch {} finally {
+    } catch (err) {
+      console.error("Failed to fetch versions:", err);
+    } finally {
       setLoadingVersions(false);
     }
   }, []);
@@ -1414,7 +1421,9 @@ export default function SiteBuilder() {
     try {
       const res = await fetch(`/api/sites/${siteId}/collaborators`);
       if (res.ok) setCollaborators(await res.json());
-    } catch {} finally {
+    } catch (err) {
+      console.error("Failed to fetch collaborators:", err);
+    } finally {
       setLoadingCollabs(false);
     }
   }, []);
@@ -1750,7 +1759,10 @@ export default function SiteBuilder() {
       await fetch(`/api/collaborators/${collabId}`, { method: "DELETE" });
       await fetchCollaborators(collabSiteId);
       toast({ title: "Collaborator Removed" });
-    } catch {}
+    } catch (err) {
+      console.error("Failed to remove collaborator:", err);
+      toast({ title: "Failed to remove collaborator", variant: "destructive" });
+    }
   };
 
   const copyToClipboard = (text: string) => {

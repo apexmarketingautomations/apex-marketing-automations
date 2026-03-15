@@ -11,7 +11,7 @@ import { publishEventAsync } from "../eventBus";
 
 export function initOperator(): void {
   initOperatorEventHooks();
-  import("./cognitiveLayer").then(m => m.initCognitiveLayer()).catch(() => {});
+  import("./cognitiveLayer").then(m => m.initCognitiveLayer()).catch(e => console.error("[OPERATOR] Cognitive layer init failed:", e instanceof Error ? e.message : e));
   import("./benchmarkAggregator").then(m => m.startBenchmarkScheduler()).catch((e) => {
     console.error("[BENCHMARKS] Failed to start scheduler:", e?.message);
   });

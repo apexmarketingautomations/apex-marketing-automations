@@ -92,7 +92,7 @@ export async function executeReadySteps(planId: number, accountId: number): Prom
           sourceEvent: "goal_step_complete",
           outcome: "success",
           context: { goalId: step.goalId, planId, stepId: step.id },
-        }).catch(() => {});
+        }).catch(e => console.error("[PLAN-EXEC] Step completion memory failed:", e instanceof Error ? e.message : e));
 
         executed++;
         console.log(`[PLAN-EXEC] Step #${step.id} "${step.title}" completed successfully`);
@@ -143,7 +143,7 @@ async function markStepFailed(stepId: number, reason: string, planId: number, ac
       sourceEvent: "goal_step_failed",
       outcome: "failure",
       context: { goalId: step.goalId, planId, stepId, reason },
-    }).catch(() => {});
+    }).catch(e => console.error("[PLAN-EXEC] Step failure memory failed:", e instanceof Error ? e.message : e));
   }
 }
 
