@@ -1413,6 +1413,138 @@ export const insertWorkflowOptimizationLogSchema = createInsertSchema(workflowOp
 export type InsertWorkflowOptimizationLog = z.infer<typeof insertWorkflowOptimizationLogSchema>;
 export type WorkflowOptimizationLog = typeof workflowOptimizationLogs.$inferSelect;
 
+export const operatorGoals = pgTable("operator_goals", {
+  id: serial("id").primaryKey(),
+  accountId: integer("account_id").notNull(),
+  goalType: text("goal_type").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  targetMetric: text("target_metric").notNull(),
+  targetValue: real("target_value").notNull(),
+  currentValue: real("current_value").default(0),
+  baselineValue: real("baseline_value").default(0),
+  timeHorizonDays: integer("time_horizon_days").notNull().default(30),
+  status: text("status").notNull().default("draft"),
+  priority: integer("priority").notNull().default(50),
+  autonomyLevelRequired: text("autonomy_level_required").default("draft"),
+  createdBy: text("created_by"),
+  source: text("source").notNull().default("user"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  nextReviewAt: timestamp("next_review_at"),
+  successScore: real("success_score"),
+  failureReason: text("failure_reason"),
+  metadata: json("metadata"),
+});
+
+export const insertOperatorGoalSchema = createInsertSchema(operatorGoals).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertOperatorGoal = z.infer<typeof insertOperatorGoalSchema>;
+export type OperatorGoal = typeof operatorGoals.$inferSelect;
+
+export const operatorPlans = pgTable("operator_plans", {
+  id: serial("id").primaryKey(),
+  goalId: integer("goal_id").notNull(),
+  accountId: integer("account_id").notNull(),
+  planVersion: integer("plan_version").notNull().default(1),
+  status: text("status").notNull().default("draft"),
+  summary: text("summary"),
+  rationale: text("rationale"),
+  aiModel: text("ai_model"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  supersededByPlanId: integer("superseded_by_plan_id"),
+  metadata: json("metadata"),
+});
+
+export const insertOperatorPlanSchema = createInsertSchema(operatorPlans).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertOperatorPlan = z.infer<typeof insertOperatorPlanSchema>;
+export type OperatorPlan = typeof operatorPlans.$inferSelect;
+
+export const operatorPlanSteps = pgTable("operator_plan_steps", {
+  id: serial("id").primaryKey(),
+  planId: integer("plan_id").notNull(),
+  goalId: integer("goal_id").notNull(),
+  accountId: integer("account_id").notNull(),
+  stepOrder: integer("step_order").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  stepType: text("step_type").notNull(),
+  status: text("status").notNull().default("pending"),
+  ownerType: text("owner_type").notNull().default("agent"),
+  toolName: text("tool_name"),
+  toolPayload: json("tool_payload"),
+  idempotencyKey: text("idempotency_key").notNull(),
+  dependencyMode: text("dependency_mode").default("all"),
+  requiresApproval: boolean("requires_approval").default(false),
+  dueAt: timestamp("due_at"),
+  retryCount: integer("retry_count").default(0),
+  maxRetries: integer("max_retries").default(3),
+  failureReason: text("failure_reason"),
+  successCriteria: text("success_criteria"),
+  result: json("result"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+  metadata: json("metadata"),
+});
+
+export const insertOperatorPlanStepSchema = createInsertSchema(operatorPlanSteps).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertOperatorPlanStep = z.infer<typeof insertOperatorPlanStepSchema>;
+export type OperatorPlanStep = typeof operatorPlanSteps.$inferSelect;
+
+export const operatorStepDependencies = pgTable("operator_step_dependencies", {
+  id: serial("id").primaryKey(),
+  stepId: integer("step_id").notNull(),
+  dependsOnStepId: integer("depends_on_step_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertOperatorStepDependencySchema = createInsertSchema(operatorStepDependencies).omit({ id: true, createdAt: true });
+export type InsertOperatorStepDependency = z.infer<typeof insertOperatorStepDependencySchema>;
+
+export const operatorGoalProgress = pgTable("operator_goal_progress", {
+  id: serial("id").primaryKey(),
+  goalId: integer("goal_id").notNull(),
+  accountId: integer("account_id").notNull(),
+  metricName: text("metric_name").notNull(),
+  metricValue: real("metric_value").notNull(),
+  recordedAt: timestamp("recorded_at").defaultNow(),
+  source: text("source"),
+  notes: text("notes"),
+});
+
+export const insertOperatorGoalProgressSchema = createInsertSchema(operatorGoalProgress).omit({ id: true, recordedAt: true });
+export type InsertOperatorGoalProgress = z.infer<typeof insertOperatorGoalProgressSchema>;
+
+export const operatorGoalReviews = pgTable("operator_goal_reviews", {
+  id: serial("id").primaryKey(),
+  goalId: integer("goal_id").notNull(),
+  planId: integer("plan_id"),
+  reviewType: text("review_type").notNull(),
+  summary: text("summary"),
+  decision: text("decision").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  metadata: json("metadata"),
+});
+
+export const insertOperatorGoalReviewSchema = createInsertSchema(operatorGoalReviews).omit({ id: true, createdAt: true });
+export type InsertOperatorGoalReview = z.infer<typeof insertOperatorGoalReviewSchema>;
+
+export const operatorToolTrust = pgTable("operator_tool_trust", {
+  id: serial("id").primaryKey(),
+  accountId: integer("account_id").notNull(),
+  toolName: text("tool_name").notNull(),
+  taskCategory: text("task_category"),
+  successfulDrafts: integer("successful_drafts").default(0),
+  successfulExecutions: integer("successful_executions").default(0),
+  failures: integer("failures").default(0),
+  humanRejections: integer("human_rejections").default(0),
+  trustLevel: text("trust_level").default("low"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const PLAN_LIMITS: Record<string, Record<string, number>> = {
   starter: {
     messages_per_month: 500,

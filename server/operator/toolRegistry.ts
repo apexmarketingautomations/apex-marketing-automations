@@ -18,6 +18,10 @@ export function listTools(category?: string): OperatorTool[] {
   return all;
 }
 
+export function getToolRegistry(): Map<string, OperatorTool> {
+  return tools;
+}
+
 export function getToolManifest(): Array<{ name: string; description: string; category: string; requiresApproval: boolean; autonomyRequired: string; parameters: any[] }> {
   return [...tools.values()].map(t => ({
     name: t.name,

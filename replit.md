@@ -20,7 +20,7 @@ Preferred communication style: Simple, everyday language.
 ### Backend
 - **Runtime**: Node.js with Express 5
 - **Language**: TypeScript
-- **Architecture**: Monolithic Express server serving both API (RESTful JSON) and built frontend
+- **Architecture**: Modular Express server with domain-based route modules (`server/routes/`) and thin orchestrator (`server/routes.ts`, ~65 lines). Each domain exports `register{Domain}Routes(app)`. Shared helpers in `server/routes/helpers.ts`.
 
 ### Data Layer
 - **ORM**: Drizzle ORM with PostgreSQL dialect
@@ -42,7 +42,7 @@ Preferred communication style: Simple, everyday language.
 - **Database Backup**: JSON snapshot manifests for data integrity.
 - **Event Bus**: An in-memory pub/sub system with priority queuing, dedup, retry logic, and a comprehensive log.
 - **Job Queue**: A background async task processor with retry mechanisms, concurrency control, and history tracking.
-- **UI/UX**: Mobile-responsive design, guided 5-step onboarding wizard, Apex Intelligence premium panel with advanced analytics and AI interaction features.
+- **UI/UX**: Mobile-responsive design, guided 5-step onboarding wizard, Apex Intelligence premium panel (`client/src/components/apex-intelligence.tsx` shell + 8 tab components in `client/src/components/intelligence/`) with advanced analytics and AI interaction features.
 - **Real-time Streaming**: SSE-based streaming infrastructure (`server/streaming.ts`) with shared utilities (`streamGeminiResponse`, `ProgressStream`) for AI text streaming and step-by-step progress events. Frontend hook (`client/src/hooks/use-streaming.ts`) with `useStreamingResponse` for consuming SSE streams with progressive text rendering. Used by strategic advisor chat, God Mode deployment, and AI orchestrator.
 - **Self-Optimizing Workflows**: Per-step execution metrics tracking, visual funnel analytics, and AI-powered optimization. Service in `server/operator/workflowAnalytics.ts`. DB tables: `workflow_step_metrics`, `workflow_optimization_logs`. Analytics tab in workflow builder shows step-by-step funnel with drop-off rates, bottleneck detection, rule-based and AI-generated optimization suggestions. Auto-optimize mode adjusts WAIT step timing (bounded 30% reduction on high drop-off steps) with full change log and one-click revert. API routes: `GET /api/workflows/:id/analytics`, `POST /api/workflows/:id/step-metrics`, `GET /api/workflows/:id/optimization-log`, `POST /api/workflows/:id/auto-optimize`, `POST /api/workflows/:id/revert-optimization/:logId`.
 

@@ -9,6 +9,7 @@ import { publishEventAsync } from "../eventBus";
 import { generateAITaskPlan, generateBriefing, recordTaskOutcomeAsMemory } from "./agentBrain";
 import { dispatchAlert, generateDeepLink } from "../pushAlertService";
 import { isGeminiConfigured } from "../gemini";
+import { advanceGoalsForAccount } from "./goalEngine";
 import type { ContextPacket } from "./cognitiveTypes";
 
 const SCAN_INTERVAL_MS = 60_000;
@@ -329,6 +330,15 @@ async function scanAccount(subAccountId: number): Promise<void> {
   }
 
   try {
+    try {
+      const goalResult = await advanceGoalsForAccount(subAccountId);
+      if (goalResult.goalsProcessed > 0) {
+        console.log(`[TASK-AGENT] Advanced ${goalResult.goalsProcessed} goals for account #${subAccountId} (${goalResult.stepsExecuted} steps executed)`);
+      }
+    } catch (goalErr: any) {
+      console.error(`[TASK-AGENT] Goal advancement error for account #${subAccountId}: ${goalErr.message}`);
+    }
+
     const context = await buildContext(subAccountId);
     let allDefs: TaskDefinition[] = [];
 

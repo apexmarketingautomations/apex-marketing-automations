@@ -1,0 +1,592 @@
+Paste this into Replit exactly:
+
+```text
+You are modifying the existing Apex autonomous agent architecture.
+
+Do not explain the concept back to me.
+Do not give me a high-level summary first.
+Do not stay conceptual.
+Implement the system.
+
+MISSION
+Add the single highest-leverage missing layer to Apex:
+
+A GOAL-DRIVEN PLANNING AND EXECUTION ENGINE
+
+Right now Apex already has:
+- a 60-second scan loop
+- rule-based task detection
+- Gemini reasoning
+- episodic memory
+- a tool registry
+- nudges / advisor / strategic suggestions
+- background execution
+- approval gates
+
+The current weakness is that the agent can only produce and execute DISCRETE TASKS.
+It cannot take a business goal, break it into dependent steps, track progress over time, adapt based on outcomes, and continue execution across multiple scans.
+
+That is the layer I want built now.
+
+==================================================
+WHAT TO BUILD
+==================================================
+
+Build a new goal-planning subsystem that sits ABOVE the current task agent.
+
+This subsystem must let Apex do this:
+
+Example:
+Goal: increase booked appointments by 20% in 30 days
+
+The system should then:
+1. analyze current account state
+2. generate a multi-step plan
+3. break the plan into executable tasks
+4. assign dependencies between tasks
+5. schedule execution over time
+6. wait for approvals where needed
+7. resume automatically on future scan cycles
+8. adapt if a task fails or conditions change
+9. measure progress against the original goal
+10. summarize status in the UI
+
+This is not a one-shot AI output.
+This must be persistent, stateful, resumable, and integrated into the existing operator system.
+
+==================================================
+NON-NEGOTIABLE ARCHITECTURAL REQUIREMENTS
+==================================================
+
+1. Do NOT replace the existing task agent.
+   The new planner must feed the existing task execution layer.
+
+2. Do NOT make this a loose helper utility.
+   It must be a first-class subsystem.
+
+3. Do NOT hardcode one goal type.
+   Design for reusable goal types:
+   - increase leads
+   - increase bookings
+   - improve response time
+   - improve conversion rate
+   - complete account setup
+   - recover stale leads
+   - improve reputation/reviews
+   - reduce workflow failures
+
+4. Plans must persist in the database.
+   No in-memory only planning.
+
+5. Plans must survive restarts and future deployments.
+
+6. The planner must integrate with:
+   - taskAgent
+   - agentBrain
+   - episodicMemory
+   - toolRegistry
+   - cognitiveLayer
+   - nudges / advisor
+   - existing approval system
+
+7. The planner must support:
+   - plan creation
+   - task generation
+   - dependency tracking
+   - blocked state
+   - waiting-for-approval state
+   - failed step retry logic
+   - plan re-evaluation
+   - plan completion scoring
+
+==================================================
+EXACT DELIVERABLES
+==================================================
+
+Build these pieces:
+
+1. DATABASE SCHEMA
+Create new tables for:
+
+A. operator_goals
+Fields:
+- id
+- account_id
+- goal_type
+- title
+- description
+- target_metric
+- target_value
+- current_value
+- baseline_value
+- time_horizon_days
+- status (draft, active, blocked, completed, failed, paused, archived)
+- priority
+- autonomy_level_required
+- created_by
+- source (user, agent, system)
+- created_at
+- updated_at
+- started_at
+- completed_at
+- next_review_at
+- success_score
+- failure_reason
+- metadata jsonb
+
+B. operator_plans
+Fields:
+- id
+- goal_id
+- account_id
+- plan_version
+- status (draft, active, blocked, completed, failed, superseded)
+- summary
+- rationale
+- ai_model
+- created_at
+- updated_at
+- superseded_by_plan_id nullable
+- metadata jsonb
+
+C. operator_plan_steps
+Fields:
+- id
+- plan_id
+- goal_id
+- account_id
+- step_order
+- title
+- description
+- step_type
+- status (pending, ready, running, waiting_approval, blocked, completed, failed, skipped)
+- owner_type (agent, human, system)
+- tool_name nullable
+- tool_payload jsonb nullable
+- dependency_mode (all, any)
+- due_at nullable
+- retry_count
+- max_retries
+- failure_reason nullable
+- success_criteria text
+- created_at
+- updated_at
+- completed_at nullable
+- metadata jsonb
+
+D. operator_step_dependencies
+Fields:
+- id
+- step_id
+- depends_on_step_id
+- created_at
+
+E. operator_goal_progress
+Fields:
+- id
+- goal_id
+- account_id
+- metric_name
+- metric_value
+- recorded_at
+- source
+- notes
+
+F. operator_goal_reviews
+Fields:
+- id
+- goal_id
+- plan_id
+- review_type (scheduled, event_triggered, failure_replan, completion_review)
+- summary
+- decision (continue, replan, pause, complete, escalate)
+- created_at
+- metadata jsonb
+
+Add all migrations cleanly.
+Update Drizzle schema and types.
+
+==================================================
+2. NEW SERVER FILES
+==================================================
+
+Create these exact files if they do not exist:
+
+- server/operator/goalEngine.ts
+- server/operator/goalPlanner.ts
+- server/operator/planExecutor.ts
+- server/operator/goalTracker.ts
+- server/operator/planReviewEngine.ts
+- server/operator/goalTypes.ts
+- server/operator/goalPrompts.ts
+
+Responsibilities:
+
+goalEngine.ts
+- central coordinator
+- loads active goals
+- checks review windows
+- requests new plans when needed
+- advances executable steps
+- triggers replanning on failure or stale progress
+- writes summaries to memory
+
+goalPlanner.ts
+- uses Gemini to turn a goal + account context into a structured multi-step plan
+- outputs strict JSON only
+- validates plan structure before persisting
+- attaches dependency graph
+- maps steps to tool-capable actions when possible
+
+planExecutor.ts
+- finds all READY steps
+- checks dependency completion
+- checks approval requirements
+- dispatches executable steps to existing tool registry
+- records outcomes
+- marks waiting states correctly
+- never double-executes same step
+
+goalTracker.ts
+- computes progress toward target metric
+- updates baseline/current values
+- stores snapshots in operator_goal_progress
+- decides if goal is improving, stalled, regressing, or complete
+
+planReviewEngine.ts
+- runs scheduled reviews
+- decides continue / replan / pause / escalate / complete
+- uses recent step outcomes + account metrics + memory
+- writes review records and plan revisions
+
+goalTypes.ts
+- defines supported goal types and required metrics
+- example mappings:
+  - increase_leads -> total leads / CPL / landing page conversion
+  - increase_bookings -> bookings / no-show rate / response speed
+  - improve_response_time -> avg first reply time
+  - recover_stale_leads -> reactivated leads / response rate
+  - complete_account_setup -> integrations / phone / pipeline / workflows
+  - improve_reputation -> review requests / review count / avg rating
+
+goalPrompts.ts
+- strict system prompts for:
+  - plan generation
+  - replan generation
+  - review decisions
+  - success/failure analysis
+- require machine-parseable JSON
+- no markdown in model output
+
+==================================================
+3. INTEGRATION WITH EXISTING LOOP
+==================================================
+
+Modify the current task loop so that:
+
+BEFORE generating new ad hoc discrete tasks:
+- it checks whether the account has active goals
+- if yes, it advances those plans first
+- if no active goals exist, current behavior can continue normally
+
+The new precedence should be:
+1. critical system failures
+2. goal-plan execution
+3. existing discrete task generation
+4. advisor / nudge suggestions
+
+This prevents the system from behaving randomly while a plan is underway.
+
+==================================================
+4. PLAN JSON CONTRACT
+==================================================
+
+Use a strict schema for Gemini outputs.
+
+Plan output must look like this:
+
+{
+  "goal_summary": "Increase booked appointments by 20% in 30 days",
+  "rationale": "Bookings are low because response time is slow and no nurture workflow exists.",
+  "success_metric": {
+    "name": "booked_appointments_30d",
+    "baseline": 12,
+    "target": 15
+  },
+  "steps": [
+    {
+      "idempotency_key": "audit-response-time",
+      "title": "Audit current response speed",
+      "description": "Measure first-response time and inbound lead handling quality.",
+      "step_type": "analysis",
+      "owner_type": "agent",
+      "tool_name": "getAccountSummary",
+      "tool_payload": {},
+      "depends_on": [],
+      "requires_approval": false,
+      "success_criteria": "Response-time metrics captured for the last 30 days"
+    },
+    {
+      "idempotency_key": "create-booking-workflow",
+      "title": "Create booking follow-up workflow draft",
+      "description": "Draft a workflow for new leads with immediate SMS and 24-hour follow-up.",
+      "step_type": "workflow_creation",
+      "owner_type": "agent",
+      "tool_name": "createWorkflow",
+      "tool_payload": {
+        "template_type": "lead_followup_booking"
+      },
+      "depends_on": ["audit-response-time"],
+      "requires_approval": true,
+      "success_criteria": "Workflow draft created and awaiting approval"
+    }
+  ]
+}
+
+Requirements:
+- JSON only
+- every step must have an idempotency key
+- every step must declare dependencies
+- every step must map to either:
+  - a tool
+  - a human approval
+  - an analysis step
+- reject malformed output
+- retry once with repair prompt if invalid
+- fallback to rules if Gemini returns unusable data
+
+==================================================
+5. APPROVAL + TRUST LOGIC
+==================================================
+
+Do NOT remove existing safety gates.
+
+Add a lightweight trust foundation now:
+
+For each account + tool + task category, track:
+- successful drafts count
+- successful executions count
+- failure count
+- human rejection count
+
+Create a simple scoring model:
+- low trust
+- medium trust
+- high trust
+
+Use this only for recommendations right now, not full auto-promotion.
+
+Examples:
+- if a tool has 10 successful approved drafts and 0 failures, mark it as candidate_for_auto_execute
+- surface this in UI and logs
+- do NOT silently bypass approval yet
+
+Store this in:
+- operator_tool_trust or equivalent table
+
+==================================================
+6. UI CHANGES
+==================================================
+
+Add a Goal Execution panel inside Apex Intelligence.
+
+It must show:
+- active goals
+- goal status
+- target metric vs current metric
+- current plan version
+- next executable step
+- blocked reason
+- waiting approvals
+- last review decision
+- progress trend
+
+Add actions:
+- create goal
+- pause goal
+- resume goal
+- archive goal
+- approve next step
+- force replan
+
+Add a goal detail view that shows:
+- plan summary
+- step list
+- dependency chain
+- step outcomes
+- progress history
+- review history
+
+Do NOT make this pretty first.
+Make it clear and operational first.
+
+==================================================
+7. API ENDPOINTS
+==================================================
+
+Add endpoints for:
+
+POST /api/operator/goals
+GET /api/operator/goals
+GET /api/operator/goals/:id
+POST /api/operator/goals/:id/pause
+POST /api/operator/goals/:id/resume
+POST /api/operator/goals/:id/archive
+POST /api/operator/goals/:id/replan
+POST /api/operator/goals/:id/approve-step
+GET /api/operator/goals/:id/progress
+GET /api/operator/goals/:id/reviews
+
+Use existing auth/account patterns.
+Validate payloads strictly.
+
+==================================================
+8. EXECUTION RULES
+==================================================
+
+A plan step can only execute if:
+- plan is active
+- step status is ready
+- all required dependencies are completed
+- approval state allows it
+- retry count is below limit
+- no duplicate in-flight execution exists
+
+On failure:
+- increment retry_count
+- record failure in memory
+- if retry_count < max_retries, schedule retry
+- else mark failed and trigger review
+
+On repeated failure:
+- trigger planReviewEngine
+- decide whether to replan, pause, or escalate
+
+==================================================
+9. GOAL CREATION RULES
+==================================================
+
+The agent may suggest goals automatically, but must not activate new growth goals without approval.
+
+Allowed without approval:
+- suggest_goal
+- create draft goal
+- create plan draft
+
+Not allowed without approval:
+- activating a new growth goal that changes account behavior materially
+- auto-launching campaigns from goal logic
+- auto-sending customer-facing communications beyond existing approval rules
+
+Allowed automatic goal types:
+- complete_account_setup
+- restore_broken_integrations
+- diagnose_conversion_drop
+
+These may be auto-activated if consistent with existing safety settings.
+
+==================================================
+10. MEMORY INTEGRATION
+==================================================
+
+Whenever a goal is:
+- created
+- replanned
+- blocked
+- completed
+- failed
+- paused
+- resumed
+
+Write episodic memories with structured tags.
+
+Whenever a step succeeds or fails:
+- write a compact memory
+- include goal_id, plan_id, step_id, tool_name, outcome
+
+Use this context in future replanning prompts.
+
+==================================================
+11. ACCEPTANCE TESTS
+==================================================
+
+Create or update tests proving all of this works.
+
+Minimum test scenarios:
+
+A. Goal creation
+- create increase_bookings goal
+- plan is generated
+- steps persist
+- dependencies persist
+
+B. Dependency execution
+- step 2 does not run until step 1 completes
+
+C. Approval gating
+- workflow creation step pauses at waiting_approval
+
+D. Retry handling
+- failed step retries until max_retries, then triggers review
+
+E. Replanning
+- stalled goal triggers review and plan version 2
+
+F. Restart persistence
+- active goal survives process restart and continues
+
+G. Idempotency
+- same ready step is not executed twice in concurrent scans
+
+==================================================
+12. DEFINITION OF DONE
+==================================================
+
+This feature is done only when all of the following are true:
+
+- I can create a goal in the UI
+- the backend generates a persisted plan
+- steps are visible with dependencies
+- approved steps execute through existing tools
+- failed plans re-enter review
+- progress metrics update over time
+- plans survive restarts
+- the agent can continue a multi-step goal across multiple scan cycles
+- the UI clearly shows what goal the agent is pursuing and where it is blocked
+
+==================================================
+13. OUTPUT FORMAT I WANT FROM YOU
+==================================================
+
+Do the work, then report back in this exact format:
+
+1. Files created
+2. Files modified
+3. Database tables added
+4. API endpoints added
+5. UI surfaces added
+6. What existing systems were integrated
+7. What still remains incomplete
+8. Any blockers or assumptions
+9. Exact test scenarios completed
+10. Example goal lifecycle from creation to completion
+
+==================================================
+IMPORTANT IMPLEMENTATION NOTES
+==================================================
+
+- Reuse existing patterns where possible
+- Do not break the current operator
+- Keep logic server-side
+- Keep model outputs structured and validated
+- Favor deterministic execution over vague “agent magic”
+- Keep the plan layer inspectable and auditable
+- Do not hide important decisions in prompts only
+- Persist everything important
+
+Start implementing now.
+```
+
+This is the missing layer that matters most: **goal-driven planning with persistent multi-step execution**.
+
+Before you run it, rotate that exposed token visible in Replit.

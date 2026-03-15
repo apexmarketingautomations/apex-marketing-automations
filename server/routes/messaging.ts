@@ -1,0 +1,253 @@
+import type { Express, Request, Response } from "express";
+import { insertMessageSchema, insertWhatsappTemplateSchema, messages, whatsappTemplates, integrationConnections } from "@shared/schema";
+import { sql, eq } from "drizzle-orm";
+import { db } from "../db";
+import { storage } from "../storage";
+import { messagingLimiter } from "../rateLimiter";
+import { publishEventAsync, EVENT_TYPES } from "../eventBus";
+import { asyncHandler, parseIntParam, verifyAccountOwnership, logUsageInternal, getTwilioClient } from "./helpers";
+
+export function registerMessagingRoutes(app: Express) {
+  // ---- Messages ----
+  app.get("/api/messages/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const msgs = await storage.getMessages(subAccountId);
+    res.json(msgs);
+  }));
+
+  app.post("/api/messages", messagingLimiter, asyncHandler(async (req, res) => {
+    const parsed = insertMessageSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const msg = await storage.createMessage(parsed.data);
+    res.status(201).json(msg);
+  }));
+
+
+  // ---- SMS Sending via Twilio ----
+  app.post("/api/messages/send", asyncHandler(async (req, res) => {
+    const parsed = insertMessageSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const { subAccountId, contactPhone, body, channel } = parsed.data;
+
+    const { checkPhoneOptOut } = await import("../optOutGuard");
+    const smsOptedOut = await checkPhoneOptOut(contactPhone, subAccountId);
+    if (smsOptedOut && (channel === "sms" || !channel)) {
+      return res.status(403).json({ error: "Recipient has opted out of SMS communications" });
+    }
+
+    let twilioStatus = "pending";
+    let twilioSid: string | null = null;
+    let twilioError: string | null = null;
+
+    if (channel === "whatsapp") {
+      const twilioClient = getTwilioClient();
+      if (!twilioClient) {
+        twilioStatus = "failed";
+        twilioError = "Twilio is not configured. Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN to send WhatsApp messages.";
+      } else {
+        const account = await storage.getSubAccount(subAccountId);
+        const waConnections = await db.select().from(integrationConnections)
+          .where(and(
+            eq(integrationConnections.subAccountId, subAccountId),
+            eq(integrationConnections.provider, "whatsapp-business"),
+            eq(integrationConnections.status, "connected")
+          ))
+          .limit(1)
+          .execute()
+          .catch(() => []);
+        
+        let waNumber = account?.twilioNumber;
+        if (waConnections.length > 0) {
+          const waConfig = waConnections[0].config as any;
+          if (waConfig?.whatsappNumber) waNumber = waConfig.whatsappNumber;
+        }
+
+        if (!waNumber) {
+          twilioStatus = "failed";
+          twilioError = "No WhatsApp Business number configured. Connect WhatsApp in Integrations.";
+        } else {
+          try {
+            const msgOptions: any = {
+              body: body,
+              to: `whatsapp:${contactPhone}`,
+              from: `whatsapp:${waNumber}`,
+            };
+
+            const templateName = (req.body as any).templateName;
+            const templateVars = (req.body as any).templateVariables;
+            if (templateName) {
+              msgOptions.contentSid = templateName;
+              if (templateVars) {
+                msgOptions.contentVariables = JSON.stringify(templateVars);
+              }
+            }
+
+            const interactiveType = (req.body as any).interactiveType;
+            const interactiveButtons = (req.body as any).interactiveButtons;
+            if (interactiveType === "buttons" && interactiveButtons) {
+              msgOptions.persistentAction = interactiveButtons.map((b: string) => `button:${b}`);
+            }
+
+            const twilioMsg = await twilioClient.messages.create(msgOptions);
+            twilioStatus = twilioMsg.status || "sent";
+            twilioSid = twilioMsg.sid;
+
+            const statusCallback = (req.body as any).statusCallback;
+            if (statusCallback) {
+              console.log(`[WHATSAPP] Message ${twilioSid} sent, status callback: ${statusCallback}`);
+            }
+          } catch (twilioErr: any) {
+            console.error("[WHATSAPP] Twilio send error:", twilioErr.message);
+            twilioStatus = "failed";
+            twilioError = twilioErr.message || "WhatsApp send failed";
+          }
+        }
+      }
+    } else if (channel === "sms" || !channel) {
+      const twilioClient = getTwilioClient();
+      if (!twilioClient) {
+        twilioStatus = "failed";
+        twilioError = "Twilio is not configured. Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN to send SMS.";
+      } else {
+        const account = await storage.getSubAccount(subAccountId);
+        const fromNumber = account?.twilioNumber;
+        if (!fromNumber) {
+          twilioStatus = "failed";
+          twilioError = "No phone number assigned to this account. Purchase a Twilio number first.";
+        } else {
+          try {
+            const twilioMsg = await twilioClient.messages.create({
+              body: body,
+              to: contactPhone,
+              from: fromNumber,
+            });
+            twilioStatus = twilioMsg.status || "sent";
+            twilioSid = twilioMsg.sid;
+          } catch (twilioErr: any) {
+            console.error("[SMS] Twilio send error:", twilioErr.message);
+            twilioStatus = "failed";
+            twilioError = twilioErr.message || "Twilio send failed";
+          }
+        }
+      }
+    } else {
+      twilioStatus = "unsupported";
+      twilioError = `Channel '${channel}' is not supported for outbound sending. Use 'sms' or 'whatsapp'.`;
+    }
+
+    const msg = await storage.createMessage({
+      ...parsed.data,
+      status: twilioStatus,
+    });
+
+    if (twilioStatus === "failed" || twilioStatus === "unsupported") {
+      return res.status(422).json({ ...msg, twilioSid, error: twilioError });
+    }
+
+    if (channel === "sms" || channel === "whatsapp") {
+      const usageType = channel === "whatsapp" ? "WHATSAPP_MESSAGE" : "SMS_SEGMENT";
+      const usageDesc = channel === "whatsapp" ? `WhatsApp to ${contactPhone}` : `SMS to ${contactPhone}`;
+      await logUsageInternal(subAccountId, usageType, 1, usageDesc);
+    }
+
+    publishEventAsync(EVENT_TYPES.MESSAGE_SENT, "messaging", {
+      subAccountId, to: contactPhone, channel: channel || "sms", status: twilioStatus, messageId: msg.id,
+    });
+
+    res.status(201).json({ ...msg, twilioSid });
+  }));
+
+  // ---- WhatsApp Status Webhook (delivery/read receipts) ----
+  app.post("/api/whatsapp-status", async (req, res) => {
+    try {
+      const { MessageSid, MessageStatus, To, From } = req.body;
+      if (!MessageSid || !MessageStatus) {
+        return res.type("text/xml").send("<Response></Response>");
+      }
+
+      console.log(`[WHATSAPP STATUS] SID: ${MessageSid}, Status: ${MessageStatus}`);
+
+      const statusMap: Record<string, string> = {
+        queued: "queued",
+        sent: "sent",
+        delivered: "delivered",
+        read: "read",
+        failed: "failed",
+        undelivered: "failed",
+      };
+
+      const normalizedStatus = statusMap[MessageStatus] || MessageStatus;
+      const cleanPhone = (To || "").replace(/^whatsapp:/, "");
+
+      if (cleanPhone && normalizedStatus) {
+        await db.execute(
+          sql`UPDATE messages SET status = ${normalizedStatus}
+              WHERE id = (
+                SELECT id FROM messages
+                WHERE contact_phone = ${cleanPhone}
+                  AND channel = 'whatsapp'
+                  AND direction = 'outbound'
+                ORDER BY created_at DESC
+                LIMIT 1
+              )`
+        );
+      }
+
+      res.type("text/xml").send("<Response></Response>");
+    } catch (err: any) {
+      console.error("[WHATSAPP STATUS] Error:", err.message);
+      res.type("text/xml").send("<Response></Response>");
+    }
+  });
+
+  // ---- WhatsApp Templates CRUD ----
+  app.get("/api/whatsapp-templates/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const templates = await db.select().from(whatsappTemplates).where(eq(whatsappTemplates.subAccountId, subAccountId));
+    res.json(templates);
+  }));
+
+  app.post("/api/whatsapp-templates/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const parsed = insertWhatsappTemplateSchema.safeParse({ ...req.body, subAccountId });
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const [template] = await db.insert(whatsappTemplates).values(parsed.data).returning();
+    res.status(201).json(template);
+  }));
+
+  app.put("/api/whatsapp-templates/:subAccountId/:id", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const id = parseIntParam(req.params.id, "id");
+
+    const updateSchema = insertWhatsappTemplateSchema.partial().omit({ subAccountId: true });
+    const parsed = updateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid template data", details: parsed.error.flatten() });
+    }
+
+    const [updated] = await db.update(whatsappTemplates)
+      .set(parsed.data)
+      .where(and(eq(whatsappTemplates.id, id), eq(whatsappTemplates.subAccountId, subAccountId)))
+      .returning();
+
+    if (!updated) return res.status(404).json({ error: "Template not found" });
+    res.json(updated);
+  }));
+
+  app.delete("/api/whatsapp-templates/:subAccountId/:id", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const id = parseIntParam(req.params.id, "id");
+
+    await db.delete(whatsappTemplates)
+      .where(and(eq(whatsappTemplates.id, id), eq(whatsappTemplates.subAccountId, subAccountId)));
+
+    res.json({ success: true });
+  }));
+}
