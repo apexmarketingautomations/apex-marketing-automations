@@ -1751,7 +1751,7 @@ export function ApexIntelligence() {
   const healthScore = healthData?.overall;
 
   return (
-    <div className="fixed bottom-6 left-6 z-50 flex flex-col items-start">
+    <div className="fixed bottom-6 left-6 md:left-[304px] z-50 flex flex-col items-start">
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -1761,6 +1761,7 @@ export function ApexIntelligence() {
             transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
             className="mb-4 w-[420px] max-w-[92vw] rounded-2xl overflow-hidden flex flex-col"
             style={{
+              maxHeight: "min(620px, calc(100vh - 120px))",
               height: "620px",
               background: "linear-gradient(180deg, rgba(8,8,24,0.99) 0%, rgba(6,6,18,0.995) 100%)",
               boxShadow: "0 0 0 1px rgba(139,92,246,0.12), 0 25px 60px -12px rgba(0,0,0,0.85), 0 0 100px rgba(139,92,246,0.06), 0 0 160px rgba(6,182,212,0.03)",
@@ -1804,7 +1805,7 @@ export function ApexIntelligence() {
                 </button>
               </div>
 
-              <div className="relative flex mt-3 gap-0.5 bg-white/[0.02] rounded-lg p-0.5 border border-white/[0.04]">
+              <div className="relative flex mt-3 gap-0.5 bg-white/[0.02] rounded-lg p-0.5 border border-white/[0.04] overflow-x-auto scrollbar-none">
                 {TABS.map(tab => {
                   const isActive = activeTab === tab.id;
                   const TabIcon = tab.icon;
@@ -1812,7 +1813,7 @@ export function ApexIntelligence() {
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
-                      className={`relative flex-1 flex items-center justify-center gap-1 py-1.5 rounded-md text-[9px] font-semibold tracking-wide transition-all ${
+                      className={`relative flex-1 min-w-0 flex items-center justify-center gap-0.5 py-1.5 px-1 rounded-md text-[8px] font-semibold tracking-wide transition-all whitespace-nowrap ${
                         isActive ? "text-white" : "text-slate-600 hover:text-slate-400"
                       }`}
                       data-testid={`tab-intel-${tab.id}`}
@@ -1824,11 +1825,11 @@ export function ApexIntelligence() {
                           transition={{ type: "spring", bounce: 0.15, duration: 0.4 }}
                         />
                       )}
-                      <span className="relative flex items-center gap-1">
-                        <TabIcon size={10} />
+                      <span className="relative flex items-center gap-0.5">
+                        <TabIcon size={10} className="shrink-0" />
                         {tab.label}
                         {tab.id === "nudges" && nudgeCount > 0 && (
-                          <span className="w-3.5 h-3.5 rounded-full bg-violet-500 text-white text-[7px] font-bold flex items-center justify-center">{nudgeCount}</span>
+                          <span className="w-3.5 h-3.5 rounded-full bg-violet-500 text-white text-[7px] font-bold flex items-center justify-center shrink-0">{nudgeCount}</span>
                         )}
                       </span>
                     </button>
