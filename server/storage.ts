@@ -1,4 +1,4 @@
-import { eq, desc, and, sql, inArray } from "drizzle-orm";
+import { eq, desc, and, sql, inArray, gte, lt } from "drizzle-orm";
 import { db } from "./db";
 import {
   subAccounts, messages, workflows, trainingJobs, blueprints, savedSites, siteVersions, siteCollaborators, reviews, usageLogs, domains, owners,
@@ -167,6 +167,8 @@ export interface IStorage {
   upsertSentinelConfig(data: InsertSentinelConfig): Promise<SentinelConfig>;
 
   getSentinelIncidents(subAccountId: number): Promise<SentinelIncident[]>;
+  getSentinelIncidentsFiltered(subAccountId: number, filters: { since?: Date; status?: string; limit?: number }): Promise<SentinelIncident[]>;
+  purgeSentinelIncidents(subAccountId: number, olderThan: Date): Promise<number>;
   getSentinelIncident(id: number): Promise<SentinelIncident | undefined>;
   createSentinelIncident(data: InsertSentinelIncident): Promise<SentinelIncident>;
   updateSentinelIncident(id: number, data: Partial<InsertSentinelIncident>): Promise<SentinelIncident | undefined>;
@@ -718,6 +720,33 @@ export class DatabaseStorage implements IStorage {
 
   async getSentinelIncidents(subAccountId: number) {
     return db.select().from(sentinelIncidents).where(eq(sentinelIncidents.subAccountId, subAccountId)).orderBy(desc(sentinelIncidents.detectedAt));
+  }
+
+  async getSentinelIncidentsFiltered(subAccountId: number, filters: { since?: Date; status?: string; limit?: number }) {
+    const conditions = [eq(sentinelIncidents.subAccountId, subAccountId)];
+    if (filters.since) {
+      conditions.push(gte(sentinelIncidents.detectedAt, filters.since));
+    }
+    if (filters.status) {
+      conditions.push(eq(sentinelIncidents.actionStatus, filters.status));
+    }
+    let query = db.select().from(sentinelIncidents)
+      .where(and(...conditions))
+      .orderBy(desc(sentinelIncidents.detectedAt));
+    if (filters.limit && filters.limit > 0) {
+      query = query.limit(filters.limit) as any;
+    }
+    return query;
+  }
+
+  async purgeSentinelIncidents(subAccountId: number, olderThan: Date): Promise<number> {
+    const deleted = await db.delete(sentinelIncidents)
+      .where(and(
+        eq(sentinelIncidents.subAccountId, subAccountId),
+        lt(sentinelIncidents.detectedAt, olderThan)
+      ))
+      .returning({ id: sentinelIncidents.id });
+    return deleted.length;
   }
 
   async getSentinelIncident(id: number) {

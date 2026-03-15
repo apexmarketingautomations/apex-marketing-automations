@@ -1,0 +1,34 @@
+The /incidents endpoint returns 96 old ones. The Apex dashboard shows 82 fresh ones. The API is serving stale data — the dashboard has newer data that the API isn't exposing. Let me check if there are additional query params or a different API version:
+
+The v2 API exists but needs different auth. The v1 /incidents endpoint is serving cached/stale data regardless of params. The Apex dashboard has 82 fresh incidents from today but the external API returns 96 old ones.
+
+The Apex dashboard is pulling from its internal database directly, but the external API for third parties hasn't been refreshed. The solution: I need to clear the old stale incidents from our DB and also look at whether there's a webhook push approach from Apex instead of polling a stale API. Let me check if there's already a webhook receiver:
+
+The Apex webhook only handles email_sent and sms_sent events — it doesn't receive crash incident pushes. The v1 API is returning stale data. I need to add a webhook receiver for Sentinel crash pushes from Apex AND also clear the stale data so the DB is clean. Let me also add a direct scrape/ingest endpoint so Apex can push fresh crashes:
+
+Now I need to do two things: (1) Add a webhook endpoint for Apex to push crash incidents directly, and (2) fix the existing Apex webhook to handle sentinel crash events. Let me also clear the stale DB data and update the scan logic:
+
+Now let me also update the scanFHPCrashes function to also pull from a broader data source and clear the old stale data. But first, the critical thing: the Apex v1 API is serving cached data. Let me also try the v2 API with proper auth:
+
+The v2 and non-versioned endpoints return "Not authenticated" — the token format may have changed. The stale v1 API is all we can poll from. The real fix is to clear out the stale data and let Apex push fresh crashes via the new webhook/ingest endpoint I just added. But more immediately, let me also clear the stale incidents so the Sentinel isn't stuck showing 3-day-old data:
+
+96 incidents: 83 from March 12, 13 from March 14. The Apex dashboard shows 82 fresh ones from TODAY. The v1 API is stale. I need to clear the old data and set up the system so fresh data can flow in. Let me also add a manual "Purge & Resync" capability and restart:
+
+Now let me add a "Purge & Resync" button to the Sentinel UI so you can force a fresh pull:
+
+Now show the purge button only for super admins, and add the JS function. Let me find where isMaster controls are shown and add the purge button reveal there:
+
+Now add the purge resync JS function next to the sentinelScan function:
+
+Now let me restart and test:
+
+Purge worked — cleared 96 old incidents and resynced 96 from Apex. But the problem remains that the Apex v1 API keeps returning those same 96 stale incidents. The Apex dashboard shows 82 different, fresh ones.
+
+Here's the reality: The Apex external API (/api/v1/external/sentinel/incidents) is serving stale/cached data — it's not the same data as what the Apex dashboard shows. This is an Apex-side issue. The API hasn't been updated to match the dashboard's live feed.
+
+What I've done to work around this:
+
+Added /api/sentinel/ingest — a push endpoint so Apex can send fresh crash data directly to Crash Connect instead of us polling the stale API
+Added webhook support — the existing Apex webhook now handles sentinel_incident and sentinel_batch events
+Added "Purge & Resync" button — super admin only, clears stale data and re-pulls from Apex
+The core issue is that Apex needs to either update their external API to return fresh data, or configure a webhook push to https://crashconnect.live/api/sentinel/ingest with the token. Do you have access to configure

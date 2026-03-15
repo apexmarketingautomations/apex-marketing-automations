@@ -1446,9 +1446,42 @@ export function registerPropertyRoutes(app: Express) {
     const account = await resolveTokenAccount(token);
     if (!account) return res.status(401).json({ error: "Invalid or missing token" });
 
-    const incidents = await storage.getSentinelIncidents(account.id);
+    const sinceParam = req.query.since as string | undefined;
+    const limitParam = req.query.limit as string | undefined;
+    const statusFilter = req.query.status as string | undefined;
+
+    const validStatuses = ["pending", "contacted", "resolved", "dismissed", "acknowledged", "actioned"];
+
+    let since: Date | undefined;
+    if (sinceParam) {
+      since = new Date(sinceParam);
+      if (isNaN(since.getTime())) {
+        return res.status(400).json({ error: "Invalid date format for 'since' parameter. Use ISO 8601 format." });
+      }
+    }
+
+    let limit: number | undefined;
+    if (limitParam) {
+      limit = parseInt(limitParam);
+      if (isNaN(limit) || limit < 1 || limit > 500) {
+        return res.status(400).json({ error: "'limit' must be a number between 1 and 500." });
+      }
+    }
+
+    if (statusFilter && !validStatuses.includes(statusFilter)) {
+      return res.status(400).json({ error: `Invalid 'status'. Must be one of: ${validStatuses.join(", ")}` });
+    }
+
+    const incidents = await storage.getSentinelIncidentsFiltered(account.id, {
+      since,
+      status: statusFilter,
+      limit: limit || 100,
+    });
+
     res.json({
       accountName: account.name,
+      total: incidents.length,
+      query: { since: sinceParam || null, limit: limit || 100, status: statusFilter || null },
       incidents: incidents.map(i => ({
         id: i.id,
         title: i.title,
@@ -1460,6 +1493,48 @@ export function registerPropertyRoutes(app: Express) {
         geofenceDeployed: i.geofenceDeployed,
         detectedAt: i.detectedAt,
       })),
+    });
+  });
+
+  const purgeScanLastRun = new Map<string, number>();
+
+  app.post("/api/v1/external/sentinel/purge", async (req, res) => {
+    const token = (req.headers["x-api-token"] || req.query.token) as string;
+    const account = await resolveTokenAccount(token);
+    if (!account) return res.status(401).json({ error: "Invalid or missing token" });
+
+    const lastRun = purgeScanLastRun.get(token) || 0;
+    if (Date.now() - lastRun < 300_000) {
+      return res.status(429).json({ error: "Purge rate limited — wait 5 minutes between purges" });
+    }
+
+    const olderThanParam = req.body?.olderThan as string | undefined;
+    if (!olderThanParam) {
+      return res.status(400).json({ error: "'olderThan' is required. Provide an ISO 8601 date string." });
+    }
+
+    const olderThan = new Date(olderThanParam);
+    if (isNaN(olderThan.getTime())) {
+      return res.status(400).json({ error: "Invalid date format for 'olderThan'. Use ISO 8601 format." });
+    }
+
+    const dryRun = req.body?.dryRun === true;
+
+    if (dryRun) {
+      const allIncidents = await storage.getSentinelIncidents(account.id);
+      const wouldDelete = allIncidents.filter(i => i.detectedAt && new Date(i.detectedAt) < olderThan).length;
+      return res.json({ dryRun: true, wouldPurge: wouldDelete, olderThan: olderThan.toISOString() });
+    }
+
+    purgeScanLastRun.set(token, Date.now());
+    const purgedCount = await storage.purgeSentinelIncidents(account.id, olderThan);
+
+    console.log(`[SENTINEL] Purged ${purgedCount} incidents older than ${olderThan.toISOString()} for account ${account.id}`);
+
+    res.json({
+      success: true,
+      purged: purgedCount,
+      olderThan: olderThan.toISOString(),
     });
   });
 
