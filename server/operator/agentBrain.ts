@@ -167,11 +167,27 @@ Based on this data, what tasks should the autonomous agent execute? Return a JSO
     });
 
     let suggestions: AITaskSuggestion[] = [];
-    try {
-      const parsed = JSON.parse(response);
-      suggestions = Array.isArray(parsed) ? parsed : (parsed.tasks || parsed.suggestions || []);
-    } catch {
-      console.error("[AGENT-BRAIN] Failed to parse AI response");
+    try 
+    {const normalized = (response || "").trim();
+      if (!normalized) {
+        console.error("[AGENT-BRAIN] Empty AI response");
+        return [];
+      }
+
+      const cleaned = normalized
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/```$/i, "")
+        .trim();
+
+      const parsed = JSON.parse(cleaned || "[]");
+      suggestions = Array.isArray(parsed)
+        ? parsed
+        : parsed.tasks || parsed.suggestions || [];
+    } catch (err) {
+      console.error("[AGENT-BRAIN] Failed to parse AI response", {
+        err,
+        responseSnippet: (response || "").slice(0, 500),
+      });
       return [];
     }
 
