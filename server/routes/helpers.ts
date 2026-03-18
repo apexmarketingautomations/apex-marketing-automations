@@ -175,7 +175,7 @@ export async function getTwilioClient() {
 
 export const vapiConfig = {
   get privateKey(): string | null {
-    return process.env.VAPI_PRIVATE_KEY || process.env.apex_private_vapi || null;
+    return process.env.VAPI_PRIVATE_KEY_APEX || process.env.VAPI_PRIVATE_KEY || process.env.apex_private_vapi || null;
   },
   get publicKey(): string | null {
     return process.env.VAPI_PUBLIC_KEY || process.env.apex_public_vapi || null;
