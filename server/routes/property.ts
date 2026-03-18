@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
-import { insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, contacts, deals, appointments, webhooks, messages, subAccounts, sentinelIncidents } from "@shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, contacts, deals, appointments, webhooks, messages, subAccounts, sentinelIncidents, sentinelConfig } from "@shared/schema";
+import { eq, desc, sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { z } from "zod";
@@ -1587,10 +1587,27 @@ export function registerPropertyRoutes(app: Express) {
     return account || null;
   }
 
+  async function resolveSentinelSourceAccountId(tokenAccountId: number): Promise<number> {
+    const ownConfig = await storage.getSentinelConfig(tokenAccountId);
+    if (ownConfig && ownConfig.enabled) {
+      return tokenAccountId;
+    }
+    const [activeConfig] = await db.select().from(sentinelConfig)
+      .where(eq(sentinelConfig.enabled, true))
+      .orderBy(desc(sentinelConfig.updatedAt))
+      .limit(1);
+    if (activeConfig) {
+      return activeConfig.subAccountId;
+    }
+    return tokenAccountId;
+  }
+
   app.get("/api/v1/external/sentinel/incidents", async (req, res) => {
     const token = (req.headers["x-api-token"] || req.query.token) as string;
     const account = await resolveTokenAccount(token);
     if (!account) return res.status(401).json({ error: "Invalid or missing token" });
+
+    const sourceAccountId = await resolveSentinelSourceAccountId(account.id);
 
     const sinceParam = req.query.since as string | undefined;
     const limitParam = req.query.limit as string | undefined;
@@ -1618,7 +1635,7 @@ export function registerPropertyRoutes(app: Express) {
       return res.status(400).json({ error: `Invalid 'status'. Must be one of: ${validStatuses.join(", ")}` });
     }
 
-    const incidents = await storage.getSentinelIncidentsFiltered(account.id, {
+    const incidents = await storage.getSentinelIncidentsFiltered(sourceAccountId, {
       since,
       status: statusFilter,
       limit: limit || 100,
@@ -1626,6 +1643,7 @@ export function registerPropertyRoutes(app: Express) {
 
     res.json({
       accountName: account.name,
+      sourceAccountId,
       total: incidents.length,
       query: { since: sinceParam || null, limit: limit || 100, status: statusFilter || null },
       incidents: incidents.map(i => ({
@@ -1666,14 +1684,16 @@ export function registerPropertyRoutes(app: Express) {
 
     const dryRun = req.body?.dryRun === true;
 
+    const sourceAccountId = await resolveSentinelSourceAccountId(account.id);
+
     if (dryRun) {
-      const allIncidents = await storage.getSentinelIncidents(account.id);
+      const allIncidents = await storage.getSentinelIncidents(sourceAccountId);
       const wouldDelete = allIncidents.filter(i => i.detectedAt && new Date(i.detectedAt) < olderThan).length;
       return res.json({ dryRun: true, wouldPurge: wouldDelete, olderThan: olderThan.toISOString() });
     }
 
     purgeScanLastRun.set(token, Date.now());
-    const purgedCount = await storage.purgeSentinelIncidents(account.id, olderThan);
+    const purgedCount = await storage.purgeSentinelIncidents(sourceAccountId, olderThan);
 
     console.log(`[SENTINEL] Purged ${purgedCount} incidents older than ${olderThan.toISOString()} for account ${account.id}`);
 
@@ -1689,8 +1709,9 @@ export function registerPropertyRoutes(app: Express) {
     const account = await resolveTokenAccount(token);
     if (!account) return res.status(401).json({ error: "Invalid or missing token" });
 
+    const sourceAccountId = await resolveSentinelSourceAccountId(account.id);
     const incident = await storage.getSentinelIncident(parseInt(req.params.id));
-    if (!incident || incident.subAccountId !== account.id) {
+    if (!incident || incident.subAccountId !== sourceAccountId) {
       return res.status(404).json({ error: "Incident not found" });
     }
     res.json({
@@ -1712,7 +1733,8 @@ export function registerPropertyRoutes(app: Express) {
     const account = await resolveTokenAccount(token);
     if (!account) return res.status(401).json({ error: "Invalid or missing token" });
 
-    const incidents = await storage.getSentinelIncidents(account.id);
+    const sourceAccountId = await resolveSentinelSourceAccountId(account.id);
+    const incidents = await storage.getSentinelIncidents(sourceAccountId);
     const total = incidents.length;
     const bySeverity = { low: 0, medium: 0, high: 0, critical: 0 };
     const byStatus = { pending: 0, contacted: 0, resolved: 0, dismissed: 0 };
@@ -1743,7 +1765,8 @@ export function registerPropertyRoutes(app: Express) {
     const token = (req.headers["x-api-token"] || req.query.token) as string;
     const account = await resolveTokenAccount(token);
     if (!account) return res.status(401).json({ error: "Invalid or missing token" });
-    const config = await storage.getSentinelConfig(account.id);
+    const sourceAccountId = await resolveSentinelSourceAccountId(account.id);
+    const config = await storage.getSentinelConfig(sourceAccountId);
     res.json(config || { enabled: false });
   });
 
@@ -1777,16 +1800,17 @@ export function registerPropertyRoutes(app: Express) {
       return res.status(429).json({ error: "Scan rate limited — wait 60 seconds between scans" });
     }
     externalScanLastRun.set(token, Date.now());
+    const sourceAccountId = await resolveSentinelSourceAccountId(account.id);
     try {
-      const config = await storage.getSentinelConfig(account.id);
+      const config = await storage.getSentinelConfig(sourceAccountId);
       const liveIncidents = await processLiveSentinelFeed();
       let saved = 0;
       for (const inc of liveIncidents) {
         const hash = `${inc.type}-${inc.location}-${inc.id}`.replace(/\s+/g, "").toLowerCase();
-        const existing = await storage.getSentinelIncidentByHash(account.id, hash);
+        const existing = await storage.getSentinelIncidentByHash(sourceAccountId, hash);
         if (!existing) {
           await storage.createSentinelIncident({
-            subAccountId: account.id,
+            subAccountId: sourceAccountId,
             sourceHash: hash,
             title: inc.type,
             description: `${inc.type} at ${inc.location}. ${inc.distanceMiles !== 'unknown' ? inc.distanceMiles + ' mi away.' : ''} County: ${inc.county || 'FL'}. ${inc.remarks || ''}`,
@@ -1808,8 +1832,9 @@ export function registerPropertyRoutes(app: Express) {
     const token = (req.headers["x-api-token"] || req.query.token) as string;
     const account = await resolveTokenAccount(token);
     if (!account) return res.status(401).json({ error: "Invalid or missing token" });
+    const sourceAccountId = await resolveSentinelSourceAccountId(account.id);
     const incident = await storage.getSentinelIncident(parseInt(req.params.id));
-    if (!incident || incident.subAccountId !== account.id) return res.status(404).json({ error: "Not found" });
+    if (!incident || incident.subAccountId !== sourceAccountId) return res.status(404).json({ error: "Not found" });
     await storage.updateSentinelIncident(incident.id, { actionStatus: "acknowledged" });
     res.json({ success: true });
   });
@@ -1818,8 +1843,9 @@ export function registerPropertyRoutes(app: Express) {
     const token = (req.headers["x-api-token"] || req.query.token) as string;
     const account = await resolveTokenAccount(token);
     if (!account) return res.status(401).json({ error: "Invalid or missing token" });
+    const sourceAccountId = await resolveSentinelSourceAccountId(account.id);
     const incident = await storage.getSentinelIncident(parseInt(req.params.id));
-    if (!incident || incident.subAccountId !== account.id) return res.status(404).json({ error: "Not found" });
+    if (!incident || incident.subAccountId !== sourceAccountId) return res.status(404).json({ error: "Not found" });
     await storage.updateSentinelIncident(incident.id, { geofenceDeployed: true, actionStatus: "actioned" });
     res.json({ success: true, message: "Geofence deployed" });
   });
@@ -1828,9 +1854,10 @@ export function registerPropertyRoutes(app: Express) {
     const token = (req.headers["x-api-token"] || req.query.token) as string;
     const account = await resolveTokenAccount(token);
     if (!account) return res.status(401).json({ error: "Invalid or missing token" });
+    const sourceAccountId = await resolveSentinelSourceAccountId(account.id);
     const incident = await storage.getSentinelIncident(parseInt(req.params.id));
-    if (!incident || incident.subAccountId !== account.id) return res.status(404).json({ error: "Not found" });
-    const config = await storage.getSentinelConfig(account.id);
+    if (!incident || incident.subAccountId !== sourceAccountId) return res.status(404).json({ error: "Not found" });
+    const config = await storage.getSentinelConfig(sourceAccountId);
     const alertPhone = config?.smsAlertPhone || (account as any).ownerPhone;
     if (!alertPhone || !(account as any).twilioNumber) {
       return res.status(400).json({ error: "SMS not configured — set alert phone in Sentinel config" });
