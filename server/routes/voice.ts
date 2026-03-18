@@ -587,7 +587,7 @@ export function registerVoiceRoutes(app: Express) {
   // ---- Phone Number Provisioning (Twilio + Vapi) ----
 
   app.get("/api/phone-numbers/search", asyncHandler(async (req, res) => {
-    const twilioClient = getTwilioClient();
+    const twilioClient = await getTwilioClient();
     if (!twilioClient) {
       return res.status(503).json({ error: "Twilio credentials are not configured. Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in Secrets." });
     }
@@ -633,7 +633,7 @@ export function registerVoiceRoutes(app: Express) {
   });
 
   app.post("/api/phone-numbers/purchase", asyncHandler(async (req, res) => {
-    const twilioClient = getTwilioClient();
+    const twilioClient = await getTwilioClient();
     if (!twilioClient) {
       return res.status(503).json({ error: "Twilio credentials are not configured." });
     }
@@ -714,7 +714,7 @@ export function registerVoiceRoutes(app: Express) {
   }));
 
   app.get("/api/phone-numbers", asyncHandler(async (_req, res) => {
-    const twilioClient = getTwilioClient();
+    const twilioClient = await getTwilioClient();
     if (!twilioClient) {
       return res.status(503).json({ error: "Twilio is not configured. Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN to manage phone numbers.", numbers: [] });
     }

@@ -164,11 +164,12 @@ export function getLanguageInstruction(language: string | null | undefined): str
   return `\n\nIMPORTANT: Respond in ${langName}. All your responses must be in ${langName}, not English.`;
 }
 
-export function getTwilioClient() {
+export async function getTwilioClient() {
   const sid = process.env.TWILIO_ACCOUNT_SID;
   const token = process.env.TWILIO_AUTH_TOKEN;
   if (!sid || !token) return null;
-  const Twilio = require("twilio");
+  const twilio = await import("twilio");
+  const Twilio = twilio.default || twilio;
   return Twilio(sid, token);
 }
 

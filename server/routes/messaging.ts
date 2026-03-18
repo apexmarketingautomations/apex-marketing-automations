@@ -42,7 +42,7 @@ export function registerMessagingRoutes(app: Express) {
     let twilioError: string | null = null;
 
     if (channel === "whatsapp") {
-      const twilioClient = getTwilioClient();
+      const twilioClient = await getTwilioClient();
       if (!twilioClient) {
         twilioStatus = "failed";
         twilioError = "Twilio is not configured. Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN to send WhatsApp messages.";
@@ -106,7 +106,7 @@ export function registerMessagingRoutes(app: Express) {
         }
       }
     } else if (channel === "sms" || !channel) {
-      const twilioClient = getTwilioClient();
+      const twilioClient = await getTwilioClient();
       if (!twilioClient) {
         twilioStatus = "failed";
         twilioError = "Twilio is not configured. Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN to send SMS.";

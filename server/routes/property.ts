@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, contacts, deals, appointments, webhooks, messages, subAccounts, sentinelIncidents } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { z } from "zod";
@@ -1317,7 +1317,7 @@ export function registerPropertyRoutes(app: Express) {
             const location = payload.location || "Unknown location";
 
             if (twilioNumber && ownerPhone) {
-              const client = getTwilioClient();
+              const client = await getTwilioClient();
               if (client) {
                 const alertMsg = event === "crash.detected"
                   ? `[Apex Alert] Crash detected at ${location}. Severity: ${payload.severity || "unknown"}. Lead: ${leadName}${leadPhone ? ` (${leadPhone})` : ""}. Check your dashboard for details.`
@@ -1375,7 +1375,7 @@ export function registerPropertyRoutes(app: Express) {
                     { role: "user", content: `Generate an SMS to send to ${leadName} who was in a crash at ${location}. The business provides ${account.industry || "automotive"} services.` },
                   ], { temperature: 0.7, maxTokens: 200 });
 
-                  const client = getTwilioClient();
+                  const client = await getTwilioClient();
                   if (client && aiResponse) {
                     await client.messages.create({
                       to: leadPhone,
@@ -1759,7 +1759,7 @@ export function registerPropertyRoutes(app: Express) {
       return res.status(400).json({ error: "SMS not configured — set alert phone in Sentinel config" });
     }
     try {
-      const twilio = getTwilioClient();
+      const twilio = await getTwilioClient();
       if (twilio) {
         await twilio.messages.create({
           body: `SENTINEL ALERT: ${incident.title} — ${incident.location || "Unknown location"} (${incident.severity})`,

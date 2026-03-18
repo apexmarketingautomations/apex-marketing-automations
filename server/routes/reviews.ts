@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { insertReviewSchema, insertSponsorshipSchema, reviews, domains, webhooks, messages, sponsorships } from "@shared/schema";
+import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { z } from "zod";

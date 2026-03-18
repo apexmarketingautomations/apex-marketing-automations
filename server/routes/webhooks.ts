@@ -47,7 +47,7 @@ export function registerWebhooksRoutes(app: Express) {
         await handleSmsOptOut(senderClean, matchedAccountId);
         console.log(`[OPT-OUT] ${senderClean} opted out of SMS`);
 
-        const twilioClient = getTwilioClient();
+        const twilioClient = await getTwilioClient();
         if (twilioClient && toRaw) {
           await twilioClient.messages.create({
             body: "You have been unsubscribed and will no longer receive messages from us. Reply START to re-subscribe.",
@@ -64,7 +64,7 @@ export function registerWebhooksRoutes(app: Express) {
         await handleSmsOptIn(senderClean, matchedAccountId);
         console.log(`[OPT-IN] ${senderClean} opted back in to SMS`);
 
-        const twilioClient = getTwilioClient();
+        const twilioClient = await getTwilioClient();
         if (twilioClient && toRaw) {
           await twilioClient.messages.create({
             body: "You have been re-subscribed and will receive messages from us again.",
@@ -119,7 +119,7 @@ export function registerWebhooksRoutes(app: Express) {
         }
       }
 
-      const twilioClient = getTwilioClient();
+      const twilioClient = await getTwilioClient();
       if (twilioClient && toRaw) {
         const replyFrom = channel === "whatsapp" ? `whatsapp:${stripChannelPrefix(toRaw)}`
           : channel === "messenger" ? `messenger:${stripChannelPrefix(toRaw)}`
@@ -504,7 +504,7 @@ export function registerWebhooksRoutes(app: Express) {
 
     results.steps.push({ id: "phone", status: "running", label: "Provisioning Phone Line" });
     let phoneNumber = null;
-    const twilioClient = getTwilioClient();
+    const twilioClient = await getTwilioClient();
     if (twilioClient) {
       try {
         const numbers = await twilioClient.availablePhoneNumbers("US").local.list({
@@ -673,7 +673,7 @@ export function registerWebhooksRoutes(app: Express) {
 
       stream.sendStep("phone", "running", "Provisioning AI Phone Line");
       let phoneNumber = null;
-      const twilioClient = getTwilioClient();
+      const twilioClient = await getTwilioClient();
       if (twilioClient) {
         try {
           const numbers = await twilioClient.availablePhoneNumbers("US").local.list({
