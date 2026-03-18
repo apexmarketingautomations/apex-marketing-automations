@@ -150,6 +150,33 @@ export async function* geminiChatStream(
   }
 }
 
+export async function* geminiChatWithToolsStream(
+  messages: ChatMessage[],
+  options: GeminiOptions = {}
+): AsyncGenerator<{ type: "text" | "search_grounding"; text?: string; grounding?: any }> {
+  const { contents, config } = prepareRequest(messages, options);
+
+  config.tools = [{ googleSearch: {} }];
+
+  const response = await withRetry(() =>
+    ai.models.generateContentStream({
+      model: "gemini-2.5-flash",
+      contents,
+      config,
+    })
+  );
+
+  for await (const chunk of response) {
+    if (chunk.text) {
+      yield { type: "text", text: chunk.text };
+    }
+    
+    if (chunk.groundingMetadata) {
+      yield { type: "search_grounding", grounding: chunk.groundingMetadata };
+    }
+  }
+}
+
 export async function geminiGenerateImage(prompt: string): Promise<string | null> {
   try {
     const response = await withRetry(() =>

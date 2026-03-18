@@ -2,9 +2,11 @@ import type { Express, Request, Response } from "express";
 import { messages } from "@shared/schema";
 import { storage } from "../storage";
 import { z } from "zod";
-import { geminiChat, geminiChatStream, isGeminiConfigured, geminiGenerateImage } from "../gemini";
-import { streamGeminiResponse, sendSSEData } from "../streaming";
+import { geminiChat, geminiChatStream, geminiChatWithToolsStream, isGeminiConfigured, geminiGenerateImage } from "../gemini";
+import { streamGeminiResponse, sendSSEData, initSSE } from "../streaming";
 import { asyncHandler, parseIntParam, logUsageInternal, getIndustryContext, getLanguageInstruction } from "./helpers";
+import { executeTool, getTool } from "../operator/toolRegistry";
+import type { OperatorContext } from "../operator/types";
 
 export function registerBotRoutes(app: Express) {
   // ---- Bot Chat (Real OpenAI) ----
@@ -18,6 +20,11 @@ export function registerBotRoutes(app: Express) {
       role: z.string(),
       content: z.string(),
     })).max(20).optional(),
+    currentPath: z.string().max(200).optional(),
+  });
+
+  const agentChatSchema = botChatSchema.extend({
+    subAccountId: z.number().int().positive(),
   });
 
   app.post("/api/bot/chat", asyncHandler(async (req, res) => {
@@ -148,8 +155,230 @@ export function registerBotRoutes(app: Express) {
 
       chatMessages.push({ role: "user", content: parsed.data.message });
 
-      await streamGeminiResponse(res, chatMessages, { temperature: 0.7, maxTokens: 8192 });
+      await streamGeminiResponse(res, chatMessages, { temperature: 0.7, maxTokens: 16384 });
       await logUsageInternal(null, "AI_CHAT", 1, "Strategic advisor chat (stream)");
+    } catch (error: any) {
+      if (!res.headersSent) {
+        res.status(500).json({ error: error.message || "Streaming failed" });
+      } else {
+        sendSSEData(res, { error: error.message || "Streaming failed" });
+        res.end();
+      }
+    }
+  }));
+
+  const AGENT_ALLOWED_TOOLS = new Set([
+    "detectMissingSetup",
+    "checkIntegrationHealth",
+    "getAccountSummary",
+    "auditConversionLeaks",
+    "auditResponseSpeed",
+    "recommendNextBestAction",
+    "diagnoseMessaging",
+    "compareToIndustryBenchmark",
+    "generateAccountSetupPlan",
+  ]);
+
+  app.post("/api/bot/chat/agent-stream", asyncHandler(async (req, res) => {
+    try {
+      if (!isGeminiConfigured()) {
+        return res.status(503).json({ error: "AI service is not configured" });
+      }
+
+      const parsed = agentChatSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+      const subAccountId = parsed.data.subAccountId;
+
+      let basePrompt = parsed.data.persona || "You are a helpful AI assistant.";
+      
+      if (parsed.data.currentPath) {
+        basePrompt += `\n\nCurrent user location: ${parsed.data.currentPath}`;
+      }
+      
+      const systemPrompt = basePrompt + getIndustryContext(parsed.data.industry) + getLanguageInstruction(parsed.data.language);
+
+      const chatMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
+        { role: "system", content: systemPrompt },
+      ];
+
+      if (parsed.data.conversationHistory) {
+        for (const msg of parsed.data.conversationHistory.slice(-10)) {
+          chatMessages.push({
+            role: msg.role === "user" ? "user" : "assistant",
+            content: msg.content,
+          });
+        }
+      }
+
+      chatMessages.push({ role: "user", content: parsed.data.message });
+
+      initSSE(res);
+
+      const keepalive = setInterval(() => {
+        try {
+          res.write(`:keepalive\n\n`);
+        } catch {}
+      }, 15000);
+
+      let fullText = "";
+      let textBuffer = "";
+      let closed = false;
+
+      res.on("close", () => {
+        closed = true;
+        clearInterval(keepalive);
+      });
+
+      const stream = geminiChatWithToolsStream(chatMessages as any, { temperature: 0.7, maxTokens: 16384 });
+      
+      function extractBalancedJSON(text: string, startPos: number): { json: string; endPos: number } | null {
+        let braceCount = 0;
+        let inString = false;
+        let escape = false;
+        let start = -1;
+        
+        for (let i = startPos; i < text.length; i++) {
+          const char = text[i];
+          
+          if (escape) {
+            escape = false;
+            continue;
+          }
+          
+          if (char === '\\') {
+            escape = true;
+            continue;
+          }
+          
+          if (char === '"') {
+            inString = !inString;
+            continue;
+          }
+          
+          if (inString) continue;
+          
+          if (char === '{') {
+            if (start === -1) start = i;
+            braceCount++;
+          } else if (char === '}') {
+            braceCount--;
+            if (braceCount === 0 && start !== -1) {
+              return { json: text.slice(start, i + 1), endPos: i + 1 };
+            }
+          }
+        }
+        
+        return null;
+      }
+      
+      for await (const chunk of stream) {
+        if (closed) break;
+        
+        if (chunk.type === "text" && chunk.text) {
+          textBuffer += chunk.text;
+          
+          let searchPos = 0;
+          while (true) {
+            const actionStart = textBuffer.indexOf(":::action", searchPos);
+            if (actionStart === -1) {
+              if (searchPos > 0) {
+                const cleanText = textBuffer.slice(searchPos);
+                if (cleanText.length > 0 && !cleanText.includes(":::action")) {
+                  fullText += cleanText;
+                  sendSSEData(res, { content: cleanText });
+                  textBuffer = "";
+                } else {
+                  textBuffer = cleanText;
+                }
+              } else {
+                const keepTail = Math.min(textBuffer.length, 20);
+                if (textBuffer.length > keepTail) {
+                  const emitText = textBuffer.slice(0, textBuffer.length - keepTail);
+                  fullText += emitText;
+                  sendSSEData(res, { content: emitText });
+                  textBuffer = textBuffer.slice(-keepTail);
+                } else {
+                  textBuffer = textBuffer.slice(-keepTail);
+                }
+              }
+              break;
+            }
+            
+            if (actionStart > searchPos) {
+              const cleanText = textBuffer.slice(searchPos, actionStart);
+              fullText += cleanText;
+              sendSSEData(res, { content: cleanText });
+            }
+            
+            const jsonStart = actionStart + ":::action".length;
+            const extracted = extractBalancedJSON(textBuffer, jsonStart);
+            
+            if (!extracted) {
+              textBuffer = textBuffer.slice(actionStart);
+              break;
+            }
+            
+            const actionEnd = textBuffer.indexOf(":::", extracted.endPos);
+            if (actionEnd === -1) {
+              textBuffer = textBuffer.slice(actionStart);
+              break;
+            }
+            
+            try {
+              const action = JSON.parse(extracted.json);
+              
+              if (action.action === "execute_tool" && action.tool) {
+                if (!AGENT_ALLOWED_TOOLS.has(action.tool)) {
+                  sendSSEData(res, { type: "error", error: `Tool "${action.tool}" is not allowed for agent execution` });
+                  searchPos = actionEnd + 3;
+                  continue;
+                }
+                
+                const context: OperatorContext = {
+                  subAccountId,
+                  autonomyLevel: "draft",
+                  sessionId: `agent-${Date.now()}`,
+                  correlationId: `agent-${Date.now()}`,
+                };
+                
+                const tool = getTool(action.tool);
+                if (tool) {
+                  sendSSEData(res, { type: "step", stepId: action.tool, status: "running", label: `Executing ${tool.name}...` });
+                  
+                  const result = await executeTool(action.tool, action.params || {}, context);
+                  
+                  sendSSEData(res, { type: "step", stepId: action.tool, status: "complete", label: `${tool.name} complete` });
+                  sendSSEData(res, { type: "result", toolName: action.tool, result });
+                } else {
+                  sendSSEData(res, { type: "error", error: `Unknown tool: ${action.tool}` });
+                }
+              } else {
+                sendSSEData(res, { type: "action", ...action });
+              }
+            } catch (e) {
+              console.error("Action parsing error:", e);
+            }
+            
+            searchPos = actionEnd + 3;
+          }
+        } else if (chunk.type === "search_grounding" && chunk.grounding) {
+          sendSSEData(res, { type: "grounding", grounding: chunk.grounding });
+        }
+      }
+      
+      if (textBuffer.length > 0 && !textBuffer.includes(":::action")) {
+        fullText += textBuffer;
+        sendSSEData(res, { content: textBuffer });
+      }
+
+      if (!closed) {
+        sendSSEData(res, { done: true, fullText });
+        res.end();
+      }
+
+      clearInterval(keepalive);
+      await logUsageInternal(null, "AI_CHAT", 1, "Agent chat with tools (stream)");
     } catch (error: any) {
       if (!res.headersSent) {
         res.status(500).json({ error: error.message || "Streaming failed" });

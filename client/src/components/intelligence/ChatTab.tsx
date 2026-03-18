@@ -12,8 +12,11 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { text: streamingText, isStreaming, startStream } = useStreamingResponse();
+  const [activitySteps, setActivitySteps] = useState<Array<{ id: string; label: string; status: "running" | "complete" }>>([]);
+  const [groundingSources, setGroundingSources] = useState<Array<{ title?: string; url?: string }>>([]);
+  const [toolResults, setToolResults] = useState<Array<{ tool: string; data: any }>>([]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -28,6 +31,9 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
     setInput("");
+    setActivitySteps([]);
+    setGroundingSources([]);
+    setToolResults([]);
 
     try {
       const [contextRes, reportRes, insightsRes] = await Promise.all([
@@ -126,21 +132,74 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
       contextPrompt = "\n\n" + parts.join("\n");
 
       const history = updatedMessages.map(m => ({ role: m.role, content: m.content }));
-      await startStream("/api/bot/chat/advisor-stream", {
+      await startStream("/api/bot/chat/agent-stream", {
         message: text.trim(),
         persona: STRATEGIC_PROMPT + contextPrompt,
         conversationHistory: history,
+        currentPath: location,
+        subAccountId,
       }, {
         onDone: (fullText) => {
           setMessages(prev => [...prev, { role: "assistant", content: fullText }]);
+          setActivitySteps([]);
         },
         onError: (err) => {
-          const errorMessage = typeof err === 'string' ? err : (err?.message || JSON.stringify(err) || "Unknown");
+          const errorMessage = typeof err === 'string' ? err : (err?.message || String(err) || "Unknown");
           setMessages(prev => [...prev, { role: "assistant", content: `I'm having trouble connecting right now. This could be a temporary issue with the AI service.\n\nError: ${errorMessage}\n\nPlease try again in a few seconds.` }]);
+          setActivitySteps([]);
+          setGroundingSources([]);
+          setToolResults([]);
+        },
+        onStep: (step) => {
+          setActivitySteps(prev => {
+            const existing = prev.find(s => s.id === step.stepId);
+            if (existing) {
+              return prev.map(s => s.id === step.stepId ? { ...s, status: step.status as "running" | "complete" } : s);
+            }
+            return [...prev, { id: step.stepId, label: step.label, status: step.status as "running" | "complete" }];
+          });
+        },
+        onAction: (action) => {
+          if (action.action === "navigate" && action.path) {
+            setLocation(action.path);
+          }
+        },
+        onGrounding: (grounding) => {
+          const sources: Array<{ title?: string; url?: string }> = [];
+          
+          if (grounding?.webSearchQueries) {
+            sources.push(...grounding.webSearchQueries.slice(0, 3).map((q: any) => ({
+              title: q.query || "Web search",
+              url: `https://google.com/search?q=${encodeURIComponent(q.query || "")}`,
+            })));
+          }
+          
+          if (grounding?.groundingChunks) {
+            for (const chunk of grounding.groundingChunks) {
+              if (chunk.web?.uri && chunk.web?.title) {
+                sources.push({ title: chunk.web.title, url: chunk.web.uri });
+              }
+            }
+          }
+          
+          if (sources.length > 0) {
+            setGroundingSources(prev => {
+              const existingUrls = new Set(prev.map(s => s.url));
+              const newSources = sources.filter(s => s.url && !existingUrls.has(s.url));
+              return [...prev, ...newSources.slice(0, 5)];
+            });
+          }
+        },
+        onResult: (data) => {
+          if (data.toolName && data.result) {
+            setToolResults(prev => [...prev, { tool: data.toolName, data: data.result }]);
+          }
         },
       });
     } catch (err: any) {
-      setMessages(prev => [...prev, { role: "assistant", content: `I'm having trouble connecting right now. This could be a temporary issue with the AI service.\n\nError: ${err?.message || "Unknown"}\n\nPlease try again in a few seconds.` }]);
+      const errorMessage = err?.message || String(err) || "Unknown";
+      setMessages(prev => [...prev, { role: "assistant", content: `I'm having trouble connecting right now. This could be a temporary issue with the AI service.\n\nError: ${errorMessage}\n\nPlease try again in a few seconds.` }]);
+      setActivitySteps([]);
     }
 
     try {
@@ -187,7 +246,7 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
           </div>
         )}
 
-        {isStreaming && !streamingText && (
+        {isStreaming && !streamingText && activitySteps.length === 0 && (
           <div className="flex justify-start">
             <div className="bg-white/[0.03] border border-white/[0.06] text-slate-500 rounded-xl rounded-bl-sm p-3 text-[11px] flex items-center gap-2">
               <div className="flex gap-1">
@@ -196,6 +255,65 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
                 <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "300ms" }} />
               </div>
               Thinking strategically...
+            </div>
+          </div>
+        )}
+
+        {activitySteps.length > 0 && (
+          <div className="flex justify-start">
+            <div className="bg-white/[0.03] border border-white/[0.06] text-slate-400 rounded-xl rounded-bl-sm p-3 text-[11px] space-y-2">
+              {activitySteps.map((step) => (
+                <div key={step.id} className="flex items-center gap-2">
+                  {step.status === "running" ? (
+                    <div className="w-3 h-3 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <div className="w-3 h-3 rounded-full bg-green-500/30 flex items-center justify-center text-green-400 text-[8px]">✓</div>
+                  )}
+                  <span className={step.status === "complete" ? "text-slate-500" : "text-slate-300"}>{step.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {toolResults.length > 0 && (
+          <div className="flex justify-start">
+            <div className="bg-white/[0.03] border border-white/[0.06] text-slate-400 rounded-xl rounded-bl-sm p-2.5 text-[10px] max-w-[85%]">
+              {toolResults.map((tr, i) => (
+                <div key={i} className="mb-2 last:mb-0">
+                  <div className="text-violet-400 font-medium mb-1">✓ {tr.tool}</div>
+                  {tr.data.success && tr.data.data && (
+                    <div className="text-slate-500 space-y-0.5">
+                      {Object.entries(tr.data.data).slice(0, 5).map(([key, value]) => (
+                        <div key={key} className="truncate">
+                          <span className="text-slate-600">{key}:</span> {typeof value === 'object' ? JSON.stringify(value).slice(0, 50) : String(value).slice(0, 50)}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {groundingSources.length > 0 && (
+          <div className="flex justify-start">
+            <div className="bg-white/[0.03] border border-white/[0.06] text-slate-400 rounded-xl rounded-bl-sm p-2.5 text-[10px]">
+              <div className="text-slate-500 font-medium mb-1.5">Web Sources:</div>
+              <div className="space-y-1">
+                {groundingSources.slice(0, 5).map((source, i) => (
+                  <a
+                    key={i}
+                    href={source.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block text-cyan-400 hover:text-cyan-300 underline underline-offset-2 truncate"
+                  >
+                    {source.title}
+                  </a>
+                ))}
+              </div>
             </div>
           </div>
         )}

@@ -27,6 +27,8 @@ interface StreamingOptions {
   onStep?: (step: StepUpdate) => void;
   onProgress?: (progress: ProgressUpdate) => void;
   onResult?: (data: any) => void;
+  onAction?: (action: any) => void;
+  onGrounding?: (grounding: any) => void;
 }
 
 export function useStreamingResponse() {
@@ -137,6 +139,16 @@ export function useStreamingResponse() {
             if (data.type === "result") {
               const { type, ...rest } = data;
               options.onResult?.(rest);
+              continue;
+            }
+
+            if (data.type === "action") {
+              options.onAction?.(data);
+              continue;
+            }
+
+            if (data.type === "grounding") {
+              options.onGrounding?.(data.grounding);
               continue;
             }
 
