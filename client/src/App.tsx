@@ -64,6 +64,7 @@ const RevenueCommand = lazy(() => import("@/pages/revenue-command"));
 const LocationSearchPage = lazy(() => import("@/pages/location-search"));
 const NotificationPreferencesPage = lazy(() => import("@/pages/notification-preferences"));
 const ABTestingPage = lazy(() => import("@/pages/ab-testing"));
+const CrashReportsPage = lazy(() => import("@/pages/crash-reports"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const LandingPage = lazy(() => import("@/pages/landing"));
 const MarketersLanding = lazy(() => import("@/pages/marketers-landing"));
@@ -245,6 +246,7 @@ function Router() {
                   <Route path="/command-center" component={CommandCenterPage} />
                   <Route path="/snapshots" component={SnapshotsPage} />
                   <Route path="/sentinel" component={SentinelPage} />
+                  <Route path="/crash-reports" component={CrashReportsPage} />
                   <Route path="/property-radar" component={PropertyRadarPage} />
                   <Route path="/website-integration" component={WebsiteIntegration} />
                   <Route path="/form-builder" component={FormBuilder} />

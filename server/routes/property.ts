@@ -1070,10 +1070,17 @@ export function registerPropertyRoutes(app: Express) {
   }));
 
   app.get("/api/crash-reports/status/:reportNumber", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
     const reportNumber = req.params.reportNumber.trim().toUpperCase();
     const report = await storage.getCrashReportByNumber(reportNumber);
     if (!report) {
       return res.status(404).json({ error: "Report not found. Submit a request first." });
+    }
+
+    if (report.subAccountId) {
+      if (!(await verifyAccountOwnership(req, res, report.subAccountId))) return;
     }
 
     const response: Record<string, any> = {
@@ -1087,8 +1094,7 @@ export function registerPropertyRoutes(app: Express) {
 
     if (report.status === "COMPLETED" && report.data) {
       const rawData = typeof report.data === "string" ? JSON.parse(report.data as string) : report.data;
-      const { applyComplianceRedaction } = await import("../crashReportWorker");
-      response.data = applyComplianceRedaction(rawData, report.requesterRole);
+      response.data = rawData;
     }
 
     if (report.status === "FAILED" || report.status === "NOT_FOUND") {
@@ -1099,7 +1105,15 @@ export function registerPropertyRoutes(app: Express) {
   }));
 
   app.get("/api/crash-reports", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
     const subAccountId = req.query.subAccountId ? Number(req.query.subAccountId) : undefined;
+    if (!subAccountId) {
+      return res.status(400).json({ error: "subAccountId is required" });
+    }
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
     const reports = await storage.getCrashReports(subAccountId);
     res.json(reports.map(r => ({
       id: r.id,
@@ -1117,18 +1131,20 @@ export function registerPropertyRoutes(app: Express) {
   }));
 
   app.get("/api/crash-reports/:id", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
     const id = Number(req.params.id);
     const report = await storage.getCrashReport(id);
     if (!report) return res.status(404).json({ error: "Report not found" });
 
-    let data = report.data && typeof report.data === "string"
+    if (report.subAccountId) {
+      if (!(await verifyAccountOwnership(req, res, report.subAccountId))) return;
+    }
+
+    const data = report.data && typeof report.data === "string"
       ? JSON.parse(report.data as string)
       : report.data;
-
-    if (data) {
-      const { applyComplianceRedaction } = await import("../crashReportWorker");
-      data = applyComplianceRedaction(data, report.requesterRole);
-    }
 
     res.json({ ...report, data });
   }));

@@ -274,41 +274,6 @@ async function fetchReportDetail(reportNumber: string): Promise<FLHSMVReportData
   }
 }
 
-const PII_FIELDS = ["Name", "Address", "TagNumber", "InsuranceCompany"];
-
-function maskValue(val: string): string {
-  if (!val || val.length <= 2) return "***";
-  return val[0] + "*".repeat(val.length - 2) + val[val.length - 1];
-}
-
-function redactObject(obj: any): any {
-  if (obj === null || obj === undefined) return obj;
-  if (typeof obj === "string") return obj;
-  if (Array.isArray(obj)) return obj.map(item => redactObject(item));
-  if (typeof obj === "object") {
-    const result: Record<string, any> = {};
-    for (const [key, value] of Object.entries(obj)) {
-      if (PII_FIELDS.includes(key) && typeof value === "string") {
-        result[key] = maskValue(value);
-      } else if (typeof value === "object") {
-        result[key] = redactObject(value);
-      } else {
-        result[key] = value;
-      }
-    }
-    return result;
-  }
-  return obj;
-}
-
-export function applyComplianceRedaction(data: any, requesterRole: string | null | undefined): any {
-  const privilegedRoles = ["admin", "law_enforcement", "insurance_adjuster", "attorney", "owner"];
-  if (requesterRole && privilegedRoles.includes(requesterRole)) {
-    return data;
-  }
-  return redactObject(data);
-}
-
 async function processReport(reportId: number, reportNumber: string): Promise<void> {
   console.log(`[CRASH-WORKER] Processing report ${reportNumber} (id=${reportId})`);
 

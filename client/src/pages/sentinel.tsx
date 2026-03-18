@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { AddressAutocomplete } from "@/components/address-autocomplete";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { useLocation } from "wouter";
 import type { SubAccount, SentinelIncident, SentinelConfig } from "@shared/schema";
 import { hasFeature } from "@shared/schema";
 
@@ -43,6 +44,7 @@ function formatDateTime(dateStr: string) {
 }
 
 export default function Sentinel() {
+  const [, navigate] = useLocation();
   const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_sentinel");
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -283,6 +285,14 @@ export default function Sentinel() {
           <div className="flex gap-2">
             <Button variant="ghost" size="sm" onClick={startTutorial} className="text-slate-400 hover:text-white" data-testid="button-start-tutorial">
               <BookOpen size={16} className="mr-1" /> Tutorial
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => navigate("/crash-reports")}
+              className="border-white/10 text-white hover:bg-white/10 gap-2"
+              data-testid="button-crash-reports"
+            >
+              <Eye size={16} /> Crash Reports
             </Button>
             <Button
               variant="outline"
