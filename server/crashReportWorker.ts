@@ -283,20 +283,22 @@ async function processReport(reportId: number, reportNumber: string): Promise<vo
     if (!searchResult) {
       const report = await storage.getCrashReport(reportId);
       const retries = report?.retryCount ?? 0;
+      const attemptNumber = retries + 1;
 
-      if (retries < MAX_RETRIES) {
+      if (attemptNumber < MAX_RETRIES) {
         await storage.updateCrashReport(reportId, {
           status: "PENDING",
-          retryCount: retries + 1,
-          errorLog: `Attempt ${retries + 1}: Report not found in FLHSMV system. Will retry.`,
+          retryCount: attemptNumber,
+          errorLog: `Attempt ${attemptNumber}/${MAX_RETRIES}: Report not found in FLHSMV system. Will retry.`,
         });
-        console.log(`[CRASH-WORKER] Report ${reportNumber} not found, retry ${retries + 1}/${MAX_RETRIES}`);
+        console.log(`[CRASH-WORKER] Report ${reportNumber} not found, attempt ${attemptNumber}/${MAX_RETRIES}`);
       } else {
         await storage.updateCrashReport(reportId, {
           status: "NOT_FOUND",
+          retryCount: attemptNumber,
           errorLog: `Report not found after ${MAX_RETRIES} attempts. It may not be in the FLHSMV system yet (reports can take 10+ days to appear).`,
         });
-        console.log(`[CRASH-WORKER] Report ${reportNumber} marked NOT_FOUND after ${MAX_RETRIES} retries`);
+        console.log(`[CRASH-WORKER] Report ${reportNumber} marked NOT_FOUND after ${MAX_RETRIES} attempts`);
       }
       return;
     }
@@ -321,18 +323,22 @@ async function processReport(reportId: number, reportNumber: string): Promise<vo
   } catch (err: any) {
     const report = await storage.getCrashReport(reportId);
     const retries = report?.retryCount ?? 0;
+    const attemptNumber = retries + 1;
 
-    if (retries < MAX_RETRIES) {
+    if (attemptNumber < MAX_RETRIES) {
       await storage.updateCrashReport(reportId, {
         status: "PENDING",
-        retryCount: retries + 1,
-        errorLog: `Attempt ${retries + 1} failed: ${err.message}`,
+        retryCount: attemptNumber,
+        errorLog: `Attempt ${attemptNumber}/${MAX_RETRIES} failed: ${err.message}`,
       });
+      console.log(`[CRASH-WORKER] Report ${reportNumber} failed, attempt ${attemptNumber}/${MAX_RETRIES}`);
     } else {
       await storage.updateCrashReport(reportId, {
         status: "FAILED",
+        retryCount: attemptNumber,
         errorLog: `Failed after ${MAX_RETRIES} attempts. Last error: ${err.message}`,
       });
+      console.log(`[CRASH-WORKER] Report ${reportNumber} marked FAILED after ${MAX_RETRIES} attempts`);
     }
     console.error(`[CRASH-WORKER] Error processing ${reportNumber}:`, err.message);
   }

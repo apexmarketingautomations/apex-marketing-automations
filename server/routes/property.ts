@@ -1149,6 +1149,83 @@ export function registerPropertyRoutes(app: Express) {
     res.json({ ...report, data });
   }));
 
+  app.post("/api/crash-reports/:id/data", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const id = Number(req.params.id);
+    const report = await storage.getCrashReport(id);
+    if (!report) return res.status(404).json({ error: "Report not found" });
+
+    if (report.subAccountId) {
+      if (!(await verifyAccountOwnership(req, res, report.subAccountId))) return;
+    }
+
+    const rawData = req.body;
+    if (!rawData || typeof rawData !== "object") {
+      return res.status(400).json({ error: "Invalid data: expected JSON object" });
+    }
+
+    const normalizedData: Record<string, any> = {
+      ReportNumber: rawData.ReportNumber || rawData.reportNumber || report.reportNumber,
+      CrashDate: rawData.CrashDate || rawData.crashDate || rawData.date || "",
+      CrashTime: rawData.CrashTime || rawData.crashTime || rawData.time || "",
+      CrashCity: rawData.CrashCity || rawData.crashCity || rawData.city || "",
+      CrashCounty: rawData.CrashCounty || rawData.crashCounty || rawData.county || "",
+      CrashStreet: rawData.CrashStreet || rawData.crashStreet || rawData.street || "",
+      IntersectingStreet: rawData.IntersectingStreet || rawData.intersectingStreet || rawData.intersection || "",
+      Latitude: Number(rawData.Latitude || rawData.latitude || rawData.lat || 0),
+      Longitude: Number(rawData.Longitude || rawData.longitude || rawData.lon || rawData.lng || 0),
+      TotalVehicles: Number(rawData.TotalVehicles || rawData.totalVehicles || rawData.vehicles?.length || 0),
+      TotalInjuries: Number(rawData.TotalInjuries || rawData.totalInjuries || rawData.injuries || 0),
+      TotalFatalities: Number(rawData.TotalFatalities || rawData.totalFatalities || rawData.fatalities || 0),
+      WeatherCondition: rawData.WeatherCondition || rawData.weatherCondition || rawData.weather || "",
+      LightCondition: rawData.LightCondition || rawData.lightCondition || rawData.light || "",
+      RoadSurfaceCondition: rawData.RoadSurfaceCondition || rawData.roadSurfaceCondition || rawData.roadSurface || "",
+      Vehicles: Array.isArray(rawData.Vehicles || rawData.vehicles) 
+        ? (rawData.Vehicles || rawData.vehicles).map((v: any) => ({
+            VehicleNumber: Number(v.VehicleNumber || v.vehicleNumber || v.number || 0),
+            Year: String(v.Year || v.year || ""),
+            Make: String(v.Make || v.make || ""),
+            Model: String(v.Model || v.model || ""),
+            Color: String(v.Color || v.color || ""),
+            TagNumber: String(v.TagNumber || v.tagNumber || v.tag || ""),
+            TagState: String(v.TagState || v.tagState || v.state || ""),
+            InsuranceCompany: String(v.InsuranceCompany || v.insuranceCompany || v.insurance || ""),
+            Driver: {
+              Name: String(v.Driver?.Name || v.driver?.name || v.Driver?.name || ""),
+              Address: String(v.Driver?.Address || v.driver?.address || v.Driver?.address || ""),
+              InjuryType: String(v.Driver?.InjuryType || v.driver?.injuryType || v.Driver?.injuryType || v.driver?.injury || ""),
+            },
+          }))
+        : [],
+      Passengers: Array.isArray(rawData.Passengers || rawData.passengers)
+        ? (rawData.Passengers || rawData.passengers).map((p: any) => ({
+            Name: String(p.Name || p.name || ""),
+            VehicleNumber: Number(p.VehicleNumber || p.vehicleNumber || p.vehicle || 0),
+            InjuryType: String(p.InjuryType || p.injuryType || p.injury || ""),
+          }))
+        : [],
+      Narrative: String(rawData.Narrative || rawData.narrative || rawData.description || ""),
+      DiagramUrl: rawData.DiagramUrl || rawData.diagramUrl || rawData.diagram || null,
+    };
+
+    const reportData = {
+      detail: normalizedData,
+      fetchedAt: new Date().toISOString(),
+      source: "manual",
+    };
+
+    await storage.updateCrashReport(id, {
+      status: "COMPLETED",
+      data: reportData,
+      errorLog: null,
+    });
+
+    console.log(`[CRASH-REPORT] Manual data submitted for report ${report.reportNumber} (id=${id})`);
+    res.json({ success: true, message: "Crash report data saved successfully", data: reportData });
+  }));
+
   // ─── Crash Connect Webhook ───────────────────────────────────────
   app.post("/api/webhook/crashconnect", async (req, res) => {
     const startTime = Date.now();

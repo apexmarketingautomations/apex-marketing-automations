@@ -1,0 +1,85 @@
+The current crash report page is still not showing the real data I need.
+
+What is happening right now:
+
+* The page is displaying a Sentinel-generated incident record wrapped as a crash report
+* I can see basic fields like location/date/county/narrative
+* But I do NOT see the actual detailed report data I want:
+
+  * driver info
+  * passenger info
+  * vehicle info
+  * insurance
+  * tag
+  * full FLHSMV report sections
+
+The current record proves this is still Sentinel-derived data:
+
+* report number is in Sentinel-style format like SENT-...
+* many fields show Unknown
+* narrative is just incident feed text
+
+Do NOT tell me the pipeline is fixed unless the real detailed data is actually being fetched and displayed.
+
+Tasks:
+
+1. IDENTIFY THE TRUE SOURCE OF FULL REPORT DATA
+
+* Find whether the app has any real source for full FLHSMV crash report details
+* Check if full report payloads exist anywhere:
+
+  * database tables
+  * raw payload fields
+  * scraper outputs
+  * integrations
+  * file storage
+* Tell me exactly where the detailed data is supposed to come from
+
+2. VERIFY WHETHER REAL DETAIL DATA EXISTS
+
+* Pick one visible incident/report on this page
+* Trace it end-to-end
+* Confirm whether driver/passenger/vehicle/insurance/tag data exists anywhere for that exact record
+* If not, say clearly: the data does not exist yet
+
+3. STOP WRAPPING BASIC INCIDENTS AS “FULL REPORTS”
+
+* If only Sentinel incident data exists, do not present it as if it is a full FLHSMV report
+* Label it correctly as incident-only data unless real detailed report data is present
+
+4. BUILD THE REAL ENRICHMENT PIPELINE
+
+* If full report data is supposed to be fetched separately, implement that now
+* After Sentinel detects an incident:
+
+  * fetch real detailed report data from the actual source
+  * store it in crash_reports
+  * map all fields properly
+* Do not fill missing sections with fake placeholders or unknown values unless that is truly all the source provides
+
+5. SHOW ME EXACTLY WHICH FIELDS ARE AVAILABLE
+
+* For a selected record, print/log:
+
+  * source fields available from Sentinel
+  * source fields available from FLHSMV/full report source
+  * fields stored in crash_reports
+  * fields rendered in UI
+
+6. FIX THE UI HONESTLY
+
+* If detailed data exists, render it
+* If detailed data does not exist, say exactly which source is missing
+* Do not pretend a wrapped incident is a completed crash report
+
+7. SUCCESS CRITERIA
+   I want to open a report and actually see real detail fields like:
+
+* driver
+* passengers
+* vehicle
+* insurance
+* plate/tag
+* full report sections
+
+If those fields cannot be shown, explain exactly what source is missing and what must be connected next.

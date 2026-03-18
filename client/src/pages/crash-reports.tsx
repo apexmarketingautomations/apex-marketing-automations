@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
   FileText, ChevronLeft, Car, Users, MapPin,
-  CheckCircle2, XCircle, Loader2, Eye, FileWarning
+  CheckCircle2, XCircle, Loader2, Eye, FileWarning, Upload, AlertCircle,
+  Clock, Database, Shield
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAccount } from "@/hooks/use-account";
@@ -93,6 +94,12 @@ function extractReportData(raw: CrashReportStoredData | CrashReportData | null):
   return null;
 }
 
+function getDataSource(raw: CrashReportStoredData | CrashReportData | null): string {
+  if (!raw) return "none";
+  if ('source' in raw && raw.source) return raw.source as string;
+  return "unknown";
+}
+
 const STATUS_CONFIG: Record<string, { icon: typeof CheckCircle2; color: string; bg: string; label: string }> = {
   COMPLETED: { icon: CheckCircle2, color: "text-green-400", bg: "bg-green-500/20 border-green-500/30", label: "Completed" },
   PENDING: { icon: Loader2, color: "text-amber-400", bg: "bg-amber-500/20 border-amber-500/30", label: "Pending" },
@@ -102,24 +109,158 @@ const STATUS_CONFIG: Record<string, { icon: typeof CheckCircle2; color: string; 
 };
 
 function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-    hour: "numeric", minute: "2-digit", hour12: true,
-  });
+  try {
+    return new Date(dateStr).toLocaleDateString("en-US", {
+      month: "short", day: "numeric", year: "numeric",
+      hour: "numeric", minute: "2-digit", hour12: true,
+    });
+  } catch {
+    return dateStr || "—";
+  }
 }
 
 function StatusBadge({ status }: { status: string }) {
   const config = STATUS_CONFIG[status] || STATUS_CONFIG.PENDING;
   const Icon = config.icon;
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${config.bg} ${config.color}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${config.bg} ${config.color}`} data-testid={`badge-status-${status}`}>
       <Icon size={12} className={status === "PENDING" || status === "PROCESSING" ? "animate-spin" : ""} />
       {config.label}
     </span>
   );
 }
 
+function DataSourceBadge({ source }: { source: string }) {
+  if (source === "FLHSMV") {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border bg-blue-500/20 border-blue-500/30 text-blue-400" data-testid="badge-source-flhsmv">
+        <Shield size={12} />
+        FLHSMV Official
+      </span>
+    );
+  }
+  if (source === "manual") {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border bg-orange-500/20 border-orange-500/30 text-orange-400" data-testid="badge-source-manual">
+        <Upload size={12} />
+        Manual Entry
+      </span>
+    );
+  }
+  if (source === "sentinel") {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border bg-purple-500/20 border-purple-500/30 text-purple-400" data-testid="badge-source-sentinel">
+        <Database size={12} />
+        Sentinel Incident
+      </span>
+    );
+  }
+  return null;
+}
+
+function RawDataSubmitForm({ reportId, onSuccess }: { reportId: number; onSuccess: () => void }) {
+  const [rawDataInput, setRawDataInput] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      const data = JSON.parse(rawDataInput);
+      const res = await fetch(`/api/crash-reports/${reportId}/data`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(data),
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to submit data");
+      }
+
+      onSuccess();
+    } catch (err: any) {
+      if (err instanceof SyntaxError) {
+        setSubmitError("Invalid JSON format. Please check your input.");
+      } else {
+        setSubmitError(err.message || "Submission failed");
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-bold text-white flex items-center gap-2">
+          <Upload size={14} className="text-orange-400" />
+          Submit Raw Crash Report Data
+        </h3>
+      </div>
+      <p className="text-slate-400 text-xs mb-3">
+        Paste crash report data as JSON. The system will normalize field names automatically.
+        Supports both PascalCase (CrashDate) and camelCase (crashDate) field names.
+      </p>
+      <textarea
+        value={rawDataInput}
+        onChange={(e) => setRawDataInput(e.target.value)}
+        placeholder={`{
+  "CrashDate": "01/15/2025",
+  "CrashTime": "14:30",
+  "CrashCity": "Miami",
+  "CrashCounty": "Miami-Dade",
+  "CrashStreet": "NW 7th St",
+  "Narrative": "Vehicle 1 rear-ended Vehicle 2...",
+  "Vehicles": [
+    {
+      "VehicleNumber": 1,
+      "Year": "2020",
+      "Make": "Toyota",
+      "Model": "Camry",
+      "Driver": { "Name": "John Doe", "InjuryType": "None" }
+    }
+  ]
+}`}
+        className="w-full h-72 bg-black/50 border border-white/10 rounded-lg p-3 text-slate-300 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-orange-500"
+        data-testid="textarea-raw-data"
+      />
+      {submitError && (
+        <div className="mt-3 bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-red-300 text-xs flex items-start gap-2">
+          <AlertCircle size={14} className="mt-0.5 shrink-0" />
+          {submitError}
+        </div>
+      )}
+      <Button
+        onClick={handleSubmit}
+        disabled={isSubmitting || !rawDataInput.trim()}
+        className="mt-3 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+        data-testid="button-submit-raw-data-form"
+      >
+        {isSubmitting ? (
+          <>
+            <Loader2 size={16} className="mr-2 animate-spin" />
+            Submitting...
+          </>
+        ) : (
+          <>
+            <CheckCircle2 size={16} className="mr-2" />
+            Save Report Data
+          </>
+        )}
+      </Button>
+    </div>
+  );
+}
+
 function ReportDetailView({ reportId, onBack }: { reportId: number; onBack: () => void }) {
+  const queryClient = useQueryClient();
+  const [showRawDataForm, setShowRawDataForm] = useState(false);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
+
   const { data: report, isLoading } = useQuery<CrashReportDetail>({
     queryKey: ["/api/crash-reports", reportId],
     queryFn: async () => {
@@ -128,6 +269,13 @@ function ReportDetailView({ reportId, onBack }: { reportId: number; onBack: () =
       return res.json();
     },
   });
+
+  const handleRawDataSuccess = () => {
+    setSubmitSuccess(true);
+    setShowRawDataForm(false);
+    queryClient.invalidateQueries({ queryKey: ["/api/crash-reports", reportId] });
+    queryClient.invalidateQueries({ queryKey: ["/api/crash-reports"] });
+  };
 
   if (isLoading) {
     return (
@@ -150,6 +298,15 @@ function ReportDetailView({ reportId, onBack }: { reportId: number; onBack: () =
   }
 
   const d = extractReportData(report.data);
+  const source = getDataSource(report.data);
+  const isSentinelOnly = source === "sentinel" && !d;
+  const isWaitingForReport = report.status === "PENDING" || report.status === "PROCESSING";
+  const isFailedOrNotFound = report.status === "FAILED" || report.status === "NOT_FOUND";
+  const retryCount = report.retryCount ?? 0;
+  const updatedAt = report.updatedAt ? new Date(report.updatedAt).getTime() : 0;
+  const ageMinutes = updatedAt ? (Date.now() - updatedAt) / 60000 : 0;
+  const isStuck = isWaitingForReport && (retryCount >= 3 || ageMinutes > 15);
+  const showManualSubmit = (isFailedOrNotFound || isStuck) && !d;
 
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}>
@@ -165,17 +322,79 @@ function ReportDetailView({ reportId, onBack }: { reportId: number; onBack: () =
             </h2>
             <p className="text-slate-500 text-sm">Requested {formatDate(report.createdAt)}</p>
           </div>
-          <StatusBadge status={report.status} />
+          <div className="flex items-center gap-2">
+            <StatusBadge status={report.status} />
+            <DataSourceBadge source={source} />
+          </div>
         </div>
 
         {report.status === "FAILED" && report.errorLog && (
-          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-red-300 text-sm">
+          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-red-300 text-sm mb-4" data-testid="text-error-log">
             {report.errorLog}
+          </div>
+        )}
+
+        {report.status === "NOT_FOUND" && (
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-amber-300 text-sm mb-4" data-testid="text-not-found-info">
+            <div className="flex items-start gap-2">
+              <Clock size={16} className="mt-0.5 shrink-0" />
+              <div>
+                <p className="font-semibold mb-1">Report Not Yet Available</p>
+                <p className="text-amber-300/80 text-xs">
+                  {report.errorLog || "FLHSMV crash reports typically take 10+ days after the incident to appear in the state system. The system will continue checking automatically."}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isWaitingForReport && (
+          <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-lg p-3 text-cyan-300 text-sm mb-4" data-testid="text-processing-info">
+            <div className="flex items-start gap-2">
+              <Loader2 size={16} className="mt-0.5 shrink-0 animate-spin" />
+              <div>
+                <p className="font-semibold mb-1">Searching for Report</p>
+                <p className="text-cyan-300/80 text-xs">
+                  The system is checking FLHSMV for this report. Reports typically become available 10+ days after the crash date.
+                  {retryCount > 0 && ` (Attempt ${retryCount}/5)`}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {submitSuccess && (
+          <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3 text-green-300 text-sm mb-4 flex items-center gap-2" data-testid="text-submit-success">
+            <CheckCircle2 size={16} />
+            Crash report data saved successfully!
+          </div>
+        )}
+
+        {showManualSubmit && (
+          <div className="mt-4">
+            {isStuck && !isFailedOrNotFound && (
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-amber-300 text-sm mb-3 flex items-start gap-2">
+                <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                <p className="text-xs">This report appears stuck. You can submit raw data manually while the system continues retrying.</p>
+              </div>
+            )}
+            {!showRawDataForm ? (
+              <Button
+                onClick={() => setShowRawDataForm(true)}
+                className="bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white"
+                data-testid="button-submit-raw-data"
+              >
+                <Upload size={16} className="mr-2" />
+                Submit Raw Data Manually
+              </Button>
+            ) : (
+              <RawDataSubmitForm reportId={reportId} onSuccess={handleRawDataSuccess} />
+            )}
           </div>
         )}
       </div>
 
-      {d && (
+      {d ? (
         <div className="space-y-6">
           <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6">
             <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
@@ -191,9 +410,9 @@ function ReportDetailView({ reportId, onBack }: { reportId: number; onBack: () =
               {d.Latitude && d.Longitude && (
                 <InfoField label="Coordinates" value={`${d.Latitude}, ${d.Longitude}`} testId="text-crash-coords" />
               )}
-              <InfoField label="Total Vehicles" value={String(d.TotalVehicles)} testId="text-total-vehicles" />
-              <InfoField label="Total Injuries" value={String(d.TotalInjuries)} testId="text-total-injuries" />
-              <InfoField label="Total Fatalities" value={String(d.TotalFatalities)} testId="text-total-fatalities" />
+              <InfoField label="Total Vehicles" value={String(d.TotalVehicles || 0)} testId="text-total-vehicles" />
+              <InfoField label="Total Injuries" value={String(d.TotalInjuries || 0)} testId="text-total-injuries" />
+              <InfoField label="Total Fatalities" value={String(d.TotalFatalities || 0)} testId="text-total-fatalities" />
               <InfoField label="Weather" value={d.WeatherCondition} testId="text-weather" />
               <InfoField label="Light Condition" value={d.LightCondition} testId="text-light" />
               <InfoField label="Road Surface" value={d.RoadSurfaceCondition} testId="text-road-surface" />
@@ -209,9 +428,9 @@ function ReportDetailView({ reportId, onBack }: { reportId: number; onBack: () =
                 {d.Vehicles.map((v, i) => (
                   <div key={i} className="bg-white/5 border border-white/5 rounded-xl p-4" data-testid={`card-vehicle-${i}`}>
                     <div className="flex items-center gap-2 mb-3">
-                      <span className="text-xs font-bold text-white bg-white/10 px-2 py-0.5 rounded">Vehicle {v.VehicleNumber}</span>
+                      <span className="text-xs font-bold text-white bg-white/10 px-2 py-0.5 rounded">Vehicle {v.VehicleNumber || i + 1}</span>
                       <span className="text-sm text-slate-300">
-                        {[v.Year, v.Make, v.Model].filter(Boolean).join(" ")}
+                        {[v.Year, v.Make, v.Model].filter(Boolean).join(" ") || "Unknown Vehicle"}
                       </span>
                       {v.Color && <span className="text-xs text-slate-500">({v.Color})</span>}
                     </div>
@@ -258,6 +477,28 @@ function ReportDetailView({ reportId, onBack }: { reportId: number; onBack: () =
               <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap" data-testid="text-narrative">
                 {d.Narrative}
               </p>
+            </div>
+          )}
+        </div>
+      ) : report.status === "COMPLETED" && !d && (
+        <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6 text-center">
+          <FileWarning size={36} className="mx-auto text-slate-600 mb-3" />
+          <h3 className="text-white font-bold mb-1">Data Format Issue</h3>
+          <p className="text-slate-500 text-sm max-w-md mx-auto">
+            This report has data attached but it could not be parsed into the expected format.
+            You can re-submit raw data to fix this.
+          </p>
+          <Button
+            onClick={() => setShowRawDataForm(true)}
+            className="mt-4 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white"
+            data-testid="button-resubmit-raw-data"
+          >
+            <Upload size={16} className="mr-2" />
+            Re-submit Data
+          </Button>
+          {showRawDataForm && (
+            <div className="mt-4 text-left">
+              <RawDataSubmitForm reportId={reportId} onSuccess={handleRawDataSuccess} />
             </div>
           )}
         </div>
@@ -316,7 +557,7 @@ export default function CrashReports() {
               Crash Reports
             </h1>
             <p className="text-slate-400 text-sm">
-              FLHSMV crash report data — all names, addresses, and details shown in full
+              FLHSMV crash report data — reports typically available 10+ days after incident
             </p>
           </div>
         </div>
@@ -344,6 +585,7 @@ export default function CrashReports() {
             <h3 className="text-white font-bold text-lg mb-2">No Crash Reports</h3>
             <p className="text-slate-500 text-sm max-w-md mx-auto">
               Request a crash report from the Sentinel page to see it here.
+              Reports typically become available 10+ days after the crash date.
             </p>
           </div>
         ) : (
@@ -373,7 +615,7 @@ export default function CrashReports() {
                 </div>
                 <div className="flex items-center gap-3">
                   {report.hasData && (
-                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Data Available</span>
+                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider" data-testid={`text-data-available-${report.id}`}>Data Available</span>
                   )}
                   <Eye size={16} className="text-slate-600 group-hover:text-white transition-colors" />
                 </div>
