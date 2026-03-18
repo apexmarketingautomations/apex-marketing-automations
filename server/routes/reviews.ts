@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { z } from "zod";
+import { sql } from "drizzle-orm";
 import { isGeminiConfigured } from "../gemini";
 import crypto from "crypto";
 import dns from "dns";

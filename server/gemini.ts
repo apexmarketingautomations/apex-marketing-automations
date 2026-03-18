@@ -103,11 +103,13 @@ export async function* geminiChatStream(
 ): AsyncGenerator<string> {
   const { contents, config } = prepareRequest(messages, options);
 
-  const response = await ai.models.generateContentStream({
-    model: "gemini-2.5-flash",
-    contents,
-    config,
-  });
+  const response = await withRetry(() =>
+    ai.models.generateContentStream({
+      model: "gemini-2.5-flash",
+      contents,
+      config,
+    })
+  );
 
   for await (const chunk of response) {
     const text = chunk.text;

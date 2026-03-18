@@ -33,7 +33,7 @@ export async function streamGeminiResponse(
   messages: ChatMessage[],
   options: StreamOptions = {}
 ): Promise<string> {
-  const { temperature = 0.7, maxTokens = 4096, keepaliveIntervalMs = 15000 } = options;
+  const { temperature = 0.7, maxTokens = 8192, keepaliveIntervalMs = 15000 } = options;
 
   initSSE(res);
 

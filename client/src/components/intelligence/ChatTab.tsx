@@ -135,7 +135,8 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
           setMessages(prev => [...prev, { role: "assistant", content: fullText }]);
         },
         onError: (err) => {
-          setMessages(prev => [...prev, { role: "assistant", content: `I'm having trouble connecting right now. This could be a temporary issue with the AI service.\n\nError: ${err || "Unknown"}\n\nPlease try again in a few seconds.` }]);
+          const errorMessage = typeof err === 'string' ? err : (err?.message || JSON.stringify(err) || "Unknown");
+          setMessages(prev => [...prev, { role: "assistant", content: `I'm having trouble connecting right now. This could be a temporary issue with the AI service.\n\nError: ${errorMessage}\n\nPlease try again in a few seconds.` }]);
         },
       });
     } catch (err: any) {

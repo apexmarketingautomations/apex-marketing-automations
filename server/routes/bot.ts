@@ -148,7 +148,7 @@ export function registerBotRoutes(app: Express) {
 
       chatMessages.push({ role: "user", content: parsed.data.message });
 
-      await streamGeminiResponse(res, chatMessages, { temperature: 0.7, maxTokens: 4096 });
+      await streamGeminiResponse(res, chatMessages, { temperature: 0.7, maxTokens: 8192 });
       await logUsageInternal(null, "AI_CHAT", 1, "Strategic advisor chat (stream)");
     } catch (error: any) {
       if (!res.headersSent) {
