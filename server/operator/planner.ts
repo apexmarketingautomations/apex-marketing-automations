@@ -114,6 +114,117 @@ const INTENT_PATTERNS: Array<{
   },
 ];
 
+interface KeywordCategory {
+  keywords: string[];
+  tools: string[];
+  description: string;
+}
+
+const KEYWORD_CATEGORIES: KeywordCategory[] = [
+  {
+    keywords: ["set up", "setup", "account", "onboard", "getting started", "configure my", "help me set up", "initialize"],
+    tools: ["detectMissingSetup", "generateAccountSetupPlan", "getAccountSummary"],
+    description: "Account setup & onboarding",
+  },
+  {
+    keywords: ["integration", "connect", "twilio", "stripe", "meta", "facebook", "instagram", "mailchimp"],
+    tools: ["checkIntegrationHealth", "detectMissingSetup"],
+    description: "Integration setup & health",
+  },
+  {
+    keywords: ["workflow", "automation", "auto-response", "auto response", "automate", "sequence", "follow-up", "follow up"],
+    tools: ["createWorkflow"],
+    description: "Create automation workflow",
+  },
+  {
+    keywords: ["landing page", "website", "webpage", "site", "form", "lead capture"],
+    tools: ["generateLandingPage"],
+    description: "Landing page generation",
+  },
+  {
+    keywords: ["pipeline", "deal", "crm", "sales stage", "funnel"],
+    tools: ["createPipeline"],
+    description: "CRM pipeline setup",
+  },
+  {
+    keywords: ["campaign", "email campaign", "sms campaign", "blast", "outreach", "marketing"],
+    tools: ["launchCampaignDraft"],
+    description: "Campaign creation",
+  },
+  {
+    keywords: ["status", "health", "overview", "summary", "dashboard", "how am i doing", "what's going on"],
+    tools: ["getAccountSummary", "checkIntegrationHealth"],
+    description: "Status & health check",
+  },
+  {
+    keywords: ["diagnose", "debug", "fix", "broken", "not working", "error", "problem", "issue", "troubleshoot"],
+    tools: ["detectMissingSetup", "checkIntegrationHealth"],
+    description: "Diagnostics & troubleshooting",
+  },
+];
+
+function matchKeywordFallback(intent: string): Array<{ name: string; params: Record<string, any> }> | null {
+  const lower = intent.toLowerCase();
+  let bestMatch: KeywordCategory | null = null;
+  let bestScore = 0;
+
+  for (const category of KEYWORD_CATEGORIES) {
+    let score = 0;
+    for (const keyword of category.keywords) {
+      if (lower.includes(keyword)) {
+        score += keyword.length;
+      }
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = category;
+    }
+  }
+
+  if (!bestMatch || bestScore === 0) return null;
+
+  const matched: Array<{ name: string; params: Record<string, any> }> = [];
+  for (const toolName of bestMatch.tools) {
+    const tool = getTool(toolName);
+    if (!tool) continue;
+
+    let params: Record<string, any> = {};
+    if (toolName === "createWorkflow") {
+      params = {
+        name: "Lead Auto-Response",
+        trigger: "new_lead",
+        steps: [
+          { action: "WAIT", duration: 5, unit: "seconds" },
+          { action: "SMS", message: "Hi {{leadName}}, thanks for reaching out! We'll be in touch shortly." },
+        ],
+      };
+    } else if (toolName === "generateLandingPage") {
+      params = { prompt: intent };
+    } else if (toolName === "launchCampaignDraft") {
+      params = { name: "New Campaign", prompt: intent };
+    } else if (toolName === "createPipeline") {
+      params = {
+        stages: [
+          { name: "New Lead", color: "#6366f1" },
+          { name: "Contacted", color: "#f59e0b" },
+          { name: "Qualified", color: "#3b82f6" },
+          { name: "Proposal", color: "#8b5cf6" },
+          { name: "Won", color: "#22c55e" },
+          { name: "Lost", color: "#ef4444" },
+        ],
+      };
+    }
+
+    matched.push({ name: toolName, params });
+  }
+
+  if (matched.length > 0) {
+    console.log(`[PLANNER] Keyword fallback matched: "${bestMatch.description}" (score: ${bestScore})`);
+  }
+
+  return matched.length > 0 ? matched : null;
+}
+
 export async function interpretIntent(userIntent: string, context: OperatorContext): Promise<OperatorPlan> {
   const startTime = Date.now();
   const plan: OperatorPlan = {
@@ -151,6 +262,30 @@ export async function interpretIntent(userIntent: string, context: OperatorConte
         });
       }
       break;
+    }
+  }
+
+  if (!matched) {
+    const keywordMatch = matchKeywordFallback(userIntent);
+    if (keywordMatch) {
+      matched = true;
+      for (let i = 0; i < keywordMatch.length; i++) {
+        const { name, params } = keywordMatch[i];
+        const tool = getTool(name);
+        if (!tool) continue;
+
+        const needsApproval = tool.requiresApproval && context.autonomyLevel !== "execute";
+
+        plan.steps.push({
+          id: crypto.randomUUID(),
+          order: i,
+          toolName: name,
+          parameters: params,
+          description: `${tool.description}`,
+          status: needsApproval ? "awaiting_approval" : "pending",
+          requiresApproval: needsApproval,
+        });
+      }
     }
   }
 

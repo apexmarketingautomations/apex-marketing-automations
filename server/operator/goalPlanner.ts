@@ -1,7 +1,7 @@
 import { db } from "../db";
 import { operatorGoals, operatorPlans, operatorPlanSteps, operatorStepDependencies } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { geminiChat, isGeminiConfigured } from "../gemini";
+import { geminiChat, isGeminiConfigured, isGeminiAvailable } from "../gemini";
 import { PLAN_GENERATION_SYSTEM_PROMPT, PLAN_GENERATION_USER_TEMPLATE, REPLAN_SYSTEM_PROMPT, REPLAN_USER_TEMPLATE } from "./goalPrompts";
 import { GOAL_TYPES } from "./goalTypes";
 import { storage } from "../storage";
@@ -28,8 +28,8 @@ interface PlanOutput {
 }
 
 export async function generatePlan(goal: OperatorGoal, pastExperiences: string = ""): Promise<number | null> {
-  if (!isGeminiConfigured()) {
-    console.log("[GOAL-PLANNER] Gemini not configured, cannot generate plan");
+  if (!isGeminiAvailable()) {
+    console.log("[GOAL-PLANNER] Gemini unavailable (not configured or rate-limited), cannot generate plan");
     return null;
   }
 
@@ -78,7 +78,7 @@ export async function generatePlan(goal: OperatorGoal, pastExperiences: string =
 }
 
 export async function generateReplan(goal: OperatorGoal, currentPlanId: number, pastExperiences: string = ""): Promise<number | null> {
-  if (!isGeminiConfigured()) return null;
+  if (!isGeminiAvailable()) return null;
 
   const currentPlan = await db.select().from(operatorPlans).where(eq(operatorPlans.id, currentPlanId)).then(r => r[0]);
   if (!currentPlan) return null;

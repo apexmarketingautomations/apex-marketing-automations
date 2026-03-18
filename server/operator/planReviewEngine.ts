@@ -1,7 +1,7 @@
 import { db } from "../db";
 import { operatorGoals, operatorPlans, operatorPlanSteps, operatorGoalReviews } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { geminiChat, isGeminiConfigured } from "../gemini";
+import { geminiChat, isGeminiConfigured, isGeminiAvailable } from "../gemini";
 import { REVIEW_SYSTEM_PROMPT, REVIEW_USER_TEMPLATE } from "./goalPrompts";
 import { measureGoalProgress } from "./goalTracker";
 import { generateReplan } from "./goalPlanner";
@@ -35,7 +35,7 @@ export async function runScheduledReview(goalId: number): Promise<ReviewResult |
 
   let review: ReviewResult;
 
-  if (isGeminiConfigured()) {
+  if (isGeminiAvailable()) {
     const recentOutcomes = steps
       .filter(s => s.status === "completed" || s.status === "failed")
       .map(s => `- ${s.title}: ${s.status}${s.failureReason ? ` (${s.failureReason})` : ""}`)

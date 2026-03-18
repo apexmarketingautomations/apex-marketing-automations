@@ -2,8 +2,31 @@ import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.Gemini_API_Key_saas });
 
+let rateLimitedUntil: number = 0;
+const RATE_LIMIT_COOLDOWN_MS = 60_000;
+
 export function isGeminiConfigured(): boolean {
   return !!process.env.Gemini_API_Key_saas;
+}
+
+export function isGeminiRateLimited(): boolean {
+  return Date.now() < rateLimitedUntil;
+}
+
+export function isGeminiAvailable(): boolean {
+  return isGeminiConfigured() && !isGeminiRateLimited();
+}
+
+function markRateLimited(): void {
+  rateLimitedUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
+  console.warn(`[GEMINI] Rate limited — cooling off for ${RATE_LIMIT_COOLDOWN_MS / 1000}s (until ${new Date(rateLimitedUntil).toISOString()})`);
+}
+
+function is429Error(error: any): boolean {
+  const status = error?.status ?? error?.statusCode ?? error?.httpStatusCode;
+  if (status === 429) return true;
+  const message = String(error?.message ?? "").toLowerCase();
+  return message.includes("429") || message.includes("rate limit") || message.includes("resource has been exhausted");
 }
 
 interface ChatMessage {
@@ -63,11 +86,19 @@ function isRetryableError(error: any): boolean {
 }
 
 async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
+  if (isGeminiRateLimited()) {
+    throw new Error("Gemini is rate-limited. Try again in a minute.");
+  }
+
   const delays = [1000, 2000, 4000];
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await fn();
     } catch (error: any) {
+      if (is429Error(error)) {
+        markRateLimited();
+        throw error;
+      }
       if (attempt < maxAttempts && isRetryableError(error)) {
         const delay = delays[attempt - 1];
         console.log(`Gemini API retry attempt ${attempt}/${maxAttempts - 1} after ${delay}ms: ${error?.message ?? error}`);
@@ -121,13 +152,15 @@ export async function* geminiChatStream(
 
 export async function geminiGenerateImage(prompt: string): Promise<string | null> {
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash-exp",
-      contents: prompt,
-      config: {
-        responseModalities: ["TEXT", "IMAGE"],
-      },
-    });
+    const response = await withRetry(() =>
+      ai.models.generateContent({
+        model: "gemini-2.0-flash-exp",
+        contents: prompt,
+        config: {
+          responseModalities: ["TEXT", "IMAGE"],
+        },
+      })
+    );
 
     if (response.candidates && response.candidates[0]?.content?.parts) {
       for (const part of response.candidates[0].content.parts) {

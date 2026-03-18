@@ -49,7 +49,7 @@ Preferred communication style: Simple, everyday language.
 ## External Dependencies
 
 - **PostgreSQL**: Primary data storage.
-- **Google Gemini API**: Used for AI functionalities across various modules including site generation, ad campaigns, bot chat, workflow AI, voice persona generation, and RAG.
+- **Google Gemini API**: Used for AI functionalities across various modules including site generation, ad campaigns, bot chat, workflow AI, voice persona generation, and RAG. Features rate limit protection (60s cooldown on 429 errors) with `isGeminiAvailable()` gating for background services, and keyword-based intent fallback in the operator planner when AI is unavailable.
 - **Twilio**: Phone number provisioning, SMS webhook handling, and WhatsApp Business API messaging.
 - **Vapi**: Voice AI agent deployment and outbound calling.
 - **Mailchimp**: Email campaign sending via Marketing API.

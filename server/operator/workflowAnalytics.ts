@@ -2,7 +2,7 @@ import { db } from "../db";
 import { workflowStepMetrics, workflowOptimizationLogs, workflows } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
 import { storage } from "../storage";
-import { geminiChat, isGeminiConfigured } from "../gemini";
+import { geminiChat, isGeminiConfigured, isGeminiAvailable } from "../gemini";
 import type { WorkflowStepMetric, WorkflowOptimizationLog } from "@shared/schema";
 
 export interface StepAnalytics {
@@ -201,7 +201,7 @@ function generateRuleBasedSuggestions(analytics: StepAnalytics[], steps: any[]):
 }
 
 export async function generateAISuggestions(workflowId: number): Promise<OptimizationSuggestion[]> {
-  if (!isGeminiConfigured()) return [];
+  if (!isGeminiAvailable()) return [];
 
   const analytics = await getWorkflowFunnelAnalytics(workflowId);
   if (!analytics || analytics.totalExecutions < 5) return [];

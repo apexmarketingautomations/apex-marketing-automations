@@ -1,4 +1,4 @@
-import { geminiChat, isGeminiConfigured } from "../gemini";
+import { geminiChat, isGeminiConfigured, isGeminiRateLimited, isGeminiAvailable } from "../gemini";
 import { db } from "../db";
 import { agentTasks, agentBriefings } from "@shared/schema";
 import { eq, and, desc, sql, gte } from "drizzle-orm";
@@ -107,7 +107,10 @@ export async function generateAITaskPlan(
   subAccountId: number,
   context: ContextPacket
 ): Promise<AITaskSuggestion[]> {
-  if (!isGeminiConfigured()) {
+  if (!isGeminiAvailable()) {
+    if (isGeminiRateLimited()) {
+      console.log(`[AGENT-BRAIN] Skipping AI task plan for account #${subAccountId} — Gemini rate-limited`);
+    }
     return [];
   }
 
@@ -265,7 +268,7 @@ export async function generateBriefing(subAccountId: number): Promise<{
 
   let summary: string;
 
-  if (isGeminiConfigured() && tasksSinceLast.length > 0) {
+  if (isGeminiAvailable() && tasksSinceLast.length > 0) {
     try {
       const context = await buildContext(subAccountId);
       const promptContext = buildPromptContext(context);
