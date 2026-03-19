@@ -22,7 +22,7 @@ import {
   startOfWeek,
   endOfWeek,
 } from "date-fns";
-import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, Trash2, Edit2, CalendarIcon, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, Trash2, Edit2, CalendarIcon, Loader2, RefreshCw } from "lucide-react";
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string }> = {
   scheduled: { bg: "bg-cyan-500/20 border-cyan-500/30", text: "text-cyan-400", dot: "bg-cyan-400" },
@@ -42,6 +42,8 @@ interface Appointment {
   contactId?: number | null;
   description?: string | null;
   location?: string | null;
+  googleCalendarEventId?: string | null;
+  googleCalendarId?: string | null;
 }
 
 interface Contact {
@@ -137,6 +139,27 @@ export default function CalendarPage() {
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to delete appointment.", variant: "destructive" });
+    },
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/calendar/sync/${subAccountId}`, { calendarId: "primary" });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: "Google Calendar Synced",
+        description: `${data.created || 0} new, ${data.updated || 0} updated from Google Calendar`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/appointments", subAccountId] });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Sync Failed",
+        description: err?.message || "Could not sync Google Calendar. Make sure Google is connected in Integrations.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -256,6 +279,16 @@ export default function CalendarPage() {
                 </Button>
               </div>
               <Button
+                onClick={() => syncMutation.mutate()}
+                disabled={syncMutation.isPending}
+                variant="outline"
+                className="border-white/10 bg-white/5 text-white hover:bg-white/10 font-semibold"
+                data-testid="button-sync-google-calendar"
+              >
+                <RefreshCw size={16} className={`mr-1 ${syncMutation.isPending ? "animate-spin" : ""}`} />
+                {syncMutation.isPending ? "Syncing..." : "Sync Google Calendar"}
+              </Button>
+              <Button
                 onClick={openNewDialog}
                 className="bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-semibold"
                 data-testid="button-new-appointment"
@@ -353,7 +386,12 @@ export default function CalendarPage() {
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 min-w-0">
-                              <div className="text-sm font-semibold text-white truncate" data-testid={`appointment-title-${appt.id}`}>{appt.title}</div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-sm font-semibold text-white truncate" data-testid={`appointment-title-${appt.id}`}>{appt.title}</span>
+                                {appt.googleCalendarEventId && (
+                                  <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">GCal</span>
+                                )}
+                              </div>
                               <div className="flex items-center gap-1 mt-1 text-xs text-slate-400">
                                 <Clock size={10} />
                                 <span data-testid={`appointment-time-${appt.id}`}>

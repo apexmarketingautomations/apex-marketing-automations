@@ -614,6 +614,8 @@ export const appointments = pgTable("appointments", {
   endTime: timestamp("end_time").notNull(),
   status: text("status").default("scheduled"),
   location: text("location"),
+  googleCalendarEventId: text("google_calendar_event_id"),
+  googleCalendarId: text("google_calendar_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
