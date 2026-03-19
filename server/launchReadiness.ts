@@ -66,7 +66,12 @@ export async function runLaunchReadinessChecks(): Promise<{
   });
 
   const aiStatusObj = getAIProviderStatus();
-  const aiStatusStr = `${aiStatusObj.activeProvider === "openai" ? "OpenAI" : "Gemini"} active${aiStatusObj.circuitBreakerOpen ? " (circuit breaker open)" : ""}`;
+  const aiStatusStr = [
+    `Active=${aiStatusObj.activeProvider}`,
+    `OpenAI=${aiStatusObj.openaiConfigured ? "configured" : "missing"}`,
+    `Gemini=${aiStatusObj.geminiConfigured ? "configured" : "missing"}`,
+    aiStatusObj.circuitBreakerOpen ? "circuit-breaker=open" : null,
+  ].filter(Boolean).join(", ");
   checks.push({
     category: "AI",
     name: "AI Provider",

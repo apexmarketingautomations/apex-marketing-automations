@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { sql } from "drizzle-orm";
+import { getAIProviderStatus, isOpenAIConfigured } from "./aiGateway";
 
 export interface ServiceStatus {
   configured: boolean;
@@ -54,30 +55,27 @@ async function checkDatabase(): Promise<ServiceStatus> {
 }
 
 async function checkOpenAI(): Promise<ServiceStatus> {
-  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-  const baseURL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
-  if (!apiKey) {
-    return { configured: false, authenticated: false, reachable: false, lastSuccessAt: null, degraded: false, detail: "AI_INTEGRATIONS_OPENAI_API_KEY not set" };
+  const configured = isOpenAIConfigured();
+  if (!configured) {
+    return { configured: false, authenticated: false, reachable: false, lastSuccessAt: null, degraded: false, detail: "OPENAI_APEX_INT_KEY not set" };
   }
-  try {
-    const OpenAI = (await import("openai")).default;
-    const client = new OpenAI({ apiKey, ...(baseURL ? { baseURL } : {}) });
-    await client.models.list();
-    lastSuccess.openai = Date.now();
-    return { configured: true, authenticated: true, reachable: true, lastSuccessAt: ts("openai"), degraded: false, detail: "Authenticated and reachable" };
-  } catch (e: any) {
-    const status = e?.status ?? e?.statusCode ?? 0;
-    const authenticated = status !== 401 && status !== 403;
-    const reachable = status !== 0 && status !== 503 && !String(e?.message ?? "").toLowerCase().includes("enotfound") && !String(e?.message ?? "").toLowerCase().includes("timeout");
-    return {
-      configured: true,
-      authenticated,
-      reachable,
-      lastSuccessAt: ts("openai"),
-      degraded: true,
-      detail: e?.message || "Verification failed",
-    };
-  }
+  const gatewayStatus = getAIProviderStatus();
+  const circuitOpen = gatewayStatus.circuitBreakerOpen;
+  const active = gatewayStatus.activeProvider === "openai";
+  const degraded = circuitOpen;
+  const detail = circuitOpen
+    ? `Circuit breaker open since ${gatewayStatus.circuitBreakerTrippedAt} — routing to Gemini`
+    : active
+    ? "Active (primary)"
+    : "Configured but Gemini is active";
+  return {
+    configured: true,
+    authenticated: true,
+    reachable: !circuitOpen,
+    lastSuccessAt: ts("openai"),
+    degraded,
+    detail,
+  };
 }
 
 async function checkGemini(): Promise<ServiceStatus> {

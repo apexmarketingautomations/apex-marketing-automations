@@ -2,16 +2,20 @@ import OpenAI from "openai";
 import { geminiChat, geminiChatStream, isGeminiAvailable, isGeminiConfigured } from "./gemini";
 import crypto from "crypto";
 
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+let _openaiClient: OpenAI | null = null;
+
+function getOpenAIClient(): OpenAI {
+  if (!_openaiClient) {
+    _openaiClient = new OpenAI({ apiKey: process.env.OPENAI_APEX_INT_KEY });
+  }
+  return _openaiClient;
+}
 
 const OPENAI_MODEL = "gpt-4o-mini";
 const GEMINI_FALLBACK_MODEL = "gemini-2.5-flash";
-const DEFAULT_TIMEOUT_MS = 30_000;
-const CIRCUIT_BREAKER_THRESHOLD = 5;
-const CIRCUIT_BREAKER_WINDOW_MS = 60_000;
+const DEFAULT_TIMEOUT_MS = 12_000;
+const CIRCUIT_BREAKER_THRESHOLD = 3;
+const CIRCUIT_BREAKER_WINDOW_MS = 120_000;
 const CIRCUIT_BREAKER_COOLDOWN_MS = 120_000;
 const MAX_OPENAI_RETRIES = 1;
 
@@ -26,6 +30,8 @@ export interface AIOptions {
   jsonMode?: boolean;
   timeoutMs?: number;
   route?: string;
+  traceId?: string;
+  subAccountId?: string | number;
 }
 
 export interface AIResponse {
@@ -58,10 +64,30 @@ const circuitBreaker: CircuitBreakerState = {
   trippedAt: null,
 };
 
-function isOpenAIConfigured(): boolean {
-  return !!(
-    process.env.AI_INTEGRATIONS_OPENAI_API_KEY &&
-    process.env.AI_INTEGRATIONS_OPENAI_BASE_URL
+export function isOpenAIConfigured(): boolean {
+  return !!process.env.OPENAI_APEX_INT_KEY;
+}
+
+function isAuthError(err: any): boolean {
+  const status = err?.status ?? err?.statusCode ?? err?.httpStatusCode;
+  return status === 401 || status === 403;
+}
+
+function isTransientError(err: any): boolean {
+  if (isAuthError(err)) return false;
+  const code = err?.code;
+  if (code === "ECONNRESET" || code === "ETIMEDOUT" || code === "ENOTFOUND") return true;
+  const status = err?.status ?? err?.statusCode ?? err?.httpStatusCode;
+  if (status === 429 || status === 500 || status === 503) return true;
+  const message = String(err?.message ?? "").toLowerCase();
+  return (
+    message.includes("429") ||
+    message.includes("rate limit") ||
+    message.includes("500") ||
+    message.includes("503") ||
+    message.includes("network") ||
+    message.includes("timeout") ||
+    message.includes("econnreset")
   );
 }
 
@@ -122,12 +148,18 @@ export function getAIProviderStatus(): {
   };
 }
 
+export function isAIConfigured(): boolean {
+  return isOpenAIConfigured() || isGeminiConfigured();
+}
+
 function generateRequestId(): string {
   return crypto.randomBytes(8).toString("hex");
 }
 
 function logObservability(entry: {
   requestId: string;
+  traceId?: string;
+  subAccountId?: string | number;
   route?: string;
   provider: "openai" | "gemini";
   model?: string;
@@ -167,7 +199,7 @@ async function callOpenAI(
   const { temperature = 0.7, maxTokens = 4096, jsonMode = false, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
 
   const response = await withTimeout(
-    openai.chat.completions.create({
+    getOpenAIClient().chat.completions.create({
       model: OPENAI_MODEL,
       messages: messages.map((m) => ({ role: m.role, content: m.content })),
       temperature,
@@ -198,7 +230,7 @@ async function callOpenAIWithTools(
   const { temperature = 0.7, maxTokens = 4096, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
 
   const response = await withTimeout(
-    openai.chat.completions.create({
+    getOpenAIClient().chat.completions.create({
       model: OPENAI_MODEL,
       messages: messages.map((m) => ({ role: m.role, content: m.content })),
       temperature,
@@ -232,8 +264,11 @@ async function callGemini(
   messages: ChatMessage[],
   options: AIOptions = {}
 ): Promise<AIResponse> {
-  const { temperature = 0.7, maxTokens = 4096, jsonMode = false } = options;
-  const text = await geminiChat(messages, { temperature, maxTokens, jsonMode });
+  const { temperature = 0.7, maxTokens = 4096, jsonMode = false, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
+  const text = await withTimeout(
+    geminiChat(messages, { temperature, maxTokens, jsonMode }),
+    timeoutMs
+  );
   return {
     text,
     provider: "gemini",
@@ -241,75 +276,62 @@ async function callGemini(
   };
 }
 
+function selectProvider(): "openai" | "gemini" {
+  return isOpenAIConfigured() && !isCircuitOpen() ? "openai" : "gemini";
+}
+
 export async function aiChat(
   messages: ChatMessage[],
   options: AIOptions = {}
 ): Promise<AIResponse> {
   const requestId = generateRequestId();
-  const route = options.route;
+  const { route, traceId, subAccountId } = options;
   const start = Date.now();
-  let fallbackTriggered = false;
-
-  if (isOpenAIConfigured() && !isCircuitOpen()) {
-    for (let attempt = 0; attempt <= MAX_OPENAI_RETRIES; attempt++) {
-      try {
-        const result = await callOpenAI(messages, options);
-        logObservability({
-          requestId,
-          route,
-          provider: "openai",
-          model: result.model,
-          latencyMs: Date.now() - start,
-          success: true,
-          fallbackTriggered: false,
-        });
-        return result;
-      } catch (err: any) {
-        recordOpenAIFailure();
-        if (attempt < MAX_OPENAI_RETRIES) {
-          console.warn(`[AI-GATEWAY] OpenAI attempt ${attempt + 1} failed (retrying): ${err?.message}`);
-          continue;
-        }
-        console.warn(`[AI-GATEWAY] OpenAI failed after ${MAX_OPENAI_RETRIES + 1} attempt(s): ${err?.message} — falling back to Gemini`);
-        fallbackTriggered = true;
-      }
-    }
-  } else if (!isOpenAIConfigured()) {
-    fallbackTriggered = true;
-  } else {
-    fallbackTriggered = true;
-    console.log("[AI-GATEWAY] Circuit breaker open — routing directly to Gemini");
-  }
-
-  if (!isGeminiAvailable()) {
-    const latencyMs = Date.now() - start;
-    logObservability({ requestId, route, provider: "gemini", latencyMs, success: false, fallbackTriggered, error: "No AI provider available" });
-    throw new Error("No AI provider available (OpenAI circuit open, Gemini unavailable)");
-  }
+  const provider = selectProvider();
 
   try {
+    if (provider === "openai") {
+      for (let attempt = 0; attempt <= MAX_OPENAI_RETRIES; attempt++) {
+        try {
+          const result = await callOpenAI(messages, options);
+          logObservability({
+            requestId, traceId, subAccountId, route,
+            provider: "openai",
+            model: result.model,
+            latencyMs: Date.now() - start,
+            success: true,
+            fallbackTriggered: false,
+          });
+          return result;
+        } catch (err: any) {
+          recordOpenAIFailure();
+          if (!isAuthError(err) && attempt < MAX_OPENAI_RETRIES && isTransientError(err)) {
+            console.warn(`[AI-GATEWAY] OpenAI attempt ${attempt + 1} failed (retrying): ${err?.message}`);
+            continue;
+          }
+          throw err;
+        }
+      }
+    }
+
+    if (!isGeminiAvailable()) {
+      logObservability({ requestId, traceId, subAccountId, route, provider: "gemini", model: GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: false, error: "No AI provider available" });
+      return { text: "[AI Error: No AI provider available]", provider: "gemini", model: GEMINI_FALLBACK_MODEL };
+    }
+
     const result = await callGemini(messages, options);
     logObservability({
-      requestId,
-      route,
+      requestId, traceId, subAccountId, route,
       provider: "gemini",
       model: result.model,
       latencyMs: Date.now() - start,
       success: true,
-      fallbackTriggered,
+      fallbackTriggered: false,
     });
     return result;
   } catch (err: any) {
-    logObservability({
-      requestId,
-      route,
-      provider: "gemini",
-      latencyMs: Date.now() - start,
-      success: false,
-      fallbackTriggered,
-      error: err?.message,
-    });
-    throw err;
+    logObservability({ requestId, traceId, subAccountId, route, provider, model: provider === "openai" ? OPENAI_MODEL : GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: false, error: err?.message });
+    return { text: `[AI Error: ${err?.message ?? "unknown"}]`, provider, model: provider === "openai" ? OPENAI_MODEL : GEMINI_FALLBACK_MODEL };
   }
 }
 
@@ -318,117 +340,114 @@ export async function* aiChatStream(
   options: AIOptions = {}
 ): AsyncGenerator<string> {
   const requestId = generateRequestId();
-  const route = options.route;
+  const { route, traceId, subAccountId } = options;
   const start = Date.now();
   let chunksYielded = 0;
-  let fallbackTriggered = false;
+  const provider = selectProvider();
 
-  const shouldUseOpenAI = isOpenAIConfigured() && !isCircuitOpen();
-
-  if (shouldUseOpenAI) {
-    for (let attempt = 0; attempt <= MAX_OPENAI_RETRIES; attempt++) {
-      try {
-        const { temperature = 0.7, maxTokens = 4096, jsonMode = false, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
-
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeoutMs);
-
+  try {
+    if (provider === "openai") {
+      for (let attempt = 0; attempt <= MAX_OPENAI_RETRIES; attempt++) {
         try {
-          const stream = await openai.chat.completions.create({
-            model: OPENAI_MODEL,
-            messages: messages.map((m) => ({ role: m.role, content: m.content })),
-            temperature,
-            max_tokens: maxTokens,
-            stream: true,
-            ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
-          });
+          const { temperature = 0.7, maxTokens = 4096, jsonMode = false, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
 
-          clearTimeout(timer);
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-          for await (const chunk of stream) {
-            const delta = chunk.choices[0]?.delta?.content ?? "";
-            if (delta) {
-              chunksYielded++;
-              yield delta;
+          try {
+            const stream = await getOpenAIClient().chat.completions.create({
+              model: OPENAI_MODEL,
+              messages: messages.map((m) => ({ role: m.role, content: m.content })),
+              temperature,
+              max_tokens: maxTokens,
+              stream: true,
+              ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
+            }, { signal: controller.signal });
+
+            clearTimeout(timer);
+
+            for await (const chunk of stream) {
+              const delta = chunk.choices[0]?.delta?.content ?? "";
+              if (delta) {
+                chunksYielded++;
+                yield delta;
+              }
             }
-          }
 
-          logObservability({
-            requestId,
-            route,
-            provider: "openai",
-            model: OPENAI_MODEL,
-            latencyMs: Date.now() - start,
-            success: true,
-            fallbackTriggered: false,
-          });
-          return;
-        } catch (err: any) {
-          clearTimeout(timer);
-          if (chunksYielded > 0) {
             logObservability({
-              requestId,
-              route,
+              requestId, traceId, subAccountId, route,
               provider: "openai",
               model: OPENAI_MODEL,
               latencyMs: Date.now() - start,
-              success: false,
+              success: true,
               fallbackTriggered: false,
-              error: `Mid-stream error (no fallback): ${err?.message}`,
             });
-            throw new Error(`Stream interrupted after ${chunksYielded} chunks: ${err?.message}`);
+            return;
+          } catch (err: any) {
+            clearTimeout(timer);
+            if (chunksYielded > 0) {
+              logObservability({
+                requestId, traceId, subAccountId, route,
+                provider: "openai",
+                model: OPENAI_MODEL,
+                latencyMs: Date.now() - start,
+                success: false,
+                fallbackTriggered: false,
+                error: `Mid-stream error (no fallback): ${err?.message}`,
+              });
+              throw new Error(`Stream interrupted after ${chunksYielded} chunks: ${err?.message}`);
+            }
+            throw err;
+          }
+        } catch (err: any) {
+          if (chunksYielded > 0) throw err;
+          recordOpenAIFailure();
+          if (!isAuthError(err) && attempt < MAX_OPENAI_RETRIES && isTransientError(err)) {
+            console.warn(`[AI-GATEWAY] OpenAI stream attempt ${attempt + 1} failed (retrying): ${err?.message}`);
+            continue;
           }
           throw err;
         }
-      } catch (err: any) {
-        if (chunksYielded > 0) throw err;
-        recordOpenAIFailure();
-        if (attempt < MAX_OPENAI_RETRIES) {
-          console.warn(`[AI-GATEWAY] OpenAI stream attempt ${attempt + 1} failed (retrying): ${err?.message}`);
-          continue;
-        }
-        console.warn(`[AI-GATEWAY] OpenAI stream failed after ${MAX_OPENAI_RETRIES + 1} attempt(s): ${err?.message} — falling back to Gemini`);
-        fallbackTriggered = true;
       }
+      return;
     }
-  } else {
-    if (!shouldUseOpenAI && isOpenAIConfigured()) {
-      console.log("[AI-GATEWAY] Circuit breaker open — routing stream directly to Gemini");
+
+    if (!isGeminiAvailable()) {
+      logObservability({ requestId, traceId, subAccountId, route, provider: "gemini", model: GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: false, error: "No AI provider available" });
+      throw new Error("No AI provider available for streaming");
     }
-    fallbackTriggered = !isOpenAIConfigured() ? false : true;
-  }
 
-  if (!isGeminiAvailable()) {
-    logObservability({ requestId, route, provider: "gemini", latencyMs: Date.now() - start, success: false, fallbackTriggered, error: "No AI provider available" });
-    throw new Error("No AI provider available for streaming");
-  }
-
-  try {
-    const { temperature = 0.7, maxTokens = 4096 } = options;
-    const geminiStream = geminiChatStream(messages, { temperature, maxTokens });
+    const { temperature = 0.7, maxTokens = 4096, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
+    const geminiStream = await withTimeout(
+      Promise.resolve(geminiChatStream(messages, { temperature, maxTokens })),
+      timeoutMs
+    );
     for await (const chunk of geminiStream) {
+      chunksYielded++;
       yield chunk;
     }
     logObservability({
-      requestId,
-      route,
+      requestId, traceId, subAccountId, route,
       provider: "gemini",
       model: GEMINI_FALLBACK_MODEL,
       latencyMs: Date.now() - start,
       success: true,
-      fallbackTriggered,
+      fallbackTriggered: false,
     });
   } catch (err: any) {
     logObservability({
-      requestId,
-      route,
-      provider: "gemini",
+      requestId, traceId, subAccountId, route,
+      provider,
+      model: provider === "openai" ? OPENAI_MODEL : GEMINI_FALLBACK_MODEL,
       latencyMs: Date.now() - start,
       success: false,
-      fallbackTriggered,
+      fallbackTriggered: false,
       error: err?.message,
     });
-    throw err;
+    if (chunksYielded > 0) {
+      throw err;
+    }
+    yield `[AI Error: ${err?.message ?? "stream failed"}]`;
   }
 }
 
@@ -438,81 +457,64 @@ export async function aiChatWithTools(
   options: AIOptions = {}
 ): Promise<AIResponse> {
   const requestId = generateRequestId();
-  const route = options.route;
+  const { route, traceId, subAccountId } = options;
   const start = Date.now();
-  let fallbackTriggered = false;
-
-  if (isOpenAIConfigured() && !isCircuitOpen()) {
-    for (let attempt = 0; attempt <= MAX_OPENAI_RETRIES; attempt++) {
-      try {
-        const result = await callOpenAIWithTools(messages, tools, options);
-        logObservability({
-          requestId,
-          route,
-          provider: "openai",
-          model: result.model,
-          latencyMs: Date.now() - start,
-          success: true,
-          fallbackTriggered: false,
-        });
-        return result;
-      } catch (err: any) {
-        recordOpenAIFailure();
-        if (attempt < MAX_OPENAI_RETRIES) {
-          console.warn(`[AI-GATEWAY] OpenAI (tools) attempt ${attempt + 1} failed (retrying): ${err?.message}`);
-          continue;
-        }
-        console.warn(`[AI-GATEWAY] OpenAI (tools) failed after ${MAX_OPENAI_RETRIES + 1} attempt(s): ${err?.message} — falling back to Gemini`);
-        fallbackTriggered = true;
-      }
-    }
-  } else {
-    fallbackTriggered = !isOpenAIConfigured() ? false : true;
-    if (!isOpenAIConfigured()) {
-      console.log("[AI-GATEWAY] OpenAI not configured — using Gemini for tools call");
-    }
-  }
-
-  if (!isGeminiAvailable()) {
-    const latencyMs = Date.now() - start;
-    logObservability({ requestId, route, provider: "gemini", latencyMs, success: false, fallbackTriggered, error: "No AI provider available" });
-    throw new Error("No AI provider available for tool-calling request");
-  }
-
-  const toolDescriptions = tools
-    .map((t) => `Tool: ${t.function.name} — ${t.function.description || ""}`)
-    .join("\n");
-  const messagesWithTools = [
-    ...messages,
-    {
-      role: "system" as const,
-      content: `Available tools:\n${toolDescriptions}\n\nIf you need to call a tool, include it in your response using the :::action{...}::: format.`,
-    },
-  ];
+  const provider = selectProvider();
 
   try {
+    if (provider === "openai") {
+      for (let attempt = 0; attempt <= MAX_OPENAI_RETRIES; attempt++) {
+        try {
+          const result = await callOpenAIWithTools(messages, tools, options);
+          logObservability({
+            requestId, traceId, subAccountId, route,
+            provider: "openai",
+            model: result.model,
+            latencyMs: Date.now() - start,
+            success: true,
+            fallbackTriggered: false,
+          });
+          return result;
+        } catch (err: any) {
+          recordOpenAIFailure();
+          if (!isAuthError(err) && attempt < MAX_OPENAI_RETRIES && isTransientError(err)) {
+            console.warn(`[AI-GATEWAY] OpenAI (tools) attempt ${attempt + 1} failed (retrying): ${err?.message}`);
+            continue;
+          }
+          throw err;
+        }
+      }
+    }
+
+    if (!isGeminiAvailable()) {
+      logObservability({ requestId, traceId, subAccountId, route, provider: "gemini", model: GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: false, error: "No AI provider available" });
+      return { text: "[AI Error: No AI provider available]", provider: "gemini", model: GEMINI_FALLBACK_MODEL };
+    }
+
+    const toolDescriptions = tools
+      .map((t) => `Tool: ${t.function.name} — ${t.function.description || ""}`)
+      .join("\n");
+    const messagesWithTools = [
+      ...messages,
+      {
+        role: "system" as const,
+        content: `Available tools:\n${toolDescriptions}\n\nIf you need to call a tool, include it in your response using the :::action{...}::: format.`,
+      },
+    ];
+
     const result = await callGemini(messagesWithTools, options);
     logObservability({
-      requestId,
-      route,
+      requestId, traceId, subAccountId, route,
       provider: "gemini",
       model: result.model,
       latencyMs: Date.now() - start,
       success: true,
-      fallbackTriggered,
+      fallbackTriggered: false,
     });
     return result;
   } catch (err: any) {
-    logObservability({
-      requestId,
-      route,
-      provider: "gemini",
-      latencyMs: Date.now() - start,
-      success: false,
-      fallbackTriggered,
-      error: err?.message,
-    });
-    throw err;
+    logObservability({ requestId, traceId, subAccountId, route, provider, model: provider === "openai" ? OPENAI_MODEL : GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: false, error: err?.message });
+    return { text: `[AI Error: ${err?.message ?? "unknown"}]`, provider, model: provider === "openai" ? OPENAI_MODEL : GEMINI_FALLBACK_MODEL };
   }
 }
 
@@ -521,6 +523,12 @@ export async function* aiChatWithToolsStream(
   tools: ToolDefinition[],
   options: AIOptions = {}
 ): AsyncGenerator<string> {
+  const requestId = generateRequestId();
+  const { route, traceId, subAccountId } = options;
+  const start = Date.now();
+  let chunksYielded = 0;
+  const provider = selectProvider();
+
   const toolDescriptions = tools
     .map((t) => `Tool: ${t.function.name} — ${t.function.description || ""}`)
     .join("\n");
@@ -533,9 +541,45 @@ export async function* aiChatWithToolsStream(
     },
   ];
 
-  yield* aiChatStream(augmentedMessages, options);
+  try {
+    for await (const chunk of aiChatStream(augmentedMessages, options)) {
+      chunksYielded++;
+      yield chunk;
+    }
+    logObservability({
+      requestId, traceId, subAccountId, route,
+      provider,
+      model: provider === "openai" ? OPENAI_MODEL : GEMINI_FALLBACK_MODEL,
+      latencyMs: Date.now() - start,
+      success: true,
+      fallbackTriggered: false,
+    });
+  } catch (err: any) {
+    logObservability({
+      requestId, traceId, subAccountId, route,
+      provider,
+      model: provider === "openai" ? OPENAI_MODEL : GEMINI_FALLBACK_MODEL,
+      latencyMs: Date.now() - start,
+      success: false,
+      fallbackTriggered: false,
+      error: `aiChatWithToolsStream error after ${chunksYielded} chunks: ${err?.message}`,
+    });
+    if (chunksYielded > 0) {
+      throw err;
+    }
+    yield `[AI Error: ${err?.message ?? "stream failed"}]`;
+  }
 }
 
-export function isAIConfigured(): boolean {
-  return isOpenAIConfigured() || isGeminiConfigured();
+export function logProviderStartup(): void {
+  const openaiActive = isOpenAIConfigured();
+  const geminiActive = isGeminiConfigured();
+  const providers: string[] = [];
+  if (openaiActive) providers.push(`OpenAI (${OPENAI_MODEL}, key=OPENAI_APEX_INT_KEY)`);
+  if (geminiActive) providers.push(`Gemini (${GEMINI_FALLBACK_MODEL})`);
+  if (providers.length === 0) {
+    console.warn("[AI-GATEWAY] No AI providers configured. AI features will be unavailable.");
+  } else {
+    console.log(`[AI-GATEWAY] Providers active: ${providers.join(", ")}. Timeout=${DEFAULT_TIMEOUT_MS}ms, CircuitBreaker=${CIRCUIT_BREAKER_THRESHOLD} failures/${CIRCUIT_BREAKER_WINDOW_MS / 1000}s window.`);
+  }
 }

@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { messages } from "@shared/schema";
 import { storage } from "../storage";
 import { z } from "zod";
-import { aiChat, aiChatStream, aiChatWithToolsStream, isAIConfigured } from "../aiGateway";
+import { aiChat, aiChatStream, isAIConfigured } from "../aiGateway";
 import { geminiGenerateImage } from "../gemini";
 import { streamAIResponse, sendSSEData, initSSE } from "../streaming";
 import { asyncHandler, parseIntParam, logUsageInternal, getIndustryContext, getLanguageInstruction } from "./helpers";
@@ -281,140 +281,97 @@ export function registerBotRoutes(app: Express) {
         clearInterval(keepalive);
       });
 
-      const stream = aiChatWithToolsStream(chatMessages, { temperature: 0.7, maxTokens: 16384, route: "bot-agent-stream" });
-      
-      function extractBalancedJSON(text: string, startPos: number): { json: string; endPos: number } | null {
+      const extractBalancedJSON = (text: string, startPos: number): { json: string; endPos: number } | null => {
         let braceCount = 0;
         let inString = false;
         let escape = false;
         let start = -1;
-        
+
         for (let i = startPos; i < text.length; i++) {
           const char = text[i];
-          
-          if (escape) {
-            escape = false;
-            continue;
-          }
-          
-          if (char === '\\') {
-            escape = true;
-            continue;
-          }
-          
-          if (char === '"') {
-            inString = !inString;
-            continue;
-          }
-          
+          if (escape) { escape = false; continue; }
+          if (char === '\\') { escape = true; continue; }
+          if (char === '"') { inString = !inString; continue; }
           if (inString) continue;
-          
-          if (char === '{') {
-            if (start === -1) start = i;
-            braceCount++;
-          } else if (char === '}') {
-            braceCount--;
-            if (braceCount === 0 && start !== -1) {
-              return { json: text.slice(start, i + 1), endPos: i + 1 };
-            }
-          }
+          if (char === '{') { if (start === -1) start = i; braceCount++; }
+          else if (char === '}') { braceCount--; if (braceCount === 0 && start !== -1) return { json: text.slice(start, i + 1), endPos: i + 1 }; }
         }
-        
         return null;
-      }
-      
-      for await (const chunk of stream) {
+      };
+
+      for await (const chunkText of aiChatStream(chatMessages, { temperature: 0.7, maxTokens: 16384, route: "bot-agent-stream" })) {
         if (closed) break;
-        
-        if (chunk.type === "text" && chunk.text) {
-          textBuffer += chunk.text;
-          
-          let searchPos = 0;
-          while (true) {
-            const actionStart = textBuffer.indexOf(":::action", searchPos);
-            if (actionStart === -1) {
-              if (searchPos > 0) {
-                const cleanText = textBuffer.slice(searchPos);
-                if (cleanText.length > 0 && !cleanText.includes(":::action")) {
-                  fullText += cleanText;
-                  sendSSEData(res, { content: cleanText });
-                  textBuffer = "";
-                } else {
-                  textBuffer = cleanText;
-                }
+
+        textBuffer += chunkText;
+
+        let searchPos = 0;
+        while (true) {
+          const actionStart = textBuffer.indexOf(":::action", searchPos);
+          if (actionStart === -1) {
+            if (searchPos > 0) {
+              const cleanText = textBuffer.slice(searchPos);
+              if (cleanText.length > 0 && !cleanText.includes(":::action")) {
+                fullText += cleanText;
+                sendSSEData(res, { content: cleanText });
+                textBuffer = "";
               } else {
-                const keepTail = Math.min(textBuffer.length, 20);
-                if (textBuffer.length > keepTail) {
-                  const emitText = textBuffer.slice(0, textBuffer.length - keepTail);
-                  fullText += emitText;
-                  sendSSEData(res, { content: emitText });
-                  textBuffer = textBuffer.slice(-keepTail);
-                } else {
-                  textBuffer = textBuffer.slice(-keepTail);
-                }
+                textBuffer = cleanText;
               }
-              break;
-            }
-            
-            if (actionStart > searchPos) {
-              const cleanText = textBuffer.slice(searchPos, actionStart);
-              fullText += cleanText;
-              sendSSEData(res, { content: cleanText });
-            }
-            
-            const jsonStart = actionStart + ":::action".length;
-            const extracted = extractBalancedJSON(textBuffer, jsonStart);
-            
-            if (!extracted) {
-              textBuffer = textBuffer.slice(actionStart);
-              break;
-            }
-            
-            const actionEnd = textBuffer.indexOf(":::", extracted.endPos);
-            if (actionEnd === -1) {
-              textBuffer = textBuffer.slice(actionStart);
-              break;
-            }
-            
-            try {
-              const action = JSON.parse(extracted.json);
-              
-              if (action.action === "execute_tool" && action.tool) {
-                if (!AGENT_ALLOWED_TOOLS.has(action.tool)) {
-                  sendSSEData(res, { type: "error", error: `Tool "${action.tool}" is not allowed for agent execution` });
-                  searchPos = actionEnd + 3;
-                  continue;
-                }
-                
-                const context: OperatorContext = {
-                  subAccountId,
-                  autonomyLevel: "draft",
-                  sessionId: `agent-${Date.now()}`,
-                  correlationId: `agent-${Date.now()}`,
-                };
-                
-                const tool = getTool(action.tool);
-                if (tool) {
-                  sendSSEData(res, { type: "step", stepId: action.tool, status: "running", label: `Executing ${tool.name}...` });
-                  
-                  const result = await executeTool(action.tool, action.params || {}, context);
-                  
-                  sendSSEData(res, { type: "step", stepId: action.tool, status: "complete", label: `${tool.name} complete` });
-                  sendSSEData(res, { type: "result", toolName: action.tool, result });
-                } else {
-                  sendSSEData(res, { type: "error", error: `Unknown tool: ${action.tool}` });
-                }
-              } else {
-                sendSSEData(res, { type: "action", ...action });
+            } else {
+              const keepTail = Math.min(textBuffer.length, 20);
+              if (textBuffer.length > keepTail) {
+                const emitText = textBuffer.slice(0, textBuffer.length - keepTail);
+                fullText += emitText;
+                sendSSEData(res, { content: emitText });
+                textBuffer = textBuffer.slice(-keepTail);
               }
-            } catch (e) {
-              console.error("Action parsing error:", e);
             }
-            
-            searchPos = actionEnd + 3;
+            break;
           }
-        } else if (chunk.type === "search_grounding" && chunk.grounding) {
-          sendSSEData(res, { type: "grounding", grounding: chunk.grounding });
+
+          if (actionStart > searchPos) {
+            const cleanText = textBuffer.slice(searchPos, actionStart);
+            fullText += cleanText;
+            sendSSEData(res, { content: cleanText });
+          }
+
+          const jsonStart = actionStart + ":::action".length;
+          const extracted = extractBalancedJSON(textBuffer, jsonStart);
+          if (!extracted) { textBuffer = textBuffer.slice(actionStart); break; }
+
+          const actionEnd = textBuffer.indexOf(":::", extracted.endPos);
+          if (actionEnd === -1) { textBuffer = textBuffer.slice(actionStart); break; }
+
+          try {
+            const action = JSON.parse(extracted.json);
+            if (action.action === "execute_tool" && action.tool) {
+              if (!AGENT_ALLOWED_TOOLS.has(action.tool)) {
+                sendSSEData(res, { type: "error", error: `Tool "${action.tool}" is not allowed for agent execution` });
+                searchPos = actionEnd + 3;
+                continue;
+              }
+              const context: OperatorContext = {
+                subAccountId,
+                autonomyLevel: "draft",
+                sessionId: `agent-${Date.now()}`,
+                correlationId: `agent-${Date.now()}`,
+              };
+              const tool = getTool(action.tool);
+              if (tool) {
+                sendSSEData(res, { type: "step", stepId: action.tool, status: "running", label: `Executing ${tool.name}...` });
+                const result = await executeTool(action.tool, action.params || {}, context);
+                sendSSEData(res, { type: "step", stepId: action.tool, status: "complete", label: `${tool.name} complete` });
+                sendSSEData(res, { type: "result", toolName: action.tool, result });
+              } else {
+                sendSSEData(res, { type: "error", error: `Unknown tool: ${action.tool}` });
+              }
+            } else {
+              sendSSEData(res, { type: "action", ...action });
+            }
+          } catch (e) {
+            console.error("Action parsing error:", e);
+          }
+          searchPos = actionEnd + 3;
         }
       }
       

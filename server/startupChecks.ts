@@ -1,4 +1,4 @@
-import { getAIProviderStatus, isAIConfigured } from "./ai";
+import { getAIProviderStatus, isAIConfigured, logProviderStartup } from "./aiGateway";
 
 export function runStartupChecks() {
   const results: { service: string; status: "ok" | "warning" | "missing"; detail?: string }[] = [];
@@ -31,12 +31,14 @@ export function runStartupChecks() {
   check("Meta", ["META_ACCESS_TOKEN"], false);
   check("Mailchimp", ["MAILCHIMP_API_KEY"], false);
 
-  const aiProviderStatus = getAIProviderStatus();
+  const aiStatus = getAIProviderStatus();
   results.push({
     service: "AI Provider",
     status: isAIConfigured() ? "ok" : "missing",
-    detail: aiProviderStatus,
+    detail: `Primary=${aiStatus.primary} (configured=${aiStatus.openaiConfigured}), Fallback=${aiStatus.fallback} (configured=${aiStatus.geminiConfigured}), Active=${aiStatus.activeProvider}`,
   });
+
+  logProviderStartup();
 
   console.log("\n=== STARTUP HEALTH CHECK ===");
   for (const r of results) {
