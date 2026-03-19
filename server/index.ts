@@ -521,12 +521,11 @@ async function validateMetaCredentials() {
   try {
     await validateMetaCredentials();
   } catch (metaErr: any) {
-    console.error("[META STARTUP] ===================================================");
-    console.error("[META STARTUP] STARTUP FAILURE: Meta DM credentials are misconfigured.");
-    console.error("[META STARTUP]", metaErr.message);
-    console.error("[META STARTUP] Server startup aborted. Fix the above credentials and restart.");
-    console.error("[META STARTUP] ===================================================");
-    process.exit(1);
+    console.warn("[META STARTUP] ===================================================");
+    console.warn("[META STARTUP] WARNING: Meta DM credentials are misconfigured.");
+    console.warn("[META STARTUP]", metaErr.message);
+    console.warn("[META STARTUP] Meta/Facebook DM features will be unavailable until credentials are fixed.");
+    console.warn("[META STARTUP] ===================================================");
   }
   try {
     await initStripe();
