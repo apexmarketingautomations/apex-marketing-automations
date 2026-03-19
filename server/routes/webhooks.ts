@@ -8,6 +8,7 @@ import { aiChat, isAIConfigured } from "../aiGateway";
 import { ProgressStream } from "../streaming";
 import crypto from "crypto";
 import { asyncHandler, getUserId, requireAdmin, getIndustryContext, getLanguageInstruction, getTwilioClient, vapiConfig } from "./helpers";
+import { assembleDmContext, buildDmMessages } from "../dmContextAssembler";
 import { startTrace, recordStepValue } from "../traceRecorder";
 import { resolveSubAccount, isRoutingFailure } from "../routing/resolver";
 import { persistRoutingFailure } from "../routing/failureQueue";
@@ -181,17 +182,17 @@ export function registerWebhooksRoutes(app: Express) {
       if (isAIConfigured()) {
         const aiStart = Date.now();
         try {
-          const smsIndustry = req.body.industry as string | undefined;
-          const smsLanguage = req.body.language as string | undefined;
-          const baseSystemPrompt = channel === "sms"
-            ? "You are a helpful business receptionist. Keep text replies under 160 characters. Be warm, professional, and concise. If someone wants to book an appointment, suggest they call the office number."
-            : "You are a helpful business assistant responding via chat. Keep replies conversational and under 300 characters. Be warm, professional, and helpful. If someone wants to book an appointment, suggest they call the office number.";
-          const systemPrompt = baseSystemPrompt + getIndustryContext(smsIndustry) + getLanguageInstruction(smsLanguage);
-
-          const smsAiResult = await aiChat([
-            { role: "system", content: systemPrompt },
-            { role: "user", content: incomingMsg.substring(0, 1000) },
-          ], { temperature: 0.7, maxTokens: 1024, route: "webhook-sms-reply" });
+          const dmCtx = await assembleDmContext({
+            subAccountId: matchedAccountId,
+            contactPhone: senderClean,
+            channel,
+          });
+          const aiMessages = buildDmMessages(dmCtx, channel, incomingMsg);
+          const langInstr = getLanguageInstruction(dmCtx.language);
+          if (langInstr && aiMessages.length > 0 && aiMessages[0].role === "system") {
+            aiMessages[0].content += langInstr;
+          }
+          const smsAiResult = await aiChat(aiMessages, { temperature: 0.7, maxTokens: 1024, route: "webhook-sms-reply" });
           aiReply = smsAiResult.text || aiReply;
           recordStepValue(trace, "ai_response_generated", "success", Date.now() - aiStart, {
             provider: "ai",
@@ -215,18 +216,22 @@ export function registerWebhooksRoutes(app: Express) {
           : channel === "messenger" ? `messenger:${stripChannelPrefix(toRaw)}`
           : toRaw;
 
+        let outboundSid: string | null = null;
+        let outboundStatus = "sent";
         try {
           const sentReply = await twilioClient.messages.create({
             body: aiReply,
             from: replyFrom,
             to: senderRaw,
           });
+          outboundSid = sentReply.sid;
           recordStepValue(trace, "outbound_send", "success", Date.now() - sendStart, {
             provider: "twilio",
             metadata: { channel, to: senderClean, messageSid: sentReply.sid },
             disambiguator: sentReply.sid || `reply-${senderClean}`,
           });
         } catch (sendErr: any) {
+          outboundStatus = "failed";
           console.error("[WEBHOOKS] Outbound send failed:", sendErr.message);
           recordStepValue(trace, "outbound_send", "error", Date.now() - sendStart, {
             provider: "twilio",
@@ -234,6 +239,21 @@ export function registerWebhooksRoutes(app: Express) {
             metadata: { channel, to: senderClean },
             disambiguator: `reply-err-${senderClean}`,
           });
+        }
+
+        try {
+          await storage.createMessage({
+            subAccountId: matchedAccountId,
+            contactPhone: senderClean,
+            body: aiReply,
+            direction: "outbound",
+            channel,
+            status: outboundStatus,
+            messageSid: outboundSid || null,
+            traceId: trace.traceId,
+          });
+        } catch (logErr: any) {
+          console.error("[WEBHOOKS] Failed to log outbound reply:", logErr.message);
         }
       }
 
@@ -534,7 +554,7 @@ export function registerWebhooksRoutes(app: Express) {
       }
       console.log(`[TWILIO-INBOUND][${traceId}] Automation step done (${Date.now() - tAutoStart}ms)`);
 
-      // 9. Vapi AI orchestration
+      // 9. Vapi AI orchestration + context-aware fallback
       const tAiStart = Date.now();
       let aiReply: string | null = null;
       let vapiError: string | null = null;
@@ -552,9 +572,31 @@ export function registerWebhooksRoutes(app: Express) {
           console.error(`[TWILIO-INBOUND][${traceId}] Vapi error: ${vapiError}`);
         }
       } else if (!vapiConfig.isConfigured) {
-        console.log(`[TWILIO-INBOUND][${traceId}] Vapi not configured — using fallback`);
+        console.log(`[TWILIO-INBOUND][${traceId}] Vapi not configured — using context-aware AI fallback`);
       } else {
-        console.log(`[TWILIO-INBOUND][${traceId}] No vapiAssistantId for subAccount ${subAccountId} — using fallback`);
+        console.log(`[TWILIO-INBOUND][${traceId}] No vapiAssistantId for subAccount ${subAccountId} — using context-aware AI fallback`);
+      }
+
+      if (!aiReply && isAIConfigured()) {
+        try {
+          const dmCtx = await assembleDmContext({
+            subAccountId,
+            contactPhone: senderClean,
+            channel: "sms",
+          });
+          const langInstr = getLanguageInstruction(dmCtx.language);
+          const aiMsgs = buildDmMessages(dmCtx, "sms", incomingMsg);
+          if (langInstr && aiMsgs.length > 0 && aiMsgs[0].role === "system") {
+            aiMsgs[0].content += langInstr;
+          }
+          const fallbackAiResult = await aiChat(aiMsgs, { temperature: 0.7, maxTokens: 512, route: "twilio-inbound-fallback" });
+          if (fallbackAiResult.text && !fallbackAiResult.text.startsWith("[AI Error")) {
+            aiReply = fallbackAiResult.text;
+            console.log(`[TWILIO-INBOUND][${traceId}] Context-aware AI reply (${Date.now() - tAiStart}ms): ${aiReply.slice(0, 80)}`);
+          }
+        } catch (aiErr: any) {
+          console.error(`[TWILIO-INBOUND][${traceId}] Context-aware AI fallback error:`, aiErr.message);
+        }
       }
 
       const fallbackReply = "Thanks for your message! We'll get back to you shortly.";
@@ -758,6 +800,7 @@ export function registerWebhooksRoutes(app: Express) {
             }
 
             const metaCrmStart = Date.now();
+            const metaInboundThreadId = `${subAccountId}::${senderId}::${channel}`;
             try {
               await db.insert(messages).values({
                 subAccountId,
@@ -767,6 +810,7 @@ export function registerWebhooksRoutes(app: Express) {
                 body: message,
                 status: "received",
                 traceId: metaTraceId,
+                threadId: metaInboundThreadId,
               });
               recordStepValue(metaTrace, "crm_write", "success", Date.now() - metaCrmStart, {
                 metadata: { channel, direction: "inbound" },
@@ -882,10 +926,11 @@ export function registerWebhooksRoutes(app: Express) {
             if (!keywordMatched && isAIConfigured()) {
               const metaAiStart = Date.now();
               try {
-                const businessName = targetAccount?.businessName || targetAccount?.name || "Apex Marketing";
-                const industry = targetAccount?.industry || "";
-                const contactName = existingContactRecord?.firstName || `${channel === "instagram" ? "IG" : "FB"} User`;
-                const bookingLink = "https://calendar.app.google/Fwdtvy7Sy3P8Z1CV6";
+                const dmCtx = await assembleDmContext({
+                  subAccountId,
+                  contactPhone: senderId,
+                  channel,
+                });
 
                 let customPersona = "";
                 try {
@@ -898,60 +943,15 @@ export function registerWebhooksRoutes(app: Express) {
                   console.warn("[META DM] Bot persona fetch skipped:", err.message);
                 }
 
-                let systemPrompt = customPersona || `You are a representative of Apex Marketing Automations — a full-service digital marketing agency that helps businesses grow with AI-powered automation.
-
-WHAT WE OFFER:
-- AI Voice Agents — automated outbound calls and inbound call handling that sound human
-- Facebook & Instagram Ad Management — campaign creation, targeting, optimization
-- Automated Lead Follow-Up — instant SMS, email, and DM responses to new leads
-- CRM & Pipeline Management — track every lead from first touch to closed deal
-- Website & Funnel Building — high-converting landing pages and sales funnels
-- Google Ads & SEO — search engine marketing and optimization
-- Reputation Management — automated review requests and monitoring
-- Social Media Management — content scheduling and engagement
-
-BOOKING:
-When a prospect is interested, wants to learn more, wants to schedule a call, or asks about pricing — send them the booking link: ${bookingLink}
-Always phrase it naturally like "Here's a link to book a quick strategy call" or "Let's set up a time to chat — grab a spot here"`;
-
-                systemPrompt += `\n\nYou are responding via ${channel} DM to ${contactName}.
-
-RULES:
-- Be warm, confident, and direct — like a real team member texting, not a bot
-- Keep replies under 280 characters when possible
-- Use the prospect's name naturally
-- Give specific, helpful answers — never be vague
-- When they show interest or ask about pricing/services, share the booking link: ${bookingLink}
-- Never say you're an AI — you ARE Apex Marketing
-- End with a clear next step or question
-- If they ask about a calendar or booking, immediately share the link`;
-
-                const conversationHistory: Array<{role: string, content: string}> = [];
-                try {
-                  const recentMessages = await db.select().from(messages)
-                    .where(and(
-                      eq(messages.subAccountId, subAccountId),
-                      eq(messages.contactPhone, senderId),
-                      eq(messages.channel, channel)
-                    ))
-                    .orderBy(sql`id DESC`)
-                    .limit(6);
-
-                  for (const msg of recentMessages.reverse()) {
-                    conversationHistory.push({
-                      role: msg.direction === "inbound" ? "user" : "assistant",
-                      content: msg.body || "",
-                    });
-                  }
-                } catch (histErr: any) {
-                  console.warn("[META DM] Conversation history fetch skipped:", histErr.message);
+                if (customPersona && !dmCtx.customAiPrompt) {
+                  dmCtx.customAiPrompt = customPersona;
                 }
 
-                const aiMessages = [
-                  { role: "system" as const, content: systemPrompt },
-                  ...conversationHistory.map(m => ({ role: m.role as "user" | "assistant", content: m.content })),
-                  { role: "user" as const, content: message.substring(0, 1000) },
-                ];
+                const aiMessages = buildDmMessages(dmCtx, channel, message);
+                const langInstr = getLanguageInstruction(dmCtx.language);
+                if (langInstr && aiMessages.length > 0 && aiMessages[0].role === "system") {
+                  aiMessages[0].content += langInstr;
+                }
 
                 const metaDmAiResult = await aiChat(aiMessages, { temperature: 0.7, maxTokens: 1024, route: "webhook-meta-dm-reply" });
                 const aiReply = metaDmAiResult.text;
@@ -963,6 +963,7 @@ RULES:
                 });
 
                 const metaSendStart = Date.now();
+                const metaDmThreadId = `${subAccountId}::${senderId}::${channel}`;
                 if (aiReply && (!accessToken || !pageId)) {
                   console.warn(`[META DM] AI reply generated but cannot send to ${senderId}: META_ACCESS_TOKEN or META_PAGE_ID not configured.`);
                   await db.insert(messages).values({
@@ -973,6 +974,7 @@ RULES:
                     body: aiReply,
                     status: "failed",
                     traceId: metaTraceId,
+                    threadId: metaDmThreadId,
                   });
                   recordStepValue(metaTrace, "outbound_send", "error", Date.now() - metaSendStart, {
                     provider: "meta",
@@ -1020,6 +1022,7 @@ RULES:
                     body: aiReply,
                     status: aiSendStatus,
                     traceId: metaTraceId,
+                    threadId: metaDmThreadId,
                   });
                 }
               } catch (aiErr: any) {
