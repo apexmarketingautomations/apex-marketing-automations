@@ -105,7 +105,7 @@ export function registerAuthRoutes(app: Express) {
     if (fullPath === "/api/log-error") return next();
     if (fullPath === "/api/sms-webhook") return next();
     if (fullPath === "/api/twilio/inbound-sms") return next();
-    if (fullPath === "/api/meta-webhook") return next();
+    if (fullPath.split("?")[0] === "/api/meta-webhook") return next();
     if (fullPath.startsWith("/api/public-card/")) return next();
     if (fullPath === "/api/sentinel/test-trigger") return next();
     if (fullPath === "/api/sentinel/live") return next();

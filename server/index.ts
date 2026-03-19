@@ -425,9 +425,109 @@ function validateEnvVars() {
   console.log("=".repeat(60));
 }
 
+async function validateMetaCredentials() {
+  const accessToken = process.env.META_ACCESS_TOKEN;
+  const pageId = process.env.META_PAGE_ID;
+  const appSecret = process.env.META_APP_SECRET;
+  const issues: string[] = [];
+
+  if (!accessToken && !pageId) {
+    console.log("[META STARTUP] Credentials not configured — skipping Graph API validation");
+    return;
+  }
+
+  console.log("[META STARTUP] Validating Meta credentials against Graph API...");
+
+  if (!accessToken) {
+    const issue = "META_ACCESS_TOKEN not set — required for Facebook/Instagram DM features.";
+    console.error(`[META STARTUP] CREDENTIAL ERROR: ${issue}`);
+    issues.push(issue);
+  }
+
+  if (!pageId) {
+    const issue = "META_PAGE_ID not set — required for outbound DM replies.";
+    console.error(`[META STARTUP] CREDENTIAL ERROR: ${issue}`);
+    issues.push(issue);
+  }
+
+  if (accessToken && pageId) {
+    let proof = "";
+    if (appSecret) {
+      const { createHmac } = await import("crypto");
+      proof = createHmac("sha256", appSecret).update(accessToken).digest("hex");
+    }
+
+    let pageAccessible = false;
+
+    try {
+      const pageUrl = `https://graph.facebook.com/v19.0/${pageId}?fields=name,id&access_token=${accessToken}${proof ? `&appsecret_proof=${proof}` : ""}`;
+      const pageRes = await fetch(pageUrl);
+      const pageData = await pageRes.json() as any;
+      if (pageData.name) {
+        console.log(`[META STARTUP] Page reachable — page="${pageData.name}" (id=${pageData.id})`);
+        pageAccessible = true;
+      } else {
+        const errMsg = pageData?.error?.message || "unknown error";
+        const errCode = pageData?.error?.code;
+        let guidance = "Verify META_PAGE_ID is the numeric Facebook Page ID and the token has pages_read_engagement + pages_messaging permissions.";
+        if (errCode === 100 || errCode === 200) {
+          guidance = "Token lacks permission to access this page — re-authorize with pages_messaging and pages_read_engagement scopes.";
+        } else if (errCode === 190) {
+          guidance = "Token is expired or invalid — generate a new long-lived page access token.";
+        }
+        const pageIssue = `META_PAGE_ID '${pageId}' is inaccessible (Graph error ${errCode}: ${errMsg}). ${guidance}`;
+        console.error(`[META STARTUP] CREDENTIAL ERROR: ${pageIssue}`);
+        issues.push(pageIssue);
+      }
+    } catch (err: any) {
+      const netIssue = `Graph API page check failed with network error: ${err.message}. Cannot confirm Meta credentials are valid.`;
+      console.error(`[META STARTUP] CREDENTIAL ERROR: ${netIssue}`);
+      issues.push(netIssue);
+    }
+
+    if (pageAccessible) {
+      try {
+        const scopeUrl = `https://graph.facebook.com/v19.0/me/permissions?access_token=${accessToken}${proof ? `&appsecret_proof=${proof}` : ""}`;
+        const scopeRes = await fetch(scopeUrl);
+        const scopeData = await scopeRes.json() as any;
+        const granted = (scopeData.data || [])
+          .filter((p: any) => p.status === "granted")
+          .map((p: any) => p.permission as string);
+        if (granted.length > 0) {
+          console.log(`[META STARTUP] Token permissions: [${granted.join(", ")}]`);
+          if (!granted.includes("pages_messaging")) {
+            const scopeIssue = `pages_messaging permission NOT granted — outbound DM replies will be rejected by the Graph API. Re-authorize the Meta app with pages_messaging permission.`;
+            console.error(`[META STARTUP] CREDENTIAL ERROR: ${scopeIssue}`);
+            issues.push(scopeIssue);
+          }
+        } else if (scopeData.error) {
+          console.warn(`[META STARTUP] Could not retrieve token permissions: ${scopeData.error.message}`);
+        }
+      } catch (err: any) {
+        console.warn(`[META STARTUP] Token permissions check failed (network error): ${err.message}`);
+      }
+    }
+  }
+
+  if (issues.length > 0) {
+    const summary = issues.map((issue, i) => `  ${i + 1}. ${issue}`).join("\n");
+    throw new Error(`Meta DM credentials are misconfigured (${issues.length} issue${issues.length > 1 ? "s" : ""}):\n${summary}\nFix the above credential issues then restart the server.`);
+  }
+}
+
 (async () => {
   validateEnvVars();
   runStartupChecks();
+  try {
+    await validateMetaCredentials();
+  } catch (metaErr: any) {
+    console.error("[META STARTUP] ===================================================");
+    console.error("[META STARTUP] STARTUP FAILURE: Meta DM credentials are misconfigured.");
+    console.error("[META STARTUP]", metaErr.message);
+    console.error("[META STARTUP] Server startup aborted. Fix the above credentials and restart.");
+    console.error("[META STARTUP] ===================================================");
+    process.exit(1);
+  }
   try {
     await initStripe();
   } catch (stripeErr) {

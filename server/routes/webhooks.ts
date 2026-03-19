@@ -649,10 +649,14 @@ export function registerWebhooksRoutes(app: Express) {
     const token = req.query["hub.verify_token"];
     const challenge = req.query["hub.challenge"];
     const verifyToken = process.env.META_VERIFY_TOKEN || "apex_verify_2026";
-    if (mode === "subscribe" && token === verifyToken) {
-      console.log("[META WEBHOOK] Verified");
+    const tokenMatches = token === verifyToken;
+    const sanitizedUrl = req.originalUrl.replace(/hub\.verify_token=[^&]*/g, "hub.verify_token=[redacted]");
+    console.log(`[META WEBHOOK] Verification attempt — mode=${mode}, token_match=${tokenMatches}, challenge=${challenge}, url=${sanitizedUrl}`);
+    if (mode === "subscribe" && tokenMatches) {
+      console.log("[META WEBHOOK] Verification SUCCESS — returning challenge");
       res.status(200).send(challenge);
     } else {
+      console.warn(`[META WEBHOOK] Verification FAILED — mode=${mode}, token_match=${tokenMatches}. Check META_VERIFY_TOKEN matches what is configured in the Meta developer portal.`);
       res.sendStatus(403);
     }
   });
@@ -660,7 +664,7 @@ export function registerWebhooksRoutes(app: Express) {
   app.post("/api/meta-webhook", async (req, res) => {
     try {
       const body = req.body;
-      console.log("[META WEBHOOK] Received:", JSON.stringify(body).substring(0, 500));
+      console.log(`[META WEBHOOK] Inbound POST received — object=${body?.object}, entries=${body?.entry?.length ?? 0}, raw=${JSON.stringify(body).substring(0, 500)}`);
 
       if (body.object === "page" || body.object === "instagram") {
         for (const entry of body.entry || []) {
@@ -801,6 +805,7 @@ export function registerWebhooksRoutes(app: Express) {
                 });
               } else if (kw.responseText && accessToken && pageId) {
                 const kwUrl = `https://graph.facebook.com/v19.0/${pageId}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
+                console.log(`[META DM] Sending keyword reply to ${senderId} via pageId=${pageId}, keyword="${kw.keyword}"`);
                 const kwSendRes = await fetch(kwUrl, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -813,7 +818,7 @@ export function registerWebhooksRoutes(app: Express) {
                 const kwSendData = await kwSendRes.json() as any;
                 const kwSendStatus = kwSendRes.ok ? "sent" : "failed";
                 if (!kwSendRes.ok) {
-                  console.error(`[META DM] Keyword reply FAILED to ${senderId}: ${JSON.stringify(kwSendData).substring(0, 300)}`);
+                  console.error(`[META DM] Keyword reply FAILED to ${senderId} — HTTP ${kwSendRes.status}, pageId=${pageId}, error=${JSON.stringify(kwSendData).substring(0, 500)}`);
                 }
 
                 await db.insert(messages).values({
@@ -824,7 +829,7 @@ export function registerWebhooksRoutes(app: Express) {
                   body: kw.responseText,
                   status: kwSendStatus,
                 });
-                if (kwSendRes.ok) console.log(`[META DM] Keyword reply sent to ${senderId}`);
+                if (kwSendRes.ok) console.log(`[META DM] Keyword reply sent to ${senderId}: OK, messageId=${kwSendData?.message_id}`);
               }
 
               if (kw.actionPayload) {
@@ -878,6 +883,7 @@ export function registerWebhooksRoutes(app: Express) {
                   });
                 } else if (aiReply && accessToken && pageId) {
                   const aiUrl = `https://graph.facebook.com/v19.0/${pageId}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
+                  console.log(`[META DM] Sending AI reply to ${senderId} via pageId=${pageId}, token_set=${!!accessToken}, appsecret_proof=${!!appsecretProof}`);
                   const sendRes = await fetch(aiUrl, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -890,9 +896,9 @@ export function registerWebhooksRoutes(app: Express) {
                   const sendData = await sendRes.json() as any;
                   const aiSendStatus = sendRes.ok ? "sent" : "failed";
                   if (!sendRes.ok) {
-                    console.error(`[META DM] AI reply FAILED to ${senderId}: ${JSON.stringify(sendData).substring(0, 300)}`);
+                    console.error(`[META DM] AI reply FAILED to ${senderId} — HTTP ${sendRes.status}, pageId=${pageId}, error=${JSON.stringify(sendData).substring(0, 500)}`);
                   } else {
-                    console.log(`[META DM] AI reply sent to ${senderId}: OK`);
+                    console.log(`[META DM] AI reply sent to ${senderId}: OK, messageId=${sendData?.message_id}`);
                   }
 
                   await db.insert(messages).values({
