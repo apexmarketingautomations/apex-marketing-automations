@@ -1,0 +1,104 @@
+No — Apex Intelligence is a separate bot inside Apex.
+
+I do NOT mean the outbound sales/call agent.
+
+I mean the in-app Apex Intelligence assistant that is supposed to be autonomous inside the platform.
+
+Right now it is not behaving like that.
+It feels too passive and too limited.
+It answers questions, but it does not feel like a real operator that can help users actually set things up across Apex.
+
+What I want is for Apex Intelligence to behave more like an autonomous platform agent, similar to a Vapi-style assistant that can help users complete setup and configuration tasks inside the app.
+
+I want Apex Intelligence to be able to help with things like:
+
+* setting up agents
+* editing agent behavior
+* configuring prompts
+* connecting integrations
+* adjusting settings
+* helping launch automations
+* helping configure domains
+* helping set up calendars
+* helping connect email/SMS
+* helping organize CRM/pipelines
+* helping users understand what is already configured vs missing
+* guiding users step by step through setup flows
+* ideally taking actions where permitted, not just explaining
+
+What I need from you:
+
+1. Audit Apex Intelligence as it exists right now
+   Tell me exactly:
+
+* what it can currently read
+* what tools/functions it currently has access to
+* what pages/features it is aware of
+* what actions it can currently take
+* what it cannot do yet
+
+2. Redesign it as an autonomous in-app operator
+   I want it to work like a real platform copilot:
+
+* user says goal
+* Apex Intelligence figures out which part of the app matters
+* checks current configuration/state
+* identifies missing pieces
+* recommends the next best step
+* helps execute the setup
+
+3. Make it page-aware and context-aware
+   If the user is in a specific part of Apex, the assistant should know that and adapt.
+   Examples:
+
+* on Agents page -> help create/edit/test an agent
+* on Integrations -> help connect services and debug connection issues
+* on Settings -> help change config safely
+* on CRM -> help configure stages, tags, workflows
+* on Websites/Funnels -> help generate/edit assets
+* on Calendar -> help configure booking setup
+
+4. Make it action-oriented, not explanation-oriented
+   Right now it feels like a chatbot.
+   I want it to feel like an operator.
+
+That means it should be able to say and do things like:
+
+* “I checked your current setup”
+* “This integration is not connected yet”
+* “Your booking flow is missing confirmation automation”
+* “Your agent prompt is too generic”
+* “I can help you update that now”
+* “Here are the exact settings to change”
+* “Here’s the fastest path to get this live”
+
+5. Define the architecture needed
+   Show me what Apex Intelligence would need in order to become truly autonomous:
+
+* frontend context access
+* page/state awareness
+* tool registry / action system
+* permissions model
+* read vs write capabilities
+* confirmation flow before sensitive changes
+* memory of user goals and setup progress
+
+6. Implement the first real version
+   Do not just describe it.
+   Build the first real version of this behavior inside Apex.
+
+I want:
+
+* the updated system prompt / behavior spec
+* the tool/action design
+* the page/context awareness logic
+* the decision logic for when to explain vs when to act
+* examples of real setup flows it can handle
+
+Important:
+Do not treat this like a support chatbot upgrade.
+
+This should become Apex’s in-app autonomous setup agent.
+
+The goal is:
+When a user is inside Apex, Apex Intelligence should help them actually get things done across the platform — like setting up agents, integrations, automations, and settings — not just answer questions about them.
