@@ -715,10 +715,11 @@ export function registerWebhooksRoutes(app: Express) {
   });
 
   app.post("/api/meta-webhook", async (req, res) => {
-    try {
-      const body = req.body;
-      console.log(`[META WEBHOOK] Inbound POST received — object=${body?.object}, entries=${body?.entry?.length ?? 0}, raw=${JSON.stringify(body).substring(0, 500)}`);
+    const body = req.body;
+    console.log(`[META WEBHOOK] Inbound POST received — object=${body?.object}, entries=${body?.entry?.length ?? 0}`);
+    res.sendStatus(200);
 
+    try {
       if (body.object === "page" || body.object === "instagram") {
         for (const entry of body.entry || []) {
           const entryPageId = entry.id as string | undefined;
@@ -746,41 +747,41 @@ export function registerWebhooksRoutes(app: Express) {
             let pageId: string | null = null;
             let appSecret: string | null = null;
 
-            const integrationRows = await db.select()
-              .from(integrationConnections)
-              .where(
-                and(
-                  eq(integrationConnections.provider, "meta"),
-                  eq(integrationConnections.status, "connected")
+            try {
+              const { resolveSubAccountByPageId, getMetaConfig } = await import("../metaConfig");
+              subAccountId = await resolveSubAccountByPageId(String(entryPageId));
+              const metaCfg = await getMetaConfig(subAccountId);
+              accessToken = metaCfg.accessToken;
+              pageId = metaCfg.pageId;
+              appSecret = metaCfg.appSecret;
+            } catch {
+              const integrationRows = await db.select()
+                .from(integrationConnections)
+                .where(
+                  and(
+                    eq(integrationConnections.provider, "meta"),
+                    eq(integrationConnections.status, "connected")
+                  )
                 )
-              )
-              .execute()
-              .catch(() => [] as typeof integrationConnections.$inferSelect[]);
+                .execute()
+                .catch(() => [] as typeof integrationConnections.$inferSelect[]);
 
-            for (const conn of integrationRows) {
-              const cfg = conn.config as any;
-              const connPageId = cfg?.pageId || cfg?.page_id || cfg?.META_PAGE_ID;
-              if (connPageId && String(connPageId) === String(entryPageId)) {
-                subAccountId = conn.subAccountId;
-                accessToken = cfg?.accessToken || cfg?.META_ACCESS_TOKEN || null;
-                pageId = connPageId;
-                appSecret = cfg?.appSecret || cfg?.META_APP_SECRET || null;
-                break;
+              for (const conn of integrationRows) {
+                const cfg = conn.config as any;
+                const connPageId = cfg?.pageId || cfg?.page_id || cfg?.META_PAGE_ID;
+                if (connPageId && String(connPageId) === String(entryPageId)) {
+                  subAccountId = conn.subAccountId;
+                  accessToken = cfg?.accessToken || cfg?.META_ACCESS_TOKEN || null;
+                  pageId = connPageId;
+                  appSecret = cfg?.appSecret || cfg?.META_APP_SECRET || null;
+                  break;
+                }
               }
             }
 
             if (!subAccountId) {
-              try {
-                const { resolveSubAccountByPageId, getMetaConfig } = await import("../metaConfig");
-                subAccountId = await resolveSubAccountByPageId(String(entryPageId));
-                const metaCfg = await getMetaConfig(subAccountId);
-                accessToken = metaCfg.accessToken;
-                pageId = metaCfg.pageId;
-                appSecret = metaCfg.appSecret;
-              } catch (resolveErr: any) {
-                console.error(`[META DM] Rejected ${channel} event from sender=${senderId} — page_id=${entryPageId} not mapped to any sub-account. ${resolveErr.message}`);
-                continue;
-              }
+              console.error(`[META DM] Rejected ${channel} event from sender=${senderId} — page_id=${entryPageId} not mapped to any sub-account.`);
+              continue;
             }
 
             console.log(`[META DM] ${channel} from ${senderId} -> subAccountId=${subAccountId} (page=${entryPageId}): ${message.substring(0, 100)}`);
@@ -1104,10 +1105,8 @@ export function registerWebhooksRoutes(app: Express) {
         }
       }
 
-      res.sendStatus(200);
     } catch (err: any) {
-      console.error("[META WEBHOOK] Error:", err.message);
-      res.sendStatus(200);
+      console.error("[META WEBHOOK] Error processing event:", err.message);
     }
   });
 
