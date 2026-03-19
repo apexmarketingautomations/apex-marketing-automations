@@ -28,7 +28,7 @@ export function runStartupChecks() {
   check("Twilio", ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"], true);
   check("Google API", ["GOOGLE_API_KEY"], false);
   check("Vapi", ["VAPI_API_KEY"], false);
-  check("Meta", ["META_ACCESS_TOKEN"], false);
+  check("Meta", ["META_APP_ID"], false);
   check("Mailchimp", ["MAILCHIMP_API_KEY"], false);
 
   const aiStatus = getAIProviderStatus();

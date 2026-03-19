@@ -55,5 +55,5 @@ Preferred communication style: Simple, everyday language.
 - **Mailchimp**: Email campaign sending via Marketing API.
 - **Firebase SDK**: Analytics, Push Notifications (FCM), and Google Auth.
 - **Shopify Integration**: E-commerce automation via Shopify Admin API and webhooks.
-- **Meta Webhooks**: For Facebook/Instagram DM bot functionality.
+- **Meta Webhooks**: For Facebook/Instagram DM bot functionality. **Multi-tenant**: Meta credentials (pageId, accessToken, appSecret) are stored per-account in `sub_accounts` table columns (`meta_page_id`, `meta_access_token`, `meta_app_secret`). Global env vars are auto-migrated on startup. Resolution via `server/metaConfig.ts`: `getMetaConfig(subAccountId)`, `resolveSubAccountByPageId(pageId)`, `buildMetaUrl()`. Webhook routing extracts `entry.id` (page ID) from inbound events to find the correct sub-account.
 - **FLHSMV API**: For polling and retrieving crash reports.

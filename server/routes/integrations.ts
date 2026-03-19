@@ -1294,9 +1294,9 @@ export function registerIntegrationsRoutes(app: Express) {
       {
         name: "Meta / Facebook",
         provider: "meta",
-        description: "Ads, DMs, Instagram",
-        configured: !!(process.env.META_ACCESS_TOKEN && process.env.META_PAGE_ID),
-        envVars: ["META_ACCESS_TOKEN", "META_PAGE_ID", "META_APP_SECRET"],
+        description: "Ads, DMs, Instagram (per-account)",
+        configured: true,
+        envVars: ["metaPageId", "metaAccessToken", "metaAppSecret"],
       },
       {
         name: "Vapi",

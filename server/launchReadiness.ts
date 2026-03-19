@@ -82,8 +82,8 @@ export async function runLaunchReadinessChecks(): Promise<{
   checks.push({
     category: "Social",
     name: "Meta/Facebook",
-    status: (process.env.META_ACCESS_TOKEN && process.env.META_PAGE_ID) ? "pass" : "warn",
-    detail: (process.env.META_ACCESS_TOKEN && process.env.META_PAGE_ID) ? "Configured" : "Missing — DM bot disabled",
+    status: "info",
+    detail: "Per-account config (sub_accounts.meta_page_id, meta_access_token)",
   });
 
   checks.push({

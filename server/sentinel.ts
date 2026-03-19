@@ -197,7 +197,7 @@ export async function deployGeofenceAd(incident: {
   lng?: number | null;
   title?: string;
 }, radiusMiles: number = 1, credentials?: { accessToken?: string; adAccountId?: string }): Promise<GeofenceResult> {
-  const metaAccessToken = credentials?.accessToken || process.env.META_ACCESS_TOKEN;
+  const metaAccessToken = credentials?.accessToken || null;
   const adAccountId = credentials?.adAccountId || process.env.META_AD_ACCOUNT_ID;
 
   if (!metaAccessToken || !adAccountId) {

@@ -674,7 +674,8 @@ export function registerAnalyticsRoutes(app: Express) {
     health.stripe = (process.env.STRIPE_API_SECRET || process.env.STRIPE_SECRET_KEY) ? "ok" : "missing";
     health.twilio = (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) ? "ok" : "missing";
     health.ai = isAIConfigured() ? "ok" : "missing";
-    health.meta = (process.env.META_ACCESS_TOKEN && process.env.META_PAGE_ID) ? "ok" : "missing";
+    const allAccs = await storage.getSubAccounts();
+    health.meta = allAccs.some(a => a.metaAccessToken && a.metaPageId) ? "ok" : "missing";
     health.mailchimp = process.env.MAILCHIMP_API_KEY ? "ok" : "missing";
 
     const allOk = Object.values(health).every(v => v === "ok");

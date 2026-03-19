@@ -387,9 +387,7 @@ function validateEnvVars() {
     { key: "OPENAI_APEX_INT_KEY", label: "OpenAI API Key (AI features, primary)", critical: false },
     { key: "Gemini_API_Key_saas", label: "Gemini API Key (AI features, fallback)", critical: false },
     { key: "GOOGLE_API_KEY", label: "Google API Key (Maps, Places, etc.)", critical: false },
-    { key: "META_ACCESS_TOKEN", label: "Meta/Facebook Access Token (DMs, Instagram)", critical: false },
-    { key: "META_PAGE_ID", label: "Meta Page ID (required for DM replies)", critical: false },
-    { key: "META_APP_SECRET", label: "Meta App Secret (recommended for API security)", critical: false },
+    { key: "META_APP_ID", label: "Meta App ID (optional, for app-level ops)", critical: false },
   ];
 
   let missingCritical = false;
@@ -415,148 +413,60 @@ function validateEnvVars() {
     console.log("[WARN] TWILIO_AUTH_TOKEN is set but TWILIO_ACCOUNT_SID is missing — Twilio will not work.");
   }
 
-  if (!process.env.META_ACCESS_TOKEN || !process.env.META_PAGE_ID) {
-    console.log("[WARN] META_ACCESS_TOKEN or META_PAGE_ID missing — Facebook/Instagram DMs will not be processed. Webhook events will be logged but replies cannot be sent.");
-  }
-  if (process.env.META_ACCESS_TOKEN && !process.env.META_APP_SECRET) {
-    console.log("[WARN] META_APP_SECRET not set — recommended for secure API calls (appsecret_proof).");
-  }
+  console.log("  [INFO] Meta/Facebook credentials are now per-account (sub_accounts.meta_page_id, meta_access_token).");
 
   console.log("=".repeat(60));
 }
 
 async function validateMetaCredentials() {
-  const accessToken = process.env.META_ACCESS_TOKEN;
-  const pageId = process.env.META_PAGE_ID;
-  const appSecret = process.env.META_APP_SECRET;
-  const issues: string[] = [];
+  const { validateMetaConfigForAccount } = await import("./metaConfig");
+  const { storage } = await import("./storage");
+  const { db } = await import("./db");
+  const { subAccounts } = await import("@shared/schema");
+  const { eq } = await import("drizzle-orm");
+  const allAccounts = await storage.getSubAccounts();
+  const configuredAccounts = allAccounts.filter(a => a.metaAccessToken && a.metaPageId);
 
-  if (!accessToken && !pageId) {
-    console.log("[META STARTUP] Credentials not configured — skipping Graph API validation");
-    return;
-  }
-
-  console.log("[META STARTUP] Validating Meta credentials against Graph API...");
-
-  if (!accessToken) {
-    const issue = "META_ACCESS_TOKEN not set — required for Facebook/Instagram DM features.";
-    console.error(`[META STARTUP] CREDENTIAL ERROR: ${issue}`);
-    issues.push(issue);
-  }
-
-  if (!pageId) {
-    const issue = "META_PAGE_ID not set — required for outbound DM replies.";
-    console.error(`[META STARTUP] CREDENTIAL ERROR: ${issue}`);
-    issues.push(issue);
-  }
-
-  if (accessToken && pageId) {
-    const { createHmac } = await import("crypto");
-    const proof = appSecret
-      ? createHmac("sha256", appSecret).update(accessToken).digest("hex")
-      : "";
-    const proofParam = proof ? `&appsecret_proof=${proof}` : "";
-
-    let pageAccessible = false;
-
-    try {
-      const accountsUrl = `https://graph.facebook.com/v19.0/me/accounts?fields=id,name,access_token&access_token=${accessToken}${proofParam}`;
-      const accountsRes = await fetch(accountsUrl);
-      const accountsData = await accountsRes.json() as any;
-
-      if (!accountsData.error) {
-        const pages = accountsData.data || [];
-        const matchedPage = pages.find((p: any) => p.id === pageId);
-        if (matchedPage) {
-          console.log(`[META] Page verified via /me/accounts — "${matchedPage.name}" (id=${matchedPage.id})`);
-          pageAccessible = true;
-        } else if (pages.length > 0) {
-          const availableIds = pages.map((p: any) => `${p.name} (${p.id})`).join(", ");
-          const mismatchIssue = `META_PAGE_ID '${pageId}' not found in token's pages. Available: [${availableIds}]. Update META_PAGE_ID to one of these.`;
-          console.error(`[META] CREDENTIAL ERROR: ${mismatchIssue}`);
-          issues.push(mismatchIssue);
-        }
-      } else {
-        const errCode = accountsData.error.code;
-        if (errCode === 190) {
-          issues.push("Token is expired or invalid — generate a new access token.");
-        }
+  if (configuredAccounts.length === 0) {
+    if (process.env.META_ACCESS_TOKEN && process.env.META_PAGE_ID) {
+      console.log("[META STARTUP] Found global META_ACCESS_TOKEN/META_PAGE_ID — migrating to default sub-account...");
+      const defaultAccount = allAccounts.find(a => a.ownerUserId !== "_archived") || allAccounts[0];
+      if (defaultAccount) {
+        await db.update(subAccounts).set({
+          metaPageId: process.env.META_PAGE_ID,
+          metaAccessToken: process.env.META_ACCESS_TOKEN,
+          metaAppSecret: process.env.META_APP_SECRET || null,
+        }).where(eq(subAccounts.id, defaultAccount.id));
+        console.log(`[META STARTUP] Migrated global Meta credentials to account ${defaultAccount.id} (${defaultAccount.name}). Remove META_ACCESS_TOKEN, META_PAGE_ID, META_APP_SECRET from env vars — they are now stored per-account.`);
+        configuredAccounts.push({ ...defaultAccount, metaPageId: process.env.META_PAGE_ID!, metaAccessToken: process.env.META_ACCESS_TOKEN!, metaAppSecret: process.env.META_APP_SECRET || null });
       }
-
-      if (!pageAccessible && !issues.length) {
-        const convoUrl = `https://graph.facebook.com/v19.0/${pageId}/conversations?limit=1&access_token=${accessToken}${proofParam}`;
-        const convoRes = await fetch(convoUrl);
-        const convoData = await convoRes.json() as any;
-        if (!convoData.error) {
-          console.log(`[META] Page ${pageId} verified via conversations endpoint (messaging access confirmed)`);
-          pageAccessible = true;
-        } else {
-          const directUrl = `https://graph.facebook.com/v19.0/${pageId}?fields=name,id&access_token=${accessToken}${proofParam}`;
-          const directRes = await fetch(directUrl);
-          const directData = await directRes.json() as any;
-          if (directData.name) {
-            console.log(`[META] Page verified via direct lookup — "${directData.name}" (id=${directData.id})`);
-            pageAccessible = true;
-          } else {
-            const graphErr = convoData?.error ? ` (Graph error ${convoData.error.code}: ${convoData.error.message})` : "";
-            const noPageIssue = `Token cannot access page ${pageId} for messaging${graphErr} — ensure pages_messaging permission is granted.`;
-            console.error(`[META] CREDENTIAL ERROR: ${noPageIssue}`);
-            issues.push(noPageIssue);
-          }
-        }
-      }
-    } catch (err: any) {
-      const netIssue = `Graph API /me/accounts check failed with network error: ${err.message}. Cannot confirm Meta credentials are valid.`;
-      console.error(`[META] CREDENTIAL ERROR: ${netIssue}`);
-      issues.push(netIssue);
-    }
-
-    if (pageAccessible) {
-      try {
-        const scopeUrl = `https://graph.facebook.com/v19.0/me/permissions?access_token=${accessToken}${proofParam}`;
-        const scopeRes = await fetch(scopeUrl);
-        const scopeData = await scopeRes.json() as any;
-        const granted = (scopeData.data || [])
-          .filter((p: any) => p.status === "granted")
-          .map((p: any) => p.permission as string);
-        if (granted.length > 0) {
-          console.log(`[META] Token permissions: [${granted.join(", ")}]`);
-          if (!granted.includes("pages_messaging")) {
-            const scopeIssue = `pages_messaging permission NOT granted — outbound DM replies will be rejected. Re-authorize with pages_messaging permission.`;
-            console.error(`[META] CREDENTIAL ERROR: ${scopeIssue}`);
-            issues.push(scopeIssue);
-          }
-        } else if (scopeData.error) {
-          console.warn(`[META] Could not retrieve token permissions: ${scopeData.error.message}`);
-        }
-      } catch (err: any) {
-        console.warn(`[META] Token permissions check failed (network error): ${err.message}`);
-      }
+    } else {
+      console.log("[META STARTUP] No accounts have Meta credentials configured — skipping validation");
+      return;
     }
   }
 
-  if (issues.length > 0) {
-    const summary = issues.map((issue, i) => `  ${i + 1}. ${issue}`).join("\n");
-    throw new Error(`Meta DM credentials are misconfigured (${issues.length} issue${issues.length > 1 ? "s" : ""}):\n${summary}\nFix the above credential issues then restart the server.`);
+  console.log(`[META STARTUP] Validating ${configuredAccounts.length} account(s) with Meta credentials...`);
+
+  for (const acc of configuredAccounts) {
+    const result = await validateMetaConfigForAccount(acc.id);
+    if (result.valid) {
+      console.log(`[META] Account ${acc.id} (${acc.name}) — Page "${result.pageName}" verified (pageId=${acc.metaPageId})`);
+    } else {
+      console.warn(`[META] Account ${acc.id} (${acc.name}) — validation failed: ${result.error}`);
+    }
   }
 }
 
 (async () => {
   validateEnvVars();
   runStartupChecks();
-  const metaEnabled = Boolean(process.env.META_ACCESS_TOKEN && process.env.META_PAGE_ID);
-  if (metaEnabled) {
-    try {
-      await validateMetaCredentials();
-    } catch (metaErr: any) {
-      console.warn("[META] ===================================================");
-      console.warn("[META] WARNING: Credentials are misconfigured.");
-      console.warn("[META]", metaErr.message);
-      console.warn("[META] Facebook/Instagram DM features will be unavailable until credentials are fixed.");
-      console.warn("[META] ===================================================");
-    }
-  } else {
-    console.warn("[META] Not configured — skipping");
+  try {
+    await validateMetaCredentials();
+  } catch (metaErr: any) {
+    console.warn("[META] ===================================================");
+    console.warn("[META] WARNING:", metaErr.message);
+    console.warn("[META] ===================================================");
   }
   try {
     await initStripe();

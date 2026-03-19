@@ -54,6 +54,9 @@ export const subAccounts = pgTable("sub_accounts", {
   lng: real("lng"),
   geocodeStatus: text("geocode_status"),
   geocodedAt: timestamp("geocoded_at"),
+  metaPageId: text("meta_page_id"),
+  metaAccessToken: text("meta_access_token"),
+  metaAppSecret: text("meta_app_secret"),
 });
 
 export const insertSubAccountSchema = createInsertSchema(subAccounts).omit({ id: true });

@@ -11,6 +11,7 @@ import { asyncHandler, getUserId, requireAdmin, getIndustryContext, getLanguageI
 import { assembleDmContext, buildDmMessages } from "../dmContextAssembler";
 import { startTrace, recordStepValue } from "../traceRecorder";
 import { resolveSubAccount, isRoutingFailure } from "../routing/resolver";
+import { getMetaConfig, buildMetaUrl, resolveSubAccountByPageId } from "../metaConfig";
 import { persistRoutingFailure } from "../routing/failureQueue";
 import { withIdempotency, markEventCompleted, markEventFailed } from "../idempotency";
 
@@ -763,13 +764,32 @@ export function registerWebhooksRoutes(app: Express) {
             }
             console.log(`[META DM] ${channel} from ${senderId}: ${message.substring(0, 100)}`);
 
-            const accessToken = process.env.META_ACCESS_TOKEN;
-            const pageId = process.env.META_PAGE_ID;
-            const appSecret = process.env.META_APP_SECRET;
+            const webhookPageId = entry.id as string;
+            let subAccountId: number;
+            try {
+              subAccountId = await resolveSubAccountByPageId(webhookPageId);
+            } catch (routeErr: any) {
+              console.error(`[META DM] ${routeErr.message}`);
+              res.sendStatus(200);
+              return;
+            }
 
-            const allAccounts = await storage.getSubAccounts();
-            const targetAccount = allAccounts.find(a => a.ownerUserId !== "_archived") || allAccounts[0];
-            const subAccountId = targetAccount?.id || 13;
+            let metaConfig: Awaited<ReturnType<typeof getMetaConfig>>;
+            try {
+              metaConfig = await getMetaConfig(subAccountId);
+            } catch (cfgErr: any) {
+              console.error(`[META DM] ${cfgErr.message}`);
+              await db.insert(messages).values({
+                subAccountId,
+                channel,
+                direction: "inbound",
+                contactPhone: senderId,
+                body: `[UNPROCESSED - Missing Meta config] ${message.substring(0, 500)}`,
+                status: "failed",
+              });
+              continue;
+            }
+            const { accessToken, pageId, appSecret, appsecretProof } = metaConfig;
 
             const metaTrace = { traceId: metaTraceId, subAccountId, contactPhone: senderId };
             const metaRecvStart = Date.now();
@@ -778,26 +798,6 @@ export function registerWebhooksRoutes(app: Express) {
               metadata: { channel, mid: mid || null, bodyLength: message.length },
               disambiguator: mid || `meta-recv-${senderId}`,
             });
-
-            if (!accessToken || !pageId) {
-              const rawPayload = JSON.stringify(event).substring(0, 2000);
-              console.error(`[META DM] Cannot process ${channel} message from ${senderId} — META_ACCESS_TOKEN or META_PAGE_ID not configured. Set these environment variables in your Replit project. Visit the Integrations page for a setup guide. Raw event: ${rawPayload}`);
-              await db.insert(messages).values({
-                subAccountId,
-                channel,
-                direction: "inbound",
-                contactPhone: senderId,
-                body: `[UNPROCESSED - Missing META credentials] Raw: ${rawPayload.substring(0, 500)}`,
-                status: "failed",
-              });
-              continue;
-            }
-
-            let appsecretProof = "";
-            if (accessToken && appSecret) {
-              const crypto = await import("crypto");
-              appsecretProof = crypto.createHmac("sha256", appSecret).update(accessToken).digest("hex");
-            }
 
             const metaCrmStart = Date.now();
             const metaInboundThreadId = `${subAccountId}::${senderId}::${channel}`;
@@ -867,19 +867,8 @@ export function registerWebhooksRoutes(app: Express) {
               console.log(`[META DM] Keyword "${kw.keyword}" matched for ${senderId}`);
               storage.incrementKeywordHitCount(kw.id);
 
-              if (kw.responseText && (!accessToken || !pageId)) {
-                console.warn(`[META DM] Cannot send keyword reply to ${senderId}: META_ACCESS_TOKEN or META_PAGE_ID not configured. Message stored but not delivered.`);
-                await db.insert(messages).values({
-                  subAccountId,
-                  channel,
-                  direction: "outbound",
-                  contactPhone: senderId,
-                  body: kw.responseText,
-                  status: "failed",
-                  traceId: metaTraceId,
-                });
-              } else if (kw.responseText && accessToken && pageId) {
-                const kwUrl = `https://graph.facebook.com/v19.0/${pageId}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
+              if (kw.responseText) {
+                const kwUrl = buildMetaUrl(pageId, appsecretProof);
                 console.log(`[META DM] Sending keyword reply to ${senderId} via pageId=${pageId}, keyword="${kw.keyword}"`);
                 const kwSendRes = await fetch(kwUrl, {
                   method: "POST",
@@ -964,26 +953,8 @@ export function registerWebhooksRoutes(app: Express) {
 
                 const metaSendStart = Date.now();
                 const metaDmThreadId = `${subAccountId}::${senderId}::${channel}`;
-                if (aiReply && (!accessToken || !pageId)) {
-                  console.warn(`[META DM] AI reply generated but cannot send to ${senderId}: META_ACCESS_TOKEN or META_PAGE_ID not configured.`);
-                  await db.insert(messages).values({
-                    subAccountId,
-                    channel,
-                    direction: "outbound",
-                    contactPhone: senderId,
-                    body: aiReply,
-                    status: "failed",
-                    traceId: metaTraceId,
-                    threadId: metaDmThreadId,
-                  });
-                  recordStepValue(metaTrace, "outbound_send", "error", Date.now() - metaSendStart, {
-                    provider: "meta",
-                    error: "META_ACCESS_TOKEN or META_PAGE_ID not configured",
-                    metadata: { channel },
-                    disambiguator: mid ? `${mid}-send-err` : `meta-send-err-${senderId}`,
-                  });
-                } else if (aiReply && accessToken && pageId) {
-                  const aiUrl = `https://graph.facebook.com/v19.0/${pageId}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
+                if (aiReply) {
+                  const aiUrl = buildMetaUrl(pageId, appsecretProof);
                   console.log(`[META DM] Sending AI reply to ${senderId} via pageId=${pageId}, token_set=${!!accessToken}, appsecret_proof=${!!appsecretProof}`);
                   const sendRes = await fetch(aiUrl, {
                     method: "POST",

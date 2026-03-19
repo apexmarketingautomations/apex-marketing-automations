@@ -1,10 +1,11 @@
 import type { Express, Request, Response } from "express";
-import { insertMetaAdCampaignSchema, insertMetaLeadSchema, messages, dmKeywordAutomations } from "@shared/schema";
+import { insertMetaAdCampaignSchema, insertMetaLeadSchema, messages, dmKeywordAutomations, subAccounts } from "@shared/schema";
 import { db } from "../db";
 import { storage } from "../storage";
 import crypto from "crypto";
 import { dispatchAlert, generateDeepLink } from "../pushAlertService";
 import { asyncHandler, verifyAccountOwnership } from "./helpers";
+import { getMetaConfig, validateMetaConfigForAccount } from "../metaConfig";
 
 export function registerMetaRoutes(app: Express) {
   // ---- Meta Ad Campaigns ----
@@ -33,16 +34,22 @@ export function registerMetaRoutes(app: Express) {
   }));
 
   app.post("/api/meta/campaigns/:id/sync", asyncHandler(async (req: Request, res: Response) => {
-    const accessToken = process.env.META_ACCESS_TOKEN;
     const campaign = await storage.getMetaAdCampaign(Number(req.params.id));
     if (!campaign) return res.status(404).json({ error: "Campaign not found" });
 
-    if (!accessToken || !campaign.metaCampaignId) {
-      return res.status(503).json({ error: "Meta API not configured or no campaign ID linked. Add META_ACCESS_TOKEN and publish the campaign to Meta first." });
+    let metaCfg;
+    try {
+      metaCfg = await getMetaConfig(campaign.subAccountId);
+    } catch (err: any) {
+      return res.status(503).json({ error: err.message });
+    }
+
+    if (!campaign.metaCampaignId) {
+      return res.status(400).json({ error: "No campaign ID linked. Publish the campaign to Meta first." });
     }
 
     try {
-      const fbRes = await fetch(`https://graph.facebook.com/v19.0/${campaign.metaCampaignId}/insights?fields=impressions,clicks,spend,cpc,ctr,actions&access_token=${accessToken}`);
+      const fbRes = await fetch(`https://graph.facebook.com/v19.0/${campaign.metaCampaignId}/insights?fields=impressions,clicks,spend,cpc,ctr,actions&access_token=${metaCfg.accessToken}`);
       const fbData = await fbRes.json() as any;
       if (fbData.data && fbData.data[0]) {
         const insights = fbData.data[0];
@@ -64,13 +71,19 @@ export function registerMetaRoutes(app: Express) {
   }));
 
   app.post("/api/meta/campaigns/:id/publish", asyncHandler(async (req: Request, res: Response) => {
-    const accessToken = process.env.META_ACCESS_TOKEN;
     const adAccountId = process.env.META_AD_ACCOUNT_ID;
     const campaign = await storage.getMetaAdCampaign(Number(req.params.id));
     if (!campaign) return res.status(404).json({ error: "Campaign not found" });
 
-    if (!accessToken || !adAccountId) {
-      return res.status(503).json({ error: "Meta API not configured. Add META_ACCESS_TOKEN and META_AD_ACCOUNT_ID environment variables to publish campaigns to Facebook/Instagram." });
+    let metaCfg;
+    try {
+      metaCfg = await getMetaConfig(campaign.subAccountId);
+    } catch (err: any) {
+      return res.status(503).json({ error: err.message });
+    }
+
+    if (!adAccountId) {
+      return res.status(503).json({ error: "META_AD_ACCOUNT_ID not configured. Required to publish campaigns." });
     }
 
     try {
@@ -82,7 +95,7 @@ export function registerMetaRoutes(app: Express) {
           objective: campaign.objective,
           status: "ACTIVE",
           special_ad_categories: [],
-          access_token: accessToken,
+          access_token: metaCfg.accessToken,
         }),
       });
       const fbData = await fbRes.json() as any;
@@ -113,22 +126,23 @@ export function registerMetaRoutes(app: Express) {
   }));
 
   app.post("/api/meta/leads/sync/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
-    const accessToken = process.env.META_ACCESS_TOKEN;
-    const pageId = process.env.META_PAGE_ID;
     const subAccountId = Number(req.params.subAccountId);
 
-    if (!accessToken || !pageId) {
-      return res.status(503).json({ error: "Meta API not configured. Add META_ACCESS_TOKEN and META_PAGE_ID to sync leads from Facebook." });
+    let metaCfg;
+    try {
+      metaCfg = await getMetaConfig(subAccountId);
+    } catch (err: any) {
+      return res.status(503).json({ error: err.message });
     }
 
     try {
-      const formsRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}/leadgen_forms?access_token=${accessToken}`);
+      const formsRes = await fetch(`https://graph.facebook.com/v19.0/${metaCfg.pageId}/leadgen_forms?access_token=${metaCfg.accessToken}`);
       const formsData = await formsRes.json() as any;
       let totalSynced = 0;
 
       if (formsData.data) {
         for (const form of formsData.data) {
-          const leadsRes = await fetch(`https://graph.facebook.com/v19.0/${form.id}/leads?access_token=${accessToken}`);
+          const leadsRes = await fetch(`https://graph.facebook.com/v19.0/${form.id}/leads?access_token=${metaCfg.accessToken}`);
           const leadsData = await leadsRes.json() as any;
           if (leadsData.data) {
             const existingLeads = await storage.getMetaLeads(subAccountId);
@@ -288,35 +302,27 @@ export function registerMetaRoutes(app: Express) {
     const conversation = await storage.getInstagramConversation(conversationId);
     if (!conversation) return res.status(404).json({ error: "Conversation not found" });
 
-    const accessToken = process.env.META_ACCESS_TOKEN;
-    const pageId = process.env.META_PAGE_ID;
-
     const msg = await storage.createInstagramMessage({
       conversationId,
       direction: "outbound",
       body,
     });
 
-    if (accessToken && pageId && conversation.igUserId) {
+    if (conversation.igUserId) {
       try {
-        const appSecret = process.env.META_APP_SECRET;
-        let proof = "";
-        if (appSecret) {
-          const crypto = await import("crypto");
-          proof = crypto.createHmac("sha256", appSecret).update(accessToken).digest("hex");
-        }
-        const sendUrl = `https://graph.facebook.com/v19.0/${pageId}/messages` + (proof ? `?appsecret_proof=${proof}` : "");
+        const metaCfg = await getMetaConfig(conversation.subAccountId);
+        const sendUrl = `https://graph.facebook.com/v19.0/${metaCfg.pageId}/messages` + (metaCfg.appsecretProof ? `?appsecret_proof=${metaCfg.appsecretProof}` : "");
         await fetch(sendUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             recipient: { id: conversation.igUserId },
             message: { text: body },
-            access_token: accessToken,
+            access_token: metaCfg.accessToken,
           }),
         });
       } catch (err: any) {
-        console.log("Meta IG send error (non-blocking):", err.message);
+        console.error("[META IG] Send error:", err.message);
       }
     }
 
@@ -329,27 +335,17 @@ export function registerMetaRoutes(app: Express) {
   }));
 
   app.post("/api/meta/instagram/sync/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
-    const accessToken = process.env.META_ACCESS_TOKEN;
-    const pageId = process.env.META_PAGE_ID;
     const subAccountId = Number(req.params.subAccountId);
 
-    if (!accessToken || !pageId) {
-      const missing = [];
-      if (!accessToken) missing.push("META_ACCESS_TOKEN");
-      if (!pageId) missing.push("META_PAGE_ID");
-      return res.status(503).json({
-        error: `Instagram sync requires ${missing.join(" and ")} to be configured. Go to the Integrations page for a step-by-step setup guide to connect your Meta/Facebook account.`
-      });
+    let metaCfg;
+    try {
+      metaCfg = await getMetaConfig(subAccountId);
+    } catch (err: any) {
+      return res.status(503).json({ error: err.message });
     }
 
     try {
-      const appSecret = process.env.META_APP_SECRET;
-      let proof = "";
-      if (appSecret) {
-        const crypto = await import("crypto");
-        proof = crypto.createHmac("sha256", appSecret).update(accessToken).digest("hex");
-      }
-      const convRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}/conversations?platform=instagram&fields=participants,messages{message,from,created_time}&access_token=${accessToken}` + (proof ? `&appsecret_proof=${proof}` : ""));
+      const convRes = await fetch(`https://graph.facebook.com/v19.0/${metaCfg.pageId}/conversations?platform=instagram&fields=participants,messages{message,from,created_time}&access_token=${metaCfg.accessToken}` + (metaCfg.appsecretProof ? `&appsecret_proof=${metaCfg.appsecretProof}` : ""));
       const convData = await convRes.json() as any;
 
       if (convData.error) {
@@ -362,7 +358,7 @@ export function registerMetaRoutes(app: Express) {
 
       if (convData.data) {
         for (const conv of convData.data) {
-          const participant = conv.participants?.data?.find((p: any) => p.id !== pageId);
+          const participant = conv.participants?.data?.find((p: any) => p.id !== metaCfg.pageId);
           if (!participant) continue;
 
           const existing = await storage.getInstagramConversations(subAccountId);
@@ -383,7 +379,7 @@ export function registerMetaRoutes(app: Express) {
               if (m.id && existingMsgIds.has(m.id)) continue;
               await storage.createInstagramMessage({
                 conversationId: conversation.id,
-                direction: m.from?.id === pageId ? "outbound" : "inbound",
+                direction: m.from?.id === metaCfg.pageId ? "outbound" : "inbound",
                 body: m.message || "",
                 igMessageId: m.id,
               });
@@ -405,36 +401,75 @@ export function registerMetaRoutes(app: Express) {
     }
   }));
 
-  // ---- Meta Config Check ----
-  app.get("/api/meta/config", asyncHandler(async (_req: Request, res: Response) => {
-    res.json({
-      hasAccessToken: !!process.env.META_ACCESS_TOKEN,
-      hasAdAccountId: !!process.env.META_AD_ACCOUNT_ID,
-      hasPageId: !!process.env.META_PAGE_ID,
-      hasAppId: !!process.env.META_APP_ID,
-    });
+  // ---- Meta Config Check (per-account) ----
+  app.get("/api/meta/config", asyncHandler(async (req: Request, res: Response) => {
+    const subAccountId = req.query.subAccountId ? Number(req.query.subAccountId) : null;
+    if (subAccountId) {
+      try {
+        const account = await storage.getSubAccount(subAccountId);
+        res.json({
+          hasAccessToken: !!account?.metaAccessToken,
+          hasAdAccountId: !!process.env.META_AD_ACCOUNT_ID,
+          hasPageId: !!account?.metaPageId,
+          hasAppId: !!process.env.META_APP_ID,
+          metaPageId: account?.metaPageId || null,
+        });
+      } catch {
+        res.json({ hasAccessToken: false, hasAdAccountId: false, hasPageId: false, hasAppId: false });
+      }
+    } else {
+      const allAccounts = await storage.getSubAccounts();
+      const anyConfigured = allAccounts.some(a => a.metaAccessToken && a.metaPageId);
+      res.json({
+        hasAccessToken: anyConfigured,
+        hasAdAccountId: !!process.env.META_AD_ACCOUNT_ID,
+        hasPageId: anyConfigured,
+        hasAppId: !!process.env.META_APP_ID,
+      });
+    }
   }));
 
-  // ---- Meta DM Diagnostics ----
-  app.get("/api/meta/dm-diagnostics", asyncHandler(async (_req: Request, res: Response) => {
-    const accessToken = process.env.META_ACCESS_TOKEN;
-    const pageId = process.env.META_PAGE_ID;
-    const appSecret = process.env.META_APP_SECRET;
+  // ---- Meta DM Diagnostics (per-account) ----
+  app.get("/api/meta/dm-diagnostics", asyncHandler(async (req: Request, res: Response) => {
+    const subAccountId = req.query.subAccountId ? Number(req.query.subAccountId) : null;
     const verifyToken = process.env.META_VERIFY_TOKEN || "apex_verify_2026";
-
     const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
     const webhookUrl = domain ? `https://${domain}/api/meta-webhook` : null;
 
+    if (!subAccountId) {
+      const allAccounts = await storage.getSubAccounts();
+      const accountDiags = await Promise.all(allAccounts.map(async (acc) => {
+        const validation = acc.metaAccessToken && acc.metaPageId
+          ? await validateMetaConfigForAccount(acc.id)
+          : { valid: false, error: "Not configured" };
+        return {
+          subAccountId: acc.id,
+          name: acc.name,
+          metaPageId: acc.metaPageId || null,
+          hasAccessToken: !!acc.metaAccessToken,
+          hasAppSecret: !!acc.metaAppSecret,
+          ...validation,
+        };
+      }));
+      return res.json({ accounts: accountDiags, webhook: { url: webhookUrl, verifyToken } });
+    }
+
+    const account = await storage.getSubAccount(subAccountId);
+    if (!account) return res.status(404).json({ error: "Sub-account not found" });
+
+    const accessToken = account.metaAccessToken;
+    const pageId = account.metaPageId;
+    const appSecret = account.metaAppSecret;
+
     const result: any = {
+      subAccountId,
+      accountName: account.name,
       credentials: {
         accessToken: { set: !!accessToken, valid: false, detail: "" },
         pageId: { set: !!pageId, value: pageId || null },
         appSecret: { set: !!appSecret },
       },
-      webhook: {
-        url: webhookUrl,
-        verifyToken,
-      },
+      webhook: { url: webhookUrl, verifyToken },
     };
 
     if (accessToken) {
@@ -461,25 +496,10 @@ export function registerMetaRoutes(app: Express) {
     }
 
     if (accessToken && pageId) {
-      try {
-        let proof = "";
-        if (appSecret) {
-          const crypto = await import("crypto");
-          proof = crypto.createHmac("sha256", appSecret).update(accessToken).digest("hex");
-        }
-        const pageRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}?fields=name,id&access_token=${accessToken}${proof ? `&appsecret_proof=${proof}` : ""}`);
-        const pageData = await pageRes.json() as any;
-        if (pageData.name) {
-          result.credentials.pageId.valid = true;
-          result.credentials.pageId.pageName = pageData.name;
-        } else {
-          result.credentials.pageId.valid = false;
-          result.credentials.pageId.error = pageData.error?.message || "Could not fetch page info";
-        }
-      } catch (err: any) {
-        result.credentials.pageId.valid = false;
-        result.credentials.pageId.error = `Page check failed: ${err.message}`;
-      }
+      const validation = await validateMetaConfigForAccount(subAccountId);
+      result.credentials.pageId.valid = validation.valid;
+      if (validation.pageName) result.credentials.pageId.pageName = validation.pageName;
+      if (validation.error) result.credentials.pageId.error = validation.error;
     }
 
     res.json(result);
@@ -506,5 +526,31 @@ export function registerMetaRoutes(app: Express) {
     } catch (err: any) {
       res.json({ success: false, error: `Could not reach webhook: ${err.message}` });
     }
+  }));
+
+  // ---- Save Meta credentials for a sub-account ----
+  app.put("/api/meta/config/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
+    const subAccountId = Number(req.params.subAccountId);
+    await verifyAccountOwnership(req, subAccountId);
+
+    const { metaPageId, metaAccessToken, metaAppSecret } = req.body;
+
+    if (!metaPageId || !metaAccessToken) {
+      return res.status(400).json({ error: "metaPageId and metaAccessToken are required" });
+    }
+
+    const { eq } = await import("drizzle-orm");
+    await db.update(subAccounts).set({
+      metaPageId: metaPageId.trim(),
+      metaAccessToken: metaAccessToken.trim(),
+      metaAppSecret: metaAppSecret?.trim() || null,
+    }).where(eq(subAccounts.id, subAccountId));
+
+    const validation = await validateMetaConfigForAccount(subAccountId);
+
+    res.json({
+      saved: true,
+      validation,
+    });
   }));
 }
