@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { getDatabaseHealth } from "./dbBackup";
-import { isGeminiConfigured } from "./gemini";
+import { isAIConfigured, getAIProviderStatus } from "./ai";
 
 type CheckStatus = "pass" | "warn" | "fail";
 
@@ -65,11 +65,12 @@ export async function runLaunchReadinessChecks(): Promise<{
     detail: (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) ? "Configured" : "Missing — SMS/voice won't work",
   });
 
+  const aiStatus = getAIProviderStatus();
   checks.push({
     category: "AI",
-    name: "Gemini",
-    status: isGeminiConfigured() ? "pass" : "warn",
-    detail: isGeminiConfigured() ? "Configured" : "Missing — AI features disabled",
+    name: "AI Provider",
+    status: isAIConfigured() ? "pass" : "warn",
+    detail: isAIConfigured() ? aiStatus : "Missing — AI features disabled (set OPENAI_APEX_INT_KEY or Gemini_API_Key_saas)",
   });
 
   checks.push({

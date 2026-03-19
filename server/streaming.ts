@@ -1,5 +1,5 @@
 import type { Response } from "express";
-import { geminiChatStream } from "./gemini";
+import { aiChatStream } from "./ai";
 
 interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -28,7 +28,7 @@ export function sendSSEData(res: Response, data: any): void {
   res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
-export async function streamGeminiResponse(
+export async function streamAIResponse(
   res: Response,
   messages: ChatMessage[],
   options: StreamOptions = {}
@@ -52,7 +52,7 @@ export async function streamGeminiResponse(
   });
 
   try {
-    const stream = geminiChatStream(messages, { temperature, maxTokens });
+    const stream = aiChatStream(messages, { temperature, maxTokens });
     for await (const chunk of stream) {
       if (closed) break;
       fullText += chunk;

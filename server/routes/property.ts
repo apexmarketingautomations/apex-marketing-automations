@@ -4,7 +4,7 @@ import { eq, desc, sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { z } from "zod";
-import { geminiChat, isGeminiConfigured } from "../gemini";
+import { aiChat, isAIConfigured } from "../ai";
 import { processLiveSentinelFeed, deployGeofenceAd } from "../sentinel";
 import { publishEventAsync, EVENT_TYPES } from "../eventBus";
 import { scanDistressedProperties, calculateDealMetrics } from "../property-radar";
@@ -1446,8 +1446,8 @@ export function registerPropertyRoutes(app: Express) {
 
             if (leadPhone && twilioNumber && event === "crash.detected") {
               try {
-                if (isGeminiConfigured()) {
-                  const aiResponse = await geminiChat([
+                if (isAIConfigured()) {
+                  const aiResponse = await aiChat([
                     { role: "system", content: `You are an AI assistant for ${account.name || "a local business"}. A potential customer was just involved in a vehicle incident. Send a brief, empathetic text offering assistance. Keep it under 160 characters. Be professional and helpful. Do not mention AI.` },
                     { role: "user", content: `Generate an SMS to send to ${leadName} who was in a crash at ${location}. The business provides ${account.industry || "automotive"} services.` },
                   ], { temperature: 0.7, maxTokens: 200 });
@@ -2108,7 +2108,7 @@ export function registerPropertyRoutes(app: Express) {
   });
 
   app.post("/api/forms/generate", asyncHandler(async (req, res) => {
-    if (!isGeminiConfigured()) {
+    if (!isAIConfigured()) {
       return res.status(503).json({ error: "AI service is not configured" });
     }
 
@@ -2120,7 +2120,7 @@ export function registerPropertyRoutes(app: Express) {
       ? `Generate a lead capture form for a ${industry} business called "${businessName}".`
       : `Generate a lead capture form for a ${industry} business.`;
 
-    const raw = await geminiChat([
+    const raw = await aiChat([
       { role: "system", content: FORM_BUILDER_SYSTEM_PROMPT },
       { role: "user", content: userPrompt },
     ], { temperature: 0.7, maxTokens: 4096, jsonMode: true });

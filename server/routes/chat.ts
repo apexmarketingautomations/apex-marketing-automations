@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { deals, appointments, messages } from "@shared/schema";
 import { z } from "zod";
-import { geminiChat, geminiChatStream, isGeminiConfigured } from "../gemini";
+import { aiChat, aiChatStream, isAIConfigured } from "../ai";
 import { asyncHandler, logUsageInternal, getIndustryContext, getLanguageInstruction } from "./helpers";
 
 export function registerChatRoutes(app: Express) {
@@ -64,7 +64,7 @@ export function registerChatRoutes(app: Express) {
       for (const [k, v] of salesChatLimiter) { if (!v.length || v[v.length - 1] < oldest) salesChatLimiter.delete(k); }
     }
 
-    if (!isGeminiConfigured()) {
+    if (!isAIConfigured()) {
       return res.json({ reply: "Thanks for your interest! Visit our pricing page at /pricing to see our plans, or reach out to us directly." });
     }
 
@@ -100,13 +100,13 @@ export function registerChatRoutes(app: Express) {
     }
     chatMessages.push({ role: "user", content: message });
 
-    const reply = await geminiChat(chatMessages, { temperature: 0.8, maxTokens: 1024 }) || "Great question! Check out our plans at /pricing to see everything Apex can do for your business.";
+    const reply = await aiChat(chatMessages, { temperature: 0.8, maxTokens: 1024 }) || "Great question! Check out our plans at /pricing to see everything Apex can do for your business.";
     await logUsageInternal(null, "AI_CHAT", 1, "Sales chatbot response");
     res.json({ reply });
   }));
 
   app.post("/api/chat", asyncHandler(async (req, res) => {
-    if (!isGeminiConfigured()) {
+    if (!isAIConfigured()) {
       return res.status(503).json({ reply: "Chat service is currently offline. Please try again later." });
     }
 
@@ -130,7 +130,7 @@ export function registerChatRoutes(app: Express) {
 
     chatMessages.push({ role: "user", content: parsed.data.message });
 
-    const reply = await geminiChat(chatMessages as any, { temperature: 0.7, maxTokens: 1024 }) || "I'm here to help! Could you tell me more about what you're looking for?";
+    const reply = await aiChat(chatMessages as any, { temperature: 0.7, maxTokens: 1024 }) || "I'm here to help! Could you tell me more about what you're looking for?";
 
     await logUsageInternal(null, "AI_CHAT", 1, "Chat widget AI response");
 
@@ -139,7 +139,7 @@ export function registerChatRoutes(app: Express) {
 
   app.post("/api/chat/stream", asyncHandler(async (req, res) => {
     try {
-      if (!isGeminiConfigured()) {
+      if (!isAIConfigured()) {
         return res.status(503).json({ reply: "Chat service is currently offline. Please try again later." });
       }
 
@@ -167,7 +167,7 @@ export function registerChatRoutes(app: Express) {
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      const stream = geminiChatStream(chatMessages as any, { temperature: 0.7, maxTokens: 1024 });
+      const stream = aiChatStream(chatMessages as any, { temperature: 0.7, maxTokens: 1024 });
       for await (const chunk of stream) {
         res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
       }

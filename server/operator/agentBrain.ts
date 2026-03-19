@@ -1,4 +1,4 @@
-import { geminiChat, isGeminiConfigured, isGeminiRateLimited, isGeminiAvailable } from "../gemini";
+import { aiChat, isAIConfigured, isAIAvailable } from "../ai";
 import { db } from "../db";
 import { agentTasks, agentBriefings } from "@shared/schema";
 import { eq, and, desc, sql, gte } from "drizzle-orm";
@@ -107,10 +107,8 @@ export async function generateAITaskPlan(
   subAccountId: number,
   context: ContextPacket
 ): Promise<AITaskSuggestion[]> {
-  if (!isGeminiAvailable()) {
-    if (isGeminiRateLimited()) {
-      console.log(`[AGENT-BRAIN] Skipping AI task plan for account #${subAccountId} — Gemini rate-limited`);
-    }
+  if (!isAIAvailable()) {
+    console.log(`[AGENT-BRAIN] Skipping AI task plan for account #${subAccountId} — AI unavailable`);
     return [];
   }
 
@@ -160,7 +158,7 @@ ${toolNames}
 
 Based on this data, what tasks should the autonomous agent execute? Return a JSON array of task suggestions. If the account is in good shape, return [].`;
 
-    const response = await geminiChat([
+    const response = await aiChat([
       { role: "system", content: AI_TASK_SYSTEM_PROMPT },
       { role: "user", content: userPrompt },
     ], {
@@ -268,7 +266,7 @@ export async function generateBriefing(subAccountId: number): Promise<{
 
   let summary: string;
 
-  if (isGeminiAvailable() && tasksSinceLast.length > 0) {
+  if (isAIAvailable() && tasksSinceLast.length > 0) {
     try {
       const context = await buildContext(subAccountId);
       const promptContext = buildPromptContext(context);
@@ -293,7 +291,7 @@ Write a 3-5 sentence executive briefing. Be direct and specific:
 Use confident, professional language. Address them as "your" (your account, your leads, etc).
 Do NOT use bullet points or markdown. Write flowing prose.`;
 
-      summary = await geminiChat([
+      summary = await aiChat([
         { role: "system", content: "You write concise, impactful executive briefings. No fluff, no filler." },
         { role: "user", content: briefingPrompt },
       ], { temperature: 0.4, maxTokens: 500 });

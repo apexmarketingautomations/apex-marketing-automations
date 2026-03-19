@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { insertWorkflowSchema } from "@shared/schema";
 import { storage } from "../storage";
 import { z } from "zod";
-import { geminiChat, isGeminiConfigured } from "../gemini";
+import { aiChat, isAIConfigured } from "../ai";
 import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, logUsageInternal } from "./helpers";
 
 export function registerWorkflowsRoutes(app: Express) {
@@ -173,7 +173,7 @@ export function registerWorkflowsRoutes(app: Express) {
   - Return ONLY valid JSON, no markdown, no code fences`;
 
   app.post("/api/workflows/generate", asyncHandler(async (req, res) => {
-    if (!isGeminiConfigured()) {
+    if (!isAIConfigured()) {
       return res.status(503).json({ error: "AI service is not configured" });
     }
 
@@ -192,7 +192,7 @@ export function registerWorkflowsRoutes(app: Express) {
 
     let workflowData: any = null;
     for (let attempt = 0; attempt < 2; attempt++) {
-      const raw = await geminiChat([
+      const raw = await aiChat([
         { role: "system", content: WORKFLOW_AI_SYSTEM_PROMPT },
         { role: "user", content: attempt === 0
           ? parsed.data.prompt

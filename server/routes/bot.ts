@@ -2,8 +2,9 @@ import type { Express, Request, Response } from "express";
 import { messages } from "@shared/schema";
 import { storage } from "../storage";
 import { z } from "zod";
-import { geminiChat, geminiChatStream, geminiChatWithToolsStream, isGeminiConfigured, geminiGenerateImage } from "../gemini";
-import { streamGeminiResponse, sendSSEData, initSSE } from "../streaming";
+import { aiChat, aiChatStream, aiChatWithToolsStream, isAIConfigured } from "../ai";
+import { geminiGenerateImage } from "../gemini";
+import { streamAIResponse, sendSSEData, initSSE } from "../streaming";
 import { asyncHandler, parseIntParam, logUsageInternal, getIndustryContext, getLanguageInstruction } from "./helpers";
 import { executeTool, getTool } from "../operator/toolRegistry";
 import type { OperatorContext } from "../operator/types";
@@ -29,7 +30,7 @@ export function registerBotRoutes(app: Express) {
   });
 
   app.post("/api/bot/chat", asyncHandler(async (req, res) => {
-    if (!isGeminiConfigured()) {
+    if (!isAIConfigured()) {
       return res.status(503).json({ error: "AI service is not configured" });
     }
 
@@ -72,7 +73,7 @@ export function registerBotRoutes(app: Express) {
 
     messages.push({ role: "user", content: parsed.data.message });
 
-    const reply = await geminiChat(messages as any, { temperature: 0.7, maxTokens: 1024 }) || "I'm here to help! Could you tell me more?";
+    const reply = await aiChat(messages as any, { temperature: 0.7, maxTokens: 1024 }) || "I'm here to help! Could you tell me more?";
 
     await logUsageInternal(null, "AI_CHAT", 1, "Bot trainer chat");
 
@@ -81,7 +82,7 @@ export function registerBotRoutes(app: Express) {
 
   app.post("/api/bot/chat/stream", asyncHandler(async (req, res) => {
     try {
-      if (!isGeminiConfigured()) {
+      if (!isAIConfigured()) {
         return res.status(503).json({ error: "AI service is not configured" });
       }
 
@@ -110,7 +111,7 @@ export function registerBotRoutes(app: Express) {
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      const stream = geminiChatStream(messages as any, { temperature: 0.7, maxTokens: 1024 });
+      const stream = aiChatStream(messages as any, { temperature: 0.7, maxTokens: 1024 });
       for await (const chunk of stream) {
         res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
       }
@@ -131,7 +132,7 @@ export function registerBotRoutes(app: Express) {
 
   app.post("/api/bot/chat/advisor-stream", asyncHandler(async (req, res) => {
     try {
-      if (!isGeminiConfigured()) {
+      if (!isAIConfigured()) {
         return res.status(503).json({ error: "AI service is not configured" });
       }
 
@@ -156,7 +157,7 @@ export function registerBotRoutes(app: Express) {
 
       chatMessages.push({ role: "user", content: parsed.data.message });
 
-      await streamGeminiResponse(res, chatMessages, { temperature: 0.7, maxTokens: 16384 });
+      await streamAIResponse(res, chatMessages, { temperature: 0.7, maxTokens: 16384 });
       await logUsageInternal(null, "AI_CHAT", 1, "Strategic advisor chat (stream)");
     } catch (error: any) {
       if (!res.headersSent) {
@@ -236,7 +237,7 @@ export function registerBotRoutes(app: Express) {
 
   app.post("/api/bot/chat/agent-stream", asyncHandler(async (req, res) => {
     try {
-      if (!isGeminiConfigured()) {
+      if (!isAIConfigured()) {
         return res.status(503).json({ error: "AI service is not configured" });
       }
 
@@ -279,7 +280,7 @@ export function registerBotRoutes(app: Express) {
         clearInterval(keepalive);
       });
 
-      const stream = geminiChatWithToolsStream(chatMessages as any, { temperature: 0.7, maxTokens: 16384 });
+      const stream = aiChatWithToolsStream(chatMessages as any, { temperature: 0.7, maxTokens: 16384 });
       
       function extractBalancedJSON(text: string, startPos: number): { json: string; endPos: number } | null {
         let braceCount = 0;
@@ -544,7 +545,7 @@ export async function runRealTraining(jobId: number) {
     await updateJob(`Split into ${chunks.length} knowledge chunks (${chunkSize} chars, ${overlap} overlap)`, 55);
 
     let generatedPersona: string | null = null;
-    if (isGeminiConfigured() && scrapedText.length > 50) {
+    if (isAIConfigured() && scrapedText.length > 50) {
       try {
         await updateJob("Generating AI persona from scraped content...", 70);
         const personaPrompt = `Based on the following website content, generate a concise AI assistant persona/system prompt. The persona should:
@@ -561,7 +562,7 @@ ${job.persona}
 
 Generate ONLY the system prompt text, no explanations:`;
 
-        const personaResult = await geminiChat(
+        const personaResult = await aiChat(
           [{ role: "user", content: personaPrompt }],
           { temperature: 0.5, maxTokens: 1024 }
         );

@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { webhooks } from "@shared/schema";
 import { storage } from "../storage";
-import { isGeminiConfigured } from "../gemini";
+import { isAIConfigured } from "../ai";
 import express from "express";
 import crypto from "crypto";
 import { getValidToken, revokeToken, checkTokenHealth } from "../tokenService";
@@ -1313,11 +1313,11 @@ export function registerIntegrationsRoutes(app: Express) {
         envVars: ["ELEVENLABS_API_KEY"],
       },
       {
-        name: "Google AI (Gemini)",
-        provider: "gemini",
-        description: "AI Chat, Site Generation, Bot Training",
-        configured: isGeminiConfigured(),
-        envVars: ["GOOGLE_API_KEY"],
+        name: "AI Provider (OpenAI / Gemini)",
+        provider: "ai",
+        description: "AI Chat, Site Generation, Bot Training (OpenAI primary, Gemini fallback)",
+        configured: isAIConfigured(),
+        envVars: ["OPENAI_APEX_INT_KEY", "Gemini_API_Key_saas"],
       },
       {
         name: "Mailchimp",

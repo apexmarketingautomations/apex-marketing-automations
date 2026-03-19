@@ -3,7 +3,7 @@ import { contacts, deals, messages, subAccounts, sentinelIncidents, propertyLead
 import { db } from "../db";
 import { storage } from "../storage";
 import { z } from "zod";
-import { isGeminiConfigured } from "../gemini";
+import { isAIConfigured } from "../ai";
 import { ProgressStream } from "../streaming";
 import {  } from "../eventBus";
 import { eventBus } from "../eventBus";
@@ -673,7 +673,7 @@ export function registerAnalyticsRoutes(app: Express) {
 
     health.stripe = (process.env.STRIPE_API_SECRET || process.env.STRIPE_SECRET_KEY) ? "ok" : "missing";
     health.twilio = (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) ? "ok" : "missing";
-    health.ai = isGeminiConfigured() ? "ok" : "missing";
+    health.ai = isAIConfigured() ? "ok" : "missing";
     health.meta = (process.env.META_ACCESS_TOKEN && process.env.META_PAGE_ID) ? "ok" : "missing";
     health.mailchimp = process.env.MAILCHIMP_API_KEY ? "ok" : "missing";
 

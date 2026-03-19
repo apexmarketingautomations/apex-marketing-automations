@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { insertSavedSiteSchema, reviews } from "@shared/schema";
 import { storage } from "../storage";
 import { z } from "zod";
-import { geminiChat, isGeminiConfigured } from "../gemini";
+import { aiChat, isAIConfigured } from "../ai";
 import express from "express";
 import { asyncHandler, parseIntParam, logUsageInternal } from "./helpers";
 
@@ -200,7 +200,7 @@ export function registerSitesRoutes(app: Express) {
   });
 
   app.post("/api/generate-site", asyncHandler(async (req, res) => {
-    if (!isGeminiConfigured()) {
+    if (!isAIConfigured()) {
       return res.status(503).json({ error: "AI service is not configured" });
     }
 
@@ -228,7 +228,7 @@ export function registerSitesRoutes(app: Express) {
     let lastError: string = "";
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const raw = await geminiChat([
+        const raw = await aiChat([
           { role: "system", content: SITE_SYSTEM_PROMPT },
           { role: "user", content: attempt === 0 ? userMessage : userMessage + "\n\nIMPORTANT: Return ONLY valid JSON. No markdown, no explanation, no text before or after the JSON object." },
         ], { temperature: attempt === 0 ? 0.7 : 0.3, maxTokens: 4096, jsonMode: true });
@@ -505,7 +505,7 @@ export function registerSitesRoutes(app: Express) {
       entry.count++;
     }
 
-    if (!isGeminiConfigured()) {
+    if (!isAIConfigured()) {
       return res.status(503).json({ error: "AI service is not configured" });
     }
 
@@ -537,7 +537,7 @@ export function registerSitesRoutes(app: Express) {
       visitorDescription += `\n\nGenerate a personalized premium service landing page for this specific visitor. Make it feel tailor-made.`;
     }
 
-    const raw = await geminiChat([
+    const raw = await aiChat([
       { role: "system", content: LIQUID_SYSTEM_PROMPT },
       { role: "user", content: visitorDescription },
     ], { temperature: 0.8, maxTokens: 4096, jsonMode: true });

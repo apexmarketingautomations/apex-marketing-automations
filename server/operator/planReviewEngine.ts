@@ -1,7 +1,7 @@
 import { db } from "../db";
 import { operatorGoals, operatorPlans, operatorPlanSteps, operatorGoalReviews } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { geminiChat, isGeminiConfigured, isGeminiAvailable } from "../gemini";
+import { aiChat, isAIConfigured, isAIAvailable } from "../ai";
 import { REVIEW_SYSTEM_PROMPT, REVIEW_USER_TEMPLATE } from "./goalPrompts";
 import { measureGoalProgress } from "./goalTracker";
 import { generateReplan } from "./goalPlanner";
@@ -35,7 +35,7 @@ export async function runScheduledReview(goalId: number): Promise<ReviewResult |
 
   let review: ReviewResult;
 
-  if (isGeminiAvailable()) {
+  if (isAIAvailable()) {
     const recentOutcomes = steps
       .filter(s => s.status === "completed" || s.status === "failed")
       .map(s => `- ${s.title}: ${s.status}${s.failureReason ? ` (${s.failureReason})` : ""}`)
@@ -60,7 +60,7 @@ export async function runScheduledReview(goalId: number): Promise<ReviewResult |
       .replace("{progressTrend}", progress.trend);
 
     try {
-      const result = await geminiChat(
+      const result = await aiChat(
         [{ role: "user", content: REVIEW_SYSTEM_PROMPT + "\n\n" + prompt }],
         { temperature: 0.2, maxTokens: 1024, jsonMode: true }
       );

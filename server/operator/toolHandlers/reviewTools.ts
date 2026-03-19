@@ -25,10 +25,10 @@ export const reviewTools: OperatorTool[] = [
 
       let responseText = params.responseText;
       if (!responseText) {
-        const { geminiChat, isGeminiConfigured } = await import("../../gemini");
-        if (isGeminiConfigured()) {
+        const { aiChat, isAIConfigured } = await import("../../ai");
+        if (isAIConfigured()) {
           const prompt = `Write a professional, empathetic response to this ${review.rating}-star review from ${review.customerName}: "${review.comment}". Keep it concise (2-3 sentences). Return plain text only, no JSON.`;
-          responseText = await geminiChat([{ role: "user", content: prompt }], { temperature: 0.6 });
+          responseText = await aiChat([{ role: "user", content: prompt }], { temperature: 0.6 });
         } else {
           responseText = `Thank you for your feedback, ${review.customerName}. We appreciate you taking the time to share your experience.`;
         }

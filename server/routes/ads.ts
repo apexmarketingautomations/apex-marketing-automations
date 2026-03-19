@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from "express";
-import { geminiChat, isGeminiConfigured, geminiGenerateImage } from "../gemini";
+import { aiChat, isAIConfigured } from "../ai";
+import { geminiGenerateImage } from "../gemini";
 import { asyncHandler, logUsageInternal } from "./helpers";
 
 export function registerAdsRoutes(app: Express) {
@@ -43,14 +44,14 @@ export function registerAdsRoutes(app: Express) {
   - Return ONLY valid JSON, no markdown, no code fences`;
 
   app.post("/api/generate-ad-campaign", asyncHandler(async (req, res) => {
-    if (!isGeminiConfigured()) {
+    if (!isAIConfigured()) {
       return res.status(503).json({ error: "AI service is not configured" });
     }
 
     const parsed = promptSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-    const raw = await geminiChat([
+    const raw = await aiChat([
       { role: "system", content: AD_CAMPAIGN_SYSTEM_PROMPT },
       { role: "user", content: parsed.data.prompt },
     ], { temperature: 0.7, maxTokens: 4096, jsonMode: true });

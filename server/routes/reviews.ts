@@ -5,7 +5,7 @@ import { db } from "../db";
 import { storage } from "../storage";
 import { z } from "zod";
 import { sql } from "drizzle-orm";
-import { isGeminiConfigured } from "../gemini";
+import { isAIConfigured, getAIProviderStatus } from "../ai";
 import crypto from "crypto";
 import dns from "dns";
 import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, isUserAdmin } from "./helpers";
@@ -479,16 +479,20 @@ export function registerReviewsRoutes(app: Express) {
     });
 
     const aiChecks: string[] = [];
-    if (!isGeminiConfigured()) aiChecks.push("Gemini API key not configured");
+    if (!isAIConfigured()) aiChecks.push("AI service not configured");
     const vapiKey = process.env.VAPI_PRIVATE_KEY || process.env.apex_private_vapi;
     if (!vapiKey) aiChecks.push("Vapi API key missing");
     const twilioSid = process.env.TWILIO_ACCOUNT_SID;
     const twilioToken = process.env.TWILIO_AUTH_TOKEN;
     if (!twilioSid || !twilioToken) aiChecks.push("Twilio credentials missing");
+    const aiProviderStatus = getAIProviderStatus();
+    const vapiTwilioStatus = aiChecks.filter(c => c !== "AI service not configured").join("; ");
     checks.push({
       name: "AI Engine",
       status: aiChecks.length === 0 ? "healthy" : aiChecks.length <= 1 ? "degraded" : "down",
-      message: aiChecks.length === 0 ? "Gemini + Vapi + Twilio online" : aiChecks.join("; "),
+      message: aiChecks.length === 0
+        ? `${aiProviderStatus} | Vapi + Twilio online`
+        : [aiProviderStatus, vapiTwilioStatus].filter(Boolean).join("; "),
     });
 
     const overallStatus = checks.every(c => c.status === "healthy") ? "healthy" : checks.some(c => c.status === "down") ? "critical" : "degraded";

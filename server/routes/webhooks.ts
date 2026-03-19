@@ -4,7 +4,7 @@ import { sql, eq } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { z } from "zod";
-import { geminiChat, isGeminiConfigured } from "../gemini";
+import { aiChat, isAIConfigured } from "../ai";
 import { ProgressStream } from "../streaming";
 import crypto from "crypto";
 import { asyncHandler, getUserId, requireAdmin, getIndustryContext, getLanguageInstruction, getTwilioClient, vapiConfig } from "./helpers";
@@ -100,7 +100,7 @@ export function registerWebhooksRoutes(app: Express) {
 
       let aiReply = "Thanks for your message! We'll get back to you shortly.";
 
-      if (isGeminiConfigured()) {
+      if (isAIConfigured()) {
         try {
           const smsIndustry = req.body.industry as string | undefined;
           const smsLanguage = req.body.language as string | undefined;
@@ -109,7 +109,7 @@ export function registerWebhooksRoutes(app: Express) {
             : "You are a helpful business assistant responding via chat. Keep replies conversational and under 300 characters. Be warm, professional, and helpful. If someone wants to book an appointment, suggest they call the office number.";
           const systemPrompt = baseSystemPrompt + getIndustryContext(smsIndustry) + getLanguageInstruction(smsLanguage);
 
-          const geminiReply = await geminiChat([
+          const geminiReply = await aiChat([
             { role: "system", content: systemPrompt },
             { role: "user", content: incomingMsg.substring(0, 1000) },
           ], { temperature: 0.7, maxTokens: 1024 });
@@ -308,7 +308,7 @@ export function registerWebhooksRoutes(app: Express) {
               break;
             }
 
-            if (!keywordMatched && isGeminiConfigured()) {
+            if (!keywordMatched && isAIConfigured()) {
               try {
                 let systemPrompt = `You are a helpful business assistant responding via ${channel} DM. Keep replies conversational and under 300 characters. Be warm, professional, and helpful.`;
 
@@ -326,7 +326,7 @@ export function registerWebhooksRoutes(app: Express) {
                   systemPrompt += ` The business is in the ${targetAccount.industry} industry.`;
                 }
 
-                const aiReply = await geminiChat([
+                const aiReply = await aiChat([
                   { role: "system", content: systemPrompt },
                   { role: "user", content: message.substring(0, 1000) },
                 ], { temperature: 0.7, maxTokens: 1024 });
@@ -594,13 +594,13 @@ export function registerWebhooksRoutes(app: Express) {
 
     results.steps.push({ id: "site", status: "running", label: "Generating Landing Page" });
     let siteData = null;
-    if (isGeminiConfigured()) {
+    if (isAIConfigured()) {
       try {
         const godModePrompt = `Create a premium landing page for "${businessName}", a ${industry} business. Make it look high-end and professional with compelling copy.`;
         let parsed: any = null;
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
-            const raw = await geminiChat([
+            const raw = await aiChat([
               { role: "system", content: SITE_SYSTEM_PROMPT },
               { role: "user", content: attempt === 0 ? godModePrompt : godModePrompt + "\n\nIMPORTANT: Return ONLY valid JSON." },
             ], { temperature: attempt === 0 ? 0.7 : 0.3, maxTokens: 4096, jsonMode: true });
@@ -773,13 +773,13 @@ export function registerWebhooksRoutes(app: Express) {
 
       stream.sendStep("site", "running", "Generating Landing Page");
       let siteData = null;
-      if (isGeminiConfigured()) {
+      if (isAIConfigured()) {
         try {
           const godModePrompt = `Create a premium landing page for "${businessName}", a ${industry} business. Make it look high-end and professional with compelling copy.`;
           let siteParsed: any = null;
           for (let attempt = 0; attempt < 2; attempt++) {
             try {
-              const raw = await geminiChat([
+              const raw = await aiChat([
                 { role: "system", content: SITE_SYSTEM_PROMPT },
                 { role: "user", content: attempt === 0 ? godModePrompt : godModePrompt + "\n\nIMPORTANT: Return ONLY valid JSON." },
               ], { temperature: attempt === 0 ? 0.7 : 0.3, maxTokens: 4096, jsonMode: true });

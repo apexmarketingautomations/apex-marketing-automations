@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
-import { geminiChat, isGeminiConfigured } from "../gemini";
+import { aiChat, isAIConfigured } from "../ai";
 import { asyncHandler } from "./helpers";
 
 export function registerBlueprintsRoutes(app: Express) {
@@ -22,13 +22,13 @@ export function registerBlueprintsRoutes(app: Express) {
     let bp = await storage.getBlueprintByIndustryId(industryId);
 
     if (!bp) {
-      if (!isGeminiConfigured()) {
+      if (!isAIConfigured()) {
         return res.status(404).json({ error: "Blueprint not found and AI service is not configured to generate one" });
       }
 
       const industryLabel = industryId.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 
-      const raw = await geminiChat([
+      const raw = await aiChat([
         {
           role: "system",
           content: `You are a CRM configuration expert. Generate a complete CRM blueprint for a specific industry. Return ONLY valid JSON with no markdown or code fences.

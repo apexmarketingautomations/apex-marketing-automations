@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { contacts, deals, messages } from "@shared/schema";
 import { storage } from "../storage";
 import { z } from "zod";
-import { geminiChat, isGeminiConfigured } from "../gemini";
+import { aiChat, isAIConfigured } from "../ai";
 import { ProgressStream } from "../streaming";
 import { processLiveSentinelFeed, deployGeofenceAd } from "../sentinel";
 import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, logUsageInternal } from "./helpers";
@@ -308,7 +308,7 @@ export function registerV1Routes(app: Express) {
   - Return ONLY valid JSON`;
 
   app.post("/api/v1/compiler/generate", asyncHandler(async (req: Request, res: Response) => {
-    if (!isGeminiConfigured()) {
+    if (!isAIConfigured()) {
       return res.status(503).json({ error: "AI service is not configured" });
     }
 
@@ -348,7 +348,7 @@ export function registerV1Routes(app: Express) {
       }
     }
 
-    const raw = await geminiChat([
+    const raw = await aiChat([
       { role: "system", content: COMPILER_AI_SYSTEM_PROMPT },
       { role: "user", content: parsed.data.prompt + contextPrompt + siteState },
     ], { temperature: 0.7, maxTokens: 4096, jsonMode: true });
@@ -400,7 +400,7 @@ export function registerV1Routes(app: Express) {
   }));
 
   app.post("/api/v1/compiler/analyze", asyncHandler(async (req: Request, res: Response) => {
-    if (!isGeminiConfigured()) {
+    if (!isAIConfigured()) {
       return res.status(503).json({ error: "AI service is not configured" });
     }
 
@@ -431,7 +431,7 @@ export function registerV1Routes(app: Express) {
 
   Return as JSON: { "summary": "...", "gaps": [...], "recommendations": [...manifest objects...], "optimizations": [...] }`;
 
-    const raw = await geminiChat([
+    const raw = await aiChat([
       { role: "system", content: "You are an expert marketing automation consultant. Analyze business automation setups and provide actionable recommendations. Return JSON only." },
       { role: "user", content: analysisPrompt },
     ], { temperature: 0.6, maxTokens: 4096, jsonMode: true });
@@ -547,9 +547,9 @@ export function registerV1Routes(app: Express) {
     try {
       switch (tool) {
         case "generate_landing_page": {
-          if (!isGeminiConfigured()) throw new Error("AI not configured");
+          if (!isAIConfigured()) throw new Error("AI not configured");
           const sitePrompt = args.prompt || "Professional business landing page";
-          const raw = await geminiChat([
+          const raw = await aiChat([
             { role: "system", content: "Generate a JSON site structure with sections: hero, features, testimonials, cta. Return valid JSON." },
             { role: "user", content: sitePrompt },
           ], { temperature: 0.7, maxTokens: 4096, jsonMode: true });
@@ -699,7 +699,7 @@ export function registerV1Routes(app: Express) {
   }));
 
   app.post("/api/v1/tools/ai-execute", asyncHandler(async (req: Request, res: Response) => {
-    if (!isGeminiConfigured()) {
+    if (!isAIConfigured()) {
       return res.status(503).json({ error: "AI service is not configured" });
     }
 
@@ -712,7 +712,7 @@ export function registerV1Routes(app: Express) {
 
     const toolList = AI_TOOLS.map(t => `- ${t.name}: ${t.description} (inputs: ${JSON.stringify(t.inputSchema)})`).join("\n");
 
-    const raw = await geminiChat([
+    const raw = await aiChat([
       { role: "system", content: `You are an AI that translates natural language commands into tool executions.
 
   Available tools:
@@ -939,8 +939,8 @@ export function registerV1Routes(app: Express) {
         }
 
         case "generate_site": {
-          if (!isGeminiConfigured()) throw new Error("AI not configured");
-          const siteRaw = await geminiChat([
+          if (!isAIConfigured()) throw new Error("AI not configured");
+          const siteRaw = await aiChat([
             { role: "system", content: "Generate a JSON site structure with sections: hero, features, testimonials, cta. Return valid JSON." },
             { role: "user", content: payload.prompt || "Professional business landing page" },
           ], { temperature: 0.7, maxTokens: 4096, jsonMode: true });
@@ -1178,7 +1178,7 @@ export function registerV1Routes(app: Express) {
   // AI ORCHESTRATOR — Full auto-execute: AI interprets → plans → EXECUTES
   // ============================================================
   app.post("/api/v1/orchestrate/ai", asyncHandler(async (req: Request, res: Response) => {
-    if (!isGeminiConfigured()) {
+    if (!isAIConfigured()) {
       return res.status(503).json({ error: "AI service is not configured" });
     }
 
@@ -1195,7 +1195,7 @@ export function registerV1Routes(app: Express) {
     const orchestrateActions = ORCHESTRATE_ACTIONS.join(", ");
     const toolList = AI_TOOLS.map(t => `- ${t.name}: ${t.description}`).join("\n");
 
-    const raw = await geminiChat([
+    const raw = await aiChat([
       { role: "system", content: `You are the Apex OS Architect. You orchestrate the Apex Marketing Automations ecosystem by issuing commands to the backend API.
 
   RULES OF ENGAGEMENT:
@@ -1303,7 +1303,7 @@ export function registerV1Routes(app: Express) {
   }));
 
   app.post("/api/v1/orchestrate/ai/stream", asyncHandler(async (req: Request, res: Response) => {
-    if (!isGeminiConfigured()) {
+    if (!isAIConfigured()) {
       return res.status(503).json({ error: "AI service is not configured" });
     }
 
@@ -1324,7 +1324,7 @@ export function registerV1Routes(app: Express) {
       const orchestrateActions = ORCHESTRATE_ACTIONS.join(", ");
       const toolList = AI_TOOLS.map(t => `- ${t.name}: ${t.description}`).join("\n");
 
-      const raw = await geminiChat([
+      const raw = await aiChat([
         { role: "system", content: `You are the Apex OS Architect. You orchestrate the Apex Marketing Automations ecosystem by issuing commands to the backend API.
 
   RULES OF ENGAGEMENT:

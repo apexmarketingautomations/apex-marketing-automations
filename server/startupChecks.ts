@@ -1,3 +1,5 @@
+import { getAIProviderStatus, isAIConfigured } from "./ai";
+
 export function runStartupChecks() {
   const results: { service: string; status: "ok" | "warning" | "missing"; detail?: string }[] = [];
 
@@ -28,6 +30,13 @@ export function runStartupChecks() {
   check("Vapi", ["VAPI_API_KEY"], false);
   check("Meta", ["META_ACCESS_TOKEN"], false);
   check("Mailchimp", ["MAILCHIMP_API_KEY"], false);
+
+  const aiProviderStatus = getAIProviderStatus();
+  results.push({
+    service: "AI Provider",
+    status: isAIConfigured() ? "ok" : "missing",
+    detail: aiProviderStatus,
+  });
 
   console.log("\n=== STARTUP HEALTH CHECK ===");
   for (const r of results) {

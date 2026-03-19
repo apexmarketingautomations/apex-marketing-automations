@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { vapiCallLogs } from "@shared/schema";
 import { eq, isNotNull, sql, desc } from "drizzle-orm";
-import { geminiChat, isGeminiAvailable } from "./gemini";
+import { aiChat, isAIAvailable } from "./ai";
 import { vapiConfig } from "./routes/helpers";
 
 const OUTBOUND_SPECIALIST_ID = "e30434f7-e7e0-4be7-8b89-40c384a52b4a";
@@ -108,8 +108,8 @@ Rules:
 - Return ONLY valid JSON, no markdown, no explanation.`;
 
 export async function analyzeCallTranscript(callId: number): Promise<CallAnalysis | null> {
-  if (!isGeminiAvailable()) {
-    console.log("[CALL-INTEL] Gemini unavailable, skipping analysis");
+  if (!isAIAvailable()) {
+    console.log("[CALL-INTEL] AI unavailable, skipping analysis");
     return null;
   }
 
@@ -128,16 +128,16 @@ export async function analyzeCallTranscript(callId: number): Promise<CallAnalysi
   }
 
   try {
-    console.log(`[CALL-INTEL] Sending call ${callId} (${call.transcript.length} chars) to Gemini...`);
-    const result = await geminiChat([
+    console.log(`[CALL-INTEL] Sending call ${callId} (${call.transcript.length} chars) to AI...`);
+    const result = await aiChat([
       { role: "system", content: ANALYSIS_PROMPT },
       { role: "user", content: `TRANSCRIPT:\n${call.transcript}\n\nENDED REASON: ${call.endedReason || "unknown"}\nDURATION: ${call.duration || 0} seconds\nSUMMARY: ${call.summary || "none"}` },
     ], { temperature: 0.2, maxTokens: 8192, jsonMode: true });
 
-    console.log(`[CALL-INTEL] Gemini response for call ${callId}: ${result.length} chars`);
+    console.log(`[CALL-INTEL] AI response for call ${callId}: ${result.length} chars`);
 
     if (!result || result.trim().length === 0) {
-      console.error(`[CALL-INTEL] Empty response from Gemini for call ${callId}`);
+      console.error(`[CALL-INTEL] Empty response from AI for call ${callId}`);
       return null;
     }
 

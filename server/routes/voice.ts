@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { messages, vapiCallLogs } from "@shared/schema";
 import { storage } from "../storage";
 import { z } from "zod";
-import { geminiChat, isGeminiConfigured } from "../gemini";
+import { aiChat, isAIConfigured } from "../ai";
 import { asyncHandler, getIndustryContext, getTwilioClient, vapiConfig } from "./helpers";
 import { db } from "../db";
 import { eq } from "drizzle-orm";
@@ -564,7 +564,7 @@ export function registerVoiceRoutes(app: Express) {
   });
 
   app.post("/api/voice-agents/generate-persona", asyncHandler(async (req, res) => {
-    if (!isGeminiConfigured()) {
+    if (!isAIConfigured()) {
       return res.status(503).json({ error: "AI service is not configured" });
     }
 
@@ -582,7 +582,7 @@ export function registerVoiceRoutes(app: Express) {
   - First message should sound warm and natural, not robotic
   - Return ONLY valid JSON, no markdown or code fences`;
 
-    const raw = await geminiChat([
+    const raw = await aiChat([
       {
         role: "system",
         content: voicePersonaBasePrompt + getIndustryContext(parsed.data.industry),

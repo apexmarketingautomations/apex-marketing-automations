@@ -19,14 +19,14 @@ export const creativeTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
-      const { geminiChat, isGeminiConfigured } = await import("../../gemini");
-      if (!isGeminiConfigured()) return { success: false, error: "AI is not configured (missing Gemini API key)" };
+      const { aiChat, isAIConfigured } = await import("../../ai");
+      if (!isAIConfigured()) return { success: false, error: "AI is not configured" };
 
       const account = await storage.getSubAccount(ctx.subAccountId);
       const businessName = params.businessName || account?.name || "My Business";
 
       const sitePrompt = `Generate a professional landing page for "${businessName}". ${params.prompt}. Return valid JSON with theme (primaryColor, secondaryColor, fontFamily) and sections array.`;
-      const result = await geminiChat([
+      const result = await aiChat([
         { role: "user", content: "You are a landing page designer. Return JSON only with theme and sections array.\n\n" + sitePrompt },
       ], { jsonMode: true, temperature: 0.7 });
 
@@ -61,13 +61,13 @@ export const creativeTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
-      const { geminiChat, isGeminiConfigured } = await import("../../gemini");
-      if (!isGeminiConfigured()) return { success: false, error: "AI is not configured" };
+      const { aiChat, isAIConfigured } = await import("../../ai");
+      if (!isAIConfigured()) return { success: false, error: "AI is not configured" };
 
       const count = params.count || 5;
       const prompt = `Generate ${count} marketing offer angles for "${params.product}"${params.targetAudience ? ` targeting ${params.targetAudience}` : ""}. Return JSON array of objects with: angle (string), headline (string), hook (string), urgency (string).`;
 
-      const result = await geminiChat([
+      const result = await aiChat([
         { role: "user", content: "You are a marketing strategist. Return JSON array only.\n\n" + prompt },
       ], { jsonMode: true, temperature: 0.8 });
 
@@ -96,8 +96,8 @@ export const creativeTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
-      const { geminiChat, isGeminiConfigured } = await import("../../gemini");
-      if (!isGeminiConfigured()) return { success: false, error: "AI is not configured" };
+      const { aiChat, isAIConfigured } = await import("../../ai");
+      if (!isAIConfigured()) return { success: false, error: "AI is not configured" };
 
       const count = params.count || 3;
       const platform = params.platform || "meta";
@@ -105,7 +105,7 @@ export const creativeTools: OperatorTool[] = [
 
       const prompt = `Generate ${count} ad copy variants for "${params.product}" on ${platform}. Tone: ${tone}. Return JSON array with: headline (string), primaryText (string), callToAction (string), description (string).`;
 
-      const result = await geminiChat([
+      const result = await aiChat([
         { role: "user", content: "You are an ad copywriter. Return JSON array only.\n\n" + prompt },
       ], { jsonMode: true, temperature: 0.8 });
 
@@ -133,8 +133,8 @@ export const creativeTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
-      const { geminiChat, isGeminiConfigured } = await import("../../gemini");
-      if (!isGeminiConfigured()) return { success: false, error: "AI is not configured" };
+      const { aiChat, isAIConfigured } = await import("../../ai");
+      if (!isAIConfigured()) return { success: false, error: "AI is not configured" };
 
       const count = params.count || 3;
       const account = await storage.getSubAccount(ctx.subAccountId);
@@ -142,7 +142,7 @@ export const creativeTools: OperatorTool[] = [
 
       const prompt = `Generate ${count} SMS message variants for "${params.purpose}" for business "${businessName}". Max 160 characters each. Return JSON array of objects with: message (string), characterCount (number).`;
 
-      const result = await geminiChat([
+      const result = await aiChat([
         { role: "user", content: "You are an SMS copywriter. Return JSON array only.\n\n" + prompt },
       ], { jsonMode: true, temperature: 0.7 });
 
@@ -170,8 +170,8 @@ export const creativeTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
-      const { geminiChat, isGeminiConfigured } = await import("../../gemini");
-      if (!isGeminiConfigured()) return { success: false, error: "AI is not configured" };
+      const { aiChat, isAIConfigured } = await import("../../ai");
+      if (!isAIConfigured()) return { success: false, error: "AI is not configured" };
 
       const count = params.count || 3;
       const account = await storage.getSubAccount(ctx.subAccountId);
@@ -179,7 +179,7 @@ export const creativeTools: OperatorTool[] = [
 
       const prompt = `Generate ${count} email variants for "${params.purpose}" for "${businessName}". Return JSON array with: subject (string), preheader (string), bodyHtml (string), callToAction (string).`;
 
-      const result = await geminiChat([
+      const result = await aiChat([
         { role: "user", content: "You are an email marketing copywriter. Return JSON array only.\n\n" + prompt },
       ], { jsonMode: true, temperature: 0.7 });
 
@@ -207,15 +207,15 @@ export const creativeTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
-      const { geminiChat, isGeminiConfigured } = await import("../../gemini");
-      if (!isGeminiConfigured()) return { success: false, error: "AI is not configured" };
+      const { aiChat, isAIConfigured } = await import("../../ai");
+      if (!isAIConfigured()) return { success: false, error: "AI is not configured" };
 
       const count = params.count || 3;
       const platform = params.platform || "instagram";
 
       const prompt = `Generate ${count} ${platform} post drafts about "${params.topic}". Return JSON array with: caption (string), hashtags (string[]), suggestedImageDescription (string), bestPostingTime (string).`;
 
-      const result = await geminiChat([
+      const result = await aiChat([
         { role: "user", content: "You are a social media manager. Return JSON array only.\n\n" + prompt },
       ], { jsonMode: true, temperature: 0.8 });
 
@@ -243,15 +243,15 @@ export const creativeTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
-      const { geminiChat, isGeminiConfigured } = await import("../../gemini");
-      if (!isGeminiConfigured()) return { success: false, error: "AI is not configured" };
+      const { aiChat, isAIConfigured } = await import("../../ai");
+      if (!isAIConfigured()) return { success: false, error: "AI is not configured" };
 
       const account = await storage.getSubAccount(ctx.subAccountId);
       const businessName = account?.name || "our business";
 
       const prompt = `Write a professional response to this ${params.rating}-star review${params.customerName ? ` from ${params.customerName}` : ""} for "${businessName}": "${params.reviewText}". Be empathetic, professional, and concise. Return JSON with: response (string), tone (string), suggestedActions (string[]).`;
 
-      const result = await geminiChat([
+      const result = await aiChat([
         { role: "user", content: "You are a reputation management specialist. Return JSON only.\n\n" + prompt },
       ], { jsonMode: true, temperature: 0.6 });
 
