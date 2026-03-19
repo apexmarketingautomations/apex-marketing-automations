@@ -1,0 +1,91 @@
+Good — this is exactly the clarity I needed.
+
+Right now we have a logging system, not a learning system.
+
+I want you to now build the ACTUAL intelligence layer — but we are going to do this properly, not vaguely.
+
+We are not moving forward unless each step produces real, testable output.
+
+Step 1 — Transcript Analysis (REAL OUTPUT REQUIRED)
+
+When a call ends, I want the system to process the transcript and return structured analysis.
+
+For EACH call, populate the `analysis` JSON field with:
+
+* outcome (booked / rejected / maybe / timeout)
+* engagement_score (1–10)
+* prospect_type (busy, curious, skeptical, hostile, etc.)
+* main_pain_points (array)
+* objections (array)
+* key_moments (array of timestamps or quotes where interest increased or dropped)
+* what_worked (array)
+* what_failed (array)
+* agent_score (1–10)
+
+Do NOT leave this vague.
+I want to see an example of a fully populated analysis object from a real call.
+
+---
+
+Step 2 — Store + Query Insights
+
+Make sure I can:
+
+* query calls by outcome
+* query calls by objection
+* query high-performing calls (engagement > 7)
+* query failed calls
+
+Show me the queries working.
+
+---
+
+Step 3 — Pattern Detection (THIS IS WHERE LEARNING STARTS)
+
+Build a function that analyzes ALL stored calls and outputs:
+
+* top 5 objections
+* best-performing responses to those objections
+* best opening lines based on engagement score
+* conversion rate by approach
+* patterns by prospect type
+
+I want this returned as a structured object.
+
+---
+
+Step 4 — Inject Into Agent (MAKE IT REAL)
+
+Take those patterns and inject them into the Vapi agent prompt.
+
+I want to see EXACTLY what the updated system prompt looks like after enrichment.
+
+Not theory — actual prompt text.
+
+---
+
+Step 5 — Close the Loop
+
+Confirm this flow is working:
+
+call ends → transcript stored → analysis generated → patterns updated → prompt updated → next call improves
+
+Then explain:
+
+* what updates instantly
+* what updates on a schedule
+* what improves over time
+
+---
+
+Important rules:
+
+* No fake “AI learning” language
+* No placeholders
+* No “we could”
+* Build actual working logic
+* Show outputs at each step
+
+If something cannot be done, say it clearly and give the closest real alternative.
+
+We are turning this into a real adaptive system, not a conceptual one.

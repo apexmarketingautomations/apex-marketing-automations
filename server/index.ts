@@ -424,8 +424,9 @@ function validateEnvVars() {
 
   const { vapiCallLogs } = await import("@shared/schema");
   const { db: vapiDb } = await import("./db");
-  const { eq: vapiEq } = await import("drizzle-orm");
+  const { eq: vapiEq, isNotNull: vapiIsNotNull, sql: vapiSql, desc: vapiDesc } = await import("drizzle-orm");
   const { vapiConfig: vapiCfg } = await import("./routes/helpers");
+  const { analyzeCallTranscript, analyzeAllUnprocessed, generatePatternReport, generatePromptEnrichment, injectPatternsIntoAgent } = await import("./callIntelligence");
 
   app.post("/api/vapi/webhook", async (req, res) => {
     try {
@@ -442,12 +443,15 @@ function validateEnvVars() {
         if (callId) {
           const existing = await vapiDb.select().from(vapiCallLogs).where(vapiEq(vapiCallLogs.vapiCallId, callId)).limit(1);
           if (existing.length === 0) {
-            await vapiDb.insert(vapiCallLogs).values({
+            const inserted = await vapiDb.insert(vapiCallLogs).values({
               vapiCallId: callId, assistantId: call.call.assistantId || null, assistantName: call.assistant?.name || null,
               customerNumber: call.call.customer?.number || null, type: call.call.type || null, status: call.call.status || "ended",
               startedAt, endedAt, duration, cost: call.cost || null, transcript, summary, recordingUrl, endedReason: call.endedReason || null, analysis: null,
-            });
+            }).returning({ id: vapiCallLogs.id });
             console.log(`[VAPI WEBHOOK] Stored call log: ${callId}`);
+            if (inserted[0]?.id) {
+              analyzeCallTranscript(inserted[0].id).catch(err => console.error("[VAPI WEBHOOK] Analysis failed:", err));
+            }
           }
         }
       }
@@ -482,6 +486,63 @@ function validateEnvVars() {
       console.log(`[VAPI SYNC] Synced ${synced} new call logs`);
       res.json({ synced, total: calls.length });
     } catch (err) { console.error("[VAPI SYNC] Error:", err); res.status(500).json({ error: "Sync failed" }); }
+  });
+
+  app.post("/api/vapi/analyze-all", async (req, res) => {
+    try {
+      const count = await analyzeAllUnprocessed();
+      res.json({ analyzed: count });
+    } catch (err) { console.error("[VAPI ANALYZE] Error:", err); res.status(500).json({ error: "Analysis failed" }); }
+  });
+
+  app.get("/api/vapi/pattern-report", async (req, res) => {
+    try {
+      const report = await generatePatternReport();
+      res.json(report);
+    } catch (err) { console.error("[VAPI PATTERNS] Error:", err); res.status(500).json({ error: "Pattern report failed" }); }
+  });
+
+  app.post("/api/vapi/inject-patterns/:assistantId", async (req, res) => {
+    try {
+      const assistantId = req.params.assistantId as string;
+      if (!assistantId) return res.status(400).json({ error: "assistantId required" });
+      const result = await injectPatternsIntoAgent(assistantId);
+      res.json(result);
+    } catch (err) { console.error("[VAPI INJECT] Error:", err); res.status(500).json({ error: "Injection failed" }); }
+  });
+
+  app.get("/api/vapi/call-insights", async (req, res) => {
+    try {
+      const outcome = req.query.outcome as string | undefined;
+      const minEngagement = parseInt(req.query.minEngagement as string || "0", 10);
+      const objection = req.query.objection as string | undefined;
+
+      let query = vapiDb.select().from(vapiCallLogs).where(vapiIsNotNull(vapiCallLogs.analysis)).orderBy(vapiDesc(vapiCallLogs.id)).limit(100);
+      const rows = await query;
+
+      let filtered = rows.filter(r => {
+        const a = r.analysis as any;
+        if (!a) return false;
+        if (outcome && a.outcome !== outcome) return false;
+        if (minEngagement && a.engagement_score < minEngagement) return false;
+        if (objection) {
+          const hasObj = a.objections?.some((o: any) => o.objection?.toLowerCase().includes(objection.toLowerCase()));
+          if (!hasObj) return false;
+        }
+        return true;
+      });
+
+      res.json(filtered.map(r => ({
+        id: r.id,
+        vapiCallId: r.vapiCallId,
+        customerNumber: r.customerNumber,
+        duration: r.duration,
+        cost: r.cost,
+        endedReason: r.endedReason,
+        analysis: r.analysis,
+        createdAt: r.createdAt,
+      })));
+    } catch (err) { console.error("[VAPI INSIGHTS] Error:", err); res.status(500).json({ error: "Query failed" }); }
   });
 
   app.use("/api/auth/login", authLimiter);
