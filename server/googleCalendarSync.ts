@@ -1,6 +1,6 @@
 import { db } from "./db";
-import { appointments, contacts } from "@shared/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { appointments, contacts, oauthTokens } from "@shared/schema";
+import { eq, and, sql, isNotNull } from "drizzle-orm";
 import { storage } from "./storage";
 
 interface GoogleCalendarEvent {
@@ -230,4 +230,160 @@ export async function syncGoogleCalendar(
 
   console.log(`[GCAL-SYNC] Account ${subAccountId}: created=${created}, updated=${updated}, skipped=${skipped}`);
   return { synced: events.length, created, updated, skipped };
+}
+
+const SYNC_INTERVAL_MS = 3 * 60 * 1000;
+const SYNC_LOOKBACK_MS = 10 * 60 * 1000;
+let autoSyncTimer: ReturnType<typeof setInterval> | null = null;
+
+async function getAccountsWithGoogleToken(): Promise<number[]> {
+  try {
+    const rows = await db.select({ subAccountId: oauthTokens.subAccountId })
+      .from(oauthTokens)
+      .where(and(
+        eq(oauthTokens.provider, "google"),
+        isNotNull(oauthTokens.refreshToken),
+      ));
+    return rows.map(r => r.subAccountId).filter((id): id is number => id !== null);
+  } catch {
+    return [];
+  }
+}
+
+async function runAutoSync(): Promise<void> {
+  const accountIds = await getAccountsWithGoogleToken();
+  if (accountIds.length === 0) return;
+
+  const timeMin = new Date(Date.now() - SYNC_LOOKBACK_MS).toISOString();
+  const timeMax = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
+
+  for (const subAccountId of accountIds) {
+    try {
+      const token = await getCalendarAccessToken(subAccountId);
+      if (!token) {
+        console.warn(`[GCAL-AUTO] No valid token for account ${subAccountId}, skipping`);
+        continue;
+      }
+
+      const events = await fetchCalendarEvents(token, "primary", timeMin, timeMax, 50);
+      let created = 0;
+      let updated = 0;
+
+      for (const event of events) {
+        if (!event.id || !event.summary) continue;
+        const startTime = event.start?.dateTime || event.start?.date;
+        const endTime = event.end?.dateTime || event.end?.date;
+        if (!startTime || !endTime) continue;
+
+        if (event.status === "cancelled") {
+          const existing = await db.select().from(appointments)
+            .where(and(
+              eq(appointments.googleCalendarEventId, event.id),
+              eq(appointments.subAccountId, subAccountId),
+            )).limit(1);
+          if (existing[0] && existing[0].status !== "cancelled") {
+            await db.update(appointments)
+              .set({ status: "cancelled" })
+              .where(eq(appointments.id, existing[0].id));
+            updated++;
+          }
+          continue;
+        }
+
+        const existing = await db.select().from(appointments)
+          .where(and(
+            eq(appointments.googleCalendarEventId, event.id),
+            eq(appointments.subAccountId, subAccountId),
+          )).limit(1);
+
+        if (existing[0]) {
+          const hasChanges =
+            existing[0].title !== event.summary ||
+            existing[0].description !== (event.description || null) ||
+            new Date(existing[0].startTime).getTime() !== new Date(startTime).getTime() ||
+            new Date(existing[0].endTime).getTime() !== new Date(endTime).getTime() ||
+            existing[0].location !== (event.location || null);
+
+          if (hasChanges) {
+            await db.update(appointments)
+              .set({
+                title: event.summary,
+                description: event.description || null,
+                startTime: new Date(startTime),
+                endTime: new Date(endTime),
+                location: event.location || null,
+              })
+              .where(eq(appointments.id, existing[0].id));
+            updated++;
+          }
+        } else {
+          let contactId: number | null = null;
+          if (event.attendees?.length) {
+            for (const att of event.attendees) {
+              if (att.email) {
+                const contactRows = await db.select().from(contacts)
+                  .where(and(
+                    eq(contacts.email, att.email),
+                    eq(contacts.subAccountId, subAccountId),
+                  )).limit(1);
+                if (contactRows[0]) {
+                  contactId = contactRows[0].id;
+                  break;
+                }
+              }
+            }
+          }
+
+          await db.insert(appointments).values({
+            subAccountId,
+            title: event.summary,
+            description: event.description || null,
+            startTime: new Date(startTime),
+            endTime: new Date(endTime),
+            status: "scheduled",
+            location: event.location || null,
+            googleCalendarEventId: event.id,
+            googleCalendarId: "primary",
+            contactId,
+          });
+          created++;
+
+          try {
+            const { fireAutomationTriggerGlobal } = await import("./routes/v1");
+            fireAutomationTriggerGlobal("appointment_booked", subAccountId, {
+              appointmentTitle: event.summary,
+              appointmentTime: startTime,
+              contactId,
+              source: "google_calendar",
+            });
+          } catch {}
+        }
+      }
+
+      if (created > 0 || updated > 0) {
+        console.log(`[GCAL-AUTO] Account ${subAccountId}: +${created} new, ~${updated} updated`);
+      }
+    } catch (err) {
+      console.warn(`[GCAL-AUTO] Sync failed for account ${subAccountId}:`, (err as any).message);
+    }
+  }
+}
+
+export function startAutoSync(): void {
+  if (autoSyncTimer) return;
+
+  console.log(`[GCAL-AUTO] Background sync started — polling every ${SYNC_INTERVAL_MS / 1000}s`);
+  runAutoSync().catch(() => {});
+
+  autoSyncTimer = setInterval(() => {
+    runAutoSync().catch(() => {});
+  }, SYNC_INTERVAL_MS);
+}
+
+export function stopAutoSync(): void {
+  if (autoSyncTimer) {
+    clearInterval(autoSyncTimer);
+    autoSyncTimer = null;
+    console.log("[GCAL-AUTO] Background sync stopped");
+  }
 }

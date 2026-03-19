@@ -1318,6 +1318,12 @@ async function validateMetaCredentials() {
       } catch (err: any) {
         console.error("[RETRY-PROCESSOR] Failed to start:", err?.message);
       }
+      try {
+        const { startAutoSync } = await import("./googleCalendarSync");
+        startAutoSync();
+      } catch (err: any) {
+        console.error("[GCAL-AUTO] Failed to start:", err?.message);
+      }
     },
   );
 })();

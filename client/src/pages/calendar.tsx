@@ -83,6 +83,8 @@ export default function CalendarPage() {
       return res.json();
     },
     enabled: !!subAccountId,
+    staleTime: 0,
+    refetchInterval: 30_000,
   });
 
   const { data: contacts = [] } = useQuery<Contact[]>({
@@ -278,16 +280,26 @@ export default function CalendarPage() {
                   <ChevronRight size={16} />
                 </Button>
               </div>
-              <Button
-                onClick={() => syncMutation.mutate()}
-                disabled={syncMutation.isPending}
-                variant="outline"
-                className="border-white/10 bg-white/5 text-white hover:bg-white/10 font-semibold"
-                data-testid="button-sync-google-calendar"
-              >
-                <RefreshCw size={16} className={`mr-1 ${syncMutation.isPending ? "animate-spin" : ""}`} />
-                {syncMutation.isPending ? "Syncing..." : "Sync Google Calendar"}
-              </Button>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20" data-testid="status-auto-sync">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  <span className="text-xs text-emerald-400 font-medium">Auto-sync active</span>
+                </div>
+                <Button
+                  onClick={() => syncMutation.mutate()}
+                  disabled={syncMutation.isPending}
+                  variant="outline"
+                  size="sm"
+                  className="border-white/10 bg-white/5 text-white hover:bg-white/10 font-semibold"
+                  data-testid="button-sync-google-calendar"
+                >
+                  <RefreshCw size={16} className={`mr-1 ${syncMutation.isPending ? "animate-spin" : ""}`} />
+                  {syncMutation.isPending ? "Syncing..." : "Sync Now"}
+                </Button>
+              </div>
               <Button
                 onClick={openNewDialog}
                 className="bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-semibold"
