@@ -436,7 +436,8 @@ async function validateMetaCredentials() {
     return;
   }
 
-  console.log("[META STARTUP] Validating Meta credentials against Graph API...");
+  const tokenPrefix = accessToken ? accessToken.substring(0, 15) + "..." : "empty";
+  console.log(`[META] Validating credentials — pageId=${pageId}, tokenPrefix=${tokenPrefix}, appSecret=${appSecret ? "set" : "not set"}`);
 
   if (!accessToken) {
     const issue = "META_ACCESS_TOKEN not set — required for Facebook/Instagram DM features.";
@@ -461,8 +462,10 @@ async function validateMetaCredentials() {
 
     try {
       const accountsUrl = `https://graph.facebook.com/v19.0/me/accounts?fields=id,name,access_token&access_token=${accessToken}${proofParam}`;
+      console.log(`[META] Calling /me/accounts (proof=${proof ? "yes" : "no"})...`);
       const accountsRes = await fetch(accountsUrl);
       const accountsData = await accountsRes.json() as any;
+      console.log(`[META] /me/accounts response: error=${accountsData.error?.code || "none"}, pages=${(accountsData.data || []).length}`);
 
       if (accountsData.error) {
         const errCode = accountsData.error.code;
