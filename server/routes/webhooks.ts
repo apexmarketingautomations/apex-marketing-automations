@@ -538,6 +538,7 @@ export function registerWebhooksRoutes(app: Express) {
     let agentId = null;
     if (vapiConfig.isConfigured) {
       try {
+        const godModeWebhookUrl = process.env.VAPI_WEBHOOK_URL || "https://apexmarketingautomations.com/api/vapi/webhook";
         const payload = {
           transcriber: { provider: "deepgram" },
           model: {
@@ -551,6 +552,12 @@ export function registerWebhooksRoutes(app: Express) {
           voice: { provider: "11labs", voiceId: "21m00Tcm4TlvDq8ikWAM" },
           firstMessage: `Hello! Thanks for calling ${businessName}. How can I help you today?`,
           name: `${businessName} AI Receptionist`,
+          serverUrl: godModeWebhookUrl,
+          serverMessages: [
+            "assistant.started", "conversation-update", "end-of-call-report", "function-call",
+            "hang", "speech-update", "status-update", "tool-calls", "transcript",
+            "transfer-destination-request", "user-interrupted",
+          ],
         };
         const vapiRes = await fetch("https://api.vapi.ai/assistant", {
           method: "POST",
@@ -708,6 +715,7 @@ export function registerWebhooksRoutes(app: Express) {
       let agentId = null;
       if (vapiConfig.isConfigured) {
         try {
+          const streamWebhookUrl = process.env.VAPI_WEBHOOK_URL || "https://apexmarketingautomations.com/api/vapi/webhook";
           const payload = {
             transcriber: { provider: "deepgram" },
             model: {
@@ -721,6 +729,12 @@ export function registerWebhooksRoutes(app: Express) {
             voice: { provider: "11labs", voiceId: "21m00Tcm4TlvDq8ikWAM" },
             firstMessage: `Hello! Thanks for calling ${businessName}. How can I help you today?`,
             name: `${businessName} AI Receptionist`,
+            serverUrl: streamWebhookUrl,
+            serverMessages: [
+              "assistant.started", "conversation-update", "end-of-call-report", "function-call",
+              "hang", "speech-update", "status-update", "tool-calls", "transcript",
+              "transfer-destination-request", "user-interrupted",
+            ],
           };
           const vapiRes = await fetch("https://api.vapi.ai/assistant", {
             method: "POST",

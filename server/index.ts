@@ -429,8 +429,424 @@ function validateEnvVars() {
   const { analyzeCallTranscript, analyzeAllUnprocessed, generatePatternReport, generatePromptEnrichment, injectPatternsIntoAgent, onCallAnalyzed, startAutoLearningLoop } = await import("./callIntelligence");
 
   const { contacts } = await import("@shared/schema");
-  const { like: vapiLike } = await import("drizzle-orm");
+  const { like: vapiLike, and: vapiAnd } = await import("drizzle-orm");
   const { getTwilioClient } = await import("./routes/helpers");
+  const { storage: vapiStorage } = await import("./storage");
+  const { geminiChat: vapiGeminiChat, isGeminiConfigured: vapiIsGeminiConfigured } = await import("./gemini");
+
+  const VAPI_ASSISTANT_ID = "e30434f7-e7e0-4be7-8b89-40c384a52b4a";
+  const VAPI_SERVER_URL = "https://apexmarketingautomations.com/api/vapi/webhook";
+  const VAPI_SERVER_MESSAGES = [
+    "assistant.started",
+    "conversation-update",
+    "end-of-call-report",
+    "function-call",
+    "hang",
+    "speech-update",
+    "status-update",
+    "tool-calls",
+    "transcript",
+    "transfer-destination-request",
+    "user-interrupted",
+  ];
+
+  async function patchVapiAssistant(): Promise<void> {
+    if (!vapiCfg.isConfigured) {
+      console.log("[VAPI PATCH] Skipping — Vapi not configured");
+      return;
+    }
+    try {
+      const patchRes = await fetch(`https://api.vapi.ai/assistant/${VAPI_ASSISTANT_ID}`, {
+        method: "PATCH",
+        headers: vapiCfg.privateHeaders(),
+        body: JSON.stringify({
+          serverUrl: VAPI_SERVER_URL,
+          serverMessages: VAPI_SERVER_MESSAGES,
+        }),
+      });
+      if (patchRes.ok) {
+        console.log(`[VAPI PATCH] Assistant ${VAPI_ASSISTANT_ID} patched: serverUrl + serverMessages set`);
+      } else {
+        const errTxt = await patchRes.text();
+        console.warn(`[VAPI PATCH] Failed to patch assistant ${VAPI_ASSISTANT_ID}: ${patchRes.status} ${errTxt.substring(0, 200)}`);
+      }
+    } catch (patchErr: any) {
+      console.error("[VAPI PATCH] Error patching assistant:", patchErr?.message);
+    }
+  }
+
+  patchVapiAssistant().catch(err => console.error("[VAPI PATCH] Startup patch failed:", err?.message));
+
+  const processedVapiEvents = new Map<string, number>();
+  setInterval(() => {
+    const cutoff = Date.now() - 60_000;
+    for (const [k, ts] of processedVapiEvents) {
+      if (ts < cutoff) processedVapiEvents.delete(k);
+    }
+  }, 30_000);
+
+  async function generateVapiAiReply(messageBody: string): Promise<string> {
+    const systemPrompt = "You are a helpful business receptionist. Keep text replies under 160 characters. Be warm, professional, and concise. If someone wants to book an appointment, suggest they call the office number.";
+    const staticFallback = "Thanks for your message! We'll get back to you shortly.";
+
+    const openaiApiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+    const openaiBaseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+    if (openaiApiKey) {
+      try {
+        const OpenAI = (await import("openai")).default;
+        const openaiClient = new OpenAI({ apiKey: openaiApiKey, baseURL: openaiBaseUrl });
+        const completion = await openaiClient.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: messageBody.substring(0, 1000) },
+          ],
+          max_tokens: 200,
+          temperature: 0.7,
+        });
+        const reply = completion.choices[0]?.message?.content?.trim();
+        if (reply) {
+          console.log("[VAPI SMS] AI reply generated via OpenAI");
+          return reply;
+        }
+      } catch (openaiErr: any) {
+        console.warn("[VAPI SMS] OpenAI failed, falling back to Gemini:", openaiErr?.message);
+      }
+    }
+
+    if (vapiIsGeminiConfigured()) {
+      try {
+        const geminiReply = await vapiGeminiChat([
+          { role: "system", content: systemPrompt },
+          { role: "user", content: messageBody.substring(0, 1000) },
+        ], { temperature: 0.7, maxTokens: 200 });
+        if (geminiReply) {
+          console.log("[VAPI SMS] AI reply generated via Gemini");
+          return geminiReply;
+        }
+      } catch (geminiErr: any) {
+        console.warn("[VAPI SMS] Gemini failed, using static fallback:", geminiErr?.message);
+      }
+    }
+
+    return staticFallback;
+  }
+
+  async function resolveVapiSubAccount(
+    senderPhone: string,
+    destinationNumber?: string | null
+  ): Promise<{ id: number; twilioNumber: string | null } | null> {
+    try {
+      const allAccounts = await vapiStorage.getSubAccounts();
+      const active = allAccounts.filter((a: any) => a.ownerUserId !== "_archived");
+
+      if (active.length === 0) {
+        console.error("[VAPI SMS] No active sub-accounts found — dropping message");
+        return null;
+      }
+
+      if (active.length === 1) {
+        return { id: active[0].id, twilioNumber: active[0].twilioNumber || null };
+      }
+
+      if (destinationNumber) {
+        const destCleaned = destinationNumber.replace(/\D/g, "").slice(-10);
+        const byDest = active.find((a: any) => {
+          const tn = (a.twilioNumber || "").replace(/\D/g, "").slice(-10);
+          return tn && tn === destCleaned;
+        });
+        if (byDest) {
+          console.log(`[VAPI SMS] Routing to account id=${byDest.id} (matched by destination number ${destinationNumber})`);
+          return { id: byDest.id, twilioNumber: byDest.twilioNumber || null };
+        }
+      }
+
+      const cleaned = senderPhone.replace(/\D/g, "").slice(-10);
+      const existingInAnyAccount = await vapiDb.select().from(contacts)
+        .where(vapiLike(contacts.phone, `%${cleaned}`)).limit(1);
+      if (existingInAnyAccount.length > 0) {
+        const accountId = existingInAnyAccount[0].subAccountId;
+        const match = active.find((a: any) => a.id === accountId);
+        if (match) {
+          console.log(`[VAPI SMS] Routing to account id=${match.id} (matched by existing contact)`);
+          return { id: match.id, twilioNumber: match.twilioNumber || null };
+        }
+      }
+
+      console.warn(`[VAPI SMS] Multi-tenant: no deterministic account match for ${senderPhone} — dropping to prevent cross-tenant data leak`);
+      return null;
+    } catch (err: any) {
+      console.error("[VAPI SMS] Account resolution error:", err?.message);
+      return null;
+    }
+  }
+
+  async function handleVapiSms(
+    smsFrom: string,
+    smsBody: string,
+    messageId: string | null,
+    destinationNumber?: string | null
+  ): Promise<void> {
+    const senderClean = smsFrom.replace(/\s+/g, "");
+    const bodyFingerprint = smsBody.substring(0, 80).replace(/\s+/g, " ");
+    const dedupeKey = messageId
+      ? `msgid:${messageId}:${senderClean}`
+      : `msg:${senderClean}:${bodyFingerprint}`;
+    if (processedVapiEvents.has(dedupeKey)) {
+      console.log(`[VAPI SMS] Duplicate event skipped: ${dedupeKey.substring(0, 60)}`);
+      return;
+    }
+    processedVapiEvents.set(dedupeKey, Date.now());
+
+    console.log(`[VAPI SMS] Inbound from ${senderClean}: "${smsBody.substring(0, 100)}"`);
+
+    const { isOptOutMessage: isOpt, isOptInMessage: isIn, handleSmsOptOut: optOut, handleSmsOptIn: optIn, checkPhoneOptOut } = await import("./optOutGuard");
+
+    const account = await resolveVapiSubAccount(senderClean, destinationNumber);
+    if (!account) {
+      console.error(`[VAPI SMS] Cannot process message from ${senderClean}: no account resolved`);
+      return;
+    }
+    const subAccountId = account.id;
+
+    if (isOpt(smsBody)) {
+      await optOut(senderClean, subAccountId);
+      console.log(`[VAPI SMS OPT-OUT] ${senderClean} opted out`);
+      const twilioClientForOptOut = await getTwilioClient();
+      if (twilioClientForOptOut) {
+        const fromNumber = account.twilioNumber || process.env.TWILIO_PHONE_NUMBER;
+        if (fromNumber) {
+          await twilioClientForOptOut.messages.create({
+            body: "You have been unsubscribed and will no longer receive messages from us. Reply START to re-subscribe.",
+            from: fromNumber,
+            to: senderClean,
+          }).catch((e: any) => console.error("[VAPI SMS OPT-OUT] Twilio send failed:", e?.message));
+        }
+      }
+      return;
+    }
+
+    if (isIn(smsBody)) {
+      await optIn(senderClean, subAccountId);
+      console.log(`[VAPI SMS OPT-IN] ${senderClean} opted in`);
+      const twilioClientForOptIn = await getTwilioClient();
+      if (twilioClientForOptIn) {
+        const fromNumber = account.twilioNumber || process.env.TWILIO_PHONE_NUMBER;
+        if (fromNumber) {
+          await twilioClientForOptIn.messages.create({
+            body: "You have been re-subscribed and will receive messages from us again.",
+            from: fromNumber,
+            to: senderClean,
+          }).catch((e: any) => console.error("[VAPI SMS OPT-IN] Twilio send failed:", e?.message));
+        }
+      }
+      return;
+    }
+
+    try {
+      await vapiStorage.createMessage({
+        subAccountId,
+        contactPhone: senderClean,
+        body: smsBody,
+        direction: "inbound",
+        channel: "vapi-sms",
+        status: "received",
+      });
+    } catch (msgErr: any) {
+      console.error("[VAPI SMS] Message storage error:", msgErr?.message);
+    }
+
+    let contactName = `Vapi SMS ${senderClean.slice(-4)}`;
+    try {
+      const cleaned = senderClean.replace(/\D/g, "").slice(-10);
+      const existingContacts = await vapiDb.select().from(contacts)
+        .where(vapiAnd(
+          vapiEq(contacts.subAccountId, subAccountId),
+          vapiLike(contacts.phone, `%${cleaned}`)
+        )).limit(1);
+
+      if (existingContacts.length === 0) {
+        const newContact = await vapiStorage.createContact({
+          subAccountId,
+          firstName: contactName,
+          phone: senderClean,
+          source: "vapi-sms",
+          tags: ["vapi-sms", "sms_lead"],
+        });
+        console.log(`[VAPI SMS] Created CRM contact id=${newContact.id} for ${senderClean}`);
+      } else {
+        const c = existingContacts[0];
+        contactName = `${c.firstName} ${c.lastName || ""}`.trim() || contactName;
+        console.log(`[VAPI SMS] Found existing CRM contact id=${c.id} for ${senderClean}`);
+      }
+    } catch (crmErr: any) {
+      console.error("[VAPI SMS] CRM contact error:", crmErr?.message);
+    }
+
+    const isOptedOut = await checkPhoneOptOut(senderClean, subAccountId).catch(() => false);
+    if (isOptedOut) {
+      console.log(`[VAPI SMS] ${senderClean} is opted out — skipping AI reply`);
+      return;
+    }
+
+    const aiReply = await generateVapiAiReply(smsBody);
+
+    const fromNumber = account.twilioNumber || process.env.TWILIO_PHONE_NUMBER;
+    if (fromNumber) {
+      const twilioClient = await getTwilioClient();
+      if (twilioClient) {
+        try {
+          await twilioClient.messages.create({
+            body: aiReply,
+            from: fromNumber,
+            to: senderClean,
+          });
+          console.log(`[VAPI SMS] AI reply sent to ${senderClean} via Twilio`);
+          await vapiStorage.createMessage({
+            subAccountId,
+            contactPhone: senderClean,
+            body: aiReply,
+            direction: "outbound",
+            channel: "vapi-sms",
+            status: "sent",
+          });
+        } catch (sendErr: any) {
+          console.error("[VAPI SMS] Twilio send failed:", sendErr?.message);
+          await vapiStorage.createMessage({
+            subAccountId,
+            contactPhone: senderClean,
+            body: aiReply,
+            direction: "outbound",
+            channel: "vapi-sms",
+            status: "failed",
+          }).catch(() => {});
+        }
+      } else {
+        console.warn("[VAPI SMS] Twilio not configured — AI reply generated but not sent");
+        await vapiStorage.createMessage({
+          subAccountId,
+          contactPhone: senderClean,
+          body: aiReply,
+          direction: "outbound",
+          channel: "vapi-sms",
+          status: "failed",
+        }).catch(() => {});
+      }
+    } else {
+      console.warn(`[VAPI SMS] No outbound phone number configured for account ${subAccountId}`);
+    }
+
+    try {
+      const { checkAutomationSafety } = await import("./automationSafety");
+      const automations = await vapiStorage.getLiveAutomations(subAccountId);
+      const matching = (automations as any[]).filter((a: any) =>
+        (a.status === "compiled" || a.status === "active") &&
+        a.manifest?.trigger === "OnVapiSms"
+      );
+
+      if (matching.length > 0) {
+        console.log(`[VAPI SMS] Found ${matching.length} OnVapiSms automation(s) to evaluate`);
+        const accountRecord = await vapiStorage.getSubAccount(subAccountId);
+
+        for (const automation of matching) {
+          const triggerId = `OnVapiSms:${senderClean}:${Date.now()}`;
+          const safety = checkAutomationSafety({
+            automationId: automation.id,
+            triggerId,
+            depth: 0,
+            accountId: subAccountId,
+          });
+
+          if (!safety.safe) {
+            console.warn(`[VAPI SMS] Automation ${automation.id} blocked: ${safety.reason}`);
+            continue;
+          }
+
+          console.log(`[VAPI SMS] Executing OnVapiSms automation id=${automation.id}`);
+          const steps = automation.manifest?.steps || [];
+          const triggerContext = {
+            leadName: contactName,
+            leadPhone: senderClean,
+            senderPhone: senderClean,
+            message: smsBody,
+            channel: "vapi-sms",
+            source: "vapi-sms",
+          };
+
+          for (const step of steps) {
+            try {
+              const action = step.action || step.type;
+              if (!action) continue;
+
+              if (action === "Wait" || action === "wait") {
+                const waitMs = (step.payload?.seconds || step.seconds || 5) * 1000;
+                await new Promise(resolve => setTimeout(resolve, Math.min(waitMs, 30000)));
+                continue;
+              }
+
+              if (action === "Condition" || action === "condition") continue;
+
+              const stepPayload = { ...step.payload };
+              if (stepPayload.body && typeof stepPayload.body === "string") {
+                stepPayload.body = stepPayload.body
+                  .replace(/\{\{leadName\}\}/g, triggerContext.leadName)
+                  .replace(/\{\{leadPhone\}\}/g, triggerContext.leadPhone)
+                  .replace(/\{\{senderPhone\}\}/g, triggerContext.senderPhone)
+                  .replace(/\{\{message\}\}/g, triggerContext.message);
+              }
+              if ((action === "send_sms" || action === "SMS") && !stepPayload.to) {
+                stepPayload.to = senderClean;
+              }
+              if (!stepPayload.from && accountRecord?.twilioNumber) {
+                stepPayload.from = accountRecord.twilioNumber;
+              }
+              stepPayload.subAccountId = subAccountId;
+
+              const twilioClientStep = await getTwilioClient();
+              if ((action === "send_sms" || action === "SMS") && twilioClientStep && stepPayload.to && stepPayload.body) {
+                await twilioClientStep.messages.create({
+                  body: stepPayload.body,
+                  to: stepPayload.to,
+                  from: stepPayload.from || account.twilioNumber || process.env.TWILIO_PHONE_NUMBER,
+                });
+                console.log(`[VAPI SMS] Automation step sent SMS to ${stepPayload.to}`);
+              } else if (action !== "send_sms" && action !== "SMS") {
+                console.log(`[VAPI SMS] Automation step action "${action}" not handled inline; skipping`);
+              }
+            } catch (stepErr: any) {
+              console.error(`[VAPI SMS] Automation step error:`, stepErr?.message);
+            }
+          }
+
+          try {
+            await vapiStorage.updateLiveAutomation(automation.id, {
+              lastRunAt: new Date(),
+              runCount: (automation.runCount || 0) + 1,
+              runLogs: [...((automation.runLogs as any[]) || []), {
+                timestamp: new Date().toISOString(),
+                trigger: "OnVapiSms",
+                context: { leadName: contactName, leadPhone: senderClean },
+                status: "completed",
+              }].slice(-50),
+            });
+          } catch (logErr: any) {
+            console.error("[VAPI SMS] Automation log update error:", logErr?.message);
+          }
+        }
+      }
+    } catch (automErr: any) {
+      console.error("[VAPI SMS] Automation trigger error:", automErr?.message);
+    }
+  }
+
+  app.post("/api/vapi/patch-assistant", async (req, res) => {
+    try {
+      await patchVapiAssistant();
+      res.json({ ok: true, message: "Assistant patch triggered" });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Patch failed" });
+    }
+  });
 
   app.post("/api/vapi/webhook", async (req, res) => {
     try {
@@ -438,23 +854,86 @@ function validateEnvVars() {
 
       if (!msgType) {
         const body = req.body || {};
-        const smsFrom = body.from || body.From || body.customer?.number;
-        const smsBody = body.text || body.body || body.Body || body.content || body.message;
-        const smsTo = body.to || body.To || body.phoneNumber;
 
-        if (smsFrom && (typeof smsBody === "string")) {
-          console.log(`[VAPI SMS] Inbound text from ${smsFrom}: "${smsBody}"`);
-          console.log(`[VAPI SMS] Full payload:`, JSON.stringify(body).substring(0, 500));
+        const smsFrom = body.from || body.From || body.customer?.number ||
+          body.message?.customer?.number || body.call?.customer?.number;
+        const smsBody = body.text || body.body || body.Body || body.content ||
+          (typeof body.message === "string" ? body.message : null) ||
+          body.transcript || body.lastMessage;
+        const destNumber = body.to || body.To || body.phoneNumber?.number ||
+          body.call?.phoneNumber?.number || null;
+        const msgBodyId = body.messageId || body.id || null;
+
+        if (smsFrom && (typeof smsBody === "string") && smsBody.trim()) {
+          await handleVapiSms(smsFrom, smsBody.trim(), msgBodyId, destNumber);
           return res.json({ ok: true });
         }
 
         if (body.type === "sms" || body.type === "message" || body.sms || body.text) {
-          console.log(`[VAPI SMS] Inbound event:`, JSON.stringify(body).substring(0, 500));
+          const altFrom = body.from || body.customer?.number;
+          const altBody = body.text || body.sms || body.content || "";
+          if (altFrom && altBody) {
+            await handleVapiSms(altFrom, altBody, body.id || null, destNumber);
+            return res.json({ ok: true });
+          }
+          console.log(`[VAPI SMS] Inbound event (no extractable content):`, JSON.stringify(body).substring(0, 500));
           return res.json({ ok: true });
         }
 
         console.log(`[VAPI WEBHOOK] Unknown payload (no message.type):`, JSON.stringify(body).substring(0, 300));
         return res.json({ ok: true });
+      }
+
+      if (msgType === "conversation-update" || msgType === "transcript") {
+        const msg = req.body.message;
+        const customerNumber = msg?.customer?.number || msg?.call?.customer?.number;
+        const destinationNumber = msg?.phoneNumber?.number || msg?.call?.phoneNumber?.number || null;
+        const artifact = msg?.artifact || msg;
+        const messages = artifact?.messages || [];
+
+        const lastUserMessage = [...messages].reverse().find((m: any) =>
+          m.role === "user" && m.content && typeof m.content === "string"
+        );
+
+        if (customerNumber && lastUserMessage) {
+          const lastUserMsgIndex = messages.length - 1 - [...messages].reverse().findIndex((m: any) =>
+            m.role === "user" && m.content && typeof m.content === "string"
+          );
+          const conversationId = msg?.conversationId || msg?.call?.id || null;
+          const messageId = lastUserMessage.id
+            ? String(lastUserMessage.id)
+            : conversationId
+              ? `${conversationId}:${lastUserMsgIndex}`
+              : null;
+          await handleVapiSms(customerNumber, lastUserMessage.content, messageId, destinationNumber).catch(
+            err => console.error("[VAPI WEBHOOK] conversation-update SMS handler error:", err?.message)
+          );
+        }
+      }
+
+      if (msgType === "status-update") {
+        const msg = req.body.message;
+        console.log(`[VAPI WEBHOOK] status-update: status=${msg?.status}, callId=${msg?.call?.id}`);
+      }
+
+      if (msgType === "speech-update") {
+        const msg = req.body.message;
+        console.log(`[VAPI WEBHOOK] speech-update: status=${msg?.status}, role=${msg?.role}`);
+      }
+
+      if (msgType === "user-interrupted") {
+        const msg = req.body.message;
+        console.log(`[VAPI WEBHOOK] user-interrupted: callId=${msg?.call?.id}`);
+      }
+
+      if (msgType === "assistant.started") {
+        const msg = req.body.message;
+        console.log(`[VAPI WEBHOOK] assistant.started: assistantId=${msg?.assistant?.id || msg?.call?.assistantId}`);
+      }
+
+      if (msgType === "transfer-destination-request") {
+        const msg = req.body.message;
+        console.log(`[VAPI WEBHOOK] transfer-destination-request: callId=${msg?.call?.id}`);
       }
 
       if (msgType === "tool-calls") {

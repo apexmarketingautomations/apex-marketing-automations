@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { format } from "date-fns";
-import { Send, Phone, User, Building2, MessageSquare, Loader2, CheckCircle2, Clock, Instagram, Mail, Bell, BookOpen, MessageCircle, CheckCheck } from "lucide-react";
+import { Send, Phone, User, Building2, MessageSquare, Loader2, CheckCircle2, Clock, Instagram, Mail, Bell, BookOpen, MessageCircle, CheckCheck, Bot } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { INBOX_STEPS } from "@/components/tutorial-steps";
 import { motion, AnimatePresence } from "framer-motion";
@@ -263,7 +263,7 @@ export default function SmsDashboard() {
                 <div>
                   <h3 className="font-semibold text-primary">Omnichannel Ready</h3>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Connected to Twilio (SMS), WhatsApp Business API, and Meta Graph API (Instagram).
+                    Connected to Twilio (SMS), WhatsApp Business API, Meta Graph API (Instagram), and Vapi SMS.
                   </p>
                 </div>
               </div>
@@ -291,12 +291,15 @@ export default function SmsDashboard() {
                   </div>
                 </div>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                  <Badge variant="outline" className="gap-1">
                    <Phone className="h-3 w-3" /> SMS
                  </Badge>
                  <Badge variant="outline" className="gap-1 border-green-500/30 text-green-400" data-testid="badge-whatsapp">
                    <MessageCircle className="h-3 w-3" /> WhatsApp
+                 </Badge>
+                 <Badge variant="outline" className="gap-1 border-purple-500/30 text-purple-400" data-testid="badge-vapi-sms">
+                   <Bot className="h-3 w-3" /> Vapi SMS
                  </Badge>
                  <Badge variant="outline" className={`gap-1 ${!instagramConnected && 'opacity-50'}`}>
                    <Instagram className="h-3 w-3" /> Instagram
@@ -330,10 +333,12 @@ export default function SmsDashboard() {
                              <Instagram className="h-3 w-3 text-pink-500" />
                            ) : msg.channel === 'whatsapp' ? (
                              <MessageCircle className="h-3 w-3 text-green-500" />
+                           ) : msg.channel === 'vapi-sms' ? (
+                             <Bot className="h-3 w-3 text-purple-500" />
                            ) : (
                              <MessageSquare className="h-3 w-3 text-blue-500" />
                            )}
-                           <span className="text-[10px] text-muted-foreground capitalize">{msg.channel || 'sms'}</span>
+                           <span className="text-[10px] text-muted-foreground capitalize">{msg.channel === 'vapi-sms' ? 'Vapi SMS' : (msg.channel || 'sms')}</span>
                         </div>
                         <div
                           className={`rounded-2xl px-4 py-3 shadow-sm ${

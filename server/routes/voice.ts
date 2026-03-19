@@ -46,6 +46,7 @@ export function registerVoiceRoutes(app: Express) {
       }
     }
 
+    const webhookServerUrl = process.env.VAPI_WEBHOOK_URL || "https://apexmarketingautomations.com/api/vapi/webhook";
     const payload = {
       transcriber: { provider: "deepgram" },
       model: {
@@ -64,6 +65,20 @@ export function registerVoiceRoutes(app: Express) {
       },
       firstMessage,
       name: `Apex Agent - ${new Date().toLocaleDateString()}`,
+      serverUrl: webhookServerUrl,
+      serverMessages: [
+        "assistant.started",
+        "conversation-update",
+        "end-of-call-report",
+        "function-call",
+        "hang",
+        "speech-update",
+        "status-update",
+        "tool-calls",
+        "transcript",
+        "transfer-destination-request",
+        "user-interrupted",
+      ],
     };
 
     const response = await fetch("https://api.vapi.ai/assistant", {
