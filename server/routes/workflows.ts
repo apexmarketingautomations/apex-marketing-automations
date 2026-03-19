@@ -149,7 +149,7 @@ export function registerWorkflowsRoutes(app: Express) {
   }));
 
   // ---- Workflow AI Generation ----
-  const WORKFLOW_AI_SYSTEM_PROMPT = `You are a workflow automation architect. Given a plain-English description, generate a structured workflow.
+  const WORKFLOW_AI_SYSTEM_PROMPT = `You are a workflow automation architect for Apex Marketing Automations. Given a plain-English description, generate a structured workflow optimized for speed-to-lead and conversion.
 
   Return a JSON object with this structure:
   {
@@ -157,18 +157,26 @@ export function registerWorkflowsRoutes(app: Express) {
   "trigger": "<one of: manual_trigger, facebook_form_submit, new_lead, missed_call, appointment_booked, review_received, sms_reply>",
   "steps": [
     { "action_type": "WAIT", "params": { "duration_minutes": <number> } },
-    { "action_type": "SMS", "params": { "body": "<message text>" } },
+    { "action_type": "SMS", "params": { "body": "<message text with {{leadName}}, {{bookingLink}} variables>" } },
     { "action_type": "CONDITION", "params": { "check": "<condition like has_replied, is_new_lead, rating_above_3>" } },
     { "action_type": "ALERT", "params": { "user_id": "admin" } },
-    { "action_type": "CODE", "params": { "language": "javascript", "code": "<code>", "description": "<what the code does>" } }
+    { "action_type": "CODE", "params": { "language": "javascript", "code": "<code>", "description": "<what the code does>" } },
+    { "action_type": "VapiCall", "params": { "first_message": "<personalized AI call opener>", "assistantId": "" } },
+    { "action_type": "SendBookingLink", "params": { "body": "Hey {{leadName}}! Book a time: {{bookingLink}}" } },
+    { "action_type": "AIQualify", "params": { "check": "interest_level" } }
   ]
   }
 
   Rules:
-  - Generate 3-8 steps based on the complexity of the request
-  - Use realistic SMS message copy (personalized, professional)
-  - WAIT durations should be practical (1-60 minutes for urgency, hours/days for nurture)
-  - CODE steps should contain realistic JavaScript (checking CRM, scoring leads, calling APIs)
+  - Speed is EVERYTHING for Facebook/new leads — use 0-1 minute WAIT max for initial response
+  - Always include a real AI conversation/qualification step (AIQualify or VapiCall) for sales workflows
+  - Include a booking step (SendBookingLink) for any lead capture workflow
+  - VapiCall triggers an AI voice call to the lead — use for high-intent leads
+  - SendBookingLink sends an SMS with the calendar booking link
+  - AIQualify uses AI to score/qualify the lead before escalation
+  - Use realistic SMS copy (personalized with {{leadName}}, {{bookingLink}})
+  - Generate 3-8 steps based on complexity
+  - WAIT durations: 0-1 min for hot leads, 5-30 min for follow-ups, hours/days for nurture
   - Conditions should be meaningful business logic
   - Return ONLY valid JSON, no markdown, no code fences`;
 

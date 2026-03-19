@@ -47,6 +47,9 @@ const StepIcon = ({ type }: { type: string }) => {
     case "AIGenerate": return <Sparkles className="h-5 w-5 text-violet-500" />;
     case "ElevenLabsTTS": return <Volume2 className="h-5 w-5 text-fuchsia-500" />;
     case "SendWhatsApp": return <MessageCircle className="h-5 w-5 text-green-500" />;
+    case "VapiCall": return <Volume2 className="h-5 w-5 text-orange-500" />;
+    case "SendBookingLink": return <BookOpen className="h-5 w-5 text-teal-500" />;
+    case "AIQualify": return <Sparkles className="h-5 w-5 text-violet-500" />;
     case "Wait": return <Clock className="h-5 w-5 text-amber-500" />;
     default: return <CheckCircle2 className="h-5 w-5 text-gray-400" />;
   }
@@ -88,6 +91,9 @@ const StepCard = ({ step, index, onClick, isSelected }: { step: any, index: numb
                   {step.action_type === "AIGenerate" && <span className="text-violet-400">AI Generate</span>}
                   {step.action_type === "ElevenLabsTTS" && <span className="text-fuchsia-400">{step.params.text?.slice(0, 40) || "Voice Message"}</span>}
                   {step.action_type === "SendWhatsApp" && <span className="text-green-400">{step.params.template_name || step.params.body?.slice(0, 30) || "WhatsApp"}</span>}
+                  {step.action_type === "VapiCall" && <span className="text-orange-400">AI Call → {step.params.first_message?.slice(0, 30) || "Outbound"}</span>}
+                  {step.action_type === "SendBookingLink" && <span className="text-teal-400">📅 Booking SMS</span>}
+                  {step.action_type === "AIQualify" && <span className="text-violet-400">AI Qualify Lead</span>}
                 </p>
               </div>
               <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1004,7 +1010,7 @@ function WorkflowBuilderInner() {
   const [selectedStepIndex, setSelectedStepIndex] = useState<number | null>(null);
   const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [prompt, setPrompt] = useState("When a lead fills the Facebook form, wait 5 mins, then SMS them 'Hey {{name}}, thanks for your interest!' If they reply, alert me.");
+  const [prompt, setPrompt] = useState("When a Facebook form is submitted, wait 30 seconds, send a personalized SMS introducing our services, then immediately trigger an AI call to qualify the lead and book an appointment.");
   const [activeTab, setActiveTab] = useState("editor");
 
   const { data: workflows = [], isLoading } = useQuery<Workflow[]>({
@@ -1092,6 +1098,9 @@ function WorkflowBuilderInner() {
       WebhookCall: { action_type: "WebhookCall", params: { url: "https://", method: "POST" } },
       AIGenerate: { action_type: "AIGenerate", params: { prompt: "Generate a response", output_field: "ai_message" } },
       ElevenLabsTTS: { action_type: "ElevenLabsTTS", params: { text: "Hello, this is a voice message.", voice_id: "EXAVITQu4vr4xnSDxMaL" } },
+      VapiCall: { action_type: "VapiCall", params: { first_message: "Hey {{leadName}}, this is Apex — you just filled out a form, I wanted to follow up real quick.", assistantId: "" } },
+      SendBookingLink: { action_type: "SendBookingLink", params: { body: "Hey {{leadName}}! Here's our calendar to book a time: {{bookingLink}}" } },
+      AIQualify: { action_type: "AIQualify", params: { check: "interest_level", pass_action: "continue", fail_action: "skip" } },
     };
 
     const newStep = stepDefaults[type];
@@ -1249,6 +1258,9 @@ function WorkflowBuilderInner() {
                       { type: "WebhookCall", label: "Webhook", icon: <Globe className="h-3 w-3" />, color: "text-indigo-500 border-indigo-500/30 hover:bg-indigo-500/10" },
                       { type: "ElevenLabsTTS", label: "Voice TTS", icon: <Volume2 className="h-3 w-3" />, color: "text-fuchsia-500 border-fuchsia-500/30 hover:bg-fuchsia-500/10" },
                       { type: "SendWhatsApp", label: "WhatsApp", icon: <MessageCircle className="h-3 w-3" />, color: "text-green-500 border-green-500/30 hover:bg-green-500/10" },
+                      { type: "VapiCall", label: "AI Call", icon: <Volume2 className="h-3 w-3" />, color: "text-orange-500 border-orange-500/30 hover:bg-orange-500/10" },
+                      { type: "SendBookingLink", label: "Booking SMS", icon: <BookOpen className="h-3 w-3" />, color: "text-teal-500 border-teal-500/30 hover:bg-teal-500/10" },
+                      { type: "AIQualify", label: "AI Qualify", icon: <Sparkles className="h-3 w-3" />, color: "text-violet-500 border-violet-500/30 hover:bg-violet-500/10" },
                     ].map(({ type, label, icon, color }) => (
                       <Button
                         key={type}
@@ -1436,6 +1448,56 @@ function WorkflowBuilderInner() {
                                   onChange={(e) => handleUpdateStep(selectedStepIndex, { ...selectedStep, params: { ...selectedStep.params, list_items: e.target.value } })} />
                               </div>
                             )}
+                          </>
+                        )}
+
+                        {selectedStep.action_type === "VapiCall" && (
+                          <>
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-medium">First Message</label>
+                              <Textarea data-testid="input-vapi-message" value={selectedStep.params.first_message || ""} className="min-h-[80px]"
+                                placeholder="Hey {{leadName}}, this is Apex — wanted to follow up on your inquiry..."
+                                onChange={(e) => handleUpdateStep(selectedStepIndex, { ...selectedStep, params: { ...selectedStep.params, first_message: e.target.value } })} />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-medium">Assistant ID (optional — uses default outbound specialist)</label>
+                              <Input data-testid="input-vapi-assistant" value={selectedStep.params.assistantId || ""}
+                                placeholder="e30434f7-e7e0-4be7-8b89-40c384a52b4a"
+                                onChange={(e) => handleUpdateStep(selectedStepIndex, { ...selectedStep, params: { ...selectedStep.params, assistantId: e.target.value } })} />
+                            </div>
+                            <p className="text-[10px] text-muted-foreground">Triggers an AI voice call via Vapi to the lead's phone. Uses the Outbound Specialist by default.</p>
+                          </>
+                        )}
+
+                        {selectedStep.action_type === "SendBookingLink" && (
+                          <>
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-medium">Booking SMS Body</label>
+                              <Textarea data-testid="input-booking-body" value={selectedStep.params.body || ""} className="min-h-[80px]"
+                                placeholder="Hey {{leadName}}! Book a time with us: {{bookingLink}}"
+                                onChange={(e) => handleUpdateStep(selectedStepIndex, { ...selectedStep, params: { ...selectedStep.params, body: e.target.value } })} />
+                            </div>
+                            <p className="text-[10px] text-muted-foreground">Sends an SMS with the booking link. Use {"{{bookingLink}}"} to auto-inject the calendar URL.</p>
+                          </>
+                        )}
+
+                        {selectedStep.action_type === "AIQualify" && (
+                          <>
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-medium">Qualification Check</label>
+                              <Select value={selectedStep.params.check || "interest_level"} onValueChange={(val) => handleUpdateStep(selectedStepIndex, { ...selectedStep, params: { ...selectedStep.params, check: val } })}>
+                                <SelectTrigger data-testid="select-qualify-check">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="interest_level">Interest Level (AI)</SelectItem>
+                                  <SelectItem value="has_replied">Has Replied</SelectItem>
+                                  <SelectItem value="budget_qualified">Budget Qualified</SelectItem>
+                                  <SelectItem value="service_match">Service Match</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <p className="text-[10px] text-muted-foreground">AI analyzes the lead and determines qualification. Qualified leads continue the flow; unqualified are flagged for review.</p>
                           </>
                         )}
 

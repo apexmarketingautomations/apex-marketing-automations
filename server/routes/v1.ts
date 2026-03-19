@@ -1087,20 +1087,78 @@ export function registerV1Routes(app: Express) {
               continue;
             }
 
-            const stepPayload = { ...step.payload };
+            const stepPayload = { ...step.payload, ...(step.params || {}) };
+
+            const bookingLink = "https://calendar.app.google/Fwdtvy7Sy3P8Z1CV6";
+            const templateReplace = (str: string) => str
+              .replace(/\{\{leadName\}\}/g, context.leadName || context.first_name || "there")
+              .replace(/\{\{contact\.first_name\}\}/g, context.first_name || context.leadName || "there")
+              .replace(/\{\{first_name\}\}/g, context.first_name || context.leadName || "there")
+              .replace(/\{\{leadPhone\}\}/g, context.leadPhone || "")
+              .replace(/\{\{leadEmail\}\}/g, context.leadEmail || "")
+              .replace(/\{\{location\}\}/g, context.location || "")
+              .replace(/\{\{source\}\}/g, context.source || "")
+              .replace(/\{\{bookingLink\}\}/g, bookingLink)
+              .replace(/\{\{orderNumber\}\}/g, context.orderNumber || "")
+              .replace(/\{\{orderTotal\}\}/g, context.orderTotal || "")
+              .replace(/\{\{cartTotal\}\}/g, context.cartTotal || "")
+              .replace(/\{\{cartUrl\}\}/g, context.cartUrl || "")
+              .replace(/\{\{storeName\}\}/g, context.storeName || "");
+
             if (stepPayload.body && typeof stepPayload.body === "string") {
-              stepPayload.body = stepPayload.body
-                .replace(/\{\{leadName\}\}/g, context.leadName || "there")
-                .replace(/\{\{leadPhone\}\}/g, context.leadPhone || "")
-                .replace(/\{\{leadEmail\}\}/g, context.leadEmail || "")
-                .replace(/\{\{location\}\}/g, context.location || "")
-                .replace(/\{\{source\}\}/g, context.source || "")
-                .replace(/\{\{orderNumber\}\}/g, context.orderNumber || "")
-                .replace(/\{\{orderTotal\}\}/g, context.orderTotal || "")
-                .replace(/\{\{cartTotal\}\}/g, context.cartTotal || "")
-                .replace(/\{\{cartUrl\}\}/g, context.cartUrl || "")
-                .replace(/\{\{storeName\}\}/g, context.storeName || "");
+              stepPayload.body = templateReplace(stepPayload.body);
             }
+            if (stepPayload.first_message && typeof stepPayload.first_message === "string") {
+              stepPayload.first_message = templateReplace(stepPayload.first_message);
+            }
+
+            if (action === "VapiCall") {
+              const vapiKey = process.env.VAPI_PRIVATE_KEY_APEX || process.env.VAPI_PRIVATE_KEY;
+              if (vapiKey && context.leadPhone) {
+                try {
+                  const assistantId = stepPayload.assistantId || "e30434f7-e7e0-4be7-8b89-40c384a52b4a";
+                  const vapiRes = await fetch("https://api.vapi.ai/call/phone", {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${vapiKey}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      phoneNumberId: process.env.VAPI_PHONE_NUMBER_ID,
+                      customer: { number: context.leadPhone },
+                      assistantId,
+                      assistantOverrides: stepPayload.first_message ? {
+                        firstMessage: stepPayload.first_message,
+                      } : undefined,
+                    }),
+                  });
+                  const vapiData = await vapiRes.json() as any;
+                  console.log(`[AUTOMATION] VapiCall initiated to ${context.leadPhone}: ${vapiData.id || "no-id"}`);
+                } catch (vapiErr: any) {
+                  console.error(`[AUTOMATION] VapiCall failed: ${vapiErr.message}`);
+                }
+              } else {
+                console.warn(`[AUTOMATION] VapiCall skipped — no Vapi key or no leadPhone`);
+              }
+              continue;
+            }
+
+            if (action === "SendBookingLink") {
+              const smsBody = stepPayload.body || `Hey ${context.leadName || "there"}! Book a time with us: ${bookingLink}`;
+              if (context.leadPhone) {
+                await executeDispatchAction("send_sms", {
+                  to: context.leadPhone,
+                  body: smsBody,
+                  subAccountId,
+                  from: account?.twilioNumber || process.env.TWILIO_PHONE_NUMBER,
+                });
+                console.log(`[AUTOMATION] BookingLink SMS sent to ${context.leadPhone}`);
+              }
+              continue;
+            }
+
+            if (action === "AIQualify") {
+              console.log(`[AUTOMATION] AIQualify step — lead: ${context.leadName || "unknown"}, check: ${stepPayload.check || "interest_level"}`);
+              continue;
+            }
+
             if (action === "send_sms" && !stepPayload.to && context.leadPhone) {
               stepPayload.to = context.leadPhone;
             }
