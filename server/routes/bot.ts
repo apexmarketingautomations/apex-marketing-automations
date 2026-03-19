@@ -7,6 +7,7 @@ import { streamGeminiResponse, sendSSEData, initSSE } from "../streaming";
 import { asyncHandler, parseIntParam, logUsageInternal, getIndustryContext, getLanguageInstruction } from "./helpers";
 import { executeTool, getTool } from "../operator/toolRegistry";
 import type { OperatorContext } from "../operator/types";
+import { buildOperatorSystemPrompt } from "../operatorPrompt";
 
 export function registerBotRoutes(app: Express) {
   // ---- Bot Chat (Real OpenAI) ----
@@ -177,6 +178,60 @@ export function registerBotRoutes(app: Express) {
     "diagnoseMessaging",
     "compareToIndustryBenchmark",
     "generateAccountSetupPlan",
+    "restoreBrokenIntegrationDraft",
+    "createContact",
+    "updateContact",
+    "tagContact",
+    "untagContact",
+    "createTask",
+    "assignTask",
+    "createPipeline",
+    "createPipelineStage",
+    "advanceDealStage",
+    "createDeal",
+    "updateDealValue",
+    "assignLeadOwner",
+    "scoreLead",
+    "segmentContacts",
+    "sendTestSMS",
+    "sendLiveSMSDraft",
+    "sendWhatsAppMessageDraft",
+    "sendEmailDraft",
+    "createEmailCampaignDraft",
+    "replyToInstagramDMDraft",
+    "sendReviewRequestDraft",
+    "createNurtureSequenceDraft",
+    "diagnoseWorkflow",
+    "createWorkflow",
+    "duplicateWorkflow",
+    "pauseWorkflow",
+    "resumeWorkflow",
+    "optimizeWorkflowTiming",
+    "generateAutoResponseWorkflow",
+    "generateReactivationWorkflow",
+    "createAppointmentDraft",
+    "rescheduleAppointmentDraft",
+    "cancelAppointmentDraft",
+    "sendAppointmentReminderDraft",
+    "confirmAppointmentDraft",
+    "launchCampaignDraft",
+    "pauseCampaignDraft",
+    "duplicateCampaignDraft",
+    "adjustAdBudgetDraft",
+    "rotateAdCreativeDraft",
+    "createRetargetingCampaignDraft",
+    "createLeadFormDraft",
+    "generateLandingPage",
+    "generateOfferAngles",
+    "generateAdCopyVariants",
+    "generateSMSCopyVariants",
+    "generateEmailCopyVariants",
+    "generateSocialPostDrafts",
+    "generateReviewResponseDraft",
+    "respondToReviewDraft",
+    "classifyReviewSentiment",
+    "escalateNegativeReview",
+    "generateReviewRecoveryPlan",
   ]);
 
   app.post("/api/bot/chat/agent-stream", asyncHandler(async (req, res) => {
@@ -190,13 +245,7 @@ export function registerBotRoutes(app: Express) {
 
       const subAccountId = parsed.data.subAccountId;
 
-      let basePrompt = parsed.data.persona || "You are a helpful AI assistant.";
-      
-      if (parsed.data.currentPath) {
-        basePrompt += `\n\nCurrent user location: ${parsed.data.currentPath}`;
-      }
-      
-      const systemPrompt = basePrompt + getIndustryContext(parsed.data.industry) + getLanguageInstruction(parsed.data.language);
+      const systemPrompt = await buildOperatorSystemPrompt(subAccountId, parsed.data.currentPath);
 
       const chatMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
         { role: "system", content: systemPrompt },

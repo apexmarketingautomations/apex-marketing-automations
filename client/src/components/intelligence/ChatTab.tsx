@@ -7,7 +7,7 @@ import type { ChatMessage } from "./types";
 
 export function ChatTab({ subAccountId }: { subAccountId: number }) {
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: "assistant", content: "I'm your Apex Strategic Advisor. I analyze your business data in real-time and provide actionable growth strategies.\n\nI can help you identify blind spots, optimize your funnel, plan automations, and find revenue opportunities.\n\nWhat would you like to explore?" },
+    { role: "assistant", content: "I'm Apex Intelligence — your in-app operator. I don't just answer questions, I actually do things.\n\nI can scan your setup, create contacts, build pipelines, launch automations, diagnose integrations, and execute across the platform.\n\nTell me what you need done." },
   ]);
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -254,7 +254,7 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-bounce" style={{ animationDelay: "150ms" }} />
                 <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "300ms" }} />
               </div>
-              Thinking strategically...
+              Working on it...
             </div>
           </div>
         )}
@@ -344,7 +344,7 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); } }}
-          placeholder="Ask your strategic advisor..."
+          placeholder="Tell me what to do..."
           className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-2 text-[11px] text-white placeholder:text-slate-600 focus:outline-none focus:border-violet-500/40 transition-colors"
           disabled={isStreaming}
           data-testid="input-intel-message"

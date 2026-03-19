@@ -12,7 +12,7 @@ const TABS: { id: TabId; label: string; icon: typeof Brain }[] = [
   { id: "nudges", label: "Nudges", icon: Bell },
   { id: "industry", label: "Industry", icon: Factory },
   { id: "trends", label: "Trends", icon: TrendingUp },
-  { id: "chat", label: "Advisor", icon: Brain },
+  { id: "chat", label: "Operator", icon: Brain },
   { id: "agent", label: "Agent", icon: Bot },
   { id: "memory", label: "Memory", icon: BookOpen },
 ];
@@ -101,7 +101,7 @@ export function ApexIntelligence() {
                   </div>
                   <div>
                     <p className="text-sm font-bold text-white tracking-tight leading-none">Apex Intelligence</p>
-                    <p className="text-[10px] text-violet-400/60 mt-0.5 font-medium tracking-widest uppercase">Strategic Advisor v2</p>
+                    <p className="text-[10px] text-violet-400/60 mt-0.5 font-medium tracking-widest uppercase">Autonomous Operator</p>
                   </div>
                 </div>
                 <button
@@ -178,7 +178,7 @@ export function ApexIntelligence() {
                   animate={{ opacity: [1, 0.4, 1] }}
                   transition={{ duration: 2, repeat: Infinity }}
                 />
-                <span className="text-[9px] text-slate-600 font-medium">Apex Cognitive Engine v2</span>
+                <span className="text-[9px] text-slate-600 font-medium">Apex Intelligence — Autonomous Operator</span>
               </div>
               <span className="text-[9px] text-slate-700">{subAccountId ? `Account #${subAccountId}` : ""}</span>
             </div>

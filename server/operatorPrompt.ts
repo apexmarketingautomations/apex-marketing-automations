@@ -70,14 +70,17 @@ CURRENT ACCOUNT STATE:
 
   let integrationStatus = "";
   try {
-    const integrations = await storage.getIntegrations(subAccountId);
-    if (integrations && integrations.length > 0) {
-      const connected = integrations.filter((i: any) => i.status === "connected").map((i: any) => i.provider);
-      const disconnected = integrations.filter((i: any) => i.status !== "connected").map((i: any) => i.provider);
-      integrationStatus = `
+    const getIntegrations = (storage as any).getIntegrations;
+    if (typeof getIntegrations === "function") {
+      const integrations = await getIntegrations.call(storage, subAccountId);
+      if (integrations && integrations.length > 0) {
+        const connected = integrations.filter((i: any) => i.status === "connected").map((i: any) => i.provider);
+        const disconnected = integrations.filter((i: any) => i.status !== "connected").map((i: any) => i.provider);
+        integrationStatus = `
 INTEGRATIONS:
 - Connected: ${connected.length > 0 ? connected.join(", ") : "None"}
 - Disconnected/Missing: ${disconnected.length > 0 ? disconnected.join(", ") : "None"}`;
+      }
     }
   } catch {}
 

@@ -1,52 +1,30 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Bot, X, Send, Loader2, Sparkles } from "lucide-react";
+import { Bot, X, Send, Loader2, Sparkles, Brain } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation } from "wouter";
-
-const SYSTEM_PROMPT = `You are Apex Assistant, the built-in AI guide for the Apex Marketing Automations platform. You know every feature inside-out and help users navigate, learn, and get the most from the platform.
-
-Platform Features & Navigation:
-
-1. **Unified Inbox** (/) — Manage all SMS, Instagram DMs, and email conversations in one place. Reply to leads instantly across channels.
-2. **Workflows** (/workflows) — Visual drag-and-drop automation builder. Create multi-step sequences with SMS, wait delays, conditions, alerts, and custom code. AI can generate workflows from plain English.
-3. **Neural Trainer** (/bot-trainer) — Train AI chatbots by feeding them your website URL. The bot scrapes and learns your content, then answers visitor questions 24/7.
-4. **Form Builder** (/form-builder) — AI-generated forms for any industry. Describe what you need and get a professional form with the right fields, validation, and styling.
-5. **Site Architect** (/site-builder) — Build full landing pages and websites with AI. Describe your business and get a multi-section site with hero, features, testimonials, pricing, and more.
-6. **Liquid Website** (/liquid) — Generate dynamic, AI-powered "liquid" websites that adapt and flow. A next-gen website building experience.
-7. **Growth Engine** (/ad-launcher) — Launch and manage ad campaigns. Create ad copy, upload creatives, set budgets, and deploy across platforms.
-8. **Voice Agent** (/voice-agent) — Deploy AI-powered voice agents that answer phone calls, qualify leads, and book appointments using natural conversation.
-9. **Growth Center** (/growth) — Analytics dashboard showing growth metrics, lead flow, conversion rates, and campaign performance.
-10. **Reputation** (/reputation) — Monitor and manage online reviews. Collect new reviews, respond to feedback, and track your reputation score.
-11. **Sentinel** (/sentinel) — Real-time accident and incident scanner built for law firms. Monitors police feeds and deploys geo-targeted ads to accident locations.
-12. **Property Radar** (/property-radar) — Distressed property scanner for real estate wholesalers. Finds pre-foreclosures, tax liens, and motivated sellers with deal metrics.
-13. **Website Integration** (/website-integration) — Connect client websites, train chatbots on their content, and embed chat widgets. Full white-label bot deployment.
-14. **Command Center** (/command-center) — Agency-level fleet monitoring. See all sub-accounts, their health, message volume, and performance at a glance.
-15. **Snapshots** (/snapshots) — Save and restore complete account configurations. Clone setups across accounts instantly.
-16. **Marketplace** (/marketplace) — Browse and fork pre-built account templates and configurations from the community.
-17. **Affiliates** (/affiliate) — Referral and affiliate program. Share your link, track referrals, and earn commissions.
-18. **Plans & Pricing** (/pricing) — View subscription tiers (Starter, Agency Pro, God Mode) and choose the right plan.
-19. **Usage & Billing** (/billing) — Track real-time usage costs for SMS, AI, voice minutes, and more. Monitor spending and manage your subscription.
-20. **Domains** (/domains) — Purchase and manage custom domains for your sites and landing pages.
-21. **God Mode** (/god-mode) — One-click empire builder. Automatically provisions a full agency setup with sub-accounts, workflows, bots, sites, and everything configured.
-
-When mentioning any feature, ALWAYS include a clickable markdown link like [Feature Name](/path). For example: "You can train your chatbot in the [Neural Trainer](/bot-trainer)."
-
-Guidelines:
-- Be concise but thorough (2-4 sentences per response unless the user asks for detail).
-- When users ask "how do I..." questions, give step-by-step instructions and link to the relevant page.
-- Help users write prompts for AI features (workflow generation, site building, form creation).
-- If a user seems lost, suggest relevant features based on their question.
-- Be enthusiastic and knowledgeable — you represent the platform.`;
+import { useAccount } from "@/hooks/use-account";
+import { useStreamingResponse } from "@/hooks/use-streaming";
 
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
 }
 
+interface ActivityStep {
+  id: string;
+  label: string;
+  status: "running" | "complete";
+}
+
+interface ToolResult {
+  tool: string;
+  data: any;
+}
+
 const QUICK_ACTIONS = [
-  "How do I train a chatbot?",
-  "Help me write a prompt",
-  "Show me all features",
+  "Scan my setup — what's missing?",
+  "Help me create a workflow",
+  "What should I fix first?",
 ];
 
 function parseMessageContent(text: string, navigate: (path: string) => void) {
@@ -90,14 +68,17 @@ export function SiteAssistant() {
     {
       role: "assistant",
       content:
-        "Hey! 👋 I'm your Apex Assistant. I know every feature on this platform — ask me anything! Need help navigating, writing prompts, or setting up automations? I'm here for you.",
+        "I'm Apex Intelligence — your autonomous platform operator. I don't just explain things, I execute them.\n\nI can scan your setup, create contacts, build pipelines, configure integrations, launch automations, and more.\n\nTell me what you need done.",
     },
   ]);
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
+  const { activeAccountId } = useAccount();
+  const { text: streamingText, isStreaming, startStream } = useStreamingResponse();
+  const [activitySteps, setActivitySteps] = useState<ActivityStep[]>([]);
+  const [toolResults, setToolResults] = useState<ToolResult[]>([]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -105,7 +86,7 @@ export function SiteAssistant() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isLoading, scrollToBottom]);
+  }, [messages, isStreaming, streamingText, scrollToBottom]);
 
   useEffect(() => {
     if (isOpen) {
@@ -114,13 +95,16 @@ export function SiteAssistant() {
   }, [isOpen]);
 
   const sendMessage = async (text: string) => {
-    if (!text.trim() || isLoading) return;
+    if (!text.trim() || isStreaming) return;
 
     const userMessage: ChatMessage = { role: "user", content: text.trim() };
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
     setInput("");
-    setIsLoading(true);
+    setActivitySteps([]);
+    setToolResults([]);
+
+    const subAccountId = activeAccountId || 1;
 
     try {
       const history = updatedMessages.map((m) => ({
@@ -128,32 +112,50 @@ export function SiteAssistant() {
         content: m.content,
       }));
 
-      const response = await fetch("/api/bot/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: text.trim(),
-          persona: SYSTEM_PROMPT,
-          conversationHistory: history,
-        }),
+      await startStream("/api/bot/chat/agent-stream", {
+        message: text.trim(),
+        conversationHistory: history,
+        currentPath: location,
+        subAccountId,
+      }, {
+        onDone: (fullText) => {
+          setMessages(prev => [...prev, { role: "assistant", content: fullText }]);
+          setActivitySteps([]);
+        },
+        onError: (err) => {
+          const errorMessage = typeof err === 'string' ? err : (err?.message || String(err) || "Unknown");
+          setMessages(prev => [...prev, { role: "assistant", content: `Connection issue. Error: ${errorMessage}\n\nPlease try again.` }]);
+          setActivitySteps([]);
+          setToolResults([]);
+        },
+        onStep: (step) => {
+          setActivitySteps(prev => {
+            const existing = prev.find(s => s.id === step.stepId);
+            if (existing) {
+              return prev.map(s => s.id === step.stepId ? { ...s, status: step.status as "running" | "complete" } : s);
+            }
+            return [...prev, { id: step.stepId, label: step.label, status: step.status as "running" | "complete" }];
+          });
+        },
+        onAction: (action) => {
+          if (action.action === "navigate" && action.path) {
+            setLocation(action.path);
+          }
+        },
+        onResult: (data) => {
+          if (data.toolName && data.result) {
+            setToolResults(prev => [...prev, { tool: data.toolName, data: data.result }]);
+          }
+        },
       });
-
-      const data = await response.json();
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: data.reply },
-      ]);
     } catch {
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content:
-            "⚠️ I'm having trouble connecting right now. Please try again in a moment.",
+          content: "Connection issue. Please try again in a moment.",
         },
       ]);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -173,22 +175,22 @@ export function SiteAssistant() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
             transition={{ duration: 0.2 }}
-            className="mb-4 w-[350px] bg-slate-900/95 backdrop-blur-xl rounded-2xl shadow-2xl overflow-hidden border border-cyan-500/30"
-            style={{ height: "500px" }}
+            className="mb-4 w-[380px] bg-slate-900/95 backdrop-blur-xl rounded-2xl shadow-2xl overflow-hidden border border-violet-500/30"
+            style={{ height: "540px" }}
             data-testid="panel-site-assistant"
           >
-            <div className="p-4 flex justify-between items-center border-b border-cyan-500/20 bg-slate-800/50">
+            <div className="p-4 flex justify-between items-center border-b border-violet-500/20 bg-slate-800/50">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
-                  <Bot size={18} className="text-cyan-400" />
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500/25 to-cyan-500/20 flex items-center justify-center border border-violet-500/25">
+                  <Brain size={18} className="text-violet-400" />
                 </div>
                 <div>
                   <p className="text-sm font-bold text-white leading-none">
-                    Apex Assistant
+                    Apex Intelligence
                   </p>
-                  <p className="text-[10px] text-cyan-400 flex items-center gap-1 mt-0.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                    Online
+                  <p className="text-[10px] text-violet-400 flex items-center gap-1 mt-0.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Autonomous Operator
                   </p>
                 </div>
               </div>
@@ -203,7 +205,7 @@ export function SiteAssistant() {
 
             <div
               className="flex-1 overflow-y-auto p-4 space-y-3"
-              style={{ height: "calc(500px - 130px)" }}
+              style={{ height: "calc(540px - 130px)" }}
               data-testid="assistant-messages"
             >
               {messages.map((m, i) => (
@@ -214,7 +216,7 @@ export function SiteAssistant() {
                   <div
                     className={`max-w-[85%] p-3 text-sm rounded-xl whitespace-pre-wrap ${
                       m.role === "user"
-                        ? "bg-cyan-500/20 text-white rounded-br-none border border-cyan-500/30"
+                        ? "bg-violet-500/20 text-white rounded-br-none border border-violet-500/30"
                         : "bg-white/5 text-slate-200 rounded-bl-none border border-white/10"
                     }`}
                     data-testid={`assistant-message-${m.role}-${i}`}
@@ -226,16 +228,63 @@ export function SiteAssistant() {
                 </div>
               ))}
 
-              {isLoading && (
+              {isStreaming && streamingText && (
                 <div className="flex justify-start">
-                  <div className="bg-white/5 border border-white/10 text-slate-400 rounded-xl rounded-bl-none p-3 text-sm flex items-center gap-2">
-                    <Loader2 size={14} className="animate-spin text-cyan-400" />
-                    Thinking...
+                  <div className="max-w-[85%] p-3 text-sm rounded-xl whitespace-pre-wrap bg-white/5 text-slate-200 rounded-bl-none border border-white/10">
+                    {parseMessageContent(streamingText, setLocation)}
+                    <span className="inline-block w-1.5 h-3.5 bg-violet-400 animate-pulse ml-0.5 align-middle rounded-sm" />
                   </div>
                 </div>
               )}
 
-              {messages.length === 1 && !isLoading && (
+              {isStreaming && !streamingText && activitySteps.length === 0 && (
+                <div className="flex justify-start">
+                  <div className="bg-white/5 border border-white/10 text-slate-400 rounded-xl rounded-bl-none p-3 text-sm flex items-center gap-2">
+                    <Loader2 size={14} className="animate-spin text-violet-400" />
+                    Working on it...
+                  </div>
+                </div>
+              )}
+
+              {activitySteps.length > 0 && (
+                <div className="flex justify-start">
+                  <div className="bg-white/5 border border-white/10 text-slate-400 rounded-xl rounded-bl-none p-3 text-sm space-y-2">
+                    {activitySteps.map((step) => (
+                      <div key={step.id} className="flex items-center gap-2">
+                        {step.status === "running" ? (
+                          <div className="w-3 h-3 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <div className="w-3 h-3 rounded-full bg-green-500/30 flex items-center justify-center text-green-400 text-[8px]">✓</div>
+                        )}
+                        <span className={step.status === "complete" ? "text-slate-500 text-xs" : "text-slate-300 text-xs"}>{step.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {toolResults.length > 0 && (
+                <div className="flex justify-start">
+                  <div className="bg-white/5 border border-white/10 text-slate-400 rounded-xl rounded-bl-none p-2.5 text-xs max-w-[85%]">
+                    {toolResults.map((tr, i) => (
+                      <div key={i} className="mb-2 last:mb-0">
+                        <div className="text-violet-400 font-medium mb-1">✓ {tr.tool}</div>
+                        {tr.data.success && tr.data.data && (
+                          <div className="text-slate-500 space-y-0.5">
+                            {Object.entries(tr.data.data).slice(0, 4).map(([key, value]) => (
+                              <div key={key} className="truncate">
+                                <span className="text-slate-600">{key}:</span> {typeof value === 'object' ? JSON.stringify(value).slice(0, 50) : String(value).slice(0, 50)}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {messages.length === 1 && !isStreaming && (
                 <div className="space-y-2 pt-2">
                   <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">
                     Quick Actions
@@ -244,10 +293,10 @@ export function SiteAssistant() {
                     <button
                       key={action}
                       onClick={() => sendMessage(action)}
-                      className="w-full text-left p-2.5 rounded-lg bg-white/5 border border-white/10 text-sm text-slate-300 hover:bg-cyan-500/10 hover:border-cyan-500/30 hover:text-white transition-all flex items-center gap-2"
+                      className="w-full text-left p-2.5 rounded-lg bg-white/5 border border-white/10 text-sm text-slate-300 hover:bg-violet-500/10 hover:border-violet-500/30 hover:text-white transition-all flex items-center gap-2"
                       data-testid={`button-quick-action-${action.replace(/\s+/g, "-").toLowerCase()}`}
                     >
-                      <Sparkles size={14} className="text-cyan-400 shrink-0" />
+                      <Sparkles size={14} className="text-violet-400 shrink-0" />
                       {action}
                     </button>
                   ))}
@@ -257,21 +306,21 @@ export function SiteAssistant() {
               <div ref={messagesEndRef} />
             </div>
 
-            <div className="p-3 border-t border-cyan-500/20 bg-slate-800/30 flex gap-2">
+            <div className="p-3 border-t border-violet-500/20 bg-slate-800/30 flex gap-2">
               <input
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask me anything..."
-                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500/50 transition-colors"
-                disabled={isLoading}
+                placeholder="Tell me what to do..."
+                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-violet-500/50 transition-colors"
+                disabled={isStreaming}
                 data-testid="input-assistant-message"
               />
               <button
                 onClick={() => sendMessage(input)}
-                disabled={isLoading || !input.trim()}
-                className="p-2 rounded-lg bg-cyan-500/20 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                disabled={isStreaming || !input.trim()}
+                className="p-2 rounded-lg bg-violet-500/20 border border-violet-500/30 text-violet-400 hover:bg-violet-500/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 data-testid="button-assistant-send"
               >
                 <Send size={16} />
@@ -285,9 +334,9 @@ export function SiteAssistant() {
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setIsOpen(!isOpen)}
-        className="w-14 h-14 rounded-full shadow-lg flex items-center justify-center bg-slate-900/95 backdrop-blur-xl border border-cyan-500/30 text-cyan-400 hover:bg-slate-800 transition-colors relative"
+        className="w-14 h-14 rounded-full shadow-lg flex items-center justify-center bg-slate-900/95 backdrop-blur-xl border border-violet-500/30 text-violet-400 hover:bg-slate-800 transition-colors relative"
         style={{
-          boxShadow: "0 0 20px rgba(0, 200, 255, 0.2), 0 0 40px rgba(0, 200, 255, 0.1)",
+          boxShadow: "0 0 20px rgba(139, 92, 246, 0.2), 0 0 40px rgba(139, 92, 246, 0.1)",
         }}
         data-testid="button-assistant-toggle"
       >
@@ -295,8 +344,8 @@ export function SiteAssistant() {
           <X size={24} />
         ) : (
           <>
-            <Bot size={24} />
-            <span className="absolute inset-0 rounded-full border-2 border-cyan-400/40 animate-ping" />
+            <Brain size={24} />
+            <span className="absolute inset-0 rounded-full border-2 border-violet-400/40 animate-ping" />
           </>
         )}
       </motion.button>

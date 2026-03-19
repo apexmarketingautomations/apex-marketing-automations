@@ -175,10 +175,10 @@ To execute tool: :::action{"action":"execute_tool","tool":"detectMissingSetup"}:
 Always announce what you're doing before emitting actions: "Let me take you to your Integrations page..." or "Let me scan your account configuration..."`;
 
 export const QUICK_COMMANDS = [
-  { label: "Generate Growth Report", icon: BarChart3 },
-  { label: "What should I focus on today?", icon: Target },
-  { label: "Find my blind spots", icon: Radar },
-  { label: "Help me automate something", icon: Zap },
+  { label: "Scan my setup — what's missing?", icon: Radar },
+  { label: "Help me set up my CRM pipeline", icon: Target },
+  { label: "Create an automation for me", icon: Zap },
+  { label: "What should I fix first?", icon: BarChart3 },
 ];
 
 export function parseLinks(text: string, navigate: (path: string) => void) {
