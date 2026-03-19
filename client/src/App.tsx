@@ -65,6 +65,7 @@ const LocationSearchPage = lazy(() => import("@/pages/location-search"));
 const NotificationPreferencesPage = lazy(() => import("@/pages/notification-preferences"));
 const ABTestingPage = lazy(() => import("@/pages/ab-testing"));
 const CrashReportsPage = lazy(() => import("@/pages/crash-reports"));
+const ExecutionTimelinePage = lazy(() => import("@/pages/execution-timeline"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const LandingPage = lazy(() => import("@/pages/landing"));
 const MarketersLanding = lazy(() => import("@/pages/marketers-landing"));
@@ -269,6 +270,7 @@ function Router() {
                   <Route path="/location-search" component={LocationSearchPage} />
                   <Route path="/notification-preferences" component={NotificationPreferencesPage} />
                   <Route path="/ab-testing" component={ABTestingPage} />
+                  <Route path="/execution-timeline" component={ExecutionTimelinePage} />
                   <Route component={NotFound} />
                 </Switch>
               </Suspense>

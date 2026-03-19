@@ -1571,6 +1571,27 @@ export const insertVapiCallLogSchema = createInsertSchema(vapiCallLogs).omit({ i
 export type InsertVapiCallLog = z.infer<typeof insertVapiCallLogSchema>;
 export type VapiCallLog = typeof vapiCallLogs.$inferSelect;
 
+// ---- Execution Timeline / Observability ----
+
+export const timelineEvents = pgTable("timeline_events", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  traceId: text("trace_id").notNull(),
+  conversationId: text("conversation_id"),
+  contactPhone: text("contact_phone"),
+  step: text("step").notNull(),
+  status: text("status").notNull().default("success"),
+  provider: text("provider"),
+  latencyMs: integer("latency_ms"),
+  metadata: json("metadata"),
+  error: text("error"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertTimelineEventSchema = createInsertSchema(timelineEvents).omit({ id: true, createdAt: true });
+export type InsertTimelineEvent = z.infer<typeof insertTimelineEventSchema>;
+export type TimelineEvent = typeof timelineEvents.$inferSelect;
+
 export const PLAN_LIMITS: Record<string, Record<string, number>> = {
   starter: {
     messages_per_month: 500,

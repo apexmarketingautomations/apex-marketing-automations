@@ -28,6 +28,7 @@ import { registerIntegrationsRoutes } from "./routes/integrations";
 import { registerCardsRoutes } from "./routes/cards";
 import { registerAnalyticsRoutes } from "./routes/analytics";
 import { registerAbTestingRoutes } from "./routes/ab-testing";
+import { registerTimelineRoutes } from "./routes/timeline";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -60,6 +61,7 @@ export async function registerRoutes(
   registerCardsRoutes(app);
   registerAnalyticsRoutes(app);
   registerAbTestingRoutes(app);
+  registerTimelineRoutes(app);
 
   return httpServer;
 }

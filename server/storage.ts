@@ -74,6 +74,8 @@ import {
   type AbEvent, type InsertAbEvent,
   type WorkflowStepMetric, type InsertWorkflowStepMetric,
   type WorkflowOptimizationLog, type InsertWorkflowOptimizationLog,
+  timelineEvents,
+  type TimelineEvent, type InsertTimelineEvent,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -372,6 +374,11 @@ export interface IStorage {
   getWorkflowOptimizationLogs(workflowId: number): Promise<WorkflowOptimizationLog[]>;
   createWorkflowOptimizationLog(data: InsertWorkflowOptimizationLog): Promise<WorkflowOptimizationLog>;
   revertOptimization(logId: number): Promise<WorkflowOptimizationLog | undefined>;
+
+  createTimelineEvent(data: InsertTimelineEvent): Promise<TimelineEvent>;
+  getTimelineEventsByTrace(traceId: string): Promise<TimelineEvent[]>;
+  listTraces(subAccountId: number, opts?: { limit?: number; offset?: number; status?: string; since?: Date }): Promise<{ traceId: string; contactPhone: string | null; conversationId: string | null; startedAt: Date; totalSteps: number; failedSteps: number; totalLatencyMs: number }[]>;
+  getTraceSummary(traceId: string): Promise<{ totalDurationMs: number; aiLatencyMs: number; deliveryLatencyMs: number; stepCount: number; failedStepCount: number } | null>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1717,6 +1724,91 @@ export class DatabaseStorage implements IStorage {
       .where(eq(workflowOptimizationLogs.id, logId))
       .returning();
     return row;
+  }
+
+  async createTimelineEvent(data: InsertTimelineEvent) {
+    const [row] = await db.insert(timelineEvents).values(data).returning();
+    return row;
+  }
+
+  async getTimelineEventsByTrace(traceId: string) {
+    return db.select().from(timelineEvents)
+      .where(eq(timelineEvents.traceId, traceId))
+      .orderBy(timelineEvents.createdAt);
+  }
+
+  async listTraces(subAccountId: number, opts: { limit?: number; offset?: number; status?: string; since?: Date } = {}) {
+    const { limit = 50, offset = 0, status, since } = opts;
+
+    const conditions = [eq(timelineEvents.subAccountId, subAccountId)];
+    if (since) {
+      conditions.push(gte(timelineEvents.createdAt, since));
+    }
+
+    const rows = await db.select({
+      traceId: timelineEvents.traceId,
+      contactPhone: timelineEvents.contactPhone,
+      conversationId: timelineEvents.conversationId,
+      startedAt: sql<Date>`min(${timelineEvents.createdAt})`,
+      totalSteps: sql<number>`count(*)`,
+      failedSteps: sql<number>`sum(case when ${timelineEvents.status} = 'error' then 1 else 0 end)`,
+      totalLatencyMs: sql<number>`sum(coalesce(${timelineEvents.latencyMs}, 0))`,
+    })
+      .from(timelineEvents)
+      .where(and(...conditions))
+      .groupBy(timelineEvents.traceId, timelineEvents.contactPhone, timelineEvents.conversationId)
+      .orderBy(sql`min(${timelineEvents.createdAt}) desc`)
+      .limit(limit)
+      .offset(offset);
+
+    let result = rows.map(r => ({
+      traceId: r.traceId,
+      contactPhone: r.contactPhone,
+      conversationId: r.conversationId,
+      startedAt: r.startedAt,
+      totalSteps: Number(r.totalSteps),
+      failedSteps: Number(r.failedSteps),
+      totalLatencyMs: Number(r.totalLatencyMs),
+    }));
+
+    if (status === "error") {
+      result = result.filter(r => r.failedSteps > 0);
+    } else if (status === "success") {
+      result = result.filter(r => r.failedSteps === 0);
+    }
+
+    return result;
+  }
+
+  async getTraceSummary(traceId: string) {
+    const events = await db.select().from(timelineEvents)
+      .where(eq(timelineEvents.traceId, traceId))
+      .orderBy(timelineEvents.createdAt);
+
+    if (events.length === 0) return null;
+
+    const first = events[0];
+    const last = events[events.length - 1];
+    const totalDurationMs = last.createdAt.getTime() - first.createdAt.getTime();
+
+    const aiSteps = ["ai_decision", "ai_response_generated", "ai_chat"];
+    const deliverySteps = ["outbound_send", "delivery_status"];
+
+    const aiLatencyMs = events
+      .filter(e => aiSteps.some(s => e.step.includes(s)))
+      .reduce((sum, e) => sum + (e.latencyMs || 0), 0);
+
+    const deliveryLatencyMs = events
+      .filter(e => deliverySteps.some(s => e.step.includes(s)))
+      .reduce((sum, e) => sum + (e.latencyMs || 0), 0);
+
+    return {
+      totalDurationMs,
+      aiLatencyMs,
+      deliveryLatencyMs,
+      stepCount: events.length,
+      failedStepCount: events.filter(e => e.status === "error").length,
+    };
   }
 }
 

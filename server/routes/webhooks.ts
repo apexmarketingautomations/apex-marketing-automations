@@ -8,6 +8,7 @@ import { aiChat, isAIConfigured } from "../ai";
 import { ProgressStream } from "../streaming";
 import crypto from "crypto";
 import { asyncHandler, getUserId, requireAdmin, getIndustryContext, getLanguageInstruction, getTwilioClient, vapiConfig } from "./helpers";
+import { startTrace, recordStepValue } from "../traceRecorder";
 
 export function registerWebhooksRoutes(app: Express) {
   // ---- Unified Webhook (Twilio inbound SMS/WhatsApp/Messenger -> AI auto-reply) ----
@@ -41,6 +42,14 @@ export function registerWebhooksRoutes(app: Express) {
       const toClean = toRaw ? stripChannelPrefix(toRaw) : "";
       const matchedAccounts = await db.select().from(subAccounts).where(eq(subAccounts.twilioNumber, toClean)).execute().catch(() => []);
       const matchedAccountId = matchedAccounts.length > 0 ? matchedAccounts[0].id : 1;
+
+      const trace = startTrace(matchedAccountId, { contactPhone: senderClean });
+
+      const t0 = Date.now();
+      recordStepValue(trace, "message_received", "success", Date.now() - t0, {
+        provider: "twilio",
+        metadata: { channel, body: incomingMsg.substring(0, 200) },
+      });
 
       const { isOptOutMessage, isOptInMessage, handleSmsOptOut, handleSmsOptIn } = await import("../optOutGuard");
       if (isOptOutMessage(incomingMsg)) {
@@ -77,6 +86,7 @@ export function registerWebhooksRoutes(app: Express) {
         return;
       }
 
+      const crmStart = Date.now();
       try {
         await storage.createMessage({
           subAccountId: matchedAccountId,
@@ -86,21 +96,39 @@ export function registerWebhooksRoutes(app: Express) {
           channel,
           status: "received",
         });
+        recordStepValue(trace, "crm_write", "success", Date.now() - crmStart, {
+          metadata: { channel, direction: "inbound" },
+        });
       } catch (e: any) {
         console.log(`[${channel.toUpperCase()}] Message storage error:`, e.message);
+        recordStepValue(trace, "crm_write", "error", Date.now() - crmStart, {
+          error: e.message,
+        });
       }
 
       if (channel === "whatsapp") {
+        const autoStart = Date.now();
         fireAutomationTrigger("OnWhatsAppReply", matchedAccountId, {
           senderPhone: senderClean,
           message: incomingMsg,
           channel: "whatsapp",
-        }).catch(e => console.error("[WEBHOOKS] WhatsApp automation trigger failed:", e instanceof Error ? e.message : e));
+        }).then(() => {
+          recordStepValue(trace, "automation_triggered", "success", Date.now() - autoStart, {
+            metadata: { trigger: "OnWhatsAppReply" },
+          });
+        }).catch(e => {
+          console.error("[WEBHOOKS] WhatsApp automation trigger failed:", e instanceof Error ? e.message : e);
+          recordStepValue(trace, "automation_triggered", "error", Date.now() - autoStart, {
+            error: e instanceof Error ? e.message : String(e),
+            metadata: { trigger: "OnWhatsAppReply" },
+          });
+        });
       }
 
       let aiReply = "Thanks for your message! We'll get back to you shortly.";
 
       if (isAIConfigured()) {
+        const aiStart = Date.now();
         try {
           const smsIndustry = req.body.industry as string | undefined;
           const smsLanguage = req.body.language as string | undefined;
@@ -114,22 +142,44 @@ export function registerWebhooksRoutes(app: Express) {
             { role: "user", content: incomingMsg.substring(0, 1000) },
           ], { temperature: 0.7, maxTokens: 1024 });
           aiReply = geminiReply || aiReply;
+          recordStepValue(trace, "ai_response_generated", "success", Date.now() - aiStart, {
+            provider: "gemini",
+            metadata: { replyLength: aiReply.length },
+          });
         } catch (aiErr: any) {
           console.error("AI reply error:", aiErr.message);
+          recordStepValue(trace, "ai_response_generated", "error", Date.now() - aiStart, {
+            provider: "gemini",
+            error: aiErr.message,
+          });
         }
       }
 
+      const sendStart = Date.now();
       const twilioClient = await getTwilioClient();
       if (twilioClient && toRaw) {
         const replyFrom = channel === "whatsapp" ? `whatsapp:${stripChannelPrefix(toRaw)}`
           : channel === "messenger" ? `messenger:${stripChannelPrefix(toRaw)}`
           : toRaw;
 
-        await twilioClient.messages.create({
-          body: aiReply,
-          from: replyFrom,
-          to: senderRaw,
-        });
+        try {
+          await twilioClient.messages.create({
+            body: aiReply,
+            from: replyFrom,
+            to: senderRaw,
+          });
+          recordStepValue(trace, "outbound_send", "success", Date.now() - sendStart, {
+            provider: "twilio",
+            metadata: { channel, to: senderClean },
+          });
+        } catch (sendErr: any) {
+          console.error("[WEBHOOKS] Outbound send failed:", sendErr.message);
+          recordStepValue(trace, "outbound_send", "error", Date.now() - sendStart, {
+            provider: "twilio",
+            error: sendErr.message,
+            metadata: { channel, to: senderClean },
+          });
+        }
       }
 
       res.type("text/xml").send("<Response></Response>");

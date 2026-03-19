@@ -70,6 +70,7 @@ const navSections = [
       { href: "/integrations", icon: Plug, label: "Integrations" },
       { href: "/webhooks", icon: Webhook, label: "Webhooks", requiredFeature: "webhooks" },
       { href: "/webhook-events", icon: Activity, label: "Event Log" },
+      { href: "/execution-timeline", icon: Activity, label: "Execution Timeline" },
       { href: "/white-label", icon: Palette, label: "White Label", requiredFeature: "white_label" },
       { href: "/reports", icon: FileBarChart, label: "Reports" },
       { href: "/launch-readiness", icon: Activity, label: "Launch Readiness", adminOnly: true },
