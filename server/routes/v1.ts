@@ -7,6 +7,15 @@ import { ProgressStream } from "../streaming";
 import { processLiveSentinelFeed, deployGeofenceAd } from "../sentinel";
 import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, logUsageInternal } from "./helpers";
 
+let _fireAutomationTrigger: ((triggerName: string, subAccountId: number, context?: Record<string, any>, depth?: number) => Promise<void>) | null = null;
+
+export async function fireAutomationTriggerGlobal(triggerName: string, subAccountId: number, context: Record<string, any> = {}, depth: number = 0) {
+  if (_fireAutomationTrigger) {
+    return _fireAutomationTrigger(triggerName, subAccountId, context, depth);
+  }
+  console.warn(`[AUTOMATION] fireAutomationTriggerGlobal called before routes initialized — trigger "${triggerName}" dropped`);
+}
+
 export function registerV1Routes(app: Express) {
   // ===========================================================================
   // V1 WORKFLOW COMPILER — AI System Architect
@@ -1123,6 +1132,7 @@ export function registerV1Routes(app: Express) {
     context: Record<string, any> = {},
     depth: number = 0
   ) {
+    if (!_fireAutomationTrigger) _fireAutomationTrigger = fireAutomationTrigger;
     try {
       const { checkAutomationSafety } = await import("../automationSafety");
       const automations = await storage.getLiveAutomations(subAccountId);
@@ -1261,12 +1271,69 @@ export function registerV1Routes(app: Express) {
             }
 
             if (action === "AIQualify") {
-              console.log(`[AUTOMATION] AIQualify step — lead: ${context.leadName || "unknown"}, check: ${stepPayload.check || "interest_level"}`);
+              if (isAIConfigured() && context.message) {
+                try {
+                  const qualifyResult = await aiChat([
+                    { role: "system", content: "You are a lead qualification assistant. Analyze the lead's message and context. Return a JSON object with: {score: 1-10, intent: string, qualified: boolean, reasoning: string}" },
+                    { role: "user", content: `Lead: ${context.leadName || "Unknown"}\nMessage: ${context.message}\nSource: ${context.source || "unknown"}\nCheck: ${stepPayload.check || "interest_level"}` },
+                  ], { temperature: 0.3, maxTokens: 256, route: "ai-qualify" });
+                  console.log(`[AUTOMATION] AIQualify result for ${context.leadName || "unknown"}: ${qualifyResult.text?.substring(0, 200)}`);
+                } catch (qErr: any) {
+                  console.warn(`[AUTOMATION] AIQualify failed: ${qErr.message}`);
+                }
+              } else {
+                console.log(`[AUTOMATION] AIQualify step — lead: ${context.leadName || "unknown"}, check: ${stepPayload.check || "interest_level"}`);
+              }
               continue;
             }
 
-            if (action === "send_sms" && !stepPayload.to && context.leadPhone) {
-              stepPayload.to = context.leadPhone;
+            if (action === "SendWhatsApp" || action === "send_whatsapp") {
+              if (context.leadPhone) {
+                const whatsappBody = stepPayload.body || "Thanks for reaching out!";
+                await executeDispatchAction("send_sms", {
+                  to: context.leadPhone,
+                  body: whatsappBody,
+                  subAccountId,
+                  from: account?.twilioNumber || process.env.TWILIO_PHONE_NUMBER,
+                });
+                console.log(`[AUTOMATION] WhatsApp/SMS sent to ${context.leadPhone}`);
+              }
+              continue;
+            }
+
+            if (action === "ElevenLabsTTS" || action === "elevenlabs_tts") {
+              await executeDispatchAction("elevenlabs_tts", {
+                ...stepPayload,
+                subAccountId,
+              });
+              continue;
+            }
+
+            if (action === "AIGenerate" || action === "ai_generate") {
+              if (isAIConfigured()) {
+                try {
+                  const prompt = stepPayload.prompt || stepPayload.body || "Generate a follow-up message for this lead.";
+                  const aiResult = await aiChat([
+                    { role: "system", content: "You are a marketing assistant. Generate the requested content." },
+                    { role: "user", content: prompt },
+                  ], { temperature: 0.7, maxTokens: 512, route: "ai-generate-step" });
+                  console.log(`[AUTOMATION] AIGenerate output: ${aiResult.text?.substring(0, 200)}`);
+                  if (stepPayload.sendAsDm && (context.senderId || context.leadPhone)) {
+                    await executeDispatchAction("SendFacebookDM", {
+                      recipientId: context.senderId || context.leadPhone,
+                      body: aiResult.text,
+                      subAccountId,
+                    });
+                  }
+                } catch (genErr: any) {
+                  console.warn(`[AUTOMATION] AIGenerate failed: ${genErr.message}`);
+                }
+              }
+              continue;
+            }
+
+            if (action === "send_sms" || action === "SendTwilioSMS" || action === "SMS") {
+              if (!stepPayload.to && context.leadPhone) stepPayload.to = context.leadPhone;
             }
             await executeDispatchAction(action, {
               ...stepPayload,

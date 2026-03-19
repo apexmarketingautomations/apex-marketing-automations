@@ -1121,6 +1121,25 @@ async function validateMetaCredentials() {
                 .then(result => { if (result) onCallAnalyzed().catch(() => {}); })
                 .catch(err => console.error(`[VAPI WEBHOOK] Analysis failed for call ${inserted[0].id} (${callId}):`, err?.message ?? err, err?.stack));
             }
+            const custNum = call.call?.customer?.number;
+            if (custNum) {
+              try {
+                const { fireAutomationTriggerGlobal } = await import("./routes/v1");
+                const { contacts: contactsTable } = await import("@shared/schema");
+                const { eq: eqOp } = await import("drizzle-orm");
+                const contactRows = await vapiDb.select().from(contactsTable).where(eqOp(contactsTable.phone, custNum)).limit(1);
+                const subId = contactRows[0]?.subAccountId || 13;
+                fireAutomationTriggerGlobal("call_completed", subId, {
+                  leadName: contactRows[0]?.firstName || "Caller",
+                  leadPhone: custNum,
+                  callId,
+                  duration,
+                  summary,
+                  source: "vapi_call",
+                });
+                eventBus.publish({ type: "call.completed" as any, subAccountId: subId, data: { callId, customerNumber: custNum, duration, summary } });
+              } catch {}
+            }
           }
         }
       }
