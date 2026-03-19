@@ -82,7 +82,9 @@ export default function SmsDashboard() {
     queryKey: ["/api/messages", numericAccountId],
     queryFn: () => api.getMessages(numericAccountId!),
     enabled: !!numericAccountId,
-    refetchInterval: 5000,
+    refetchInterval: 4000,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
   });
 
   const [isSendingMsg, setIsSendingMsg] = useState(false);
