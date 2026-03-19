@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { contacts, messages, subAccounts } from "@shared/schema";
+import { contacts, messages, subAccounts, clientWebsites } from "@shared/schema";
 import { sql, eq, and, or } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -779,6 +779,7 @@ export function registerWebhooksRoutes(app: Express) {
               });
             }
 
+            let existingContactRecord: any = null;
             try {
               const existingContact = await db.select().from(contacts)
                 .where(and(
@@ -787,7 +788,9 @@ export function registerWebhooksRoutes(app: Express) {
                   eq(contacts.phone, senderId)
                 )).limit(1);
 
-              if (existingContact.length === 0) {
+              if (existingContact.length > 0) {
+                existingContactRecord = existingContact[0];
+              } else {
                 const newContact = await storage.createContact({
                   subAccountId,
                   firstName: `${channel === "instagram" ? "IG" : "FB"} User ${senderId.slice(-4)}`,
@@ -795,13 +798,8 @@ export function registerWebhooksRoutes(app: Express) {
                   source: `${channel}_dm`,
                   tags: [channel, "dm_lead"],
                 });
+                existingContactRecord = newContact;
                 console.log(`[META DM] Created CRM contact id=${newContact.id} for ${senderId}`);
-
-                fireAutomationTrigger("new_lead", subAccountId, {
-                  leadName: newContact.firstName,
-                  leadPhone: senderId,
-                  source: `${channel}_dm`,
-                });
               }
             } catch (contactErr: any) {
               console.warn("[META DM] Contact creation skipped:", contactErr.message);
@@ -884,26 +882,59 @@ export function registerWebhooksRoutes(app: Express) {
             if (!keywordMatched && isAIConfigured()) {
               const metaAiStart = Date.now();
               try {
-                let systemPrompt = `You are a helpful business assistant responding via ${channel} DM. Keep replies conversational and under 300 characters. Be warm, professional, and helpful.`;
+                const businessName = targetAccount?.businessName || targetAccount?.name || "our business";
+                const industry = targetAccount?.industry || "";
+                const contactName = existingContactRecord?.firstName || `${channel === "instagram" ? "IG" : "FB"} User`;
+
+                let systemPrompt = `You are the AI assistant for "${businessName}"${industry ? ` (${industry} industry)` : ""}. You are responding to a ${channel} DM from ${contactName}.
+
+RULES:
+- Be warm, personable, and professional — like texting a trusted advisor
+- Keep replies concise (under 280 characters) and conversational
+- Use the prospect's name when natural
+- If they ask about services/pricing, give a compelling overview and invite them to book a call or learn more
+- Never say you're an AI — you represent the business directly
+- If you don't know specifics, offer to connect them with the team
+- End with a soft call-to-action (question, invitation, or next step)`;
 
                 try {
                   const websites = await db.select().from(clientWebsites)
                     .where(eq(clientWebsites.subAccountId, subAccountId)).limit(1);
                   if (websites.length > 0 && websites[0].botPersona) {
-                    systemPrompt = `${websites[0].botPersona}\n\nYou are responding via ${channel} DM. Keep replies conversational and under 300 characters.`;
+                    systemPrompt = `${websites[0].botPersona}\n\nYou are responding via ${channel} DM to ${contactName}. Keep replies conversational and under 280 characters. End with a call-to-action.`;
                   }
                 } catch (err: any) {
-                  console.error("[WEBHOOKS] Bot persona fetch failed:", err.message);
+                  console.warn("[META DM] Bot persona fetch skipped:", err.message);
                 }
 
-                if (targetAccount?.industry) {
-                  systemPrompt += ` The business is in the ${targetAccount.industry} industry.`;
+                const conversationHistory: Array<{role: string, content: string}> = [];
+                try {
+                  const recentMessages = await db.select().from(messages)
+                    .where(and(
+                      eq(messages.subAccountId, subAccountId),
+                      eq(messages.contactPhone, senderId),
+                      eq(messages.channel, channel)
+                    ))
+                    .orderBy(sql`id DESC`)
+                    .limit(6);
+
+                  for (const msg of recentMessages.reverse()) {
+                    conversationHistory.push({
+                      role: msg.direction === "inbound" ? "user" : "assistant",
+                      content: msg.body || "",
+                    });
+                  }
+                } catch (histErr: any) {
+                  console.warn("[META DM] Conversation history fetch skipped:", histErr.message);
                 }
 
-                const metaDmAiResult = await aiChat([
-                  { role: "system", content: systemPrompt },
-                  { role: "user", content: message.substring(0, 1000) },
-                ], { temperature: 0.7, maxTokens: 1024, route: "webhook-meta-dm-reply" });
+                const aiMessages = [
+                  { role: "system" as const, content: systemPrompt },
+                  ...conversationHistory.map(m => ({ role: m.role as "user" | "assistant", content: m.content })),
+                  { role: "user" as const, content: message.substring(0, 1000) },
+                ];
+
+                const metaDmAiResult = await aiChat(aiMessages, { temperature: 0.7, maxTokens: 1024, route: "webhook-meta-dm-reply" });
                 const aiReply = metaDmAiResult.text;
 
                 recordStepValue(metaTrace, "ai_response_generated", "success", Date.now() - metaAiStart, {
