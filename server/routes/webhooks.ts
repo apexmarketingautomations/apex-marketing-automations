@@ -882,30 +882,49 @@ export function registerWebhooksRoutes(app: Express) {
             if (!keywordMatched && isAIConfigured()) {
               const metaAiStart = Date.now();
               try {
-                const businessName = targetAccount?.businessName || targetAccount?.name || "our business";
+                const businessName = targetAccount?.businessName || targetAccount?.name || "Apex Marketing";
                 const industry = targetAccount?.industry || "";
                 const contactName = existingContactRecord?.firstName || `${channel === "instagram" ? "IG" : "FB"} User`;
+                const bookingLink = "https://calendar.app.google/Fwdtvy7Sy3P8Z1CV6";
 
-                let systemPrompt = `You are the AI assistant for "${businessName}"${industry ? ` (${industry} industry)` : ""}. You are responding to a ${channel} DM from ${contactName}.
-
-RULES:
-- Be warm, personable, and professional — like texting a trusted advisor
-- Keep replies concise (under 280 characters) and conversational
-- Use the prospect's name when natural
-- If they ask about services/pricing, give a compelling overview and invite them to book a call or learn more
-- Never say you're an AI — you represent the business directly
-- If you don't know specifics, offer to connect them with the team
-- End with a soft call-to-action (question, invitation, or next step)`;
-
+                let customPersona = "";
                 try {
                   const websites = await db.select().from(clientWebsites)
                     .where(eq(clientWebsites.subAccountId, subAccountId)).limit(1);
                   if (websites.length > 0 && websites[0].botPersona) {
-                    systemPrompt = `${websites[0].botPersona}\n\nYou are responding via ${channel} DM to ${contactName}. Keep replies conversational and under 280 characters. End with a call-to-action.`;
+                    customPersona = websites[0].botPersona;
                   }
                 } catch (err: any) {
                   console.warn("[META DM] Bot persona fetch skipped:", err.message);
                 }
+
+                let systemPrompt = customPersona || `You are a representative of Apex Marketing Automations — a full-service digital marketing agency that helps businesses grow with AI-powered automation.
+
+WHAT WE OFFER:
+- AI Voice Agents — automated outbound calls and inbound call handling that sound human
+- Facebook & Instagram Ad Management — campaign creation, targeting, optimization
+- Automated Lead Follow-Up — instant SMS, email, and DM responses to new leads
+- CRM & Pipeline Management — track every lead from first touch to closed deal
+- Website & Funnel Building — high-converting landing pages and sales funnels
+- Google Ads & SEO — search engine marketing and optimization
+- Reputation Management — automated review requests and monitoring
+- Social Media Management — content scheduling and engagement
+
+BOOKING:
+When a prospect is interested, wants to learn more, wants to schedule a call, or asks about pricing — send them the booking link: ${bookingLink}
+Always phrase it naturally like "Here's a link to book a quick strategy call" or "Let's set up a time to chat — grab a spot here"`;
+
+                systemPrompt += `\n\nYou are responding via ${channel} DM to ${contactName}.
+
+RULES:
+- Be warm, confident, and direct — like a real team member texting, not a bot
+- Keep replies under 280 characters when possible
+- Use the prospect's name naturally
+- Give specific, helpful answers — never be vague
+- When they show interest or ask about pricing/services, share the booking link: ${bookingLink}
+- Never say you're an AI — you ARE Apex Marketing
+- End with a clear next step or question
+- If they ask about a calendar or booking, immediately share the link`;
 
                 const conversationHistory: Array<{role: string, content: string}> = [];
                 try {
