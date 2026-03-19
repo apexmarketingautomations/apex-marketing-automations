@@ -3,6 +3,7 @@ import { deals, appointments, messages } from "@shared/schema";
 import { z } from "zod";
 import { aiChat, aiChatStream, isAIConfigured } from "../aiGateway";
 import { asyncHandler, logUsageInternal, getIndustryContext, getLanguageInstruction } from "./helpers";
+import { startTrace, recordStepValue } from "../traceRecorder";
 
 export function registerChatRoutes(app: Express) {
   // ---- Chat Widget (AI Assistant) ----
@@ -114,6 +115,12 @@ export function registerChatRoutes(app: Express) {
     const parsed = chatBodySchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
+    const subAccountId = (req as any).subAccountId as number | undefined;
+    const traceId = (req as any).eventTraceId as string | undefined;
+    const trace = (subAccountId && traceId)
+      ? { traceId, subAccountId }
+      : subAccountId ? startTrace(subAccountId) : null;
+
     const chatSystemPrompt = CHAT_SYSTEM_PROMPT + getIndustryContext(parsed.data.industry) + getLanguageInstruction(parsed.data.language);
 
     const chatMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
@@ -131,8 +138,27 @@ export function registerChatRoutes(app: Express) {
 
     chatMessages.push({ role: "user", content: parsed.data.message });
 
-    const result = await aiChat(chatMessages, { temperature: 0.7, maxTokens: 1024, route: "chat-widget" });
-    const reply = result.text || "I'm here to help! Could you tell me more about what you're looking for?";
+    const aiStart = Date.now();
+    let reply = "I'm here to help! Could you tell me more about what you're looking for?";
+    try {
+      const result = await aiChat(chatMessages, { temperature: 0.7, maxTokens: 1024, route: "chat-widget" });
+      reply = result.text || reply;
+      if (trace) {
+        recordStepValue(trace, "ai_chat", "success", Date.now() - aiStart, {
+          provider: "ai",
+          metadata: { route: "chat-widget", replyLength: reply.length },
+        });
+      }
+    } catch (aiErr: any) {
+      if (trace) {
+        recordStepValue(trace, "ai_chat", "error", Date.now() - aiStart, {
+          provider: "ai",
+          error: aiErr.message,
+          metadata: { route: "chat-widget" },
+        });
+      }
+      throw aiErr;
+    }
 
     await logUsageInternal(null, "AI_CHAT", 1, "Chat widget AI response");
 
@@ -147,6 +173,12 @@ export function registerChatRoutes(app: Express) {
 
       const parsed = chatBodySchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+      const subAccountId = (req as any).subAccountId as number | undefined;
+      const traceId = (req as any).eventTraceId as string | undefined;
+      const trace = (subAccountId && traceId)
+        ? { traceId, subAccountId }
+        : subAccountId ? startTrace(subAccountId) : null;
 
       const chatSystemPrompt = CHAT_SYSTEM_PROMPT + getIndustryContext(parsed.data.industry) + getLanguageInstruction(parsed.data.language);
 
@@ -169,15 +201,33 @@ export function registerChatRoutes(app: Express) {
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      const stream = aiChatStream(chatMessages, { temperature: 0.7, maxTokens: 1024, route: "chat-widget-stream" });
-      for await (const chunk of stream) {
-        res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
+      const streamStart = Date.now();
+      let totalChars = 0;
+      try {
+        const stream = aiChatStream(chatMessages, { temperature: 0.7, maxTokens: 1024, route: "chat-widget-stream" });
+        for await (const chunk of stream) {
+          totalChars += chunk.length;
+          res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
+        }
+        if (trace) {
+          recordStepValue(trace, "ai_chat", "success", Date.now() - streamStart, {
+            provider: "ai",
+            metadata: { route: "chat-widget-stream", totalChars },
+          });
+        }
+        res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+        res.end();
+        await logUsageInternal(null, "AI_CHAT", 1, "Chat widget AI response (stream)");
+      } catch (streamErr: any) {
+        if (trace) {
+          recordStepValue(trace, "ai_chat", "error", Date.now() - streamStart, {
+            provider: "ai",
+            error: streamErr.message,
+            metadata: { route: "chat-widget-stream" },
+          });
+        }
+        throw streamErr;
       }
-
-      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-      res.end();
-
-      await logUsageInternal(null, "AI_CHAT", 1, "Chat widget AI response (stream)");
     } catch (error: any) {
       if (!res.headersSent) {
         res.status(500).json({ error: error.message || "Streaming failed" });

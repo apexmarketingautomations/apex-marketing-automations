@@ -55,6 +55,7 @@ export interface OperatorContext {
   autonomyLevel: AutonomyLevel;
   sessionId: string;
   correlationId: string;
+  traceId?: string;
 }
 
 export interface OperatorPlan {

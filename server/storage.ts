@@ -380,6 +380,7 @@ export interface IStorage {
   revertOptimization(logId: number): Promise<WorkflowOptimizationLog | undefined>;
 
   createTimelineEvent(data: InsertTimelineEvent): Promise<TimelineEvent>;
+  batchCreateTimelineEvents(data: InsertTimelineEvent[]): Promise<void>;
   getTimelineEventsByTrace(traceId: string): Promise<TimelineEvent[]>;
   listTraces(subAccountId: number, opts?: { limit?: number; offset?: number; status?: string; since?: Date }): Promise<{ traceId: string; contactPhone: string | null; conversationId: string | null; startedAt: Date; totalSteps: number; failedSteps: number; totalLatencyMs: number }[]>;
   getTraceSummary(traceId: string): Promise<{ totalDurationMs: number; aiLatencyMs: number; deliveryLatencyMs: number; stepCount: number; failedStepCount: number } | null>;
@@ -1752,14 +1753,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createTimelineEvent(data: InsertTimelineEvent) {
-    const [row] = await db.insert(timelineEvents).values(data).returning();
+    const [row] = await db.insert(timelineEvents).values(data)
+      .onConflictDoNothing()
+      .returning();
     return row;
+  }
+
+  async batchCreateTimelineEvents(data: InsertTimelineEvent[]): Promise<void> {
+    if (data.length === 0) return;
+    await db.insert(timelineEvents).values(data)
+      .onConflictDoNothing();
   }
 
   async getTimelineEventsByTrace(traceId: string) {
     return db.select().from(timelineEvents)
       .where(eq(timelineEvents.traceId, traceId))
-      .orderBy(timelineEvents.createdAt);
+      .orderBy(sql`coalesce(${timelineEvents.sequenceNum}, 999999)`, timelineEvents.createdAt);
   }
 
   async listTraces(subAccountId: number, opts: { limit?: number; offset?: number; status?: string; since?: Date } = {}) {

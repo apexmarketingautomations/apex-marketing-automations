@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, json, timestamp, boolean, real, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, json, timestamp, boolean, real, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -1626,8 +1626,13 @@ export const timelineEvents = pgTable("timeline_events", {
   latencyMs: integer("latency_ms"),
   metadata: json("metadata"),
   error: text("error"),
+  eventKey: text("event_key"),
+  sequenceNum: integer("sequence_num"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => ({
+  eventKeyIdx: uniqueIndex("timeline_events_event_key_idx").on(t.eventKey),
+  traceSeqIdx: index("timeline_events_trace_seq_idx").on(t.traceId, t.sequenceNum),
+}));
 
 export const insertTimelineEventSchema = createInsertSchema(timelineEvents).omit({ id: true, createdAt: true });
 export type InsertTimelineEvent = z.infer<typeof insertTimelineEventSchema>;

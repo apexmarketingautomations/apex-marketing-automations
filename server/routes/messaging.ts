@@ -8,6 +8,7 @@ import { publishEventAsync, EVENT_TYPES } from "../eventBus";
 import { asyncHandler, parseIntParam, verifyAccountOwnership, logUsageInternal, getTwilioClient } from "./helpers";
 import { validateRouting } from "../routing/gate";
 import { recordSuccess } from "../pulse";
+import { startTrace, recordStepValue } from "../traceRecorder";
 
 export function registerMessagingRoutes(app: Express) {
   // ---- Messages ----
@@ -21,8 +22,27 @@ export function registerMessagingRoutes(app: Express) {
   app.post("/api/messages", messagingLimiter, asyncHandler(async (req, res) => {
     const parsed = insertMessageSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-    const msg = await storage.createMessage(parsed.data);
-    res.status(201).json(msg);
+
+    const traceId = (req as any).eventTraceId as string | undefined;
+    const trace = traceId
+      ? { traceId, subAccountId: parsed.data.subAccountId, contactPhone: parsed.data.contactPhone ?? undefined }
+      : startTrace(parsed.data.subAccountId, { contactPhone: parsed.data.contactPhone ?? undefined });
+
+    const crmStart = Date.now();
+    try {
+      const msg = await storage.createMessage({ ...parsed.data, traceId: trace.traceId });
+      recordStepValue(trace, "crm_write", "success", Date.now() - crmStart, {
+        metadata: { channel: parsed.data.channel || "sms", direction: parsed.data.direction || "outbound", messageId: msg.id },
+        disambiguator: String(msg.id),
+      });
+      res.status(201).json(msg);
+    } catch (err: any) {
+      recordStepValue(trace, "crm_write", "error", Date.now() - crmStart, {
+        error: err.message,
+        metadata: { channel: parsed.data.channel || "sms" },
+      });
+      throw err;
+    }
   }));
 
 
@@ -32,6 +52,11 @@ export function registerMessagingRoutes(app: Express) {
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
     const { subAccountId, contactPhone, body, channel } = parsed.data;
+
+    const traceId = (req as any).eventTraceId as string | undefined;
+    const trace = traceId
+      ? { traceId, subAccountId, contactPhone: contactPhone ?? undefined }
+      : startTrace(subAccountId, { contactPhone: contactPhone ?? undefined });
 
     const gateResult = await validateRouting({
       subAccountId,
@@ -151,9 +176,19 @@ export function registerMessagingRoutes(app: Express) {
       twilioError = `Channel '${channel}' is not supported for outbound sending. Use 'sms' or 'whatsapp'.`;
     }
 
+    const sendStartMs = Date.now();
     const msg = await storage.createMessage({
       ...parsed.data,
       status: twilioStatus,
+      traceId: trace.traceId,
+    });
+
+    const sendStatus = (twilioStatus === "failed" || twilioStatus === "unsupported") ? "error" : "success";
+    recordStepValue(trace, "outbound_send", sendStatus, Date.now() - sendStartMs, {
+      provider: "twilio",
+      metadata: { channel: channel || "sms", to: contactPhone, status: twilioStatus, messageId: msg.id },
+      error: twilioError ?? undefined,
+      disambiguator: twilioSid || String(msg.id),
     });
 
     if (twilioStatus === "failed" || twilioStatus === "unsupported") {
@@ -195,6 +230,7 @@ export function registerMessagingRoutes(app: Express) {
       const normalizedStatus = statusMap[MessageStatus] || MessageStatus;
       const cleanPhone = (To || "").replace(/^whatsapp:/, "");
 
+      const deliveryStart = Date.now();
       if (cleanPhone && normalizedStatus) {
         await db.execute(
           sql`UPDATE messages SET status = ${normalizedStatus}
@@ -207,6 +243,18 @@ export function registerMessagingRoutes(app: Express) {
                 LIMIT 1
               )`
         );
+
+        const [matchedMsg] = await db.execute(
+          sql`SELECT trace_id, sub_account_id FROM messages WHERE contact_phone = ${cleanPhone} AND channel = 'whatsapp' AND direction = 'outbound' ORDER BY created_at DESC LIMIT 1`
+        ) as any;
+        if (matchedMsg?.trace_id && matchedMsg?.sub_account_id) {
+          const delivTrace = { traceId: matchedMsg.trace_id, subAccountId: matchedMsg.sub_account_id, contactPhone: cleanPhone };
+          recordStepValue(delivTrace, "delivery_status", normalizedStatus === "failed" ? "error" : "success", Date.now() - deliveryStart, {
+            provider: "twilio",
+            metadata: { status: normalizedStatus, messageSid: MessageSid },
+            disambiguator: `${MessageSid}:${normalizedStatus}`,
+          });
+        }
       }
 
       res.type("text/xml").send("<Response></Response>");

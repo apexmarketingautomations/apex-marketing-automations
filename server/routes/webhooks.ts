@@ -88,9 +88,11 @@ export function registerWebhooksRoutes(app: Express) {
       const trace = startTrace(matchedAccountId, { contactPhone: senderClean });
 
       const t0 = Date.now();
+      const inboundSid = req.body.MessageSid as string | undefined;
       recordStepValue(trace, "message_received", "success", Date.now() - t0, {
         provider: "twilio",
         metadata: { channel, body: incomingMsg.substring(0, 200) },
+        disambiguator: inboundSid || `recv-${senderClean}-${Date.now()}`,
       });
 
       const { isOptOutMessage, isOptInMessage, handleSmsOptOut, handleSmsOptIn } = await import("../optOutGuard");
@@ -130,23 +132,28 @@ export function registerWebhooksRoutes(app: Express) {
         return;
       }
 
+      const messageSid = req.body.MessageSid as string | undefined;
       const crmStart = Date.now();
       try {
-        await storage.createMessage({
+        const storedMsg = await storage.createMessage({
           subAccountId: matchedAccountId,
           contactPhone: senderClean,
           body: incomingMsg,
           direction: "inbound",
           channel,
           status: "received",
+          traceId: trace.traceId,
+          messageSid: messageSid || null,
         });
         recordStepValue(trace, "crm_write", "success", Date.now() - crmStart, {
-          metadata: { channel, direction: "inbound" },
+          metadata: { channel, direction: "inbound", messageId: storedMsg.id },
+          disambiguator: messageSid || String(storedMsg.id),
         });
       } catch (e: any) {
         console.log(`[${channel.toUpperCase()}] Message storage error:`, e.message);
         recordStepValue(trace, "crm_write", "error", Date.now() - crmStart, {
           error: e.message,
+          disambiguator: messageSid || `err-${senderClean}`,
         });
       }
 
@@ -189,12 +196,14 @@ export function registerWebhooksRoutes(app: Express) {
           recordStepValue(trace, "ai_response_generated", "success", Date.now() - aiStart, {
             provider: "ai",
             metadata: { replyLength: aiReply.length },
+            disambiguator: inboundSid || `ai-${senderClean}`,
           });
         } catch (aiErr: any) {
           console.error("AI reply error:", aiErr.message);
           recordStepValue(trace, "ai_response_generated", "error", Date.now() - aiStart, {
             provider: "ai",
             error: aiErr.message,
+            disambiguator: inboundSid ? `${inboundSid}-ai-err` : `ai-err-${senderClean}`,
           });
         }
       }
@@ -207,14 +216,15 @@ export function registerWebhooksRoutes(app: Express) {
           : toRaw;
 
         try {
-          await twilioClient.messages.create({
+          const sentReply = await twilioClient.messages.create({
             body: aiReply,
             from: replyFrom,
             to: senderRaw,
           });
           recordStepValue(trace, "outbound_send", "success", Date.now() - sendStart, {
             provider: "twilio",
-            metadata: { channel, to: senderClean },
+            metadata: { channel, to: senderClean, messageSid: sentReply.sid },
+            disambiguator: sentReply.sid || `reply-${senderClean}`,
           });
         } catch (sendErr: any) {
           console.error("[WEBHOOKS] Outbound send failed:", sendErr.message);
@@ -222,6 +232,7 @@ export function registerWebhooksRoutes(app: Express) {
             provider: "twilio",
             error: sendErr.message,
             metadata: { channel, to: senderClean },
+            disambiguator: `reply-err-${senderClean}`,
           });
         }
       }
@@ -718,6 +729,14 @@ export function registerWebhooksRoutes(app: Express) {
             const targetAccount = allAccounts.find(a => a.ownerUserId !== "_archived") || allAccounts[0];
             const subAccountId = targetAccount?.id || 13;
 
+            const metaTrace = { traceId: metaTraceId, subAccountId, contactPhone: senderId };
+            const metaRecvStart = Date.now();
+            recordStepValue(metaTrace, "message_received", "success", Date.now() - metaRecvStart, {
+              provider: "meta",
+              metadata: { channel, mid: mid || null, bodyLength: message.length },
+              disambiguator: mid || `meta-recv-${senderId}`,
+            });
+
             if (!accessToken || !pageId) {
               const rawPayload = JSON.stringify(event).substring(0, 2000);
               console.error(`[META DM] Cannot process ${channel} message from ${senderId} — META_ACCESS_TOKEN or META_PAGE_ID not configured. Set these environment variables in your Replit project. Visit the Integrations page for a setup guide. Raw event: ${rawPayload}`);
@@ -738,14 +757,27 @@ export function registerWebhooksRoutes(app: Express) {
               appsecretProof = crypto.createHmac("sha256", appSecret).update(accessToken).digest("hex");
             }
 
-            await db.insert(messages).values({
-              subAccountId,
-              channel,
-              direction: "inbound",
-              contactPhone: senderId,
-              body: message,
-              status: "received",
-            });
+            const metaCrmStart = Date.now();
+            try {
+              await db.insert(messages).values({
+                subAccountId,
+                channel,
+                direction: "inbound",
+                contactPhone: senderId,
+                body: message,
+                status: "received",
+                traceId: metaTraceId,
+              });
+              recordStepValue(metaTrace, "crm_write", "success", Date.now() - metaCrmStart, {
+                metadata: { channel, direction: "inbound" },
+                disambiguator: mid || `meta-crm-${senderId}`,
+              });
+            } catch (crmWriteErr: any) {
+              recordStepValue(metaTrace, "crm_write", "error", Date.now() - metaCrmStart, {
+                error: crmWriteErr.message,
+                disambiguator: mid ? `${mid}-crm-err` : `meta-crm-err-${senderId}`,
+              });
+            }
 
             try {
               const existingContact = await db.select().from(contacts)
@@ -802,6 +834,7 @@ export function registerWebhooksRoutes(app: Express) {
                   contactPhone: senderId,
                   body: kw.responseText,
                   status: "failed",
+                  traceId: metaTraceId,
                 });
               } else if (kw.responseText && accessToken && pageId) {
                 const kwUrl = `https://graph.facebook.com/v19.0/${pageId}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
@@ -828,6 +861,7 @@ export function registerWebhooksRoutes(app: Express) {
                   contactPhone: senderId,
                   body: kw.responseText,
                   status: kwSendStatus,
+                  traceId: metaTraceId,
                 });
                 if (kwSendRes.ok) console.log(`[META DM] Keyword reply sent to ${senderId}: OK, messageId=${kwSendData?.message_id}`);
               }
@@ -848,6 +882,7 @@ export function registerWebhooksRoutes(app: Express) {
             }
 
             if (!keywordMatched && isAIConfigured()) {
+              const metaAiStart = Date.now();
               try {
                 let systemPrompt = `You are a helpful business assistant responding via ${channel} DM. Keep replies conversational and under 300 characters. Be warm, professional, and helpful.`;
 
@@ -871,6 +906,13 @@ export function registerWebhooksRoutes(app: Express) {
                 ], { temperature: 0.7, maxTokens: 1024, route: "webhook-meta-dm-reply" });
                 const aiReply = metaDmAiResult.text;
 
+                recordStepValue(metaTrace, "ai_response_generated", "success", Date.now() - metaAiStart, {
+                  provider: "ai",
+                  metadata: { channel, replyLength: aiReply?.length || 0 },
+                  disambiguator: mid || `meta-ai-${senderId}`,
+                });
+
+                const metaSendStart = Date.now();
                 if (aiReply && (!accessToken || !pageId)) {
                   console.warn(`[META DM] AI reply generated but cannot send to ${senderId}: META_ACCESS_TOKEN or META_PAGE_ID not configured.`);
                   await db.insert(messages).values({
@@ -880,6 +922,13 @@ export function registerWebhooksRoutes(app: Express) {
                     contactPhone: senderId,
                     body: aiReply,
                     status: "failed",
+                    traceId: metaTraceId,
+                  });
+                  recordStepValue(metaTrace, "outbound_send", "error", Date.now() - metaSendStart, {
+                    provider: "meta",
+                    error: "META_ACCESS_TOKEN or META_PAGE_ID not configured",
+                    metadata: { channel },
+                    disambiguator: mid ? `${mid}-send-err` : `meta-send-err-${senderId}`,
                   });
                 } else if (aiReply && accessToken && pageId) {
                   const aiUrl = `https://graph.facebook.com/v19.0/${pageId}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
@@ -894,11 +943,23 @@ export function registerWebhooksRoutes(app: Express) {
                     }),
                   });
                   const sendData = await sendRes.json() as any;
+                  const metaMsgId = sendData?.message_id as string | undefined;
                   const aiSendStatus = sendRes.ok ? "sent" : "failed";
                   if (!sendRes.ok) {
                     console.error(`[META DM] AI reply FAILED to ${senderId} — HTTP ${sendRes.status}, pageId=${pageId}, error=${JSON.stringify(sendData).substring(0, 500)}`);
+                    recordStepValue(metaTrace, "outbound_send", "error", Date.now() - metaSendStart, {
+                      provider: "meta",
+                      error: JSON.stringify(sendData).substring(0, 200),
+                      metadata: { channel },
+                      disambiguator: mid ? `${mid}-send-err` : `meta-send-err-${senderId}`,
+                    });
                   } else {
                     console.log(`[META DM] AI reply sent to ${senderId}: OK, messageId=${sendData?.message_id}`);
+                    recordStepValue(metaTrace, "outbound_send", "success", Date.now() - metaSendStart, {
+                      provider: "meta",
+                      metadata: { channel, to: senderId, metaMsgId },
+                      disambiguator: metaMsgId || mid || `meta-send-${senderId}`,
+                    });
                   }
 
                   await db.insert(messages).values({
@@ -908,10 +969,17 @@ export function registerWebhooksRoutes(app: Express) {
                     contactPhone: senderId,
                     body: aiReply,
                     status: aiSendStatus,
+                    traceId: metaTraceId,
                   });
                 }
               } catch (aiErr: any) {
                 console.error("[META DM] AI reply error:", aiErr.message);
+                recordStepValue(metaTrace, "ai_response_generated", "error", Date.now() - metaAiStart, {
+                  provider: "ai",
+                  error: aiErr.message,
+                  metadata: { channel },
+                  disambiguator: mid ? `${mid}-ai-err` : `meta-ai-err-${senderId}`,
+                });
               }
             }
 

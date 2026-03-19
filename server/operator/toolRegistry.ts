@@ -3,6 +3,7 @@ import { allSchemas } from "./toolSchemas";
 import { crmTools, messagingTools, workflowTools, appointmentTools, campaignTools, creativeTools, reviewTools, intelligenceTools } from "./toolHandlers";
 import { storage } from "../storage";
 import { publishEventAsync, EVENT_TYPES } from "../eventBus";
+import { startTrace, recordStepValue } from "../traceRecorder";
 
 const tools = new Map<string, OperatorTool>();
 const idempotencyCache = new Map<string, { result: ToolResult; timestamp: number }>();
@@ -152,6 +153,12 @@ export async function executeTool(toolName: string, params: Record<string, any>,
     }
   }
 
+  const toolStart = Date.now();
+  const traceId = context.traceId;
+  const trace = traceId
+    ? { traceId, subAccountId: context.subAccountId }
+    : startTrace(context.subAccountId);
+
   try {
     const result = await tool.execute(params, context);
 
@@ -161,8 +168,21 @@ export async function executeTool(toolName: string, params: Record<string, any>,
       idempotencyCache.set(scopedKey, { result, timestamp: Date.now() });
     }
 
+    const toolDisambiguator = context.correlationId || `${toolName}-${toolStart}`;
+    recordStepValue(trace, `operator_tool:${toolName}`, result.success ? "success" : "error", Date.now() - toolStart, {
+      metadata: { toolName, category: tool.category, paramKeys: Object.keys(params) },
+      error: result.success ? undefined : result.error,
+      disambiguator: toolDisambiguator,
+    });
+
     return result;
   } catch (err: any) {
+    const toolDisambiguator = context.correlationId || `${toolName}-${toolStart}`;
+    recordStepValue(trace, `operator_tool:${toolName}`, "error", Date.now() - toolStart, {
+      error: err.message || String(err),
+      metadata: { toolName, category: tool.category },
+      disambiguator: `${toolDisambiguator}-err`,
+    });
     return { success: false, error: err.message || String(err) };
   }
 }
