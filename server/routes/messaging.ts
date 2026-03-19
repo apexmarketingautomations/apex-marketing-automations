@@ -7,6 +7,7 @@ import { messagingLimiter } from "../rateLimiter";
 import { publishEventAsync, EVENT_TYPES } from "../eventBus";
 import { asyncHandler, parseIntParam, verifyAccountOwnership, logUsageInternal, getTwilioClient } from "./helpers";
 import { validateRouting } from "../routing/gate";
+import { recordSuccess } from "../pulse";
 
 export function registerMessagingRoutes(app: Express) {
   // ---- Messages ----
@@ -104,6 +105,7 @@ export function registerMessagingRoutes(app: Express) {
             const twilioMsg = await twilioClient.messages.create(msgOptions);
             twilioStatus = twilioMsg.status || "sent";
             twilioSid = twilioMsg.sid;
+            recordSuccess("twilio");
 
             const statusCallback = (req.body as any).statusCallback;
             if (statusCallback) {
@@ -136,6 +138,7 @@ export function registerMessagingRoutes(app: Express) {
             });
             twilioStatus = twilioMsg.status || "sent";
             twilioSid = twilioMsg.sid;
+            recordSuccess("twilio");
           } catch (twilioErr: any) {
             console.error("[SMS] Twilio send error:", twilioErr.message);
             twilioStatus = "failed";

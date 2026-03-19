@@ -16,6 +16,7 @@ import { apiLimiter, authLimiter, webhookLimiter } from "./rateLimiter";
 import { dispatchAlert, generateDeepLink } from "./pushAlertService";
 import { initEventSubscribers } from "./eventSubscribers";
 import { eventBus } from "./eventBus";
+import { recordSuccess as recordPulseSuccess } from "./pulse";
 
 const app = express();
 const httpServer = createServer(app);
@@ -508,6 +509,7 @@ function validateEnvVars() {
         const reply = completion.choices[0]?.message?.content?.trim();
         if (reply) {
           console.log("[VAPI SMS] AI reply generated via OpenAI");
+          recordPulseSuccess("openai");
           return reply;
         }
       } catch (openaiErr: any) {

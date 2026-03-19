@@ -4,6 +4,7 @@ import { storage } from "../storage";
 import { z } from "zod";
 import { aiChat, isAIConfigured } from "../ai";
 import { asyncHandler, getIndustryContext, getTwilioClient, vapiConfig } from "./helpers";
+import { recordSuccess } from "../pulse";
 import { db } from "../db";
 import { eq } from "drizzle-orm";
 
@@ -218,6 +219,7 @@ export function registerVoiceRoutes(app: Express) {
     }
 
     const call = await response.json();
+    recordSuccess("vapi");
     res.json({
       callId: call.id,
       status: call.status || "queued",

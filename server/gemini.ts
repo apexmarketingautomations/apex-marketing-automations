@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import { recordSuccess } from "./pulse";
 
 const ai = new GoogleGenAI({ apiKey: process.env.Gemini_API_Key_saas });
 
@@ -125,6 +126,7 @@ export async function geminiChat(
     })
   );
 
+  recordSuccess("gemini");
   return response.text ?? "";
 }
 
