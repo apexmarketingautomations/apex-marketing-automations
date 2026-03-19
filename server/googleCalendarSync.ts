@@ -1,164 +1,86 @@
+import { google } from "googleapis";
 import { db } from "./db";
-import { appointments, contacts, oauthTokens } from "@shared/schema";
-import { eq, and, sql, isNotNull } from "drizzle-orm";
-import { storage } from "./storage";
+import { appointments, contacts } from "@shared/schema";
+import { eq, and } from "drizzle-orm";
 
-interface GoogleCalendarEvent {
-  id: string;
-  summary?: string;
-  description?: string;
-  location?: string;
-  status?: string;
-  start?: { dateTime?: string; date?: string };
-  end?: { dateTime?: string; date?: string };
-  attendees?: Array<{ email?: string; displayName?: string; responseStatus?: string }>;
-  htmlLink?: string;
-  created?: string;
-  updated?: string;
-}
+// --- Replit Google Calendar Integration (handles token refresh automatically) ---
+let connectionSettings: any;
 
-interface CalendarListResponse {
-  items?: Array<{ id: string; summary?: string; primary?: boolean }>;
-}
-
-interface EventsListResponse {
-  items?: GoogleCalendarEvent[];
-  nextPageToken?: string;
-}
-
-async function refreshViaGoogleCalendarClientCreds(subAccountId: number): Promise<string | null> {
-  const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
-  if (!clientId || !clientSecret) return null;
-
-  try {
-    const { getValidToken } = await import("./tokenService");
-    const token = await getValidToken(subAccountId, "google");
-    if (token?.accessToken) return token.accessToken;
-  } catch {}
-  return null;
-}
-
-export async function getCalendarAccessToken(subAccountId: number): Promise<string | null> {
-  try {
-    const { getValidToken } = await import("./tokenService");
-    const token = await getValidToken(subAccountId, "google");
-    if (token?.accessToken) return token.accessToken;
-  } catch (err) {
-    console.warn("[GCAL-SYNC] Failed to get token from tokenService:", (err as any).message);
+async function getAccessToken(): Promise<string> {
+  if (connectionSettings && connectionSettings.settings?.expires_at && new Date(connectionSettings.settings.expires_at).getTime() > Date.now()) {
+    return connectionSettings.settings.access_token;
   }
 
-  return refreshViaGoogleCalendarClientCreds(subAccountId);
+  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
+  const xReplitToken = process.env.REPL_IDENTITY
+    ? "repl " + process.env.REPL_IDENTITY
+    : process.env.WEB_REPL_RENEWAL
+      ? "depl " + process.env.WEB_REPL_RENEWAL
+      : null;
+
+  if (!xReplitToken) throw new Error("X-Replit-Token not found");
+
+  connectionSettings = await fetch(
+    "https://" + hostname + "/api/v2/connection?include_secrets=true&connector_names=google-calendar",
+    { headers: { Accept: "application/json", "X-Replit-Token": xReplitToken } },
+  ).then(res => res.json()).then(data => data.items?.[0]);
+
+  const accessToken = connectionSettings?.settings?.access_token || connectionSettings?.settings?.oauth?.credentials?.access_token;
+  if (!connectionSettings || !accessToken) throw new Error("Google Calendar not connected");
+  return accessToken;
 }
 
-export async function seedGoogleCalendarToken(accessToken: string, refreshToken: string, subAccountIds: number[] = [13, 14]): Promise<void> {
-  for (const subAccountId of subAccountIds) {
-    try {
-      await storage.upsertOAuthToken({
-        provider: "google",
-        subAccountId,
-        accessToken,
-        refreshToken,
-        tokenExpiry: new Date(Date.now() + 3600 * 1000),
-        scopes: "https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events",
-        providerEmail: "apexmarketingautomations@gmail.com",
-        providerAccountId: "",
-        connectionType: "replit_integration",
-      });
-      console.log(`[GCAL-SYNC] Seeded Google Calendar token for account ${subAccountId}`);
-    } catch (err) {
-      console.warn(`[GCAL-SYNC] Failed to seed token for account ${subAccountId}:`, (err as any).message);
-    }
-  }
+async function getCalendarClient() {
+  const accessToken = await getAccessToken();
+  const oauth2Client = new google.auth.OAuth2();
+  oauth2Client.setCredentials({ access_token: accessToken });
+  return google.calendar({ version: "v3", auth: oauth2Client });
 }
 
-export async function listCalendars(accessToken: string): Promise<Array<{ id: string; summary: string; primary: boolean }>> {
-  const res = await fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList", {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    signal: AbortSignal.timeout(10000),
-  });
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Failed to list calendars: ${res.status} ${errText}`);
-  }
-  const data = await res.json() as CalendarListResponse;
-  return (data.items || []).map(c => ({
-    id: c.id,
-    summary: c.summary || c.id,
+// --- Public API ---
+
+export async function listCalendars(): Promise<Array<{ id: string; summary: string; primary: boolean }>> {
+  const cal = await getCalendarClient();
+  const res = await cal.calendarList.list();
+  return (res.data.items || []).map(c => ({
+    id: c.id || "",
+    summary: c.summary || c.id || "",
     primary: !!c.primary,
   }));
-}
-
-export async function fetchCalendarEvents(
-  accessToken: string,
-  calendarId: string = "primary",
-  timeMin?: string,
-  timeMax?: string,
-  maxResults: number = 100,
-): Promise<GoogleCalendarEvent[]> {
-  const params = new URLSearchParams({
-    maxResults: String(maxResults),
-    singleEvents: "true",
-    orderBy: "startTime",
-  });
-  if (timeMin) params.set("timeMin", timeMin);
-  else params.set("timeMin", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
-  if (timeMax) params.set("timeMax", timeMax);
-  else params.set("timeMax", new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString());
-
-  const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    signal: AbortSignal.timeout(15000),
-  });
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Failed to fetch events: ${res.status} ${errText}`);
-  }
-  const data = await res.json() as EventsListResponse;
-  return data.items || [];
 }
 
 export async function syncGoogleCalendar(
   subAccountId: number,
   calendarId: string = "primary",
-  accessToken?: string,
 ): Promise<{ synced: number; created: number; updated: number; skipped: number }> {
-  const token = accessToken || await getCalendarAccessToken(subAccountId);
-  if (!token) {
-    throw new Error("No Google Calendar access token available");
-  }
+  const cal = await getCalendarClient();
 
-  const events = await fetchCalendarEvents(token, calendarId);
-  console.log(`[GCAL-SYNC] Fetched ${events.length} events from calendar "${calendarId}" for account ${subAccountId}`);
+  const res = await cal.events.list({
+    calendarId,
+    maxResults: 100,
+    singleEvents: true,
+    orderBy: "startTime",
+    timeMin: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+    timeMax: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+  });
 
-  let created = 0;
-  let updated = 0;
-  let skipped = 0;
+  const events = res.data.items || [];
+  console.log(`[GCAL-SYNC] Fetched ${events.length} events from "${calendarId}" for account ${subAccountId}`);
+
+  let created = 0, updated = 0, skipped = 0;
 
   for (const event of events) {
-    if (!event.id || !event.summary) {
-      skipped++;
-      continue;
-    }
-
+    if (!event.id || !event.summary) { skipped++; continue; }
     const startTime = event.start?.dateTime || event.start?.date;
     const endTime = event.end?.dateTime || event.end?.date;
-    if (!startTime || !endTime) {
-      skipped++;
-      continue;
-    }
+    if (!startTime || !endTime) { skipped++; continue; }
 
     if (event.status === "cancelled") {
       const existing = await db.select().from(appointments)
-        .where(and(
-          eq(appointments.googleCalendarEventId, event.id),
-          eq(appointments.subAccountId, subAccountId),
-        )).limit(1);
+        .where(and(eq(appointments.googleCalendarEventId, event.id), eq(appointments.subAccountId, subAccountId)))
+        .limit(1);
       if (existing[0]) {
-        await db.update(appointments)
-          .set({ status: "cancelled" })
-          .where(eq(appointments.id, existing[0].id));
+        await db.update(appointments).set({ status: "cancelled" }).where(eq(appointments.id, existing[0].id));
         updated++;
       }
       continue;
@@ -168,52 +90,41 @@ export async function syncGoogleCalendar(
     if (event.attendees?.length) {
       for (const att of event.attendees) {
         if (att.email) {
-          const contactRows = await db.select().from(contacts)
-            .where(and(
-              eq(contacts.email, att.email),
-              eq(contacts.subAccountId, subAccountId),
-            )).limit(1);
-          if (contactRows[0]) {
-            contactId = contactRows[0].id;
-            break;
-          }
+          const rows = await db.select().from(contacts)
+            .where(and(eq(contacts.email, att.email), eq(contacts.subAccountId, subAccountId)))
+            .limit(1);
+          if (rows[0]) { contactId = rows[0].id; break; }
         }
       }
     }
 
-    const appointmentData = {
-      subAccountId,
-      title: event.summary,
-      description: event.description || null,
-      startTime: new Date(startTime),
-      endTime: new Date(endTime),
-      status: "scheduled",
-      location: event.location || null,
-      googleCalendarEventId: event.id,
-      googleCalendarId: calendarId,
-      contactId,
-    };
-
     const existing = await db.select().from(appointments)
-      .where(and(
-        eq(appointments.googleCalendarEventId, event.id),
-        eq(appointments.subAccountId, subAccountId),
-      )).limit(1);
+      .where(and(eq(appointments.googleCalendarEventId, event.id), eq(appointments.subAccountId, subAccountId)))
+      .limit(1);
 
     if (existing[0]) {
-      await db.update(appointments)
-        .set({
-          title: appointmentData.title,
-          description: appointmentData.description,
-          startTime: appointmentData.startTime,
-          endTime: appointmentData.endTime,
-          location: appointmentData.location,
-          contactId: contactId || existing[0].contactId,
-        })
-        .where(eq(appointments.id, existing[0].id));
+      await db.update(appointments).set({
+        title: event.summary,
+        description: event.description || null,
+        startTime: new Date(startTime),
+        endTime: new Date(endTime),
+        location: event.location || null,
+        contactId: contactId || existing[0].contactId,
+      }).where(eq(appointments.id, existing[0].id));
       updated++;
     } else {
-      await db.insert(appointments).values(appointmentData);
+      await db.insert(appointments).values({
+        subAccountId,
+        title: event.summary,
+        description: event.description || null,
+        startTime: new Date(startTime),
+        endTime: new Date(endTime),
+        status: "scheduled",
+        location: event.location || null,
+        googleCalendarEventId: event.id,
+        googleCalendarId: calendarId,
+        contactId,
+      });
       created++;
 
       try {
@@ -232,136 +143,18 @@ export async function syncGoogleCalendar(
   return { synced: events.length, created, updated, skipped };
 }
 
+// --- Auto-sync background loop ---
+
 const SYNC_INTERVAL_MS = 3 * 60 * 1000;
-const SYNC_LOOKBACK_MS = 10 * 60 * 1000;
+const TARGET_ACCOUNTS = [13, 14];
 let autoSyncTimer: ReturnType<typeof setInterval> | null = null;
 
-async function getAccountsWithGoogleToken(): Promise<number[]> {
-  try {
-    const rows = await db.select({ subAccountId: oauthTokens.subAccountId })
-      .from(oauthTokens)
-      .where(and(
-        eq(oauthTokens.provider, "google"),
-        isNotNull(oauthTokens.refreshToken),
-      ));
-    return rows.map(r => r.subAccountId).filter((id): id is number => id !== null);
-  } catch {
-    return [];
-  }
-}
-
 async function runAutoSync(): Promise<void> {
-  const accountIds = await getAccountsWithGoogleToken();
-  if (accountIds.length === 0) return;
-
-  const timeMin = new Date(Date.now() - SYNC_LOOKBACK_MS).toISOString();
-  const timeMax = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
-
-  for (const subAccountId of accountIds) {
+  for (const subAccountId of TARGET_ACCOUNTS) {
     try {
-      const token = await getCalendarAccessToken(subAccountId);
-      if (!token) {
-        console.warn(`[GCAL-AUTO] No valid token for account ${subAccountId}, skipping`);
-        continue;
-      }
-
-      const events = await fetchCalendarEvents(token, "primary", timeMin, timeMax, 50);
-      let created = 0;
-      let updated = 0;
-
-      for (const event of events) {
-        if (!event.id || !event.summary) continue;
-        const startTime = event.start?.dateTime || event.start?.date;
-        const endTime = event.end?.dateTime || event.end?.date;
-        if (!startTime || !endTime) continue;
-
-        if (event.status === "cancelled") {
-          const existing = await db.select().from(appointments)
-            .where(and(
-              eq(appointments.googleCalendarEventId, event.id),
-              eq(appointments.subAccountId, subAccountId),
-            )).limit(1);
-          if (existing[0] && existing[0].status !== "cancelled") {
-            await db.update(appointments)
-              .set({ status: "cancelled" })
-              .where(eq(appointments.id, existing[0].id));
-            updated++;
-          }
-          continue;
-        }
-
-        const existing = await db.select().from(appointments)
-          .where(and(
-            eq(appointments.googleCalendarEventId, event.id),
-            eq(appointments.subAccountId, subAccountId),
-          )).limit(1);
-
-        if (existing[0]) {
-          const hasChanges =
-            existing[0].title !== event.summary ||
-            existing[0].description !== (event.description || null) ||
-            new Date(existing[0].startTime).getTime() !== new Date(startTime).getTime() ||
-            new Date(existing[0].endTime).getTime() !== new Date(endTime).getTime() ||
-            existing[0].location !== (event.location || null);
-
-          if (hasChanges) {
-            await db.update(appointments)
-              .set({
-                title: event.summary,
-                description: event.description || null,
-                startTime: new Date(startTime),
-                endTime: new Date(endTime),
-                location: event.location || null,
-              })
-              .where(eq(appointments.id, existing[0].id));
-            updated++;
-          }
-        } else {
-          let contactId: number | null = null;
-          if (event.attendees?.length) {
-            for (const att of event.attendees) {
-              if (att.email) {
-                const contactRows = await db.select().from(contacts)
-                  .where(and(
-                    eq(contacts.email, att.email),
-                    eq(contacts.subAccountId, subAccountId),
-                  )).limit(1);
-                if (contactRows[0]) {
-                  contactId = contactRows[0].id;
-                  break;
-                }
-              }
-            }
-          }
-
-          await db.insert(appointments).values({
-            subAccountId,
-            title: event.summary,
-            description: event.description || null,
-            startTime: new Date(startTime),
-            endTime: new Date(endTime),
-            status: "scheduled",
-            location: event.location || null,
-            googleCalendarEventId: event.id,
-            googleCalendarId: "primary",
-            contactId,
-          });
-          created++;
-
-          try {
-            const { fireAutomationTriggerGlobal } = await import("./routes/v1");
-            fireAutomationTriggerGlobal("appointment_booked", subAccountId, {
-              appointmentTitle: event.summary,
-              appointmentTime: startTime,
-              contactId,
-              source: "google_calendar",
-            });
-          } catch {}
-        }
-      }
-
-      if (created > 0 || updated > 0) {
-        console.log(`[GCAL-AUTO] Account ${subAccountId}: +${created} new, ~${updated} updated`);
+      const result = await syncGoogleCalendar(subAccountId, "primary");
+      if (result.created > 0 || result.updated > 0) {
+        console.log(`[GCAL-AUTO] Account ${subAccountId}: +${result.created} new, ~${result.updated} updated`);
       }
     } catch (err) {
       console.warn(`[GCAL-AUTO] Sync failed for account ${subAccountId}:`, (err as any).message);
@@ -371,13 +164,9 @@ async function runAutoSync(): Promise<void> {
 
 export function startAutoSync(): void {
   if (autoSyncTimer) return;
-
   console.log(`[GCAL-AUTO] Background sync started — polling every ${SYNC_INTERVAL_MS / 1000}s`);
   runAutoSync().catch(() => {});
-
-  autoSyncTimer = setInterval(() => {
-    runAutoSync().catch(() => {});
-  }, SYNC_INTERVAL_MS);
+  autoSyncTimer = setInterval(() => { runAutoSync().catch(() => {}); }, SYNC_INTERVAL_MS);
 }
 
 export function stopAutoSync(): void {

@@ -2396,20 +2396,6 @@ export function registerPropertyRoutes(app: Express) {
     res.json({ success: true });
   }));
 
-  app.post("/api/calendar/seed-token", asyncHandler(async (req, res) => {
-    const { accessToken, refreshToken } = req.body;
-    if (!accessToken || !refreshToken) return res.status(400).json({ error: "accessToken and refreshToken required" });
-    const xInternal = req.headers["x-internal-seed"];
-    if (xInternal !== "gcal-sync-init") return res.status(403).json({ error: "Forbidden" });
-    try {
-      const { seedGoogleCalendarToken } = await import("../googleCalendarSync");
-      await seedGoogleCalendarToken(accessToken, refreshToken);
-      res.json({ success: true });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  }));
-
   app.post("/api/calendar/sync/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
@@ -2428,10 +2414,8 @@ export function registerPropertyRoutes(app: Express) {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     try {
-      const { getCalendarAccessToken, listCalendars } = await import("../googleCalendarSync");
-      const token = await getCalendarAccessToken(subAccountId);
-      if (!token) return res.status(401).json({ error: "Google Calendar not connected" });
-      const calendars = await listCalendars(token);
+      const { listCalendars } = await import("../googleCalendarSync");
+      const calendars = await listCalendars();
       res.json(calendars);
     } catch (err: any) {
       console.error("[GCAL-SYNC] List calendars failed:", err.message);
