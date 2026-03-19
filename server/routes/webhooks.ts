@@ -48,6 +48,16 @@ export function registerWebhooksRoutes(app: Express) {
       }
 
       const channel = detectChannel(senderRaw);
+
+      // Pure SMS traffic is handled exclusively by /api/twilio/inbound-sms pipeline
+      // to prevent duplicate processing. Forward internally by delegating to that handler.
+      if (channel === "sms") {
+        console.log(`[SMS-WEBHOOK] Delegating pure SMS from ${senderRaw} to /api/twilio/inbound-sms pipeline`);
+        await markEventCompleted(req);
+        res.type("text/xml").send("<Response></Response>");
+        return;
+      }
+
       const senderClean = stripChannelPrefix(senderRaw);
 
       console.log(`[${channel.toUpperCase()}] from ${senderClean}: ${incomingMsg.substring(0, 100)}`);
@@ -229,8 +239,8 @@ export function registerWebhooksRoutes(app: Express) {
   // POST /api/twilio/inbound-sms
   // Validates Twilio signature, enforces idempotency, CRM upsert, compliance, Vapi AI, fallback/retry
 
-  function generateThreadId(phone: string, subAccountId: number): string {
-    return crypto.createHash("sha256").update(`${phone}:${subAccountId}`).digest("hex").slice(0, 32);
+  function generateThreadId(fromE164: string, toE164: string): string {
+    return `${fromE164}::${toE164}`;
   }
 
   async function validateTwilioSignature(req: Request): Promise<boolean> {
@@ -304,8 +314,16 @@ export function registerWebhooksRoutes(app: Express) {
     return { id: newContact.id, isNew: true };
   }
 
-  app.post("/api/twilio/inbound-sms", async (req, res) => {
-    const traceId = crypto.randomUUID();
+  app.post(
+    "/api/twilio/inbound-sms",
+    withIdempotency({
+      source: "twilio",
+      extractExternalId: (req) => req.body?.MessageSid as string | undefined,
+      eventType: "message.received",
+      maxRetries: 3,
+    }),
+    async (req, res) => {
+    const traceId = req.eventTraceId || crypto.randomUUID();
     const t0 = Date.now();
 
     console.log(`[TWILIO-INBOUND][${traceId}] Received inbound SMS`);
@@ -315,6 +333,7 @@ export function registerWebhooksRoutes(app: Express) {
       const isValid = await validateTwilioSignature(req);
       if (!isValid) {
         console.warn(`[TWILIO-INBOUND][${traceId}] Invalid Twilio signature — rejected`);
+        await markEventFailed(req, "Invalid Twilio signature").catch(() => {});
         res.status(403).type("text/xml").send("<Response></Response>");
         return;
       }
@@ -326,38 +345,29 @@ export function registerWebhooksRoutes(app: Express) {
 
       if (!incomingMsg || !senderRaw) {
         console.warn(`[TWILIO-INBOUND][${traceId}] Missing Body or From`);
+        await markEventCompleted(req);
         res.type("text/xml").send("<Response></Response>");
         return;
-      }
-
-      // 2. Idempotency — reject duplicate MessageSids
-      if (messageSid) {
-        const existing = await storage.getMessageByMessageSid(messageSid);
-        if (existing) {
-          console.log(`[TWILIO-INBOUND][${traceId}] Duplicate MessageSid ${messageSid} — skipping`);
-          res.type("text/xml").send("<Response></Response>");
-          return;
-        }
       }
 
       const senderClean = senderRaw.replace(/^(whatsapp:|messenger:)/, "");
       const toClean = toRaw ? toRaw.replace(/^(whatsapp:|messenger:)/, "") : "";
 
-      // 3. Resolve sub-account from To number
+      // 2. Resolve sub-account from To number
       const matchedAccounts = await db.select().from(subAccounts)
         .where(eq(subAccounts.twilioNumber, toClean))
         .limit(1)
         .execute()
         .catch(() => []);
       const subAccountId = matchedAccounts.length > 0 ? matchedAccounts[0].id : 1;
-      const threadId = generateThreadId(senderClean, subAccountId);
+      const threadId = generateThreadId(senderClean, toClean);
 
       console.log(`[TWILIO-INBOUND][${traceId}] From=${senderClean} To=${toClean} subAccountId=${subAccountId} threadId=${threadId.slice(0, 8)}`);
 
       const { isOptOutMessage, isOptInMessage, isHelpMessage, handleSmsOptOut, handleSmsOptIn, handleSmsHelp, checkPhoneOptOut } = await import("../optOutGuard");
       const { audit } = await import("../auditTrail");
 
-      // 4. Compliance layer
+      // 3. Compliance layer
       if (isOptOutMessage(incomingMsg)) {
         console.log(`[TWILIO-INBOUND][${traceId}] OPT-OUT from ${senderClean}`);
         await handleSmsOptOut(senderClean, subAccountId);
@@ -383,6 +393,7 @@ export function registerWebhooksRoutes(app: Express) {
             to: senderRaw,
           });
         }
+        await markEventCompleted(req);
         res.type("text/xml").send("<Response></Response>");
         return;
       }
@@ -412,6 +423,7 @@ export function registerWebhooksRoutes(app: Express) {
             to: senderRaw,
           });
         }
+        await markEventCompleted(req);
         res.type("text/xml").send("<Response></Response>");
         return;
       }
@@ -441,6 +453,7 @@ export function registerWebhooksRoutes(app: Express) {
             to: senderRaw,
           });
         }
+        await markEventCompleted(req);
         res.type("text/xml").send("<Response></Response>");
         return;
       }
@@ -475,10 +488,11 @@ export function registerWebhooksRoutes(app: Express) {
 
       console.log(`[TWILIO-INBOUND][${traceId}] Stored inbound message id=${inboundMsg.id}`);
 
-      // 7. Check opt-out before AI processing
+      // 5. Check opt-out before AI processing
       const isOptedOut = await checkPhoneOptOut(senderClean, subAccountId);
       if (isOptedOut) {
         console.log(`[TWILIO-INBOUND][${traceId}] Contact ${senderClean} is opted out — skipping AI reply`);
+        await markEventCompleted(req);
         res.type("text/xml").send("<Response></Response>");
         return;
       }
@@ -617,9 +631,11 @@ export function registerWebhooksRoutes(app: Express) {
       }
 
       console.log(`[TWILIO-INBOUND][${traceId}] Pipeline complete in ${Date.now() - t0}ms | inbound=${inboundMsg.id} contact=${contactId} vapiOk=${!vapiError}`);
+      await markEventCompleted(req);
       res.type("text/xml").send("<Response></Response>");
     } catch (err: any) {
       console.error(`[TWILIO-INBOUND][${traceId}] Unhandled pipeline error:`, err.message || err);
+      await markEventFailed(req, err.message || "Unhandled pipeline error").catch(() => {});
       res.type("text/xml").send("<Response></Response>");
     }
   });

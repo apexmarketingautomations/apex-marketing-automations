@@ -17,6 +17,7 @@ import { dispatchAlert, generateDeepLink } from "./pushAlertService";
 import { initEventSubscribers } from "./eventSubscribers";
 import { eventBus } from "./eventBus";
 import { recordSuccess as recordPulseSuccess } from "./pulse";
+import { withIdempotency, markEventCompleted, markEventFailed } from "./idempotency";
 
 const app = express();
 const httpServer = createServer(app);
@@ -862,7 +863,25 @@ function validateEnvVars() {
     }
   });
 
-  app.post("/api/vapi/webhook", async (req, res) => {
+  app.post(
+    "/api/vapi/webhook",
+    withIdempotency({
+      source: "vapi",
+      extractExternalId: (req) => {
+        const body = req.body || {};
+        return (
+          body.message?.call?.id ||
+          body.message?.id ||
+          body.call?.id ||
+          body.id ||
+          body.messageId ||
+          null
+        ) as string | null | undefined;
+      },
+      eventType: "vapi.webhook",
+      maxRetries: 3,
+    }),
+    async (req, res) => {
     try {
       const msgType = req.body?.message?.type;
 
@@ -880,6 +899,7 @@ function validateEnvVars() {
 
         if (smsFrom && (typeof smsBody === "string") && smsBody.trim()) {
           await handleVapiSms(smsFrom, smsBody.trim(), msgBodyId, destNumber);
+          await markEventCompleted(req);
           return res.json({ ok: true });
         }
 
@@ -888,13 +908,16 @@ function validateEnvVars() {
           const altBody = body.text || body.sms || body.content || "";
           if (altFrom && altBody) {
             await handleVapiSms(altFrom, altBody, body.id || null, destNumber);
+            await markEventCompleted(req);
             return res.json({ ok: true });
           }
           console.log(`[VAPI SMS] Inbound event (no extractable content):`, JSON.stringify(body).substring(0, 500));
+          await markEventCompleted(req);
           return res.json({ ok: true });
         }
 
         console.log(`[VAPI WEBHOOK] Unknown payload (no message.type):`, JSON.stringify(body).substring(0, 300));
+        await markEventCompleted(req);
         return res.json({ ok: true });
       }
 
@@ -1006,6 +1029,7 @@ function validateEnvVars() {
             results.push({ toolCallId: tc.id, result: "Unknown tool." });
           }
         }
+        await markEventCompleted(req);
         return res.json({ results });
       }
 
@@ -1030,6 +1054,7 @@ function validateEnvVars() {
         if (contextNote) {
           console.log(`[VAPI WEBHOOK] Injecting pre-call context for ${customerNumber}`);
         }
+        await markEventCompleted(req);
         return res.json({ assistantId: "e30434f7-e7e0-4be7-8b89-40c384a52b4a" });
       }
 
@@ -1043,51 +1068,29 @@ function validateEnvVars() {
         const duration = startedAt && endedAt ? Math.round((endedAt.getTime() - startedAt.getTime()) / 1000) : call.duration || null;
         const callId = call.call?.id;
         if (callId) {
-          const { storage: vapiStorage } = await import("./storage");
-          const { default: vapiCrypto } = await import("crypto");
-
-          const existingEventLog = await vapiStorage.getEventLogByExternalId("vapi", callId).catch(() => null);
-          if (existingEventLog && (existingEventLog.status === "completed" || existingEventLog.status === "processing")) {
-            console.log(`[IDEMPOTENCY] Duplicate Vapi call ${callId} in event_log — skipping`);
-          } else {
-            const vapiTraceId = existingEventLog?.traceId || vapiCrypto.randomUUID();
-            if (!existingEventLog) {
-              await vapiStorage.createEventLog({
-                traceId: vapiTraceId,
-                type: "call.completed",
-                source: "vapi",
-                externalId: callId,
-                payload: { callId, customerNumber: call.call?.customer?.number, duration } as any,
-                status: "processing",
-                maxRetries: 3,
-              }).catch(() => {});
+          const existing = await vapiDb.select().from(vapiCallLogs).where(vapiEq(vapiCallLogs.vapiCallId, callId)).limit(1);
+          if (existing.length === 0) {
+            const inserted = await vapiDb.insert(vapiCallLogs).values({
+              vapiCallId: callId, assistantId: call.call.assistantId || null, assistantName: call.assistant?.name || null,
+              customerNumber: call.call.customer?.number || null, type: call.call.type || null, status: call.call.status || "ended",
+              startedAt, endedAt, duration, cost: call.cost || null, transcript, summary, recordingUrl, endedReason: call.endedReason || null, analysis: null,
+            }).returning({ id: vapiCallLogs.id });
+            console.log(`[VAPI WEBHOOK] Stored call log: ${callId}`);
+            if (inserted[0]?.id) {
+              analyzeCallTranscript(inserted[0].id)
+                .then(result => { if (result) onCallAnalyzed().catch(() => {}); })
+                .catch(err => console.error(`[VAPI WEBHOOK] Analysis failed for call ${inserted[0].id} (${callId}):`, err?.message ?? err, err?.stack));
             }
-
-            const existing = await vapiDb.select().from(vapiCallLogs).where(vapiEq(vapiCallLogs.vapiCallId, callId)).limit(1);
-            if (existing.length === 0) {
-              const inserted = await vapiDb.insert(vapiCallLogs).values({
-                vapiCallId: callId, assistantId: call.call.assistantId || null, assistantName: call.assistant?.name || null,
-                customerNumber: call.call.customer?.number || null, type: call.call.type || null, status: call.call.status || "ended",
-                startedAt, endedAt, duration, cost: call.cost || null, transcript, summary, recordingUrl, endedReason: call.endedReason || null, analysis: null,
-              }).returning({ id: vapiCallLogs.id });
-              console.log(`[VAPI WEBHOOK] Stored call log: ${callId}`);
-              if (inserted[0]?.id) {
-                analyzeCallTranscript(inserted[0].id)
-                  .then(result => { if (result) onCallAnalyzed().catch(() => {}); })
-                  .catch(err => console.error(`[VAPI WEBHOOK] Analysis failed for call ${inserted[0].id} (${callId}):`, err?.message ?? err, err?.stack));
-              }
-            }
-
-            await vapiStorage.updateEventLogStatus(
-              existingEventLog?.id ?? (await vapiStorage.getEventLogByExternalId("vapi", callId))!.id,
-              "completed",
-              { processedAt: new Date() }
-            ).catch(() => {});
           }
         }
       }
+      await markEventCompleted(req);
       res.json({ ok: true });
-    } catch (err) { console.error("[VAPI WEBHOOK] Error:", err); res.json({ ok: true }); }
+    } catch (err: any) {
+      console.error("[VAPI WEBHOOK] Error:", err);
+      await markEventFailed(req, err?.message || "Vapi webhook error").catch(() => {});
+      res.json({ ok: true });
+    }
   });
 
   app.post("/api/vapi/sync-calls", async (req, res) => {
