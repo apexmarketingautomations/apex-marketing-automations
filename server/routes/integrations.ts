@@ -989,6 +989,29 @@ export function registerIntegrationsRoutes(app: Express) {
       results.push(saved);
     }
 
+    if (provider === "meta") {
+      const selectedPage = assetSelections.find((a: any) => a.type === "page" && (a.selected ?? true));
+      if (selectedPage) {
+        const oauthToken = await storage.getOAuthToken(subAccountId, "meta");
+        const existingConn = await storage.getIntegrationConnection(subAccountId, "meta");
+        const existingConfig = (existingConn?.config as any) || {};
+        await storage.upsertIntegrationConnection({
+          subAccountId,
+          provider: "meta",
+          status: "connected",
+          config: {
+            ...existingConfig,
+            pageId: selectedPage.id,
+            pageName: selectedPage.name,
+            accessToken: oauthToken?.accessToken || existingConfig.accessToken || null,
+          },
+          connectionType: existingConn?.connectionType || "oauth",
+          connectedAt: existingConn?.connectedAt || new Date(),
+        });
+        console.log(`[META] Integration connection updated with pageId=${selectedPage.id} for subAccount=${subAccountId}`);
+      }
+    }
+
     res.json(results);
   }));
 

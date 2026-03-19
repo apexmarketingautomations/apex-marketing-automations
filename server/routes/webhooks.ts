@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { contacts, messages, subAccounts, clientWebsites } from "@shared/schema";
+import { contacts, messages, subAccounts, clientWebsites, integrationConnections } from "@shared/schema";
 import { sql, eq, and, or } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -11,7 +11,6 @@ import { asyncHandler, getUserId, requireAdmin, getIndustryContext, getLanguageI
 import { assembleDmContext, buildDmMessages } from "../dmContextAssembler";
 import { startTrace, recordStepValue } from "../traceRecorder";
 import { resolveSubAccount, isRoutingFailure } from "../routing/resolver";
-import { getMetaConfig, buildMetaUrl, resolveSubAccountByPageId } from "../metaConfig";
 import { persistRoutingFailure } from "../routing/failureQueue";
 import { withIdempotency, markEventCompleted, markEventFailed } from "../idempotency";
 
@@ -722,6 +721,8 @@ export function registerWebhooksRoutes(app: Express) {
 
       if (body.object === "page" || body.object === "instagram") {
         for (const entry of body.entry || []) {
+          const entryPageId = entry.id as string | undefined;
+
           for (const event of entry.messaging || []) {
             const senderId = event.sender?.id;
             const message = event.message?.text;
@@ -733,6 +734,47 @@ export function registerWebhooksRoutes(app: Express) {
             }
 
             const channel = body.object === "instagram" ? "instagram" : "facebook";
+
+            // --- STRICT TENANT RESOLUTION: look up sub-account by page_id ---
+            if (!entryPageId) {
+              console.error(`[META DM] Rejected ${channel} event — entry.id (page_id) is missing from webhook payload. Cannot route to sub-account.`);
+              continue;
+            }
+
+            const integrationRows = await db.select()
+              .from(integrationConnections)
+              .where(
+                and(
+                  eq(integrationConnections.provider, "meta"),
+                  eq(integrationConnections.status, "connected")
+                )
+              )
+              .execute()
+              .catch(() => [] as typeof integrationConnections.$inferSelect[]);
+
+            let subAccountId: number | null = null;
+            let accessToken: string | null = null;
+            let pageId: string | null = null;
+            let appSecret: string | null = null;
+
+            for (const conn of integrationRows) {
+              const cfg = conn.config as any;
+              const connPageId = cfg?.pageId || cfg?.page_id || cfg?.META_PAGE_ID;
+              if (connPageId && String(connPageId) === String(entryPageId)) {
+                subAccountId = conn.subAccountId;
+                accessToken = cfg?.accessToken || cfg?.META_ACCESS_TOKEN || null;
+                pageId = connPageId;
+                appSecret = cfg?.appSecret || cfg?.META_APP_SECRET || null;
+                break;
+              }
+            }
+
+            if (!subAccountId) {
+              console.error(`[META DM] Rejected ${channel} event from sender=${senderId} — page_id=${entryPageId} not mapped to any sub-account in integration_connections. Configure Meta integration for this page.`);
+              continue;
+            }
+
+            console.log(`[META DM] ${channel} from ${senderId} -> subAccountId=${subAccountId} (page=${entryPageId}): ${message.substring(0, 100)}`);
 
             let metaTraceId = crypto.randomUUID();
             if (mid) {
@@ -762,34 +804,6 @@ export function registerWebhooksRoutes(app: Express) {
                 }
               }
             }
-            console.log(`[META DM] ${channel} from ${senderId}: ${message.substring(0, 100)}`);
-
-            const webhookPageId = entry.id as string;
-            let subAccountId: number;
-            try {
-              subAccountId = await resolveSubAccountByPageId(webhookPageId);
-            } catch (routeErr: any) {
-              console.error(`[META DM] ${routeErr.message}`);
-              res.sendStatus(200);
-              return;
-            }
-
-            let metaConfig: Awaited<ReturnType<typeof getMetaConfig>>;
-            try {
-              metaConfig = await getMetaConfig(subAccountId);
-            } catch (cfgErr: any) {
-              console.error(`[META DM] ${cfgErr.message}`);
-              await db.insert(messages).values({
-                subAccountId,
-                channel,
-                direction: "inbound",
-                contactPhone: senderId,
-                body: `[UNPROCESSED - Missing Meta config] ${message.substring(0, 500)}`,
-                status: "failed",
-              });
-              continue;
-            }
-            const { accessToken, pageId, appSecret, appsecretProof } = metaConfig;
 
             const metaTrace = { traceId: metaTraceId, subAccountId, contactPhone: senderId };
             const metaRecvStart = Date.now();
@@ -798,6 +812,29 @@ export function registerWebhooksRoutes(app: Express) {
               metadata: { channel, mid: mid || null, bodyLength: message.length },
               disambiguator: mid || `meta-recv-${senderId}`,
             });
+
+            if (!accessToken || !pageId) {
+              const rawPayload = JSON.stringify(event).substring(0, 2000);
+              console.error(`[META DM] Cannot process ${channel} message from ${senderId} (page=${entryPageId}, subAccount=${subAccountId}) — integration connection missing accessToken or pageId. Update the Meta integration config for this sub-account. Raw event: ${rawPayload}`);
+              await db.insert(messages).values({
+                subAccountId,
+                channel,
+                direction: "inbound",
+                contactPhone: senderId,
+                body: `[UNPROCESSED - Missing per-account META credentials] Raw: ${rawPayload.substring(0, 500)}`,
+                status: "failed",
+                pageId: entryPageId,
+                senderId,
+              });
+              continue;
+            }
+
+            let appsecretProof = "";
+            if (accessToken && appSecret) {
+              const crypto = await import("crypto");
+              appsecretProof = crypto.createHmac("sha256", appSecret).update(accessToken).digest("hex");
+            }
+
 
             const metaCrmStart = Date.now();
             const metaInboundThreadId = `${subAccountId}::${senderId}::${channel}`;
@@ -811,6 +848,8 @@ export function registerWebhooksRoutes(app: Express) {
                 status: "received",
                 traceId: metaTraceId,
                 threadId: metaInboundThreadId,
+                pageId: entryPageId,
+                senderId,
               });
               recordStepValue(metaTrace, "crm_write", "success", Date.now() - metaCrmStart, {
                 metadata: { channel, direction: "inbound" },
@@ -867,8 +906,21 @@ export function registerWebhooksRoutes(app: Express) {
               console.log(`[META DM] Keyword "${kw.keyword}" matched for ${senderId}`);
               storage.incrementKeywordHitCount(kw.id);
 
-              if (kw.responseText) {
-                const kwUrl = buildMetaUrl(pageId, appsecretProof);
+              if (kw.responseText && (!accessToken || !pageId)) {
+                console.warn(`[META DM] Cannot send keyword reply to ${senderId} (subAccount=${subAccountId}): per-account accessToken or pageId missing from integration config.`);
+                await db.insert(messages).values({
+                  subAccountId,
+                  channel,
+                  direction: "outbound",
+                  contactPhone: senderId,
+                  body: kw.responseText,
+                  status: "failed",
+                  traceId: metaTraceId,
+                  pageId: entryPageId,
+                  senderId,
+                });
+              } else if (kw.responseText && accessToken && pageId) {
+                const kwUrl = `https://graph.facebook.com/v19.0/${pageId}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
                 console.log(`[META DM] Sending keyword reply to ${senderId} via pageId=${pageId}, keyword="${kw.keyword}"`);
                 const kwSendRes = await fetch(kwUrl, {
                   method: "POST",
@@ -893,6 +945,8 @@ export function registerWebhooksRoutes(app: Express) {
                   body: kw.responseText,
                   status: kwSendStatus,
                   traceId: metaTraceId,
+                  pageId: entryPageId,
+                  senderId,
                 });
                 if (kwSendRes.ok) console.log(`[META DM] Keyword reply sent to ${senderId}: OK, messageId=${kwSendData?.message_id}`);
               }
@@ -953,8 +1007,28 @@ export function registerWebhooksRoutes(app: Express) {
 
                 const metaSendStart = Date.now();
                 const metaDmThreadId = `${subAccountId}::${senderId}::${channel}`;
-                if (aiReply) {
-                  const aiUrl = buildMetaUrl(pageId, appsecretProof);
+                if (aiReply && (!accessToken || !pageId)) {
+                  console.warn(`[META DM] AI reply generated but cannot send to ${senderId} (subAccount=${subAccountId}): per-account accessToken or pageId missing from integration config.`);
+                  await db.insert(messages).values({
+                    subAccountId,
+                    channel,
+                    direction: "outbound",
+                    contactPhone: senderId,
+                    body: aiReply,
+                    status: "failed",
+                    traceId: metaTraceId,
+                    threadId: metaDmThreadId,
+                    pageId: entryPageId,
+                    senderId,
+                  });
+                  recordStepValue(metaTrace, "outbound_send", "error", Date.now() - metaSendStart, {
+                    provider: "meta",
+                    error: "META_ACCESS_TOKEN or META_PAGE_ID not configured",
+                    metadata: { channel },
+                    disambiguator: mid ? `${mid}-send-err` : `meta-send-err-${senderId}`,
+                  });
+                } else if (aiReply && accessToken && pageId) {
+                  const aiUrl = `https://graph.facebook.com/v19.0/${pageId}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
                   console.log(`[META DM] Sending AI reply to ${senderId} via pageId=${pageId}, token_set=${!!accessToken}, appsecret_proof=${!!appsecretProof}`);
                   const sendRes = await fetch(aiUrl, {
                     method: "POST",
@@ -994,6 +1068,8 @@ export function registerWebhooksRoutes(app: Express) {
                     status: aiSendStatus,
                     traceId: metaTraceId,
                     threadId: metaDmThreadId,
+                    pageId: entryPageId,
+                    senderId,
                   });
                 }
               } catch (aiErr: any) {

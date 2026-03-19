@@ -90,7 +90,8 @@ export interface IStorage {
   getMessages(subAccountId: number): Promise<Message[]>;
   getMessage(id: number): Promise<Message | undefined>;
   createMessage(data: InsertMessage): Promise<Message>;
-  getMessageByMessageSid(messageSid: string): Promise<Message | undefined>;
+  getMessageByMessageSid(messageSid: string, subAccountId?: number): Promise<Message | undefined>;
+  getConversationThreads(subAccountId: number): Promise<{ contactPhone: string; channel: string; lastMessage: string; lastTime: Date; unreadCount: number }[]>;
   createSmsRetryQueueItem(data: InsertSmsRetryQueue): Promise<SmsRetryQueue>;
 
   getWorkflows(): Promise<Workflow[]>;
@@ -432,13 +433,44 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createMessage(data: InsertMessage) {
+    if (!data.subAccountId) {
+      throw new Error("[TENANT GUARD] createMessage rejected: subAccountId is required and was not provided");
+    }
     const [row] = await db.insert(messages).values(data).returning();
     return row;
   }
 
-  async getMessageByMessageSid(messageSid: string) {
+  async getMessageByMessageSid(messageSid: string, subAccountId?: number) {
+    if (subAccountId) {
+      const [row] = await db.select().from(messages)
+        .where(and(eq(messages.messageSid, messageSid), eq(messages.subAccountId, subAccountId)))
+        .limit(1);
+      return row;
+    }
     const [row] = await db.select().from(messages).where(eq(messages.messageSid, messageSid)).limit(1);
     return row;
+  }
+
+  async getConversationThreads(subAccountId: number): Promise<{ contactPhone: string; channel: string; lastMessage: string; lastTime: Date; unreadCount: number }[]> {
+    const result = await db.execute(
+      sql`SELECT
+            contact_phone AS "contactPhone",
+            channel,
+            MAX(created_at) AS "lastTime",
+            SUM(CASE WHEN direction='inbound' AND status != 'read' THEN 1 ELSE 0 END)::int AS "unreadCount",
+            (ARRAY_AGG(body ORDER BY created_at DESC))[1] AS "lastMessage"
+          FROM messages
+          WHERE sub_account_id = ${subAccountId}
+          GROUP BY contact_phone, channel
+          ORDER BY "lastTime" DESC`
+    ) as any;
+    return (result.rows || result).map((r: any) => ({
+      contactPhone: r.contactPhone,
+      channel: r.channel,
+      lastMessage: (r.lastMessage || "").slice(0, 80),
+      lastTime: new Date(r.lastTime),
+      unreadCount: Number(r.unreadCount) || 0,
+    }));
   }
 
   async createSmsRetryQueueItem(data: InsertSmsRetryQueue) {

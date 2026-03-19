@@ -20,6 +20,29 @@ export function registerMessagingRoutes(app: Express) {
     res.json(msgs);
   }));
 
+  // ---- Conversation Threads API ----
+  // Returns grouped conversations (subAccountId + contactPhone + channel) sorted by recency
+  app.get("/api/conversations/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const threads = await storage.getConversationThreads(subAccountId);
+    res.json(threads);
+  }));
+
+  // ---- Thread Messages (single conversation) ----
+  app.get("/api/conversations/:subAccountId/messages", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const { contactPhone, channel } = req.query as { contactPhone?: string; channel?: string };
+    if (!contactPhone || !channel) {
+      return res.status(400).json({ error: "contactPhone and channel query params are required" });
+    }
+    const msgs = await storage.getMessages(subAccountId);
+    const filtered = msgs.filter(m => m.contactPhone === contactPhone && (m.channel || "sms") === channel);
+    filtered.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    res.json(filtered);
+  }));
+
   app.post("/api/messages", messagingLimiter, asyncHandler(async (req, res) => {
     const parsed = insertMessageSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -173,29 +196,54 @@ export function registerMessagingRoutes(app: Express) {
         }
       }
     } else if (channel === "facebook") {
-      try {
-        const metaCfg = await getMetaConfig(subAccountId);
-        const fbUrl = buildMetaUrl(metaCfg.pageId, metaCfg.appsecretProof);
-        const fbRes = await fetch(fbUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            recipient: { id: contactPhone },
-            message: { text: body },
-            access_token: metaCfg.accessToken,
-          }),
-        });
-        const fbData = await fbRes.json() as any;
-        if (fbRes.ok) {
-          twilioStatus = "sent";
-          twilioSid = fbData.message_id || null;
-        } else {
-          twilioStatus = "failed";
-          twilioError = fbData?.error?.message || "Facebook send failed";
-        }
-      } catch (fbErr: any) {
+      const fbConnections = await db.select().from(integrationConnections)
+        .where(and(
+          eq(integrationConnections.subAccountId, subAccountId),
+          eq(integrationConnections.provider, "meta"),
+          eq(integrationConnections.status, "connected")
+        ))
+        .limit(1)
+        .execute()
+        .catch(() => []);
+
+      const fbConfig = fbConnections.length > 0 ? fbConnections[0].config as any : null;
+      const metaToken = fbConfig?.accessToken || fbConfig?.META_ACCESS_TOKEN || null;
+      const metaPageId = fbConfig?.pageId || fbConfig?.page_id || fbConfig?.META_PAGE_ID || null;
+      const metaAppSecret = fbConfig?.appSecret || fbConfig?.META_APP_SECRET || null;
+
+      if (!metaToken || !metaPageId) {
         twilioStatus = "failed";
-        twilioError = fbErr.message || "Facebook send failed";
+        twilioError = `No Facebook integration credentials found for subAccount ${subAccountId}. Connect Meta integration with a pageId and accessToken for this account.`;
+      } else {
+        try {
+          let proofParam = "";
+          if (metaAppSecret) {
+            const crypto = await import("crypto");
+            const proof = crypto.createHmac("sha256", metaAppSecret).update(metaToken).digest("hex");
+            proofParam = `?appsecret_proof=${proof}`;
+          }
+          const fbUrl = `https://graph.facebook.com/v19.0/${metaPageId}/messages${proofParam}`;
+          const fbRes = await fetch(fbUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              recipient: { id: contactPhone },
+              message: { text: body },
+              access_token: metaToken,
+            }),
+          });
+          const fbData = await fbRes.json() as any;
+          if (fbRes.ok) {
+            twilioStatus = "sent";
+            twilioSid = fbData.message_id || null;
+          } else {
+            twilioStatus = "failed";
+            twilioError = fbData?.error?.message || "Facebook send failed";
+          }
+        } catch (fbErr: any) {
+          twilioStatus = "failed";
+          twilioError = fbErr.message || "Facebook send failed";
+        }
       }
     } else {
       twilioStatus = "unsupported";
