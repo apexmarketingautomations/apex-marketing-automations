@@ -104,6 +104,7 @@ export function registerAuthRoutes(app: Express) {
     if (req.method === "GET" && fullPath.startsWith("/api/review-config/")) return next();
     if (fullPath === "/api/log-error") return next();
     if (fullPath === "/api/sms-webhook") return next();
+    if (fullPath === "/api/twilio/inbound-sms") return next();
     if (fullPath === "/api/meta-webhook") return next();
     if (fullPath.startsWith("/api/public-card/")) return next();
     if (fullPath === "/api/sentinel/test-trigger") return next();

@@ -69,11 +69,33 @@ export const messages = pgTable("messages", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   contactPhone: text("contact_phone").notNull(),
   channel: text("channel").notNull(),
+  messageSid: text("message_sid"),
+  threadId: text("thread_id"),
+  traceId: text("trace_id"),
 });
 
 export const insertMessageSchema = createInsertSchema(messages).omit({ id: true, createdAt: true });
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type Message = typeof messages.$inferSelect;
+
+export const smsRetryQueue = pgTable("sms_retry_queue", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  contactPhone: text("contact_phone").notNull(),
+  fromNumber: text("from_number").notNull(),
+  traceId: text("trace_id").notNull(),
+  threadId: text("thread_id"),
+  originalMessageSid: text("original_message_sid"),
+  errorMessage: text("error_message"),
+  retryCount: integer("retry_count").default(0).notNull(),
+  status: text("status").default("pending").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  nextRetryAt: timestamp("next_retry_at"),
+});
+
+export const insertSmsRetryQueueSchema = createInsertSchema(smsRetryQueue).omit({ id: true, createdAt: true });
+export type InsertSmsRetryQueue = z.infer<typeof insertSmsRetryQueueSchema>;
+export type SmsRetryQueue = typeof smsRetryQueue.$inferSelect;
 
 export const workflows = pgTable("workflows", {
   id: serial("id").primaryKey(),

@@ -6,6 +6,7 @@ import { logSystemEvent } from "./systemLogger";
 
 const STOP_KEYWORDS = ["stop", "unsubscribe", "cancel", "end", "quit", "optout", "opt-out", "opt out"];
 const START_KEYWORDS = ["start", "subscribe", "unstop", "yes"];
+const HELP_KEYWORDS = ["help", "info", "information"];
 
 function normalizePhone(phone: string): string {
   const digits = phone.replace(/\D/g, "");
@@ -37,6 +38,23 @@ export function isOptOutMessage(body: string): boolean {
 export function isOptInMessage(body: string): boolean {
   const normalized = body.trim().toLowerCase();
   return START_KEYWORDS.includes(normalized);
+}
+
+export function isHelpMessage(body: string): boolean {
+  const normalized = body.trim().toLowerCase();
+  return HELP_KEYWORDS.includes(normalized);
+}
+
+export async function handleSmsHelp(phone: string, subAccountId?: number): Promise<void> {
+  try {
+    await audit("SMS_HELP_REQUEST", "system", {
+      phone: phone.slice(-4),
+      subAccountId,
+    });
+    await logSystemEvent("info", "opt_out", `HELP request from ${phone.slice(-4)}`, { phone: phone.slice(-4), subAccountId });
+  } catch (err) {
+    console.error("[HELP] Error processing help request:", err);
+  }
 }
 
 export async function handleSmsOptOut(phone: string, subAccountId?: number): Promise<boolean> {

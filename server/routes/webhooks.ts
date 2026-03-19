@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { contacts, messages, subAccounts } from "@shared/schema";
-import { sql, eq } from "drizzle-orm";
+import { sql, eq, and, or } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { z } from "zod";
@@ -188,6 +188,408 @@ export function registerWebhooksRoutes(app: Express) {
       res.type("text/xml").send("<Response></Response>");
     }
   });
+
+  // ---- Production Twilio Inbound SMS Pipeline ----
+  // POST /api/twilio/inbound-sms
+  // Validates Twilio signature, enforces idempotency, CRM upsert, compliance, Vapi AI, fallback/retry
+
+  function generateThreadId(phone: string, subAccountId: number): string {
+    return crypto.createHash("sha256").update(`${phone}:${subAccountId}`).digest("hex").slice(0, 32);
+  }
+
+  async function validateTwilioSignature(req: Request): Promise<boolean> {
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    if (!authToken) {
+      console.warn("[TWILIO-INBOUND] TWILIO_AUTH_TOKEN not set — skipping signature validation");
+      return true;
+    }
+    try {
+      const twilio = await import("twilio");
+      const validateRequest = (twilio.default || twilio).validateRequest || (twilio as any).validateRequest;
+      if (!validateRequest) return true;
+      const signature = req.headers["x-twilio-signature"] as string || "";
+      const url = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
+      return validateRequest(authToken, signature, url, req.body);
+    } catch (e: any) {
+      console.error("[TWILIO-INBOUND] Signature validation error:", e.message);
+      return false;
+    }
+  }
+
+  async function callVapiChat(assistantId: string, sessionId: string, userMessage: string): Promise<string | null> {
+    if (!vapiConfig.isConfigured) return null;
+    try {
+      const response = await fetch("https://api.vapi.ai/chat", {
+        method: "POST",
+        headers: vapiConfig.privateHeaders(),
+        body: JSON.stringify({
+          assistantId,
+          sessionId,
+          input: { text: userMessage },
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Vapi /chat returned ${response.status}: ${errText.slice(0, 200)}`);
+      }
+      const data = await response.json() as any;
+      const reply = data?.output?.text || data?.output || data?.message?.content || data?.content || null;
+      return typeof reply === "string" ? reply : null;
+    } catch (e: any) {
+      throw new Error(`Vapi chat failed: ${e.message}`);
+    }
+  }
+
+  async function upsertCrmContact(phone: string, subAccountId: number): Promise<{ id: number; isNew: boolean }> {
+    const variants = phone.replace(/\D/g, "");
+    const [existing] = await db.select()
+      .from(contacts)
+      .where(and(
+        eq(contacts.subAccountId, subAccountId),
+        or(eq(contacts.phone, phone), eq(contacts.phone, `+1${variants}`), eq(contacts.phone, `+${variants}`))
+      ))
+      .limit(1);
+
+    if (existing) {
+      await db.update(contacts)
+        .set({ lastContactedAt: new Date() } as any)
+        .where(eq(contacts.id, existing.id));
+      return { id: existing.id, isNew: false };
+    }
+
+    const newContact = await storage.createContact({
+      subAccountId,
+      firstName: `SMS ${phone.slice(-4)}`,
+      phone,
+      source: "sms_inbound",
+      tags: ["sms", "inbound"],
+    });
+    return { id: newContact.id, isNew: true };
+  }
+
+  app.post("/api/twilio/inbound-sms", async (req, res) => {
+    const traceId = crypto.randomUUID();
+    const t0 = Date.now();
+
+    console.log(`[TWILIO-INBOUND][${traceId}] Received inbound SMS`);
+
+    try {
+      // 1. Signature validation
+      const isValid = await validateTwilioSignature(req);
+      if (!isValid) {
+        console.warn(`[TWILIO-INBOUND][${traceId}] Invalid Twilio signature — rejected`);
+        res.status(403).type("text/xml").send("<Response></Response>");
+        return;
+      }
+
+      const messageSid = req.body.MessageSid as string | undefined;
+      const incomingMsg = req.body.Body as string | undefined;
+      const senderRaw = req.body.From as string | undefined;
+      const toRaw = req.body.To as string | undefined;
+
+      if (!incomingMsg || !senderRaw) {
+        console.warn(`[TWILIO-INBOUND][${traceId}] Missing Body or From`);
+        res.type("text/xml").send("<Response></Response>");
+        return;
+      }
+
+      // 2. Idempotency — reject duplicate MessageSids
+      if (messageSid) {
+        const existing = await storage.getMessageByMessageSid(messageSid);
+        if (existing) {
+          console.log(`[TWILIO-INBOUND][${traceId}] Duplicate MessageSid ${messageSid} — skipping`);
+          res.type("text/xml").send("<Response></Response>");
+          return;
+        }
+      }
+
+      const senderClean = senderRaw.replace(/^(whatsapp:|messenger:)/, "");
+      const toClean = toRaw ? toRaw.replace(/^(whatsapp:|messenger:)/, "") : "";
+
+      // 3. Resolve sub-account from To number
+      const matchedAccounts = await db.select().from(subAccounts)
+        .where(eq(subAccounts.twilioNumber, toClean))
+        .limit(1)
+        .execute()
+        .catch(() => []);
+      const subAccountId = matchedAccounts.length > 0 ? matchedAccounts[0].id : 1;
+      const threadId = generateThreadId(senderClean, subAccountId);
+
+      console.log(`[TWILIO-INBOUND][${traceId}] From=${senderClean} To=${toClean} subAccountId=${subAccountId} threadId=${threadId.slice(0, 8)}`);
+
+      const { isOptOutMessage, isOptInMessage, isHelpMessage, handleSmsOptOut, handleSmsOptIn, handleSmsHelp, checkPhoneOptOut } = await import("../optOutGuard");
+      const { audit } = await import("../auditTrail");
+
+      // 4. Compliance layer
+      if (isOptOutMessage(incomingMsg)) {
+        console.log(`[TWILIO-INBOUND][${traceId}] OPT-OUT from ${senderClean}`);
+        await handleSmsOptOut(senderClean, subAccountId);
+        await audit("SMS_OPT_OUT", "twilio_inbound", { phone: senderClean.slice(-4), subAccountId, traceId });
+
+        await storage.createMessage({
+          subAccountId,
+          contactPhone: senderClean,
+          body: incomingMsg,
+          direction: "inbound",
+          channel: "sms",
+          status: "received",
+          messageSid: messageSid || null,
+          threadId,
+          traceId,
+        });
+
+        const twilioClient = await getTwilioClient();
+        if (twilioClient && toRaw) {
+          await twilioClient.messages.create({
+            body: "You have been unsubscribed and will no longer receive messages from us. Reply START to re-subscribe.",
+            from: toRaw,
+            to: senderRaw,
+          });
+        }
+        res.type("text/xml").send("<Response></Response>");
+        return;
+      }
+
+      if (isOptInMessage(incomingMsg)) {
+        console.log(`[TWILIO-INBOUND][${traceId}] OPT-IN from ${senderClean}`);
+        await handleSmsOptIn(senderClean, subAccountId);
+        await audit("SMS_OPT_IN", "twilio_inbound", { phone: senderClean.slice(-4), subAccountId, traceId });
+
+        await storage.createMessage({
+          subAccountId,
+          contactPhone: senderClean,
+          body: incomingMsg,
+          direction: "inbound",
+          channel: "sms",
+          status: "received",
+          messageSid: messageSid || null,
+          threadId,
+          traceId,
+        });
+
+        const twilioClient = await getTwilioClient();
+        if (twilioClient && toRaw) {
+          await twilioClient.messages.create({
+            body: "You have been re-subscribed and will receive messages from us again.",
+            from: toRaw,
+            to: senderRaw,
+          });
+        }
+        res.type("text/xml").send("<Response></Response>");
+        return;
+      }
+
+      if (isHelpMessage(incomingMsg)) {
+        console.log(`[TWILIO-INBOUND][${traceId}] HELP request from ${senderClean}`);
+        await handleSmsHelp(senderClean, subAccountId);
+        await audit("SMS_HELP_REQUEST", "twilio_inbound", { phone: senderClean.slice(-4), subAccountId, traceId });
+
+        await storage.createMessage({
+          subAccountId,
+          contactPhone: senderClean,
+          body: incomingMsg,
+          direction: "inbound",
+          channel: "sms",
+          status: "received",
+          messageSid: messageSid || null,
+          threadId,
+          traceId,
+        });
+
+        const twilioClient = await getTwilioClient();
+        if (twilioClient && toRaw) {
+          await twilioClient.messages.create({
+            body: "For help, reply STOP to unsubscribe or START to re-subscribe. Message and data rates may apply.",
+            from: toRaw,
+            to: senderRaw,
+          });
+        }
+        res.type("text/xml").send("<Response></Response>");
+        return;
+      }
+
+      const tCrmStart = Date.now();
+
+      // 5. CRM upsert — create or update contact
+      let contactId: number;
+      let isNewContact = false;
+      try {
+        const result = await upsertCrmContact(senderClean, subAccountId);
+        contactId = result.id;
+        isNewContact = result.isNew;
+        console.log(`[TWILIO-INBOUND][${traceId}] CRM ${isNewContact ? "created" : "updated"} contact id=${contactId} (${Date.now() - tCrmStart}ms)`);
+      } catch (crmErr: any) {
+        console.error(`[TWILIO-INBOUND][${traceId}] CRM upsert failed:`, crmErr.message);
+        contactId = 0;
+      }
+
+      // 6. Store inbound message
+      const inboundMsg = await storage.createMessage({
+        subAccountId,
+        contactPhone: senderClean,
+        body: incomingMsg,
+        direction: "inbound",
+        channel: "sms",
+        status: "received",
+        messageSid: messageSid || null,
+        threadId,
+        traceId,
+      });
+
+      console.log(`[TWILIO-INBOUND][${traceId}] Stored inbound message id=${inboundMsg.id}`);
+
+      // 7. Check opt-out before AI processing
+      const isOptedOut = await checkPhoneOptOut(senderClean, subAccountId);
+      if (isOptedOut) {
+        console.log(`[TWILIO-INBOUND][${traceId}] Contact ${senderClean} is opted out — skipping AI reply`);
+        res.type("text/xml").send("<Response></Response>");
+        return;
+      }
+
+      // 8. Fire inbound SMS automation trigger
+      const tAutoStart = Date.now();
+      try {
+        const { checkAutomationSafety } = await import("../automationSafety");
+        const automations = await storage.getLiveAutomations(subAccountId);
+        const matchingInbound = automations.filter((a: any) =>
+          (a.status === "compiled" || a.status === "active") &&
+          a.manifest?.trigger === "inbound_sms"
+        );
+        for (const automation of matchingInbound) {
+          const safety = checkAutomationSafety({
+            automationId: automation.id,
+            triggerId: `inbound_sms:${messageSid || inboundMsg.id}`,
+            accountId: subAccountId,
+          });
+          if (!safety.safe) {
+            console.warn(`[TWILIO-INBOUND][${traceId}] Inbound automation ${automation.id} blocked: ${safety.reason}`);
+          } else {
+            console.log(`[TWILIO-INBOUND][${traceId}] Fired inbound_sms automation id=${automation.id}`);
+          }
+        }
+      } catch (autoErr: any) {
+        console.error(`[TWILIO-INBOUND][${traceId}] Automation trigger error:`, autoErr.message);
+      }
+      console.log(`[TWILIO-INBOUND][${traceId}] Automation step done (${Date.now() - tAutoStart}ms)`);
+
+      // 9. Vapi AI orchestration
+      const tAiStart = Date.now();
+      let aiReply: string | null = null;
+      let vapiError: string | null = null;
+
+      const account = await storage.getSubAccount(subAccountId);
+      const vapiAssistantId = (account?.config as any)?.vapiAssistantId || process.env.VAPI_DEFAULT_SMS_ASSISTANT_ID || null;
+
+      if (vapiConfig.isConfigured && vapiAssistantId) {
+        const sessionId = `sms:${senderClean}:${subAccountId}`;
+        try {
+          aiReply = await callVapiChat(vapiAssistantId, sessionId, incomingMsg);
+          console.log(`[TWILIO-INBOUND][${traceId}] Vapi replied in ${Date.now() - tAiStart}ms: ${(aiReply || "").slice(0, 80)}`);
+        } catch (e: any) {
+          vapiError = e.message;
+          console.error(`[TWILIO-INBOUND][${traceId}] Vapi error: ${vapiError}`);
+        }
+      } else if (!vapiConfig.isConfigured) {
+        console.log(`[TWILIO-INBOUND][${traceId}] Vapi not configured — using fallback`);
+      } else {
+        console.log(`[TWILIO-INBOUND][${traceId}] No vapiAssistantId for subAccount ${subAccountId} — using fallback`);
+      }
+
+      const fallbackReply = "Thanks for your message! We'll get back to you shortly.";
+
+      // 10. Reply handling
+      const twilioClient = await getTwilioClient();
+      if (twilioClient && toRaw) {
+        const replyBody = aiReply || fallbackReply;
+        let outboundSid: string | null = null;
+        let outboundStatus = "sent";
+
+        try {
+          const tSendStart = Date.now();
+          const sentMsg = await twilioClient.messages.create({
+            body: replyBody,
+            from: toRaw,
+            to: senderRaw,
+          });
+          outboundSid = sentMsg.sid;
+          console.log(`[TWILIO-INBOUND][${traceId}] Outbound reply sent sid=${outboundSid} (${Date.now() - tSendStart}ms)`);
+        } catch (sendErr: any) {
+          outboundStatus = "failed";
+          console.error(`[TWILIO-INBOUND][${traceId}] Outbound SMS send failed:`, sendErr.message);
+        }
+
+        // Log outbound message
+        try {
+          await storage.createMessage({
+            subAccountId,
+            contactPhone: senderClean,
+            body: replyBody,
+            direction: "outbound",
+            channel: "sms",
+            status: outboundStatus,
+            messageSid: outboundSid || null,
+            threadId,
+            traceId,
+          });
+        } catch (logErr: any) {
+          console.error(`[TWILIO-INBOUND][${traceId}] Failed to log outbound message:`, logErr.message);
+        }
+
+        // Fire outbound automation trigger (non-blocking)
+        try {
+          const { checkAutomationSafety } = await import("../automationSafety");
+          const automations = await storage.getLiveAutomations(subAccountId);
+          const matching = automations.filter((a: any) =>
+            (a.status === "compiled" || a.status === "active") &&
+            a.manifest?.trigger === "outbound_sms"
+          );
+          for (const automation of matching) {
+            const safety = checkAutomationSafety({
+              automationId: automation.id,
+              triggerId: `outbound_sms:${outboundSid || traceId}`,
+              accountId: subAccountId,
+            });
+            if (!safety.safe) {
+              console.warn(`[TWILIO-INBOUND][${traceId}] Outbound automation ${automation.id} blocked: ${safety.reason}`);
+            }
+          }
+        } catch (e: any) {
+          console.error(`[TWILIO-INBOUND][${traceId}] Outbound automation error:`, e.message);
+        }
+      }
+
+      // 11. Fallback & retry queue — if Vapi failed, enqueue for retry
+      if (vapiError) {
+        try {
+          await storage.createSmsRetryQueueItem({
+            subAccountId,
+            contactPhone: senderClean,
+            fromNumber: toClean,
+            traceId,
+            threadId,
+            originalMessageSid: messageSid || null,
+            errorMessage: vapiError,
+            retryCount: 0,
+            status: "pending",
+            nextRetryAt: new Date(Date.now() + 5 * 60 * 1000),
+          });
+          console.log(`[TWILIO-INBOUND][${traceId}] Enqueued for retry due to Vapi failure`);
+        } catch (retryErr: any) {
+          console.error(`[TWILIO-INBOUND][${traceId}] Failed to enqueue retry:`, retryErr.message);
+        }
+      }
+
+      console.log(`[TWILIO-INBOUND][${traceId}] Pipeline complete in ${Date.now() - t0}ms | inbound=${inboundMsg.id} contact=${contactId} vapiOk=${!vapiError}`);
+      res.type("text/xml").send("<Response></Response>");
+    } catch (err: any) {
+      console.error(`[TWILIO-INBOUND][${traceId}] Unhandled pipeline error:`, err.message || err);
+      res.type("text/xml").send("<Response></Response>");
+    }
+  });
+
+  // Backward compatibility alias — redirect old sms-webhook to new endpoint
+  // (the old /api/sms-webhook handler above still handles WhatsApp/Messenger)
 
   // ---- Meta/Facebook Webhook (Instagram/Facebook DMs) ----
   app.get("/api/meta-webhook", (req, res) => {

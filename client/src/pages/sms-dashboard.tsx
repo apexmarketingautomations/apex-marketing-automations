@@ -121,6 +121,9 @@ export default function SmsDashboard() {
       createdAt: new Date(),
       contactPhone: "instagram_user_123",
       channel: "instagram",
+      messageSid: null,
+      threadId: null,
+      traceId: null,
       _local: true,
     };
     

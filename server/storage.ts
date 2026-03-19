@@ -1,13 +1,14 @@
 import { eq, desc, and, sql, inArray, gte, lt } from "drizzle-orm";
 import { db } from "./db";
 import {
-  subAccounts, messages, workflows, trainingJobs, blueprints, savedSites, siteVersions, siteCollaborators, reviews, usageLogs, domains, owners,
+  subAccounts, messages, smsRetryQueue, workflows, trainingJobs, blueprints, savedSites, siteVersions, siteCollaborators, reviews, usageLogs, domains, owners,
   subscriptions, snapshots, snapshotVersions, affiliates, referrals, commissions, sentinelConfig, sentinelIncidents, propertyLeads, wholesalerConfig, clientWebsites, auditLogs,
   contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings,
   metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications,
   liveAutomations, aiToolLogs, webhookEvents, integrationConnections, portalTokens,
   type SubAccount, type InsertSubAccount,
   type Message, type InsertMessage,
+  type SmsRetryQueue, type InsertSmsRetryQueue,
   type Workflow, type InsertWorkflow,
   type TrainingJob, type InsertTrainingJob,
   type Blueprint, type InsertBlueprint,
@@ -88,6 +89,8 @@ export interface IStorage {
   getMessages(subAccountId: number): Promise<Message[]>;
   getMessage(id: number): Promise<Message | undefined>;
   createMessage(data: InsertMessage): Promise<Message>;
+  getMessageByMessageSid(messageSid: string): Promise<Message | undefined>;
+  createSmsRetryQueueItem(data: InsertSmsRetryQueue): Promise<SmsRetryQueue>;
 
   getWorkflows(): Promise<Workflow[]>;
   getWorkflow(id: number): Promise<Workflow | undefined>;
@@ -416,6 +419,16 @@ export class DatabaseStorage implements IStorage {
 
   async createMessage(data: InsertMessage) {
     const [row] = await db.insert(messages).values(data).returning();
+    return row;
+  }
+
+  async getMessageByMessageSid(messageSid: string) {
+    const [row] = await db.select().from(messages).where(eq(messages.messageSid, messageSid)).limit(1);
+    return row;
+  }
+
+  async createSmsRetryQueueItem(data: InsertSmsRetryQueue) {
+    const [row] = await db.insert(smsRetryQueue).values(data).returning();
     return row;
   }
 
