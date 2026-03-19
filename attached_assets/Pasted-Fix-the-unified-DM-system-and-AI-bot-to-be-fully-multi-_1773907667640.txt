@@ -1,0 +1,80 @@
+Fix the unified DM system and AI bot to be fully multi-channel, context-aware, and safely isolated per sub-account.
+
+1. FACEBOOK CHANNEL (CRITICAL)
+
+* Ensure Facebook is a first-class channel in the unified inbox (like SMS, WhatsApp, Instagram)
+* Messages must:
+
+  * be stored with channel = "facebook"
+  * include sender_id and page_id
+* Inbox must:
+
+  * display Facebook conversations in the sidebar
+  * allow selecting a conversation without manually typing sender ID
+  * show proper Facebook label/icon
+  * allow sending replies from the compose box using Facebook API
+
+2. CONVERSATION THREAD SYSTEM
+
+* Group messages by contact + channel
+* Build a conversation list (sidebar) using:
+
+  * account_id
+  * contact_id (or sender_id)
+  * channel
+* Clicking a conversation loads full thread history
+
+3. MULTI-TENANT SAFETY (NO BLEEDING)
+
+* Every message MUST include:
+
+  * account_id (or sub_account_id)
+* ALL queries must filter by account_id
+* Webhooks must map:
+
+  * page_id → account_id
+* Each client uses their own:
+
+  * META_ACCESS_TOKEN
+  * META_PAGE_ID
+* Never mix messages across accounts
+
+4. AI MEMORY (CRITICAL FIX)
+   Before every AI reply, load:
+
+* last 10–20 messages from the same conversation
+* contact data (name, tags, notes, service interest)
+* business context (services, hours, booking link)
+
+Inject all into the AI prompt like:
+{
+conversation_history: [...],
+contact: {...},
+business: {...}
+}
+
+Then:
+
+* generate reply
+* save reply back to same conversation with correct account_id + channel
+
+5. UNIFIED MEMORY ACROSS CHANNELS
+
+* If the same contact exists across FB/IG/SMS, merge under one contact_id
+* AI should see full cross-channel history (not siloed per channel)
+
+6. VALIDATION FIX
+
+* Do NOT validate page tokens using /me/accounts
+* Validate using /{PAGE_ID}?fields=id,name
+
+7. FINAL TEST
+   System must pass:
+
+* Facebook DM comes in → appears in inbox
+* Conversation shows in sidebar
+* AI replies with context awareness
+* Reply sends via Facebook
+* No cross-account message leakage
+
+Do not patch partially — ensure full end-to-end flow works.

@@ -59,6 +59,7 @@ export default function SmsDashboard() {
   const [selectedAccount, setSelectedAccount] = useState<string>("");
   const [instagramConnected, setInstagramConnected] = useState(false);
   const [localMessages, setLocalMessages] = useState<LocalMessage[]>([]);
+  const [selectedConv, setSelectedConv] = useState<{ contactPhone: string; channel: string } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -94,6 +95,49 @@ export default function SmsDashboard() {
       channel: "sms",
     },
   });
+
+  const allRawMessages: LocalMessage[] = useMemo(() => [
+    ...serverMessages,
+    ...localMessages.filter(lm => lm.subAccountId === numericAccountId),
+  ], [serverMessages, localMessages, numericAccountId]);
+
+  const conversations = useMemo(() => {
+    const convMap = new Map<string, { contactPhone: string; channel: string; lastMessage: string; lastTime: Date; unread: number }>();
+    for (const msg of allRawMessages) {
+      const key = `${msg.contactPhone}__${msg.channel || "sms"}`;
+      const existing = convMap.get(key);
+      const msgTime = new Date(msg.createdAt);
+      if (!existing || msgTime > existing.lastTime) {
+        convMap.set(key, {
+          contactPhone: msg.contactPhone,
+          channel: msg.channel || "sms",
+          lastMessage: (msg.body || "").slice(0, 60),
+          lastTime: msgTime,
+          unread: (existing?.unread || 0) + (msg.direction === "inbound" && msg.status !== "read" ? 1 : 0),
+        });
+      } else if (msg.direction === "inbound" && msg.status !== "read") {
+        existing.unread += 1;
+      }
+    }
+    return Array.from(convMap.values()).sort((a, b) => b.lastTime.getTime() - a.lastTime.getTime());
+  }, [allRawMessages]);
+
+  const allMessages = useMemo(() => {
+    if (!selectedConv) return allRawMessages;
+    return allRawMessages.filter(m => m.contactPhone === selectedConv.contactPhone && (m.channel || "sms") === selectedConv.channel);
+  }, [allRawMessages, selectedConv]);
+
+  const selectConversation = (conv: { contactPhone: string; channel: string }) => {
+    setSelectedConv(conv);
+    form.setValue("contactPhone", conv.contactPhone);
+    form.setValue("channel", conv.channel as any);
+  };
+
+  const clearConversation = () => {
+    setSelectedConv(null);
+    form.setValue("contactPhone", "");
+    form.setValue("channel", "sms");
+  };
 
   const simulateInstagramMessage = () => {
     if (!instagramConnected) {
@@ -206,6 +250,7 @@ export default function SmsDashboard() {
                     setSelectedAccount(val);
                     form.setValue("subAccountId", val);
                     setLocalMessages([]);
+                    setSelectedConv(null);
                   }}
                 >
                   <SelectTrigger data-testid="select-account">
@@ -252,6 +297,53 @@ export default function SmsDashboard() {
             </CardContent>
           </Card>
 
+          {conversations.length > 0 && (
+            <Card className="border-border shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Conversations</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <ScrollArea className="max-h-[300px]">
+                  <div className="divide-y divide-border">
+                    {conversations.map((conv) => {
+                      const isActive = selectedConv?.contactPhone === conv.contactPhone && selectedConv?.channel === conv.channel;
+                      const channelIcon = conv.channel === "facebook" ? <Facebook className="h-3.5 w-3.5 text-blue-500" />
+                        : conv.channel === "instagram" ? <Instagram className="h-3.5 w-3.5 text-pink-500" />
+                        : conv.channel === "whatsapp" ? <MessageCircle className="h-3.5 w-3.5 text-green-500" />
+                        : conv.channel === "vapi-sms" ? <Bot className="h-3.5 w-3.5 text-purple-500" />
+                        : <Phone className="h-3.5 w-3.5 text-blue-400" />;
+                      const displayName = conv.channel === "facebook" ? `FB User ...${conv.contactPhone.slice(-4)}`
+                        : conv.channel === "instagram" ? `IG ${conv.contactPhone.slice(-6)}`
+                        : conv.contactPhone;
+                      return (
+                        <button
+                          key={`${conv.contactPhone}__${conv.channel}`}
+                          className={`w-full text-left px-3 py-2.5 hover:bg-secondary/50 transition-colors ${isActive ? "bg-secondary/80 border-l-2 border-l-primary" : ""}`}
+                          onClick={() => selectConversation(conv)}
+                          data-testid={`conv-${conv.channel}-${conv.contactPhone.slice(-4)}`}
+                        >
+                          <div className="flex items-center gap-2">
+                            {channelIcon}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-medium truncate">{displayName}</span>
+                                <span className="text-[10px] text-muted-foreground">{format(conv.lastTime, "h:mm a")}</span>
+                              </div>
+                              <p className="text-[11px] text-muted-foreground truncate mt-0.5">{conv.lastMessage}</p>
+                            </div>
+                            {conv.unread > 0 && (
+                              <span className="flex-shrink-0 h-4 min-w-[16px] px-1 bg-primary text-primary-foreground text-[10px] font-bold rounded-full flex items-center justify-center">{conv.unread}</span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          )}
+
           <Card className="bg-primary/5 border-primary/20 shadow-none">
             <CardContent className="pt-6">
               <div className="flex items-start gap-4">
@@ -281,11 +373,21 @@ export default function SmsDashboard() {
                 </div>
                 <div>
                   <h2 className="font-semibold text-foreground">
-                    {form.watch("contactPhone") || "New Conversation"}
+                    {selectedConv
+                      ? (selectedConv.channel === "facebook" ? `FB User ...${selectedConv.contactPhone.slice(-4)}` : selectedConv.contactPhone)
+                      : "All Conversations"}
                   </h2>
                   <div className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                    <span className="text-xs text-muted-foreground">Active now</span>
+                    {selectedConv ? (
+                      <>
+                        <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                        <span className="text-xs text-muted-foreground">Active now</span>
+                        <span className="mx-1 text-muted-foreground">·</span>
+                        <button className="text-xs text-primary hover:underline" onClick={clearConversation} data-testid="button-show-all">Show all</button>
+                      </>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">{allRawMessages.length} messages</span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -429,7 +531,7 @@ export default function SmsDashboard() {
                         <FormItem>
                           <FormControl>
                             <Textarea
-                              placeholder={`Type your ${form.watch("channel") === 'facebook' ? 'Facebook DM' : form.watch("channel") === 'instagram' ? 'Instagram DM' : form.watch("channel") === 'whatsapp' ? 'WhatsApp message' : 'SMS'}...`}
+                              placeholder={selectedConv ? `Type your ${form.watch("channel") === 'facebook' ? 'Facebook DM' : form.watch("channel") === 'instagram' ? 'Instagram DM' : form.watch("channel") === 'whatsapp' ? 'WhatsApp message' : 'SMS'}...` : 'Select a conversation to reply...'}
                               className="min-h-[80px] resize-none pr-12 text-sm bg-muted/30 border-muted-foreground/20 focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
                               {...field}
                               onKeyDown={(e) => {
@@ -448,7 +550,7 @@ export default function SmsDashboard() {
                        <Button 
                         type="submit" 
                         size="icon" 
-                        disabled={isSending || !form.watch("messageBody")}
+                        disabled={isSending || !form.watch("messageBody") || !selectedConv}
                         className={`h-8 w-8 rounded-full shadow-sm ${form.watch("channel") === 'facebook' ? 'bg-blue-600 hover:bg-blue-700' : form.watch("channel") === 'instagram' ? 'bg-pink-600 hover:bg-pink-700' : form.watch("channel") === 'whatsapp' ? 'bg-green-600 hover:bg-green-700' : ''}`}
                         data-testid="button-send"
                       >
