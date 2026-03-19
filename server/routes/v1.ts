@@ -896,6 +896,84 @@ export function registerV1Routes(app: Express) {
           break;
         }
 
+        case "send_facebook_dm":
+        case "SendFacebookDM": {
+          if (!payload.recipientId || !payload.body) {
+            result = { status: "Error", message: "Missing recipientId or body" };
+          } else {
+            try {
+              const { getMetaConfig } = await import("../metaConfig");
+              const subId = payload.subAccountId || 13;
+              const metaCfg = await getMetaConfig(subId);
+              let proof = "";
+              if (metaCfg.accessToken && metaCfg.appSecret) {
+                const crypto = await import("crypto");
+                proof = crypto.createHmac("sha256", metaCfg.appSecret).update(metaCfg.accessToken).digest("hex");
+              }
+              const dmUrl = `https://graph.facebook.com/v19.0/${metaCfg.pageId}/messages${proof ? `?appsecret_proof=${proof}` : ""}`;
+              const dmRes = await fetch(dmUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  recipient: { id: payload.recipientId },
+                  message: { text: payload.body },
+                  access_token: metaCfg.accessToken,
+                }),
+              });
+              const dmData = await dmRes.json() as any;
+              if (dmRes.ok) {
+                await db.insert(messages).values({
+                  subAccountId: subId,
+                  channel: "facebook",
+                  direction: "outbound",
+                  contactPhone: payload.recipientId,
+                  body: payload.body,
+                  status: "sent",
+                  pageId: metaCfg.pageId,
+                  senderId: payload.recipientId,
+                });
+                result = { status: "Success", message: "Facebook DM sent", messageId: dmData.message_id };
+              } else {
+                result = { status: "Error", message: `Facebook DM failed: ${JSON.stringify(dmData).substring(0, 200)}` };
+              }
+            } catch (fbErr: any) {
+              result = { status: "Error", message: `Facebook DM error: ${fbErr.message}` };
+            }
+          }
+          break;
+        }
+
+        case "send_form_link":
+        case "SendFormLink": {
+          const formUrl = payload.formUrl || payload.form_url;
+          const recipient = payload.recipientId || payload.to;
+          const channel = payload.channel || "facebook";
+          const formBody = payload.body || `Hey {{leadName}}! Please fill out this quick form so we can serve you better: ${formUrl}`;
+          if (!recipient || !formUrl) {
+            result = { status: "Error", message: "Missing recipientId/to or formUrl" };
+          } else if (channel === "facebook") {
+            try {
+              const sendFormResult = await executeDispatchAction("SendFacebookDM", {
+                recipientId: recipient,
+                body: formBody,
+                subAccountId: payload.subAccountId,
+              });
+              result = { status: "Success", message: "Form link sent via Facebook DM", details: sendFormResult };
+            } catch (fErr: any) {
+              result = { status: "Error", message: `Form link send failed: ${fErr.message}` };
+            }
+          } else {
+            const smsResult = await executeDispatchAction("send_sms", {
+              to: recipient,
+              body: formBody,
+              from: payload.from,
+              subAccountId: payload.subAccountId,
+            });
+            result = { status: "Success", message: "Form link sent via SMS", details: smsResult };
+          }
+          break;
+        }
+
         case "broadcast_alert": {
           if (!payload.message) {
             result = { status: "Error", message: "Missing alert message" };
@@ -1110,6 +1188,34 @@ export function registerV1Routes(app: Express) {
             }
             if (stepPayload.first_message && typeof stepPayload.first_message === "string") {
               stepPayload.first_message = templateReplace(stepPayload.first_message);
+            }
+
+            if (action === "SendFacebookDM" || action === "send_facebook_dm") {
+              if (context.senderId || context.leadPhone) {
+                await executeDispatchAction("SendFacebookDM", {
+                  recipientId: context.senderId || context.leadPhone,
+                  body: stepPayload.body || "Thanks for reaching out!",
+                  subAccountId,
+                });
+                console.log(`[AUTOMATION] Facebook DM sent to ${context.senderId || context.leadPhone}`);
+              }
+              continue;
+            }
+
+            if (action === "SendFormLink" || action === "send_form_link") {
+              const recipient = context.senderId || context.leadPhone;
+              if (recipient) {
+                await executeDispatchAction("SendFormLink", {
+                  recipientId: recipient,
+                  to: recipient,
+                  formUrl: stepPayload.formUrl || stepPayload.form_url,
+                  body: stepPayload.body,
+                  channel: context.channel || "facebook",
+                  subAccountId,
+                });
+                console.log(`[AUTOMATION] Form link sent to ${recipient}`);
+              }
+              continue;
             }
 
             if (action === "VapiCall") {

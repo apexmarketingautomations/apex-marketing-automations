@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { format } from "date-fns";
-import { Send, Phone, User, Building2, MessageSquare, Loader2, CheckCircle2, Clock, Instagram, Mail, Bell, BookOpen, MessageCircle, CheckCheck, Bot, Facebook } from "lucide-react";
+import { Send, Phone, User, Building2, MessageSquare, Loader2, CheckCircle2, Clock, Instagram, Mail, Bell, BookOpen, MessageCircle, CheckCheck, Bot, Facebook, Zap, Play, Pause } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { INBOX_STEPS } from "@/components/tutorial-steps";
 import { motion, AnimatePresence } from "framer-motion";
@@ -52,6 +52,102 @@ const formSchema = z.object({
 
 interface LocalMessage extends Message {
   _local?: boolean;
+}
+
+function DmSequenceCard({ subAccountId }: { subAccountId?: number }) {
+  const { toast } = useToast();
+  const [deploying, setDeploying] = useState(false);
+  const queryClient = useQueryClient();
+
+  const { data: sequences = [] } = useQuery<any[]>({
+    queryKey: ["/api/meta/dm-sequence", subAccountId],
+    queryFn: async () => {
+      const res = await fetch(`/api/meta/dm-sequence/${subAccountId}`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: !!subAccountId,
+    staleTime: 0,
+  });
+
+  const deploySequence = async () => {
+    if (!subAccountId) return;
+    setDeploying(true);
+    try {
+      const res = await fetch(`/api/meta/dm-sequence/deploy/${subAccountId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Deploy failed");
+      toast({ title: "DM Sequence Deployed", description: `"${data.name}" is now active with ${data.steps} steps.` });
+      queryClient.invalidateQueries({ queryKey: ["/api/meta/dm-sequence", subAccountId] });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Deploy failed", description: err.message });
+    } finally {
+      setDeploying(false);
+    }
+  };
+
+  const activeSequence = sequences.find((s: any) => s.status === "compiled" || s.status === "active");
+  const stepLabels: Record<string, string> = {
+    SendFacebookDM: "Send DM",
+    Wait: "Wait",
+    SendFormLink: "Send Form",
+    SendBookingLink: "Send Booking Link",
+    VapiCall: "Phone Follow-up",
+    AIQualify: "AI Qualify",
+  };
+
+  return (
+    <Card className="border-border shadow-sm" data-testid="card-dm-sequence">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+          <Zap className="h-3.5 w-3.5 text-amber-500" />
+          DM Sequence
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {activeSequence ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse" />
+              <span className="text-xs font-medium text-green-400">{activeSequence.name}</span>
+            </div>
+            <div className="space-y-1">
+              {(activeSequence.manifest?.steps || []).map((step: any, i: number) => (
+                <div key={i} className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                  <span className="text-[10px] font-mono text-muted-foreground/60">{i + 1}.</span>
+                  <span>{stepLabels[step.action] || step.action}</span>
+                  {step.action === "Wait" && <span className="text-amber-500">({step.payload?.seconds}s)</span>}
+                </div>
+              ))}
+            </div>
+            <div className="text-[10px] text-muted-foreground mt-1">
+              Runs: {activeSequence.runCount || 0} | Trigger: {activeSequence.manifest?.trigger}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+              Auto-engage DM leads with forms, booking links, and phone follow-ups.
+            </p>
+            <Button
+              size="sm"
+              className="w-full text-xs"
+              onClick={deploySequence}
+              disabled={deploying || !subAccountId}
+              data-testid="button-deploy-dm-sequence"
+            >
+              {deploying ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Play className="mr-2 h-3 w-3" />}
+              {deploying ? "Deploying..." : "Deploy DM Sequence"}
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function SmsDashboard() {
@@ -305,6 +401,8 @@ export default function SmsDashboard() {
               </div>
             </CardContent>
           </Card>
+
+          <DmSequenceCard subAccountId={numericAccountId} />
 
           {conversations.length > 0 && (
             <Card className="border-border shadow-sm">

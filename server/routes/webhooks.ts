@@ -898,6 +898,17 @@ export function registerWebhooksRoutes(app: Express) {
               console.warn("[META DM] Contact creation skipped:", contactErr.message);
             }
 
+            try {
+              fireAutomationTrigger(`On${channel === "instagram" ? "Instagram" : "Facebook"}DM`, subAccountId, {
+                leadName: existingContactRecord?.firstName || `${channel === "instagram" ? "IG" : "FB"} User ${senderId.slice(-4)}`,
+                leadPhone: existingContactRecord?.phone || senderId,
+                senderId,
+                channel,
+                message,
+                source: `${channel}_dm`,
+              });
+            } catch {}
+
             const keywords = await storage.getDmKeywordAutomations(subAccountId, true);
             const msgLower = message.toLowerCase().trim();
             let keywordMatched = false;

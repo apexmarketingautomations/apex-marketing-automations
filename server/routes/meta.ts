@@ -553,4 +553,93 @@ export function registerMetaRoutes(app: Express) {
       validation,
     });
   }));
+
+  app.post("/api/meta/dm-sequence/deploy/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
+    const subAccountId = Number(req.params.subAccountId);
+    const account = await storage.getSubAccount(subAccountId);
+    if (!account) return res.status(404).json({ error: "Account not found" });
+
+    const { formUrl, bookingLink, sequenceName } = req.body;
+
+    const calLink = bookingLink || "https://calendar.app.google/Fwdtvy7Sy3P8Z1CV6";
+    const form = formUrl || `${req.protocol}://${req.get("host")}/form/${subAccountId}`;
+
+    const manifest = {
+      name: sequenceName || "DM Lead Sequence",
+      description: "Auto-engages Facebook/Instagram DM leads with form capture, booking link, and phone follow-up",
+      trigger: "OnFacebookDM",
+      steps: [
+        {
+          action: "SendFacebookDM",
+          payload: {
+            body: `Hey {{leadName}}! Thanks for reaching out to ${account.name || "us"}. We'd love to learn more about what you're looking for so we can serve you best.`,
+          },
+        },
+        {
+          action: "Wait",
+          payload: { seconds: 3 },
+        },
+        {
+          action: "SendFormLink",
+          payload: {
+            formUrl: form,
+            body: `To get started, could you fill out this quick form? It helps us understand your needs better: ${form}`,
+            channel: "facebook",
+          },
+        },
+        {
+          action: "Wait",
+          payload: { seconds: 5 },
+        },
+        {
+          action: "SendBookingLink",
+          payload: {
+            body: `Also, if you'd like to hop on a quick call to discuss your goals, feel free to pick a time that works: ${calLink}`,
+          },
+        },
+        {
+          action: "Wait",
+          payload: { seconds: 10 },
+        },
+        {
+          action: "VapiCall",
+          payload: {
+            assistantId: "e30434f7-e7e0-4be7-8b89-40c384a52b4a",
+            first_message: `Hi {{leadName}}, this is the team from ${account.name || "Apex Marketing"}. You reached out to us on Facebook and I wanted to follow up personally to see how we can help you.`,
+          },
+        },
+      ],
+    };
+
+    const automation = await storage.createLiveAutomation({
+      name: manifest.name,
+      description: manifest.description,
+      manifest,
+      status: "compiled",
+      subAccountId,
+      lastRunAt: null,
+      runCount: 0,
+      runLogs: [],
+    });
+
+    console.log(`[DM-SEQUENCE] Deployed "${manifest.name}" (id=${automation.id}) for account ${subAccountId}`);
+
+    res.json({
+      status: "deployed",
+      automationId: automation.id,
+      name: manifest.name,
+      trigger: manifest.trigger,
+      steps: manifest.steps.length,
+      manifest,
+    });
+  }));
+
+  app.get("/api/meta/dm-sequence/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
+    const subAccountId = Number(req.params.subAccountId);
+    const automations = await storage.getLiveAutomations(subAccountId);
+    const dmSequences = automations.filter((a: any) =>
+      a.manifest?.trigger === "OnFacebookDM" || a.manifest?.trigger === "OnInstagramDM"
+    );
+    res.json(dmSequences);
+  }));
 }

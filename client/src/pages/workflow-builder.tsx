@@ -1,6 +1,6 @@
 import { PlanGate } from "@/components/plan-gate";
 import { useState, useCallback } from "react";
-import { Clock, MessageSquare, GitFork, MoreHorizontal, PlayCircle, CheckCircle2, AlertCircle, AlertTriangle, Sparkles, Loader2, Code2, Trash2, BookOpen, Target, Mail, UserPlus, TrendingUp, Bell, Globe, Zap, Terminal, Cpu, Brain, ChevronDown, Eye, Power, Archive, ShoppingCart, Volume2, MessageCircle, BarChart3, Undo2, Wand2, ArrowDown, Activity } from "lucide-react";
+import { Clock, MessageSquare, GitFork, MoreHorizontal, PlayCircle, CheckCircle2, AlertCircle, AlertTriangle, Sparkles, Loader2, Code2, Trash2, BookOpen, Target, Mail, UserPlus, TrendingUp, Bell, Globe, Zap, Terminal, Cpu, Brain, ChevronDown, Eye, Power, Archive, ShoppingCart, Volume2, MessageCircle, BarChart3, Undo2, Wand2, ArrowDown, Activity, FileText } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { WORKFLOW_STEPS } from "@/components/tutorial-steps";
 import { motion, AnimatePresence } from "framer-motion";
@@ -50,6 +50,8 @@ const StepIcon = ({ type }: { type: string }) => {
     case "VapiCall": return <Volume2 className="h-5 w-5 text-orange-500" />;
     case "SendBookingLink": return <BookOpen className="h-5 w-5 text-teal-500" />;
     case "AIQualify": return <Sparkles className="h-5 w-5 text-violet-500" />;
+    case "SendFacebookDM": return <MessageCircle className="h-5 w-5 text-blue-500" />;
+    case "SendFormLink": return <FileText className="h-5 w-5 text-emerald-500" />;
     case "Wait": return <Clock className="h-5 w-5 text-amber-500" />;
     default: return <CheckCircle2 className="h-5 w-5 text-gray-400" />;
   }
