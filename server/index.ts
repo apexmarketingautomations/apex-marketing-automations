@@ -428,9 +428,97 @@ function validateEnvVars() {
   const { vapiConfig: vapiCfg } = await import("./routes/helpers");
   const { analyzeCallTranscript, analyzeAllUnprocessed, generatePatternReport, generatePromptEnrichment, injectPatternsIntoAgent, onCallAnalyzed, startAutoLearningLoop } = await import("./callIntelligence");
 
+  const { contacts } = await import("@shared/schema");
+  const { like: vapiLike } = await import("drizzle-orm");
+  const { getTwilioClient } = await import("./routes/helpers");
+
   app.post("/api/vapi/webhook", async (req, res) => {
     try {
       const msgType = req.body?.message?.type;
+
+      if (msgType === "tool-calls") {
+        const toolCalls = req.body.message.toolCalls || req.body.message.toolCallList || [];
+        const results: any[] = [];
+        for (const tc of toolCalls) {
+          if (tc.function?.name === "sendBookingLink") {
+            const phoneNumber = tc.function.arguments?.phoneNumber || req.body.message.call?.customer?.number;
+            if (phoneNumber) {
+              try {
+                const client = await getTwilioClient();
+                if (client) {
+                  await client.messages.create({
+                    body: "Here's your booking link to schedule a call with Apex: https://calendar.app.google/Fwdtvy7Sy3P8Z1CV6",
+                    to: phoneNumber,
+                    from: "+18777030325",
+                  });
+                  console.log(`[VAPI TOOL] Sent booking link SMS to ${phoneNumber}`);
+                  results.push({ toolCallId: tc.id, result: "Booking link sent successfully via text." });
+                } else {
+                  results.push({ toolCallId: tc.id, result: "Could not send text right now. Ask them to visit apexmarketingautomations.com instead." });
+                }
+              } catch (smsErr: any) {
+                console.error(`[VAPI TOOL] SMS failed:`, smsErr?.message);
+                results.push({ toolCallId: tc.id, result: "Text failed to send. Ask them to visit apexmarketingautomations.com instead." });
+              }
+            } else {
+              results.push({ toolCallId: tc.id, result: "No phone number available to send text to." });
+            }
+          } else if (tc.function?.name === "lookupProspect") {
+            const phoneNumber = tc.function.arguments?.phoneNumber || req.body.message.call?.customer?.number;
+            if (phoneNumber) {
+              try {
+                const cleaned = phoneNumber.replace(/\D/g, "").slice(-10);
+                const rows = await vapiDb.select().from(contacts).where(vapiLike(contacts.phone, `%${cleaned}`)).limit(1);
+                if (rows.length > 0) {
+                  const c = rows[0];
+                  const info = [`Name: ${c.firstName} ${c.lastName || ""}`.trim()];
+                  if (c.company) info.push(`Company: ${c.company}`);
+                  if (c.city && c.state) info.push(`Location: ${c.city}, ${c.state}`);
+                  if (c.tags && c.tags.length > 0) info.push(`Tags: ${c.tags.join(", ")}`);
+                  if (c.notes) info.push(`Notes: ${c.notes}`);
+                  if (c.source) info.push(`Source: ${c.source}`);
+                  results.push({ toolCallId: tc.id, result: `Found prospect in CRM: ${info.join(". ")}. Use this info naturally in the conversation — do not reveal you looked them up.` });
+                } else {
+                  results.push({ toolCallId: tc.id, result: "No existing record found for this number. This is a cold prospect." });
+                }
+              } catch (lookupErr: any) {
+                console.error(`[VAPI TOOL] Lookup failed:`, lookupErr?.message);
+                results.push({ toolCallId: tc.id, result: "Lookup unavailable. Treat as cold prospect." });
+              }
+            } else {
+              results.push({ toolCallId: tc.id, result: "No phone number to look up." });
+            }
+          } else {
+            results.push({ toolCallId: tc.id, result: "Unknown tool." });
+          }
+        }
+        return res.json({ results });
+      }
+
+      if (msgType === "assistant-request") {
+        const customerNumber = req.body.message.call?.customer?.number;
+        let contextNote = "";
+        if (customerNumber) {
+          try {
+            const cleaned = customerNumber.replace(/\D/g, "").slice(-10);
+            const rows = await vapiDb.select().from(contacts).where(vapiLike(contacts.phone, `%${cleaned}`)).limit(1);
+            if (rows.length > 0) {
+              const c = rows[0];
+              const info = [`Name: ${c.firstName} ${c.lastName || ""}`.trim()];
+              if (c.company) info.push(`Company: ${c.company}`);
+              if (c.city && c.state) info.push(`Location: ${c.city}, ${c.state}`);
+              if (c.tags && c.tags.length > 0) info.push(`Tags: ${c.tags.join(", ")}`);
+              if (c.notes) info.push(`Notes: ${c.notes}`);
+              contextNote = `\n\nPRE-CALL INTEL — you know this about the person you are calling: ${info.join(". ")}. Use this naturally. Do not say "I looked you up." Just weave it in like you already know.`;
+            }
+          } catch {}
+        }
+        if (contextNote) {
+          console.log(`[VAPI WEBHOOK] Injecting pre-call context for ${customerNumber}`);
+        }
+        return res.json({ assistantId: "e30434f7-e7e0-4be7-8b89-40c384a52b4a" });
+      }
+
       if (msgType === "end-of-call-report") {
         const call = req.body.message;
         const transcript = call.transcript || call.artifact?.transcript || "";
