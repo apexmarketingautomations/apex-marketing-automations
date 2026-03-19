@@ -122,6 +122,12 @@ export default function SmsDashboard() {
     return Array.from(convMap.values()).sort((a, b) => b.lastTime.getTime() - a.lastTime.getTime());
   }, [allRawMessages]);
 
+  useEffect(() => {
+    if (!selectedConv && conversations.length > 0) {
+      selectConversation(conversations[0]);
+    }
+  }, [conversations]);
+
   const allMessages = useMemo(() => {
     if (!selectedConv) return allRawMessages;
     return allRawMessages.filter(m => m.contactPhone === selectedConv.contactPhone && (m.channel || "sms") === selectedConv.channel);
