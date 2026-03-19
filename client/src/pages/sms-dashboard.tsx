@@ -82,6 +82,7 @@ export default function SmsDashboard() {
     queryKey: ["/api/messages", numericAccountId],
     queryFn: () => api.getMessages(numericAccountId!),
     enabled: !!numericAccountId,
+    refetchInterval: 5000,
   });
 
   const [isSendingMsg, setIsSendingMsg] = useState(false);
@@ -455,7 +456,7 @@ export default function SmsDashboard() {
                           className={`rounded-2xl px-4 py-3 shadow-sm ${
                             msg.direction === 'outbound'
                               ? 'bg-primary text-primary-foreground rounded-br-none'
-                              : 'bg-white border border-border text-foreground rounded-bl-none'
+                              : 'bg-card border border-border text-card-foreground rounded-bl-none'
                           }`}
                         >
                           <p className="text-sm leading-relaxed">{msg.body}</p>
