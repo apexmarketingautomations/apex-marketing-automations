@@ -741,6 +741,11 @@ export function registerWebhooksRoutes(app: Express) {
               continue;
             }
 
+            let subAccountId: number | null = null;
+            let accessToken: string | null = null;
+            let pageId: string | null = null;
+            let appSecret: string | null = null;
+
             const integrationRows = await db.select()
               .from(integrationConnections)
               .where(
@@ -751,11 +756,6 @@ export function registerWebhooksRoutes(app: Express) {
               )
               .execute()
               .catch(() => [] as typeof integrationConnections.$inferSelect[]);
-
-            let subAccountId: number | null = null;
-            let accessToken: string | null = null;
-            let pageId: string | null = null;
-            let appSecret: string | null = null;
 
             for (const conn of integrationRows) {
               const cfg = conn.config as any;
@@ -770,8 +770,17 @@ export function registerWebhooksRoutes(app: Express) {
             }
 
             if (!subAccountId) {
-              console.error(`[META DM] Rejected ${channel} event from sender=${senderId} — page_id=${entryPageId} not mapped to any sub-account in integration_connections. Configure Meta integration for this page.`);
-              continue;
+              try {
+                const { resolveSubAccountByPageId, getMetaConfig } = await import("../metaConfig");
+                subAccountId = await resolveSubAccountByPageId(String(entryPageId));
+                const metaCfg = await getMetaConfig(subAccountId);
+                accessToken = metaCfg.accessToken;
+                pageId = metaCfg.pageId;
+                appSecret = metaCfg.appSecret;
+              } catch (resolveErr: any) {
+                console.error(`[META DM] Rejected ${channel} event from sender=${senderId} — page_id=${entryPageId} not mapped to any sub-account. ${resolveErr.message}`);
+                continue;
+              }
             }
 
             console.log(`[META DM] ${channel} from ${senderId} -> subAccountId=${subAccountId} (page=${entryPageId}): ${message.substring(0, 100)}`);
