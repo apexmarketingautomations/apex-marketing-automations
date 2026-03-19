@@ -80,10 +80,18 @@ export async function analyzeCallTranscript(callId: number): Promise<CallAnalysi
   }
 
   try {
+    console.log(`[CALL-INTEL] Sending call ${callId} (${call.transcript.length} chars) to Gemini...`);
     const result = await geminiChat([
       { role: "system", content: ANALYSIS_PROMPT },
       { role: "user", content: `TRANSCRIPT:\n${call.transcript}\n\nENDED REASON: ${call.endedReason || "unknown"}\nDURATION: ${call.duration || 0} seconds\nSUMMARY: ${call.summary || "none"}` },
-    ], { temperature: 0.2, maxTokens: 4096, jsonMode: true });
+    ], { temperature: 0.2, maxTokens: 8192, jsonMode: true });
+
+    console.log(`[CALL-INTEL] Gemini response for call ${callId}: ${result.length} chars`);
+
+    if (!result || result.trim().length === 0) {
+      console.error(`[CALL-INTEL] Empty response from Gemini for call ${callId}`);
+      return null;
+    }
 
     let analysis: CallAnalysis;
     const parseJson = (s: string): CallAnalysis => {
@@ -101,13 +109,19 @@ export async function analyzeCallTranscript(callId: number): Promise<CallAnalysi
       if (!fixed.endsWith("}")) fixed += '"}]}';
       return JSON.parse(fixed);
     };
-    analysis = parseJson(result);
+    try {
+      analysis = parseJson(result);
+    } catch (parseErr) {
+      console.error(`[CALL-INTEL] JSON parse error for call ${callId}: ${parseErr}`);
+      console.error(`[CALL-INTEL] Raw response tail (last 300 chars): ${result.slice(-300)}`);
+      return null;
+    }
 
     await db.update(vapiCallLogs).set({ analysis }).where(eq(vapiCallLogs.id, callId));
     console.log(`[CALL-INTEL] Analyzed call ${callId}: outcome=${analysis.outcome}, engagement=${analysis.engagement_score}, agent=${analysis.agent_score}`);
     return analysis;
   } catch (err) {
-    console.error(`[CALL-INTEL] Analysis failed for call ${callId}:`, err);
+    console.error(`[CALL-INTEL] Analysis failed for call ${callId}:`, err?.message ?? err, err?.stack);
     return null;
   }
 }

@@ -450,7 +450,7 @@ function validateEnvVars() {
             }).returning({ id: vapiCallLogs.id });
             console.log(`[VAPI WEBHOOK] Stored call log: ${callId}`);
             if (inserted[0]?.id) {
-              analyzeCallTranscript(inserted[0].id).catch(err => console.error("[VAPI WEBHOOK] Analysis failed:", err));
+              analyzeCallTranscript(inserted[0].id).catch(err => console.error(`[VAPI WEBHOOK] Analysis failed for call ${inserted[0].id} (${callId}):`, err?.message ?? err, err?.stack));
             }
           }
         }
