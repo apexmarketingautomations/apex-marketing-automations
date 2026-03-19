@@ -895,10 +895,13 @@ export function registerWebhooksRoutes(app: Express) {
                 if (byFirstName.length > 0) {
                   existingContactRecord = byFirstName[0];
                 } else {
+                  const senderPhone = /^\d{10,11}$/.test(senderId)
+                    ? `+1${senderId.slice(-10)}`
+                    : senderId;
                   const newContact = await storage.createContact({
                     subAccountId,
                     firstName: `${channel === "instagram" ? "IG" : "FB"} User ${senderId.slice(-4)}`,
-                    phone: senderId,
+                    phone: senderPhone,
                     source: `${channel}_dm`,
                     tags: [channel, "dm_lead"],
                   });
