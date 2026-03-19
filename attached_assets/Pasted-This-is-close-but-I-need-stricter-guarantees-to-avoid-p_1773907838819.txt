@@ -1,0 +1,84 @@
+This is close, but I need stricter guarantees to avoid partial implementation or cross-account leakage.
+
+Update the task with these requirements:
+
+1. HARD MULTI-TENANT ENFORCEMENT
+
+* Every message, contact, and conversation MUST include subAccountId
+* All database queries MUST filter by subAccountId
+* No shared/global message queries allowed
+* If subAccountId is missing → reject the operation
+
+2. FACEBOOK WEBHOOK ROUTING (CRITICAL)
+
+* On inbound webhook:
+
+  * extract page_id
+  * map page_id → subAccountId
+  * attach subAccountId BEFORE storing or processing message
+* Do NOT default to first account
+* Fail if mapping is missing
+
+3. PER-ACCOUNT TOKENS
+
+* Each sub-account must use its own:
+
+  * META_ACCESS_TOKEN
+  * META_PAGE_ID
+* Do NOT use global env tokens for messaging
+* Sending must use the token tied to the message’s subAccountId
+
+4. CONVERSATION THREADING (STRICT)
+
+* Conversations grouped by:
+
+  * subAccountId
+  * contact_id
+  * channel
+* Sidebar must show:
+
+  * Facebook, SMS, IG threads separately but selectable
+* Clicking thread loads ONLY that conversation
+
+5. AI MEMORY CONTEXT (ENFORCED)
+   Every AI reply must include:
+
+* last 10–20 messages from SAME conversation
+* contact record (from same subAccountId)
+* business config (from same subAccountId)
+
+No cross-account or cross-contact context allowed.
+
+6. CROSS-CHANNEL CONTACT MERGING (SAFE)
+
+* Only merge contacts if:
+
+  * explicit match (same phone/email) OR
+  * manually linked
+* Never auto-merge based on weak assumptions
+
+7. FACEBOOK CHANNEL COMPLETION
+   System is NOT complete unless:
+
+* FB message appears in inbox
+* shows as Facebook (icon + label)
+* can be clicked in sidebar
+* AI replies with context
+* reply sends successfully via FB API
+
+8. VALIDATION FIX
+
+* Replace /me/accounts check with:
+  GET /{PAGE_ID}?fields=id,name
+
+9. DEFINITION OF DONE (REQUIRED TEST)
+   Must pass:
+
+* Client A (Page A) and Client B (Page B)
+* Messages stay isolated
+* Replies use correct tokens
+* No cross-account bleed
+* Conversations load correctly
+* AI uses correct memory per client
+
+Do not mark complete until this passes in production.
