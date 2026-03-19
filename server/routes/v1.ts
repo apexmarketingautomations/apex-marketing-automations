@@ -1233,6 +1233,49 @@ export function registerV1Routes(app: Express) {
                 try {
                   const assistantId = stepPayload.assistantId || "e30434f7-e7e0-4be7-8b89-40c384a52b4a";
                   const phoneNumberId = stepPayload.phoneNumberId || "f3d98133-abe4-4a04-8c62-09f6dc22a94c";
+                  const overrides: Record<string, any> = {};
+
+                  if (stepPayload.first_message) {
+                    overrides.firstMessage = stepPayload.first_message;
+                  }
+
+                  const triggerSource = context.source || context.channel || "";
+                  const isDmTriggered = triggerSource.includes("dm") || triggerSource.includes("facebook") || triggerSource.includes("instagram");
+
+                  if (isDmTriggered) {
+                    const channelName = triggerSource.includes("instagram") ? "Instagram" : "Facebook";
+                    const systemPrompt = [
+                      `You are a friendly, professional outbound specialist for Apex Marketing.`,
+                      `IMPORTANT CONTEXT: This person just messaged on ${channelName}. Their message was: "${context.message || "asking about services"}"`,
+                      `This is a WARM follow-up call, NOT a cold call. They already showed interest by messaging on ${channelName}.`,
+                      ``,
+                      `Guidelines:`,
+                      `- Open warmly acknowledging their ${channelName} message — you're following up on their inquiry, not calling out of the blue.`,
+                      `- Reference what they asked about to show you're paying attention.`,
+                      `- Be conversational and helpful, not salesy or scripted.`,
+                      `- Your goal is to understand their needs, answer questions, and if appropriate, schedule a consultation.`,
+                      `- If they want to book a time, tell them you'll text them a booking link right after the call. Do NOT read any URLs out loud.`,
+                      `- Keep it natural — you're a real person following up, not a robot reading a script.`,
+                      `- If they seem busy, offer to call back at a better time or text them info instead.`,
+                    ].join("\n");
+
+                    overrides.model = {
+                      provider: "openai",
+                      model: "gpt-4o",
+                      messages: [{ role: "system", content: systemPrompt }],
+                    };
+
+                    if (!overrides.firstMessage) {
+                      overrides.firstMessage = `Hey${context.leadName ? " " + context.leadName : ""}! This is Apex Marketing — I saw you just reached out on ${channelName} and wanted to follow up personally. How are you doing?`;
+                    }
+
+                    overrides.variableValues = {
+                      lead_name: context.leadName || "",
+                      source: triggerSource,
+                      original_message: context.message || "",
+                    };
+                  }
+
                   const vapiRes = await fetch("https://api.vapi.ai/call/phone", {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${vapiKey}`, "Content-Type": "application/json" },
@@ -1240,9 +1283,7 @@ export function registerV1Routes(app: Express) {
                       phoneNumberId,
                       customer: { number: context.leadPhone },
                       assistantId,
-                      assistantOverrides: stepPayload.first_message ? {
-                        firstMessage: stepPayload.first_message,
-                      } : undefined,
+                      ...(Object.keys(overrides).length > 0 ? { assistantOverrides: overrides } : {}),
                     }),
                   });
                   const vapiData = await vapiRes.json() as any;
