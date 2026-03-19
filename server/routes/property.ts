@@ -4,7 +4,7 @@ import { eq, desc, sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { z } from "zod";
-import { aiChat, isAIConfigured } from "../ai";
+import { aiChat, isAIConfigured } from "../aiGateway";
 import { processLiveSentinelFeed, deployGeofenceAd } from "../sentinel";
 import { publishEventAsync, EVENT_TYPES } from "../eventBus";
 import { scanDistressedProperties, calculateDealMetrics } from "../property-radar";
@@ -1447,17 +1447,17 @@ export function registerPropertyRoutes(app: Express) {
             if (leadPhone && twilioNumber && event === "crash.detected") {
               try {
                 if (isAIConfigured()) {
-                  const aiResponse = await aiChat([
+                  const crashAiResult = await aiChat([
                     { role: "system", content: `You are an AI assistant for ${account.name || "a local business"}. A potential customer was just involved in a vehicle incident. Send a brief, empathetic text offering assistance. Keep it under 160 characters. Be professional and helpful. Do not mention AI.` },
                     { role: "user", content: `Generate an SMS to send to ${leadName} who was in a crash at ${location}. The business provides ${account.industry || "automotive"} services.` },
-                  ], { temperature: 0.7, maxTokens: 200 });
+                  ], { temperature: 0.7, maxTokens: 200, route: "property-crash-sms" });
 
                   const client = await getTwilioClient();
-                  if (client && aiResponse) {
+                  if (client && crashAiResult.text) {
                     await client.messages.create({
                       to: leadPhone,
                       from: twilioNumber,
-                      body: aiResponse.trim(),
+                      body: crashAiResult.text.trim(),
                     });
                     console.log(`[CRASH CONNECT] AI follow-up sent to lead ${leadPhone}`);
                     await logUsageInternal(targetAccountId, "SMS_SEGMENT", 1, `Crash Connect AI follow-up: ${event}`);
@@ -2120,11 +2120,11 @@ export function registerPropertyRoutes(app: Express) {
       ? `Generate a lead capture form for a ${industry} business called "${businessName}".`
       : `Generate a lead capture form for a ${industry} business.`;
 
-    const raw = await aiChat([
+    const formAiResult = await aiChat([
       { role: "system", content: FORM_BUILDER_SYSTEM_PROMPT },
       { role: "user", content: userPrompt },
-    ], { temperature: 0.7, maxTokens: 4096, jsonMode: true });
-    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    ], { temperature: 0.7, maxTokens: 4096, jsonMode: true, route: "forms-generate" });
+    const cleaned = formAiResult.text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     let formData: any;
     try {

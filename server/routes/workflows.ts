@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { insertWorkflowSchema } from "@shared/schema";
 import { storage } from "../storage";
 import { z } from "zod";
-import { aiChat, isAIConfigured } from "../ai";
+import { aiChat, isAIConfigured } from "../aiGateway";
 import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, logUsageInternal } from "./helpers";
 
 export function registerWorkflowsRoutes(app: Express) {
@@ -192,15 +192,15 @@ export function registerWorkflowsRoutes(app: Express) {
 
     let workflowData: any = null;
     for (let attempt = 0; attempt < 2; attempt++) {
-      const raw = await aiChat([
+      const wfAiResult = await aiChat([
         { role: "system", content: WORKFLOW_AI_SYSTEM_PROMPT },
         { role: "user", content: attempt === 0
           ? parsed.data.prompt
           : `${parsed.data.prompt}\n\nIMPORTANT: Return ONLY a raw JSON object. No markdown, no explanation, no code fences. Start with { and end with }.`
         },
-      ], { temperature: 0.7, maxTokens: 4096, jsonMode: true });
+      ], { temperature: 0.7, maxTokens: 4096, jsonMode: true, route: "workflow-generate" });
 
-      workflowData = extractJson(raw);
+      workflowData = extractJson(wfAiResult.text);
       if (workflowData && workflowData.steps && Array.isArray(workflowData.steps)) break;
       workflowData = null;
     }

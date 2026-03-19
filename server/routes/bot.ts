@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { messages } from "@shared/schema";
 import { storage } from "../storage";
 import { z } from "zod";
-import { aiChat, aiChatStream, aiChatWithToolsStream, isAIConfigured } from "../ai";
+import { aiChat, aiChatStream, aiChatWithToolsStream, isAIConfigured } from "../aiGateway";
 import { geminiGenerateImage } from "../gemini";
 import { streamAIResponse, sendSSEData, initSSE } from "../streaming";
 import { asyncHandler, parseIntParam, logUsageInternal, getIndustryContext, getLanguageInstruction } from "./helpers";
@@ -73,7 +73,8 @@ export function registerBotRoutes(app: Express) {
 
     messages.push({ role: "user", content: parsed.data.message });
 
-    const reply = await aiChat(messages as any, { temperature: 0.7, maxTokens: 1024 }) || "I'm here to help! Could you tell me more?";
+    const botChatResult = await aiChat(messages, { temperature: 0.7, maxTokens: 1024, route: "bot-chat" });
+    const reply = botChatResult.text || "I'm here to help! Could you tell me more?";
 
     await logUsageInternal(null, "AI_CHAT", 1, "Bot trainer chat");
 
@@ -111,7 +112,7 @@ export function registerBotRoutes(app: Express) {
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      const stream = aiChatStream(messages as any, { temperature: 0.7, maxTokens: 1024 });
+      const stream = aiChatStream(messages, { temperature: 0.7, maxTokens: 1024, route: "bot-chat-stream" });
       for await (const chunk of stream) {
         res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
       }
@@ -280,7 +281,7 @@ export function registerBotRoutes(app: Express) {
         clearInterval(keepalive);
       });
 
-      const stream = aiChatWithToolsStream(chatMessages as any, { temperature: 0.7, maxTokens: 16384 });
+      const stream = aiChatWithToolsStream(chatMessages, { temperature: 0.7, maxTokens: 16384, route: "bot-agent-stream" });
       
       function extractBalancedJSON(text: string, startPos: number): { json: string; endPos: number } | null {
         let braceCount = 0;
@@ -562,13 +563,13 @@ ${job.persona}
 
 Generate ONLY the system prompt text, no explanations:`;
 
-        const personaResult = await aiChat(
+        const personaAiResult = await aiChat(
           [{ role: "user", content: personaPrompt }],
-          { temperature: 0.5, maxTokens: 1024 }
+          { temperature: 0.5, maxTokens: 1024, route: "bot-train-persona" }
         );
 
-        if (personaResult && personaResult.length > 20) {
-          generatedPersona = personaResult;
+        if (personaAiResult.text && personaAiResult.text.length > 20) {
+          generatedPersona = personaAiResult.text;
           await updateJob("AI persona generated successfully", 85);
         }
       } catch (aiErr: any) {

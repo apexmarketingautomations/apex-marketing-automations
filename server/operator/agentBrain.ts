@@ -1,4 +1,4 @@
-import { aiChat, isAIConfigured, isAIAvailable } from "../ai";
+import { aiChat, isAIConfigured } from "../aiGateway";
 import { db } from "../db";
 import { agentTasks, agentBriefings } from "@shared/schema";
 import { eq, and, desc, sql, gte } from "drizzle-orm";
@@ -107,8 +107,8 @@ export async function generateAITaskPlan(
   subAccountId: number,
   context: ContextPacket
 ): Promise<AITaskSuggestion[]> {
-  if (!isAIAvailable()) {
-    console.log(`[AGENT-BRAIN] Skipping AI task plan for account #${subAccountId} — AI unavailable`);
+  if (!isAIConfigured()) {
+    console.log(`[AGENT-BRAIN] Skipping AI task plan for account #${subAccountId} — AI not configured`);
     return [];
   }
 
@@ -158,18 +158,19 @@ ${toolNames}
 
 Based on this data, what tasks should the autonomous agent execute? Return a JSON array of task suggestions. If the account is in good shape, return [].`;
 
-    const response = await aiChat([
+    const taskPlanAiResult = await aiChat([
       { role: "system", content: AI_TASK_SYSTEM_PROMPT },
       { role: "user", content: userPrompt },
     ], {
       temperature: 0.3,
       maxTokens: 2048,
       jsonMode: true,
+      route: "agent-brain-task-plan",
     });
 
     let suggestions: AITaskSuggestion[] = [];
     try 
-    {const normalized = (response || "").trim();
+    {const normalized = (taskPlanAiResult.text || "").trim();
       if (!normalized) {
         console.error("[AGENT-BRAIN] Empty AI response");
         return [];
@@ -187,7 +188,7 @@ Based on this data, what tasks should the autonomous agent execute? Return a JSO
     } catch (err) {
       console.error("[AGENT-BRAIN] Failed to parse AI response", {
         err,
-        responseSnippet: (response || "").slice(0, 500),
+        responseSnippet: (taskPlanAiResult?.text || "").slice(0, 500),
       });
       return [];
     }
@@ -266,7 +267,7 @@ export async function generateBriefing(subAccountId: number): Promise<{
 
   let summary: string;
 
-  if (isAIAvailable() && tasksSinceLast.length > 0) {
+  if (isAIConfigured() && tasksSinceLast.length > 0) {
     try {
       const context = await buildContext(subAccountId);
       const promptContext = buildPromptContext(context);
@@ -291,10 +292,11 @@ Write a 3-5 sentence executive briefing. Be direct and specific:
 Use confident, professional language. Address them as "your" (your account, your leads, etc).
 Do NOT use bullet points or markdown. Write flowing prose.`;
 
-      summary = await aiChat([
+      const briefingAiResult = await aiChat([
         { role: "system", content: "You write concise, impactful executive briefings. No fluff, no filler." },
         { role: "user", content: briefingPrompt },
-      ], { temperature: 0.4, maxTokens: 500 });
+      ], { temperature: 0.4, maxTokens: 500, route: "agent-brain-briefing" });
+      summary = briefingAiResult.text;
     } catch {
       summary = `Your agent completed ${completed.length} task${completed.length !== 1 ? "s" : ""} and encountered ${failed.length} issue${failed.length !== 1 ? "s" : ""} while you were away.`;
     }

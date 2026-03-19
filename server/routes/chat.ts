@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { deals, appointments, messages } from "@shared/schema";
 import { z } from "zod";
-import { aiChat, aiChatStream, isAIConfigured } from "../ai";
+import { aiChat, aiChatStream, isAIConfigured } from "../aiGateway";
 import { asyncHandler, logUsageInternal, getIndustryContext, getLanguageInstruction } from "./helpers";
 
 export function registerChatRoutes(app: Express) {
@@ -100,7 +100,8 @@ export function registerChatRoutes(app: Express) {
     }
     chatMessages.push({ role: "user", content: message });
 
-    const reply = await aiChat(chatMessages, { temperature: 0.8, maxTokens: 1024 }) || "Great question! Check out our plans at /pricing to see everything Apex can do for your business.";
+    const result = await aiChat(chatMessages, { temperature: 0.8, maxTokens: 1024, route: "sales-chat" });
+    const reply = result.text || "Great question! Check out our plans at /pricing to see everything Apex can do for your business.";
     await logUsageInternal(null, "AI_CHAT", 1, "Sales chatbot response");
     res.json({ reply });
   }));
@@ -130,7 +131,8 @@ export function registerChatRoutes(app: Express) {
 
     chatMessages.push({ role: "user", content: parsed.data.message });
 
-    const reply = await aiChat(chatMessages as any, { temperature: 0.7, maxTokens: 1024 }) || "I'm here to help! Could you tell me more about what you're looking for?";
+    const result = await aiChat(chatMessages, { temperature: 0.7, maxTokens: 1024, route: "chat-widget" });
+    const reply = result.text || "I'm here to help! Could you tell me more about what you're looking for?";
 
     await logUsageInternal(null, "AI_CHAT", 1, "Chat widget AI response");
 
@@ -167,7 +169,7 @@ export function registerChatRoutes(app: Express) {
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      const stream = aiChatStream(chatMessages as any, { temperature: 0.7, maxTokens: 1024 });
+      const stream = aiChatStream(chatMessages, { temperature: 0.7, maxTokens: 1024, route: "chat-widget-stream" });
       for await (const chunk of stream) {
         res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
       }

@@ -1,5 +1,5 @@
 import type { Response } from "express";
-import { aiChatStream } from "./ai";
+import { aiChatStream } from "./aiGateway";
 
 interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -52,7 +52,7 @@ export async function streamAIResponse(
   });
 
   try {
-    const stream = aiChatStream(messages, { temperature, maxTokens });
+    const stream = aiChatStream(messages, { temperature, maxTokens, route: "streaming-gemini-response" });
     for await (const chunk of stream) {
       if (closed) break;
       fullText += chunk;

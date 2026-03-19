@@ -471,7 +471,7 @@ function validateEnvVars() {
   const { like: vapiLike, and: vapiAnd } = await import("drizzle-orm");
   const { getTwilioClient } = await import("./routes/helpers");
   const { storage: vapiStorage } = await import("./storage");
-  const { geminiChat: vapiGeminiChat, isGeminiConfigured: vapiIsGeminiConfigured } = await import("./gemini");
+  const { aiChat: vapiAiChat, isAIConfigured: vapiIsAIConfigured } = await import("./aiGateway");
 
   const VAPI_ASSISTANT_ID = "e30434f7-e7e0-4be7-8b89-40c384a52b4a";
   const VAPI_SERVER_URL = "https://apexmarketingautomations.com/api/vapi/webhook";
@@ -528,44 +528,18 @@ function validateEnvVars() {
     const systemPrompt = "You are a helpful business receptionist. Keep text replies under 160 characters. Be warm, professional, and concise. If someone wants to book an appointment, suggest they call the office number.";
     const staticFallback = "Thanks for your message! We'll get back to you shortly.";
 
-    const openaiApiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-    const openaiBaseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
-    if (openaiApiKey) {
+    if (vapiIsAIConfigured()) {
       try {
-        const OpenAI = (await import("openai")).default;
-        const openaiClient = new OpenAI({ apiKey: openaiApiKey, baseURL: openaiBaseUrl });
-        const completion = await openaiClient.chat.completions.create({
-          model: "gpt-4o-mini",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: messageBody.substring(0, 1000) },
-          ],
-          max_tokens: 200,
-          temperature: 0.7,
-        });
-        const reply = completion.choices[0]?.message?.content?.trim();
-        if (reply) {
-          console.log("[VAPI SMS] AI reply generated via OpenAI");
-          recordPulseSuccess("openai");
-          return reply;
-        }
-      } catch (openaiErr: any) {
-        console.warn("[VAPI SMS] OpenAI failed, falling back to Gemini:", openaiErr?.message);
-      }
-    }
-
-    if (vapiIsGeminiConfigured()) {
-      try {
-        const geminiReply = await vapiGeminiChat([
+        const aiResult = await vapiAiChat([
           { role: "system", content: systemPrompt },
           { role: "user", content: messageBody.substring(0, 1000) },
-        ], { temperature: 0.7, maxTokens: 200 });
-        if (geminiReply) {
-          console.log("[VAPI SMS] AI reply generated via Gemini");
-          return geminiReply;
+        ], { temperature: 0.7, maxTokens: 200, route: "vapi-sms-reply" });
+        if (aiResult.text) {
+          console.log(`[VAPI SMS] AI reply generated via ${aiResult.provider}`);
+          return aiResult.text;
         }
-      } catch (geminiErr: any) {
-        console.warn("[VAPI SMS] Gemini failed, using static fallback:", geminiErr?.message);
+      } catch (aiErr: any) {
+        console.warn("[VAPI SMS] AI gateway failed, using static fallback:", aiErr?.message);
       }
     }
 

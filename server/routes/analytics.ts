@@ -3,7 +3,7 @@ import { contacts, deals, messages, subAccounts, sentinelIncidents, propertyLead
 import { db } from "../db";
 import { storage } from "../storage";
 import { z } from "zod";
-import { isAIConfigured } from "../ai";
+import { isAIConfigured } from "../aiGateway";
 import { ProgressStream } from "../streaming";
 import {  } from "../eventBus";
 import { eventBus } from "../eventBus";

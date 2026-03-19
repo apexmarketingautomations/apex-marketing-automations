@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { contacts, deals, messages } from "@shared/schema";
 import { storage } from "../storage";
 import { z } from "zod";
-import { aiChat, isAIConfigured } from "../ai";
+import { aiChat, isAIConfigured } from "../aiGateway";
 import { ProgressStream } from "../streaming";
 import { processLiveSentinelFeed, deployGeofenceAd } from "../sentinel";
 import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, logUsageInternal } from "./helpers";
@@ -348,12 +348,12 @@ export function registerV1Routes(app: Express) {
       }
     }
 
-    const raw = await aiChat([
+    const aiResult = await aiChat([
       { role: "system", content: COMPILER_AI_SYSTEM_PROMPT },
       { role: "user", content: parsed.data.prompt + contextPrompt + siteState },
-    ], { temperature: 0.7, maxTokens: 4096, jsonMode: true });
+    ], { temperature: 0.7, maxTokens: 4096, jsonMode: true, route: "v1-compiler-generate" });
 
-    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const cleaned = aiResult.text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     let manifestData: any;
     try {
@@ -431,12 +431,12 @@ export function registerV1Routes(app: Express) {
 
   Return as JSON: { "summary": "...", "gaps": [...], "recommendations": [...manifest objects...], "optimizations": [...] }`;
 
-    const raw = await aiChat([
+    const aiResult2 = await aiChat([
       { role: "system", content: "You are an expert marketing automation consultant. Analyze business automation setups and provide actionable recommendations. Return JSON only." },
       { role: "user", content: analysisPrompt },
-    ], { temperature: 0.6, maxTokens: 4096, jsonMode: true });
+    ], { temperature: 0.6, maxTokens: 4096, jsonMode: true, route: "v1-compiler-analyze" });
 
-    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const cleaned = aiResult2.text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     let analysis: any;
     try {
       analysis = JSON.parse(cleaned);
@@ -549,11 +549,11 @@ export function registerV1Routes(app: Express) {
         case "generate_landing_page": {
           if (!isAIConfigured()) throw new Error("AI not configured");
           const sitePrompt = args.prompt || "Professional business landing page";
-          const raw = await aiChat([
+          const lpResult = await aiChat([
             { role: "system", content: "Generate a JSON site structure with sections: hero, features, testimonials, cta. Return valid JSON." },
             { role: "user", content: sitePrompt },
-          ], { temperature: 0.7, maxTokens: 4096, jsonMode: true });
-          const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+          ], { temperature: 0.7, maxTokens: 4096, jsonMode: true, route: "v1-generate-landing-page" });
+          const cleaned = lpResult.text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
           let siteData;
           try { siteData = JSON.parse(cleaned); } catch { siteData = { raw: cleaned }; }
           result = { generated: true, siteData };
@@ -712,7 +712,7 @@ export function registerV1Routes(app: Express) {
 
     const toolList = AI_TOOLS.map(t => `- ${t.name}: ${t.description} (inputs: ${JSON.stringify(t.inputSchema)})`).join("\n");
 
-    const raw = await aiChat([
+    const aiExecuteResult = await aiChat([
       { role: "system", content: `You are an AI that translates natural language commands into tool executions.
 
   Available tools:
@@ -724,9 +724,9 @@ export function registerV1Routes(app: Express) {
 
   Return ONLY valid JSON.` },
       { role: "user", content: parsed.data.command },
-    ], { temperature: 0.3, maxTokens: 4096, jsonMode: true });
+    ], { temperature: 0.3, maxTokens: 4096, jsonMode: true, route: "v1-tools-ai-execute" });
 
-    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const cleaned = aiExecuteResult.text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     let plan: any;
     try {
       plan = JSON.parse(cleaned);
@@ -940,11 +940,11 @@ export function registerV1Routes(app: Express) {
 
         case "generate_site": {
           if (!isAIConfigured()) throw new Error("AI not configured");
-          const siteRaw = await aiChat([
+          const genSiteResult = await aiChat([
             { role: "system", content: "Generate a JSON site structure with sections: hero, features, testimonials, cta. Return valid JSON." },
             { role: "user", content: payload.prompt || "Professional business landing page" },
-          ], { temperature: 0.7, maxTokens: 4096, jsonMode: true });
-          const cleaned = siteRaw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+          ], { temperature: 0.7, maxTokens: 4096, jsonMode: true, route: "v1-orchestrate-generate-site" });
+          const cleaned = genSiteResult.text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
           let siteData;
           try { siteData = JSON.parse(cleaned); } catch { siteData = { raw: cleaned }; }
           result = { status: "Success", message: "Site Generated", siteData };
@@ -1195,7 +1195,7 @@ export function registerV1Routes(app: Express) {
     const orchestrateActions = ORCHESTRATE_ACTIONS.join(", ");
     const toolList = AI_TOOLS.map(t => `- ${t.name}: ${t.description}`).join("\n");
 
-    const raw = await aiChat([
+    const orchestrateAiResult = await aiChat([
       { role: "system", content: `You are the Apex OS Architect. You orchestrate the Apex Marketing Automations ecosystem by issuing commands to the backend API.
 
   RULES OF ENGAGEMENT:
@@ -1233,9 +1233,9 @@ export function registerV1Routes(app: Express) {
 
   Return ONLY valid JSON.` },
       { role: "user", content: command },
-    ], { temperature: 0.3, maxTokens: 4096, jsonMode: true });
+    ], { temperature: 0.3, maxTokens: 4096, jsonMode: true, route: "v1-orchestrate-ai" });
 
-    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const cleaned = orchestrateAiResult.text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     let plan: any;
     try {
       plan = JSON.parse(cleaned);
@@ -1324,7 +1324,7 @@ export function registerV1Routes(app: Express) {
       const orchestrateActions = ORCHESTRATE_ACTIONS.join(", ");
       const toolList = AI_TOOLS.map(t => `- ${t.name}: ${t.description}`).join("\n");
 
-      const raw = await aiChat([
+      const orchestrateStreamResult = await aiChat([
         { role: "system", content: `You are the Apex OS Architect. You orchestrate the Apex Marketing Automations ecosystem by issuing commands to the backend API.
 
   RULES OF ENGAGEMENT:
@@ -1362,9 +1362,9 @@ export function registerV1Routes(app: Express) {
 
   Return ONLY valid JSON.` },
         { role: "user", content: command },
-      ], { temperature: 0.3, maxTokens: 4096, jsonMode: true });
+      ], { temperature: 0.3, maxTokens: 4096, jsonMode: true, route: "v1-orchestrate-ai-stream" });
 
-      const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      const cleaned = orchestrateStreamResult.text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
       let plan: any;
       try {
         plan = JSON.parse(cleaned);

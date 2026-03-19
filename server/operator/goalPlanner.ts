@@ -1,7 +1,7 @@
 import { db } from "../db";
 import { operatorGoals, operatorPlans, operatorPlanSteps, operatorStepDependencies } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { aiChat, isAIConfigured, isAIAvailable } from "../ai";
+import { aiChat, isAIConfigured } from "../aiGateway";
 import { PLAN_GENERATION_SYSTEM_PROMPT, PLAN_GENERATION_USER_TEMPLATE, REPLAN_SYSTEM_PROMPT, REPLAN_USER_TEMPLATE } from "./goalPrompts";
 import { GOAL_TYPES } from "./goalTypes";
 import { storage } from "../storage";
@@ -28,8 +28,8 @@ interface PlanOutput {
 }
 
 export async function generatePlan(goal: OperatorGoal, pastExperiences: string = ""): Promise<number | null> {
-  if (!isAIAvailable()) {
-    console.log("[GOAL-PLANNER] AI unavailable (not configured or rate-limited), cannot generate plan");
+  if (!isAIConfigured()) {
+    console.log("[GOAL-PLANNER] AI unavailable (not configured), cannot generate plan");
     return null;
   }
 
@@ -78,7 +78,7 @@ export async function generatePlan(goal: OperatorGoal, pastExperiences: string =
 }
 
 export async function generateReplan(goal: OperatorGoal, currentPlanId: number, pastExperiences: string = ""): Promise<number | null> {
-  if (!isAIAvailable()) return null;
+  if (!isAIConfigured()) return null;
 
   const currentPlan = await db.select().from(operatorPlans).where(eq(operatorPlans.id, currentPlanId)).then(r => r[0]);
   if (!currentPlan) return null;
@@ -121,16 +121,16 @@ export async function generateReplan(goal: OperatorGoal, currentPlanId: number, 
 
 async function callGeminiForPlan(systemPrompt: string, userPrompt: string): Promise<PlanOutput | null> {
   try {
-    const result = await aiChat(
+    const planAiResult = await aiChat(
       [
         { role: "user", content: systemPrompt + "\n\n" + userPrompt },
       ],
-      { temperature: 0.3, maxTokens: 4096, jsonMode: true }
+      { temperature: 0.3, maxTokens: 4096, jsonMode: true, route: "goal-planner-plan" }
     );
 
-    if (!result) return null;
+    if (!planAiResult.text) return null;
 
-    const cleaned = result.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+    const cleaned = planAiResult.text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
     const parsed = JSON.parse(cleaned) as PlanOutput;
 
     if (!parsed.steps || !Array.isArray(parsed.steps) || parsed.steps.length === 0) {

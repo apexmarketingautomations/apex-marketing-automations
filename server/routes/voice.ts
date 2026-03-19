@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { messages, vapiCallLogs } from "@shared/schema";
 import { storage } from "../storage";
 import { z } from "zod";
-import { aiChat, isAIConfigured } from "../ai";
+import { aiChat, isAIConfigured } from "../aiGateway";
 import { asyncHandler, getIndustryContext, getTwilioClient, vapiConfig } from "./helpers";
 import { recordSuccess } from "../pulse";
 import { db } from "../db";
@@ -584,14 +584,14 @@ export function registerVoiceRoutes(app: Express) {
   - First message should sound warm and natural, not robotic
   - Return ONLY valid JSON, no markdown or code fences`;
 
-    const raw = await aiChat([
+    const voicePersonaAiResult = await aiChat([
       {
         role: "system",
         content: voicePersonaBasePrompt + getIndustryContext(parsed.data.industry),
       },
       { role: "user", content: parsed.data.businessDescription },
-    ], { temperature: 0.7, maxTokens: 4096, jsonMode: true });
-    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    ], { temperature: 0.7, maxTokens: 4096, jsonMode: true, route: "voice-generate-persona" });
+    const cleaned = voicePersonaAiResult.text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     let data: any;
     try {

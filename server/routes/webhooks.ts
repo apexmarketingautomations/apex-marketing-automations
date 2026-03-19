@@ -4,7 +4,7 @@ import { sql, eq, and, or } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { z } from "zod";
-import { aiChat, isAIConfigured } from "../ai";
+import { aiChat, isAIConfigured } from "../aiGateway";
 import { ProgressStream } from "../streaming";
 import crypto from "crypto";
 import { asyncHandler, getUserId, requireAdmin, getIndustryContext, getLanguageInstruction, getTwilioClient, vapiConfig } from "./helpers";
@@ -171,19 +171,19 @@ export function registerWebhooksRoutes(app: Express) {
             : "You are a helpful business assistant responding via chat. Keep replies conversational and under 300 characters. Be warm, professional, and helpful. If someone wants to book an appointment, suggest they call the office number.";
           const systemPrompt = baseSystemPrompt + getIndustryContext(smsIndustry) + getLanguageInstruction(smsLanguage);
 
-          const geminiReply = await aiChat([
+          const smsAiResult = await aiChat([
             { role: "system", content: systemPrompt },
             { role: "user", content: incomingMsg.substring(0, 1000) },
-          ], { temperature: 0.7, maxTokens: 1024 });
-          aiReply = geminiReply || aiReply;
+          ], { temperature: 0.7, maxTokens: 1024, route: "webhook-sms-reply" });
+          aiReply = smsAiResult.text || aiReply;
           recordStepValue(trace, "ai_response_generated", "success", Date.now() - aiStart, {
-            provider: "gemini",
+            provider: "ai",
             metadata: { replyLength: aiReply.length },
           });
         } catch (aiErr: any) {
           console.error("AI reply error:", aiErr.message);
           recordStepValue(trace, "ai_response_generated", "error", Date.now() - aiStart, {
-            provider: "gemini",
+            provider: "ai",
             error: aiErr.message,
           });
         }
@@ -844,10 +844,11 @@ export function registerWebhooksRoutes(app: Express) {
                   systemPrompt += ` The business is in the ${targetAccount.industry} industry.`;
                 }
 
-                const aiReply = await aiChat([
+                const metaDmAiResult = await aiChat([
                   { role: "system", content: systemPrompt },
                   { role: "user", content: message.substring(0, 1000) },
-                ], { temperature: 0.7, maxTokens: 1024 });
+                ], { temperature: 0.7, maxTokens: 1024, route: "webhook-meta-dm-reply" });
+                const aiReply = metaDmAiResult.text;
 
                 if (aiReply && (!accessToken || !pageId)) {
                   console.warn(`[META DM] AI reply generated but cannot send to ${senderId}: META_ACCESS_TOKEN or META_PAGE_ID not configured.`);
@@ -1127,11 +1128,11 @@ export function registerWebhooksRoutes(app: Express) {
         let parsed: any = null;
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
-            const raw = await aiChat([
+            const godSiteAiResult = await aiChat([
               { role: "system", content: SITE_SYSTEM_PROMPT },
               { role: "user", content: attempt === 0 ? godModePrompt : godModePrompt + "\n\nIMPORTANT: Return ONLY valid JSON." },
-            ], { temperature: attempt === 0 ? 0.7 : 0.3, maxTokens: 4096, jsonMode: true });
-            let cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+            ], { temperature: attempt === 0 ? 0.7 : 0.3, maxTokens: 4096, jsonMode: true, route: "webhook-god-mode-site" });
+            let cleaned = godSiteAiResult.text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
             const fb = cleaned.indexOf("{"); const lb = cleaned.lastIndexOf("}");
             if (fb !== -1 && lb > fb) cleaned = cleaned.substring(fb, lb + 1);
             cleaned = cleaned.replace(/,\s*([}\]])/g, "$1");
@@ -1306,11 +1307,11 @@ export function registerWebhooksRoutes(app: Express) {
           let siteParsed: any = null;
           for (let attempt = 0; attempt < 2; attempt++) {
             try {
-              const raw = await aiChat([
+              const godSiteStreamAiResult = await aiChat([
                 { role: "system", content: SITE_SYSTEM_PROMPT },
                 { role: "user", content: attempt === 0 ? godModePrompt : godModePrompt + "\n\nIMPORTANT: Return ONLY valid JSON." },
-              ], { temperature: attempt === 0 ? 0.7 : 0.3, maxTokens: 4096, jsonMode: true });
-              let cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+              ], { temperature: attempt === 0 ? 0.7 : 0.3, maxTokens: 4096, jsonMode: true, route: "webhook-god-mode-site-stream" });
+              let cleaned = godSiteStreamAiResult.text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
               const fb = cleaned.indexOf("{"); const lb = cleaned.lastIndexOf("}");
               if (fb !== -1 && lb > fb) cleaned = cleaned.substring(fb, lb + 1);
               cleaned = cleaned.replace(/,\s*([}\]])/g, "$1");

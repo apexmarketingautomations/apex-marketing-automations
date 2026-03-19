@@ -8,7 +8,7 @@ import { generateNudges } from "./nudgeSystem";
 import { publishEventAsync } from "../eventBus";
 import { generateAITaskPlan, generateBriefing, recordTaskOutcomeAsMemory } from "./agentBrain";
 import { dispatchAlert, generateDeepLink } from "../pushAlertService";
-import { isAIConfigured, isAIAvailable } from "../ai";
+import { isAIConfigured } from "../aiGateway";
 import { advanceGoalsForAccount } from "./goalEngine";
 import type { ContextPacket } from "./cognitiveTypes";
 
@@ -347,7 +347,7 @@ async function scanAccount(subAccountId: number): Promise<void> {
     const ruleDefs = getAutoTaskDefinitions(context);
     allDefs.push(...ruleDefs.filter(d => d.condition(context)));
 
-    if (isAIAvailable()) {
+    if (isAIConfigured()) {
       try {
         const aiSuggestions = await generateAITaskPlan(subAccountId, context);
         for (const s of aiSuggestions) {

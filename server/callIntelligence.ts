@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { vapiCallLogs } from "@shared/schema";
 import { eq, isNotNull, sql, desc } from "drizzle-orm";
-import { aiChat, isAIAvailable } from "./ai";
+import { aiChat, isAIConfigured } from "./aiGateway";
 import { vapiConfig } from "./routes/helpers";
 
 const OUTBOUND_SPECIALIST_ID = "e30434f7-e7e0-4be7-8b89-40c384a52b4a";
@@ -108,7 +108,7 @@ Rules:
 - Return ONLY valid JSON, no markdown, no explanation.`;
 
 export async function analyzeCallTranscript(callId: number): Promise<CallAnalysis | null> {
-  if (!isAIAvailable()) {
+  if (!isAIConfigured()) {
     console.log("[CALL-INTEL] AI unavailable, skipping analysis");
     return null;
   }
@@ -128,11 +128,12 @@ export async function analyzeCallTranscript(callId: number): Promise<CallAnalysi
   }
 
   try {
-    console.log(`[CALL-INTEL] Sending call ${callId} (${call.transcript.length} chars) to AI...`);
-    const result = await aiChat([
+    console.log(`[CALL-INTEL] Sending call ${callId} (${call.transcript.length} chars) to AI gateway...`);
+    const callAiResult = await aiChat([
       { role: "system", content: ANALYSIS_PROMPT },
       { role: "user", content: `TRANSCRIPT:\n${call.transcript}\n\nENDED REASON: ${call.endedReason || "unknown"}\nDURATION: ${call.duration || 0} seconds\nSUMMARY: ${call.summary || "none"}` },
-    ], { temperature: 0.2, maxTokens: 8192, jsonMode: true });
+    ], { temperature: 0.2, maxTokens: 8192, jsonMode: true, route: "call-intel-analysis" });
+    const result = callAiResult.text;
 
     console.log(`[CALL-INTEL] AI response for call ${callId}: ${result.length} chars`);
 

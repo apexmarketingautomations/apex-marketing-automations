@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { insertSavedSiteSchema, reviews } from "@shared/schema";
 import { storage } from "../storage";
 import { z } from "zod";
-import { aiChat, isAIConfigured } from "../ai";
+import { aiChat, isAIConfigured } from "../aiGateway";
 import express from "express";
 import { asyncHandler, parseIntParam, logUsageInternal } from "./helpers";
 
@@ -228,11 +228,11 @@ export function registerSitesRoutes(app: Express) {
     let lastError: string = "";
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const raw = await aiChat([
+        const siteAiResult = await aiChat([
           { role: "system", content: SITE_SYSTEM_PROMPT },
           { role: "user", content: attempt === 0 ? userMessage : userMessage + "\n\nIMPORTANT: Return ONLY valid JSON. No markdown, no explanation, no text before or after the JSON object." },
-        ], { temperature: attempt === 0 ? 0.7 : 0.3, maxTokens: 4096, jsonMode: true });
-        siteData = extractJson(raw);
+        ], { temperature: attempt === 0 ? 0.7 : 0.3, maxTokens: 4096, jsonMode: true, route: "generate-site" });
+        siteData = extractJson(siteAiResult.text);
         break;
       } catch (e: any) {
         lastError = e.message || "JSON parse failed";
@@ -537,11 +537,11 @@ export function registerSitesRoutes(app: Express) {
       visitorDescription += `\n\nGenerate a personalized premium service landing page for this specific visitor. Make it feel tailor-made.`;
     }
 
-    const raw = await aiChat([
+    const liquidAiResult = await aiChat([
       { role: "system", content: LIQUID_SYSTEM_PROMPT },
       { role: "user", content: visitorDescription },
-    ], { temperature: 0.8, maxTokens: 4096, jsonMode: true });
-    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    ], { temperature: 0.8, maxTokens: 4096, jsonMode: true, route: "liquid-site-gen" });
+    const cleaned = liquidAiResult.text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     let siteData: any;
     try {

@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { webhooks } from "@shared/schema";
 import { storage } from "../storage";
-import { isAIConfigured } from "../ai";
+import { isAIConfigured } from "../aiGateway";
 import express from "express";
 import crypto from "crypto";
 import { getValidToken, revokeToken, checkTokenHealth } from "../tokenService";

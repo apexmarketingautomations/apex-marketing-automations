@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
-import { aiChat, isAIConfigured } from "../ai";
+import { aiChat, isAIConfigured } from "../aiGateway";
 import { asyncHandler } from "./helpers";
 
 export function registerBlueprintsRoutes(app: Express) {
@@ -28,7 +28,7 @@ export function registerBlueprintsRoutes(app: Express) {
 
       const industryLabel = industryId.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 
-      const raw = await aiChat([
+      const aiResult = await aiChat([
         {
           role: "system",
           content: `You are a CRM configuration expert. Generate a complete CRM blueprint for a specific industry. Return ONLY valid JSON with no markdown or code fences.
@@ -51,8 +51,8 @@ export function registerBlueprintsRoutes(app: Express) {
           role: "user",
           content: `Generate a CRM blueprint for: ${industryLabel}`
         }
-      ], { temperature: 0.7, jsonMode: true });
-      const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+      ], { temperature: 0.7, jsonMode: true, route: "blueprint-gen" });
+      const cleaned = aiResult.text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
 
       try {
         const parsed = JSON.parse(cleaned);

@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { aiChat, isAIConfigured } from "../ai";
+import { aiChat, isAIConfigured } from "../aiGateway";
 import { geminiGenerateImage } from "../gemini";
 import { asyncHandler, logUsageInternal } from "./helpers";
 
@@ -51,11 +51,11 @@ export function registerAdsRoutes(app: Express) {
     const parsed = promptSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-    const raw = await aiChat([
+    const aiResult = await aiChat([
       { role: "system", content: AD_CAMPAIGN_SYSTEM_PROMPT },
       { role: "user", content: parsed.data.prompt },
-    ], { temperature: 0.7, maxTokens: 4096, jsonMode: true });
-    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    ], { temperature: 0.7, maxTokens: 4096, jsonMode: true, route: "ad-campaign-gen" });
+    const cleaned = aiResult.text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     let campaign: any;
     try {

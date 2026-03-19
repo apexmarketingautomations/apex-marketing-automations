@@ -2,7 +2,7 @@ import { db } from "../db";
 import { workflowStepMetrics, workflowOptimizationLogs, workflows } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
 import { storage } from "../storage";
-import { aiChat, isAIConfigured, isAIAvailable } from "../ai";
+import { aiChat, isAIConfigured } from "../aiGateway";
 import type { WorkflowStepMetric, WorkflowOptimizationLog } from "@shared/schema";
 
 export interface StepAnalytics {
@@ -201,7 +201,7 @@ function generateRuleBasedSuggestions(analytics: StepAnalytics[], steps: any[]):
 }
 
 export async function generateAISuggestions(workflowId: number): Promise<OptimizationSuggestion[]> {
-  if (!isAIAvailable()) return [];
+  if (!isAIConfigured()) return [];
 
   const analytics = await getWorkflowFunnelAnalytics(workflowId);
   if (!analytics || analytics.totalExecutions < 5) return [];
@@ -221,12 +221,12 @@ Bottleneck Steps: ${analytics.bottleneckSteps.map(i => `Step ${i + 1}`).join(', 
 Provide 1-3 specific, actionable optimization suggestions. Return JSON array:
 [{ "stepIndex": 0, "stepType": "SMS", "issue": "...", "suggestion": "...", "priority": 80, "category": "timing|messaging|channel|general" }]`;
 
-    const response = await aiChat([
+    const wfOptimizeAiResult = await aiChat([
       { role: "system", content: "You are a workflow optimization expert. Analyze performance metrics and suggest specific improvements. Return JSON only." },
       { role: "user", content: prompt },
-    ], { temperature: 0.3, maxTokens: 1024, jsonMode: true });
+    ], { temperature: 0.3, maxTokens: 1024, jsonMode: true, route: "workflow-analytics-ai-suggestions" });
 
-    const cleaned = response.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const cleaned = wfOptimizeAiResult.text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     const parsed = JSON.parse(cleaned);
     return (Array.isArray(parsed) ? parsed : parsed.suggestions || []).slice(0, 3);
   } catch {
