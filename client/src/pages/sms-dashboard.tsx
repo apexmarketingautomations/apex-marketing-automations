@@ -456,7 +456,7 @@ export default function SmsDashboard() {
                           className={`rounded-2xl px-4 py-3 shadow-sm ${
                             msg.direction === 'outbound'
                               ? 'bg-primary text-primary-foreground rounded-br-none'
-                              : 'bg-card border border-border text-card-foreground rounded-bl-none'
+                              : 'bg-[#2a2a3d] border border-[#3a3a4d] text-white rounded-bl-none'
                           }`}
                         >
                           <p className="text-sm leading-relaxed">{msg.body}</p>
