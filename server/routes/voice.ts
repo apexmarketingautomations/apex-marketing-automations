@@ -1,9 +1,11 @@
 import type { Express, Request, Response } from "express";
-import { messages } from "@shared/schema";
+import { messages, vapiCallLogs } from "@shared/schema";
 import { storage } from "../storage";
 import { z } from "zod";
 import { geminiChat, isGeminiConfigured } from "../gemini";
 import { asyncHandler, getIndustryContext, getTwilioClient, vapiConfig } from "./helpers";
+import { db } from "../db";
+import { eq } from "drizzle-orm";
 
 export function registerVoiceRoutes(app: Express) {
   // ---- Voice Agent (Vapi Integration) ----
@@ -767,5 +769,10 @@ export function registerVoiceRoutes(app: Express) {
     const response: any = { numbers: phoneList };
     if (vapiWarning) response.vapiWarning = vapiWarning;
     res.json(response);
+  }));
+
+  app.get("/api/vapi/call-logs", asyncHandler(async (req, res) => {
+    const logs = await db.select().from(vapiCallLogs).orderBy(vapiCallLogs.id).limit(100);
+    res.json(logs);
   }));
 }

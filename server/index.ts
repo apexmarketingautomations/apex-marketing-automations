@@ -422,6 +422,68 @@ function validateEnvVars() {
     console.error("[STARTUP] Operator init failed (non-fatal):", opErr);
   }
 
+  const { vapiCallLogs } = await import("@shared/schema");
+  const { db: vapiDb } = await import("./db");
+  const { eq: vapiEq } = await import("drizzle-orm");
+  const { vapiConfig: vapiCfg } = await import("./routes/helpers");
+
+  app.post("/api/vapi/webhook", async (req, res) => {
+    try {
+      const msgType = req.body?.message?.type;
+      if (msgType === "end-of-call-report") {
+        const call = req.body.message;
+        const transcript = call.transcript || call.artifact?.transcript || "";
+        const summary = call.summary || call.artifact?.summary || "";
+        const recordingUrl = call.recordingUrl || call.artifact?.recordingUrl || "";
+        const startedAt = call.startedAt ? new Date(call.startedAt) : null;
+        const endedAt = call.endedAt ? new Date(call.endedAt) : null;
+        const duration = startedAt && endedAt ? Math.round((endedAt.getTime() - startedAt.getTime()) / 1000) : call.duration || null;
+        const callId = call.call?.id;
+        if (callId) {
+          const existing = await vapiDb.select().from(vapiCallLogs).where(vapiEq(vapiCallLogs.vapiCallId, callId)).limit(1);
+          if (existing.length === 0) {
+            await vapiDb.insert(vapiCallLogs).values({
+              vapiCallId: callId, assistantId: call.call.assistantId || null, assistantName: call.assistant?.name || null,
+              customerNumber: call.call.customer?.number || null, type: call.call.type || null, status: call.call.status || "ended",
+              startedAt, endedAt, duration, cost: call.cost || null, transcript, summary, recordingUrl, endedReason: call.endedReason || null, analysis: null,
+            });
+            console.log(`[VAPI WEBHOOK] Stored call log: ${callId}`);
+          }
+        }
+      }
+      res.json({ ok: true });
+    } catch (err) { console.error("[VAPI WEBHOOK] Error:", err); res.json({ ok: true }); }
+  });
+
+  app.post("/api/vapi/sync-calls", async (req, res) => {
+    try {
+      if (!vapiCfg.isConfigured) return res.status(503).json({ error: "Vapi not configured" });
+      const resp = await fetch(`https://api.vapi.ai/call?limit=50`, { headers: vapiCfg.privateHeaders() });
+      if (!resp.ok) return res.status(500).json({ error: "Failed to fetch calls" });
+      const calls: any[] = await resp.json() as any[];
+      let synced = 0;
+      for (const c of calls) {
+        if (!c.id || c.status !== "ended") continue;
+        const existing = await vapiDb.select().from(vapiCallLogs).where(vapiEq(vapiCallLogs.vapiCallId, c.id)).limit(1);
+        if (existing.length > 0) continue;
+        const transcript = c.transcript || c.artifact?.transcript || "";
+        const summary = c.summary || c.artifact?.summary || "";
+        const recordingUrl = c.recordingUrl || c.artifact?.recordingUrl || "";
+        const startedAt = c.startedAt ? new Date(c.startedAt) : null;
+        const endedAt = c.endedAt ? new Date(c.endedAt) : null;
+        const duration = startedAt && endedAt ? Math.round((endedAt.getTime() - startedAt.getTime()) / 1000) : c.duration || null;
+        await vapiDb.insert(vapiCallLogs).values({
+          vapiCallId: c.id, assistantId: c.assistantId || null, assistantName: c.assistant?.name || null,
+          customerNumber: c.customer?.number || null, type: c.type || null, status: c.status,
+          startedAt, endedAt, duration, cost: c.cost || null, transcript, summary, recordingUrl, endedReason: c.endedReason || null, analysis: null,
+        });
+        synced++;
+      }
+      console.log(`[VAPI SYNC] Synced ${synced} new call logs`);
+      res.json({ synced, total: calls.length });
+    } catch (err) { console.error("[VAPI SYNC] Error:", err); res.status(500).json({ error: "Sync failed" }); }
+  });
+
   app.use("/api/auth/login", authLimiter);
   app.use("/api/auth/register", authLimiter);
   app.use("/api/auth/google", authLimiter);

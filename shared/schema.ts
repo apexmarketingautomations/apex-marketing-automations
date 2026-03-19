@@ -1547,6 +1547,30 @@ export const operatorToolTrust = pgTable("operator_tool_trust", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const vapiCallLogs = pgTable("vapi_call_logs", {
+  id: serial("id").primaryKey(),
+  vapiCallId: text("vapi_call_id").notNull(),
+  assistantId: text("assistant_id"),
+  assistantName: text("assistant_name"),
+  customerNumber: text("customer_number"),
+  type: text("type"),
+  status: text("status"),
+  startedAt: timestamp("started_at"),
+  endedAt: timestamp("ended_at"),
+  duration: integer("duration"),
+  cost: real("cost"),
+  transcript: text("transcript"),
+  summary: text("summary"),
+  recordingUrl: text("recording_url"),
+  endedReason: text("ended_reason"),
+  analysis: json("analysis"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertVapiCallLogSchema = createInsertSchema(vapiCallLogs).omit({ id: true, createdAt: true });
+export type InsertVapiCallLog = z.infer<typeof insertVapiCallLogSchema>;
+export type VapiCallLog = typeof vapiCallLogs.$inferSelect;
+
 export const PLAN_LIMITS: Record<string, Record<string, number>> = {
   starter: {
     messages_per_month: 500,
