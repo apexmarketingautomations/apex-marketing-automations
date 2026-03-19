@@ -160,11 +160,13 @@ export function registerWebhooksRoutes(app: Express) {
 
       if (channel === "whatsapp") {
         const autoStart = Date.now();
-        fireAutomationTrigger("OnWhatsAppReply", matchedAccountId, {
-          senderPhone: senderClean,
-          message: incomingMsg,
-          channel: "whatsapp",
-        }).then(() => {
+        import("./v1").then(({ fireAutomationTriggerGlobal }) =>
+          fireAutomationTriggerGlobal("OnWhatsAppReply", matchedAccountId, {
+            senderPhone: senderClean,
+            message: incomingMsg,
+            channel: "whatsapp",
+          })
+        ).then(() => {
           recordStepValue(trace, "automation_triggered", "success", Date.now() - autoStart, {
             metadata: { trigger: "OnWhatsAppReply" },
           });
@@ -899,14 +901,16 @@ export function registerWebhooksRoutes(app: Express) {
             }
 
             try {
-              fireAutomationTrigger(`On${channel === "instagram" ? "Instagram" : "Facebook"}DM`, subAccountId, {
-                leadName: existingContactRecord?.firstName || `${channel === "instagram" ? "IG" : "FB"} User ${senderId.slice(-4)}`,
-                leadPhone: existingContactRecord?.phone || senderId,
-                senderId,
-                channel,
-                message,
-                source: `${channel}_dm`,
-              });
+              import("./v1").then(({ fireAutomationTriggerGlobal }) =>
+                fireAutomationTriggerGlobal(`On${channel === "instagram" ? "Instagram" : "Facebook"}DM`, subAccountId, {
+                  leadName: existingContactRecord?.firstName || `${channel === "instagram" ? "IG" : "FB"} User ${senderId.slice(-4)}`,
+                  leadPhone: existingContactRecord?.phone || senderId,
+                  senderId,
+                  channel,
+                  message,
+                  source: `${channel}_dm`,
+                })
+              ).catch(() => {});
             } catch {}
 
             const keywords = await storage.getDmKeywordAutomations(subAccountId, true);
@@ -975,13 +979,15 @@ export function registerWebhooksRoutes(app: Express) {
               if (kw.actionPayload) {
                 const payload = typeof kw.actionPayload === "string" ? JSON.parse(kw.actionPayload) : kw.actionPayload;
                 if (payload.triggerName) {
-                  fireAutomationTrigger(payload.triggerName, subAccountId, {
-                    leadName: `${channel} User ${senderId.slice(-4)}`,
-                    leadPhone: senderId,
-                    source: `${channel}_dm_keyword:${kw.keyword}`,
-                    keyword: kw.keyword,
-                    message,
-                  });
+                  import("./v1").then(({ fireAutomationTriggerGlobal }) =>
+                    fireAutomationTriggerGlobal(payload.triggerName, subAccountId, {
+                      leadName: `${channel} User ${senderId.slice(-4)}`,
+                      leadPhone: senderId,
+                      source: `${channel}_dm_keyword:${kw.keyword}`,
+                      keyword: kw.keyword,
+                      message,
+                    })
+                  ).catch(() => {});
                 }
               }
               break;

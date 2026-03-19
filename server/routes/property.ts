@@ -917,18 +917,20 @@ export function registerPropertyRoutes(app: Express) {
       });
       console.log(`SENTINEL INGEST: Contact created in CRM — ID ${contact.id}, name: ${firstName} ${lastName}`);
 
-      fireAutomationTrigger("new_lead", SUB_ACCOUNT_ID, {
-        leadName: `${firstName} ${lastName}`.trim(),
-        leadPhone: phoneNumber,
-        leadEmail: email,
-        source: "sentinel_geofence",
-        location: locationTag,
-      }).catch(e => console.error("[SENTINEL-INGEST] new_lead trigger failed:", e instanceof Error ? e.message : e));
-      fireAutomationTrigger("crash_detected", SUB_ACCOUNT_ID, {
-        leadName: `${firstName} ${lastName}`.trim(),
-        leadPhone: phoneNumber,
-        location: locationTag,
-      }).catch(e => console.error("[SENTINEL-INGEST] crash_detected trigger failed:", e instanceof Error ? e.message : e));
+      import("./v1").then(({ fireAutomationTriggerGlobal }) => {
+        fireAutomationTriggerGlobal("new_lead", SUB_ACCOUNT_ID, {
+          leadName: `${firstName} ${lastName}`.trim(),
+          leadPhone: phoneNumber,
+          leadEmail: email,
+          source: "sentinel_geofence",
+          location: locationTag,
+        });
+        fireAutomationTriggerGlobal("crash_detected", SUB_ACCOUNT_ID, {
+          leadName: `${firstName} ${lastName}`.trim(),
+          leadPhone: phoneNumber,
+          location: locationTag,
+        });
+      }).catch(e => console.error("[SENTINEL-INGEST] trigger failed:", e instanceof Error ? e.message : e));
 
       publishEventAsync(EVENT_TYPES.CRASH_DETECTED, "sentinel-ingest", {
         subAccountId: SUB_ACCOUNT_ID, contactId: contact.id, maid,
@@ -2222,12 +2224,16 @@ export function registerPropertyRoutes(app: Express) {
 
     const contact = await storage.createContact(contactData);
     if (contact.subAccountId) {
-      fireAutomationTrigger("new_lead", contact.subAccountId, {
+      const triggerCtx = {
         leadName: contact.firstName || "Lead",
         leadPhone: contact.phone,
         leadEmail: contact.email,
         source: contact.source || "manual",
-      }).catch(e => console.error("[CONTACTS] Automation trigger failed:", e instanceof Error ? e.message : e));
+      };
+      import("./v1").then(({ fireAutomationTriggerGlobal }) => {
+        fireAutomationTriggerGlobal("new_lead", contact.subAccountId!, triggerCtx);
+        fireAutomationTriggerGlobal("contact_created", contact.subAccountId!, { ...triggerCtx, contactId: contact.id });
+      }).catch(e => console.error("[CONTACTS] trigger failed:", e instanceof Error ? e.message : e));
     }
     res.status(201).json(contact);
   }));
@@ -2316,6 +2322,18 @@ export function registerPropertyRoutes(app: Express) {
     const parsed = insertDealSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const deal = await storage.createDeal(parsed.data);
+    if (deal.subAccountId) {
+      try {
+        const { fireAutomationTriggerGlobal } = await import("./v1");
+        fireAutomationTriggerGlobal("deal_created", deal.subAccountId, {
+          dealId: deal.id,
+          dealTitle: deal.title,
+          dealValue: deal.value,
+          leadName: deal.contactName || "Unknown",
+          source: "api",
+        });
+      } catch {}
+    }
     res.status(201).json(deal);
   }));
 
@@ -2349,11 +2367,13 @@ export function registerPropertyRoutes(app: Express) {
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const appt = await storage.createAppointment(parsed.data);
     if (appt.subAccountId) {
-      fireAutomationTrigger("appointment_booked", appt.subAccountId, {
-        appointmentTitle: appt.title,
-        appointmentTime: appt.startTime,
-        contactId: appt.contactId,
-      }).catch(e => console.error("[APPOINTMENTS] Automation trigger failed:", e instanceof Error ? e.message : e));
+      import("./v1").then(({ fireAutomationTriggerGlobal }) => {
+        fireAutomationTriggerGlobal("appointment_booked", appt.subAccountId!, {
+          appointmentTitle: appt.title,
+          appointmentTime: appt.startTime,
+          contactId: appt.contactId,
+        });
+      }).catch(e => console.error("[APPOINTMENTS] trigger failed:", e instanceof Error ? e.message : e));
     }
     res.status(201).json(appt);
   }));

@@ -23,11 +23,13 @@ export function registerReviewsRoutes(app: Express) {
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const review = await storage.createReview(parsed.data);
     if (review.subAccountId) {
-      fireAutomationTrigger("review_received", review.subAccountId, {
-        rating: review.rating,
-        customerName: review.customerName,
-        comment: review.comment,
-      }).catch(e => console.error("[REVIEWS] Automation trigger failed:", e instanceof Error ? e.message : e));
+      import("./v1").then(({ fireAutomationTriggerGlobal }) =>
+        fireAutomationTriggerGlobal("review_received", review.subAccountId!, {
+          rating: review.rating,
+          customerName: review.customerName,
+          comment: review.comment,
+        })
+      ).catch(e => console.error("[REVIEWS] trigger failed:", e instanceof Error ? e.message : e));
     }
     res.status(201).json(review);
   }));
@@ -480,22 +482,22 @@ export function registerReviewsRoutes(app: Express) {
     const aiChecks: string[] = [];
     const aiProviderStatus = getAIProviderStatus();
     if (!isAIConfigured()) aiChecks.push("AI not configured (no OpenAI or Gemini key)");
-    else if (aiProviderStatus.circuitBreaker.state === "open") aiChecks.push(`AI circuit breaker open (primary: ${aiProviderStatus.primary})`);
+    else if (aiProviderStatus?.circuitBreaker?.state === "open") aiChecks.push(`AI circuit breaker open (primary: ${aiProviderStatus?.primary})`);
     const vapiKey = process.env.VAPI_PRIVATE_KEY || process.env.apex_private_vapi;
     if (!vapiKey) aiChecks.push("Vapi API key missing");
     const twilioSid = process.env.TWILIO_ACCOUNT_SID;
     const twilioToken = process.env.TWILIO_AUTH_TOKEN;
     if (!twilioSid || !twilioToken) aiChecks.push("Twilio credentials missing");
     const aiStatusMsg = isAIConfigured()
-      ? `${aiProviderStatus.primary} (${aiProviderStatus.circuitBreaker.state}) + Vapi + Twilio`
+      ? `${aiProviderStatus?.primary || "unknown"} (${aiProviderStatus?.circuitBreaker?.state || "unknown"}) + Vapi + Twilio`
       : "AI not configured";
     checks.push({
       name: "AI Engine",
       status: aiChecks.length === 0 ? "healthy" : aiChecks.length <= 1 ? "degraded" : "down",
       message: aiChecks.length === 0 ? aiStatusMsg : aiChecks.join("; "),
-      provider: aiProviderStatus.primary,
-      model: aiProviderStatus.primaryModel,
-      circuitBreaker: aiProviderStatus.circuitBreaker.state,
+      provider: aiProviderStatus?.primary || "unknown",
+      model: aiProviderStatus?.primaryModel || "unknown",
+      circuitBreaker: aiProviderStatus?.circuitBreaker?.state || "unknown",
     });
 
     const overallStatus = checks.every(c => c.status === "healthy") ? "healthy" : checks.some(c => c.status === "down") ? "critical" : "degraded";

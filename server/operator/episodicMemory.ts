@@ -72,7 +72,7 @@ export async function recallRelevantMemories(
     `;
 
     if (memoryTypes && memoryTypes.length > 0) {
-      queryStr = sql`${queryStr} AND memory_type = ANY(${memoryTypes})`;
+      queryStr = sql`${queryStr} AND memory_type = ANY(${sql.raw(`ARRAY[${memoryTypes.map(t => `'${t.replace(/'/g, "''")}'`).join(",")}]`)})`;
     }
     if (category) {
       queryStr = sql`${queryStr} AND category = ${category}`;
@@ -90,7 +90,8 @@ export async function recallRelevantMemories(
           accessCount: sql`${agentMemories.accessCount} + 1`,
           lastAccessedAt: new Date(),
         })
-        .where(sql`${agentMemories.id} = ANY(${ids})`)
+        .where(sql`${agentMemories.id} = ANY(${sql.raw(`ARRAY[${ids.map((id: any) => typeof id === 'number' ? id : `'${String(id).replace(/'/g, "''")}'`).join(",")}]`)})`)
+
         .execute().catch(e => console.error("[EPISODIC-MEMORY] DB operation failed:", e instanceof Error ? e.message : e));
     }
 

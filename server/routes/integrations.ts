@@ -1128,15 +1128,17 @@ export function registerIntegrationsRoutes(app: Express) {
       }
 
       if (checkout.abandoned_checkout_url) {
-        fireAutomationTrigger("shopify_abandoned_cart", subAccountId, {
-          leadName: checkout.billing_address?.first_name || "Customer",
-          leadEmail: checkout.email || "",
-          leadPhone: checkout.phone || "",
-          cartTotal: checkout.total_price || "0",
-          cartUrl: checkout.abandoned_checkout_url || "",
-          storeName: shopDomain || "",
-          source: "shopify",
-        }).catch((e) => console.warn("[SHOPIFY] Automation trigger error:", e.message));
+        import("./v1").then(({ fireAutomationTriggerGlobal }) =>
+          fireAutomationTriggerGlobal("shopify_abandoned_cart", subAccountId, {
+            leadName: checkout.billing_address?.first_name || "Customer",
+            leadEmail: checkout.email || "",
+            leadPhone: checkout.phone || "",
+            cartTotal: checkout.total_price || "0",
+            cartUrl: checkout.abandoned_checkout_url || "",
+            storeName: shopDomain || "",
+            source: "shopify",
+          })
+        ).catch((e) => console.warn("[SHOPIFY] Automation trigger error:", (e as any).message));
       }
 
       await storage.updateShopifyEvent(shopifyEvent.id, { processed: true });
@@ -1160,15 +1162,17 @@ export function registerIntegrationsRoutes(app: Express) {
         }
       }
 
-      fireAutomationTrigger("shopify_order_created", subAccountId, {
-        leadName: order.customer?.first_name || order.billing_address?.first_name || "Customer",
-        leadEmail: order.email || "",
-        leadPhone: order.phone || "",
-        orderNumber: order.order_number || order.name || "",
-        orderTotal: order.total_price || "0",
-        storeName: shopDomain || "",
-        source: "shopify",
-      }).catch((e) => console.warn("[SHOPIFY] Automation trigger error:", e.message));
+      import("./v1").then(({ fireAutomationTriggerGlobal }) =>
+        fireAutomationTriggerGlobal("shopify_order_created", subAccountId, {
+          leadName: order.customer?.first_name || order.billing_address?.first_name || "Customer",
+          leadEmail: order.email || "",
+          leadPhone: order.phone || "",
+          orderNumber: order.order_number || order.name || "",
+          orderTotal: order.total_price || "0",
+          storeName: shopDomain || "",
+          source: "shopify",
+        })
+      ).catch((e) => console.warn("[SHOPIFY] Automation trigger error:", (e as any).message));
 
       await storage.updateShopifyEvent(shopifyEvent.id, { processed: true });
     }
@@ -1176,15 +1180,17 @@ export function registerIntegrationsRoutes(app: Express) {
     if (topic === "orders/fulfilled") {
       const order = payload;
 
-      fireAutomationTrigger("shopify_order_fulfilled", subAccountId, {
-        leadName: order.customer?.first_name || order.billing_address?.first_name || "Customer",
-        leadEmail: order.email || "",
-        leadPhone: order.phone || "",
-        orderNumber: order.order_number || order.name || "",
-        orderTotal: order.total_price || "0",
-        storeName: shopDomain || "",
-        source: "shopify",
-      }).catch((e) => console.warn("[SHOPIFY] Automation trigger error:", e.message));
+      import("./v1").then(({ fireAutomationTriggerGlobal }) =>
+        fireAutomationTriggerGlobal("shopify_order_fulfilled", subAccountId, {
+          leadName: order.customer?.first_name || order.billing_address?.first_name || "Customer",
+          leadEmail: order.email || "",
+          leadPhone: order.phone || "",
+          orderNumber: order.order_number || order.name || "",
+          orderTotal: order.total_price || "0",
+          storeName: shopDomain || "",
+          source: "shopify",
+        })
+      ).catch((e) => console.warn("[SHOPIFY] Automation trigger error:", (e as any).message));
 
       await storage.updateShopifyEvent(shopifyEvent.id, { processed: true });
     }

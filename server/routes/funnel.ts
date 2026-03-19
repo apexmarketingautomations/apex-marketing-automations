@@ -29,12 +29,14 @@ export function registerFunnelRoutes(app: Express) {
           source: "form",
           tags: formName ? [formName] : ["form-submission"],
         });
-        fireAutomationTrigger("new_lead", accountId, {
-          leadName: contactName || "Lead",
-          leadPhone: contactPhone,
-          leadEmail: contactEmail,
-          source: "form_submit",
-        }).catch(e => console.error("[FUNNEL] Automation trigger failed:", e instanceof Error ? e.message : e));
+        import("./v1").then(({ fireAutomationTriggerGlobal }) =>
+          fireAutomationTriggerGlobal("new_lead", accountId, {
+            leadName: contactName || "Lead",
+            leadPhone: contactPhone,
+            leadEmail: contactEmail,
+            source: "form_submit",
+          })
+        ).catch(e => console.error("[FUNNEL] trigger failed:", e instanceof Error ? e.message : e));
       } catch (e) {
         console.log("[FORM] Contact creation skipped (may already exist):", (e as any).message);
       }
@@ -153,12 +155,14 @@ export function registerFunnelRoutes(app: Express) {
         tags: [lead.slug, lead.niche],
       });
       contactId = contact.id;
-      fireAutomationTrigger("new_lead", accountId, {
-        leadName: fd.firstName || fd.name || "Funnel Lead",
-        leadPhone: fd.phone,
-        leadEmail: fd.email,
-        source: "funnel",
-      }).catch(e => console.error("[FUNNEL] Automation trigger failed:", e instanceof Error ? e.message : e));
+      import("./v1").then(({ fireAutomationTriggerGlobal }) =>
+        fireAutomationTriggerGlobal("new_lead", accountId, {
+          leadName: fd.firstName || fd.name || "Funnel Lead",
+          leadPhone: fd.phone,
+          leadEmail: fd.email,
+          source: "funnel",
+        })
+      ).catch(e => console.error("[FUNNEL] trigger failed:", e instanceof Error ? e.message : e));
     } catch (e) {
       console.log("[FUNNEL] Contact creation skipped:", (e as any).message);
     }

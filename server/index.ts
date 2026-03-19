@@ -909,14 +909,14 @@ async function validateMetaCredentials() {
       source: "vapi",
       extractExternalId: (req) => {
         const body = req.body || {};
-        return (
-          body.message?.call?.id ||
+        const callId = body.message?.call?.id ||
           body.message?.id ||
           body.call?.id ||
           body.id ||
           body.messageId ||
-          null
-        ) as string | null | undefined;
+          null;
+        const msgType = body.message?.type || "unknown";
+        return callId ? `${callId}:${msgType}` : null;
       },
       eventType: "vapi.webhook",
       maxRetries: 3,
@@ -991,6 +991,22 @@ async function validateMetaCredentials() {
       if (msgType === "status-update") {
         const msg = req.body.message;
         console.log(`[VAPI WEBHOOK] status-update: status=${msg?.status}, callId=${msg?.call?.id}`);
+        if (msg?.status === "no-answer" || msg?.status === "busy" || msg?.status === "failed") {
+          const custNum = msg?.call?.customer?.number;
+          if (custNum) {
+            (async () => {
+              try {
+                const { contacts: ct } = await import("@shared/schema");
+                const { eq: eqOp2 } = await import("drizzle-orm");
+                const rows = await vapiDb.select().from(ct).where(eqOp2(ct.phone, custNum)).limit(1);
+                const missedSubId = rows[0]?.subAccountId || 13;
+                eventBus.publish({ type: "call.missed" as any, subAccountId: missedSubId, data: { callId: msg?.call?.id, customerNumber: custNum, status: msg.status } });
+                const { fireAutomationTriggerGlobal } = await import("./routes/v1");
+                fireAutomationTriggerGlobal("call_missed", missedSubId, { leadPhone: custNum, status: msg.status, source: "vapi_call" });
+              } catch {}
+            })();
+          }
+        }
       }
 
       if (msgType === "speech-update") {

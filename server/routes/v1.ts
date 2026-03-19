@@ -1132,7 +1132,6 @@ export function registerV1Routes(app: Express) {
     context: Record<string, any> = {},
     depth: number = 0
   ) {
-    if (!_fireAutomationTrigger) _fireAutomationTrigger = fireAutomationTrigger;
     try {
       const { checkAutomationSafety } = await import("../automationSafety");
       const automations = await storage.getLiveAutomations(subAccountId);
@@ -1369,6 +1368,9 @@ export function registerV1Routes(app: Express) {
       console.error(`[AUTOMATION] Trigger "${triggerName}" error for account ${subAccountId}: ${err.message}`);
     }
   }
+
+  _fireAutomationTrigger = fireAutomationTrigger;
+  console.log("[AUTOMATION] fireAutomationTriggerGlobal bridge initialized");
 
   app.post("/api/v1/orchestrate", asyncHandler(async (req: Request, res: Response) => {
     const parsed = z.object({
