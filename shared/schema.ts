@@ -1633,6 +1633,40 @@ export const insertTimelineEventSchema = createInsertSchema(timelineEvents).omit
 export type InsertTimelineEvent = z.infer<typeof insertTimelineEventSchema>;
 export type TimelineEvent = typeof timelineEvents.$inferSelect;
 
+// ---- Unified Event Log ----
+
+export const EVENT_LOG_STATUS = {
+  PENDING: "pending",
+  PROCESSING: "processing",
+  COMPLETED: "completed",
+  FAILED: "failed",
+  DEAD_LETTER: "dead_letter",
+} as const;
+
+export type EventLogStatus = typeof EVENT_LOG_STATUS[keyof typeof EVENT_LOG_STATUS];
+
+export const eventLog = pgTable("event_log", {
+  id: serial("id").primaryKey(),
+  traceId: text("trace_id").notNull(),
+  type: text("type").notNull(),
+  source: text("source").notNull(),
+  externalId: text("external_id"),
+  payload: json("payload").notNull(),
+  status: text("status").notNull().default("pending"),
+  retryCount: integer("retry_count").notNull().default(0),
+  maxRetries: integer("max_retries").notNull().default(3),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  processedAt: timestamp("processed_at"),
+  failedAt: timestamp("failed_at"),
+  errorMessage: text("error_message"),
+}, (table) => ({
+  sourceExternalIdIdx: uniqueIndex("event_log_source_external_id_idx").on(table.source, table.externalId),
+}));
+
+export const insertEventLogSchema = createInsertSchema(eventLog).omit({ id: true, createdAt: true });
+export type InsertEventLog = z.infer<typeof insertEventLogSchema>;
+export type EventLogEntry = typeof eventLog.$inferSelect;
+
 export const PLAN_LIMITS: Record<string, Record<string, number>> = {
   starter: {
     messages_per_month: 500,

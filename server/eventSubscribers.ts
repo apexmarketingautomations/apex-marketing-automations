@@ -1,12 +1,12 @@
 import { eventBus, EVENT_TYPES, type ApexEvent } from "./eventBus";
 import { dispatchAlert, generateDeepLink } from "./pushAlertService";
+import { logSystemEvent } from "./systemLogger";
 
 let storageRef: any = null;
-let systemLoggerRef: any = null;
 
-export function initEventSubscribers(storage: any, systemLogger?: any) {
+export function initEventSubscribers(storage: any, _systemLogger?: any) {
   storageRef = storage;
-  systemLoggerRef = systemLogger;
+  const systemLoggerRef = logSystemEvent;
 
   eventBus.subscribe(EVENT_TYPES.CONTACT_CREATED, "analytics", async (event) => {
     console.log(`[EVENT-SUB:analytics] Contact created: ${event.payload.contactId || event.payload.name}`);
@@ -30,17 +30,13 @@ export function initEventSubscribers(storage: any, systemLogger?: any) {
 
   eventBus.subscribe(EVENT_TYPES.WORKFLOW_FAILED, "system", async (event) => {
     console.error(`[EVENT-SUB:system] Workflow failed: ${event.payload.workflowId} — ${event.payload.error || "unknown error"}`);
-    if (storageRef) {
-      try {
-        await storageRef.createSystemLog({
-          level: "error",
-          source: "event-bus",
-          message: `Workflow ${event.payload.workflowId} failed: ${event.payload.error || "unknown"}`,
-          details: event.payload,
-        });
-      } catch (err: any) {
-        console.error("[EVENT-SUB] Workflow failure log failed:", err.message);
-      }
+    try {
+      await systemLoggerRef("error", "event-bus", `Workflow ${event.payload.workflowId} failed: ${event.payload.error || "unknown"}`, {
+        ...event.payload,
+        trace_id: event.traceId,
+      });
+    } catch (err: any) {
+      console.error("[EVENT-SUB] Workflow failure log failed:", err.message);
     }
   });
 
@@ -85,16 +81,26 @@ export function initEventSubscribers(storage: any, systemLogger?: any) {
   });
 
   eventBus.subscribe("*", "event-logger", async (event) => {
-    if (storageRef) {
+    if (systemLoggerRef) {
+      try {
+        await systemLoggerRef("info", "event-bus", `Event: ${event.event_type} from ${event.source_module}`, {
+          event_id: event.event_id,
+          trace_id: event.traceId,
+          payload_keys: Object.keys(event.payload),
+        });
+      } catch (err: any) {
+        console.error("[EVENT-SUB] Event log failed:", err.message);
+      }
+    } else if (storageRef?.createSystemLog) {
       try {
         await storageRef.createSystemLog({
           level: "info",
           source: "event-bus",
           message: `Event: ${event.event_type} from ${event.source_module}`,
-          details: { event_id: event.event_id, payload_keys: Object.keys(event.payload) },
+          details: { event_id: event.event_id, trace_id: event.traceId, payload_keys: Object.keys(event.payload) },
         });
       } catch (err: any) {
-        console.error("[EVENT-SUB] Event log failed:", err.message);
+        console.error("[EVENT-SUB] Event log fallback failed:", err.message);
       }
     }
   }, -100);

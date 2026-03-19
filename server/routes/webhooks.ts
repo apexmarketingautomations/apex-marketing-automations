@@ -11,6 +11,7 @@ import { asyncHandler, getUserId, requireAdmin, getIndustryContext, getLanguageI
 import { startTrace, recordStepValue } from "../traceRecorder";
 import { resolveSubAccount, isRoutingFailure } from "../routing/resolver";
 import { persistRoutingFailure } from "../routing/failureQueue";
+import { withIdempotency, markEventCompleted, markEventFailed } from "../idempotency";
 
 export function registerWebhooksRoutes(app: Express) {
   // ---- Unified Webhook (Twilio inbound SMS/WhatsApp/Messenger -> AI auto-reply) ----
@@ -25,13 +26,23 @@ export function registerWebhooksRoutes(app: Express) {
     return addr.replace(/^(whatsapp:|messenger:)/, "");
   }
 
-  app.post("/api/sms-webhook", async (req, res) => {
+  app.post(
+    "/api/sms-webhook",
+    withIdempotency({
+      source: "twilio",
+      extractExternalId: (req) => req.body?.MessageSid as string | undefined,
+      eventType: "message.received",
+      maxRetries: 3,
+    }),
+    async (req, res) => {
     try {
       const incomingMsg = req.body.Body as string | undefined;
       const senderRaw = req.body.From as string | undefined;
       const toRaw = req.body.To as string | undefined;
+      const traceId = req.eventTraceId;
 
       if (!incomingMsg || !senderRaw) {
+        await markEventCompleted(req);
         res.type("text/xml").send("<Response></Response>");
         return;
       }
@@ -86,6 +97,7 @@ export function registerWebhooksRoutes(app: Express) {
           });
         }
 
+        await markEventCompleted(req);
         res.type("text/xml").send("<Response></Response>");
         return;
       }
@@ -103,6 +115,7 @@ export function registerWebhooksRoutes(app: Express) {
           });
         }
 
+        await markEventCompleted(req);
         res.type("text/xml").send("<Response></Response>");
         return;
       }
@@ -203,9 +216,11 @@ export function registerWebhooksRoutes(app: Express) {
         }
       }
 
+      await markEventCompleted(req);
       res.type("text/xml").send("<Response></Response>");
     } catch (err: any) {
       console.error("Unified webhook error:", err);
+      await markEventFailed(req, err.message).catch(() => {});
       res.type("text/xml").send("<Response></Response>");
     }
   });
@@ -636,6 +651,7 @@ export function registerWebhooksRoutes(app: Express) {
           for (const event of entry.messaging || []) {
             const senderId = event.sender?.id;
             const message = event.message?.text;
+            const mid = event.message?.mid as string | undefined;
 
             if (!senderId || !message) {
               console.warn(`[META DM] Skipping event — missing sender (${senderId}) or message text`);
@@ -643,6 +659,35 @@ export function registerWebhooksRoutes(app: Express) {
             }
 
             const channel = body.object === "instagram" ? "instagram" : "facebook";
+
+            let metaTraceId = crypto.randomUUID();
+            if (mid) {
+              try {
+                const existingEvent = await storage.getEventLogByExternalId("meta", mid);
+                if (existingEvent && (existingEvent.status === "completed" || existingEvent.status === "processing")) {
+                  console.log(`[IDEMPOTENCY] Duplicate Meta event mid=${mid} (status: ${existingEvent.status}) — skipping`);
+                  continue;
+                }
+                if (existingEvent) {
+                  metaTraceId = existingEvent.traceId;
+                  await storage.updateEventLogStatus(existingEvent.id, "processing");
+                } else {
+                  await storage.createEventLog({
+                    traceId: metaTraceId,
+                    type: "message.received",
+                    source: "meta",
+                    externalId: mid,
+                    payload: event as any,
+                    status: "processing",
+                    maxRetries: 3,
+                  });
+                }
+              } catch (idempErr: any) {
+                if (!idempErr?.message?.includes("unique")) {
+                  console.error(`[META DM] Idempotency check error for mid=${mid}:`, idempErr.message);
+                }
+              }
+            }
             console.log(`[META DM] ${channel} from ${senderId}: ${message.substring(0, 100)}`);
 
             const accessToken = process.env.META_ACCESS_TOKEN;
@@ -845,6 +890,15 @@ export function registerWebhooksRoutes(app: Express) {
               } catch (aiErr: any) {
                 console.error("[META DM] AI reply error:", aiErr.message);
               }
+            }
+
+            if (mid) {
+              try {
+                const existing = await storage.getEventLogByExternalId("meta", mid);
+                if (existing) {
+                  await storage.updateEventLogStatus(existing.id, "completed", { processedAt: new Date() });
+                }
+              } catch {}
             }
           }
         }

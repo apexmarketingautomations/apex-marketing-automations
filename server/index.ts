@@ -94,6 +94,35 @@ app.post(
       const event = JSON.parse(req.body.toString());
       const { storage } = await import("./storage");
 
+      const stripeEventId = event?.id as string | undefined;
+      if (stripeEventId) {
+        try {
+          const existingEvent = await storage.getEventLogByExternalId("stripe", stripeEventId);
+          if (existingEvent && (existingEvent.status === "completed" || existingEvent.status === "processing")) {
+            console.log(`[IDEMPOTENCY] Duplicate Stripe event ${stripeEventId} (status: ${existingEvent.status}) — skipping`);
+            return res.status(200).json({ received: true, duplicate: true });
+          }
+          if (!existingEvent) {
+            const { default: crypto } = await import("crypto");
+            await storage.createEventLog({
+              traceId: crypto.randomUUID(),
+              type: event.type || "stripe.event",
+              source: "stripe",
+              externalId: stripeEventId,
+              payload: event as any,
+              status: "processing",
+              maxRetries: 3,
+            });
+          } else {
+            await storage.updateEventLogStatus(existingEvent.id, "processing");
+          }
+        } catch (idempErr: any) {
+          if (!idempErr?.message?.includes("unique")) {
+            console.error("[STRIPE WEBHOOK] Idempotency error:", idempErr.message);
+          }
+        }
+      }
+
       if (event?.type === "checkout.session.completed") {
         const session = event.data?.object;
         const meta = session?.metadata;
@@ -269,6 +298,14 @@ app.post(
         }
       }
 
+      if (stripeEventId) {
+        try {
+          const finalEvent = await storage.getEventLogByExternalId("stripe", stripeEventId);
+          if (finalEvent) {
+            await storage.updateEventLogStatus(finalEvent.id, "completed", { processedAt: new Date() });
+          }
+        } catch {}
+      }
       res.status(200).json({ received: true });
     } catch (error: any) {
       console.error("[STRIPE] Webhook error:", error.message);
@@ -1032,19 +1069,46 @@ function validateEnvVars() {
         const duration = startedAt && endedAt ? Math.round((endedAt.getTime() - startedAt.getTime()) / 1000) : call.duration || null;
         const callId = call.call?.id;
         if (callId) {
-          const existing = await vapiDb.select().from(vapiCallLogs).where(vapiEq(vapiCallLogs.vapiCallId, callId)).limit(1);
-          if (existing.length === 0) {
-            const inserted = await vapiDb.insert(vapiCallLogs).values({
-              vapiCallId: callId, assistantId: call.call.assistantId || null, assistantName: call.assistant?.name || null,
-              customerNumber: call.call.customer?.number || null, type: call.call.type || null, status: call.call.status || "ended",
-              startedAt, endedAt, duration, cost: call.cost || null, transcript, summary, recordingUrl, endedReason: call.endedReason || null, analysis: null,
-            }).returning({ id: vapiCallLogs.id });
-            console.log(`[VAPI WEBHOOK] Stored call log: ${callId}`);
-            if (inserted[0]?.id) {
-              analyzeCallTranscript(inserted[0].id)
-                .then(result => { if (result) onCallAnalyzed().catch(() => {}); })
-                .catch(err => console.error(`[VAPI WEBHOOK] Analysis failed for call ${inserted[0].id} (${callId}):`, err?.message ?? err, err?.stack));
+          const { storage: vapiStorage } = await import("./storage");
+          const { default: vapiCrypto } = await import("crypto");
+
+          const existingEventLog = await vapiStorage.getEventLogByExternalId("vapi", callId).catch(() => null);
+          if (existingEventLog && (existingEventLog.status === "completed" || existingEventLog.status === "processing")) {
+            console.log(`[IDEMPOTENCY] Duplicate Vapi call ${callId} in event_log — skipping`);
+          } else {
+            const vapiTraceId = existingEventLog?.traceId || vapiCrypto.randomUUID();
+            if (!existingEventLog) {
+              await vapiStorage.createEventLog({
+                traceId: vapiTraceId,
+                type: "call.completed",
+                source: "vapi",
+                externalId: callId,
+                payload: { callId, customerNumber: call.call?.customer?.number, duration } as any,
+                status: "processing",
+                maxRetries: 3,
+              }).catch(() => {});
             }
+
+            const existing = await vapiDb.select().from(vapiCallLogs).where(vapiEq(vapiCallLogs.vapiCallId, callId)).limit(1);
+            if (existing.length === 0) {
+              const inserted = await vapiDb.insert(vapiCallLogs).values({
+                vapiCallId: callId, assistantId: call.call.assistantId || null, assistantName: call.assistant?.name || null,
+                customerNumber: call.call.customer?.number || null, type: call.call.type || null, status: call.call.status || "ended",
+                startedAt, endedAt, duration, cost: call.cost || null, transcript, summary, recordingUrl, endedReason: call.endedReason || null, analysis: null,
+              }).returning({ id: vapiCallLogs.id });
+              console.log(`[VAPI WEBHOOK] Stored call log: ${callId}`);
+              if (inserted[0]?.id) {
+                analyzeCallTranscript(inserted[0].id)
+                  .then(result => { if (result) onCallAnalyzed().catch(() => {}); })
+                  .catch(err => console.error(`[VAPI WEBHOOK] Analysis failed for call ${inserted[0].id} (${callId}):`, err?.message ?? err, err?.stack));
+              }
+            }
+
+            await vapiStorage.updateEventLogStatus(
+              existingEventLog?.id ?? (await vapiStorage.getEventLogByExternalId("vapi", callId))!.id,
+              "completed",
+              { processedAt: new Date() }
+            ).catch(() => {});
           }
         }
       }
@@ -1195,6 +1259,12 @@ function validateEnvVars() {
         startLoop();
       } catch (err: any) {
         console.error("[CALL-INTEL] Failed to start auto-learning loop:", err?.message);
+      }
+      try {
+        const { startRetryProcessor } = await import("./eventRetryProcessor");
+        startRetryProcessor(60_000);
+      } catch (err: any) {
+        console.error("[RETRY-PROCESSOR] Failed to start:", err?.message);
       }
     },
   );

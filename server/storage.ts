@@ -6,6 +6,7 @@ import {
   contacts, pipelineStages, deals, appointments, emailCampaigns, webhooks, whiteLabelSettings,
   metaAdCampaigns, metaLeads, instagramConversations, instagramMessages, notifications,
   liveAutomations, aiToolLogs, webhookEvents, integrationConnections, portalTokens,
+  eventLog, type EventLogEntry, type InsertEventLog,
   type SubAccount, type InsertSubAccount,
   type Message, type InsertMessage,
   type SmsRetryQueue, type InsertSmsRetryQueue,
@@ -385,6 +386,14 @@ export interface IStorage {
 
   getRoutingFailures(unresolvedOnly?: boolean): Promise<import("@shared/schema").RoutingFailure[]>;
   resolveRoutingFailure(id: number, subAccountId: number): Promise<import("@shared/schema").RoutingFailure | undefined>;
+
+  createEventLog(data: InsertEventLog): Promise<EventLogEntry>;
+  getEventLog(id: number): Promise<EventLogEntry | undefined>;
+  getEventLogByExternalId(source: string, externalId: string): Promise<EventLogEntry | undefined>;
+  updateEventLogStatus(id: number, status: string, extra?: { errorMessage?: string; processedAt?: Date; failedAt?: Date; retryCount?: number }): Promise<EventLogEntry | undefined>;
+  getFailedEventLogs(maxRetries?: number): Promise<EventLogEntry[]>;
+  getDeadLetterEventLogs(): Promise<EventLogEntry[]>;
+  queryEventLogs(filters: { type?: string; source?: string; status?: string; traceId?: string; since?: Date; until?: Date; limit?: number }): Promise<EventLogEntry[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1844,6 +1853,63 @@ export class DatabaseStorage implements IStorage {
       .where(eq(routingFailures.id, id))
       .returning();
     return row;
+  }
+
+  async createEventLog(data: InsertEventLog) {
+    const [row] = await db.insert(eventLog).values(data).returning();
+    return row;
+  }
+
+  async getEventLog(id: number) {
+    const [row] = await db.select().from(eventLog).where(eq(eventLog.id, id));
+    return row;
+  }
+
+  async getEventLogByExternalId(source: string, externalId: string) {
+    const [row] = await db.select().from(eventLog)
+      .where(and(eq(eventLog.source, source), eq(eventLog.externalId, externalId)));
+    return row;
+  }
+
+  async updateEventLogStatus(id: number, status: string, extra?: { errorMessage?: string; processedAt?: Date; failedAt?: Date; retryCount?: number }) {
+    const [row] = await db.update(eventLog)
+      .set({
+        status,
+        ...(extra?.errorMessage !== undefined ? { errorMessage: extra.errorMessage } : {}),
+        ...(extra?.processedAt ? { processedAt: extra.processedAt } : {}),
+        ...(extra?.failedAt ? { failedAt: extra.failedAt } : {}),
+        ...(extra?.retryCount !== undefined ? { retryCount: extra.retryCount } : {}),
+      })
+      .where(eq(eventLog.id, id))
+      .returning();
+    return row;
+  }
+
+  async getFailedEventLogs(maxRetries = 3) {
+    return db.select().from(eventLog)
+      .where(and(eq(eventLog.status, "failed"), lt(eventLog.retryCount, eventLog.maxRetries)))
+      .orderBy(eventLog.createdAt);
+  }
+
+  async getDeadLetterEventLogs() {
+    return db.select().from(eventLog)
+      .where(eq(eventLog.status, "dead_letter"))
+      .orderBy(desc(eventLog.createdAt));
+  }
+
+  async queryEventLogs(filters: { type?: string; source?: string; status?: string; traceId?: string; since?: Date; until?: Date; limit?: number }) {
+    const conditions = [];
+    if (filters.type) conditions.push(eq(eventLog.type, filters.type));
+    if (filters.source) conditions.push(eq(eventLog.source, filters.source));
+    if (filters.status) conditions.push(eq(eventLog.status, filters.status));
+    if (filters.traceId) conditions.push(eq(eventLog.traceId, filters.traceId));
+    if (filters.since) conditions.push(gte(eventLog.createdAt, filters.since));
+    if (filters.until) conditions.push(lt(eventLog.createdAt, filters.until));
+
+    return db.select().from(eventLog)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(eventLog.createdAt))
+      .limit(filters.limit || 100);
   }
 }
 

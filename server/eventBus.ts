@@ -1,4 +1,6 @@
 import crypto from "crypto";
+import { storage } from "./storage";
+import { EVENT_LOG_STATUS } from "@shared/schema";
 
 export interface ApexEvent {
   event_id: string;
@@ -7,6 +9,7 @@ export interface ApexEvent {
   timestamp: string;
   payload: Record<string, any>;
   metadata: Record<string, any>;
+  traceId?: string;
 }
 
 export type EventHandler = (event: ApexEvent) => Promise<void> | void;
@@ -79,13 +82,15 @@ class EventBus {
   }
 
   async publish(eventType: string, payload: Record<string, any>, sourceModule: string, metadata: Record<string, any> = {}): Promise<string> {
+    const traceId = metadata.traceId || crypto.randomUUID();
     const event: ApexEvent = {
       event_id: crypto.randomUUID(),
       event_type: eventType,
       source_module: sourceModule,
       timestamp: new Date().toISOString(),
       payload,
-      metadata,
+      metadata: { ...metadata, traceId },
+      traceId,
     };
 
     const dedupKey = `${eventType}:${sourceModule}:${JSON.stringify(payload)}`;
@@ -104,12 +109,35 @@ class EventBus {
       }
     }
 
+    this.persistEvent(event, payload).catch(err =>
+      console.error(`[EVENT-BUS] Failed to persist event ${eventType}:`, err?.message)
+    );
+
     this.queue.push(event);
     if (!this.processing) {
       await this.processQueue();
     }
 
     return event.event_id;
+  }
+
+  private async persistEvent(event: ApexEvent, payload: Record<string, any>): Promise<void> {
+    try {
+      await storage.createEventLog({
+        traceId: event.traceId!,
+        type: event.event_type,
+        source: `eventbus:${event.source_module}`,
+        externalId: null,
+        payload: payload as any,
+        status: EVENT_LOG_STATUS.COMPLETED,
+        maxRetries: 0,
+        processedAt: new Date(),
+      });
+    } catch (err: any) {
+      if (!err?.message?.includes("unique") && !err?.message?.includes("duplicate")) {
+        console.error(`[EVENT-BUS] persist error for ${event.event_type}:`, err?.message);
+      }
+    }
   }
 
   private async processQueue(): Promise<void> {
