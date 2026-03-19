@@ -1,0 +1,90 @@
+Fix issue: messages are not appearing in the dashboard UI despite live site being updated.
+
+Context:
+- Backend webhooks (Meta + Twilio) are implemented
+- Messages are being processed and stored
+- Frontend uses React (sms-dashboard.tsx)
+- A new selectedConv state was recently introduced:
+  const [selectedConv, setSelectedConv] = useState<{ contactPhone: string; channel: string } | null>(null);
+
+Problem:
+- Dashboard shows no messages
+- Likely caused by frontend filtering or API query mismatch
+
+Tasks:
+
+1. DEBUG BACKEND FIRST
+- Verify incoming webhook logs (Meta + Twilio)
+- Confirm messages are being inserted into database
+- Log every insert with:
+  - subAccountId
+  - contactPhone / senderId
+  - channel
+- Confirm messages table is NOT empty
+
+2. VERIFY API RESPONSE
+- Check GET /messages (or equivalent endpoint)
+- Ensure it returns messages
+- If filtering by subAccountId:
+  - confirm frontend is passing correct subAccountId
+- Add temporary logging:
+  console.log("Fetched messages:", messages)
+
+3. FIX FRONTEND FILTERING (CRITICAL)
+- Locate message rendering logic in sms-dashboard.tsx
+- Replace current filtering with:
+
+const filteredMessages = selectedConv
+  ? localMessages.filter(
+      (msg) =>
+        msg.contactPhone === selectedConv.contactPhone &&
+        msg.channel === selectedConv.channel
+    )
+  : localMessages;
+
+- This ensures all messages show when no conversation is selected
+
+4. ADD FALLBACK DISPLAY
+- If selectedConv is null:
+  - show ALL messages
+- Prevent empty UI state
+
+5. AUTO-SELECT FIRST CONVERSATION
+- After messages load:
+
+if (!selectedConv && localMessages.length > 0) {
+  setSelectedConv({
+    contactPhone: localMessages[0].contactPhone,
+    channel: localMessages[0].channel,
+  });
+}
+
+6. DEBUG RENDER PIPELINE
+- Temporarily bypass filtering:
+
+{localMessages.map(m => ...)}
+
+- If messages appear → issue confirmed as UI filtering bug
+
+7. VALIDATE DATA CONSISTENCY
+- Ensure message fields match:
+  - contactPhone vs senderId
+  - channel naming consistency ("sms", "facebook", etc.)
+- Fix mismatches if filter fails
+
+8. FINAL CHECK
+- Send a real test message (Meta or Twilio)
+- Confirm:
+  - appears in DB
+  - appears in API response
+  - appears in dashboard UI
+
+Definition of Done:
+- Messages appear in dashboard in real time
+- No empty state when messages exist
+- Conversation filtering works correctly
+- No silent failures
+
+Important:
+- Do NOT remove strict backend validation (subAccountId, pageId, etc.)
+- Only fix visibility + frontend filtering
