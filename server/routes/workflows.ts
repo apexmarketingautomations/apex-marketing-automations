@@ -56,6 +56,15 @@ export function registerWorkflowsRoutes(app: Express) {
     res.json(wf);
   }));
 
+  app.delete("/api/workflows/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const existing = await storage.getWorkflow(id);
+    if (!existing) return res.status(404).json({ error: "Not found" });
+    if (existing.subAccountId && !(await verifyAccountOwnership(req, res, existing.subAccountId))) return;
+    await storage.deleteWorkflow(id);
+    res.json({ deleted: true, id });
+  }));
+
   // ---- Workflow Analytics & Self-Optimization ----
 
   app.get("/api/workflows/:id/analytics", asyncHandler(async (req: Request, res: Response) => {

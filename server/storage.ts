@@ -97,6 +97,7 @@ export interface IStorage {
   getWorkflow(id: number): Promise<Workflow | undefined>;
   createWorkflow(data: InsertWorkflow): Promise<Workflow>;
   updateWorkflow(id: number, data: Partial<InsertWorkflow>): Promise<Workflow | undefined>;
+  deleteWorkflow(id: number): Promise<void>;
 
   getTrainingJobs(): Promise<TrainingJob[]>;
   getTrainingJob(id: number): Promise<TrainingJob | undefined>;
@@ -462,6 +463,10 @@ export class DatabaseStorage implements IStorage {
   async updateWorkflow(id: number, data: Partial<InsertWorkflow>) {
     const [row] = await db.update(workflows).set(data).where(eq(workflows.id, id)).returning();
     return row;
+  }
+
+  async deleteWorkflow(id: number) {
+    await db.delete(workflows).where(eq(workflows.id, id));
   }
 
   async getTrainingJobs() {

@@ -55,7 +55,10 @@ const StepIcon = ({ type }: { type: string }) => {
   }
 };
 
-const StepCard = ({ step, index, onClick, isSelected }: { step: any, index: number, onClick: () => void, isSelected: boolean }) => {
+const StepCard = ({ step, index, onClick, isSelected, onMoveUp, onMoveDown, onDelete, totalSteps }: {
+  step: any, index: number, onClick: () => void, isSelected: boolean,
+  onMoveUp?: () => void, onMoveDown?: () => void, onDelete?: () => void, totalSteps?: number
+}) => {
   const label = step.action_type;
 
   return (
@@ -70,8 +73,24 @@ const StepCard = ({ step, index, onClick, isSelected }: { step: any, index: numb
     >
       <Card className={`border-border shadow-sm hover:shadow-md transition-shadow duration-200 ${isSelected ? 'ring-2 ring-primary' : ''}`}>
         <CardContent className="p-4 flex items-start gap-4">
-          <div className="p-2 rounded-lg bg-secondary/50 group-hover:bg-secondary transition-colors">
-            <StepIcon type={step.action_type} />
+          <div className="flex flex-col items-center gap-1">
+            <div className="p-2 rounded-lg bg-secondary/50 group-hover:bg-secondary transition-colors">
+              <StepIcon type={step.action_type} />
+            </div>
+            <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+              {onMoveUp && index > 0 && (
+                <button className="h-5 w-5 flex items-center justify-center rounded hover:bg-secondary text-muted-foreground hover:text-foreground" data-testid={`button-move-up-${index}`}
+                  onClick={(e) => { e.stopPropagation(); onMoveUp(); }}>
+                  <ChevronDown className="h-3 w-3 rotate-180" />
+                </button>
+              )}
+              {onMoveDown && totalSteps && index < totalSteps - 1 && (
+                <button className="h-5 w-5 flex items-center justify-center rounded hover:bg-secondary text-muted-foreground hover:text-foreground" data-testid={`button-move-down-${index}`}
+                  onClick={(e) => { e.stopPropagation(); onMoveDown(); }}>
+                  <ChevronDown className="h-3 w-3" />
+                </button>
+              )}
+            </div>
           </div>
           <div className="flex-1">
             <div className="flex justify-between items-start">
@@ -92,13 +111,21 @@ const StepCard = ({ step, index, onClick, isSelected }: { step: any, index: numb
                   {step.action_type === "ElevenLabsTTS" && <span className="text-fuchsia-400">{step.params.text?.slice(0, 40) || "Voice Message"}</span>}
                   {step.action_type === "SendWhatsApp" && <span className="text-green-400">{step.params.template_name || step.params.body?.slice(0, 30) || "WhatsApp"}</span>}
                   {step.action_type === "VapiCall" && <span className="text-orange-400">AI Call → {step.params.first_message?.slice(0, 30) || "Outbound"}</span>}
-                  {step.action_type === "SendBookingLink" && <span className="text-teal-400">📅 Booking SMS</span>}
+                  {step.action_type === "SendBookingLink" && <span className="text-teal-400">Booking SMS</span>}
                   {step.action_type === "AIQualify" && <span className="text-violet-400">AI Qualify Lead</span>}
                 </p>
               </div>
-              <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-0.5">
+                {onDelete && (
+                  <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-red-400 hover:text-red-300 hover:bg-red-500/10" data-testid={`button-delete-step-${index}`}
+                    onClick={(e) => { e.stopPropagation(); onDelete(); }}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                )}
+                <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
         </CardContent>
@@ -1012,13 +1039,33 @@ function WorkflowBuilderInner() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [prompt, setPrompt] = useState("When a Facebook form is submitted, wait 30 seconds, send a personalized SMS introducing our services, then immediately trigger an AI call to qualify the lead and book an appointment.");
   const [activeTab, setActiveTab] = useState("editor");
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<number | null>(null);
+  const [editingName, setEditingName] = useState(false);
+  const [nameValue, setNameValue] = useState("");
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [newWfName, setNewWfName] = useState("New Workflow");
+  const [newWfTrigger, setNewWfTrigger] = useState("manual_trigger");
+
+  const TRIGGERS = [
+    { value: "manual_trigger", label: "Manual Trigger" },
+    { value: "facebook_form_submit", label: "Facebook Form Submit" },
+    { value: "new_lead", label: "New Lead" },
+    { value: "missed_call", label: "Missed Call" },
+    { value: "appointment_booked", label: "Appointment Booked" },
+    { value: "review_received", label: "Review Received" },
+    { value: "sms_reply", label: "SMS Reply" },
+    { value: "shopify_abandoned_cart", label: "Shopify Abandoned Cart" },
+    { value: "shopify_order_fulfilled", label: "Shopify Order Fulfilled" },
+  ];
 
   const { data: workflows = [], isLoading } = useQuery<Workflow[]>({
     queryKey: ["/api/workflows"],
     queryFn: api.getWorkflows,
   });
 
-  const currentWorkflow = workflows.length > 0 ? workflows[0] : null;
+  const currentWorkflow = selectedWorkflowId
+    ? workflows.find((w) => w.id === selectedWorkflowId) || (workflows.length > 0 ? workflows[0] : null)
+    : workflows.length > 0 ? workflows[0] : null;
   const displayWorkflow = currentWorkflow ?? DEFAULT_WORKFLOW;
   const steps = Array.isArray(displayWorkflow.steps) ? displayWorkflow.steps : [];
   const selectedStep = selectedStepIndex !== null ? steps[selectedStepIndex] : null;
@@ -1026,8 +1073,9 @@ function WorkflowBuilderInner() {
   const createMutation = useMutation({
     mutationFn: (data: { name: string; trigger: string; steps: any; subAccountId?: number | null }) =>
       api.createWorkflow(data),
-    onSuccess: () => {
+    onSuccess: (newWf: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/workflows"] });
+      if (newWf?.id) setSelectedWorkflowId(newWf.id);
     },
   });
 
@@ -1039,6 +1087,16 @@ function WorkflowBuilderInner() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/workflows/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/workflows"] });
+      setSelectedWorkflowId(null);
+      setSelectedStepIndex(null);
+      toast({ title: "Workflow deleted" });
+    },
+  });
+
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
     setIsGenerating(true);
@@ -1046,6 +1104,7 @@ function WorkflowBuilderInner() {
       const res = await apiRequest("POST", "/api/workflows/generate", { prompt });
       const wf = await res.json();
       queryClient.invalidateQueries({ queryKey: ["/api/workflows"] });
+      if (wf?.id) setSelectedWorkflowId(wf.id);
       setIsAiDialogOpen(false);
       setSelectedStepIndex(null);
       toast({
@@ -1077,8 +1136,41 @@ function WorkflowBuilderInner() {
   };
 
   const handleDiscard = () => {
-    createMutation.mutate({ name: "New Workflow", trigger: "manual_trigger", steps: [] });
+    if (currentWorkflow) {
+      updateMutation.mutate({ id: currentWorkflow.id, data: { steps: [] } });
+    }
     setSelectedStepIndex(null);
+  };
+
+  const handleChangeTrigger = (newTrigger: string) => {
+    if (!currentWorkflow) return;
+    updateMutation.mutate({ id: currentWorkflow.id, data: { trigger: newTrigger } });
+  };
+
+  const handleRenameSave = () => {
+    if (!currentWorkflow || !nameValue.trim()) return;
+    updateMutation.mutate({ id: currentWorkflow.id, data: { name: nameValue.trim() } });
+    setEditingName(false);
+    toast({ title: "Workflow renamed" });
+  };
+
+  const handleMoveStep = (index: number, direction: "up" | "down") => {
+    if (!currentWorkflow) return;
+    const newSteps = [...steps];
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= newSteps.length) return;
+    [newSteps[index], newSteps[targetIndex]] = [newSteps[targetIndex], newSteps[index]];
+    updateMutation.mutate({ id: currentWorkflow.id, data: { steps: newSteps } });
+    setSelectedStepIndex(targetIndex);
+  };
+
+  const handleCreateWorkflow = () => {
+    createMutation.mutate({ name: newWfName, trigger: newWfTrigger, steps: [] });
+    setIsCreateDialogOpen(false);
+    setNewWfName("New Workflow");
+    setNewWfTrigger("manual_trigger");
+    setSelectedStepIndex(null);
+    toast({ title: "Workflow created", description: `"${newWfName}" is ready to build.` });
   };
 
   const handleAddStep = (type: string) => {
@@ -1138,21 +1230,76 @@ function WorkflowBuilderInner() {
 
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto">
-      <header className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Workflow Command Center</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Build, wire, and deploy intelligent automations
-          </p>
+      <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">Workflow Command Center</h1>
+            <p className="text-muted-foreground mt-1 text-sm">
+              Build, wire, and deploy intelligent automations
+            </p>
+          </div>
         </div>
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-2 items-center flex-wrap">
+          {workflows.length > 0 && (
+            <Select value={String(currentWorkflow?.id || "")} onValueChange={(val) => { setSelectedWorkflowId(parseInt(val)); setSelectedStepIndex(null); }}>
+              <SelectTrigger className="w-[200px] h-8 text-xs" data-testid="select-workflow">
+                <SelectValue placeholder="Select workflow" />
+              </SelectTrigger>
+              <SelectContent>
+                {workflows.map((wf) => (
+                  <SelectItem key={wf.id} value={String(wf.id)} data-testid={`select-workflow-${wf.id}`}>
+                    {wf.name || `Workflow #${wf.id}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm" data-testid="button-new-workflow" className="gap-1">
+                <Zap className="h-3 w-3" /> New
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[400px]">
+              <DialogHeader>
+                <DialogTitle>Create New Workflow</DialogTitle>
+                <DialogDescription>Name your workflow and pick a trigger.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 py-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium">Workflow Name</label>
+                  <Input data-testid="input-new-wf-name" value={newWfName} onChange={(e) => setNewWfName(e.target.value)} placeholder="e.g. Facebook Lead Follow-Up" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium">Trigger</label>
+                  <Select value={newWfTrigger} onValueChange={setNewWfTrigger}>
+                    <SelectTrigger data-testid="select-new-wf-trigger"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {TRIGGERS.map((t) => (
+                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="secondary" onClick={() => setIsCreateDialogOpen(false)}>Cancel</Button>
+                <Button data-testid="button-create-wf-submit" onClick={handleCreateWorkflow} disabled={!newWfName.trim()}>Create Workflow</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <Button variant="ghost" size="sm" onClick={startTutorial} className="text-slate-400 hover:text-white" data-testid="button-start-tutorial">
             <BookOpen size={16} className="mr-1" /> Tutorial
           </Button>
-          <Button data-testid="button-discard" variant="outline" size="sm" onClick={handleDiscard}>Discard</Button>
+          <Button data-testid="button-discard" variant="outline" size="sm" onClick={handleDiscard}>Clear Steps</Button>
+          {currentWorkflow && (
+            <Button data-testid="button-delete-workflow" variant="outline" size="sm" className="text-red-400 border-red-500/30 hover:bg-red-500/10" onClick={() => { if (confirm("Delete this workflow?")) deleteMutation.mutate(currentWorkflow.id); }}>
+              <Trash2 className="h-3 w-3 mr-1" /> Delete
+            </Button>
+          )}
           <Button data-testid="button-publish" variant="secondary" size="sm" onClick={handlePublish} disabled={!currentWorkflow || updateMutation.isPending}>
             {updateMutation.isPending ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <PlayCircle className="mr-1 h-3 w-3" />}
-            Publish
+            Save
           </Button>
         </div>
       </header>
@@ -1179,15 +1326,46 @@ function WorkflowBuilderInner() {
         <TabsContent value="editor">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">
+              {currentWorkflow && (
+                <div className="flex items-center gap-3 mb-2">
+                  {editingName ? (
+                    <div className="flex items-center gap-2 flex-1">
+                      <Input data-testid="input-workflow-name" className="h-8 text-sm font-semibold max-w-[250px]" value={nameValue}
+                        onChange={(e) => setNameValue(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") handleRenameSave(); if (e.key === "Escape") setEditingName(false); }}
+                        autoFocus />
+                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={handleRenameSave}>Save</Button>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setEditingName(false)}>Cancel</Button>
+                    </div>
+                  ) : (
+                    <button className="text-lg font-semibold text-foreground hover:text-primary transition-colors cursor-pointer flex items-center gap-1.5"
+                      onClick={() => { setNameValue(currentWorkflow.name || ""); setEditingName(true); }}
+                      data-testid="button-rename-workflow">
+                      {currentWorkflow.name || "Untitled Workflow"}
+                      <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                    </button>
+                  )}
+                </div>
+              )}
+
               <div className="flex justify-between items-center">
                 <div className="flex justify-center flex-1">
-                  <div className="bg-foreground text-background px-5 py-2.5 rounded-full text-sm font-medium shadow-lg flex items-center gap-2">
-                    {displayWorkflow.trigger?.startsWith("shopify_") ? (
-                      <ShoppingCart className="h-4 w-4 text-green-400" />
-                    ) : (
-                      <PlayCircle className="h-4 w-4" />
-                    )}
-                    Trigger: {displayWorkflow.trigger}
+                  <div className="flex items-center gap-2">
+                    <Select value={displayWorkflow.trigger || "manual_trigger"} onValueChange={handleChangeTrigger} disabled={!currentWorkflow}>
+                      <SelectTrigger className="bg-foreground text-background px-4 py-2 rounded-full text-sm font-medium shadow-lg border-0 h-auto gap-2 min-w-[220px]" data-testid="select-trigger">
+                        {displayWorkflow.trigger?.startsWith("shopify_") ? (
+                          <ShoppingCart className="h-4 w-4 text-green-400" />
+                        ) : (
+                          <PlayCircle className="h-4 w-4" />
+                        )}
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TRIGGERS.map((t) => (
+                          <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <Dialog open={isAiDialogOpen} onOpenChange={setIsAiDialogOpen}>
@@ -1235,6 +1413,10 @@ function WorkflowBuilderInner() {
                       index={index}
                       isSelected={selectedStepIndex === index}
                       onClick={() => setSelectedStepIndex(index)}
+                      onMoveUp={() => handleMoveStep(index, "up")}
+                      onMoveDown={() => handleMoveStep(index, "down")}
+                      onDelete={() => handleDeleteStep(index)}
+                      totalSteps={steps.length}
                     />
                   ))}
                 </AnimatePresence>
