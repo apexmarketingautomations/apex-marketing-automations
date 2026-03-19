@@ -171,9 +171,47 @@ export function registerMessagingRoutes(app: Express) {
           }
         }
       }
+    } else if (channel === "facebook") {
+      const metaToken = process.env.META_ACCESS_TOKEN;
+      const metaPageId = process.env.META_PAGE_ID;
+      const metaAppSecret = process.env.META_APP_SECRET;
+      if (!metaToken || !metaPageId) {
+        twilioStatus = "failed";
+        twilioError = "META_ACCESS_TOKEN or META_PAGE_ID not configured. Cannot send Facebook DMs.";
+      } else {
+        try {
+          let proofParam = "";
+          if (metaAppSecret) {
+            const crypto = await import("crypto");
+            const proof = crypto.createHmac("sha256", metaAppSecret).update(metaToken).digest("hex");
+            proofParam = `?appsecret_proof=${proof}`;
+          }
+          const fbUrl = `https://graph.facebook.com/v19.0/${metaPageId}/messages${proofParam}`;
+          const fbRes = await fetch(fbUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              recipient: { id: contactPhone },
+              message: { text: body },
+              access_token: metaToken,
+            }),
+          });
+          const fbData = await fbRes.json() as any;
+          if (fbRes.ok) {
+            twilioStatus = "sent";
+            twilioSid = fbData.message_id || null;
+          } else {
+            twilioStatus = "failed";
+            twilioError = fbData?.error?.message || "Facebook send failed";
+          }
+        } catch (fbErr: any) {
+          twilioStatus = "failed";
+          twilioError = fbErr.message || "Facebook send failed";
+        }
+      }
     } else {
       twilioStatus = "unsupported";
-      twilioError = `Channel '${channel}' is not supported for outbound sending. Use 'sms' or 'whatsapp'.`;
+      twilioError = `Channel '${channel}' is not supported for outbound sending. Use 'sms', 'whatsapp', or 'facebook'.`;
     }
 
     const sendStartMs = Date.now();

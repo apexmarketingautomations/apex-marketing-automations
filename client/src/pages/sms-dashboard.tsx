@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { format } from "date-fns";
-import { Send, Phone, User, Building2, MessageSquare, Loader2, CheckCircle2, Clock, Instagram, Mail, Bell, BookOpen, MessageCircle, CheckCheck, Bot } from "lucide-react";
+import { Send, Phone, User, Building2, MessageSquare, Loader2, CheckCircle2, Clock, Instagram, Mail, Bell, BookOpen, MessageCircle, CheckCheck, Bot, Facebook } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { INBOX_STEPS } from "@/components/tutorial-steps";
 import { motion, AnimatePresence } from "framer-motion";
@@ -47,7 +47,7 @@ const formSchema = z.object({
   subAccountId: z.string().min(1, "Please select an account"),
   contactPhone: z.string().min(10, "Phone number must be at least 10 digits"),
   messageBody: z.string().min(1, "Message cannot be empty").max(1600, "Message too long"),
-  channel: z.enum(["sms", "instagram", "whatsapp"]).default("sms"),
+  channel: z.enum(["sms", "instagram", "whatsapp", "facebook"]).default("sms"),
 });
 
 interface LocalMessage extends Message {
@@ -266,7 +266,7 @@ export default function SmsDashboard() {
                 <div>
                   <h3 className="font-semibold text-primary">Omnichannel Ready</h3>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Connected to Twilio (SMS), WhatsApp Business API, Meta Graph API (Instagram), and Vapi SMS.
+                    Connected to Twilio (SMS), WhatsApp Business API, Meta Graph API (Facebook DMs & Instagram), and Vapi SMS.
                   </p>
                 </div>
               </div>
@@ -304,6 +304,9 @@ export default function SmsDashboard() {
                  <Badge variant="outline" className="gap-1 border-purple-500/30 text-purple-400" data-testid="badge-vapi-sms">
                    <Bot className="h-3 w-3" /> Vapi SMS
                  </Badge>
+                 <Badge variant="outline" className="gap-1 border-blue-500/30 text-blue-400" data-testid="badge-facebook">
+                   <Facebook className="h-3 w-3" /> Facebook
+                 </Badge>
                  <Badge variant="outline" className={`gap-1 ${!instagramConnected && 'opacity-50'}`}>
                    <Instagram className="h-3 w-3" /> Instagram
                  </Badge>
@@ -332,7 +335,9 @@ export default function SmsDashboard() {
                     >
                       <div className={`flex flex-col ${msg.direction === 'outbound' ? 'items-end' : 'items-start'} max-w-[80%]`}>
                         <div className="flex items-center gap-1 mb-1 px-1">
-                           {msg.channel === 'instagram' ? (
+                           {msg.channel === 'facebook' ? (
+                             <Facebook className="h-3 w-3 text-blue-500" />
+                           ) : msg.channel === 'instagram' ? (
                              <Instagram className="h-3 w-3 text-pink-500" />
                            ) : msg.channel === 'whatsapp' ? (
                              <MessageCircle className="h-3 w-3 text-green-500" />
@@ -341,7 +346,7 @@ export default function SmsDashboard() {
                            ) : (
                              <MessageSquare className="h-3 w-3 text-blue-500" />
                            )}
-                           <span className="text-[10px] text-muted-foreground capitalize">{msg.channel === 'vapi-sms' ? 'Vapi SMS' : (msg.channel || 'sms')}</span>
+                           <span className="text-[10px] text-muted-foreground capitalize">{msg.channel === 'vapi-sms' ? 'Vapi SMS' : msg.channel === 'facebook' ? 'Facebook DM' : (msg.channel || 'sms')}</span>
                         </div>
                         <div
                           className={`rounded-2xl px-4 py-3 shadow-sm ${
@@ -397,6 +402,16 @@ export default function SmsDashboard() {
                      >
                        <MessageCircle className="mr-1.5 h-3 w-3" /> WhatsApp
                      </Button>
+                     <Button
+                      type="button"
+                      variant={form.watch("channel") === "facebook" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => form.setValue("channel", "facebook")}
+                      className={`text-xs h-7 ${form.watch("channel") === "facebook" ? "bg-blue-600 hover:bg-blue-700" : ""}`}
+                      data-testid="button-channel-facebook"
+                     >
+                       <Facebook className="mr-1.5 h-3 w-3" /> Facebook
+                     </Button>
                      {instagramConnected && (
                        <Button
                         type="button"
@@ -419,7 +434,7 @@ export default function SmsDashboard() {
                         <FormItem>
                           <FormControl>
                             <Textarea
-                              placeholder={`Type your ${form.watch("channel") === 'instagram' ? 'DM' : form.watch("channel") === 'whatsapp' ? 'WhatsApp message' : 'SMS'}...`}
+                              placeholder={`Type your ${form.watch("channel") === 'facebook' ? 'Facebook DM' : form.watch("channel") === 'instagram' ? 'Instagram DM' : form.watch("channel") === 'whatsapp' ? 'WhatsApp message' : 'SMS'}...`}
                               className="min-h-[80px] resize-none pr-12 text-sm bg-muted/30 border-muted-foreground/20 focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
                               {...field}
                               onKeyDown={(e) => {
@@ -439,7 +454,7 @@ export default function SmsDashboard() {
                         type="submit" 
                         size="icon" 
                         disabled={isSending || !form.watch("messageBody")}
-                        className={`h-8 w-8 rounded-full shadow-sm ${form.watch("channel") === 'instagram' ? 'bg-pink-600 hover:bg-pink-700' : form.watch("channel") === 'whatsapp' ? 'bg-green-600 hover:bg-green-700' : ''}`}
+                        className={`h-8 w-8 rounded-full shadow-sm ${form.watch("channel") === 'facebook' ? 'bg-blue-600 hover:bg-blue-700' : form.watch("channel") === 'instagram' ? 'bg-pink-600 hover:bg-pink-700' : form.watch("channel") === 'whatsapp' ? 'bg-green-600 hover:bg-green-700' : ''}`}
                         data-testid="button-send"
                       >
                         {isSending ? (
