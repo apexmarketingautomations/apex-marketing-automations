@@ -30,6 +30,9 @@ export interface DmContextOptions {
 export async function assembleDmContext(opts: DmContextOptions): Promise<DmContext> {
   const { subAccountId, contactPhone, channel, historyLimit = 10 } = opts;
 
+  if (!subAccountId) throw new Error("[DM-CONTEXT] Missing subAccountId");
+  if (!contactPhone) throw new Error("[DM-CONTEXT] Missing contactPhone");
+
   const [account, threadMessages, contactRecord] = await Promise.all([
     storage.getSubAccount(subAccountId).catch(() => null),
     db
