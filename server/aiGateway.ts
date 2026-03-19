@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { geminiChat, geminiChatStream, isGeminiAvailable, isGeminiConfigured } from "./gemini";
+import { geminiChat, geminiChatStream, geminiGenerateImage, isGeminiAvailable, isGeminiConfigured } from "./gemini";
 import crypto from "crypto";
 
 let _openaiClient: OpenAI | null = null;
@@ -568,6 +568,70 @@ export async function* aiChatWithToolsStream(
       throw err;
     }
     yield `[AI Error: ${err?.message ?? "stream failed"}]`;
+  }
+}
+
+export async function aiGenerateImage(prompt: string): Promise<string | null> {
+  const requestId = generateRequestId();
+  const start = Date.now();
+  const primaryProvider = selectProvider();
+  let didFallback = false;
+
+  try {
+    if (primaryProvider === "openai" && isOpenAIConfigured()) {
+      try {
+        const response = await withTimeout(
+          getOpenAIClient().images.generate({
+            model: "dall-e-3",
+            prompt,
+            n: 1,
+            size: "1024x1024",
+            response_format: "b64_json",
+          }),
+          30_000
+        );
+        const b64 = response.data?.[0]?.b64_json;
+        if (b64) {
+          logObservability({
+            requestId, provider: "openai", model: "dall-e-3",
+            latencyMs: Date.now() - start, success: true, fallbackTriggered: false,
+            route: "image_generation",
+          });
+          return `data:image/png;base64,${b64}`;
+        }
+        throw new Error("OpenAI image generation returned no data");
+      } catch (err: any) {
+        recordOpenAIFailure();
+        didFallback = true;
+        console.warn(`[AI-GATEWAY] OpenAI image generation failed, falling back to Gemini: ${err?.message}`);
+      }
+    }
+
+    if (!isGeminiAvailable()) {
+      logObservability({
+        requestId, provider: "gemini", model: "gemini-2.0-flash-exp",
+        latencyMs: Date.now() - start, success: false, fallbackTriggered: didFallback,
+        route: "image_generation", error: "No image generation provider available",
+      });
+      return null;
+    }
+
+    const result = await geminiGenerateImage(prompt);
+    logObservability({
+      requestId, provider: "gemini", model: "gemini-2.0-flash-exp",
+      latencyMs: Date.now() - start, success: result !== null,
+      fallbackTriggered: didFallback,
+      route: "image_generation",
+    });
+    return result;
+  } catch (err: any) {
+    logObservability({
+      requestId, provider: "gemini", model: "gemini-2.0-flash-exp",
+      latencyMs: Date.now() - start, success: false, fallbackTriggered: false,
+      route: "image_generation", error: err?.message,
+    });
+    console.error("[AI-GATEWAY] Image generation failed:", err?.message);
+    return null;
   }
 }
 

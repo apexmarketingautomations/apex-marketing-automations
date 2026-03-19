@@ -3,7 +3,6 @@ import { messages } from "@shared/schema";
 import { storage } from "../storage";
 import { z } from "zod";
 import { aiChat, aiChatStream, isAIConfigured } from "../aiGateway";
-import { geminiGenerateImage } from "../gemini";
 import { streamAIResponse, sendSSEData, initSSE } from "../streaming";
 import { asyncHandler, parseIntParam, logUsageInternal, getIndustryContext, getLanguageInstruction } from "./helpers";
 import { executeTool, getTool } from "../operator/toolRegistry";

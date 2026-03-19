@@ -1,6 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { aiChat, isAIConfigured } from "../aiGateway";
-import { geminiGenerateImage } from "../gemini";
+import { aiChat, aiGenerateImage, isAIConfigured } from "../aiGateway";
 import { asyncHandler, logUsageInternal } from "./helpers";
 
 export function registerAdsRoutes(app: Express) {
@@ -70,7 +69,7 @@ export function registerAdsRoutes(app: Express) {
 
     if (campaign.image_prompt) {
       try {
-        const imageUrl = await geminiGenerateImage(
+        const imageUrl = await aiGenerateImage(
           `Professional marketing photo for Facebook ad: ${campaign.image_prompt}. High quality, clean composition, suitable for social media advertising, no text overlay.`
         );
         campaign.generated_image_url = imageUrl;
