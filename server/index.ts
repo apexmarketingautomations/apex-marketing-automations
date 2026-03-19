@@ -436,6 +436,27 @@ function validateEnvVars() {
     try {
       const msgType = req.body?.message?.type;
 
+      if (!msgType) {
+        const body = req.body || {};
+        const smsFrom = body.from || body.From || body.customer?.number;
+        const smsBody = body.text || body.body || body.Body || body.content || body.message;
+        const smsTo = body.to || body.To || body.phoneNumber;
+
+        if (smsFrom && (typeof smsBody === "string")) {
+          console.log(`[VAPI SMS] Inbound text from ${smsFrom}: "${smsBody}"`);
+          console.log(`[VAPI SMS] Full payload:`, JSON.stringify(body).substring(0, 500));
+          return res.json({ ok: true });
+        }
+
+        if (body.type === "sms" || body.type === "message" || body.sms || body.text) {
+          console.log(`[VAPI SMS] Inbound event:`, JSON.stringify(body).substring(0, 500));
+          return res.json({ ok: true });
+        }
+
+        console.log(`[VAPI WEBHOOK] Unknown payload (no message.type):`, JSON.stringify(body).substring(0, 300));
+        return res.json({ ok: true });
+      }
+
       if (msgType === "tool-calls") {
         const toolCalls = req.body.message.toolCalls || req.body.message.toolCallList || [];
         const results: any[] = [];
