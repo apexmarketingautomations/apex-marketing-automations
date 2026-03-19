@@ -17,6 +17,9 @@ export function registerMessagingRoutes(app: Express) {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const msgs = await storage.getMessages(subAccountId);
+    if (msgs.length === 0) {
+      console.log(`[MESSAGES API] GET /api/messages/${subAccountId} — returned 0 rows. DB: ${process.env.DATABASE_URL ? "connected" : "missing"}, NODE_ENV=${process.env.NODE_ENV}`);
+    }
     res.json(msgs);
   }));
 
