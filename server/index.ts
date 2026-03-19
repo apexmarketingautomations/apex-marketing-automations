@@ -478,17 +478,34 @@ async function validateMetaCredentials() {
         const pages = accountsData.data || [];
         const matchedPage = pages.find((p: any) => p.id === pageId);
         if (matchedPage) {
-          console.log(`[META] Page verified — "${matchedPage.name}" (id=${matchedPage.id})`);
+          console.log(`[META] Page verified via /me/accounts — "${matchedPage.name}" (id=${matchedPage.id})`);
           pageAccessible = true;
-        } else if (pages.length === 0) {
-          const noPageIssue = `Token has no pages — re-authorize with pages_read_engagement + pages_messaging scopes, and make sure the token belongs to a user/admin of the target page.`;
-          console.error(`[META] CREDENTIAL ERROR: ${noPageIssue}`);
-          issues.push(noPageIssue);
         } else {
-          const availableIds = pages.map((p: any) => `${p.name} (${p.id})`).join(", ");
-          const mismatchIssue = `META_PAGE_ID '${pageId}' not found in token's pages. Available: [${availableIds}]. Update META_PAGE_ID to one of these.`;
-          console.error(`[META] CREDENTIAL ERROR: ${mismatchIssue}`);
-          issues.push(mismatchIssue);
+          const convoUrl = `https://graph.facebook.com/v19.0/${pageId}/conversations?limit=1&access_token=${accessToken}${proofParam}`;
+          const convoRes = await fetch(convoUrl);
+          const convoData = await convoRes.json() as any;
+          if (!convoData.error) {
+            console.log(`[META] Page ${pageId} verified via conversations endpoint (messaging access confirmed)`);
+            pageAccessible = true;
+          } else {
+            const directUrl = `https://graph.facebook.com/v19.0/${pageId}?fields=name,id&access_token=${accessToken}${proofParam}`;
+            const directRes = await fetch(directUrl);
+            const directData = await directRes.json() as any;
+            if (directData.name) {
+              console.log(`[META] Page verified via direct lookup — "${directData.name}" (id=${directData.id})`);
+              pageAccessible = true;
+            } else if (pages.length === 0) {
+              const graphErr = convoData?.error ? ` (Graph error ${convoData.error.code}: ${convoData.error.message})` : "";
+              const noPageIssue = `Token cannot access page ${pageId} for messaging${graphErr} — ensure pages_messaging permission is granted.`;
+              console.error(`[META] CREDENTIAL ERROR: ${noPageIssue}`);
+              issues.push(noPageIssue);
+            } else {
+              const availableIds = pages.map((p: any) => `${p.name} (${p.id})`).join(", ");
+              const mismatchIssue = `META_PAGE_ID '${pageId}' not found in token's pages. Available: [${availableIds}]. Update META_PAGE_ID to one of these.`;
+              console.error(`[META] CREDENTIAL ERROR: ${mismatchIssue}`);
+              issues.push(mismatchIssue);
+            }
+          }
         }
       }
     } catch (err: any) {
