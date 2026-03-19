@@ -1,0 +1,97 @@
+Yeah — that’s another real product gap.
+
+What you’re saying is the DM bot is probably replying **one message at a time**, with **no conversation memory**, no lead history, and no stored business/client context layered into the reply.
+
+So instead of acting like:
+
+> “I know who this person is, what they asked before, what service they want, and where they are in the funnel”
+
+it acts more like:
+
+> “I only see this one incoming message right now.”
+
+That creates dumb behavior like:
+
+* asking the same question twice
+* forgetting name, service, or booking intent
+* losing the thread mid-conversation
+* sounding generic
+* not carrying context from earlier DMs
+* not remembering prior manual team replies
+
+So yes — if the DM bot has no memory context, then even with Facebook connected, the experience still feels half-built.
+
+What it should have at minimum is **3 layers of memory**:
+
+**1. Conversation memory**
+The last messages in that thread, inbound and outbound.
+
+**2. Contact memory**
+Name, phone/email, source, tags, service interest, appointment status, notes.
+
+**3. Business memory**
+Your offer, hours, service area, pricing logic, booking link, FAQs, tone, escalation rules.
+
+Without those, it’s not really an automation agent — it’s just a reply generator.
+
+The practical issue is usually one of these:
+
+* the prompt only sends the latest message
+* previous thread messages are not being loaded into the AI request
+* customer/contact record is not injected into the prompt
+* channel history is stored but not used
+* memory exists for one channel but not unified across FB/IG/SMS
+* manual human replies are not written back into the same context store
+
+So your current product problem is not just:
+**“Facebook is missing from unified DM.”**
+
+It’s also:
+**“Even when the bot replies, it’s not context-aware enough to feel smart.”**
+
+What the system should do before every AI reply:
+
+* pull the contact record
+* pull recent conversation history
+* pull business config
+* pull current workflow state
+* generate the response from all of that
+* save the new reply back into the thread
+
+If it’s not doing that, then yeah — “no memory context” is exactly the right diagnosis.
+
+A blunt way to say it:
+
+**Right now it sounds like you have channel connectivity, but not real conversational state.**
+
+That matters a lot, because clients won’t judge the architecture — they’ll judge whether the bot feels like it remembers people.
+
+The fix priority should be:
+
+1. load recent thread history into every AI reply
+2. inject lead/contact fields
+3. inject business profile + booking info
+4. persist every reply back to the same conversation
+5. keep memory unified across FB/IG/SMS, not split by channel only
+
+So the stack of problems is becoming clearer:
+
+* Facebook wasn’t fully wired into Unified DM
+* workflow editor is not truly editable
+* DM bot lacks memory/context
+
+That’s actually useful, because now you’re identifying the stuff that directly affects whether the product feels real.
+
+You could tell Replit this in one sentence:
+
+```text
+The DM bot is replying without conversation memory. Make every AI reply include recent thread history, contact/lead data, business settings, and prior outbound/inbound messages, then persist the updated context back to the same conversation.
+```
+
+And an even tighter version:
+
+```text
+The bot has no memory context. It needs thread memory, contact memory, and business memory injected into every DM response across Facebook, Instagram, and SMS.
+```
+
+That’s the right complaint.

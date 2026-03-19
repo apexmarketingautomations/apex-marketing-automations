@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -83,11 +83,6 @@ export default function SmsDashboard() {
     enabled: !!numericAccountId,
   });
 
-  const allMessages: LocalMessage[] = [
-    ...serverMessages,
-    ...localMessages.filter(lm => lm.subAccountId === numericAccountId),
-  ];
-
   const [isSendingMsg, setIsSendingMsg] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -161,16 +156,16 @@ export default function SmsDashboard() {
       
       queryClient.invalidateQueries({ queryKey: ["/api/messages", numericAccountId] });
       form.resetField("messageBody");
-      const channelLabel = values.channel === 'whatsapp' ? 'WhatsApp' : values.channel === 'instagram' ? 'Instagram' : 'SMS';
+      const channelLabel = values.channel === 'facebook' ? 'Facebook DM' : values.channel === 'whatsapp' ? 'WhatsApp' : values.channel === 'instagram' ? 'Instagram DM' : 'SMS';
       toast({
         title: `Message sent via ${channelLabel}`,
-        description: `${channelLabel} message to ${values.contactPhone}. Status: ${data.status || "sent"}.`,
+        description: `${channelLabel} to ${values.contactPhone}. Status: ${data.status || "sent"}.`,
       });
     } catch (error: any) {
       toast({
         variant: "destructive",
         title: "Send failed",
-        description: error.message || "Failed to send message. Check Twilio config.",
+        description: error.message || "Failed to send message. Check channel configuration.",
       });
     } finally {
       setIsSendingMsg(false);
