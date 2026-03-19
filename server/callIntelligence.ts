@@ -4,6 +4,54 @@ import { eq, isNotNull, sql, desc } from "drizzle-orm";
 import { geminiChat, isGeminiAvailable } from "./gemini";
 import { vapiConfig } from "./routes/helpers";
 
+const OUTBOUND_SPECIALIST_ID = "e30434f7-e7e0-4be7-8b89-40c384a52b4a";
+const AUTO_INJECT_EVERY_N_CALLS = 5;
+const DAILY_INJECT_INTERVAL_MS = 24 * 60 * 60 * 1000;
+let lastInjectionCallCount = 0;
+let dailyTimer: ReturnType<typeof setInterval> | null = null;
+
+export function startAutoLearningLoop(): void {
+  if (dailyTimer) return;
+
+  dailyTimer = setInterval(async () => {
+    try {
+      console.log("[CALL-INTEL] Daily auto-learning cycle starting...");
+      const analyzed = await analyzeAllUnprocessed();
+      if (analyzed > 0) {
+        console.log(`[CALL-INTEL] Daily cycle analyzed ${analyzed} new calls`);
+      }
+      const result = await injectPatternsIntoAgent(OUTBOUND_SPECIALIST_ID);
+      if (result.success) {
+        console.log(`[CALL-INTEL] Daily prompt refresh complete`);
+      }
+    } catch (err: any) {
+      console.error("[CALL-INTEL] Daily auto-learning failed:", err?.message);
+    }
+  }, DAILY_INJECT_INTERVAL_MS);
+
+  console.log("[CALL-INTEL] Auto-learning loop started — daily refresh + every 5 new calls");
+}
+
+export async function onCallAnalyzed(): Promise<void> {
+  try {
+    const totalAnalyzed = await db.select({ count: sql<number>`count(*)` })
+      .from(vapiCallLogs)
+      .where(isNotNull(vapiCallLogs.analysis));
+    const count = Number(totalAnalyzed[0]?.count || 0);
+
+    if (count > 0 && count - lastInjectionCallCount >= AUTO_INJECT_EVERY_N_CALLS) {
+      console.log(`[CALL-INTEL] ${AUTO_INJECT_EVERY_N_CALLS} new calls analyzed since last injection (${lastInjectionCallCount} → ${count}), refreshing agent prompt...`);
+      const result = await injectPatternsIntoAgent(OUTBOUND_SPECIALIST_ID);
+      if (result.success) {
+        lastInjectionCallCount = count;
+        console.log(`[CALL-INTEL] Auto-injected patterns from ${count} total calls`);
+      }
+    }
+  } catch (err: any) {
+    console.error("[CALL-INTEL] Auto-injection check failed:", err?.message);
+  }
+}
+
 export interface CallAnalysis {
   outcome: "booked" | "rejected" | "maybe" | "timeout" | "no_answer" | "unknown";
   engagement_score: number;

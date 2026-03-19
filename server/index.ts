@@ -426,7 +426,7 @@ function validateEnvVars() {
   const { db: vapiDb } = await import("./db");
   const { eq: vapiEq, isNotNull: vapiIsNotNull, sql: vapiSql, desc: vapiDesc } = await import("drizzle-orm");
   const { vapiConfig: vapiCfg } = await import("./routes/helpers");
-  const { analyzeCallTranscript, analyzeAllUnprocessed, generatePatternReport, generatePromptEnrichment, injectPatternsIntoAgent } = await import("./callIntelligence");
+  const { analyzeCallTranscript, analyzeAllUnprocessed, generatePatternReport, generatePromptEnrichment, injectPatternsIntoAgent, onCallAnalyzed, startAutoLearningLoop } = await import("./callIntelligence");
 
   app.post("/api/vapi/webhook", async (req, res) => {
     try {
@@ -450,7 +450,9 @@ function validateEnvVars() {
             }).returning({ id: vapiCallLogs.id });
             console.log(`[VAPI WEBHOOK] Stored call log: ${callId}`);
             if (inserted[0]?.id) {
-              analyzeCallTranscript(inserted[0].id).catch(err => console.error(`[VAPI WEBHOOK] Analysis failed for call ${inserted[0].id} (${callId}):`, err?.message ?? err, err?.stack));
+              analyzeCallTranscript(inserted[0].id)
+                .then(result => { if (result) onCallAnalyzed().catch(() => {}); })
+                .catch(err => console.error(`[VAPI WEBHOOK] Analysis failed for call ${inserted[0].id} (${callId}):`, err?.message ?? err, err?.stack));
             }
           }
         }
@@ -595,8 +597,14 @@ function validateEnvVars() {
       host: "0.0.0.0",
       reusePort: true,
     },
-    () => {
+    async () => {
       log(`serving on port ${port}`);
+      try {
+        const { startAutoLearningLoop: startLoop } = await import("./callIntelligence");
+        startLoop();
+      } catch (err: any) {
+        console.error("[CALL-INTEL] Failed to start auto-learning loop:", err?.message);
+      }
     },
   );
 })();
