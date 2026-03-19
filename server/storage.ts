@@ -382,6 +382,9 @@ export interface IStorage {
   getTimelineEventsByTrace(traceId: string): Promise<TimelineEvent[]>;
   listTraces(subAccountId: number, opts?: { limit?: number; offset?: number; status?: string; since?: Date }): Promise<{ traceId: string; contactPhone: string | null; conversationId: string | null; startedAt: Date; totalSteps: number; failedSteps: number; totalLatencyMs: number }[]>;
   getTraceSummary(traceId: string): Promise<{ totalDurationMs: number; aiLatencyMs: number; deliveryLatencyMs: number; stepCount: number; failedStepCount: number } | null>;
+
+  getRoutingFailures(unresolvedOnly?: boolean): Promise<import("@shared/schema").RoutingFailure[]>;
+  resolveRoutingFailure(id: number, subAccountId: number): Promise<import("@shared/schema").RoutingFailure | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1822,6 +1825,25 @@ export class DatabaseStorage implements IStorage {
       stepCount: events.length,
       failedStepCount: events.filter(e => e.status === "error").length,
     };
+  }
+
+  async getRoutingFailures(unresolvedOnly = true) {
+    const { routingFailures } = await import("@shared/schema");
+    const rows = await db.select().from(routingFailures)
+      .orderBy(desc(routingFailures.createdAt));
+    if (unresolvedOnly) {
+      return rows.filter(r => r.resolvedAt === null);
+    }
+    return rows;
+  }
+
+  async resolveRoutingFailure(id: number, subAccountId: number) {
+    const { routingFailures } = await import("@shared/schema");
+    const [row] = await db.update(routingFailures)
+      .set({ resolvedSubAccountId: subAccountId, resolvedAt: new Date() })
+      .where(eq(routingFailures.id, id))
+      .returning();
+    return row;
   }
 }
 

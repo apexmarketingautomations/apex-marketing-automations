@@ -1,11 +1,12 @@
 import type { Express, Request, Response } from "express";
 import { insertMessageSchema, insertWhatsappTemplateSchema, messages, whatsappTemplates, integrationConnections } from "@shared/schema";
-import { sql, eq } from "drizzle-orm";
+import { sql, eq, and } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { messagingLimiter } from "../rateLimiter";
 import { publishEventAsync, EVENT_TYPES } from "../eventBus";
 import { asyncHandler, parseIntParam, verifyAccountOwnership, logUsageInternal, getTwilioClient } from "./helpers";
+import { validateRouting } from "../routing/gate";
 
 export function registerMessagingRoutes(app: Express) {
   // ---- Messages ----
@@ -30,6 +31,16 @@ export function registerMessagingRoutes(app: Express) {
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
     const { subAccountId, contactPhone, body, channel } = parsed.data;
+
+    const gateResult = await validateRouting({
+      subAccountId,
+      source: "messaging-api",
+      channel: channel || "sms",
+      phone: contactPhone,
+    });
+    if (!gateResult.allowed) {
+      return res.status(403).json({ error: `Routing gate rejected outbound message: ${gateResult.reason}` });
+    }
 
     const { checkPhoneOptOut } = await import("../optOutGuard");
     const smsOptedOut = await checkPhoneOptOut(contactPhone, subAccountId);

@@ -2,6 +2,7 @@ import type { OperatorTool, ValidationResult, ToolResult, OperatorContext } from
 import { storage } from "../../storage";
 import { publishEventAsync, EVENT_TYPES } from "../../eventBus";
 import { verifyTenant } from "./tenantGuard";
+import { validateRouting } from "../../routing/gate";
 
 function noopValidate(): ValidationResult {
   return { valid: true, errors: [], warnings: [] };
@@ -24,6 +25,15 @@ export const crmTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const gateResult = await validateRouting({
+        subAccountId: ctx.subAccountId,
+        source: params.source || "operator",
+        channel: "crm",
+        phone: params.phone || undefined,
+      });
+      if (!gateResult.allowed) {
+        return { success: false, error: `Routing gate blocked contact creation: ${gateResult.reason}` };
+      }
       const contact = await storage.createContact({
         subAccountId: ctx.subAccountId,
         firstName: params.firstName,
@@ -31,6 +41,7 @@ export const crmTools: OperatorTool[] = [
         phone: params.phone || null,
         email: params.email || null,
         source: params.source || "operator",
+        channel: "crm",
         tags: params.tags || [],
       });
       publishEventAsync(EVENT_TYPES.CONTACT_CREATED, { subAccountId: ctx.subAccountId, contactId: contact.id }, "operator");
@@ -248,6 +259,14 @@ export const crmTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const gateResult = await validateRouting({
+        subAccountId: ctx.subAccountId,
+        source: "operator",
+        channel: "crm",
+      });
+      if (!gateResult.allowed) {
+        return { success: false, error: `Routing gate blocked deal creation: ${gateResult.reason}` };
+      }
       const deal = await storage.createDeal({
         subAccountId: ctx.subAccountId,
         title: params.title,

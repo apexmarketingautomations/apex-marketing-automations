@@ -4,7 +4,8 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import express from "express";
-import { asyncHandler, isUserAdmin } from "./helpers";
+import { asyncHandler, isUserAdmin, parseIntParam } from "./helpers";
+import { storage } from "../storage";
 
 export function registerAdminRoutes(app: Express) {
   // ---- Image Uploads ----
@@ -76,5 +77,25 @@ export function registerAdminRoutes(app: Express) {
         res.status(500).json({ error: "Download failed" });
       }
     });
+  }));
+
+  // ---- Routing Failures (Admin Only) ----
+  app.get("/api/admin/routing-failures", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
+    const unresolvedOnly = req.query.all !== "true";
+    const failures = await storage.getRoutingFailures(unresolvedOnly);
+    res.json({ failures, total: failures.length });
+  }));
+
+  app.post("/api/admin/routing-failures/:id/resolve", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
+    const id = parseIntParam(req.params.id, "id");
+    const parsed = z.object({ subAccountId: z.number().int().positive() }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const resolved = await storage.resolveRoutingFailure(id, parsed.data.subAccountId);
+    if (!resolved) return res.status(404).json({ error: "Routing failure not found" });
+    res.json(resolved);
   }));
 }

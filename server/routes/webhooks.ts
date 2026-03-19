@@ -9,6 +9,8 @@ import { ProgressStream } from "../streaming";
 import crypto from "crypto";
 import { asyncHandler, getUserId, requireAdmin, getIndustryContext, getLanguageInstruction, getTwilioClient, vapiConfig } from "./helpers";
 import { startTrace, recordStepValue } from "../traceRecorder";
+import { resolveSubAccount, isRoutingFailure } from "../routing/resolver";
+import { persistRoutingFailure } from "../routing/failureQueue";
 
 export function registerWebhooksRoutes(app: Express) {
   // ---- Unified Webhook (Twilio inbound SMS/WhatsApp/Messenger -> AI auto-reply) ----
@@ -40,8 +42,27 @@ export function registerWebhooksRoutes(app: Express) {
       console.log(`[${channel.toUpperCase()}] from ${senderClean}: ${incomingMsg.substring(0, 100)}`);
 
       const toClean = toRaw ? stripChannelPrefix(toRaw) : "";
-      const matchedAccounts = await db.select().from(subAccounts).where(eq(subAccounts.twilioNumber, toClean)).execute().catch(() => []);
-      const matchedAccountId = matchedAccounts.length > 0 ? matchedAccounts[0].id : 1;
+
+      const routingResult = await resolveSubAccount({
+        phone: toClean || undefined,
+        channel,
+        source: channel,
+      });
+
+      if (isRoutingFailure(routingResult)) {
+        console.error(`[${channel.toUpperCase()}] Routing failed for inbound from ${senderClean}: ${routingResult.reason}`);
+        await persistRoutingFailure({
+          phone: senderClean,
+          channel,
+          source: channel,
+          reason: routingResult.reason,
+          rawPayload: { From: senderRaw, To: toRaw, Body: incomingMsg.substring(0, 500) },
+        });
+        res.type("text/xml").send("<Response></Response>");
+        return;
+      }
+
+      const matchedAccountId = routingResult.subAccountId;
 
       const trace = startTrace(matchedAccountId, { contactPhone: senderClean });
 

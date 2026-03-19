@@ -526,6 +526,7 @@ export const contacts = pgTable("contacts", {
   phone: text("phone"),
   company: text("company"),
   source: text("source").default("manual"),
+  channel: text("channel"),
   tags: text("tags").array().default([]),
   notes: text("notes"),
   address: text("address"),
@@ -546,6 +547,24 @@ export const contacts = pgTable("contacts", {
 export const insertContactSchema = createInsertSchema(contacts).omit({ id: true, createdAt: true });
 export type InsertContact = z.infer<typeof insertContactSchema>;
 export type Contact = typeof contacts.$inferSelect;
+
+// ---- Routing Failures ----
+
+export const routingFailures = pgTable("routing_failures", {
+  id: serial("id").primaryKey(),
+  phone: text("phone"),
+  channel: text("channel").notNull(),
+  source: text("source"),
+  rawPayload: json("raw_payload"),
+  reason: text("reason").notNull(),
+  resolvedSubAccountId: integer("resolved_sub_account_id"),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertRoutingFailureSchema = createInsertSchema(routingFailures).omit({ id: true, createdAt: true });
+export type InsertRoutingFailure = z.infer<typeof insertRoutingFailureSchema>;
+export type RoutingFailure = typeof routingFailures.$inferSelect;
 
 // ---- Pipeline Deals ----
 

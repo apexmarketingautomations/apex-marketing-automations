@@ -1,7 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useAuth } from "@/hooks/use-auth";
-import { Shield, Users, MessageSquare, Target, AlertTriangle, Satellite, Activity, DollarSign, Radio, RefreshCcw, Search, ChevronDown } from "lucide-react";
+import { Shield, Users, MessageSquare, Target, AlertTriangle, Satellite, Activity, DollarSign, Radio, RefreshCcw, Search, ChevronDown, GitBranch } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
 
@@ -43,6 +43,17 @@ interface AccountOverview {
   lead_count: number;
 }
 
+interface RoutingFailure {
+  id: number;
+  phone: string | null;
+  channel: string;
+  source: string | null;
+  reason: string;
+  resolvedSubAccountId: number | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
 const categoryColors: Record<string, { bg: string; text: string; label: string }> = {
   meta_lead: { bg: "bg-green-500/20", text: "text-green-400", label: "Lead" },
   sentinel_incident: { bg: "bg-red-500/20", text: "text-red-400", label: "Incident" },
@@ -51,9 +62,11 @@ const categoryColors: Record<string, { bg: string; text: string; label: string }
 
 export default function AdminConsolePage() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const isAdmin = user?.isAdmin === "true" || (user as any)?.role === "DEV_ADMIN";
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const [resolveInput, setResolveInput] = useState<Record<number, string>>({});
 
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useQuery<GlobalStats>({
     queryKey: ["/api/admin/global-stats"],
@@ -85,6 +98,32 @@ export default function AdminConsolePage() {
       return res.json();
     },
     enabled: isAdmin,
+  });
+
+  const { data: routingFailuresData, refetch: refetchRoutingFailures } = useQuery<{ failures: RoutingFailure[]; total: number }>({
+    queryKey: ["/api/admin/routing-failures"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/routing-failures");
+      if (!res.ok) throw new Error("Failed to fetch routing failures");
+      return res.json();
+    },
+    enabled: isAdmin,
+    refetchInterval: 30000,
+  });
+
+  const resolveFailureMutation = useMutation({
+    mutationFn: async ({ id, subAccountId }: { id: number; subAccountId: number }) => {
+      const res = await fetch(`/api/admin/routing-failures/${id}/resolve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subAccountId }),
+      });
+      if (!res.ok) throw new Error("Failed to resolve routing failure");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/routing-failures"] });
+    },
   });
 
   if (!isAdmin) {
@@ -336,6 +375,91 @@ export default function AdminConsolePage() {
           </div>
         </div>
       )}
+
+      <div className="bg-black/40 border border-orange-500/30 rounded-xl overflow-hidden" data-testid="routing-failures-panel">
+        <div className="p-4 border-b border-white/10 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-white flex items-center gap-2">
+            <GitBranch size={18} className="text-orange-400" />
+            Routing Failures
+            {routingFailuresData && routingFailuresData.total > 0 && (
+              <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                {routingFailuresData.total} unresolved
+              </span>
+            )}
+          </h2>
+          <button
+            onClick={() => refetchRoutingFailures()}
+            className="p-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition-all"
+            data-testid="button-refresh-routing-failures"
+          >
+            <RefreshCcw size={14} className="text-slate-400" />
+          </button>
+        </div>
+        {!routingFailuresData || routingFailuresData.failures.length === 0 ? (
+          <div className="p-8 text-center text-slate-500 text-sm" data-testid="routing-failures-empty">
+            No unresolved routing failures. All messages are being routed correctly.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full" data-testid="routing-failures-table">
+              <thead>
+                <tr className="border-b border-white/5">
+                  <th className="text-left text-xs font-bold text-slate-400 uppercase tracking-wider px-4 py-3">Time</th>
+                  <th className="text-left text-xs font-bold text-slate-400 uppercase tracking-wider px-4 py-3">Phone</th>
+                  <th className="text-left text-xs font-bold text-slate-400 uppercase tracking-wider px-4 py-3">Channel</th>
+                  <th className="text-left text-xs font-bold text-slate-400 uppercase tracking-wider px-4 py-3">Reason</th>
+                  <th className="text-left text-xs font-bold text-slate-400 uppercase tracking-wider px-4 py-3">Assign to Account</th>
+                </tr>
+              </thead>
+              <tbody>
+                {routingFailuresData.failures.map((failure) => (
+                  <tr key={failure.id} className="border-b border-white/5 hover:bg-white/5 transition-colors" data-testid={`row-routing-failure-${failure.id}`}>
+                    <td className="px-4 py-3 text-sm text-slate-400 whitespace-nowrap">
+                      {new Date(failure.createdAt).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-white font-mono">{failure.phone || "—"}</td>
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-orange-500/20 text-orange-400">
+                        {failure.channel}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-400 max-w-xs truncate" title={failure.reason}>
+                      {failure.reason}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="1"
+                          placeholder="Account ID"
+                          value={resolveInput[failure.id] || ""}
+                          onChange={(e) => setResolveInput(prev => ({ ...prev, [failure.id]: e.target.value }))}
+                          className="w-28 px-2 py-1 rounded bg-white/5 border border-white/10 text-white text-sm placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/50"
+                          data-testid={`input-resolve-account-${failure.id}`}
+                        />
+                        <button
+                          onClick={() => {
+                            const accountId = parseInt(resolveInput[failure.id] || "");
+                            if (!isNaN(accountId) && accountId > 0) {
+                              resolveFailureMutation.mutate({ id: failure.id, subAccountId: accountId });
+                              setResolveInput(prev => { const copy = { ...prev }; delete copy[failure.id]; return copy; });
+                            }
+                          }}
+                          disabled={resolveFailureMutation.isPending}
+                          className="px-2 py-1 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30 text-xs font-bold transition-colors disabled:opacity-50"
+                          data-testid={`button-resolve-failure-${failure.id}`}
+                        >
+                          Assign
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </motion.div>
   );
 }
