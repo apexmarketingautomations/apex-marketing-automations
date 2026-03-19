@@ -451,60 +451,72 @@ async function validateMetaCredentials() {
   }
 
   if (accessToken && pageId) {
-    let proof = "";
-    if (appSecret) {
-      const { createHmac } = await import("crypto");
-      proof = createHmac("sha256", appSecret).update(accessToken).digest("hex");
-    }
+    const { createHmac } = await import("crypto");
+    const proof = appSecret
+      ? createHmac("sha256", appSecret).update(accessToken).digest("hex")
+      : "";
+    const proofParam = proof ? `&appsecret_proof=${proof}` : "";
 
     let pageAccessible = false;
 
     try {
-      const pageUrl = `https://graph.facebook.com/v19.0/${pageId}?fields=name,id&access_token=${accessToken}${proof ? `&appsecret_proof=${proof}` : ""}`;
-      const pageRes = await fetch(pageUrl);
-      const pageData = await pageRes.json() as any;
-      if (pageData.name) {
-        console.log(`[META STARTUP] Page reachable — page="${pageData.name}" (id=${pageData.id})`);
-        pageAccessible = true;
-      } else {
-        const errMsg = pageData?.error?.message || "unknown error";
-        const errCode = pageData?.error?.code;
-        let guidance = "Verify META_PAGE_ID is the numeric Facebook Page ID and the token has pages_read_engagement + pages_messaging permissions.";
-        if (errCode === 100 || errCode === 200) {
-          guidance = "Token lacks permission to access this page — re-authorize with pages_messaging and pages_read_engagement scopes.";
-        } else if (errCode === 190) {
-          guidance = "Token is expired or invalid — generate a new long-lived page access token.";
+      const accountsUrl = `https://graph.facebook.com/v19.0/me/accounts?fields=id,name,access_token&access_token=${accessToken}${proofParam}`;
+      const accountsRes = await fetch(accountsUrl);
+      const accountsData = await accountsRes.json() as any;
+
+      if (accountsData.error) {
+        const errCode = accountsData.error.code;
+        const errMsg = accountsData.error.message || "unknown error";
+        let guidance = "Verify META_ACCESS_TOKEN is valid and has manage_pages or pages_read_engagement permission.";
+        if (errCode === 190) {
+          guidance = "Token is expired or invalid — generate a new long-lived user access token.";
         }
-        const pageIssue = `META_PAGE_ID '${pageId}' is inaccessible (Graph error ${errCode}: ${errMsg}). ${guidance}`;
-        console.error(`[META STARTUP] CREDENTIAL ERROR: ${pageIssue}`);
-        issues.push(pageIssue);
+        const tokenIssue = `Token rejected by /me/accounts (Graph error ${errCode}: ${errMsg}). ${guidance}`;
+        console.error(`[META] CREDENTIAL ERROR: ${tokenIssue}`);
+        issues.push(tokenIssue);
+      } else {
+        const pages = accountsData.data || [];
+        const matchedPage = pages.find((p: any) => p.id === pageId);
+        if (matchedPage) {
+          console.log(`[META] Page verified — "${matchedPage.name}" (id=${matchedPage.id})`);
+          pageAccessible = true;
+        } else if (pages.length === 0) {
+          const noPageIssue = `Token has no pages — re-authorize with pages_read_engagement + pages_messaging scopes, and make sure the token belongs to a user/admin of the target page.`;
+          console.error(`[META] CREDENTIAL ERROR: ${noPageIssue}`);
+          issues.push(noPageIssue);
+        } else {
+          const availableIds = pages.map((p: any) => `${p.name} (${p.id})`).join(", ");
+          const mismatchIssue = `META_PAGE_ID '${pageId}' not found in token's pages. Available: [${availableIds}]. Update META_PAGE_ID to one of these.`;
+          console.error(`[META] CREDENTIAL ERROR: ${mismatchIssue}`);
+          issues.push(mismatchIssue);
+        }
       }
     } catch (err: any) {
-      const netIssue = `Graph API page check failed with network error: ${err.message}. Cannot confirm Meta credentials are valid.`;
-      console.error(`[META STARTUP] CREDENTIAL ERROR: ${netIssue}`);
+      const netIssue = `Graph API /me/accounts check failed with network error: ${err.message}. Cannot confirm Meta credentials are valid.`;
+      console.error(`[META] CREDENTIAL ERROR: ${netIssue}`);
       issues.push(netIssue);
     }
 
     if (pageAccessible) {
       try {
-        const scopeUrl = `https://graph.facebook.com/v19.0/me/permissions?access_token=${accessToken}${proof ? `&appsecret_proof=${proof}` : ""}`;
+        const scopeUrl = `https://graph.facebook.com/v19.0/me/permissions?access_token=${accessToken}${proofParam}`;
         const scopeRes = await fetch(scopeUrl);
         const scopeData = await scopeRes.json() as any;
         const granted = (scopeData.data || [])
           .filter((p: any) => p.status === "granted")
           .map((p: any) => p.permission as string);
         if (granted.length > 0) {
-          console.log(`[META STARTUP] Token permissions: [${granted.join(", ")}]`);
+          console.log(`[META] Token permissions: [${granted.join(", ")}]`);
           if (!granted.includes("pages_messaging")) {
-            const scopeIssue = `pages_messaging permission NOT granted — outbound DM replies will be rejected by the Graph API. Re-authorize the Meta app with pages_messaging permission.`;
-            console.error(`[META STARTUP] CREDENTIAL ERROR: ${scopeIssue}`);
+            const scopeIssue = `pages_messaging permission NOT granted — outbound DM replies will be rejected. Re-authorize with pages_messaging permission.`;
+            console.error(`[META] CREDENTIAL ERROR: ${scopeIssue}`);
             issues.push(scopeIssue);
           }
         } else if (scopeData.error) {
-          console.warn(`[META STARTUP] Could not retrieve token permissions: ${scopeData.error.message}`);
+          console.warn(`[META] Could not retrieve token permissions: ${scopeData.error.message}`);
         }
       } catch (err: any) {
-        console.warn(`[META STARTUP] Token permissions check failed (network error): ${err.message}`);
+        console.warn(`[META] Token permissions check failed (network error): ${err.message}`);
       }
     }
   }
