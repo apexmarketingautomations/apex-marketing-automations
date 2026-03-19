@@ -979,22 +979,20 @@ export function registerWebhooksRoutes(app: Express) {
             if (!keywordMatched && isAIConfigured()) {
               const metaAiStart = Date.now();
               try {
-                const dmCtx = await assembleDmContext({
-                  subAccountId,
-                  contactPhone: senderId,
-                  channel,
-                });
+                const [dmCtx, personaResult] = await Promise.all([
+                  assembleDmContext({
+                    subAccountId,
+                    contactPhone: senderId,
+                    channel,
+                  }),
+                  db.select().from(clientWebsites)
+                    .where(eq(clientWebsites.subAccountId, subAccountId)).limit(1)
+                    .catch(() => []),
+                ]);
+                const ctxMs = Date.now() - metaAiStart;
 
-                let customPersona = "";
-                try {
-                  const websites = await db.select().from(clientWebsites)
-                    .where(eq(clientWebsites.subAccountId, subAccountId)).limit(1);
-                  if (websites.length > 0 && websites[0].botPersona) {
-                    customPersona = websites[0].botPersona;
-                  }
-                } catch (err: any) {
-                  console.warn("[META DM] Bot persona fetch skipped:", err.message);
-                }
+                const customPersona = personaResult.length > 0 && personaResult[0].botPersona
+                  ? personaResult[0].botPersona : "";
 
                 if (customPersona && !dmCtx.customAiPrompt) {
                   dmCtx.customAiPrompt = customPersona;
@@ -1006,8 +1004,12 @@ export function registerWebhooksRoutes(app: Express) {
                   aiMessages[0].content += langInstr;
                 }
 
+                const aiCallStart = Date.now();
                 const metaDmAiResult = await aiChat(aiMessages, { temperature: 0.7, maxTokens: 1024, route: "webhook-meta-dm-reply" });
                 const aiReply = metaDmAiResult.text;
+                const aiMs = Date.now() - aiCallStart;
+
+                console.log(`[META DM] Timing: context=${ctxMs}ms, ai=${aiMs}ms, total_so_far=${Date.now() - metaAiStart}ms`);
 
                 recordStepValue(metaTrace, "ai_response_generated", "success", Date.now() - metaAiStart, {
                   provider: "ai",
