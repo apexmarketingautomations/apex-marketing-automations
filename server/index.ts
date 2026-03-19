@@ -518,14 +518,19 @@ async function validateMetaCredentials() {
 (async () => {
   validateEnvVars();
   runStartupChecks();
-  try {
-    await validateMetaCredentials();
-  } catch (metaErr: any) {
-    console.warn("[META STARTUP] ===================================================");
-    console.warn("[META STARTUP] WARNING: Meta DM credentials are misconfigured.");
-    console.warn("[META STARTUP]", metaErr.message);
-    console.warn("[META STARTUP] Meta/Facebook DM features will be unavailable until credentials are fixed.");
-    console.warn("[META STARTUP] ===================================================");
+  const metaEnabled = Boolean(process.env.META_ACCESS_TOKEN && process.env.META_PAGE_ID);
+  if (metaEnabled) {
+    try {
+      await validateMetaCredentials();
+    } catch (metaErr: any) {
+      console.warn("[META] ===================================================");
+      console.warn("[META] WARNING: Credentials are misconfigured.");
+      console.warn("[META]", metaErr.message);
+      console.warn("[META] Facebook/Instagram DM features will be unavailable until credentials are fixed.");
+      console.warn("[META] ===================================================");
+    }
+  } else {
+    console.warn("[META] Not configured — skipping");
   }
   try {
     await initStripe();
