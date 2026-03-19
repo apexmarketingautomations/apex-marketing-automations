@@ -1232,11 +1232,12 @@ export function registerV1Routes(app: Express) {
               if (vapiKey && context.leadPhone) {
                 try {
                   const assistantId = stepPayload.assistantId || "e30434f7-e7e0-4be7-8b89-40c384a52b4a";
+                  const phoneNumberId = stepPayload.phoneNumberId || "f3d98133-abe4-4a04-8c62-09f6dc22a94c";
                   const vapiRes = await fetch("https://api.vapi.ai/call/phone", {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${vapiKey}`, "Content-Type": "application/json" },
                     body: JSON.stringify({
-                      phoneNumberId: process.env.VAPI_PHONE_NUMBER_ID,
+                      phoneNumberId,
                       customer: { number: context.leadPhone },
                       assistantId,
                       assistantOverrides: stepPayload.first_message ? {
@@ -1245,7 +1246,11 @@ export function registerV1Routes(app: Express) {
                     }),
                   });
                   const vapiData = await vapiRes.json() as any;
-                  console.log(`[AUTOMATION] VapiCall initiated to ${context.leadPhone}: ${vapiData.id || "no-id"}`);
+                  if (!vapiRes.ok) {
+                    console.error(`[AUTOMATION] VapiCall API error ${vapiRes.status}: ${JSON.stringify(vapiData)}`);
+                  } else {
+                    console.log(`[AUTOMATION] VapiCall initiated to ${context.leadPhone}: callId=${vapiData.id || "unknown"}, status=${vapiData.status || "unknown"}`);
+                  }
                 } catch (vapiErr: any) {
                   console.error(`[AUTOMATION] VapiCall failed: ${vapiErr.message}`);
                 }

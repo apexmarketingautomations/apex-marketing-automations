@@ -886,25 +886,39 @@ export function registerWebhooksRoutes(app: Express) {
               if (existingContact.length > 0) {
                 existingContactRecord = existingContact[0];
               } else {
-                const newContact = await storage.createContact({
-                  subAccountId,
-                  firstName: `${channel === "instagram" ? "IG" : "FB"} User ${senderId.slice(-4)}`,
-                  phone: senderId,
-                  source: `${channel}_dm`,
-                  tags: [channel, "dm_lead"],
-                });
-                existingContactRecord = newContact;
-                console.log(`[META DM] Created CRM contact id=${newContact.id} for ${senderId}`);
+                const byFirstName = await db.select().from(contacts)
+                  .where(and(
+                    eq(contacts.subAccountId, subAccountId),
+                    eq(contacts.source, `${channel}_dm`),
+                    sql`${contacts.firstName} LIKE ${"%" + senderId.slice(-4)}`
+                  )).limit(1);
+                if (byFirstName.length > 0) {
+                  existingContactRecord = byFirstName[0];
+                } else {
+                  const newContact = await storage.createContact({
+                    subAccountId,
+                    firstName: `${channel === "instagram" ? "IG" : "FB"} User ${senderId.slice(-4)}`,
+                    phone: senderId,
+                    source: `${channel}_dm`,
+                    tags: [channel, "dm_lead"],
+                  });
+                  existingContactRecord = newContact;
+                  console.log(`[META DM] Created CRM contact id=${newContact.id} for ${senderId}`);
+                }
               }
             } catch (contactErr: any) {
               console.warn("[META DM] Contact creation skipped:", contactErr.message);
             }
 
+            const resolvedPhone = existingContactRecord?.phone && existingContactRecord.phone.startsWith("+")
+              ? existingContactRecord.phone
+              : null;
+
             try {
               import("./v1").then(({ fireAutomationTriggerGlobal }) =>
                 fireAutomationTriggerGlobal(`On${channel === "instagram" ? "Instagram" : "Facebook"}DM`, subAccountId, {
                   leadName: existingContactRecord?.firstName || `${channel === "instagram" ? "IG" : "FB"} User ${senderId.slice(-4)}`,
-                  leadPhone: existingContactRecord?.phone || senderId,
+                  leadPhone: resolvedPhone || senderId,
                   senderId,
                   channel,
                   message,
