@@ -436,8 +436,8 @@ async function validateMetaCredentials() {
     return;
   }
 
-  const tokenPrefix = accessToken ? accessToken.substring(0, 15) + "..." : "empty";
-  console.log(`[META] Validating credentials — pageId=${pageId}, tokenPrefix=${tokenPrefix}, appSecret=${appSecret ? "set" : "not set"}`);
+  const tokenPrefix = accessToken ? accessToken.substring(0, 20) + "..." : "empty";
+  console.log(`[META] Validating credentials — pageId=${pageId}, tokenPrefix=${tokenPrefix}, tokenLen=${accessToken?.length || 0}, appSecret=${appSecret ? "set" : "not set"}`);
 
   if (!accessToken) {
     const issue = "META_ACCESS_TOKEN not set — required for Facebook/Instagram DM features.";
@@ -484,16 +484,29 @@ async function validateMetaCredentials() {
           console.log(`[META] Page verified via /me/accounts — "${matchedPage.name}" (id=${matchedPage.id})`);
           pageAccessible = true;
         } else {
+          const convoUrlNoProof = `https://graph.facebook.com/v19.0/${pageId}/conversations?limit=1&access_token=${accessToken}`;
+          console.log(`[META] Trying conversations endpoint WITHOUT proof first...`);
+          const convoResNoProof = await fetch(convoUrlNoProof);
+          const convoDataNoProof = await convoResNoProof.json() as any;
+          console.log(`[META] Conversations (no proof) response: ${JSON.stringify(convoDataNoProof).substring(0, 200)}`);
+          if (!convoDataNoProof.error) {
+            console.log(`[META] Page ${pageId} verified via conversations (no proof) — messaging access confirmed`);
+            pageAccessible = true;
+          }
           const convoUrl = `https://graph.facebook.com/v19.0/${pageId}/conversations?limit=1&access_token=${accessToken}${proofParam}`;
+          console.log(`[META] Trying conversations endpoint WITH proof...`);
           const convoRes = await fetch(convoUrl);
           const convoData = await convoRes.json() as any;
+          console.log(`[META] Conversations response: ${JSON.stringify(convoData).substring(0, 200)}`);
           if (!convoData.error) {
             console.log(`[META] Page ${pageId} verified via conversations endpoint (messaging access confirmed)`);
             pageAccessible = true;
           } else {
             const directUrl = `https://graph.facebook.com/v19.0/${pageId}?fields=name,id&access_token=${accessToken}${proofParam}`;
+            console.log(`[META] Trying direct page lookup...`);
             const directRes = await fetch(directUrl);
             const directData = await directRes.json() as any;
+            console.log(`[META] Direct lookup response: ${JSON.stringify(directData).substring(0, 200)}`);
             if (directData.name) {
               console.log(`[META] Page verified via direct lookup — "${directData.name}" (id=${directData.id})`);
               pageAccessible = true;
