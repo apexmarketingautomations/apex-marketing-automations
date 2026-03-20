@@ -557,6 +557,39 @@ async function validateMetaCredentials() {
 
   patchVapiAssistant().catch(err => console.error("[VAPI PATCH] Startup patch failed:", err?.message));
 
+  async function patchVapiPhoneNumbers(): Promise<void> {
+    if (!vapiCfg.isConfigured) return;
+    try {
+      const listRes = await fetch("https://api.vapi.ai/phone-number", {
+        headers: vapiCfg.privateHeaders(),
+      });
+      if (!listRes.ok) {
+        console.warn(`[VAPI PATCH] Failed to list phone numbers: ${listRes.status}`);
+        return;
+      }
+      const numbers = await listRes.json() as any[];
+      for (const num of numbers) {
+        if (num.serverUrl !== VAPI_SERVER_URL) {
+          const patchRes = await fetch(`https://api.vapi.ai/phone-number/${num.id}`, {
+            method: "PATCH",
+            headers: vapiCfg.privateHeaders(),
+            body: JSON.stringify({ serverUrl: VAPI_SERVER_URL }),
+          });
+          if (patchRes.ok) {
+            console.log(`[VAPI PATCH] Phone ${num.number || num.id} patched: serverUrl set for assistant-request routing`);
+          } else {
+            const errTxt = await patchRes.text();
+            console.warn(`[VAPI PATCH] Failed to patch phone ${num.id}: ${patchRes.status} ${errTxt.substring(0, 200)}`);
+          }
+        }
+      }
+    } catch (err: any) {
+      console.error("[VAPI PATCH] Phone number patch error:", err?.message);
+    }
+  }
+
+  patchVapiPhoneNumbers().catch(err => console.error("[VAPI PATCH] Phone patch failed:", err?.message));
+
   const processedVapiEvents = new Map<string, number>();
   setInterval(() => {
     const cutoff = Date.now() - 60_000;
@@ -1090,7 +1123,12 @@ async function validateMetaCredentials() {
       }
 
       if (msgType === "assistant-request") {
-        const customerNumber = req.body.message.call?.customer?.number;
+        const call = req.body.message.call || {};
+        const callType = call.type || "";
+        const callDirection = call.direction || "";
+        const isInbound = callType === "inboundPhoneCall" || callDirection === "inbound";
+        const customerNumber = call.customer?.number || req.body.message.call?.customer?.number;
+
         let contextNote = "";
         if (customerNumber) {
           try {
@@ -1103,13 +1141,70 @@ async function validateMetaCredentials() {
               if (c.city && c.state) info.push(`Location: ${c.city}, ${c.state}`);
               if (c.tags && c.tags.length > 0) info.push(`Tags: ${c.tags.join(", ")}`);
               if (c.notes) info.push(`Notes: ${c.notes}`);
-              contextNote = `\n\nPRE-CALL INTEL — you know this about the person you are calling: ${info.join(". ")}. Use this naturally. Do not say "I looked you up." Just weave it in like you already know.`;
+              contextNote = `\n\nCALLER INTEL — you know this about the caller: ${info.join(". ")}. Use this naturally. Do not say "I looked you up." Just weave it in conversationally.`;
             }
           } catch {}
         }
-        if (contextNote) {
-          console.log(`[VAPI WEBHOOK] Injecting pre-call context for ${customerNumber}`);
+
+        if (isInbound) {
+          console.log(`[VAPI WEBHOOK] Inbound call from ${customerNumber} — using receptionist prompt`);
+          const inboundPrompt = `You are the AI receptionist for Apex Marketing Automations, a full-service digital marketing agency. A customer or potential client is calling in.
+
+TONE: Warm, professional, helpful. You are NOT a cold caller. Someone is calling YOU. Greet them naturally.
+
+GREETING: "Hey, thanks for calling Apex Marketing! This is the AI assistant — how can I help you today?"
+
+YOUR CAPABILITIES:
+- Answer questions about Apex Marketing services (social media management, paid ads, AI automations, website design, SEO, reputation management, lead generation)
+- Qualify leads by understanding their business needs and goals
+- Schedule consultations/callbacks with the team
+- Send a booking link via text so they can schedule at their convenience
+- Take messages if they need to speak with a specific team member
+
+CONVERSATION FLOW:
+1. Greet warmly — they called you, so be welcoming
+2. Listen to what they need — let them talk first
+3. Ask clarifying questions about their business (industry, current marketing, goals, budget range)
+4. If they're interested in services, offer to send the booking link via text to schedule a proper consultation
+5. If they need a specific person, take a message with their name, number, and reason for calling
+
+RULES:
+- Never say "I'm just an AI" apologetically — you ARE the front desk, own it
+- Keep responses conversational and concise (2-3 sentences max)
+- If you don't know something specific, say "Let me have the team get back to you on that — can I grab your number?"
+- Always try to capture their phone number and name for follow-up
+- When sending the booking link, use the sendBookingLink tool — never read the URL aloud${contextNote}`;
+
+          await markEventCompleted(req);
+          return res.json({
+            assistant: {
+              model: {
+                provider: "openai",
+                model: "gpt-4o",
+                messages: [{ role: "system", content: inboundPrompt }],
+              },
+              voice: call.assistant?.voice || { provider: "11labs", voiceId: "pFZP5JQG7iQjIQuC4Bku" },
+              firstMessage: "Hey, thanks for calling Apex Marketing! How can I help you today?",
+              serverUrl: VAPI_SERVER_URL,
+              serverMessages: VAPI_SERVER_MESSAGES,
+            },
+          });
         }
+
+        if (contextNote) {
+          console.log(`[VAPI WEBHOOK] Outbound call to ${customerNumber} — injecting pre-call context`);
+          await markEventCompleted(req);
+          return res.json({
+            assistantId: "e30434f7-e7e0-4be7-8b89-40c384a52b4a",
+            assistantOverrides: {
+              model: {
+                messages: [{ role: "system", content: contextNote }],
+              },
+            },
+          });
+        }
+
+        console.log(`[VAPI WEBHOOK] assistant-request: type=${callType}, direction=${callDirection}, customer=${customerNumber}`);
         await markEventCompleted(req);
         return res.json({ assistantId: "e30434f7-e7e0-4be7-8b89-40c384a52b4a" });
       }
