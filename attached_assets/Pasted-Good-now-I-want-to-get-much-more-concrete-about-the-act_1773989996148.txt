@@ -1,0 +1,164 @@
+Good — now I want to get much more concrete about the actual jobs this agent should perform INSIDE Apex.
+
+Do not answer this at a high level.
+Do not give me generic “AI assistant” language.
+I want you to think in terms of real in-product tasks the agent should be able to carry out for a user or operator.
+
+Context:
+The target is a true interactive in-product action agent for Apex.
+Not just chat.
+Not just recommendations.
+Not just backend intelligence.
+
+I want an agent that can understand natural language requests, inspect the current product context, and help carry out real work inside the platform through a multi-step action loop.
+
+What I need from you now:
+I want you to define, in a highly concrete way, the actual task categories and task flows Apex’s action agent should support inside the product.
+
+Please answer in this exact structure:
+
+A. Core in-product job types
+Define the major categories of work this agent should be able to perform inside Apex.
+
+I expect categories like:
+- navigation + find things
+- setup + configuration
+- editing + updating existing settings
+- building new assets
+- connecting integrations
+- troubleshooting + repair
+- reviewing + summarizing system state
+- guided workflow execution
+- operator assistance
+- cross-module orchestration
+- approval-based actions
+- user-facing assistant actions
+But use the real Apex product context and refine these properly.
+
+B. Concrete user requests the agent should understand
+Give me a large list of realistic natural-language requests a user might say to this agent inside Apex.
+
+I want these grouped by category.
+
+Examples of the style I mean:
+- “Set up my missed-call text back workflow.”
+- “Find where my Facebook leads are breaking.”
+- “Update the booking form so it asks for budget.”
+- “Connect this sub-account to Google Business Profile.”
+- “Fix the automation that stopped after the trigger.”
+- “Build a landing page for my roofing campaign.”
+- “Show me why replies dropped this week.”
+- “Turn this workflow live.”
+- “Duplicate this setup for another location.”
+- “Pause anything that could text customers automatically until I review it.”
+- “Walk me through what still needs to be configured before launch.”
+
+I do NOT want only 10 examples.
+Give me a broad, serious set of realistic examples.
+
+C. What the agent should be able to DO for each category
+For each task category, explain the actual actions the agent should ideally perform inside the app.
+
+Be concrete.
+
+For example, depending on the category, that might include:
+- open the right module/page
+- inspect current config
+- compare expected vs actual settings
+- ask for one missing input if required
+- fill fields
+- toggle settings
+- create records
+- update workflows
+- connect integrations
+- validate required pieces
+- preview output
+- save changes
+- verify success
+- summarize what changed
+- suggest next step
+
+Make this task-by-task, not abstract.
+
+D. Which tasks should be fully autonomous vs approval-based vs guided-only
+Classify the work.
+
+For each category or subcategory, tell me whether the agent should ideally be:
+- fully autonomous
+- approval before action
+- approval before publish/send/go-live
+- guided-only
+- read-only / advisory only
+
+I want real judgment here.
+For example:
+- reading system state may be autonomous
+- changing messaging automations may need approval
+- publishing live customer-facing changes may need explicit approval
+- destructive actions may need stronger confirmation
+- risky billing/integration/account actions may need guided mode
+
+E. The actual action loop the agent should follow
+Define the ideal behavior loop for this kind of agent inside Apex.
+
+I want something like:
+1. understand request
+2. inspect live context
+3. identify target object/module
+4. detect missing information
+5. ask for clarification only if needed
+6. propose or begin actions
+7. perform steps in sequence
+8. verify result after each critical step
+9. stop for approval when risk threshold is met
+10. summarize outcome and next options
+
+But make it specific to Apex and this product-agent goal.
+
+F. What “seeing the page” should mean in Apex terms
+I want you to define what perception/context should mean for this agent.
+
+Be concrete about what the agent would need access to, such as:
+- current route
+- visible module
+- selected entity
+- active workflow
+- current form state
+- current settings values
+- unsaved changes
+- validation errors
+- account/sub-account context
+- integration status
+- recent execution logs
+- draft vs published state
+- user permissions
+- dangerous action flags
+- etc.
+
+Do not talk vaguely about “context awareness.”
+Spell out the actual state the agent needs to inspect in order to act intelligently.
+
+G. First-release task scope
+Do NOT try to make the first version do everything.
+
+Recommend a realistic Phase 1 release scope:
+- which task categories should come first
+- which tasks would create the most user value fastest
+- which ones are lowest-risk but high-value
+- which ones should wait until later
+
+I want a prioritized release recommendation.
+
+H. Tasks Apex should NOT try to automate yet
+Tell me which tasks should be deferred because they are too risky, too fragile, too ambiguous, or too dependent on stronger runtime infrastructure.
+
+I want this explicitly called out.
+
+Rules:
+- stay focused on an action-taking in-product agent
+- do not drift into generic AI platform ideas
+- do not talk mostly about backend architecture here
+- talk about actual user jobs and agent behaviors inside Apex
+- be very concrete
+- think like a product designer and operator, not just a developer
+- give me enough specificity that this can become the basis for a real implementation roadmap

@@ -1,0 +1,106 @@
+I want you to implement a focused fix for the Crash Reports system based on the audit findings.
+
+This is NOT a full rebuild.
+Do NOT widen scope.
+Do NOT redesign the entire feature.
+Fix the specific reliability and truthfulness issues in the current automated crash report retrieval flow.
+
+Goal:
+Make Crash Reports behave correctly when the FLHSMV source is down or unreachable, so the system reports the truth, stops misleading users with NOT_FOUND, and avoids wasting retries against a dead upstream service.
+
+What is happening now:
+- crash report requests are being created correctly
+- the worker is running correctly
+- the UI is rendering correctly
+- manual data submission works
+- BUT the upstream FLHSMV source is returning HTTP 503
+- the worker currently treats this like a not-found condition
+- after retries, reports end up marked NOT_FOUND even though the source was unreachable
+- this is misleading and makes the system look broken
+
+I want you to implement the following fixes only:
+
+1. Separate true NOT_FOUND from upstream/service failure
+Refactor the crash report lookup flow so it distinguishes between:
+- empty search result / genuine not found
+- HTTP error from upstream (503, 502, etc.)
+- network/timeout error
+- blocked/session/auth issue if applicable
+
+Do NOT keep returning a single null-like result for all failure cases.
+
+Use a discriminated result shape such as:
+- success
+- not_found
+- upstream_error
+- network_error
+- blocked
+or an equivalent structured result.
+
+2. Fix terminal status classification
+Update processing behavior so:
+- genuine empty results become NOT_FOUND
+- upstream/service/network failures become FAILED, not NOT_FOUND
+- retryable upstream failures should preserve accurate error details
+
+The system must not tell the user “report not found” when the FLHSMV system was unreachable.
+
+3. Improve errorLog truthfulness
+Persist and surface the real reason for failure in errorLog, for example:
+- HTTP 503 from FLHSMV
+- network timeout
+- blocked session / cookie refresh failure
+- malformed upstream response
+
+Do not overwrite real upstream failure reasons with a generic “may not be in the system yet” message unless that condition is actually true.
+
+4. Add backoff / cooldown behavior
+When health status indicates the upstream service is down, blocked, or otherwise unhealthy:
+- do not continue hammering it every 15 seconds
+- introduce cooldown / backoff behavior
+- skip or defer retries for a reasonable period
+- preserve retry budget instead of burning through retries against a dead service
+
+Use a simple, production-safe approach.
+It does not need to be overly clever, but it must be real.
+
+5. Keep manual fallback intact
+Do NOT break the manual data submission path.
+That path currently works and should remain the immediate fallback for completing reports while upstream is unavailable.
+
+6. Preserve what is already working
+Do NOT break:
+- request creation
+- list/detail/status endpoints
+- worker locking / processing loop
+- manual completion path
+- frontend crash reports UI
+
+Scope boundary:
+This task is about making the automated path honest and resilient.
+It is NOT about:
+- redesigning the whole crash report feature
+- changing the UI broadly
+- adding new product features
+- changing manual completion UX unless necessary to reflect improved error messages
+
+What I want back before major edits:
+1. the exact files you will modify
+2. the exact logic change you will make in search + process flow
+3. how status classification will change
+4. how backoff will work
+5. any migration/schema changes if needed
+6. then implement
+
+Success criteria:
+- a 503 from FLHSMV no longer becomes NOT_FOUND
+- reports reflect FAILED or equivalent truthful service-error status when the source is unreachable
+- errorLog shows the real failure reason
+- retries are not wasted aggressively while upstream is down
+- manual submission still works
+- when FLHSMV comes back, re-queued reports can proceed through the normal automated path
+
+After implementation, provide proof with:
+- one example of genuine NOT_FOUND behavior
+- one example of upstream 503/service failure behavior
+- confirmation that manual completion still works

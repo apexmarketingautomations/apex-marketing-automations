@@ -1,0 +1,140 @@
+I do NOT want implementation yet.
+
+I want a brutally honest, evidence-based assessment of the CURRENT state of Apex Intelligence across this codebase before any more architecture changes are proposed.
+
+Your job right now is to inspect the real codebase and tell me the truth about its present condition, capabilities, limitations, and near-term potential.
+
+Do not give me a visionary pitch.
+Do not assume the system is more advanced than it is.
+Do not describe intended architecture as if it already exists.
+Do not fabricate completeness.
+Do not blur together “partially implemented”, “planned”, and “working”.
+
+I want a current-state audit.
+
+What I need from you:
+
+1. Current AI system inventory
+Inspect the codebase and identify every AI-related layer, module, service, route, helper, provider wrapper, gateway, prompt system, tool handler, and intelligence-related integration currently in use.
+
+Specifically identify:
+- the true primary AI entry point right now
+- all competing or overlapping AI layers
+- all direct provider calls
+- all places using OpenAI
+- all places using Gemini
+- any other provider usage
+- any old or dead AI modules still in the codebase
+- any files that appear to be bypassing the intended gateway
+
+2. What Apex Intelligence can ACTUALLY do today
+Based only on real code and wiring, tell me what the system can currently do right now.
+
+Separate this into:
+- clearly working capabilities
+- partially working capabilities
+- capabilities that appear scaffolded but not truly operational
+- capabilities that are described in docs/tasks but not actually implemented
+
+Examples of what I want evaluated:
+- conversational AI/chat
+- operator reasoning
+- workflow planning
+- task execution support
+- support/help behavior
+- content generation
+- page-aware or route-aware intelligence
+- sub-account awareness
+- observability-aware AI decisions
+- tool calling/orchestration
+- streaming
+- fallback behavior
+- knowledge-grounded answers
+- specialist routing
+- embedded/sitewide AI behavior
+- voice-related intelligence if present
+
+3. What Apex Intelligence CANNOT do yet
+Tell me clearly what is NOT currently possible, missing, weak, fragmented, unreliable, or only partially built.
+
+I want specifics, such as:
+- no real sitewide context injection
+- no unified prompt framework
+- no true knowledge layer
+- no clean tool policy
+- no real specialist routing
+- no consistent AI response contract
+- no single authoritative intelligence layer
+- no page-specific behavior
+- no memory/state continuity
+- no safe execution loop
+- no production-grade observability linkage
+- etc.
+
+Do not be vague.
+
+4. Current architecture quality
+Assess the current architecture honestly.
+
+Tell me:
+- what is solid
+- what is fragile
+- what is duplicated
+- what is confusing
+- what is production-worthy
+- what is still transitional
+- what creates risk if we keep building on top of it
+
+5. Evidence-based gap analysis
+Compare:
+- what the code currently does
+vs
+- what Apex Intelligence would need in order to become a truly helpful sitewide intelligence layer across the platform
+
+I want a gap analysis, not implementation yet.
+
+6. Near-term potential
+Tell me what this codebase seems realistically capable of becoming soon WITHOUT fantasy.
+
+Break this into:
+- what could likely be achieved with modest refactoring
+- what would require major architectural work
+- what would require new systems, not just cleanup
+- what should probably be deferred until the foundation is cleaner
+
+7. Output format
+Return your answer in this exact structure:
+
+A. Executive Summary
+A short, direct summary of the current state.
+
+B. Current AI Inventory
+List of actual AI-related files/modules/systems and what each currently does.
+
+C. Working Now
+What is clearly operational today.
+
+D. Partially Working / Unclear
+What exists but is incomplete, inconsistent, or uncertain.
+
+E. Not Actually Built Yet
+What is talked about or implied but not truly implemented.
+
+F. Main Risks / Weaknesses
+Most important architectural and product risks.
+
+G. Near-Term Potential
+What this system could realistically become soon.
+
+H. Recommended Next Move
+What we should do next BEFORE more implementation begins.
+
+Critical rules:
+- inspect the real codebase first
+- do not implement anything yet
+- do not make assumptions from task docs alone
+- distinguish code reality from plan/task intent
+- be honest if something is unclear
+- cite specific files/modules as evidence
+- if something appears unused, say it appears unused
+- if something appears dead, duplicated, bypassed, or conflicting, say so plainly
