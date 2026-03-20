@@ -387,12 +387,14 @@ export function registerWebhooksRoutes(app: Express) {
       const toClean = toRaw ? toRaw.replace(/^(whatsapp:|messenger:)/, "") : "";
 
       // 2. Resolve sub-account from To number
+      console.log(`[TRACE-ACCT] Resolving account for To="${toRaw}" toClean="${toClean}"`);
       const matchedAccounts = await db.select().from(subAccounts)
         .where(eq(subAccounts.twilioNumber, toClean))
         .limit(1)
         .execute()
-        .catch(() => []);
+        .catch((e) => { console.error(`[TRACE-ACCT] DB query failed:`, e.message); return []; });
       const subAccountId = matchedAccounts.length > 0 ? matchedAccounts[0].id : 1;
+      console.log(`[TRACE-ACCT] matchedAccounts=${matchedAccounts.length}, resolved subAccountId=${subAccountId}${matchedAccounts.length === 0 ? " (FALLBACK TO 1 — NO MATCH)" : ""}`);
       const threadId = generateThreadId(senderClean, toClean);
 
       console.log(`[TWILIO-INBOUND][${traceId}] From=${senderClean} To=${toClean} subAccountId=${subAccountId} threadId=${threadId.slice(0, 8)}`);
