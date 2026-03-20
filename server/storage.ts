@@ -81,6 +81,8 @@ import {
   agentConversations, agentMessages,
   type AgentConversation, type InsertAgentConversation,
   type AgentMessage, type InsertAgentMessage,
+  pendingActions,
+  type PendingAction, type InsertPendingAction,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -410,6 +412,10 @@ export interface IStorage {
   updateAgentConversationActivity(sessionId: string): Promise<void>;
   createAgentMessage(data: InsertAgentMessage): Promise<AgentMessage>;
   getAgentMessages(sessionId: string, limit?: number): Promise<AgentMessage[]>;
+
+  createPendingAction(data: InsertPendingAction): Promise<PendingAction>;
+  getActivePendingAction(sessionId: string): Promise<PendingAction | undefined>;
+  resolvePendingAction(id: number, status: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2051,6 +2057,34 @@ export class DatabaseStorage implements IStorage {
       .where(eq(agentMessages.sessionId, sessionId))
       .orderBy(desc(agentMessages.createdAt))
       .limit(limit);
+  }
+
+  async createPendingAction(data: InsertPendingAction): Promise<PendingAction> {
+    await db.update(pendingActions)
+      .set({ status: "superseded", resolvedAt: new Date() })
+      .where(and(
+        eq(pendingActions.sessionId, data.sessionId),
+        eq(pendingActions.status, "awaiting_confirmation"),
+      ));
+    const [row] = await db.insert(pendingActions).values(data).returning();
+    return row;
+  }
+
+  async getActivePendingAction(sessionId: string): Promise<PendingAction | undefined> {
+    const [row] = await db.select().from(pendingActions)
+      .where(and(
+        eq(pendingActions.sessionId, sessionId),
+        eq(pendingActions.status, "awaiting_confirmation"),
+      ))
+      .orderBy(desc(pendingActions.createdAt))
+      .limit(1);
+    return row;
+  }
+
+  async resolvePendingAction(id: number, status: string): Promise<void> {
+    await db.update(pendingActions)
+      .set({ status, resolvedAt: new Date() })
+      .where(eq(pendingActions.id, id));
   }
 }
 

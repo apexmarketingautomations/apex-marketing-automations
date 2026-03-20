@@ -1,0 +1,155 @@
+We found the real problem now.
+
+The agent is no longer just too passive — it is losing conversational continuity between turns.
+
+Example failure:
+- agent proposes an action and asks for confirmation
+- user replies with “ok” or “confirm”
+- agent forgets what it was waiting on and responds with “please clarify what you need to confirm”
+
+That means the system does NOT currently preserve pending action state across turns in a reliable way.
+
+I want a focused fix for this exact problem.
+
+Goal:
+Make Apex Intelligence remember and complete the action it just proposed when the user replies with a short confirmation like:
+- ok
+- yes
+- confirm
+- do it
+- go ahead
+
+This should work without forcing the user to restate the whole task.
+
+What I want implemented:
+
+1. Add explicit pending action state
+Create a real pending-action mechanism tied to the conversation/session.
+
+This should store at minimum:
+- sessionId
+- subAccountId
+- pending action type
+- tool name or intended action
+- action payload / arguments
+- human-readable summary of what is awaiting confirmation
+- createdAt
+- expiresAt or TTL
+- status (awaiting_confirmation, approved, rejected, executed, expired)
+
+This must NOT rely only on LLM memory or chat history text.
+
+2. Intercept confirmation replies before normal LLM handling
+When a new user message arrives, before routing it through the normal agent reasoning flow, check whether:
+- the current session has a pending action awaiting confirmation
+- the new message is an approval/confirmation reply
+
+Examples that should count as confirmation:
+- yes
+- ok
+- okay
+- confirm
+- do it
+- go ahead
+- proceed
+- sounds good
+
+Examples that should count as rejection:
+- no
+- cancel
+- don’t do that
+- stop
+- never mind
+
+Do this with a simple deterministic matcher first.
+Do NOT leave this entirely up to the LLM.
+
+3. Execute the stored pending action directly
+If the user confirms and a pending action exists:
+- execute the stored action directly
+- do not ask the LLM to reinterpret what “confirm” means
+- do not force the user to repeat the task
+- after execution, clear or finalize the pending action state
+- return a concrete success/failure result to the user
+
+If the user rejects:
+- mark the pending action rejected
+- clear it from active state
+- tell the agent/user the action was canceled
+- optionally let the normal agent continue if needed
+
+4. Add expiry / safety rules
+Pending actions should not live forever.
+
+Implement:
+- expiration timeout (for example 10–30 minutes)
+- session/sub-account scoping
+- one active pending action at a time per session unless there is a strong reason otherwise
+- clear behavior if user replies after expiration:
+  - tell them the previous pending action expired
+  - ask whether they want to restart it
+
+5. Integrate with existing approval flow
+If there is already a requiresApproval mechanism or pending approval map in the Phase 1 agent loop, do NOT create a second conflicting system.
+
+Instead:
+- inspect what exists now
+- identify why it is not preserving user-intent continuity in normal conversation
+- unify the mechanism so both explicit approval-required actions and conversational confirmations work consistently
+
+I want one coherent action-confirmation flow, not two separate half-working ones.
+
+6. Persist enough state for continuity
+If the current in-memory handling would break on refresh/reconnect, persist the pending action state server-side so that:
+- a refresh does not wipe the approval context
+- the session can still understand a follow-up “confirm” after reconnect, as long as it has not expired
+
+7. Improve the user-facing behavior
+After this fix, the experience should work like this:
+
+Example:
+User: “Show me the workflow handling missed calls”
+Agent: “I couldn’t find one. I can create a draft missed-call text-back workflow now. It will stay in draft until review. Want me to proceed?”
+User: “confirm”
+System:
+- recognizes confirmation deterministically
+- executes the stored workflow-draft action
+- returns:
+  “Done — I created the draft missed-call workflow. Here’s what it includes…”
+
+NOT:
+- “Please clarify what you need to confirm.”
+
+8. Scope boundary
+This task is ONLY about confirmation continuity / pending action state.
+
+Do NOT widen scope into:
+- broader RAG work
+- new tool categories
+- UI redesign
+- full autonomous planning rewrite
+- arbitrary browser automation
+
+Keep this focused.
+
+What I want back before major edits:
+1. what existing confirmation/approval state already exists
+2. why it is failing for simple follow-up confirmations
+3. exact files to modify
+4. whether this should use DB persistence, in-memory state, or both
+5. exact proposed data shape for pending actions
+6. then implement
+
+Success criteria:
+- user can reply “ok” or “confirm” to a proposed action and the correct stored action executes
+- the agent does not forget what it was asking confirmation for
+- pending action expires safely
+- refresh/reconnect does not immediately destroy approval continuity
+- rejection/cancel also works cleanly
+- no duplicate/conflicting approval systems remain
+
+After implementation, prove it with:
+1. one confirm flow that executes correctly
+2. one cancel flow that cancels correctly
+3. one expired pending-action flow
+4. one refresh/reconnect confirmation flow if supported

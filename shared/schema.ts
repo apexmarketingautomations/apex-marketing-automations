@@ -1706,6 +1706,23 @@ export const insertAgentMessageSchema = createInsertSchema(agentMessages).omit({
 export type InsertAgentMessage = z.infer<typeof insertAgentMessageSchema>;
 export type AgentMessage = typeof agentMessages.$inferSelect;
 
+export const pendingActions = pgTable("pending_actions", {
+  id: serial("id").primaryKey(),
+  sessionId: text("session_id").references(() => agentConversations.sessionId).notNull(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  toolName: text("tool_name").notNull(),
+  toolArgs: jsonb("tool_args").notNull(),
+  summary: text("summary").notNull(),
+  status: text("status").notNull().default("awaiting_confirmation"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  resolvedAt: timestamp("resolved_at"),
+});
+
+export const insertPendingActionSchema = createInsertSchema(pendingActions).omit({ id: true, createdAt: true, resolvedAt: true });
+export type InsertPendingAction = z.infer<typeof insertPendingActionSchema>;
+export type PendingAction = typeof pendingActions.$inferSelect;
+
 export const PLAN_LIMITS: Record<string, Record<string, number>> = {
   starter: {
     messages_per_month: 500,

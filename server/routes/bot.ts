@@ -11,6 +11,10 @@ import { executeTool, getTool } from "../operator/toolRegistry";
 import type { OperatorContext } from "../operator/types";
 import { buildOperatorSystemPrompt } from "../operatorPrompt";
 
+const CONFIRM_PATTERNS = /^(yes|ok|okay|confirm|do it|go ahead|proceed|sounds good|yep|yea|yeah|sure|go for it|approved|let's do it|make it|create it|build it|draft it|y)$/i;
+const REJECT_PATTERNS = /^(no|cancel|don't|dont|stop|never mind|nvm|nah|nope|reject|skip|forget it|don't do that|cancel that)$/i;
+const PENDING_ACTION_TTL_MS = 15 * 60 * 1000;
+
 export function registerBotRoutes(app: Express) {
   // ---- Bot Chat (Real OpenAI) ----
   const botChatSchema = z.object({
@@ -185,6 +189,7 @@ export function registerBotRoutes(app: Express) {
     "createPipeline",
     "createPipelineStage",
     "restoreBrokenIntegrationDraft",
+    "proposeAction",
   ]);
 
   function buildOpenAIFunctionSchemas(): ToolDefinition[] {
@@ -205,6 +210,7 @@ export function registerBotRoutes(app: Express) {
       createPipelineStage: { description: "Add an individual pipeline stage", parameters: { type: "object", properties: { name: { type: "string", description: "Stage name" }, color: { type: "string", description: "Stage color" }, position: { type: "number", description: "Stage position" } }, required: ["name"] } },
       restoreBrokenIntegrationDraft: { description: "Generate a recovery plan for a broken integration (requires user approval before execution)", parameters: { type: "object", properties: { provider: { type: "string", description: "Integration provider name (e.g. twilio, google, meta)" } }, required: ["provider"] } },
       navigateUser: { description: "Navigate the user to a specific page or entity view in the platform", parameters: { type: "object", properties: { route: { type: "string", description: "Route path to navigate to (e.g. /contacts, /workflows, /contacts/123)" }, entityId: { type: "number", description: "Optional entity ID to view" } }, required: ["route"] } },
+      proposeAction: { description: "Register a pending action that awaits user confirmation. Use this EVERY TIME you propose an action and ask the user to confirm. The action will be stored so that when the user replies 'ok' or 'confirm', the system executes it automatically without re-asking.", parameters: { type: "object", properties: { toolName: { type: "string", description: "The tool to execute when confirmed (e.g. createWorkflow, generateAutoResponseWorkflow)" }, toolArgs: { type: "object", description: "The exact arguments to pass to the tool when confirmed" }, summary: { type: "string", description: "Short human-readable summary of what this action will do (shown to user on confirmation)" } }, required: ["toolName", "toolArgs", "summary"] } },
     };
 
     for (const [name, schema] of Object.entries(schemaMap)) {
@@ -324,17 +330,88 @@ export function registerBotRoutes(app: Express) {
 
       const subAccountId = parsed.data.subAccountId;
       const { sessionId, history } = await resolveSession(parsed.data.sessionId, subAccountId);
+      const userMsg = parsed.data.message.trim();
+
+      const pendingAction = await storage.getActivePendingAction(sessionId);
+
+      if (pendingAction) {
+        const expired = new Date(pendingAction.expiresAt).getTime() < Date.now();
+
+        if (expired) {
+          await storage.resolvePendingAction(pendingAction.id, "expired");
+        } else if (CONFIRM_PATTERNS.test(userMsg)) {
+          await storage.resolvePendingAction(pendingAction.id, "approved");
+
+          try { await storage.createAgentMessage({ sessionId, role: "user", content: userMsg }); } catch {}
+
+          initSSE(res);
+          sendSSEData(res, { type: "session", sessionId });
+
+          sendSSEData(res, { type: "step", stepId: pendingAction.toolName, status: "running", label: `Executing: ${pendingAction.summary}` });
+
+          const operatorContext: OperatorContext = {
+            subAccountId,
+            autonomyLevel: "execute",
+            sessionId: `agent-${sessionId}`,
+            correlationId: `agent-confirm-${Date.now()}`,
+          };
+
+          let result: any;
+          try {
+            result = await executeTool(pendingAction.toolName, pendingAction.toolArgs as Record<string, any>, operatorContext);
+          } catch (toolError: any) {
+            result = { success: false, error: toolError.message || "Tool execution failed" };
+          }
+
+          await storage.resolvePendingAction(pendingAction.id, result?.success ? "executed" : "failed");
+
+          sendSSEData(res, { type: "step", stepId: pendingAction.toolName, status: "complete", label: `${pendingAction.toolName} complete` });
+          sendSSEData(res, { type: "result", toolName: pendingAction.toolName, result });
+
+          const successMsg = result?.success
+            ? `Done — ${pendingAction.summary}. ${result.data?.name ? `Created: "${result.data.name}"` : ""} ${result.data?.id ? `(ID: ${result.data.id})` : ""}`.trim()
+            : `Action failed: ${result?.error || "Unknown error"}. ${pendingAction.summary} was not completed.`;
+
+          sendSSEData(res, { content: successMsg });
+
+          try {
+            await storage.createAgentMessage({ sessionId, role: "assistant", content: successMsg });
+          } catch {}
+
+          sendSSEData(res, { done: true, fullText: successMsg, sessionId });
+          res.end();
+          return;
+        } else if (REJECT_PATTERNS.test(userMsg)) {
+          await storage.resolvePendingAction(pendingAction.id, "rejected");
+
+          try { await storage.createAgentMessage({ sessionId, role: "user", content: userMsg }); } catch {}
+
+          initSSE(res);
+          sendSSEData(res, { type: "session", sessionId });
+
+          const cancelMsg = `Canceled — "${pendingAction.summary}" will not be executed.`;
+          sendSSEData(res, { content: cancelMsg });
+
+          try {
+            await storage.createAgentMessage({ sessionId, role: "assistant", content: cancelMsg });
+          } catch {}
+
+          sendSSEData(res, { done: true, fullText: cancelMsg, sessionId });
+          res.end();
+          return;
+        }
+      }
 
       const systemPrompt = await buildOperatorSystemPrompt(subAccountId, parsed.data.currentPath, parsed.data.frontendContext);
 
       const chatMessages: Array<{ role: string; content?: string | null; tool_calls?: any[]; tool_call_id?: string; name?: string }> = [
         { role: "system", content: systemPrompt },
         ...history,
-        { role: "user", content: parsed.data.message },
+        { role: "user", content: userMsg },
       ];
 
       try {
-        await storage.createAgentMessage({ sessionId, role: "user", content: parsed.data.message });
+        await storage.createAgentMessage({ sessionId, role: "user", content: userMsg });
       } catch {}
 
       initSSE(res);
@@ -436,6 +513,27 @@ export function registerBotRoutes(app: Express) {
             try {
               await storage.createAgentMessage({ sessionId, role: "tool", content: navResult, toolResults: { tool_call_id: toolCall.id, name: toolCall.name } });
             } catch {}
+            continue;
+          }
+
+          if (toolCall.name === "proposeAction") {
+            try {
+              const expiresAt = new Date(Date.now() + PENDING_ACTION_TTL_MS);
+              await storage.createPendingAction({
+                sessionId,
+                subAccountId,
+                toolName: params.toolName,
+                toolArgs: params.toolArgs,
+                summary: params.summary,
+                status: "awaiting_confirmation",
+                expiresAt,
+              });
+              const proposeResult = JSON.stringify({ success: true, message: `Pending action registered: "${params.summary}". User can confirm with "ok"/"confirm" or reject with "cancel"/"no".` });
+              chatMessages.push({ role: "tool", content: proposeResult, tool_call_id: toolCall.id, name: toolCall.name });
+            } catch (propErr: any) {
+              const proposeResult = JSON.stringify({ success: false, error: propErr.message || "Failed to register pending action" });
+              chatMessages.push({ role: "tool", content: proposeResult, tool_call_id: toolCall.id, name: toolCall.name });
+            }
             continue;
           }
 
