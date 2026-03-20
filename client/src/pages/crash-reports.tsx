@@ -1,14 +1,17 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
   FileText, ChevronLeft, Car, Users, MapPin,
   CheckCircle2, XCircle, Loader2, Eye, FileWarning, Upload, AlertCircle,
-  Clock, Database, Shield
+  Clock, Database, Shield, RefreshCw, AlertTriangle, Satellite, ChevronRight, Crosshair, Send, Globe, MessageSquare, ExternalLink
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAccount } from "@/hooks/use-account";
-import type { SubAccount } from "@shared/schema";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
+import type { SubAccount, SentinelIncident } from "@shared/schema";
+import { hasFeature } from "@shared/schema";
 
 interface CrashReportSummary {
   id: number;
@@ -370,6 +373,12 @@ function ReportDetailView({ reportId, onBack }: { reportId: number; onBack: () =
           </div>
         )}
 
+        {isFailedOrNotFound && (
+          <div className="mt-4 flex gap-3 flex-wrap">
+            <ReportRetryButton reportId={reportId} variant="detail" />
+          </div>
+        )}
+
         {showManualSubmit && (
           <div className="mt-4">
             {isStuck && !isFailedOrNotFound && (
@@ -516,11 +525,264 @@ function InfoField({ label, value, testId }: { label: string; value: string | un
   );
 }
 
+interface SentinelRawPayload {
+  id?: string;
+  lat?: number | null;
+  lng?: number | null;
+  type?: string;
+  source?: string;
+  state?: string;
+  county?: string;
+  remarks?: string;
+  received?: string;
+  distanceMiles?: string | number;
+  googleMaps?: string;
+}
+
+function parseRawPayload(raw: unknown): SentinelRawPayload {
+  if (raw && typeof raw === "object") return raw as SentinelRawPayload;
+  return {};
+}
+
+interface FLHSMVHealth {
+  status: string;
+  lastSuccessfulFetch: string | null;
+  lastError: string | null;
+  lastErrorCode: number | null;
+  lastErrorTime: string | null;
+  consecutiveFailures: number;
+  totalRequests: number;
+  totalSuccesses: number;
+  blockedCount: number;
+}
+
+const SEVERITY_COLORS: Record<string, { bg: string; text: string; border: string; label: string }> = {
+  critical: { bg: "bg-red-500/20", text: "text-red-500", border: "border-red-500/30", label: "CRITICAL" },
+  high: { bg: "bg-orange-500/20", text: "text-orange-500", border: "border-orange-500/30", label: "HIGH VALUE" },
+  medium: { bg: "bg-amber-500/20", text: "text-amber-500", border: "border-amber-500/30", label: "MEDIUM" },
+  low: { bg: "bg-slate-500/20", text: "text-slate-400", border: "border-slate-500/30", label: "LOW" },
+};
+
+function timeAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+function FLHSMVHealthBanner({ health }: { health: FLHSMVHealth }) {
+  if (health.status === "ok") return null;
+
+  const configs: Record<string, { bg: string; border: string; text: string; icon: typeof AlertTriangle; label: string; description: string }> = {
+    down: {
+      bg: "bg-red-500/10",
+      border: "border-red-500/20",
+      text: "text-red-300",
+      icon: XCircle,
+      label: "FLHSMV System Down",
+      description: "The Florida HSMV crash report system is currently unavailable. Report lookups will resume once the system recovers.",
+    },
+    degraded: {
+      bg: "bg-amber-500/10",
+      border: "border-amber-500/20",
+      text: "text-amber-300",
+      icon: AlertTriangle,
+      label: "FLHSMV System Degraded",
+      description: `The FLHSMV system is experiencing issues (${health.consecutiveFailures} consecutive failures). Report lookups may be delayed.`,
+    },
+    blocked: {
+      bg: "bg-orange-500/10",
+      border: "border-orange-500/20",
+      text: "text-orange-300",
+      icon: Shield,
+      label: "FLHSMV Access Restricted",
+      description: `Access to the FLHSMV system has been temporarily restricted. The system will retry automatically.${health.blockedCount > 0 ? ` (blocked ${health.blockedCount} time${health.blockedCount > 1 ? "s" : ""})` : ""}`,
+    },
+  };
+
+  const config = configs[health.status] || configs.degraded;
+  const Icon = config.icon;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`${config.bg} border ${config.border} rounded-xl p-4 mb-6 flex items-start gap-3`}
+      data-testid="banner-flhsmv-health"
+    >
+      <Icon size={20} className={`${config.text} mt-0.5 shrink-0`} />
+      <div>
+        <p className={`font-bold text-sm ${config.text}`} data-testid="text-health-status">{config.label}</p>
+        <p className={`text-xs ${config.text} opacity-80 mt-0.5`}>{config.description}</p>
+        {health.lastErrorTime && (
+          <p className="text-xs text-slate-500 mt-1">Last error: {formatDate(health.lastErrorTime)}</p>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+function SentinelIncidentCard({ incident, onClick }: { incident: SentinelIncident; onClick: () => void }) {
+  const sev = SEVERITY_COLORS[incident.severity || "medium"] || SEVERITY_COLORS.medium;
+  return (
+    <div
+      className="flex items-center justify-between p-4 rounded-xl bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 hover:border-white/10 cursor-pointer transition-all group"
+      onClick={onClick}
+      data-testid={`card-sentinel-incident-${incident.id}`}
+    >
+      <div className="flex items-center gap-4 min-w-0">
+        <div className="shrink-0">
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black tracking-wider border ${sev.bg} ${sev.border} ${sev.text}`}>
+            {sev.label}
+          </span>
+        </div>
+        <div className="min-w-0">
+          <p className="text-white font-bold text-sm truncate">{incident.title}</p>
+          <p className="text-slate-500 text-xs truncate flex items-center gap-1">
+            <MapPin size={10} /> {incident.location || "Location pending"}
+            {incident.detectedAt && <span className="text-slate-600 ml-2">{timeAgo(incident.detectedAt as unknown as string)}</span>}
+          </p>
+        </div>
+      </div>
+      <ChevronRight size={16} className="text-slate-600 group-hover:text-white transition-colors shrink-0" />
+    </div>
+  );
+}
+
+function SentinelIncidentDetailView({ incident, onBack }: { incident: SentinelIncident; onBack: () => void }) {
+  const sev = SEVERITY_COLORS[incident.severity || "medium"] || SEVERITY_COLORS.medium;
+  const raw = parseRawPayload(incident.rawPayload);
+  const lat = raw.lat || incident.lat;
+  const lng = raw.lng || incident.lng;
+  const googleMapsUrl = raw.googleMaps || (lat && lng ? `https://www.google.com/maps?q=${lat},${lng}` : null);
+
+  return (
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}>
+      <Button variant="ghost" onClick={onBack} className="text-slate-400 hover:text-white mb-4" data-testid="button-back-from-sentinel-detail">
+        <ChevronLeft size={16} className="mr-1" /> Back to Crash Reports
+      </Button>
+
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border bg-purple-500/20 border-purple-500/30 text-purple-400">
+              <Satellite size={12} /> Sentinel Incident
+            </span>
+          </div>
+          <h2 className="text-2xl font-black text-white" data-testid="text-sentinel-detail-title">{incident.title}</h2>
+          <p className="text-slate-500 text-sm">
+            Detected {formatDate(incident.detectedAt as unknown as string)}
+          </p>
+        </div>
+        <span className={`${sev.bg} ${sev.text} text-xs px-3 py-1.5 rounded-full font-black tracking-wider border ${sev.border}`}>
+          {sev.label}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6" data-testid="card-sentinel-location-details">
+          <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+            <MapPin size={14} className="text-red-400" /> Location & Details
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <InfoField label="Location" value={incident.location} testId="text-sentinel-location" />
+            <InfoField label="Detected Time" value={formatDate(incident.detectedAt as unknown as string)} testId="text-sentinel-detected" />
+            <InfoField label="County" value={raw?.county} testId="text-sentinel-county" />
+            <InfoField label="State" value={raw?.state || incident.state} testId="text-sentinel-state" />
+            {lat && lng && <InfoField label="Coordinates" value={`${lat}, ${lng}`} testId="text-sentinel-coords" />}
+            <InfoField label="Received Date" value={raw?.received} testId="text-sentinel-received" />
+            <InfoField label="Source" value={raw?.source?.toUpperCase()} testId="text-sentinel-source" />
+            <InfoField label="Type" value={incident.title} testId="text-sentinel-type" />
+            {raw?.distanceMiles && raw.distanceMiles !== "unknown" && (
+              <InfoField label="Distance from HQ" value={`${raw.distanceMiles} mi`} testId="text-sentinel-distance" />
+            )}
+          </div>
+          {incident.description && (
+            <div className="mt-4">
+              <p className="text-[10px] text-slate-600 uppercase font-bold tracking-widest mb-1">Description</p>
+              <p className="text-sm text-slate-300" data-testid="text-sentinel-description">{incident.description}</p>
+            </div>
+          )}
+          {raw?.remarks && (
+            <div className="mt-4">
+              <p className="text-[10px] text-slate-600 uppercase font-bold tracking-widest mb-1">Remarks</p>
+              <p className="text-sm text-slate-300" data-testid="text-sentinel-remarks">{raw.remarks}</p>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-6">
+          <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6" data-testid="card-sentinel-map">
+            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+              <Globe size={14} className="text-cyan-400" /> Map
+            </h3>
+            {googleMapsUrl ? (
+              <div>
+                <div className="bg-white/5 border border-white/10 rounded-xl p-8 text-center mb-4">
+                  <MapPin size={48} className="mx-auto text-red-400 mb-3" />
+                  <p className="text-white font-bold text-sm mb-1">{incident.location}</p>
+                  {lat && lng && <p className="text-slate-500 text-xs">{lat}, {lng}</p>}
+                </div>
+                <a
+                  href={googleMapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-sm font-bold hover:bg-blue-500/20 transition-all w-full justify-center"
+                  data-testid="link-sentinel-google-maps"
+                >
+                  <ExternalLink size={14} /> Open in Google Maps
+                </a>
+              </div>
+            ) : (
+              <div className="bg-white/5 border border-white/10 rounded-xl p-8 text-center">
+                <MapPin size={48} className="mx-auto text-slate-600 mb-3" />
+                <p className="text-slate-500 text-sm">No coordinates available</p>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6" data-testid="card-sentinel-response-status">
+            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+              <Shield size={14} className="text-emerald-400" /> Response Status
+            </h3>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/5">
+                <div className="flex items-center gap-2">
+                  <MessageSquare size={14} className={incident.smsSent ? "text-green-400" : "text-slate-600"} />
+                  <span className="text-sm text-white">SMS Alert</span>
+                </div>
+                <span className={`text-xs font-bold px-2 py-1 rounded ${incident.smsSent ? "bg-green-500/20 text-green-400" : "bg-slate-500/20 text-slate-500"}`}>
+                  {incident.smsSent ? "Sent" : "Not Sent"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/5">
+                <div className="flex items-center gap-2">
+                  <Crosshair size={14} className={incident.geofenceDeployed ? "text-green-400" : "text-slate-600"} />
+                  <span className="text-sm text-white">Geofence Deployment</span>
+                </div>
+                <span className={`text-xs font-bold px-2 py-1 rounded ${incident.geofenceDeployed ? "bg-green-500/20 text-green-400" : "bg-slate-500/20 text-slate-500"}`}>
+                  {incident.geofenceDeployed ? "Deployed" : "Not Deployed"}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 export default function CrashReports() {
   const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
+  const [selectedSentinelIncident, setSelectedSentinelIncident] = useState<SentinelIncident | null>(null);
   const { activeAccountId } = useAccount();
   const { data: accounts = [] } = useQuery<SubAccount[]>({ queryKey: ["/api/accounts"] });
   const currentAccount = accounts.find(a => a.id === activeAccountId) || accounts[0];
+  const accountPlan = currentAccount?.plan || 'starter';
+  const hasSentinelAccess = hasFeature(accountPlan, 'sentinel');
 
   const { data: reports = [], isLoading } = useQuery<CrashReportSummary[]>({
     queryKey: ["/api/crash-reports", currentAccount?.id],
@@ -532,6 +794,38 @@ export default function CrashReports() {
     },
     refetchInterval: 15000,
   });
+
+  const { data: health } = useQuery<FLHSMVHealth>({
+    queryKey: ["/api/crash-reports/health"],
+    queryFn: async () => {
+      const res = await fetch("/api/crash-reports/health");
+      if (!res.ok) throw new Error("Failed to fetch health");
+      return res.json();
+    },
+    refetchInterval: 30000,
+  });
+
+  const { data: sentinelIncidents = [] } = useQuery<SentinelIncident[]>({
+    queryKey: ["/api/sentinel/incidents", currentAccount?.id],
+    enabled: !!currentAccount?.id && hasSentinelAccess,
+    queryFn: async () => {
+      const res = await fetch(`/api/sentinel/incidents/${currentAccount!.id}`);
+      if (!res.ok) throw new Error("Failed to fetch incidents");
+      return res.json();
+    },
+    refetchInterval: 30000,
+  });
+
+  if (selectedSentinelIncident) {
+    return (
+      <div className="p-6 md:p-10 max-w-6xl mx-auto">
+        <SentinelIncidentDetailView
+          incident={selectedSentinelIncident}
+          onBack={() => setSelectedSentinelIncident(null)}
+        />
+      </div>
+    );
+  }
 
   if (selectedReportId !== null) {
     return (
@@ -547,6 +841,8 @@ export default function CrashReports() {
 
   return (
     <div className="p-6 md:p-10 max-w-6xl mx-auto">
+      {health && <FLHSMVHealthBanner health={health} />}
+
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
         <div className="flex items-center gap-3 mb-2">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-red-600 to-orange-500 flex items-center justify-center">
@@ -570,7 +866,35 @@ export default function CrashReports() {
         <StatCard label="Failed" value={failedReports.length} icon={XCircle} color="red" delay={0.2} testId="card-failed-reports" />
       </div>
 
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
+      {hasSentinelAccess && sentinelIncidents.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+          className="bg-[#0a0a0a] border border-purple-500/30 rounded-2xl p-6 mb-6"
+          data-testid="section-sentinel-incidents"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-bold text-purple-400 uppercase tracking-widest flex items-center gap-2">
+              <Satellite size={14} /> Sentinel Detected Incidents
+            </h2>
+            <span className="text-[10px] text-slate-600 uppercase tracking-widest">
+              {sentinelIncidents.length} incident{sentinelIncidents.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+          <div className="space-y-2">
+            {sentinelIncidents.slice(0, 10).map((incident) => (
+              <SentinelIncidentCard
+                key={incident.id}
+                incident={incident}
+                onClick={() => setSelectedSentinelIncident(incident)}
+              />
+            ))}
+          </div>
+        </motion.div>
+      )}
+
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
         className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6"
       >
         {isLoading ? (
@@ -617,6 +941,9 @@ export default function CrashReports() {
                   {report.hasData && (
                     <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider" data-testid={`text-data-available-${report.id}`}>Data Available</span>
                   )}
+                  {(report.status === "FAILED" || report.status === "NOT_FOUND") && (
+                    <ReportRetryButton reportId={report.id} />
+                  )}
                   <Eye size={16} className="text-slate-600 group-hover:text-white transition-colors" />
                 </div>
               </motion.div>
@@ -625,6 +952,57 @@ export default function CrashReports() {
         )}
       </motion.div>
     </div>
+  );
+}
+
+function ReportRetryButton({ reportId, variant = "list" }: { reportId: number; variant?: "list" | "detail" }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const retryMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/crash-reports/${reportId}/retry`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Report re-queued for lookup" });
+      queryClient.invalidateQueries({ queryKey: ["/api/crash-reports"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/crash-reports", reportId] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Retry failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  if (variant === "detail") {
+    return (
+      <Button
+        onClick={() => retryMutation.mutate()}
+        disabled={retryMutation.isPending}
+        className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white"
+        data-testid="button-retry-report"
+      >
+        {retryMutation.isPending ? (
+          <><Loader2 size={16} className="mr-2 animate-spin" /> Retrying...</>
+        ) : (
+          <><RefreshCw size={16} className="mr-2" /> Retry FLHSMV Lookup</>
+        )}
+      </Button>
+    );
+  }
+
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        retryMutation.mutate();
+      }}
+      disabled={retryMutation.isPending}
+      className="flex items-center gap-1 px-2 py-1 rounded-md bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-[10px] font-bold hover:bg-cyan-500/20 transition-all disabled:opacity-50"
+      data-testid={`button-retry-${reportId}`}
+    >
+      <RefreshCw size={10} className={retryMutation.isPending ? "animate-spin" : ""} />
+      {retryMutation.isPending ? "Retrying" : "Retry"}
+    </button>
   );
 }
 

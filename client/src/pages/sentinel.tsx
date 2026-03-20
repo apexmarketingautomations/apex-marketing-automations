@@ -6,7 +6,7 @@ import { useAccount } from "@/hooks/use-account";
 import { useToast } from "@/hooks/use-toast";
 import {
   Satellite, Radar, MapPin, Phone, Crosshair, AlertTriangle, CheckCircle2,
-  Settings, Play, Pause, Radio, Shield, Clock, ChevronRight, Send, Target, Zap, Eye, BookOpen, Lock, ArrowUpCircle, Plus
+  Settings, Play, Pause, Radio, Shield, Clock, ChevronRight, ChevronLeft, Send, Target, Zap, Eye, BookOpen, Lock, ArrowUpCircle, Plus, ExternalLink, Globe, MessageSquare
 } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { SENTINEL_STEPS } from "@/components/tutorial-steps";
@@ -18,6 +18,25 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { useLocation } from "wouter";
 import type { SubAccount, SentinelIncident, SentinelConfig } from "@shared/schema";
 import { hasFeature } from "@shared/schema";
+
+interface SentinelRawPayload {
+  id?: string;
+  lat?: number | null;
+  lng?: number | null;
+  type?: string;
+  source?: string;
+  state?: string;
+  county?: string;
+  remarks?: string;
+  received?: string;
+  distanceMiles?: string | number;
+  googleMaps?: string;
+}
+
+function parseRawPayload(raw: unknown): SentinelRawPayload {
+  if (raw && typeof raw === "object") return raw as SentinelRawPayload;
+  return {};
+}
 
 const SEVERITY_COLORS: Record<string, { bg: string; text: string; border: string; label: string }> = {
   critical: { bg: "bg-red-500/20", text: "text-red-500", border: "border-red-500/30", label: "CRITICAL" },
@@ -65,6 +84,7 @@ export default function Sentinel() {
   const [locationFilter, setLocationFilter] = useState("");
   const [showReportDialog, setShowReportDialog] = useState(false);
   const [reportForm, setReportForm] = useState({ title: "", location: "", description: "", severity: "medium" });
+  const [selectedIncident, setSelectedIncident] = useState<SentinelIncident | null>(null);
 
   const { data: accounts = [] } = useQuery<SubAccount[]>({ queryKey: ["/api/accounts"] });
   const currentAccount = accounts.find(a => a.id === activeAccountId) || accounts[0];
@@ -218,6 +238,26 @@ export default function Sentinel() {
   const pendingIncidents = filteredIncidents.filter(i => i.actionStatus === "pending");
   const actionedIncidents = filteredIncidents.filter(i => i.actionStatus !== "pending");
   const criticalCount = filteredIncidents.filter(i => i.severity === "critical" || i.severity === "high").length;
+
+  const liveSelectedIncident = selectedIncident
+    ? incidents.find(i => i.id === selectedIncident.id) || selectedIncident
+    : null;
+
+  if (liveSelectedIncident) {
+    return (
+      <div className="p-6 md:p-10 max-w-6xl mx-auto">
+        <IncidentDetailView
+          incident={liveSelectedIncident}
+          onBack={() => setSelectedIncident(null)}
+          onGeofence={() => geofenceMutation.mutate(liveSelectedIncident.id)}
+          onSms={() => smsMutation.mutate(liveSelectedIncident.id)}
+          onAck={() => { ackMutation.mutate(liveSelectedIncident.id); setSelectedIncident(null); }}
+          geofencePending={geofenceMutation.isPending}
+          smsPending={smsMutation.isPending}
+        />
+      </div>
+    );
+  }
 
   if (!hasSentinelAccess) {
     return (
@@ -424,6 +464,7 @@ export default function Sentinel() {
                   onGeofence={() => geofenceMutation.mutate(incident.id)}
                   onSms={() => smsMutation.mutate(incident.id)}
                   onAck={() => ackMutation.mutate(incident.id)}
+                  onClick={() => setSelectedIncident(incident)}
                   geofencePending={geofenceMutation.isPending}
                   smsPending={smsMutation.isPending}
                 />
@@ -445,6 +486,7 @@ export default function Sentinel() {
                     onGeofence={() => geofenceMutation.mutate(incident.id)}
                     onSms={() => smsMutation.mutate(incident.id)}
                     onAck={() => ackMutation.mutate(incident.id)}
+                    onClick={() => setSelectedIncident(incident)}
                     geofencePending={false}
                     smsPending={false}
                     dimmed
@@ -667,19 +709,21 @@ export default function Sentinel() {
 }
 
 function IncidentCard({
-  incident, index, onGeofence, onSms, onAck, geofencePending, smsPending, dimmed
+  incident, index, onGeofence, onSms, onAck, onClick, geofencePending, smsPending, dimmed
 }: {
   incident: SentinelIncident;
   index: number;
   onGeofence: () => void;
   onSms: () => void;
   onAck: () => void;
+  onClick?: () => void;
   geofencePending: boolean;
   smsPending: boolean;
   dimmed?: boolean;
 }) {
   const sev = SEVERITY_COLORS[incident.severity || "medium"] || SEVERITY_COLORS.medium;
   const isPending = incident.actionStatus === "pending";
+  const raw = parseRawPayload(incident.rawPayload);
 
   return (
     <motion.div
@@ -687,7 +731,8 @@ function IncidentCard({
       animate={{ opacity: dimmed ? 0.5 : 1, y: 0 }}
       exit={{ opacity: 0, x: -20 }}
       transition={{ delay: index * 0.03 }}
-      className={`border-b border-white/5 pb-4 last:border-0 last:pb-0 ${dimmed ? "opacity-50" : ""}`}
+      className={`border-b border-white/5 pb-4 last:border-0 last:pb-0 cursor-pointer hover:bg-white/[0.02] rounded-lg p-2 -mx-2 transition-colors ${dimmed ? "opacity-50" : ""}`}
+      onClick={onClick}
       data-testid={`card-incident-${incident.id}`}
     >
       <div className="flex justify-between items-start gap-4">
@@ -712,12 +757,12 @@ function IncidentCard({
           <span className={`${sev.bg} ${sev.text} text-[10px] px-2 py-1 rounded font-black tracking-wider`}>
             {sev.label}
           </span>
-          {(incident.rawPayload as any)?.source && (
+          {raw.source && (
             <span className="text-[8px] bg-cyan-500/10 text-cyan-400 px-1.5 py-0.5 rounded font-bold mt-1 inline-block">
-              {(incident.rawPayload as any).source === "lvmpd_live" ? "LVMPD" :
-               (incident.rawPayload as any).source === "fhp_live" ? "FL FHP" :
-               (incident.rawPayload as any).source?.toUpperCase()}
-              {(incident.rawPayload as any).state ? ` · ${(incident.rawPayload as any).state}` : ""}
+              {raw.source === "lvmpd_live" ? "LVMPD" :
+               raw.source === "fhp_live" ? "FL FHP" :
+               raw.source?.toUpperCase()}
+              {raw.state ? ` · ${raw.state}` : ""}
             </span>
           )}
           <p className="text-gray-500 text-[10px] mt-1 flex items-center gap-1 justify-end" data-testid={`text-incident-date-${incident.id}`}>
@@ -730,7 +775,7 @@ function IncidentCard({
       </div>
 
       {isPending && (
-        <div className="flex gap-2 mt-3">
+        <div className="flex gap-2 mt-3" onClick={(e) => e.stopPropagation()}>
           <button
             onClick={onGeofence}
             disabled={incident.geofenceDeployed || geofencePending}
@@ -757,5 +802,182 @@ function IncidentCard({
         </div>
       )}
     </motion.div>
+  );
+}
+
+function IncidentDetailView({
+  incident, onBack, onGeofence, onSms, onAck, geofencePending, smsPending
+}: {
+  incident: SentinelIncident;
+  onBack: () => void;
+  onGeofence: () => void;
+  onSms: () => void;
+  onAck: () => void;
+  geofencePending: boolean;
+  smsPending: boolean;
+}) {
+  const sev = SEVERITY_COLORS[incident.severity || "medium"] || SEVERITY_COLORS.medium;
+  const raw = parseRawPayload(incident.rawPayload);
+  const isPending = incident.actionStatus === "pending";
+  const lat = raw.lat || incident.lat;
+  const lng = raw.lng || incident.lng;
+  const googleMapsUrl = raw.googleMaps || (lat && lng ? `https://www.google.com/maps?q=${lat},${lng}` : null);
+
+  return (
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}>
+      <Button variant="ghost" onClick={onBack} className="text-slate-400 hover:text-white mb-4" data-testid="button-back-to-incidents">
+        <ChevronLeft size={16} className="mr-1" /> Back to Incidents
+      </Button>
+
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
+        <div>
+          <h2 className="text-2xl font-black text-white" data-testid="text-incident-title">{incident.title}</h2>
+          <p className="text-slate-500 text-sm">
+            Detected {formatDateTime(incident.detectedAt as unknown as string)} · {timeAgo(incident.detectedAt as unknown as string)}
+          </p>
+        </div>
+        <span className={`${sev.bg} ${sev.text} text-xs px-3 py-1.5 rounded-full font-black tracking-wider border ${sev.border}`}>
+          {sev.label}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6" data-testid="card-location-details">
+          <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+            <MapPin size={14} className="text-red-400" /> Location & Details
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <DetailField label="Location" value={incident.location} testId="text-detail-location" />
+            <DetailField label="Detected Time" value={formatDateTime(incident.detectedAt as unknown as string)} testId="text-detail-detected" />
+            <DetailField label="County" value={raw?.county} testId="text-detail-county" />
+            <DetailField label="State" value={raw?.state || incident.state} testId="text-detail-state" />
+            {lat && lng && (
+              <DetailField label="Coordinates" value={`${lat}, ${lng}`} testId="text-detail-coords" />
+            )}
+            <DetailField label="Received Date" value={raw?.received} testId="text-detail-received" />
+            <DetailField label="Source" value={raw?.source?.toUpperCase()} testId="text-detail-source" />
+            <DetailField label="Type" value={incident.title} testId="text-detail-type" />
+            {raw?.distanceMiles && raw.distanceMiles !== "unknown" && (
+              <DetailField label="Distance from HQ" value={`${raw.distanceMiles} mi`} testId="text-detail-distance" />
+            )}
+          </div>
+          {raw?.remarks && (
+            <div className="mt-4">
+              <p className="text-[10px] text-slate-600 uppercase font-bold tracking-widest mb-1">Remarks</p>
+              <p className="text-sm text-slate-300" data-testid="text-detail-remarks">{raw.remarks}</p>
+            </div>
+          )}
+          {incident.description && (
+            <div className="mt-4">
+              <p className="text-[10px] text-slate-600 uppercase font-bold tracking-widest mb-1">Description</p>
+              <p className="text-sm text-slate-300" data-testid="text-detail-description">{incident.description}</p>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-6">
+          <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6" data-testid="card-map-section">
+            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+              <Globe size={14} className="text-cyan-400" /> Map
+            </h3>
+            {googleMapsUrl ? (
+              <div>
+                <div className="bg-white/5 border border-white/10 rounded-xl p-8 text-center mb-4">
+                  <MapPin size={48} className="mx-auto text-red-400 mb-3" />
+                  <p className="text-white font-bold text-sm mb-1">{incident.location}</p>
+                  {lat && lng && <p className="text-slate-500 text-xs">{lat}, {lng}</p>}
+                </div>
+                <a
+                  href={googleMapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-sm font-bold hover:bg-blue-500/20 transition-all w-full justify-center"
+                  data-testid="link-open-google-maps"
+                >
+                  <ExternalLink size={14} /> Open in Google Maps
+                </a>
+              </div>
+            ) : (
+              <div className="bg-white/5 border border-white/10 rounded-xl p-8 text-center">
+                <MapPin size={48} className="mx-auto text-slate-600 mb-3" />
+                <p className="text-slate-500 text-sm">No coordinates available for this incident</p>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6" data-testid="card-response-status">
+            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+              <Shield size={14} className="text-emerald-400" /> Response Status
+            </h3>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/5">
+                <div className="flex items-center gap-2">
+                  <MessageSquare size={14} className={incident.smsSent ? "text-green-400" : "text-slate-600"} />
+                  <span className="text-sm text-white">SMS Alert</span>
+                </div>
+                <span className={`text-xs font-bold px-2 py-1 rounded ${incident.smsSent ? "bg-green-500/20 text-green-400" : "bg-slate-500/20 text-slate-500"}`} data-testid="text-sms-status">
+                  {incident.smsSent ? "Sent" : "Not Sent"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/5">
+                <div className="flex items-center gap-2">
+                  <Crosshair size={14} className={incident.geofenceDeployed ? "text-green-400" : "text-slate-600"} />
+                  <span className="text-sm text-white">Geofence Deployment</span>
+                </div>
+                <span className={`text-xs font-bold px-2 py-1 rounded ${incident.geofenceDeployed ? "bg-green-500/20 text-green-400" : "bg-slate-500/20 text-slate-500"}`} data-testid="text-geofence-status">
+                  {incident.geofenceDeployed ? "Deployed" : "Not Deployed"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/5">
+                <div className="flex items-center gap-2">
+                  <Eye size={14} className={incident.actionStatus !== "pending" ? "text-green-400" : "text-slate-600"} />
+                  <span className="text-sm text-white">Action Status</span>
+                </div>
+                <span className={`text-xs font-bold px-2 py-1 rounded ${incident.actionStatus !== "pending" ? "bg-green-500/20 text-green-400" : "bg-amber-500/20 text-amber-400"}`} data-testid="text-action-status">
+                  {(incident.actionStatus || "pending").replace(/_/g, " ").toUpperCase()}
+                </span>
+              </div>
+            </div>
+
+            {isPending && (
+              <div className="flex gap-2 mt-4">
+                <button
+                  onClick={onGeofence}
+                  disabled={incident.geofenceDeployed || geofencePending}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold hover:bg-red-500/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                  data-testid="button-detail-geofence"
+                >
+                  <Crosshair size={12} /> {geofencePending ? "Deploying..." : "Deploy Geofence"}
+                </button>
+                <button
+                  onClick={onSms}
+                  disabled={incident.smsSent || smsPending}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold hover:bg-blue-500/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                  data-testid="button-detail-sms"
+                >
+                  <Send size={12} /> {smsPending ? "Sending..." : "Send SMS"}
+                </button>
+                <button
+                  onClick={onAck}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-400 text-xs font-bold hover:bg-white/10 transition-all"
+                  data-testid="button-detail-ack"
+                >
+                  <Eye size={12} /> Acknowledge
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function DetailField({ label, value, testId }: { label: string; value: string | undefined | null; testId: string }) {
+  return (
+    <div>
+      <p className="text-[10px] text-slate-600 uppercase font-bold tracking-widest mb-0.5">{label}</p>
+      <p className="text-sm text-white font-medium" data-testid={testId}>{value || "—"}</p>
+    </div>
   );
 }

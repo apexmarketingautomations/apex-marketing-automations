@@ -1229,6 +1229,35 @@ export function registerPropertyRoutes(app: Express) {
     res.json({ success: true, message: "Crash report data saved successfully", data: reportData });
   }));
 
+  app.post("/api/crash-reports/:id/retry", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const id = Number(req.params.id);
+    const report = await storage.getCrashReport(id);
+    if (!report) return res.status(404).json({ error: "Report not found" });
+
+    if (report.subAccountId) {
+      if (!(await verifyAccountOwnership(req, res, report.subAccountId))) return;
+    }
+
+    if (report.status !== "FAILED" && report.status !== "NOT_FOUND") {
+      return res.status(400).json({ error: "Only FAILED or NOT_FOUND reports can be retried" });
+    }
+
+    await storage.updateCrashReport(id, {
+      status: "PENDING",
+      errorLog: null,
+      lockedAt: null,
+      lockedBy: null,
+      retryCount: 0,
+      serviceFailureCount: 0,
+    });
+
+    console.log(`[CRASH-REPORT] Report ${report.reportNumber} (id=${id}) re-queued for retry by user`);
+    res.json({ success: true, message: `Report ${report.reportNumber} re-queued for lookup` });
+  }));
+
   // ─── Crash Connect Webhook ───────────────────────────────────────
   app.post("/api/webhook/crashconnect", async (req, res) => {
     const startTime = Date.now();
