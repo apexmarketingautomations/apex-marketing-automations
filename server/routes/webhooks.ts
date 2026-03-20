@@ -331,9 +331,13 @@ export function registerWebhooksRoutes(app: Express) {
       .limit(1);
 
     if (existing) {
-      await db.update(contacts)
-        .set({ lastContactedAt: new Date() })
-        .where(eq(contacts.id, existing.id));
+      try {
+        await db.update(contacts)
+          .set({ lastContactedAt: new Date() })
+          .where(eq(contacts.id, existing.id));
+      } catch (updateErr: any) {
+        console.warn(`[CRM-UPSERT] lastContactedAt update failed (non-fatal): ${updateErr.message}`);
+      }
       return { id: existing.id, isNew: false };
     }
 

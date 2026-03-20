@@ -7,14 +7,44 @@ import {
   creditWallets,
   digitalCards,
   integrationConnections,
+  workflows,
 } from "@shared/schema";
-import { eq, isNull } from "drizzle-orm";
+import { eq, isNull, sql } from "drizzle-orm";
 
 export async function seed() {
   await seedBlueprints();
   await syncAdminAccounts();
+  await fixOrphanedWorkflows();
 
   console.log("Database seeded successfully");
+}
+
+async function fixOrphanedWorkflows() {
+  try {
+    const apexAccount = await db.select({ id: subAccounts.id, twilioNumber: subAccounts.twilioNumber }).from(subAccounts)
+      .where(eq(subAccounts.name, "APEX MARKETING Account")).limit(1);
+    if (apexAccount.length === 0) return;
+
+    const apexId = apexAccount[0].id;
+
+    if (apexAccount[0].twilioNumber !== "+12396030102") {
+      await db.update(subAccounts)
+        .set({ twilioNumber: "+12396030102" })
+        .where(eq(subAccounts.id, apexId));
+      console.log(`[SEED] Fixed APEX twilio_number: "${apexAccount[0].twilioNumber}" -> "+12396030102"`);
+    }
+
+    const result = await db.update(workflows)
+      .set({ subAccountId: apexId })
+      .where(isNull(workflows.subAccountId))
+      .returning({ id: workflows.id });
+
+    if (result.length > 0) {
+      console.log(`[SEED] Fixed ${result.length} orphaned workflow(s) — assigned to APEX account #${apexId}`);
+    }
+  } catch (e: any) {
+    console.warn("[SEED] fixOrphanedWorkflows failed (non-fatal):", e.message);
+  }
 }
 
 async function syncAdminAccounts() {
