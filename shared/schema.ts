@@ -387,11 +387,35 @@ export const sentinelIncidents = pgTable("sentinel_incidents", {
   geocodeStatus: text("geocode_status"),
   geocodedAt: timestamp("geocoded_at"),
   detectedAt: timestamp("detected_at").defaultNow().notNull(),
-});
+  dispatchedAs: text("dispatched_as"),
+  callNotes: text("call_notes"),
+  unitsAssigned: jsonb("units_assigned"),
+  responseTimeline: jsonb("response_timeline"),
+  cadSource: text("cad_source"),
+  cadExternalId: text("cad_external_id"),
+  cadLastUpdatedAt: timestamp("cad_last_updated_at", { withTimezone: true }),
+}, (table) => [
+  index("idx_sentinel_cad_lookup").on(table.subAccountId, table.cadSource, table.cadExternalId),
+]);
 
 export const insertSentinelIncidentSchema = createInsertSchema(sentinelIncidents).omit({ id: true, detectedAt: true });
 export type InsertSentinelIncident = z.infer<typeof insertSentinelIncidentSchema>;
 export type SentinelIncident = typeof sentinelIncidents.$inferSelect;
+
+export interface CadUnitAssigned {
+  unitId: string;
+  unitType?: string;
+  dispatchedAt?: string;
+  arrivedAt?: string;
+  clearedAt?: string;
+}
+
+export interface CadTimelineEvent {
+  timestamp: string;
+  event: string;
+  unit?: string;
+  details?: string;
+}
 
 // ---- Property Wholesaler (Property Radar) ----
 

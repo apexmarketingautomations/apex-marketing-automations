@@ -110,6 +110,7 @@ export function registerAuthRoutes(app: Express) {
     if (fullPath === "/api/sentinel/test-trigger") return next();
     if (fullPath === "/api/sentinel/live") return next();
     if (fullPath === "/api/sentinel/incoming-crash") return next();
+    if (fullPath === "/api/sentinel/cad-ingest") return next();
     if (fullPath === "/api/sentinel-incoming") return next();
     if (fullPath === "/api/v1/sentinel-receiver") return next();
     if (fullPath === "/api/v1/sentinel-ingest") return next();

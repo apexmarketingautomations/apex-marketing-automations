@@ -1,9 +1,161 @@
 import type { Express, Request, Response } from "express";
 import { insertSentinelIncidentSchema, messages } from "@shared/schema";
+import type { CadUnitAssigned, CadTimelineEvent, SentinelIncident } from "@shared/schema";
 import { storage } from "../storage";
 import { z } from "zod";
 import { processLiveSentinelFeed, deployGeofenceAd } from "../sentinel";
 import { asyncHandler, parseIntParam, verifyAccountOwnership, requirePlanFeature } from "./helpers";
+
+// --- Zod schema for CAD ingestion payload ---
+const cadUnitSchema = z.object({
+  unitId: z.string(),
+  unitType: z.string().optional(),
+  dispatchedAt: z.string().optional(),
+  arrivedAt: z.string().optional(),
+  clearedAt: z.string().optional(),
+});
+
+const cadTimelineEventSchema = z.object({
+  timestamp: z.string(),
+  event: z.string(),
+  unit: z.string().optional(),
+  details: z.string().optional(),
+});
+
+const cadIngestPayloadSchema = z.object({
+  source: z.string().min(1),
+  externalIncidentId: z.string().min(1),
+  subAccountId: z.number().int().positive(),
+  dispatchedAs: z.string().optional(),
+  callNotes: z.string().optional(),
+  unitsAssigned: z.array(cadUnitSchema).optional(),
+  responseTimeline: z.array(cadTimelineEventSchema).optional(),
+  location: z.object({
+    address: z.string().optional(),
+    lat: z.number().optional(),
+    lng: z.number().optional(),
+  }).optional(),
+  severity: z.string().optional(),
+  status: z.string().optional(),
+  timestamps: z.object({
+    received: z.string().optional(),
+    dispatched: z.string().optional(),
+    firstUnitArrived: z.string().optional(),
+    cleared: z.string().optional(),
+  }).optional(),
+});
+
+/**
+ * Merge CAD units by unitId: update existing units with newer data, append new ones.
+ * Never removes existing units.
+ */
+function mergeUnitsAssigned(
+  existing: CadUnitAssigned[] | null | undefined,
+  incoming: CadUnitAssigned[] | undefined
+): CadUnitAssigned[] | null {
+  if (!incoming || incoming.length === 0) return (existing as CadUnitAssigned[]) || null;
+  const merged = new Map<string, CadUnitAssigned>();
+  if (Array.isArray(existing)) {
+    for (const u of existing) merged.set(u.unitId, { ...u });
+  }
+  for (const u of incoming) {
+    const prev = merged.get(u.unitId);
+    if (prev) {
+      merged.set(u.unitId, {
+        ...prev,
+        ...(u.unitType !== undefined ? { unitType: u.unitType } : {}),
+        ...(u.dispatchedAt !== undefined ? { dispatchedAt: u.dispatchedAt } : {}),
+        ...(u.arrivedAt !== undefined ? { arrivedAt: u.arrivedAt } : {}),
+        ...(u.clearedAt !== undefined ? { clearedAt: u.clearedAt } : {}),
+      });
+    } else {
+      merged.set(u.unitId, { ...u });
+    }
+  }
+  return Array.from(merged.values());
+}
+
+/**
+ * Merge timeline events: deduplicate by (timestamp, event, unit) tuple, append new, sort by timestamp.
+ */
+function mergeResponseTimeline(
+  existing: CadTimelineEvent[] | null | undefined,
+  incoming: CadTimelineEvent[] | undefined
+): CadTimelineEvent[] | null {
+  if (!incoming || incoming.length === 0) return (existing as CadTimelineEvent[]) || null;
+  const key = (e: CadTimelineEvent) => `${e.timestamp}|${e.event}|${e.unit || ""}`;
+  const seen = new Set<string>();
+  const result: CadTimelineEvent[] = [];
+  if (Array.isArray(existing)) {
+    for (const e of existing) {
+      seen.add(key(e));
+      result.push(e);
+    }
+  }
+  for (const e of incoming) {
+    if (!seen.has(key(e))) {
+      seen.add(key(e));
+      result.push(e);
+    }
+  }
+  result.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  return result;
+}
+
+/**
+ * Build a safe partial update object from CAD payload for an existing incident.
+ * Rules:
+ * - Never overwrite a populated field with null/undefined
+ * - Scalar fields (dispatchedAs, callNotes): overwrite only if incoming is non-empty string
+ * - unitsAssigned: merge by unitId
+ * - responseTimeline: merge by (timestamp, event, unit)
+ * - Always sets cadLastUpdatedAt = now()
+ */
+function buildCadMergeUpdate(
+  existing: SentinelIncident,
+  payload: z.infer<typeof cadIngestPayloadSchema>
+): Record<string, any> {
+  const update: Record<string, any> = {
+    cadLastUpdatedAt: new Date(),
+    cadSource: payload.source.trim().toLowerCase(),
+    cadExternalId: payload.externalIncidentId.trim(),
+  };
+
+  if (payload.dispatchedAs && payload.dispatchedAs.trim().length > 0) {
+    update.dispatchedAs = payload.dispatchedAs;
+  }
+  if (payload.callNotes && payload.callNotes.trim().length > 0) {
+    update.callNotes = payload.callNotes;
+  }
+  if (payload.severity && payload.severity.trim().length > 0 && !existing.severity) {
+    update.severity = payload.severity;
+  } else if (payload.severity && payload.severity.trim().length > 0) {
+    update.severity = payload.severity;
+  }
+  if (payload.status && payload.status.trim().length > 0) {
+    update.actionStatus = payload.status;
+  }
+  if (payload.location) {
+    if (payload.location.address && !existing.location) {
+      update.location = payload.location.address;
+    } else if (payload.location.address) {
+      update.location = payload.location.address;
+    }
+    if (payload.location.lat !== undefined) update.lat = payload.location.lat;
+    if (payload.location.lng !== undefined) update.lng = payload.location.lng;
+  }
+
+  update.unitsAssigned = mergeUnitsAssigned(
+    existing.unitsAssigned as CadUnitAssigned[] | null,
+    payload.unitsAssigned
+  );
+  update.responseTimeline = mergeResponseTimeline(
+    existing.responseTimeline as CadTimelineEvent[] | null,
+    payload.responseTimeline
+  );
+
+  return update;
+}
 
 export function registerSentinelRoutes(app: Express) {
   // ---- Sentinel Module ----
@@ -278,8 +430,105 @@ export function registerSentinelRoutes(app: Express) {
       location: inc.location || "Unknown",
       time: inc.detectedAt ? new Date(inc.detectedAt).toLocaleTimeString() : "Unknown",
       value: (inc.severity || "medium").toUpperCase(),
+      dispatchedAs: inc.dispatchedAs,
+      callNotes: inc.callNotes,
+      unitsAssigned: inc.unitsAssigned,
+      responseTimeline: inc.responseTimeline,
+      cadSource: inc.cadSource,
+      cadExternalId: inc.cadExternalId,
+      cadLastUpdatedAt: inc.cadLastUpdatedAt,
     }));
     res.json(liveFormat);
+  }));
+
+  // --- CAD Ingestion Endpoint ---
+  // Auth: Bypasses session auth (added to auth middleware bypass list).
+  // Requires x-sentinel-api-key header matching SENTINEL_CAD_API_KEY env var.
+  // If SENTINEL_CAD_API_KEY is not set in env, rejects all requests with 503.
+  app.post("/api/sentinel/cad-ingest", asyncHandler(async (req, res) => {
+    const configuredKey = process.env.SENTINEL_CAD_API_KEY;
+    if (!configuredKey) {
+      return res.status(503).json({ error: "CAD ingestion not configured" });
+    }
+
+    const providedKey = req.headers["x-sentinel-api-key"];
+    if (!providedKey || providedKey !== configuredKey) {
+      return res.status(401).json({ error: "Invalid or missing API key" });
+    }
+
+    const parsed = cadIngestPayloadSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid CAD payload", details: parsed.error.flatten() });
+    }
+
+    const payload = parsed.data;
+    const normalizedSource = payload.source.trim().toLowerCase();
+    const normalizedExternalId = payload.externalIncidentId.trim();
+
+    // --- Correlation: Two-tier strategy ---
+    // Primary match: cadExternalId + subAccountId + cadSource (normalized)
+    let existing = await storage.getSentinelIncidentByCadId(
+      payload.subAccountId,
+      normalizedExternalId,
+      normalizedSource
+    );
+
+    if (existing) {
+      // Update existing incident with merge semantics
+      const mergeData = buildCadMergeUpdate(existing, payload);
+      const updated = await storage.updateSentinelIncident(existing.id, mergeData);
+      return res.json({ action: "updated", incidentId: existing.id, incident: updated });
+    }
+
+    // Secondary match (safety fallback): subAccountId + cadSource + detectedAt within ±5 min + lat/lng ~0.01 degree
+    // Only used when no primary match found. Should rarely trigger given externalIncidentId is required.
+    if (payload.location?.lat !== undefined && payload.location?.lng !== undefined && payload.timestamps?.received) {
+      const receivedTime = new Date(payload.timestamps.received);
+      const fiveMinMs = 5 * 60 * 1000;
+      const candidates = await storage.getSentinelIncidentsFiltered(payload.subAccountId, {
+        since: new Date(receivedTime.getTime() - fiveMinMs),
+      });
+      const matches = candidates.filter(inc => {
+        if (inc.cadSource !== normalizedSource) return false;
+        const incTime = inc.detectedAt ? new Date(inc.detectedAt).getTime() : 0;
+        if (Math.abs(incTime - receivedTime.getTime()) > fiveMinMs) return false;
+        if (inc.lat === null || inc.lng === null) return false;
+        if (Math.abs(inc.lat - payload.location!.lat!) > 0.01) return false;
+        if (Math.abs(inc.lng - payload.location!.lng!) > 0.01) return false;
+        return true;
+      });
+
+      if (matches.length === 1) {
+        const mergeData = buildCadMergeUpdate(matches[0], payload);
+        const updated = await storage.updateSentinelIncident(matches[0].id, mergeData);
+        return res.json({ action: "updated", incidentId: matches[0].id, incident: updated });
+      }
+      // If ambiguous (multiple matches), fall through to create new
+    }
+
+    // No match found — create new incident
+    const newIncident = await storage.createSentinelIncident({
+      subAccountId: payload.subAccountId,
+      title: payload.dispatchedAs || `CAD Incident ${payload.externalIncidentId}`,
+      description: payload.callNotes || null,
+      location: payload.location?.address || null,
+      severity: payload.severity || "medium",
+      rawPayload: null,
+      actionStatus: payload.status || "pending",
+      smsSent: false,
+      geofenceDeployed: false,
+      lat: payload.location?.lat ?? null,
+      lng: payload.location?.lng ?? null,
+      dispatchedAs: payload.dispatchedAs || null,
+      callNotes: payload.callNotes || null,
+      unitsAssigned: payload.unitsAssigned || null,
+      responseTimeline: payload.responseTimeline || null,
+      cadSource: normalizedSource,
+      cadExternalId: normalizedExternalId,
+      cadLastUpdatedAt: new Date(),
+    });
+
+    return res.status(201).json({ action: "created", incidentId: newIncident.id, incident: newIncident });
   }));
 }
 

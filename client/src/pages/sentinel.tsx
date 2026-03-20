@@ -16,8 +16,29 @@ import { Switch } from "@/components/ui/switch";
 import { AddressAutocomplete } from "@/components/address-autocomplete";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useLocation } from "wouter";
-import type { SubAccount, SentinelIncident, SentinelConfig } from "@shared/schema";
+import type { SubAccount, SentinelIncident, SentinelConfig, CadUnitAssigned, CadTimelineEvent } from "@shared/schema";
 import { hasFeature } from "@shared/schema";
+
+function parseCadUnits(val: unknown): CadUnitAssigned[] {
+  if (!val || !Array.isArray(val)) return [];
+  return val.filter((u: any) => u && typeof u === "object" && typeof u.unitId === "string");
+}
+
+function parseCadTimeline(val: unknown): CadTimelineEvent[] {
+  if (!val || !Array.isArray(val)) return [];
+  return val.filter((e: any) => e && typeof e === "object" && typeof e.timestamp === "string" && typeof e.event === "string");
+}
+
+function getProvenanceLabel(incident: SentinelIncident): { label: string; color: string } {
+  if (incident.cadSource) {
+    return { label: `Source: CAD \u2014 ${incident.cadSource}`, color: "text-cyan-400" };
+  }
+  const raw = incident.rawPayload as any;
+  if (raw && (raw.source === "fhp_hsmv" || raw.source === "fhp")) {
+    return { label: "Source: FHP Blotter", color: "text-amber-400" };
+  }
+  return { label: "Source: Sentinel Detection", color: "text-slate-400" };
+}
 
 interface SentinelRawPayload {
   id?: string;
@@ -829,6 +850,15 @@ function IncidentDetailView({
         <ChevronLeft size={16} className="mr-1" /> Back to Incidents
       </Button>
 
+      {(() => {
+        const prov = getProvenanceLabel(incident);
+        return (
+          <div className={`text-xs font-bold uppercase tracking-widest mb-3 ${prov.color}`} data-testid="text-provenance-label">
+            {prov.label}
+          </div>
+        );
+      })()}
+
       <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
         <div>
           <h2 className="text-2xl font-black text-white" data-testid="text-incident-title">{incident.title}</h2>
@@ -969,7 +999,90 @@ function IncidentDetailView({
           </div>
         </div>
       </div>
+
+      <CadDataCard incident={incident} />
     </motion.div>
+  );
+}
+
+function CadDataCard({ incident }: { incident: SentinelIncident }) {
+  const units = parseCadUnits(incident.unitsAssigned);
+  const timeline = parseCadTimeline(incident.responseTimeline);
+  const hasCadData = !!(incident.dispatchedAs || incident.callNotes || units.length > 0 || timeline.length > 0);
+
+  if (!hasCadData) return null;
+
+  return (
+    <div className="bg-[#0a0a0a] border border-cyan-500/20 rounded-2xl p-6 mb-6" data-testid="card-cad-data">
+      <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+        <Radio size={14} className="text-cyan-400" /> Dispatch / CAD Data
+      </h3>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+        {incident.dispatchedAs && (
+          <DetailField label="Dispatched As" value={incident.dispatchedAs} testId="text-cad-dispatched-as" />
+        )}
+        {incident.cadSource && (
+          <DetailField label="CAD Source" value={incident.cadSource} testId="text-cad-source" />
+        )}
+        {incident.cadLastUpdatedAt && (
+          <DetailField label="Last CAD Update" value={new Date(incident.cadLastUpdatedAt).toLocaleString()} testId="text-cad-last-updated" />
+        )}
+      </div>
+
+      {incident.callNotes && (
+        <div className="mb-4">
+          <p className="text-[10px] text-slate-600 uppercase font-bold tracking-widest mb-1">Call Notes</p>
+          <p className="text-sm text-slate-300 whitespace-pre-wrap" data-testid="text-cad-call-notes">{incident.callNotes}</p>
+        </div>
+      )}
+
+      {units.length > 0 && (
+        <div className="mb-4">
+          <p className="text-[10px] text-slate-600 uppercase font-bold tracking-widest mb-2">Units Assigned</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs" data-testid="table-cad-units">
+              <thead>
+                <tr className="text-slate-500 border-b border-white/5">
+                  <th className="text-left py-1.5 px-2 font-bold">Unit ID</th>
+                  <th className="text-left py-1.5 px-2 font-bold">Type</th>
+                  <th className="text-left py-1.5 px-2 font-bold">Dispatched</th>
+                  <th className="text-left py-1.5 px-2 font-bold">Arrived</th>
+                  <th className="text-left py-1.5 px-2 font-bold">Cleared</th>
+                </tr>
+              </thead>
+              <tbody>
+                {units.map((u, i) => (
+                  <tr key={u.unitId} className="border-b border-white/5 text-slate-300" data-testid={`row-cad-unit-${i}`}>
+                    <td className="py-1.5 px-2 font-medium text-white">{u.unitId}</td>
+                    <td className="py-1.5 px-2">{u.unitType || "\u2014"}</td>
+                    <td className="py-1.5 px-2">{u.dispatchedAt || "\u2014"}</td>
+                    <td className="py-1.5 px-2">{u.arrivedAt || "\u2014"}</td>
+                    <td className="py-1.5 px-2">{u.clearedAt || "\u2014"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {timeline.length > 0 && (
+        <div>
+          <p className="text-[10px] text-slate-600 uppercase font-bold tracking-widest mb-2">Response Timeline</p>
+          <div className="space-y-1.5" data-testid="list-cad-timeline">
+            {timeline.map((e, i) => (
+              <div key={i} className="flex items-start gap-3 text-xs p-2 rounded-lg bg-white/5 border border-white/5" data-testid={`row-cad-timeline-${i}`}>
+                <span className="text-cyan-400 font-mono whitespace-nowrap">{new Date(e.timestamp).toLocaleTimeString()}</span>
+                <span className="text-white font-medium">{e.event}</span>
+                {e.unit && <span className="text-slate-500">({e.unit})</span>}
+                {e.details && <span className="text-slate-400">{e.details}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

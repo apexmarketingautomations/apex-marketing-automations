@@ -186,6 +186,7 @@ export interface IStorage {
   createSentinelIncident(data: InsertSentinelIncident): Promise<SentinelIncident>;
   updateSentinelIncident(id: number, data: Partial<InsertSentinelIncident>): Promise<SentinelIncident | undefined>;
   getSentinelIncidentByHash(subAccountId: number, hash: string): Promise<SentinelIncident | undefined>;
+  getSentinelIncidentByCadId(subAccountId: number, cadExternalId: string, cadSource: string): Promise<SentinelIncident | undefined>;
 
   getPropertyLeads(subAccountId: number): Promise<PropertyLead[]>;
   getPropertyLead(id: number): Promise<PropertyLead | undefined>;
@@ -855,6 +856,15 @@ export class DatabaseStorage implements IStorage {
 
   async getSentinelIncidentByHash(subAccountId: number, hash: string) {
     const [row] = await db.select().from(sentinelIncidents).where(and(eq(sentinelIncidents.subAccountId, subAccountId), eq(sentinelIncidents.sourceHash, hash)));
+    return row;
+  }
+
+  async getSentinelIncidentByCadId(subAccountId: number, cadExternalId: string, cadSource: string) {
+    const [row] = await db.select().from(sentinelIncidents).where(and(
+      eq(sentinelIncidents.subAccountId, subAccountId),
+      eq(sentinelIncidents.cadExternalId, cadExternalId),
+      eq(sentinelIncidents.cadSource, cadSource)
+    ));
     return row;
   }
 
