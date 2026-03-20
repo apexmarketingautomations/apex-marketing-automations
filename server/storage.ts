@@ -344,6 +344,7 @@ export interface IStorage {
   updateCrashReport(id: number, data: Partial<InsertCrashReport>): Promise<CrashReport | undefined>;
   getAndLockPendingReports(limit: number, workerId: string): Promise<CrashReport[]>;
   resetStuckJobs(timeoutMinutes: number): Promise<number>;
+  recoverFailedCrashReports(maxRetries: number): Promise<number>;
   getCrashReports(subAccountId?: number): Promise<CrashReport[]>;
 
   getShopifyEvents(subAccountId: number): Promise<ShopifyEvent[]>;
@@ -1561,6 +1562,25 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(crashReports.status, "PROCESSING"),
         sql`(${crashReports.lockedAt} IS NULL OR ${crashReports.lockedAt} < ${cutoff})`
+      ))
+      .returning();
+    return result.length;
+  }
+
+  async recoverFailedCrashReports(maxRetries: number) {
+    const result = await db.update(crashReports)
+      .set({
+        status: "PENDING",
+        serviceFailureCount: 0,
+        errorLog: null,
+        lockedAt: null,
+        lockedBy: null,
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(crashReports.status, "FAILED"),
+        sql`${crashReports.serviceFailureCount} > 0`,
+        sql`${crashReports.retryCount} < ${maxRetries}`
       ))
       .returning();
     return result.length;

@@ -1031,6 +1031,7 @@ export function registerPropertyRoutes(app: Express) {
         await storage.updateCrashReport(existing.id, {
           status: "PENDING",
           retryCount: 0,
+          serviceFailureCount: 0,
           errorLog: null,
         });
         console.log(`[CRASH-REPORT] Re-queued report ${cleaned} (id=${existing.id})`);

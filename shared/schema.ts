@@ -1094,6 +1094,7 @@ export const crashReports = pgTable("crash_reports", {
   data: json("data"),
   errorLog: text("error_log"),
   retryCount: integer("retry_count").default(0).notNull(),
+  serviceFailureCount: integer("service_failure_count").default(0).notNull(),
   lockedAt: timestamp("locked_at"),
   lockedBy: text("locked_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
