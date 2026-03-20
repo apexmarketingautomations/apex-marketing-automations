@@ -520,8 +520,10 @@ export function registerWebhooksRoutes(app: Express) {
       });
 
       console.log(`[TWILIO-INBOUND][${traceId}] Stored inbound message id=${inboundMsg.id}`);
+      console.log(`[TRACE-TRIGGER][${traceId}] isNewContact=${isNewContact}, subAccountId=${subAccountId}, senderClean=${senderClean}`);
 
       if (isNewContact) {
+        console.log(`[TRACE-TRIGGER][${traceId}] NEW contact — firing triggers: new_lead, OnNewLead for account ${subAccountId}`);
         try {
           import("./v1").then(({ fireAutomationTriggerGlobal }) => {
             fireAutomationTriggerGlobal("new_lead", subAccountId, {
@@ -530,16 +532,20 @@ export function registerWebhooksRoutes(app: Express) {
               message: incomingMsg,
               source: "sms_inbound",
               channel: "sms",
-            }).catch(() => {});
+            }).catch((e) => console.error(`[TRACE-TRIGGER][${traceId}] new_lead fire ERROR:`, e.message));
             fireAutomationTriggerGlobal("OnNewLead", subAccountId, {
               leadName: `SMS User ${senderClean.slice(-4)}`,
               leadPhone: senderClean,
               message: incomingMsg,
               source: "sms_inbound",
               channel: "sms",
-            }).catch(() => {});
-          }).catch(() => {});
-        } catch {}
+            }).catch((e) => console.error(`[TRACE-TRIGGER][${traceId}] OnNewLead fire ERROR:`, e.message));
+          }).catch((e) => console.error(`[TRACE-TRIGGER][${traceId}] import v1 ERROR:`, e.message));
+        } catch (outerErr: any) {
+          console.error(`[TRACE-TRIGGER][${traceId}] outer catch ERROR:`, outerErr.message);
+        }
+      } else {
+        console.log(`[TRACE-TRIGGER][${traceId}] EXISTING contact — triggers NOT fired (isNewContact=false)`);
       }
 
       // 5. Check opt-out before AI processing
@@ -947,12 +953,16 @@ export function registerWebhooksRoutes(app: Express) {
                 message,
                 source: `${channel}_dm`,
               };
+              const dmTrigger = `On${channel === "instagram" ? "Instagram" : "Facebook"}DM`;
+              console.log(`[TRACE-TRIGGER] META DM — firing triggers: ${dmTrigger}, new_lead, OnNewLead for account ${subAccountId}, senderId=${senderId}`);
               import("./v1").then(({ fireAutomationTriggerGlobal }) => {
-                fireAutomationTriggerGlobal(`On${channel === "instagram" ? "Instagram" : "Facebook"}DM`, subAccountId, triggerContext).catch(() => {});
-                fireAutomationTriggerGlobal("new_lead", subAccountId, triggerContext).catch(() => {});
-                fireAutomationTriggerGlobal("OnNewLead", subAccountId, triggerContext).catch(() => {});
-              }).catch(() => {});
-            } catch {}
+                fireAutomationTriggerGlobal(dmTrigger, subAccountId, triggerContext).catch((e) => console.error(`[TRACE-TRIGGER] ${dmTrigger} fire ERROR:`, e.message));
+                fireAutomationTriggerGlobal("new_lead", subAccountId, triggerContext).catch((e) => console.error(`[TRACE-TRIGGER] new_lead fire ERROR:`, e.message));
+                fireAutomationTriggerGlobal("OnNewLead", subAccountId, triggerContext).catch((e) => console.error(`[TRACE-TRIGGER] OnNewLead fire ERROR:`, e.message));
+              }).catch((e) => console.error(`[TRACE-TRIGGER] import v1 ERROR:`, e.message));
+            } catch (outerErr: any) {
+              console.error(`[TRACE-TRIGGER] META DM outer catch ERROR:`, outerErr.message);
+            }
 
             const keywords = await storage.getDmKeywordAutomations(subAccountId, true);
             const msgLower = message.toLowerCase().trim();

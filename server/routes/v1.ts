@@ -1283,18 +1283,28 @@ export function registerV1Routes(app: Express) {
     try {
       const { checkAutomationSafety } = await import("../automationSafety");
 
+      console.log(`[TRACE-ENGINE] fireAutomationTrigger called: trigger="${triggerName}", subAccountId=${subAccountId}`);
+
       const unified: Array<{ id: number; name: string; steps: any[]; source: string }> = [];
 
       const liveAutomations = await storage.getLiveAutomations(subAccountId);
+      console.log(`[TRACE-ENGINE] live_automations query returned ${liveAutomations.length} rows for account ${subAccountId}`);
       for (const a of liveAutomations) {
+        console.log(`[TRACE-ENGINE]   live_automation id=${a.id} name="${a.name}" status="${a.status}" manifest.trigger="${a.manifest?.trigger}"`);
         if ((a.status === "compiled" || a.status === "active") && a.manifest?.trigger === triggerName) {
           unified.push({ id: a.id, name: a.name, steps: a.manifest.steps || [], source: "live_automations" });
         }
       }
 
       const allWorkflows = await storage.getWorkflows();
-      const accountWorkflows = allWorkflows.filter(w => w.subAccountId === subAccountId && w.trigger === triggerName);
-      for (const w of accountWorkflows) {
+      const accountWorkflows = allWorkflows.filter(w => w.subAccountId === subAccountId);
+      console.log(`[TRACE-ENGINE] workflows table returned ${allWorkflows.length} total, ${accountWorkflows.length} for account ${subAccountId}`);
+      const triggerMatched = accountWorkflows.filter(w => w.trigger === triggerName);
+      console.log(`[TRACE-ENGINE]   trigger="${triggerName}" matched ${triggerMatched.length} workflow(s): ${triggerMatched.map(w => `id=${w.id} name="${w.name}" trigger="${w.trigger}"`).join(", ") || "NONE"}`);
+      if (accountWorkflows.length > 0 && triggerMatched.length === 0) {
+        console.log(`[TRACE-ENGINE]   available triggers in account workflows: ${accountWorkflows.map(w => `"${w.trigger}"`).join(", ")}`);
+      }
+      for (const w of triggerMatched) {
         const rawSteps = (w.steps as any[]) || [];
         const normalizedSteps = rawSteps.map((s: any) => ({
           action: s.action_type || s.action || s.type,
@@ -1305,9 +1315,12 @@ export function registerV1Routes(app: Express) {
         unified.push({ id: w.id + 100000, name: w.name, steps: normalizedSteps, source: "workflows" });
       }
 
-      if (unified.length === 0) return;
+      if (unified.length === 0) {
+        console.log(`[TRACE-ENGINE] NO matching automations for trigger="${triggerName}" on account ${subAccountId} — EXITING`);
+        return;
+      }
 
-      console.log(`[AUTOMATION] Trigger "${triggerName}" matched ${unified.length} automation(s) for account ${subAccountId}: ${unified.map(u => `${u.name} (${u.source})`).join(", ")}`);
+      console.log(`[TRACE-ENGINE] MATCHED ${unified.length} automation(s): ${unified.map(u => `"${u.name}" (${u.source}, ${u.steps.length} steps)`).join(", ")}`);
 
       const account = await storage.getSubAccount(subAccountId);
 
@@ -1320,15 +1333,19 @@ export function registerV1Routes(app: Express) {
         });
 
         if (!safety.safe) {
-          console.warn(`[AUTOMATION] Blocked: ${safety.reason}`);
+          console.warn(`[TRACE-ENGINE] SAFETY BLOCKED automation "${automation.name}": ${safety.reason}`);
           continue;
         }
 
+        console.log(`[TRACE-ENGINE] EXECUTING automation "${automation.name}" (${automation.source}) — ${automation.steps.length} steps`);
+
         try {
           const steps = automation.steps || [];
-          for (const step of steps) {
+          for (let stepIdx = 0; stepIdx < steps.length; stepIdx++) {
+            const step = steps[stepIdx];
             const action = step.action || step.type;
-            if (!action) continue;
+            if (!action) { console.log(`[TRACE-ENGINE]   step ${stepIdx}: NO ACTION — skipping`); continue; }
+            console.log(`[TRACE-ENGINE]   step ${stepIdx}: action="${action}" payload=${JSON.stringify(step.payload || {}).substring(0, 200)}`);
 
             const actionUpper = action.toUpperCase();
 
