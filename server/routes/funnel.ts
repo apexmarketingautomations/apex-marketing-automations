@@ -29,14 +29,17 @@ export function registerFunnelRoutes(app: Express) {
           source: "form",
           tags: formName ? [formName] : ["form-submission"],
         });
-        import("./v1").then(({ fireAutomationTriggerGlobal }) =>
-          fireAutomationTriggerGlobal("new_lead", accountId, {
+        import("./v1").then(({ fireAutomationTriggerGlobal }) => {
+          const ctx = {
             leadName: contactName || "Lead",
             leadPhone: contactPhone,
             leadEmail: contactEmail,
             source: "form_submit",
-          })
-        ).catch(e => console.error("[FUNNEL] trigger failed:", e instanceof Error ? e.message : e));
+          };
+          fireAutomationTriggerGlobal("new_lead", accountId, ctx).catch(() => {});
+          fireAutomationTriggerGlobal("OnNewLead", accountId, ctx).catch(() => {});
+          fireAutomationTriggerGlobal("facebook_form_submit", accountId, ctx).catch(() => {});
+        }).catch(e => console.error("[FUNNEL] trigger failed:", e instanceof Error ? e.message : e));
       } catch (e) {
         console.log("[FORM] Contact creation skipped (may already exist):", (e as any).message);
       }

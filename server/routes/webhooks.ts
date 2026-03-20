@@ -521,6 +521,27 @@ export function registerWebhooksRoutes(app: Express) {
 
       console.log(`[TWILIO-INBOUND][${traceId}] Stored inbound message id=${inboundMsg.id}`);
 
+      if (isNewContact) {
+        try {
+          import("./v1").then(({ fireAutomationTriggerGlobal }) => {
+            fireAutomationTriggerGlobal("new_lead", subAccountId, {
+              leadName: `SMS User ${senderClean.slice(-4)}`,
+              leadPhone: senderClean,
+              message: incomingMsg,
+              source: "sms_inbound",
+              channel: "sms",
+            }).catch(() => {});
+            fireAutomationTriggerGlobal("OnNewLead", subAccountId, {
+              leadName: `SMS User ${senderClean.slice(-4)}`,
+              leadPhone: senderClean,
+              message: incomingMsg,
+              source: "sms_inbound",
+              channel: "sms",
+            }).catch(() => {});
+          }).catch(() => {});
+        } catch {}
+      }
+
       // 5. Check opt-out before AI processing
       const isOptedOut = await checkPhoneOptOut(senderClean, subAccountId);
       if (isOptedOut) {
@@ -918,16 +939,19 @@ export function registerWebhooksRoutes(app: Express) {
               : null;
 
             try {
-              import("./v1").then(({ fireAutomationTriggerGlobal }) =>
-                fireAutomationTriggerGlobal(`On${channel === "instagram" ? "Instagram" : "Facebook"}DM`, subAccountId, {
-                  leadName: existingContactRecord?.firstName || `${channel === "instagram" ? "IG" : "FB"} User ${senderId.slice(-4)}`,
-                  leadPhone: resolvedPhone || senderId,
-                  senderId,
-                  channel,
-                  message,
-                  source: `${channel}_dm`,
-                })
-              ).catch(() => {});
+              const triggerContext = {
+                leadName: existingContactRecord?.firstName || `${channel === "instagram" ? "IG" : "FB"} User ${senderId.slice(-4)}`,
+                leadPhone: resolvedPhone || senderId,
+                senderId,
+                channel,
+                message,
+                source: `${channel}_dm`,
+              };
+              import("./v1").then(({ fireAutomationTriggerGlobal }) => {
+                fireAutomationTriggerGlobal(`On${channel === "instagram" ? "Instagram" : "Facebook"}DM`, subAccountId, triggerContext).catch(() => {});
+                fireAutomationTriggerGlobal("new_lead", subAccountId, triggerContext).catch(() => {});
+                fireAutomationTriggerGlobal("OnNewLead", subAccountId, triggerContext).catch(() => {});
+              }).catch(() => {});
             } catch {}
 
             const keywords = await storage.getDmKeywordAutomations(subAccountId, true);

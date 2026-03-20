@@ -1282,18 +1282,36 @@ export function registerV1Routes(app: Express) {
   ) {
     try {
       const { checkAutomationSafety } = await import("../automationSafety");
-      const automations = await storage.getLiveAutomations(subAccountId);
-      const matching = automations.filter((a: any) =>
-        (a.status === "compiled" || a.status === "active") &&
-        a.manifest?.trigger &&
-        a.manifest.trigger === triggerName
-      );
 
-      if (matching.length === 0) return;
+      const unified: Array<{ id: number; name: string; steps: any[]; source: string }> = [];
+
+      const liveAutomations = await storage.getLiveAutomations(subAccountId);
+      for (const a of liveAutomations) {
+        if ((a.status === "compiled" || a.status === "active") && a.manifest?.trigger === triggerName) {
+          unified.push({ id: a.id, name: a.name, steps: a.manifest.steps || [], source: "live_automations" });
+        }
+      }
+
+      const allWorkflows = await storage.getWorkflows();
+      const accountWorkflows = allWorkflows.filter(w => w.subAccountId === subAccountId && w.trigger === triggerName);
+      for (const w of accountWorkflows) {
+        const rawSteps = (w.steps as any[]) || [];
+        const normalizedSteps = rawSteps.map((s: any) => ({
+          action: s.action_type || s.action || s.type,
+          payload: s.params || s.payload || {},
+          ...(s.label ? { label: s.label } : {}),
+          ...(s.id ? { id: s.id } : {}),
+        }));
+        unified.push({ id: w.id + 100000, name: w.name, steps: normalizedSteps, source: "workflows" });
+      }
+
+      if (unified.length === 0) return;
+
+      console.log(`[AUTOMATION] Trigger "${triggerName}" matched ${unified.length} automation(s) for account ${subAccountId}: ${unified.map(u => `${u.name} (${u.source})`).join(", ")}`);
 
       const account = await storage.getSubAccount(subAccountId);
 
-      for (const automation of matching) {
+      for (const automation of unified) {
         const safety = checkAutomationSafety({
           automationId: automation.id,
           triggerId: `${triggerName}:${JSON.stringify(context).substring(0, 100)}`,
@@ -1307,18 +1325,22 @@ export function registerV1Routes(app: Express) {
         }
 
         try {
-          const steps = automation.manifest?.steps || [];
+          const steps = automation.steps || [];
           for (const step of steps) {
             const action = step.action || step.type;
             if (!action) continue;
 
-            if (action === "Wait" || action === "wait") {
-              const waitMs = (step.payload?.seconds || step.seconds || 5) * 1000;
+            const actionUpper = action.toUpperCase();
+
+            if (actionUpper === "WAIT") {
+              const p = step.payload || {};
+              const waitSeconds = p.seconds || (p.duration_minutes ? p.duration_minutes * 60 : null) || (p.duration ? p.duration * 60 : null) || 5;
+              const waitMs = waitSeconds * 1000;
               await new Promise(resolve => setTimeout(resolve, Math.min(waitMs, 30000)));
               continue;
             }
 
-            if (action === "Condition" || action === "condition") {
+            if (actionUpper === "CONDITION") {
               continue;
             }
 
