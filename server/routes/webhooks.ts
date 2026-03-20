@@ -332,7 +332,7 @@ export function registerWebhooksRoutes(app: Express) {
 
     if (existing) {
       await db.update(contacts)
-        .set({ lastContactedAt: new Date() } as any)
+        .set({ lastContactedAt: new Date() })
         .where(eq(contacts.id, existing.id));
       return { id: existing.id, isNew: false };
     }
