@@ -1129,30 +1129,68 @@ async function validateMetaCredentials() {
         const isInbound = callType === "inboundPhoneCall" || callDirection === "inbound";
         const customerNumber = call.customer?.number || req.body.message.call?.customer?.number;
 
-        let contextNote = "";
+        let contactRecord: any = null;
+        let leadType: "new_lead" | "existing_lead" | "customer" | "unknown" = "unknown";
+        let contactName = "";
+        let contactSource = "";
+        let contactStage = "";
+
         if (customerNumber) {
           try {
             const cleaned = customerNumber.replace(/\D/g, "").slice(-10);
             const rows = await vapiDb.select().from(contacts).where(vapiLike(contacts.phone, `%${cleaned}`)).limit(1);
             if (rows.length > 0) {
-              const c = rows[0];
-              const info = [`Name: ${c.firstName} ${c.lastName || ""}`.trim()];
-              if (c.company) info.push(`Company: ${c.company}`);
-              if (c.city && c.state) info.push(`Location: ${c.city}, ${c.state}`);
-              if (c.tags && c.tags.length > 0) info.push(`Tags: ${c.tags.join(", ")}`);
-              if (c.notes) info.push(`Notes: ${c.notes}`);
-              contextNote = `\n\nCALLER INTEL — you know this about the caller: ${info.join(". ")}. Use this naturally. Do not say "I looked you up." Just weave it in conversationally.`;
+              contactRecord = rows[0];
+              contactName = [contactRecord.firstName, contactRecord.lastName].filter(Boolean).join(" ").trim();
+              contactSource = contactRecord.source || "";
+              contactStage = contactRecord.stage || "";
+
+              const tags: string[] = contactRecord.tags || [];
+              const hasCustomerTag = tags.some((t: string) => ["customer", "client", "active_client", "paying"].includes(t.toLowerCase()));
+              const hasLeadTag = tags.some((t: string) => ["lead", "prospect", "new_lead", "dm_lead", "inbound"].includes(t.toLowerCase()));
+              const isCustomerStage = ["closed_won", "customer", "active", "onboarded"].includes((contactStage || "").toLowerCase());
+
+              if (hasCustomerTag || isCustomerStage) {
+                leadType = "customer";
+              } else if (hasLeadTag || contactSource) {
+                leadType = "existing_lead";
+              } else {
+                leadType = "existing_lead";
+              }
+            } else {
+              leadType = "new_lead";
             }
-          } catch {}
+          } catch (lookupErr: any) {
+            console.warn(`[CALL-ROUTING] Contact lookup failed: ${lookupErr.message}`);
+            leadType = "unknown";
+          }
         }
 
+        const greeting = contactName ? `Hey ${contactName.split(" ")[0]}` : "Hey there";
+
         if (isInbound) {
-          console.log(`[VAPI WEBHOOK] Inbound call from ${customerNumber} — using receptionist prompt`);
-          const inboundPrompt = `You are the AI receptionist for Apex Marketing Automations, a full-service digital marketing agency. A customer or potential client is calling in.
+          let contextBlock = "";
+          if (contactRecord) {
+            const details: string[] = [];
+            if (contactName) details.push(`Name: ${contactName}`);
+            if (contactRecord.company) details.push(`Company: ${contactRecord.company}`);
+            if (contactSource) details.push(`Source: ${contactSource}`);
+            if (contactStage) details.push(`Stage: ${contactStage}`);
+            if (contactRecord.city && contactRecord.state) details.push(`Location: ${contactRecord.city}, ${contactRecord.state}`);
+            if (contactRecord.tags?.length > 0) details.push(`Tags: ${contactRecord.tags.join(", ")}`);
+            if (contactRecord.notes) details.push(`Notes: ${contactRecord.notes}`);
+            contextBlock = `\n\nCALLER CONTEXT (use naturally, never reveal you looked them up):\n- Lead Type: ${leadType}\n- ${details.join("\n- ")}`;
+          }
 
-TONE: Warm, professional, helpful. You are NOT a cold caller. Someone is calling YOU. Greet them naturally.
+          const inboundLeadPrompt = `You are the AI receptionist for Apex Marketing Automations, a full-service digital marketing agency. Someone is calling in.
 
-GREETING: "Hey, thanks for calling Apex Marketing! This is the AI assistant — how can I help you today?"
+CALLER TYPE: ${leadType}
+${leadType === "customer" ? "This is an EXISTING CUSTOMER. Be familiar, reference their relationship with Apex. Ask how their campaigns are going." : ""}
+${leadType === "existing_lead" ? "This is a RETURNING LEAD. They've interacted before. Be warm and pick up where things left off." : ""}
+${leadType === "new_lead" ? "This is a BRAND NEW CALLER. Make a great first impression. Be curious about their business." : ""}
+${leadType === "unknown" ? "Caller not in the system yet. Treat as a potential new lead — be welcoming and curious." : ""}
+
+GREETING: "${greeting}, thanks for calling Apex Marketing! How can I help you today?"
 
 YOUR CAPABILITIES:
 - Answer questions about Apex Marketing services (social media management, paid ads, AI automations, website design, SEO, reputation management, lead generation)
@@ -1173,7 +1211,9 @@ RULES:
 - Keep responses conversational and concise (2-3 sentences max)
 - If you don't know something specific, say "Let me have the team get back to you on that — can I grab your number?"
 - Always try to capture their phone number and name for follow-up
-- When sending the booking link, use the sendBookingLink tool — never read the URL aloud${contextNote}`;
+- When sending the booking link, use the sendBookingLink tool — never read the URL aloud${contextBlock}`;
+
+          console.log(`[CALL-ROUTING] INBOUND from ${customerNumber} | leadType=${leadType} | contact=${contactName || "none"} | source=${contactSource || "none"} | prompt=inbound_lead_prompt`);
 
           await markEventCompleted(req);
           return res.json({
@@ -1181,32 +1221,73 @@ RULES:
               model: {
                 provider: "openai",
                 model: "gpt-4o",
-                messages: [{ role: "system", content: inboundPrompt }],
+                messages: [{ role: "system", content: inboundLeadPrompt }],
               },
               voice: call.assistant?.voice || { provider: "11labs", voiceId: "pFZP5JQG7iQjIQuC4Bku" },
-              firstMessage: "Hey, thanks for calling Apex Marketing! How can I help you today?",
+              firstMessage: `${greeting}, thanks for calling Apex Marketing! How can I help you today?`,
               serverUrl: VAPI_SERVER_URL,
               serverMessages: VAPI_SERVER_MESSAGES,
             },
           });
         }
 
-        if (contextNote) {
-          console.log(`[VAPI WEBHOOK] Outbound call to ${customerNumber} — injecting pre-call context`);
-          await markEventCompleted(req);
-          return res.json({
-            assistantId: "e30434f7-e7e0-4be7-8b89-40c384a52b4a",
-            assistantOverrides: {
-              model: {
-                messages: [{ role: "system", content: contextNote }],
-              },
-            },
-          });
+        let outboundContext = "";
+        if (contactRecord) {
+          const details: string[] = [];
+          if (contactName) details.push(`Name: ${contactName}`);
+          if (contactRecord.company) details.push(`Company: ${contactRecord.company}`);
+          if (contactSource) details.push(`Source: ${contactSource}`);
+          if (contactStage) details.push(`Stage: ${contactStage}`);
+          if (contactRecord.city && contactRecord.state) details.push(`Location: ${contactRecord.city}, ${contactRecord.state}`);
+          if (contactRecord.tags?.length > 0) details.push(`Tags: ${contactRecord.tags.join(", ")}`);
+          if (contactRecord.notes) details.push(`Notes: ${contactRecord.notes}`);
+          outboundContext = `\n\nPROSPECT INTEL (use naturally, never reveal you looked them up):\n- Lead Type: ${leadType}\n- ${details.join("\n- ")}`;
         }
 
-        console.log(`[VAPI WEBHOOK] assistant-request: type=${callType}, direction=${callDirection}, customer=${customerNumber}`);
+        const coldOutboundPrompt = `You are an outbound sales agent for Apex Marketing Automations, a full-service digital marketing agency. You are calling a prospect.
+
+CALLER TYPE: ${leadType}
+${leadType === "customer" ? "This is an EXISTING CUSTOMER. This is a check-in call. Ask how things are going, if they need anything." : ""}
+${leadType === "existing_lead" ? "This is a WARM LEAD who has interacted before. Reference that naturally — don't start cold." : ""}
+${leadType === "new_lead" || leadType === "unknown" ? "This is a COLD CALL. You need to earn their attention in the first 10 seconds." : ""}
+
+OPENING: "${greeting}, this is Apex Marketing — ${leadType === "customer" || leadType === "existing_lead" ? "just wanted to check in real quick, do you have a sec?" : "I know this is out of the blue, mind if I take 30 seconds to tell you why I'm calling?"}"
+
+YOUR PITCH (deliver naturally, not scripted):
+- Apex helps businesses grow through AI-powered marketing automation
+- We handle social media, paid ads, lead generation, reputation management, website design
+- We have AI tools that automate follow-ups, book appointments, and close leads 24/7
+
+CONVERSATION FLOW:
+1. Introduce yourself — be direct about who you are and why you're calling
+2. Ask one qualifying question: "What does your marketing look like right now?"
+3. Listen and find their pain point
+4. Briefly explain how Apex solves that specific problem
+5. Close with offering to send a booking link via text for a free consultation
+
+RULES:
+- If they say they're busy, ask for a better time to call back
+- If they're not interested, thank them and move on — no pressure
+- Keep it under 2 minutes unless they're engaged
+- Never read URLs aloud — use the sendBookingLink tool
+- Keep responses to 2-3 sentences max${outboundContext}`;
+
+        console.log(`[CALL-ROUTING] OUTBOUND to ${customerNumber} | leadType=${leadType} | contact=${contactName || "none"} | source=${contactSource || "none"} | prompt=cold_outbound_prompt`);
+
         await markEventCompleted(req);
-        return res.json({ assistantId: "e30434f7-e7e0-4be7-8b89-40c384a52b4a" });
+        return res.json({
+          assistant: {
+            model: {
+              provider: "openai",
+              model: "gpt-4o",
+              messages: [{ role: "system", content: coldOutboundPrompt }],
+            },
+            voice: call.assistant?.voice || { provider: "11labs", voiceId: "pFZP5JQG7iQjIQuC4Bku" },
+            firstMessage: `${greeting}, this is Apex Marketing — ${leadType === "customer" || leadType === "existing_lead" ? "just wanted to check in real quick, do you have a sec?" : "I know this is out of the blue, mind if I take 30 seconds to tell you why I'm calling?"}`,
+            serverUrl: VAPI_SERVER_URL,
+            serverMessages: VAPI_SERVER_MESSAGES,
+          },
+        });
       }
 
       if (msgType === "end-of-call-report") {
