@@ -1,0 +1,202 @@
+I want a production-ready Sentinel CAD integration foundation.
+
+This is NOT a mockup.
+Do NOT add placeholder fields that are not actually wired.
+Do NOT build “future-ready” UI with fake data.
+Do NOT half-wire schema changes without a real ingestion path.
+I want a real executable foundation for Sentinel to support true CAD/dispatch-level data when a valid CAD source is connected.
+
+Current reality
+Sentinel currently uses:
+- FHP public blotter / CADView scrape
+- FLHSMV crash report lookup
+
+That is enough for:
+- incident detection
+- type/location/time
+- remarks
+- coordinates
+- crash-report follow-up
+
+It is NOT enough for true CAD/dispatch data like:
+- dispatchedAs
+- call notes
+- units assigned
+- response timeline
+
+I do NOT want the system to pretend it has CAD data when it does not.
+
+Goal
+Build the production-ready backend and frontend foundation so Sentinel can support real CAD/dispatch data cleanly and truthfully once an actual CAD feed/webhook/provider is connected.
+
+That means:
+- schema
+- ingestion contract
+- storage
+- API passthrough
+- UI rendering
+- validation
+- source labeling
+- graceful behavior when CAD fields are absent
+
+I want this built with no loose ends.
+
+What I want implemented
+
+1. Extend Sentinel incident schema for real CAD fields
+Add proper production fields to sentinel_incidents for dispatch-level data.
+
+Minimum fields:
+- dispatchedAs: text nullable
+- callNotes: text nullable
+- unitsAssigned: jsonb or array type appropriate for production use
+- responseTimeline: jsonb appropriate for ordered event data
+- cadSource: text nullable
+- cadExternalId: text nullable if useful
+- cadLastUpdatedAt: timestamptz nullable if useful
+
+Rules:
+- choose types that are production-sound and easy to query/update
+- do not add fields that you cannot explain
+- do not use vague catch-all blobs unless clearly necessary
+- preserve existing rawPayload if already used, but do not rely on it as the primary CAD model
+
+2. Add a real CAD ingestion path
+Build a real ingestion mechanism for external CAD data into Sentinel.
+
+Requirements:
+- create a dedicated inbound route for CAD/dispatch payloads
+- validate payload shape
+- map incoming CAD data into sentinel_incidents
+- support create-or-update semantics for existing incidents
+- update CAD fields when fresher CAD data arrives
+- preserve source attribution via cadSource
+- handle missing optional fields safely
+- reject malformed payloads cleanly
+
+This must be a real executable route, not a TODO.
+
+3. Define the inbound payload contract clearly
+Create a concrete payload format for CAD ingestion.
+
+It should support at least:
+- source
+- external incident id
+- dispatchedAs
+- callNotes
+- unitsAssigned
+- responseTimeline
+- current status if available
+- location info
+- timestamps
+- any correlation fields needed to link to existing sentinel incidents
+
+I want one clear contract documented in code and used by the route.
+
+4. Upsert / correlation logic
+Implement real correlation logic so incoming CAD updates can attach to the correct sentinel incident.
+
+Use deterministic matching rules such as:
+- external CAD incident id if present
+- otherwise a safe fallback matching strategy only if grounded
+- do not create duplicate incidents unnecessarily
+- do not merge unrelated incidents accidentally
+
+Be explicit about the matching strategy.
+
+5. API passthrough
+Update Sentinel API routes so these CAD fields are actually returned to the frontend where appropriate.
+
+Requirements:
+- GET incidents includes CAD fields
+- GET detail view includes CAD fields
+- no hidden backend-only fields unless justified
+- no frontend hacks to pull from rawPayload when proper fields exist
+
+6. Frontend detail rendering
+Update the Sentinel incident detail UI to display CAD data when present.
+
+Render sections for:
+- dispatched as
+- call notes
+- units assigned
+- response timeline
+- CAD source
+
+Rules:
+- if CAD data is absent, show nothing or a clear “Not available from current source”
+- do not show fake empty shells that imply the system has the data
+- keep the UI truthful
+- preserve the existing incident detail functionality
+
+7. Truthful source-aware behavior
+The UI and API must clearly distinguish:
+- blotter-derived fields
+- crash-report-derived fields
+- CAD-derived fields
+
+I do not want the system to imply:
+- that FHP blotter data is equivalent to real CAD data
+- that crash report data is dispatch data
+
+If CAD data is not present for an incident, the product should behave honestly.
+
+8. Validation and safety
+Make this production-safe:
+- input validation on the CAD ingestion route
+- safe handling of partial updates
+- no crashes on missing optional fields
+- no schema mismatch between backend and frontend
+- no orphan half-wired fields
+- no fake “future support” with no execution path
+
+9. Documentation in code / contract clarity
+Document:
+- expected CAD ingestion payload
+- field semantics
+- matching/upsert behavior
+- source labeling behavior
+
+Do this in code/comments or a concise internal doc if needed.
+
+What I want back before major edits
+1. exact files you will modify
+2. exact schema changes you will make
+3. exact CAD payload contract you will support
+4. exact upsert/correlation logic you will use
+5. exact UI sections you will add
+6. whether any existing route should be reused or if a new route is cleaner
+7. then implement
+
+Scope boundary
+This task is ONLY for the production-ready CAD integration foundation.
+
+Do NOT:
+- fake a direct Tyler/Hexagon/RapidSOS integration if credentials/source do not exist
+- claim real CAD connectivity if we only have the ingestion foundation
+- widen into unrelated Sentinel redesign
+- widen into chat bot work
+- add placeholder widgets with hardcoded values
+
+Success criteria
+This task is complete only if ALL of the following are true:
+
+1. Sentinel schema has real CAD fields
+2. There is a real executable CAD ingestion route
+3. Incoming CAD payloads can create/update incidents
+4. CAD fields are returned via Sentinel APIs
+5. CAD fields render in the Sentinel incident detail UI when present
+6. The UI behaves honestly when CAD data is absent
+7. There are no loose ends, dead fields, or half-wired placeholders
+
+Required proof before completion
+Show:
+1. the schema changes
+2. the inbound CAD payload example used
+3. one successful create/update flow through the CAD ingestion route
+4. one Sentinel incident detail view showing CAD fields populated
+5. one incident with no CAD data showing truthful fallback behavior
+
+Final rule
+If something cannot be fully wired and executable, do not call it done.
+I want production-ready foundation work only.
