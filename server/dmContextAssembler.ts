@@ -181,7 +181,10 @@ export async function assembleDmContext(opts: DmContextOptions): Promise<DmConte
     customAiPrompt: resolvedPersona,
     serviceOfferings,
     contactName: contactRow
-      ? [contactRow.firstName, contactRow.lastName].filter(Boolean).join(" ") || null
+      ? (() => {
+          const raw = [contactRow.firstName, contactRow.lastName].filter(Boolean).join(" ").trim();
+          return raw && !/^(SMS\s*\d+|Unknown|Vapi SMS\s*\d+|user\s*\d+)$/i.test(raw) ? raw : null;
+        })()
       : null,
     contactTags: contactRow?.tags?.length ? contactRow.tags : null,
     contactNotes: contactRow?.notes || null,

@@ -8,13 +8,17 @@ import {
   digitalCards,
   integrationConnections,
   workflows,
+  liveAutomations,
+  contacts,
 } from "@shared/schema";
-import { eq, isNull, sql } from "drizzle-orm";
+import { eq, isNull, sql, and, like } from "drizzle-orm";
 
 export async function seed() {
   await seedBlueprints();
   await syncAdminAccounts();
   await fixOrphanedWorkflows();
+  await fixOrphanedAutomations();
+  await normalizeContactPhones();
 
   console.log("Database seeded successfully");
 }
@@ -44,6 +48,57 @@ async function fixOrphanedWorkflows() {
     }
   } catch (e: any) {
     console.warn("[SEED] fixOrphanedWorkflows failed (non-fatal):", e.message);
+  }
+}
+
+async function fixOrphanedAutomations() {
+  try {
+    const apexAccount = await db.select({ id: subAccounts.id }).from(subAccounts)
+      .where(eq(subAccounts.name, "APEX MARKETING Account")).limit(1);
+    if (apexAccount.length === 0) return;
+    const apexId = apexAccount[0].id;
+
+    const result = await db.update(liveAutomations)
+      .set({ subAccountId: apexId })
+      .where(isNull(liveAutomations.subAccountId))
+      .returning({ id: liveAutomations.id });
+
+    if (result.length > 0) {
+      console.log(`[SEED] Fixed ${result.length} orphaned live_automation(s) — assigned to APEX account #${apexId}: ids=${result.map(r => r.id).join(",")}`);
+    }
+  } catch (e: any) {
+    console.warn("[SEED] fixOrphanedAutomations failed (non-fatal):", e.message);
+  }
+}
+
+async function normalizeContactPhones() {
+  try {
+    const rawContacts = await db.select({ id: contacts.id, phone: contacts.phone, subAccountId: contacts.subAccountId })
+      .from(contacts)
+      .where(sql`phone IS NOT NULL AND phone != ''`);
+
+    let normalized = 0;
+    for (const c of rawContacts) {
+      if (!c.phone) continue;
+      const digits = c.phone.replace(/\D/g, "");
+      let e164 = c.phone;
+      if (digits.length === 10) e164 = `+1${digits}`;
+      else if (digits.length === 11 && digits.startsWith("1")) e164 = `+${digits}`;
+      else if (c.phone.startsWith("+")) e164 = c.phone.replace(/[^\d+]/g, "");
+      else e164 = `+${digits}`;
+
+      if (e164 !== c.phone) {
+        try {
+          await db.update(contacts).set({ phone: e164 }).where(eq(contacts.id, c.id));
+          normalized++;
+        } catch {}
+      }
+    }
+    if (normalized > 0) {
+      console.log(`[SEED] Normalized ${normalized} contact phone(s) to E.164 format`);
+    }
+  } catch (e: any) {
+    console.warn("[SEED] normalizeContactPhones failed (non-fatal):", e.message);
   }
 }
 

@@ -320,34 +320,59 @@ export function registerWebhooksRoutes(app: Express) {
     }
   }
 
+  function normalizeToE164(raw: string): string {
+    const digits = raw.replace(/\D/g, "");
+    if (digits.length === 10) return `+1${digits}`;
+    if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+    if (digits.startsWith("+")) return raw.replace(/[^\d+]/g, "");
+    return `+${digits}`;
+  }
+
   async function upsertCrmContact(phone: string, subAccountId: number): Promise<{ id: number; isNew: boolean }> {
-    const variants = phone.replace(/\D/g, "");
-    const [existing] = await db.select()
+    const e164 = normalizeToE164(phone);
+    const digits = phone.replace(/\D/g, "");
+    const last10 = digits.slice(-10);
+
+    const existing = await db.select()
       .from(contacts)
       .where(and(
         eq(contacts.subAccountId, subAccountId),
-        or(eq(contacts.phone, phone), eq(contacts.phone, `+1${variants}`), eq(contacts.phone, `+${variants}`))
+        or(
+          eq(contacts.phone, e164),
+          eq(contacts.phone, phone),
+          eq(contacts.phone, `+1${last10}`),
+          eq(contacts.phone, `+${digits}`),
+          eq(contacts.phone, last10)
+        )
       ))
-      .limit(1);
+      .orderBy(contacts.id)
+      .limit(5);
 
-    if (existing) {
-      try {
-        await db.update(contacts)
-          .set({ lastContactedAt: new Date() })
-          .where(eq(contacts.id, existing.id));
-      } catch (updateErr: any) {
-        console.warn(`[CRM-UPSERT] lastContactedAt update failed (non-fatal): ${updateErr.message}`);
+    if (existing.length > 0) {
+      const canonical = existing[0];
+      if (canonical.phone !== e164) {
+        try {
+          await db.update(contacts).set({ phone: e164 }).where(eq(contacts.id, canonical.id));
+          console.log(`[CRM-UPSERT] Normalized phone for contact ${canonical.id}: "${canonical.phone}" -> "${e164}"`);
+        } catch (normErr: any) {
+          console.warn(`[CRM-UPSERT] Phone normalization failed (non-fatal): ${normErr.message}`);
+        }
       }
-      return { id: existing.id, isNew: false };
+      if (existing.length > 1) {
+        console.warn(`[CRM-UPSERT] Found ${existing.length} duplicate contacts for phone ${e164} in account ${subAccountId}. Using canonical id=${canonical.id}, duplicates: ${existing.slice(1).map(c => c.id).join(",")}`);
+      }
+      console.log(`[CRM-UPSERT] Resolved existing contact id=${canonical.id} name="${canonical.firstName}" phone="${e164}" subAccount=${subAccountId}`);
+      return { id: canonical.id, isNew: false };
     }
 
     const newContact = await storage.createContact({
       subAccountId,
-      firstName: `SMS ${phone.slice(-4)}`,
-      phone,
+      firstName: "Unknown",
+      phone: e164,
       source: "sms_inbound",
       tags: ["sms", "inbound"],
     });
+    console.log(`[CRM-UPSERT] Created new contact id=${newContact.id} phone="${e164}" subAccount=${subAccountId} firstName="Unknown"`);
     return { id: newContact.id, isNew: true };
   }
 
@@ -533,14 +558,14 @@ export function registerWebhooksRoutes(app: Express) {
         try {
           import("./v1").then(({ fireAutomationTriggerGlobal }) => {
             fireAutomationTriggerGlobal("new_lead", subAccountId, {
-              leadName: `SMS User ${senderClean.slice(-4)}`,
+              leadName: "New Lead",
               leadPhone: senderClean,
               message: incomingMsg,
               source: "sms_inbound",
               channel: "sms",
             }).catch((e) => console.error(`[TRACE-TRIGGER][${traceId}] new_lead fire ERROR:`, e.message));
             fireAutomationTriggerGlobal("OnNewLead", subAccountId, {
-              leadName: `SMS User ${senderClean.slice(-4)}`,
+              leadName: "New Lead",
               leadPhone: senderClean,
               message: incomingMsg,
               source: "sms_inbound",

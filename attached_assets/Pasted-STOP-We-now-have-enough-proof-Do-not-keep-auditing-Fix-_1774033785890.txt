@@ -1,0 +1,86 @@
+STOP. We now have enough proof. Do not keep auditing. Fix the verified production issues only.
+
+You must make the MINIMUM changes necessary to fix these specific problems in production:
+
+1. CONTACT NORMALIZATION
+
+* Normalize all phone numbers to E.164 format everywhere possible.
+* Prevent duplicate contacts caused by `239...` vs `+1239...`.
+* Update lookup logic so the same person is resolved consistently.
+* If a duplicate already exists for the same normalized phone within the same sub-account, merge or consistently prefer the correct canonical record.
+
+2. REMOVE GARBAGE AUTO-NAMES
+
+* Stop creating contacts with names like `SMS 2698`.
+* For unknown contacts, store a safe neutral fallback like blank, null, or “Unknown” internally.
+* The AI greeting must never say `SMS ####` or `user ####`.
+* Greeting fallback should be `Hey there`.
+
+3. FIX CALL PERSONALIZATION
+
+* In the call handler, stop relying on `contactRecord.stage` because that field does not exist.
+* Query the real stage from the deals/pipeline_stages path, the same way the DM side does.
+* Pass into the call prompt:
+
+  * real contact name
+  * lead type
+  * contact source
+  * resolved stage
+  * tags
+* If no stage exists, handle gracefully.
+
+4. FIX MULTI-SUB-ACCOUNT ISOLATION
+
+* The call contact lookup must be scoped by `sub_account_id`, not phone-only.
+* Prove the handler cannot pull the wrong contact from another account.
+* Any contact, workflow, message, or automation lookup in the call path must be tenant-safe.
+
+5. FIX ORPHANED AUTOMATIONS
+
+* Find `live_automations` rows with NULL `sub_account_id`.
+* Assign them correctly if the owning account can be proven.
+* If ownership cannot be proven safely, do not guess — mark them clearly and exclude them from firing until assigned.
+
+6. FIX WORKFLOW / AUTOMATION RELIABILITY
+
+* Ensure production trigger execution uses the correct account-scoped records.
+* Confirm that the active production path uses the right workflow source and that account filtering is enforced before execution.
+
+7. DO NOT ADD FAKE SCHEMA ASSUMPTIONS
+
+* Do not reference nonexistent columns like `contacts.stage` or `last_contacted_at` unless you create and migrate them properly.
+* If a schema change is necessary, create an actual migration and apply it safely.
+
+8. LOGS REQUIRED
+   Add explicit logs for:
+
+* normalized phone
+* resolved sub_account_id
+* resolved contact id
+* resolved contact name
+* resolved lead stage
+* prompt path selected
+* workflow / automation ids selected
+* final execution result
+
+9. TESTING REQUIRED
+   After fixing, prove with production-safe tests:
+
+* inbound SMS from a known lead uses correct account and correct name
+* inbound call from a known lead does NOT use cold-caller greeting
+* same phone number in two different accounts does not cross-resolve
+* workflow / automation selection is scoped to the correct account
+
+10. OUTPUT FORMAT
+    Return only:
+
+* EXACT files changed
+* EXACT logic changed
+* any migration created
+* before/after behavior
+* logs proving the fixes worked
+
+DO NOT do another broad refactor.
+DO NOT redesign unrelated systems.
+DO NOT keep auditing.
+FIX ONLY the proven issues above and prove each one.

@@ -744,9 +744,10 @@ async function validateMetaCredentials() {
       console.error("[VAPI SMS] Message storage error:", msgErr?.message);
     }
 
-    let contactName = `Vapi SMS ${senderClean.slice(-4)}`;
+    let contactName = "Unknown";
     try {
       const cleaned = senderClean.replace(/\D/g, "").slice(-10);
+      const e164Phone = cleaned.length === 10 ? `+1${cleaned}` : `+${cleaned}`;
       const existingContacts = await vapiDb.select().from(contacts)
         .where(vapiAnd(
           vapiEq(contacts.subAccountId, subAccountId),
@@ -756,16 +757,17 @@ async function validateMetaCredentials() {
       if (existingContacts.length === 0) {
         const newContact = await vapiStorage.createContact({
           subAccountId,
-          firstName: contactName,
-          phone: senderClean,
+          firstName: "Unknown",
+          phone: e164Phone,
           source: "vapi-sms",
           tags: ["vapi-sms", "sms_lead"],
         });
-        console.log(`[VAPI SMS] Created CRM contact id=${newContact.id} for ${senderClean}`);
+        console.log(`[VAPI SMS] Created CRM contact id=${newContact.id} phone="${e164Phone}" subAccount=${subAccountId}`);
       } else {
         const c = existingContacts[0];
-        contactName = `${c.firstName} ${c.lastName || ""}`.trim() || contactName;
-        console.log(`[VAPI SMS] Found existing CRM contact id=${c.id} for ${senderClean}`);
+        const rawN = `${c.firstName} ${c.lastName || ""}`.trim();
+        contactName = /^(SMS\s*\d+|Unknown|Vapi SMS\s*\d+|user\s*\d+)$/i.test(rawN) ? "Unknown" : rawN;
+        console.log(`[VAPI SMS] Found existing CRM contact id=${c.id} name="${contactName}" subAccount=${subAccountId}`);
       }
     } catch (crmErr: any) {
       console.error("[VAPI SMS] CRM contact error:", crmErr?.message);
@@ -1094,15 +1096,32 @@ async function validateMetaCredentials() {
             if (phoneNumber) {
               try {
                 const cleaned = phoneNumber.replace(/\D/g, "").slice(-10);
-                const rows = await vapiDb.select().from(contacts).where(vapiLike(contacts.phone, `%${cleaned}`)).limit(1);
+                const toolCalledNumber = req.body.message.call?.phoneNumber?.number || req.body.message.call?.to || "";
+                let toolSubAccountId: number | null = null;
+                if (toolCalledNumber) {
+                  const toolCalledDigits = toolCalledNumber.replace(/\D/g, "").slice(-10);
+                  const accts = await vapiStorage.getSubAccounts();
+                  const m = accts.find((a: any) => (a.twilioNumber || "").replace(/\D/g, "").slice(-10) === toolCalledDigits);
+                  if (m) toolSubAccountId = m.id;
+                }
+                let rows: any[];
+                if (toolSubAccountId) {
+                  rows = await vapiDb.select().from(contacts).where(vapiAnd(vapiLike(contacts.phone, `%${cleaned}`), vapiEq(contacts.subAccountId, toolSubAccountId))).limit(1);
+                } else {
+                  rows = [];
+                  console.warn(`[VAPI TOOL] lookupProspect: no sub_account_id resolved — skipping to prevent cross-tenant leak`);
+                }
                 if (rows.length > 0) {
                   const c = rows[0];
-                  const info = [`Name: ${c.firstName} ${c.lastName || ""}`.trim()];
+                  const rawN = `${c.firstName} ${c.lastName || ""}`.trim();
+                  const displayName = /^(SMS\s*\d+|Unknown|user\s*\d+)$/i.test(rawN) ? "Unknown" : rawN;
+                  const info = [`Name: ${displayName}`];
                   if (c.company) info.push(`Company: ${c.company}`);
                   if (c.city && c.state) info.push(`Location: ${c.city}, ${c.state}`);
                   if (c.tags && c.tags.length > 0) info.push(`Tags: ${c.tags.join(", ")}`);
                   if (c.notes) info.push(`Notes: ${c.notes}`);
                   if (c.source) info.push(`Source: ${c.source}`);
+                  console.log(`[VAPI TOOL] lookupProspect: found contact id=${c.id} name="${displayName}" subAccount=${c.subAccountId}`);
                   results.push({ toolCallId: tc.id, result: `Found prospect in CRM: ${info.join(". ")}. Use this info naturally in the conversation — do not reveal you looked them up.` });
                 } else {
                   results.push({ toolCallId: tc.id, result: "No existing record found for this number. This is a cold prospect." });
@@ -1128,6 +1147,28 @@ async function validateMetaCredentials() {
         const callDirection = call.direction || "";
         const isInbound = callType === "inboundPhoneCall" || callDirection === "inbound";
         const customerNumber = call.customer?.number || req.body.message.call?.customer?.number;
+        const calledNumber = call.phoneNumber?.number || call.to || "";
+
+        let callSubAccountId: number | null = null;
+        try {
+          if (calledNumber) {
+            const calledDigits = calledNumber.replace(/\D/g, "").slice(-10);
+            const allAccts = await vapiStorage.getSubAccounts();
+            const match = allAccts.find((a: any) => {
+              const tn = (a.twilioNumber || "").replace(/\D/g, "").slice(-10);
+              return tn && tn === calledDigits;
+            });
+            if (match) callSubAccountId = match.id;
+          }
+          if (!callSubAccountId) {
+            const allAccts = await vapiStorage.getSubAccounts();
+            const active = allAccts.filter((a: any) => a.ownerUserId !== "_archived");
+            if (active.length === 1) callSubAccountId = active[0].id;
+          }
+        } catch (acctErr: any) {
+          console.warn(`[CALL-ROUTING] Sub-account resolution failed: ${acctErr.message}`);
+        }
+        console.log(`[CALL-ROUTING] Resolved sub_account_id=${callSubAccountId} for calledNumber="${calledNumber}"`);
 
         let contactRecord: any = null;
         let leadType: "new_lead" | "existing_lead" | "customer" | "unknown" = "unknown";
@@ -1138,12 +1179,41 @@ async function validateMetaCredentials() {
         if (customerNumber) {
           try {
             const cleaned = customerNumber.replace(/\D/g, "").slice(-10);
-            const rows = await vapiDb.select().from(contacts).where(vapiLike(contacts.phone, `%${cleaned}`)).limit(1);
+            let rows: any[];
+            if (callSubAccountId) {
+              rows = await vapiDb.select().from(contacts).where(vapiAnd(vapiLike(contacts.phone, `%${cleaned}`), vapiEq(contacts.subAccountId, callSubAccountId))).limit(1);
+            } else {
+              rows = [];
+              console.warn(`[CALL-ROUTING] No sub_account_id resolved — skipping CRM lookup to prevent cross-tenant data leak`);
+            }
             if (rows.length > 0) {
               contactRecord = rows[0];
-              contactName = [contactRecord.firstName, contactRecord.lastName].filter(Boolean).join(" ").trim();
+              const rawName = [contactRecord.firstName, contactRecord.lastName].filter(Boolean).join(" ").trim();
+              const isGarbageName = !rawName || /^(SMS\s*\d+|Unknown|user\s*\d+)$/i.test(rawName);
+              contactName = isGarbageName ? "" : rawName;
               contactSource = contactRecord.source || "";
-              contactStage = contactRecord.stage || "";
+
+              const { deals: dealsTable, pipelineStages: stagesTable } = await import("@shared/schema");
+              const { desc: descOp } = await import("drizzle-orm");
+              try {
+                const dealRows = await vapiDb.select({ stageId: dealsTable.stageId })
+                  .from(dealsTable)
+                  .where(vapiAnd(
+                    vapiEq(dealsTable.subAccountId, contactRecord.subAccountId),
+                    vapiEq(dealsTable.contactId, contactRecord.id)
+                  ))
+                  .orderBy(descOp(dealsTable.id))
+                  .limit(1);
+                if (dealRows.length > 0) {
+                  const [stageRow] = await vapiDb.select({ name: stagesTable.name })
+                    .from(stagesTable)
+                    .where(vapiEq(stagesTable.id, dealRows[0].stageId))
+                    .limit(1);
+                  if (stageRow) contactStage = stageRow.name;
+                }
+              } catch (stageErr: any) {
+                console.warn(`[CALL-ROUTING] Deal/stage lookup failed (non-fatal): ${stageErr.message}`);
+              }
 
               const tags: string[] = contactRecord.tags || [];
               const hasCustomerTag = tags.some((t: string) => ["customer", "client", "active_client", "paying"].includes(t.toLowerCase()));
@@ -1160,6 +1230,7 @@ async function validateMetaCredentials() {
             } else {
               leadType = "new_lead";
             }
+            console.log(`[CALL-ROUTING] Contact lookup: phone=${customerNumber} | contactId=${contactRecord?.id || "none"} | name="${contactName || "none"}" | source="${contactSource || "none"}" | stage="${contactStage || "none"}" | leadType=${leadType} | subAccount=${callSubAccountId}`);
           } catch (lookupErr: any) {
             console.warn(`[CALL-ROUTING] Contact lookup failed: ${lookupErr.message}`);
             leadType = "unknown";
@@ -1213,7 +1284,7 @@ RULES:
 - Always try to capture their phone number and name for follow-up
 - When sending the booking link, use the sendBookingLink tool — never read the URL aloud${contextBlock}`;
 
-          console.log(`[CALL-ROUTING] INBOUND from ${customerNumber} | leadType=${leadType} | contact=${contactName || "none"} | source=${contactSource || "none"} | prompt=inbound_lead_prompt`);
+          console.log(`[CALL-ROUTING] INBOUND from ${customerNumber} | leadType=${leadType} | contact=${contactName || "none"} | source=${contactSource || "none"} | stage="${contactStage || "none"}" | subAccount=${callSubAccountId} | prompt=inbound_lead_prompt`);
 
           await markEventCompleted(req);
           return res.json({
@@ -1272,7 +1343,7 @@ RULES:
 - Never read URLs aloud — use the sendBookingLink tool
 - Keep responses to 2-3 sentences max${outboundContext}`;
 
-        console.log(`[CALL-ROUTING] OUTBOUND to ${customerNumber} | leadType=${leadType} | contact=${contactName || "none"} | source=${contactSource || "none"} | prompt=cold_outbound_prompt`);
+        console.log(`[CALL-ROUTING] OUTBOUND to ${customerNumber} | leadType=${leadType} | contact=${contactName || "none"} | source=${contactSource || "none"} | stage="${contactStage || "none"}" | subAccount=${callSubAccountId} | prompt=cold_outbound_prompt`);
 
         await markEventCompleted(req);
         return res.json({
