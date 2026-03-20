@@ -1,0 +1,89 @@
+Tighten this task before implementation. I want the Sentinel CAD integration foundation to be production-safe, not just structurally complete.
+
+Keep the overall scope the same, but apply these corrections and constraints:
+
+1. Secure the ingestion route properly
+The CAD ingestion route must NOT be openly writable without protection.
+
+Requirements:
+- require either a valid x-sentinel-api-key header or an equivalent signed/authenticated mechanism
+- do not leave the route effectively public just because it is outside normal session auth
+- if no valid key/signature is provided, reject with 401/403
+- document how this auth check works in code comments
+
+This route may bypass session auth, but it must still have production-grade machine-to-machine protection.
+
+2. Strengthen correlation fallback logic
+Do not rely on a weak “sourceHash from external ID” fallback by itself.
+
+Use deterministic correlation in this order:
+- primary: cadExternalId + subAccountId + cadSource
+- secondary: only if external ID is absent/unusable, use a safer grounded fallback based on a combination of source, time bucket, and approximate location or other concrete incident attributes
+- do not merge incidents on vague similarity alone
+- avoid both false merges and duplicate creation
+
+Document the exact correlation rules in code comments.
+
+3. Add explicit idempotency handling
+Duplicate CAD payloads must not create duplicate incidents or corrupt timeline/unit data.
+
+Requirements:
+- define how repeated identical payloads are handled
+- ensure the same external incident update can be processed more than once safely
+- do not duplicate response timeline entries if the same event arrives twice
+- do not duplicate unitsAssigned entries if the same unit arrives repeatedly
+
+I want explicit idempotent update behavior, not best-effort guessing.
+
+4. Tighten CAD field semantics
+Be precise about the relationship between:
+- unitsAssigned
+- responseTimeline
+- cadLastUpdatedAt
+
+Requirements:
+- unitsAssigned should represent current normalized responder/unit state
+- responseTimeline should represent ordered event history
+- cadLastUpdatedAt should represent when Apex last updated from CAD
+- if useful, also preserve source-event timestamps inside responseTimeline rather than collapsing everything to system time
+- do not create ambiguous overlap between “unit state” and “event history”
+
+5. Truthful UI only
+Keep the UI honest.
+
+Requirements:
+- do not render a Dispatch / CAD Data section unless at least one real CAD field is present
+- if no CAD data exists, show only a truthful provenance label
+- do not show empty cards, placeholders, fake shells, or repeated “N/A” values
+- do not imply blotter data is CAD data
+
+6. Partial update safety
+CAD updates must merge safely:
+- never overwrite populated CAD fields with null/undefined from a partial payload
+- preserve existing good data unless a fresher valid value is provided
+- handle partially populated payloads without breaking the incident record
+
+7. Keep this executable and complete
+Do not leave loose ends between:
+- schema
+- ingestion route
+- storage methods
+- API passthrough
+- frontend detail rendering
+
+If any part cannot be fully wired, do not mark it done.
+
+Additional success criteria:
+- ingestion route is protected, not publicly writable
+- correlation logic is explicit and safe
+- duplicate payloads are idempotent
+- CAD field semantics are clear and consistent
+- UI remains truthful when CAD data is absent
+- no half-wired placeholders or fake future support
+
+Before major edits, return:
+1. the updated exact correlation strategy
+2. the ingestion auth approach
+3. the idempotency rule
+4. any schema tweaks needed from the current draft
+5. then implement

@@ -776,6 +776,7 @@ function SentinelIncidentDetailView({ incident, onBack }: { incident: SentinelIn
 }
 
 export default function CrashReports() {
+  const queryClient = useQueryClient();
   const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
   const [selectedSentinelIncident, setSelectedSentinelIncident] = useState<SentinelIncident | null>(null);
   const { activeAccountId } = useAccount();
@@ -866,6 +867,8 @@ export default function CrashReports() {
         <StatCard label="Failed" value={failedReports.length} icon={XCircle} color="red" delay={0.2} testId="card-failed-reports" />
       </div>
 
+      <FetchReportForm subAccountId={currentAccount?.id} onQueued={() => queryClient.invalidateQueries({ queryKey: ["/api/crash-reports"] })} />
+
       {hasSentinelAccess && sentinelIncidents.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -894,64 +897,165 @@ export default function CrashReports() {
         </motion.div>
       )}
 
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
-        className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6"
-      >
-        {isLoading ? (
+      {isLoading ? (
+        <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6">
           <div className="space-y-3">
             {[1, 2, 3].map(i => (
               <div key={i} className="h-16 bg-white/5 rounded-xl animate-pulse" />
             ))}
           </div>
-        ) : reports.length === 0 ? (
+        </div>
+      ) : reports.length === 0 ? (
+        <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6">
           <div className="text-center py-16">
             <FileText size={48} className="mx-auto text-slate-700 mb-4" />
             <h3 className="text-white font-bold text-lg mb-2">No Crash Reports</h3>
             <p className="text-slate-500 text-sm max-w-md mx-auto">
-              Request a crash report from the Sentinel page to see it here.
-              Reports typically become available 10+ days after the crash date.
+              Enter a report number above to fetch it from FLHSMV, or request one from the Sentinel page.
             </p>
           </div>
-        ) : (
-          <div className="space-y-2">
-            {reports.map((report, i) => (
-              <motion.div
-                key={report.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.03 }}
-                className="flex items-center justify-between p-4 rounded-xl bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 hover:border-white/10 cursor-pointer transition-all group"
-                onClick={() => setSelectedReportId(report.id)}
-                data-testid={`row-report-${report.id}`}
-              >
-                <div className="flex items-center gap-4 min-w-0">
-                  <div className="shrink-0">
-                    <StatusBadge status={report.status} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-white font-bold text-sm" data-testid={`text-report-number-${report.id}`}>
-                      #{report.reportNumber}
-                    </p>
-                    <p className="text-slate-500 text-xs truncate">
-                      {report.reason || "No reason specified"} · {formatDate(report.createdAt)}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  {report.hasData && (
-                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider" data-testid={`text-data-available-${report.id}`}>Data Available</span>
-                  )}
-                  {(report.status === "FAILED" || report.status === "NOT_FOUND") && (
-                    <ReportRetryButton reportId={report.id} />
-                  )}
-                  <Eye size={16} className="text-slate-600 group-hover:text-white transition-colors" />
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        )}
-      </motion.div>
+        </div>
+      ) : (
+        <>
+          {(pendingReports.length > 0 || failedReports.length > 0) && (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
+              className="bg-[#0a0a0a] border border-amber-500/20 rounded-2xl p-6 mb-6"
+              data-testid="section-pending-reports"
+            >
+              <h2 className="text-sm font-bold text-amber-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <Clock size={14} /> Pending Reports ({pendingReports.length + failedReports.length})
+              </h2>
+              <div className="space-y-2">
+                {[...pendingReports, ...failedReports].map((report, i) => (
+                  <ReportRow key={report.id} report={report} index={i} onClick={() => setSelectedReportId(report.id)} />
+                ))}
+              </div>
+            </motion.div>
+          )}
+
+          {completedReports.length > 0 && (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
+              className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6"
+              data-testid="section-completed-reports"
+            >
+              <h2 className="text-sm font-bold text-emerald-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <CheckCircle2 size={14} /> Completed FLHSMV Reports
+              </h2>
+              <div className="space-y-2">
+                {completedReports.map((report, i) => (
+                  <ReportRow key={report.id} report={report} index={i} onClick={() => setSelectedReportId(report.id)} />
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </>
+      )}
     </div>
+  );
+}
+
+function ReportRow({ report, index, onClick }: { report: CrashReportSummary; index: number; onClick: () => void }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.03 }}
+      className="flex items-center justify-between p-4 rounded-xl bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 hover:border-white/10 cursor-pointer transition-all group"
+      onClick={onClick}
+      data-testid={`row-report-${report.id}`}
+    >
+      <div className="flex items-center gap-4 min-w-0">
+        <div className="shrink-0">
+          <StatusBadge status={report.status} />
+        </div>
+        <div className="min-w-0">
+          <p className="text-white font-bold text-sm" data-testid={`text-report-number-${report.id}`}>
+            {report.reportNumber}
+          </p>
+          <p className="text-slate-500 text-xs truncate">
+            {report.status === "PENDING" || report.status === "PROCESSING" ? "Queued" : report.reason || "No reason specified"} {formatDate(report.createdAt)}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        {report.hasData && (
+          <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider" data-testid={`text-data-available-${report.id}`}>Data Available</span>
+        )}
+        {(report.status === "FAILED" || report.status === "NOT_FOUND") && (
+          <ReportRetryButton reportId={report.id} />
+        )}
+        <Eye size={16} className="text-slate-600 group-hover:text-white transition-colors" />
+      </div>
+    </motion.div>
+  );
+}
+
+function FetchReportForm({ subAccountId, onQueued }: { subAccountId?: number; onQueued: () => void }) {
+  const [reportNumber, setReportNumber] = useState("");
+  const [isQueuing, setIsQueuing] = useState(false);
+  const [queueMessage, setQueueMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const { toast } = useToast();
+
+  const handleFetch = async () => {
+    const cleaned = reportNumber.trim().replace(/[^a-zA-Z0-9\-]/g, "");
+    if (!cleaned) return;
+    setIsQueuing(true);
+    setQueueMessage(null);
+    try {
+      const res = await fetch("/api/crash-reports/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ reportNumber: cleaned, reason: "Manual lookup", subAccountId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to queue report");
+      setQueueMessage({ type: "success", text: `Report ${data.reportNumber || cleaned} queued. The worker will fetch it from FLHSMV (may take 10+ days for new crashes to appear in their system).` });
+      setReportNumber("");
+      onQueued();
+      toast({ title: "Report queued", description: `#${data.reportNumber || cleaned} added to retrieval queue` });
+    } catch (err: any) {
+      setQueueMessage({ type: "error", text: err.message || "Failed to queue report" });
+    } finally {
+      setIsQueuing(false);
+    }
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className="mb-6">
+      <div className="flex gap-3">
+        <div className="flex-1 relative">
+          <input
+            type="text"
+            value={reportNumber}
+            onChange={(e) => { setReportNumber(e.target.value); setQueueMessage(null); }}
+            onKeyDown={(e) => e.key === "Enter" && handleFetch()}
+            placeholder="e.g. 87-123456-78"
+            className="w-full bg-[#0a0a0a] border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 focus:outline-none focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/20 text-sm"
+            data-testid="input-report-number"
+          />
+        </div>
+        <Button
+          onClick={handleFetch}
+          disabled={!reportNumber.trim() || isQueuing}
+          className="bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-500 hover:to-orange-400 text-white font-bold px-6 rounded-xl shrink-0"
+          data-testid="button-fetch-report"
+        >
+          {isQueuing ? <Loader2 size={16} className="animate-spin mr-2" /> : <FileText size={16} className="mr-2" />}
+          Fetch Report
+        </Button>
+      </div>
+      {queueMessage && (
+        <motion.p
+          initial={{ opacity: 0, y: -5 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`mt-2 text-xs ${queueMessage.type === "success" ? "text-emerald-400" : "text-red-400"}`}
+          data-testid="text-queue-message"
+        >
+          {queueMessage.text}
+        </motion.p>
+      )}
+    </motion.div>
   );
 }
 
