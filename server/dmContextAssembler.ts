@@ -1,8 +1,13 @@
 import { db } from "./db";
 import { storage } from "./storage";
-import { messages, contacts, deals, pipelineStages } from "@shared/schema";
+import { messages, contacts, deals, pipelineStages, clientWebsites, trainingJobs } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import type { ChatMessage } from "./aiGateway";
+
+export interface DmFormLink {
+  label: string;
+  url: string;
+}
 
 export interface DmContext {
   businessName: string;
@@ -18,6 +23,13 @@ export interface DmContext {
   dealStage: string | null;
   smsOptOut: boolean;
   threadHistory: Array<{ role: "user" | "assistant"; content: string }>;
+  knowledgeBase: string | null;
+  formLinks: DmFormLink[] | null;
+  offerUrls: DmFormLink[] | null;
+  servicePageUrls: DmFormLink[] | null;
+  generatedPersona: string | null;
+  brandVoice: string | null;
+  escalationInfo: string | null;
 }
 
 export interface DmContextOptions {
@@ -33,7 +45,7 @@ export async function assembleDmContext(opts: DmContextOptions): Promise<DmConte
   if (!subAccountId) throw new Error("[DM-CONTEXT] Missing subAccountId");
   if (!contactPhone) throw new Error("[DM-CONTEXT] Missing contactPhone");
 
-  const [account, threadMessages, contactRecord] = await Promise.all([
+  const [account, threadMessages, contactRecord, websiteRows] = await Promise.all([
     storage.getSubAccount(subAccountId).catch(() => null),
     db
       .select()
@@ -58,9 +70,16 @@ export async function assembleDmContext(opts: DmContextOptions): Promise<DmConte
       )
       .limit(1)
       .catch(() => []),
+    db
+      .select()
+      .from(clientWebsites)
+      .where(eq(clientWebsites.subAccountId, subAccountId))
+      .limit(1)
+      .catch(() => []),
   ]);
 
   const contactRow = contactRecord.length > 0 ? contactRecord[0] : null;
+  const websiteRow = websiteRows.length > 0 ? websiteRows[0] : null;
 
   let dealStage: string | null = null;
   if (contactRow) {
@@ -88,6 +107,29 @@ export async function assembleDmContext(opts: DmContextOptions): Promise<DmConte
     }
   }
 
+  let knowledgeBase: string | null = null;
+  let generatedPersona: string | null = null;
+  let botPersona: string | null = websiteRow?.botPersona || null;
+
+  if (websiteRow?.trainingJobId) {
+    try {
+      const [job] = await db
+        .select()
+        .from(trainingJobs)
+        .where(eq(trainingJobs.id, websiteRow.trainingJobId))
+        .limit(1);
+      if (job) {
+        if (job.scrapedContent && job.scrapedContent.length > 50) {
+          knowledgeBase = job.scrapedContent.substring(0, 12000);
+        }
+        if (job.generatedPersona) {
+          generatedPersona = job.generatedPersona;
+        }
+      }
+    } catch {
+    }
+  }
+
   const config = (account?.config as any) || {};
   const aiPromptConfig = (account?.aiPromptConfig as any) || {};
 
@@ -96,16 +138,33 @@ export async function assembleDmContext(opts: DmContextOptions): Promise<DmConte
     config.bookingLink ||
     null;
 
-  const customAiPrompt: string | null =
+  const customPromptRaw: string | null =
     aiPromptConfig.systemPrompt ||
     aiPromptConfig.customPrompt ||
     config.customAiPrompt ||
     null;
 
+  const resolvedPersona = generatedPersona || customPromptRaw || botPersona || null;
+
   const serviceOfferings: string[] | null =
     aiPromptConfig.serviceOfferings ||
     config.serviceOfferings ||
     null;
+
+  const formLinks: DmFormLink[] | null =
+    aiPromptConfig.formLinks && Array.isArray(aiPromptConfig.formLinks) && aiPromptConfig.formLinks.length > 0
+      ? aiPromptConfig.formLinks : null;
+
+  const offerUrls: DmFormLink[] | null =
+    aiPromptConfig.offerUrls && Array.isArray(aiPromptConfig.offerUrls) && aiPromptConfig.offerUrls.length > 0
+      ? aiPromptConfig.offerUrls : null;
+
+  const servicePageUrls: DmFormLink[] | null =
+    aiPromptConfig.servicePageUrls && Array.isArray(aiPromptConfig.servicePageUrls) && aiPromptConfig.servicePageUrls.length > 0
+      ? aiPromptConfig.servicePageUrls : null;
+
+  const brandVoice: string | null = aiPromptConfig.brandVoice || null;
+  const escalationInfo: string | null = aiPromptConfig.escalationInfo || null;
 
   const threadHistory = [...threadMessages]
     .reverse()
@@ -119,7 +178,7 @@ export async function assembleDmContext(opts: DmContextOptions): Promise<DmConte
     industry: account?.industry || null,
     language: account?.language || "en",
     bookingLink,
-    customAiPrompt,
+    customAiPrompt: resolvedPersona,
     serviceOfferings,
     contactName: contactRow
       ? [contactRow.firstName, contactRow.lastName].filter(Boolean).join(" ") || null
@@ -130,6 +189,13 @@ export async function assembleDmContext(opts: DmContextOptions): Promise<DmConte
     dealStage,
     smsOptOut: contactRow?.smsOptOut ?? false,
     threadHistory,
+    knowledgeBase,
+    formLinks,
+    offerUrls,
+    servicePageUrls,
+    generatedPersona,
+    brandVoice,
+    escalationInfo,
   };
 }
 
@@ -140,114 +206,285 @@ export interface BuildPromptOptions {
   fallbackContactLabel?: string;
 }
 
-export function buildDmSystemPrompt(context: DmContext, channel: string): string {
-  const isSmsBased = channel === "sms" || channel === "whatsapp";
-  const charLimit = isSmsBased ? 160 : 280;
+export type ConversationStage =
+  | "new_lead"
+  | "qualifying"
+  | "warm"
+  | "ready_to_book"
+  | "existing_customer";
 
-  if (context.customAiPrompt) {
-    let prompt = context.customAiPrompt;
+const BOOKING_INTENT_PATTERNS = /\b(book|schedule|sign up|sign me up|appointment|reserve|let's do it|i'm ready|ready to|i want to start|get started|lock me in|let's go|how do i (book|sign|schedule))\b/i;
 
-    if (context.contactName) {
-      prompt += `\n\nYou are currently speaking with ${context.contactName}.`;
-    }
+export function determineConversationStage(context: DmContext, currentMessage?: string): ConversationStage {
+  const { dealStage, contactTags, threadHistory } = context;
+  const stageLower = (dealStage || "").toLowerCase();
+  const tags = (contactTags || []).map((t) => t.toLowerCase());
 
-    if (context.contactTags && context.contactTags.length > 0) {
-      prompt += `\nContact tags: ${context.contactTags.join(", ")}.`;
-    }
-
-    if (context.contactNotes) {
-      prompt += `\nNotes about this contact: ${context.contactNotes}`;
-    }
-
-    if (context.dealStage) {
-      prompt += `\nThis contact is currently in the "${context.dealStage}" deal stage.`;
-    }
-
-    if (context.bookingLink) {
-      prompt += `\nBooking link: ${context.bookingLink}`;
-    }
-
-    prompt += `\n\nKeep replies under ${charLimit} characters when possible. Respond via ${channel}.`;
-    return prompt;
+  if (
+    tags.includes("customer") ||
+    tags.includes("existing customer") ||
+    stageLower === "won" ||
+    stageLower === "closed" ||
+    stageLower === "closed won" ||
+    stageLower === "customer"
+  ) {
+    return "existing_customer";
   }
+
+  if (
+    stageLower.includes("proposal") ||
+    stageLower.includes("booked") ||
+    stageLower.includes("ready") ||
+    tags.includes("ready to book") ||
+    tags.includes("hot")
+  ) {
+    return "ready_to_book";
+  }
+
+  if (currentMessage && BOOKING_INTENT_PATTERNS.test(currentMessage)) {
+    return "ready_to_book";
+  }
+
+  const lastUserMessages = threadHistory.filter(m => m.role === "user").slice(-2);
+  if (lastUserMessages.some(m => BOOKING_INTENT_PATTERNS.test(m.content))) {
+    return "ready_to_book";
+  }
+
+  if (
+    stageLower.includes("qualified") ||
+    stageLower.includes("warm") ||
+    stageLower.includes("nurture") ||
+    tags.includes("warm") ||
+    tags.includes("qualified")
+  ) {
+    return "warm";
+  }
+
+  if (threadHistory.length >= 2 && threadHistory.length <= 4) {
+    return "qualifying";
+  }
+
+  if (threadHistory.length > 4) {
+    return "warm";
+  }
+
+  return "new_lead";
+}
+
+function getStageInstructions(stage: ConversationStage): string {
+  switch (stage) {
+    case "new_lead":
+      return `CONVERSATION STAGE: New Lead (first contact)
+- Ask 1-2 simple qualifying questions
+- Keep it light and conversational
+- Example openings: "What are you looking to get done?" / "Have you worked with something like this before?"
+- Don't overwhelm — just start the conversation naturally`;
+
+    case "qualifying":
+      return `CONVERSATION STAGE: Qualifying Lead
+- Dig slightly deeper into their needs, timeline, and budget if relevant
+- Position the service clearly based on what they've shared
+- Keep building rapport while gathering useful info
+- Ask one question at a time — don't interrogate`;
+
+    case "warm":
+      return `CONVERSATION STAGE: Warm Lead
+- Move toward booking or a clear next step
+- Reduce friction — don't re-ask things they've already told you
+- Example: "Let's get you locked in — here's the booking link"
+- Be confident and direct while staying friendly`;
+
+    case "ready_to_book":
+      return `CONVERSATION STAGE: Ready to Book
+- Be direct and helpful — they want to take action
+- Provide booking link or next step immediately
+- Offer reassurance if needed
+- Don't slow them down with unnecessary questions`;
+
+    case "existing_customer":
+      return `CONVERSATION STAGE: Existing Customer
+- Be supportive, informed, and appreciative
+- Don't re-qualify — they already know the business
+- Help resolve their question or route them appropriately
+- If they need something new, treat them as a warm lead for that service`;
+  }
+}
+
+function getChannelToneInstructions(channel: string): string {
+  if (channel === "instagram") {
+    return `CHANNEL TONE (Instagram DM):
+- Casual, friendly, slightly playful
+- Emojis allowed (but not excessive)
+- Shorter messages preferred
+- Example tone: "Got you 🙌", "Yeah we can definitely help with that"`;
+  }
+
+  if (channel === "facebook") {
+    return `CHANNEL TONE (Facebook DM):
+- Slightly more structured and professional
+- Still conversational (not corporate)
+- Minimal emoji use
+- Warm and helpful tone`;
+  }
+
+  if (channel === "sms" || channel === "whatsapp") {
+    return `CHANNEL TONE (${channel.toUpperCase()}):
+- Brief and to the point
+- Keep messages under 160 characters when possible
+- Conversational but efficient`;
+  }
+
+  return `CHANNEL TONE:
+- Conversational and friendly
+- Professional but not corporate`;
+}
+
+export function buildDmSystemPrompt(context: DmContext, channel: string, currentMessage?: string): string {
+  const stage = determineConversationStage(context, currentMessage);
+  const stageInstructions = getStageInstructions(stage);
+  const channelTone = getChannelToneInstructions(channel);
 
   const businessDesc = context.businessName;
   const industryNote = context.industry ? ` in the ${context.industry} industry` : "";
 
-  let contextBlock = `\n\nBUSINESS: ${businessDesc}${industryNote}`;
+  let prompt = `You are a trained front-desk team member for ${businessDesc}${industryNote}, powered by Apex Marketing Automations. You are NOT a generic chatbot. You speak like a real human who understands the business, services, and how to guide customers toward booking or taking action.
+
+CORE IDENTITY:
+- You represent the business directly (not "an AI")
+- You are helpful, natural, and confident
+- You understand the services, offers, and customer needs
+- Your goal is to guide conversations toward conversion (booking, form, or next step)`;
+
+  if (context.customAiPrompt) {
+    prompt += `\n\nPERSONALITY & VOICE:\n${context.customAiPrompt}`;
+  }
+
+  if (context.brandVoice) {
+    prompt += `\n\nBRAND VOICE:\n${context.brandVoice}`;
+  }
+
+  if (context.knowledgeBase) {
+    prompt += `\n\nBUSINESS KNOWLEDGE BASE (use this as your primary source of truth):\n${context.knowledgeBase}`;
+  }
 
   if (context.serviceOfferings && context.serviceOfferings.length > 0) {
-    contextBlock += `\n\nSERVICES OFFERED:\n${context.serviceOfferings.map((s) => `- ${s}`).join("\n")}`;
+    prompt += `\n\nSERVICES OFFERED:\n${context.serviceOfferings.map((s) => `- ${s}`).join("\n")}`;
   }
+
+  prompt += `\n\nLINKS & ACTIONS:`;
 
   if (context.bookingLink) {
-    contextBlock += `\n\nBOOKING LINK: ${context.bookingLink}\nWhen the customer is ready or asks about scheduling, share this link naturally. Say something like "Here's a link to grab a time" or "You can book right here".`;
+    prompt += `\nBooking link: ${context.bookingLink}`;
   }
 
+  if (context.formLinks && context.formLinks.length > 0) {
+    prompt += `\nForms:`;
+    for (const f of context.formLinks) {
+      prompt += `\n- ${f.label}: ${f.url}`;
+    }
+  }
+
+  if (context.offerUrls && context.offerUrls.length > 0) {
+    prompt += `\nOffers:`;
+    for (const o of context.offerUrls) {
+      prompt += `\n- ${o.label}: ${o.url}`;
+    }
+  }
+
+  if (context.servicePageUrls && context.servicePageUrls.length > 0) {
+    prompt += `\nService pages:`;
+    for (const s of context.servicePageUrls) {
+      prompt += `\n- ${s.label}: ${s.url}`;
+    }
+  }
+
+  if (context.bookingLink || context.formLinks || context.offerUrls || context.servicePageUrls) {
+    prompt += `\nLink sharing guidelines:
+- Don't dump links immediately — introduce them naturally
+- Match the link to the user's intent
+- Example phrasing: "I can get you booked in here 👇" or "Here's a quick form so we can get some details from you:"`;
+  }
+
+  prompt += `\n\n${stageInstructions}`;
+
+  prompt += `\n\n${channelTone}`;
+
+  prompt += `\n\nANTI-ROBOT RULES (VERY IMPORTANT):
+NEVER say these phrases:
+- "Thank you for reaching out"
+- "We appreciate your inquiry"
+- "Our services include…"
+- "I'd be happy to assist you"
+- "How may I help you today?"
+
+INSTEAD use natural phrasing like:
+- "Yeah we can help with that"
+- "What are you trying to get done exactly?"
+- "Let me point you in the right direction"
+
+RESPONSE STYLE:
+- Keep responses concise but helpful
+- Ask one question at a time
+- Avoid overwhelming the user
+- Use line breaks for readability
+- Mirror the user's tone when appropriate
+
+QUALIFICATION FLOW:
+1. Acknowledge what they said
+2. Clarify their need
+3. Provide direction or value
+4. Move toward action (link, booking, form)`;
+
+  if (context.escalationInfo) {
+    prompt += `\n\nESCALATION:
+When to escalate to a human:
+- The request is complex or sensitive
+- The user is frustrated
+- You lack enough info to confidently answer
+
+Escalation details: ${context.escalationInfo}
+
+When escalating:
+- Let the user know naturally
+- Provide a brief summary of what the customer needs so the human can pick up seamlessly
+- Example: "Got it — I'm going to have someone from the team jump in on this so we can get you sorted properly 👍"`;
+  } else {
+    prompt += `\n\nESCALATION:
+When to escalate to a human:
+- The request is complex or sensitive
+- The user is frustrated
+- You lack enough info to confidently answer
+
+When escalating:
+- Let the user know naturally
+- Provide a brief summary of what the customer needs so the human can pick up seamlessly
+- Example: "Got it — I'm going to have someone from the team jump in on this so we can get you sorted properly 👍"`;
+  }
+
+  let contactBlock = "";
   if (context.contactName) {
-    contextBlock += `\n\nCURRENT CONTACT: ${context.contactName}`;
-    if (context.contactSource) contextBlock += ` (source: ${context.contactSource})`;
-    if (context.dealStage) contextBlock += `\nDeal stage: "${context.dealStage}"`;
+    contactBlock += `\n\nCURRENT CONTACT: ${context.contactName}`;
+    if (context.contactSource) contactBlock += ` (source: ${context.contactSource})`;
+    if (context.dealStage) contactBlock += `\nDeal stage: "${context.dealStage}"`;
     if (context.contactTags && context.contactTags.length > 0) {
-      contextBlock += `\nTags: ${context.contactTags.join(", ")}`;
+      contactBlock += `\nTags: ${context.contactTags.join(", ")}`;
     }
     if (context.contactNotes) {
-      contextBlock += `\nNotes: ${context.contactNotes}`;
+      contactBlock += `\nNotes: ${context.contactNotes}`;
     }
   }
 
-  return `You are the AI messaging assistant for ${businessDesc}. Your job is to reply like a real, helpful front-desk team member.
+  if (contactBlock) {
+    prompt += contactBlock;
+  }
 
-ROLE & PRIORITIES:
-1. Help the customer
-2. Answer questions clearly
-3. Qualify the lead
-4. Move the conversation toward a booking or next step
-5. Escalate to a human when needed
+  prompt += `\n\nPRIMARY GOAL:
+Every conversation should move toward one of: Booking, Form submission, or Qualified lead progression.
+Be helpful first — but always guide toward action.
 
-MESSAGING RULES:
-- Never act like a generic AI bot
-- Never say you do not have memory if context is available
-- Keep replies natural, short, and confident — under ${charLimit} characters when possible
-- Do not be robotic or overly formal
-- Do not ask the same question twice if the answer is already in context
-- If the customer already gave their name, service need, or timing, use it
-- If the customer sounds ready, move toward booking
-- If the customer is confused, answer first and simplify
-- If the customer is upset, calm them down and offer help or a human handoff
-- If pricing is not explicitly available, do not invent it
-- If business hours, services, or booking links are in context, use them accurately
-- If the request is outside the business scope, say so clearly and politely
+Reply with only the message that should be sent to the customer. Respond via ${channel}.`;
 
-LEAD QUALIFICATION:
-- Identify what the person wants
-- Identify urgency if present
-- Identify service interest
-- Identify readiness to book
-- Ask only the minimum next question needed
-- Once enough info is collected, guide them to the booking step
-- Ask one useful question at a time — do not interrogate
-- Do not repeat questions already answered in context
-- If they are clearly ready, offer the next step immediately
-- If they are not a fit, respond politely and clearly
-
-BOOKING BEHAVIOR:
-- Answer the customer's immediate question first, then move toward booking when appropriate
-- If they are ready, do not slow the conversation down with unnecessary questions
-- If the booking link is available, guide them to it clearly
-- If more info is needed before booking, ask only the next most important question
-- If a human is needed, say that clearly and naturally
-- Never invent availability or pricing
-- Never sound pushy
-
-TONE:
-- Friendly, professional, conversational, confident
-- Local-business style, not corporate
-- Smooth and conversion-focused without sounding salesy
-
-If a human should take over, say so naturally and summarize what the customer needs.
-
-Reply with only the message that should be sent to the customer. Respond via ${channel}.${contextBlock}`;
+  return prompt;
 }
 
 export function buildDmMessages(
@@ -255,7 +492,7 @@ export function buildDmMessages(
   channel: string,
   currentMessage: string
 ): ChatMessage[] {
-  const systemPrompt = buildDmSystemPrompt(context, channel);
+  const systemPrompt = buildDmSystemPrompt(context, channel, currentMessage);
 
   const msgs: ChatMessage[] = [{ role: "system", content: systemPrompt }];
 

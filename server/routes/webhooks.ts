@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { contacts, messages, subAccounts, clientWebsites, integrationConnections } from "@shared/schema";
+import { contacts, messages, subAccounts, integrationConnections } from "@shared/schema";
 import { sql, eq, and, or } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -1013,24 +1013,12 @@ export function registerWebhooksRoutes(app: Express) {
             if (!keywordMatched && isAIConfigured()) {
               const metaAiStart = Date.now();
               try {
-                const [dmCtx, personaResult] = await Promise.all([
-                  assembleDmContext({
+                const dmCtx = await assembleDmContext({
                     subAccountId,
                     contactPhone: senderId,
                     channel,
-                  }),
-                  db.select().from(clientWebsites)
-                    .where(eq(clientWebsites.subAccountId, subAccountId)).limit(1)
-                    .catch(() => []),
-                ]);
+                  });
                 const ctxMs = Date.now() - metaAiStart;
-
-                const customPersona = personaResult.length > 0 && personaResult[0].botPersona
-                  ? personaResult[0].botPersona : "";
-
-                if (customPersona && !dmCtx.customAiPrompt) {
-                  dmCtx.customAiPrompt = customPersona;
-                }
 
                 const aiMessages = buildDmMessages(dmCtx, channel, message);
                 const langInstr = getLanguageInstruction(dmCtx.language);
