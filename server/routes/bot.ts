@@ -2,7 +2,9 @@ import type { Express, Request, Response } from "express";
 import { messages } from "@shared/schema";
 import { storage } from "../storage";
 import { z } from "zod";
-import { aiChat, aiChatStream, isAIConfigured } from "../aiGateway";
+import { v4 as uuidv4 } from "uuid";
+import { aiChat, aiChatStream, isAIConfigured, aiChatWithToolCalls } from "../aiGateway";
+import type { ToolDefinition, ToolCallResult } from "../aiGateway";
 import { streamAIResponse, sendSSEData, initSSE } from "../streaming";
 import { asyncHandler, parseIntParam, logUsageInternal, getIndustryContext, getLanguageInstruction } from "./helpers";
 import { executeTool, getTool } from "../operator/toolRegistry";
@@ -169,71 +171,147 @@ export function registerBotRoutes(app: Express) {
     }
   }));
 
-  const AGENT_ALLOWED_TOOLS = new Set([
+  const PHASE1_TOOLS = new Set([
     "detectMissingSetup",
     "checkIntegrationHealth",
     "getAccountSummary",
-    "auditConversionLeaks",
-    "auditResponseSpeed",
-    "recommendNextBestAction",
-    "diagnoseMessaging",
-    "compareToIndustryBenchmark",
     "generateAccountSetupPlan",
-    "restoreBrokenIntegrationDraft",
-    "createContact",
-    "updateContact",
-    "tagContact",
-    "untagContact",
-    "createTask",
-    "assignTask",
-    "createPipeline",
-    "createPipelineStage",
-    "advanceDealStage",
-    "createDeal",
-    "updateDealValue",
-    "assignLeadOwner",
-    "scoreLead",
-    "segmentContacts",
-    "sendTestSMS",
-    "sendLiveSMSDraft",
-    "sendWhatsAppMessageDraft",
-    "sendEmailDraft",
-    "createEmailCampaignDraft",
-    "replyToInstagramDMDraft",
-    "sendReviewRequestDraft",
-    "createNurtureSequenceDraft",
     "diagnoseWorkflow",
+    "searchContacts",
+    "searchWorkflows",
     "createWorkflow",
-    "duplicateWorkflow",
-    "pauseWorkflow",
-    "resumeWorkflow",
-    "optimizeWorkflowTiming",
     "generateAutoResponseWorkflow",
     "generateReactivationWorkflow",
-    "createAppointmentDraft",
-    "rescheduleAppointmentDraft",
-    "cancelAppointmentDraft",
-    "sendAppointmentReminderDraft",
-    "confirmAppointmentDraft",
-    "launchCampaignDraft",
-    "pauseCampaignDraft",
-    "duplicateCampaignDraft",
-    "adjustAdBudgetDraft",
-    "rotateAdCreativeDraft",
-    "createRetargetingCampaignDraft",
-    "createLeadFormDraft",
-    "generateLandingPage",
-    "generateOfferAngles",
-    "generateAdCopyVariants",
-    "generateSMSCopyVariants",
-    "generateEmailCopyVariants",
-    "generateSocialPostDrafts",
-    "generateReviewResponseDraft",
-    "respondToReviewDraft",
-    "classifyReviewSentiment",
-    "escalateNegativeReview",
-    "generateReviewRecoveryPlan",
+    "createPipeline",
+    "createPipelineStage",
+    "restoreBrokenIntegrationDraft",
   ]);
+
+  function buildOpenAIFunctionSchemas(): ToolDefinition[] {
+    const toolDefs: ToolDefinition[] = [];
+
+    const schemaMap: Record<string, { description: string; parameters: Record<string, unknown> }> = {
+      detectMissingSetup: { description: "Scan account configuration and detect missing setup pieces", parameters: { type: "object", properties: {}, required: [] } },
+      checkIntegrationHealth: { description: "Check the health status of all connected integrations", parameters: { type: "object", properties: {}, required: [] } },
+      getAccountSummary: { description: "Get a comprehensive summary of account state and metrics", parameters: { type: "object", properties: {}, required: [] } },
+      generateAccountSetupPlan: { description: "Generate a step-by-step account setup plan", parameters: { type: "object", properties: { industry: { type: "string", description: "Industry vertical" } }, required: [] } },
+      diagnoseWorkflow: { description: "Analyze a specific workflow for issues and suggest improvements", parameters: { type: "object", properties: { workflowId: { type: "number", description: "ID of the workflow to diagnose" } }, required: ["workflowId"] } },
+      searchContacts: { description: "Search contacts by name, email, phone, or tags. Returns matching contacts with IDs.", parameters: { type: "object", properties: { query: { type: "string", description: "Search term — name, email, phone, or tag" } }, required: ["query"] } },
+      searchWorkflows: { description: "Search workflows by name or trigger type. Returns matching workflows with IDs.", parameters: { type: "object", properties: { query: { type: "string", description: "Workflow name or trigger type to search for" } }, required: ["query"] } },
+      createWorkflow: { description: "Create a new automation workflow from a manifest (status: compiled/draft)", parameters: { type: "object", properties: { name: { type: "string", description: "Workflow name" }, trigger: { type: "string", description: "Trigger event" }, steps: { type: "array", items: { type: "object", properties: { action: { type: "string" }, message: { type: "string" }, duration: { type: "number" }, condition: { type: "string" } }, required: ["action"] }, description: "Workflow steps" } }, required: ["name", "trigger", "steps"] } },
+      generateAutoResponseWorkflow: { description: "Generate an auto-response workflow template (status: compiled/draft)", parameters: { type: "object", properties: { trigger: { type: "string", description: "Trigger event" }, responseMessage: { type: "string", description: "Auto-response message body" }, channel: { type: "string", enum: ["sms", "email", "whatsapp"], description: "Communication channel" } }, required: ["trigger", "responseMessage"] } },
+      generateReactivationWorkflow: { description: "Generate a reactivation workflow for inactive contacts (status: compiled/draft)", parameters: { type: "object", properties: { inactiveDays: { type: "number", description: "Days of inactivity before triggering" }, message: { type: "string", description: "Reactivation message" }, channel: { type: "string", enum: ["sms", "email"], description: "Communication channel" } }, required: [] } },
+      createPipeline: { description: "Create a sales pipeline with stages", parameters: { type: "object", properties: { stages: { type: "array", items: { type: "object", properties: { name: { type: "string" }, color: { type: "string" } }, required: ["name"] }, description: "Pipeline stages" } }, required: ["stages"] } },
+      createPipelineStage: { description: "Add an individual pipeline stage", parameters: { type: "object", properties: { name: { type: "string", description: "Stage name" }, color: { type: "string", description: "Stage color" }, position: { type: "number", description: "Stage position" } }, required: ["name"] } },
+      restoreBrokenIntegrationDraft: { description: "Generate a recovery plan for a broken integration (requires user approval before execution)", parameters: { type: "object", properties: { provider: { type: "string", description: "Integration provider name (e.g. twilio, google, meta)" } }, required: ["provider"] } },
+      navigateUser: { description: "Navigate the user to a specific page or entity view in the platform", parameters: { type: "object", properties: { route: { type: "string", description: "Route path to navigate to (e.g. /contacts, /workflows, /contacts/123)" }, entityId: { type: "number", description: "Optional entity ID to view" } }, required: ["route"] } },
+    };
+
+    for (const [name, schema] of Object.entries(schemaMap)) {
+      toolDefs.push({
+        type: "function",
+        function: { name, description: schema.description, parameters: schema.parameters },
+      });
+    }
+    return toolDefs;
+  }
+
+  const OPENAI_TOOL_SCHEMAS = buildOpenAIFunctionSchemas();
+  const SESSION_EXPIRY_MS = 24 * 60 * 60 * 1000;
+  const MAX_TOOL_ROUNDS = 10;
+
+  const pendingApprovals = new Map<string, { resolve: (approved: boolean) => void }>();
+  const pendingNavAcks = new Map<string, { resolve: (acked: boolean) => void }>();
+
+  function approvalKey(sessionId: string, toolCallId: string) {
+    return `${sessionId}::${toolCallId}`;
+  }
+
+  async function resolveSession(requestedSessionId: string | undefined, subAccountId: number): Promise<{ sessionId: string; history: Array<{ role: string; content?: string | null; tool_calls?: any; tool_call_id?: string; name?: string }> }> {
+    if (requestedSessionId) {
+      try {
+        const session = await storage.getAgentConversation(requestedSessionId);
+        if (session && session.subAccountId === subAccountId) {
+          const lastActivity = new Date(session.lastActivityAt).getTime();
+          if (Date.now() - lastActivity < SESSION_EXPIRY_MS) {
+            await storage.updateAgentConversationActivity(requestedSessionId);
+            const dbMessages = await storage.getAgentMessages(requestedSessionId, 20);
+            const history: Array<{ role: string; content?: string | null; tool_calls?: any; tool_call_id?: string; name?: string }> = [];
+            for (const m of dbMessages.reverse()) {
+              if (m.role === "tool" && m.toolResults) {
+                history.push({ role: "tool", content: typeof m.content === "string" ? m.content : JSON.stringify(m.toolResults), tool_call_id: (m.toolResults as any)?.tool_call_id || "", name: (m.toolResults as any)?.name || "" });
+              } else if (m.role === "assistant" && m.toolCalls) {
+                history.push({ role: "assistant", content: m.content || null, tool_calls: m.toolCalls });
+              } else {
+                history.push({ role: m.role, content: m.content || "" });
+              }
+            }
+            return { sessionId: requestedSessionId, history };
+          }
+        }
+      } catch (e) {
+        console.error("[AGENT] Session lookup failed:", e);
+      }
+    }
+    const newSessionId = uuidv4();
+    try {
+      await storage.createAgentConversation({ sessionId: newSessionId, subAccountId });
+    } catch (e) {
+      console.error("[AGENT] Failed to create session:", e);
+    }
+    return { sessionId: newSessionId, history: [] };
+  }
+
+  const agentStreamSchema = agentChatSchema.extend({
+    sessionId: z.string().uuid().optional(),
+    frontendContext: z.object({
+      entityId: z.number().optional(),
+      module: z.string().optional(),
+      tab: z.string().optional(),
+    }).optional(),
+  });
+
+  app.get("/api/bot/chat/agent-session/:sessionId", asyncHandler(async (req, res) => {
+    const sessionId = req.params.sessionId;
+    const subAccountIdParam = req.query.subAccountId;
+    if (!sessionId || !z.string().uuid().safeParse(sessionId).success) {
+      return res.status(400).json({ error: "Invalid session ID" });
+    }
+    const subAccountId = subAccountIdParam ? parseInt(String(subAccountIdParam), 10) : null;
+    if (!subAccountId || isNaN(subAccountId)) {
+      return res.status(400).json({ error: "subAccountId query parameter is required" });
+    }
+
+    try {
+      const session = await storage.getAgentConversation(sessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      if (session.subAccountId !== subAccountId) {
+        return res.status(403).json({ error: "Session does not belong to this account" });
+      }
+
+      const lastActivity = new Date(session.lastActivityAt).getTime();
+      if (Date.now() - lastActivity >= SESSION_EXPIRY_MS) {
+        return res.status(410).json({ error: "Session expired" });
+      }
+
+      const dbMessages = await storage.getAgentMessages(sessionId, 20);
+      const transcript: Array<{ role: string; content: string | null }> = [];
+      for (const m of dbMessages.reverse()) {
+        if (m.role === "user" || m.role === "assistant") {
+          if (m.content) {
+            transcript.push({ role: m.role, content: m.content });
+          }
+        }
+      }
+      res.json({ sessionId, transcript });
+    } catch (e) {
+      console.error("[AGENT] Session resume failed:", e);
+      res.status(500).json({ error: "Failed to load session" });
+    }
+  }));
 
   app.post("/api/bot/chat/agent-stream", asyncHandler(async (req, res) => {
     try {
@@ -241,151 +319,220 @@ export function registerBotRoutes(app: Express) {
         return res.status(503).json({ error: "AI service is not configured" });
       }
 
-      const parsed = agentChatSchema.safeParse(req.body);
+      const parsed = agentStreamSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
       const subAccountId = parsed.data.subAccountId;
+      const { sessionId, history } = await resolveSession(parsed.data.sessionId, subAccountId);
 
-      const systemPrompt = await buildOperatorSystemPrompt(subAccountId, parsed.data.currentPath);
+      const systemPrompt = await buildOperatorSystemPrompt(subAccountId, parsed.data.currentPath, parsed.data.frontendContext);
 
-      const chatMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
+      const chatMessages: Array<{ role: string; content?: string | null; tool_calls?: any[]; tool_call_id?: string; name?: string }> = [
         { role: "system", content: systemPrompt },
+        ...history,
+        { role: "user", content: parsed.data.message },
       ];
 
-      if (parsed.data.conversationHistory) {
-        for (const msg of parsed.data.conversationHistory.slice(-10)) {
-          chatMessages.push({
-            role: msg.role === "user" ? "user" : "assistant",
-            content: msg.content,
-          });
-        }
-      }
-
-      chatMessages.push({ role: "user", content: parsed.data.message });
+      try {
+        await storage.createAgentMessage({ sessionId, role: "user", content: parsed.data.message });
+      } catch {}
 
       initSSE(res);
+      sendSSEData(res, { type: "session", sessionId });
 
       const keepalive = setInterval(() => {
-        try {
-          res.write(`:keepalive\n\n`);
-        } catch {}
+        try { res.write(`:keepalive\n\n`); } catch {}
       }, 15000);
 
-      let fullText = "";
-      let textBuffer = "";
       let closed = false;
-
       res.on("close", () => {
         closed = true;
         clearInterval(keepalive);
       });
 
-      const extractBalancedJSON = (text: string, startPos: number): { json: string; endPos: number } | null => {
-        let braceCount = 0;
-        let inString = false;
-        let escape = false;
-        let start = -1;
-
-        for (let i = startPos; i < text.length; i++) {
-          const char = text[i];
-          if (escape) { escape = false; continue; }
-          if (char === '\\') { escape = true; continue; }
-          if (char === '"') { inString = !inString; continue; }
-          if (inString) continue;
-          if (char === '{') { if (start === -1) start = i; braceCount++; }
-          else if (char === '}') { braceCount--; if (braceCount === 0 && start !== -1) return { json: text.slice(start, i + 1), endPos: i + 1 }; }
-        }
-        return null;
+      let fullAssistantText = "";
+      const operatorContext: OperatorContext = {
+        subAccountId,
+        autonomyLevel: "draft",
+        sessionId: `agent-${sessionId}`,
+        correlationId: `agent-${Date.now()}`,
       };
 
-      for await (const chunkText of aiChatStream(chatMessages, { temperature: 0.7, maxTokens: 16384, route: "bot-agent-stream" })) {
+      for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
         if (closed) break;
 
-        textBuffer += chunkText;
+        const aiResponse = await aiChatWithToolCalls(chatMessages, OPENAI_TOOL_SCHEMAS, {
+          temperature: 0.7,
+          maxTokens: 16384,
+          route: "bot-agent-stream",
+          timeoutMs: 30000,
+        });
 
-        let searchPos = 0;
-        while (true) {
-          const actionStart = textBuffer.indexOf(":::action", searchPos);
-          if (actionStart === -1) {
-            if (searchPos > 0) {
-              const cleanText = textBuffer.slice(searchPos);
-              if (cleanText.length > 0 && !cleanText.includes(":::action")) {
-                fullText += cleanText;
-                sendSSEData(res, { content: cleanText });
-                textBuffer = "";
-              } else {
-                textBuffer = cleanText;
-              }
-            } else {
-              const keepTail = Math.min(textBuffer.length, 20);
-              if (textBuffer.length > keepTail) {
-                const emitText = textBuffer.slice(0, textBuffer.length - keepTail);
-                fullText += emitText;
-                sendSSEData(res, { content: emitText });
-                textBuffer = textBuffer.slice(-keepTail);
-              }
+        if (aiResponse.text && !closed) {
+          fullAssistantText += aiResponse.text;
+          sendSSEData(res, { content: aiResponse.text });
+        }
+
+        if (!aiResponse.toolCalls || aiResponse.toolCalls.length === 0) {
+          chatMessages.push({ role: "assistant", content: aiResponse.text || "" });
+          try {
+            await storage.createAgentMessage({ sessionId, role: "assistant", content: aiResponse.text || "" });
+          } catch {}
+          break;
+        }
+
+        chatMessages.push({
+          role: "assistant",
+          content: aiResponse.text || null,
+          tool_calls: aiResponse.toolCalls.map(tc => ({
+            id: tc.id,
+            type: "function",
+            function: { name: tc.name, arguments: tc.arguments },
+          })),
+        });
+
+        for (const toolCall of aiResponse.toolCalls) {
+          if (closed) break;
+
+          let params: Record<string, any>;
+          try {
+            params = JSON.parse(toolCall.arguments);
+          } catch {
+            const errorResult = JSON.stringify({ success: false, error: "Invalid tool call arguments" });
+            chatMessages.push({ role: "tool", content: errorResult, tool_call_id: toolCall.id, name: toolCall.name });
+            continue;
+          }
+
+          if (toolCall.name === "navigateUser") {
+            const navNonce = `nav-${toolCall.id}`;
+            sendSSEData(res, { type: "step", stepId: "navigateUser", status: "running", label: `Navigating to ${params.route}...` });
+            sendSSEData(res, { type: "navigation", route: params.route, entityId: params.entityId, nonce: navNonce, sessionId });
+
+            const navAcked = await new Promise<boolean>((resolve) => {
+              pendingNavAcks.set(navNonce, { resolve });
+              setTimeout(() => {
+                if (pendingNavAcks.has(navNonce)) {
+                  pendingNavAcks.delete(navNonce);
+                  resolve(false);
+                }
+              }, 3000);
+            });
+            pendingNavAcks.delete(navNonce);
+
+            const navResult = JSON.stringify({
+              success: true,
+              verified: navAcked,
+              data: {
+                route: params.route,
+                entityId: params.entityId,
+                note: navAcked
+                  ? "Navigation confirmed by the frontend. The user is now viewing the requested page."
+                  : "Navigation event was sent but could not be confirmed. The user may not have navigated successfully.",
+              },
+            });
+            chatMessages.push({ role: "tool", content: navResult, tool_call_id: toolCall.id, name: toolCall.name });
+            sendSSEData(res, { type: "step", stepId: "navigateUser", status: "complete", label: navAcked ? "Navigation confirmed" : "Navigation sent (unverified)" });
+
+            try {
+              await storage.createAgentMessage({ sessionId, role: "tool", content: navResult, toolResults: { tool_call_id: toolCall.id, name: toolCall.name } });
+            } catch {}
+            continue;
+          }
+
+          if (!PHASE1_TOOLS.has(toolCall.name)) {
+            const errorResult = JSON.stringify({ success: false, error: `Tool "${toolCall.name}" is not available in Phase 1. Available tools: ${Array.from(PHASE1_TOOLS).join(", ")}` });
+            chatMessages.push({ role: "tool", content: errorResult, tool_call_id: toolCall.id, name: toolCall.name });
+            continue;
+          }
+
+          const tool = getTool(toolCall.name);
+          if (!tool) {
+            const errorResult = JSON.stringify({ success: false, error: `Unknown tool: ${toolCall.name}` });
+            chatMessages.push({ role: "tool", content: errorResult, tool_call_id: toolCall.id, name: toolCall.name });
+            continue;
+          }
+
+          if (tool.requiresApproval) {
+            const aKey = approvalKey(sessionId, toolCall.id);
+            sendSSEData(res, {
+              type: "approval_required",
+              toolCallId: toolCall.id,
+              toolName: toolCall.name,
+              params,
+              description: `Approve action: ${tool.description}. Parameters: ${JSON.stringify(params)}`,
+              sessionId,
+            });
+
+            const approvalResult = await new Promise<boolean>((resolve) => {
+              pendingApprovals.set(aKey, { resolve });
+              setTimeout(() => {
+                if (pendingApprovals.has(aKey)) {
+                  pendingApprovals.delete(aKey);
+                  resolve(false);
+                }
+              }, 120000);
+            });
+
+            pendingApprovals.delete(aKey);
+
+            if (!approvalResult) {
+              const rejectionResult = JSON.stringify({ success: false, error: "User rejected this action. Adapt your response — suggest an alternative or explain what you would have done." });
+              chatMessages.push({ role: "tool", content: rejectionResult, tool_call_id: toolCall.id, name: toolCall.name });
+              sendSSEData(res, { type: "step", stepId: toolCall.name, status: "complete", label: `${toolCall.name} — rejected by user` });
+              continue;
             }
-            break;
           }
 
-          if (actionStart > searchPos) {
-            const cleanText = textBuffer.slice(searchPos, actionStart);
-            fullText += cleanText;
-            sendSSEData(res, { content: cleanText });
+          sendSSEData(res, { type: "step", stepId: toolCall.name, status: "running", label: `Executing ${tool.name}...` });
+
+          const execContext = tool.requiresApproval
+            ? { ...operatorContext, autonomyLevel: "execute" as const }
+            : operatorContext;
+
+          let result: any;
+          try {
+            result = await executeTool(toolCall.name, params, execContext);
+          } catch (toolError: any) {
+            result = { success: false, error: toolError.message || "Tool execution failed" };
           }
 
-          const jsonStart = actionStart + ":::action".length;
-          const extracted = extractBalancedJSON(textBuffer, jsonStart);
-          if (!extracted) { textBuffer = textBuffer.slice(actionStart); break; }
+          sendSSEData(res, { type: "step", stepId: toolCall.name, status: "complete", label: `${tool.name} complete` });
+          sendSSEData(res, { type: "result", toolName: toolCall.name, result });
 
-          const actionEnd = textBuffer.indexOf(":::", extracted.endPos);
-          if (actionEnd === -1) { textBuffer = textBuffer.slice(actionStart); break; }
+          const resultJson = JSON.stringify(result);
+          chatMessages.push({ role: "tool", content: resultJson, tool_call_id: toolCall.id, name: toolCall.name });
 
           try {
-            const action = JSON.parse(extracted.json);
-            if (action.action === "execute_tool" && action.tool) {
-              if (!AGENT_ALLOWED_TOOLS.has(action.tool)) {
-                sendSSEData(res, { type: "error", error: `Tool "${action.tool}" is not allowed for agent execution` });
-                searchPos = actionEnd + 3;
-                continue;
-              }
-              const context: OperatorContext = {
-                subAccountId,
-                autonomyLevel: "draft",
-                sessionId: `agent-${Date.now()}`,
-                correlationId: `agent-${Date.now()}`,
-              };
-              const tool = getTool(action.tool);
-              if (tool) {
-                sendSSEData(res, { type: "step", stepId: action.tool, status: "running", label: `Executing ${tool.name}...` });
-                const result = await executeTool(action.tool, action.params || {}, context);
-                sendSSEData(res, { type: "step", stepId: action.tool, status: "complete", label: `${tool.name} complete` });
-                sendSSEData(res, { type: "result", toolName: action.tool, result });
-              } else {
-                sendSSEData(res, { type: "error", error: `Unknown tool: ${action.tool}` });
-              }
-            } else {
-              sendSSEData(res, { type: "action", ...action });
-            }
-          } catch (e) {
-            console.error("Action parsing error:", e);
-          }
-          searchPos = actionEnd + 3;
+            await storage.createAgentMessage({
+              sessionId,
+              role: "tool",
+              content: resultJson,
+              toolResults: { tool_call_id: toolCall.id, name: toolCall.name },
+            });
+          } catch {}
         }
-      }
-      
-      if (textBuffer.length > 0 && !textBuffer.includes(":::action")) {
-        fullText += textBuffer;
-        sendSSEData(res, { content: textBuffer });
+
+        try {
+          await storage.createAgentMessage({
+            sessionId,
+            role: "assistant",
+            content: aiResponse.text || null,
+            toolCalls: aiResponse.toolCalls.map(tc => ({
+              id: tc.id,
+              type: "function",
+              function: { name: tc.name, arguments: tc.arguments },
+            })),
+          });
+        } catch {}
       }
 
       if (!closed) {
-        sendSSEData(res, { done: true, fullText });
+        sendSSEData(res, { done: true, fullText: fullAssistantText, sessionId });
         res.end();
       }
 
       clearInterval(keepalive);
-      await logUsageInternal(null, "AI_CHAT", 1, "Agent chat with tools (stream)");
+      await logUsageInternal(null, "AI_CHAT", 1, "Agent agentic loop (Phase 1)");
     } catch (error: any) {
       if (!res.headersSent) {
         res.status(500).json({ error: error.message || "Streaming failed" });
@@ -393,6 +540,45 @@ export function registerBotRoutes(app: Express) {
         sendSSEData(res, { error: error.message || "Streaming failed" });
         res.end();
       }
+    }
+  }));
+
+  const approvalBodySchema = z.object({
+    sessionId: z.string().uuid(),
+    toolCallId: z.string().min(1),
+    approved: z.boolean(),
+  });
+
+  app.post("/api/bot/chat/agent-stream/approve", asyncHandler(async (req, res) => {
+    const parsed = approvalBodySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const aKey = approvalKey(parsed.data.sessionId, parsed.data.toolCallId);
+    const pending = pendingApprovals.get(aKey);
+    if (pending) {
+      pending.resolve(parsed.data.approved);
+      pendingApprovals.delete(aKey);
+      res.json({ acknowledged: true, approved: parsed.data.approved });
+    } else {
+      res.status(404).json({ error: "No pending approval found for this tool call" });
+    }
+  }));
+
+  const navAckBodySchema = z.object({
+    nonce: z.string().min(1),
+  });
+
+  app.post("/api/bot/chat/agent-stream/nav-ack", asyncHandler(async (req, res) => {
+    const parsed = navAckBodySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const pending = pendingNavAcks.get(parsed.data.nonce);
+    if (pending) {
+      pending.resolve(true);
+      pendingNavAcks.delete(parsed.data.nonce);
+      res.json({ acknowledged: true });
+    } else {
+      res.status(404).json({ error: "No pending navigation ack found" });
     }
   }));
 

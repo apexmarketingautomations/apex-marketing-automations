@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, json, timestamp, boolean, real, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, json, jsonb, timestamp, boolean, real, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -1678,6 +1678,32 @@ export const eventLog = pgTable("event_log", {
 export const insertEventLogSchema = createInsertSchema(eventLog).omit({ id: true, createdAt: true });
 export type InsertEventLog = z.infer<typeof insertEventLogSchema>;
 export type EventLogEntry = typeof eventLog.$inferSelect;
+
+export const agentConversations = pgTable("agent_conversations", {
+  id: serial("id").primaryKey(),
+  sessionId: text("session_id").unique().notNull(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  lastActivityAt: timestamp("last_activity_at").defaultNow().notNull(),
+});
+
+export const insertAgentConversationSchema = createInsertSchema(agentConversations).omit({ id: true, createdAt: true, lastActivityAt: true });
+export type InsertAgentConversation = z.infer<typeof insertAgentConversationSchema>;
+export type AgentConversation = typeof agentConversations.$inferSelect;
+
+export const agentMessages = pgTable("agent_messages", {
+  id: serial("id").primaryKey(),
+  sessionId: text("session_id").references(() => agentConversations.sessionId).notNull(),
+  role: text("role").notNull(),
+  content: text("content"),
+  toolCalls: jsonb("tool_calls"),
+  toolResults: jsonb("tool_results"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertAgentMessageSchema = createInsertSchema(agentMessages).omit({ id: true, createdAt: true });
+export type InsertAgentMessage = z.infer<typeof insertAgentMessageSchema>;
+export type AgentMessage = typeof agentMessages.$inferSelect;
 
 export const PLAN_LIMITS: Record<string, Record<string, number>> = {
   starter: {

@@ -519,4 +519,65 @@ export const intelligenceTools: OperatorTool[] = [
     },
     summarizeForAudit: (params, result) => `Industry benchmark comparison (${result.data?.industry}): ${result.data?.overallGrade}.`,
   },
+  {
+    name: "searchContacts",
+    description: "Search contacts by name, email, phone, or tags. Returns matching contacts with IDs.",
+    category: "intelligence",
+    autonomyRequired: "observe",
+    requiresApproval: false,
+    parameters: [
+      { name: "query", type: "string", required: true, description: "Search term — name, email, phone, or tag" },
+    ],
+    validate: noopValidate,
+    execute: async (params, ctx) => {
+      const results = await storage.searchContacts(ctx.subAccountId, params.query);
+      return {
+        success: true,
+        data: {
+          contacts: results.map(c => ({
+            id: c.id,
+            firstName: c.firstName,
+            lastName: c.lastName,
+            email: c.email,
+            phone: c.phone,
+            tags: c.tags,
+            source: c.source,
+          })),
+          count: results.length,
+          query: params.query,
+        },
+      };
+    },
+    summarizeForAudit: (params, result) => `Searched contacts for "${params.query}": ${result.data?.count || 0} found.`,
+  },
+  {
+    name: "searchWorkflows",
+    description: "Search workflows by name or trigger type. Returns matching workflows with IDs.",
+    category: "intelligence",
+    autonomyRequired: "observe",
+    requiresApproval: false,
+    parameters: [
+      { name: "query", type: "string", required: true, description: "Search term — workflow name or trigger type" },
+    ],
+    validate: noopValidate,
+    execute: async (params, ctx) => {
+      const results = await storage.searchWorkflows(ctx.subAccountId, params.query);
+      return {
+        success: true,
+        data: {
+          workflows: results.map(w => ({
+            id: w.id,
+            name: w.name,
+            status: w.status,
+            description: w.description,
+            runCount: w.runCount,
+            lastRunAt: w.lastRunAt,
+          })),
+          count: results.length,
+          query: params.query,
+        },
+      };
+    },
+    summarizeForAudit: (params, result) => `Searched workflows for "${params.query}": ${result.data?.count || 0} found.`,
+  },
 ];

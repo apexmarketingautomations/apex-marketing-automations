@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Bot, X, Send, Loader2, Sparkles, Brain } from "lucide-react";
+import { X, Send, Loader2, Sparkles, Brain, Check, XCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation } from "wouter";
 import { useAccount } from "@/hooks/use-account";
@@ -21,11 +21,20 @@ interface ToolResult {
   data: any;
 }
 
+interface ApprovalRequest {
+  toolCallId: string;
+  toolName: string;
+  description: string;
+  params: any;
+}
+
 const QUICK_ACTIONS = [
   "Scan my setup — what's missing?",
   "Help me create a workflow",
   "What should I fix first?",
 ];
+
+const SESSION_STORAGE_KEY = "apex-agent-session-id";
 
 function parseMessageContent(text: string, navigate: (path: string) => void) {
   const parts: (string | React.ReactElement)[] = [];
@@ -62,13 +71,42 @@ function parseMessageContent(text: string, navigate: (path: string) => void) {
   return parts.length > 0 ? parts : [text];
 }
 
+function extractFrontendContext(location: string): { entityId?: number; module?: string; tab?: string } {
+  const ctx: { entityId?: number; module?: string; tab?: string } = {};
+
+  const contactMatch = location.match(/\/contacts\/(\d+)/);
+  const workflowMatch = location.match(/\/workflows\/(\d+)/);
+
+  if (contactMatch) {
+    ctx.entityId = parseInt(contactMatch[1]);
+    ctx.module = "contacts";
+  } else if (workflowMatch) {
+    ctx.entityId = parseInt(workflowMatch[1]);
+    ctx.module = "workflows";
+  } else if (location.startsWith("/crm") || location.startsWith("/contacts")) {
+    ctx.module = "crm";
+  } else if (location.startsWith("/workflows")) {
+    ctx.module = "workflows";
+  } else if (location.startsWith("/pipeline")) {
+    ctx.module = "pipeline";
+  } else if (location.startsWith("/integrations")) {
+    ctx.module = "integrations";
+  } else if (location.startsWith("/settings")) {
+    ctx.module = "settings";
+  } else if (location === "/") {
+    ctx.module = "inbox";
+  }
+
+  return ctx;
+}
+
 export function SiteAssistant() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
       content:
-        "I'm Apex Intelligence — your autonomous platform operator. I don't just explain things, I execute them.\n\nI can scan your setup, create contacts, build pipelines, configure integrations, launch automations, and more.\n\nTell me what you need done.",
+        "I'm Apex Intelligence — your autonomous platform operator. I don't just explain things, I execute them.\n\nI can scan your setup, find contacts, build pipelines, create workflows, and diagnose issues.\n\nTell me what you need done.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -79,6 +117,11 @@ export function SiteAssistant() {
   const { text: streamingText, isStreaming, startStream } = useStreamingResponse();
   const [activitySteps, setActivitySteps] = useState<ActivityStep[]>([]);
   const [toolResults, setToolResults] = useState<ToolResult[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(() => {
+    try { return sessionStorage.getItem(SESSION_STORAGE_KEY); } catch { return null; }
+  });
+  const [pendingApproval, setPendingApproval] = useState<ApprovalRequest | null>(null);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -94,6 +137,55 @@ export function SiteAssistant() {
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    if (sessionLoaded) return;
+    const storedSessionId = sessionId;
+    const subAccountId = activeAccountId || 1;
+    if (!storedSessionId) { setSessionLoaded(true); return; }
+
+    fetch(`/api/bot/chat/agent-session/${storedSessionId}?subAccountId=${subAccountId}`, { credentials: "include" })
+      .then(r => {
+        if (!r.ok) {
+          if (r.status === 404 || r.status === 410) {
+            try { sessionStorage.removeItem(SESSION_STORAGE_KEY); } catch {}
+            setSessionId(null);
+          }
+          return null;
+        }
+        return r.json();
+      })
+      .then(data => {
+        if (data?.transcript?.length > 0) {
+          const restored: ChatMessage[] = [
+            {
+              role: "assistant",
+              content: "I'm Apex Intelligence — your autonomous platform operator. I don't just explain things, I execute them.\n\nI can scan your setup, find contacts, build pipelines, create workflows, and diagnose issues.\n\nTell me what you need done.",
+            },
+            ...data.transcript.map((m: any) => ({ role: m.role as "user" | "assistant", content: m.content })),
+          ];
+          setMessages(restored);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setSessionLoaded(true));
+  }, [sessionId, sessionLoaded]);
+
+  const handleApproval = async (approved: boolean) => {
+    if (!pendingApproval || !sessionId) return;
+    const { toolCallId } = pendingApproval;
+    setPendingApproval(null);
+    try {
+      await fetch("/api/bot/chat/agent-stream/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ sessionId, toolCallId, approved }),
+      });
+    } catch (e) {
+      console.error("[AGENT] Approval request failed:", e);
+    }
+  };
+
   const sendMessage = async (text: string) => {
     if (!text.trim() || isStreaming) return;
 
@@ -103,24 +195,26 @@ export function SiteAssistant() {
     setInput("");
     setActivitySteps([]);
     setToolResults([]);
+    setPendingApproval(null);
 
     const subAccountId = activeAccountId || 1;
+    const frontendContext = extractFrontendContext(location);
 
     try {
-      const history = updatedMessages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
-
       await startStream("/api/bot/chat/agent-stream", {
         message: text.trim(),
-        conversationHistory: history,
         currentPath: location,
         subAccountId,
+        sessionId: sessionId || undefined,
+        frontendContext,
       }, {
-        onDone: (fullText) => {
+        onDone: (fullText, rawData) => {
           setMessages(prev => [...prev, { role: "assistant", content: fullText }]);
           setActivitySteps([]);
+          if (rawData?.sessionId) {
+            setSessionId(rawData.sessionId);
+            try { sessionStorage.setItem(SESSION_STORAGE_KEY, rawData.sessionId); } catch {}
+          }
         },
         onError: (err) => {
           const errorMessage = typeof err === 'string' ? err : (err?.message || String(err) || "Unknown");
@@ -132,14 +226,34 @@ export function SiteAssistant() {
           setActivitySteps(prev => {
             const existing = prev.find(s => s.id === step.stepId);
             if (existing) {
-              return prev.map(s => s.id === step.stepId ? { ...s, status: step.status as "running" | "complete" } : s);
+              return prev.map(s => s.id === step.stepId ? { ...s, status: step.status as "running" | "complete", label: step.label } : s);
             }
             return [...prev, { id: step.stepId, label: step.label, status: step.status as "running" | "complete" }];
           });
         },
         onAction: (action) => {
-          if (action.action === "navigate" && action.path) {
-            setLocation(action.path);
+          if (action.type === "navigation" && action.route) {
+            setLocation(action.route);
+            if (action.nonce) {
+              fetch("/api/bot/chat/agent-stream/nav-ack", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ nonce: action.nonce }),
+              }).catch(() => {});
+            }
+          }
+          if (action.type === "session" && action.sessionId) {
+            setSessionId(action.sessionId);
+            try { sessionStorage.setItem(SESSION_STORAGE_KEY, action.sessionId); } catch {}
+          }
+          if (action.type === "approval_required") {
+            setPendingApproval({
+              toolCallId: action.toolCallId,
+              toolName: action.toolName,
+              description: action.description,
+              params: action.params,
+            });
           }
         },
         onResult: (data) => {
@@ -259,6 +373,31 @@ export function SiteAssistant() {
                         <span className={step.status === "complete" ? "text-slate-500 text-xs" : "text-slate-300 text-xs"}>{step.label}</span>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {pendingApproval && (
+                <div className="flex justify-start" data-testid="approval-panel">
+                  <div className="bg-amber-500/10 border border-amber-500/30 text-slate-200 rounded-xl rounded-bl-none p-3 text-sm space-y-2 max-w-[85%]">
+                    <div className="text-amber-400 font-medium text-xs uppercase tracking-wider">Approval Required</div>
+                    <div className="text-slate-300 text-xs">{pendingApproval.description}</div>
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        onClick={() => handleApproval(true)}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-500/20 border border-green-500/30 text-green-400 text-xs hover:bg-green-500/30 transition-colors"
+                        data-testid="button-approve-action"
+                      >
+                        <Check size={12} /> Approve
+                      </button>
+                      <button
+                        onClick={() => handleApproval(false)}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-500/20 border border-red-500/30 text-red-400 text-xs hover:bg-red-500/30 transition-colors"
+                        data-testid="button-reject-action"
+                      >
+                        <XCircle size={12} /> Reject
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}

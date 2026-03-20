@@ -451,11 +451,34 @@ export async function* aiChatStream(
   }
 }
 
+export interface ToolCallResult {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+export interface AIToolCallResponse {
+  text: string;
+  toolCalls: ToolCallResult[];
+  provider: "openai" | "gemini";
+  model?: string;
+  finishReason?: string;
+}
+
 export async function aiChatWithTools(
   messages: ChatMessage[],
   tools: ToolDefinition[],
   options: AIOptions = {}
 ): Promise<AIResponse> {
+  const result = await aiChatWithToolCalls(messages, tools, options);
+  return { text: result.text, provider: result.provider, model: result.model };
+}
+
+export async function aiChatWithToolCalls(
+  messages: Array<{ role: string; content?: string | null; tool_calls?: any[]; tool_call_id?: string; name?: string }>,
+  tools: ToolDefinition[],
+  options: AIOptions = {}
+): Promise<AIToolCallResponse> {
   const requestId = generateRequestId();
   const { route, traceId, subAccountId } = options;
   const start = Date.now();
@@ -465,16 +488,49 @@ export async function aiChatWithTools(
     if (provider === "openai") {
       for (let attempt = 0; attempt <= MAX_OPENAI_RETRIES; attempt++) {
         try {
-          const result = await callOpenAIWithTools(messages, tools, options);
+          const { temperature = 0.7, maxTokens = 4096, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
+
+          const response = await withTimeout(
+            getOpenAIClient().chat.completions.create({
+              model: OPENAI_MODEL,
+              messages: messages as any,
+              temperature,
+              max_tokens: maxTokens,
+              tools: tools as any,
+              tool_choice: "auto",
+            }),
+            timeoutMs
+          );
+
+          const message = response.choices[0]?.message;
+          const toolCalls: ToolCallResult[] = [];
+
+          if (message?.tool_calls && message.tool_calls.length > 0) {
+            for (const tc of message.tool_calls) {
+              toolCalls.push({
+                id: tc.id,
+                name: tc.function.name,
+                arguments: tc.function.arguments,
+              });
+            }
+          }
+
           logObservability({
             requestId, traceId, subAccountId, route,
             provider: "openai",
-            model: result.model,
+            model: OPENAI_MODEL,
             latencyMs: Date.now() - start,
             success: true,
             fallbackTriggered: false,
           });
-          return result;
+
+          return {
+            text: message?.content ?? "",
+            toolCalls,
+            provider: "openai",
+            model: OPENAI_MODEL,
+            finishReason: response.choices[0]?.finish_reason ?? undefined,
+          };
         } catch (err: any) {
           recordOpenAIFailure();
           if (!isAuthError(err) && attempt < MAX_OPENAI_RETRIES && isTransientError(err)) {
@@ -488,33 +544,19 @@ export async function aiChatWithTools(
 
     if (!isGeminiAvailable()) {
       logObservability({ requestId, traceId, subAccountId, route, provider: "gemini", model: GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: false, error: "No AI provider available" });
-      return { text: "[AI Error: No AI provider available]", provider: "gemini", model: GEMINI_FALLBACK_MODEL };
+      return { text: "[AI Error: No AI provider available. This action could not be completed.]", toolCalls: [], provider: "gemini", model: GEMINI_FALLBACK_MODEL };
     }
 
-    const toolDescriptions = tools
-      .map((t) => `Tool: ${t.function.name} — ${t.function.description || ""}`)
-      .join("\n");
-    const messagesWithTools = [
-      ...messages,
-      {
-        role: "system" as const,
-        content: `Available tools:\n${toolDescriptions}\n\nIf you need to call a tool, include it in your response using the :::action{...}::: format.`,
-      },
-    ];
-
-    const result = await callGemini(messagesWithTools, options);
-    logObservability({
-      requestId, traceId, subAccountId, route,
+    logObservability({ requestId, traceId, subAccountId, route, provider: "gemini", model: GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: true, error: "Gemini fallback does not support multi-turn tool calling" });
+    return {
+      text: "I'm sorry, but this action could not be completed through the current AI provider. The tool-calling capability required for this request is only available with the primary provider, which is currently unavailable. Please try again in a moment.",
+      toolCalls: [],
       provider: "gemini",
-      model: result.model,
-      latencyMs: Date.now() - start,
-      success: true,
-      fallbackTriggered: false,
-    });
-    return result;
+      model: GEMINI_FALLBACK_MODEL,
+    };
   } catch (err: any) {
     logObservability({ requestId, traceId, subAccountId, route, provider, model: provider === "openai" ? OPENAI_MODEL : GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: false, error: err?.message });
-    return { text: `[AI Error: ${err?.message ?? "unknown"}]`, provider, model: provider === "openai" ? OPENAI_MODEL : GEMINI_FALLBACK_MODEL };
+    return { text: `[AI Error: ${err?.message ?? "unknown"}]`, toolCalls: [], provider, model: provider === "openai" ? OPENAI_MODEL : GEMINI_FALLBACK_MODEL };
   }
 }
 

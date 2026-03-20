@@ -1,4 +1,4 @@
-import { eq, desc, and, sql, inArray, gte, lt } from "drizzle-orm";
+import { eq, desc, and, sql, inArray, gte, lt, ilike, or } from "drizzle-orm";
 import { db } from "./db";
 import {
   subAccounts, messages, smsRetryQueue, workflows, trainingJobs, blueprints, savedSites, siteVersions, siteCollaborators, reviews, usageLogs, domains, owners,
@@ -78,6 +78,9 @@ import {
   type WorkflowOptimizationLog, type InsertWorkflowOptimizationLog,
   timelineEvents,
   type TimelineEvent, type InsertTimelineEvent,
+  agentConversations, agentMessages,
+  type AgentConversation, type InsertAgentConversation,
+  type AgentMessage, type InsertAgentMessage,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -397,6 +400,15 @@ export interface IStorage {
   getFailedEventLogs(maxRetries?: number): Promise<EventLogEntry[]>;
   getDeadLetterEventLogs(): Promise<EventLogEntry[]>;
   queryEventLogs(filters: { type?: string; source?: string; status?: string; traceId?: string; since?: Date; until?: Date; limit?: number }): Promise<EventLogEntry[]>;
+
+  searchContacts(subAccountId: number, query: string): Promise<Contact[]>;
+  searchWorkflows(subAccountId: number, query: string): Promise<LiveAutomation[]>;
+
+  createAgentConversation(data: InsertAgentConversation): Promise<AgentConversation>;
+  getAgentConversation(sessionId: string): Promise<AgentConversation | undefined>;
+  updateAgentConversationActivity(sessionId: string): Promise<void>;
+  createAgentMessage(data: InsertAgentMessage): Promise<AgentMessage>;
+  getAgentMessages(sessionId: string, limit?: number): Promise<AgentMessage[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1956,6 +1968,69 @@ export class DatabaseStorage implements IStorage {
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(eventLog.createdAt))
       .limit(filters.limit || 100);
+  }
+
+  async searchContacts(subAccountId: number, query: string) {
+    const pattern = `%${query}%`;
+    const all = await db.select().from(contacts)
+      .where(eq(contacts.subAccountId, subAccountId))
+      .orderBy(desc(contacts.createdAt))
+      .limit(200);
+    const lowerQ = query.toLowerCase();
+    return all.filter(c =>
+      (c.firstName && c.firstName.toLowerCase().includes(lowerQ)) ||
+      (c.lastName && c.lastName.toLowerCase().includes(lowerQ)) ||
+      (c.email && c.email.toLowerCase().includes(lowerQ)) ||
+      (c.phone && c.phone.toLowerCase().includes(lowerQ)) ||
+      (c.tags && c.tags.some(t => t.toLowerCase().includes(lowerQ)))
+    ).slice(0, 20);
+  }
+
+  async searchWorkflows(subAccountId: number, query: string) {
+    const pattern = `%${query}%`;
+    const all = await db.select().from(liveAutomations)
+      .where(eq(liveAutomations.subAccountId, subAccountId))
+      .orderBy(desc(liveAutomations.createdAt))
+      .limit(200);
+    const lowerQ = query.toLowerCase();
+    return all.filter(w => {
+      if (w.name.toLowerCase().includes(lowerQ)) return true;
+      if (w.description && w.description.toLowerCase().includes(lowerQ)) return true;
+      const manifest = w.manifest as any;
+      if (manifest?.trigger && typeof manifest.trigger === "string" && manifest.trigger.toLowerCase().includes(lowerQ)) return true;
+      return false;
+    }).slice(0, 20);
+  }
+
+  async createAgentConversation(data: InsertAgentConversation) {
+    const [row] = await db.insert(agentConversations).values(data).returning();
+    return row;
+  }
+
+  async getAgentConversation(sessionId: string) {
+    const [row] = await db.select().from(agentConversations).where(eq(agentConversations.sessionId, sessionId));
+    return row;
+  }
+
+  async updateAgentConversationActivity(sessionId: string) {
+    await db.update(agentConversations)
+      .set({ lastActivityAt: new Date() })
+      .where(eq(agentConversations.sessionId, sessionId));
+  }
+
+  async createAgentMessage(data: InsertAgentMessage) {
+    const [row] = await db.insert(agentMessages).values(data).returning();
+    await db.update(agentConversations)
+      .set({ lastActivityAt: new Date() })
+      .where(eq(agentConversations.sessionId, data.sessionId));
+    return row;
+  }
+
+  async getAgentMessages(sessionId: string, limit = 20) {
+    return db.select().from(agentMessages)
+      .where(eq(agentMessages.sessionId, sessionId))
+      .orderBy(desc(agentMessages.createdAt))
+      .limit(limit);
   }
 }
 

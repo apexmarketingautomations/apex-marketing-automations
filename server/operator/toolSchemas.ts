@@ -304,6 +304,12 @@ export const intelligenceSchemas = {
   compareToIndustryBenchmark: z.object({
     industry: z.string().optional(),
   }),
+  searchContacts: z.object({
+    query: z.string().min(1).describe("Search term — name, email, phone, or tag to search for"),
+  }),
+  searchWorkflows: z.object({
+    query: z.string().min(1).describe("Search term — workflow name or trigger type to search for"),
+  }),
 };
 
 export const integrationSchemas = {

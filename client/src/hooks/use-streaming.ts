@@ -142,7 +142,7 @@ export function useStreamingResponse() {
               continue;
             }
 
-            if (data.type === "action") {
+            if (data.type === "action" || data.type === "navigation" || data.type === "session" || data.type === "approval_required") {
               options.onAction?.(data);
               continue;
             }
