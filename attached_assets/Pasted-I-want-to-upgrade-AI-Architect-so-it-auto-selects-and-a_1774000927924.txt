@@ -1,0 +1,124 @@
+I want to upgrade AI Architect so it auto-selects and adapts the best workflow template instead of building everything from scratch.
+
+Goal
+Turn AI Architect into a smart template-aware workflow strategist.
+
+I want the AI to behave like this:
+- understand the user’s business goal
+- recognize when the request matches a known workflow pattern
+- suggest the closest high-value template
+- explain briefly why it fits
+- adapt the template intelligently
+- create a draft from the template instead of freestyling unnecessarily
+
+This should make AI Architect feel smarter, faster, and more reliable than blank-canvas generation.
+
+Current product direction
+We already have / are building a premium Workflow Template Library with high-value templates across:
+- Facebook / Instagram / DM
+- speed-to-lead
+- booking
+- missed calls
+- reviews
+- reactivation
+- multi-channel nurture
+- ecommerce recovery
+- service business follow-up
+
+AI Architect should know this catalog deeply and use it as its first layer of reasoning.
+
+What I want implemented
+
+1. Template-aware reasoning behavior
+When a user describes a workflow need, AI Architect should first determine:
+- does this closely match an existing template?
+- if yes, should I suggest/adapt that template?
+- if partially, should I combine or lightly modify an existing template?
+- only if no strong fit exists should I build from scratch
+
+2. Matching logic
+Implement a clear matching approach based on:
+- business objective
+- trigger type
+- channel preference
+- lifecycle stage
+- use case keywords
+- likely closest template category
+
+Examples:
+- “follow up with Facebook leads” → FB Lead Form nurture templates
+- “missed calls” → missed call text-back template
+- “get more reviews after service” → post-service review request templates
+- “wake up old leads” → reactivation templates
+- “recover abandoned carts” → ecommerce recovery templates
+
+3. AI response behavior
+When there is a strong template match, AI Architect should:
+- name the template
+- say why it fits
+- briefly describe how it would adapt it
+- ask for confirmation only if needed
+- then create the adapted draft
+
+It should not default to saying:
+- “I will build this from scratch”
+- or asking the user to design every step manually
+
+4. Adaptation behavior
+Allow the AI to adapt templates in meaningful ways, such as:
+- changing tone
+- changing channel order
+- tightening timing
+- adjusting CTA emphasis
+- adding/removing a light step when still within supported step types
+- tailoring copy to industry/context
+
+But:
+- do not invent unsupported triggers or step types
+- do not break the core proven structure without good reason
+
+5. Multiple recommendations when appropriate
+If the user’s request could fit more than one template, AI Architect may present 2–3 strong options, but it should avoid overwhelming the user.
+
+Example:
+- “I want to follow up with Facebook leads”
+- AI could suggest:
+  1. FB Lead Form → DM + SMS Nurture
+  2. Messenger Lead Qualification Flow
+  3. DM to Booking Pipeline Handoff
+
+But it should also recommend the strongest default option.
+
+6. Fallback behavior
+If no strong template matches:
+- be honest
+- then build from scratch using supported triggers/steps
+- do not force a bad template fit
+
+7. Prompt/system behavior
+Update the AI Architect system prompt and any related logic so it knows:
+- template names
+- categories
+- purposes
+- trigger/channel fit
+- when to prefer adaptation over blank generation
+
+8. UX behavior
+The user experience should feel like:
+- “Apex knows the proven workflow I probably need”
+not
+- “Apex is improvising from zero every time”
+
+Before implementation, return:
+1. the matching strategy
+2. how the AI will decide template vs scratch
+3. examples of user requests and the template matches
+4. any files/prompts/routes to modify
+5. then implement
+
+Success criteria
+- AI Architect suggests the right template for common requests
+- it adapts templates intelligently
+- it only builds from scratch when needed
+- it feels more strategic and less generic
+- it makes the template library materially more valuable

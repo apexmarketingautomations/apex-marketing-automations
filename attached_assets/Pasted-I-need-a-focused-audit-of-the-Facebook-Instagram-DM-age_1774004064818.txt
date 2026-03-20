@@ -1,0 +1,80 @@
+I need a focused audit of the Facebook / Instagram DM agent specifically.
+
+Do not give me a general AI architecture answer.
+I want the exact truth about the DM agent only.
+
+Problem:
+The FB/IG DM agent sounds generic, robotic, and undertrained.
+It does not seem to know enough about Apex.
+It is not sending the right forms, links, or useful next steps.
+I do not know where its prompts, business context, or link/form behavior are controlled.
+
+I want you to inspect the real codebase and tell me exactly:
+
+1. Where the FB/IG DM agent prompt lives
+- exact file(s)
+- exact function(s)
+- exact route(s)
+- exact prompt-building logic
+- whether there are multiple prompts involved
+
+2. What context the DM agent currently receives
+- business context
+- brand voice
+- lead/contact context
+- channel context
+- thread history
+- sub-account context
+- memory/context injection
+- whether Apex-specific business knowledge is actually included
+
+3. How the DM agent decides what to send
+- does it have access to links?
+- forms?
+- booking URLs?
+- offer URLs?
+- does it call tools?
+- does it use templates?
+- where are those values stored?
+
+4. What is making it sound robotic/basic
+I want a brutally honest diagnosis:
+- weak prompt?
+- missing business context?
+- no template library?
+- no lead stage awareness?
+- no proper channel-specific tone rules?
+- no link/form injection?
+- generic fallback behavior?
+- broken retrieval of account config?
+
+5. Where I should edit it
+Tell me the exact places I should edit if I want to improve:
+- the DM prompt
+- the business voice
+- the links/forms it sends
+- the booking CTA
+- qualification flow
+- escalation/handoff behavior
+
+6. Whether this should be fixed in code, config, or both
+Be specific.
+
+7. Give me a recommended improvement plan
+I want the best production-ready path to make the FB/IG DM agent:
+- know Apex better
+- sound less robotic
+- send the right forms/links
+- qualify leads better
+- push toward booking/conversion better
+
+Output format:
+A. Exact files and locations
+B. Current behavior diagnosis
+C. Why it sounds weak
+D. Where links/forms come from now
+E. What to edit first
+F. Recommended fix plan
+
+Do not implement yet.
+Just locate and diagnose the exact DM agent path first.

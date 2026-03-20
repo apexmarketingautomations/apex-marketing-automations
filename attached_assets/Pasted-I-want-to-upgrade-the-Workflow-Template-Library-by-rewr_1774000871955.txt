@@ -1,0 +1,84 @@
+I want to upgrade the Workflow Template Library by rewriting the highest-value templates with elite, production-grade conversion copy.
+
+This is not about changing the workflow engine.
+This is not about adding new backend infrastructure.
+This is about making the template copy itself feel premium, high-converting, and immediately usable.
+
+Goal
+Rewrite the top 10 highest-value templates so the default copy feels like something a strong agency or growth operator would actually deploy.
+
+What I want improved
+The current/future template copy must not sound generic, robotic, timid, or placeholder-like.
+
+I do NOT want copy like:
+- “Hi, thanks for your interest.”
+- “Please let us know if you’d like to proceed.”
+- “We wanted to follow up with you.”
+
+I want copy that is:
+- channel-native
+- concise where appropriate
+- conversion-oriented
+- human-sounding
+- strong on CTA
+- not spammy
+- not cringe
+- realistic for SMS, DM, email, WhatsApp, and follow-up ladders
+
+Priority templates to rewrite first
+1. FB Lead Form → DM + SMS Nurture
+2. Missed Call Text-Back + AI Callback
+3. Speed-to-Lead Instant Follow-Up
+4. New Lead Multi-Touch Follow-Up
+5. Appointment Confirmation + Reminder Sequence
+6. No-Show Recovery
+7. Post-Service Review Request
+8. Negative Review Save-the-Customer
+9. 30-Day Inactive Reactivation
+10. Abandoned Cart Recovery
+
+Requirements
+For each of these templates:
+- keep the workflow logic intact unless a copy-driven improvement clearly suggests a better step order
+- rewrite all user-facing default copy across all steps
+- use strong but realistic placeholders such as:
+  - {{leadName}}
+  - {{businessName}}
+  - {{bookingLink}}
+  - {{offer}}
+  - {{reviewLink}}
+  - {{locationName}}
+- tailor the tone to the channel:
+  - SMS should be short and direct
+  - DM should feel conversational and natural
+  - email can be more detailed
+  - WhatsApp should feel personal, not corporate
+  - reminder copy should escalate appropriately without sounding desperate
+
+Copy standards
+- reduce robotic politeness
+- increase clarity and response likelihood
+- lead with relevance
+- make the next step obvious
+- use curiosity or specificity where appropriate
+- never sound like filler
+- never sound like a placeholder
+- avoid stiff corporate language
+
+I also want each rewritten template to include:
+- a short explanation of why the copy is stronger
+- the intended conversion goal
+- the audience/use case it is best for
+
+Before implementation, return:
+1. the 10 selected templates
+2. the rewritten copy for each
+3. the rationale for each rewrite
+4. any small workflow-sequence changes you recommend based on copy/conversion logic
+5. then implement into the template registry
+
+Success criteria
+- the rewritten templates feel premium
+- copy sounds deployable immediately
+- different channels sound different in the right way
+- the templates feel materially more valuable than generic automation templates

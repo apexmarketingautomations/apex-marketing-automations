@@ -1,0 +1,245 @@
+I want to turn the workflow template library into a killer SaaS feature — not just a gallery of sample automations.
+
+This should feel like one of the strongest product surfaces in Apex:
+- high-value
+- instantly useful
+- conversion-focused
+- industry-relevant
+- production-grade
+- not generic
+- not filler
+- not “template marketplace fluff”
+
+Goal
+Build a best-in-class Workflow Template Library that helps users launch proven automations in one click and makes Apex feel immediately valuable for lead gen, conversion, follow-up, reactivation, reviews, and booking.
+
+This is not just a UI task.
+It is a product feature.
+The templates must be useful, high-intent, and built around real business outcomes.
+
+Product standard
+I do NOT want:
+- weak sample templates
+- generic placeholder flows
+- fake step types that do not exist
+- “coming soon” shells
+- templates that look nice but don’t solve real use cases
+- a big template list full of low-value noise
+
+I want:
+- elite, production-grade templates
+- clear categorization
+- strong metadata
+- one-click usability
+- good defaults
+- realistic copy
+- proven automation patterns
+- immediate time-to-value
+
+Core principle
+These templates should feel like:
+“plug-and-play revenue systems”
+not
+“example workflow diagrams”
+
+What to build
+
+1. Template library as a real product surface
+Create a real Template Library experience inside the workflow builder.
+
+Requirements:
+- dedicated Templates tab/panel in the workflow builder
+- strong visual cards with useful metadata
+- category grouping
+- search + filtering
+- clear “Use Template” action
+- template preview/summary before applying if appropriate
+- when applied, creates a new editable workflow draft pre-populated with steps
+
+The user should feel:
+“I can launch something valuable in seconds.”
+
+2. Build a high-value template catalog
+Do not stop at a small generic list.
+Create a curated set of elite templates centered on the highest-value business outcomes.
+
+Organize by categories such as:
+- Lead Capture
+- Speed-to-Lead
+- Booking & Appointments
+- Sales Follow-Up
+- Reactivation
+- Reviews & Reputation
+- Multi-Channel Nurture
+- Facebook / Instagram / DM Automations
+- WhatsApp
+- Ecommerce / Cart Recovery
+- Local Service Business
+- Pipeline / CRM Follow-Up
+
+I want the templates to be outcome-driven, not just trigger-driven.
+
+3. Include the most useful high-ROI templates
+At minimum, include strong templates like these and expand intelligently from there:
+
+Facebook / Instagram / DM
+- Facebook Lead Form → DM + SMS nurture
+- Instagram DM keyword auto-reply
+- Instagram comment → DM funnel
+- Meta click-to-message ad follow-up
+- Messenger lead qualification flow
+- Story reply → lead qualification flow
+- DM to booking pipeline handoff
+- DM ghosted lead recovery
+
+Lead Response / Sales
+- Speed-to-lead instant follow-up
+- Hot lead AI qualification + booking link
+- New lead multi-touch follow-up
+- Missed call text-back + AI callback
+- Pipeline stage nurture
+- No-response escalation sequence
+- Quote follow-up sequence
+- Estimate follow-up with reminder ladder
+
+Appointments / Service Business
+- Appointment confirmation + reminders
+- No-show recovery
+- Post-appointment follow-up
+- Reschedule recovery flow
+- Booking reminder + final confirmation
+- Service completed → review ask
+
+Reviews / Reputation
+- Review request after completed service
+- Negative review escalation / save-the-customer flow
+- Happy customer → review + referral ask
+- Review reminder multi-touch follow-up
+
+Reactivation / Retention
+- 30-day inactive lead reactivation
+- 90-day win-back campaign
+- Lapsed customer offer sequence
+- “Still interested?” nurture
+- Dormant pipeline revival
+
+Multi-channel / Advanced
+- SMS + Email + WhatsApp nurture
+- DM + SMS + booking link hybrid follow-up
+- AI voice call escalation flow
+- Lead qualification + human handoff
+- Multi-location local lead routing follow-up
+
+Ecommerce if supported
+- Abandoned cart recovery
+- Browse abandonment follow-up
+- Post-purchase upsell / review request
+- Repeat customer reactivation
+
+Do not limit yourself to exactly 12 if the system can support more cleanly.
+I prefer a sharp, high-value library over an artificially small one.
+
+4. Make every template production-grade
+Each template must have:
+- name
+- short conversion-oriented description
+- business outcome / purpose
+- category
+- trigger type
+- channel mix
+- industry tags
+- difficulty or complexity level if useful
+- estimated use case / who it is for
+- structured steps array using only real supported triggers and step types
+- default copy that is usable, not embarrassing
+
+If a step type or trigger is not actually supported in the current system, do not use it.
+
+5. Strong template copy
+Do not use bland copy.
+
+Bad:
+- “Hi, thanks for your interest.”
+
+Good:
+- channel-appropriate
+- natural
+- conversion-aware
+- specific enough to be useful
+- still customizable
+
+Use placeholders like:
+- {{leadName}}
+- {{businessName}}
+- {{bookingLink}}
+- {{offer}}
+- {{reviewLink}}
+- {{locationName}}
+where appropriate.
+
+The copy should feel like a real automation a good agency would deploy.
+
+6. Template metadata and filtering
+Users should be able to browse intelligently.
+
+Good filters may include:
+- category
+- channel
+- trigger type
+- industry
+- objective (bookings, reviews, reactivation, follow-up, lead response)
+- complexity level
+
+Make the library feel useful, not cluttered.
+
+7. AI Architect integration
+Update the AI workflow generation system so it understands the template catalog.
+
+Requirements:
+- if the user describes a common use case, the AI should suggest the closest template first
+- if the user’s intent closely matches a known template, it should recommend using/adapting it
+- if appropriate, the AI can auto-start from the best template instead of building from zero
+- the system prompt should know the names, categories, and purposes of the template catalog
+
+The AI should behave like:
+“I know a proven workflow for this”
+not
+“I will always invent from scratch”
+
+8. Make it feel like a premium feature
+The templates should make Apex feel like:
+- faster than building manually
+- smarter than a blank workflow canvas
+- more practical than just asking AI to freestyle
+- immediately valuable for agencies and local businesses
+
+This should feel like a product people would pay for.
+
+9. No fluff, no dead weight
+Do not create templates that exist just to increase the count.
+Every template should have a strong reason to exist.
+
+I would rather have:
+- 20 killer templates
+
+than:
+- 50 weak templates
+
+10. Deliverables
+Before implementation, return:
+1. the full proposed template catalog
+2. categories
+3. the strongest high-value templates you recommend
+4. any trigger/step limitations from the current system
+5. exact files to modify
+6. then implement
+
+Success criteria
+This feature is successful only if:
+- the template library feels premium
+- templates are actually useful
+- they use real supported workflow structures
+- Facebook/Instagram/DM flows are strongly represented
+- users can launch valuable automations quickly
+- AI knows about and leverages the library
+- the feature feels like a serious SaaS differentiator, not a side panel
