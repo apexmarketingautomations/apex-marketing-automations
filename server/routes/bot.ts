@@ -15,7 +15,7 @@ export function registerBotRoutes(app: Express) {
   // ---- Bot Chat (Real OpenAI) ----
   const botChatSchema = z.object({
     message: z.string().min(1).max(2000),
-    persona: z.string().max(5000).optional(),
+    persona: z.string().max(50000).optional(),
     industry: z.string().max(100).optional(),
     language: z.string().max(10).optional(),
     trainingJobId: z.number().optional(),

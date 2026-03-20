@@ -74,7 +74,12 @@ export function useStreamingResponse() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: "Request failed" }));
-        throw new Error(errorData.error || `HTTP ${response.status}`);
+        const errMsg = typeof errorData.error === 'string'
+          ? errorData.error
+          : errorData.error?.fieldErrors
+            ? Object.entries(errorData.error.fieldErrors).map(([k, v]) => `${k}: ${(v as string[]).join(', ')}`).join('; ')
+            : `HTTP ${response.status}`;
+        throw new Error(errMsg);
       }
 
       const reader = response.body?.getReader();
@@ -105,8 +110,9 @@ export function useStreamingResponse() {
                 abortRef.current.abort();
                 abortRef.current = null;
               }
-              setState(prev => ({ ...prev, error: data.error, isStreaming: false }));
-              options.onError?.(data.error);
+              const errStr = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
+              setState(prev => ({ ...prev, error: errStr, isStreaming: false }));
+              options.onError?.(errStr);
               return;
             }
 
