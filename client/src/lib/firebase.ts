@@ -1,7 +1,7 @@
 import { initializeApp, type FirebaseApp } from "firebase/app";
 import { getAnalytics, logEvent, type Analytics } from "firebase/analytics";
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, type Auth, type User } from "firebase/auth";
-import { getMessaging, getToken, onMessage, type Messaging } from "firebase/messaging";
+import { getMessaging, getToken, onMessage, isSupported as isMessagingSupported, type Messaging } from "firebase/messaging";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
@@ -79,9 +79,14 @@ export async function getFirebaseIdToken(): Promise<string | null> {
   return user.getIdToken();
 }
 
-export function getFirebaseMessaging(): Messaging | null {
-  if (!messaging && typeof window !== "undefined" && "serviceWorker" in navigator) {
+export async function getFirebaseMessaging(): Promise<Messaging | null> {
+  if (!messaging && typeof window !== "undefined") {
     try {
+      const supported = await isMessagingSupported();
+      if (!supported) {
+        console.warn("[Firebase] Messaging not supported in this browser");
+        return null;
+      }
       messaging = getMessaging(getApp());
     } catch (err) {
       console.warn("[Firebase] Messaging init failed:", err);
@@ -98,7 +103,7 @@ export async function requestNotificationPermission(): Promise<string | null> {
       return null;
     }
 
-    const msg = getFirebaseMessaging();
+    const msg = await getFirebaseMessaging();
     if (!msg) return null;
 
     const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
@@ -111,8 +116,8 @@ export async function requestNotificationPermission(): Promise<string | null> {
   }
 }
 
-export function onForegroundMessage(callback: (payload: any) => void): (() => void) | null {
-  const msg = getFirebaseMessaging();
+export async function onForegroundMessage(callback: (payload: any) => void): Promise<(() => void) | null> {
+  const msg = await getFirebaseMessaging();
   if (!msg) return null;
   return onMessage(msg, callback);
 }

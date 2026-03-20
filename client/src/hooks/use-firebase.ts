@@ -48,14 +48,24 @@ export function useFirebaseNotifications() {
       }
     })();
 
-    const unsubscribe = onForegroundMessage((payload) => {
+    let unsubscribe: (() => void) | null = null;
+    let cancelled = false;
+
+    onForegroundMessage((payload) => {
       toast({
         title: payload.notification?.title || "Notification",
         description: payload.notification?.body || "",
       });
+    }).then((unsub) => {
+      if (cancelled) {
+        unsub?.();
+      } else {
+        unsubscribe = unsub;
+      }
     });
 
     return () => {
+      cancelled = true;
       if (unsubscribe) unsubscribe();
     };
   }, [user, toast]);
