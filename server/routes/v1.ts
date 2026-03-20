@@ -45,6 +45,11 @@ export function registerV1Routes(app: Express) {
     "AlertTeam",
     "WebhookCall",
     "AIGenerate",
+    "SendFacebookDM",
+    "SendFormLink",
+    "SendBookingLink",
+    "AIQualify",
+    "VapiCall",
   ] as const;
 
   const triggerFilterSchema = z.object({
@@ -127,6 +132,25 @@ export function registerV1Routes(app: Express) {
       output_field: z.string().optional(),
       model: z.string().optional(),
     }),
+    SendFacebookDM: z.object({
+      body: z.string().min(1),
+    }),
+    SendFormLink: z.object({
+      body: z.string().min(1),
+      form_url: z.string().optional(),
+    }),
+    SendBookingLink: z.object({
+      body: z.string().min(1),
+    }),
+    AIQualify: z.object({
+      check: z.string().min(1),
+      pass_action: z.string().optional(),
+      fail_action: z.string().optional(),
+    }),
+    VapiCall: z.object({
+      first_message: z.string().min(1),
+      assistantId: z.string().optional(),
+    }),
   };
 
   const manifestStepSchema = z.object({
@@ -139,6 +163,7 @@ export function registerV1Routes(app: Express) {
   const workflowManifestSchema = z.object({
     name: z.string().min(1).max(200),
     description: z.string().optional(),
+    templateUsed: z.string().nullable().optional(),
     trigger: z.object({
       type: z.enum(VALID_TRIGGER_TYPES as any),
       filters: triggerFilterSchema,
@@ -261,12 +286,69 @@ export function registerV1Routes(app: Express) {
   // AI SYSTEM ARCHITECT — Manifest Generator
   // ===========================================================================
 
-  const COMPILER_AI_SYSTEM_PROMPT = `You are Apex AI System Architect, an expert at designing multi-step workflow automations for businesses.
+  const COMPILER_AI_SYSTEM_PROMPT = `You are Apex AI System Architect, an expert at designing multi-step workflow automations for businesses. You are TEMPLATE-AWARE — you know proven workflow templates and should prefer adapting them over building from scratch.
 
-  You generate JSON workflow manifests that wire together triggers, actions, conditions, and delays.
+  ## TEMPLATE CATALOG
+  You have access to these proven, high-converting workflow templates. When a user's request matches one, START from that template and adapt it:
 
-  AVAILABLE TRIGGERS:
-  - OnCrashDetected: Fires when Sentinel detects a crash/accident (FHP data). Filters: tags (e.g. "Big Rig", "Fatality", "Hit and Run"), severity (critical/high/medium/low), county, radius_miles.
+  ### Facebook / DM Automations
+  1. "FB Lead Form → DM + SMS Nurture" — trigger: OnFormSubmit — DM greeting → Wait → AIQualify → Condition → SendBookingLink / SMS
+  2. "Instagram DM Keyword Auto-Reply" — trigger: OnNewLead — DM qualifying Q → Wait → AIQualify → Condition → SendBookingLink or ALERT
+  3. "Meta Ad Click → Multi-Channel Nurture" — trigger: OnFormSubmit — DM → SMS → Email → WhatsApp over 24hr
+  4. "Messenger Lead Qualification Flow" — trigger: OnFormSubmit — DM → AIQualify → Condition → VapiCall / SendBookingLink
+  5. "DM Ghosted Lead Recovery" — trigger: OnNewLead — Wait 24hr → Condition → DM re-engage → SMS → ALERT
+  6. "DM to Booking Pipeline Handoff" — trigger: OnFormSubmit — DM → AIQualify → Condition → SendBookingLink → SMS backup
+
+  ### Speed-to-Lead
+  7. "Speed-to-Lead Instant Follow-Up" — trigger: OnNewLead — SMS instant → VapiCall 1min → Condition → SendBookingLink
+  8. "Missed Call Text-Back + AI Callback" — trigger: OnMissedCall — SMS sorry → VapiCall 3min → Condition → SendBookingLink
+  9. "Hot Lead AI Qualification + Booking" — trigger: OnNewLead — AIQualify → Condition → VapiCall / SMS+SendBookingLink
+  10. "New Lead Multi-Touch Follow-Up" — trigger: OnNewLead — SMS → Email → SMS → WhatsApp → Condition → ALERT (72hr)
+  11. "No-Response Escalation Sequence" — trigger: OnNewLead — SMS → Email → VapiCall → WhatsApp → ALERT
+
+  ### Sales / Pipeline
+  12. "Quote Follow-Up Sequence" — trigger: OnNewLead — SMS thanks → Email detail → SMS urgency → VapiCall
+  13. "Estimate Follow-Up Reminder Ladder" — trigger: OnNewLead — SMS → Email → SMS final → Condition → VapiCall/ALERT
+  14. "Pipeline Stage Nurture" — trigger: Manual — AIQualify → Condition → stage-specific SMS → Email → SendBookingLink
+
+  ### Appointments
+  15. "Appointment Confirmation + Reminder Sequence" — trigger: OnAppointmentBooked — SMS confirm → reminders at 24hr, 2hr, 15min
+  16. "No-Show Recovery" — trigger: OnAppointmentBooked — Wait 30min → SMS → VapiCall → Email rebooking
+  17. "Post-Appointment Follow-Up" — trigger: OnAppointmentBooked — SMS thanks → Email recap → SMS review ask
+  18. "Reschedule Recovery Flow" — trigger: OnAppointmentBooked — Condition cancelled → SMS rebook → Email → VapiCall
+
+  ### Reviews & Reputation
+  19. "Post-Service Review Request" — trigger: OnAppointmentBooked — SMS review ask → Condition → WhatsApp → Email
+  20. "Negative Review Save-the-Customer" — trigger: OnReviewReceived — Condition rating<3 → ALERT → SMS apology → VapiCall
+  21. "Happy Customer → Review + Referral" — trigger: OnReviewReceived — Condition rating 4+ → SMS thanks+referral → Email
+  22. "Review Reminder Multi-Touch" — trigger: OnAppointmentBooked — SMS review → Condition → Email → WhatsApp
+
+  ### Reactivation
+  23. "30-Day Inactive Reactivation" — trigger: Manual — SMS offer → Condition → Email → WhatsApp → ALERT
+  24. "90-Day Win-Back Campaign" — trigger: Manual — Email miss you + discount → SMS → Condition → VapiCall
+  25. "Still Interested? Nurture" — trigger: Manual — SMS check-in → Condition → Email → SendBookingLink → ALERT
+  26. "Dormant Pipeline Revival" — trigger: Manual — AIQualify re-score → Condition → SMS → VapiCall → Email → ALERT
+
+  ### Multi-Channel
+  27. "SMS + Email + WhatsApp Triple Nurture" — trigger: OnNewLead — SMS → Email → WhatsApp → Condition → VapiCall
+  28. "DM + SMS + Booking Hybrid Follow-Up" — trigger: OnFormSubmit — DM → SMS → SendBookingLink → Email
+  29. "AI Voice Escalation Flow" — trigger: OnNewLead — AIQualify → Condition(score) → High: VapiCall, Med: SMS→VapiCall, Low: Email
+  30. "Lead Qualification + Human Handoff" — trigger: OnNewLead — AIQualify → Condition → ALERT + SMS / Email drip
+
+  ### Ecommerce (Shopify)
+  31. "Abandoned Cart Recovery" — trigger: OnFormSubmit (use for Shopify cart abandonment webhook) — SMS cart → Email contents → WhatsApp discount → SMS urgency
+  32. "Post-Purchase Upsell + Review" — trigger: OnFormSubmit (use for Shopify order fulfilled webhook) — SMS thanks → Email upsell → SMS review ask
+  33. "Repeat Customer Reactivation" — trigger: Manual — SMS new drop → Email featured → WhatsApp exclusive
+
+  ## MATCHING BEHAVIOR
+  When a user describes a workflow need:
+  1. FIRST determine: does this closely match an existing template? Match on: business objective keywords, trigger type, channel preference, lifecycle stage.
+  2. If YES → Name the template, explain why it fits, adapt it to their specific needs.
+  3. If PARTIALLY → Combine or modify an existing template.
+  4. If NO strong fit → Build from scratch honestly.
+
+  ## AVAILABLE TRIGGERS
+  - OnCrashDetected: Fires when Sentinel detects a crash/accident (FHP data). Filters: tags, severity, county, radius_miles.
   - OnNewLead: New lead enters the CRM. Filters: source, tags.
   - OnMissedCall: Missed phone call detected.
   - OnFormSubmit: Web form submission received. Filters: source.
@@ -277,11 +359,13 @@ export function registerV1Routes(app: Express) {
   - Manual: Manually triggered.
 
   AVAILABLE ACTIONS:
-  - SendTwilioSMS: Send SMS via Twilio. Params: to (phone), to_role (e.g. "marketer", "attorney", "admin"), body (message text), from_number.
-  - SendWhatsApp: Send WhatsApp message via Twilio WhatsApp Business API. Params: to (phone with country code), to_role, body (message text), message_type (text/template/interactive_buttons/interactive_list), template_name (for template messages), template_variables (key-value pairs for template vars), buttons (comma-separated button labels for interactive), list_items (comma-separated list items).
+  - SendTwilioSMS: Send SMS via Twilio. Params: to (phone), to_role, body (message text), from_number.
+  - SendWhatsApp: Send WhatsApp message. Params: to (phone with country code), to_role, body, message_type.
+  - SendFacebookDM: Send Facebook/Instagram DM. Params: body (message text).
+  - SendFormLink: Send a form/intake link. Params: body (message), form_url.
   - Wait: Pause execution. Params: duration_minutes (1-43200).
-  - Condition: Branch logic. Params: check (description), field, operator (equals/not_equals/contains/greater_than/less_than/exists/not_exists), value, on_true (step id), on_false (step id).
-  - DeployMetaAd: Launch a Meta/Facebook geo-targeted ad. Params: campaign_name, radius_miles, budget_daily, duration_days, use_incident_coords (boolean), ad_copy, target_audience.
+  - Condition: Branch logic. Params: check (description), field, operator, value, on_true, on_false.
+  - DeployMetaAd: Launch a Meta/Facebook geo-targeted ad. Params: campaign_name, radius_miles, budget_daily, duration_days, use_incident_coords, ad_copy, target_audience.
   - SendEmail: Send email. Params: to, subject, body.
   - CreateContact: Add to CRM. Params: first_name, last_name, phone, email, source, tags.
   - UpdateDeal: Update pipeline deal. Params: deal_id, stage, value, notes.
@@ -293,6 +377,7 @@ export function registerV1Routes(app: Express) {
   {
   "name": "<workflow name>",
   "description": "<what this automation does>",
+  "templateUsed": "<template name if based on a template, or null>",
   "trigger": {
     "type": "<trigger type>",
     "filters": { <optional filter params> }
@@ -307,13 +392,21 @@ export function registerV1Routes(app: Express) {
   ]
   }
 
+  ## COPY RULES
+  - All SMS copy is short, punchy, and conversational
+  - DM copy feels personal and casual
+  - Email can be detailed but should still feel human
+  - WhatsApp feels personal, not corporate
+  - Always use {{leadName}}, {{businessName}}, {{bookingLink}}, {{reviewLink}} variables
+  - Never write generic filler like "Hi, thanks for your interest"
+  - Every CTA must be clear and specific
+
   RULES:
   - Generate 2-10 steps based on complexity
   - Use realistic, professional SMS/email copy
   - Wait durations should be practical (1-30 min for urgent, hours/days for nurture)
   - Conditions should check meaningful business state
   - For crash-related workflows, always include SendTwilioSMS to alert the team FIRST
-  - Use template variables like {{lead_name}}, {{incident_location}}, {{crash_type}} in messages
   - Return ONLY valid JSON`;
 
   app.post("/api/v1/compiler/generate", asyncHandler(async (req: Request, res: Response) => {
@@ -357,8 +450,63 @@ export function registerV1Routes(app: Express) {
       }
     }
 
+    const templateKeywords: Record<string, string[]> = {
+      "FB Lead Form → DM + SMS Nurture": ["facebook", "fb", "meta", "lead form", "dm nurture", "facebook lead"],
+      "Instagram DM Keyword Auto-Reply": ["instagram", "ig", "dm keyword", "auto reply", "dm automation"],
+      "Meta Ad Click → Multi-Channel Nurture": ["meta ad", "ad click", "ad lead", "facebook ad"],
+      "Messenger Lead Qualification Flow": ["messenger", "qualify", "qualification", "dm qualify"],
+      "DM Ghosted Lead Recovery": ["ghosted", "dm ghost", "no reply dm", "dm follow up"],
+      "DM to Booking Pipeline Handoff": ["dm to booking", "dm pipeline", "dm handoff"],
+      "Speed-to-Lead Instant Follow-Up": ["speed to lead", "instant", "fast follow", "quick response", "immediate"],
+      "Missed Call Text-Back + AI Callback": ["missed call", "text back", "call back", "missed phone"],
+      "Hot Lead AI Qualification + Booking": ["hot lead", "ai qualify", "qualification", "score lead"],
+      "New Lead Multi-Touch Follow-Up": ["multi touch", "follow up sequence", "nurture sequence", "drip"],
+      "No-Response Escalation Sequence": ["no response", "escalation", "not responding", "escalate"],
+      "Quote Follow-Up Sequence": ["quote", "proposal", "bid", "estimate follow"],
+      "Estimate Follow-Up Reminder Ladder": ["estimate", "follow up ladder", "reminder ladder"],
+      "Pipeline Stage Nurture": ["pipeline", "stage", "deal stage", "crm", "sales pipeline"],
+      "Appointment Confirmation + Reminder Sequence": ["appointment", "confirm", "reminder", "remind"],
+      "No-Show Recovery": ["no show", "no-show", "didn't show", "missed appointment"],
+      "Post-Appointment Follow-Up": ["post appointment", "after appointment", "visit follow"],
+      "Reschedule Recovery Flow": ["reschedule", "cancel", "cancelled appointment"],
+      "Post-Service Review Request": ["review request", "get review", "ask review", "review ask"],
+      "Negative Review Save-the-Customer": ["negative review", "bad review", "low rating", "1 star", "2 star"],
+      "Happy Customer → Review + Referral": ["happy customer", "referral", "good review", "5 star", "positive review"],
+      "Review Reminder Multi-Touch": ["review reminder", "review follow", "review nudge"],
+      "30-Day Inactive Reactivation": ["inactive", "reactivate", "30 day", "dormant", "cold lead"],
+      "90-Day Win-Back Campaign": ["win back", "winback", "90 day", "lost customer", "come back"],
+      "Still Interested? Nurture": ["still interested", "check in", "re-engage", "old lead"],
+      "Dormant Pipeline Revival": ["dormant pipeline", "revival", "stale deal", "dead deal"],
+      "SMS + Email + WhatsApp Triple Nurture": ["triple", "three channel", "multi channel", "sms email whatsapp"],
+      "DM + SMS + Booking Hybrid Follow-Up": ["hybrid", "dm sms booking", "cross channel"],
+      "AI Voice Escalation Flow": ["voice escalation", "ai call", "vapi", "phone call", "call escalation"],
+      "Lead Qualification + Human Handoff": ["human handoff", "handoff", "hand off", "qualify handoff"],
+      "Abandoned Cart Recovery": ["abandoned cart", "cart recovery", "shopify cart", "checkout"],
+      "Post-Purchase Upsell + Review": ["post purchase", "upsell", "cross sell", "after purchase"],
+      "Repeat Customer Reactivation": ["repeat customer", "repeat purchase", "customer retention", "loyalty"],
+    };
+
+    const promptLower = (parsed.data.prompt + contextPrompt).toLowerCase();
+    const matchedTemplates: { name: string; score: number }[] = [];
+    for (const [name, keywords] of Object.entries(templateKeywords)) {
+      let score = 0;
+      for (const kw of keywords) {
+        if (promptLower.includes(kw)) score += kw.split(" ").length * 2;
+      }
+      if (score > 0) matchedTemplates.push({ name, score });
+    }
+    matchedTemplates.sort((a, b) => b.score - a.score);
+
+    let matchHint = "";
+    if (matchedTemplates.length > 0) {
+      const top = matchedTemplates.slice(0, 3);
+      matchHint = `\n\nBased on the user's request, these templates are the best fits:\n`;
+      top.forEach((m, i) => { matchHint += `${i + 1}. "${m.name}" (relevance: ${m.score})\n`; });
+      matchHint += `Consider starting from the top match if it fits the request well. Set "templateUsed" in your response. If none fit well, build from scratch and set "templateUsed" to null.`;
+    }
+
     const aiResult = await aiChat([
-      { role: "system", content: COMPILER_AI_SYSTEM_PROMPT },
+      { role: "system", content: COMPILER_AI_SYSTEM_PROMPT + matchHint },
       { role: "user", content: parsed.data.prompt + contextPrompt + siteState },
     ], { temperature: 0.7, maxTokens: 4096, jsonMode: true, route: "v1-compiler-generate" });
 

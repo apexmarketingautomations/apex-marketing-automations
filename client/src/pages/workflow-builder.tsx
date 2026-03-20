@@ -1,6 +1,7 @@
 import { PlanGate } from "@/components/plan-gate";
-import { useState, useCallback } from "react";
-import { Clock, MessageSquare, GitFork, MoreHorizontal, PlayCircle, CheckCircle2, AlertCircle, AlertTriangle, Sparkles, Loader2, Code2, Trash2, BookOpen, Target, Mail, UserPlus, TrendingUp, Bell, Globe, Zap, Terminal, Cpu, Brain, ChevronDown, Eye, Power, Archive, ShoppingCart, Volume2, MessageCircle, BarChart3, Undo2, Wand2, ArrowDown, Activity, FileText } from "lucide-react";
+import { useState, useCallback, useMemo } from "react";
+import { Clock, MessageSquare, GitFork, MoreHorizontal, PlayCircle, CheckCircle2, AlertCircle, AlertTriangle, Sparkles, Loader2, Code2, Trash2, BookOpen, Target, Mail, UserPlus, TrendingUp, Bell, Globe, Zap, Terminal, Cpu, Brain, ChevronDown, Eye, Power, Archive, ShoppingCart, Volume2, MessageCircle, BarChart3, Undo2, Wand2, ArrowDown, Activity, FileText, Search, LayoutGrid, Star, RefreshCw, Layers, Phone, X } from "lucide-react";
+import { WORKFLOW_TEMPLATES, TEMPLATE_CATEGORIES, type WorkflowTemplate, type TemplateCategory, type ChannelType } from "@/data/workflow-templates";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { WORKFLOW_STEPS } from "@/components/tutorial-steps";
 import { motion, AnimatePresence } from "framer-motion";
@@ -115,6 +116,9 @@ const StepCard = ({ step, index, onClick, isSelected, onMoveUp, onMoveDown, onDe
                   {step.action_type === "VapiCall" && <span className="text-orange-400">AI Call → {step.params.first_message?.slice(0, 30) || "Outbound"}</span>}
                   {step.action_type === "SendBookingLink" && <span className="text-teal-400">Booking SMS</span>}
                   {step.action_type === "AIQualify" && <span className="text-violet-400">AI Qualify Lead</span>}
+                  {step.action_type === "SendFacebookDM" && <span className="text-blue-400">{step.params.body?.slice(0, 40) || "Facebook DM"}</span>}
+                  {step.action_type === "SendFormLink" && <span className="text-emerald-400">Form Link</span>}
+                  {step.action_type === "UpdateDeal" && <span className="text-orange-400">→ {step.params.stage || "Update Deal"}</span>}
                 </p>
               </div>
               <div className="flex items-center gap-0.5">
@@ -1032,6 +1036,359 @@ function WorkflowAnalyticsPanel({ workflowId, workflowName }: { workflowId?: num
   );
 }
 
+const CHANNEL_ICONS: Record<ChannelType, { icon: React.ReactNode; label: string; color: string }> = {
+  sms: { icon: <MessageSquare className="h-3 w-3" />, label: "SMS", color: "text-blue-400" },
+  email: { icon: <Mail className="h-3 w-3" />, label: "Email", color: "text-cyan-400" },
+  whatsapp: { icon: <MessageCircle className="h-3 w-3" />, label: "WhatsApp", color: "text-green-400" },
+  dm: { icon: <MessageCircle className="h-3 w-3" />, label: "DM", color: "text-blue-500" },
+  voice: { icon: <Phone className="h-3 w-3" />, label: "Voice", color: "text-orange-400" },
+  ad: { icon: <Target className="h-3 w-3" />, label: "Ad", color: "text-pink-400" },
+};
+
+const COMPLEXITY_COLORS = {
+  simple: "border-emerald-500/30 text-emerald-400",
+  moderate: "border-amber-500/30 text-amber-400",
+  advanced: "border-red-500/30 text-red-400",
+};
+
+function TemplatesGalleryPanel({ onUseTemplate }: { onUseTemplate: (template: WorkflowTemplate) => void }) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<TemplateCategory | "all">("all");
+  const [selectedChannel, setSelectedChannel] = useState<ChannelType | "all">("all");
+  const [selectedTrigger, setSelectedTrigger] = useState<string>("all");
+  const [selectedIndustry, setSelectedIndustry] = useState<string>("all");
+  const [selectedObjective, setSelectedObjective] = useState<string>("all");
+  const [previewTemplate, setPreviewTemplate] = useState<WorkflowTemplate | null>(null);
+
+  const allTriggers = useMemo(() => [...new Set(WORKFLOW_TEMPLATES.map(t => t.trigger))].sort(), []);
+  const allIndustries = useMemo(() => [...new Set(WORKFLOW_TEMPLATES.flatMap(t => t.industryTags))].sort(), []);
+  const allObjectives = useMemo(() => {
+    const objectives = WORKFLOW_TEMPLATES.map(t => {
+      const outcome = t.businessOutcome.toLowerCase();
+      if (outcome.includes("speed") || outcome.includes("response time")) return "Speed to Lead";
+      if (outcome.includes("book") || outcome.includes("appointment")) return "Book Appointments";
+      if (outcome.includes("review")) return "Get Reviews";
+      if (outcome.includes("recover") || outcome.includes("reactivat") || outcome.includes("re-engag")) return "Recover Lost Leads";
+      if (outcome.includes("close") || outcome.includes("deal") || outcome.includes("pipeline") || outcome.includes("revenue")) return "Close More Deals";
+      if (outcome.includes("cart") || outcome.includes("purchase") || outcome.includes("repeat")) return "Drive Sales";
+      if (outcome.includes("no-show") || outcome.includes("show rate")) return "Reduce No-Shows";
+      if (outcome.includes("contact") || outcome.includes("engagement")) return "Maximize Contact Rate";
+      return "Other";
+    });
+    return [...new Set(objectives)].sort();
+  }, []);
+
+  const filteredTemplates = useMemo(() => {
+    return WORKFLOW_TEMPLATES.filter(t => {
+      if (selectedCategory !== "all" && t.category !== selectedCategory) return false;
+      if (selectedChannel !== "all" && !t.channelMix.includes(selectedChannel)) return false;
+      if (selectedTrigger !== "all" && t.trigger !== selectedTrigger) return false;
+      if (selectedIndustry !== "all" && !t.industryTags.includes(selectedIndustry)) return false;
+      if (selectedObjective !== "all") {
+        const outcome = t.businessOutcome.toLowerCase();
+        const objMap: Record<string, string[]> = {
+          "Speed to Lead": ["speed", "response time"],
+          "Book Appointments": ["book", "appointment"],
+          "Get Reviews": ["review"],
+          "Recover Lost Leads": ["recover", "reactivat", "re-engag"],
+          "Close More Deals": ["close", "deal", "pipeline", "revenue"],
+          "Drive Sales": ["cart", "purchase", "repeat"],
+          "Reduce No-Shows": ["no-show", "show rate"],
+          "Maximize Contact Rate": ["contact", "engagement"],
+        };
+        const keywords = objMap[selectedObjective] || [];
+        if (keywords.length > 0 && !keywords.some(kw => outcome.includes(kw))) return false;
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        return (
+          t.name.toLowerCase().includes(q) ||
+          t.description.toLowerCase().includes(q) ||
+          t.businessOutcome.toLowerCase().includes(q) ||
+          t.industryTags.some(tag => tag.includes(q))
+        );
+      }
+      return true;
+    });
+  }, [searchQuery, selectedCategory, selectedChannel, selectedTrigger, selectedIndustry, selectedObjective]);
+
+  const categories = Object.entries(TEMPLATE_CATEGORIES) as [TemplateCategory, typeof TEMPLATE_CATEGORIES[TemplateCategory]][];
+  const hasActiveFilters = selectedCategory !== "all" || selectedChannel !== "all" || selectedTrigger !== "all" || selectedIndustry !== "all" || selectedObjective !== "all" || searchQuery;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            data-testid="input-template-search"
+            placeholder="Search templates by name, objective, or industry..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10 h-9 text-sm"
+          />
+        </div>
+        <Select value={selectedCategory} onValueChange={(val) => setSelectedCategory(val as TemplateCategory | "all")}>
+          <SelectTrigger className="w-[160px] h-9 text-xs" data-testid="select-template-category">
+            <LayoutGrid className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+            <SelectValue placeholder="Category" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Categories</SelectItem>
+            {categories.map(([key, cat]) => (
+              <SelectItem key={key} value={key}>{cat.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={selectedChannel} onValueChange={(val) => setSelectedChannel(val as ChannelType | "all")}>
+          <SelectTrigger className="w-[140px] h-9 text-xs" data-testid="select-template-channel">
+            <SelectValue placeholder="Channel" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Channels</SelectItem>
+            <SelectItem value="sms">SMS</SelectItem>
+            <SelectItem value="email">Email</SelectItem>
+            <SelectItem value="whatsapp">WhatsApp</SelectItem>
+            <SelectItem value="dm">DM</SelectItem>
+            <SelectItem value="voice">Voice</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={selectedTrigger} onValueChange={setSelectedTrigger}>
+          <SelectTrigger className="w-[170px] h-9 text-xs" data-testid="select-template-trigger">
+            <Zap className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+            <SelectValue placeholder="Trigger" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Triggers</SelectItem>
+            {allTriggers.map(trig => (
+              <SelectItem key={trig} value={trig}>{trig.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={selectedIndustry} onValueChange={setSelectedIndustry}>
+          <SelectTrigger className="w-[150px] h-9 text-xs" data-testid="select-template-industry">
+            <SelectValue placeholder="Industry" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Industries</SelectItem>
+            {allIndustries.map(ind => (
+              <SelectItem key={ind} value={ind}>{ind.replace(/\b\w/g, c => c.toUpperCase())}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={selectedObjective} onValueChange={setSelectedObjective}>
+          <SelectTrigger className="w-[180px] h-9 text-xs" data-testid="select-template-objective">
+            <Target className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+            <SelectValue placeholder="Objective" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Objectives</SelectItem>
+            {allObjectives.map(obj => (
+              <SelectItem key={obj} value={obj}>{obj}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground" data-testid="text-template-count">
+          {filteredTemplates.length} template{filteredTemplates.length !== 1 ? "s" : ""}
+        </p>
+        {hasActiveFilters && (
+          <Button variant="ghost" size="sm" className="text-xs h-7 text-muted-foreground" data-testid="button-clear-filters"
+            onClick={() => { setSelectedCategory("all"); setSelectedChannel("all"); setSelectedTrigger("all"); setSelectedIndustry("all"); setSelectedObjective("all"); setSearchQuery(""); }}>
+            <X className="h-3 w-3 mr-1" /> Clear filters
+          </Button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className={`${previewTemplate ? "lg:col-span-2" : "lg:col-span-3"} space-y-3`}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {filteredTemplates.map((template) => {
+              const catInfo = TEMPLATE_CATEGORIES[template.category];
+              const isSelected = previewTemplate?.id === template.id;
+              return (
+                <motion.div
+                  key={template.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  whileHover={{ scale: 1.01 }}
+                  className="cursor-pointer"
+                  onClick={() => setPreviewTemplate(isSelected ? null : template)}
+                  data-testid={`card-template-${template.id}`}
+                >
+                  <Card className={`border-border hover:shadow-md transition-all duration-200 h-full ${isSelected ? "ring-2 ring-primary border-primary/50" : "hover:border-primary/30"}`}>
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-semibold text-sm text-foreground leading-tight" data-testid={`text-template-name-${template.id}`}>
+                            {template.name}
+                          </h3>
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{template.description}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <Badge variant="outline" className={`text-[9px] ${catInfo.color}`}>
+                          {catInfo.label}
+                        </Badge>
+                        <Badge variant="outline" className={`text-[9px] ${COMPLEXITY_COLORS[template.complexityLevel]}`}>
+                          {template.complexityLevel}
+                        </Badge>
+                        {template.industryTags.slice(0, 3).map(tag => (
+                          <Badge key={tag} variant="outline" className="text-[9px] border-white/10 text-muted-foreground capitalize">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
+                          {template.channelMix.map((ch) => {
+                            const chInfo = CHANNEL_ICONS[ch];
+                            return (
+                              <span key={ch} className={`${chInfo.color}`} title={chInfo.label}>
+                                {chInfo.icon}
+                              </span>
+                            );
+                          })}
+                        </div>
+                        <span className="text-[10px] text-muted-foreground">•</span>
+                        <span className="text-[10px] text-muted-foreground">{template.steps.length} steps</span>
+                        <span className="text-[10px] text-muted-foreground">•</span>
+                        <span className="text-[10px] text-muted-foreground capitalize">{template.trigger.replace(/_/g, " ")}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              );
+            })}
+          </div>
+          {filteredTemplates.length === 0 && (
+            <div className="text-center py-12 text-muted-foreground border border-dashed border-border rounded-xl" data-testid="text-no-templates">
+              <Search className="h-8 w-8 mx-auto mb-2 opacity-20" />
+              <p className="text-sm">No templates match your filters.</p>
+              <p className="text-xs mt-1">Try broadening your search or clearing filters.</p>
+            </div>
+          )}
+        </div>
+
+        <AnimatePresence>
+          {previewTemplate && (
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              className="lg:col-span-1"
+            >
+              <Card className="sticky top-6 border-border" data-testid="template-preview-panel">
+                <CardContent className="p-5 space-y-4 max-h-[calc(100vh-14rem)] overflow-y-auto">
+                  <div className="flex items-start justify-between">
+                    <h3 className="font-bold text-base text-foreground leading-tight" data-testid="text-preview-name">
+                      {previewTemplate.name}
+                    </h3>
+                    <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => setPreviewTemplate(null)}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  <p className="text-xs text-muted-foreground">{previewTemplate.description}</p>
+
+                  <div className="p-3 rounded-lg bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20">
+                    <p className="text-xs font-medium text-primary" data-testid="text-preview-outcome">
+                      {previewTemplate.businessOutcome}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    <Badge variant="outline" className={`text-[9px] ${TEMPLATE_CATEGORIES[previewTemplate.category].color}`}>
+                      {TEMPLATE_CATEGORIES[previewTemplate.category].label}
+                    </Badge>
+                    <Badge variant="outline" className={`text-[9px] ${COMPLEXITY_COLORS[previewTemplate.complexityLevel]}`}>
+                      {previewTemplate.complexityLevel}
+                    </Badge>
+                    <Badge variant="outline" className="text-[9px] border-white/20 text-muted-foreground capitalize">
+                      {previewTemplate.trigger.replace(/_/g, " ")}
+                    </Badge>
+                    {previewTemplate.industryTags.map(tag => (
+                      <Badge key={tag} variant="outline" className="text-[9px] border-white/10 text-muted-foreground capitalize" data-testid={`badge-industry-${tag}`}>
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {previewTemplate.channelMix.map((ch) => {
+                      const chInfo = CHANNEL_ICONS[ch];
+                      return (
+                        <div key={ch} className={`flex items-center gap-1 text-[10px] ${chInfo.color}`}>
+                          {chInfo.icon}
+                          <span>{chInfo.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="space-y-1">
+                    <h4 className="text-xs font-semibold text-foreground uppercase tracking-wider">Step Sequence</h4>
+                    <div className="space-y-2 mt-2">
+                      {previewTemplate.steps.map((step, i) => (
+                        <div key={i} className="flex items-start gap-2 group" data-testid={`preview-step-${i}`}>
+                          <div className="flex flex-col items-center">
+                            <div className="p-1 rounded bg-secondary/50">
+                              <StepIcon type={step.action_type} />
+                            </div>
+                            {i < previewTemplate.steps.length - 1 && (
+                              <div className="w-0.5 h-4 bg-border mt-1" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0 pt-0.5">
+                            <p className="text-[11px] font-medium text-foreground">{step.action_type.replace(/([A-Z])/g, " $1").trim()}</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5 whitespace-pre-wrap break-words">
+                              {step.action_type === "WAIT" && `Wait ${step.params.duration_minutes >= 1440 ? `${Math.round(step.params.duration_minutes / 1440)} day(s)` : step.params.duration_minutes >= 60 ? `${Math.round(step.params.duration_minutes / 60)} hour(s)` : `${step.params.duration_minutes} min`}`}
+                              {(step.action_type === "SMS" || step.action_type === "SendFacebookDM" || step.action_type === "SendBookingLink" || step.action_type === "SendFormLink") && step.params.body}
+                              {step.action_type === "SendWhatsApp" && step.params.body}
+                              {step.action_type === "SendEmail" && (<><span className="font-medium">Subject:</span> {step.params.subject}{step.params.body && (<><br /><span className="font-medium">Body:</span> {step.params.body}</>)}</>)}
+                              {step.action_type === "CONDITION" && `Check: ${step.params.check}`}
+                              {step.action_type === "ALERT" && `Alert: ${step.params.user_id || "team"}`}
+                              {step.action_type === "AIQualify" && `Qualify: ${step.params.check}`}
+                              {step.action_type === "VapiCall" && step.params.first_message}
+                              {step.action_type === "UpdateDeal" && `Update deal stage`}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {previewTemplate.industryTags.length > 0 && (
+                    <div className="space-y-1">
+                      <h4 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Industries</h4>
+                      <div className="flex flex-wrap gap-1">
+                        {previewTemplate.industryTags.map((tag) => (
+                          <Badge key={tag} variant="secondary" className="text-[9px] capitalize">{tag}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <Button
+                    data-testid="button-use-template"
+                    className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white border-0"
+                    onClick={() => onUseTemplate(previewTemplate)}
+                  >
+                    <Zap className="mr-2 h-4 w-4" />
+                    Use This Template
+                  </Button>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
 function WorkflowBuilderInner() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -1195,6 +1552,10 @@ function WorkflowBuilderInner() {
       VapiCall: { action_type: "VapiCall", params: { first_message: "Hey {{leadName}}, this is Apex — you just filled out a form, I wanted to follow up real quick.", assistantId: "" } },
       SendBookingLink: { action_type: "SendBookingLink", params: { body: "Hey {{leadName}}! Here's our calendar to book a time: {{bookingLink}}" } },
       AIQualify: { action_type: "AIQualify", params: { check: "interest_level", pass_action: "continue", fail_action: "skip" } },
+      SendFacebookDM: { action_type: "SendFacebookDM", params: { body: "Hey {{leadName}}! Thanks for reaching out — how can we help you today?" } },
+      SendFormLink: { action_type: "SendFormLink", params: { body: "Hey {{leadName}}, fill out this quick form so we can get you started: {{formLink}}", form_url: "" } },
+      UpdateDeal: { action_type: "UpdateDeal", params: { stage: "qualified", value: 0, notes: "" } },
+      SendWhatsApp: { action_type: "SendWhatsApp", params: { body: "Hey {{leadName}}, this is {{businessName}}.", message_type: "text" } },
     };
 
     const newStep = stepDefaults[type];
@@ -1319,6 +1680,9 @@ function WorkflowBuilderInner() {
           </TabsTrigger>
           <TabsTrigger value="live" className="data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400 gap-1.5" data-testid="tab-live">
             <Zap className="h-3.5 w-3.5" /> Live Automations
+          </TabsTrigger>
+          <TabsTrigger value="templates" className="data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-400 gap-1.5" data-testid="tab-templates">
+            <LayoutGrid className="h-3.5 w-3.5" /> Templates
           </TabsTrigger>
           <TabsTrigger value="analytics" className="data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-400 gap-1.5" data-testid="tab-analytics">
             <BarChart3 className="h-3.5 w-3.5" /> Analytics
@@ -1445,6 +1809,9 @@ function WorkflowBuilderInner() {
                       { type: "VapiCall", label: "AI Call", icon: <Volume2 className="h-3 w-3" />, color: "text-orange-500 border-orange-500/30 hover:bg-orange-500/10" },
                       { type: "SendBookingLink", label: "Booking SMS", icon: <BookOpen className="h-3 w-3" />, color: "text-teal-500 border-teal-500/30 hover:bg-teal-500/10" },
                       { type: "AIQualify", label: "AI Qualify", icon: <Sparkles className="h-3 w-3" />, color: "text-violet-500 border-violet-500/30 hover:bg-violet-500/10" },
+                      { type: "SendFacebookDM", label: "Facebook DM", icon: <MessageCircle className="h-3 w-3" />, color: "text-blue-400 border-blue-400/30 hover:bg-blue-400/10" },
+                      { type: "SendFormLink", label: "Form Link", icon: <FileText className="h-3 w-3" />, color: "text-emerald-400 border-emerald-400/30 hover:bg-emerald-400/10" },
+                      { type: "UpdateDeal", label: "Update Deal", icon: <TrendingUp className="h-3 w-3" />, color: "text-orange-400 border-orange-400/30 hover:bg-orange-400/10" },
                     ].map(({ type, label, icon, color }) => (
                       <Button
                         key={type}
@@ -1685,6 +2052,66 @@ function WorkflowBuilderInner() {
                           </>
                         )}
 
+                        {selectedStep.action_type === "SendFacebookDM" && (
+                          <>
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-medium">DM Message</label>
+                              <Textarea data-testid="input-fbdm-body" value={selectedStep.params.body || ""} className="min-h-[80px]"
+                                placeholder="Hey {{leadName}}, thanks for reaching out!"
+                                onChange={(e) => handleUpdateStep(selectedStepIndex, { ...selectedStep, params: { ...selectedStep.params, body: e.target.value } })} />
+                            </div>
+                            <p className="text-[10px] text-muted-foreground">Sends a Facebook/Instagram DM to the lead. Use {"{{leadName}}"} for personalization.</p>
+                          </>
+                        )}
+
+                        {selectedStep.action_type === "SendFormLink" && (
+                          <>
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-medium">Message Body</label>
+                              <Textarea data-testid="input-formlink-body" value={selectedStep.params.body || ""} className="min-h-[80px]"
+                                placeholder="Fill out this form to get started: {{formLink}}"
+                                onChange={(e) => handleUpdateStep(selectedStepIndex, { ...selectedStep, params: { ...selectedStep.params, body: e.target.value } })} />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-medium">Form URL</label>
+                              <Input data-testid="input-formlink-url" value={selectedStep.params.form_url || ""}
+                                placeholder="https://forms.example.com/intake"
+                                onChange={(e) => handleUpdateStep(selectedStepIndex, { ...selectedStep, params: { ...selectedStep.params, form_url: e.target.value } })} />
+                            </div>
+                            <p className="text-[10px] text-muted-foreground">Sends the lead a link to fill out a form. Use {"{{formLink}}"} in the body.</p>
+                          </>
+                        )}
+
+                        {selectedStep.action_type === "UpdateDeal" && (
+                          <>
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-medium">Deal Stage</label>
+                              <Select value={selectedStep.params.stage || "qualified"} onValueChange={(val) => handleUpdateStep(selectedStepIndex, { ...selectedStep, params: { ...selectedStep.params, stage: val } })}>
+                                <SelectTrigger data-testid="select-deal-stage"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="new">New</SelectItem>
+                                  <SelectItem value="qualified">Qualified</SelectItem>
+                                  <SelectItem value="proposal">Proposal</SelectItem>
+                                  <SelectItem value="negotiation">Negotiation</SelectItem>
+                                  <SelectItem value="won">Won</SelectItem>
+                                  <SelectItem value="lost">Lost</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-medium">Deal Value ($)</label>
+                              <Input data-testid="input-deal-value" type="number" value={selectedStep.params.value || 0}
+                                onChange={(e) => handleUpdateStep(selectedStepIndex, { ...selectedStep, params: { ...selectedStep.params, value: parseFloat(e.target.value) || 0 } })} />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-medium">Notes</label>
+                              <Textarea data-testid="input-deal-notes" value={selectedStep.params.notes || ""} className="min-h-[60px]"
+                                onChange={(e) => handleUpdateStep(selectedStepIndex, { ...selectedStep, params: { ...selectedStep.params, notes: e.target.value } })} />
+                            </div>
+                            <p className="text-[10px] text-muted-foreground">Updates the deal stage and value in the pipeline.</p>
+                          </>
+                        )}
+
                         {selectedStep.action_type === "CODE" && (
                           <>
                             <div className="space-y-1.5">
@@ -1738,6 +2165,32 @@ function WorkflowBuilderInner() {
         <TabsContent value="toolbelt">
           <div className="max-w-3xl mx-auto">
             <AiToolbeltPanel />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="templates">
+          <div className="max-w-6xl mx-auto">
+            <div className="mb-4">
+              <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
+                <LayoutGrid className="h-5 w-5 text-purple-400" />
+                Workflow Templates
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Proven, production-ready automations — deploy in one click
+              </p>
+            </div>
+            <TemplatesGalleryPanel onUseTemplate={(template) => {
+              createMutation.mutate({
+                name: template.name,
+                trigger: template.trigger,
+                steps: template.steps,
+              });
+              setActiveTab("editor");
+              toast({
+                title: "Template applied",
+                description: `"${template.name}" created with ${template.steps.length} steps. Customize it in the editor.`,
+              });
+            }} />
           </div>
         </TabsContent>
 
