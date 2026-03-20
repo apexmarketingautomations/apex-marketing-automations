@@ -45,7 +45,7 @@ export const crmTools: OperatorTool[] = [
         tags: params.tags || [],
       });
       publishEventAsync(EVENT_TYPES.CONTACT_CREATED, { subAccountId: ctx.subAccountId, contactId: contact.id }, "operator");
-      return { success: true, data: contact, eventsFired: ["contact.created"] };
+      return { success: true, data: { id: contact.id, name: `${contact.firstName} ${contact.lastName || ""}`.trim(), phone: contact.phone, email: contact.email }, eventsFired: ["contact.created"] };
     },
     summarizeForAudit: (params, result) => `Created contact "${params.firstName} ${params.lastName || ""}".`,
   },
@@ -72,7 +72,7 @@ export const crmTools: OperatorTool[] = [
       const contact = await storage.updateContact(contactId, updates);
       if (!contact) return { success: false, error: "Contact not found" };
       publishEventAsync(EVENT_TYPES.CONTACT_UPDATED, { subAccountId: ctx.subAccountId, contactId }, "operator");
-      return { success: true, data: contact, eventsFired: ["contact.updated"] };
+      return { success: true, data: { id: contact.id, name: `${contact.firstName} ${contact.lastName || ""}`.trim(), phone: contact.phone, email: contact.email }, eventsFired: ["contact.updated"] };
     },
     summarizeForAudit: (params) => `Updated contact #${params.contactId}.`,
   },
@@ -195,7 +195,7 @@ export const crmTools: OperatorTool[] = [
         created.push(stage);
       }
       publishEventAsync(EVENT_TYPES.DEAL_CREATED, { subAccountId: ctx.subAccountId, stageCount: created.length }, "operator");
-      return { success: true, data: { stages: created }, sideEffects: [`Created ${created.length} pipeline stages`] };
+      return { success: true, data: { stageCount: created.length, stageNames: created.map(s => s.name) }, sideEffects: [`Created ${created.length} pipeline stages: ${created.map(s => s.name).join(", ")}`] };
     },
     summarizeForAudit: (params) => `Created pipeline with ${params.stages?.length || 0} stages.`,
   },
@@ -219,7 +219,7 @@ export const crmTools: OperatorTool[] = [
         color: params.color || "#6366f1",
         position: params.position ?? stages.length,
       });
-      return { success: true, data: stage, sideEffects: [`Created pipeline stage "${params.name}"`] };
+      return { success: true, data: { name: stage.name, position: stage.position, color: stage.color }, sideEffects: [`Created pipeline stage "${params.name}"`] };
     },
     summarizeForAudit: (params) => `Created pipeline stage "${params.name}".`,
   },
@@ -241,7 +241,7 @@ export const crmTools: OperatorTool[] = [
       const deal = await storage.updateDeal(params.dealId, { stageId: params.newStageId });
       if (!deal) return { success: false, error: "Deal not found" };
       publishEventAsync(EVENT_TYPES.DEAL_STAGE_CHANGED, { subAccountId: ctx.subAccountId, dealId: params.dealId, newStageId: params.newStageId }, "operator");
-      return { success: true, data: deal, eventsFired: ["deal.stage.changed"], sideEffects: [`Advanced deal #${params.dealId} to stage #${params.newStageId}`] };
+      return { success: true, data: { id: deal.id, title: deal.title, stageId: deal.stageId }, eventsFired: ["deal.stage.changed"], sideEffects: [`Advanced deal #${params.dealId} to stage #${params.newStageId}`] };
     },
     summarizeForAudit: (params) => `Advanced deal #${params.dealId} to stage #${params.newStageId}.`,
   },
@@ -276,7 +276,7 @@ export const crmTools: OperatorTool[] = [
         status: "open",
       });
       publishEventAsync(EVENT_TYPES.DEAL_CREATED, { subAccountId: ctx.subAccountId, dealId: deal.id }, "operator");
-      return { success: true, data: deal, eventsFired: ["deal.created"] };
+      return { success: true, data: { id: deal.id, title: deal.title, value: deal.value, status: deal.status }, eventsFired: ["deal.created"] };
     },
     summarizeForAudit: (params, result) => `Created deal "${params.title}" ($${params.value || 0}).`,
   },
@@ -297,7 +297,7 @@ export const crmTools: OperatorTool[] = [
       if (guard) return guard;
       const deal = await storage.updateDeal(params.dealId, { value: params.value });
       if (!deal) return { success: false, error: "Deal not found" };
-      return { success: true, data: deal, sideEffects: [`Updated deal #${params.dealId} value to $${params.value}`] };
+      return { success: true, data: { id: deal.id, title: deal.title, value: deal.value }, sideEffects: [`Updated deal #${params.dealId} value to $${params.value}`] };
     },
     summarizeForAudit: (params) => `Updated deal #${params.dealId} value to $${params.value}.`,
   },
@@ -320,7 +320,7 @@ export const crmTools: OperatorTool[] = [
       const ownerTag = `owner:${params.owner}`;
       const filtered = currentTags.filter(t => !t.startsWith("owner:"));
       const updated = await storage.updateContact(params.contactId, { tags: [...filtered, ownerTag] });
-      return { success: true, data: updated, sideEffects: [`Assigned owner "${params.owner}" to contact #${params.contactId}`] };
+      return { success: true, data: { contactId: params.contactId, owner: params.owner }, sideEffects: [`Assigned owner "${params.owner}" to contact #${params.contactId}`] };
     },
     summarizeForAudit: (params) => `Assigned lead #${params.contactId} to owner "${params.owner}".`,
   },

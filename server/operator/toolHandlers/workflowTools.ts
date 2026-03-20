@@ -83,7 +83,7 @@ export const workflowTools: OperatorTool[] = [
         status: "compiled",
       });
       publishEventAsync(EVENT_TYPES.WORKFLOW_STARTED, { subAccountId: ctx.subAccountId, workflowId: automation.id, name: params.name }, "operator");
-      return { success: true, data: automation, sideEffects: [`Created workflow "${params.name}" (status: compiled/draft)`], eventsFired: ["workflow.started"] };
+      return { success: true, data: { id: automation.id, name: automation.name, status: automation.status }, sideEffects: [`Created workflow "${params.name}" (status: compiled/draft)`], eventsFired: ["workflow.started"] };
     },
     summarizeForAudit: (params) => `Created workflow "${params.name}".`,
     idempotencyKey: (params) => params.idempotencyKey || `workflow-${params.name}`,
@@ -110,7 +110,7 @@ export const workflowTools: OperatorTool[] = [
         manifest: original.manifest as Record<string, unknown>,
         status: "compiled",
       });
-      return { success: true, data: copy, sideEffects: [`Duplicated workflow "${original.name}" as "${copy.name}"`] };
+      return { success: true, data: { id: copy.id, name: copy.name, status: copy.status }, sideEffects: [`Duplicated workflow "${original.name}" as "${copy.name}"`] };
     },
     summarizeForAudit: (params) => `Duplicated workflow #${params.workflowId}.`,
   },
@@ -130,7 +130,7 @@ export const workflowTools: OperatorTool[] = [
       if (!owned) return { success: false, error: "Workflow not found" };
       const updated = await storage.updateLiveAutomation(params.workflowId, { status: "paused" });
       if (!updated) return { success: false, error: "Workflow not found" };
-      return { success: true, data: updated, sideEffects: [`Paused workflow #${params.workflowId}`] };
+      return { success: true, data: { id: updated.id, name: updated.name, status: "paused" }, sideEffects: [`Paused workflow #${params.workflowId}`] };
     },
     summarizeForAudit: (params) => `Paused workflow #${params.workflowId}.`,
   },
@@ -150,7 +150,7 @@ export const workflowTools: OperatorTool[] = [
       if (!owned) return { success: false, error: "Workflow not found" };
       const updated = await storage.updateLiveAutomation(params.workflowId, { status: "active" });
       if (!updated) return { success: false, error: "Workflow not found" };
-      return { success: true, data: updated, sideEffects: [`Resumed workflow #${params.workflowId}`] };
+      return { success: true, data: { id: updated.id, name: updated.name, status: "active" }, sideEffects: [`Resumed workflow #${params.workflowId}`] };
     },
     summarizeForAudit: (params) => `Resumed workflow #${params.workflowId}.`,
   },

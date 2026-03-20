@@ -282,11 +282,18 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
               {toolResults.map((tr, i) => (
                 <div key={i} className="mb-2 last:mb-0">
                   <div className="text-violet-400 font-medium mb-1">✓ {tr.tool}</div>
-                  {tr.data.success && tr.data.data && (
+                  {tr.data.success && tr.data.sideEffects?.length > 0 && (
+                    <div className="text-slate-500 space-y-0.5">
+                      {tr.data.sideEffects.map((effect: string, j: number) => (
+                        <div key={j} className="truncate">{effect}</div>
+                      ))}
+                    </div>
+                  )}
+                  {tr.data.success && !tr.data.sideEffects?.length && tr.data.data && (
                     <div className="text-slate-500 space-y-0.5">
                       {Object.entries(tr.data.data).slice(0, 5).map(([key, value]) => (
                         <div key={key} className="truncate">
-                          <span className="text-slate-600">{key}:</span> {typeof value === 'object' ? JSON.stringify(value).slice(0, 50) : String(value).slice(0, 50)}
+                          <span className="text-slate-600">{key}:</span> {Array.isArray(value) ? value.join(", ") : String(value).slice(0, 80)}
                         </div>
                       ))}
                     </div>
