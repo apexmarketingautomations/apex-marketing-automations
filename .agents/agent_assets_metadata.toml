@@ -12,3 +12,9 @@ id = "DuOGYTLLaPcARm4ozgMWr"
 uri = "file://.local/agent-breakdown.md"
 type = "text"
 title = "Apex Autonomous Agent — Full Breakdown for ChatGPT"
+
+[[outputs]]
+id = "FGvhoGo3IxyBeIBOQHqac"
+uri = "file://.local/full_audit_report.md"
+type = "text"
+title = "Apex Marketing Automations — Full Platform Audit Report"
