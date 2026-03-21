@@ -1,6 +1,7 @@
 import webpush from "web-push";
 
 import { storage } from "./storage";
+import { enforceSmsProvider } from "./smsGatewayGuard";
 import type { NotificationPreference } from "@shared/schema";
 
 const VAPID_SUBJECT = "mailto:alerts@apexmarketingautomations.com";
@@ -180,6 +181,12 @@ async function sendBrowserPush(subAccountId: number, payload: AlertPayload): Pro
 }
 
 async function sendSmsAlert(subAccountId: number, phone: string, payload: AlertPayload): Promise<boolean> {
+  await enforceSmsProvider("sms", "twilio", {
+    subAccountId,
+    phone,
+    source: "push-alert-service",
+  });
+
   const client = await getTwilioClientForSub(subAccountId);
   if (!client) return false;
 

@@ -8,6 +8,7 @@ import { publishEventAsync, EVENT_TYPES } from "../eventBus";
 import { asyncHandler, parseIntParam, verifyAccountOwnership, getTwilioClient } from "./helpers";
 import { recordOutboundBilling, CHANNEL_PRICING } from "../billing";
 import { validateRouting } from "../routing/gate";
+import { enforceSmsProvider } from "../smsGatewayGuard";
 import { recordSuccess } from "../pulse";
 import { startTrace, recordStepValue } from "../traceRecorder";
 import { getMetaConfig, buildMetaUrl } from "../metaConfig";
@@ -95,6 +96,12 @@ export function registerMessagingRoutes(app: Express) {
     if (!gateResult.allowed) {
       return res.status(403).json({ error: `Routing gate rejected outbound message: ${gateResult.reason}` });
     }
+
+    await enforceSmsProvider(channel || "sms", "twilio", {
+      subAccountId,
+      phone: contactPhone,
+      source: "messaging-api",
+    });
 
     const { checkPhoneOptOut } = await import("../optOutGuard");
     const smsOptedOut = await checkPhoneOptOut(contactPhone, subAccountId);

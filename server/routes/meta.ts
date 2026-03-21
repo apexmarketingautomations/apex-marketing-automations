@@ -5,6 +5,7 @@ import { storage } from "../storage";
 import crypto from "crypto";
 import { dispatchAlert, generateDeepLink } from "../pushAlertService";
 import { asyncHandler, verifyAccountOwnership } from "./helpers";
+import { enforceSmsProvider } from "../smsGatewayGuard";
 import { getMetaConfig, validateMetaConfigForAccount } from "../metaConfig";
 
 export function registerMetaRoutes(app: Express) {
@@ -186,6 +187,7 @@ export function registerMetaRoutes(app: Express) {
                   const { getTwilioClientForAccount: getTwilioClientMeta } = await import("../twilioClientFactory");
                   const metaClientResult = await getTwilioClientMeta(subAccountId);
                   if (!metaClientResult) throw new Error("Twilio not configured for account");
+                  await enforceSmsProvider("sms", "twilio", { subAccountId, phone: getName("phone_number"), source: "meta-lead-auto-reply" });
                   await metaClientResult.client.messages.create({
                     body: `Hi ${name.split(" ")[0] || "there"}! Thanks for your interest. We received your inquiry and will follow up shortly. - ${account.name}`,
                     from: account.twilioNumber,

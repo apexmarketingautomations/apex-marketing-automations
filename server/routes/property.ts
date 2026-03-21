@@ -13,6 +13,7 @@ import crypto from "crypto";
 import { dispatchAlert, generateDeepLink } from "../pushAlertService";
 import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, logUsageInternal, getTwilioClient } from "./helpers";
 import { recordOutboundBilling } from "../billing";
+import { enforceSmsProvider } from "../smsGatewayGuard";
 
 export function registerPropertyRoutes(app: Express) {
   // ---- Property Radar (Wholesaler) Routes ----
@@ -173,6 +174,7 @@ export function registerPropertyRoutes(app: Express) {
       if (!clientResult) {
         return res.status(503).json({ error: "Twilio is not configured for this account." });
       }
+      await enforceSmsProvider("sms", "twilio", { subAccountId: lead.subAccountId, phone: lead.ownerPhone, source: "property-radar-sms" });
       await clientResult.client.messages.create({
         body: smsBody,
         from: account.twilioNumber,
@@ -658,6 +660,7 @@ export function registerPropertyRoutes(app: Express) {
           const account = await storage.getSubAccount(1);
           const fromNumber = account?.twilioNumber;
           if (fromNumber) {
+            await enforceSmsProvider("sms", "twilio", { subAccountId: 1, phone: alertPhone, source: "sentinel-crash-alert" });
             await clientResult.client.messages.create({
               body: `SENTINEL ALERT: Crash #${crashId} detected ${distanceMiles} mi from HQ. Severity: ${severity}. Map: ${mapsLink}`,
               from: fromNumber,
@@ -750,6 +753,7 @@ export function registerPropertyRoutes(app: Express) {
           const acctForPhone = await storage.getSubAccount(subAccountId);
           const fromNumber = acctForPhone?.twilioNumber;
           if (fromNumber) {
+            await enforceSmsProvider("sms", "twilio", { subAccountId, phone: alertPhone, source: "sentinel-crash-alert" });
             await clientResult.client.messages.create({
               body: `SENTINEL ALERT: Crash #${crashId} detected ${distanceMiles} mi from HQ. Severity: ${severity}. Map: ${mapsLink}`,
               from: fromNumber,
@@ -1430,6 +1434,7 @@ export function registerPropertyRoutes(app: Express) {
                   : `[Apex Alert] New ${event.replace(".", " ")} — ${leadName}${leadPhone ? ` (${leadPhone})` : ""}. Source: Crash Connect.`;
 
                 try {
+                  await enforceSmsProvider("sms", "twilio", { subAccountId: targetAccountId, phone: ownerPhone, source: "crash-connect-alert" });
                   await client.messages.create({
                     to: ownerPhone,
                     from: twilioNumber,
@@ -1468,6 +1473,7 @@ export function registerPropertyRoutes(app: Express) {
                   const { getTwilioClientForAccount: getTwilioClientAi } = await import("../twilioClientFactory");
                   const aiClientResult = await getTwilioClientAi(targetAccountId);
                   if (aiClientResult && crashAiResult.text) {
+                    await enforceSmsProvider("sms", "twilio", { subAccountId: targetAccountId, phone: leadPhone, source: "crash-connect-ai-followup" });
                     await aiClientResult.client.messages.create({
                       to: leadPhone,
                       from: twilioNumber,
@@ -1863,6 +1869,7 @@ export function registerPropertyRoutes(app: Express) {
       const { getTwilioClientForAccount: getTwilioClientSentinel } = await import("../twilioClientFactory");
       const sentinelResult = await getTwilioClientSentinel(incident.subAccountId);
       if (sentinelResult) {
+        await enforceSmsProvider("sms", "twilio", { subAccountId: incident.subAccountId, phone: alertPhone, source: "sentinel-renotify-sms" });
         await sentinelResult.client.messages.create({
           body: `SENTINEL ALERT: ${incident.title} — ${incident.location || "Unknown location"} (${incident.severity})`,
           from: (account as any).twilioNumber,

@@ -8,6 +8,7 @@ import { aiChat, isAIConfigured } from "../aiGateway";
 import { ProgressStream } from "../streaming";
 import crypto from "crypto";
 import { asyncHandler, getUserId, requireAdmin, getIndustryContext, getLanguageInstruction, getTwilioClient, vapiConfig } from "./helpers";
+import { enforceSmsProvider } from "../smsGatewayGuard";
 import { assembleDmContext, buildDmMessages } from "../dmContextAssembler";
 import { startTrace, recordStepValue } from "../traceRecorder";
 import { resolveSubAccount, isRoutingFailure } from "../routing/resolver";
@@ -103,6 +104,7 @@ export function registerWebhooksRoutes(app: Express) {
 
         const twilioClient = await getTwilioClient(matchedAccountId);
         if (twilioClient && toRaw) {
+          await enforceSmsProvider(channel, "twilio", { subAccountId: matchedAccountId, phone: senderRaw, source: "webhook-opt-out" });
           await twilioClient.messages.create({
             body: "You have been unsubscribed and will no longer receive messages from us. Reply START to re-subscribe.",
             from: toRaw,
@@ -121,6 +123,7 @@ export function registerWebhooksRoutes(app: Express) {
 
         const twilioClient = await getTwilioClient(matchedAccountId);
         if (twilioClient && toRaw) {
+          await enforceSmsProvider(channel, "twilio", { subAccountId: matchedAccountId, phone: senderRaw, source: "webhook-opt-in" });
           await twilioClient.messages.create({
             body: "You have been re-subscribed and will receive messages from us again.",
             from: toRaw,
@@ -221,6 +224,7 @@ export function registerWebhooksRoutes(app: Express) {
         let outboundSid: string | null = null;
         let outboundStatus = "sent";
         try {
+          await enforceSmsProvider(channel, "twilio", { subAccountId: matchedAccountId, phone: senderRaw, source: "webhook-ai-reply" });
           const sentReply = await twilioClient.messages.create({
             body: aiReply,
             from: replyFrom,
@@ -481,6 +485,7 @@ export function registerWebhooksRoutes(app: Express) {
 
         const twilioClient = await getTwilioClient(subAccountId);
         if (twilioClient && toRaw) {
+          await enforceSmsProvider("sms", "twilio", { subAccountId, phone: senderRaw, source: "twilio-inbound-opt-out" });
           await twilioClient.messages.create({
             body: "You have been unsubscribed and will no longer receive messages from us. Reply START to re-subscribe.",
             from: toRaw,
@@ -511,6 +516,7 @@ export function registerWebhooksRoutes(app: Express) {
 
         const twilioClient = await getTwilioClient(subAccountId);
         if (twilioClient && toRaw) {
+          await enforceSmsProvider("sms", "twilio", { subAccountId, phone: senderRaw, source: "twilio-inbound-opt-in" });
           await twilioClient.messages.create({
             body: "You have been re-subscribed and will receive messages from us again.",
             from: toRaw,
@@ -541,6 +547,7 @@ export function registerWebhooksRoutes(app: Express) {
 
         const twilioClient = await getTwilioClient(subAccountId);
         if (twilioClient && toRaw) {
+          await enforceSmsProvider("sms", "twilio", { subAccountId, phone: senderRaw, source: "twilio-inbound-help" });
           await twilioClient.messages.create({
             body: "For help, reply STOP to unsubscribe or START to re-subscribe. Message and data rates may apply.",
             from: toRaw,
@@ -637,6 +644,7 @@ export function registerWebhooksRoutes(app: Express) {
         const smsSendReply = async (body: string) => {
           const twilioClientForReply = await getTwilioClient();
           if (twilioClientForReply && toRaw) {
+            await enforceSmsProvider("sms", "twilio", { subAccountId, phone: senderRaw, source: "twilio-inbound-sms-reply" });
             await twilioClientForReply.messages.create({ body, from: toRaw, to: senderRaw });
             await storage.createMessage({
               subAccountId,
@@ -761,6 +769,7 @@ export function registerWebhooksRoutes(app: Express) {
 
         try {
           const tSendStart = Date.now();
+          await enforceSmsProvider("sms", "twilio", { subAccountId, phone: senderRaw, source: "twilio-inbound-ai-reply" });
           const sentMsg = await twilioClient.messages.create({
             body: replyBody,
             from: toRaw,
@@ -910,6 +919,7 @@ export function registerWebhooksRoutes(app: Express) {
         await handleSmsOptOut(senderClean, subAccountIdParam);
         const twilioClient = await getTwilioClient(subAccountIdParam);
         if (twilioClient && toRaw) {
+          await enforceSmsProvider("sms", "twilio", { subAccountId: subAccountIdParam, phone: senderRaw, source: "twilio-fallback-opt-out" });
           await twilioClient.messages.create({
             body: "You have been unsubscribed and will no longer receive messages from us. Reply START to re-subscribe.",
             from: toRaw,
@@ -924,6 +934,7 @@ export function registerWebhooksRoutes(app: Express) {
         await handleSmsOptIn(senderClean, subAccountIdParam);
         const twilioClient = await getTwilioClient(subAccountIdParam);
         if (twilioClient && toRaw) {
+          await enforceSmsProvider("sms", "twilio", { subAccountId: subAccountIdParam, phone: senderRaw, source: "twilio-fallback-opt-in" });
           await twilioClient.messages.create({
             body: "You have been re-subscribed and will receive messages from us again.",
             from: toRaw,
@@ -972,6 +983,7 @@ export function registerWebhooksRoutes(app: Express) {
       const twilioClient = await getTwilioClient(subAccountIdParam);
       if (twilioClient && toRaw) {
         try {
+          await enforceSmsProvider("sms", "twilio", { subAccountId: subAccountIdParam, phone: senderRaw, source: "twilio-fallback-reply" });
           const sentMsg = await twilioClient.messages.create({
             body: replyBody,
             from: toRaw,

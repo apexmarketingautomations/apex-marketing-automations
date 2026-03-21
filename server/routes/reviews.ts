@@ -9,6 +9,7 @@ import crypto from "crypto";
 import dns from "dns";
 import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, isUserAdmin } from "./helpers";
 import { recordOutboundBilling } from "../billing";
+import { enforceSmsProvider } from "../smsGatewayGuard";
 
 export function registerReviewsRoutes(app: Express) {
   // ---- Reviews / Reputation Management ----
@@ -56,6 +57,7 @@ export function registerReviewsRoutes(app: Express) {
           const { getTwilioClientForAccount } = await import("../twilioClientFactory");
           const clientResult = await getTwilioClientForAccount(accountId);
           if (clientResult) {
+            await enforceSmsProvider("sms", "twilio", { subAccountId: accountId, phone: account.ownerPhone, source: "review-alert" });
             await clientResult.client.messages.create({
               body: `🚨 APEX ALERT: ${customerName} just left a ${rating}-star rating. "${comment?.substring(0, 100)}". Check your Reputation Dashboard now!`,
               from: account.twilioNumber,

@@ -3,6 +3,7 @@ import { db } from "./db";
 import { deals, messages, vapiCallLogs, notifications } from "@shared/schema";
 import { eq, and, desc, gt, sql } from "drizzle-orm";
 import { dispatchAlert, generateDeepLink } from "./pushAlertService";
+import { enforceSmsProvider } from "./smsGatewayGuard";
 import Twilio from "twilio";
 
 interface SubAccountConfig {
@@ -269,6 +270,7 @@ async function forceHotLeadSms(subAccountId: number, alertBody: string, deepLink
 
     const client = Twilio(sid, token);
     const smsBody = `[Apex Alert] 🔥 HOT LEAD\n${alertBody}\nView: ${deepLink}`;
+    await enforceSmsProvider("sms", "twilio", { subAccountId, phone: ownerPhone, source: "call-request-flow-alert" });
     await client.messages.create({
       body: smsBody.substring(0, 1600),
       from: fromNumber,
@@ -489,6 +491,7 @@ async function sendFollowUpMessage(
     const token = process.env.TWILIO_AUTH_TOKEN;
     if (!sid || !token) throw new Error("Twilio credentials not configured");
     if (!ctx.fromNumber || !ctx.toNumber) throw new Error("SMS follow-up missing fromNumber or toNumber");
+    await enforceSmsProvider("sms", "twilio", { subAccountId, phone: ctx.toNumber, source: "call-request-flow-followup" });
     const client = Twilio(sid, token);
     await client.messages.create({ body, from: ctx.fromNumber, to: ctx.toNumber });
     await storage.createMessage({

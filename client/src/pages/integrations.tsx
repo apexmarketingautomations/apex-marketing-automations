@@ -197,7 +197,7 @@ const LEGACY_INTEGRATIONS: LegacyIntegration[] = [
   { provider: "quickbooks", name: "QuickBooks", description: "Accounting and invoicing", icon: Receipt, color: "bg-emerald-500/20", iconColor: "text-emerald-400", category: "tools" },
   { provider: "stripe", name: "Stripe", description: "Payment processing", icon: CreditCard, color: "bg-indigo-500/20", iconColor: "text-indigo-400", category: "tools" },
   { provider: "hubspot", name: "HubSpot", description: "CRM sync", icon: Users, color: "bg-pink-500/20", iconColor: "text-pink-400", category: "tools" },
-  { provider: "mailchimp", name: "Mailchimp", description: "Email marketing", icon: Mail, color: "bg-amber-500/20", iconColor: "text-amber-400", category: "tools" },
+  { provider: "mailchimp", name: "Mailchimp", description: "Email marketing only", icon: Mail, color: "bg-amber-500/20", iconColor: "text-amber-400", category: "tools" },
   { provider: "shopify", name: "Shopify", description: "E-commerce automation", icon: ShoppingCart, color: "bg-green-600/20", iconColor: "text-green-400", category: "tools" },
   { provider: "elevenlabs", name: "ElevenLabs", description: "AI voice synthesis", icon: Volume2, color: "bg-fuchsia-500/20", iconColor: "text-fuchsia-400", category: "tools" },
   { provider: "skip-trace", name: "Skip Trace (BatchData)", description: "People data lookup", icon: Users, color: "bg-violet-500/20", iconColor: "text-violet-400", category: "tools" },

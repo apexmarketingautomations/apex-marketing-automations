@@ -18,6 +18,7 @@ import { initEventSubscribers } from "./eventSubscribers";
 import { eventBus } from "./eventBus";
 import { recordSuccess as recordPulseSuccess } from "./pulse";
 import { withIdempotency, markEventCompleted, markEventFailed } from "./idempotency";
+import { enforceSmsProvider } from "./smsGatewayGuard";
 
 const app = express();
 const httpServer = createServer(app);
@@ -700,6 +701,7 @@ async function validateMetaCredentials() {
     if (isOpt(smsBody)) {
       await optOut(senderClean, subAccountId);
       console.log(`[VAPI SMS OPT-OUT] ${senderClean} opted out`);
+      await enforceSmsProvider("sms", "twilio", { subAccountId, phone: senderClean, source: "vapi-sms-opt-out" });
       const twilioClientForOptOut = await getTwilioClient();
       if (twilioClientForOptOut) {
         const fromNumber = account.twilioNumber || process.env.TWILIO_PHONE_NUMBER;
@@ -717,6 +719,7 @@ async function validateMetaCredentials() {
     if (isIn(smsBody)) {
       await optIn(senderClean, subAccountId);
       console.log(`[VAPI SMS OPT-IN] ${senderClean} opted in`);
+      await enforceSmsProvider("sms", "twilio", { subAccountId, phone: senderClean, source: "vapi-sms-opt-in" });
       const twilioClientForOptIn = await getTwilioClient();
       if (twilioClientForOptIn) {
         const fromNumber = account.twilioNumber || process.env.TWILIO_PHONE_NUMBER;
@@ -786,6 +789,7 @@ async function validateMetaCredentials() {
       const twilioClient = await getTwilioClient();
       if (twilioClient) {
         try {
+          await enforceSmsProvider("sms", "twilio", { subAccountId, phone: senderClean, source: "vapi-sms-ai-reply" });
           await twilioClient.messages.create({
             body: aiReply,
             from: fromNumber,
@@ -894,6 +898,7 @@ async function validateMetaCredentials() {
 
               const twilioClientStep = await getTwilioClient();
               if ((action === "send_sms" || action === "SMS") && twilioClientStep && stepPayload.to && stepPayload.body) {
+                await enforceSmsProvider("sms", "twilio", { subAccountId, phone: stepPayload.to, source: "vapi-sms-automation-step" });
                 await twilioClientStep.messages.create({
                   body: stepPayload.body,
                   to: stepPayload.to,
@@ -1074,6 +1079,7 @@ async function validateMetaCredentials() {
               try {
                 const client = await getTwilioClient();
                 if (client) {
+                  await enforceSmsProvider("sms", "twilio", { subAccountId: 0, phone: phoneNumber, source: "vapi-tool-booking-link" });
                   await client.messages.create({
                     body: "Here's your booking link to schedule a call with Apex: https://calendar.app.google/Fwdtvy7Sy3P8Z1CV6",
                     to: phoneNumber,

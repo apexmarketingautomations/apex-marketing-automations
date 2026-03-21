@@ -6,6 +6,7 @@ import { aiChat, isAIConfigured } from "../aiGateway";
 import { ProgressStream } from "../streaming";
 import { processLiveSentinelFeed, deployGeofenceAd } from "../sentinel";
 import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, logUsageInternal } from "./helpers";
+import { enforceSmsProvider } from "../smsGatewayGuard";
 
 let _fireAutomationTrigger: ((triggerName: string, subAccountId: number, context?: Record<string, any>, depth?: number) => Promise<void>) | null = null;
 
@@ -1015,6 +1016,7 @@ export function registerV1Routes(app: Express) {
                 } else {
                   const account = await storage.getSubAccount(smsSubAccountId);
                   const fromNumber = payload.from || account?.twilioNumber || "";
+                  await enforceSmsProvider("sms", "twilio", { subAccountId: smsSubAccountId, phone: payload.to, source: "v1-automation-send-sms" });
                   const msg = await clientResult.client.messages.create({
                     to: payload.to,
                     from: fromNumber,

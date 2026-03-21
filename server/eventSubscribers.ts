@@ -10,6 +10,17 @@ import {
   handleNoResponse,
 } from "./mailchimp";
 
+// ============================================================================
+// STRICT CHANNEL ROUTING RULE
+// ============================================================================
+// SMS events  → Twilio ONLY (enforced at runtime by smsGatewayGuard.ts)
+//   Any attempt to send SMS via a non-Twilio provider will throw
+//   SmsProviderViolationError and log an SMS_PROVIDER_VIOLATION audit entry.
+// Email events → Mailchimp (by convention; Mailchimp handlers below)
+// No cross-routing: SMS must never be sent through Mailchimp, and email
+// campaigns should not be routed through Twilio.
+// ============================================================================
+
 let storageRef: any = null;
 
 export function initEventSubscribers(storage: any, _systemLogger?: any) {

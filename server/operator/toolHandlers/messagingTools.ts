@@ -3,6 +3,7 @@ import { storage } from "../../storage";
 import { publishEventAsync, EVENT_TYPES } from "../../eventBus";
 import { verifyTenant } from "./tenantGuard";
 import { validateRouting } from "../../routing/gate";
+import { enforceSmsProvider } from "../../smsGatewayGuard";
 
 function noopValidate(): ValidationResult {
   return { valid: true, errors: [], warnings: [] };
@@ -34,6 +35,11 @@ export const messagingTools: OperatorTool[] = [
       if (!gateResult.allowed) {
         return { success: false, error: `Routing gate blocked SMS: ${gateResult.reason}` };
       }
+      await enforceSmsProvider("sms", "twilio", {
+        subAccountId: ctx.subAccountId,
+        phone: params.to,
+        source: "operator-sendTestSMS",
+      });
       const msg = await storage.createMessage({
         subAccountId: ctx.subAccountId,
         contactPhone: params.to,

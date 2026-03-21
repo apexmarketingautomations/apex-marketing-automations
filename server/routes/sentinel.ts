@@ -5,6 +5,7 @@ import { storage } from "../storage";
 import { z } from "zod";
 import { processLiveSentinelFeed, deployGeofenceAd } from "../sentinel";
 import { asyncHandler, parseIntParam, verifyAccountOwnership, requirePlanFeature } from "./helpers";
+import { enforceSmsProvider } from "../smsGatewayGuard";
 
 // --- Zod schema for CAD ingestion payload ---
 const cadUnitSchema = z.object({
@@ -379,6 +380,7 @@ export function registerSentinelRoutes(app: Express) {
       if (!clientResult) {
         return res.status(503).json({ error: "Twilio is not configured for this account." });
       }
+      await enforceSmsProvider("sms", "twilio", { subAccountId: incident.subAccountId, phone: account.ownerPhone, source: "sentinel-incident-sms" });
       await clientResult.client.messages.create({
         body: alertMsg,
         from: account.twilioNumber,
