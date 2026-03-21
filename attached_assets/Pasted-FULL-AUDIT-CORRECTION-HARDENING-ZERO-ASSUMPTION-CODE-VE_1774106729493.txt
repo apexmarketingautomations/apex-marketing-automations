@@ -1,0 +1,279 @@
+FULL AUDIT CORRECTION + HARDENING — ZERO ASSUMPTION, CODE-VERIFIED, PRODUCTION GRADE
+
+Goal:
+Rewrite the existing audit to be 100% code-verified, security-complete, and execution-ready — WITHOUT changing structure, headings, or section order.
+
+This is NOT a rewrite.
+This is a **forensic correction + hardening pass**.
+
+---
+
+# 🚨 NON-NEGOTIABLE RULES
+
+* DO NOT change section titles or order
+* DO NOT remove sections
+* DO NOT summarize
+* DO NOT generalize
+* EVERY claim must be backed by actual code verification
+* If not verifiable → explicitly mark: NOT VERIFIED
+
+---
+
+# 🔍 VERIFICATION PROTOCOL (MANDATORY)
+
+For EVERY issue and statement:
+
+1. Locate exact file(s)
+2. Confirm behavior in code (not assumptions)
+3. Extract exact function / route / logic
+4. Validate real execution path
+5. Confirm if exploitable or theoretical
+
+Output format:
+
+Issue:
+Location: file + function
+Evidence: exact code behavior
+Impact: real consequence
+Fix: exact implementation steps
+
+---
+
+# 🔐 SECURITY HARDENING (CRITICAL EXPANSION)
+
+You MUST fully validate and expand ALL security findings:
+
+## A. SECRETS + CREDENTIALS
+
+* Verify how EVERY integration stores credentials:
+
+  * Mailchimp
+  * Twilio
+  * Stripe
+  * Meta
+  * Google
+  * Vapi
+* Confirm:
+
+  * encrypted vs plaintext
+  * masked vs raw
+  * DB vs env usage
+
+If ANY plaintext exists (e.g., Mailchimp key):
+→ mark CRITICAL
+→ include exact DB column + schema
+→ include migration fix + encryption strategy
+
+---
+
+## B. ROUTE AUTHENTICATION (FULL COVERAGE)
+
+You must:
+
+* enumerate ALL route files in /server/routes
+* verify auth on EVERY endpoint:
+
+  * GET
+  * POST
+  * PATCH
+  * DELETE
+
+For each file:
+
+* list protected vs unprotected routes
+* identify missing middleware
+* confirm ownership validation
+
+If ANY route lacks auth:
+→ list exact endpoints
+→ mark severity properly
+
+---
+
+## C. ADMIN PRIVILEGES
+
+Verify:
+
+* admin.ts routes
+* presence of role checks
+* ability to escalate privileges
+
+If missing:
+→ mark CRITICAL
+→ show exploit path
+
+---
+
+## D. CORS + HEADERS
+
+Verify in server/index.ts:
+
+* cors() usage
+* allowed origins
+* credentials config
+* helmet() usage
+
+If missing:
+→ mark HIGH
+→ specify exact middleware addition
+
+---
+
+## E. WEBHOOK SECURITY
+
+Verify:
+
+* Stripe signature validation
+* Meta verification
+* Twilio webhook validation (if present)
+
+Confirm:
+
+* replay protection
+* signature enforcement
+
+---
+
+# 🧠 MULTI-TENANT ISOLATION (DEEP CHECK)
+
+You MUST confirm:
+
+* no global caches leak across tenants
+* all queries scoped by sub_account_id
+* no shared state in:
+
+  * Mailchimp domain cache
+  * event system
+  * integrations
+
+If violation:
+→ mark HIGH/CRITICAL
+→ show exact leak scenario
+
+---
+
+# 📧 MAILCHIMP DEEP HARDENING
+
+Correct and expand:
+
+* confirm API key storage (plaintext vs masked)
+* confirm per-tenant vs global fallback behavior
+* validate:
+
+  * campaign creation logic
+  * dedup logic (or lack of)
+  * unsubscribe handling
+  * retry behavior
+
+Add:
+
+* exact duplicate email scenario
+* exact campaign growth risk
+* exact fix (transactional vs campaign model)
+
+---
+
+# 🗄 DATABASE VERIFICATION (NOT ASSUMED)
+
+You MUST:
+
+* confirm indexes exist (or not)
+* confirm foreign keys exist (or not)
+* confirm query patterns vs schema
+
+If missing:
+→ give exact SQL fix
+
+Also verify:
+
+* pg_stat_user_tables accuracy issue
+* ANALYZE requirement
+
+---
+
+# ⚙️ RUNTIME VALIDATION
+
+Confirm actual runtime behavior:
+
+* Stripe webhook recreation logic
+* retry loops
+* polling inefficiencies (GCal)
+* background workers
+
+NO assumptions — must match logs + code
+
+---
+
+# 🌐 FRONTEND + API REALITY CHECK
+
+Verify:
+
+* actual API call patterns
+* why 401 spam occurs (trace exact call path)
+* route protection vs frontend usage
+
+---
+
+# 🔧 FIX REQUIREMENTS (MANDATORY)
+
+For EVERY issue:
+
+Provide:
+
+1. exact file path
+2. exact code location
+3. exact fix (code-level, not conceptual)
+
+Example:
+
+Fix:
+
+* add requireAuth middleware to route X in file Y
+* encrypt config field in table Z using AES before insert
+* replace global cache with per-subAccount cache
+
+---
+
+# 🧹 LANGUAGE ENFORCEMENT
+
+REMOVE:
+
+* “likely”
+* “appears”
+* “may”
+* “possibly”
+
+REPLACE WITH:
+
+* confirmed
+* verified
+* not present
+* not implemented
+
+---
+
+# 🧠 FINAL OUTPUT STANDARD
+
+The audit must:
+
+* read like a senior security + systems architect report
+* be executable by a developer immediately
+* contain ZERO ambiguity
+* reflect REAL system state only
+
+---
+
+# 🏁 SUCCESS CRITERIA
+
+* Mailchimp plaintext issue fully explained + fixed
+* all unprotected routes enumerated
+* all security gaps explicitly proven
+* all fixes actionable and precise
+* no assumptions remain
+* structure unchanged
+
+---
+
+DO NOT REFORMAT
+DO NOT SUMMARIZE
+ONLY CORRECT + HARDEN + VERIFY
