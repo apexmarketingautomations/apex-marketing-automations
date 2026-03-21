@@ -1,0 +1,218 @@
+CORRECT + HARDEN FULL PLATFORM AUDIT — APEX (NO STRUCTURE CHANGES)
+
+Goal:
+Rewrite and correct the existing audit report to eliminate inaccuracies, fill gaps, validate assumptions, and enforce production-level accuracy — WITHOUT changing the current section structure or format.
+
+---
+
+# 🚨 HARD RULES
+
+* DO NOT change section order or headings
+* DO NOT remove sections
+* DO NOT introduce new sections
+* ONLY refine, correct, expand, and harden existing content
+
+---
+
+# 🎯 OBJECTIVE
+
+Transform the audit into a:
+
+* fully accurate system reflection
+* security-grade review (no blind spots)
+* architect-level document
+* execution-ready remediation guide
+
+---
+
+# 🔍 REQUIRED CORRECTIONS
+
+## 1. VALIDATE ALL CLAIMS
+
+For EVERY statement in the audit:
+
+* verify against actual codebase
+* remove assumptions or speculation
+* correct any inaccurate descriptions
+* replace vague wording with deterministic statements
+
+---
+
+## 2. CLOSE SECURITY GAPS (CRITICAL)
+
+Audit must explicitly validate:
+
+* ALL routes have authentication OR clearly flagged
+* ALL secrets are:
+
+  * encrypted at rest OR masked consistently
+* NO plaintext credentials stored anywhere
+* Admin routes enforce role checks
+* CORS policy explicitly defined
+* Helmet/security headers explicitly defined
+
+If any are missing:
+→ clearly mark as CRITICAL
+→ include exact remediation
+
+---
+
+## 3. STANDARDIZE SEVERITY
+
+Ensure:
+
+* CRITICAL = exploitable or data exposure risk
+* HIGH = system integrity or financial risk
+* MEDIUM = performance or reliability risk
+* LOW = maintainability or minor issues
+
+Re-evaluate ALL severity labels.
+
+---
+
+## 4. REMOVE PARTIAL LOGIC
+
+Eliminate statements like:
+
+* “likely”
+* “appears”
+* “may cause”
+
+Replace with:
+
+* confirmed behavior
+* or explicitly state “not verified”
+
+---
+
+## 5. ENFORCE MULTI-TENANT VALIDATION
+
+Audit must confirm:
+
+* per-sub-account isolation
+* no shared caches across tenants
+* no global state leakage
+* integrations scoped correctly
+
+If violations exist:
+→ mark HIGH or CRITICAL
+
+---
+
+## 6. FIX MAILCHIMP ANALYSIS
+
+Ensure audit reflects:
+
+* email-only role (NO SMS confusion)
+* campaign creation behavior
+* deduplication gaps
+* unsubscribe handling
+* per-tenant vs global credential usage
+
+Remove any ambiguity.
+
+---
+
+## 7. DATABASE INTEGRITY CHECK
+
+Audit must confirm:
+
+* indexes on high-frequency queries
+* foreign key constraints (or lack thereof)
+* migration strategy validity
+* stale statistics impact
+
+If missing:
+→ provide exact fix recommendations
+
+---
+
+## 8. RUNTIME ACCURACY
+
+Validate:
+
+* background workers behavior
+* retry logic correctness
+* webhook reliability
+* polling inefficiencies
+
+Remove assumptions — confirm actual runtime behavior.
+
+---
+
+## 9. FRONTEND + API CONSISTENCY
+
+Ensure audit reflects:
+
+* actual route protection state
+* real navigation complexity
+* API usage patterns
+* error handling behavior
+
+No generic frontend commentary.
+
+---
+
+## 10. ADD EXECUTION-GRADE FIXES
+
+For EVERY issue:
+
+Provide:
+
+* exact file(s)
+* exact problem
+* exact fix (not suggestion)
+
+Example format:
+
+Issue: [description]
+Fix:
+
+* add middleware X to file Y
+* update function Z
+* enforce validation in route A
+
+---
+
+## 11. REMOVE NOISE
+
+Remove:
+
+* redundant explanations
+* generic SaaS commentary
+* filler language
+
+Keep ONLY:
+
+* signal
+* actionable insight
+* verified facts
+
+---
+
+## 🧠 FINAL OUTPUT REQUIREMENTS
+
+The corrected audit must:
+
+* read like a senior systems architect review
+* be immediately actionable by a developer
+* contain ZERO ambiguity
+* reflect REAL system state only
+
+---
+
+# 🏁 SUCCESS CRITERIA
+
+* all issues are real, verified, and prioritized correctly
+* all security risks are explicitly addressed
+* all fixes are actionable (no guessing required)
+* no structural changes made
+* document is production-grade
+
+---
+
+Do not summarize.
+Do not shorten.
+Do not reformat.
+
+Only CORRECT and HARDEN.
