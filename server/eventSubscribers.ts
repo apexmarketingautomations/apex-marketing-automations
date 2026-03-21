@@ -113,51 +113,84 @@ export function initEventSubscribers(storage: any, _systemLogger?: any) {
     }
   }, -100);
 
+  async function resolveContact(payload: Record<string, any>) {
+    const { subAccountId, contactId, email, firstName, lastName, phone, source, tags } = payload;
+    if (email) return { email, firstName, lastName, phone, source, tags };
+    if (contactId && storageRef) {
+      try {
+        const c = await storageRef.getContactById(contactId);
+        if (c && c.subAccountId === subAccountId) {
+          return {
+            email: c.email,
+            firstName: c.firstName,
+            lastName: c.lastName,
+            phone: c.phone,
+            source: c.source,
+            tags: c.tags,
+          };
+        }
+      } catch (err: any) {
+        console.warn("[EVENT-SUB:mailchimp] Contact lookup failed for contactId", contactId, ":", err.message);
+      }
+    }
+    return { email, firstName, lastName, phone, source, tags };
+  }
+
   eventBus.subscribe(EVENT_TYPES.LEAD_CREATED, "mailchimp", async (event) => {
-    const { subAccountId, contactId, email, firstName, lastName, phone, source } = event.payload;
-    if (!subAccountId || !contactId) return;
+    const { subAccountId, contactId } = event.payload;
+    if (!subAccountId) return;
     try {
-      await handleLeadCreated(subAccountId, contactId, { email, firstName, lastName, phone, source });
+      const data = await resolveContact(event.payload);
+      if (!data.email) return;
+      await handleLeadCreated(subAccountId, contactId || 0, data);
     } catch (err: any) {
       console.error("[EVENT-SUB:mailchimp] lead_created handler error:", err.message);
     }
   });
 
   eventBus.subscribe(EVENT_TYPES.CONTACT_CREATED, "mailchimp", async (event) => {
-    const { subAccountId, contactId, email, firstName, lastName, phone, source } = event.payload;
-    if (!subAccountId || !contactId) return;
+    const { subAccountId, contactId } = event.payload;
+    if (!subAccountId) return;
     try {
-      await handleLeadCreated(subAccountId, contactId, { email, firstName, lastName, phone, source });
+      const data = await resolveContact(event.payload);
+      if (!data.email) return;
+      await handleLeadCreated(subAccountId, contactId || 0, data);
     } catch (err: any) {
       console.error("[EVENT-SUB:mailchimp] contact_created handler error:", err.message);
     }
   });
 
   eventBus.subscribe(EVENT_TYPES.CONTACT_UPDATED, "mailchimp", async (event) => {
-    const { subAccountId, contactId, email, firstName, lastName, phone, source, tags } = event.payload;
-    if (!subAccountId || !contactId) return;
+    const { subAccountId, contactId } = event.payload;
+    if (!subAccountId) return;
     try {
-      await handleContactUpdated(subAccountId, contactId, { email, firstName, lastName, phone, source, tags });
+      const data = await resolveContact(event.payload);
+      if (!data.email) return;
+      await handleContactUpdated(subAccountId, contactId || 0, data);
     } catch (err: any) {
       console.error("[EVENT-SUB:mailchimp] contact_updated handler error:", err.message);
     }
   });
 
   eventBus.subscribe(EVENT_TYPES.APPOINTMENT_BOOKED, "mailchimp", async (event) => {
-    const { subAccountId, contactId, email, firstName, phone } = event.payload;
-    if (!subAccountId || !contactId) return;
+    const { subAccountId, contactId } = event.payload;
+    if (!subAccountId) return;
     try {
-      await handleAppointmentBooked(subAccountId, contactId, { email, firstName, phone });
+      const data = await resolveContact(event.payload);
+      if (!data.email) return;
+      await handleAppointmentBooked(subAccountId, contactId || 0, { email: data.email, firstName: data.firstName, phone: data.phone });
     } catch (err: any) {
       console.error("[EVENT-SUB:mailchimp] appointment_booked handler error:", err.message);
     }
   });
 
   eventBus.subscribe(EVENT_TYPES.DEAL_STAGE_CHANGED, "mailchimp", async (event) => {
-    const { subAccountId, contactId, email, firstName, newStage } = event.payload;
+    const { subAccountId, contactId, newStage } = event.payload;
     if (!subAccountId) return;
     try {
-      await handleDealStageChanged(subAccountId, contactId || null, { email, firstName }, newStage || "unknown");
+      const data = await resolveContact(event.payload);
+      if (!data.email) return;
+      await handleDealStageChanged(subAccountId, contactId || null, { email: data.email, firstName: data.firstName }, newStage || "unknown");
     } catch (err: any) {
       console.error("[EVENT-SUB:mailchimp] deal_stage_changed handler error:", err.message);
     }

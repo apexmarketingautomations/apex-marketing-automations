@@ -60,8 +60,9 @@ export function registerIntegrationsRoutes(app: Express) {
         if (!twilioRes.ok) validationResult = { valid: false, error: "Invalid Twilio credentials. Check your Account SID and Auth Token." };
       } else if (provider === "mailchimp" && config?.apiKey) {
         const dc = config.serverPrefix || config.apiKey.split("-").pop();
+        const mcBasicAuth = Buffer.from(`anystring:${config.apiKey}`).toString("base64");
         const mcRes = await fetch(`https://${dc}.api.mailchimp.com/3.0/ping`, {
-          headers: { "Authorization": `Bearer ${config.apiKey}` },
+          headers: { "Authorization": `Basic ${mcBasicAuth}` },
           signal: AbortSignal.timeout(5000),
         });
         if (!mcRes.ok) validationResult = { valid: false, error: "Invalid Mailchimp API key or server prefix." };

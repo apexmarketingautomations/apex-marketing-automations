@@ -54,7 +54,7 @@ import {
   type PortalToken, type InsertPortalToken,
   dispatchSubscribers,
   type DispatchSubscriber, type InsertDispatchSubscriber,
-  creditWallets, creditTransactions, sponsorships, sponsorshipClicks, platformProfitLedger, messageBilling,
+  creditWallets, creditTransactions, sponsorships, sponsorshipClicks, platformProfitLedger, messageBilling, mailchimpEmailLogs, mailchimpSyncLogs,
   funnelLeads, crashReports, dmKeywordAutomations, shopifyEvents, skipTraceResults, skipTraceUsage,
   type CreditWallet, type InsertCreditWallet,
   type CreditTransaction, type InsertCreditTransaction,

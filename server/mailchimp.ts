@@ -70,8 +70,9 @@ async function mcFetch(
   body?: any
 ): Promise<{ ok: boolean; status: number; data: any }> {
   const url = `https://${config.serverPrefix}.api.mailchimp.com/3.0${path}`;
+  const basicAuth = Buffer.from(`anystring:${config.apiKey}`).toString("base64");
   const headers: Record<string, string> = {
-    "Authorization": `Bearer ${config.apiKey}`,
+    "Authorization": `Basic ${basicAuth}`,
     "Content-Type": "application/json",
   };
 
