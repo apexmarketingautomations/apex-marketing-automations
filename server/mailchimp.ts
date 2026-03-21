@@ -35,12 +35,12 @@ const TEMPLATE_KEYS = {
 type TemplateKey = typeof TEMPLATE_KEYS[keyof typeof TEMPLATE_KEYS];
 
 const DEFAULT_SUBJECTS: Record<TemplateKey, string> = {
-  [TEMPLATE_KEYS.LEAD_FOLLOW_UP]: "Thanks for reaching out, {{first_name}}!",
-  [TEMPLATE_KEYS.CALL_CONFIRMATION]: "Your call is confirmed, {{first_name}}",
-  [TEMPLATE_KEYS.NO_RESPONSE]: "We haven't heard from you, {{first_name}}",
-  [TEMPLATE_KEYS.OFFER_PROMO]: "A special offer just for you, {{first_name}}",
-  [TEMPLATE_KEYS.REACTIVATION]: "We miss you, {{first_name}}!",
-  [TEMPLATE_KEYS.APPOINTMENT_CONFIRMATION]: "Your appointment is booked, {{first_name}}!",
+  [TEMPLATE_KEYS.LEAD_FOLLOW_UP]: "Thanks for reaching out, *|FNAME|*!",
+  [TEMPLATE_KEYS.CALL_CONFIRMATION]: "Your call is confirmed, *|FNAME|*",
+  [TEMPLATE_KEYS.NO_RESPONSE]: "We haven't heard from you, *|FNAME|*",
+  [TEMPLATE_KEYS.OFFER_PROMO]: "A special offer just for you, *|FNAME|*",
+  [TEMPLATE_KEYS.REACTIVATION]: "We miss you, *|FNAME|*!",
+  [TEMPLATE_KEYS.APPOINTMENT_CONFIRMATION]: "Your appointment is booked, *|FNAME|*!",
 };
 
 const REPLY_TO_MAP: Record<TemplateKey, string> = {
@@ -130,10 +130,10 @@ function emailHash(email: string): string {
   return crypto.createHash("md5").update(email.toLowerCase().trim()).digest("hex");
 }
 
-function getBookingLink(account: any): string | null {
+function getBookingLink(account: any): string {
   const aiConfig = account.aiPromptConfig as Record<string, any> | null;
   const config = account.config as Record<string, any> | null;
-  return aiConfig?.bookingLink || config?.bookingLink || null;
+  return aiConfig?.bookingLink || config?.bookingLink || aiConfig?.calendarLink || config?.calendarLink || config?.websiteUrl || aiConfig?.websiteUrl || "";
 }
 
 async function logSync(
@@ -460,9 +460,8 @@ export async function sendEmailViaCampaign(
 
     if (!matchedTemplate) {
       const defaultVars: Record<string, string> = {
-        "{{first_name}}": mergeVars?.first_name || "there",
         "{{business_name}}": businessName,
-        "{{booking_link}}": bookingLink || "#",
+        "{{booking_link}}": bookingLink,
       };
 
       const htmlContent = generateFallbackHtml(templateKey, defaultVars);
@@ -499,48 +498,49 @@ export async function sendEmailViaCampaign(
 }
 
 function generateFallbackHtml(templateKey: TemplateKey, vars: Record<string, string>): string {
-  const firstName = vars["{{first_name}}"] || "there";
   const businessName = vars["{{business_name}}"] || "Our Team";
-  const bookingLink = vars["{{booking_link}}"] || "#";
+  const bookingLink = vars["{{booking_link}}"] || "";
+  const fname = "*|FNAME|*";
+
+  const btn = (label: string) =>
+    bookingLink
+      ? `<p><a href="${bookingLink}" style="background:#2563eb;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">${label}</a></p>`
+      : "";
 
   const templates: Record<TemplateKey, string> = {
     [TEMPLATE_KEYS.LEAD_FOLLOW_UP]: `
-      <h2>Hey ${firstName}!</h2>
+      <h2>Hey ${fname}!</h2>
       <p>Thanks for reaching out to ${businessName}. We're excited to connect with you.</p>
-      <p>We'll be in touch shortly. In the meantime, feel free to book a time that works for you:</p>
-      <p><a href="${bookingLink}" style="background:#2563eb;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">Book a Call</a></p>
+      <p>We'll be in touch shortly.${bookingLink ? " In the meantime, feel free to book a time that works for you:" : ""}</p>
+      ${btn("Book a Call")}
       <p>Best,<br/>${businessName}</p>
     `,
     [TEMPLATE_KEYS.CALL_CONFIRMATION]: `
-      <h2>Call Confirmed, ${firstName}!</h2>
+      <h2>Call Confirmed, ${fname}!</h2>
       <p>We've received your request and will be reaching out shortly.</p>
-      <p>If you'd like to schedule a specific time:</p>
-      <p><a href="${bookingLink}" style="background:#2563eb;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">Schedule Now</a></p>
+      ${bookingLink ? `<p>If you'd like to schedule a specific time:</p>${btn("Schedule Now")}` : ""}
       <p>Talk soon,<br/>${businessName}</p>
     `,
     [TEMPLATE_KEYS.NO_RESPONSE]: `
-      <h2>Hey ${firstName}, just checking in</h2>
+      <h2>Hey ${fname}, just checking in</h2>
       <p>We noticed we haven't connected yet. We'd love to hear from you!</p>
-      <p>Book a time that works best:</p>
-      <p><a href="${bookingLink}" style="background:#2563eb;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">Let's Connect</a></p>
+      ${bookingLink ? `<p>Book a time that works best:</p>${btn("Let's Connect")}` : "<p>Reply to this email and let's connect!</p>"}
       <p>${businessName}</p>
     `,
     [TEMPLATE_KEYS.OFFER_PROMO]: `
-      <h2>Special Offer for You, ${firstName}!</h2>
+      <h2>Special Offer for You, ${fname}!</h2>
       <p>${businessName} has something special waiting for you.</p>
-      <p>Don't miss out — book now to learn more:</p>
-      <p><a href="${bookingLink}" style="background:#2563eb;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">Claim Your Offer</a></p>
+      ${bookingLink ? `<p>Don't miss out — book now to learn more:</p>${btn("Claim Your Offer")}` : "<p>Reply to this email to learn more!</p>"}
     `,
     [TEMPLATE_KEYS.REACTIVATION]: `
-      <h2>We miss you, ${firstName}!</h2>
+      <h2>We miss you, ${fname}!</h2>
       <p>It's been a while since we last connected. ${businessName} has some great updates we'd love to share.</p>
-      <p><a href="${bookingLink}" style="background:#2563eb;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">Reconnect With Us</a></p>
+      ${btn("Reconnect With Us")}
     `,
     [TEMPLATE_KEYS.APPOINTMENT_CONFIRMATION]: `
-      <h2>You're booked, ${firstName}!</h2>
+      <h2>You're booked, ${fname}!</h2>
       <p>Your appointment with ${businessName} has been confirmed.</p>
-      <p>If you need to reschedule:</p>
-      <p><a href="${bookingLink}" style="background:#2563eb;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">Manage Appointment</a></p>
+      ${bookingLink ? `<p>If you need to reschedule:</p>${btn("Manage Appointment")}` : ""}
       <p>See you soon!</p>
     `,
   };
