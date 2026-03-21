@@ -43,6 +43,18 @@ const DEFAULT_SUBJECTS: Record<TemplateKey, string> = {
   [TEMPLATE_KEYS.APPOINTMENT_CONFIRMATION]: "Your appointment is booked, {{first_name}}!",
 };
 
+const REPLY_TO_MAP: Record<TemplateKey, string> = {
+  [TEMPLATE_KEYS.LEAD_FOLLOW_UP]: "leads@apexmarketingautomations.com",
+  [TEMPLATE_KEYS.CALL_CONFIRMATION]: "sales@apexmarketingautomations.com",
+  [TEMPLATE_KEYS.NO_RESPONSE]: "hello@apexmarketingautomations.com",
+  [TEMPLATE_KEYS.OFFER_PROMO]: "sales@apexmarketingautomations.com",
+  [TEMPLATE_KEYS.REACTIVATION]: "hello@apexmarketingautomations.com",
+  [TEMPLATE_KEYS.APPOINTMENT_CONFIRMATION]: "onboarding@apexmarketingautomations.com",
+};
+
+const DEFAULT_FROM_EMAIL = "hello@apexmarketingautomations.com";
+const FALLBACK_VERIFIED_EMAIL = "apexmarketingautomations@gmail.com";
+
 async function getMailchimpConfig(subAccountId: number): Promise<MailchimpConfig | null> {
   try {
     let apiKey: string | undefined;
@@ -348,6 +360,39 @@ export async function getMailchimpTemplates(subAccountId: number): Promise<any[]
   }
 }
 
+let verifiedDomainsCache: { domains: string[]; fetchedAt: number } | null = null;
+
+async function getVerifiedDomains(config: MailchimpConfig): Promise<string[]> {
+  if (verifiedDomainsCache && Date.now() - verifiedDomainsCache.fetchedAt < 300000) {
+    return verifiedDomainsCache.domains;
+  }
+  try {
+    const res = await mcFetch(config, "/verified-domains");
+    if (res.ok && res.data?.domains) {
+      const domains = (res.data.domains as any[])
+        .filter((d: any) => d.verified || d.status === "VERIFIED")
+        .map((d: any) => d.verification_email as string)
+        .filter(Boolean);
+      verifiedDomainsCache = { domains, fetchedAt: Date.now() };
+      return domains;
+    }
+  } catch {}
+  return [];
+}
+
+async function resolveVerifiedReplyTo(config: MailchimpConfig, templateKey: TemplateKey): Promise<string> {
+  const preferred = REPLY_TO_MAP[templateKey] || DEFAULT_FROM_EMAIL;
+  const verified = await getVerifiedDomains(config);
+
+  if (verified.length === 0) return FALLBACK_VERIFIED_EMAIL;
+  if (verified.includes(preferred)) return preferred;
+
+  const domainMatch = verified.find(v => v.endsWith("@apexmarketingautomations.com"));
+  if (domainMatch) return domainMatch;
+
+  return verified[0] || FALLBACK_VERIFIED_EMAIL;
+}
+
 export async function sendEmailViaCampaign(
   subAccountId: number,
   email: string,
@@ -404,7 +449,7 @@ export async function sendEmailViaCampaign(
       settings: {
         subject_line: subject,
         from_name: businessName,
-        reply_to: email,
+        reply_to: await resolveVerifiedReplyTo(config, templateKey),
         title: `Apex: ${templateKey} — ${email}`,
       },
     };
