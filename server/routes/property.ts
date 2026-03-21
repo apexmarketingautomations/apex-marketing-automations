@@ -2573,6 +2573,20 @@ export function registerPropertyRoutes(app: Express) {
     res.json({ success: true });
   }));
 
+  function validateWebhookUrl(url: string): string | null {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "https:") return "URL must use HTTPS protocol";
+      if (!parsed.hostname || parsed.hostname === "localhost") return "URL must have a valid public hostname";
+      const hostname = parsed.hostname;
+      if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|0\.|169\.254\.)/.test(hostname)) return "Private/internal IP addresses are not allowed";
+      if (hostname.endsWith(".local") || hostname.endsWith(".internal")) return "Internal hostnames are not allowed";
+      return null;
+    } catch {
+      return "Invalid URL format";
+    }
+  }
+
   app.get("/api/webhooks/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
@@ -2580,9 +2594,21 @@ export function registerPropertyRoutes(app: Express) {
     res.json(list);
   }));
 
+  app.get("/api/webhooks/:webhookId/deliveries", asyncHandler(async (req, res) => {
+    const webhookId = parseIntParam(req.params.webhookId, "webhookId");
+    const webhook = await storage.getWebhookById(webhookId);
+    if (!webhook) return res.status(404).json({ error: "Webhook not found" });
+    if (!(await verifyAccountOwnership(req, res, webhook.subAccountId))) return;
+    const logs = await storage.getWebhookDeliveryLogs(webhookId, 20);
+    res.json(logs);
+  }));
+
   app.post("/api/webhooks", asyncHandler(async (req, res) => {
     const parsed = insertWebhookSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const urlError = validateWebhookUrl(parsed.data.url);
+    if (urlError) return res.status(400).json({ error: urlError });
+    if (!(await verifyAccountOwnership(req, res, parsed.data.subAccountId))) return;
     const data = { ...parsed.data, secret: crypto.randomBytes(32).toString("hex") };
     const webhook = await storage.createWebhook(data);
     res.status(201).json(webhook);
@@ -2590,13 +2616,24 @@ export function registerPropertyRoutes(app: Express) {
 
   app.patch("/api/webhooks/:id", asyncHandler(async (req, res) => {
     const id = parseIntParam(req.params.id, "id");
-    const updated = await storage.updateWebhook(id, req.body);
+    const webhook = await storage.getWebhookById(id);
+    if (!webhook) return res.status(404).json({ error: "Webhook not found" });
+    if (!(await verifyAccountOwnership(req, res, webhook.subAccountId))) return;
+    const { subAccountId, id: _id, createdAt, ...mutableFields } = req.body;
+    if (mutableFields.url) {
+      const urlError = validateWebhookUrl(mutableFields.url);
+      if (urlError) return res.status(400).json({ error: urlError });
+    }
+    const updated = await storage.updateWebhook(id, mutableFields);
     if (!updated) return res.status(404).json({ error: "Webhook not found" });
     res.json(updated);
   }));
 
   app.delete("/api/webhooks/:id", asyncHandler(async (req, res) => {
     const id = parseIntParam(req.params.id, "id");
+    const webhook = await storage.getWebhookById(id);
+    if (!webhook) return res.status(404).json({ error: "Webhook not found" });
+    if (!(await verifyAccountOwnership(req, res, webhook.subAccountId))) return;
     const deleted = await storage.deleteWebhook(id);
     if (!deleted) return res.status(404).json({ error: "Webhook not found" });
     res.json({ success: true });
@@ -2606,19 +2643,19 @@ export function registerPropertyRoutes(app: Express) {
     const id = parseIntParam(req.params.id, "id");
     const webhook = await storage.getWebhookById(id);
     if (!webhook) return res.status(404).json({ error: "Webhook not found" });
-    try {
-      const testPayload = { event: "test", timestamp: new Date().toISOString(), webhookId: id };
-      const response = await fetch(webhook.url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Webhook-Secret": webhook.secret || "" },
-        body: JSON.stringify(testPayload),
-      });
-      await storage.updateWebhook(id, { lastTriggeredAt: new Date() });
-      res.json({ success: true, statusCode: response.status });
-    } catch (err: any) {
-      await storage.updateWebhook(id, { failCount: (webhook.failCount || 0) + 1 });
-      res.status(502).json({ error: "Failed to reach webhook URL", details: err.message });
-    }
+    if (!(await verifyAccountOwnership(req, res, webhook.subAccountId))) return;
+
+    const { dispatchWebhook } = await import("../webhookDispatcher");
+    const testPayload = { event: "test", timestamp: new Date().toISOString(), webhookId: id };
+    const result = await dispatchWebhook(id, webhook.subAccountId, webhook.url, "test", testPayload, webhook.secret);
+
+    res.json({
+      success: result.success,
+      statusCode: result.statusCode,
+      latencyMs: result.latencyMs,
+      responseBody: result.responseBody,
+      error: result.errorMessage,
+    });
   }));
 
   app.get("/api/white-label/:userId", asyncHandler(async (req, res) => {

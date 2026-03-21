@@ -99,6 +99,31 @@ export function initEventSubscribers(storage: any, _systemLogger?: any) {
     console.log(`[EVENT-SUB:analytics] Sentinel alert: ${event.payload.alertType} — ${event.payload.message || ""}`);
   });
 
+  const WEBHOOK_EVENT_MAP: Record<string, string> = {
+    [EVENT_TYPES.CONTACT_CREATED]: "contact.created",
+    [EVENT_TYPES.CONTACT_UPDATED]: "contact.updated",
+    [EVENT_TYPES.DEAL_CREATED]: "deal.created",
+    [EVENT_TYPES.DEAL_STAGE_CHANGED]: "deal.moved",
+    [EVENT_TYPES.DEAL_WON]: "deal.closed",
+    [EVENT_TYPES.APPOINTMENT_BOOKED]: "appointment.created",
+    [EVENT_TYPES.APPOINTMENT_CANCELLED]: "appointment.cancelled",
+    [EVENT_TYPES.MESSAGE_RECEIVED]: "message.received",
+    [EVENT_TYPES.MESSAGE_SENT]: "message.sent",
+  };
+
+  eventBus.subscribe("*", "webhook-dispatcher", async (event) => {
+    const webhookEventType = WEBHOOK_EVENT_MAP[event.event_type];
+    if (!webhookEventType) return;
+    const subAccountId = event.payload?.subAccountId;
+    if (!subAccountId || typeof subAccountId !== "number") return;
+    try {
+      const { dispatchToAllWebhooks } = await import("./webhookDispatcher");
+      await dispatchToAllWebhooks(subAccountId, webhookEventType, event.payload);
+    } catch (err: any) {
+      console.error(`[WEBHOOK-DISPATCH] Failed to dispatch ${webhookEventType} for account ${subAccountId}:`, err.message);
+    }
+  }, -50);
+
   eventBus.subscribe("*", "event-logger", async (event) => {
     if (systemLoggerRef) {
       try {

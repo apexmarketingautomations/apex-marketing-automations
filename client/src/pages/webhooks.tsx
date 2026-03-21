@@ -9,9 +9,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
-import { Webhook, Plus, Trash2, TestTube, Copy, Shield, Zap, ExternalLink } from "lucide-react";
+import { Webhook, Plus, Trash2, TestTube, Copy, Shield, Zap, ExternalLink, ChevronDown, ChevronUp, Clock, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
 
 const AVAILABLE_EVENTS = [
   "contact.created",
@@ -38,6 +38,27 @@ interface WebhookData {
   failCount?: number;
 }
 
+interface DeliveryLog {
+  id: number;
+  webhookId: number;
+  targetUrl: string;
+  eventType: string;
+  statusCode: number | null;
+  responseBody: string | null;
+  latencyMs: number | null;
+  success: boolean;
+  errorMessage: string | null;
+  createdAt: string;
+}
+
+interface TestResult {
+  success: boolean;
+  statusCode: number | null;
+  latencyMs: number;
+  responseBody?: string;
+  error?: string;
+}
+
 function WebhooksPageInner() {
   const subAccountId = useActiveSubAccountId();
   const { toast } = useToast();
@@ -50,6 +71,8 @@ function WebhooksPageInner() {
   const [formEvents, setFormEvents] = useState<string[]>([]);
   const [formActive, setFormActive] = useState(true);
   const [revealedSecrets, setRevealedSecrets] = useState<Set<number>>(new Set());
+  const [expandedDeliveries, setExpandedDeliveries] = useState<Set<number>>(new Set());
+  const [urlError, setUrlError] = useState("");
 
   const { data: webhooks = [], isLoading } = useQuery<WebhookData[]>({
     queryKey: ["/api/webhooks", subAccountId],
@@ -64,6 +87,10 @@ function WebhooksPageInner() {
   const createMutation = useMutation({
     mutationFn: async (data: { subAccountId: number; name: string; url: string; events: string[]; active: boolean }) => {
       const res = await apiRequest("POST", "/api/webhooks", data);
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(typeof err.error === "string" ? err.error : "Failed to create webhook");
+      }
       return res.json();
     },
     onSuccess: () => {
@@ -79,6 +106,10 @@ function WebhooksPageInner() {
   const updateMutation = useMutation({
     mutationFn: async ({ id, ...data }: { id: number; name: string; url: string; events: string[]; active: boolean }) => {
       const res = await apiRequest("PATCH", `/api/webhooks/${id}`, data);
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(typeof err.error === "string" ? err.error : "Failed to update webhook");
+      }
       return res.json();
     },
     onSuccess: () => {
@@ -107,15 +138,41 @@ function WebhooksPageInner() {
   const testMutation = useMutation({
     mutationFn: async (id: number) => {
       const res = await apiRequest("POST", `/api/webhooks/test/${id}`);
-      return res.json();
+      return res.json() as Promise<TestResult>;
     },
-    onSuccess: () => {
-      toast({ title: "Test Sent", description: "A test event was sent to the webhook endpoint." });
+    onSuccess: (data: TestResult, webhookId: number) => {
+      if (data.success) {
+        toast({
+          title: "Test Successful",
+          description: `Endpoint responded with ${data.statusCode} in ${data.latencyMs}ms.`,
+        });
+      } else {
+        toast({
+          title: "Test Failed",
+          description: data.error
+            ? `Connection error: ${data.error}`
+            : `Endpoint returned HTTP ${data.statusCode} in ${data.latencyMs}ms.`,
+          variant: "destructive",
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/webhooks", subAccountId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/webhooks/deliveries", webhookId] });
     },
     onError: (err: Error) => {
       toast({ title: "Test Failed", description: err.message, variant: "destructive" });
     },
   });
+
+  function validateUrl(url: string): string {
+    if (!url.trim()) return "";
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "https:") return "URL must use HTTPS";
+      return "";
+    } catch {
+      return "Invalid URL format";
+    }
+  }
 
   function openCreateDialog() {
     setEditingWebhook(null);
@@ -123,6 +180,7 @@ function WebhooksPageInner() {
     setFormUrl("");
     setFormEvents([]);
     setFormActive(true);
+    setUrlError("");
     setDialogOpen(true);
   }
 
@@ -132,6 +190,7 @@ function WebhooksPageInner() {
     setFormUrl(wh.url);
     setFormEvents(wh.events || []);
     setFormActive(wh.active);
+    setUrlError("");
     setDialogOpen(true);
   }
 
@@ -143,6 +202,11 @@ function WebhooksPageInner() {
   function handleSave() {
     if (!formName.trim() || !formUrl.trim()) {
       toast({ title: "Validation Error", description: "Name and URL are required.", variant: "destructive" });
+      return;
+    }
+    const err = validateUrl(formUrl);
+    if (err) {
+      setUrlError(err);
       return;
     }
     if (editingWebhook) {
@@ -158,6 +222,15 @@ function WebhooksPageInner() {
 
   function toggleSecretReveal(id: number) {
     setRevealedSecrets((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleDeliveries(id: number) {
+    setExpandedDeliveries((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -337,6 +410,30 @@ function WebhooksPageInner() {
                         </span>
                       )}
                     </div>
+
+                    <div className="mt-3 pt-3 border-t border-white/5">
+                      <button
+                        onClick={() => toggleDeliveries(wh.id)}
+                        className="flex items-center gap-2 text-xs text-slate-400 hover:text-white transition-colors"
+                        data-testid={`button-toggle-deliveries-${wh.id}`}
+                      >
+                        <Clock size={12} />
+                        <span>Delivery History</span>
+                        {expandedDeliveries.has(wh.id) ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                      </button>
+                      <AnimatePresence>
+                        {expandedDeliveries.has(wh.id) && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="overflow-hidden"
+                          >
+                            <DeliveryHistory webhookId={wh.id} />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                   </CardContent>
                 </Card>
               </motion.div>
@@ -363,14 +460,20 @@ function WebhooksPageInner() {
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-400 font-medium mb-1 block">URL</label>
+                <label className="text-xs text-slate-400 font-medium mb-1 block">URL (HTTPS required)</label>
                 <Input
                   value={formUrl}
-                  onChange={(e) => setFormUrl(e.target.value)}
+                  onChange={(e) => {
+                    setFormUrl(e.target.value);
+                    setUrlError(validateUrl(e.target.value));
+                  }}
                   placeholder="https://example.com/webhook"
-                  className="bg-white/5 border-white/10 text-white placeholder:text-white/20"
+                  className={`bg-white/5 border-white/10 text-white placeholder:text-white/20 ${urlError ? "border-red-500/50" : ""}`}
                   data-testid="input-webhook-url"
                 />
+                {urlError && (
+                  <p className="text-xs text-red-400 mt-1" data-testid="text-url-error">{urlError}</p>
+                )}
               </div>
               <div>
                 <label className="text-xs text-slate-400 font-medium mb-2 block">Events</label>
@@ -422,6 +525,72 @@ function WebhooksPageInner() {
           </DialogContent>
         </Dialog>
       </div>
+    </div>
+  );
+}
+
+function DeliveryHistory({ webhookId }: { webhookId: number }) {
+  const { data: deliveries = [], isLoading } = useQuery<DeliveryLog[]>({
+    queryKey: ["/api/webhooks/deliveries", webhookId],
+    queryFn: async () => {
+      const res = await fetch(`/api/webhooks/${webhookId}/deliveries`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  if (isLoading) {
+    return <p className="text-xs text-slate-600 mt-2">Loading delivery history...</p>;
+  }
+
+  if (deliveries.length === 0) {
+    return <p className="text-xs text-slate-600 mt-2" data-testid={`text-no-deliveries-${webhookId}`}>No deliveries recorded yet.</p>;
+  }
+
+  return (
+    <div className="mt-2 space-y-1.5" data-testid={`delivery-list-${webhookId}`}>
+      {deliveries.map((log) => (
+        <div
+          key={log.id}
+          className={`p-2 rounded-lg text-xs ${
+            log.success ? "bg-emerald-500/5 border border-emerald-500/10" : "bg-red-500/5 border border-red-500/10"
+          }`}
+          data-testid={`delivery-log-${log.id}`}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 min-w-0">
+              {log.success ? (
+                <CheckCircle size={12} className="text-emerald-400 shrink-0" />
+              ) : (
+                <XCircle size={12} className="text-red-400 shrink-0" />
+              )}
+              <span className="text-slate-400 shrink-0">{log.eventType}</span>
+              {log.statusCode !== null && (
+                <Badge className={`text-[9px] px-1.5 py-0 shrink-0 ${
+                  log.success ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/20" : "bg-red-500/15 text-red-400 border-red-500/20"
+                }`} data-testid={`badge-status-code-${log.id}`}>
+                  {log.statusCode}
+                </Badge>
+              )}
+              {log.errorMessage && (
+                <span className="text-red-400 truncate max-w-[200px]" title={log.errorMessage} data-testid={`text-error-${log.id}`}>{log.errorMessage}</span>
+              )}
+            </div>
+            <div className="flex items-center gap-3 text-slate-600 shrink-0">
+              {log.latencyMs !== null && <span data-testid={`text-latency-${log.id}`}>{log.latencyMs}ms</span>}
+              <span>{new Date(log.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+            </div>
+          </div>
+          {log.targetUrl && (
+            <p className="text-[10px] text-slate-600 truncate mt-1 ml-5" data-testid={`text-target-url-${log.id}`}>{log.targetUrl}</p>
+          )}
+          {log.responseBody && (
+            <p className="text-[10px] text-slate-600 font-mono bg-black/20 rounded px-2 py-1 truncate max-w-full mt-1 ml-5" title={log.responseBody} data-testid={`text-response-${log.id}`}>
+              {log.responseBody.substring(0, 200)}
+            </p>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

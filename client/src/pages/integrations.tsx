@@ -134,11 +134,11 @@ const LEGACY_PROVIDER_CREDENTIALS: Record<string, { fields: CredentialField[]; h
 };
 
 const GOOGLE_CHILD_SERVICES = [
-  { id: "gmail", name: "Gmail", description: "Send and receive emails", icon: Mail, scope: "gmail.readonly gmail.send" },
-  { id: "google-calendar", name: "Calendar", description: "Sync appointments and events", icon: CalendarDays, scope: "calendar.readonly calendar.events" },
-  { id: "google-sheets", name: "Sheets", description: "Export data and reports", icon: FileSpreadsheet, scope: "spreadsheets.readonly spreadsheets" },
-  { id: "google-drive", name: "Drive", description: "File storage and sharing", icon: HardDrive, scope: "drive.readonly" },
-  { id: "google-business", name: "Business Profile", description: "Manage listing and reviews", icon: Building2, scope: "business.manage" },
+  { id: "gmail", name: "Gmail", description: "Send and receive emails", icon: Mail, scope: "gmail.readonly gmail.send", usedBy: ["Email Campaigns", "Conversations"] },
+  { id: "google-calendar", name: "Calendar", description: "Sync appointments and events", icon: CalendarDays, scope: "calendar.readonly calendar.events", usedBy: ["Appointments", "Scheduling"] },
+  { id: "google-sheets", name: "Sheets", description: "Export data and reports", icon: FileSpreadsheet, scope: "spreadsheets.readonly spreadsheets", usedBy: ["Reports", "Data Export"] },
+  { id: "google-drive", name: "Drive", description: "File storage and sharing", icon: HardDrive, scope: "drive.readonly", usedBy: ["File Manager", "Attachments"] },
+  { id: "google-business", name: "Business Profile", description: "Manage listing and reviews", icon: Building2, scope: "business.manage", usedBy: ["Reviews", "Local SEO"] },
 ];
 
 const GOOGLE_YOUTUBE_SERVICES = [
@@ -322,7 +322,7 @@ function OAuthConnectionCard({
   icon: React.ReactNode;
   gradientFrom: string;
   gradientTo: string;
-  childServices: typeof GOOGLE_CHILD_SERVICES;
+  childServices: Array<{ id: string; name: string; description: string; icon: LucideIcon; scope: string; usedBy?: string[] }>;
   connection: IntegrationConnection | undefined;
   subAccountId: number;
   onSettingsOpen: (serviceId: string) => void;
@@ -330,8 +330,73 @@ function OAuthConnectionCard({
   onReconnect: () => void;
 }) {
   const [expanded, setExpanded] = useState(true);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const isConnected = connection?.connected ?? false;
   const status = connection?.status ?? (isConnected ? "connected" : "disconnected");
+
+  const { data: verificationData, isLoading: isVerifying, error: verificationError } = useQuery<{ results: Record<string, { verified: boolean; lastVerified: string; reconnectRequired: boolean; error: string | null }> }>({
+    queryKey: [`/api/integrations/${subAccountId}/${provider}/verify`],
+    queryFn: async () => {
+      const res = await fetch(`/api/integrations/${subAccountId}/${provider}/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: "Verification request failed" }));
+        const errorMsg = typeof errData.error === "string" ? errData.error : `Verification failed (${res.status})`;
+        const failedResults: Record<string, any> = {};
+        for (const s of ["gmail", "google-calendar", "google-sheets", "google-drive", "google-business"]) {
+          failedResults[s] = { verified: false, lastVerified: new Date().toISOString(), reconnectRequired: res.status === 401, error: errorMsg };
+        }
+        return { results: failedResults };
+      }
+      return res.json();
+    },
+    enabled: !!subAccountId && isConnected && provider === "google",
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const verifyAllMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/integrations/${subAccountId}/${provider}/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Verification failed");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Verification Complete", description: "All services have been checked." });
+      queryClient.invalidateQueries({ queryKey: [`/api/integrations/${subAccountId}/${provider}/verify`] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const verifySingleMutation = useMutation({
+    mutationFn: async (serviceId: string) => {
+      const res = await fetch(`/api/integrations/${subAccountId}/${provider}/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ service: serviceId }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Verification failed");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/integrations/${subAccountId}/${provider}/verify`] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
 
   const handleConnect = () => {
     window.location.href = `/api/oauth/${provider}/authorize/${subAccountId}`;
@@ -368,6 +433,10 @@ function OAuthConnectionCard({
     return scope.split(" ").some((s) => 
       normalizedScopes.includes(s) || connection.scopes!.includes(s)
     );
+  };
+
+  const getServiceVerification = (serviceId: string) => {
+    return verificationData?.results?.[serviceId];
   };
 
   return (
@@ -417,6 +486,17 @@ function OAuthConnectionCard({
           </div>
         </div>
 
+        {isConnected && provider === "google" && (
+          <div className="mb-4 p-3 rounded-xl bg-indigo-500/5 border border-indigo-500/10" data-testid="info-google-shared-connection">
+            <div className="flex items-start gap-2">
+              <Info size={14} className="text-indigo-400 mt-0.5 shrink-0" />
+              <p className="text-xs text-slate-400">
+                Google is a shared master connection used across multiple platform modules. Each service below powers specific features throughout the platform.
+              </p>
+            </div>
+          </div>
+        )}
+
         {!isConnected ? (
           <Button
             className={`w-full bg-gradient-to-r ${gradientFrom} ${gradientTo} hover:opacity-90 text-white font-bold py-5 text-base`}
@@ -428,6 +508,21 @@ function OAuthConnectionCard({
         ) : (
           <div className="space-y-4">
             <div className="flex gap-2">
+              {provider === "google" && (
+                <Button
+                  variant="ghost"
+                  className="flex-1 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10 font-semibold"
+                  onClick={() => verifyAllMutation.mutate()}
+                  disabled={verifyAllMutation.isPending}
+                  data-testid={`button-verify-all-${provider}`}
+                >
+                  {verifyAllMutation.isPending ? (
+                    <><Loader2 size={14} className="mr-1 animate-spin" /> Verifying...</>
+                  ) : (
+                    <><Activity size={14} className="mr-1" /> Test Google Connection</>
+                  )}
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 className="flex-1 border border-white/10 text-slate-300 hover:bg-white/5 font-semibold"
@@ -464,48 +559,129 @@ function OAuthConnectionCard({
                   className="space-y-2 overflow-hidden"
                 >
                   {childServices.map((service) => {
-                    const active = hasScope(service.scope);
+                    const verification = provider === "google" ? getServiceVerification(service.id) : null;
+                    const hasVerificationData = !!verification;
+                    const isVerified = verification?.verified ?? false;
+                    const reconnectRequired = verification?.reconnectRequired ?? false;
+
+                    const scopeActive = hasScope(service.scope);
+                    const useVerification = provider === "google" && hasVerificationData;
+                    const isActive = useVerification ? isVerified : scopeActive;
+
                     return (
                       <div
                         key={service.id}
-                        className={`flex items-center justify-between p-3 rounded-xl transition-colors ${
-                          active ? "bg-white/5 border border-white/10" : "bg-white/[0.02] border border-white/5"
+                        className={`p-3 rounded-xl transition-colors ${
+                          useVerification
+                            ? isVerified
+                              ? "bg-white/5 border border-emerald-500/15"
+                              : reconnectRequired
+                                ? "bg-amber-500/5 border border-amber-500/15"
+                                : "bg-red-500/5 border border-red-500/10"
+                            : isActive
+                              ? "bg-white/5 border border-white/10"
+                              : "bg-white/[0.02] border border-white/5"
                         }`}
                         data-testid={`child-service-${service.id}`}
                       >
-                        <div className="flex items-center gap-3">
-                          <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
-                            active ? "bg-emerald-500/15" : "bg-white/5"
-                          }`}>
-                            <service.icon size={18} className={active ? "text-emerald-400" : "text-slate-600"} />
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+                              useVerification
+                                ? isVerified ? "bg-emerald-500/15" : reconnectRequired ? "bg-amber-500/15" : "bg-red-500/10"
+                                : isActive ? "bg-emerald-500/15" : "bg-white/5"
+                            }`}>
+                              <service.icon size={18} className={
+                                useVerification
+                                  ? isVerified ? "text-emerald-400" : reconnectRequired ? "text-amber-400" : "text-red-400"
+                                  : isActive ? "text-emerald-400" : "text-slate-600"
+                              } />
+                            </div>
+                            <div>
+                              <p className={`text-sm font-medium ${
+                                useVerification
+                                  ? isVerified ? "text-white" : "text-slate-400"
+                                  : isActive ? "text-white" : "text-slate-500"
+                              }`}>
+                                {service.name}
+                              </p>
+                              <p className="text-xs text-slate-600">{service.description}</p>
+                              {service.usedBy && (
+                                <p className="text-[10px] text-slate-600 mt-0.5">
+                                  Used by: {service.usedBy.join(", ")}
+                                </p>
+                              )}
+                            </div>
                           </div>
-                          <div>
-                            <p className={`text-sm font-medium ${active ? "text-white" : "text-slate-500"}`}>
-                              {service.name}
-                            </p>
-                            <p className="text-xs text-slate-600">{service.description}</p>
+                          <div className="flex items-center gap-2">
+                            {useVerification ? (
+                              <Badge className={`text-[10px] ${
+                                isVerified
+                                  ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/20"
+                                  : reconnectRequired
+                                    ? "bg-amber-500/15 text-amber-400 border-amber-500/20"
+                                    : "bg-red-500/15 text-red-400 border-red-500/20"
+                              }`} data-testid={`badge-service-${service.id}`}>
+                                {isVerified ? (
+                                  <><CheckCircle size={10} className="mr-1" /> Verified</>
+                                ) : reconnectRequired ? (
+                                  <><AlertTriangle size={10} className="mr-1" /> Reconnect Required</>
+                                ) : (
+                                  <><XCircle size={10} className="mr-1" /> Unverified</>
+                                )}
+                              </Badge>
+                            ) : provider === "google" && !hasVerificationData ? (
+                              <Badge className="bg-white/5 text-slate-600 border-white/5 text-[10px]" data-testid={`badge-service-${service.id}`}>
+                                Not Checked
+                              </Badge>
+                            ) : (
+                              <Badge className={`text-[10px] ${
+                                isActive
+                                  ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/20"
+                                  : "bg-white/5 text-slate-600 border-white/5"
+                              }`} data-testid={`badge-service-${service.id}`}>
+                                {isActive ? "Active" : "Inactive"}
+                              </Badge>
+                            )}
+                            {provider === "google" && isConnected && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10"
+                                onClick={() => verifySingleMutation.mutate(service.id)}
+                                disabled={verifySingleMutation.isPending}
+                                data-testid={`button-verify-${service.id}`}
+                              >
+                                <Activity size={12} />
+                              </Button>
+                            )}
+                            {isActive && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-slate-400 hover:text-white hover:bg-white/10"
+                                onClick={() => onSettingsOpen(service.id)}
+                                data-testid={`button-settings-${service.id}`}
+                              >
+                                <Settings size={14} />
+                              </Button>
+                            )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Badge className={`text-[10px] ${
-                            active
-                              ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/20"
-                              : "bg-white/5 text-slate-600 border-white/5"
-                          }`} data-testid={`badge-service-${service.id}`}>
-                            {active ? "Active" : "Inactive"}
-                          </Badge>
-                          {active && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 px-2 text-slate-400 hover:text-white hover:bg-white/10"
-                              onClick={() => onSettingsOpen(service.id)}
-                              data-testid={`button-settings-${service.id}`}
-                            >
-                              <Settings size={14} />
-                            </Button>
-                          )}
-                        </div>
+                        {useVerification && (
+                          <div className="mt-2 pl-12">
+                            {verification!.error && (
+                              <p className="text-[10px] text-red-400" data-testid={`text-error-${service.id}`}>
+                                {verification!.error}
+                              </p>
+                            )}
+                            {verification!.lastVerified && (
+                              <p className="text-[10px] text-slate-600 flex items-center gap-1" data-testid={`text-last-verified-${service.id}`}>
+                                <Clock size={9} /> Last verified: {new Date(verification!.lastVerified).toLocaleString()}
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}

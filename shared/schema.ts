@@ -691,6 +691,24 @@ export const insertWebhookSchema = createInsertSchema(webhooks).omit({ id: true,
 export type InsertWebhook = z.infer<typeof insertWebhookSchema>;
 export type Webhook = typeof webhooks.$inferSelect;
 
+export const webhookDeliveryLogs = pgTable("webhook_delivery_logs", {
+  id: serial("id").primaryKey(),
+  webhookId: integer("webhook_id").references(() => webhooks.id, { onDelete: "cascade" }).notNull(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  targetUrl: text("target_url").notNull(),
+  eventType: text("event_type").notNull(),
+  statusCode: integer("status_code"),
+  responseBody: text("response_body"),
+  latencyMs: integer("latency_ms"),
+  success: boolean("success").notNull(),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertWebhookDeliveryLogSchema = createInsertSchema(webhookDeliveryLogs).omit({ id: true, createdAt: true });
+export type InsertWebhookDeliveryLog = z.infer<typeof insertWebhookDeliveryLogSchema>;
+export type WebhookDeliveryLog = typeof webhookDeliveryLogs.$inferSelect;
+
 // ---- White-Label Settings ----
 
 export const whiteLabelSettings = pgTable("white_label_settings", {

@@ -38,6 +38,7 @@ import {
   type Appointment, type InsertAppointment,
   type EmailCampaign, type InsertEmailCampaign,
   type Webhook, type InsertWebhook,
+  webhookDeliveryLogs, type WebhookDeliveryLog, type InsertWebhookDeliveryLog,
   type WhiteLabelSettings, type InsertWhiteLabelSettings,
   type MetaAdCampaign, type InsertMetaAdCampaign,
   type MetaLead, type InsertMetaLead,
@@ -240,6 +241,9 @@ export interface IStorage {
   createWebhook(data: InsertWebhook): Promise<Webhook>;
   updateWebhook(id: number, data: Partial<InsertWebhook>): Promise<Webhook | undefined>;
   deleteWebhook(id: number): Promise<boolean>;
+
+  getWebhookDeliveryLogs(webhookId: number, limit?: number): Promise<WebhookDeliveryLog[]>;
+  createWebhookDeliveryLog(data: InsertWebhookDeliveryLog): Promise<WebhookDeliveryLog>;
 
   getWhiteLabelSettings(userId: string): Promise<WhiteLabelSettings | undefined>;
   upsertWhiteLabelSettings(data: InsertWhiteLabelSettings): Promise<WhiteLabelSettings>;
@@ -1078,6 +1082,15 @@ export class DatabaseStorage implements IStorage {
   async deleteWebhook(id: number) {
     const rows = await db.delete(webhooks).where(eq(webhooks.id, id)).returning();
     return rows.length > 0;
+  }
+
+  async getWebhookDeliveryLogs(webhookId: number, limit = 20) {
+    return db.select().from(webhookDeliveryLogs).where(eq(webhookDeliveryLogs.webhookId, webhookId)).orderBy(desc(webhookDeliveryLogs.createdAt)).limit(limit);
+  }
+
+  async createWebhookDeliveryLog(data: InsertWebhookDeliveryLog) {
+    const [row] = await db.insert(webhookDeliveryLogs).values(data).returning();
+    return row;
   }
 
   async getWhiteLabelSettings(userId: string) {

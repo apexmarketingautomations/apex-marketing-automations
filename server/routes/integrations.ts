@@ -898,6 +898,77 @@ export function registerIntegrationsRoutes(app: Express) {
     res.json(enriched);
   }));
 
+  app.post("/api/integrations/:subAccountId/google/verify", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { service } = req.body || {};
+    const servicesToVerify = service ? [service] : ["gmail", "google-calendar", "google-sheets", "google-drive", "google-business"];
+
+    const token = await getValidToken(subAccountId, "google");
+    if (!token) {
+      const results: Record<string, any> = {};
+      for (const s of servicesToVerify) {
+        results[s] = { verified: false, error: "Google not connected or token expired", reconnectRequired: true, lastVerified: new Date().toISOString() };
+      }
+      return res.json({ results });
+    }
+
+    const results: Record<string, any> = {};
+
+    async function verifyService(serviceId: string) {
+      const result: any = { verified: false, lastVerified: new Date().toISOString(), reconnectRequired: false, error: null };
+      try {
+        let apiUrl = "";
+        switch (serviceId) {
+          case "gmail":
+            apiUrl = "https://gmail.googleapis.com/gmail/v1/users/me/profile";
+            break;
+          case "google-calendar":
+            apiUrl = "https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=1";
+            break;
+          case "google-sheets":
+            apiUrl = "https://www.googleapis.com/drive/v3/files?q=mimeType%3D%27application%2Fvnd.google-apps.spreadsheet%27&pageSize=1";
+            break;
+          case "google-drive":
+            apiUrl = "https://www.googleapis.com/drive/v3/files?pageSize=1";
+            break;
+          case "google-business":
+            apiUrl = "https://mybusinessaccountmanagement.googleapis.com/v1/accounts";
+            break;
+          default:
+            result.error = "Unknown service";
+            return result;
+        }
+
+        const response = await fetch(apiUrl, {
+          headers: { Authorization: `Bearer ${token!.accessToken}` },
+          signal: AbortSignal.timeout(10000),
+        });
+
+        if (response.ok) {
+          result.verified = true;
+        } else if (response.status === 401 || response.status === 403) {
+          result.reconnectRequired = true;
+          result.error = `Access denied (${response.status}) — scope may be missing or token revoked`;
+        } else {
+          result.error = `API returned status ${response.status}`;
+        }
+      } catch (err: any) {
+        result.error = err.message || "Connection failed";
+      }
+      return result;
+    }
+
+    const verifications = await Promise.allSettled(
+      servicesToVerify.map(async (s) => {
+        results[s] = await verifyService(s);
+      })
+    );
+
+    res.json({ results });
+  }));
+
   app.get("/api/integrations/:subAccountId/meta/assets", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
