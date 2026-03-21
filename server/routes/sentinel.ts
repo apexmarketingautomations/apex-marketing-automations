@@ -369,19 +369,17 @@ export function registerSentinelRoutes(app: Express) {
 
     const alertMsg = `🚨 APEX SENTINEL ALERT\n\n${incident.severity?.toUpperCase()} PRIORITY: ${incident.title}\n📍 ${incident.location}\n\n${incident.description}\n\nDeploy geofence ads now from your Sentinel dashboard.`;
 
-    const twilioSid = process.env.TWILIO_ACCOUNT_SID;
-    const twilioToken = process.env.TWILIO_AUTH_TOKEN;
-
-    if (!twilioSid || !twilioToken) {
-      return res.status(503).json({ error: "Twilio is not configured. Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN to send SMS alerts." });
-    }
     if (!account.twilioNumber) {
       return res.status(400).json({ error: "No Twilio phone number assigned to this account. Add one in account settings." });
     }
 
     try {
-      const twilioClient = Twilio(twilioSid, twilioToken);
-      await twilioClient.messages.create({
+      const { getTwilioClientForAccount } = await import("../twilioClientFactory");
+      const clientResult = await getTwilioClientForAccount(incident.subAccountId);
+      if (!clientResult) {
+        return res.status(503).json({ error: "Twilio is not configured for this account." });
+      }
+      await clientResult.client.messages.create({
         body: alertMsg,
         from: account.twilioNumber,
         to: account.ownerPhone,

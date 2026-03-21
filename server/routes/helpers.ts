@@ -164,13 +164,14 @@ export function getLanguageInstruction(language: string | null | undefined): str
   return `\n\nIMPORTANT: Respond in ${langName}. All your responses must be in ${langName}, not English.`;
 }
 
-export async function getTwilioClient() {
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
-  if (!sid || !token) return null;
-  const twilio = await import("twilio");
-  const Twilio = twilio.default || twilio;
-  return Twilio(sid, token);
+export async function getTwilioClient(subAccountId?: number) {
+  const { getTwilioClientForAccount, getMasterTwilioClient } = await import("../twilioClientFactory");
+  if (subAccountId) {
+    const result = await getTwilioClientForAccount(subAccountId);
+    return result?.client || null;
+  }
+  console.warn("[TWILIO-DEPRECATION] getTwilioClient() called without subAccountId — using master client. Migrate caller to pass subAccountId.");
+  return getMasterTwilioClient();
 }
 
 export const vapiConfig = {

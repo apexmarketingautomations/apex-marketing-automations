@@ -1,5 +1,5 @@
 import webpush from "web-push";
-import Twilio from "twilio";
+
 import { storage } from "./storage";
 import type { NotificationPreference } from "@shared/schema";
 
@@ -19,12 +19,12 @@ function ensureVapidKeys() {
   return true;
 }
 
-function getTwilioClient() {
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
-  if (!sid || !token) return null;
-  return Twilio(sid, token);
+async function getTwilioClientForSub(subAccountId: number) {
+  const { getTwilioClientForAccount } = await import("./twilioClientFactory");
+  const result = await getTwilioClientForAccount(subAccountId);
+  return result?.client || null;
 }
+
 
 export type AlertEventType =
   | "new_lead"
@@ -180,7 +180,7 @@ async function sendBrowserPush(subAccountId: number, payload: AlertPayload): Pro
 }
 
 async function sendSmsAlert(subAccountId: number, phone: string, payload: AlertPayload): Promise<boolean> {
-  const client = getTwilioClient();
+  const client = await getTwilioClientForSub(subAccountId);
   if (!client) return false;
 
   const account = await storage.getSubAccount(subAccountId);

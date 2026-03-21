@@ -993,29 +993,35 @@ export function registerV1Routes(app: Express) {
         }
 
         case "send_sms": {
-          const twilioSid = process.env.TWILIO_ACCOUNT_SID;
-          const twilioAuth = process.env.TWILIO_AUTH_TOKEN;
-          if (!twilioSid || !twilioAuth) {
-            result = { status: "Error", message: "Twilio not configured" };
-          } else if (!payload.to || !payload.body) {
+          if (!payload.to || !payload.body) {
             result = { status: "Error", message: "Missing 'to' phone number or 'body'" };
           } else {
+            const smsSubAccountId = payload.subAccountId || subAccountId;
             const { checkPhoneOptOut } = await import("../optOutGuard");
-            const isOptedOut = payload.subAccountId
-              ? await checkPhoneOptOut(payload.to, payload.subAccountId)
+            const isOptedOut = smsSubAccountId
+              ? await checkPhoneOptOut(payload.to, smsSubAccountId)
               : false;
 
             if (isOptedOut) {
               result = { status: "Blocked", message: "Recipient has opted out of SMS" };
             } else {
               try {
-                const twilio = Twilio(twilioSid, twilioAuth);
-                const msg = await twilio.messages.create({
-                  to: payload.to,
-                  from: payload.from || process.env.TWILIO_PHONE_NUMBER || "+18001234567",
-                  body: payload.body,
-                });
-                result = { status: "Success", message: "SMS Sent", sid: msg.sid };
+                const { getTwilioClientForAccount } = await import("../twilioClientFactory");
+                const clientResult = smsSubAccountId
+                  ? await getTwilioClientForAccount(smsSubAccountId)
+                  : null;
+                if (!clientResult) {
+                  result = { status: "Error", message: "Twilio not configured for this account" };
+                } else {
+                  const account = await storage.getSubAccount(smsSubAccountId);
+                  const fromNumber = payload.from || account?.twilioNumber || "";
+                  const msg = await clientResult.client.messages.create({
+                    to: payload.to,
+                    from: fromNumber,
+                    body: payload.body,
+                  });
+                  result = { status: "Success", message: "SMS Sent", sid: msg.sid };
+                }
               } catch (err: any) {
                 result = { status: "Error", message: `SMS failed: ${err.message}` };
               }

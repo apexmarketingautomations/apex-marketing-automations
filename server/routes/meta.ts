@@ -183,8 +183,10 @@ export function registerMetaRoutes(app: Express) {
               const account = await storage.getSubAccount(subAccountId);
               if (account?.twilioNumber && getName("phone_number")) {
                 try {
-                  const twilioClient = Twilio(process.env.TWILIO_ACCOUNT_SID!, process.env.TWILIO_AUTH_TOKEN!);
-                  await twilioClient.messages.create({
+                  const { getTwilioClientForAccount: getTwilioClientMeta } = await import("../twilioClientFactory");
+                  const metaClientResult = await getTwilioClientMeta(subAccountId);
+                  if (!metaClientResult) throw new Error("Twilio not configured for account");
+                  await metaClientResult.client.messages.create({
                     body: `Hi ${name.split(" ")[0] || "there"}! Thanks for your interest. We received your inquiry and will follow up shortly. - ${account.name}`,
                     from: account.twilioNumber,
                     to: getName("phone_number"),

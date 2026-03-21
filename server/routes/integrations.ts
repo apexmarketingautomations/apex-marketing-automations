@@ -1396,4 +1396,24 @@ export function registerIntegrationsRoutes(app: Express) {
     }
     res.json(result);
   }));
+
+  app.post("/api/admin/twilio-migration", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    const { isUserAdmin } = await import("./helpers");
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
+
+    const { subAccountId } = req.body;
+    const { migrateAllSubAccounts, migrateSingleSubAccount } = await import("../twilioMigration");
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+
+    if (subAccountId) {
+      const parsed = parseInt(subAccountId);
+      if (isNaN(parsed)) return res.status(400).json({ error: "Invalid subAccountId" });
+      const result = await migrateSingleSubAccount(parsed, baseUrl);
+      return res.json(result);
+    }
+
+    const results = await migrateAllSubAccounts(baseUrl);
+    res.json({ migrated: results });
+  }));
 }

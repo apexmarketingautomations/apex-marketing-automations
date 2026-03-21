@@ -106,10 +106,10 @@ export function registerMessagingRoutes(app: Express) {
     let twilioError: string | null = null;
 
     if (channel === "whatsapp") {
-      const twilioClient = await getTwilioClient();
+      const twilioClient = await getTwilioClient(subAccountId);
       if (!twilioClient) {
         twilioStatus = "failed";
-        twilioError = "Twilio is not configured. Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN to send WhatsApp messages.";
+        twilioError = "Twilio is not configured for this account.";
       } else {
         const account = await storage.getSubAccount(subAccountId);
         const waConnections = await db.select().from(integrationConnections)
@@ -171,10 +171,10 @@ export function registerMessagingRoutes(app: Express) {
         }
       }
     } else if (channel === "sms" || !channel) {
-      const twilioClient = await getTwilioClient();
+      const twilioClient = await getTwilioClient(subAccountId);
       if (!twilioClient) {
         twilioStatus = "failed";
-        twilioError = "Twilio is not configured. Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN to send SMS.";
+        twilioError = "Twilio is not configured for this account.";
       } else {
         const account = await storage.getSubAccount(subAccountId);
         const fromNumber = account?.twilioNumber;
@@ -182,19 +182,26 @@ export function registerMessagingRoutes(app: Express) {
           twilioStatus = "failed";
           twilioError = "No phone number assigned to this account. Purchase a Twilio number first.";
         } else {
-          try {
-            const twilioMsg = await twilioClient.messages.create({
-              body: body,
-              to: contactPhone,
-              from: fromNumber,
-            });
-            twilioStatus = twilioMsg.status || "sent";
-            twilioSid = twilioMsg.sid;
-            recordSuccess("twilio");
-          } catch (twilioErr: any) {
-            console.error("[SMS] Twilio send error:", twilioErr.message);
+          const { validateOutboundMessage } = await import("../twilioClientFactory");
+          const validation = await validateOutboundMessage(subAccountId, fromNumber);
+          if (!validation.valid) {
             twilioStatus = "failed";
-            twilioError = twilioErr.message || "Twilio send failed";
+            twilioError = validation.error || "Outbound validation failed";
+          } else {
+            try {
+              const twilioMsg = await twilioClient.messages.create({
+                body: body,
+                to: contactPhone,
+                from: fromNumber,
+              });
+              twilioStatus = twilioMsg.status || "sent";
+              twilioSid = twilioMsg.sid;
+              recordSuccess("twilio");
+            } catch (twilioErr: any) {
+              console.error("[SMS] Twilio send error:", twilioErr.message);
+              twilioStatus = "failed";
+              twilioError = twilioErr.message || "Twilio send failed";
+            }
           }
         }
       }

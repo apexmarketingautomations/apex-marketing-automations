@@ -101,7 +101,7 @@ export function registerWebhooksRoutes(app: Express) {
         await handleSmsOptOut(senderClean, matchedAccountId);
         console.log(`[OPT-OUT] ${senderClean} opted out of SMS`);
 
-        const twilioClient = await getTwilioClient();
+        const twilioClient = await getTwilioClient(matchedAccountId);
         if (twilioClient && toRaw) {
           await twilioClient.messages.create({
             body: "You have been unsubscribed and will no longer receive messages from us. Reply START to re-subscribe.",
@@ -119,7 +119,7 @@ export function registerWebhooksRoutes(app: Express) {
         await handleSmsOptIn(senderClean, matchedAccountId);
         console.log(`[OPT-IN] ${senderClean} opted back in to SMS`);
 
-        const twilioClient = await getTwilioClient();
+        const twilioClient = await getTwilioClient(matchedAccountId);
         if (twilioClient && toRaw) {
           await twilioClient.messages.create({
             body: "You have been re-subscribed and will receive messages from us again.",
@@ -212,7 +212,7 @@ export function registerWebhooksRoutes(app: Express) {
       }
 
       const sendStart = Date.now();
-      const twilioClient = await getTwilioClient();
+      const twilioClient = await getTwilioClient(matchedAccountId);
       if (twilioClient && toRaw) {
         const replyFrom = channel === "whatsapp" ? `whatsapp:${stripChannelPrefix(toRaw)}`
           : channel === "messenger" ? `messenger:${stripChannelPrefix(toRaw)}`
@@ -276,10 +276,10 @@ export function registerWebhooksRoutes(app: Express) {
     return `${fromE164}::${toE164}`;
   }
 
-  async function validateTwilioSignature(req: Request): Promise<boolean> {
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
+  async function validateTwilioSignature(req: Request, overrideAuthToken?: string): Promise<boolean> {
+    const authToken = overrideAuthToken || process.env.TWILIO_AUTH_TOKEN;
     if (!authToken) {
-      console.warn("[TWILIO-INBOUND] TWILIO_AUTH_TOKEN not set — skipping signature validation");
+      console.warn("[TWILIO-INBOUND] No auth token available — skipping signature validation");
       return true;
     }
     try {
@@ -388,10 +388,21 @@ export function registerWebhooksRoutes(app: Express) {
     const traceId = req.eventTraceId || crypto.randomUUID();
     const t0 = Date.now();
 
+    if (!req.body._resolvedSubAccountId) {
+      console.log(JSON.stringify({
+        event: "legacy_inbound_webhook_used",
+        timestamp: new Date().toISOString(),
+        trace_id: traceId,
+        to: req.body.To,
+        from: req.body.From,
+        deprecation: "Use scoped webhook /api/webhook/sms/:subAccountId instead",
+      }));
+    }
+
     console.log(`[TWILIO-INBOUND][${traceId}] Received inbound SMS`);
 
     try {
-      // 1. Signature validation
+      // 1. Signature validation — uses master token for legacy route, scoped token via _resolvedSubAccountId
       const isValid = await validateTwilioSignature(req);
       if (!isValid) {
         console.warn(`[TWILIO-INBOUND][${traceId}] Invalid Twilio signature — rejected`);
@@ -415,15 +426,34 @@ export function registerWebhooksRoutes(app: Express) {
       const senderClean = senderRaw.replace(/^(whatsapp:|messenger:)/, "");
       const toClean = toRaw ? toRaw.replace(/^(whatsapp:|messenger:)/, "") : "";
 
-      // 2. Resolve sub-account from To number
-      console.log(`[TRACE-ACCT] Resolving account for To="${toRaw}" toClean="${toClean}"`);
-      const matchedAccounts = await db.select().from(subAccounts)
-        .where(eq(subAccounts.twilioNumber, toClean))
-        .limit(1)
-        .execute()
-        .catch((e) => { console.error(`[TRACE-ACCT] DB query failed:`, e.message); return []; });
-      const subAccountId = matchedAccounts.length > 0 ? matchedAccounts[0].id : 1;
-      console.log(`[TRACE-ACCT] matchedAccounts=${matchedAccounts.length}, resolved subAccountId=${subAccountId}${matchedAccounts.length === 0 ? " (FALLBACK TO 1 — NO MATCH)" : ""}`);
+      // 2. Resolve sub-account from URL param or To number
+      let subAccountId: number;
+      if (req.body._resolvedSubAccountId) {
+        subAccountId = req.body._resolvedSubAccountId;
+        console.log(`[TRACE-ACCT] Using pre-resolved subAccountId=${subAccountId} from scoped webhook`);
+      } else {
+        console.log(`[TRACE-ACCT] Resolving account for To="${toRaw}" toClean="${toClean}"`);
+        const matchedAccounts = await db.select().from(subAccounts)
+          .where(eq(subAccounts.twilioNumber, toClean))
+          .limit(1)
+          .execute()
+          .catch((e) => { console.error(`[TRACE-ACCT] DB query failed:`, e.message); return []; });
+        if (matchedAccounts.length === 0) {
+          console.log(JSON.stringify({
+            event: "inbound_sms_rejected",
+            timestamp: new Date().toISOString(),
+            reason: "no_account_matched",
+            to_number: toClean,
+            from: senderRaw,
+            trace_id: traceId,
+          }));
+          console.warn(`[TWILIO-INBOUND][${traceId}] No account matched To=${toClean} — rejecting (use scoped webhook /api/webhook/sms/:subAccountId)`);
+          res.type("text/xml").send("<Response></Response>");
+          return;
+        }
+        subAccountId = matchedAccounts[0].id;
+        console.log(`[TRACE-ACCT] matchedAccounts=${matchedAccounts.length}, resolved subAccountId=${subAccountId}`);
+      }
       const threadId = generateThreadId(senderClean, toClean);
 
       console.log(`[TWILIO-INBOUND][${traceId}] From=${senderClean} To=${toClean} subAccountId=${subAccountId} threadId=${threadId.slice(0, 8)}`);
@@ -449,7 +479,7 @@ export function registerWebhooksRoutes(app: Express) {
           traceId,
         });
 
-        const twilioClient = await getTwilioClient();
+        const twilioClient = await getTwilioClient(subAccountId);
         if (twilioClient && toRaw) {
           await twilioClient.messages.create({
             body: "You have been unsubscribed and will no longer receive messages from us. Reply START to re-subscribe.",
@@ -479,7 +509,7 @@ export function registerWebhooksRoutes(app: Express) {
           traceId,
         });
 
-        const twilioClient = await getTwilioClient();
+        const twilioClient = await getTwilioClient(subAccountId);
         if (twilioClient && toRaw) {
           await twilioClient.messages.create({
             body: "You have been re-subscribed and will receive messages from us again.",
@@ -509,7 +539,7 @@ export function registerWebhooksRoutes(app: Express) {
           traceId,
         });
 
-        const twilioClient = await getTwilioClient();
+        const twilioClient = await getTwilioClient(subAccountId);
         if (twilioClient && toRaw) {
           await twilioClient.messages.create({
             body: "For help, reply STOP to unsubscribe or START to re-subscribe. Message and data rates may apply.",
@@ -662,7 +692,7 @@ export function registerWebhooksRoutes(app: Express) {
       const fallbackReply = "Thanks for your message! We'll get back to you shortly.";
 
       // 10. Reply handling
-      const twilioClient = await getTwilioClient();
+      const twilioClient = await getTwilioClient(subAccountId);
       if (twilioClient && toRaw) {
         const replyBody = aiReply || fallbackReply;
         let outboundSid: string | null = null;
@@ -753,8 +783,170 @@ export function registerWebhooksRoutes(app: Express) {
     }
   });
 
-  // Backward compatibility alias — redirect old sms-webhook to new endpoint
-  // (the old /api/sms-webhook handler above still handles WhatsApp/Messenger)
+  // ---- Scoped Inbound SMS Webhook (per sub-account) ----
+  // POST /api/webhook/sms/:subAccountId
+  app.post("/api/webhook/sms/:subAccountId", async (req, res) => {
+    const subAccountIdParam = parseInt(req.params.subAccountId, 10);
+    if (isNaN(subAccountIdParam) || subAccountIdParam < 1) {
+      console.error(`[WEBHOOK-SCOPED] Invalid subAccountId in URL: ${req.params.subAccountId}`);
+      res.type("text/xml").send("<Response></Response>");
+      return;
+    }
+
+    const traceId = crypto.randomUUID();
+    console.log(JSON.stringify({
+      event: "inbound_webhook_received",
+      sub_account_id: subAccountIdParam,
+      timestamp: new Date().toISOString(),
+      path: req.originalUrl,
+    }));
+
+    try {
+      const account = await storage.getSubAccount(subAccountIdParam);
+      if (!account) {
+        console.error(`[WEBHOOK-SCOPED] Sub-account ${subAccountIdParam} not found`);
+        res.type("text/xml").send("<Response></Response>");
+        return;
+      }
+
+      const { getAuthTokenForAccount } = await import("../twilioClientFactory");
+      const authToken = getAuthTokenForAccount(account);
+      const isValid = await validateTwilioSignature(req, authToken || undefined);
+
+      console.log(JSON.stringify({
+        event: "signature_validated",
+        sub_account_id: subAccountIdParam,
+        twilio_sid: account.twilioSubaccountSid || "master",
+        valid: isValid,
+        timestamp: new Date().toISOString(),
+      }));
+
+      if (!isValid) {
+        console.warn(`[WEBHOOK-SCOPED][${traceId}] Invalid Twilio signature for account ${subAccountIdParam}`);
+        res.status(403).type("text/xml").send("<Response></Response>");
+        return;
+      }
+
+      req.body._resolvedSubAccountId = subAccountIdParam;
+
+      const messageSid = req.body.MessageSid as string | undefined;
+      const incomingMsg = req.body.Body as string | undefined;
+      const senderRaw = req.body.From as string | undefined;
+      const toRaw = req.body.To as string | undefined;
+
+      if (!incomingMsg || !senderRaw) {
+        res.type("text/xml").send("<Response></Response>");
+        return;
+      }
+
+      const senderClean = senderRaw.replace(/^(whatsapp:|messenger:)/, "");
+      const toClean = toRaw ? toRaw.replace(/^(whatsapp:|messenger:)/, "") : "";
+      const threadId = generateThreadId(senderClean, toClean);
+
+      const { isOptOutMessage, isOptInMessage, checkPhoneOptOut, handleSmsOptOut, handleSmsOptIn } = await import("../optOutGuard");
+
+      if (isOptOutMessage(incomingMsg)) {
+        await handleSmsOptOut(senderClean, subAccountIdParam);
+        const twilioClient = await getTwilioClient(subAccountIdParam);
+        if (twilioClient && toRaw) {
+          await twilioClient.messages.create({
+            body: "You have been unsubscribed and will no longer receive messages from us. Reply START to re-subscribe.",
+            from: toRaw,
+            to: senderRaw,
+          });
+        }
+        res.type("text/xml").send("<Response></Response>");
+        return;
+      }
+
+      if (isOptInMessage(incomingMsg)) {
+        await handleSmsOptIn(senderClean, subAccountIdParam);
+        const twilioClient = await getTwilioClient(subAccountIdParam);
+        if (twilioClient && toRaw) {
+          await twilioClient.messages.create({
+            body: "You have been re-subscribed and will receive messages from us again.",
+            from: toRaw,
+            to: senderRaw,
+          });
+        }
+        res.type("text/xml").send("<Response></Response>");
+        return;
+      }
+
+      await storage.createMessage({
+        subAccountId: subAccountIdParam,
+        contactPhone: senderClean,
+        body: incomingMsg,
+        direction: "inbound",
+        channel: "sms",
+        status: "received",
+        messageSid: messageSid || null,
+        threadId,
+        traceId,
+      });
+
+      const isOptedOut = await checkPhoneOptOut(senderClean, subAccountIdParam);
+      if (isOptedOut) {
+        res.type("text/xml").send("<Response></Response>");
+        return;
+      }
+
+      let aiReply: string | null = null;
+      if (isAIConfigured()) {
+        try {
+          const dmCtx = await assembleDmContext({ subAccountId: subAccountIdParam, contactPhone: senderClean, channel: "sms" });
+          const langInstr = getLanguageInstruction(dmCtx.language);
+          const aiMsgs = buildDmMessages(dmCtx, "sms", incomingMsg);
+          if (langInstr && aiMsgs.length > 0 && aiMsgs[0].role === "system") {
+            aiMsgs[0].content += langInstr;
+          }
+          const aiResult = await aiChat(aiMsgs, { temperature: 0.7, maxTokens: 512, route: "webhook-scoped-sms" });
+          if (aiResult.text) aiReply = aiResult.text;
+        } catch (aiErr: any) {
+          console.error(`[WEBHOOK-SCOPED][${traceId}] AI error:`, aiErr.message);
+        }
+      }
+
+      const replyBody = aiReply || "Thanks for your message! We'll get back to you shortly.";
+      const twilioClient = await getTwilioClient(subAccountIdParam);
+      if (twilioClient && toRaw) {
+        try {
+          const sentMsg = await twilioClient.messages.create({
+            body: replyBody,
+            from: toRaw,
+            to: senderRaw,
+          });
+          console.log(JSON.stringify({
+            event: "outbound_message_sent",
+            sub_account_id: subAccountIdParam,
+            phone_number: toClean,
+            twilio_sid: account.twilioSubaccountSid || "master",
+            message_sid: sentMsg.sid,
+            timestamp: new Date().toISOString(),
+          }));
+
+          await storage.createMessage({
+            subAccountId: subAccountIdParam,
+            contactPhone: senderClean,
+            body: replyBody,
+            direction: "outbound",
+            channel: "sms",
+            status: "sent",
+            messageSid: sentMsg.sid,
+            threadId,
+            traceId,
+          });
+        } catch (sendErr: any) {
+          console.error(`[WEBHOOK-SCOPED][${traceId}] Outbound send failed:`, sendErr.message);
+        }
+      }
+
+      res.type("text/xml").send("<Response></Response>");
+    } catch (err: any) {
+      console.error(`[WEBHOOK-SCOPED][${traceId}] Error:`, err.message);
+      res.type("text/xml").send("<Response></Response>");
+    }
+  });
 
   // ---- Meta/Facebook Webhook (Instagram/Facebook DMs) ----
   app.get("/api/meta-webhook", (req, res) => {
@@ -1319,32 +1511,41 @@ export function registerWebhooksRoutes(app: Express) {
 
     results.steps.push({ id: "phone", status: "running", label: "Provisioning Phone Line" });
     let phoneNumber = null;
-    const twilioClient = await getTwilioClient();
-    if (twilioClient) {
-      try {
-        const numbers = await twilioClient.availablePhoneNumbers("US").local.list({
-          areaCode: parseInt(areaCode || "239", 10),
-          limit: 1,
-        });
-        if (numbers.length > 0) {
-          const purchased = await twilioClient.incomingPhoneNumbers.create({
-            phoneNumber: numbers[0].phoneNumber,
+    try {
+      const { provisionTwilioForSubAccount } = await import("../twilioClientFactory");
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const provResult = await provisionTwilioForSubAccount(account.id, `${businessName} Account`, baseUrl, {
+        areaCode: areaCode || "239",
+      });
+      phoneNumber = provResult.phoneNumber;
+    } catch (err: any) {
+      console.error("God Mode phone provisioning error:", err.message);
+      const twilioClient = await getTwilioClient();
+      if (twilioClient) {
+        try {
+          const numbers = await twilioClient.availablePhoneNumbers("US").local.list({
+            areaCode: parseInt(areaCode || "239", 10),
+            limit: 1,
           });
-          phoneNumber = purchased.phoneNumber;
-
-          const smsUrl = `${req.protocol}://${req.get("host")}/api/sms-webhook`;
-          const updateOpts: Record<string, string> = {};
-          updateOpts.smsUrl = smsUrl; updateOpts.smsMethod = "POST";
-          updateOpts.voiceUrl = "https://api.vapi.ai/twilio/voice/handler";
-          updateOpts.voiceMethod = "POST";
-          await twilioClient.incomingPhoneNumbers(purchased.sid).update(updateOpts);
+          if (numbers.length > 0) {
+            const purchased = await twilioClient.incomingPhoneNumbers.create({
+              phoneNumber: numbers[0].phoneNumber,
+            });
+            phoneNumber = purchased.phoneNumber;
+            const smsUrl = `${req.protocol}://${req.get("host")}/api/webhook/sms/${account.id}`;
+            const updateOpts: Record<string, string> = {};
+            updateOpts.smsUrl = smsUrl; updateOpts.smsMethod = "POST";
+            updateOpts.voiceUrl = "https://api.vapi.ai/twilio/voice/handler";
+            updateOpts.voiceMethod = "POST";
+            await twilioClient.incomingPhoneNumbers(purchased.sid).update(updateOpts);
+          }
+        } catch (fallbackErr: any) {
+          console.error("God Mode phone fallback error:", fallbackErr.message);
         }
-      } catch (err: any) {
-        console.error("God Mode phone error:", err.message);
       }
-    }
-    if (phoneNumber) {
-      await storage.updateSubAccount(account.id, { twilioNumber: phoneNumber });
+      if (phoneNumber) {
+        await storage.updateSubAccount(account.id, { twilioNumber: phoneNumber });
+      }
     }
     results.phoneNumber = phoneNumber;
     results.steps[1].status = phoneNumber ? "done" : "skipped";
@@ -1495,32 +1696,41 @@ export function registerWebhooksRoutes(app: Express) {
 
       stream.sendStep("phone", "running", "Provisioning AI Phone Line");
       let phoneNumber = null;
-      const twilioClient = await getTwilioClient();
-      if (twilioClient) {
-        try {
-          const numbers = await twilioClient.availablePhoneNumbers("US").local.list({
-            areaCode: parseInt(areaCode || "239", 10),
-            limit: 1,
-          });
-          if (numbers.length > 0) {
-            const purchased = await twilioClient.incomingPhoneNumbers.create({
-              phoneNumber: numbers[0].phoneNumber,
+      try {
+        const { provisionTwilioForSubAccount } = await import("../twilioClientFactory");
+        const baseUrl = `${req.protocol}://${req.get("host")}`;
+        const provResult = await provisionTwilioForSubAccount(account.id, `${businessName} Account`, baseUrl, {
+          areaCode: areaCode || "239",
+        });
+        phoneNumber = provResult.phoneNumber;
+      } catch (provErr: any) {
+        console.error("God Mode sub-account provisioning error:", provErr.message);
+        const twilioClient = await getTwilioClient();
+        if (twilioClient) {
+          try {
+            const numbers = await twilioClient.availablePhoneNumbers("US").local.list({
+              areaCode: parseInt(areaCode || "239", 10),
+              limit: 1,
             });
-            phoneNumber = purchased.phoneNumber;
-
-            const smsUrl = `${req.protocol}://${req.get("host")}/api/sms-webhook`;
-            const updateOpts: Record<string, string> = {};
-            updateOpts.smsUrl = smsUrl; updateOpts.smsMethod = "POST";
-            updateOpts.voiceUrl = "https://api.vapi.ai/twilio/voice/handler";
-            updateOpts.voiceMethod = "POST";
-            await twilioClient.incomingPhoneNumbers(purchased.sid).update(updateOpts);
+            if (numbers.length > 0) {
+              const purchased = await twilioClient.incomingPhoneNumbers.create({
+                phoneNumber: numbers[0].phoneNumber,
+              });
+              phoneNumber = purchased.phoneNumber;
+              const smsUrl = `${req.protocol}://${req.get("host")}/api/webhook/sms/${account.id}`;
+              const updateOpts: Record<string, string> = {};
+              updateOpts.smsUrl = smsUrl; updateOpts.smsMethod = "POST";
+              updateOpts.voiceUrl = "https://api.vapi.ai/twilio/voice/handler";
+              updateOpts.voiceMethod = "POST";
+              await twilioClient.incomingPhoneNumbers(purchased.sid).update(updateOpts);
+            }
+          } catch (err: any) {
+            console.error("God Mode phone fallback error:", err.message);
           }
-        } catch (err: any) {
-          console.error("God Mode phone error:", err.message);
         }
-      }
-      if (phoneNumber) {
-        await storage.updateSubAccount(account.id, { twilioNumber: phoneNumber });
+        if (phoneNumber) {
+          await storage.updateSubAccount(account.id, { twilioNumber: phoneNumber });
+        }
       }
       results.phoneNumber = phoneNumber;
       stream.sendStep("phone", phoneNumber ? "done" : "skipped", "Provisioning AI Phone Line",

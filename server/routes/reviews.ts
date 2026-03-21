@@ -47,27 +47,29 @@ export function registerReviewsRoutes(app: Express) {
     const { subAccountId, customerName, rating, comment } = req.body;
     console.log(`[ALERT] Negative review from ${customerName} (rating: ${rating}) for account ${subAccountId}: ${comment}`);
 
-    const twilioSid = process.env.TWILIO_ACCOUNT_SID;
-    const twilioToken = process.env.TWILIO_AUTH_TOKEN;
-    if (twilioSid && twilioToken && subAccountId) {
+    if (subAccountId) {
       try {
-        const account = await storage.getSubAccount(parseInt(subAccountId));
+        const accountId = parseInt(subAccountId);
+        const account = await storage.getSubAccount(accountId);
         if (account?.ownerPhone) {
-          const twilio = Twilio(twilioSid, twilioToken);
-          await twilio.messages.create({
-            body: `🚨 APEX ALERT: ${customerName} just left a ${rating}-star rating. "${comment?.substring(0, 100)}". Check your Reputation Dashboard now!`,
-            from: account.twilioNumber,
-            to: account.ownerPhone,
-          });
-          console.log(`[ALERT] SMS sent to ${account.ownerPhone}`);
+          const { getTwilioClientForAccount } = await import("../twilioClientFactory");
+          const clientResult = await getTwilioClientForAccount(accountId);
+          if (clientResult) {
+            await clientResult.client.messages.create({
+              body: `🚨 APEX ALERT: ${customerName} just left a ${rating}-star rating. "${comment?.substring(0, 100)}". Check your Reputation Dashboard now!`,
+              from: account.twilioNumber,
+              to: account.ownerPhone,
+            });
+            console.log(`[ALERT] SMS sent to ${account.ownerPhone}`);
 
-          await storage.createUsageLog({
-            subAccountId: parseInt(subAccountId),
-            type: "SMS_SEGMENT",
-            amount: 1,
-            cost: 2.0,
-            description: "Negative review alert SMS",
-          });
+            await storage.createUsageLog({
+              subAccountId: parseInt(subAccountId),
+              type: "SMS_SEGMENT",
+              amount: 1,
+              cost: 2.0,
+              description: "Negative review alert SMS",
+            });
+          }
         }
       } catch (e) {
         console.error("[ALERT] SMS failed:", (e as any).message);

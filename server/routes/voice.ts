@@ -3,7 +3,7 @@ import { messages, vapiCallLogs } from "@shared/schema";
 import { storage } from "../storage";
 import { z } from "zod";
 import { aiChat, isAIConfigured } from "../aiGateway";
-import { asyncHandler, getIndustryContext, getTwilioClient, vapiConfig } from "./helpers";
+import { asyncHandler, getIndustryContext, vapiConfig } from "./helpers";
 import { recordSuccess } from "../pulse";
 import { db } from "../db";
 import { eq } from "drizzle-orm";
@@ -606,9 +606,10 @@ export function registerVoiceRoutes(app: Express) {
   // ---- Phone Number Provisioning (Twilio + Vapi) ----
 
   app.get("/api/phone-numbers/search", asyncHandler(async (req, res) => {
-    const twilioClient = await getTwilioClient();
+    const { getMasterTwilioClient } = await import("../twilioClientFactory");
+    const twilioClient = await getMasterTwilioClient();
     if (!twilioClient) {
-      return res.status(503).json({ error: "Twilio credentials are not configured. Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in Secrets." });
+      return res.status(503).json({ error: "Twilio credentials are not configured." });
     }
 
     const areaCodeStr = (Array.isArray(req.query.areaCode) ? req.query.areaCode[0] : req.query.areaCode) as string | undefined;
@@ -652,7 +653,8 @@ export function registerVoiceRoutes(app: Express) {
   });
 
   app.post("/api/phone-numbers/purchase", asyncHandler(async (req, res) => {
-    const twilioClient = await getTwilioClient();
+    const { getMasterTwilioClient } = await import("../twilioClientFactory");
+    const twilioClient = await getMasterTwilioClient();
     if (!twilioClient) {
       return res.status(503).json({ error: "Twilio credentials are not configured." });
     }
@@ -662,7 +664,10 @@ export function registerVoiceRoutes(app: Express) {
 
     const { phoneNumber, assistantId, subAccountId } = parsed.data;
 
-    const smsWebhookUrl = `${req.protocol}://${req.get("host")}/api/sms-webhook`;
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const smsWebhookUrl = subAccountId
+      ? `${baseUrl}/api/webhook/sms/${subAccountId}`
+      : `${baseUrl}/api/sms-webhook`;
 
     let purchased;
     try {
@@ -681,8 +686,12 @@ export function registerVoiceRoutes(app: Express) {
           body: JSON.stringify({
             provider: "twilio",
             number: purchased.phoneNumber,
-            twilioAccountSid: process.env.TWILIO_ACCOUNT_SID,
-            twilioAuthToken: process.env.TWILIO_AUTH_TOKEN,
+            twilioAccountSid: subAccountId
+              ? (await storage.getSubAccount(subAccountId))?.twilioSubaccountSid || process.env.TWILIO_ACCOUNT_SID
+              : process.env.TWILIO_ACCOUNT_SID,
+            twilioAuthToken: subAccountId
+              ? (await storage.getSubAccount(subAccountId))?.twilioSubaccountAuthToken || process.env.TWILIO_AUTH_TOKEN
+              : process.env.TWILIO_AUTH_TOKEN,
             assistantId,
           }),
         });
@@ -733,9 +742,10 @@ export function registerVoiceRoutes(app: Express) {
   }));
 
   app.get("/api/phone-numbers", asyncHandler(async (_req, res) => {
-    const twilioClient = await getTwilioClient();
+    const { getMasterTwilioClient } = await import("../twilioClientFactory");
+    const twilioClient = await getMasterTwilioClient();
     if (!twilioClient) {
-      return res.status(503).json({ error: "Twilio is not configured. Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN to manage phone numbers.", numbers: [] });
+      return res.status(503).json({ error: "Twilio is not configured.", numbers: [] });
     }
 
     let numbers;
