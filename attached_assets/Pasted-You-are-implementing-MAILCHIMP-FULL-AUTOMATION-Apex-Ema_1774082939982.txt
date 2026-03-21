@@ -1,0 +1,180 @@
+You are implementing:
+
+MAILCHIMP FULL AUTOMATION — Apex Email Engine (Execution Version)
+
+Goal:
+Fully wire Mailchimp into Apex so contacts sync automatically, tags update in real time, and emails send from Apex events with ZERO manual work.
+
+---
+
+# 🚨 CORE RULE
+
+Apex = source of truth  
+Mailchimp = delivery + automation layer  
+
+All email must be triggered by Apex events.
+
+---
+
+# 1. AUTH (PER SUB-ACCOUNT)
+
+Store on subAccount:
+
+- mailchimp_api_key
+- mailchimp_server_prefix
+- mailchimp_audience_id
+
+No global Mailchimp account.
+
+---
+
+# 2. CONTACT SYNC (REQUIRED)
+
+On ANY of these events:
+- lead_created
+- contact_updated
+- phone/email captured
+
+→ UPSERT contact to Mailchimp
+
+Fields:
+- email
+- first_name
+- last_name
+- phone
+- tags
+- source
+
+No duplicates allowed.
+
+---
+
+# 3. TAG SYSTEM (REAL-TIME)
+
+Tags must be applied automatically:
+
+- new_lead
+- hot_lead
+- call_requested
+- booked_call
+- no_response
+- customer
+
+Tag updates must sync immediately to Mailchimp.
+
+---
+
+# 4. EVENT → EMAIL TRIGGERS
+
+From Apex events:
+
+- call_requested → send confirmation email
+- lead_created → send intro email
+- no_response_after_X → send nudge
+- appointment_booked → send confirmation
+- deal_stage_changed → update tags + optional email
+
+Flow:
+Event → sync contact → apply tags → send email OR trigger Mailchimp journey
+
+---
+
+# 5. TEMPLATE SYSTEM
+
+Use Mailchimp templates (NOT raw HTML in code).
+
+Required templates:
+
+1. Lead Follow-Up  
+2. Call Confirmation  
+3. No Response  
+4. Offer / Promo  
+5. Reactivation  
+
+Support variables:
+
+- {{first_name}}
+- {{business_name}}
+- {{booking_link}}
+
+---
+
+# 6. BOOKING LINK (MANDATORY)
+
+Pull from:
+- account.config.bookingLink
+OR
+- account.aiPromptConfig.bookingLink
+
+Inject into templates.
+
+---
+
+# 7. AUTOMATIONS (MAILCHIMP SIDE)
+
+Set up:
+
+FLOW 1: new_lead → email immediately → follow-up later  
+FLOW 2: call_requested → confirmation email  
+FLOW 3: no_response → re-engagement  
+
+---
+
+# 8. FAILURE HANDLING
+
+If Mailchimp call fails:
+
+- log error
+- retry
+- DO NOT silently fail
+
+---
+
+# 9. LOGGING
+
+Log:
+
+- email_sent
+- email_failed
+- contact_synced
+- tag_applied
+
+Include:
+- sub_account_id
+- contact_id
+- email
+- template
+
+---
+
+# 10. SUCCESS CRITERIA
+
+System is correct when:
+
+- new lead appears in Mailchimp instantly  
+- tags update correctly  
+- emails send automatically  
+- no duplicates  
+- no missed triggers  
+
+---
+
+# 🚫 DO NOT
+
+- do not send emails manually  
+- do not bypass Apex events  
+- do not allow desync  
+
+---
+
+# 🏁 FINAL STATE
+
+Apex automatically:
+
+- captures leads  
+- syncs contacts  
+- applies tags  
+- sends emails  
+- runs follow-ups  
+
+Email runs in the background with no human input.

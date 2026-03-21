@@ -1,6 +1,14 @@
 import { eventBus, EVENT_TYPES, type ApexEvent } from "./eventBus";
 import { dispatchAlert, generateDeepLink } from "./pushAlertService";
 import { logSystemEvent } from "./systemLogger";
+import {
+  handleLeadCreated,
+  handleContactUpdated,
+  handleCallRequested,
+  handleAppointmentBooked,
+  handleDealStageChanged,
+  handleNoResponse,
+} from "./mailchimp";
 
 let storageRef: any = null;
 
@@ -105,5 +113,55 @@ export function initEventSubscribers(storage: any, _systemLogger?: any) {
     }
   }, -100);
 
-  console.log("[EVENT-BUS] All subscribers initialized");
+  eventBus.subscribe(EVENT_TYPES.LEAD_CREATED, "mailchimp", async (event) => {
+    const { subAccountId, contactId, email, firstName, lastName, phone, source } = event.payload;
+    if (!subAccountId || !contactId) return;
+    try {
+      await handleLeadCreated(subAccountId, contactId, { email, firstName, lastName, phone, source });
+    } catch (err: any) {
+      console.error("[EVENT-SUB:mailchimp] lead_created handler error:", err.message);
+    }
+  });
+
+  eventBus.subscribe(EVENT_TYPES.CONTACT_CREATED, "mailchimp", async (event) => {
+    const { subAccountId, contactId, email, firstName, lastName, phone, source } = event.payload;
+    if (!subAccountId || !contactId) return;
+    try {
+      await handleLeadCreated(subAccountId, contactId, { email, firstName, lastName, phone, source });
+    } catch (err: any) {
+      console.error("[EVENT-SUB:mailchimp] contact_created handler error:", err.message);
+    }
+  });
+
+  eventBus.subscribe(EVENT_TYPES.CONTACT_UPDATED, "mailchimp", async (event) => {
+    const { subAccountId, contactId, email, firstName, lastName, phone, source, tags } = event.payload;
+    if (!subAccountId || !contactId) return;
+    try {
+      await handleContactUpdated(subAccountId, contactId, { email, firstName, lastName, phone, source, tags });
+    } catch (err: any) {
+      console.error("[EVENT-SUB:mailchimp] contact_updated handler error:", err.message);
+    }
+  });
+
+  eventBus.subscribe(EVENT_TYPES.APPOINTMENT_BOOKED, "mailchimp", async (event) => {
+    const { subAccountId, contactId, email, firstName, phone } = event.payload;
+    if (!subAccountId || !contactId) return;
+    try {
+      await handleAppointmentBooked(subAccountId, contactId, { email, firstName, phone });
+    } catch (err: any) {
+      console.error("[EVENT-SUB:mailchimp] appointment_booked handler error:", err.message);
+    }
+  });
+
+  eventBus.subscribe(EVENT_TYPES.DEAL_STAGE_CHANGED, "mailchimp", async (event) => {
+    const { subAccountId, contactId, email, firstName, newStage } = event.payload;
+    if (!subAccountId) return;
+    try {
+      await handleDealStageChanged(subAccountId, contactId || null, { email, firstName }, newStage || "unknown");
+    } catch (err: any) {
+      console.error("[EVENT-SUB:mailchimp] deal_stage_changed handler error:", err.message);
+    }
+  });
+
+  console.log("[EVENT-BUS] All subscribers initialized (including Mailchimp)");
 }

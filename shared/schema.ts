@@ -1774,6 +1774,38 @@ export const insertPendingActionSchema = createInsertSchema(pendingActions).omit
 export type InsertPendingAction = z.infer<typeof insertPendingActionSchema>;
 export type PendingAction = typeof pendingActions.$inferSelect;
 
+export const mailchimpEmailLogs = pgTable("mailchimp_email_logs", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  contactId: integer("contact_id").references(() => contacts.id),
+  email: text("email").notNull(),
+  templateKey: text("template_key").notNull(),
+  campaignId: text("campaign_id"),
+  status: text("status").notNull().default("sent"),
+  eventType: text("event_type").notNull(),
+  errorMessage: text("error_message"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertMailchimpEmailLogSchema = createInsertSchema(mailchimpEmailLogs).omit({ id: true, createdAt: true });
+export type InsertMailchimpEmailLog = z.infer<typeof insertMailchimpEmailLogSchema>;
+export type MailchimpEmailLog = typeof mailchimpEmailLogs.$inferSelect;
+
+export const mailchimpSyncLogs = pgTable("mailchimp_sync_logs", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  contactId: integer("contact_id").references(() => contacts.id),
+  action: text("action").notNull(),
+  status: text("status").notNull().default("success"),
+  details: jsonb("details"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertMailchimpSyncLogSchema = createInsertSchema(mailchimpSyncLogs).omit({ id: true, createdAt: true });
+export type InsertMailchimpSyncLog = z.infer<typeof insertMailchimpSyncLogSchema>;
+export type MailchimpSyncLog = typeof mailchimpSyncLogs.$inferSelect;
+
 export const PLAN_LIMITS: Record<string, Record<string, number>> = {
   starter: {
     messages_per_month: 500,
