@@ -45,15 +45,23 @@ const DEFAULT_SUBJECTS: Record<TemplateKey, string> = {
 
 async function getMailchimpConfig(subAccountId: number): Promise<MailchimpConfig | null> {
   try {
-    const connection = await storage.getIntegrationConnection(subAccountId, "mailchimp");
-    if (!connection || connection.status !== "connected" || !connection.config) return null;
+    let apiKey: string | undefined;
+    let serverPrefix: string | undefined;
+    let audienceId: string | undefined;
 
-    const cfg = connection.config as Record<string, any>;
-    const apiKey = cfg.apiKey;
+    const connection = await storage.getIntegrationConnection(subAccountId, "mailchimp");
+    if (connection && connection.status === "connected" && connection.config) {
+      const cfg = connection.config as Record<string, any>;
+      apiKey = cfg.apiKey && cfg.apiKey !== "configured" ? cfg.apiKey : undefined;
+      serverPrefix = cfg.serverPrefix;
+      audienceId = cfg.audienceId;
+    }
+
+    if (!apiKey) apiKey = process.env.MAILCHIMP_API_KEY;
+    if (!audienceId) audienceId = process.env.MAILCHIMP_AUDIENCE_ID || process.env["AUDIENCE ID MAIL CHIMP"];
     if (!apiKey) return null;
 
-    const serverPrefix = cfg.serverPrefix || apiKey.split("-").pop();
-    const audienceId = cfg.audienceId;
+    if (!serverPrefix) serverPrefix = apiKey.split("-").pop();
     if (!serverPrefix || !audienceId) return null;
 
     return { apiKey, serverPrefix, audienceId };
