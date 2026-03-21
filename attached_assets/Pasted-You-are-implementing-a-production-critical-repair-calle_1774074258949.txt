@@ -1,0 +1,145 @@
+You are implementing a production-critical repair called:
+
+FIX BILLING SYSTEM V3 — Remove Legacy Flat Pricing, Enforce 3x Model, and Eliminate Billing Inconsistency
+
+Your goal is to eliminate all conflicting billing logic and enforce a single, deterministic billing system across Apex.
+
+---
+
+# 🚨 CORE PROBLEM
+
+The system currently contains:
+
+* a legacy flat-rate billing path (e.g. $2 per SMS)
+* a disconnected 3x multiplier model
+* multiple outbound paths that bypass billing entirely
+
+This results in:
+
+* some messages billed at $0
+* some messages potentially billed incorrectly
+* no consistent pricing model
+* unreliable revenue
+
+---
+
+# 🎯 PRIMARY OBJECTIVE
+
+Enforce ONE billing model across the system:
+
+* remove flat-rate billing logic
+* enforce 3x multiplier where provider cost exists
+* enforce explicit pricing rules where provider cost = 0
+
+---
+
+# ❌ REMOVE LEGACY BILLING
+
+Find and REMOVE all instances of:
+
+* hardcoded message pricing (e.g. $2 per SMS)
+* flat-rate usage logging not tied to provider cost
+* any fallback pricing not using the unified billing function
+
+There must be ZERO remaining code paths that:
+
+* assign arbitrary prices
+* bypass billing logic
+* use outdated billing functions
+
+---
+
+# ✅ SINGLE BILLING MODEL
+
+All outbound messages must follow:
+
+IF provider_cost exists:
+→ billed_amount = provider_cost × 3
+
+IF provider_cost = 0:
+→ billed_amount = channel_defined_price
+
+Example:
+
+* Facebook → flat configured price
+* internal alerts → optionally exempt
+
+---
+
+# ⚙️ CENTRAL BILLING FUNCTION (REQUIRED)
+
+All outbound messages MUST pass through:
+
+recordOutboundBilling(...)
+
+No exceptions.
+
+This function must:
+
+1. accept provider_cost
+2. calculate billed_amount
+3. calculate margin
+4. persist record
+5. return success/failure
+
+---
+
+# 🧾 BILLING RECORD STRUCTURE
+
+Every outbound message must store:
+
+{
+sub_account_id,
+channel,
+provider,
+provider_cost,
+billed_amount,
+margin,
+message_id,
+message_type,
+billing_exempt,
+timestamp
+}
+
+---
+
+# 🛑 HARD ENFORCEMENT
+
+System must NOT allow:
+
+* message send without billing attempt
+* billing bypass
+* silent failure
+
+If billing fails:
+→ log CRITICAL
+→ return failure state
+→ optionally retry
+
+---
+
+# 🔍 VALIDATION
+
+After fix:
+
+* no message uses flat pricing
+* no message is billed $0 unless explicitly exempt
+* no message exceeds expected multiplier range
+* billing coverage = ~100%
+
+---
+
+# 🏁 FINAL STATE
+
+Apex must operate with:
+
+* ONE billing system
+* ONE pricing model
+* ZERO ambiguity
+* ZERO legacy logic
+
+---
+
+This is a revenue integrity fix.
+
+No partial implementation is acceptable.

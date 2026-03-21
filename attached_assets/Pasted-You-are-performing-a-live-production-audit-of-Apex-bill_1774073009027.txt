@@ -1,0 +1,141 @@
+You are performing a **live production audit of Apex billing behavior**.
+
+Your goal is to determine the **actual effective multiplier** being applied to messaging — not what is intended, but what is truly happening in production.
+
+DO NOT assume anything.
+ONLY use real database records and logs.
+
+---
+
+# 🎯 OBJECTIVE
+
+Calculate:
+
+actual_multiplier = billed_amount ÷ provider_cost
+
+---
+
+# 🔍 STEP 1 — FETCH RECENT MESSAGE DATA
+
+Query the last 10 outbound messages.
+
+Return for each:
+
+{
+sub_account_id,
+message_id,
+channel,
+provider_cost,
+billed_amount,
+timestamp
+}
+
+---
+
+# 🔍 STEP 2 — CALCULATE EFFECTIVE MULTIPLIER
+
+For each message:
+
+effective_multiplier = billed_amount / provider_cost
+
+Return:
+
+{
+message_id,
+provider_cost,
+billed_amount,
+effective_multiplier
+}
+
+---
+
+# 🔍 STEP 3 — AGGREGATE RESULTS
+
+Calculate:
+
+* average_multiplier
+* min_multiplier
+* max_multiplier
+
+---
+
+# 🔍 STEP 4 — CHECK BILLING COVERAGE
+
+Verify:
+
+* Are ALL outbound messages logged with provider_cost?
+* Are ALL outbound messages logged with billed_amount?
+* Are ANY messages missing billing records?
+
+Return:
+
+{
+total_messages_checked,
+messages_with_billing,
+messages_missing_billing,
+coverage_percentage
+}
+
+---
+
+# 🔍 STEP 5 — IDENTIFY LEAKS
+
+Check for:
+
+* provider_cost = 0 but message was sent
+* billed_amount = 0
+* billed_amount < provider_cost (loss)
+* inconsistent multiplier across messages
+
+List any anomalies.
+
+---
+
+# 🔍 STEP 6 — CHANNEL DIFFERENCES
+
+Group by channel:
+
+* sms
+* voice
+* alerts
+
+Return multiplier per channel.
+
+---
+
+# 🔍 STEP 7 — INTERNAL VS CUSTOMER MESSAGES
+
+Classify messages:
+
+* system / alert messages
+* customer-facing messages
+
+Check:
+
+* Are system messages being billed?
+* Are they using the same multiplier?
+
+---
+
+# 🧾 FINAL OUTPUT
+
+Return:
+
+1. Actual average multiplier
+2. Whether 3x is truly enforced
+3. Any inconsistencies or leaks
+4. Whether billing is:
+
+   * correct
+   * partially broken
+   * or not enforced
+
+---
+
+# 🚨 RULES
+
+* DO NOT modify any code
+* DO NOT guess
+* DO NOT summarize without data
+
+ONLY return real findings from production

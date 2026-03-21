@@ -1,0 +1,284 @@
+You are implementing a production-critical repair called:
+
+FIX BILLING SYSTEM — Enforce Billing, Cost Tracking, and Margin Capture Across All Outbound Messaging
+
+Your job is to repair Apex’s broken billing flow so that EVERY outbound message is billed, provider cost is tracked, and margin can be verified in production.
+
+This is NOT a cosmetic cleanup.
+This is a revenue-protection fix.
+
+--------------------------------------------------
+CONTEXT / VERIFIED PRODUCTION FAILURES
+--------------------------------------------------
+
+Production audit already proved the following:
+
+- 57 outbound messages exist
+- only 1 message was billed
+- ~98.2% of outbound usage is unbilled
+- Facebook messages are not billed at all
+- the 3x multiplier is NOT being enforced in the live messaging path
+- provider cost is not stored anywhere for sent messages
+- wallet / deduct logic exists but is not actually connected to outbound messaging
+- flat-rate logging exists in some places but is inconsistent and often never fires
+
+This means Apex is currently sending messages without reliably capturing revenue.
+
+--------------------------------------------------
+PRIMARY OBJECTIVE
+--------------------------------------------------
+
+Make billing ENFORCED, CONSISTENT, and AUDITABLE across all outbound messaging paths.
+
+For every outbound message, Apex must do all of the following:
+
+1. determine provider cost
+2. determine billed amount
+3. persist a billing record
+4. associate it to sub_account_id
+5. prevent silent unbilled sends
+6. support margin reporting later
+
+--------------------------------------------------
+NON-NEGOTIABLE RULES
+--------------------------------------------------
+
+1. EVERY outbound message must produce a billing record
+2. Billing must work for ALL supported channels, including:
+   - SMS
+   - WhatsApp
+   - Facebook / Meta DM
+   - future channels must use same billing interface
+3. Billing must be tied to sub_account_id
+4. Provider cost must be stored separately from billed amount
+5. Billed amount must never be lower than provider cost unless explicitly flagged
+6. No silent failure: if billing fails, the system must log it loudly and return an explicit failure state
+7. Do NOT leave dual disconnected billing systems in place
+
+--------------------------------------------------
+IMPLEMENTATION GOALS
+--------------------------------------------------
+
+A. Create a single billing entry point used by all outbound messaging paths
+
+Create one shared function/service, something like:
+
+recordMessageBilling({
+  subAccountId,
+  channel,
+  provider,
+  providerCost,
+  billedAmount,
+  externalMessageId,
+  internalMessageId,
+  direction,
+  messageType,
+  metadata
+})
+
+All outbound messaging paths must call this single shared billing layer.
+
+Do NOT allow per-channel ad hoc billing logic anymore.
+
+--------------------------------------------------
+B. UNIFY THE BILLING MODEL
+--------------------------------------------------
+
+Right now there are multiple disconnected systems:
+- flat usage logging
+- wallet / deduct logic
+- markup logic that is never invoked
+
+Unify this.
+
+Choose one canonical outbound billing path and make every send use it.
+
+System must clearly support these fields:
+
+- sub_account_id
+- channel
+- provider_cost
+- billed_amount
+- margin
+- external_message_id
+- internal_message_id
+- provider_name
+- timestamp
+- message_type
+
+margin must be calculated and stored as:
+
+margin = billed_amount - provider_cost
+
+--------------------------------------------------
+C. STORE PROVIDER COST
+--------------------------------------------------
+
+Apex currently cannot verify its own margins because provider cost is not stored.
+
+Fix that.
+
+For SMS / Twilio:
+- capture the best available provider cost at send time
+- if exact cost is not available immediately, store an estimated provider cost
+- allow later reconciliation if Twilio returns final cost asynchronously
+
+For Facebook / Meta:
+- if provider cost is effectively zero, store:
+  provider_cost = 0
+  billed_amount = configured billed rate
+- do NOT skip billing just because provider cost is zero
+
+--------------------------------------------------
+D. ENFORCE BILLING ON ALL CHANNELS
+--------------------------------------------------
+
+Fix the current gap where Facebook / Meta messages bypass billing.
+
+Billing must run for:
+- sms
+- whatsapp
+- facebook
+- instagram if outbound is supported
+- internal alerts, only if intended by product rules
+
+If some message types should NOT be billed, they must be explicitly labeled with:
+- message_type
+- billing_exempt = true
+- reason
+
+No more accidental free sends.
+
+--------------------------------------------------
+E. REMOVE SILENT BILLING FAILURE
+--------------------------------------------------
+
+Current behavior suggests messages can send even if billing does not persist.
+
+Fix that.
+
+At minimum:
+- if message send succeeds but billing write fails, log a critical billing error with full context
+- this failure must be visible in logs and monitoring
+- return a structured error state to the caller
+- optionally queue a retry job for billing persistence
+
+Do NOT silently proceed as if billing succeeded.
+
+--------------------------------------------------
+F. CONNECT WALLET / DEDUCT ONLY IF IT IS REAL
+--------------------------------------------------
+
+If wallet / credit deduction is intended to be the real monetization model, then connect it directly to the outbound send path.
+
+If it is NOT the real billing model, remove it from the critical path and stop pretending it enforces margin.
+
+Do not leave “dead” monetization logic in production.
+
+Make one model the source of truth.
+
+--------------------------------------------------
+G. ADD BILLING COVERAGE VALIDATION
+--------------------------------------------------
+
+Add runtime checks and reporting for billing coverage.
+
+System must support queries like:
+- total outbound messages
+- total billed outbound messages
+- billing coverage percentage
+- count of unbilled outbound messages
+- count by channel
+- revenue by sub-account
+- provider cost by sub-account
+- margin by sub-account
+
+Add structured logging events such as:
+- outbound_message_sent
+- billing_record_created
+- billing_record_failed
+- billing_reconciled
+- billing_exempt_applied
+
+Each log must include:
+- sub_account_id
+- channel
+- provider_cost
+- billed_amount
+- external_message_id
+- timestamp
+
+--------------------------------------------------
+H. BACKFILL / AUDIT SUPPORT
+--------------------------------------------------
+
+Create a one-time audit/backfill utility for recent outbound messages that checks:
+
+- which messages were sent without billing
+- which messages have billed_amount but no provider_cost
+- which messages have inconsistent channel classification
+- which messages need manual reconciliation
+
+This utility should NOT guess silently.
+It should produce a clear report.
+
+--------------------------------------------------
+I. PRICING MODEL SUPPORT
+--------------------------------------------------
+
+Billing system must support configurable pricing rules, not hardcoded scattered values.
+
+Support one central pricing configuration for:
+- SMS
+- WhatsApp
+- Facebook / Meta
+- Voice
+- future channels
+
+Even if current billing remains flat-rate for some channels, the system must still store:
+- provider_cost
+- billed_amount
+- margin
+
+This preserves future multiplier support.
+
+--------------------------------------------------
+J. SUCCESS CRITERIA
+--------------------------------------------------
+
+The fix is complete only when ALL of the following are true:
+
+1. Every new outbound SMS creates a billing record
+2. Every new outbound Facebook / Meta message creates a billing record
+3. provider_cost is stored
+4. billed_amount is stored
+5. margin is calculable
+6. billing coverage for new outbound traffic is effectively 100%
+7. no channel bypasses billing
+8. logs clearly show billing success or failure
+9. billing queries can prove revenue by sub-account
+10. the live system can no longer send messages “for free” by accident
+
+--------------------------------------------------
+DO NOT
+--------------------------------------------------
+
+- do not redesign unrelated messaging architecture
+- do not create vague placeholder billing records
+- do not leave multiple conflicting billing systems half-connected
+- do not assume 3x is active unless you wire it into the actual outbound path
+- do not ship without proving end-to-end billing coverage
+
+--------------------------------------------------
+RELEVANT PRODUCTION PROBLEM TO FIX
+--------------------------------------------------
+
+This is a real revenue leak.
+Treat it like infrastructure, not product polish.
+
+Your output should prioritize:
+1. single billing source of truth
+2. full outbound coverage
+3. provider cost capture
+4. auditability
+5. prevention of future leakage

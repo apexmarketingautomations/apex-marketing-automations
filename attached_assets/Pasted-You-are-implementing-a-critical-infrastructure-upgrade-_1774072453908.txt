@@ -1,0 +1,268 @@
+You are implementing a **critical infrastructure upgrade** called:
+
+**Twilio Sub-Account Isolation (Multi-Tenant Messaging Architecture)**
+
+This is NOT a feature — it is a **system-level correction** required to fix:
+
+* Twilio warning 21660 (From number mismatch)
+* Cross-account leakage risk
+* Improper webhook scoping
+* Shared credential bottlenecks
+
+---
+
+# 🚨 CORE RULE
+
+Every Apex sub-account MUST operate with **fully isolated Twilio credentials**.
+
+NO shared sending context.
+
+NO ambiguity in routing.
+
+NO cross-account access.
+
+---
+
+# 🧠 SYSTEM MODEL (FINAL STATE)
+
+Each Apex sub-account has:
+
+* its own Twilio Sub-Account (SID)
+* its own Auth Token
+* its own phone number(s)
+* its own webhook scope
+
+All messaging (inbound + outbound) is executed **strictly within that sub-account context**.
+
+---
+
+# ⚙️ 1. DATABASE CONTRACT (MANDATORY)
+
+Extend sub-account schema to include:
+
+* twilio_subaccount_sid (string, required after migration)
+* twilio_auth_token (string, required after migration)
+* twilio_phone_number (string, existing)
+* twilio_status (enum: "legacy" | "migrated")
+
+Constraints:
+
+* sub_account_id MUST be present on all messaging-related tables
+* NO messaging operation without sub_account_id
+
+---
+
+# 🔐 2. TWILIO CLIENT FACTORY (SINGLE SOURCE OF TRUTH)
+
+Replace ALL direct Twilio client usage.
+
+Create:
+
+getTwilioClient(subAccountId)
+
+Behavior:
+
+1. Lookup sub-account in DB
+2. IF migrated:
+   → return Twilio client using sub-account SID + token
+3. IF NOT migrated:
+   → fallback to master credentials (temporary only)
+4. Log fallback usage (critical)
+
+NO hardcoded env usage outside this function.
+
+---
+
+# 📤 3. OUTBOUND MESSAGING (STRICT ENFORCEMENT)
+
+All outbound messaging MUST:
+
+* require sub_account_id
+* resolve Twilio client via factory
+* send using sub-account credentials
+
+Applies to:
+
+* pushAlertService.ts
+* messaging routes
+* operator tools
+* automation handlers
+
+FAIL HARD if:
+
+* sub_account_id missing
+* client cannot be resolved
+
+---
+
+# 📥 4. INBOUND WEBHOOK SCOPING (CRITICAL FIX)
+
+Webhook URLs MUST include sub-account identifier.
+
+Format options:
+
+* /webhook/sms/:subAccountId
+  OR
+* /webhook/sms?subAccountId=xxx
+
+Requirements:
+
+1. Extract sub_account_id immediately
+2. Lookup sub-account BEFORE processing message
+3. Validate Twilio signature using THAT sub-account’s auth token
+
+NO global webhook handling
+
+---
+
+# ⚡ 5. GOD MODE PROVISIONING (AUTOMATED SETUP)
+
+When creating a new Apex sub-account:
+
+1. Create Twilio sub-account via master account API
+2. Store:
+
+   * sub-account SID
+   * auth token
+3. Purchase or assign phone number inside that sub-account
+4. Configure webhook URL WITH sub-account scope
+5. Mark account as:
+   twilio_status = "migrated"
+
+This must be automatic — no manual steps.
+
+---
+
+# 🔄 6. MIGRATION ENGINE (ONE-TIME, SAFE)
+
+Build migration script:
+
+For each existing sub-account:
+
+1. Create Twilio sub-account
+2. Transfer or reassign phone number
+3. Store new credentials
+4. Update webhook URL
+5. Set:
+   twilio_status = "migrated"
+
+REQUIREMENTS:
+
+* Idempotent (safe to re-run)
+* Logs every step
+* Rolls forward only (no partial corruption)
+
+---
+
+# 🛑 7. FALLBACK POLICY (TEMPORARY ONLY)
+
+Legacy accounts may use master credentials ONLY if:
+
+twilio_status = "legacy"
+
+Every fallback usage MUST:
+
+* be logged
+* include sub_account_id
+* include phone number used
+
+This is a temporary bridge — NOT permanent behavior.
+
+---
+
+# 🔍 8. VALIDATION & GUARDS
+
+Enforce:
+
+* Every inbound message has sub_account_id
+* Every outbound message uses scoped client
+* No shared Twilio client anywhere in codebase
+
+Add runtime assertions:
+
+IF mismatch between:
+
+* phone number
+* sub-account SID
+
+→ log error + flag
+
+---
+
+# 📊 9. LOGGING (NON-NEGOTIABLE)
+
+Log these events:
+
+* twilio_client_resolved
+* twilio_fallback_used
+* outbound_message_sent
+* inbound_webhook_received
+* signature_validated
+* subaccount_created
+* migration_step_completed
+
+Each log MUST include:
+
+{
+sub_account_id,
+phone_number,
+twilio_sid,
+timestamp
+}
+
+---
+
+# 🧪 10. SUCCESS CONDITIONS (PROVE FIX)
+
+System is correct when:
+
+1. Sending SMS from sub-account phone:
+   → NO 21660 warning
+
+2. Webhook received:
+   → correctly scoped to sub-account
+   → validated with correct token
+
+3. Two different sub-accounts:
+   → cannot access each other’s messages
+   → cannot send using each other’s numbers
+
+4. No code path uses shared Twilio client directly
+
+---
+
+# 🚫 OUT OF SCOPE (DO NOT TOUCH)
+
+* Twilio billing separation
+* UI dashboards for Twilio
+* Vapi voice routing
+* New database tables
+
+---
+
+# 🏁 FINAL OBJECTIVE
+
+Transform Apex from:
+
+→ single-tenant Twilio usage (shared client, fragile routing)
+
+TO:
+
+→ fully isolated, multi-tenant messaging system with:
+
+* clean credential boundaries
+* deterministic routing
+* zero cross-account leakage
+
+---
+
+This is a **foundational system correction**.
+
+It must be:
+
+* deterministic
+* enforced
+* observable
+* migration-safe
+
+No shortcuts. No partial implementation.
