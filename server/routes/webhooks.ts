@@ -618,6 +618,67 @@ export function registerWebhooksRoutes(app: Express) {
         return;
       }
 
+      // 7.5 Call Request Flow — intent detection + AI bypass
+      const { detectIntent, handleCallRequestFlow } = await import("../callRequestFlow");
+      const smsIntent = detectIntent(incomingMsg);
+      if (smsIntent.isHotLead) {
+        console.log(`[TWILIO-INBOUND][${traceId}] HOT LEAD detected — intent=${smsIntent.intentType}, hasPhone=${smsIntent.hasPhone}`);
+
+        const contactRecord = contactId > 0 ? await storage.getContactById(contactId) : null;
+        const smsLeadData = {
+          contactId,
+          message: incomingMsg,
+          channel: "sms" as const,
+          phone: contactRecord?.phone || senderClean,
+          name: contactRecord?.firstName || "Unknown",
+          subAccountId,
+        };
+
+        const smsSendReply = async (body: string) => {
+          const twilioClientForReply = await getTwilioClient();
+          if (twilioClientForReply && toRaw) {
+            await twilioClientForReply.messages.create({ body, from: toRaw, to: senderRaw });
+            await storage.createMessage({
+              subAccountId,
+              contactPhone: senderClean,
+              body,
+              direction: "outbound",
+              channel: "sms",
+              status: "sent",
+              threadId,
+              traceId,
+            });
+          }
+        };
+
+        const smsReplyContext = {
+          type: "sms" as const,
+          fromNumber: toRaw,
+          toNumber: senderRaw,
+          threadId,
+          traceId,
+        };
+        await handleCallRequestFlow(smsLeadData, smsIntent, smsSendReply, smsReplyContext);
+        if (contactId > 0) {
+          const existingContact = await storage.getContactById(contactId);
+          if (existingContact) {
+            const updates: Record<string, unknown> = {};
+            if (!existingContact.tags?.includes("hot_lead")) {
+              updates.tags = [...(existingContact.tags || []), "hot_lead"];
+            }
+            if (!existingContact.source || existingContact.source === "manual") {
+              updates.source = "sms_hot_lead";
+            }
+            if (Object.keys(updates).length > 0) {
+              await storage.updateContact(contactId, updates);
+            }
+          }
+        }
+        await markEventCompleted(req);
+        res.type("text/xml").send("<Response></Response>");
+        return;
+      }
+
       // 8. Fire inbound SMS automation trigger
       const tAutoStart = Date.now();
       try {
@@ -1185,6 +1246,79 @@ export function registerWebhooksRoutes(app: Express) {
               }).catch((e) => console.error(`[TRACE-TRIGGER] import v1 ERROR:`, e.message));
             } catch (outerErr: any) {
               console.error(`[TRACE-TRIGGER] META DM outer catch ERROR:`, outerErr.message);
+            }
+
+            // Call Request Flow — intent detection for Meta DMs (AI bypass)
+            const { detectIntent: detectMetaIntent, handleCallRequestFlow: handleMetaCallFlow } = await import("../callRequestFlow");
+            const metaIntent = detectMetaIntent(message);
+            if (metaIntent.isHotLead && existingContactRecord) {
+              console.log(`[META DM] HOT LEAD detected — intent=${metaIntent.intentType}, channel=${channel}, sender=${senderId}`);
+
+              const metaLeadData = {
+                contactId: existingContactRecord.id,
+                message,
+                channel: channel as "facebook" | "instagram",
+                phone: existingContactRecord.phone || null,
+                name: existingContactRecord.firstName || `${channel === "instagram" ? "IG" : "FB"} User`,
+                subAccountId,
+                followUpPhone: senderId,
+              };
+
+              const metaSendReply = async (body: string) => {
+                if (!accessToken || !pageId) return;
+                const replyUrl = `https://graph.facebook.com/v19.0/${pageId}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
+                const sendRes = await fetch(replyUrl, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    recipient: { id: senderId },
+                    message: { text: body },
+                    access_token: accessToken,
+                  }),
+                });
+                const metaDmThreadId = `${subAccountId}::${senderId}::${channel}`;
+                await db.insert(messages).values({
+                  subAccountId,
+                  channel,
+                  direction: "outbound",
+                  contactPhone: senderId,
+                  body,
+                  status: sendRes.ok ? "sent" : "failed",
+                  traceId: metaTraceId,
+                  threadId: metaDmThreadId,
+                  pageId: entryPageId,
+                  senderId,
+                });
+              };
+
+              const metaReplyContext = {
+                type: "meta" as const,
+                senderId,
+                metaChannel: channel,
+              };
+              await handleMetaCallFlow(metaLeadData, metaIntent, metaSendReply, metaReplyContext);
+
+              {
+                const metaUpdates: Record<string, unknown> = {};
+                if (!existingContactRecord.tags?.includes("hot_lead")) {
+                  metaUpdates.tags = [...(existingContactRecord.tags || []), "hot_lead"];
+                }
+                const sourceLabel = channel === "instagram" ? "instagram_hot_lead" : "facebook_hot_lead";
+                if (!existingContactRecord.source || existingContactRecord.source === "manual") {
+                  metaUpdates.source = sourceLabel;
+                }
+                if (Object.keys(metaUpdates).length > 0) {
+                  await storage.updateContact(existingContactRecord.id, metaUpdates);
+                }
+              }
+
+              if (mid) {
+                try {
+                  const existing = await storage.getEventLogByExternalId("meta", mid);
+                  if (existing) await storage.updateEventLogStatus(existing.id, "completed", { processedAt: new Date() });
+                } catch {}
+              }
+              continue;
             }
 
             const keywords = await storage.getDmKeywordAutomations(subAccountId, true);

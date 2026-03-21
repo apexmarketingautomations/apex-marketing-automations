@@ -1566,6 +1566,12 @@ RULES:
         console.error("[RETRY-PROCESSOR] Failed to start:", err?.message);
       }
       try {
+        const { startFollowupWorker } = await import("./callRequestFlow");
+        startFollowupWorker();
+      } catch (err: any) {
+        console.error("[FOLLOWUP-WORKER] Failed to start:", err?.message);
+      }
+      try {
         const { startAutoSync } = await import("./googleCalendarSync");
         startAutoSync();
       } catch (err: any) {

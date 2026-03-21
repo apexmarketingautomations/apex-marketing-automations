@@ -1,0 +1,246 @@
+You are implementing a production-grade automation called **Call Request Flow — Intelligent Lead Capture & Instant Follow-Up** inside Apex.
+
+Your goal is to convert high-intent inbound messages (SMS, Facebook DM, Instagram DM) into immediate actions: auto-response, deal creation, owner alert, and follow-up — with ZERO delay and ZERO duplication.
+
+---
+
+## CORE RULE
+
+Intent detection MUST act as a **hard trigger**, not a suggestion.
+
+If high intent is detected:
+→ SYSTEM TAKES OVER
+→ AI response is BYPASSED
+
+---
+
+## 1. INTENT DETECTION (DETERMINISTIC)
+
+Create a shared utility function used across ALL inbound channels.
+
+Detection must be rule-based first (not fuzzy AI).
+
+Patterns:
+
+* "call me"
+* "can you call"
+* "reach out"
+* "interested"
+* "pricing"
+* "how much"
+* "book"
+* "schedule"
+* "appointment"
+* "quote"
+* raw 10-digit phone number
+
+Return:
+{
+isHotLead: boolean,
+intentType: "CALL_REQUEST" | "PRICING" | "GENERAL",
+hasPhone: boolean
+}
+
+If isHotLead === true → trigger flow immediately.
+
+---
+
+## 2. ENTRY POINTS
+
+Wire intent detection into:
+
+* Twilio inbound → server/routes/webhooks.ts
+* Facebook DM → server/routes/meta.ts
+* Instagram DM → server/routes/meta.ts
+
+Normalize all inbound data into:
+
+{
+contactId,
+message,
+channel: "sms" | "facebook" | "instagram",
+phone,
+name,
+sub_account_id
+}
+
+---
+
+## 3. AI BYPASS LOGIC (CRITICAL)
+
+If isHotLead === true:
+
+→ DO NOT call AI response generator
+→ DO NOT append AI reply
+
+Flow becomes:
+
+Inbound → Intent detected → SYSTEM RESPONSE ONLY
+
+---
+
+## 4. PHONE AUTO-CAPTURE
+
+If message contains a phone number:
+
+→ Immediately update contact.phone
+→ Skip asking for phone again
+
+---
+
+## 5. AUTO-RESPONSE (CHANNEL MATCHED)
+
+Send immediately via same channel.
+
+If NO phone:
+"Got you — what’s the best number to reach you at?"
+
+If phone EXISTS:
+"Perfect — want me to call you now or send a quick link to book a time?"
+
+If user indicates urgency ("now", "asap"):
+"Bet — calling you shortly 👌"
+
+Tone:
+
+* short
+* human
+* confident
+* no fluff
+
+---
+
+## 6. DEAL CREATION / ADVANCEMENT
+
+Check for existing open deal:
+
+IF no deal:
+→ create deal at stage "CONTACT_REQUESTED"
+
+IF deal exists AND stage === "NEW_LEAD":
+→ move to "CONTACT_REQUESTED"
+
+NEVER:
+
+* create duplicates
+* downgrade stages
+
+---
+
+## 7. OWNER ALERT (ACTIONABLE)
+
+Use dispatchAlert from pushAlertService.ts
+
+Format:
+
+🔥 HOT LEAD
+
+Name: [Name or Unknown]
+Phone: [number if exists]
+Channel: [sms / facebook / instagram]
+Message: "[last message]"
+
+ACTION: Call now
+Link: [CRM deep link]
+
+---
+
+## 8. FOLLOW-UP SAFETY NET
+
+After intent detection:
+→ schedule delayed check (10 minutes)
+
+Before sending follow-up, verify:
+
+* no outbound message sent
+* no call logged
+* no stage change
+
+If ALL true:
+
+Send:
+"Still good for a call? I can ring you now or send a time 👍"
+
+---
+
+## 9. MEMORY + CONTEXT
+
+Before processing:
+
+Fetch:
+
+* last 3–5 messages
+* current deal stage
+* last interaction timestamp
+
+Use this ONLY for:
+
+* follow-up logic
+* context awareness
+
+---
+
+## 10. LOGGING (REQUIRED)
+
+Log ONLY these events:
+
+* intent_detected
+* auto_response_sent
+* deal_created
+* deal_advanced
+* alert_sent
+* followup_scheduled
+* followup_sent
+* followup_skipped
+
+Each log MUST include:
+
+{
+contactId,
+sub_account_id,
+channel,
+timestamp
+}
+
+---
+
+## 11. PIPELINE REQUIREMENTS
+
+Ensure stages exist:
+
+* New Lead
+* Contact Requested
+* Call Scheduled
+* Proposal Sent
+* Closed Won
+* Closed Lost
+
+Seed if missing.
+
+---
+
+## SUCCESS CONDITION
+
+The system is correct when:
+
+1. User says "call me"
+2. Within seconds:
+
+   * auto-response is sent
+   * deal is created or advanced
+   * owner is alerted
+3. If no action in 10 minutes:
+
+   * follow-up fires automatically
+
+NO AI interference
+NO duplicate deals
+NO missed leads
+
+---
+
+Do NOT redesign database.
+Do NOT create new tables.
+Use existing contacts, deals, pipeline, and messaging infrastructure.
+
+This is a wiring + logic implementation only.
