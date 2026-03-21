@@ -5,7 +5,8 @@ import { db } from "../db";
 import { storage } from "../storage";
 import { messagingLimiter } from "../rateLimiter";
 import { publishEventAsync, EVENT_TYPES } from "../eventBus";
-import { asyncHandler, parseIntParam, verifyAccountOwnership, logUsageInternal, getTwilioClient } from "./helpers";
+import { asyncHandler, parseIntParam, verifyAccountOwnership, getTwilioClient } from "./helpers";
+import { recordOutboundBilling, CHANNEL_PRICING } from "../billing";
 import { validateRouting } from "../routing/gate";
 import { recordSuccess } from "../pulse";
 import { startTrace, recordStepValue } from "../traceRecorder";
@@ -279,17 +280,42 @@ export function registerMessagingRoutes(app: Express) {
       return res.status(422).json({ ...msg, twilioSid, error: twilioError });
     }
 
-    if (channel === "sms" || channel === "whatsapp") {
-      const usageType = channel === "whatsapp" ? "WHATSAPP_MESSAGE" : "SMS_SEGMENT";
-      const usageDesc = channel === "whatsapp" ? `WhatsApp to ${contactPhone}` : `SMS to ${contactPhone}`;
-      await logUsageInternal(subAccountId, usageType, 1, usageDesc);
+    const msgChannel = channel || "sms";
+    const msgProvider = (msgChannel === "facebook") ? "meta" : "twilio";
+    const pricing = CHANNEL_PRICING[msgChannel] || CHANNEL_PRICING.sms;
+    let billingResult;
+    try {
+      billingResult = await recordOutboundBilling({
+        subAccountId,
+        messageId: msg.id,
+        channel: msgChannel,
+        provider: msgProvider,
+        providerCost: pricing.providerCostEstimate,
+        externalMessageId: twilioSid,
+        direction: "outbound",
+        messageType: "customer",
+      });
+    } catch (billingErr: unknown) {
+      const errMsg = billingErr instanceof Error ? billingErr.message : String(billingErr);
+      console.error(`[BILLING CRITICAL] Failed to bill message ${msg.id}: ${errMsg}`);
+
+      publishEventAsync(EVENT_TYPES.MESSAGE_SENT, "messaging", {
+        subAccountId, to: contactPhone, channel: msgChannel, status: "billing_failed", messageId: msg.id,
+      });
+
+      return res.status(500).json({
+        ...msg,
+        twilioSid,
+        billingStatus: "failed",
+        error: "Message was sent but billing record could not be created. Contact support.",
+      });
     }
 
     publishEventAsync(EVENT_TYPES.MESSAGE_SENT, "messaging", {
-      subAccountId, to: contactPhone, channel: channel || "sms", status: twilioStatus, messageId: msg.id,
+      subAccountId, to: contactPhone, channel: msgChannel, status: twilioStatus, messageId: msg.id,
     });
 
-    res.status(201).json({ ...msg, twilioSid });
+    res.status(201).json({ ...msg, twilioSid, billingStatus: "success", billedAmount: billingResult.billedAmount });
   }));
 
   // ---- WhatsApp Status Webhook (delivery/read receipts) ----

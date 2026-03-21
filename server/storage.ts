@@ -54,13 +54,14 @@ import {
   type PortalToken, type InsertPortalToken,
   dispatchSubscribers,
   type DispatchSubscriber, type InsertDispatchSubscriber,
-  creditWallets, creditTransactions, sponsorships, sponsorshipClicks, platformProfitLedger,
+  creditWallets, creditTransactions, sponsorships, sponsorshipClicks, platformProfitLedger, messageBilling,
   funnelLeads, crashReports, dmKeywordAutomations, shopifyEvents, skipTraceResults, skipTraceUsage,
   type CreditWallet, type InsertCreditWallet,
   type CreditTransaction, type InsertCreditTransaction,
   type Sponsorship, type InsertSponsorship,
   type SponsorshipClick, type InsertSponsorshipClick,
   type PlatformProfit, type InsertPlatformProfit,
+  type MessageBilling, type InsertMessageBilling,
   type FunnelLead, type InsertFunnelLead,
   type CrashReport, type InsertCrashReport,
   type DmKeywordAutomation, type InsertDmKeywordAutomation,
@@ -327,6 +328,10 @@ export interface IStorage {
   getSponsorshipClicks(sponsorshipId: number): Promise<SponsorshipClick[]>;
 
   createPlatformProfit(data: InsertPlatformProfit): Promise<PlatformProfit>;
+
+  createMessageBilling(data: InsertMessageBilling): Promise<MessageBilling>;
+  getMessageBillingByMessageId(messageId: number): Promise<MessageBilling | undefined>;
+  getMessageBillingBySubAccount(subAccountId: number): Promise<MessageBilling[]>;
   getPlatformProfits(): Promise<PlatformProfit[]>;
 
   createFunnelLead(data: InsertFunnelLead): Promise<FunnelLead>;
@@ -1458,6 +1463,20 @@ export class DatabaseStorage implements IStorage {
   async createPlatformProfit(data: InsertPlatformProfit) {
     const [row] = await db.insert(platformProfitLedger).values(data).returning();
     return row;
+  }
+
+  async createMessageBilling(data: InsertMessageBilling) {
+    const [row] = await db.insert(messageBilling).values(data).returning();
+    return row;
+  }
+
+  async getMessageBillingByMessageId(messageId: number) {
+    const [row] = await db.select().from(messageBilling).where(eq(messageBilling.messageId, messageId));
+    return row;
+  }
+
+  async getMessageBillingBySubAccount(subAccountId: number) {
+    return db.select().from(messageBilling).where(eq(messageBilling.subAccountId, subAccountId)).orderBy(desc(messageBilling.createdAt));
   }
 
   async getPlatformProfits() {

@@ -67,11 +67,16 @@ export const requireAdmin = async (req: Request, res: Response, next: NextFuncti
   next();
 };
 
+const AI_USAGE_COSTS: Record<string, number> = {
+  AI_IMAGE_GEN: 0.25, AI_CHAT: 0.03, AI_STREAM: 0.03, DOMAIN_PURCHASE: 0,
+};
+
 export async function logUsageInternal(subAccountId: number | null, type: string, amount: number, description: string) {
-  const MARKUP_RATES_INT: Record<string, number> = {
-    SMS_SEGMENT: 2.0, VOICE_MINUTE: 1.5, AI_IMAGE_GEN: 0.25, AI_CHAT: 0.03, AI_STREAM: 0.03, DOMAIN_PURCHASE: 0,
-  };
-  const rate = MARKUP_RATES_INT[type] ?? 0;
+  if (!AI_USAGE_COSTS.hasOwnProperty(type)) {
+    console.log(`[USAGE] Type '${type}' is not a supported non-messaging usage type. Skipping.`);
+    return;
+  }
+  const rate = AI_USAGE_COSTS[type];
   const cost = (type === "AI_IMAGE_GEN" || type === "AI_CHAT" || type === "AI_STREAM") ? rate : amount * rate;
   try {
     await storage.createUsageLog({
@@ -81,8 +86,9 @@ export async function logUsageInternal(subAccountId: number | null, type: string
       cost,
       description: description || null,
     });
-  } catch (e) {
-    console.log("[USAGE] Log failed:", (e as any).message);
+  } catch (e: unknown) {
+    const errMsg = e instanceof Error ? e.message : String(e);
+    console.log("[USAGE] Log failed:", errMsg);
   }
 }
 

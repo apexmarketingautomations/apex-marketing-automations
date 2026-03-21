@@ -8,6 +8,7 @@ import { getAIProviderStatus, isAIConfigured } from "../aiGateway";
 import crypto from "crypto";
 import dns from "dns";
 import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, isUserAdmin } from "./helpers";
+import { recordOutboundBilling } from "../billing";
 
 export function registerReviewsRoutes(app: Express) {
   // ---- Reviews / Reputation Management ----
@@ -62,13 +63,20 @@ export function registerReviewsRoutes(app: Express) {
             });
             console.log(`[ALERT] SMS sent to ${account.ownerPhone}`);
 
-            await storage.createUsageLog({
-              subAccountId: parseInt(subAccountId),
-              type: "SMS_SEGMENT",
-              amount: 1,
-              cost: 2.0,
-              description: "Negative review alert SMS",
-            });
+            try {
+              await recordOutboundBilling({
+                subAccountId: parseInt(subAccountId),
+                channel: "sms",
+                provider: "twilio",
+                providerCost: 0.0079,
+                direction: "outbound",
+                messageType: "system",
+                metadata: { source: "review_alert", customerName, rating },
+              });
+            } catch (billingErr: unknown) {
+              const errMsg = billingErr instanceof Error ? billingErr.message : String(billingErr);
+              console.error(`[BILLING CRITICAL] Review alert billing failed: ${errMsg}`);
+            }
           }
         }
       } catch (e) {
@@ -99,11 +107,9 @@ export function registerReviewsRoutes(app: Express) {
     res.json({ googleReviewLink: updated.googleReviewLink, trustpilotLink: updated.trustpilotLink });
   }));
 
-  // ── Usage & Billing ──────────────────────────────────────────
+  // ── Usage Logging (non-messaging types only) ──────────────────
 
-  const MARKUP_RATES: Record<string, number> = {
-    SMS_SEGMENT: 2.0,
-    VOICE_MINUTE: 1.5,
+  const AI_USAGE_COSTS: Record<string, number> = {
     AI_IMAGE_GEN: 0.25,
     AI_CHAT: 0.03,
     AI_STREAM: 0.03,
@@ -123,7 +129,13 @@ export function registerReviewsRoutes(app: Express) {
 
     const { subAccountId, type, amount, description } = parsed.data;
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
-    const rate = MARKUP_RATES[type] ?? 0;
+
+    const MESSAGING_TYPES = ["SMS_SEGMENT", "VOICE_MINUTE", "WHATSAPP_MESSAGE"];
+    if (MESSAGING_TYPES.includes(type)) {
+      return res.status(400).json({ error: `Messaging type '${type}' must use the unified billing system.` });
+    }
+
+    const rate = AI_USAGE_COSTS[type] ?? 0;
     const cost = (type === "AI_IMAGE_GEN" || type === "AI_CHAT" || type === "AI_STREAM") ? rate : amount * rate;
 
     const log = await storage.createUsageLog({
@@ -258,10 +270,19 @@ export function registerReviewsRoutes(app: Express) {
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
     const { subAccountId, baseCost, type, description } = parsed.data;
-    const markupMultiplier = MARKUP_RATES[type] ?? 3.0;
+
+    const MESSAGING_TYPES = ["SMS_SEGMENT", "VOICE_MINUTE", "WHATSAPP_MESSAGE"];
+    if (MESSAGING_TYPES.includes(type)) {
+      return res.status(400).json({ error: `Messaging billing type '${type}' must go through the unified billing system. Use /api/messages/send instead.` });
+    }
+
+    const rate = AI_USAGE_COSTS[type];
+    if (rate === undefined) {
+      return res.status(400).json({ error: `Unknown usage type '${type}'. Supported: ${Object.keys(AI_USAGE_COSTS).join(", ")}` });
+    }
     const totalCharge = type === "AI_CHAT" || type === "AI_STREAM" || type === "AI_IMAGE_GEN"
-      ? markupMultiplier
-      : baseCost * markupMultiplier;
+      ? rate
+      : baseCost * rate;
 
     const wallet = await storage.getCreditWallet(subAccountId);
     if (!wallet || wallet.balance < totalCharge) {

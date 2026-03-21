@@ -6,6 +6,7 @@ import fs from "fs";
 import express from "express";
 import { asyncHandler, isUserAdmin, parseIntParam } from "./helpers";
 import { storage } from "../storage";
+import { getBillingCoverage, runBillingAudit } from "../billing";
 
 export function registerAdminRoutes(app: Express) {
   // ---- Image Uploads ----
@@ -97,5 +98,20 @@ export function registerAdminRoutes(app: Express) {
     const resolved = await storage.resolveRoutingFailure(id, parsed.data.subAccountId);
     if (!resolved) return res.status(404).json({ error: "Routing failure not found" });
     res.json(resolved);
+  }));
+
+  app.get("/api/admin/billing-coverage", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
+    const coverage = await getBillingCoverage();
+    res.json(coverage);
+  }));
+
+  app.post("/api/admin/billing-audit", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
+    const backfill = req.query.backfill === "true";
+    const report = await runBillingAudit(backfill);
+    res.json(report);
   }));
 }

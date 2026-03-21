@@ -1066,6 +1066,30 @@ export const insertPlatformProfitSchema = createInsertSchema(platformProfitLedge
 export type InsertPlatformProfit = z.infer<typeof insertPlatformProfitSchema>;
 export type PlatformProfit = typeof platformProfitLedger.$inferSelect;
 
+// ---- Message Billing ----
+
+export const messageBilling = pgTable("message_billing", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  messageId: integer("message_id").references(() => messages.id),
+  channel: text("channel").notNull(),
+  provider: text("provider").notNull(),
+  providerCost: real("provider_cost").notNull().default(0),
+  billedAmount: real("billed_amount").notNull(),
+  margin: real("margin").notNull(),
+  externalMessageId: text("external_message_id"),
+  direction: text("direction").notNull().default("outbound"),
+  messageType: text("message_type").notNull().default("customer"),
+  billingExempt: boolean("billing_exempt").notNull().default(false),
+  exemptReason: text("exempt_reason"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertMessageBillingSchema = createInsertSchema(messageBilling).omit({ id: true, createdAt: true });
+export type InsertMessageBilling = z.infer<typeof insertMessageBillingSchema>;
+export type MessageBilling = typeof messageBilling.$inferSelect;
+
 // ---- Funnel Leads ----
 
 export const funnelLeads = pgTable("funnel_leads", {

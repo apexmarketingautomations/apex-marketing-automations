@@ -11,7 +11,8 @@ import { scanDistressedProperties, calculateDealMetrics } from "../property-rada
 import { skipTraceLookup, getCurrentMonthYear } from "../skip-trace";
 import crypto from "crypto";
 import { dispatchAlert, generateDeepLink } from "../pushAlertService";
-import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, logUsageInternal } from "./helpers";
+import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, logUsageInternal, getTwilioClient } from "./helpers";
+import { recordOutboundBilling } from "../billing";
 
 export function registerPropertyRoutes(app: Express) {
   // ---- Property Radar (Wholesaler) Routes ----
@@ -1435,36 +1436,20 @@ export function registerPropertyRoutes(app: Express) {
                     body: alertMsg,
                   });
                   console.log(`[CRASH CONNECT] SMS alert sent to ${ownerPhone}`);
-                  await logUsageInternal(targetAccountId, "SMS_SEGMENT", 1, `Crash Connect auto-alert: ${event}`);
 
                   try {
-                    const wallet = await storage.getCreditWallet(targetAccountId);
-                    const baseCost = 0.0079;
-                    const totalCharge = parseFloat((baseCost * 3).toFixed(4));
-                    if (wallet && wallet.balance >= totalCharge) {
-                      const profit = totalCharge - baseCost;
-                      await storage.updateCreditWalletBalance(targetAccountId, -totalCharge);
-                      await storage.createCreditTransaction({
-                        subAccountId: targetAccountId,
-                        type: "usage",
-                        amount: -totalCharge,
-                        balanceAfter: (wallet.balance - totalCharge),
-                        description: `Crash Connect auto-alert SMS: ${event}`,
-                        baseCost,
-                        platformProfit: profit,
-                      });
-                      if (profit > 0) {
-                        await storage.createPlatformProfit({
-                          source: "markup",
-                          amount: profit,
-                          subAccountId: targetAccountId,
-                          description: `Crash Connect SMS markup: $${baseCost.toFixed(4)} base → $${totalCharge.toFixed(2)} charged`,
-                        });
-                      }
-                      console.log(`[CRASH CONNECT] Wallet charged $${totalCharge} for SMS`);
-                    }
-                  } catch (walletErr: any) {
-                    console.error(`[CRASH CONNECT] Wallet charge failed: ${walletErr.message}`);
+                    await recordOutboundBilling({
+                      subAccountId: targetAccountId,
+                      channel: "sms",
+                      provider: "twilio",
+                      providerCost: 0.0079,
+                      direction: "outbound",
+                      messageType: "system",
+                      metadata: { source: "crash_connect", event },
+                    });
+                  } catch (billingErr: unknown) {
+                    const errMsg = billingErr instanceof Error ? billingErr.message : String(billingErr);
+                    console.error(`[BILLING CRITICAL] Crash Connect alert billing failed: ${errMsg}`);
                   }
                 } catch (smsErr: any) {
                   console.error(`[CRASH CONNECT] SMS alert failed: ${smsErr.message}`);
@@ -1489,38 +1474,21 @@ export function registerPropertyRoutes(app: Express) {
                       body: crashAiResult.text.trim(),
                     });
                     console.log(`[CRASH CONNECT] AI follow-up sent to lead ${leadPhone}`);
-                    await logUsageInternal(targetAccountId, "SMS_SEGMENT", 1, `Crash Connect AI follow-up: ${event}`);
                     await logUsageInternal(targetAccountId, "AI_CHAT", 1, `Crash Connect AI message generation`);
 
                     try {
-                      const wallet = await storage.getCreditWallet(targetAccountId);
-                      const smsCost = 0.0079;
-                      const aiCost = 0.001;
-                      const totalCharge = parseFloat(((smsCost + aiCost) * 3).toFixed(4));
-                      if (wallet && wallet.balance >= totalCharge) {
-                        const profit = totalCharge - smsCost - aiCost;
-                        await storage.updateCreditWalletBalance(targetAccountId, -totalCharge);
-                        await storage.createCreditTransaction({
-                          subAccountId: targetAccountId,
-                          type: "usage",
-                          amount: -totalCharge,
-                          balanceAfter: (wallet.balance - totalCharge),
-                          description: `Crash Connect AI follow-up SMS + AI gen: ${event}`,
-                          baseCost: smsCost + aiCost,
-                          platformProfit: profit,
-                        });
-                        if (profit > 0) {
-                          await storage.createPlatformProfit({
-                            source: "markup",
-                            amount: profit,
-                            subAccountId: targetAccountId,
-                            description: `Crash Connect AI follow-up markup: SMS + AI gen`,
-                          });
-                        }
-                        console.log(`[CRASH CONNECT] Wallet charged $${totalCharge} for AI follow-up`);
-                      }
-                    } catch (walletErr: any) {
-                      console.error(`[CRASH CONNECT] AI follow-up wallet charge failed: ${walletErr.message}`);
+                      await recordOutboundBilling({
+                        subAccountId: targetAccountId,
+                        channel: "sms",
+                        provider: "twilio",
+                        providerCost: 0.0079,
+                        direction: "outbound",
+                        messageType: "system",
+                        metadata: { source: "crash_connect_ai_followup", event },
+                      });
+                    } catch (billingErr: unknown) {
+                      const errMsg = billingErr instanceof Error ? billingErr.message : String(billingErr);
+                      console.error(`[BILLING CRITICAL] Crash Connect AI follow-up billing failed: ${errMsg}`);
                     }
                   }
                 }
