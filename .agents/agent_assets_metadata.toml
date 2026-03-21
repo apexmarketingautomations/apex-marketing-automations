@@ -18,3 +18,9 @@ id = "FGvhoGo3IxyBeIBOQHqac"
 uri = "file://.local/full_audit_report.md"
 type = "text"
 title = "Apex Platform Audit — Forensic Corrected + Hardened (v3)"
+
+[[outputs]]
+id = "D-KpFZKc9vaYEbcKW_K_V"
+uri = "file://.local/APEX_GROWTH_PROJECTION.md"
+type = "text"
+title = "Apex 5-Year Growth Projection — Post-Hardening"
