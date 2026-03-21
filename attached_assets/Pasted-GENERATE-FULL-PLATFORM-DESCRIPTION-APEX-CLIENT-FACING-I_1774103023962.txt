@@ -1,0 +1,158 @@
+GENERATE FULL PLATFORM DESCRIPTION — APEX (CLIENT-FACING + INTERNAL CLARITY)
+
+Goal:
+Produce a clear, structured explanation of Apex Marketing Automations that can be used to explain the platform to a client, partner, or team member.
+
+This must be accurate to the actual system — no assumptions.
+
+---
+
+# OUTPUT STRUCTURE
+
+Return in this exact format:
+
+---
+
+## 1. ONE-LINE SUMMARY
+
+Explain Apex in one sentence.
+
+---
+
+## 2. WHAT APEX IS
+
+Explain what the platform does at a high level.
+
+Include:
+
+* core purpose
+* who it’s for
+* what problem it solves
+
+---
+
+## 3. CORE FEATURES (REAL, NOT GENERIC)
+
+List actual implemented capabilities:
+
+* messaging (SMS via Twilio)
+* email automation (Mailchimp)
+* event-driven workflows
+* contact management
+* automation triggers
+* booking / lead handling
+* integrations (Google, Meta, etc.)
+
+Only include features that exist in the codebase.
+
+---
+
+## 4. HOW THE SYSTEM WORKS (ACTUAL FLOW)
+
+Explain real flow:
+
+Lead comes in →
+Event fires →
+System processes →
+Actions happen (SMS / email / tags / updates)
+
+Must reference:
+
+* eventSubscribers.ts
+* Mailchimp integration
+* Twilio messaging
+* webhook handling
+
+---
+
+## 5. AUTOMATION LOGIC
+
+Explain:
+
+* event-driven architecture (NOT visual builder)
+* how triggers work
+* how actions are executed
+
+---
+
+## 6. CHANNEL BREAKDOWN
+
+Explain clearly:
+
+SMS:
+
+* provider = Twilio
+* used for real-time communication
+
+Email:
+
+* provider = Mailchimp
+* used for follow-ups + campaigns
+
+Webhooks:
+
+* external integrations + event delivery
+
+Google:
+
+* multi-service integration (Gmail, Calendar, etc.)
+
+---
+
+## 7. BILLING MODEL (IF PRESENT)
+
+Explain:
+
+* usage-based messaging
+* multiplier logic (if implemented)
+* per-sub-account tracking
+
+---
+
+## 8. WHO THIS IS FOR
+
+Define ideal users:
+
+* agencies
+* service businesses
+* lead-gen operators
+
+---
+
+## 9. WHAT MAKES IT DIFFERENT
+
+Explain:
+
+* event-driven backend
+* automation without manual workflows
+* unified messaging + automation system
+
+---
+
+## 10. SIMPLE EXAMPLE (REALISTIC)
+
+Give a real example:
+
+“A lead fills out a form → they get a text → email follow-up → tagged → booked”
+
+---
+
+# RULES
+
+* DO NOT invent features
+* DO NOT use generic SaaS language
+* DO NOT oversell
+* MUST reflect actual system behavior
+* MUST be clear enough for a non-technical person
+
+---
+
+# GOAL
+
+This output should allow someone to understand:
+
+* what Apex is
+* how it works
+* why it matters
+
+in under 2 minutes.

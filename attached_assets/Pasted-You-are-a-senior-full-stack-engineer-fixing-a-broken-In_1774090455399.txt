@@ -1,0 +1,300 @@
+You are a senior full-stack engineer fixing a broken Integrations system in a SaaS platform.
+
+Context:
+The current Integrations page is unreliable and misleading.
+
+Observed problems:
+1. Many integrations show the wrong status.
+   - Some appear "Connected" when they are not actually connected.
+   - Some are actually connected but the UI says they are disconnected.
+2. Some integrations require API keys or credentials, but the save/connect flow does not persist them correctly.
+3. Some OAuth integrations are connected in reality, but the platform does not reflect that state.
+4. Some connect actions silently fail with no error, no persistence, and no feedback.
+5. Some integrations appear to connect temporarily but revert after refresh.
+6. Vapi specifically was connected through the UI, but the connection did not save and does not persist.
+7. Meta appears connected in reality, but the UI says it is disconnected.
+8. The system likely mixes platform-managed integrations, OAuth integrations, legacy integrations, webhook-style integrations, and API-key integrations without a consistent source of truth.
+
+Goal:
+Make the Integrations system fully trustworthy:
+- real statuses only
+- no fake connected states
+- no silent failures
+- no lost credentials
+- correct persistence after refresh
+- clear handling for OAuth, API-key, webhook, and legacy integrations
+
+What I need you to do:
+Audit and fix the full integrations architecture end-to-end.
+
+Required outcomes:
+1. The UI must only show "Connected" when the backend has verified and persisted a real successful connection.
+2. If an integration is actually connected, the UI must show that after refresh.
+3. If an integration requires API keys, those credentials must save correctly, validate correctly, and persist correctly.
+4. If an integration fails to connect, save, verify, or refresh, the user must see a real error message.
+5. No integration should silently fail.
+6. Vapi connect/save must work reliably.
+7. Meta status must reflect the real connected account state.
+8. The frontend must never invent connection state from local state, stale cache, or optimistic UI alone.
+
+Scope of audit:
+Inspect and fix:
+- frontend integration cards and status badges
+- connect buttons and save handlers
+- OAuth start + callback flows
+- API-key credential save flows
+- credential encryption/storage layer
+- backend integration status model
+- DB persistence for integration records
+- refresh/reload hydration logic
+- stale caches
+- optimistic UI race conditions
+- silent try/catch failures
+- missing backend verification
+- legacy connection adapters
+- platform-managed connection adapters
+- disconnect/reconnect flows
+- validation logic for required credentials
+- post-connect verification jobs or sync routines
+
+Likely root-cause areas to investigate:
+1. Status mismatch bugs
+- hardcoded or default "Connected" / "Disconnected" labels
+- frontend deriving status incorrectly
+- backend status not normalized across integration types
+- stale cached status returned to UI
+
+2. Persistence bugs
+- credentials saved to wrong table or wrong account/subaccount
+- OAuth callback succeeds but DB write fails
+- API keys posted but not committed
+- encrypted secrets failing save/decrypt silently
+- reconnect overwriting or deleting existing state incorrectly
+
+3. Verification bugs
+- marking integration connected before actual verification
+- not checking token validity / scopes / accessible assets
+- not re-checking expired integrations
+- missing required config despite showing connected
+
+4. Silent failure bugs
+- swallowed exceptions
+- missing structured API error responses
+- no user-facing toast / inline errors
+- frontend assumes success after 200 even when payload is invalid
+- background job failure not surfaced
+
+Canonical status model to implement:
+Use a single backend source of truth with explicit states:
+- disconnected
+- pending
+- connected
+- error
+- reconnect_required
+- misconfigured
+
+Definitions:
+- disconnected: no valid saved integration
+- pending: auth/connect flow started but not finished
+- connected: verified and persisted successfully
+- error: attempted connection/save failed
+- reconnect_required: expired token, revoked auth, missing permission, or invalid credentials
+- misconfigured: saved record exists but required fields/scopes/assets are missing
+
+Architecture requirements:
+1. Single source of truth
+- Create or normalize one canonical integration status model in the backend.
+- All frontend cards must fetch status from backend.
+- After connect, reconnect, disconnect, or save, always re-fetch from backend.
+- Do not use local UI state as truth.
+
+2. Unified integration record model
+Support these integration types cleanly:
+- OAuth
+- API key / secret
+- webhook endpoint
+- platform-managed
+- legacy/manual connection
+
+Minimum fields:
+- integration_name
+- provider
+- account_id
+- subaccount_id
+- user_id
+- connection_type
+- status
+- status_reason
+- credentials_present
+- credentials_valid
+- last_verified_at
+- last_error
+- external_account_id
+- scopes_granted
+- metadata
+- created_at
+- updated_at
+
+3. Proper verification before marking connected
+Examples:
+- Meta: verify token/session and confirm accessible page/account/assets/lead forms as applicable
+- Vapi: verify API key or account auth by calling a real endpoint
+- Google: verify token and granted scopes
+- Twilio: verify SID/token/account response
+- Stripe: verify account linkage or API credential validity
+- Webhooks/Zapier: verify URL format, successful save, and optionally test delivery result
+
+4. API-key flow requirements
+For integrations needing keys:
+- validate required fields before save
+- save encrypted credentials durably
+- associate with correct account/subaccount
+- verify credentials with provider after save
+- only mark connected if verification succeeds
+- if verification fails, show exact error and keep status as error or misconfigured
+
+5. OAuth flow requirements
+- store pending state before redirect
+- on callback, validate auth response fully
+- persist tokens/metadata correctly
+- verify the connected account/assets/scopes
+- update canonical record
+- surface callback errors to UI
+- do not mark connected until persistence + verification are complete
+
+6. Refresh and rehydration
+- on integrations page load, fetch statuses from backend
+- no stale badge rendering before fetch completes
+- use loading state first, then resolved state
+- after every mutation, re-fetch the provider state
+- optionally add manual "Refresh Status"
+
+7. Error handling
+- no silent failures
+- every failed action returns structured error JSON
+- show toast and inline error state
+- log provider, account, user, action, failing step, and raw error
+- preserve useful debug detail without exposing secrets
+
+8. Observability
+Add structured logs for:
+- integration_name
+- provider
+- account_id
+- subaccount_id
+- user_id
+- action: connect/save/verify/disconnect/refresh/callback
+- result: success/failure
+- status_before
+- status_after
+- failure_step
+- failure_reason
+- timestamp
+
+9. Legacy compatibility
+- audit legacy connection records
+- map them into canonical status model
+- prevent legacy records from incorrectly showing connected
+- add migration/repair script for corrupted or incomplete records
+
+Critical provider-specific issues to fix:
+1. Meta
+Problem:
+Meta appears connected in reality but the platform says disconnected.
+
+Fix:
+- inspect current Meta auth/session/token storage
+- inspect how connected assets are detected
+- inspect whether account/subaccount mismatch is causing false disconnected state
+- verify callback persistence and refresh hydration
+- make UI reflect actual backend verified Meta state
+- if Meta token exists but assets/scopes are incomplete, show reconnect_required or misconfigured, not disconnected
+
+2. Vapi
+Problem:
+Vapi was connected through the UI, but the connection did not save and does not persist.
+
+Fix:
+- inspect Vapi connect/save flow completely
+- determine whether it is API-key based, OAuth based, or legacy based in current code
+- ensure credentials are actually persisted
+- ensure backend verification is happening
+- ensure saved Vapi record rehydrates on refresh
+- show exact failure if Vapi validation/save fails
+- add test coverage specifically for Vapi persistence
+
+3. Integrations requiring API keys
+Problem:
+Most or all of these need API keys, and save flows are unreliable.
+
+Fix:
+- standardize secure credential save logic
+- add field validation before submit
+- add provider-specific verify call after save
+- do not show connected based only on "credentials exist"
+- distinguish credentials_present from credentials_valid
+
+Frontend behavior requirements:
+- initial state: loading/syncing, not fake disconnected/connected
+- show proper badge from backend
+- show connect/save progress state
+- show verification-in-progress if needed
+- show last verified timestamp
+- show status reason where useful
+- show reconnect_required clearly
+- show misconfigured clearly
+- disable success UI until backend confirms
+
+Backend behavior requirements:
+- all integration mutations must return structured result:
+  - success
+  - canonical status
+  - status_reason
+  - verification_result
+  - user_safe_error
+- never swallow errors
+- never return success if persistence failed
+- never return connected if verification failed
+
+Testing requirements:
+Create or update automated tests for:
+1. successful OAuth connect persists after refresh
+2. successful API-key save persists after refresh
+3. failed API-key verification shows error and does not show connected
+4. canceled OAuth returns pending/disconnected correctly
+5. expired token becomes reconnect_required
+6. misconfigured permissions/assets become misconfigured
+7. disconnect persists after refresh
+8. Meta connected state hydrates correctly from backend
+9. Vapi connection persists correctly after save and refresh
+10. frontend cannot show connected when backend says otherwise
+11. stale cached state cannot override backend truth
+12. legacy records map safely into the new status model
+
+Repair/migration requirements:
+- detect invalid existing integration records
+- fix false connected records
+- backfill canonical status where possible
+- mark unrecoverable records as error, reconnect_required, or misconfigured instead of connected
+- provide a repair script and admin-safe migration notes
+
+Deliverables:
+1. Root cause analysis
+2. Exact fix plan
+3. All code changes
+4. Schema/model changes if needed
+5. Migration/repair script if needed
+6. Tests added/updated
+7. Final explanation of how the new system prevents silent failures and false statuses
+
+Constraints:
+- do not patch this cosmetically
+- do not use frontend-only fixes
+- do not hardcode provider statuses
+- do not rely on optimistic success state
+- do not swallow errors
+- do not claim connected without verification + persistence
+- prefer correctness and observability over speed
+
+Final objective:
+Make the Integrations page accurate, persistent, debuggable, and trustworthy across Meta, Vapi, API-key integrations, OAuth integrations, webhooks, legacy integrations, and refresh/reload cycles.
