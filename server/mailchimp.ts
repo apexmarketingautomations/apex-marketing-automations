@@ -416,22 +416,6 @@ export async function sendEmailViaCampaign(
   const subject = DEFAULT_SUBJECTS[templateKey] || "Message from " + businessName;
 
   try {
-    const segmentRes = await withRetry(async () => {
-      const res = await mcFetch(
-        config,
-        `/lists/${config.audienceId}/segments`,
-        "POST",
-        {
-          name: `apex_${templateKey}_${Date.now()}`,
-          static_segment: [email.toLowerCase().trim()],
-        }
-      );
-      if (!res.ok) throw new Error(`Segment creation failed: ${res.status}`);
-      return res;
-    }, `segment:${email}`);
-
-    const segmentId = segmentRes.data?.id;
-
     const templates = await getMailchimpTemplates(subAccountId);
     const matchedTemplate = templates.find((t: any) =>
       t.name?.toLowerCase().includes(templateKey.replace(/_/g, " ")) ||
@@ -443,7 +427,15 @@ export async function sendEmailViaCampaign(
       recipients: {
         list_id: config.audienceId,
         segment_opts: {
-          saved_segment_id: segmentId,
+          match: "all",
+          conditions: [
+            {
+              condition_type: "EmailAddress",
+              field: "EMAIL",
+              op: "is",
+              value: email.toLowerCase().trim(),
+            },
+          ],
         },
       },
       settings: {
@@ -498,20 +490,12 @@ export async function sendEmailViaCampaign(
     console.log(`${LOG_PREFIX} Email sent: ${templateKey} → ${email} (campaign: ${campaignId})`);
     await logEmail(subAccountId, contactId || null, email, templateKey, eventType, "sent", campaignId);
 
-    cleanupSegment(config, segmentId).catch(() => {});
-
     return { success: true, campaignId };
   } catch (err: any) {
     console.error(`${LOG_PREFIX} Email send FAILED: ${templateKey} → ${email}:`, err.message);
     await logEmail(subAccountId, contactId || null, email, templateKey, eventType, "failed", undefined, err.message);
     return { success: false, error: err.message };
   }
-}
-
-async function cleanupSegment(config: MailchimpConfig, segmentId: number) {
-  try {
-    await mcFetch(config, `/lists/${config.audienceId}/segments/${segmentId}`, "DELETE");
-  } catch {}
 }
 
 function generateFallbackHtml(templateKey: TemplateKey, vars: Record<string, string>): string {
