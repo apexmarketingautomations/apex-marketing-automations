@@ -57,6 +57,7 @@ export function registerAccountRoutes(app: Express) {
 
   app.patch("/api/accounts/:id/language", asyncHandler(async (req, res) => {
     const id = parseIntParam(req.params.id, "id");
+    if (!(await verifyAccountOwnership(req, res, id))) return;
     const parsed = z.object({ language: z.string().min(1).max(10) }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const { language } = parsed.data;

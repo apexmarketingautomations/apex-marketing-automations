@@ -1,10 +1,12 @@
 import type { Express, Request, Response } from "express";
 import { insertMetaAdCampaignSchema, insertMetaLeadSchema, messages, dmKeywordAutomations, subAccounts } from "@shared/schema";
+import { z } from "zod";
+import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import crypto from "crypto";
 import { dispatchAlert, generateDeepLink } from "../pushAlertService";
-import { asyncHandler, verifyAccountOwnership } from "./helpers";
+import { asyncHandler, verifyAccountOwnership, getUserId } from "./helpers";
 import { enforceSmsProvider } from "../smsGatewayGuard";
 import { getMetaConfig, validateMetaConfigForAccount } from "../metaConfig";
 
@@ -12,24 +14,32 @@ export function registerMetaRoutes(app: Express) {
   // ---- Meta Ad Campaigns ----
 
   app.get("/api/meta/campaigns/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
-    const campaigns = await storage.getMetaAdCampaigns(Number(req.params.subAccountId));
+    const subAccountId = Number(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const campaigns = await storage.getMetaAdCampaigns(subAccountId);
     res.json(campaigns);
   }));
 
   app.post("/api/meta/campaigns", asyncHandler(async (req: Request, res: Response) => {
     const data = insertMetaAdCampaignSchema.parse(req.body);
+    if (!(await verifyAccountOwnership(req, res, data.subAccountId))) return;
     const campaign = await storage.createMetaAdCampaign(data);
     res.json(campaign);
   }));
 
   app.patch("/api/meta/campaigns/:id", asyncHandler(async (req: Request, res: Response) => {
-    const campaign = await storage.updateMetaAdCampaign(Number(req.params.id), req.body);
+    const campaign = await storage.getMetaAdCampaign(Number(req.params.id));
     if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-    res.json(campaign);
+    if (!(await verifyAccountOwnership(req, res, campaign.subAccountId))) return;
+    const updated = await storage.updateMetaAdCampaign(campaign.id, req.body);
+    res.json(updated);
   }));
 
   app.delete("/api/meta/campaigns/:id", asyncHandler(async (req: Request, res: Response) => {
-    const ok = await storage.deleteMetaAdCampaign(Number(req.params.id));
+    const campaign = await storage.getMetaAdCampaign(Number(req.params.id));
+    if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+    if (!(await verifyAccountOwnership(req, res, campaign.subAccountId))) return;
+    const ok = await storage.deleteMetaAdCampaign(campaign.id);
     if (!ok) return res.status(404).json({ error: "Campaign not found" });
     res.json({ success: true });
   }));
@@ -37,6 +47,7 @@ export function registerMetaRoutes(app: Express) {
   app.post("/api/meta/campaigns/:id/sync", asyncHandler(async (req: Request, res: Response) => {
     const campaign = await storage.getMetaAdCampaign(Number(req.params.id));
     if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+    if (!(await verifyAccountOwnership(req, res, campaign.subAccountId))) return;
 
     let metaCfg;
     try {
@@ -75,6 +86,7 @@ export function registerMetaRoutes(app: Express) {
     const adAccountId = process.env.META_AD_ACCOUNT_ID;
     const campaign = await storage.getMetaAdCampaign(Number(req.params.id));
     if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+    if (!(await verifyAccountOwnership(req, res, campaign.subAccountId))) return;
 
     let metaCfg;
     try {
@@ -116,18 +128,22 @@ export function registerMetaRoutes(app: Express) {
   // ---- Meta Lead Forms ----
 
   app.get("/api/meta/leads/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
-    const leads = await storage.getMetaLeads(Number(req.params.subAccountId));
+    const subAccountId = Number(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const leads = await storage.getMetaLeads(subAccountId);
     res.json(leads);
   }));
 
   app.post("/api/meta/leads", asyncHandler(async (req: Request, res: Response) => {
     const data = insertMetaLeadSchema.parse(req.body);
+    if (!(await verifyAccountOwnership(req, res, data.subAccountId))) return;
     const lead = await storage.createMetaLead(data);
     res.json(lead);
   }));
 
   app.post("/api/meta/leads/sync/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
     const subAccountId = Number(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
 
     let metaCfg;
     try {
@@ -218,6 +234,7 @@ export function registerMetaRoutes(app: Express) {
   app.post("/api/meta/leads/:id/to-crm", asyncHandler(async (req: Request, res: Response) => {
     const lead = await storage.getMetaLead(Number(req.params.id));
     if (!lead) return res.status(404).json({ error: "Lead not found" });
+    if (!(await verifyAccountOwnership(req, res, lead.subAccountId))) return;
     if (lead.syncedToCrm && lead.contactId) {
       return res.json({ success: true, alreadySynced: true, contactId: lead.contactId });
     }
@@ -271,12 +288,24 @@ export function registerMetaRoutes(app: Express) {
     res.status(201).json(created);
   }));
 
+  const dmKeywordUpdateSchema = z.object({
+    keyword: z.string().min(1).max(200).optional(),
+    matchType: z.enum(["exact", "contains", "starts_with"]).optional(),
+    channel: z.string().max(50).optional(),
+    responseText: z.string().max(2000).nullable().optional(),
+    responseType: z.enum(["text", "template", "action"]).optional(),
+    actionPayload: z.any().nullable().optional(),
+    enabled: z.boolean().optional(),
+  });
+
   app.put("/api/dm-keywords/:id", asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const existing = await db.select().from(dmKeywordAutomations).where(eq(dmKeywordAutomations.id, id)).limit(1);
     if (!existing.length) return res.status(404).json({ error: "Keyword automation not found" });
     if (!(await verifyAccountOwnership(req, res, existing[0].subAccountId))) return;
-    const updated = await storage.updateDmKeywordAutomation(id, req.body);
+    const parsed = dmKeywordUpdateSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const updated = await storage.updateDmKeywordAutomation(id, parsed.data);
     res.json(updated);
   }));
 
@@ -292,12 +321,18 @@ export function registerMetaRoutes(app: Express) {
   // ---- Instagram DM Inbox ----
 
   app.get("/api/meta/instagram/conversations/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
-    const conversations = await storage.getInstagramConversations(Number(req.params.subAccountId));
+    const subAccountId = Number(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const conversations = await storage.getInstagramConversations(subAccountId);
     res.json(conversations);
   }));
 
   app.get("/api/meta/instagram/messages/:conversationId", asyncHandler(async (req: Request, res: Response) => {
-    const msgs = await storage.getInstagramMessages(Number(req.params.conversationId));
+    const conversationId = Number(req.params.conversationId);
+    const conversation = await storage.getInstagramConversation(conversationId);
+    if (!conversation) return res.status(404).json({ error: "Conversation not found" });
+    if (!(await verifyAccountOwnership(req, res, conversation.subAccountId))) return;
+    const msgs = await storage.getInstagramMessages(conversationId);
     res.json(msgs);
   }));
 
@@ -305,6 +340,7 @@ export function registerMetaRoutes(app: Express) {
     const { conversationId, body } = req.body;
     const conversation = await storage.getInstagramConversation(conversationId);
     if (!conversation) return res.status(404).json({ error: "Conversation not found" });
+    if (!(await verifyAccountOwnership(req, res, conversation.subAccountId))) return;
 
     const msg = await storage.createInstagramMessage({
       conversationId,
@@ -340,6 +376,7 @@ export function registerMetaRoutes(app: Express) {
 
   app.post("/api/meta/instagram/sync/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
     const subAccountId = Number(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
 
     let metaCfg;
     try {
@@ -409,6 +446,7 @@ export function registerMetaRoutes(app: Express) {
   app.get("/api/meta/config", asyncHandler(async (req: Request, res: Response) => {
     const subAccountId = req.query.subAccountId ? Number(req.query.subAccountId) : null;
     if (subAccountId) {
+      if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
       try {
         const account = await storage.getSubAccount(subAccountId);
         res.json({
@@ -422,8 +460,12 @@ export function registerMetaRoutes(app: Express) {
         res.json({ hasAccessToken: false, hasAdAccountId: false, hasPageId: false, hasAppId: false });
       }
     } else {
+      const user = (req as any).user;
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const userId = getUserId(user);
       const allAccounts = await storage.getSubAccounts();
-      const anyConfigured = allAccounts.some(a => a.metaAccessToken && a.metaPageId);
+      const userAccounts = allAccounts.filter(a => a.ownerUserId === userId);
+      const anyConfigured = userAccounts.some(a => a.metaAccessToken && a.metaPageId);
       res.json({
         hasAccessToken: anyConfigured,
         hasAdAccountId: !!process.env.META_AD_ACCOUNT_ID,
@@ -435,14 +477,17 @@ export function registerMetaRoutes(app: Express) {
 
   // ---- Meta DM Diagnostics (per-account) ----
   app.get("/api/meta/dm-diagnostics", asyncHandler(async (req: Request, res: Response) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
     const subAccountId = req.query.subAccountId ? Number(req.query.subAccountId) : null;
-    const verifyToken = process.env.META_VERIFY_TOKEN || "apex_verify_2026";
     const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
     const webhookUrl = domain ? `https://${domain}/api/meta-webhook` : null;
 
     if (!subAccountId) {
+      const userId = getUserId(user);
       const allAccounts = await storage.getSubAccounts();
-      const accountDiags = await Promise.all(allAccounts.map(async (acc) => {
+      const userAccounts = allAccounts.filter(a => a.ownerUserId === userId);
+      const accountDiags = await Promise.all(userAccounts.map(async (acc) => {
         const validation = acc.metaAccessToken && acc.metaPageId
           ? await validateMetaConfigForAccount(acc.id)
           : { valid: false, error: "Not configured" };
@@ -455,9 +500,10 @@ export function registerMetaRoutes(app: Express) {
           ...validation,
         };
       }));
-      return res.json({ accounts: accountDiags, webhook: { url: webhookUrl, verifyToken } });
+      return res.json({ accounts: accountDiags, webhook: { url: webhookUrl, verifyTokenConfigured: !!process.env.META_VERIFY_TOKEN } });
     }
 
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const account = await storage.getSubAccount(subAccountId);
     if (!account) return res.status(404).json({ error: "Sub-account not found" });
 
@@ -473,7 +519,7 @@ export function registerMetaRoutes(app: Express) {
         pageId: { set: !!pageId, value: pageId || null },
         appSecret: { set: !!appSecret },
       },
-      webhook: { url: webhookUrl, verifyToken },
+      webhook: { url: webhookUrl, verifyTokenConfigured: !!process.env.META_VERIFY_TOKEN },
     };
 
     if (accessToken) {
@@ -515,7 +561,10 @@ export function registerMetaRoutes(app: Express) {
       return res.status(400).json({ success: false, error: "No public domain available to test webhook" });
     }
 
-    const verifyToken = process.env.META_VERIFY_TOKEN || "apex_verify_2026";
+    const verifyToken = process.env.META_VERIFY_TOKEN;
+    if (!verifyToken) {
+      return res.status(400).json({ success: false, error: "META_VERIFY_TOKEN not configured" });
+    }
     const testChallenge = "apex_test_" + Date.now();
     const webhookUrl = `https://${domain}/api/meta-webhook?hub.mode=subscribe&hub.verify_token=${encodeURIComponent(verifyToken)}&hub.challenge=${testChallenge}`;
 
@@ -535,7 +584,7 @@ export function registerMetaRoutes(app: Express) {
   // ---- Save Meta credentials for a sub-account ----
   app.put("/api/meta/config/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
     const subAccountId = Number(req.params.subAccountId);
-    await verifyAccountOwnership(req, subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
 
     const { metaPageId, metaAccessToken, metaAppSecret } = req.body;
 
@@ -560,6 +609,7 @@ export function registerMetaRoutes(app: Express) {
 
   app.post("/api/meta/dm-sequence/deploy/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
     const subAccountId = Number(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const account = await storage.getSubAccount(subAccountId);
     if (!account) return res.status(404).json({ error: "Account not found" });
 
@@ -640,6 +690,7 @@ export function registerMetaRoutes(app: Express) {
 
   app.get("/api/meta/dm-sequence/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
     const subAccountId = Number(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const automations = await storage.getLiveAutomations(subAccountId);
     const dmSequences = automations.filter((a: any) =>
       a.manifest?.trigger === "OnFacebookDM" || a.manifest?.trigger === "OnInstagramDM"

@@ -283,14 +283,21 @@ export function registerWebhooksRoutes(app: Express) {
   async function validateTwilioSignature(req: Request, overrideAuthToken?: string): Promise<boolean> {
     const authToken = overrideAuthToken || process.env.TWILIO_AUTH_TOKEN;
     if (!authToken) {
-      console.warn("[TWILIO-INBOUND] No auth token available — skipping signature validation");
-      return true;
+      console.error("[TWILIO-INBOUND] No auth token available — rejecting request (configure TWILIO_AUTH_TOKEN)");
+      return false;
     }
     try {
       const twilio = await import("twilio");
       const validateRequest = (twilio.default || twilio).validateRequest || (twilio as any).validateRequest;
-      if (!validateRequest) return true;
+      if (!validateRequest) {
+        console.error("[TWILIO-INBOUND] validateRequest function not found in twilio module — rejecting");
+        return false;
+      }
       const signature = req.headers["x-twilio-signature"] as string || "";
+      if (!signature) {
+        console.warn("[TWILIO-INBOUND] Missing x-twilio-signature header — rejecting");
+        return false;
+      }
       const url = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
       return validateRequest(authToken, signature, url, req.body);
     } catch (e: any) {
@@ -1026,7 +1033,11 @@ export function registerWebhooksRoutes(app: Express) {
     const mode = req.query["hub.mode"];
     const token = req.query["hub.verify_token"];
     const challenge = req.query["hub.challenge"];
-    const verifyToken = process.env.META_VERIFY_TOKEN || "apex_verify_2026";
+    const verifyToken = process.env.META_VERIFY_TOKEN;
+    if (!verifyToken) {
+      console.error("[META WEBHOOK] META_VERIFY_TOKEN not configured — rejecting verification");
+      return res.sendStatus(403);
+    }
     const tokenMatches = token === verifyToken;
     const sanitizedUrl = req.originalUrl.replace(/hub\.verify_token=[^&]*/g, "hub.verify_token=[redacted]");
     console.log(`[META WEBHOOK] Verification attempt — mode=${mode}, token_match=${tokenMatches}, challenge=${challenge}, url=${sanitizedUrl}`);
@@ -1040,7 +1051,49 @@ export function registerWebhooksRoutes(app: Express) {
   });
 
   app.post("/api/meta-webhook", async (req, res) => {
+    const xHubSignature = req.headers["x-hub-signature-256"] as string | undefined;
+    const globalAppSecret = process.env.META_APP_SECRET;
+
+    if (!xHubSignature) {
+      console.warn("[META WEBHOOK] Missing X-Hub-Signature-256 header — rejecting");
+      return res.sendStatus(403);
+    }
+
+    const rawBody = (req as any).rawBody;
+    const bodyForHmac = rawBody ? (Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(String(rawBody))) : Buffer.from(JSON.stringify(req.body));
+
     const body = req.body;
+    const entryPageIds: string[] = (body?.entry || []).map((e: any) => e.id).filter(Boolean);
+
+    let tenantSecret: string | null = null;
+    if (entryPageIds.length > 0) {
+      try {
+        const allAccounts = await storage.getSubAccounts();
+        const matchedAccount = allAccounts.find(a => a.metaPageId && entryPageIds.includes(a.metaPageId));
+        if (matchedAccount?.metaAppSecret) {
+          tenantSecret = matchedAccount.metaAppSecret;
+        }
+      } catch (err) {
+        console.warn("[META WEBHOOK] Failed to resolve tenant secret from payload");
+      }
+    }
+
+    const secretToVerify = tenantSecret || globalAppSecret;
+    if (!secretToVerify) {
+      console.warn("[META WEBHOOK] No app secret available for verification (no tenant match, no global) — rejecting (fail-closed)");
+      return res.sendStatus(500);
+    }
+
+    const expectedSig = "sha256=" + crypto.createHmac("sha256", secretToVerify).update(bodyForHmac).digest("hex");
+    const sigBuf = Buffer.from(xHubSignature);
+    const expectedBuf = Buffer.from(expectedSig);
+    const verified = sigBuf.length === expectedBuf.length && crypto.timingSafeEqual(sigBuf, expectedBuf);
+
+    if (!verified) {
+      console.warn(`[META WEBHOOK] Invalid X-Hub-Signature-256 — rejecting (verified against ${tenantSecret ? "tenant" : "global"} secret)`);
+      return res.sendStatus(403);
+    }
+
     console.log(`[META WEBHOOK] Inbound POST received — object=${body?.object}, entries=${body?.entry?.length ?? 0}`);
     res.sendStatus(200);
 

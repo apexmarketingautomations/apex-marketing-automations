@@ -36,7 +36,11 @@ export function registerAdminRoutes(app: Express) {
     },
   });
 
-  app.post("/api/upload-ad-image", upload.single("image"), (req: Request, res: Response) => {
+  app.post("/api/upload-ad-image", (req: Request, res: Response, next) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    next();
+  }, upload.single("image"), (req: Request, res: Response) => {
     if (!req.file) {
       return res.status(400).json({ error: "No image file provided" });
     }

@@ -12,15 +12,37 @@ import path from "path";
 import fs from "fs";
 import { runStartupChecks } from "./startupChecks";
 import { logSystemError, logSystemEvent } from "./systemLogger";
-import { apiLimiter, authLimiter, webhookLimiter } from "./rateLimiter";
+import { apiLimiter, authLimiter, webhookLimiter, creditTopupLimiter, uploadLimiter } from "./rateLimiter";
 import { dispatchAlert, generateDeepLink } from "./pushAlertService";
 import { initEventSubscribers } from "./eventSubscribers";
 import { eventBus } from "./eventBus";
 import { recordSuccess as recordPulseSuccess } from "./pulse";
 import { withIdempotency, markEventCompleted, markEventFailed } from "./idempotency";
 import { enforceSmsProvider } from "./smsGatewayGuard";
+import helmet from "helmet";
+import cookieParser from "cookie-parser";
+import { csrfProtection } from "./csrfProtection";
 
 const app = express();
+
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://js.stripe.com", "https://connect.facebook.net", "https://cdn.jsdelivr.net"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      imgSrc: ["'self'", "data:", "blob:", "https:", "http:"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+      connectSrc: ["'self'", "https://api.stripe.com", "https://graph.facebook.com", "https://api.openai.com", "https://api.vapi.ai", "wss:", "ws:"],
+      frameSrc: ["'self'", "https://js.stripe.com", "https://www.facebook.com"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      upgradeInsecureRequests: [],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+}));
 const httpServer = createServer(app);
 
 declare module "http" {
@@ -86,10 +108,12 @@ app.post(
       }
 
       const whSecret = getStripeWebhookSecret();
-      if (whSecret) {
-        const stripe = new Stripe(process.env.STRIPE_API_SECRET || "", { apiVersion: "2025-08-27.basil" as any });
-        stripe.webhooks.constructEvent(req.body, sig, whSecret);
+      if (!whSecret) {
+        console.error("[STRIPE] STRIPE_WEBHOOK_SECRET not configured — rejecting webhook");
+        return res.status(500).json({ error: "Webhook secret not configured" });
       }
+      const stripe = new Stripe(process.env.STRIPE_API_SECRET || "", { apiVersion: "2025-08-27.basil" as any });
+      stripe.webhooks.constructEvent(req.body, sig, whSecret);
 
       await WebhookHandlers.processWebhook(req.body as Buffer, sig);
 
@@ -327,6 +351,7 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false, limit: "1mb" }));
+app.use(cookieParser());
 
 
 const uploadsDir = path.join(process.cwd(), "uploads");
@@ -1509,10 +1534,15 @@ RULES:
 
   app.use("/api/auth/login", authLimiter);
   app.use("/api/auth/register", authLimiter);
+  app.use("/api/auth/email-login", authLimiter);
+  app.use("/api/auth/firebase-login", authLimiter);
   app.use("/api/auth/google", authLimiter);
+  app.use("/api/subscription/checkout", creditTopupLimiter);
+  app.use("/api/upload-ad-image", uploadLimiter);
   app.use("/api", apiLimiter);
 
   await setupAuth(app);
+  app.use("/api", csrfProtection);
   registerAuthRoutes(app);
   await registerRoutes(httpServer, app);
 

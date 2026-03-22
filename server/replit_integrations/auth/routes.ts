@@ -58,8 +58,11 @@ export function registerAuthRoutes(app: Express): void {
       if (!email || !password) {
         return res.status(400).json({ message: "Email and password are required" });
       }
-      if (password.length < 6) {
-        return res.status(400).json({ message: "Password must be at least 6 characters" });
+      if (password.length < 8) {
+        return res.status(400).json({ message: "Password must be at least 8 characters" });
+      }
+      if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+        return res.status(400).json({ message: "Password must contain at least one uppercase letter, one lowercase letter, and one number" });
       }
 
       const existing = await authStorage.getUserByEmail(email.toLowerCase().trim());
@@ -82,12 +85,18 @@ export function registerAuthRoutes(app: Express): void {
 
       const user = await authStorage.getUser(userId);
 
-      req.login({ id: userId, claims: { sub: userId }, authProvider: "email" }, (err: any) => {
-        if (err) {
-          console.error("Login after register failed:", err);
-          return res.status(500).json({ message: "Account created but login failed" });
+      req.session.regenerate?.((regenErr: any) => {
+        if (regenErr) {
+          console.error("[AUTH] Session regenerate failed:", regenErr.message);
+          return res.status(500).json({ message: "Account created but session initialization failed" });
         }
-        res.json({ success: true, user });
+        req.login({ id: userId, claims: { sub: userId }, authProvider: "email" }, (err: any) => {
+          if (err) {
+            console.error("Login after register failed:", err);
+            return res.status(500).json({ message: "Account created but login failed" });
+          }
+          res.json({ success: true, user });
+        });
       });
     } catch (error) {
       console.error("Registration error:", error);
@@ -112,22 +121,28 @@ export function registerAuthRoutes(app: Express): void {
         return res.status(401).json({ message: "Invalid email or password" });
       }
 
-      req.login({ id: user.id, claims: { sub: user.id }, authProvider: "email" }, (err: any) => {
-        if (err) {
-          console.error("Email login failed:", err);
-          return res.status(500).json({ message: "Login failed" });
+      req.session.regenerate?.((regenErr: any) => {
+        if (regenErr) {
+          console.error("[AUTH] Session regenerate failed:", regenErr.message);
+          return res.status(500).json({ message: "Login failed — session error" });
         }
+        req.login({ id: user.id, claims: { sub: user.id }, authProvider: "email" }, (err: any) => {
+          if (err) {
+            console.error("Email login failed:", err);
+            return res.status(500).json({ message: "Login failed" });
+          }
 
-        const adminUserId = process.env.ADMIN_USER_ID;
-        const isDevAdmin = adminUserId && user.id === adminUserId;
+          const adminUserId = process.env.ADMIN_USER_ID;
+          const isDevAdmin = adminUserId && user.id === adminUserId;
 
-        res.json({
-          success: true,
-          user: {
-            ...user,
-            passwordHash: undefined,
-            ...(isDevAdmin ? { role: "DEV_ADMIN", isPaid: true, radius: 999999, permissions: ["all"] } : { role: "user" }),
-          },
+          res.json({
+            success: true,
+            user: {
+              ...user,
+              passwordHash: undefined,
+              ...(isDevAdmin ? { role: "DEV_ADMIN", isPaid: true, radius: 999999, permissions: ["all"] } : { role: "user" }),
+            },
+          });
         });
       });
     } catch (error) {
@@ -188,22 +203,28 @@ export function registerAuthRoutes(app: Express): void {
         return res.status(500).json({ message: "Failed to create user account" });
       }
 
-      req.login({ id: user.id, claims: { sub: user.id }, authProvider: "firebase" }, (err: any) => {
-        if (err) {
-          console.error("Firebase login session error:", err);
-          return res.status(500).json({ message: "Login failed" });
+      req.session.regenerate?.((regenErr: any) => {
+        if (regenErr) {
+          console.error("[AUTH] Session regenerate failed:", regenErr.message);
+          return res.status(500).json({ message: "Login failed — session error" });
         }
+        req.login({ id: user.id, claims: { sub: user.id }, authProvider: "firebase" }, (err: any) => {
+          if (err) {
+            console.error("Firebase login session error:", err);
+            return res.status(500).json({ message: "Login failed" });
+          }
 
-        const adminUserId = process.env.ADMIN_USER_ID;
-        const isDevAdmin = adminUserId && user!.id === adminUserId;
+          const adminUserId = process.env.ADMIN_USER_ID;
+          const isDevAdmin = adminUserId && user!.id === adminUserId;
 
-        res.json({
-          success: true,
-          user: {
-            ...user,
-            passwordHash: undefined,
-            ...(isDevAdmin ? { role: "DEV_ADMIN", isPaid: true, radius: 999999, permissions: ["all"] } : { role: "user" }),
-          },
+          res.json({
+            success: true,
+            user: {
+              ...user,
+              passwordHash: undefined,
+              ...(isDevAdmin ? { role: "DEV_ADMIN", isPaid: true, radius: 999999, permissions: ["all"] } : { role: "user" }),
+            },
+          });
         });
       });
     } catch (error: any) {
