@@ -141,7 +141,8 @@ function Router() {
     <Suspense fallback={<PageLoader />}>
       <Switch>
         {/* Public routes — no auth required */}
-        <Route path="/DanteS" component={DigitalCard} />
+        <Route path="/DanteS">{() => { window.location.replace("/card/dantes"); return null; }}</Route>
+        <Route path="/dantes">{() => { window.location.replace("/card/dantes"); return null; }}</Route>
         <Route path="/card/:slug" component={DigitalCard} />
         <Route path="/cards" component={CardsLanding} />
         <Route path="/portal/:token" component={ClientPortal} />

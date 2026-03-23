@@ -1,0 +1,281 @@
+Upgrade this digital business card system from a basic custom route implementation into a premium, scalable, 2028-ready digital identity platform.
+
+Objective:
+Transform the current `/DanteS` + `DigitalCard` setup into a modern, data-driven, brand-grade, mobile-first digital business card product that feels premium, intelligent, fast, and future-proof.
+
+Current issues to eliminate:
+- hardcoded personal route (`/DanteS`)
+- non-scalable one-off card logic
+- weak canonical URL structure
+- card experience feels like a static page instead of a productized digital identity layer
+- no clear separation between public card rendering, analytics, profile data, themes, contact actions, and admin editing
+- not optimized for premium sharing, SEO, conversion, or future multi-user expansion
+
+Build the 2028 version with this architecture:
+
+1. ROUTING / URL STRATEGY
+- Canonical public route: `/card/:slug`
+- Legacy redirect: `/DanteS` -> `/card/dantes`
+- Support optional branded route aliases from DB later
+- Enforce lowercase slug normalization
+- All old hardcoded personal routes must redirect, never render directly
+- Add clean route guards and 404 states for invalid or inactive cards
+
+2. DATA MODEL EVOLUTION
+Refactor the digital card model into a scalable structure that supports:
+- id
+- slug
+- fullName
+- preferredName
+- title
+- companyName
+- bio
+- profileImage
+- coverImage
+- logoImage
+- brandColor
+- accentColor
+- theme
+- layoutVariant
+- contactEmail
+- contactPhone
+- websiteUrl
+- bookingUrl
+- calendarUrl
+- location
+- socialLinks
+- customLinks
+- leadCaptureEnabled
+- leadCaptureFormConfig
+- qrCodeUrl
+- seoTitle
+- seoDescription
+- ogImage
+- isActive
+- isPublic
+- viewCount
+- saveContactCount
+- shareCount
+- clickStats
+- createdAt
+- updatedAt
+
+Also support future fields for:
+- AI summary/about section
+- dynamic CTA modules
+- testimonial blocks
+- portfolio/media blocks
+- product/service blocks
+- downloadable assets
+- multi-brand ownership
+- team-based permissions
+
+3. PUBLIC CARD EXPERIENCE
+Make the public card feel like a premium 2028 executive microsite, not a plain business card.
+
+Design goals:
+- luxurious, minimal, ultra-clean layout
+- mobile-first
+- fast-loading
+- polished animation
+- excellent typography hierarchy
+- glass / soft depth / subtle gradients where tasteful
+- strong personal brand positioning
+- obvious primary CTA
+- modern premium feel similar to top SaaS founder profile pages
+
+Core sections:
+- hero with photo, name, title, company, short value proposition
+- primary CTA row:
+  - save contact
+  - call
+  - email
+  - website
+  - book now
+  - share
+- about section
+- social / presence links
+- services or expertise highlights
+- optional proof section
+- optional lead form
+- optional calendar booking embed/link
+- footer with company/brand identity
+
+4. CONTACT UX
+Make contact interaction modern and frictionless:
+- one-tap “Save Contact” vCard download
+- one-tap phone / email / SMS
+- smart CTA ordering based on available fields
+- sticky mobile action bar
+- share modal
+- QR code display / download
+- copy link button
+- “Add to Apple / Google Contacts” where possible via compatible export flow
+- optional wallet-style save experience later
+
+5. BUILDER / ADMIN EXPERIENCE
+Upgrade `/digital-card-builder` into a real admin builder instead of a simple form.
+
+Builder must support:
+- live preview
+- slug editor with validation and availability checking
+- theme picker
+- layout picker
+- profile media uploads
+- drag-and-order sections
+- CTA toggles
+- SEO / social preview
+- QR preview
+- save draft / publish
+- duplicate card
+- deactivate card
+- analytics summary panel
+- mobile preview toggle
+- card status: draft / published / archived
+
+6. THEMING SYSTEM
+Implement a scalable theme system:
+- neutral executive
+- bold agency
+- luxury dark
+- clean minimal light
+- modern gradient
+- custom brand theme
+
+Theme system must control:
+- typography scale
+- spacing
+- card radius
+- shadows
+- background treatment
+- CTA style
+- section density
+- icon style
+- color tokens
+
+Do not hardcode style inside one page. Build reusable theme tokens/components.
+
+7. ANALYTICS / INTELLIGENCE
+Add event tracking for:
+- page views
+- unique visitors
+- save contact clicks
+- phone clicks
+- email clicks
+- booking clicks
+- website clicks
+- social clicks
+- QR scans if possible
+- shares
+- form submissions
+
+Create a clean analytics object and backend-safe tracking layer.
+Prepare the architecture so future dashboards can show:
+- top cards
+- conversion rate
+- best CTA performance
+- traffic source
+- device breakdown
+- engagement trend
+
+8. SEO / SOCIAL SHARING
+Make every card fully shareable and indexable:
+- dynamic title
+- dynamic meta description
+- dynamic OG tags
+- dynamic OG image
+- canonical URL
+- structured metadata where appropriate
+- strong preview when shared by text, Slack, LinkedIn, Facebook, iMessage
+
+9. PERFORMANCE / ENGINEERING
+Refactor for production-grade quality:
+- code split large modules
+- lazy load non-critical sections
+- preload hero assets intelligently
+- image optimization
+- route-level error boundaries
+- skeleton states
+- not-found state
+- inactive-card state
+- clean loading states
+- no hardcoded person-specific display logic in the main page component
+
+10. COMPONENT ARCHITECTURE
+Refactor into reusable components such as:
+- `DigitalCardPage`
+- `DigitalCardHero`
+- `DigitalCardActions`
+- `DigitalCardAbout`
+- `DigitalCardLinks`
+- `DigitalCardServices`
+- `DigitalCardLeadForm`
+- `DigitalCardFooter`
+- `DigitalCardThemeProvider`
+- `DigitalCardPreview`
+- `DigitalCardBuilderForm`
+- `DigitalCardAnalyticsSummary`
+- `LegacyCardRedirect`
+
+11. FUTURE-READY 2028 FEATURES
+Prepare the architecture for these future capabilities even if all are not fully implemented now:
+- NFC business card support
+- smart contact exchange
+- AI-personalized intro summary
+- dynamic CTA personalization
+- multi-card profiles per user
+- team/company-wide digital identity management
+- CRM sync
+- lead enrichment
+- event badge / conference mode
+- geo-aware CTA options
+- multilingual cards
+- white-label domain support
+- secure private cards
+- temporary campaign cards
+- card A/B testing
+
+12. IMMEDIATE IMPLEMENTATION TARGET
+Implement the first production-ready version now with:
+- canonical `/card/:slug`
+- redirect from `/DanteS` to `/card/dantes`
+- slug-driven `DigitalCard`
+- reusable theme-ready component structure
+- sticky mobile CTA bar
+- vCard download
+- QR block
+- modern premium layout
+- builder improvements for slug/theme/preview/publish
+- analytics event hooks
+- SEO metadata support
+- removal of hardcoded one-off rendering logic
+
+13. DELIVERABLES
+Produce:
+- updated `client/src/App.tsx`
+- refactored `client/src/pages/digital-card.tsx`
+- improved `client/src/pages/digital-card-builder.tsx`
+- any new reusable components needed
+- slug utility
+- redirect utility/component
+- metadata helper
+- vCard utility
+- analytics hook/util
+- clear comments only where necessary
+- clean code, scalable naming, no hacks
+
+14. IMPORTANT CONSTRAINTS
+- preserve backward compatibility for old `/DanteS` links
+- do not break current live behavior for the Dante card
+- avoid temporary shortcuts unless clearly marked
+- keep the architecture scalable for many business cards, not just one
+- make the result feel like a polished premium SaaS product, not a basic internal page
+
+15. SUCCESS CRITERIA
+The result should feel like:
+- a premium digital identity product
+- modern enough to compete with polished 2028 founder/agency profile tools
+- scalable from one card to hundreds or thousands
+- brand-forward, conversion-focused, mobile-native, and enterprise-extensible
+
+Start by auditing the current routing and `digital-card` page, then implement the upgraded architecture directly.

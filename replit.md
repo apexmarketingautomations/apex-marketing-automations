@@ -59,3 +59,10 @@ Preferred communication style: Simple, everyday language.
 - **Meta Webhooks**: For multi-tenant Facebook/Instagram DM bot functionality with rich context assembly.
 - **Google Calendar Auto-Sync**: Background service for syncing Google Calendar events with appointments and triggers.
 - **FLHSMV API**: For polling and retrieving crash reports.
+
+## Digital Business Card System
+- **Schema**: `digitalCards` table with 30+ fields (brand colors, themes, social links, services, testimonials, SEO, analytics counters) and `cardAnalyticsEvents` for event tracking.
+- **Backend** (`server/routes/cards.ts`): Public card API (`/api/public-card/:slug`), vCard download, analytics event tracking (view/click/save/share), slug availability checker. All public endpoints enforce `isActive` + `isPublic` gates.
+- **Public Page** (`client/src/pages/digital-card.tsx`): Data-driven, 6 premium themes (executive-dark, modern-gradient, minimal-clean, bold-creative, ocean-breeze, sunset-warm), sticky mobile action bar, share modal with native share + QR + copy, services grid, testimonial block.
+- **Builder** (`client/src/pages/digital-card-builder.tsx`): Tabbed sections (Info/Contact/Media/Services/Links/Theme/SEO), live iframe preview, slug validator with debounce, color pickers, analytics widget, status selector.
+- **Routing**: `/card/:slug` is the canonical URL. Legacy `/DanteS` and `/dantes` redirect to `/card/dantes`.

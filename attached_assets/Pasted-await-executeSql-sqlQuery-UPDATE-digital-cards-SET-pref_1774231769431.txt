@@ -1,0 +1,87 @@
+await executeSql({
+  sqlQuery: `
+    UPDATE digital_cards
+    SET
+      preferred_name = $1,
+      slug = $2,
+      cover_image_url = $3,
+      brand_color = $4,
+      accent_color = $5,
+      theme = $6,
+      layout_variant = $7,
+      tagline = $8,
+      location = $9,
+      booking_url = $10,
+      social_links = $11::json,
+      services = $12::json,
+      testimonial = $13::json,
+      status = $14,
+      is_active = $15,
+      is_public = $16,
+      bio = $17,
+      updated_at = NOW()
+    WHERE id = $18
+    RETURNING id, slug;
+  `,
+  values: [
+    "Dante",
+    "dantes",
+    "",
+    "#6366f1",
+    "#8b5cf6",
+    "executive-dark",
+    "standard",
+    "Full-stack creative and technologist building AI-powered platforms that help businesses scale on autopilot.",
+    "Fort Myers, FL",
+    "",
+    JSON.stringify([]),
+    JSON.stringify([
+      {
+        label: "Graphic Design",
+        description: "Brand identities, landing pages, and visual systems for 17+ industries",
+        icon: "palette",
+        color: "from-pink-500 to-rose-500"
+      },
+      {
+        label: "Software Engineering",
+        description: "Full SaaS platform built from scratch — auth, billing, APIs, and real-time data",
+        icon: "code",
+        color: "from-indigo-500 to-blue-500"
+      },
+      {
+        label: "Web Development",
+        description: "AI-powered site builder that generates complete websites from a single prompt",
+        icon: "globe",
+        color: "from-cyan-500 to-teal-500"
+      },
+      {
+        label: "Digital Marketing",
+        description: "Meta Ads launcher with geofence targeting, audience builder, and ROI tracking",
+        icon: "megaphone",
+        color: "from-orange-500 to-amber-500"
+      },
+      {
+        label: "AI & Automation",
+        description: "Train AI chatbots on any website — RAG pipeline with tool-calling and memory",
+        icon: "bot",
+        color: "from-purple-500 to-violet-500"
+      },
+      {
+        label: "Voice AI Agents",
+        description: "Deploy AI receptionists that answer calls, book appointments, and qualify leads 24/7",
+        icon: "mic",
+        color: "from-emerald-500 to-green-500"
+      }
+    ]),
+    JSON.stringify({
+      quote: "I don't just build software — I build revenue machines. Every feature is designed to generate leads, close deals, and save time. If it doesn't make money, it doesn't ship.",
+      author: "Dante S.",
+      role: "Founder, Apex Marketing Automations"
+    }),
+    "published",
+    true,
+    true,
+    "Full-stack creative and technologist. I design, build, and market AI-powered platforms that help businesses scale on autopilot. From pixel-perfect graphics to production-grade software, multi-channel marketing campaigns to autonomous voice agents — I turn ideas into systems that work around the clock.",
+    1
+  ]
+});
