@@ -535,6 +535,9 @@ function StickyActionBar({ card, theme, onShare, trackEvent }: {
 function ShareModal({ card, theme, onClose }: { card: CardData; theme: Theme; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   const cardUrl = `${window.location.origin}/card/${card.slug}`;
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  const canNativeShare = typeof navigator !== "undefined" && !!navigator.share && isMobile;
+  const shareTitle = `${card.preferredName || card.name}${card.company ? ` — ${card.company}` : ""}`;
 
   const copyLink = () => {
     navigator.clipboard.writeText(cardUrl);
@@ -544,8 +547,16 @@ function ShareModal({ card, theme, onClose }: { card: CardData; theme: Theme; on
 
   const shareNative = () => {
     if (navigator.share) {
-      navigator.share({ title: `${card.preferredName || card.name}${card.company ? ` — ${card.company}` : ""}`, url: cardUrl });
+      navigator.share({ title: shareTitle, url: cardUrl }).catch(() => {});
     }
+  };
+
+  const shareToSms = () => {
+    window.open(`sms:?&body=${encodeURIComponent(`Check out ${shareTitle}: ${cardUrl}`)}`, "_blank");
+  };
+
+  const shareToEmail = () => {
+    window.open(`mailto:?subject=${encodeURIComponent(shareTitle)}&body=${encodeURIComponent(`Check out this card: ${cardUrl}`)}`, "_blank");
   };
 
   return (
@@ -570,11 +581,24 @@ function ShareModal({ card, theme, onClose }: { card: CardData; theme: Theme; on
             {copied ? <><Check size={12} className="inline mr-1" />Copied</> : <><Copy size={12} className="inline mr-1" />Copy</>}
           </button>
         </div>
-        {typeof navigator !== "undefined" && navigator.share && (
+        {canNativeShare ? (
           <button onClick={shareNative} className={`w-full py-3 rounded-xl bg-gradient-to-r ${theme.ctaBg} text-white font-bold text-sm flex items-center justify-center gap-2`}
             data-testid="button-native-share">
             <Share2 size={16} /> Share via...
           </button>
+        ) : (
+          <div className="flex gap-2">
+            <button onClick={shareToEmail}
+              className={`flex-1 py-3 rounded-xl ${theme.cardBg} border ${theme.border} ${theme.text} font-bold text-sm flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all`}
+              data-testid="button-share-email">
+              <Mail size={16} /> Email
+            </button>
+            <button onClick={shareToSms}
+              className={`flex-1 py-3 rounded-xl ${theme.cardBg} border ${theme.border} ${theme.text} font-bold text-sm flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all`}
+              data-testid="button-share-sms">
+              <MessageSquare size={16} /> Text
+            </button>
+          </div>
         )}
       </motion.div>
     </motion.div>
