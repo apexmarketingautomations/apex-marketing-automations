@@ -1,0 +1,87 @@
+import { Request, Response, NextFunction } from 'express';
+
+/**
+ * Wraps an async Express route handler to capture any errors (rejected promises or thrown exceptions).
+ * This ensures that errors are forwarded to Express error handling middleware instead of causing unhandled rejections.
+ * It also includes special handling for Stripe-related errors, attempting a graceful recovery if possible.
+ *
+ * @param fn - The async route handler function to wrap (req, res, next) => Promise<any>.
+ * @returns A new request handler function that wraps the given function with error handling.
+ */
+export function asyncHandler<Req extends Request, Res extends Response>(
+  fn: (req: Req, res: Res, next: NextFunction) => Promise<any>
+): (req: Req, res: Res, next: NextFunction) => void {
+  if (typeof fn !== 'function') {
+    throw new TypeError('asyncHandler: expected a function as input');
+  }
+  return (req: Req, res: Res, next: NextFunction): void => {
+    Promise.resolve()
+      .then(() => fn(req, res, next))
+      .catch((err: any) => {
+        // Stripe-specific error fallback (lazy-loaded to avoid startup issues)
+        if (err && typeof err === 'object') {
+          const errName: string = err.name || '';
+          const errMessage: string = err.message || '';
+          if (errName.startsWith('Stripe') || errMessage.toLowerCase().includes('stripe')) {
+            try {
+              // Lazy import stripe client module for potential recovery
+              const stripeClient = require('../stripeClient');
+              if (stripeClient && typeof stripeClient.recover === 'function') {
+                // Attempt recovery if a recover function is exported
+                stripeClient.recover(err, req, res);
+              }
+              console.error('[Stripe] Stripe-related error caught. Attempted recovery via stripeClient.');
+            } catch (importError) {
+              // Failure to import or execute recovery should not crash the app
+              console.error('[Stripe] Stripe error handling failed (stripeClient missing or error in recovery):', importError);
+            }
+          }
+        }
+        // If Express's next function is available, pass the error to the centralized error handler
+        if (typeof next === 'function') {
+          next(err);
+        } else {
+          // In case next is not a function (should not happen in Express), log the error for debugging
+          console.error('Async error caught without next function:', err);
+        }
+      });
+  };
+}
+
+/**
+ * Parses a string parameter from a request (query or path) into an integer.
+ * If the value is missing, empty, or not a valid integer, this will throw an Error with HTTP status 400 (Bad Request).
+ *
+ * @param value - The parameter value (string or array of strings from req.params or req.query).
+ * @param paramName - The name of the parameter (for error messages).
+ * @returns The parsed number if valid.
+ * @throws Error with status 400 if the value is not a valid integer.
+ */
+export function parseIntParam(value: string | string[] | undefined, paramName: string): number {
+  // If the param is an array (from query parameters), take the first value
+  const strValue = Array.isArray(value) ? value[0] : value;
+  // Check for missing or empty string values
+  if (strValue === undefined || strValue === null || strValue === '') {
+    const err: any = new Error(`Missing or empty parameter: ${paramName}`);
+    err.status = 400;
+    err.statusCode = 400;
+    throw err;
+  }
+  // Ensure the string is a valid integer (no spaces or non-digit characters)
+  const trimmed = strValue.trim();
+  if (!/^-?\d+$/.test(trimmed)) {
+    const err: any = new Error(`Invalid parameter (expected integer): ${paramName}`);
+    err.status = 400;
+    err.statusCode = 400;
+    throw err;
+  }
+  const parsed = parseInt(trimmed, 10);
+  if (isNaN(parsed)) {
+    const err: any = new Error(`Invalid parameter (unable to parse integer): ${paramName}`);
+    err.status = 400;
+    err.statusCode = 400;
+    throw err;
+  }
+  return parsed;
+}
+Sources
