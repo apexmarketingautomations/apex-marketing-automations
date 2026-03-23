@@ -31,6 +31,7 @@ import { registerAbTestingRoutes } from "./routes/ab-testing";
 import { registerTimelineRoutes } from "./routes/timeline";
 import { registerEventLogRoutes } from "./routes/eventLog";
 import { registerMailchimpRoutes } from "./routes/mailchimp";
+import { registerPublicPlatformRoutes } from "./routes/public-platform";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -66,6 +67,7 @@ export async function registerRoutes(
   registerTimelineRoutes(app);
   registerEventLogRoutes(app);
   registerMailchimpRoutes(app);
+  registerPublicPlatformRoutes(app);
 
   return httpServer;
 }
