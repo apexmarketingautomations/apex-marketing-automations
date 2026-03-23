@@ -1,0 +1,833 @@
+# Production-Safe Integration of God Mode as Apex’s Canonical Control Plane
+
+## Executive summary
+
+A production-safe “God Mode” integration is not a UI refresh; it is a **control-plane refactor** that must preserve tenant isolation, eliminate duplicate sources of truth, and roll out via **backward-compatible (“parallel change”) steps** with **feature-flag kill switches** and **canary rollout** to minimize blast radius. Tenant isolation must be treated as foundational (“not optional”) at every layer—routing, API authorization, and data access—because a single cross-tenant bug is a platform-ending incident. citeturn0search2turn2search3turn3search0
+
+Because no Apex production URL or internal API docs were provided, this report uses **generic, safe defaults** and references established primary sources for zero-downtime migrations (Parallel Change / expand–migrate–contract), feature-flag release control, canarying strategy, tenant isolation, and reliable eventing patterns. citeturn1search0turn0search1turn0search3turn1search13turn2search3
+
+The core architectural decision that makes God Mode “canonical” without breaking existing flows is:
+
+**God Mode provisions and governs → Sub-accounts operate and persist canonical operational records.**  
+God Mode may *seed* initial values (e.g., website URL), but after provisioning the **sub-account owns the operational record** (website source, training state, widget state), while God Mode remains the authoritative **orchestration and standards** layer (blueprints, deployments, fleet health, incident response).
+
+Rollout should follow a phased **expand → migrate → contract** approach (Parallel Change) to avoid downtime and allow rollback at most steps. citeturn1search0turn1search20turn3search6
+
+## Crawl and audit checklist for pages, onboarding flows, and website-setup copy
+
+### Audit objective and constraints
+
+You need a **complete inventory** of everywhere the product implies “connect a website” (or similar), and which layer (God Mode vs sub-account) is being implied as the owner. The specific failure mode you’re preventing is **UI/flow drift**: the system has a website URL already, but the sub-account UI claims it must be connected, creating duplicate configuration and eventual data drift.
+
+Because the live site was not provided, the checklist below is designed to be executed via repository + runtime crawl in Replit.
+
+### Prioritized crawl plan
+
+**Priority A: Route + copy inventory (highest leverage, fastest)**  
+1) Build a route map:
+- If Next.js: enumerate `app/**/page.*` and `pages/**` routes.
+- If React Router: locate the route config file(s) and log every path.
+- Output artifact: `artifacts/routes.json` with `{ route, layout, authGate, navGroup }`.
+
+2) Perform a **string/copy grep** across frontend + backend:
+- Search phrases:  
+  `connect website`, `client website`, `website url`, `train ai`, `widget`, `scrape`, `crawl`, `knowledge base`, `source`, `domain`, `onboarding`, `god mode`, `sub account`, `snapshot`.
+- Output artifact: `artifacts/copy_hits.csv` including file path, line, snippet, and guessed feature area.
+
+3) Run a runtime crawl of authenticated flows (Playwright recommended):
+- Login as platform owner (God Mode) and as a standard sub-account admin.
+- Visit all nav items and record visible copy blocks that mention website setup or training.
+- Output artifact: `artifacts/ui_copy_inventory.json` keyed by `{ persona, route, componentId, visibleText }`.
+
+**Priority B: Onboarding/provisioning workflow inventory (where drift starts)**  
+4) Enumerate all provisioning entry points:
+- God Mode “Create sub-account” flow(s).
+- Any “snapshot deploy” / “template install” flows.
+- Any “import existing client” flows.
+- Output: `artifacts/provisioning_flows.md` including step-by-step and which API endpoints each step calls.
+
+5) Enumerate all sub-account “website connection/training” flows:
+- Sub-account onboarding wizard steps.
+- Settings → Website.
+- AI/Chatbot → Sources.
+- Widget generation page.
+- Output: `artifacts/website_flows.md` with expected states and blocking conditions.
+
+**Priority C: Backend references to website URL + training state (truth layer)**  
+6) Inventory DB fields referenced by:
+- Website URL storage.
+- AI training sources.
+- Widget embed config.
+- Sync job statuses.
+- Output: `artifacts/schema_inventory.md` noting current tables/collections and fields.
+
+7) Inventory async jobs and their state:
+- crawler/scraper jobs
+- training jobs
+- widget build/publish jobs
+- Output: `artifacts/job_catalog.md` noting job name, trigger, idempotency key, retry policy.
+
+### Audit pass/fail criteria
+
+Pass means you can answer, for every place the UI mentions website setup:
+- Which tenant object is being configured?
+- Which layer owns the record after provisioning?
+- Which states are possible (missing/inherited/updated/syncing/error)?
+- Which API endpoint is the source of truth for that UI block?
+
+## Data-model audit plan with canonical records, required fields, and zero-downtime migrations
+
+### Canonical records required
+
+To make God Mode canonical without duplicating operational truth, you need a small set of **explicit, canonical records**. This follows tenant-isolation discipline: everything is tenant-scoped (subAccountId/tenantId), and God Mode never stores “operational duplicates” it can’t reconcile safely. Tenant isolation must be enforced rigorously. citeturn0search2turn2search3turn3search0
+
+**Canonical operational records (sub-account owned):**
+- `Tenant` / `SubAccount`
+- `WebsiteSource` (the canonical website URL + origin + operational status)
+- `WebsiteSyncRun` (append-only runs for auditability)
+- `AiTrainingRun` (append-only runs)
+- `WidgetDeployment` (embed key/config + status)
+- `ProvisioningRun` (tracks God Mode provisioning steps and outcomes)
+- `FeatureFlagAssignment` (optional if you’re not using a third-party flag service)
+
+**Governance/control-plane records (God Mode owned):**
+- `Blueprint` / `SnapshotTemplate` (versioned)
+- `DeploymentPlan` (what gets applied to which tenants, when)
+- `Policy` / `Standards` (enforced rules, constraints, defaults)
+- `FleetHealthSignal` (aggregated signals, not tenant state duplication)
+
+### Required fields (implementation-ready)
+
+Below is a safe default schema (relational), plus how to represent in NoSQL. Adjust naming to match your codebase conventions.
+
+**Relational (Postgres/MySQL-like) tables**
+
+`website_sources`
+- `id` (uuid, pk)
+- `tenant_id` (uuid, indexed, not null)
+- `website_url` (text, not null)
+- `website_domain` (text, not null)
+- `origin` (enum `WEBSITE_ORIGIN`, not null)
+- `ownership_scope` (enum fixed to `SUBACCOUNT`, not null)
+- `status` (enum `WEBSITE_SOURCE_STATUS`, not null)
+- `sync_status` (enum `SYNC_STATUS`, not null)
+- `training_status` (enum `TRAINING_STATUS`, not null)
+- `widget_status` (enum `WIDGET_STATUS`, not null)
+- `last_successful_sync_at` (timestamptz, null)
+- `last_training_completed_at` (timestamptz, null)
+- `last_error_code` (text, null)
+- `last_error_message` (text, null)
+- `created_at`, `updated_at`
+
+`provisioning_runs`
+- `id` (uuid, pk)
+- `tenant_id` (uuid, indexed)
+- `created_by_user_id` (uuid)
+- `status` (enum `PROVISIONING_STATUS`)
+- `step_states` (jsonb) // step machine snapshots
+- `started_at`, `completed_at`
+- `last_error_*`
+
+`website_sync_runs` (append-only)
+- `id` (uuid, pk)
+- `tenant_id` (uuid, indexed)
+- `website_source_id` (uuid, indexed)
+- `triggered_by` (enum)
+- `status` (enum `RUN_STATUS`)
+- `started_at`, `completed_at`
+- `stats` (jsonb) // pages scanned, tokens extracted, etc.
+- `error` (jsonb)
+
+`ai_training_runs` (append-only)
+- same pattern as sync runs + model version fields
+
+`widget_deployments`
+- `id` (uuid, pk)
+- `tenant_id` (uuid, indexed)
+- `website_source_id` (uuid, indexed)
+- `embed_key` (text, unique)
+- `config` (jsonb)
+- `status` (enum `WIDGET_STATUS`)
+- `published_at`, `revoked_at`
+- `updated_at`
+
+### Migration strategy
+
+Use a **Parallel Change / expand–migrate–contract** approach where new schema coexists with old until all code and data are migrated. This is explicitly the safe pattern for breaking interface changes and is commonly used for zero-downtime evolution. citeturn1search0turn1search20turn3search6
+
+If your system is Postgres, be mindful that DDL can still lock; understand safe operations for your DB version. For example, Postgres documents that adding a column with a constant default is optimized (no row-by-row rewrite), while volatile defaults can force row updates. citeturn1search2
+
+### SQL migration pseudocode (idempotent outline)
+
+Assumptions:
+- Existing table has `tenants` and possibly `tenant.website_url` or similar.
+- You’re adding canonical `website_sources` without breaking existing code.
+- You want **idempotent scripts** capable of re-running safely.
+
+**Expand phase (safe additive changes)**
+```sql
+-- 001_expand_create_website_sources.sql
+-- Idempotent create (Postgres style; adapt for MySQL)
+CREATE TABLE IF NOT EXISTS website_sources (
+  id uuid PRIMARY KEY,
+  tenant_id uuid NOT NULL,
+  website_url text NOT NULL,
+  website_domain text NOT NULL,
+  origin text NOT NULL,
+  ownership_scope text NOT NULL DEFAULT 'SUBACCOUNT',
+  status text NOT NULL,
+  sync_status text NOT NULL,
+  training_status text NOT NULL,
+  widget_status text NOT NULL,
+  last_successful_sync_at timestamptz NULL,
+  last_training_completed_at timestamptz NULL,
+  last_error_code text NULL,
+  last_error_message text NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_website_sources_tenant ON website_sources(tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_website_sources_tenant_active
+  ON website_sources(tenant_id)
+  WHERE status <> 'DISCONNECTED';
+```
+
+**Backfill phase (online, chunked, retryable)**
+```sql
+-- 002_migrate_backfill_website_sources.sql
+-- Use a migration log table for idempotency and chunking
+CREATE TABLE IF NOT EXISTS migration_kv (
+  k text PRIMARY KEY,
+  v text NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Example: store last tenant_id processed, or use created_at cursor
+-- Pseudocode: loop in app or migration runner (recommended) rather than pure SQL.
+```
+
+**Application-level backfill runner (recommended)**
+- Iterate tenants in ascending order of `id` (or `created_at`).
+- For each tenant with an existing website URL and no active website_source:
+  - Insert website_source with `origin='GOD_MODE_ONBOARDING'` if that’s where it came from; otherwise infer a safe default (`LEGACY_IMPORTED`).
+  - Set status to `CONNECTED_UNSYNCED` (explicitly requires sync action).
+  - Do NOT start sync/training automatically unless you have capacity controls.
+
+**Contract phase**
+- After you have dual-read/dual-write stabilized and verified, remove legacy fields and code paths.
+
+### NoSQL migration pseudocode (Mongo-like)
+
+**Expand**
+- New collection: `websiteSources`
+- Unique compound index on `{ tenantId: 1, active: 1 }` to prevent duplicates.
+
+**Backfill**
+```js
+// idempotent_backfill_website_sources.js
+const cursor = db.tenants.find(
+  { websiteUrl: { $exists: true, $ne: "" } },
+  { _id: 1, websiteUrl: 1, createdAt: 1 }
+).sort({ _id: 1 });
+
+for (const t of cursor) {
+  db.websiteSources.updateOne(
+    { tenantId: t._id, active: true },
+    {
+      $setOnInsert: {
+        _id: uuid(),
+        tenantId: t._id,
+        websiteUrl: t.websiteUrl,
+        websiteDomain: extractDomain(t.websiteUrl),
+        origin: "LEGACY_IMPORTED",
+        ownershipScope: "SUBACCOUNT",
+        status: "CONNECTED_UNSYNCED",
+        syncStatus: "NOT_STARTED",
+        trainingStatus: "NOT_STARTED",
+        widgetStatus: "NOT_GENERATED",
+        createdAt: new Date(),
+      },
+      $set: { updatedAt: new Date() }
+    },
+    { upsert: true }
+  );
+}
+```
+
+### Idempotent scripts outline (production-safe)
+
+- A single `migrations` runner that:
+  - records applied migrations in a dedicated table/collection (Flyway/Liquibase-style schema history is the standard pattern) citeturn2search4turn2search29
+  - ensures each migration is additive and backward-compatible
+  - supports re-runs (idempotent DDL where possible; application-level upserts for data)
+- If you use Flyway/Liquibase, follow their immutable migration practices and re-runnable patterns for views/procedures as needed. citeturn2search0turn2search1turn2search25
+
+## Deterministic handoff rules with state machines and exact enums
+
+### Deterministic handoff rules
+
+These rules eliminate drift by making the boundary explicit.
+
+**Rule group: provisioning → operational ownership**
+- God Mode may **seed** website URL during provisioning.
+- Once the sub-account exists, the website URL becomes a **sub-account canonical `WebsiteSource`** record.
+- God Mode is not allowed to maintain a second operational website record; it may only:
+  - write via the same canonical API used by sub-accounts (with elevated permissions), or
+  - create a provisioning request that is executed into the canonical records.
+
+**Rule group: interface compatibility**
+- During migration, you may dual-write to old and new stores temporarily (Parallel Change), but reads should be deterministic:
+  - Prefer `WebsiteSource` if present; fallback to legacy field only if missing.
+- Dual writing and/or backfill should be used to keep stores consistent until cutover, following proven online-migration practice. citeturn1search0turn3search6
+
+**Rule group: event consistency**
+- If you emit events (sync requested, training completed), avoid dual-write inconsistency by using the **Transactional Outbox pattern**: write business state + outbox event in one DB transaction, publish asynchronously. citeturn1search13turn1search9
+
+### Exact status enums
+
+Use these enums everywhere (DB + API + UI) to eliminate string drift.
+
+```ts
+// Ownership and origin
+enum WEBSITE_ORIGIN {
+  GOD_MODE_ONBOARDING = "GOD_MODE_ONBOARDING",
+  SUBACCOUNT_CREATED = "SUBACCOUNT_CREATED",
+  SUBACCOUNT_UPDATED = "SUBACCOUNT_UPDATED",
+  LEGACY_IMPORTED = "LEGACY_IMPORTED",
+  SYSTEM_IMPORTED = "SYSTEM_IMPORTED"
+}
+
+enum WEBSITE_SOURCE_STATUS {
+  NOT_CONNECTED = "NOT_CONNECTED",
+  CONNECTED_UNSYNCED = "CONNECTED_UNSYNCED",
+  SYNCING = "SYNCING",
+  CONNECTED_SYNCED = "CONNECTED_SYNCED",
+  TRAINED = "TRAINED",
+  NEEDS_RESYNC = "NEEDS_RESYNC",
+  ERROR = "ERROR",
+  DISCONNECTED = "DISCONNECTED"
+}
+
+enum SYNC_STATUS {
+  NOT_STARTED = "NOT_STARTED",
+  QUEUED = "QUEUED",
+  RUNNING = "RUNNING",
+  SUCCEEDED = "SUCCEEDED",
+  FAILED = "FAILED"
+}
+
+enum TRAINING_STATUS {
+  NOT_STARTED = "NOT_STARTED",
+  QUEUED = "QUEUED",
+  RUNNING = "RUNNING",
+  SUCCEEDED = "SUCCEEDED",
+  FAILED = "FAILED"
+}
+
+enum WIDGET_STATUS {
+  NOT_GENERATED = "NOT_GENERATED",
+  READY = "READY",
+  OUTDATED = "OUTDATED",
+  ERROR = "ERROR",
+  REVOKED = "REVOKED"
+}
+
+enum PROVISIONING_STATUS {
+  DRAFT = "DRAFT",
+  REQUESTED = "REQUESTED",
+  APPLYING = "APPLYING",
+  COMPLETED = "COMPLETED",
+  FAILED = "FAILED",
+  ROLLED_BACK = "ROLLED_BACK"
+}
+
+enum RUN_STATUS {
+  QUEUED = "QUEUED",
+  RUNNING = "RUNNING",
+  SUCCEEDED = "SUCCEEDED",
+  FAILED = "FAILED",
+  CANCELED = "CANCELED"
+}
+```
+
+### Mermaid state machines
+
+**Website source lifecycle**
+
+```mermaid
+stateDiagram-v2
+  [*] --> NOT_CONNECTED
+
+  NOT_CONNECTED --> CONNECTED_UNSYNCED: setWebsiteUrl()
+  CONNECTED_UNSYNCED --> SYNCING: requestSync()
+  SYNCING --> CONNECTED_SYNCED: syncSucceeded
+  SYNCING --> ERROR: syncFailed
+
+  CONNECTED_SYNCED --> TRAINED: trainingSucceeded
+  CONNECTED_SYNCED --> ERROR: trainingFailed
+  TRAINED --> NEEDS_RESYNC: websiteChanged OR contentStale
+  NEEDS_RESYNC --> SYNCING: requestSync()
+
+  ERROR --> SYNCING: retrySync()
+  ERROR --> CONNECTED_UNSYNCED: replaceWebsiteUrl()
+  TRAINED --> DISCONNECTED: disconnect()
+  CONNECTED_SYNCED --> DISCONNECTED: disconnect()
+  CONNECTED_UNSYNCED --> DISCONNECTED: disconnect()
+  DISCONNECTED --> NOT_CONNECTED: purgeOrReset()
+```
+
+**Provisioning handoff (God Mode → sub-account)**
+
+```mermaid
+stateDiagram-v2
+  [*] --> DRAFT
+  DRAFT --> REQUESTED: submitProvisioning()
+  REQUESTED --> APPLYING: startApply()
+  APPLYING --> COMPLETED: allStepsSucceeded
+  APPLYING --> FAILED: anyStepFailed
+
+  FAILED --> APPLYING: retryFailedSteps()
+  FAILED --> ROLLED_BACK: rollback()
+  ROLLED_BACK --> REQUESTED: resubmit()
+
+  state APPLYING {
+    [*] --> CREATE_TENANT
+    CREATE_TENANT --> SEED_WEBSITE_SOURCE
+    SEED_WEBSITE_SOURCE --> APPLY_SNAPSHOT
+    APPLY_SNAPSHOT --> CONFIGURE_DEFAULTS
+    CONFIGURE_DEFAULTS --> [*]
+  }
+```
+
+## UI and information architecture change plan with tables, component specs, and acceptance criteria
+
+### Exact insertion points (production-safe, minimal breakage)
+
+Because your actual IA wasn’t provided, “exact insertion points” below are expressed as **deterministic code insertion points** (where to change in a typical SPA/Next dashboard) that won’t alter existing flows until flags are on.
+
+**Insertion point A: Top-level nav/router**
+- Add a new route group: `/godmode/*`
+- Gate by `user.role === PLATFORM_OWNER || user.permissions.includes("GODMODE_ACCESS")`
+- Do not alter existing sub-account routes; God Mode is additive.
+
+**Insertion point B: Existing “website setup” UI block**
+- Wherever the current copy exists (e.g., `ConnectWebsiteCard`), replace static rendering with a state-driven component that:
+  - calls `GET /api/subaccounts/:id/website-source`
+  - renders copy by `WEBSITE_SOURCE_STATUS` and `WEBSITE_ORIGIN`
+
+**Insertion point C: Documentation/marketing “Platform Control Architecture” section**
+- Insert once, above the first deep system explanation block (typically before “how it works” / “event-driven system” sections).
+- Do not repeat throughout the site; it’s a framing layer, not a feature.
+
+### New “Platform Control Architecture” section content (drop-in)
+
+**Heading:** Platform Control Architecture
+
+**Body (tight, high-trust):**  
+Apex operates as a layered platform so provisioning, governance, and day‑to‑day client execution stay clean at scale:
+
+**God Mode (Control Plane):** provisions and governs sub‑accounts, enforces standards, deploys blueprints, monitors fleet health, and provides recovery controls.  
+**Sub‑Accounts (Execution Plane):** run client operations—CRM, automations, AI training, messaging, widgets—and own their operational configuration after provisioning.  
+**Event System (Execution Engine):** workflows and automations run deterministically from events, with auditable state and controlled rollouts.
+
+**Footnote (single line):**  
+Tenant isolation is enforced across these layers to prevent cross‑account data drift and leakage. citeturn0search2turn2search3
+
+### Old vs new copy table (website setup)
+
+| Location | Old copy (current) | New copy (state-driven) | When shown |
+|---|---|---|---|
+| Sub-account website block | “Connect a client’s existing website to train an AI chatbot, generate an embeddable widget, and manage everything from here.” | **Your client website is already connected.** This sub-account is linked to the website provided during onboarding. Train the AI chatbot, generate the widget, and manage updates here. | `origin=GOD_MODE_ONBOARDING` AND `status!=NOT_CONNECTED` |
+| Sub-account website block (empty) | Same as above | **Connect this client website.** Add the client’s website to train the AI chatbot and generate the embed widget. | `status=NOT_CONNECTED` |
+| Sub-account website block (stale) | Same as above | **Website updated — resync required.** This site has changed or content is outdated. Resync and retrain for accuracy. | `status=NEEDS_RESYNC` |
+| Sub-account website block (processing) | Same as above | **Sync and training in progress.** We’re processing the website for training and widget readiness. | `sync_status=RUNNING` OR `training_status=RUNNING` |
+| Sub-account website block (error) | Same as above | **Website sync needs attention.** We couldn’t complete sync or training. Review the URL and retry. | `status=ERROR` |
+
+### Old vs new components table (minimal rip-and-replace)
+
+| Area | Old component | New component | Key difference |
+|---|---|---|---|
+| Sub-account website setup | `ConnectWebsiteCard` (static copy + URL form) | `WebsiteAISourceControl` (state-driven) | UI reflects canonical record + origin + status; avoids duplicate “connect” when inherited |
+| Sub-account AI training | `TrainAIButton` (blind trigger) | `TrainAIAction` (guards by sync/training status) | Prevent training against missing/stale source |
+| Widget | `GenerateWidget` (always available) | `WidgetDeploymentPanel` (gated) | Only ready when website source is valid and training policy allows |
+| God Mode provisioning | scattered forms | `ProvisioningStudioWizard` | One deterministic provisioning state machine |
+
+### State-driven component specs (props, endpoints, acceptance criteria)
+
+**Component: `WebsiteAISourceControl`**
+
+Props
+```ts
+type WebsiteAISourceControlProps = {
+  tenantId: string;
+  userRole: "PLATFORM_OWNER" | "SUBACCOUNT_ADMIN" | "AGENT";
+  featureFlags: { godmodeControlPlane: boolean; websiteSourceV2: boolean };
+};
+```
+
+Endpoints
+- `GET /api/subaccounts/:tenantId/website-source`
+- `PATCH /api/subaccounts/:tenantId/website-source` (change URL)
+- `POST /api/subaccounts/:tenantId/website-source/sync`
+- `POST /api/subaccounts/:tenantId/ai/train`
+- `POST /api/subaccounts/:tenantId/widget/generate`
+
+Acceptance criteria
+- If `website-source` exists, UI must never show “Connect…” as if empty.
+- If `origin=GOD_MODE_ONBOARDING`, UI must explicitly state it was seeded during onboarding and is now managed in the sub-account.
+- If `status=NEEDS_RESYNC`, “Generate Widget” must display “Outdated” and require resync confirmation (or block).
+- All actions must be tenant-scoped server-side; no client-provided tenantId accepted without authorization checks (prevents object-level auth failures). citeturn3search0
+
+## Backend implementation tasks with API contracts, event flows, rollback, feature flags, and migration windows
+
+### Feature-flag gating strategy (non-negotiable)
+
+Use feature flags as a release safety mechanism: enable new behavior for internal users first, then canary, then full rollout. Feature toggles are explicitly designed for safe, rapid delivery and rollback. citeturn0search1turn3search1turn0search3
+
+Minimum flags:
+- `websiteSourceV2_read` (new read path)
+- `websiteSourceV2_write` (dual-write / new write path)
+- `godModeControlPlaneNav` (show God Mode nav)
+- `godModeProvisioningV2` (new provisioning wizard)
+- `widgetGatedByTraining` (prevents widget generation on stale source)
+
+### API contracts (implementation-ready)
+
+**GET website source**
+- `GET /api/subaccounts/{tenantId}/website-source`
+- Response `200`:
+```json
+{
+  "tenantId": "uuid",
+  "websiteSource": {
+    "id": "uuid",
+    "websiteUrl": "https://example.com",
+    "websiteDomain": "example.com",
+    "origin": "GOD_MODE_ONBOARDING",
+    "status": "CONNECTED_UNSYNCED",
+    "syncStatus": "NOT_STARTED",
+    "trainingStatus": "NOT_STARTED",
+    "widgetStatus": "NOT_GENERATED",
+    "lastSuccessfulSyncAt": null,
+    "lastTrainingCompletedAt": null,
+    "lastError": null
+  }
+}
+```
+
+**PATCH website source**
+- `PATCH /api/subaccounts/{tenantId}/website-source`
+- Body:
+```json
+{ "websiteUrl": "https://newdomain.com" }
+```
+- Server behavior:
+  - Validate URL.
+  - Update canonical record.
+  - Set `status=NEEDS_RESYNC` (or `CONNECTED_UNSYNCED` if first connect).
+  - Set `widgetStatus=OUTDATED` if previously READY.
+
+**POST sync**
+- `POST /api/subaccounts/{tenantId}/website-source/sync`
+- Body: `{ "reason": "USER_REQUESTED" }`
+- Returns: `{ "syncRunId": "uuid", "syncStatus": "QUEUED" }`
+
+**POST train**
+- `POST /api/subaccounts/{tenantId}/ai/train`
+- Guards:
+  - Must have `status in {CONNECTED_SYNCED, NEEDS_RESYNC (if allowing), TRAINED}`
+  - If stale, require `force=true` or block (your choice; recommended block).
+
+### Event flows (reliable and tenant-safe)
+
+Use an outbox to avoid the dual-write problem (DB update succeeds, event publish fails). The Transactional Outbox pattern is the standard approach: write business state + outbox record atomically, then publish. citeturn1search13turn1search9
+
+Proposed events:
+- `tenant.provisioning.requested`
+- `tenant.provisioning.completed`
+- `website_source.seeded`
+- `website_sync.requested`
+- `website_sync.completed`
+- `ai_training.requested`
+- `ai_training.completed`
+- `widget.generated`
+
+### Rollback strategy (zero downtime)
+
+This plan assumes you’re using Parallel Change (expand → migrate → contract), which is explicitly designed so you can roll back code while keeping schema compatible. citeturn1search0turn1search20
+
+Rollback levers, in order:
+1) Disable feature flags (instant kill switches) to revert behavior without deploying. citeturn0search1turn3search1  
+2) Stop background migrations/backfills (they must be idempotent and resumable).  
+3) Keep expanded schema in place (don’t contract until stable).  
+4) If needed, traffic-level rollback (blue/green or canary reversal) per your deployment system. Canarying reduces blast radius and supports controlled rollback. citeturn0search3turn0search15
+
+### Migration windows (safe defaults)
+
+- **Schema expand**: off-peak, but designed to be safe online.
+- **Backfill**: throttled, chunked, runs continuously; pause/resume.
+- **Cutover**: enable `websiteSourceV2_read` for internal users → canary tenants → full.
+- **Contract**: only after an entire release cycle with zero fallback reads, plus explicit metrics.
+
+## Testing, canary rollout, monitoring/alerts, and metrics
+
+### Testing strategy
+
+Tenant safety must be validated as a first-class property (not a “security later” task). OWASP guidance highlights cross-tenant leakage and broken authorization as core risks. citeturn2search3turn3search0
+
+**Unit tests**
+- URL validation, domain extraction.
+- Enum transitions (state machine constraints).
+- Permission checks (God Mode vs sub-account).
+
+**Integration tests**
+- API endpoints with real DB:
+  - create sub-account via God Mode provisioning
+  - verify website_source seeded correctly
+  - verify sub-account reads canonical record (no legacy drift)
+- Outbox publishing correctness (event appears after DB commit).
+
+**E2E tests (Playwright/Cypress)**
+- God Mode: create sub-account with website URL → sub-account website page shows “already connected.”
+- Sub-account: change URL → status becomes `NEEDS_RESYNC` → widget gated.
+- Error paths: simulate crawl failure → UI shows recovery actions.
+
+### Canary rollout steps
+
+Canarying is explicitly recommended to reduce risk by initially exposing a small portion of production to a new release. citeturn0search3turn0search15
+
+Suggested sequence:
+1) Internal-only: enable flags for platform owner + test tenants.
+2) Canary tenants: enable for 1–5% of tenants with low risk.
+3) Expand: 25% → 50% → 100% while monitoring.
+4) Contract: only after stable.
+
+### Monitoring and alerts (minimum set)
+
+Use Google SRE “monitoring distributed systems” principles and track at least the golden signals: latency, traffic, errors, saturation. citeturn1search3
+
+Track metrics by tenant + endpoint:
+- API error rate (4xx/5xx) for website-source endpoints
+- latency p95/p99 for provisioning + sync requests
+- sync/training job success rate
+- queue depth / worker saturation
+- cross-tenant authorization denials (should spike if probing occurs)
+- “fallback read” rate (how often legacy website URL used)
+
+Alerts:
+- Any cross-tenant access anomaly
+- sync failure rate > threshold
+- training failure rate > threshold
+- provisioning failure rate > threshold
+- elevated p99 latency after enabling flags
+
+## Risk matrix and mitigations
+
+Tenant safety and no data drift are the primary constraints. AWS emphasizes isolation as foundational; OWASP enumerates multi-tenant risks like cross-tenant data leakage and impersonation. citeturn0search2turn2search3turn3search0
+
+| Risk | Likelihood | Impact | Mitigation (actionable) |
+|---|---:|---:|---|
+| Cross-tenant data leakage (BOLA / tenantId tampering) | Medium | Critical | Server-side tenant scoping only; object-level authorization for every endpoint receiving IDs; deny-by-default; security tests. citeturn3search0turn2search3 |
+| Duplicate website sources per tenant (drift) | Medium | High | Unique constraint/index on active website source; idempotent upserts; single canonical read path. |
+| Legacy vs V2 drift during migration | Medium | High | Parallel Change with dual-write + backfill + metrics for fallback reads; contract only when fallback is zero. citeturn1search0turn3search6 |
+| Outbox/event inconsistency (state updated, event missing) | Medium | High | Transactional outbox pattern; publisher retries; idempotency keys. citeturn1search13turn1search9 |
+| Background job overload (crawler/training) after cutover | Medium | High | Rate limiting per tenant; queue controls; progressive enablement via canary rollout. citeturn0search3 |
+| DDL locks / slow migrations (DB-specific) | Low–Medium | High | Use online-safe DDL; off-peak expand; chunk backfills; avoid volatile defaults; DB-specific playbooks. citeturn1search2 |
+| UI confusion (God Mode vs sub-account ownership ambiguous) | Medium | Medium | Add Platform Control Architecture section once; make website origin visible; state-driven copy. |
+| Rollback too slow / requires redeploy | Medium | High | Feature flags kill switch; keep expanded schema; avoid contract early. citeturn0search1turn3search1 |
+| Audit trail gaps (can’t prove what happened) | Medium | Medium | Append-only `*_runs` tables; provisioning runs; event log correlation IDs. |
+
+## Rollout timeline and phased execution prompts
+
+### Phased rollout Gantt
+
+```mermaid
+gantt
+  title God Mode Control Plane Integration (Phased, Zero-Downtime)
+  dateFormat  YYYY-MM-DD
+  axisFormat  %b %d
+
+  section Phase 0: Audit & Inventory
+  Route+copy inventory artifacts           :a1, 2026-03-23, 5d
+  Provisioning/website flow mapping        :a2, after a1, 5d
+  Schema/job catalog                       :a3, after a1, 5d
+
+  section Phase 1: Expand (Backward-Compatible)
+  Add canonical tables/collections         :b1, after a2, 3d
+  Add V2 read endpoints (flagged off)      :b2, after b1, 4d
+  Add dual-write (flagged off)             :b3, after b2, 4d
+
+  section Phase 2: Migrate (Backfill + Dual-Run)
+  Backfill website_sources (throttled)     :c1, after b3, 7d
+  Enable V2 reads internal only            :c2, after c1, 3d
+  Canary rollout 1-5% tenants              :c3, after c2, 5d
+
+  section Phase 3: Cutover (Progressive)
+  Ramp to 25% / 50% / 100%                :d1, after c3, 7d
+  Monitor fallback reads -> 0              :d2, after d1, 7d
+
+  section Phase 4: Contract (Cleanup)
+  Remove legacy reads/writes               :e1, after d2, 5d
+  Remove legacy fields + dead UI copy      :e2, after e1, 5d
+```
+
+### Replit-ready execution prompts (copy-paste)
+
+**Prompt A: Build the crawl/audit artifacts**
+```text
+REPLIT EXECUTION PROMPT (AUDIT)
+
+Goal: Produce artifacts/routes.json, artifacts/copy_hits.csv, artifacts/ui_copy_inventory.json.
+
+1) Enumerate routes:
+   - If Next.js: list app/**/page.* and pages/**.
+   - If React Router: locate route config and dump all paths.
+   Output to artifacts/routes.json.
+
+2) Repo-wide string scan for website setup + training copy:
+   Search terms: "connect website", "client website", "website url", "train ai", "widget", "crawl", "scrape", "knowledge base", "source", "god mode", "sub account".
+   Output a CSV artifacts/copy_hits.csv with {term,file,line,snippet}.
+
+3) Add a temporary /internal/audit endpoint that returns current app version + enabled flags + route list (no secrets).
+
+4) Add an authenticated Playwright script to:
+   - login as platform owner
+   - login as sub-account user
+   - visit all routes from routes.json
+   - capture visible text blocks that match the search terms.
+   Output artifacts/ui_copy_inventory.json keyed by persona+route.
+
+Acceptance:
+- Every website-related UI copy block is captured with route + component/file origin.
+```
+
+**Prompt B: Expand schema + add canonical WebsiteSource model**
+```text
+REPLIT EXECUTION PROMPT (EXPAND)
+
+Goal: Introduce canonical WebsiteSource storage with zero downtime.
+
+1) Create new table/collection website_sources (and optional *_runs tables).
+2) Add unique constraint/index to prevent multiple active sources per tenant.
+3) Implement ORM model + repository functions:
+   - getActiveWebsiteSource(tenantId)
+   - upsertActiveWebsiteSource(tenantId, websiteUrl, origin)
+4) Do NOT remove legacy fields.
+5) Add feature flags:
+   - websiteSourceV2_read
+   - websiteSourceV2_write
+
+Acceptance:
+- Deploy without changing production behavior (flags default OFF).
+- No existing flows break.
+```
+
+**Prompt C: Add V2 API endpoints (tenant-safe)**
+```text
+REPLIT EXECUTION PROMPT (API V2)
+
+Goal: Implement WebsiteSource APIs with strict tenant isolation.
+
+Implement:
+- GET /api/subaccounts/:tenantId/website-source
+- PATCH /api/subaccounts/:tenantId/website-source
+- POST /api/subaccounts/:tenantId/website-source/sync
+- POST /api/subaccounts/:tenantId/ai/train
+- POST /api/subaccounts/:tenantId/widget/generate
+
+Rules:
+- Never trust tenantId from client unless authorized server-side.
+- Enforce object-level authorization for every endpoint receiving IDs.
+- Responses must include origin + status enums.
+
+Feature-gate the new read/write paths behind websiteSourceV2_* flags.
+
+Acceptance:
+- Unit + integration tests prove cross-tenant access is denied.
+- Endpoints work for platform owner and sub-account roles appropriately.
+```
+
+**Prompt D: Backfill + dual-write (Parallel Change)**
+```text
+REPLIT EXECUTION PROMPT (MIGRATE)
+
+Goal: Backfill website_sources from legacy website fields and enable dual-write.
+
+1) Add a backfill job (throttled, resumable, idempotent):
+   - For each tenant with legacy websiteUrl and no active website_source:
+     create website_source with origin=LEGACY_IMPORTED or GOD_MODE_ONBOARDING (if prov data exists).
+2) Add dual-write in code paths that set websiteUrl:
+   - When legacy websiteUrl updated, ALSO upsert website_source (flagged).
+3) Add metrics:
+   - legacy_fallback_read_count
+   - website_source_read_count
+   - website_source_write_count
+   - drift_detected_count (legacy != canonical)
+
+Acceptance:
+- Backfill can be paused/resumed without duplicates.
+- Drift detection stays at 0 after dual-write enabled.
+```
+
+**Prompt E: UI rewrite for website block (state-driven, minimal site breakage)**
+```text
+REPLIT EXECUTION PROMPT (UI)
+
+Goal: Replace static "connect website" copy with a state-driven WebsiteAISourceControl component.
+
+1) Locate the existing website setup card/component.
+2) Replace rendering with WebsiteAISourceControl:
+   - fetches GET website-source
+   - renders copy by status + origin enums
+   - exposes actions mapped to endpoints
+3) Add minimal copy changes only; do not restructure unrelated pages.
+4) Feature-gate UI change behind flag websiteSourceV2_read.
+
+Acceptance:
+- If a website was seeded in God Mode, sub-account UI shows "already connected".
+- No tenant sees incorrect empty-state copy when canonical record exists.
+```
+
+**Prompt F: God Mode IA integration (additive, gated)**
+```text
+REPLIT EXECUTION PROMPT (GOD MODE IA)
+
+Goal: Add /godmode route group as a true control plane without breaking existing nav.
+
+1) Add /godmode/* routes behind GODMODE_ACCESS permission.
+2) Add a God Mode home (Command Center) that reads aggregated signals only.
+3) Add Provisioning Studio V2 wizard (flagged) that writes into canonical records:
+   - creates tenant
+   - seeds website_source
+   - triggers snapshot deploy
+4) Add Platform Control Architecture section once in the appropriate overview page.
+
+Acceptance:
+- Sub-account navigation and flows remain unchanged.
+- God Mode is additive; turning off godModeControlPlaneNav hides it completely.
+```
+
+**Prompt G: Canary rollout + rollback readiness**
+```text
+REPLIT EXECUTION PROMPT (ROLLOUT)
+
+Goal: Progressive enablement with instant rollback.
+
+1) Implement flag targeting:
+   - internal users only
+   - allowlist tenant IDs (canary group)
+   - percentage rollout
+2) Define rollback conditions:
+   - API 5xx rate above threshold
+   - sync/training failure spike
+   - p99 latency regression
+3) Add dashboards and alerts (golden signals + feature-specific metrics).
+4) Dry-run rollback: toggle flags off and verify behavior returns to legacy.
+
+Acceptance:
+- Rollout can be stopped instantly via flags (no redeploy).
+- Canarying prevents wide blast radius.
+```
+
+Citations in this report rely on established primary references: Parallel Change/expand–contract (Martin Fowler), feature flags (Fowler + LaunchDarkly kill switch), canarying guidance (Google SRE), tenant isolation (AWS + OWASP), reliable event publishing (AWS prescriptive guidance + microservices.io), and database DDL safety where relevant (Postgres docs). citeturn1search0turn0search1turn3search1turn0search3turn0search2turn2search3turn1search13turn1search9turn1search2
