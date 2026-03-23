@@ -1,0 +1,139 @@
+Finalize the digital card system into a clean production-ready state.
+
+Audit and fix the remaining issues in the current implementation based on the code now in schema.ts and client/src/pages/digital-card.tsx.
+
+Priority fixes:
+
+1. SCHEMA BUG
+In shared/schema.ts, remove the duplicate theme field from digitalCards.
+Keep only:
+theme: text("theme").default("executive-dark")
+Delete the second duplicate:
+theme: text("theme").default("midnight")
+This must not exist twice.
+
+2. FULLY REMOVE HARDCODED DANTE UI DATA
+In client/src/pages/digital-card.tsx, remove all hardcoded content constants and person-specific logic, including:
+- LINKS
+- SKILLS
+- STATS
+- CARD_URL using /DanteS
+- hardcoded Dante photo assumptions
+- any hardcoded email, phone, website, review link, or labels
+The page must render entirely from fetched card data.
+
+3. CANONICAL URL ONLY
+Use only:
+`/card/:slug`
+All share links, copy links, QR values, metadata, and vCard-related public references must use:
+`/card/${card.slug}`
+Do not use `/DanteS` anywhere except redirect-only routing.
+
+4. KEEP LEGACY ROUTES AS REDIRECTS ONLY
+Preserve backward compatibility for:
+- /DanteS
+- /dantes
+But they must only redirect to:
+- /card/dantes
+They must never render the card directly.
+
+5. DYNAMIC CARD RENDERING
+Refactor DigitalCard so it is 100% slug/data driven:
+- read slug from route params
+- fetch public card by slug
+- render name, preferredName, title, company, bio, photo, cover, logo, colors, theme, services, testimonial, socialLinks, links, bookingUrl, calendarUrl, location, googleReviewLink from API data
+- no person-specific fallback content except safe generic UI placeholders
+
+6. PROPER UI STATES
+Add clean states for:
+- loading
+- card not found
+- inactive/private card
+- request failure
+Use polished premium states, not plain text dumps.
+
+7. TYPED JSON FIELDS
+Where appropriate, improve handling of:
+- socialLinks
+- links
+- services
+- testimonial
+Guard against null/invalid shapes before rendering.
+Do not let malformed JSON break the page.
+
+8. THEME SYSTEM CLEANUP
+Keep the theme registry, but make it consistent and production-clean:
+- use the card.theme value
+- safe fallback to executive-dark
+- avoid scattered conditional styling
+- keep colors/theme tokens centralized
+
+9. ACTIONS BAR / SHARE / QR
+Keep the sticky mobile CTA bar, share modal, QR, copy link, and vCard actions, but make them fully dynamic from card data.
+CTA ordering should be based on available fields:
+- phone
+- email
+- website
+- bookingUrl
+- googleReviewLink
+- calendarUrl
+Do not show dead buttons for empty values.
+
+10. ANALYTICS HOOKS
+Keep analytics event tracking, but ensure it is called only for valid public cards.
+Track:
+- view
+- phone_click
+- email_click
+- website_click
+- booking_click
+- save_contact
+- share
+- qr_open
+- social_click
+Use the existing endpoint pattern.
+
+11. DATA MODEL UPGRADE
+In schema.ts, use jsonb instead of json where appropriate for scalable Postgres usage if this will not break current code/migrations:
+- social_links
+- links
+- services
+- testimonial
+- click_stats
+If migration safety is a concern, keep current columns but leave clear notes for the next migration.
+
+12. CLEAN COMPONENTIZATION
+Break digital-card.tsx into reusable components where appropriate, such as:
+- DigitalCardHero
+- DigitalCardActions
+- DigitalCardServices
+- DigitalCardLinks
+- DigitalCardTestimonial
+- StickyActionBar
+- ShareModal
+Only split where it improves maintainability.
+
+13. KEEP THE CURRENT PREMIUM FEEL
+Do not downgrade the design.
+Preserve the premium 2028-style feel:
+- elegant spacing
+- strong typography
+- polished motion
+- premium mobile-first layout
+- tasteful gradients / glass / depth
+But make the architecture cleaner and truly reusable.
+
+14. FINAL VERIFICATION
+After refactor, verify:
+- /card/dantes renders correctly
+- /DanteS redirects to /card/dantes
+- /dantes redirects to /card/dantes
+- share link uses canonical route
+- QR uses canonical route
+- no hardcoded Dante data remains in DigitalCard page
+- duplicate theme field is gone
+- loading/error/not-found states work
+- page still feels premium
+
+Deliver clean code directly, not just suggestions.
+Prefer the smallest set of changes that gets this to a production-grade fully dynamic implementation.
