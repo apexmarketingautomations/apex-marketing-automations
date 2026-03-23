@@ -8,6 +8,7 @@ import {
 import { QRCodeSVG } from "qrcode.react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "wouter";
+import { downloadVCard } from "@/lib/vcard";
 
 const ICON_MAP: Record<string, any> = {
   palette: Palette, code: Code2, globe: Globe, megaphone: Megaphone,
@@ -329,15 +330,15 @@ function SaveShareBar({ card, theme, trackEvent, onShare, onQR }: {
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
       className="flex gap-2.5 mb-8">
-      <a href={`/api/public-card/${card.slug}/vcard`}
-        onClick={() => trackEvent("save_contact")}
-        className="flex-1 py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2.5 transition-all hover:scale-[1.02] active:scale-[0.98] relative overflow-hidden group"
+      <button
+        onClick={() => { downloadVCard(card); trackEvent("save_contact"); }}
+        className="flex-1 py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2.5 transition-all hover:scale-[1.02] active:scale-[0.98] relative overflow-hidden group cursor-pointer"
         style={{ background: `linear-gradient(135deg, ${card.brandColor || "#6366f1"}, ${card.accentColor || "#8b5cf6"})`, boxShadow: `0 10px 30px -5px ${card.brandColor || "#6366f1"}66` }}
         data-testid="button-save-contact">
         <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 transition-colors" />
         <Download size={18} className="text-white relative z-10" />
         <span className="text-white relative z-10">Save Contact</span>
-      </a>
+      </button>
       <button onClick={onShare}
         className={`w-14 h-14 rounded-2xl ${theme.cardBg} border ${theme.border} flex items-center justify-center hover:scale-105 active:scale-95 transition-all shrink-0`}
         data-testid="button-share">
@@ -516,11 +517,11 @@ function StickyActionBar({ card, theme, onShare, trackEvent }: {
                 <span className="text-purple-400 text-xs font-bold">Email</span>
               </a>
             )}
-            <a href={`/api/public-card/${card.slug}/vcard`} onClick={() => trackEvent("save_contact")}
-              className={`flex-1 py-2.5 rounded-xl bg-gradient-to-r ${theme.ctaBg} flex items-center justify-center gap-1.5`} data-testid="sticky-save">
+            <button onClick={() => { downloadVCard(card); trackEvent("save_contact"); }}
+              className={`flex-1 py-2.5 rounded-xl bg-gradient-to-r ${theme.ctaBg} flex items-center justify-center gap-1.5 cursor-pointer`} data-testid="sticky-save">
               <Download size={15} className="text-white" />
               <span className="text-white text-xs font-bold">Save</span>
-            </a>
+            </button>
             <button onClick={onShare} className={`py-2.5 px-3 rounded-xl ${theme.cardBg} border ${theme.border}`} data-testid="sticky-share">
               <Share2 size={15} className={theme.muted} />
             </button>
