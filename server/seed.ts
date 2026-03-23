@@ -144,6 +144,89 @@ async function syncAdminAccounts() {
     console.log(`[SYNC] Archived ${orphaned.length} orphaned account(s)`);
   }
 
+  if (hasApex) {
+    const apexAccount = existing.find((a) => a.name === "APEX MARKETING Account");
+    if (apexAccount) {
+      const [existingCard] = await db.select({ id: digitalCards.id, slug: digitalCards.slug })
+        .from(digitalCards).where(eq(digitalCards.subAccountId, apexAccount.id)).limit(1);
+      if (existingCard && !existingCard.slug) {
+        await db.update(digitalCards).set({
+          name: "Dante S.",
+          preferredName: "Dante",
+          title: "Founder & CEO",
+          company: "Apex Marketing Automations",
+          phone: "(239) 492-2698",
+          email: "Dante@apexmarketingautomations.com",
+          website: "apexmarketingautomations.com",
+          slug: "dantes",
+          brandColor: "#6366f1",
+          accentColor: "#8b5cf6",
+          theme: "executive-dark",
+          location: "Fort Myers, FL",
+          tagline: "Full-stack creative and technologist building AI-powered platforms that help businesses scale on autopilot.",
+          bio: "Full-stack creative and technologist. I design, build, and market AI-powered platforms that help businesses scale on autopilot. From pixel-perfect graphics to production-grade software, multi-channel marketing campaigns to autonomous voice agents — I turn ideas into systems that work around the clock.",
+          services: [
+            { label: "Graphic Design", description: "Brand identities, landing pages, and visual systems for 17+ industries", icon: "palette", color: "from-pink-500 to-rose-500" },
+            { label: "Software Engineering", description: "Full SaaS platform built from scratch — auth, billing, APIs, and real-time data", icon: "code", color: "from-indigo-500 to-blue-500" },
+            { label: "Web Development", description: "AI-powered site builder that generates complete websites from a single prompt", icon: "globe", color: "from-cyan-500 to-teal-500" },
+            { label: "Digital Marketing", description: "Meta Ads launcher with geofence targeting, audience builder, and ROI tracking", icon: "megaphone", color: "from-orange-500 to-amber-500" },
+            { label: "AI & Automation", description: "Train AI chatbots on any website — RAG pipeline with tool-calling and memory", icon: "bot", color: "from-purple-500 to-violet-500" },
+            { label: "Voice AI Agents", description: "Deploy AI receptionists that answer calls, book appointments, and qualify leads 24/7", icon: "mic", color: "from-emerald-500 to-green-500" },
+          ],
+          testimonial: {
+            quote: "I don't just build software — I build revenue machines. Every feature is designed to generate leads, close deals, and save time. If it doesn't make money, it doesn't ship.",
+            author: "Dante S.",
+            role: "Founder, Apex Marketing Automations",
+          },
+          socialLinks: [],
+          links: [],
+          status: "published",
+          isActive: true,
+          isPublic: true,
+          updatedAt: new Date(),
+        }).where(eq(digitalCards.id, existingCard.id));
+        console.log(`[SYNC] Updated digital card #${existingCard.id} with slug "dantes"`);
+      } else if (!existingCard) {
+        await db.insert(digitalCards).values({
+          subAccountId: apexAccount.id,
+          name: "Dante S.",
+          preferredName: "Dante",
+          title: "Founder & CEO",
+          company: "Apex Marketing Automations",
+          phone: "(239) 492-2698",
+          email: "Dante@apexmarketingautomations.com",
+          website: "apexmarketingautomations.com",
+          slug: "dantes",
+          brandColor: "#6366f1",
+          accentColor: "#8b5cf6",
+          theme: "executive-dark",
+          location: "Fort Myers, FL",
+          tagline: "Full-stack creative and technologist building AI-powered platforms that help businesses scale on autopilot.",
+          bio: "Full-stack creative and technologist. I design, build, and market AI-powered platforms that help businesses scale on autopilot. From pixel-perfect graphics to production-grade software, multi-channel marketing campaigns to autonomous voice agents — I turn ideas into systems that work around the clock.",
+          services: [
+            { label: "Graphic Design", description: "Brand identities, landing pages, and visual systems for 17+ industries", icon: "palette", color: "from-pink-500 to-rose-500" },
+            { label: "Software Engineering", description: "Full SaaS platform built from scratch — auth, billing, APIs, and real-time data", icon: "code", color: "from-indigo-500 to-blue-500" },
+            { label: "Web Development", description: "AI-powered site builder that generates complete websites from a single prompt", icon: "globe", color: "from-cyan-500 to-teal-500" },
+            { label: "Digital Marketing", description: "Meta Ads launcher with geofence targeting, audience builder, and ROI tracking", icon: "megaphone", color: "from-orange-500 to-amber-500" },
+            { label: "AI & Automation", description: "Train AI chatbots on any website — RAG pipeline with tool-calling and memory", icon: "bot", color: "from-purple-500 to-violet-500" },
+            { label: "Voice AI Agents", description: "Deploy AI receptionists that answer calls, book appointments, and qualify leads 24/7", icon: "mic", color: "from-emerald-500 to-green-500" },
+          ],
+          testimonial: {
+            quote: "I don't just build software — I build revenue machines. Every feature is designed to generate leads, close deals, and save time. If it doesn't make money, it doesn't ship.",
+            author: "Dante S.",
+            role: "Founder, Apex Marketing Automations",
+          },
+          socialLinks: [],
+          links: [],
+          status: "published",
+          isActive: true,
+          isPublic: true,
+        });
+        console.log(`[SYNC] Created digital card for APEX account #${apexAccount.id}`);
+      }
+    }
+  }
+
   if (hasApex && hasCrashConnect) {
     return;
   }
@@ -202,10 +285,38 @@ async function syncAdminAccounts() {
 
     await db.insert(digitalCards).values({
       subAccountId: apexId,
-      name: "Eddy",
-      company: "Seed and Bean Market",
-      theme: "midnight",
+      name: "Dante S.",
+      preferredName: "Dante",
+      title: "Founder & CEO",
+      company: "Apex Marketing Automations",
+      phone: "(239) 492-2698",
+      email: "Dante@apexmarketingautomations.com",
+      website: "apexmarketingautomations.com",
+      slug: "dantes",
+      brandColor: "#6366f1",
+      accentColor: "#8b5cf6",
+      theme: "executive-dark",
+      location: "Fort Myers, FL",
+      tagline: "Full-stack creative and technologist building AI-powered platforms that help businesses scale on autopilot.",
+      bio: "Full-stack creative and technologist. I design, build, and market AI-powered platforms that help businesses scale on autopilot. From pixel-perfect graphics to production-grade software, multi-channel marketing campaigns to autonomous voice agents — I turn ideas into systems that work around the clock.",
+      services: [
+        { label: "Graphic Design", description: "Brand identities, landing pages, and visual systems for 17+ industries", icon: "palette", color: "from-pink-500 to-rose-500" },
+        { label: "Software Engineering", description: "Full SaaS platform built from scratch — auth, billing, APIs, and real-time data", icon: "code", color: "from-indigo-500 to-blue-500" },
+        { label: "Web Development", description: "AI-powered site builder that generates complete websites from a single prompt", icon: "globe", color: "from-cyan-500 to-teal-500" },
+        { label: "Digital Marketing", description: "Meta Ads launcher with geofence targeting, audience builder, and ROI tracking", icon: "megaphone", color: "from-orange-500 to-amber-500" },
+        { label: "AI & Automation", description: "Train AI chatbots on any website — RAG pipeline with tool-calling and memory", icon: "bot", color: "from-purple-500 to-violet-500" },
+        { label: "Voice AI Agents", description: "Deploy AI receptionists that answer calls, book appointments, and qualify leads 24/7", icon: "mic", color: "from-emerald-500 to-green-500" },
+      ],
+      testimonial: {
+        quote: "I don't just build software — I build revenue machines. Every feature is designed to generate leads, close deals, and save time. If it doesn't make money, it doesn't ship.",
+        author: "Dante S.",
+        role: "Founder, Apex Marketing Automations",
+      },
+      socialLinks: [],
       links: [],
+      status: "published",
+      isActive: true,
+      isPublic: true,
     });
 
     const integrations = [
