@@ -2,24 +2,64 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { hasFeature } from "@shared/schema";
 
-export type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<any>;
+export type AsyncHandler<Req extends Request = Request, Res extends Response = Response> =
+  (req: Req, res: Res, next: NextFunction) => Promise<any>;
 
-export function asyncHandler(fn: AsyncHandler) {
-  return (req: Request, res: Response, next: NextFunction) => {
+function isStripeError(err: any): boolean {
+  if (err?.type === 'StripeAuthenticationError' || err?.statusCode === 401 || err?.code === 'authentication_error') {
+    return true;
+  }
+  if (typeof err?.name === 'string' && err.name.startsWith('Stripe')) {
+    return true;
+  }
+  if (typeof err?.message === 'string' && /stripe/i.test(err.message)) {
+    return true;
+  }
+  return false;
+}
+
+export function asyncHandler<Req extends Request = Request, Res extends Response = Response>(
+  fn: AsyncHandler<Req, Res>,
+) {
+  if (typeof fn !== 'function') {
+    throw new TypeError('asyncHandler requires a function argument');
+  }
+  const wrapper = (req: Req, res: Res, next: NextFunction) => {
     Promise.resolve(fn(req, res, next)).catch((err) => {
-      if (err?.type === 'StripeAuthenticationError' || err?.statusCode === 401 || err?.code === 'authentication_error') {
-        import("../stripeClient").then(({ handleStripeError }) => handleStripeError(err)).catch(e => console.error("[HELPERS] Stripe error handler failed:", e instanceof Error ? e.message : e));
+      if (isStripeError(err)) {
+        import("../stripeClient")
+          .then((mod: { handleStripeError?: (err: unknown) => void; recover?: () => Promise<unknown> | unknown }) => {
+            if (typeof mod.handleStripeError === 'function') {
+              mod.handleStripeError(err);
+            }
+            if (typeof mod.recover === 'function') {
+              Promise.resolve(mod.recover()).catch(() => {});
+            }
+          })
+          .catch((e) =>
+            console.error("[HELPERS] Stripe error handler failed:", e instanceof Error ? e.message : e),
+          );
       }
       next(err);
     });
   };
+  return Object.assign(wrapper, fn) as typeof wrapper;
 }
 
 export function parseIntParam(value: string | string[] | undefined, name: string): number {
   const str = Array.isArray(value) ? value[0] : value;
-  const parsed = parseInt(str || "", 10);
-  if (isNaN(parsed) || parsed < 1) {
-    throw Object.assign(new Error(`Invalid ${name}`), { status: 400 });
+  if (str === undefined || str === null || str === "") {
+    throw Object.assign(new Error(`Missing required parameter: ${name}`), { status: 400, statusCode: 400 });
+  }
+  if (!/^-?\d+$/.test(str)) {
+    throw Object.assign(new Error(`Parameter '${name}' must be an integer, received: ${str}`), { status: 400, statusCode: 400 });
+  }
+  const parsed = parseInt(str, 10);
+  if (isNaN(parsed)) {
+    throw Object.assign(new Error(`Failed to parse '${name}' as integer`), { status: 400, statusCode: 400 });
+  }
+  if (parsed < 1) {
+    throw Object.assign(new Error(`Parameter '${name}' must be a positive integer (>= 1)`), { status: 400, statusCode: 400 });
   }
   return parsed;
 }
