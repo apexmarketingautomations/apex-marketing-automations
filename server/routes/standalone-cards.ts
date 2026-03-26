@@ -470,6 +470,45 @@ export function registerStandaloneCardsRoutes(app: Express) {
     res.json({ ok: true });
   }));
 
+  app.post("/api/standalone/admin/create-card", asyncHandler(async (req, res) => {
+    const secret = req.headers["x-admin-secret"];
+    if (secret !== ADMIN_SECRET) return res.status(401).json({ error: "Unauthorized" });
+
+    const { cardData } = req.body;
+    if (!cardData?.fullName || !cardData?.email) return res.status(400).json({ error: "Name and email required" });
+
+    let [user] = await db.select().from(standaloneCardUsers)
+      .where(eq(standaloneCardUsers.email, cardData.email)).limit(1);
+    if (!user) {
+      [user] = await db.insert(standaloneCardUsers).values({
+        name: cardData.fullName, email: cardData.email, phone: cardData.phone || null,
+      }).returning();
+    }
+
+    let slug = generateSlug(cardData.fullName);
+    const [conflict] = await db.select({ id: standaloneCards.id }).from(standaloneCards).where(eq(standaloneCards.slug, slug)).limit(1);
+    if (conflict) slug = slug + "-" + crypto.randomBytes(2).toString("hex");
+
+    const [card] = await db.insert(standaloneCards).values({
+      userId: user.id, slug, fullName: cardData.fullName,
+      businessName: cardData.businessName || null, title: cardData.title || null,
+      phone: cardData.phone || null, email: cardData.email,
+      website: cardData.website || null, address: cardData.address || null,
+      bio: cardData.bio || null, profileImageUrl: cardData.profileImageUrl || null,
+      logoUrl: cardData.logoUrl || null, reviewLink: cardData.reviewLink || null,
+      bookingLink: cardData.bookingLink || null, instagramUrl: cardData.instagramUrl || null,
+      facebookUrl: cardData.facebookUrl || null, tiktokUrl: cardData.tiktokUrl || null,
+      linkedinUrl: cardData.linkedinUrl || null, youtubeUrl: cardData.youtubeUrl || null,
+      customLinks: cardData.customLinks || null, themeColor: cardData.themeColor || "#0ea5e9",
+      published: true,
+    }).returning();
+
+    const refCode = generateReferralCode();
+    await db.insert(standaloneReferralCodes).values({ userId: user.id, code: refCode, active: true }).onConflictDoNothing();
+
+    res.json({ card, referralCode: refCode });
+  }));
+
   app.get("/api/standalone/admin/stats", asyncHandler(async (req, res) => {
     const secret = req.headers["x-admin-secret"];
     if (secret !== ADMIN_SECRET) return res.status(401).json({ error: "Unauthorized" });
