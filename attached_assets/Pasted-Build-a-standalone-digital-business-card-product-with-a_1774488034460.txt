@@ -1,0 +1,352 @@
+Build a standalone digital business card product with a built-in sales referral system.
+
+PROJECT GOAL
+I want a public-facing digital business card product that lets business owners create their own card without needing a subscription just to access it. This must be a simple one-time purchase flow for now. After someone buys, they get their digital business card and also get their own referral link/code so they can earn commission when other people buy through them.
+
+IMPORTANT BUSINESS RULES
+- This is NOT the full Apex platform.
+- This is a standalone product flow.
+- No subscription is required to access the public page.
+- No login is required before creating or previewing a card.
+- The user should be able to enter their info, preview their card, and purchase it.
+- After purchase, they can access their card and referral info.
+- The referral system should only reward actual completed purchases.
+- This should be lightweight, mobile-first, and launchable fast.
+
+CORE PRODUCT FLOW
+1. Visitor lands on a public standalone sales page.
+2. Visitor clicks to create their digital business card.
+3. Visitor fills out a form with their business information.
+4. The system generates a live preview of their digital card.
+5. Visitor completes a one-time Stripe payment to publish/activate the card.
+6. After successful payment:
+   - create the customer record if needed
+   - create the card record
+   - generate a unique referral code for that buyer
+   - show them their live card URL
+   - show them their referral link
+7. Every published customer card should include a CTA button near the bottom:
+   - "Get Your Own Card"
+   - that button should automatically include the card owner’s referral code in the URL
+8. If a new buyer purchases through that referral link, the original card owner gets referral credit.
+9. Referral commission should be tracked in the database and shown to the referring user.
+10. Payouts should be manual for now, not automated.
+
+TECH REQUIREMENTS
+- Use Replit’s built-in SQL database
+- Use environment variables / Replit Secrets for all sensitive keys
+- Use Stripe for one-time payment processing
+- Use Stripe webhooks to confirm successful payments before marking an order as paid
+- Build clean mobile-first responsive UI
+- Make the code easy to edit later
+- Prepare the app for deployment on Replit
+
+PUBLIC PAGES NEEDED
+1. /card
+   - Main standalone landing page for this product
+   - Clear headline
+   - Short explanation
+   - CTA to start creating
+   - Mention limited-time 50% off offer for first 20 users
+
+2. /create
+   - Public form page for entering business card info
+   - No login required
+   - Form should be simple and mobile-friendly
+
+3. /preview
+   - Show live preview of the card before payment
+   - Show exactly how the card will look
+   - CTA to continue to checkout
+
+4. /checkout
+   - One-time Stripe checkout page
+   - No subscription language
+   - This is a one-time purchase to activate/publish the card
+
+5. /success
+   - Thank-you page after successful payment
+   - Show confirmation
+   - Show published card URL
+   - Show referral link
+   - Explain referral earnings simply
+
+6. /card/:slug
+   - Public live digital business card page for each customer
+   - Mobile-first
+   - Includes save contact, call, text, email, website, reviews, socials, and any entered links
+   - Includes CTA button near the bottom:
+     "Get Your Own Card"
+   - That CTA must carry the current card owner's referral code automatically
+
+7. /dashboard
+   - Lightweight customer dashboard
+   - Access can be by magic link email or simple post-purchase access flow
+   - Show:
+     - live card URL
+     - referral link
+     - number of referred sales
+     - pending commissions
+     - approved commissions
+     - paid commissions
+
+8. /admin/referrals
+   - Admin-only page
+   - View orders
+   - View referrals
+   - Approve commissions
+   - Mark commissions as paid
+   - Search/filter records
+
+LANDING PAGE COPY DIRECTION
+Use this messaging on the public sales page:
+
+Headline:
+Replace Your Business Cards Instantly
+
+Subheadline:
+Create a digital business card people can tap, save, share, and keep.
+
+Bullets:
+- Saves directly into someone’s phone
+- Includes your contact info, links, reviews, and socials
+- Share by tap, text, AirDrop, or DM
+- Built in minutes
+- No paper. No getting thrown away.
+
+Offer section:
+First 20 people get 50% off
+
+CTA button:
+Create Yours Now
+
+CARD FORM FIELDS
+Create a form that supports these fields:
+- full name
+- business name
+- title / role
+- phone number
+- email
+- website
+- address
+- short bio / description
+- profile photo
+- logo
+- review link
+- booking link
+- Instagram
+- Facebook
+- TikTok
+- LinkedIn
+- YouTube
+- custom links section (repeatable)
+- preferred accent/theme color
+
+CARD FEATURES
+Each digital card should support:
+- Save Contact button
+- Call button
+- Text button
+- Email button
+- Website button
+- Review button
+- Social buttons
+- Share button
+- QR code for sharing
+- Mobile-first design
+- Clean premium appearance
+- Button at bottom:
+  "Get Your Own Card"
+
+REFERRAL SYSTEM LOGIC
+I want a simple referral system tied only to actual paid purchases.
+
+Referral logic requirements:
+1. Every paid buyer gets a unique referral code.
+2. Their card automatically includes a "Get Your Own Card" button using their referral code.
+3. Referral link format should be something like:
+   /card?ref=CODE123
+   or
+   /create?ref=CODE123
+4. When a visitor lands through a referral link:
+   - store the ref code in session/cookie
+   - preserve it through preview and checkout
+5. If that visitor completes a successful Stripe payment:
+   - create an order record
+   - create a referral record
+   - assign the commission to the referring user
+   - set the commission status to "pending"
+6. Do not create commission records for unpaid, failed, or abandoned checkout attempts.
+7. Prevent self-referrals:
+   - if buyer email matches referrer email, do not count it
+8. Only count one commission per paid order.
+9. Manual payout workflow only for now.
+10. Commission amount should be a flat fixed amount.
+
+COMMISSION MODEL
+Use:
+- Flat $10 commission per successful paid referral sale
+
+COMMISSION STATUSES
+Use these statuses:
+- pending
+- approved
+- paid
+
+Admin should be able to:
+- approve pending commissions
+- mark approved commissions as paid
+
+CUSTOMER DASHBOARD TEXT
+Inside the dashboard, clearly show:
+- Your referral link
+- Earn $10 for every person who buys through your link
+- Referred sales count
+- Pending earnings
+- Approved earnings
+- Paid earnings
+
+SUCCESS PAGE TEXT
+On the success page, include:
+- Your card is live
+- Share your card with customers
+- Earn $10 for every business owner who buys through your referral link
+- Copy referral link button
+- Copy card link button
+
+DATABASE TABLES
+Create these SQL tables:
+
+1. users
+Fields:
+- id
+- name
+- email
+- phone
+- created_at
+
+2. cards
+Fields:
+- id
+- user_id
+- slug
+- full_name
+- business_name
+- title
+- phone
+- email
+- website
+- address
+- bio
+- profile_image_url
+- logo_url
+- review_link
+- booking_link
+- instagram_url
+- facebook_url
+- tiktok_url
+- linkedin_url
+- youtube_url
+- custom_links_json
+- theme_color
+- published
+- created_at
+- updated_at
+
+3. orders
+Fields:
+- id
+- user_id
+- stripe_payment_intent_id
+- stripe_checkout_session_id
+- amount
+- payment_status
+- referral_code_used
+- created_at
+
+4. referral_codes
+Fields:
+- id
+- user_id
+- code
+- active
+- created_at
+
+5. referrals
+Fields:
+- id
+- referrer_user_id
+- referred_user_id
+- referred_order_id
+- commission_amount
+- status
+- created_at
+- paid_at
+
+6. sessions_or_ref_tracking
+Use whatever table or mechanism is best to preserve referral attribution across the flow.
+
+STRIPE REQUIREMENTS
+- Use Stripe for one-time payments only
+- No subscriptions in this standalone flow
+- Use Stripe Checkout or equivalent hosted checkout if fastest
+- Use webhook confirmation before marking orders as paid
+- Store Stripe keys in Replit Secrets
+- Do not hardcode any keys
+
+POST-PURCHASE ACCESS
+Do not force account creation before purchase.
+Use one of these:
+- magic link by email after purchase
+or
+- simple lightweight account creation after purchase
+
+But keep it easy and low-friction.
+
+ADMIN FEATURES
+Build a simple admin area where I can:
+- see all users
+- see all cards
+- see all orders
+- see all referrals
+- approve commissions
+- mark commissions as paid
+- search by email, business name, or referral code
+
+DESIGN DIRECTION
+- Premium but simple
+- Clean and modern
+- Mobile-first
+- Fast loading
+- Easy to understand
+- No clutter
+- Public pages should feel like a quick product purchase, not software onboarding
+
+DO NOT BUILD
+- no multi-level referral system
+- no subscription wall for this standalone product
+- no complex affiliate portal
+- no payout automation yet
+- no unnecessary enterprise features
+- no Apex full-site SaaS onboarding in this product flow
+
+IMPORTANT SEPARATION
+Keep this standalone card product separate from the full Apex subscription system.
+This product should act as an entry-point offer.
+The code structure should make it easy later to upsell users into Apex, but do not mix the offers together on the public purchase flow.
+
+UPSSELL PREP
+After purchase, leave room for future upsell messaging such as:
+"Want this to automatically respond to leads and book customers for you?"
+But do not make that the focus of this version.
+
+FINAL GOAL
+Build a launch-ready standalone digital business card product that:
+- is publicly accessible
+- uses one-time Stripe payment
+- creates live digital cards
+- gives every buyer a referral code
+- turns every card into a referral/sales asset
+- tracks commissions for completed purchases
+- allows manual payout handling
+- is simple enough to launch immediately
