@@ -25,24 +25,26 @@ import { csrfProtection } from "./csrfProtection";
 
 const app = express();
 
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://js.stripe.com", "https://connect.facebook.net", "https://cdn.jsdelivr.net"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      imgSrc: ["'self'", "data:", "blob:", "https:", "http:"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
-      connectSrc: ["'self'", "https://api.stripe.com", "https://graph.facebook.com", "https://api.openai.com", "https://api.vapi.ai", "wss:", "ws:"],
-      frameSrc: ["'self'", "https://js.stripe.com", "https://www.facebook.com"],
-      objectSrc: ["'none'"],
-      baseUri: ["'self'"],
-      formAction: ["'self'"],
-      upgradeInsecureRequests: [],
+app.use(
+  helmet({
+    frameguard: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https:"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https:"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'", "https:"],
+        frameAncestors: [
+          "'self'",
+          "https://*.replit.dev",
+          "https://*.repl.co",
+          "https://replit.com"
+        ],
+      },
     },
-  },
-  crossOriginEmbedderPolicy: false,
-}));
+  })
+);
 const httpServer = createServer(app);
 
 declare module "http" {

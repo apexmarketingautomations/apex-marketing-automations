@@ -83,7 +83,7 @@ export async function handleDigitalCardWebhook(session: any) {
     status: "published",
   }).returning();
 
-  console.log(`[DIGITAL-CARD] Card created: /card/${slug} for ${email}`);
+  console.log(`[DIGITAL-CARD] Card created: /card/${slug} for ${email} (editToken: ${editToken})`);
   return card;
 }
 
