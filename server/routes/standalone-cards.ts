@@ -80,6 +80,7 @@ export async function handleStandaloneCardWebhook(session: any) {
     slug = slug + "-" + crypto.randomBytes(2).toString("hex");
   }
 
+  const editToken = crypto.randomBytes(32).toString("hex");
   await db.insert(standaloneCards).values({
     userId: existingUser.id,
     slug,
@@ -102,6 +103,7 @@ export async function handleStandaloneCardWebhook(session: any) {
     youtubeUrl: cardData.youtubeUrl || null,
     customLinks: cardData.customLinks || null,
     themeColor: cardData.themeColor || "#0ea5e9",
+    editToken,
     published: true,
   });
 
@@ -347,30 +349,24 @@ export function registerStandaloneCardsRoutes(app: Express) {
     res.send(vcard);
   }));
 
-  app.get("/api/standalone/card-edit/:cardId", asyncHandler(async (req, res) => {
-    const email = (req.query.email as string || "").toLowerCase().trim();
-    if (!email) return res.status(400).json({ error: "Email required" });
+  app.get("/api/standalone/card-edit/:token", asyncHandler(async (req, res) => {
+    const token = req.params.token;
+    if (!token || token.length < 20) return res.status(400).json({ error: "Invalid token" });
 
-    const cardId = parseInt(req.params.cardId);
-    const [card] = await db.select().from(standaloneCards).where(eq(standaloneCards.id, cardId)).limit(1);
-    if (!card) return res.status(404).json({ error: "Card not found" });
-
-    const [user] = await db.select().from(standaloneCardUsers).where(eq(standaloneCardUsers.id, card.userId)).limit(1);
-    if (!user || user.email !== email) return res.status(403).json({ error: "Unauthorized" });
+    const [card] = await db.select().from(standaloneCards)
+      .where(eq(standaloneCards.editToken, token)).limit(1);
+    if (!card) return res.status(404).json({ error: "Card not found or invalid edit link" });
 
     res.json(card);
   }));
 
-  app.put("/api/standalone/card-edit/:cardId", asyncHandler(async (req, res) => {
-    const email = (req.body.email || "").toLowerCase().trim();
-    if (!email) return res.status(400).json({ error: "Email required" });
+  app.put("/api/standalone/card-edit/:token", asyncHandler(async (req, res) => {
+    const token = req.params.token;
+    if (!token || token.length < 20) return res.status(400).json({ error: "Invalid token" });
 
-    const cardId = parseInt(req.params.cardId);
-    const [card] = await db.select().from(standaloneCards).where(eq(standaloneCards.id, cardId)).limit(1);
-    if (!card) return res.status(404).json({ error: "Card not found" });
-
-    const [user] = await db.select().from(standaloneCardUsers).where(eq(standaloneCardUsers.id, card.userId)).limit(1);
-    if (!user || user.email !== email) return res.status(403).json({ error: "Unauthorized" });
+    const [card] = await db.select().from(standaloneCards)
+      .where(eq(standaloneCards.editToken, token)).limit(1);
+    if (!card) return res.status(404).json({ error: "Card not found or invalid edit link" });
 
     const { updates } = req.body;
     if (!updates) return res.status(400).json({ error: "No updates provided" });
@@ -384,8 +380,8 @@ export function registerStandaloneCardsRoutes(app: Express) {
     }
     allowed.updatedAt = new Date();
 
-    await db.update(standaloneCards).set(allowed).where(eq(standaloneCards.id, cardId));
-    const [updated] = await db.select().from(standaloneCards).where(eq(standaloneCards.id, cardId)).limit(1);
+    await db.update(standaloneCards).set(allowed).where(eq(standaloneCards.id, card.id));
+    const [updated] = await db.select().from(standaloneCards).where(eq(standaloneCards.id, card.id)).limit(1);
     res.json(updated);
   }));
 
@@ -397,8 +393,16 @@ export function registerStandaloneCardsRoutes(app: Express) {
       .where(eq(standaloneCardUsers.email, email.toLowerCase().trim())).limit(1);
     if (!user) return res.status(404).json({ error: "No account found with that email" });
 
-    const cards = await db.select().from(standaloneCards)
+    let cards = await db.select().from(standaloneCards)
       .where(eq(standaloneCards.userId, user.id)).orderBy(desc(standaloneCards.createdAt));
+
+    for (const c of cards) {
+      if (!c.editToken) {
+        const newToken = crypto.randomBytes(32).toString("hex");
+        await db.update(standaloneCards).set({ editToken: newToken }).where(eq(standaloneCards.id, c.id));
+        (c as any).editToken = newToken;
+      }
+    }
 
     const [refCode] = await db.select().from(standaloneReferralCodes)
       .where(eq(standaloneReferralCodes.userId, user.id)).limit(1);
@@ -531,6 +535,7 @@ export function registerStandaloneCardsRoutes(app: Express) {
     const [conflict] = await db.select({ id: standaloneCards.id }).from(standaloneCards).where(eq(standaloneCards.slug, slug)).limit(1);
     if (conflict) slug = slug + "-" + crypto.randomBytes(2).toString("hex");
 
+    const adminEditToken = crypto.randomBytes(32).toString("hex");
     const [card] = await db.insert(standaloneCards).values({
       userId: user.id, slug, fullName: cardData.fullName,
       businessName: cardData.businessName || null, title: cardData.title || null,
@@ -542,6 +547,7 @@ export function registerStandaloneCardsRoutes(app: Express) {
       facebookUrl: cardData.facebookUrl || null, tiktokUrl: cardData.tiktokUrl || null,
       linkedinUrl: cardData.linkedinUrl || null, youtubeUrl: cardData.youtubeUrl || null,
       customLinks: cardData.customLinks || null, themeColor: cardData.themeColor || "#0ea5e9",
+      editToken: adminEditToken,
       published: true,
     }).returning();
 

@@ -1,9 +1,8 @@
 import { useState, useEffect } from "react";
 import { useRoute, useLocation } from "wouter";
-import { motion } from "framer-motion";
 import {
-  ArrowLeft, Save, Loader2, Check, Eye, User, Briefcase, Phone, Mail,
-  Globe, MapPin, Image, Palette, Star, Calendar, Link2
+  ArrowLeft, Save, Loader2, Check, Eye, User, Phone,
+  Globe, Image, Palette, Star, AlertTriangle
 } from "lucide-react";
 
 function Field({ label, value, onChange, testId, type = "text", placeholder = "" }: any) {
@@ -53,59 +52,37 @@ function Section({ title, icon: Icon, children }: { title: string; icon: any; ch
 }
 
 export default function StandaloneCardEdit() {
-  const [, params] = useRoute("/standalone/edit/:cardId");
+  const [, params] = useRoute("/standalone/edit/:token");
   const [, setLocation] = useLocation();
   const [card, setCard] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
-  const [email, setEmail] = useState("");
-  const [authed, setAuthed] = useState(false);
-  const [authError, setAuthError] = useState("");
-  const [authLoading, setAuthLoading] = useState(false);
+  const [notFound, setNotFound] = useState(false);
 
-  const cardId = params?.cardId;
+  const token = params?.token;
 
   useEffect(() => {
-    const stored = sessionStorage.getItem("standalone_edit_email");
-    if (stored && cardId) {
-      setEmail(stored);
-      loadCard(stored);
-    } else {
-      setLoading(false);
-    }
-  }, [cardId]);
+    if (!token) return;
+    loadCard();
+  }, [token]);
 
-  const loadCard = async (userEmail: string) => {
+  const loadCard = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/standalone/card-edit/${cardId}?email=${encodeURIComponent(userEmail)}`);
+      const res = await fetch(`/api/standalone/card-edit/${token}`);
       if (!res.ok) {
-        const err = await res.json();
-        setAuthError(err.error || "Could not load card");
-        setAuthed(false);
+        setNotFound(true);
         setLoading(false);
         return;
       }
-      const data = await res.json();
-      setCard(data);
-      setAuthed(true);
-      setEmail(userEmail);
-      sessionStorage.setItem("standalone_edit_email", userEmail);
+      setCard(await res.json());
     } catch {
-      setAuthError("Something went wrong");
+      setNotFound(true);
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleAuth = async () => {
-    if (!email.trim()) return;
-    setAuthLoading(true);
-    setAuthError("");
-    await loadCard(email.trim().toLowerCase());
-    setAuthLoading(false);
   };
 
   const update = (field: string, value: any) => {
@@ -117,10 +94,10 @@ export default function StandaloneCardEdit() {
     setSaving(true);
     setError("");
     try {
-      const res = await fetch(`/api/standalone/card-edit/${cardId}`, {
+      const res = await fetch(`/api/standalone/card-edit/${token}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, updates: card }),
+        body: JSON.stringify({ updates: card }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -146,36 +123,19 @@ export default function StandaloneCardEdit() {
     );
   }
 
-  if (!authed) {
+  if (notFound) {
     return (
-      <div className="min-h-screen bg-[#0a0a0f] text-white">
-        <header className="px-4 py-5">
+      <div className="min-h-screen bg-[#0a0a0f] text-white flex items-center justify-center">
+        <div className="text-center max-w-sm px-4">
+          <AlertTriangle className="w-12 h-12 text-amber-400 mx-auto mb-4" />
+          <h1 className="text-xl font-bold mb-2">Invalid Edit Link</h1>
+          <p className="text-slate-400 text-sm mb-6">This edit link is invalid or has expired. You can find your edit link in your dashboard.</p>
           <button onClick={() => setLocation("/standalone/dashboard")}
-            className="flex items-center gap-2 text-slate-500 hover:text-white text-sm transition">
-            <ArrowLeft className="w-4 h-4" /> Back to Dashboard
+            data-testid="button-go-dashboard"
+            className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold rounded-xl transition">
+            Go to Dashboard
           </button>
-        </header>
-        <main className="max-w-md mx-auto px-4 py-16">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 flex items-center justify-center mx-auto mb-4">
-              <Mail className="w-7 h-7 text-cyan-400" />
-            </div>
-            <h1 className="text-2xl font-bold mb-2">Edit Your Card</h1>
-            <p className="text-slate-400 text-sm">Enter the email you used to purchase your card</p>
-          </div>
-          <div className="space-y-4">
-            <input data-testid="input-edit-email" type="email" value={email}
-              onChange={e => setEmail(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && handleAuth()}
-              placeholder="your@email.com"
-              className="w-full px-4 py-3.5 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500/50 transition" />
-            {authError && <p className="text-red-400 text-sm">{authError}</p>}
-            <button data-testid="button-edit-auth" onClick={handleAuth} disabled={authLoading || !email}
-              className="w-full flex items-center justify-center gap-2 py-3.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:opacity-50 text-white font-bold rounded-xl transition">
-              {authLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Continue"}
-            </button>
-          </div>
-        </main>
+        </div>
       </div>
     );
   }
@@ -217,7 +177,6 @@ export default function StandaloneCardEdit() {
 
         <Section title="Contact" icon={Phone}>
           <Field label="Phone" value={card.phone} onChange={(v: string) => update("phone", v)} testId="input-phone" type="tel" />
-          <Field label="Email" value={card.email} onChange={(v: string) => update("email", v)} testId="input-email-display" type="email" />
           <Field label="Website" value={card.website} onChange={(v: string) => update("website", v)} testId="input-website" placeholder="https://..." />
           <Field label="Address" value={card.address} onChange={(v: string) => update("address", v)} testId="input-address" />
         </Section>

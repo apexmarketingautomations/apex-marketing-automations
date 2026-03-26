@@ -124,7 +124,7 @@ export default function StandaloneCardDashboard() {
               </button>
               <button
                 data-testid={`button-edit-card-${card.id}`}
-                onClick={() => { sessionStorage.setItem("standalone_edit_email", email); setLocation(`/standalone/edit/${card.id}`); }}
+                onClick={() => setLocation(`/standalone/edit/${card.editToken}`)}
                 className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm transition"
               >
                 <Pencil className="w-4 h-4" />
