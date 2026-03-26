@@ -75,6 +75,7 @@ const StandaloneCardSuccess = lazy(() => import("@/pages/standalone-card-success
 const StandaloneCardView = lazy(() => import("@/pages/standalone-card-view"));
 const StandaloneCardDashboard = lazy(() => import("@/pages/standalone-card-dashboard"));
 const StandaloneCardAdmin = lazy(() => import("@/pages/standalone-card-admin"));
+const StandaloneCardEdit = lazy(() => import("@/pages/standalone-card-edit"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const LandingPage = lazy(() => import("@/pages/landing"));
 const MarketersLanding = lazy(() => import("@/pages/marketers-landing"));
@@ -165,6 +166,7 @@ function Router() {
         <Route path="/standalone/c/:slug" component={StandaloneCardView} />
         <Route path="/standalone/card/:slug" component={StandaloneCardView} />
         <Route path="/standalone/dashboard" component={StandaloneCardDashboard} />
+        <Route path="/standalone/edit/:cardId" component={StandaloneCardEdit} />
         <Route path="/standalone/admin" component={StandaloneCardAdmin} />
         <Route path="/review/:subAccountId" component={ReviewBuffer} />
         <Route path="/login" component={LoginPage} />

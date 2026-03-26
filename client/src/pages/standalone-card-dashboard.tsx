@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { Copy, ExternalLink, Users, DollarSign, Clock, CheckCircle, CreditCard, Loader2, ArrowLeft } from "lucide-react";
+import { Copy, ExternalLink, Users, DollarSign, Clock, CheckCircle, CreditCard, Loader2, ArrowLeft, Pencil } from "lucide-react";
 
 export default function StandaloneCardDashboard() {
   const [, setLocation] = useLocation();
@@ -121,6 +121,13 @@ export default function StandaloneCardDashboard() {
                 className="px-3 py-2 bg-neutral-700 hover:bg-neutral-600 rounded-lg text-sm transition"
               >
                 <ExternalLink className="w-4 h-4" />
+              </button>
+              <button
+                data-testid={`button-edit-card-${card.id}`}
+                onClick={() => { sessionStorage.setItem("standalone_edit_email", email); setLocation(`/standalone/edit/${card.id}`); }}
+                className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm transition"
+              >
+                <Pencil className="w-4 h-4" />
               </button>
             </div>
             {copied === `card-${card.id}` && <p className="text-green-400 text-xs mt-1">Copied!</p>}

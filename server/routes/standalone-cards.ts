@@ -347,6 +347,48 @@ export function registerStandaloneCardsRoutes(app: Express) {
     res.send(vcard);
   }));
 
+  app.get("/api/standalone/card-edit/:cardId", asyncHandler(async (req, res) => {
+    const email = (req.query.email as string || "").toLowerCase().trim();
+    if (!email) return res.status(400).json({ error: "Email required" });
+
+    const cardId = parseInt(req.params.cardId);
+    const [card] = await db.select().from(standaloneCards).where(eq(standaloneCards.id, cardId)).limit(1);
+    if (!card) return res.status(404).json({ error: "Card not found" });
+
+    const [user] = await db.select().from(standaloneCardUsers).where(eq(standaloneCardUsers.id, card.userId)).limit(1);
+    if (!user || user.email !== email) return res.status(403).json({ error: "Unauthorized" });
+
+    res.json(card);
+  }));
+
+  app.put("/api/standalone/card-edit/:cardId", asyncHandler(async (req, res) => {
+    const email = (req.body.email || "").toLowerCase().trim();
+    if (!email) return res.status(400).json({ error: "Email required" });
+
+    const cardId = parseInt(req.params.cardId);
+    const [card] = await db.select().from(standaloneCards).where(eq(standaloneCards.id, cardId)).limit(1);
+    if (!card) return res.status(404).json({ error: "Card not found" });
+
+    const [user] = await db.select().from(standaloneCardUsers).where(eq(standaloneCardUsers.id, card.userId)).limit(1);
+    if (!user || user.email !== email) return res.status(403).json({ error: "Unauthorized" });
+
+    const { updates } = req.body;
+    if (!updates) return res.status(400).json({ error: "No updates provided" });
+
+    const allowed: Record<string, any> = {};
+    const fields = ["fullName","businessName","title","phone","website","address","bio",
+      "profileImageUrl","logoUrl","reviewLink","bookingLink","instagramUrl","facebookUrl",
+      "tiktokUrl","linkedinUrl","youtubeUrl","customLinks","themeColor"];
+    for (const f of fields) {
+      if (f in updates) allowed[f] = updates[f];
+    }
+    allowed.updatedAt = new Date();
+
+    await db.update(standaloneCards).set(allowed).where(eq(standaloneCards.id, cardId));
+    const [updated] = await db.select().from(standaloneCards).where(eq(standaloneCards.id, cardId)).limit(1);
+    res.json(updated);
+  }));
+
   app.post("/api/standalone/dashboard", asyncHandler(async (req, res) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: "Email required" });
