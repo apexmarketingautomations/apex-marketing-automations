@@ -6,7 +6,9 @@ import {
 } from "lucide-react";
 
 export default function StandaloneCardView() {
-  const [, params] = useRoute("/standalone/c/:slug");
+  const [, params1] = useRoute("/standalone/c/:slug");
+  const [, params2] = useRoute("/standalone/card/:slug");
+  const params = params1 || params2;
   const [, setLocation] = useLocation();
   const [card, setCard] = useState<any>(null);
   const [loading, setLoading] = useState(true);
