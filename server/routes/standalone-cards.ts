@@ -211,7 +211,7 @@ export function registerStandaloneCardsRoutes(app: Express) {
   }));
 
   app.post("/api/standalone/create-checkout", asyncHandler(async (req, res) => {
-    const { cardData, referralCode } = req.body;
+    const { cardData, referralCode, premiumBump } = req.body;
     if (!cardData?.fullName || !cardData?.email) {
       return res.status(400).json({ error: "Name and email are required" });
     }
@@ -230,6 +230,7 @@ export function registerStandaloneCardsRoutes(app: Express) {
     const meta: Record<string, string> = {
       source: "standalone_card",
       referralCode: referralCode || "",
+      premiumBump: premiumBump ? "true" : "false",
       cd_fullName: (cardData.fullName || "").slice(0, 500),
       cd_email: (cardData.email || "").slice(0, 500),
       cd_phone: (cardData.phone || "").slice(0, 500),
@@ -256,25 +257,41 @@ export function registerStandaloneCardsRoutes(app: Express) {
       meta.cd_customLinks = JSON.stringify(cardData.customLinks).slice(0, 500);
     }
 
+    const lineItems: any[] = [{
+      price_data: {
+        currency: "usd",
+        product_data: {
+          name: "Digital Business Card",
+          description: paidCount < PROMO_LIMIT
+            ? "50% Launch Discount — Limited Time"
+            : "One-time purchase — yours forever",
+        },
+        unit_amount: priceInCents,
+      },
+      quantity: 1,
+    }];
+
+    if (premiumBump) {
+      lineItems.push({
+        price_data: {
+          currency: "usd",
+          product_data: {
+            name: "Premium Upgrade",
+            description: "Enhanced design, priority support, optimized layout",
+          },
+          unit_amount: 999,
+        },
+        quantity: 1,
+      });
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
       customer_email: cardData.email,
-      line_items: [{
-        price_data: {
-          currency: "usd",
-          product_data: {
-            name: "Digital Business Card",
-            description: paidCount < PROMO_LIMIT
-              ? "50% Launch Discount — Limited Time"
-              : "One-time purchase — yours forever",
-          },
-          unit_amount: priceInCents,
-        },
-        quantity: 1,
-      }],
+      line_items: lineItems,
       metadata: meta,
-      success_url: `${baseUrl}/standalone/success?session_id={CHECKOUT_SESSION_ID}`,
+      success_url: `${baseUrl}/standalone/upsell?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/standalone/preview`,
     });
 
@@ -347,6 +364,55 @@ export function registerStandaloneCardsRoutes(app: Express) {
     res.setHeader("Content-Type", "text/vcard; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.send(vcard);
+  }));
+
+  app.post("/api/standalone/upsell-accept", asyncHandler(async (req, res) => {
+    const { sessionId, offer, amount } = req.body;
+    if (!sessionId) return res.status(400).json({ error: "Session ID required" });
+
+    const { getUncachableStripeClient } = await import("../stripeClient");
+    const stripe = await getUncachableStripeClient();
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+
+    try {
+      const origSession = await stripe.checkout.sessions.retrieve(sessionId);
+      const email = origSession.metadata?.cd_email || origSession.customer_email || "";
+
+      const upsellSession = await stripe.checkout.sessions.create({
+        mode: "payment",
+        payment_method_types: ["card"],
+        customer_email: email,
+        line_items: [{
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: "Pro Business Bundle",
+              description: "Custom branding help, setup guidance, optimization tips",
+            },
+            unit_amount: 1999,
+          },
+          quantity: 1,
+        }],
+        metadata: {
+          source: "standalone_card_upsell",
+          originalSessionId: sessionId,
+          offer: offer || "pro_bundle",
+        },
+        success_url: `${baseUrl}/standalone/success?session_id=${sessionId}`,
+        cancel_url: `${baseUrl}/standalone/success?session_id=${sessionId}`,
+      });
+
+      res.json({ url: upsellSession.url });
+    } catch (e: any) {
+      console.error("[UPSELL] Error:", e.message);
+      res.json({ url: null });
+    }
+  }));
+
+  app.post("/api/standalone/upsell-decline", asyncHandler(async (req, res) => {
+    const { sessionId, offer } = req.body;
+    console.log(`[UPSELL] Declined: session=${sessionId}, offer=${offer}`);
+    res.json({ ok: true });
   }));
 
   app.get("/api/standalone/card-edit/:token", asyncHandler(async (req, res) => {

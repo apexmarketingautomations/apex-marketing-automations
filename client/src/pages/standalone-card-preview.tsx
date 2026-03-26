@@ -1,11 +1,15 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { ArrowLeft, Phone, MessageSquare, Mail, Globe, Star, MapPin, Calendar, ExternalLink, Loader2 } from "lucide-react";
+import { ArrowLeft, Phone, MessageSquare, Mail, Globe, Star, MapPin, Calendar, ExternalLink, Loader2, CheckCircle, Sparkles } from "lucide-react";
+
+const PREMIUM_PRICE = 999;
 
 export default function StandaloneCardPreview() {
   const [, setLocation] = useLocation();
   const [cardData, setCardData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [promo, setPromo] = useState<any>(null);
+  const [premiumBump, setPremiumBump] = useState(false);
 
   useEffect(() => {
     const saved = sessionStorage.getItem("standalone_card_data");
@@ -14,6 +18,7 @@ export default function StandaloneCardPreview() {
     } else {
       setLocation("/standalone/create");
     }
+    fetch("/api/standalone/promo-status").then(r => r.json()).then(setPromo).catch(() => {});
   }, [setLocation]);
 
   const handleCheckout = async () => {
@@ -24,7 +29,7 @@ export default function StandaloneCardPreview() {
       const res = await fetch("/api/standalone/create-checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cardData, referralCode }),
+        body: JSON.stringify({ cardData, referralCode, premiumBump }),
       });
       const data = await res.json();
       if (data.url) {
@@ -40,6 +45,9 @@ export default function StandaloneCardPreview() {
   if (!cardData) return null;
 
   const tc = cardData.themeColor || "#0ea5e9";
+  const basePrice = promo?.promoActive ? promo.promoPrice : (promo?.regularPrice || 4900);
+  const bumpPrice = premiumBump ? PREMIUM_PRICE : 0;
+  const totalCents = basePrice + bumpPrice;
 
   const socialLinks = [
     cardData.instagramUrl && { label: "Instagram", url: cardData.instagramUrl },
@@ -50,19 +58,16 @@ export default function StandaloneCardPreview() {
   ].filter(Boolean);
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white">
-      <header className="container mx-auto px-4 py-6 flex items-center justify-between">
-        <button
-          data-testid="button-back"
-          onClick={() => setLocation("/standalone/create")}
-          className="flex items-center gap-2 text-neutral-400 hover:text-white transition text-sm"
-        >
+    <div className="min-h-screen bg-[#09090b] text-white">
+      <header className="container mx-auto px-4 py-5 flex items-center justify-between">
+        <button data-testid="button-back" onClick={() => setLocation("/standalone/create")}
+          className="flex items-center gap-2 text-neutral-400 hover:text-white transition text-sm">
           <ArrowLeft className="w-4 h-4" /> Edit
         </button>
-        <span className="text-sm text-neutral-500">Preview</span>
+        <span className="text-sm text-neutral-500">Preview & Checkout</span>
       </header>
 
-      <main className="container mx-auto px-4 max-w-md pb-32">
+      <main className="container mx-auto px-4 max-w-md pb-52">
         <p className="text-center text-neutral-400 text-sm mb-4">This is how your card will look</p>
 
         <div className="bg-neutral-900 border border-neutral-800 rounded-3xl overflow-hidden shadow-2xl">
@@ -155,19 +160,60 @@ export default function StandaloneCardPreview() {
             )}
           </div>
         </div>
+
+        <div className="mt-6">
+          <button
+            data-testid="button-order-bump"
+            onClick={() => setPremiumBump(!premiumBump)}
+            className={`w-full text-left rounded-2xl border-2 p-4 transition ${
+              premiumBump
+                ? "border-cyan-500 bg-cyan-500/[0.06]"
+                : "border-white/[0.08] bg-white/[0.02] hover:border-white/[0.15]"
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <div className={`mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition ${
+                premiumBump ? "border-cyan-500 bg-cyan-500" : "border-neutral-600"
+              }`}>
+                {premiumBump && <CheckCircle className="w-3.5 h-3.5 text-white" />}
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <span className="font-bold text-sm text-white">Add Premium Upgrade</span>
+                  <span className="text-xs font-bold text-cyan-400 ml-auto">+$9.99</span>
+                </div>
+                <ul className="space-y-1 mt-2">
+                  {[
+                    "Enhanced design customization",
+                    "Priority support",
+                    "Optimized layout for better conversions",
+                  ].map((item, i) => (
+                    <li key={i} className="flex items-center gap-2 text-xs text-neutral-400">
+                      <CheckCircle className="w-3 h-3 text-cyan-400 shrink-0" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </button>
+        </div>
       </main>
 
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-neutral-950/90 backdrop-blur border-t border-neutral-800">
+      <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#09090b]/95 backdrop-blur-lg border-t border-white/[0.08]">
         <div className="container mx-auto max-w-md">
-          <button
-            data-testid="button-checkout"
-            onClick={handleCheckout}
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:opacity-50 text-white font-semibold rounded-xl transition"
-          >
+          <div className="flex items-center justify-between mb-2 px-1">
+            <span className="text-neutral-400 text-xs">
+              Digital Card{premiumBump ? " + Premium" : ""}
+            </span>
+            <span className="text-white font-bold text-lg">${(totalCents / 100).toFixed(2)}</span>
+          </div>
+          <button data-testid="button-checkout" onClick={handleCheckout} disabled={loading}
+            className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:opacity-50 text-white font-bold rounded-xl transition shadow-lg shadow-cyan-500/20">
             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Continue to Checkout"}
           </button>
-          <p className="text-center text-neutral-500 text-xs mt-2">One-time payment — no subscription</p>
+          <p className="text-center text-neutral-500 text-xs mt-2">One-time payment &middot; Secure checkout via Stripe</p>
         </div>
       </div>
     </div>

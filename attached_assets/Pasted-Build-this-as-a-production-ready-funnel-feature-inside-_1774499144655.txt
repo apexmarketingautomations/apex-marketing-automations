@@ -1,0 +1,155 @@
+Build this as a production-ready funnel feature inside my existing Apex app.
+
+CONTEXT
+
+* Product: digital business card sold through Apex
+* Current front-end sales page already exists
+* Current offer price: $24.50 one-time
+* Brand: Apex Marketing Automations
+* Goal: increase average order value without hurting conversion rate
+* Stack preference: use whatever fits the current Replit app, but keep it simple, clean, and easy to maintain
+* Default assumption: this must integrate into the existing Apex flow, not be built as a disconnected demo
+
+WHAT TO BUILD
+Build 3 monetization features into the checkout funnel:
+
+1. ORDER BUMP ON CHECKOUT
+
+* Add a pre-purchase order bump directly on the checkout page
+* Offer name: Premium Upgrade
+* Price: $9.99 one-time
+* Position: directly above the final payment button
+* Style: checkbox add-on with a short benefit list
+* Copy:
+
+  * “Upgrade Your Card for Maximum Impact”
+  * “Enhanced design customization”
+  * “Priority support”
+  * “Optimized layout for better conversions”
+  * “Add Premium for just $9.99”
+* Behavior:
+
+  * unchecked by default
+  * when checked, total updates instantly
+  * selected bump must be included in the final order metadata
+  * must persist through payment and confirmation
+
+2. POST-PURCHASE ONE-CLICK UPSELL
+
+* After successful purchase of the base card, show a post-purchase upsell page before the final thank-you page
+* Offer name: Pro Business Bundle
+* Price: $19.99 one-time
+* Copy:
+
+  * “Everything in Premium plus branding help and setup guidance”
+  * “Custom branding help”
+  * “Setup guidance for your business”
+  * “Optimization tips for more leads”
+* CTA buttons:
+
+  * primary: “Add to My Order”
+  * secondary: “No Thanks”
+* Behavior:
+
+  * if accepted, append to the original order
+  * if declined, continue to thank-you page
+  * store acceptance/decline event for analytics
+
+3. REFERRAL TRACKING
+
+* Keep and extend referral tracking using URL params like ?ref=CODE
+* On landing:
+
+  * capture referral code
+  * store it in session/local storage
+  * carry it through checkout and purchase
+* On completed purchase:
+
+  * attach referral code to order record
+  * make it available for future commission logic
+* Do not fake commission payouts or stats if backend logic does not exist yet
+* If full payout automation is not built, clearly structure the data model so it can be added later
+
+CORE REQUIREMENTS
+
+* Preserve the current sales page and existing CTA flow
+* Do not break current checkout
+* Mobile-first UI
+* Clean modern styling consistent with the current Apex page
+* Fast load speed
+* Clear separation between:
+
+  * base product
+  * checkout bump
+  * post-purchase upsell
+* Show updated totals clearly at checkout
+* Use defensive validation on pricing so front-end values cannot be trusted alone
+* Do not hardcode business logic in messy scattered components; centralize pricing/config where possible
+
+DATA + BACKEND
+Implement whatever backend/storage is needed for:
+
+* base order
+* order bump selection
+* upsell acceptance/decline
+* referral code attribution
+* final total paid
+* timestamps
+* customer email / basic order info if already collected in current flow
+
+If the app already has storage/db models, extend them cleanly.
+If not, create a simple maintainable schema.
+
+ANALYTICS / EVENTS
+Track these events:
+
+* landing_page_view
+* referral_captured
+* checkout_started
+* order_bump_viewed
+* order_bump_selected
+* order_bump_removed
+* purchase_completed
+* upsell_viewed
+* upsell_accepted
+* upsell_declined
+
+UI PAGES / STATES TO BUILD
+
+* checkout page with order bump
+* successful payment transition
+* post-purchase upsell page
+* final thank-you page
+* graceful error state if upsell append fails
+* graceful fallback if referral code is missing
+
+IMPORTANT RISK / PRODUCT RULES
+
+* Do not add fake testimonials, fake scarcity, fake counters, or misleading claims
+* Do not show “spots left” unless it is backed by real logic
+* Do not pretend one-click upsell charges work unless the payment flow actually supports it; if not supported, implement the cleanest legitimate fallback and label it clearly
+* Do not ship placeholder buttons that look real but do nothing
+* Do not reduce the current core offer price to compensate for weak conversion; focus on funnel value, not cheapening the offer
+
+DELIVERABLES
+Provide:
+
+1. the implemented feature
+2. a short README section explaining the funnel flow
+3. where pricing/config lives
+4. how referral attribution works
+5. what still needs real payment-provider support if any limitation exists
+
+SUCCESS CRITERIA
+
+* A user can land on the Apex page with or without a referral code
+* Start checkout
+* Optionally add the $9.99 Premium Upgrade
+* Complete purchase
+* See the $19.99 Pro Business Bundle upsell
+* Accept or decline it
+* Reach the thank-you page
+* Order/referral/upsell data is stored correctly
+* Entire flow works on mobile
+
+Before coding, inspect the existing app structure and integrate into it instead of rebuilding unrelated parts.
