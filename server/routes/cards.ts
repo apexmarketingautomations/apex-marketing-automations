@@ -25,47 +25,182 @@ function generateVCard(card: any): string {
   return lines.join("\r\n");
 }
 
+const CARD_PRICE_CENTS = 2900;
+
+export async function handleDigitalCardWebhook(session: any) {
+  const meta = session.metadata || {};
+  if (meta.source !== "digital_card") return;
+
+  const cardData = JSON.parse(meta.cardData || "{}");
+  const email = session.customer_email || cardData.email;
+  if (!email) return;
+
+  const [existing] = await db.select({ id: digitalCards.id })
+    .from(digitalCards).where(eq(digitalCards.purchaseId, session.id)).limit(1);
+  if (existing) return;
+
+  let slug = (cardData.name || email.split("@")[0])
+    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48);
+  const [slugConflict] = await db.select({ id: digitalCards.id })
+    .from(digitalCards).where(eq(digitalCards.slug, slug)).limit(1);
+  if (slugConflict) slug = slug + "-" + crypto.randomBytes(2).toString("hex");
+
+  const editToken = crypto.randomUUID();
+
+  const [card] = await db.insert(digitalCards).values({
+    ownerEmail: email,
+    customerId: session.customer || null,
+    purchaseId: session.id,
+    paymentStatus: "paid",
+    editToken,
+    slug,
+    name: cardData.name || "",
+    preferredName: cardData.preferredName || "",
+    title: cardData.title || "",
+    company: cardData.company || "",
+    phone: cardData.phone || "",
+    email: cardData.email || email,
+    website: cardData.website || "",
+    bio: cardData.bio || "",
+    photoUrl: cardData.photoUrl || "",
+    coverImageUrl: cardData.coverImageUrl || "",
+    logoImageUrl: cardData.logoImageUrl || "",
+    googleReviewLink: cardData.googleReviewLink || "",
+    brandColor: cardData.brandColor || "#6366f1",
+    accentColor: cardData.accentColor || "#8b5cf6",
+    theme: cardData.theme || "executive-dark",
+    bookingUrl: cardData.bookingUrl || "",
+    calendarUrl: cardData.calendarUrl || "",
+    location: cardData.location || "",
+    tagline: cardData.tagline || "",
+    socialLinks: cardData.socialLinks || [],
+    links: cardData.links || [],
+    services: cardData.services || [],
+    testimonial: cardData.testimonial || null,
+    leadCaptureEnabled: false,
+    isActive: true,
+    isPublic: true,
+    status: "published",
+  }).returning();
+
+  console.log(`[DIGITAL-CARD] Card created: /card/${slug} for ${email}`);
+  return card;
+}
+
 export function registerCardsRoutes(app: Express) {
   app.post("/api/card-checkout", asyncHandler(async (req, res) => {
-    const { plan, interval } = req.body;
+    const { cardData } = req.body;
+    if (!cardData?.name || !cardData?.email) {
+      return res.status(400).json({ error: "Name and email are required" });
+    }
+
     const { getUncachableStripeClient } = await import("../stripeClient");
     const stripe = await getUncachableStripeClient();
 
-    let priceInCents: number;
-    let productName: string;
-    let planTier: string;
-
-    if (plan === "tapcard") {
-      priceInCents = interval === "yearly" ? 6999 : 999;
-      productName = interval === "yearly" ? "TapCard — Annual" : "TapCard — Monthly";
-      planTier = "starter";
-    } else if (plan === "tapcard_pro") {
-      priceInCents = interval === "yearly" ? 38400 : 4800;
-      productName = interval === "yearly" ? "TapCard Pro — Annual" : "TapCard Pro — Monthly";
-      planTier = "pro";
-    } else {
-      return res.status(400).json({ error: "Invalid plan" });
-    }
-
     const baseUrl = `${req.protocol}://${req.get("host")}`;
     const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
+      mode: "payment",
       payment_method_types: ["card"],
+      customer_email: cardData.email,
       line_items: [{
         price_data: {
           currency: "usd",
-          product_data: { name: productName },
-          unit_amount: priceInCents,
-          recurring: { interval: interval === "yearly" ? "year" : "month" },
+          product_data: { name: "Digital Business Card + Lead Funnel" },
+          unit_amount: CARD_PRICE_CENTS,
         },
         quantity: 1,
       }],
-      metadata: { plan, planTier, source: "tapcard_funnel" },
-      success_url: `${baseUrl}/digital-card-builder?checkout=success`,
-      cancel_url: `${baseUrl}/cards?checkout=cancelled`,
-      payment_method_collection: "always",
+      metadata: {
+        source: "digital_card",
+        cardData: JSON.stringify(cardData),
+      },
+      success_url: `${baseUrl}/card/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/standalone/card`,
     });
-    res.json({ url: session.url });
+    res.json({ url: session.url, sessionId: session.id });
+  }));
+
+  app.get("/api/card/edit/:token", asyncHandler(async (req, res) => {
+    const token = req.params.token;
+    if (!token) return res.status(400).json({ error: "Token required" });
+    const [card] = await db.select().from(digitalCards)
+      .where(eq(digitalCards.editToken, token)).limit(1);
+    if (!card) return res.status(404).json({ error: "Card not found" });
+    res.json(card);
+  }));
+
+  app.put("/api/card/edit/:token", asyncHandler(async (req, res) => {
+    const token = req.params.token;
+    if (!token) return res.status(400).json({ error: "Token required" });
+    const [card] = await db.select().from(digitalCards)
+      .where(eq(digitalCards.editToken, token)).limit(1);
+    if (!card) return res.status(404).json({ error: "Card not found" });
+
+    const {
+      name, preferredName, title, company, phone, email, website, bio,
+      photoUrl, coverImageUrl, logoImageUrl, googleReviewLink,
+      brandColor, accentColor, theme, bookingUrl, calendarUrl,
+      location, tagline, socialLinks, links, services, testimonial,
+      leadCaptureEnabled, seoTitle, seoDescription,
+    } = req.body;
+
+    const data: any = {
+      name, preferredName, title, company, phone, email, website, bio,
+      photoUrl, coverImageUrl, logoImageUrl, googleReviewLink,
+      brandColor, accentColor, theme, bookingUrl, calendarUrl,
+      location, tagline, socialLinks, links, services, testimonial,
+      leadCaptureEnabled, seoTitle, seoDescription,
+      updatedAt: new Date(),
+    };
+    Object.keys(data).forEach(k => data[k] === undefined && delete data[k]);
+
+    const [updated] = await db.update(digitalCards).set(data)
+      .where(eq(digitalCards.id, card.id)).returning();
+    res.json(updated);
+  }));
+
+  app.get("/api/card/session/:sessionId", asyncHandler(async (req, res) => {
+    const { getUncachableStripeClient } = await import("../stripeClient");
+    const stripe = await getUncachableStripeClient();
+    let session;
+    try {
+      session = await stripe.checkout.sessions.retrieve(req.params.sessionId);
+    } catch (e: any) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+    if (session.metadata?.source !== "digital_card") {
+      return res.status(404).json({ error: "Session not found" });
+    }
+
+    const [card] = await db.select().from(digitalCards)
+      .where(eq(digitalCards.purchaseId, session.id)).limit(1);
+
+    if (!card && session.payment_status === "paid") {
+      try {
+        const created = await handleDigitalCardWebhook(session);
+        if (created) {
+          return res.json({
+            status: "complete",
+            card: created,
+            editToken: created.editToken,
+            slug: created.slug,
+          });
+        }
+      } catch (e: any) {
+        console.error("[DIGITAL-CARD] Fallback fulfillment error:", e.message);
+      }
+    }
+
+    if (!card) {
+      return res.json({ status: "processing", message: "Payment is being processed" });
+    }
+
+    res.json({
+      status: "complete",
+      card,
+      editToken: card.editToken,
+      slug: card.slug,
+    });
   }));
 
   app.get("/api/digital-card/:subAccountId", asyncHandler(async (req, res) => {
@@ -89,14 +224,23 @@ export function registerCardsRoutes(app: Express) {
       status, isActive, isPublic,
     } = req.body;
 
-    const normalizedSlug = slug ? slug.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 64) : undefined;
+    let normalizedSlug = slug ? slug.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 64) : undefined;
+
+    if (!normalizedSlug && name) {
+      normalizedSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48);
+      const suffix = crypto.randomBytes(2).toString("hex");
+      normalizedSlug = `${normalizedSlug}-${suffix}`;
+    }
 
     if (normalizedSlug) {
       const [conflict] = await db.select({ id: digitalCards.id })
         .from(digitalCards)
         .where(and(eq(digitalCards.slug, normalizedSlug), sql`${digitalCards.subAccountId} != ${subAccountId}`))
         .limit(1);
-      if (conflict) return res.status(409).json({ error: "Slug already taken" });
+      if (conflict) {
+        const retrySuffix = crypto.randomBytes(3).toString("hex");
+        normalizedSlug = `${normalizedSlug}-${retrySuffix}`;
+      }
     }
 
     const data: any = {
@@ -126,6 +270,7 @@ export function registerCardsRoutes(app: Express) {
     const [card] = await db.select().from(digitalCards).where(eq(digitalCards.slug, slug)).limit(1);
     if (!card) return res.status(404).json({ error: "Card not found" });
     if (!card.isActive || !card.isPublic) return res.status(404).json({ error: "Card not available" });
+    if (card.paymentStatus !== "paid") return res.status(403).json({ error: "Not available" });
 
     await db.update(digitalCards).set({ viewCount: sql`${digitalCards.viewCount} + 1` }).where(eq(digitalCards.id, card.id));
 
@@ -136,6 +281,7 @@ export function registerCardsRoutes(app: Express) {
     const slug = req.params.slug.toLowerCase();
     const [card] = await db.select().from(digitalCards).where(eq(digitalCards.slug, slug)).limit(1);
     if (!card || !card.isActive || !card.isPublic) return res.status(404).json({ error: "Card not found" });
+    if (card.paymentStatus !== "paid") return res.status(403).json({ error: "Not available" });
 
     const vcard = generateVCard(card);
     const filename = `${(card.name || "contact").replace(/\s+/g, "_")}.vcf`;
@@ -149,8 +295,9 @@ export function registerCardsRoutes(app: Express) {
 
   app.post("/api/public-card/:slug/event", asyncHandler(async (req, res) => {
     const slug = req.params.slug.toLowerCase();
-    const [card] = await db.select({ id: digitalCards.id, isActive: digitalCards.isActive, isPublic: digitalCards.isPublic }).from(digitalCards).where(eq(digitalCards.slug, slug)).limit(1);
+    const [card] = await db.select({ id: digitalCards.id, isActive: digitalCards.isActive, isPublic: digitalCards.isPublic, paymentStatus: digitalCards.paymentStatus }).from(digitalCards).where(eq(digitalCards.slug, slug)).limit(1);
     if (!card || !card.isActive || !card.isPublic) return res.status(404).json({ error: "Card not found" });
+    if (card.paymentStatus !== "paid") return res.status(403).json({ error: "Not available" });
 
     const { eventType, eventTarget, visitorId } = req.body;
     if (typeof eventTarget === "string" && eventTarget.length > 500) return res.status(400).json({ error: "eventTarget too long" });
@@ -159,13 +306,24 @@ export function registerCardsRoutes(app: Express) {
       "click_social", "click_link", "click_review", "save_contact", "share", "qr_scan", "form_submit"];
     if (!allowed.includes(eventType)) return res.status(400).json({ error: "Invalid event type" });
 
+    const ua = req.headers["user-agent"] || "";
+    let deviceType = "desktop";
+    if (/mobile|android|iphone|ipad|ipod/i.test(ua)) deviceType = "mobile";
+    else if (/tablet|ipad/i.test(ua)) deviceType = "tablet";
+
+    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "";
+    const { createHash } = await import("crypto");
+    const ipHash = ip ? createHash("sha256").update(ip).digest("hex").slice(0, 16) : null;
+
     await db.insert(cardAnalyticsEvents).values({
       cardId: card.id,
       eventType,
       eventTarget: eventTarget || null,
       visitorId: visitorId || null,
-      userAgent: req.headers["user-agent"] || null,
-      referrer: req.headers.referer || null,
+      userAgent: ua || null,
+      referrer: req.body.referrer || req.headers.referer || null,
+      ipHash,
+      deviceType,
     });
 
     if (eventType === "share") {

@@ -45,6 +45,10 @@ const WEBHOOK_PATH_PREFIXES = [
   "/api/login",
   "/api/logout",
   "/api/auth/fcm-token",
+  "/api/standalone/",
+  "/api/card/edit/",
+  "/api/card-checkout",
+  "/api/card/session/",
 ];
 
 function isExempt(path: string): boolean {

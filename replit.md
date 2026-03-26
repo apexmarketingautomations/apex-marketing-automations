@@ -60,9 +60,21 @@ Preferred communication style: Simple, everyday language.
 - **Google Calendar Auto-Sync**: Background service for syncing Google Calendar events with appointments and triggers.
 - **FLHSMV API**: For polling and retrieving crash reports.
 
-## Digital Business Card System
-- **Schema**: `digitalCards` table with 30+ fields (brand colors, themes, social links, services, testimonials, SEO, analytics counters) and `cardAnalyticsEvents` for event tracking.
-- **Backend** (`server/routes/cards.ts`): Public card API (`/api/public-card/:slug`), vCard download, analytics event tracking (view/click/save/share), slug availability checker. All public endpoints enforce `isActive` + `isPublic` gates.
-- **Public Page** (`client/src/pages/digital-card.tsx`): Data-driven, 6 premium themes (executive-dark, modern-gradient, minimal-clean, bold-creative, ocean-breeze, sunset-warm), sticky mobile action bar, share modal with native share + QR + copy, services grid, testimonial block.
-- **Builder** (`client/src/pages/digital-card-builder.tsx`): Tabbed sections (Info/Contact/Media/Services/Links/Theme/SEO), live iframe preview, slug validator with debounce, color pickers, analytics widget, status selector.
-- **Routing**: `/card/:slug` is the canonical URL. Legacy `/DanteS` and `/dantes` redirect to `/card/dantes`.
+## Digital Business Card System (Standalone Product — Hard-Isolated from Apex)
+- **Product**: "Digital Business Card + Lead Funnel" — $29 one-time payment, no login required
+- **Flow**: Landing → Stripe Checkout → Card Created (webhook) → Success Page (card URL + edit link) → Email with edit token
+- **Schema**: `digitalCards` table with `ownerEmail` (replaces subAccountId dependency), `editToken` (UUID for no-auth editing), `customerId`, `purchaseId`, `paymentStatus` (gate for public access). `cardAnalyticsEvents` with `ipHash`, `deviceType`, `country`, `city` enrichment.
+- **Backend** (`server/routes/cards.ts`): 
+  - `POST /api/card-checkout` — Creates Stripe one-time payment session ($29), no auth required
+  - `GET /api/card/edit/:token` — Returns full card data by edit token, no auth required
+  - `PUT /api/card/edit/:token` — Updates card data by edit token, no auth required
+  - `GET /api/card/session/:sessionId` — Polls checkout session status, triggers fallback fulfillment
+  - `handleDigitalCardWebhook()` — Called from main Stripe webhook when `source=digital_card`, creates card + slug
+  - Public card API (`/api/public-card/:slug`) enforces `paymentStatus === "paid"` gate
+  - Analytics event tracking with device detection and IP hashing
+- **Frontend Pages**:
+  - `/card/:slug` — Public card view (6 themes, sticky action bar, share modal, QR, services, links, social)
+  - `/card/success` — Post-checkout success page with card URL and edit link
+  - `/card/edit/:token` — Full card editor (basic info, contact, images, appearance, social links, custom links, services, SEO)
+- **Standalone Product** (separate referral system): `/standalone/*` routes with `standalone_cards`, `standalone_orders`, `standalone_referral_codes`, `standalone_referrals` tables. Promo pricing ($24.50 for first 20 orders), $10 referral commissions.
+- **Routing**: `/card/:slug` is the canonical URL. `/card/success`, `/card/edit/:token` are public routes.

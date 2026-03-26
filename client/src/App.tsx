@@ -14,6 +14,8 @@ import { useFirebaseAnalytics, useFirebaseNotifications } from "@/hooks/use-fire
 
 const DigitalCard = lazy(() => import("@/pages/digital-card"));
 const DigitalCardBuilder = lazy(() => import("@/pages/digital-card-builder"));
+const CardSuccess = lazy(() => import("@/pages/card-success"));
+const CardEdit = lazy(() => import("@/pages/card-edit"));
 const CardsLanding = lazy(() => import("@/pages/cards-landing"));
 const SmsDashboard = lazy(() => import("@/pages/sms-dashboard"));
 const WorkflowBuilder = lazy(() => import("@/pages/workflow-builder"));
@@ -150,6 +152,8 @@ function Router() {
         {/* Public routes — no auth required */}
         <Route path="/DanteS">{() => { window.location.replace("/card/dantes"); return null; }}</Route>
         <Route path="/dantes">{() => { window.location.replace("/card/dantes"); return null; }}</Route>
+        <Route path="/card/success" component={CardSuccess} />
+        <Route path="/card/edit/:token" component={CardEdit} />
         <Route path="/card/:slug" component={DigitalCard} />
         <Route path="/cards" component={CardsLanding} />
         <Route path="/portal/:token" component={ClientPortal} />

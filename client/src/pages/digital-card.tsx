@@ -159,7 +159,13 @@ function useCardAnalytics(slug: string, active: boolean) {
     fetch(`/api/public-card/${slug}/event`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ eventType, eventTarget, visitorId }),
+      body: JSON.stringify({
+        eventType,
+        eventTarget,
+        visitorId,
+        userAgent: navigator.userAgent,
+        referrer: document.referrer,
+      }),
     }).catch(() => {});
   }, [slug, active]);
 
@@ -623,6 +629,7 @@ export default function DigitalCard() {
             else setState("not-found");
           });
         }
+        if (r.status === 403) { setState("unavailable"); return; }
         if (!r.ok) throw new Error("Request failed");
         return r.json().then(data => {
           setCard(normalizeCard(data));

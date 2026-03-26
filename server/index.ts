@@ -210,6 +210,16 @@ app.post(
             console.error(`[STANDALONE] Card fulfillment error:`, scErr.message);
           }
         }
+
+        if (meta?.source === "digital_card") {
+          try {
+            const { handleDigitalCardWebhook } = await import("./routes/cards");
+            await handleDigitalCardWebhook(session);
+            console.log(`[DIGITAL-CARD] Fulfillment processed for session ${session.id}`);
+          } catch (dcErr: any) {
+            console.error(`[DIGITAL-CARD] Fulfillment error:`, dcErr.message);
+          }
+        }
       }
 
       if (event?.type === "customer.subscription.updated" || event?.type === "customer.subscription.deleted") {

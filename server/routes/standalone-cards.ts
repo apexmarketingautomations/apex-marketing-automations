@@ -214,129 +214,6 @@ export function registerStandaloneCardsRoutes(app: Express) {
     res.json({ url: session.url, sessionId: session.id });
   }));
 
-  app.post("/api/standalone/webhook", asyncHandler(async (req, res) => {
-    const { getUncachableStripeClient, getStripeWebhookSecret } = await import("../stripeClient");
-    const stripe = await getUncachableStripeClient();
-    const webhookSecret = getStripeWebhookSecret();
-
-    let event;
-    if (webhookSecret) {
-      const sig = req.headers["stripe-signature"] as string;
-      try {
-        event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
-      } catch (err: any) {
-        console.error("[STANDALONE-WEBHOOK] Signature verification failed:", err.message);
-        return res.status(400).json({ error: "Webhook signature verification failed" });
-      }
-    } else {
-      event = req.body;
-    }
-
-    if (event.type === "checkout.session.completed") {
-      const session = event.data.object;
-      if (session.metadata?.source !== "standalone_card") {
-        return res.json({ received: true, skipped: true });
-      }
-
-      const cardData = JSON.parse(session.metadata.cardData || "{}");
-      const referralCode = session.metadata.referralCode || null;
-
-      let [existingUser] = await db.select().from(standaloneCardUsers)
-        .where(eq(standaloneCardUsers.email, cardData.email)).limit(1);
-
-      if (!existingUser) {
-        [existingUser] = await db.insert(standaloneCardUsers).values({
-          name: cardData.fullName,
-          email: cardData.email,
-          phone: cardData.phone || null,
-        }).returning();
-      }
-
-      let slug = generateSlug(cardData.fullName);
-      const [slugConflict] = await db.select({ id: standaloneCards.id })
-        .from(standaloneCards).where(eq(standaloneCards.slug, slug)).limit(1);
-      if (slugConflict) {
-        slug = slug + "-" + crypto.randomBytes(2).toString("hex");
-      }
-
-      const [card] = await db.insert(standaloneCards).values({
-        userId: existingUser.id,
-        slug,
-        fullName: cardData.fullName,
-        businessName: cardData.businessName || null,
-        title: cardData.title || null,
-        phone: cardData.phone || null,
-        email: cardData.email,
-        website: cardData.website || null,
-        address: cardData.address || null,
-        bio: cardData.bio || null,
-        profileImageUrl: cardData.profileImageUrl || null,
-        logoUrl: cardData.logoUrl || null,
-        reviewLink: cardData.reviewLink || null,
-        bookingLink: cardData.bookingLink || null,
-        instagramUrl: cardData.instagramUrl || null,
-        facebookUrl: cardData.facebookUrl || null,
-        tiktokUrl: cardData.tiktokUrl || null,
-        linkedinUrl: cardData.linkedinUrl || null,
-        youtubeUrl: cardData.youtubeUrl || null,
-        customLinks: cardData.customLinks || null,
-        themeColor: cardData.themeColor || "#0ea5e9",
-        published: true,
-      }).returning();
-
-      const [order] = await db.insert(standaloneOrders).values({
-        userId: existingUser.id,
-        stripeCheckoutSessionId: session.id,
-        stripePaymentIntentId: session.payment_intent || null,
-        amount: session.amount_total || CARD_PRICE_CENTS,
-        paymentStatus: "paid",
-        referralCodeUsed: referralCode,
-      }).returning();
-
-      const [existingRefCode] = await db.select().from(standaloneReferralCodes)
-        .where(eq(standaloneReferralCodes.userId, existingUser.id)).limit(1);
-      if (!existingRefCode) {
-        await db.insert(standaloneReferralCodes).values({
-          userId: existingUser.id,
-          code: generateReferralCode(),
-          active: true,
-        });
-      }
-
-      if (referralCode) {
-        const [refCodeRecord] = await db.select().from(standaloneReferralCodes)
-          .where(and(
-            eq(standaloneReferralCodes.code, referralCode),
-            eq(standaloneReferralCodes.active, true),
-          )).limit(1);
-
-        if (refCodeRecord && refCodeRecord.userId !== existingUser.id) {
-          const [referrerUser] = await db.select().from(standaloneCardUsers)
-            .where(eq(standaloneCardUsers.id, refCodeRecord.userId)).limit(1);
-
-          if (referrerUser && referrerUser.email !== cardData.email) {
-            const [existingReferral] = await db.select().from(standaloneReferrals)
-              .where(eq(standaloneReferrals.referredOrderId, order.id)).limit(1);
-
-            if (!existingReferral) {
-              await db.insert(standaloneReferrals).values({
-                referrerUserId: refCodeRecord.userId,
-                referredUserId: existingUser.id,
-                referredOrderId: order.id,
-                commissionAmount: COMMISSION_CENTS,
-                status: "pending",
-              });
-            }
-          }
-        }
-      }
-
-      console.log(`[STANDALONE] Card created: ${slug} for ${cardData.email}`);
-    }
-
-    res.json({ received: true });
-  }));
-
   app.get("/api/standalone/session/:sessionId", asyncHandler(async (req, res) => {
     const { getUncachableStripeClient } = await import("../stripeClient");
     const stripe = await getUncachableStripeClient();
@@ -349,8 +226,18 @@ export function registerStandaloneCardsRoutes(app: Express) {
     const cardData = JSON.parse(session.metadata.cardData || "{}");
     const email = cardData.email || session.customer_email;
 
-    const [user] = await db.select().from(standaloneCardUsers)
+    let [user] = await db.select().from(standaloneCardUsers)
       .where(eq(standaloneCardUsers.email, email)).limit(1);
+
+    if (!user && session.payment_status === "paid") {
+      try {
+        await handleStandaloneCardWebhook(session);
+        [user] = await db.select().from(standaloneCardUsers)
+          .where(eq(standaloneCardUsers.email, email)).limit(1);
+      } catch (e: any) {
+        console.error("[STANDALONE] Fallback fulfillment error:", e.message);
+      }
+    }
 
     if (!user) {
       return res.json({ status: "processing", message: "Payment is being processed" });

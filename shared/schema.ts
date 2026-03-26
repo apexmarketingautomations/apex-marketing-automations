@@ -1132,7 +1132,8 @@ export type FunnelLead = typeof funnelLeads.$inferSelect;
 
 export const digitalCards = pgTable("digital_cards", {
   id: serial("id").primaryKey(),
-  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id),
+  ownerEmail: text("owner_email"),
   name: text("name").default(""),
   preferredName: text("preferred_name").default(""),
   title: text("title").default(""),
@@ -1154,21 +1155,29 @@ export const digitalCards = pgTable("digital_cards", {
   calendarUrl: text("calendar_url").default(""),
   location: text("location").default(""),
   tagline: text("tagline").default(""),
-  socialLinks: jsonb("social_links").default([]),
-  links: jsonb("links").default([]),
-  services: jsonb("services").default([]),
-  testimonial: jsonb("testimonial").default(null),
+  socialLinks: jsonb("social_links").$type<{ label: string; url: string; icon?: string }[]>().default([]),
+  links: jsonb("links").$type<{ label: string; url: string; type?: string }[]>().default([]),
+  services: jsonb("services").$type<{ label: string; description: string; icon?: string; color?: string }[]>().default([]),
+  testimonial: jsonb("testimonial").$type<{ quote: string; author: string; role: string } | null>().default(null),
   leadCaptureEnabled: boolean("lead_capture_enabled").default(false),
+  leadWebhookUrl: text("lead_webhook_url"),
+  leadEmail: text("lead_email"),
   seoTitle: text("seo_title").default(""),
   seoDescription: text("seo_description").default(""),
   ogImageUrl: text("og_image_url").default(""),
+  customerId: text("customer_id"),
+  purchaseId: text("purchase_id"),
+  editToken: text("edit_token"),
+  createdByUserId: integer("created_by_user_id"),
+  referralCode: text("referral_code"),
+  paymentStatus: text("payment_status").default("pending"),
   status: text("status").default("published"),
   isActive: boolean("is_active").default(true),
   isPublic: boolean("is_public").default(true),
   viewCount: integer("view_count").default(0),
   saveContactCount: integer("save_contact_count").default(0),
   shareCount: integer("share_count").default(0),
-  clickStats: jsonb("click_stats").default({}),
+  clickStats: jsonb("click_stats").$type<Record<string, number>>().default({}),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -1181,10 +1190,36 @@ export const cardAnalyticsEvents = pgTable("card_analytics_events", {
   visitorId: text("visitor_id"),
   userAgent: text("user_agent"),
   referrer: text("referrer"),
+  ipHash: text("ip_hash"),
+  country: text("country"),
+  city: text("city"),
+  deviceType: text("device_type"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const insertDigitalCardSchema = createInsertSchema(digitalCards).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertDigitalCardSchema = createInsertSchema(digitalCards).omit({ id: true, createdAt: true, updatedAt: true }).extend({
+  socialLinks: z.array(z.object({
+    label: z.string(),
+    url: z.string().url(),
+    icon: z.string().optional(),
+  })).optional(),
+  links: z.array(z.object({
+    label: z.string(),
+    url: z.string(),
+    type: z.string().optional(),
+  })).optional(),
+  services: z.array(z.object({
+    label: z.string(),
+    description: z.string(),
+    icon: z.string().optional(),
+    color: z.string().optional(),
+  })).optional(),
+  testimonial: z.object({
+    quote: z.string(),
+    author: z.string(),
+    role: z.string(),
+  }).nullable().optional(),
+});
 export type InsertDigitalCard = z.infer<typeof insertDigitalCardSchema>;
 export type DigitalCard = typeof digitalCards.$inferSelect;
 

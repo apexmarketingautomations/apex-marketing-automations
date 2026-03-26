@@ -1,0 +1,148 @@
+🚀 PROMPT 1 — HARD ISOLATE FROM APEX (REMOVE DEPENDENCY)
+In shared/schema.ts:
+
+REMOVE:
+
+subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+
+REPLACE WITH:
+
+ownerEmail: text("owner_email"),
+🔒 PROMPT 2 — FIX CURRENT BROKEN SCHEMA (YOU STILL HAVE ISSUES)
+In digitalCards table:
+
+1. DELETE duplicate:
+theme: text("theme").default("midnight"),
+
+2. REPLACE ALL json → jsonb:
+
+socialLinks: jsonb("social_links").default([]),
+links: jsonb("links").default([]),
+services: jsonb("services").default([]),
+testimonial: jsonb("testimonial").default(null),
+clickStats: jsonb("click_stats").default({}),
+💳 PROMPT 3 — REQUIRED PAYMENT STRUCTURE
+Add to digitalCards:
+
+customerId: text("customer_id"),
+purchaseId: text("purchase_id"),
+paymentStatus: text("payment_status").default("pending"),
+editToken: text("edit_token"),
+🔐 PROMPT 4 — PUBLIC ACCESS RULE (CRITICAL)
+In ALL public routes (/api/public-card/*):
+
+ADD:
+
+if (card.paymentStatus !== "paid") {
+  return res.status(403).json({ error: "Not available" });
+}
+🔗 PROMPT 5 — STRIPE CREATES CARD (NOT USER)
+In webhook:
+
+On checkout.session.completed:
+
+CREATE card:
+
+{
+  ownerEmail: session.customer_email,
+  customerId: session.customer,
+  purchaseId: session.id,
+  paymentStatus: "paid",
+  editToken: crypto.randomUUID(),
+  slug: generatedSlug
+}
+
+DO NOT create user account
+✉️ PROMPT 6 — EMAIL DELIVERY FLOW
+After card creation:
+
+Send email:
+
+- card URL → /card/:slug
+- edit URL → /edit/:editToken
+
+No login required
+🧾 PROMPT 7 — TOKEN EDIT ACCESS
+Create route:
+
+GET /api/card/edit/:token
+
+Logic:
+- find card by editToken
+- return full editable data
+- NO auth required
+📊 PROMPT 8 — ANALYTICS UPGRADE (YOU’RE MISSING DATA)
+In cardAnalyticsEvents:
+
+ADD:
+
+ipHash: text("ip_hash"),
+deviceType: text("device_type"),
+country: text("country"),
+city: text("city"),
+⚙️ PROMPT 9 — FRONTEND TRACKING FIX
+Update analytics call:
+
+body: JSON.stringify({
+  eventType,
+  eventTarget,
+  visitorId,
+  userAgent: navigator.userAgent,
+  referrer: document.referrer,
+})
+🧠 PROMPT 10 — REMOVE FAKE DATA (YOU STILL HAVE IT)
+In digital-card.tsx:
+
+DELETE:
+
+const LINKS
+const SKILLS
+const STATS
+
+Use:
+
+card.links
+card.services
+card.socialLinks
+🎯 PROMPT 11 — MINIMUM PRODUCT YOU ARE ACTUALLY SELLING
+Define:
+
+Product = "Digital Business Card + Lead Funnel"
+
+NOT just:
+- profile page
+
+MUST include:
+- links
+- services
+- contact actions
+- analytics tracking
+💰 PROMPT 12 — SIMPLE LAUNCH PRICING
+Set:
+
+$29 one-time
+
+Includes:
+- hosted card
+- edit access
+- basic analytics
+
+DO NOT overcomplicate pricing at launch
+🔥 PROMPT 13 — LAUNCH FLOW (KEEP IT SIMPLE)
+Flow:
+
+Landing → Stripe Checkout → Success → Card Live → Email Edit Link
+
+NO:
+- signup
+- dashboard
+- onboarding friction
+⚠️ HARD RULES
+DO NOT:
+
+- require login
+- tie to Apex accounts
+- add SaaS complexity
+- delay card creation after payment
+
+Goal = instant gratification
