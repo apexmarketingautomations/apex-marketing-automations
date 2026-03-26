@@ -60,10 +60,11 @@ export default function StandaloneCardLanding() {
               Paper cards get lost. Yours won't.
             </p>
             <h1 data-testid="text-headline" className="text-3xl sm:text-4xl md:text-[3.25rem] font-extrabold leading-[1.15] mb-5">
-              One digital card.{" "}
+              One digital card people can{" "}
               <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
-                Every way to reach you.
+                save directly to their contacts
               </span>
+              {" "}— so they never lose your info.
             </h1>
             <p data-testid="text-subheadline" className="text-base md:text-lg text-neutral-300 mb-8 max-w-xl mx-auto leading-relaxed">
               Create a mobile-friendly business card people actually save. Share by text, QR code, AirDrop, or DM. Update it anytime. Pay once.
@@ -76,7 +77,7 @@ export default function StandaloneCardLanding() {
               className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold rounded-xl text-lg transition shadow-lg shadow-cyan-500/25">
               Create Yours Now <ArrowRight className="w-5 h-5" />
             </button>
-            <span className="text-neutral-500 text-xs">One-time payment &middot; Built in minutes</span>
+            <span className="text-neutral-400 text-xs">Instantly saves to their contact list — no more lost business cards</span>
           </motion.div>
 
           {promo?.promoActive && (
@@ -120,7 +121,7 @@ export default function StandaloneCardLanding() {
           <div className="space-y-3">
             {[
               { icon: CreditCard, text: "Your own digital business card with a unique link" },
-              { icon: Send, text: "One-tap save to contacts for anyone who views it" },
+              { icon: Send, text: "One-tap save to contacts — your info goes straight into their phone like a real contact" },
               { icon: MessageSquare, text: "Call, text, and email buttons" },
               { icon: Share2, text: "Social media links — Instagram, Facebook, TikTok, LinkedIn, YouTube" },
               { icon: Star, text: "Google review and booking links" },
