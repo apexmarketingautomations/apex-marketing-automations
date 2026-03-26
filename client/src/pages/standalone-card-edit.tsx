@@ -193,6 +193,48 @@ export default function StandaloneCardEdit() {
 
         <Section title="Appearance" icon={Palette}>
           <ColorField label="Theme Color" value={card.themeColor} onChange={(v: string) => update("themeColor", v)} testId="input-color" />
+          {(card.tier === "premium" || card.tier === "pro") && (
+            <div className="space-y-3">
+              <div>
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Card Layout</label>
+                <select
+                  data-testid="select-layout"
+                  value={card.cardLayout || "default"}
+                  onChange={e => update("cardLayout", e.target.value)}
+                  className="w-full px-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white text-sm focus:outline-none focus:border-cyan-500/50 transition"
+                >
+                  <option value="default">Default</option>
+                  <option value="modern">Modern</option>
+                  <option value="bold">Bold</option>
+                  <option value="minimal">Minimal</option>
+                  {card.tier === "pro" && <option value="executive">Executive</option>}
+                  {card.tier === "pro" && <option value="creative">Creative</option>}
+                </select>
+              </div>
+              <div className="flex items-center justify-between p-3 bg-white/[0.03] border border-white/[0.06] rounded-xl">
+                <div>
+                  <p className="text-sm text-white font-medium">Remove Apex Branding</p>
+                  <p className="text-xs text-slate-500">Hide "Powered by Apex" on your public card</p>
+                </div>
+                <button
+                  data-testid="toggle-branding"
+                  onClick={() => update("removeApexBranding", !card.removeApexBranding)}
+                  className={`w-11 h-6 rounded-full transition-colors ${
+                    card.removeApexBranding ? "bg-cyan-500" : "bg-neutral-700"
+                  }`}
+                >
+                  <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                    card.removeApexBranding ? "translate-x-[22px]" : "translate-x-[2px]"
+                  }`} />
+                </button>
+              </div>
+            </div>
+          )}
+          {card.tier === "base" && (
+            <div className="p-3 bg-amber-500/5 border border-amber-500/15 rounded-xl text-xs text-amber-400/80">
+              Upgrade to Premium to unlock custom layouts, remove Apex branding, and more.
+            </div>
+          )}
         </Section>
 
         <Section title="Actions" icon={Star}>

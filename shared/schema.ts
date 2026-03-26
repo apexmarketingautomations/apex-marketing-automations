@@ -1929,6 +1929,10 @@ export const standaloneCards = pgTable("standalone_cards", {
   youtubeUrl: text("youtube_url"),
   customLinks: jsonb("custom_links"),
   themeColor: text("theme_color").default("#0ea5e9"),
+  tier: text("tier").default("base").notNull(),
+  cardLayout: text("card_layout").default("default"),
+  removeApexBranding: boolean("remove_apex_branding").default(false),
+  premiumSupportFlag: boolean("premium_support_flag").default(false),
   published: boolean("published").default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -1942,6 +1946,11 @@ export const standaloneOrders = pgTable("standalone_orders", {
   amount: integer("amount").notNull(),
   paymentStatus: text("payment_status").default("pending").notNull(),
   referralCodeUsed: text("referral_code_used"),
+  premiumBump: boolean("premium_bump").default(false),
+  proBundlePurchased: boolean("pro_bundle_purchased").default(false),
+  upsellSessionId: text("upsell_session_id"),
+  upsellPaidAt: timestamp("upsell_paid_at"),
+  fulfillmentStatus: text("fulfillment_status").default("fulfilled").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

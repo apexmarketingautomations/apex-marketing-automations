@@ -297,7 +297,9 @@ export default function StandaloneCardView() {
               className="w-full flex items-center justify-center gap-2.5 px-6 py-4 bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:via-blue-500 hover:to-indigo-500 text-white font-bold rounded-2xl transition-all shadow-lg shadow-blue-600/20 hover:shadow-blue-500/30 hover:scale-[1.02] active:scale-[0.98]">
               <CreditCard className="w-5 h-5" /> Get Your Own Digital Card
             </a>
-            <p className="text-center text-slate-600 text-[11px] mt-3 font-medium tracking-wide">Powered by Apex Digital Cards</p>
+            {!card.removeApexBranding && (
+              <p className="text-center text-slate-600 text-[11px] mt-3 font-medium tracking-wide">Powered by Apex Digital Cards</p>
+            )}
           </motion.div>
         </motion.div>
       </div>

@@ -99,11 +99,36 @@ export default function StandaloneCardDashboard() {
           <div key={card.id} className="bg-neutral-800/50 border border-neutral-700 rounded-2xl p-5 mb-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold">{card.fullName}</h3>
-              <span className={`text-xs px-2 py-1 rounded-full ${card.published ? "bg-green-500/20 text-green-400" : "bg-yellow-500/20 text-yellow-400"}`}>
-                {card.published ? "Live" : "Draft"}
-              </span>
+              <div className="flex items-center gap-2">
+                {card.tier && card.tier !== "base" && (
+                  <span data-testid={`badge-tier-${card.id}`} className={`text-xs px-2 py-1 rounded-full font-bold ${
+                    card.tier === "pro"
+                      ? "bg-purple-500/20 text-purple-400 border border-purple-500/30"
+                      : "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                  }`}>
+                    {card.tier === "pro" ? "PRO" : "PREMIUM"}
+                  </span>
+                )}
+                <span className={`text-xs px-2 py-1 rounded-full ${card.published ? "bg-green-500/20 text-green-400" : "bg-yellow-500/20 text-yellow-400"}`}>
+                  {card.published ? "Live" : "Draft"}
+                </span>
+              </div>
             </div>
             {card.businessName && <p className="text-neutral-400 text-sm mb-3">{card.businessName}</p>}
+            {card.tier && card.tier !== "base" && (
+              <div data-testid={`tier-features-${card.id}`} className="mb-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] text-xs text-neutral-400">
+                <p className="font-semibold text-white text-[11px] uppercase tracking-wider mb-1.5">
+                  {card.tier === "pro" ? "Pro" : "Premium"} Features Active
+                </p>
+                <ul className="space-y-1">
+                  {card.removeApexBranding && <li>✓ Apex branding removed</li>}
+                  {card.premiumSupportFlag && <li>✓ Priority support</li>}
+                  <li>✓ Custom accent color</li>
+                  <li>✓ Premium themes unlocked</li>
+                  {card.tier === "pro" && <li>✓ Advanced layouts</li>}
+                </ul>
+              </div>
+            )}
             <div className="flex gap-2">
               <input
                 readOnly

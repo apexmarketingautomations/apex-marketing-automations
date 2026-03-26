@@ -1,0 +1,156 @@
+Yes — make it real. Switch to Build mode and implement actual entitlement + fulfillment logic for the paid upgrades now.
+
+Do not leave any paid upgrade live unless it grants something real after verified payment.
+
+GOAL
+Turn the current fake upsells into legitimate product tiers with real stored entitlements, real post-payment fulfillment, and real user-visible differences.
+
+DECISION: DEFINE THE TIERS LIKE THIS
+
+BASE ($24.50)
+
+* Standard digital card
+* Core contact info
+* social links
+* booking/review links
+* QR code
+* edit access
+* normal/default theme only
+
+PREMIUM UPGRADE (+$9.99)
+Unlock all Base features plus:
+
+* premiumThemes: access to extra card themes/styles
+* customAccentColor: allow color customization
+* removeApexBranding: hide Apex branding/footer on the public card if branding currently appears
+* premiumSupportFlag: mark in admin/dashboard for priority support
+* stored entitlement visible in dashboard/admin
+
+PRO BUSINESS BUNDLE (+$19.99)
+Unlock all Premium features plus:
+
+* proTier flag
+* expanded customization set
+* featuredLayout options / advanced layout selector
+* admin-visible “Pro Bundle purchased” status
+* fulfillmentStatus field for manual service follow-up if needed
+* clear pro badge/status in dashboard/admin
+
+IMPORTANT
+If any of the UI for Premium/Pro options does not exist yet, build the minimum real version now so the entitlement is truthful.
+Do not say something is included unless the user can actually access it in the product or it is clearly flagged for manual delivery in admin.
+
+IMPLEMENTATION REQUIREMENTS
+
+1. DATABASE / SCHEMA
+   Extend the schema cleanly.
+   At minimum, add fields needed to persist real entitlements.
+
+Preferred approach:
+
+* standaloneCards:
+
+  * tier: "base" | "premium" | "pro"
+  * customAccentColor (nullable if needed)
+  * premiumSupportFlag boolean default false
+  * removeApexBranding boolean default false
+* standaloneOrders:
+
+  * premiumBump boolean default false
+  * proBundlePurchased boolean default false
+  * fulfillmentStatus string default "fulfilled" or "pending_manual_followup" where appropriate
+  * upsellSessionId / upsellPaidAt if useful
+    Keep it normalized and maintainable if there is a better existing pattern.
+
+2. VERIFIED POST-PAYMENT FULFILLMENT
+   Update payment/webhook flow so entitlements are granted only after verified successful payment.
+
+Base checkout success should:
+
+* create the base order/card
+* if premiumBump was purchased, set tier to at least premium and set premium fields accordingly
+* store premiumBump on the order
+
+Upsell success should:
+
+* verify the upsell Stripe session/payment
+* append/update the existing order/card
+* upgrade tier from base or premium to pro
+* set proBundlePurchased=true
+* set fulfillmentStatus appropriately
+* never rely only on client-side redirect state
+
+3. ACTUAL USER-VISIBLE PRODUCT DIFFERENCES
+   Make the app behave differently by tier.
+
+BASE users:
+
+* only default/basic theme/layout options
+
+PREMIUM users:
+
+* can choose premium themes/styles
+* can set accent color
+* see premium status in dashboard/admin
+
+PRO users:
+
+* can choose premium + pro layouts/options
+* see pro status in dashboard/admin
+* admin can see manual follow-up / fulfillment status if relevant
+
+If the current editor/dashboard does not support theme/layout gating yet:
+
+* add the minimum real gating now
+* do not fake it with hidden metadata only
+
+4. DASHBOARD / ADMIN VISIBILITY
+   Show clearly in dashboard and/or admin:
+
+* current tier
+* premium bump purchased: yes/no
+* pro bundle purchased: yes/no
+* fulfillment status
+* any enabled premium/pro capabilities
+
+5. SALES / CHECKOUT SAFETY
+   Until fulfillment works end-to-end:
+
+* disable the related upsell offer from the live funnel
+  Once fulfillment works:
+* re-enable only if verified
+
+6. TESTING / VERIFICATION
+   After implementing, test these scenarios:
+
+* Base purchase only
+* Base + Premium bump purchase
+* Base purchase then Pro upsell accepted
+* Base + Premium bump then Pro upsell accepted
+
+For each scenario verify:
+
+* Stripe payment succeeds
+* correct order fields are stored
+* correct card tier is stored
+* dashboard/admin reflects the tier
+* user can access only the features they paid for
+
+7. OUTPUT I NEED BACK
+   When done, respond with:
+
+* files changed
+* schema fields added
+* exact webhook / fulfillment code path
+* exact user-visible differences for Base vs Premium vs Pro
+* confirmation that paid upgrades now map to real entitlements
+* confirmation of whether the live funnel is safe to keep on
+
+RULES
+
+* Do not just add copy
+* Do not just store Stripe metadata
+* Do not just create checkout sessions
+* Do not leave any paid upgrade charging customers without a real benefit
+* Patch the existing app cleanly; do not rebuild unrelated sections
+* Republish after verification

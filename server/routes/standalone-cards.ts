@@ -58,6 +58,9 @@ export async function handleStandaloneCardWebhook(session: any) {
 
   if (!cardData.email) return;
 
+  const hasPremiumBump = meta.premiumBump === "true";
+  const tier = hasPremiumBump ? "premium" : "base";
+
   let [existingUser] = await db.select().from(standaloneCardUsers)
     .where(eq(standaloneCardUsers.email, cardData.email)).limit(1);
 
@@ -103,6 +106,9 @@ export async function handleStandaloneCardWebhook(session: any) {
     youtubeUrl: cardData.youtubeUrl || null,
     customLinks: cardData.customLinks || null,
     themeColor: cardData.themeColor || "#0ea5e9",
+    tier,
+    removeApexBranding: hasPremiumBump,
+    premiumSupportFlag: hasPremiumBump,
     editToken,
     published: true,
   });
@@ -114,6 +120,8 @@ export async function handleStandaloneCardWebhook(session: any) {
     amount: session.amount_total || CARD_PRICE_CENTS,
     paymentStatus: "paid",
     referralCodeUsed: referralCode,
+    premiumBump: hasPremiumBump,
+    fulfillmentStatus: "fulfilled",
   }).returning();
 
   const [existingRefCode] = await db.select().from(standaloneReferralCodes)
@@ -387,7 +395,7 @@ export function registerStandaloneCardsRoutes(app: Express) {
             currency: "usd",
             product_data: {
               name: "Pro Business Bundle",
-              description: "Custom branding help, setup guidance, optimization tips",
+              description: "Custom branding help, setup guidance, optimization tips, advanced layouts",
             },
             unit_amount: 1999,
           },
@@ -397,8 +405,9 @@ export function registerStandaloneCardsRoutes(app: Express) {
           source: "standalone_card_upsell",
           originalSessionId: sessionId,
           offer: offer || "pro_bundle",
+          cd_email: email,
         },
-        success_url: `${baseUrl}/standalone/success?session_id=${sessionId}`,
+        success_url: `${baseUrl}/standalone/upsell-confirm?session_id=${sessionId}&upsell_session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${baseUrl}/standalone/success?session_id=${sessionId}`,
       });
 
@@ -406,6 +415,58 @@ export function registerStandaloneCardsRoutes(app: Express) {
     } catch (e: any) {
       console.error("[UPSELL] Error:", e.message);
       res.json({ url: null });
+    }
+  }));
+
+  app.get("/api/standalone/upsell-fulfill/:upsellSessionId", asyncHandler(async (req, res) => {
+    const { upsellSessionId } = req.params;
+    const originalSessionId = (req.query.original_session_id as string) || "";
+
+    const { getUncachableStripeClient } = await import("../stripeClient");
+    const stripe = await getUncachableStripeClient();
+
+    try {
+      const upsellSession = await stripe.checkout.sessions.retrieve(upsellSessionId);
+      if (upsellSession.payment_status !== "paid") {
+        return res.json({ fulfilled: false, reason: "Payment not completed" });
+      }
+      if (upsellSession.metadata?.source !== "standalone_card_upsell") {
+        return res.status(400).json({ error: "Invalid upsell session" });
+      }
+
+      const email = upsellSession.metadata?.cd_email || upsellSession.customer_email || "";
+      if (!email) return res.status(400).json({ error: "No email found" });
+
+      const [user] = await db.select().from(standaloneCardUsers)
+        .where(eq(standaloneCardUsers.email, email)).limit(1);
+      if (!user) return res.status(404).json({ error: "User not found" });
+
+      await db.update(standaloneCards)
+        .set({
+          tier: "pro",
+          removeApexBranding: true,
+          premiumSupportFlag: true,
+          updatedAt: new Date(),
+        })
+        .where(eq(standaloneCards.userId, user.id));
+
+      const verifiedOriginalId = originalSessionId || upsellSession.metadata?.originalSessionId || "";
+      if (verifiedOriginalId) {
+        await db.update(standaloneOrders)
+          .set({
+            proBundlePurchased: true,
+            upsellSessionId: upsellSessionId,
+            upsellPaidAt: new Date(),
+            fulfillmentStatus: "fulfilled",
+          })
+          .where(eq(standaloneOrders.stripeCheckoutSessionId, verifiedOriginalId));
+      }
+
+      console.log(`[UPSELL] Pro Bundle fulfilled for ${email}, upsell session ${upsellSessionId}`);
+      res.json({ fulfilled: true, tier: "pro" });
+    } catch (e: any) {
+      console.error("[UPSELL] Fulfillment error:", e.message);
+      res.status(500).json({ error: "Fulfillment failed" });
     }
   }));
 
@@ -443,6 +504,10 @@ export function registerStandaloneCardsRoutes(app: Express) {
       "tiktokUrl","linkedinUrl","youtubeUrl","customLinks","themeColor"];
     for (const f of fields) {
       if (f in updates) allowed[f] = updates[f];
+    }
+    if (card.tier === "premium" || card.tier === "pro") {
+      if ("cardLayout" in updates) allowed.cardLayout = updates.cardLayout;
+      if ("removeApexBranding" in updates) allowed.removeApexBranding = !!updates.removeApexBranding;
     }
     allowed.updatedAt = new Date();
 
@@ -614,6 +679,9 @@ export function registerStandaloneCardsRoutes(app: Express) {
       linkedinUrl: cardData.linkedinUrl || null, youtubeUrl: cardData.youtubeUrl || null,
       customLinks: cardData.customLinks || null, themeColor: cardData.themeColor || "#0ea5e9",
       editToken: adminEditToken,
+      tier: cardData.tier || "base",
+      removeApexBranding: cardData.tier === "premium" || cardData.tier === "pro" || false,
+      premiumSupportFlag: cardData.tier === "premium" || cardData.tier === "pro" || false,
       published: true,
     }).returning();
 

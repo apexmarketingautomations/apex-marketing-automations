@@ -73,6 +73,7 @@ const StandaloneCardCreate = lazy(() => import("@/pages/standalone-card-create")
 const StandaloneCardPreview = lazy(() => import("@/pages/standalone-card-preview"));
 const StandaloneCardSuccess = lazy(() => import("@/pages/standalone-card-success"));
 const StandaloneCardUpsell = lazy(() => import("@/pages/standalone-card-upsell"));
+const StandaloneCardUpsellConfirm = lazy(() => import("@/pages/standalone-card-upsell-confirm"));
 const StandaloneCardView = lazy(() => import("@/pages/standalone-card-view"));
 const StandaloneCardDashboard = lazy(() => import("@/pages/standalone-card-dashboard"));
 const StandaloneCardAdmin = lazy(() => import("@/pages/standalone-card-admin"));
@@ -165,6 +166,7 @@ function Router() {
         <Route path="/standalone/preview" component={StandaloneCardPreview} />
         <Route path="/standalone/success" component={StandaloneCardSuccess} />
         <Route path="/standalone/upsell" component={StandaloneCardUpsell} />
+        <Route path="/standalone/upsell-confirm" component={StandaloneCardUpsellConfirm} />
         <Route path="/standalone/c/:slug" component={StandaloneCardView} />
         <Route path="/standalone/card/:slug" component={StandaloneCardView} />
         <Route path="/standalone/dashboard" component={StandaloneCardDashboard} />
