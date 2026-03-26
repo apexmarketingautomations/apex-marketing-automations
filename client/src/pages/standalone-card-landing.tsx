@@ -6,6 +6,7 @@ import {
   CreditCard, QrCode, Share2, Zap, Send, Shield, Clock, HelpCircle,
   ChevronDown, MessageSquare
 } from "lucide-react";
+import { trackEvent } from "../lib/analytics";
 
 function FaqItem({ q, a }: { q: string; a: string }) {
   const [open, setOpen] = useState(false);
@@ -31,7 +32,11 @@ export default function StandaloneCardLanding() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const ref = params.get("ref");
-    if (ref) sessionStorage.setItem("standalone_ref", ref);
+    if (ref) {
+      sessionStorage.setItem("standalone_ref", ref);
+      trackEvent("referral_captured", { code: ref });
+    }
+    trackEvent("landing_page_view");
     fetch("/api/standalone/promo-status").then(r => r.json()).then(setPromo).catch(() => {});
   }, []);
 
@@ -85,7 +90,7 @@ export default function StandaloneCardLanding() {
               data-testid="text-promo-badge"
               className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 bg-amber-500/10 border border-amber-500/30 rounded-full text-amber-400 text-sm font-medium">
               <Star className="w-4 h-4" />
-              Launch price: {price} — only {promo.spotsLeft} spots left at this rate
+              Limited-time launch price — lock it in before it goes back to ${(promo.regularPrice / 100).toFixed(0)}.
             </motion.div>
           )}
         </section>
@@ -194,7 +199,7 @@ export default function StandaloneCardLanding() {
             ))}
           </div>
           <p className="text-neutral-400 text-sm text-center mt-8 max-w-lg mx-auto">
-            Used by <strong className="text-white">entrepreneurs, freelancers, and small business owners</strong> to modernize how they connect.
+            <strong className="text-white">Built for entrepreneurs, freelancers, and small business owners.</strong>
           </p>
         </section>
 
@@ -221,7 +226,7 @@ export default function StandaloneCardLanding() {
           </button>
           {promo?.promoActive && (
             <p className="text-amber-400 text-xs font-medium mt-3">
-              Launch price: {price} — {promo.spotsLeft} spots remaining
+              Launch price: {price} for a limited time
             </p>
           )}
         </section>

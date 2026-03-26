@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { CheckCircle, X, Sparkles, Palette, Headphones, TrendingUp, Loader2 } from "lucide-react";
+import { trackEvent } from "../lib/analytics";
 
 export default function StandaloneCardUpsell() {
   const [, setLocation] = useLocation();
@@ -16,10 +17,12 @@ export default function StandaloneCardUpsell() {
       return;
     }
     setSessionId(sid);
+    trackEvent("upsell_viewed");
   }, [setLocation]);
 
   const handleAccept = async () => {
     setLoading(true);
+    trackEvent("upsell_accepted", { offer: "pro_bundle", amount: 1999 });
     try {
       const res = await fetch("/api/standalone/upsell-accept", {
         method: "POST",
@@ -40,6 +43,7 @@ export default function StandaloneCardUpsell() {
   };
 
   const handleDecline = async () => {
+    trackEvent("upsell_declined", { offer: "pro_bundle" });
     try {
       await fetch("/api/standalone/upsell-decline", {
         method: "POST",

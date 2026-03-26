@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { CheckCircle, Copy, ExternalLink, Users, ArrowRight, Loader2 } from "lucide-react";
+import { trackEvent } from "../lib/analytics";
 
 export default function StandaloneCardSuccess() {
   const [, setLocation] = useLocation();
@@ -24,6 +25,7 @@ export default function StandaloneCardSuccess() {
         if (result.status === "complete" && result.card) {
           setData(result);
           setLoading(false);
+          trackEvent("purchase_completed", { cardSlug: result.card.slug });
           sessionStorage.removeItem("standalone_card_data");
           sessionStorage.removeItem("standalone_ref");
         } else if (attempts < 15) {

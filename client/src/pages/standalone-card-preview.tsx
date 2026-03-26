@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { ArrowLeft, Phone, MessageSquare, Mail, Globe, Star, MapPin, Calendar, ExternalLink, Loader2, CheckCircle, Sparkles } from "lucide-react";
+import { trackEvent } from "../lib/analytics";
 
 const PREMIUM_PRICE = 999;
 
@@ -19,11 +20,13 @@ export default function StandaloneCardPreview() {
       setLocation("/standalone/create");
     }
     fetch("/api/standalone/promo-status").then(r => r.json()).then(setPromo).catch(() => {});
+    trackEvent("order_bump_viewed");
   }, [setLocation]);
 
   const handleCheckout = async () => {
     if (!cardData) return;
     setLoading(true);
+    trackEvent("checkout_started", { premiumBump, referral: sessionStorage.getItem("standalone_ref") || "" });
     try {
       const referralCode = sessionStorage.getItem("standalone_ref") || "";
       const res = await fetch("/api/standalone/create-checkout", {
@@ -164,7 +167,11 @@ export default function StandaloneCardPreview() {
         <div className="mt-6">
           <button
             data-testid="button-order-bump"
-            onClick={() => setPremiumBump(!premiumBump)}
+            onClick={() => {
+              const next = !premiumBump;
+              setPremiumBump(next);
+              trackEvent(next ? "order_bump_selected" : "order_bump_removed");
+            }}
             className={`w-full text-left rounded-2xl border-2 p-4 transition ${
               premiumBump
                 ? "border-cyan-500 bg-cyan-500/[0.06]"

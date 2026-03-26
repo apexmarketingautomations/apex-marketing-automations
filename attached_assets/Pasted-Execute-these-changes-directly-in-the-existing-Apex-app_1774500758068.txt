@@ -1,0 +1,139 @@
+Execute these changes directly in the existing Apex app. Do not rebuild unrelated parts. Inspect the current implementation first, then patch the existing flow cleanly.
+
+OBJECTIVE
+Tighten the live Apex digital card funnel so it is safer, more credible, and easier to convert from Meta traffic.
+
+CHANGES TO MAKE
+
+1. REMOVE FAKE / UNVERIFIED SCARCITY
+
+* Remove all copy that says:
+
+  * “only 20 spots left at this rate”
+  * “20 spots remaining”
+  * any similar hard-number scarcity
+* Replace with:
+
+  * “Launch price: $24.50 for a limited time”
+  * “Limited-time launch price — lock it in before it goes back to $49.”
+* Only show hard quantity scarcity if backed by real logic from the backend.
+
+2. FIX TRUST COPY
+
+* Replace:
+
+  * “Used by entrepreneurs, freelancers, and small business owners to modernize how they connect.”
+* With:
+
+  * “Built for entrepreneurs, freelancers, and small business owners.”
+* Do not imply customer usage unless real proof exists.
+
+3. KEEP AND STRENGTHEN THE CONTACT-SAVE ANGLE
+   Make sure these messages exist cleanly on the sales page:
+
+* Hero supporting line:
+
+  * “One digital card people can save directly to their contacts — so they never lose your info.”
+* Benefit under first CTA:
+
+  * “Instantly saves to their contact list — no more lost business cards”
+* Feature line in “What you get”:
+
+  * “One-tap save to contacts — your info goes straight into their phone like a real contact”
+
+4. SALES PAGE CLEANUP
+   Keep the current strong sections, but verify the page includes:
+
+* Hero section
+* Benefits section
+* “What you get” section
+* Pricing section
+* Trust section
+* FAQ section
+* Final CTA section
+  Keep these messages visible:
+* No monthly fees
+* One-time payment
+* Works instantly after setup
+* Built in minutes
+* Share by text, QR, AirDrop, or DM
+* Your info stays up to date
+
+5. CHECKOUT / FUNNEL CONSISTENCY
+   Inspect current live funnel and keep it coherent:
+
+* Base product remains $24.50
+* Order bump remains $9.99 if already implemented
+* Post-purchase upsell remains $19.99 Pro Business Bundle if already implemented
+  Do not change pricing structure unless necessary for broken logic.
+  If copy anywhere conflicts with the actual funnel, update the copy to match the real implementation.
+
+6. ADD ANALYTICS EVENTS
+   Implement clean event tracking for:
+
+* landing_page_view
+* referral_captured
+* checkout_started
+* order_bump_viewed
+* order_bump_selected
+* order_bump_removed
+* purchase_completed
+* upsell_viewed
+* upsell_accepted
+* upsell_declined
+  If no analytics provider is installed yet, create a simple abstraction layer so events can be logged now and wired later without rewriting the app.
+
+7. VERIFY REFERRAL TRACKING
+   Confirm current referral flow works end-to-end:
+
+* capture ?ref=CODE from URL
+* store it safely in session/local storage
+* carry it through checkout
+* attach it to the order / Stripe metadata / stored order record
+  Do not fake referral stats. Just make attribution reliable.
+
+8. VERIFY EMAIL CAPTURE + EDIT SECURITY
+   Inspect current card edit flow and verify users cannot edit someone else’s card just by knowing the email attached to a card.
+   If edit authorization is weak, fix it properly.
+   Do not leave email-only edit access if that creates unauthorized access risk.
+   Use the cleanest existing auth / token / verification pattern already present in the app.
+
+9. MOBILE UX POLISH
+   Verify on mobile:
+
+* hero text wraps cleanly
+* CTA buttons are prominent
+* sticky CTA works if already present
+* checkout totals are readable
+* FAQ spacing is clean
+* Stripe handoff is clear
+
+10. DO NOT BREAK LIVE FLOW
+    Preserve:
+
+* current sales page route
+* current checkout flow
+* current Stripe flow
+* current dashboard / success page routing
+  Patch in place and keep the app publishable.
+
+DELIVERABLES
+After changes, provide:
+
+1. short summary of what was changed
+2. list of files touched
+3. confirmation of whether edit security is safe now
+4. confirmation of whether referral tracking is fully preserved
+5. any remaining limitation that still needs real backend or payment-provider support
+
+SUCCESS CRITERIA
+
+* Sales page no longer uses fake quantity scarcity
+* Trust copy is honest
+* Contact-save angle is clearly expressed
+* Funnel copy matches actual product / bump / upsell logic
+* Analytics events exist
+* Referral attribution persists correctly
+* Unauthorized card editing is not possible through weak email-based access
+* Mobile flow looks clean
+* Stripe flow still works

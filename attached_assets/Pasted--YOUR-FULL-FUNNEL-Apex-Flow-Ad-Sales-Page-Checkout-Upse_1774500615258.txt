@@ -1,0 +1,190 @@
+🔥 YOUR FULL FUNNEL (Apex)
+Flow:
+
+Ad → Sales Page → Checkout → Upsell → Thank You → Retargeting
+
+🧱 1. TRAFFIC (already done)
+Facebook ad → your current page
+👉 KEEP THIS
+🧱 2. SALES PAGE (you built this)
+Focused ✅
+Converting ✅
+👉 We keep and slightly improve later
+🧱 3. CHECKOUT (upgrade this)
+Add:
+Email capture (required)
+Order bump ($9.99 Premium)
+🧱 4. UPSELL PAGE (NEW PAGE)
+
+After purchase → redirect here
+
+Copy (use this):
+Writing
+Insert
+
+🔥 Wait — Upgrade Your Card Before You Go
+
+You’re already set up — now make your card stand out even more.
+
+Unlock premium features:
+
+✨ Enhanced design customization
+📈 Priority support
+🚀 Faster setup assistance
+🎯 Optimized layout for better conversions
+
+👉 Add Premium for just $9.99
+
+[Add to My Order]
+
+No thanks, I’ll keep my basic card
+
+🧱 5. THANK YOU PAGE
+
+After upsell (accept or decline)
+
+Needs:
+Confirmation message
+Next steps
+Dashboard link
+Copy:
+Writing
+Insert
+
+🎉 You're All Set
+
+Your digital business card is being created.
+
+Next steps:
+
+Complete your card setup
+Start sharing your link
+Add your QR code anywhere
+
+👉 Go to your dashboard to finish setup
+
+🧱 6. RETARGETING (IMPORTANT)
+
+People who:
+
+Click ad
+Don’t buy
+
+👉 You bring them back
+
+Retargeting ad copy:
+Writing
+Insert
+
+Still using paper business cards?
+
+Most get thrown away.
+
+Switch to a digital card people actually save — and never lose your info again.
+
+👉 Get yours now for $24.50 (limited launch price)
+
+🔧 REPLIT BUILD PROMPT (CLEAN VERSION)
+
+Use this:
+
+Writing
+Insert
+
+Integrate a complete conversion funnel into my existing Apex digital card app.
+
+CURRENT STATE
+
+Sales page already exists
+Product price: $24.50 one-time
+Stack: use current Replit project structure
+Must integrate cleanly (do not rebuild entire app)
+
+BUILD THESE COMPONENTS
+
+CHECKOUT IMPROVEMENTS
+Add required email input
+Add order bump:
+Name: Premium Upgrade
+Price: $9.99
+Checkbox toggle
+Updates total dynamically
+Store:
+email
+base purchase
+bump selection
+total paid
+POST-PURCHASE UPSELL PAGE
+Route: /upsell
+Show after successful checkout
+Offer:
+Premium upgrade ($9.99)
+Buttons:
+Accept (adds to order)
+Decline (continue)
+Must:
+Append to order if accepted
+Track accept/decline
+THANK YOU PAGE
+Route: /thank-you
+Confirmation message
+Show what user purchased
+Button to dashboard
+REFERRAL TRACKING
+Capture ?ref=CODE from URL
+Store in session/localStorage
+Attach to order
+Persist through funnel
+BASIC ANALYTICS EVENTS
+Track:
+page_view
+checkout_started
+purchase_completed
+upsell_viewed
+upsell_accepted
+upsell_declined
+UI REQUIREMENTS
+Mobile-first
+Clean styling (match current page)
+Fast loading
+Clear CTA buttons
+No fake elements or placeholder actions
+DATA STRUCTURE
+Store:
+email
+product purchased
+order bump status
+upsell status
+referral code
+timestamp
+
+IMPORTANT RULES
+
+Do not break existing flow
+Do not add fake scarcity or fake testimonials
+Keep pricing centralized in config
+Validate totals server-side if possible
+
+SUCCESS CRITERIA
+User can:
+
+Land on page (with or without referral)
+Start checkout
+Add/remove order bump
+Complete purchase
+See upsell
+Accept or decline upsell
+Reach thank-you page
+Data stored correctly
+🧠 WHAT YOU JUST BUILT (IMPORTANT)
+
+You now have:
+
+A real funnel (not just a page)
+Revenue multipliers (upsell)
+Data collection (email + behavior)
+
+👉 This is how you go from:
+“maybe sales”
+to
+actual system
