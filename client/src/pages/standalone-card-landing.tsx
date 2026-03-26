@@ -108,10 +108,13 @@ export default function StandaloneCardLanding() {
               <div className="bg-neutral-800/80 border border-neutral-700 rounded-2xl p-8 mb-8">
                 <p className="text-neutral-400 text-sm mb-2 text-center">One-time payment</p>
                 {promo.promoActive ? (
-                  <div className="flex items-center justify-center gap-4 mb-6">
-                    <span className="text-neutral-500 line-through text-2xl">${(promo.regularPrice / 100).toFixed(0)}</span>
-                    <span className="text-4xl font-bold text-white">${(promo.promoPrice / 100).toFixed(2)}</span>
-                  </div>
+                  <>
+                    <div className="flex items-center justify-center gap-4 mb-2">
+                      <span className="text-neutral-500 line-through text-2xl">${(promo.regularPrice / 100).toFixed(0)}</span>
+                      <span className="text-4xl font-bold text-white">${(promo.promoPrice / 100).toFixed(2)}</span>
+                    </div>
+                    <p className="text-amber-400 text-sm font-medium text-center mb-6">Limited-time launch price — lock it in before it goes back to ${(promo.regularPrice / 100).toFixed(0)}.</p>
+                  </>
                 ) : (
                   <div className="text-4xl font-bold text-white mb-6 text-center">${(promo.regularPrice / 100).toFixed(0)}</div>
                 )}
