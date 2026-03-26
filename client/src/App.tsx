@@ -163,6 +163,7 @@ function Router() {
         <Route path="/standalone/preview" component={StandaloneCardPreview} />
         <Route path="/standalone/success" component={StandaloneCardSuccess} />
         <Route path="/standalone/c/:slug" component={StandaloneCardView} />
+        <Route path="/standalone/card/:slug" component={StandaloneCardView} />
         <Route path="/standalone/dashboard" component={StandaloneCardDashboard} />
         <Route path="/standalone/admin" component={StandaloneCardAdmin} />
         <Route path="/review/:subAccountId" component={ReviewBuffer} />
