@@ -1,0 +1,220 @@
+Got it — **production-only, copy-paste prompts, no fluff.**
+
+---
+
+## 🔧 FIX 1 — Remove duplicate `theme` + clean schema
+
+```prompt
+Update shared/schema.ts:
+
+1. REMOVE duplicate theme field:
+- Delete: theme: text("theme").default("midnight")
+
+2. KEEP:
+theme: text("theme").default("executive-dark"),
+
+3. Replace ALL json fields with jsonb + typed structure:
+
+socialLinks: jsonb("social_links").$type<{ label: string; url: string; icon?: string }[]>().default([]),
+
+links: jsonb("links").$type<{ label: string; url: string; type?: string }[]>().default([]),
+
+services: jsonb("services").$type<{ label: string; description: string; icon?: string; color?: string }[]>().default([]),
+
+testimonial: jsonb("testimonial").$type<{ quote: string; author: string; role: string } | null>().default(null),
+
+clickStats: jsonb("click_stats").$type<Record<string, number>>().default({}),
+```
+
+---
+
+## 🔧 FIX 2 — Add ownership + payment tracking (CRITICAL)
+
+```prompt
+Update digitalCards table in shared/schema.ts:
+
+Add fields:
+
+customerId: text("customer_id"),
+purchaseId: text("purchase_id"),
+createdByUserId: integer("created_by_user_id"),
+referralCode: text("referral_code"),
+paymentStatus: text("payment_status").default("pending"),
+
+Add indexes:
+
+index("idx_card_customer").on(table.customerId),
+index("idx_card_purchase").on(table.purchaseId),
+```
+
+---
+
+## 🔧 FIX 3 — Upgrade analytics for real tracking
+
+```prompt
+Update cardAnalyticsEvents table:
+
+Add:
+
+ipHash: text("ip_hash"),
+country: text("country"),
+city: text("city"),
+deviceType: text("device_type"),
+
+Keep existing fields.
+
+Ensure visitorId persists.
+```
+
+---
+
+## 🔧 FIX 4 — Enforce schema validation (Zod)
+
+```prompt
+Update insertDigitalCardSchema:
+
+Add strict validation using zod:
+
+socialLinks: z.array(z.object({
+  label: z.string(),
+  url: z.string().url(),
+  icon: z.string().optional()
+})),
+
+links: z.array(z.object({
+  label: z.string(),
+  url: z.string(),
+  type: z.string().optional()
+})),
+
+services: z.array(z.object({
+  label: z.string(),
+  description: z.string(),
+  icon: z.string().optional(),
+  color: z.string().optional()
+})),
+
+testimonial: z.object({
+  quote: z.string(),
+  author: z.string(),
+  role: z.string()
+}).nullable(),
+```
+
+---
+
+## 🔧 FIX 5 — Remove hardcoded frontend data
+
+```prompt
+Update client/src/pages/digital-card.tsx:
+
+1. DELETE:
+- const LINKS = [...]
+- const SKILLS = [...]
+- const STATS = [...]
+
+2. Replace with dynamic usage:
+
+Use:
+card.links
+card.services
+card.socialLinks
+
+3. Add fallback guards:
+
+if (!card) return null;
+```
+
+---
+
+## 🔧 FIX 6 — Strengthen analytics tracking call
+
+```prompt
+Update useCardAnalytics():
+
+Modify fetch body:
+
+body: JSON.stringify({
+  eventType,
+  eventTarget,
+  visitorId,
+  userAgent: navigator.userAgent,
+  referrer: document.referrer
+})
+
+Add debounce for repeat events if needed.
+```
+
+---
+
+## 🔧 FIX 7 — Stripe-safe webhook prep
+
+```prompt
+Update backend webhook handler:
+
+1. Ensure raw body parsing for Stripe:
+
+app.post("/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  handler
+);
+
+2. Verify signature using STRIPE_WEBHOOK_SECRET
+
+3. On successful payment:
+
+- create digitalCard
+- set paymentStatus = "paid"
+- attach purchaseId + customerId
+```
+
+---
+
+## 🔧 FIX 8 — Enforce slug uniqueness + generation
+
+```prompt
+Update card creation logic:
+
+1. Auto-generate slug:
+
+slug = slugify(name + randomSuffix)
+
+2. Retry if collision
+
+3. Ensure uniqueIndex already applied
+```
+
+---
+
+## 🔧 FIX 9 — Add lead capture readiness
+
+```prompt
+Update digitalCards table:
+
+Add:
+
+leadWebhookUrl: text("lead_webhook_url"),
+leadEmail: text("lead_email"),
+
+Prepare for future automation triggers.
+```
+
+---
+
+## 🔧 FIX 10 — Prepare for Apex integration (DO NOT SKIP)
+
+```prompt
+Ensure:
+
+- digital_card is included in PLAN_TIERS (already done)
+- createdByUserId links to Apex user system
+- standalone cards can later be "claimed" into SaaS account
+
+Do NOT isolate data permanently.
+```
+
+---
+
+If you want next:
+
+Say: **“monetization prompts”** or **“funnel prompts”**

@@ -1859,6 +1859,96 @@ export const insertMailchimpSyncLogSchema = createInsertSchema(mailchimpSyncLogs
 export type InsertMailchimpSyncLog = z.infer<typeof insertMailchimpSyncLogSchema>;
 export type MailchimpSyncLog = typeof mailchimpSyncLogs.$inferSelect;
 
+// ==========================================
+// STANDALONE DIGITAL BUSINESS CARD PRODUCT
+// ==========================================
+
+export const standaloneCardUsers = pgTable("standalone_card_users", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const standaloneCards = pgTable("standalone_cards", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => standaloneCardUsers.id).notNull(),
+  slug: text("slug").notNull(),
+  fullName: text("full_name").notNull(),
+  businessName: text("business_name"),
+  title: text("title"),
+  phone: text("phone"),
+  email: text("email"),
+  website: text("website"),
+  address: text("address"),
+  bio: text("bio"),
+  profileImageUrl: text("profile_image_url"),
+  logoUrl: text("logo_url"),
+  reviewLink: text("review_link"),
+  bookingLink: text("booking_link"),
+  instagramUrl: text("instagram_url"),
+  facebookUrl: text("facebook_url"),
+  tiktokUrl: text("tiktok_url"),
+  linkedinUrl: text("linkedin_url"),
+  youtubeUrl: text("youtube_url"),
+  customLinks: jsonb("custom_links"),
+  themeColor: text("theme_color").default("#0ea5e9"),
+  published: boolean("published").default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const standaloneOrders = pgTable("standalone_orders", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => standaloneCardUsers.id).notNull(),
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  stripeCheckoutSessionId: text("stripe_checkout_session_id"),
+  amount: integer("amount").notNull(),
+  paymentStatus: text("payment_status").default("pending").notNull(),
+  referralCodeUsed: text("referral_code_used"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const standaloneReferralCodes = pgTable("standalone_referral_codes", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => standaloneCardUsers.id).notNull(),
+  code: text("code").notNull(),
+  active: boolean("active").default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const standaloneReferrals = pgTable("standalone_referrals", {
+  id: serial("id").primaryKey(),
+  referrerUserId: integer("referrer_user_id").references(() => standaloneCardUsers.id).notNull(),
+  referredUserId: integer("referred_user_id").references(() => standaloneCardUsers.id).notNull(),
+  referredOrderId: integer("referred_order_id").references(() => standaloneOrders.id).notNull(),
+  commissionAmount: integer("commission_amount").notNull().default(1000),
+  status: text("status").default("pending").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  paidAt: timestamp("paid_at"),
+});
+
+export const insertStandaloneCardUserSchema = createInsertSchema(standaloneCardUsers).omit({ id: true, createdAt: true });
+export type InsertStandaloneCardUser = z.infer<typeof insertStandaloneCardUserSchema>;
+export type StandaloneCardUser = typeof standaloneCardUsers.$inferSelect;
+
+export const insertStandaloneCardSchema = createInsertSchema(standaloneCards).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertStandaloneCard = z.infer<typeof insertStandaloneCardSchema>;
+export type StandaloneCard = typeof standaloneCards.$inferSelect;
+
+export const insertStandaloneOrderSchema = createInsertSchema(standaloneOrders).omit({ id: true, createdAt: true });
+export type InsertStandaloneOrder = z.infer<typeof insertStandaloneOrderSchema>;
+export type StandaloneOrder = typeof standaloneOrders.$inferSelect;
+
+export const insertStandaloneReferralCodeSchema = createInsertSchema(standaloneReferralCodes).omit({ id: true, createdAt: true });
+export type InsertStandaloneReferralCode = z.infer<typeof insertStandaloneReferralCodeSchema>;
+export type StandaloneReferralCode = typeof standaloneReferralCodes.$inferSelect;
+
+export const insertStandaloneReferralSchema = createInsertSchema(standaloneReferrals).omit({ id: true, createdAt: true, paidAt: true });
+export type InsertStandaloneReferral = z.infer<typeof insertStandaloneReferralSchema>;
+export type StandaloneReferral = typeof standaloneReferrals.$inferSelect;
+
 export const PLAN_LIMITS: Record<string, Record<string, number>> = {
   starter: {
     messages_per_month: 500,

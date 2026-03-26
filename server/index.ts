@@ -200,6 +200,16 @@ app.post(
           }
           console.log(`[STRIPE] Subscription activated for user ${meta.userId} — ${meta.tierName}`);
         }
+
+        if (meta?.source === "standalone_card") {
+          try {
+            const { handleStandaloneCardWebhook } = await import("./routes/standalone-cards");
+            await handleStandaloneCardWebhook(session);
+            console.log(`[STANDALONE] Card fulfillment processed for session ${session.id}`);
+          } catch (scErr: any) {
+            console.error(`[STANDALONE] Card fulfillment error:`, scErr.message);
+          }
+        }
       }
 
       if (event?.type === "customer.subscription.updated" || event?.type === "customer.subscription.deleted") {

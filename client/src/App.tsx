@@ -66,6 +66,13 @@ const NotificationPreferencesPage = lazy(() => import("@/pages/notification-pref
 const ABTestingPage = lazy(() => import("@/pages/ab-testing"));
 const CrashReportsPage = lazy(() => import("@/pages/crash-reports"));
 const ExecutionTimelinePage = lazy(() => import("@/pages/execution-timeline"));
+const StandaloneCardLanding = lazy(() => import("@/pages/standalone-card-landing"));
+const StandaloneCardCreate = lazy(() => import("@/pages/standalone-card-create"));
+const StandaloneCardPreview = lazy(() => import("@/pages/standalone-card-preview"));
+const StandaloneCardSuccess = lazy(() => import("@/pages/standalone-card-success"));
+const StandaloneCardView = lazy(() => import("@/pages/standalone-card-view"));
+const StandaloneCardDashboard = lazy(() => import("@/pages/standalone-card-dashboard"));
+const StandaloneCardAdmin = lazy(() => import("@/pages/standalone-card-admin"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const LandingPage = lazy(() => import("@/pages/landing"));
 const MarketersLanding = lazy(() => import("@/pages/marketers-landing"));
@@ -147,6 +154,13 @@ function Router() {
         <Route path="/cards" component={CardsLanding} />
         <Route path="/portal/:token" component={ClientPortal} />
         <Route path="/sentinel/:token" component={ExternalSentinelPage} />
+        <Route path="/standalone/card" component={StandaloneCardLanding} />
+        <Route path="/standalone/create" component={StandaloneCardCreate} />
+        <Route path="/standalone/preview" component={StandaloneCardPreview} />
+        <Route path="/standalone/success" component={StandaloneCardSuccess} />
+        <Route path="/standalone/c/:slug" component={StandaloneCardView} />
+        <Route path="/standalone/dashboard" component={StandaloneCardDashboard} />
+        <Route path="/standalone/admin" component={StandaloneCardAdmin} />
         <Route path="/review/:subAccountId" component={ReviewBuffer} />
         <Route path="/login" component={LoginPage} />
         <Route path="/privacy" component={PrivacyPage} />

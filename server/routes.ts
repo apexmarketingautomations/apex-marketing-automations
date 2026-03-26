@@ -32,6 +32,7 @@ import { registerTimelineRoutes } from "./routes/timeline";
 import { registerEventLogRoutes } from "./routes/eventLog";
 import { registerMailchimpRoutes } from "./routes/mailchimp";
 import { registerPublicPlatformRoutes } from "./routes/public-platform";
+import { registerStandaloneCardsRoutes } from "./routes/standalone-cards";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -68,6 +69,7 @@ export async function registerRoutes(
   registerEventLogRoutes(app);
   registerMailchimpRoutes(app);
   registerPublicPlatformRoutes(app);
+  registerStandaloneCardsRoutes(app);
 
   return httpServer;
 }
