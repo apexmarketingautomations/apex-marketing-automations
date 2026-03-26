@@ -23,8 +23,38 @@ function generateReferralCode(): string {
 }
 
 export async function handleStandaloneCardWebhook(session: any) {
-  const cardData = JSON.parse(session.metadata?.cardData || "{}");
-  const referralCode = session.metadata?.referralCode || null;
+  const meta = session.metadata || {};
+  const referralCode = meta.referralCode || null;
+
+  let cardData: any;
+  if (meta.cardData) {
+    cardData = JSON.parse(meta.cardData);
+  } else {
+    const socials = meta.cd_socials ? JSON.parse(meta.cd_socials) : {};
+    let customLinks = null;
+    try { customLinks = meta.cd_customLinks ? JSON.parse(meta.cd_customLinks) : null; } catch {}
+    cardData = {
+      fullName: meta.cd_fullName || "",
+      email: meta.cd_email || "",
+      phone: meta.cd_phone || "",
+      businessName: meta.cd_businessName || "",
+      title: meta.cd_title || "",
+      website: meta.cd_website || "",
+      address: meta.cd_address || "",
+      bio: meta.cd_bio || "",
+      profileImageUrl: meta.cd_profileImageUrl || "",
+      logoUrl: meta.cd_logoUrl || "",
+      reviewLink: meta.cd_reviewLink || "",
+      bookingLink: meta.cd_bookingLink || "",
+      themeColor: meta.cd_themeColor || "#0ea5e9",
+      instagramUrl: socials.instagramUrl || "",
+      facebookUrl: socials.facebookUrl || "",
+      tiktokUrl: socials.tiktokUrl || "",
+      linkedinUrl: socials.linkedinUrl || "",
+      youtubeUrl: socials.youtubeUrl || "",
+      customLinks,
+    };
+  }
 
   if (!cardData.email) return;
 
@@ -194,6 +224,36 @@ export function registerStandaloneCardsRoutes(app: Express) {
     const priceInCents = paidCount < PROMO_LIMIT ? PROMO_PRICE_CENTS : CARD_PRICE_CENTS;
 
     const baseUrl = `${req.protocol}://${req.get("host")}`;
+
+    const meta: Record<string, string> = {
+      source: "standalone_card",
+      referralCode: referralCode || "",
+      cd_fullName: (cardData.fullName || "").slice(0, 500),
+      cd_email: (cardData.email || "").slice(0, 500),
+      cd_phone: (cardData.phone || "").slice(0, 500),
+      cd_businessName: (cardData.businessName || "").slice(0, 500),
+      cd_title: (cardData.title || "").slice(0, 500),
+      cd_website: (cardData.website || "").slice(0, 500),
+      cd_address: (cardData.address || "").slice(0, 500),
+      cd_bio: (cardData.bio || "").slice(0, 500),
+      cd_profileImageUrl: (cardData.profileImageUrl || "").slice(0, 500),
+      cd_logoUrl: (cardData.logoUrl || "").slice(0, 500),
+      cd_reviewLink: (cardData.reviewLink || "").slice(0, 500),
+      cd_bookingLink: (cardData.bookingLink || "").slice(0, 500),
+      cd_themeColor: (cardData.themeColor || "#0ea5e9").slice(0, 500),
+    };
+    const socialUrls = JSON.stringify({
+      instagramUrl: cardData.instagramUrl || "",
+      facebookUrl: cardData.facebookUrl || "",
+      tiktokUrl: cardData.tiktokUrl || "",
+      linkedinUrl: cardData.linkedinUrl || "",
+      youtubeUrl: cardData.youtubeUrl || "",
+    });
+    meta.cd_socials = socialUrls.slice(0, 500);
+    if (cardData.customLinks && cardData.customLinks.length > 0) {
+      meta.cd_customLinks = JSON.stringify(cardData.customLinks).slice(0, 500);
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
@@ -211,11 +271,7 @@ export function registerStandaloneCardsRoutes(app: Express) {
         },
         quantity: 1,
       }],
-      metadata: {
-        source: "standalone_card",
-        cardData: JSON.stringify(cardData),
-        referralCode: referralCode || "",
-      },
+      metadata: meta,
       success_url: `${baseUrl}/standalone/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/standalone/preview`,
     });
@@ -232,8 +288,7 @@ export function registerStandaloneCardsRoutes(app: Express) {
       return res.status(404).json({ error: "Session not found" });
     }
 
-    const cardData = JSON.parse(session.metadata.cardData || "{}");
-    const email = cardData.email || session.customer_email;
+    const email = session.metadata.cd_email || session.customer_email || "";
 
     let [user] = await db.select().from(standaloneCardUsers)
       .where(eq(standaloneCardUsers.email, email)).limit(1);
