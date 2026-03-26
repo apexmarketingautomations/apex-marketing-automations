@@ -6,7 +6,7 @@ import { eq, sql, and, desc, gte } from "drizzle-orm";
 import crypto from "crypto";
 import { asyncHandler, parseIntParam, verifyAccountOwnership } from "./helpers";
 
-function generateVCard(card: any): string {
+function generateVCard(card: any, baseUrl?: string): string {
   const lines = [
     "BEGIN:VCARD",
     "VERSION:3.0",
@@ -17,10 +17,21 @@ function generateVCard(card: any): string {
   if (card.company) lines.push(`ORG:${card.company}`);
   if (card.phone) lines.push(`TEL;TYPE=CELL:${card.phone}`);
   if (card.email) lines.push(`EMAIL;TYPE=INTERNET:${card.email}`);
-  if (card.website) lines.push(`URL:${card.website}`);
+  if (card.website) lines.push(`URL;TYPE=WORK:${card.website}`);
+  if (card.slug && baseUrl) lines.push(`URL;TYPE=HOME:${baseUrl}/card/${card.slug}`);
   if (card.location) lines.push(`ADR;TYPE=WORK:;;${card.location};;;;`);
-  if (card.bio) lines.push(`NOTE:${card.bio.replace(/\n/g, "\\n")}`);
+  const noteLines: string[] = [];
+  if (card.bio) noteLines.push(card.bio.replace(/\n/g, "\\n"));
+  if (card.slug && baseUrl) noteLines.push(`Digital Card: ${baseUrl}/card/${card.slug}`);
+  if (noteLines.length) lines.push(`NOTE:${noteLines.join("\\n")}`);
   if (card.photoUrl) lines.push(`PHOTO;VALUE=URI:${card.photoUrl}`);
+  const socialLinks = card.socialLinks || {};
+  if (socialLinks.instagram) lines.push(`X-SOCIALPROFILE;TYPE=instagram:${socialLinks.instagram}`);
+  if (socialLinks.facebook) lines.push(`X-SOCIALPROFILE;TYPE=facebook:${socialLinks.facebook}`);
+  if (socialLinks.linkedin) lines.push(`X-SOCIALPROFILE;TYPE=linkedin:${socialLinks.linkedin}`);
+  if (socialLinks.twitter) lines.push(`X-SOCIALPROFILE;TYPE=twitter:${socialLinks.twitter}`);
+  if (socialLinks.tiktok) lines.push(`X-SOCIALPROFILE;TYPE=tiktok:${socialLinks.tiktok}`);
+  if (socialLinks.youtube) lines.push(`X-SOCIALPROFILE;TYPE=youtube:${socialLinks.youtube}`);
   lines.push("END:VCARD");
   return lines.join("\r\n");
 }
@@ -283,7 +294,8 @@ export function registerCardsRoutes(app: Express) {
     if (!card || !card.isActive || !card.isPublic) return res.status(404).json({ error: "Card not found" });
     if (card.paymentStatus !== "paid") return res.status(403).json({ error: "Not available" });
 
-    const vcard = generateVCard(card);
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const vcard = generateVCard(card, baseUrl);
     const filename = `${(card.name || "contact").replace(/\s+/g, "_")}.vcf`;
     res.setHeader("Content-Type", "text/vcard; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);

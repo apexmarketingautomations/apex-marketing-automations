@@ -123,7 +123,7 @@ export async function handleStandaloneCardWebhook(session: any) {
   }
 }
 
-function generateVCard(card: any): string {
+function generateVCard(card: any, baseUrl?: string): string {
   const lines = [
     "BEGIN:VCARD", "VERSION:3.0",
     `FN:${card.fullName || ""}`,
@@ -133,10 +133,19 @@ function generateVCard(card: any): string {
   if (card.businessName) lines.push(`ORG:${card.businessName}`);
   if (card.phone) lines.push(`TEL;TYPE=CELL:${card.phone}`);
   if (card.email) lines.push(`EMAIL;TYPE=INTERNET:${card.email}`);
-  if (card.website) lines.push(`URL:${card.website}`);
+  if (card.website) lines.push(`URL;TYPE=WORK:${card.website}`);
+  if (card.slug && baseUrl) lines.push(`URL;TYPE=HOME:${baseUrl}/standalone/card/${card.slug}`);
   if (card.address) lines.push(`ADR;TYPE=WORK:;;${card.address};;;;`);
-  if (card.bio) lines.push(`NOTE:${card.bio.replace(/\n/g, "\\n")}`);
+  const noteLines: string[] = [];
+  if (card.bio) noteLines.push(card.bio.replace(/\n/g, "\\n"));
+  if (card.slug && baseUrl) noteLines.push(`Digital Card: ${baseUrl}/standalone/card/${card.slug}`);
+  if (noteLines.length) lines.push(`NOTE:${noteLines.join("\\n")}`);
   if (card.profileImageUrl) lines.push(`PHOTO;VALUE=URI:${card.profileImageUrl}`);
+  if (card.instagramUrl) lines.push(`X-SOCIALPROFILE;TYPE=instagram:${card.instagramUrl}`);
+  if (card.facebookUrl) lines.push(`X-SOCIALPROFILE;TYPE=facebook:${card.facebookUrl}`);
+  if (card.linkedinUrl) lines.push(`X-SOCIALPROFILE;TYPE=linkedin:${card.linkedinUrl}`);
+  if (card.tiktokUrl) lines.push(`X-SOCIALPROFILE;TYPE=tiktok:${card.tiktokUrl}`);
+  if (card.youtubeUrl) lines.push(`X-SOCIALPROFILE;TYPE=youtube:${card.youtubeUrl}`);
   lines.push("END:VCARD");
   return lines.join("\r\n");
 }
@@ -275,7 +284,8 @@ export function registerStandaloneCardsRoutes(app: Express) {
       .where(and(eq(standaloneCards.slug, slug), eq(standaloneCards.published, true))).limit(1);
     if (!card) return res.status(404).json({ error: "Card not found" });
 
-    const vcard = generateVCard(card);
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const vcard = generateVCard(card, baseUrl);
     const filename = `${(card.fullName || "contact").replace(/\s+/g, "_")}.vcf`;
     res.setHeader("Content-Type", "text/vcard; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
