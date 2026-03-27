@@ -34,6 +34,13 @@ export default function StandaloneCardCreate() {
       }
       setForm(prev => ({ ...prev, ...data }));
     }
+    const sid = sessionStorage.getItem("standalone_session_id") || crypto.randomUUID();
+    sessionStorage.setItem("standalone_session_id", sid);
+    fetch("/api/standalone/track-view", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: "create", sessionId: sid }),
+    }).catch(() => {});
   }, []);
 
   const updateField = (field: string, value: string) => {

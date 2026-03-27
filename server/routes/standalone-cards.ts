@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import {
   standaloneCardUsers, standaloneCards, standaloneOrders,
-  standaloneReferralCodes, standaloneReferrals,
+  standaloneReferralCodes, standaloneReferrals, standalonePageViews,
 } from "@shared/schema";
 import { db } from "../db";
 import { eq, sql, and, or, desc, ilike } from "drizzle-orm";
@@ -689,6 +689,82 @@ export function registerStandaloneCardsRoutes(app: Express) {
     await db.insert(standaloneReferralCodes).values({ userId: user.id, code: refCode, active: true }).onConflictDoNothing();
 
     res.json({ card, referralCode: refCode });
+  }));
+
+  app.post("/api/standalone/track-view", asyncHandler(async (req, res) => {
+    const { page, referralCode, sessionId } = req.body;
+    if (!page) return res.status(400).json({ error: "Page required" });
+
+    const ua = req.headers["user-agent"] || "";
+    const ip = req.headers["x-forwarded-for"]?.toString().split(",")[0] || req.socket.remoteAddress || "";
+    const ipHash = crypto.createHash("sha256").update(ip + "standalone-salt").digest("hex").slice(0, 16);
+
+    await db.insert(standalonePageViews).values({
+      page: page.slice(0, 100),
+      referralCode: referralCode || null,
+      userAgent: ua.slice(0, 500),
+      ipHash,
+      sessionId: sessionId || null,
+    });
+    res.json({ ok: true });
+  }));
+
+  app.get("/api/standalone/admin/analytics", asyncHandler(async (req, res) => {
+    const secret = req.headers["x-admin-secret"];
+    if (secret !== ADMIN_SECRET) return res.status(401).json({ error: "Unauthorized" });
+
+    const period = (req.query.period as string) || "7d";
+    let intervalSql = "7 days";
+    if (period === "24h") intervalSql = "1 day";
+    else if (period === "30d") intervalSql = "30 days";
+    else if (period === "all") intervalSql = "10 years";
+
+    const pageViews = await db.select({
+      page: standalonePageViews.page,
+      count: sql<number>`count(*)`,
+      uniqueVisitors: sql<number>`count(distinct ${standalonePageViews.ipHash})`,
+    }).from(standalonePageViews)
+      .where(sql`${standalonePageViews.createdAt} > now() - interval '${sql.raw(intervalSql)}'`)
+      .groupBy(standalonePageViews.page);
+
+    const dailyViews = await db.select({
+      day: sql<string>`date_trunc('day', ${standalonePageViews.createdAt})::date::text`,
+      count: sql<number>`count(*)`,
+      uniqueVisitors: sql<number>`count(distinct ${standalonePageViews.ipHash})`,
+    }).from(standalonePageViews)
+      .where(sql`${standalonePageViews.createdAt} > now() - interval '${sql.raw(intervalSql)}'`)
+      .groupBy(sql`date_trunc('day', ${standalonePageViews.createdAt})`)
+      .orderBy(sql`date_trunc('day', ${standalonePageViews.createdAt})`);
+
+    const [totalViews] = await db.select({ count: sql<number>`count(*)` }).from(standalonePageViews)
+      .where(sql`${standalonePageViews.createdAt} > now() - interval '${sql.raw(intervalSql)}'`);
+
+    const referralSources = await db.select({
+      referralCode: standalonePageViews.referralCode,
+      count: sql<number>`count(*)`,
+    }).from(standalonePageViews)
+      .where(and(
+        sql`${standalonePageViews.createdAt} > now() - interval '${sql.raw(intervalSql)}'`,
+        sql`${standalonePageViews.referralCode} is not null and ${standalonePageViews.referralCode} != ''`
+      ))
+      .groupBy(standalonePageViews.referralCode)
+      .orderBy(sql`count(*) desc`)
+      .limit(20);
+
+    const funnelSteps = ["landing", "create", "preview", "checkout", "upsell", "success"];
+    const funnel = pageViews.reduce((acc, pv) => {
+      acc[pv.page] = { views: Number(pv.count), unique: Number(pv.uniqueVisitors) };
+      return acc;
+    }, {} as Record<string, { views: number; unique: number }>);
+
+    res.json({
+      period,
+      totalViews: Number(totalViews.count),
+      pageViews: funnel,
+      funnelSteps,
+      dailyViews: dailyViews.map(d => ({ day: d.day, views: Number(d.count), unique: Number(d.uniqueVisitors) })),
+      referralSources: referralSources.map(r => ({ code: r.referralCode, views: Number(r.count) })),
+    });
   }));
 
   app.get("/api/standalone/admin/stats", asyncHandler(async (req, res) => {

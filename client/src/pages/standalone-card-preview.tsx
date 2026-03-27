@@ -21,12 +21,25 @@ export default function StandaloneCardPreview() {
     }
     fetch("/api/standalone/promo-status").then(r => r.json()).then(setPromo).catch(() => {});
     trackEvent("order_bump_viewed");
+    const sid = sessionStorage.getItem("standalone_session_id") || crypto.randomUUID();
+    sessionStorage.setItem("standalone_session_id", sid);
+    fetch("/api/standalone/track-view", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: "preview", sessionId: sid }),
+    }).catch(() => {});
   }, [setLocation]);
 
   const handleCheckout = async () => {
     if (!cardData) return;
     setLoading(true);
     trackEvent("checkout_started", { premiumBump, referral: sessionStorage.getItem("standalone_ref") || "" });
+    const sid = sessionStorage.getItem("standalone_session_id") || "";
+    fetch("/api/standalone/track-view", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: "checkout", sessionId: sid }),
+    }).catch(() => {});
     try {
       const referralCode = sessionStorage.getItem("standalone_ref") || "";
       const res = await fetch("/api/standalone/create-checkout", {

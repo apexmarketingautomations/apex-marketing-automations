@@ -76,5 +76,7 @@ Preferred communication style: Simple, everyday language.
   - `/card/:slug` — Public card view (6 themes, sticky action bar, share modal, QR, services, links, social)
   - `/card/success` — Post-checkout success page with card URL and edit link
   - `/card/edit/:token` — Full card editor (basic info, contact, images, appearance, social links, custom links, services, SEO)
-- **Standalone Product** (separate referral system): `/standalone/*` routes with `standalone_cards`, `standalone_orders`, `standalone_referral_codes`, `standalone_referrals` tables. Promo pricing ($24.50 for first 20 orders), $10 referral commissions.
+- **Standalone Product** (separate referral system): `/standalone/*` routes with `standalone_cards`, `standalone_orders`, `standalone_referral_codes`, `standalone_referrals`, `standalone_page_views` tables. Promo pricing ($24.50 for first 20 orders), $10 referral commissions.
+- **Server-Side Analytics**: `standalone_page_views` table tracks page views across the entire funnel (landing → create → preview → checkout → upsell → success) with IP hashing, session tracking, and referral attribution. Admin analytics endpoint at `GET /api/standalone/admin/analytics` returns funnel metrics, daily views, unique visitors, and referral sources by period.
+- **Landing Page**: 7-section conversion page with interactive demo card, price comparison (paper vs digital), stats bar, how-it-works steps, buying-objection FAQs, strong price anchoring, and "See a live example" button.
 - **Routing**: `/card/:slug` is the canonical URL. `/card/success`, `/card/edit/:token` are public routes.

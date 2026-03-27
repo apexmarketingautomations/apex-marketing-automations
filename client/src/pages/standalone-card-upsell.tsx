@@ -18,6 +18,13 @@ export default function StandaloneCardUpsell() {
     }
     setSessionId(sid);
     trackEvent("upsell_viewed");
+    const trackSid = sessionStorage.getItem("standalone_session_id") || crypto.randomUUID();
+    sessionStorage.setItem("standalone_session_id", trackSid);
+    fetch("/api/standalone/track-view", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: "upsell", sessionId: trackSid }),
+    }).catch(() => {});
   }, [setLocation]);
 
   const handleAccept = async () => {

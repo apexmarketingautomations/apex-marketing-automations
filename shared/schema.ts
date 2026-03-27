@@ -1993,6 +1993,23 @@ export const insertStandaloneReferralSchema = createInsertSchema(standaloneRefer
 export type InsertStandaloneReferral = z.infer<typeof insertStandaloneReferralSchema>;
 export type StandaloneReferral = typeof standaloneReferrals.$inferSelect;
 
+export const standalonePageViews = pgTable("standalone_page_views", {
+  id: serial("id").primaryKey(),
+  page: text("page").notNull(),
+  referralCode: text("referral_code"),
+  userAgent: text("user_agent"),
+  ipHash: text("ip_hash"),
+  sessionId: text("session_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_spv_page_created").on(table.page, table.createdAt),
+  index("idx_spv_session").on(table.sessionId),
+]);
+
+export const insertStandalonePageViewSchema = createInsertSchema(standalonePageViews).omit({ id: true, createdAt: true });
+export type InsertStandalonePageView = z.infer<typeof insertStandalonePageViewSchema>;
+export type StandalonePageView = typeof standalonePageViews.$inferSelect;
+
 export const PLAN_LIMITS: Record<string, Record<string, number>> = {
   starter: {
     messages_per_month: 500,

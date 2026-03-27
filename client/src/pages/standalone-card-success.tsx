@@ -17,6 +17,14 @@ export default function StandaloneCardSuccess() {
       return;
     }
 
+    const trackSid = sessionStorage.getItem("standalone_session_id") || crypto.randomUUID();
+    sessionStorage.setItem("standalone_session_id", trackSid);
+    fetch("/api/standalone/track-view", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: "success", sessionId: trackSid }),
+    }).catch(() => {});
+
     let attempts = 0;
     const poll = async () => {
       try {
