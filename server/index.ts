@@ -70,18 +70,35 @@ async function initStripe() {
 
     const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
     if (domain) {
+      const webhookBaseUrl = `https://${domain}`;
+      const webhookUrl = `${webhookBaseUrl}/api/stripe/webhook`;
       try {
-        const webhookBaseUrl = `https://${domain}`;
-        const result = await stripeSync.findOrCreateManagedWebhook(
-          `${webhookBaseUrl}/api/stripe/webhook`
-        );
+        const result = await stripeSync.findOrCreateManagedWebhook(webhookUrl);
         if (result?.webhook?.url) {
           console.log(`[STRIPE] Webhook configured: ${result.webhook.url}`);
         } else {
           console.log("[STRIPE] Webhook registered (no URL returned)");
         }
       } catch (whErr: any) {
-        console.log("[STRIPE] Webhook setup deferred — will retry on next restart");
+        if (whErr?.code === "resource_missing" || whErr?.message?.includes("No such webhook endpoint")) {
+          console.log("[STRIPE] Stale webhook endpoint detected — clearing and re-creating...");
+          try {
+            const { Pool } = await import("pg");
+            const pool = new Pool({ connectionString: databaseUrl, max: 1 });
+            await pool.query("DELETE FROM _managed_webhooks WHERE 1=1").catch(() => {});
+            await pool.end();
+            const retryResult = await stripeSync.findOrCreateManagedWebhook(webhookUrl);
+            if (retryResult?.webhook?.url) {
+              console.log(`[STRIPE] Webhook re-created: ${retryResult.webhook.url}`);
+            } else {
+              console.log("[STRIPE] Webhook re-created (no URL returned)");
+            }
+          } catch (retryErr: any) {
+            console.log("[STRIPE] Webhook re-creation failed:", retryErr?.message || retryErr);
+          }
+        } else {
+          console.log("[STRIPE] Webhook setup deferred — will retry on next restart");
+        }
       }
     } else {
       console.log("[STRIPE] No public domain found, skipping webhook setup");
