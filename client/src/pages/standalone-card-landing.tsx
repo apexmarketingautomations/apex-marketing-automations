@@ -106,8 +106,7 @@ function DemoCard({ onCta }: { onCta: () => void }) {
 
 export default function StandaloneCardLanding() {
   const [, setLocation] = useLocation();
-  const [promo, setPromo] = useState<any>(null);
-  const [showDemo, setShowDemo] = useState(false);
+  const [promo, setPromo] = useState<any>({ promoActive: true, promoPrice: 2450, regularPrice: 4900, spotsTotal: 20, spotsLeft: 20 });
   const demoRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -131,7 +130,6 @@ export default function StandaloneCardLanding() {
 
   const goCreate = () => setLocation("/standalone/create");
   const scrollToDemo = () => {
-    setShowDemo(true);
     setTimeout(() => demoRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 100);
   };
 
@@ -205,7 +203,7 @@ export default function StandaloneCardLanding() {
               { value: "$0/mo", label: "No subscriptions", icon: Shield },
               { value: "∞", label: "Shares & saves", icon: Share2 },
             ].map((stat, i) => (
-              <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 + i * 0.1 }}
+              <motion.div key={i} initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.5 }} transition={{ delay: i * 0.1 }}
                 className="text-center py-5 bg-white/[0.02] border border-white/[0.06] rounded-2xl">
                 <stat.icon className="w-5 h-5 text-cyan-400 mx-auto mb-2" />
                 <p className="text-2xl font-extrabold text-white">{stat.value}</p>
@@ -233,8 +231,8 @@ export default function StandaloneCardLanding() {
                 { icon: QrCode, title: "Built-in QR code", desc: "Print it on flyers, receipts, signage, or your desk. Anyone can scan and save you instantly." },
                 { icon: RefreshCw, title: "Update anytime", desc: "Changed your number? New role? Update your card from your dashboard — it stays current." },
               ].map((item, i) => (
-                <motion.div key={i} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.2 + i * 0.1 }}
+                <motion.div key={i} initial={{ opacity: 0, x: 10 }} whileInView={{ opacity: 1, x: 0 }}
+                  viewport={{ once: true, amount: 0.5 }} transition={{ delay: i * 0.1 }}
                   className="flex gap-3">
                   <div className="w-10 h-10 rounded-xl bg-cyan-500/10 flex items-center justify-center shrink-0">
                     <item.icon className="w-5 h-5 text-cyan-400" />
@@ -262,8 +260,8 @@ export default function StandaloneCardLanding() {
               { icon: Zap, title: "Built in Minutes", desc: "Fill out a simple form. Your card goes live right after payment." },
               { icon: Shield, title: "No Subscription", desc: "One payment. Your card stays live. No monthly fees, ever." },
             ].map((item, i) => (
-              <motion.div key={i} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.15 + i * 0.07 }}
+              <motion.div key={i} initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.3 }} transition={{ delay: i * 0.07 }}
                 className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5"
               >
                 <item.icon className="w-7 h-7 text-cyan-400 mb-3" />
@@ -287,8 +285,8 @@ export default function StandaloneCardLanding() {
               { icon: QrCode, text: "QR code for print materials, signage, and events" },
               { icon: RefreshCw, text: "Edit your card anytime from your dashboard — always free" },
             ].map((item, i) => (
-              <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.1 + i * 0.05 }}
+              <motion.div key={i} initial={{ opacity: 0, x: -10 }} whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true, amount: 0.5 }} transition={{ delay: i * 0.05 }}
                 className="flex items-center gap-4 px-5 py-3.5 bg-white/[0.02] border border-white/[0.05] rounded-xl"
               >
                 <item.icon className="w-5 h-5 text-cyan-400 shrink-0" />
@@ -357,7 +355,7 @@ export default function StandaloneCardLanding() {
         </section>
 
         <section className="container mx-auto px-4 py-14 max-w-md" id="pricing">
-          <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+          <motion.div initial={{ opacity: 0, y: 15 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.3 }}>
             {promo && (
               <div className="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-7">
                 <p className="text-neutral-400 text-xs font-medium uppercase tracking-wider text-center mb-3">One-time payment</p>
@@ -413,8 +411,8 @@ export default function StandaloneCardLanding() {
               { step: "2", title: "Pay once", desc: "Secure one-time payment. No subscription, no hidden fees.", icon: DollarSign },
               { step: "3", title: "Share everywhere", desc: "Get your unique link and QR code. Text it, post it, print it.", icon: Share2 },
             ].map((item, i) => (
-              <motion.div key={i} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 + i * 0.1 }}
+              <motion.div key={i} initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.5 }} transition={{ delay: i * 0.1 }}
                 className="text-center relative">
                 <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center mx-auto mb-3">
                   <span className="text-cyan-400 font-extrabold text-lg">{item.step}</span>
