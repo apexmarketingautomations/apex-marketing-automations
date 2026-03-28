@@ -1,8 +1,9 @@
-import { useState } from "react";
-import { Brain, X, Bell, TrendingUp, Terminal, Crosshair, Factory, Bot, BookOpen, Shield } from "lucide-react";
+import { useState, useCallback } from "react";
+import { Brain, X, Bell, TrendingUp, Terminal, Crosshair, Factory, Bot, BookOpen, Shield, GripHorizontal } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { useAccount } from "@/hooks/use-account";
+import { useDraggable } from "@/hooks/use-draggable";
 import { CommandTab, InsightsTab, NudgesTab, IndustryTab, TrendsTab, ChatTab, AgentTab, MemoryTab } from "./intelligence";
 import type { TabId, HealthScore } from "./intelligence";
 
@@ -17,11 +18,43 @@ const TABS: { id: TabId; label: string; icon: typeof Brain }[] = [
   { id: "memory", label: "Memory", icon: BookOpen },
 ];
 
-export function ApexIntelligence() {
-  const [isOpen, setIsOpen] = useState(false);
+export interface ApexIntelligenceProps {
+  position?: "bottom-left" | "bottom-right" | "top-left" | "top-right" | "inline";
+  defaultOpen?: boolean;
+  accountId?: number;
+  showToggle?: boolean;
+  className?: string;
+  panelWidth?: number;
+  panelHeight?: number;
+}
+
+const POSITION_CLASSES: Record<string, string> = {
+  "bottom-left": "fixed bottom-6 left-6 md:left-[304px] z-50",
+  "bottom-right": "fixed bottom-6 right-6 z-50",
+  "top-left": "fixed top-20 left-6 md:left-[304px] z-50",
+  "top-right": "fixed top-20 right-6 z-50",
+  "inline": "relative z-10",
+};
+
+export function ApexIntelligence({
+  position = "bottom-left",
+  defaultOpen = false,
+  accountId,
+  showToggle = true,
+  className = "",
+  panelWidth = 420,
+  panelHeight = 620,
+}: ApexIntelligenceProps) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
   const [activeTab, setActiveTab] = useState<TabId>("command");
   const { activeAccountId } = useAccount();
-  const subAccountId = activeAccountId;
+  const subAccountId = accountId ?? activeAccountId;
+  const { offset, onPointerDown, resetOffset } = useDraggable();
+
+  const handleToggle = useCallback(() => {
+    if (isOpen) resetOffset();
+    setIsOpen(!isOpen);
+  }, [isOpen, resetOffset]);
 
   const { data: nudgeData } = useQuery<{ nudges: any[] }>({
     queryKey: ["/api/operator/cognitive/nudges/pending", subAccountId],
@@ -49,30 +82,39 @@ export function ApexIntelligence() {
   const nudgeCount = nudgeData?.nudges?.length || 0;
   const healthScore = healthData?.overall;
 
+  const isInline = position === "inline";
+  const positionClass = POSITION_CLASSES[position] || POSITION_CLASSES["bottom-left"];
+
   return (
     <>
-      {isOpen && (
+      {isOpen && !isInline && (
         <div
           className="fixed inset-0 z-40 bg-black/30 md:bg-transparent"
-          onClick={() => setIsOpen(false)}
+          onClick={handleToggle}
           data-testid="intel-backdrop"
         />
       )}
-    <div className="fixed bottom-6 left-6 md:left-[304px] z-50 flex flex-col items-start">
+    <div
+      className={`${positionClass} ${isInline ? "flex flex-col" : "flex flex-col items-start"} ${className}`}
+      style={!isInline ? { transform: `translate(${offset.x}px, ${offset.y}px)` } : undefined}
+    >
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.96 }}
+            initial={isInline ? undefined : { opacity: 0, y: 20, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.96 }}
+            exit={isInline ? undefined : { opacity: 0, y: 20, scale: 0.96 }}
             transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-            className="mb-4 w-[420px] max-w-[92vw] rounded-2xl overflow-hidden flex flex-col"
+            className={`${isInline ? "" : "mb-4"} rounded-2xl overflow-hidden flex flex-col`}
             onClick={(e) => e.stopPropagation()}
             style={{
-              maxHeight: "min(620px, calc(100vh - 120px))",
-              height: "620px",
+              width: isInline ? "100%" : `min(${panelWidth}px, 92vw)`,
+              maxHeight: isInline ? undefined : `min(${panelHeight}px, calc(100vh - 120px))`,
+              height: isInline ? undefined : `${panelHeight}px`,
               background: "linear-gradient(180deg, rgba(8,8,24,0.99) 0%, rgba(6,6,18,0.995) 100%)",
-              boxShadow: "0 0 0 1px rgba(139,92,246,0.12), 0 25px 60px -12px rgba(0,0,0,0.85), 0 0 100px rgba(139,92,246,0.06), 0 0 160px rgba(6,182,212,0.03)",
+              boxShadow: isInline
+                ? "0 0 0 1px rgba(139,92,246,0.12)"
+                : "0 0 0 1px rgba(139,92,246,0.12), 0 25px 60px -12px rgba(0,0,0,0.85), 0 0 100px rgba(139,92,246,0.06), 0 0 160px rgba(6,182,212,0.03)",
               backdropFilter: "blur(24px)",
             }}
             data-testid="panel-apex-intelligence"
@@ -89,6 +131,16 @@ export function ApexIntelligence() {
               </div>
               <div className="relative flex justify-between items-center">
                 <div className="flex items-center gap-3">
+                  {!isInline && (
+                    <div
+                      className="cursor-grab active:cursor-grabbing p-1 -ml-1 rounded-lg hover:bg-white/[0.06] transition-colors touch-none"
+                      onMouseDown={onPointerDown as any}
+                      onTouchStart={onPointerDown as any}
+                      data-testid="handle-intel-drag"
+                    >
+                      <GripHorizontal size={14} className="text-slate-600" />
+                    </div>
+                  )}
                   <div className="relative">
                     <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500/25 to-cyan-500/20 flex items-center justify-center border border-violet-500/25">
                       <Brain size={20} className="text-violet-400" />
@@ -104,13 +156,15 @@ export function ApexIntelligence() {
                     <p className="text-[10px] text-violet-400/60 mt-0.5 font-medium tracking-widest uppercase">Autonomous Operator</p>
                   </div>
                 </div>
-                <button
-                  onClick={() => setIsOpen(false)}
-                  className="p-2.5 rounded-xl hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
-                  data-testid="button-intel-close"
-                >
-                  <X size={20} />
-                </button>
+                {showToggle && (
+                  <button
+                    onClick={handleToggle}
+                    className="p-2.5 rounded-xl hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
+                    data-testid="button-intel-close"
+                  >
+                    <X size={20} />
+                  </button>
+                )}
               </div>
 
               <div className="relative flex mt-3 gap-0.5 bg-white/[0.02] rounded-lg p-0.5 border border-white/[0.04] overflow-x-auto scrollbar-none">
@@ -186,60 +240,62 @@ export function ApexIntelligence() {
         )}
       </AnimatePresence>
 
-      <motion.button
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        onClick={() => setIsOpen(!isOpen)}
-        className="group relative w-20 h-20 rounded-3xl flex items-center justify-center transition-all"
-        style={{
-          background: isOpen
-            ? "linear-gradient(135deg, rgba(139,92,246,0.2), rgba(6,182,212,0.15))"
-            : "linear-gradient(135deg, rgba(10,10,26,0.95), rgba(15,15,35,0.95))",
-          boxShadow: isOpen
-            ? "0 0 0 1px rgba(139,92,246,0.3), 0 8px 32px rgba(139,92,246,0.15)"
-            : "0 0 0 1px rgba(139,92,246,0.15), 0 12px 40px rgba(0,0,0,0.5), 0 0 80px rgba(139,92,246,0.1), 0 0 120px rgba(139,92,246,0.05)",
-          backdropFilter: "blur(16px)",
-        }}
-        data-testid="button-intel-toggle"
-      >
-        <AnimatePresence mode="wait">
-          {isOpen ? (
-            <motion.div key="close" initial={{ rotate: -90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: 90, opacity: 0 }} transition={{ duration: 0.15 }}>
-              <X size={32} className="text-violet-400" />
-            </motion.div>
-          ) : (
-            <motion.div
-              key="brain"
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: [1, 1.15, 1], opacity: 1 }}
-              exit={{ scale: 0.8, opacity: 0 }}
-              transition={{ scale: { duration: 2, repeat: Infinity, ease: "easeInOut" }, opacity: { duration: 0.15 } }}
-              className="relative"
-              style={{ filter: "drop-shadow(0 0 12px rgba(139,92,246,0.5))" }}
-            >
-              <Brain size={40} className="text-violet-400 group-hover:text-violet-300 transition-colors" />
-              {healthScore !== undefined && healthScore !== null && (
-                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded text-[8px] font-black bg-black/80 border border-violet-500/30 text-violet-300" data-testid="text-btn-health-score">
-                  {healthScore}
-                </span>
-              )}
-              {nudgeCount > 0 && (
-                <span className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-violet-500 text-white text-[9px] font-bold flex items-center justify-center shadow-lg shadow-violet-500/40">
-                  {nudgeCount > 9 ? "9+" : nudgeCount}
-                </span>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
+      {showToggle && (
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={handleToggle}
+          className="group relative w-20 h-20 rounded-3xl flex items-center justify-center transition-all"
+          style={{
+            background: isOpen
+              ? "linear-gradient(135deg, rgba(139,92,246,0.2), rgba(6,182,212,0.15))"
+              : "linear-gradient(135deg, rgba(10,10,26,0.95), rgba(15,15,35,0.95))",
+            boxShadow: isOpen
+              ? "0 0 0 1px rgba(139,92,246,0.3), 0 8px 32px rgba(139,92,246,0.15)"
+              : "0 0 0 1px rgba(139,92,246,0.15), 0 12px 40px rgba(0,0,0,0.5), 0 0 80px rgba(139,92,246,0.1), 0 0 120px rgba(139,92,246,0.05)",
+            backdropFilter: "blur(16px)",
+          }}
+          data-testid="button-intel-toggle"
+        >
+          <AnimatePresence mode="wait">
+            {isOpen ? (
+              <motion.div key="close" initial={{ rotate: -90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: 90, opacity: 0 }} transition={{ duration: 0.15 }}>
+                <X size={32} className="text-violet-400" />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="brain"
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: [1, 1.15, 1], opacity: 1 }}
+                exit={{ scale: 0.8, opacity: 0 }}
+                transition={{ scale: { duration: 2, repeat: Infinity, ease: "easeInOut" }, opacity: { duration: 0.15 } }}
+                className="relative"
+                style={{ filter: "drop-shadow(0 0 12px rgba(139,92,246,0.5))" }}
+              >
+                <Brain size={40} className="text-violet-400 group-hover:text-violet-300 transition-colors" />
+                {healthScore !== undefined && healthScore !== null && (
+                  <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded text-[8px] font-black bg-black/80 border border-violet-500/30 text-violet-300" data-testid="text-btn-health-score">
+                    {healthScore}
+                  </span>
+                )}
+                {nudgeCount > 0 && (
+                  <span className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-violet-500 text-white text-[9px] font-bold flex items-center justify-center shadow-lg shadow-violet-500/40">
+                    {nudgeCount > 9 ? "9+" : nudgeCount}
+                  </span>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-        {!isOpen && (
-          <>
-            <span className="absolute inset-0 rounded-3xl border border-violet-500/20 opacity-0 group-hover:opacity-100 transition-opacity" />
-            <span className="absolute inset-[-4px] rounded-[22px] border border-violet-400/15 animate-pulse" />
-            <span className="absolute inset-[-8px] rounded-[26px] border border-violet-400/5 animate-pulse" style={{ animationDelay: "0.5s" }} />
-          </>
-        )}
-      </motion.button>
+          {!isOpen && (
+            <>
+              <span className="absolute inset-0 rounded-3xl border border-violet-500/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <span className="absolute inset-[-4px] rounded-[22px] border border-violet-400/15 animate-pulse" />
+              <span className="absolute inset-[-8px] rounded-[26px] border border-violet-400/5 animate-pulse" style={{ animationDelay: "0.5s" }} />
+            </>
+          )}
+        </motion.button>
+      )}
     </div>
     </>
   );
