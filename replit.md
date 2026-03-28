@@ -52,6 +52,7 @@ Preferred communication style: Simple, everyday language.
 
 - **PostgreSQL**: Primary data storage.
 - **Google Gemini API**: Used for AI functionalities across various modules.
+- **AI Gateway** (`server/aiGateway.ts`): Centralized AI routing with OpenAI primary / Gemini fallback, circuit breaker (3 failures / 120s), default 12s timeout. Site generation uses 60s timeout for complex JSON output.
 - **Twilio**: Phone number provisioning, SMS, and WhatsApp Business API messaging.
 - **Vapi**: Voice AI agent deployment and outbound calling, with call-type routing and distinct prompt paths.
 - **Mailchimp Full Automation**: Event-driven email engine for contact sync, tag management, and campaign-based email sending.

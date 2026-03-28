@@ -1,0 +1,54 @@
+Investigate and fix the Apex sidebar responsiveness and create a properly updated mobile version of the site.
+
+Problem:
+The Apex sidebar does not format correctly when the viewport is compressed or the app is viewed on smaller screens. It becomes visually unstable, crowded, or poorly structured when squished. In addition, the site needs a properly designed mobile version instead of relying on desktop layout shrinking down.
+
+What to do:
+
+1. Fix sidebar responsiveness
+- Audit the Apex sidebar at desktop, laptop, tablet, and mobile breakpoints
+- Identify where layout breaks when width is reduced
+- Fix text overflow, icon alignment, collapsed states, spacing, wrapping, clipping, and scroll behavior
+- Ensure labels, sections, account switcher, search, and navigation items remain usable at narrower widths
+- Make collapsed and expanded sidebar states behave consistently
+- Prevent sidebar content from overlapping, truncating badly, or pushing main content incorrectly
+
+2. Build a real mobile experience
+- Do NOT just shrink the desktop UI
+- Create a true mobile-responsive layout for the platform
+- Define how navigation should work on mobile:
+  - slide-out drawer, bottom nav, top nav, or hybrid pattern as appropriate
+- Ensure primary flows are usable on phone:
+  - dashboard
+  - unified inbox
+  - contacts
+  - cards
+  - crash reports
+  - core settings/actions
+- Make touch targets, spacing, font sizing, panels, tabs, and forms mobile-friendly
+- Remove any desktop-only interaction patterns that break on touch devices
+
+3. Responsive architecture audit
+- Review layout containers, breakpoints, flex/grid behavior, overflow rules, min/max widths, and viewport assumptions
+- Identify components that are hardcoded for desktop dimensions
+- Refactor shared layout logic so modules adapt cleanly across screen sizes
+- Ensure the sidebar and main content area respond predictably together
+
+4. UX expectations
+- Sidebar should remain clean and usable at all supported widths
+- Mobile users should have a polished, intentional experience
+- No overlapping panels, clipped cards, broken tabs, or unreadable compressed sections
+- Maintain Apex branding and design consistency across desktop and mobile
+
+Return:
+- Root cause of the sidebar formatting issue
+- Exact files/components/layout systems changed
+- What was done for compressed desktop/tablet behavior
+- What was done for the dedicated mobile experience
+- Remaining responsive risk areas if any
+- Confirmation that the platform now behaves correctly across desktop, tablet, and phone sizes
+
+Execution constraints:
+- Do NOT do a random full redesign
+- Do NOT patch only one screen width
+- Treat this as a responsive system fix with a real mobile UX pass

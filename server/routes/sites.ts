@@ -231,13 +231,22 @@ export function registerSitesRoutes(app: Express) {
         const siteAiResult = await aiChat([
           { role: "system", content: SITE_SYSTEM_PROMPT },
           { role: "user", content: attempt === 0 ? userMessage : userMessage + "\n\nIMPORTANT: Return ONLY valid JSON. No markdown, no explanation, no text before or after the JSON object." },
-        ], { temperature: attempt === 0 ? 0.7 : 0.3, maxTokens: 4096, jsonMode: true, route: "generate-site" });
+        ], { temperature: attempt === 0 ? 0.7 : 0.3, maxTokens: 4096, jsonMode: true, route: "generate-site", timeoutMs: 60_000 });
+
+        if (siteAiResult.text.startsWith("[AI Error:")) {
+          throw new Error(siteAiResult.text);
+        }
+
         siteData = extractJson(siteAiResult.text);
         break;
       } catch (e: any) {
         lastError = e.message || "JSON parse failed";
         if (attempt === 1) {
-          return res.status(500).json({ error: "AI returned invalid JSON after retry", detail: lastError });
+          const isTimeout = lastError.includes("timed out") || lastError.includes("timeout");
+          return res.status(isTimeout ? 504 : 500).json({
+            error: isTimeout ? "AI generation timed out — please try again" : "AI returned invalid response after retry",
+            detail: lastError,
+          });
         }
       }
     }
