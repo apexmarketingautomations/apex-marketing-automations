@@ -1,0 +1,127 @@
+Investigate and fully fix the Website Integration module so it reflects a real, production-ready website connection product instead of an ambiguous placeholder.
+
+Problem:
+The current Website Integration section appears conceptually incomplete and potentially misleading.
+
+Major issues:
+- The UI suggests websites can be “connected” and used for chatbot/widget/embed functionality, but there is no clearly defined integration flow visible for:
+  - domain connection
+  - DNS/CNAME setup
+  - script/embed installation
+  - domain verification
+  - install verification
+  - connection health/status
+- The language is framed too narrowly around **client websites**, when in reality many users will want to connect:
+  - their own business website
+  - their own personal/professional site
+  - a brand site
+  - a landing page
+  - a client site
+- The current product framing and UX may be overpromising integration capability without showing the real mechanics required to make website integration actually work
+
+Treat this as a product-logic, UX, and systems-definition fix — not just a copy tweak.
+
+What to audit:
+1. Product logic audit
+- Determine what “website integration” actually means in this system today
+- Identify all currently supported integration methods, if any:
+  - JavaScript embed snippet
+  - DNS verification
+  - subdomain/CNAME
+  - iframe/embed widget
+  - CMS/plugin install
+  - webhook-based connection
+  - manual HTML insertion
+- Identify what is genuinely implemented vs implied but not actually operational
+
+2. UX and onboarding audit
+- Review the full Website Integration flow from first click to successful site connection
+- Identify missing steps, missing states, and missing guidance
+- Determine whether users currently have a valid way to:
+  - add a site
+  - verify ownership
+  - install the integration
+  - confirm it is live
+  - manage/update/remove the connection
+- Audit whether the page explains the difference between:
+  - connecting a domain
+  - embedding a widget
+  - training an AI on site content
+  - managing installed sites
+
+3. Technical architecture audit
+- Verify whether the platform currently supports proper website connection methods such as:
+  - CNAME/subdomain setup
+  - installable JS snippet
+  - domain verification token
+  - script loader / widget bootstrapping
+  - crawler/trainer association by domain
+  - per-site install status and environment status
+- Identify where the current system lacks the technical plumbing to justify the UI claims
+
+4. Copy and positioning audit
+- Remove or correct language that implies this is mainly for “client websites”
+- Reframe the product so it supports both:
+  - users connecting their own sites
+  - agencies connecting client sites
+- Ensure the module language accurately reflects the supported use cases without sounding half-defined or misleading
+
+Required fix:
+A. Clarify the product model
+- Define exactly what counts as a “connected site”
+- Define the supported connection methods
+- Distinguish clearly between:
+  - site ownership / domain record
+  - widget installation
+  - AI training source
+  - embeddable chatbot deployment
+  - integration health/status
+
+B. Build or correct the onboarding flow
+- Add a clear flow for connecting a site properly
+- If the correct method is script install, make that explicit
+- If DNS/CNAME/domain verification is required, add the proper setup flow
+- If CNAME is not required for this product, do NOT imply domain-style connection without explanation
+- Include clear setup instructions, success states, pending states, failed verification states, and troubleshooting states
+
+C. Fix the language and target model
+- Replace “client websites” language with more accurate product language that supports:
+  - your own site
+  - your business site
+  - your brand site
+  - a client site
+- Make the module broadly correct for both solo operators and agencies
+
+D. Fix UI truthfulness
+- Do NOT present websites as “connected” unless there is a real verified/install-complete state
+- Add real status distinctions such as:
+  - draft
+  - install pending
+  - verification pending
+  - connected
+  - disconnected
+  - error
+- Show what exactly is connected and how
+
+E. Ensure operational readiness
+- Users should be able to understand:
+  - what they need to do
+  - whether CNAME/DNS is required or not
+  - whether a script/widget install is enough
+  - whether the AI has actually been trained on the site
+  - whether the website integration is live and healthy
+
+Required return:
+- Root cause of why this section currently feels structurally wrong
+- What “website integration” actually means in the current implementation
+- What is real vs implied vs missing
+- Exact files/components/services/routes changed
+- What connection/install/verification model is now used
+- What copy and UX were corrected
+- Any remaining limitations or future work still needed
+
+Execution constraints:
+- Do NOT hand-wave this with surface-level copy updates only
+- Do NOT leave misleading product assumptions in place
+- Do NOT claim sites are connected unless there is a real install/verification model behind it
+- Fix both the product definition and the UX so this section becomes trustworthy, clear, and operationally valid

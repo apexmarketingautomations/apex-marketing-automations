@@ -1,0 +1,124 @@
+Completely fix the Apex sidebar responsiveness and deliver a real mobile-ready platform experience.
+
+This is not a cosmetic tweak.
+This is a platform usability and layout stability task.
+
+Problem:
+The current Apex layout breaks down when the viewport is compressed. The sidebar does not format correctly at narrower widths, and the mobile experience currently behaves like a squeezed desktop UI instead of an intentional phone/tablet product experience. This creates visual instability, poor usability, and a lower-quality product feel.
+
+Critical instruction:
+- Treat this as a responsive system fix, not a one-screen patch
+- Do NOT just hide overflow and call it fixed
+- Do NOT only optimize one breakpoint
+- Do NOT shrink desktop components without redesigning their mobile behavior
+- Do NOT introduce unrelated new features
+
+Primary objectives:
+1. Fix the sidebar so it behaves correctly across all supported widths
+2. Build a real mobile UX for the core platform instead of relying on desktop compression
+3. Stabilize layout behavior across desktop, laptop, tablet, and phone
+4. Preserve Apex branding and visual consistency while improving usability
+
+Required investigation:
+Audit the full responsive behavior of the platform, especially:
+- sidebar layout and collapse behavior
+- main content offset and width calculations
+- account switcher
+- search bar
+- nav item labels and icons
+- profile/user section
+- panel spacing and stacking
+- breakpoints and viewport assumptions
+- overflow rules
+- hardcoded widths/heights/margins
+- flex and grid behavior
+- drawer behavior on mobile
+- touch interactions vs hover-dependent UI
+
+Specifically identify:
+- where the sidebar overflows, clips, wraps badly, or becomes unreadable
+- where text truncation is broken or ugly
+- where icons, badges, or labels misalign
+- where main content gets pushed, clipped, or overlapped by the sidebar
+- where compressed layouts create broken tabs, unusable panels, or unreadable cards
+- which components are still desktop-assumption components and fail on tablet/phone
+
+Required implementation:
+A. Sidebar responsiveness
+- Fix expanded and collapsed sidebar behavior across desktop, laptop, and tablet widths
+- Ensure nav items, icons, labels, badges, account selector, search, and profile block all remain readable and usable
+- Add a proper intermediate state if needed (for example icon-only or compact tablet mode)
+- Prevent overflow, clipping, content collision, awkward wrapping, and broken spacing
+- Make sidebar width transitions predictable and visually stable
+- Ensure the main content area responds correctly to sidebar state changes
+
+B. Mobile navigation
+- Build an intentional mobile navigation pattern
+- Do NOT reuse the desktop sidebar unchanged on phone
+- Implement a clean mobile navigation experience such as:
+  - slide-out drawer
+  - top nav + drawer
+  - bottom nav for core modules if appropriate
+- Ensure menu open/close behavior is smooth, obvious, and touch-friendly
+- Ensure backdrop, dismissal, focus behavior, and route transitions feel polished
+- Ensure navigation closes properly after selection on mobile
+
+C. Core page mobile adaptation
+Make the main platform surfaces usable on phone and small tablet:
+- dashboard
+- unified inbox
+- contacts / CRM
+- digital cards
+- crash reports
+- key account/settings flows
+
+For these pages:
+- fix panels, cards, tabs, tables, forms, drawers, and modals
+- remove desktop-only interaction assumptions
+- improve spacing, font sizing, hierarchy, and touch target sizing
+- prevent horizontal overflow where it should not exist
+- make scrolling behavior intentional and usable
+- ensure critical actions remain visible and accessible
+
+D. Shared layout architecture
+- Audit shared layout containers and breakpoints at the system level
+- Refactor layout logic so responsiveness is driven by clean rules instead of scattered one-off overrides
+- Reconcile any duplicated or conflicting sidebar/mobile navigation implementations
+- Standardize breakpoint behavior so the app transitions cleanly between desktop, tablet, and phone layouts
+
+Validation requirements:
+Do NOT mark complete until this is verified in the running app across multiple widths.
+
+Minimum required validation:
+- desktop (large)
+- laptop
+- tablet
+- phone
+- collapsed sidebar state
+- expanded sidebar state
+- mobile nav open/closed state
+
+At each width/state, verify:
+- no clipped sidebar content
+- no broken wrapping
+- no overlapping UI
+- no unreadable compressed panels
+- no broken nav interactions
+- no main-content misalignment
+- no unusable touch targets
+- no desktop-only behavior breaking mobile usage
+
+Return required:
+- root cause(s) of the sidebar and mobile layout problems
+- exact files/components/layout systems changed
+- what was fixed for compressed desktop/laptop widths
+- what was changed for tablet behavior
+- what was changed for phone/mobile UX
+- any components that still need future responsive cleanup
+- explicit confirmation that the platform now behaves correctly across desktop, tablet, and phone sizes
+
+Execution constraints:
+- Do NOT do a random redesign
+- Do NOT stop at visual cleanup only
+- Do NOT claim success from code inspection alone
+- Fix the responsive system properly and verify it in the running app

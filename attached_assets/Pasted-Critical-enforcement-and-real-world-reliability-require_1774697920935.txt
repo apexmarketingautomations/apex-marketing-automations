@@ -1,0 +1,83 @@
+Critical enforcement and real-world reliability requirements:
+
+This module MUST operate on real, verifiable signals — not assumptions or placeholders.
+
+1. Anti-fake enforcement (non-negotiable)
+- Remove all fake or simulated metrics permanently
+- Do NOT use random values, estimates, or placeholder data for:
+  - page counts
+  - training success
+  - connection state
+- If real data cannot be obtained, return:
+  - explicit error state
+  - or "unknown / unavailable"
+- The system must never fabricate success
+
+2. Installation verification robustness
+- Verification must handle real-world conditions:
+  - delayed script loading (async/deferred scripts)
+  - CDN caching
+  - minor DOM variations
+- If verification fails:
+  - return a clear reason (script not found, page unreachable, blocked request, etc.)
+  - do NOT mark as connected
+- Add retry capability for verification
+
+3. Scraping/training reliability
+- If scraping fails due to:
+  - bot protection
+  - empty HTML (JS-rendered sites)
+  - network errors
+- Then:
+  - surface a clear failure state
+  - do NOT silently succeed
+- Store and expose scrape errors for debugging
+
+4. Domain and installation correctness
+- Ensure verification checks the exact domain entered by the user
+- Detect mismatch cases:
+  - script installed on different domain/subdomain
+  - redirects causing incorrect verification
+- Surface mismatch errors clearly
+
+5. Status integrity rules
+- "verified (connected)" can ONLY occur if:
+  - training completed successfully
+  - AND script is confirmed present on the target site
+- "trained" must NOT imply:
+  - chatbot is live
+  - widget is installed
+- Each state must represent a real, verifiable condition
+
+6. User guidance and recovery
+- When verification or training fails:
+  - provide actionable next steps
+  - do not leave user in ambiguous state
+- Examples:
+  - "Script not detected — ensure it is placed before </body>"
+  - "Site blocked scraping — try a publicly accessible page"
+
+7. Logging and observability
+- Log:
+  - verification attempts
+  - scrape failures
+  - training outcomes
+- Make key failure reasons visible in UI or admin logs
+
+Validation requirements (must be tested before completion):
+- Add site → remains in draft (NOT connected)
+- Train site → transitions correctly with real metrics
+- Install widget incorrectly → verification fails clearly
+- Install widget correctly → verification succeeds
+- Test with:
+  - normal site
+  - site with redirect
+  - site with minimal HTML
+  - site with delayed script load
+
+Return:
+- exact enforcement mechanisms added
+- how fake data paths were eliminated
+- how verification handles real-world variability
+- edge cases tested and results
+- confirmation that the system cannot falsely report a site as connected
