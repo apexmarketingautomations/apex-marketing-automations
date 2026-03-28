@@ -1,0 +1,39 @@
+Investigate and fix contact management limitations in Apex so users can edit and delete contacts safely from the platform UI.
+
+Problem:
+There is currently no reliable way to edit or delete contacts from the interface. That is a core CRM function and needs to work cleanly, safely, and per sub-account.
+
+Requirements:
+- Add full edit capability for contacts from the appropriate UI views (contact record, contact drawer/modal, and any CRM/contact list views where it makes sense)
+- Add delete capability for contacts with proper confirmation safeguards
+- Ensure both edit and delete actions are scoped only to the active sub-account
+- Prevent cross-account contact access, edits, or deletions
+- Make sure contact updates immediately reflect across the Unified Inbox, CRM views, conversation records, filters, tags, and related account data
+- Handle validation properly for fields like name, phone, email, tags, notes, lead source, and any custom fields already supported
+- Add clear success, error, and loading states for contact mutations
+- Ensure delete behavior is intentional and safe:
+  - require confirmation before delete
+  - clearly explain impact on related records
+  - prevent accidental destructive actions
+- Decide and implement correct delete behavior:
+  - soft delete if the architecture supports recovery/audit
+  - hard delete only if safe and explicitly intended
+- Preserve referential integrity for conversations, activities, workflows, tags, pipeline records, and any linked automations
+
+Audit and implementation scope:
+- Review current contact model, routes, services, queries, and UI components
+- Identify whether the missing functionality is due to absent backend endpoints, missing frontend controls, broken permissions, or unsafe data relationships
+- Add or fix the required API endpoints, mutation handlers, dialogs/modals, and state refresh logic
+- Ensure contact edits/deletes invalidate stale caches and refresh all dependent views correctly
+
+Return:
+- Root cause of why edit/delete is missing or broken
+- Exact files/components/services changed
+- Whether delete is soft-delete or hard-delete
+- Any remaining risks around related data integrity
+- Confirmation that contacts can now be edited and deleted safely within the active sub-account only
+
+Execution constraints:
+- Do NOT perform a full CRM rebuild
+- Limit changes to the contact management flow, related data integrity, and affected UI/state logic
+- Keep existing working account structure and routing intact

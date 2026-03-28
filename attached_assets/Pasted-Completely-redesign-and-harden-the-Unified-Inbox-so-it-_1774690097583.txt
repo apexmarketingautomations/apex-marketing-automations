@@ -1,0 +1,68 @@
+Completely redesign and harden the Unified Inbox so it feels production-grade instead of janky, inconsistent, or fragile.
+
+Core objective:
+Rebuild the Unified Inbox experience as a stable, fast, tenant-safe communication hub with clean UX, strict sub-account isolation, reliable channel syncing, and modern conversation management.
+
+What to audit first:
+
+* Review the full Unified Inbox architecture across frontend, backend, data loading, channel adapters, and state management
+* Identify all causes of jank, including stale state, slow renders, broken account scoping, inconsistent conversation loading, bad cache behavior, weak filtering, poor mobile responsiveness, and layout instability
+* Trace why the active account context can mismatch visible inbox data
+* Review all conversation, contact, thread, unread count, and channel queries for missing tenant/sub-account enforcement
+* Audit websocket/live update behavior, pagination, optimistic updates, polling, and refetch logic
+* Review current component structure for bloated, tightly coupled, or duplicated logic
+
+Required rebuild outcomes:
+
+* Unified Inbox must always scope data to the active sub-account unless explicitly designed otherwise
+* Switching sub-accounts must fully reset inbox state, clear stale cached data, and reload only the correct tenant’s conversations, contacts, channels, and counts
+* Refactor inbox data flow so the active sub-account is the single source of truth
+* Rebuild conversation list, thread view, filters, composer, and channel controls to be consistent and reliable
+* Eliminate layout bugs, overlapping UI, broken resizing, clipped panels, and unstable tab behavior
+* Improve performance so conversation switching, loading, and searching feel immediate and smooth
+* Make the inbox resilient against partial integration failures so one broken channel does not corrupt the whole view
+* Standardize empty states, loading states, error states, retry states, and sync indicators
+* Make the system feel polished on desktop and smaller screens
+
+Feature expectations for upgraded Unified Inbox:
+
+* Clean conversation sidebar with accurate unread counts, channel labels, contact identity, and last activity
+* Stable thread view with proper ordering, timestamps, sender attribution, and message delivery state
+* Reliable composer for SMS, WhatsApp, Instagram, Facebook DM, email, or whichever channels are supported
+* Search, filtering, and sorting that actually respect active account scope
+* Bulk actions where appropriate
+* Better visibility into channel connection health and sync status
+* Safe refresh/reload behavior without cross-account bleed
+* Better internal diagnostics for failed messages, failed syncs, and missing integration mappings
+
+Architecture expectations:
+
+* Separate presentation from data orchestration
+* Reduce prop drilling and fragile shared state
+* Clean up context/store design so inbox state is predictable
+* Enforce tenant-safe backend querying and API validation
+* Add defensive guards at UI, service, and query layers
+* Add reusable hooks/services for conversation retrieval, account scoping, live updates, and thread mutations
+* Remove hardcoded assumptions, weak fallbacks, and shared global state that can leak across accounts
+
+Must specifically fix:
+
+* Cross-account data leakage between Apex and Crash Connect
+* Any bad default account fallback behavior
+* Stale conversation state after account switching
+* Inconsistent channel rendering
+* Unstable preview behavior
+* Any place where user-level access is incorrectly overriding sub-account-level access
+
+Deliverables required:
+
+* Root cause analysis of why the current Unified Inbox feels unstable
+* Exact files, components, hooks, services, and queries that were refactored
+* Summary of UX improvements made
+* Summary of backend/data scoping fixes made
+* Remaining technical debt or risk areas
+* Clear confirmation that sub-account isolation is now enforced and Crash Connect data cannot appear while Apex is active
+* Suggested next-phase improvements if a full production-grade inbox v2 should be built after stabilization
+
+Goal:
+Turn Unified Inbox from a fragile mixed-state tool into a polished, scalable, tenant-safe inbox system that feels premium, fast, and operationally reliable.
