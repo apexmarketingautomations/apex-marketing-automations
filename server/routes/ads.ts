@@ -1,6 +1,9 @@
 import type { Express, Request, Response } from "express";
 import { aiChat, aiGenerateImage, isAIConfigured } from "../aiGateway";
 import { asyncHandler, logUsageInternal } from "./helpers";
+import { requireActiveSubscription } from "../subscriptionGuard";
+
+const subscriptionGuard = requireActiveSubscription();
 
 export function registerAdsRoutes(app: Express) {
   // ---- AI Ad Campaign Generator ----
@@ -42,7 +45,7 @@ export function registerAdsRoutes(app: Express) {
   - interests and behaviors should be relevant to the business
   - Return ONLY valid JSON, no markdown, no code fences`;
 
-  app.post("/api/generate-ad-campaign", asyncHandler(async (req, res) => {
+  app.post("/api/generate-ad-campaign", subscriptionGuard, asyncHandler(async (req, res) => {
     if (!isAIConfigured()) {
       return res.status(503).json({ error: "AI service is not configured" });
     }

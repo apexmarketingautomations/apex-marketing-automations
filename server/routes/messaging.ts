@@ -12,6 +12,10 @@ import { enforceSmsProvider } from "../smsGatewayGuard";
 import { recordSuccess } from "../pulse";
 import { startTrace, recordStepValue } from "../traceRecorder";
 import { getMetaConfig, buildMetaUrl } from "../metaConfig";
+import { requireActiveSubscription, checkPlanLimitMiddleware } from "../subscriptionGuard";
+
+const subscriptionGuard = requireActiveSubscription();
+const messagesGuard = checkPlanLimitMiddleware("messages_per_month");
 
 export function registerMessagingRoutes(app: Express) {
   // ---- Messages ----
@@ -76,7 +80,7 @@ export function registerMessagingRoutes(app: Express) {
 
 
   // ---- SMS Sending via Twilio ----
-  app.post("/api/messages/send", asyncHandler(async (req, res) => {
+  app.post("/api/messages/send", subscriptionGuard, messagesGuard, asyncHandler(async (req, res) => {
     const parsed = insertMessageSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 

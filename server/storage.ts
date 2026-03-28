@@ -249,6 +249,7 @@ export interface IStorage {
   upsertWhiteLabelSettings(data: InsertWhiteLabelSettings): Promise<WhiteLabelSettings>;
 
   getMetaAdCampaigns(subAccountId: number): Promise<MetaAdCampaign[]>;
+  getAllMetaAdCampaigns(): Promise<MetaAdCampaign[]>;
   getMetaAdCampaign(id: number): Promise<MetaAdCampaign | undefined>;
   createMetaAdCampaign(data: InsertMetaAdCampaign): Promise<MetaAdCampaign>;
   updateMetaAdCampaign(id: number, data: Partial<InsertMetaAdCampaign>): Promise<MetaAdCampaign | undefined>;
@@ -1130,6 +1131,10 @@ export class DatabaseStorage implements IStorage {
 
   async getMetaAdCampaigns(subAccountId: number) {
     return db.select().from(metaAdCampaigns).where(eq(metaAdCampaigns.subAccountId, subAccountId)).orderBy(desc(metaAdCampaigns.createdAt));
+  }
+
+  async getAllMetaAdCampaigns() {
+    return db.select().from(metaAdCampaigns).orderBy(desc(metaAdCampaigns.createdAt));
   }
 
   async getMetaAdCampaign(id: number) {

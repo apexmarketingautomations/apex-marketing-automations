@@ -457,23 +457,23 @@ export function registerReviewsRoutes(app: Express) {
     const user = (req as any).user;
     if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
 
-    const checks: { name: string; status: "healthy" | "degraded" | "down"; message: string; latencyMs?: number }[] = [];
+    const checks: { name: string; status: "healthy" | "degraded" | "down"; message: string; category: "core" | "optional"; latencyMs?: number; reason?: string }[] = [];
 
     const dbStart = Date.now();
     try {
       await db.execute(sql`SELECT 1`);
-      checks.push({ name: "Database", status: "healthy", message: "PostgreSQL connected", latencyMs: Date.now() - dbStart });
+      checks.push({ name: "Database", status: "healthy", message: "PostgreSQL connected", category: "core", latencyMs: Date.now() - dbStart });
     } catch (e: any) {
-      checks.push({ name: "Database", status: "down", message: e.message || "Connection failed", latencyMs: Date.now() - dbStart });
+      checks.push({ name: "Database", status: "down", message: e.message || "Connection failed", category: "core", reason: "Database unreachable", latencyMs: Date.now() - dbStart });
     }
 
     const sentinelStart = Date.now();
     try {
       const configs = await db.execute(sql`SELECT COUNT(*) as cnt FROM sentinel_config`);
       const count = Number((configs as any).rows?.[0]?.cnt ?? 0);
-      checks.push({ name: "Sentinel", status: count > 0 ? "healthy" : "degraded", message: count > 0 ? `${count} active config(s)` : "No Sentinel configs found", latencyMs: Date.now() - sentinelStart });
+      checks.push({ name: "Sentinel", status: count > 0 ? "healthy" : "degraded", message: count > 0 ? `${count} active config(s)` : "No Sentinel configs found", category: "optional", reason: count > 0 ? undefined : "No configs created yet", latencyMs: Date.now() - sentinelStart });
     } catch (e: any) {
-      checks.push({ name: "Sentinel", status: "degraded", message: "Sentinel table unavailable", latencyMs: Date.now() - sentinelStart });
+      checks.push({ name: "Sentinel", status: "degraded", message: "Sentinel table unavailable", category: "optional", reason: "Table query failed", latencyMs: Date.now() - sentinelStart });
     }
 
     const billingChecks: string[] = [];
@@ -502,31 +502,130 @@ export function registerReviewsRoutes(app: Express) {
       name: "Billing",
       status: billingChecks.length === 0 ? "healthy" : billingChecks.some(c => c.includes("not connected")) ? "down" : "degraded",
       message: billingChecks.length === 0 ? `Stripe active, ${walletCount} wallet(s)` : billingChecks.join("; "),
+      category: "core",
+      reason: billingChecks.length > 0 ? billingChecks.join("; ") : undefined,
     });
 
     const aiChecks: string[] = [];
     const aiProviderStatus = getAIProviderStatus();
     if (!isAIConfigured()) aiChecks.push("AI not configured (no OpenAI or Gemini key)");
     else if (aiProviderStatus?.circuitBreaker?.state === "open") aiChecks.push(`AI circuit breaker open (primary: ${aiProviderStatus?.primary})`);
-    const vapiKey = process.env.VAPI_PRIVATE_KEY || process.env.apex_private_vapi;
-    if (!vapiKey) aiChecks.push("Vapi API key missing");
-    const twilioSid = process.env.TWILIO_ACCOUNT_SID;
-    const twilioToken = process.env.TWILIO_AUTH_TOKEN;
-    if (!twilioSid || !twilioToken) aiChecks.push("Twilio credentials missing");
     const aiStatusMsg = isAIConfigured()
-      ? `${aiProviderStatus?.primary || "unknown"} (${aiProviderStatus?.circuitBreaker?.state || "unknown"}) + Vapi + Twilio`
+      ? `${aiProviderStatus?.primary || "unknown"} (${aiProviderStatus?.circuitBreaker?.state || "unknown"})`
       : "AI not configured";
     checks.push({
       name: "AI Engine",
-      status: aiChecks.length === 0 ? "healthy" : aiChecks.length <= 1 ? "degraded" : "down",
+      status: aiChecks.length === 0 ? "healthy" : "degraded",
       message: aiChecks.length === 0 ? aiStatusMsg : aiChecks.join("; "),
+      category: "core",
+      reason: aiChecks.length > 0 ? aiChecks.join("; ") : undefined,
       provider: aiProviderStatus?.primary || "unknown",
       model: aiProviderStatus?.primaryModel || "unknown",
       circuitBreaker: aiProviderStatus?.circuitBreaker?.state || "unknown",
     });
 
-    const overallStatus = checks.every(c => c.status === "healthy") ? "healthy" : checks.some(c => c.status === "down") ? "critical" : "degraded";
-    res.json({ status: overallStatus, timestamp: new Date().toISOString(), checks });
+    const vapiKey = process.env.VAPI_PRIVATE_KEY_APEX || process.env.VAPI_PRIVATE_KEY || process.env.apex_private_vapi;
+    const env = process.env.NODE_ENV || "development";
+    checks.push({
+      name: "Vapi",
+      status: vapiKey ? "healthy" : "healthy",
+      message: vapiKey ? "Voice AI key configured" : `Not configured in ${env} environment`,
+      category: "optional",
+      reason: vapiKey ? undefined : `Optional service — not configured in this environment (${env})`,
+    });
+
+    const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+    const twilioToken = process.env.TWILIO_AUTH_TOKEN;
+    checks.push({
+      name: "Twilio",
+      status: (twilioSid && twilioToken) ? "healthy" : "healthy",
+      message: (twilioSid && twilioToken) ? "Twilio credentials configured" : `Not configured in ${env} environment`,
+      category: "optional",
+      reason: (!twilioSid || !twilioToken) ? `Optional service — not configured in this environment (${env})` : undefined,
+    });
+
+    const coreChecks = checks.filter(c => c.category === "core");
+    const overallStatus = coreChecks.some(c => c.status === "down")
+      ? "critical"
+      : coreChecks.some(c => c.status === "degraded")
+        ? "degraded"
+        : "healthy";
+
+    const statusReason = overallStatus === "critical"
+      ? `Core service(s) down: ${coreChecks.filter(c => c.status === "down").map(c => c.name).join(", ")}`
+      : overallStatus === "degraded"
+        ? `Core service(s) degraded: ${coreChecks.filter(c => c.status === "degraded").map(c => c.name).join(", ")}`
+        : "All core services operational";
+
+    res.json({ status: overallStatus, statusReason, timestamp: new Date().toISOString(), checks });
+  }));
+
+  app.get("/api/admin/message-failures", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
+
+    try {
+      const failedRows = await db.execute(sql`
+        SELECT id, sub_account_id, contact_phone, channel, status, body, direction, created_at, trace_id
+        FROM messages
+        WHERE status IN ('failed', 'undelivered', 'unsupported')
+        ORDER BY created_at DESC
+        LIMIT 200
+      `);
+      const rows = (failedRows as any).rows || [];
+
+      const categories: Record<string, { count: number; description: string; examples: { id: number; phone: string; channel: string; body: string; createdAt: string }[] }> = {
+        twilio_not_configured: { count: 0, description: "Twilio credentials missing or not configured for the account", examples: [] },
+        opt_out_rejection: { count: 0, description: "Recipient opted out of SMS communications", examples: [] },
+        routing_gate_failure: { count: 0, description: "Message rejected by the routing gate (invalid subAccount, channel mismatch)", examples: [] },
+        invalid_recipient: { count: 0, description: "Invalid or missing recipient phone number", examples: [] },
+        provider_error: { count: 0, description: "Twilio/Meta API returned an error (rate limit, invalid number, etc.)", examples: [] },
+        billing_block: { count: 0, description: "Message blocked due to billing/plan limit", examples: [] },
+        unsupported_channel: { count: 0, description: "Unsupported messaging channel requested", examples: [] },
+        unknown: { count: 0, description: "Unknown failure reason — requires manual investigation", examples: [] },
+      };
+
+      for (const row of rows) {
+        const body = (row.body || "").toLowerCase();
+        const example = { id: row.id, phone: (row.contact_phone || "").slice(-4), channel: row.channel || "sms", body: (row.body || "").substring(0, 100), createdAt: row.created_at };
+
+        let category = "unknown";
+        if (row.status === "unsupported") {
+          category = "unsupported_channel";
+        } else if (body.includes("twilio") && (body.includes("not configured") || body.includes("not connected"))) {
+          category = "twilio_not_configured";
+        } else if (body.includes("opted out") || body.includes("opt-out") || body.includes("opt out")) {
+          category = "opt_out_rejection";
+        } else if (body.includes("routing gate") || body.includes("routing") || body.includes("sub_account")) {
+          category = "routing_gate_failure";
+        } else if (body.includes("invalid") && (body.includes("phone") || body.includes("number") || body.includes("recipient"))) {
+          category = "invalid_recipient";
+        } else if (body.includes("billing") || body.includes("limit") || body.includes("exceeded") || body.includes("plan")) {
+          category = "billing_block";
+        } else if (body.includes("twilio") || body.includes("api") || body.includes("error code") || body.includes("21")) {
+          category = "provider_error";
+        } else if (!row.contact_phone || row.contact_phone.length < 5) {
+          category = "invalid_recipient";
+        }
+
+        categories[category].count++;
+        if (categories[category].examples.length < 3) {
+          categories[category].examples.push(example);
+        }
+      }
+
+      const activeCategories = Object.entries(categories)
+        .filter(([_, v]) => v.count > 0)
+        .map(([key, v]) => ({ reason: key, ...v }));
+
+      res.json({
+        totalFailed: rows.length,
+        breakdown: activeCategories,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: `Failed to analyze message failures: ${err.message}` });
+    }
   }));
 
   app.post("/api/admin/reboot", asyncHandler(async (req, res) => {

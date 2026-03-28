@@ -2049,6 +2049,10 @@ function WorkflowBuilderInner() {
                               </Select>
                             </div>
                             <p className="text-[10px] text-muted-foreground">AI analyzes the lead and determines qualification. Qualified leads continue the flow; unqualified are flagged for review.</p>
+                            <div className="mt-1.5 flex items-center gap-1.5 px-2 py-1 rounded bg-violet-500/10 border border-violet-500/20" data-testid="badge-ai-scoring-status">
+                              <Sparkles className="h-3 w-3 text-violet-400" />
+                              <span className="text-[10px] text-violet-300">Requires AI configuration (OpenAI or Gemini key). Without it, scoring will return "unavailable".</span>
+                            </div>
                           </>
                         )}
 

@@ -9,6 +9,9 @@ import { dispatchAlert, generateDeepLink } from "../pushAlertService";
 import { asyncHandler, verifyAccountOwnership, getUserId } from "./helpers";
 import { enforceSmsProvider } from "../smsGatewayGuard";
 import { getMetaConfig, validateMetaConfigForAccount } from "../metaConfig";
+import { requireActiveSubscription } from "../subscriptionGuard";
+
+const subscriptionGuard = requireActiveSubscription();
 
 export function registerMetaRoutes(app: Express) {
   // ---- Meta Ad Campaigns ----
@@ -73,7 +76,10 @@ export function registerMetaRoutes(app: Express) {
           cpc: parseFloat(insights.cpc || "0"),
           ctr: parseFloat(insights.ctr || "0"),
           leads: parseInt(leads),
+          lastSyncedAt: new Date(),
         });
+      } else {
+        await storage.updateMetaAdCampaign(campaign.id, { lastSyncedAt: new Date() });
       }
       const updated = await storage.getMetaAdCampaign(campaign.id);
       res.json({ synced: true, campaign: updated });
@@ -82,7 +88,7 @@ export function registerMetaRoutes(app: Express) {
     }
   }));
 
-  app.post("/api/meta/campaigns/:id/publish", asyncHandler(async (req: Request, res: Response) => {
+  app.post("/api/meta/campaigns/:id/publish", subscriptionGuard, asyncHandler(async (req: Request, res: Response) => {
     const adAccountId = process.env.META_AD_ACCOUNT_ID;
     const campaign = await storage.getMetaAdCampaign(Number(req.params.id));
     if (!campaign) return res.status(404).json({ error: "Campaign not found" });

@@ -13,6 +13,9 @@ import crypto from "crypto";
 import { dispatchAlert, generateDeepLink } from "../pushAlertService";
 import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, logUsageInternal, getTwilioClient } from "./helpers";
 import { recordOutboundBilling } from "../billing";
+import { requireActiveSubscription } from "../subscriptionGuard";
+
+const subscriptionGuard = requireActiveSubscription();
 import { enforceSmsProvider } from "../smsGatewayGuard";
 
 export function registerPropertyRoutes(app: Express) {
@@ -2665,7 +2668,7 @@ export function registerPropertyRoutes(app: Express) {
     res.json(settings);
   }));
 
-  app.put("/api/white-label", asyncHandler(async (req, res) => {
+  app.put("/api/white-label", subscriptionGuard, asyncHandler(async (req, res) => {
     const parsed = insertWhiteLabelSettingsSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const settings = await storage.upsertWhiteLabelSettings(parsed.data);

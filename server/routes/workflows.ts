@@ -4,10 +4,13 @@ import { storage } from "../storage";
 import { z } from "zod";
 import { aiChat, isAIConfigured } from "../aiGateway";
 import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, logUsageInternal } from "./helpers";
+import { requireActiveSubscription } from "../subscriptionGuard";
+
+const subscriptionGuard = requireActiveSubscription();
 
 export function registerWorkflowsRoutes(app: Express) {
   // ---- Workflows ----
-  app.get("/api/workflows", asyncHandler(async (req, res) => {
+  app.get("/api/workflows", subscriptionGuard, asyncHandler(async (req, res) => {
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "Not authenticated" });
     const userId = getUserId(user);

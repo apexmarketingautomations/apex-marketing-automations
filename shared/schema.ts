@@ -750,6 +750,7 @@ export const metaAdCampaigns = pgTable("meta_ad_campaigns", {
   targeting: json("targeting"),
   creativeUrl: text("creative_url"),
   adText: text("ad_text"),
+  lastSyncedAt: timestamp("last_synced_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

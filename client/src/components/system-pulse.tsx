@@ -8,11 +8,14 @@ interface PulseCheck {
   name: string;
   status: "healthy" | "degraded" | "down";
   message: string;
+  category?: "core" | "optional";
   latencyMs?: number;
+  reason?: string;
 }
 
 interface PulseData {
   status: "healthy" | "degraded" | "critical";
+  statusReason?: string;
   timestamp: string;
   checks: PulseCheck[];
 }
@@ -22,6 +25,8 @@ const SYSTEM_ICONS: Record<string, any> = {
   Sentinel: Shield,
   Billing: CreditCard,
   "AI Engine": Brain,
+  Vapi: Brain,
+  Twilio: Shield,
 };
 
 const STATUS_COLORS: Record<string, { glow: string; bg: string; text: string; border: string; ring: string }> = {
@@ -170,11 +175,16 @@ export function SystemPulse() {
                       </div>
                       <div className={`w-2 h-2 rounded-full ${colors.bg} ${colors.glow}`} />
                     </div>
-                    <p className="text-white text-sm font-bold">{check.name}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-white text-sm font-bold">{check.name}</p>
+                      {check.category === "optional" && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-slate-500 border border-white/5">optional</span>
+                      )}
+                    </div>
                     <p className={`text-xs ${colors.text} mt-0.5`}>
                       {check.status === "healthy" ? "Online" : check.status === "degraded" ? "Warning" : "Offline"}
                     </p>
-                    <p className="text-xs text-slate-500 mt-1 line-clamp-2">{check.message}</p>
+                    <p className="text-xs text-slate-500 mt-1 line-clamp-2">{check.reason || check.message}</p>
                     {check.latencyMs !== undefined && (
                       <p className="text-xs text-slate-600 mt-1">{check.latencyMs}ms</p>
                     )}
@@ -182,6 +192,11 @@ export function SystemPulse() {
                 );
               })}
             </div>
+            {pulse?.statusReason && (
+              <div className="px-4 pb-2">
+                <p className="text-xs text-slate-400" data-testid="text-status-reason">{pulse.statusReason}</p>
+              </div>
+            )}
             <div className="px-4 pb-3 flex items-center justify-between">
               <p className="text-xs text-slate-600">
                 Last checked: {pulse?.timestamp ? new Date(pulse.timestamp).toLocaleTimeString() : "—"}

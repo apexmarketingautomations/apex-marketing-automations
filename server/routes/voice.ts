@@ -7,6 +7,10 @@ import { asyncHandler, getIndustryContext, vapiConfig } from "./helpers";
 import { recordSuccess } from "../pulse";
 import { db } from "../db";
 import { eq } from "drizzle-orm";
+import { requireActiveSubscription, checkPlanLimitMiddleware } from "../subscriptionGuard";
+
+const subscriptionGuard = requireActiveSubscription();
+const voiceMinutesGuard = checkPlanLimitMiddleware("voice_minutes");
 
 export function registerVoiceRoutes(app: Express) {
   // ---- Voice Agent (Vapi Integration) ----
@@ -22,7 +26,7 @@ export function registerVoiceRoutes(app: Express) {
     })).max(20).optional(),
   });
 
-  app.post("/api/voice-agents/create", asyncHandler(async (req, res) => {
+  app.post("/api/voice-agents/create", subscriptionGuard, asyncHandler(async (req, res) => {
     if (!vapiConfig.isConfigured) {
       return res.status(503).json({ error: "Vapi API key is not configured. Add VAPI_PRIVATE_KEY in Secrets." });
     }
@@ -176,7 +180,7 @@ export function registerVoiceRoutes(app: Express) {
     phoneNumberId: z.string().optional(),
   });
 
-  app.post("/api/voice-agents/call", asyncHandler(async (req, res) => {
+  app.post("/api/voice-agents/call", subscriptionGuard, voiceMinutesGuard, asyncHandler(async (req, res) => {
     if (!vapiConfig.isConfigured) {
       return res.status(503).json({ error: "Vapi API key is not configured. Add VAPI_PRIVATE_KEY in Secrets." });
     }
@@ -257,7 +261,7 @@ export function registerVoiceRoutes(app: Express) {
     })).min(1, "At least one lead is required").max(50, "Maximum 50 leads per batch"),
   });
 
-  app.post("/api/voice-agents/power-dial", asyncHandler(async (req, res) => {
+  app.post("/api/voice-agents/power-dial", subscriptionGuard, voiceMinutesGuard, asyncHandler(async (req, res) => {
     if (!vapiConfig.isConfigured) {
       return res.status(503).json({ error: "Vapi API key is not configured. Add VAPI_PRIVATE_KEY in Secrets." });
     }
@@ -403,7 +407,7 @@ export function registerVoiceRoutes(app: Express) {
     });
   });
 
-  app.post("/api/vapi/start-web-call", asyncHandler(async (req, res) => {
+  app.post("/api/vapi/start-web-call", subscriptionGuard, voiceMinutesGuard, asyncHandler(async (req, res) => {
     if (!vapiConfig.isConfigured) {
       return res.status(503).json({ error: "Vapi is not configured. Add VAPI_PRIVATE_KEY in Secrets." });
     }

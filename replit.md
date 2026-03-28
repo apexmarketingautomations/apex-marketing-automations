@@ -36,7 +36,8 @@ Preferred communication style: Simple, everyday language.
 - **Cross-Account Industry Benchmarks**: Anonymized aggregate metrics computed across all sub-accounts, grouped by industry, to provide comparison and feed into strategic recommendations.
 - **Autonomous Task Agent (AI-Enhanced)**: A 24/7 background AI worker that uses Gemini AI to reason about account states, generate task plans, execute corrective actions, learn from outcomes, and generate executive briefings.
 - **Access Control & Multi-Tenancy**: Authentication via Replit OIDC, native email/password, Google OAuth 2.0, Firebase Auth, with plan-based feature gating and strict account ownership enforcement.
-- **Platform Infrastructure**: Includes rate limiting, centralized system logging, feature flags, server-side enforcement of plan limits, automation safety mechanisms, startup health checks, and a robust subscription lifecycle managed by Stripe webhooks.
+- **Platform Infrastructure**: Includes rate limiting, centralized system logging, feature flags, server-side enforcement of plan limits (with `requireActiveSubscription` and `checkPlanLimitMiddleware` guards on premium routes), automation safety mechanisms, startup health checks, and a robust subscription lifecycle managed by Stripe webhooks.
+- **System Pulse**: Service health monitoring with core vs optional service categorization. Optional services (Vapi) report informational status when unconfigured rather than degraded. Includes message failure root-cause analysis endpoint (`/api/admin/message-failures`).
 - **Messaging Infrastructure**: SMS Opt-Out Guard with phone normalization.
 - **Audit Trail**: Detailed logging of audit actions for compliance.
 - **Database Backup**: JSON snapshot manifests for data integrity.
@@ -58,6 +59,7 @@ Preferred communication style: Simple, everyday language.
 - **Shopify Integration**: E-commerce automation via Shopify Admin API and webhooks.
 - **Meta Webhooks**: For multi-tenant Facebook/Instagram DM bot functionality with rich context assembly.
 - **Google Calendar Auto-Sync**: Background service for syncing Google Calendar events with appointments and triggers.
+- **Meta Campaign Background Sync**: Job-queue-based 45-minute interval sync for Meta ad campaigns with `lastSyncedAt` tracking.
 - **FLHSMV API**: For polling and retrieving crash reports.
 
 ## Digital Business Card System (Standalone Product — Hard-Isolated from Apex)

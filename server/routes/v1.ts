@@ -1511,18 +1511,44 @@ export function registerV1Routes(app: Express) {
             }
 
             if (action === "AIQualify") {
-              if (isAIConfigured() && context.message) {
+              if (!isAIConfigured()) {
+                const unavailableResult = {
+                  score: null,
+                  intent: "unknown",
+                  qualified: null,
+                  reasoning: "Scoring unavailable — AI not configured. Configure an OpenAI or Gemini API key to enable predictive lead scoring.",
+                  status: "ai_not_configured",
+                };
+                context.aiQualifyResult = unavailableResult;
+                console.warn(`[AUTOMATION] AIQualify step skipped — AI not configured. Lead: ${context.leadName || "unknown"}, check: ${stepPayload.check || "interest_level"}`);
+              } else if (!context.message) {
+                const noMessageResult = {
+                  score: null,
+                  intent: "unknown",
+                  qualified: null,
+                  reasoning: "Scoring unavailable — no message content provided for analysis.",
+                  status: "no_message",
+                };
+                context.aiQualifyResult = noMessageResult;
+                console.log(`[AUTOMATION] AIQualify step — no message to analyze. Lead: ${context.leadName || "unknown"}`);
+              } else {
                 try {
                   const qualifyResult = await aiChat([
                     { role: "system", content: "You are a lead qualification assistant. Analyze the lead's message and context. Return a JSON object with: {score: 1-10, intent: string, qualified: boolean, reasoning: string}" },
                     { role: "user", content: `Lead: ${context.leadName || "Unknown"}\nMessage: ${context.message}\nSource: ${context.source || "unknown"}\nCheck: ${stepPayload.check || "interest_level"}` },
                   ], { temperature: 0.3, maxTokens: 256, route: "ai-qualify" });
+                  context.aiQualifyResult = { status: "completed", raw: qualifyResult.text?.substring(0, 500) };
                   console.log(`[AUTOMATION] AIQualify result for ${context.leadName || "unknown"}: ${qualifyResult.text?.substring(0, 200)}`);
                 } catch (qErr: any) {
+                  context.aiQualifyResult = {
+                    score: null,
+                    intent: "unknown",
+                    qualified: null,
+                    reasoning: `AI scoring failed: ${qErr.message}`,
+                    status: "error",
+                  };
                   console.warn(`[AUTOMATION] AIQualify failed: ${qErr.message}`);
                 }
-              } else {
-                console.log(`[AUTOMATION] AIQualify step — lead: ${context.leadName || "unknown"}, check: ${stepPayload.check || "interest_level"}`);
               }
               continue;
             }

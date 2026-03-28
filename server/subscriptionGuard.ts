@@ -24,7 +24,12 @@ export function requireActiveSubscription() {
         .where(eq(subscriptions.userId, userId))
         .limit(1);
 
-      if (!sub) return next();
+      if (!sub) {
+        return res.status(402).json({
+          error: "No subscription found",
+          message: "A subscription is required to access this feature. Please subscribe to continue.",
+        });
+      }
 
       const status = sub.status as SubStatus;
 
@@ -45,7 +50,51 @@ export function requireActiveSubscription() {
         message: "Your subscription is not active. Please update your billing to continue.",
       });
     } catch (err) {
+      console.error("[SUBSCRIPTION-GUARD] Error checking subscription:", err);
+      return res.status(500).json({ error: "Unable to verify subscription status" });
+    }
+  };
+}
+
+export function checkPlanLimitMiddleware(metricType: string) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const userId = user.claims?.sub || user.id;
+    const adminUserId = process.env.ADMIN_USER_ID;
+    if (adminUserId && userId === adminUserId) return next();
+
+    const subAccountId = Number(req.params.subAccountId || req.body?.subAccountId);
+    if (!subAccountId || isNaN(subAccountId)) {
+      return res.status(400).json({ error: "Missing subAccountId — cannot verify plan limits" });
+    }
+
+    try {
+      const { subAccounts } = await import("@shared/schema");
+      const [account] = await db
+        .select()
+        .from(subAccounts)
+        .where(eq(subAccounts.id, subAccountId))
+        .limit(1);
+
+      const planName = account?.plan || "starter";
+      const result = await checkPlanLimit(subAccountId, metricType, planName);
+      if (!result.allowed) {
+        return res.status(403).json({
+          error: "Plan limit exceeded",
+          metric: metricType,
+          limit: result.limit,
+          used: result.used,
+          remaining: 0,
+          message: `You have reached your ${metricType.replace(/_/g, " ")} limit (${result.used}/${result.limit}). Upgrade your plan for higher limits.`,
+        });
+      }
+      (req as any).planLimitResult = result;
       return next();
+    } catch (err) {
+      console.error("[PLAN-LIMIT] Error checking plan limits:", err);
+      return res.status(500).json({ error: "Unable to verify plan limits" });
     }
   };
 }

@@ -10,6 +10,10 @@ import { asyncHandler, parseIntParam, logUsageInternal, getIndustryContext, getL
 import { executeTool, getTool } from "../operator/toolRegistry";
 import type { OperatorContext } from "../operator/types";
 import { buildOperatorSystemPrompt } from "../operatorPrompt";
+import { requireActiveSubscription, checkPlanLimitMiddleware } from "../subscriptionGuard";
+
+const subscriptionGuard = requireActiveSubscription();
+const aiRequestsGuard = checkPlanLimitMiddleware("ai_requests");
 
 const CONFIRM_PATTERNS = /^(yes|ok|okay|confirm|do it|go ahead|proceed|sounds good|yep|yea|yeah|sure|go for it|approved|let's do it|make it|create it|build it|draft it|y)$/i;
 const REJECT_PATTERNS = /^(no|cancel|don't|dont|stop|never mind|nvm|nah|nope|reject|skip|forget it|don't do that|cancel that)$/i;
@@ -34,7 +38,7 @@ export function registerBotRoutes(app: Express) {
     subAccountId: z.number().int().positive(),
   });
 
-  app.post("/api/bot/chat", asyncHandler(async (req, res) => {
+  app.post("/api/bot/chat", subscriptionGuard, asyncHandler(async (req, res) => {
     if (!isAIConfigured()) {
       return res.status(503).json({ error: "AI service is not configured" });
     }
@@ -86,7 +90,7 @@ export function registerBotRoutes(app: Express) {
     res.json({ reply });
   }));
 
-  app.post("/api/bot/chat/stream", asyncHandler(async (req, res) => {
+  app.post("/api/bot/chat/stream", subscriptionGuard, asyncHandler(async (req, res) => {
     try {
       if (!isAIConfigured()) {
         return res.status(503).json({ error: "AI service is not configured" });
@@ -136,7 +140,7 @@ export function registerBotRoutes(app: Express) {
     }
   }));
 
-  app.post("/api/bot/chat/advisor-stream", asyncHandler(async (req, res) => {
+  app.post("/api/bot/chat/advisor-stream", subscriptionGuard, asyncHandler(async (req, res) => {
     try {
       if (!isAIConfigured()) {
         return res.status(503).json({ error: "AI service is not configured" });
@@ -319,7 +323,7 @@ export function registerBotRoutes(app: Express) {
     }
   }));
 
-  app.post("/api/bot/chat/agent-stream", asyncHandler(async (req, res) => {
+  app.post("/api/bot/chat/agent-stream", subscriptionGuard, asyncHandler(async (req, res) => {
     try {
       if (!isAIConfigured()) {
         return res.status(503).json({ error: "AI service is not configured" });
@@ -686,7 +690,7 @@ export function registerBotRoutes(app: Express) {
     persona: z.string().min(1, "persona is required"),
   });
 
-  app.post("/api/bots/train", asyncHandler(async (req, res) => {
+  app.post("/api/bots/train", subscriptionGuard, asyncHandler(async (req, res) => {
     const parsed = trainBodySchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 

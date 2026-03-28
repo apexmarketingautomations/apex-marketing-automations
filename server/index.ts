@@ -1618,6 +1618,13 @@ RULES:
       } catch (err: any) {
         console.error("[GCAL-AUTO] Failed to start:", err?.message);
       }
+      try {
+        const { registerMetaCampaignSyncJob, startMetaCampaignSyncScheduler } = await import("./metaCampaignSync");
+        registerMetaCampaignSyncJob();
+        startMetaCampaignSyncScheduler();
+      } catch (err: any) {
+        console.error("[META-SYNC] Failed to start:", err?.message);
+      }
     },
   );
 })();

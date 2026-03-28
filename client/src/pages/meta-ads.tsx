@@ -32,6 +32,7 @@ interface MetaAdCampaign {
   targeting: any;
   creativeUrl: string | null;
   adText: string | null;
+  lastSyncedAt: string | null;
   createdAt: string;
 }
 
@@ -317,6 +318,11 @@ export default function MetaAdsPage() {
                     {campaign.dailyBudget > 0 && <span className="ml-3"><DollarSign size={14} className="inline mr-1" />${campaign.dailyBudget}/day</span>}
                   </p>
                   {campaign.adText && <p className="text-sm text-slate-500 mt-2 line-clamp-2">{campaign.adText}</p>}
+                  {campaign.lastSyncedAt && (
+                    <p className="text-xs text-slate-500 mt-1" data-testid={`text-last-synced-${campaign.id}`}>
+                      Last synced: {new Date(campaign.lastSyncedAt).toLocaleString()}
+                    </p>
+                  )}
                 </div>
                 <div className="flex gap-2">
                   {campaign.status === "draft" && (
