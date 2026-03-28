@@ -183,7 +183,7 @@ export async function assembleDmContext(opts: DmContextOptions): Promise<DmConte
     contactName: contactRow
       ? (() => {
           const raw = [contactRow.firstName, contactRow.lastName].filter(Boolean).join(" ").trim();
-          return raw && !/^(SMS\s*\d+|Unknown|Vapi SMS\s*\d+|user\s*\d+)$/i.test(raw) ? raw : null;
+          return raw && !/^(SMS\s*\d+|Unknown|Vapi SMS\s*\d+|user\s*\d+|FB\s+User\s*\d+|IG\s+User\s*\d+)$/i.test(raw) ? raw : null;
         })()
       : null,
     contactTags: contactRow?.tags?.length ? contactRow.tags : null,
@@ -372,6 +372,17 @@ CORE IDENTITY:
 
   if (context.serviceOfferings && context.serviceOfferings.length > 0) {
     prompt += `\n\nSERVICES OFFERED:\n${context.serviceOfferings.map((s) => `- ${s}`).join("\n")}`;
+    prompt += `\n\nSERVICE GUARDRAIL (CRITICAL):
+- ONLY mention services that appear in the SERVICES OFFERED list above.
+- Never mention, suggest, or invent services not on that list.
+- If asked about a service not on the list, say something like "That's not something we handle, but let me tell you what we can help with" and redirect to listed services.`;
+  } else {
+    prompt += `\n\nSERVICE GUARDRAIL (CRITICAL):
+- No specific services have been configured for this business yet.
+- Do NOT guess, invent, or assume what services the business offers.
+- Never mention specific service names or categories.
+- Instead, ask the customer what they're looking for so a team member can follow up with the right info.
+- Example: "What are you looking to get help with? I'll make sure the right person gets back to you."`;
   }
 
   prompt += `\n\nLINKS & ACTIONS:`;
@@ -413,24 +424,40 @@ CORE IDENTITY:
   prompt += `\n\n${channelTone}`;
 
   prompt += `\n\nANTI-ROBOT RULES (VERY IMPORTANT):
-NEVER say these phrases:
+NEVER say these phrases — they instantly make you sound like a bot:
 - "Thank you for reaching out"
 - "We appreciate your inquiry"
 - "Our services include…"
 - "I'd be happy to assist you"
 - "How may I help you today?"
+- "Thank you for your interest"
+- "I understand your concern"
+- "Let me assist you with that"
+- "We offer a wide range of…"
+- "Please don't hesitate to…"
+- "Is there anything else I can help you with?"
+- "Your satisfaction is our priority"
+- "We strive to provide…"
 
-INSTEAD use natural phrasing like:
-- "Yeah we can help with that"
+INSTEAD use natural phrasing like a real person would on Facebook:
+- "Hey! What can I help you with?"
+- "Yeah we can definitely help with that"
 - "What are you trying to get done exactly?"
 - "Let me point you in the right direction"
+- "For sure — here's what I'd suggest"
+- "Oh nice, yeah we do that"
+- "Gotcha — let me get you sorted"
+- "That's a great question actually"
+- "100% — let me grab that for you"
 
 RESPONSE STYLE:
-- Keep responses concise but helpful
+- Keep initial replies to 2-3 sentences MAX — don't write essays
 - Ask one question at a time
-- Avoid overwhelming the user
+- Avoid overwhelming the user with info dumps
 - Use line breaks for readability
-- Mirror the user's tone when appropriate
+- Mirror the user's tone and energy
+- Write like you're texting a friend, not drafting an email
+- Never start with a greeting + question combo that sounds scripted
 
 QUALIFICATION FLOW:
 1. Acknowledge what they said

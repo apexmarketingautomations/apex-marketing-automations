@@ -1274,15 +1274,38 @@ export function registerWebhooksRoutes(app: Express) {
                   const senderPhone = /^\d{10,11}$/.test(senderId)
                     ? `+1${senderId.slice(-10)}`
                     : senderId;
+
+                  let realFirstName = `${channel === "instagram" ? "IG" : "FB"} User ${senderId.slice(-4)}`;
+                  let realLastName: string | undefined;
+                  try {
+                    const profileUrl = `https://graph.facebook.com/v19.0/${senderId}?fields=first_name,last_name` +
+                      (appsecretProof ? `&appsecret_proof=${appsecretProof}` : "") +
+                      `&access_token=${accessToken}`;
+                    const profileRes = await fetch(profileUrl, { signal: AbortSignal.timeout(5000) });
+                    if (profileRes.ok) {
+                      const profileData = await profileRes.json() as any;
+                      if (profileData.first_name) {
+                        realFirstName = profileData.first_name;
+                        realLastName = profileData.last_name || undefined;
+                        console.log(`[META DM] Fetched real name from Graph API: ${realFirstName} ${realLastName || ""} (sender=${senderId})`);
+                      }
+                    } else {
+                      console.warn(`[META DM] Graph API profile fetch failed for ${senderId}: HTTP ${profileRes.status}`);
+                    }
+                  } catch (profileErr: any) {
+                    console.warn(`[META DM] Graph API profile fetch error for ${senderId}:`, profileErr.message);
+                  }
+
                   const newContact = await storage.createContact({
                     subAccountId,
-                    firstName: `${channel === "instagram" ? "IG" : "FB"} User ${senderId.slice(-4)}`,
+                    firstName: realFirstName,
+                    ...(realLastName ? { lastName: realLastName } : {}),
                     phone: senderPhone,
                     source: `${channel}_dm`,
                     tags: [channel, "dm_lead"],
                   });
                   existingContactRecord = newContact;
-                  console.log(`[META DM] Created CRM contact id=${newContact.id} for ${senderId}`);
+                  console.log(`[META DM] Created CRM contact id=${newContact.id} for ${senderId} (name=${realFirstName} ${realLastName || ""})`);
                 }
               }
             } catch (contactErr: any) {
@@ -1295,7 +1318,7 @@ export function registerWebhooksRoutes(app: Express) {
 
             try {
               const triggerContext = {
-                leadName: existingContactRecord?.firstName || `${channel === "instagram" ? "IG" : "FB"} User ${senderId.slice(-4)}`,
+                leadName: existingContactRecord ? [existingContactRecord.firstName, existingContactRecord.lastName].filter(Boolean).join(" ").trim() || senderId : senderId,
                 leadPhone: resolvedPhone || senderId,
                 senderId,
                 channel,
@@ -1324,7 +1347,7 @@ export function registerWebhooksRoutes(app: Express) {
                 message,
                 channel: channel as "facebook" | "instagram",
                 phone: existingContactRecord.phone || null,
-                name: existingContactRecord.firstName || `${channel === "instagram" ? "IG" : "FB"} User`,
+                name: [existingContactRecord.firstName, existingContactRecord.lastName].filter(Boolean).join(" ").trim() || senderId,
                 subAccountId,
                 followUpPhone: senderId,
               };
@@ -1393,10 +1416,15 @@ export function registerWebhooksRoutes(app: Express) {
             for (const kw of keywords) {
               if (kw.channel !== "all" && kw.channel !== channel) continue;
 
-              const kwLower = kw.keyword.toLowerCase();
-              const matched = kw.matchType === "contains"
-                ? msgLower.includes(kwLower)
-                : msgLower === kwLower;
+              const kwLower = kw.keyword.toLowerCase().trim();
+              let matched = false;
+              if (kw.matchType === "contains") {
+                matched = msgLower.includes(kwLower);
+              } else if (kw.matchType === "starts_with") {
+                matched = msgLower.startsWith(kwLower);
+              } else {
+                matched = msgLower === kwLower;
+              }
 
               if (!matched) continue;
 
@@ -1418,6 +1446,10 @@ export function registerWebhooksRoutes(app: Express) {
                   senderId,
                 });
               } else if (kw.responseText && accessToken && pageId) {
+                const kwDelayMs = Math.floor(1500 + Math.random() * 2500 * Math.min(message.length, 200) / 200);
+                await new Promise(resolve => setTimeout(resolve, kwDelayMs));
+                console.log(`[META DM] Natural delay applied: ${kwDelayMs}ms before keyword reply to ${senderId}`);
+
                 const kwUrl = `https://graph.facebook.com/v19.0/${pageId}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
                 console.log(`[META DM] Sending keyword reply to ${senderId} via pageId=${pageId}, keyword="${kw.keyword}"`);
                 const kwSendRes = await fetch(kwUrl, {
@@ -1454,7 +1486,7 @@ export function registerWebhooksRoutes(app: Express) {
                 if (payload.triggerName) {
                   import("./v1").then(({ fireAutomationTriggerGlobal }) =>
                     fireAutomationTriggerGlobal(payload.triggerName, subAccountId, {
-                      leadName: `${channel} User ${senderId.slice(-4)}`,
+                      leadName: existingContactRecord ? [existingContactRecord.firstName, existingContactRecord.lastName].filter(Boolean).join(" ").trim() || senderId : senderId,
                       leadPhone: senderId,
                       source: `${channel}_dm_keyword:${kw.keyword}`,
                       keyword: kw.keyword,
@@ -1494,6 +1526,10 @@ export function registerWebhooksRoutes(app: Express) {
                   metadata: { channel, replyLength: aiReply?.length || 0 },
                   disambiguator: mid || `meta-ai-${senderId}`,
                 });
+
+                const naturalDelayMs = Math.floor(1500 + Math.random() * 2500 * Math.min(message.length, 200) / 200);
+                await new Promise(resolve => setTimeout(resolve, naturalDelayMs));
+                console.log(`[META DM] Natural delay applied: ${naturalDelayMs}ms before sending AI reply to ${senderId}`);
 
                 const metaSendStart = Date.now();
                 const metaDmThreadId = `${subAccountId}::${senderId}::${channel}`;
