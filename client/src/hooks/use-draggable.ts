@@ -41,6 +41,7 @@ export function useDraggable() {
 
     const onPointerUp = () => {
       dragging.current = false;
+      setTimeout(() => { didDrag.current = false; }, 0);
       window.removeEventListener("mousemove", onPointerMove);
       window.removeEventListener("mouseup", onPointerUp);
       window.removeEventListener("touchmove", onPointerMove);

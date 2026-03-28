@@ -97,7 +97,7 @@ REAL-TIME METRICS (use these exact numbers in your responses):
 - Total Messages: ${totalMessages} (Inbound: ${inboundMessages}, Outbound: ${outboundMessages})
 - Failed Messages: ${failedMessages} (${failRate}% failure rate)${failRate > 10 ? " ⚠️ HIGH — investigate phone number or Twilio config" : ""}
 - Pipeline Stages: ${stages?.length || 0}
-- Active Deals: ${deals?.length || 0} (Total Value: $${(totalDealValue / 100).toFixed(0)})
+- Active Deals: ${deals?.length || 0} (Total Value: $${totalDealValue.toLocaleString()})
 - Recent Activity: ${messages?.filter((m: any) => {
       const d = new Date(m.createdAt);
       return d > new Date(Date.now() - 24 * 60 * 60 * 1000);

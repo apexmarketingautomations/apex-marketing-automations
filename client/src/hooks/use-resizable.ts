@@ -26,7 +26,7 @@ export function useResizable(defaultWidth: number, defaultHeight: number, minWid
       const cx = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
       const cy = "touches" in ev ? ev.touches[0].clientY : ev.clientY;
       const dx = cx - startPos.current.x;
-      const dy = startPos.current.y - cy;
+      const dy = cy - startPos.current.y;
       const maxW = Math.min(window.innerWidth * 0.9, 800);
       const maxH = Math.min(window.innerHeight * 0.85, 900);
       setSize({

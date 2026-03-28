@@ -316,7 +316,11 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
                             display = value.join(", ");
                           }
                         } else if (typeof value === "object") {
-                          display = Object.entries(value as Record<string, any>).map(([k, v]) => `${k}: ${v}`).slice(0, 3).join(", ");
+                          display = Object.entries(value as Record<string, any>).map(([k, v]) => {
+                            if (v === null || v === undefined) return `${k}: —`;
+                            if (typeof v === "object") return `${k}: ${Array.isArray(v) ? `[${v.length} items]` : JSON.stringify(v).slice(0, 40)}`;
+                            return `${k}: ${String(v).slice(0, 40)}`;
+                          }).slice(0, 3).join(", ");
                         } else {
                           display = String(value).slice(0, 120);
                         }
