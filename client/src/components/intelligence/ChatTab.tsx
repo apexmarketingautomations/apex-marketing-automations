@@ -17,6 +17,7 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
   const [activitySteps, setActivitySteps] = useState<Array<{ id: string; label: string; status: "running" | "complete" }>>([]);
   const [groundingSources, setGroundingSources] = useState<Array<{ title?: string; url?: string }>>([]);
   const [toolResults, setToolResults] = useState<Array<{ tool: string; data: any }>>([]);
+  const sessionIdRef = useRef<string | null>(null);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -138,6 +139,7 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
         conversationHistory: history,
         currentPath: location,
         subAccountId,
+        ...(sessionIdRef.current ? { sessionId: sessionIdRef.current } : {}),
       }, {
         onDone: (fullText) => {
           setMessages(prev => [...prev, { role: "assistant", content: fullText }]);
@@ -160,6 +162,12 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
           });
         },
         onAction: (action) => {
+          if (action.type === "session" && action.sessionId) {
+            sessionIdRef.current = action.sessionId;
+          }
+          if (action.type === "navigation" && action.route) {
+            setLocation(action.route);
+          }
           if (action.action === "navigate" && action.path) {
             setLocation(action.path);
           }
