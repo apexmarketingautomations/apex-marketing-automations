@@ -480,18 +480,36 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async getConversationThreads(subAccountId: number): Promise<{ contactPhone: string; channel: string; lastMessage: string; lastTime: Date; unreadCount: number }[]> {
+  async getConversationThreads(subAccountId: number): Promise<{ contactPhone: string; channel: string; lastMessage: string; lastTime: Date; unreadCount: number; contactFirstName?: string; contactLastName?: string }[]> {
     const result = await db.execute(
       sql`SELECT
-            contact_phone AS "contactPhone",
-            channel,
-            MAX(created_at) AS "lastTime",
-            SUM(CASE WHEN direction='inbound' AND status != 'read' THEN 1 ELSE 0 END)::int AS "unreadCount",
-            (ARRAY_AGG(body ORDER BY created_at DESC))[1] AS "lastMessage"
-          FROM messages
-          WHERE sub_account_id = ${subAccountId}
-          GROUP BY contact_phone, channel
-          ORDER BY "lastTime" DESC`
+            t."contactPhone",
+            t.channel,
+            t."lastTime",
+            t."unreadCount",
+            t."lastMessage",
+            dc.first_name AS "contactFirstName",
+            dc.last_name AS "contactLastName"
+          FROM (
+            SELECT
+              contact_phone AS "contactPhone",
+              channel,
+              MAX(created_at) AS "lastTime",
+              SUM(CASE WHEN direction='inbound' AND status != 'read' THEN 1 ELSE 0 END)::int AS "unreadCount",
+              (ARRAY_AGG(body ORDER BY created_at DESC))[1] AS "lastMessage"
+            FROM messages
+            WHERE sub_account_id = ${subAccountId}
+            GROUP BY contact_phone, channel
+          ) t
+          LEFT JOIN LATERAL (
+            SELECT first_name, last_name
+            FROM contacts
+            WHERE sub_account_id = ${subAccountId}
+              AND phone = t."contactPhone"
+            ORDER BY id DESC
+            LIMIT 1
+          ) dc ON true
+          ORDER BY t."lastTime" DESC`
     ) as any;
     return (result.rows || result).map((r: any) => ({
       contactPhone: r.contactPhone,
@@ -499,6 +517,8 @@ export class DatabaseStorage implements IStorage {
       lastMessage: (r.lastMessage || "").slice(0, 80),
       lastTime: new Date(r.lastTime),
       unreadCount: Number(r.unreadCount) || 0,
+      contactFirstName: r.contactFirstName || undefined,
+      contactLastName: r.contactLastName || undefined,
     }));
   }
 

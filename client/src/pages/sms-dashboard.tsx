@@ -191,17 +191,34 @@ export default function SmsDashboard() {
     staleTime: 0,
   });
 
+  const { data: threadData = [] } = useQuery<{ contactPhone: string; channel: string; contactFirstName?: string; contactLastName?: string }[]>({
+    queryKey: ["/api/conversations", numericAccountId],
+    queryFn: () => api.getConversationThreads(numericAccountId!),
+    enabled: !!numericAccountId,
+    refetchInterval: 8000,
+    staleTime: 2000,
+  });
+
+  const contactNameMap = useMemo(() => {
+    const map = new Map<string, { firstName?: string; lastName?: string }>();
+    for (const t of threadData) {
+      map.set(`${t.contactPhone}__${t.channel}`, { firstName: t.contactFirstName, lastName: t.contactLastName });
+    }
+    return map;
+  }, [threadData]);
+
   const allRawMessages: LocalMessage[] = useMemo(() => [
     ...serverMessages,
     ...localMessages.filter(lm => lm.subAccountId === numericAccountId),
   ], [serverMessages, localMessages, numericAccountId]);
 
   const conversations = useMemo(() => {
-    const convMap = new Map<string, { contactPhone: string; channel: string; lastMessage: string; lastTime: Date; unread: number }>();
+    const convMap = new Map<string, { contactPhone: string; channel: string; lastMessage: string; lastTime: Date; unread: number; contactFirstName?: string; contactLastName?: string }>();
     for (const msg of allRawMessages) {
       const key = `${msg.contactPhone}__${msg.channel || "sms"}`;
       const existing = convMap.get(key);
       const msgTime = new Date(msg.createdAt);
+      const names = contactNameMap.get(key);
       if (!existing || msgTime > existing.lastTime) {
         convMap.set(key, {
           contactPhone: msg.contactPhone,
@@ -209,13 +226,31 @@ export default function SmsDashboard() {
           lastMessage: (msg.body || "").slice(0, 60),
           lastTime: msgTime,
           unread: (existing?.unread || 0) + (msg.direction === "inbound" && msg.status !== "read" ? 1 : 0),
+          contactFirstName: names?.firstName,
+          contactLastName: names?.lastName,
         });
       } else if (msg.direction === "inbound" && msg.status !== "read") {
         existing.unread += 1;
       }
     }
     return Array.from(convMap.values()).sort((a, b) => b.lastTime.getTime() - a.lastTime.getTime());
-  }, [allRawMessages]);
+  }, [allRawMessages, contactNameMap]);
+
+  const getContactDisplayName = (contactPhone: string, channel: string, firstName?: string, lastName?: string) => {
+    const hasReal = firstName && !firstName.startsWith("FB User") && !firstName.startsWith("IG User") && !firstName.startsWith("IG ");
+    if (hasReal) return `${firstName}${lastName ? ` ${lastName}` : ""}`;
+    if (channel === "facebook") return `FB User ...${contactPhone.slice(-4)}`;
+    if (channel === "instagram") return `IG ${contactPhone.slice(-6)}`;
+    return contactPhone;
+  };
+
+  const getContactInitial = (contactPhone: string, channel: string, firstName?: string, lastName?: string) => {
+    const hasReal = firstName && !firstName.startsWith("FB User") && !firstName.startsWith("IG User") && !firstName.startsWith("IG ");
+    if (hasReal) return firstName.charAt(0).toUpperCase();
+    if (channel === "facebook") return "F";
+    if (channel === "instagram") return "I";
+    return contactPhone.charAt(contactPhone.length - 1) || "?";
+  };
 
   useEffect(() => {
     if (!selectedConv && conversations.length > 0) {
@@ -405,9 +440,7 @@ export default function SmsDashboard() {
                         : conv.channel === "whatsapp" ? <MessageCircle className="h-3.5 w-3.5 text-green-500" />
                         : conv.channel === "vapi-sms" ? <Bot className="h-3.5 w-3.5 text-purple-500" />
                         : <Phone className="h-3.5 w-3.5 text-blue-400" />;
-                      const displayName = conv.channel === "facebook" ? `FB User ...${conv.contactPhone.slice(-4)}`
-                        : conv.channel === "instagram" ? `IG ${conv.contactPhone.slice(-6)}`
-                        : conv.contactPhone;
+                      const displayName = getContactDisplayName(conv.contactPhone, conv.channel, conv.contactFirstName, conv.contactLastName);
                       return (
                         <button
                           key={`${conv.contactPhone}__${conv.channel}`}
@@ -462,12 +495,19 @@ export default function SmsDashboard() {
             <div className="p-4 border-b border-border bg-card flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-full bg-secondary flex items-center justify-center">
-                  <User className="h-5 w-5 text-secondary-foreground" />
+                  {selectedConv ? (() => {
+                    const names = contactNameMap.get(`${selectedConv.contactPhone}__${selectedConv.channel}`);
+                    const initial = getContactInitial(selectedConv.contactPhone, selectedConv.channel, names?.firstName, names?.lastName);
+                    return <span className="text-sm font-semibold text-secondary-foreground" data-testid="avatar-initial">{initial}</span>;
+                  })() : <User className="h-5 w-5 text-secondary-foreground" />}
                 </div>
                 <div>
                   <h2 className="font-semibold text-foreground">
                     {selectedConv
-                      ? (selectedConv.channel === "facebook" ? `FB User ...${selectedConv.contactPhone.slice(-4)}` : selectedConv.contactPhone)
+                      ? (() => {
+                          const names = contactNameMap.get(`${selectedConv.contactPhone}__${selectedConv.channel}`);
+                          return getContactDisplayName(selectedConv.contactPhone, selectedConv.channel, names?.firstName, names?.lastName);
+                        })()
                       : "All Conversations"}
                   </h2>
                   <div className="flex items-center gap-1.5">

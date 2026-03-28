@@ -1261,6 +1261,30 @@ export function registerWebhooksRoutes(app: Express) {
 
               if (existingContact.length > 0) {
                 existingContactRecord = existingContact[0];
+                // Backfill: if stored name is a placeholder, re-fetch real name from Graph API
+                const fn = existingContactRecord.firstName || "";
+                if (fn.startsWith("FB User") || fn.startsWith("IG User") || fn.startsWith("IG ")) {
+                  try {
+                    const profileUrl = `https://graph.facebook.com/v19.0/${senderId}?fields=first_name,last_name` +
+                      (appsecretProof ? `&appsecret_proof=${appsecretProof}` : "") +
+                      `&access_token=${accessToken}`;
+                    const profileRes = await fetch(profileUrl, { signal: AbortSignal.timeout(5000) });
+                    if (profileRes.ok) {
+                      const profileData = await profileRes.json() as any;
+                      if (profileData.first_name) {
+                        await storage.updateContact(existingContactRecord.id, {
+                          firstName: profileData.first_name,
+                          ...(profileData.last_name ? { lastName: profileData.last_name } : {}),
+                        });
+                        existingContactRecord.firstName = profileData.first_name;
+                        if (profileData.last_name) existingContactRecord.lastName = profileData.last_name;
+                        console.log(`[META DM] Backfilled real name for contact id=${existingContactRecord.id}: ${profileData.first_name} ${profileData.last_name || ""}`);
+                      }
+                    }
+                  } catch (backfillErr: any) {
+                    console.warn(`[META DM] Name backfill failed for contact id=${existingContactRecord.id}:`, backfillErr.message);
+                  }
+                }
               } else {
                 const byFirstName = await db.select().from(contacts)
                   .where(and(
@@ -1270,6 +1294,30 @@ export function registerWebhooksRoutes(app: Express) {
                   )).limit(1);
                 if (byFirstName.length > 0) {
                   existingContactRecord = byFirstName[0];
+                  // Backfill for byFirstName match too
+                  const fn2 = existingContactRecord.firstName || "";
+                  if (fn2.startsWith("FB User") || fn2.startsWith("IG User") || fn2.startsWith("IG ")) {
+                    try {
+                      const profileUrl = `https://graph.facebook.com/v19.0/${senderId}?fields=first_name,last_name` +
+                        (appsecretProof ? `&appsecret_proof=${appsecretProof}` : "") +
+                        `&access_token=${accessToken}`;
+                      const profileRes = await fetch(profileUrl, { signal: AbortSignal.timeout(5000) });
+                      if (profileRes.ok) {
+                        const profileData = await profileRes.json() as any;
+                        if (profileData.first_name) {
+                          await storage.updateContact(existingContactRecord.id, {
+                            firstName: profileData.first_name,
+                            ...(profileData.last_name ? { lastName: profileData.last_name } : {}),
+                          });
+                          existingContactRecord.firstName = profileData.first_name;
+                          if (profileData.last_name) existingContactRecord.lastName = profileData.last_name;
+                          console.log(`[META DM] Backfilled real name for contact id=${existingContactRecord.id}: ${profileData.first_name} ${profileData.last_name || ""}`);
+                        }
+                      }
+                    } catch (backfillErr: any) {
+                      console.warn(`[META DM] Name backfill failed for contact id=${existingContactRecord.id}:`, backfillErr.message);
+                    }
+                  }
                 } else {
                   const senderPhone = /^\d{10,11}$/.test(senderId)
                     ? `+1${senderId.slice(-10)}`

@@ -8,6 +8,7 @@ export const API = {
   },
   ACCOUNTS: "/api/accounts",
   MESSAGES: "/api/messages",
+  CONVERSATIONS: "/api/conversations",
   WORKFLOWS: "/api/workflows",
   BOTS: {
     TRAIN: "/api/bots/train",
@@ -53,6 +54,11 @@ export const api = {
 
   getMessages: async (subAccountId: number) => {
     const res = await apiRequest("GET", `${API.MESSAGES}/${subAccountId}`);
+    return res.json();
+  },
+
+  getConversationThreads: async (subAccountId: number) => {
+    const res = await apiRequest("GET", `${API.CONVERSATIONS}/${subAccountId}`);
     return res.json();
   },
 
