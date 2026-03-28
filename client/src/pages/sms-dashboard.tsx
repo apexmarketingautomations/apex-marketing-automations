@@ -8,17 +8,11 @@ import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { INBOX_STEPS } from "@/components/tutorial-steps";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAccount } from "@/hooks/use-account";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Card,
   CardContent,
@@ -152,7 +146,7 @@ function DmSequenceCard({ subAccountId }: { subAccountId?: number }) {
 
 export default function SmsDashboard() {
   const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_inbox");
-  const [selectedAccount, setSelectedAccount] = useState<string>("");
+  const { activeAccountId } = useAccount();
   const [instagramConnected, setInstagramConnected] = useState(false);
   const [localMessages, setLocalMessages] = useState<LocalMessage[]>([]);
   const [selectedConv, setSelectedConv] = useState<{ contactPhone: string; channel: string } | null>(null);
@@ -164,15 +158,29 @@ export default function SmsDashboard() {
     queryKey: ["/api/accounts"],
   });
 
-  useEffect(() => {
-    if (accounts.length > 0 && !selectedAccount) {
-      const firstId = String(accounts[0].id);
-      setSelectedAccount(firstId);
-      form.setValue("subAccountId", firstId);
-    }
-  }, [accounts]);
+  const numericAccountId = activeAccountId ?? undefined;
+  const currentAccount = accounts.find(a => a.id === activeAccountId);
 
-  const numericAccountId = selectedAccount ? Number(selectedAccount) : undefined;
+  const [isSendingMsg, setIsSendingMsg] = useState(false);
+
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      subAccountId: activeAccountId ? String(activeAccountId) : "",
+      contactPhone: "+15559999",
+      messageBody: "",
+      channel: "sms",
+    },
+  });
+
+  useEffect(() => {
+    setLocalMessages([]);
+    setSelectedConv(null);
+    form.setValue("subAccountId", activeAccountId ? String(activeAccountId) : "");
+    form.setValue("contactPhone", "+15559999");
+    form.setValue("messageBody", "");
+    form.setValue("channel", "sms");
+  }, [activeAccountId]);
 
   const { data: serverMessages = [], isLoading: messagesLoading } = useQuery<Message[]>({
     queryKey: ["/api/messages", numericAccountId],
@@ -181,18 +189,6 @@ export default function SmsDashboard() {
     refetchInterval: 4000,
     refetchOnWindowFocus: true,
     staleTime: 0,
-  });
-
-  const [isSendingMsg, setIsSendingMsg] = useState(false);
-
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      subAccountId: "",
-      contactPhone: "+15559999",
-      messageBody: "",
-      channel: "sms",
-    },
   });
 
   const allRawMessages: LocalMessage[] = useMemo(() => [
@@ -285,6 +281,14 @@ export default function SmsDashboard() {
   }, [allMessages.length]);
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
+    if (!activeAccountId || Number(values.subAccountId) !== activeAccountId) {
+      toast({
+        variant: "destructive",
+        title: "Account mismatch",
+        description: "Please select an active account from the sidebar before sending.",
+      });
+      return;
+    }
     setIsSendingMsg(true);
     try {
       const res = await fetch("/api/messages/send", {
@@ -292,7 +296,7 @@ export default function SmsDashboard() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          subAccountId: Number(values.subAccountId),
+          subAccountId: activeAccountId,
           contactPhone: values.contactPhone,
           body: values.messageBody,
           channel: values.channel,
@@ -346,32 +350,14 @@ export default function SmsDashboard() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                <label className="text-sm font-medium leading-none text-muted-foreground">
                   Active Account
                 </label>
-                <Select 
-                  value={selectedAccount} 
-                  onValueChange={(val) => {
-                    setSelectedAccount(val);
-                    form.setValue("subAccountId", val);
-                    setLocalMessages([]);
-                    setSelectedConv(null);
-                  }}
-                >
-                  <SelectTrigger data-testid="select-account">
-                    <SelectValue placeholder="Select account" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {accounts.map((acc) => (
-                      <SelectItem key={acc.id} value={String(acc.id)}>
-                        <div className="flex items-center gap-2">
-                          <Building2 className="h-4 w-4 text-muted-foreground" />
-                          <span>{acc.name}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center gap-2 p-2 rounded-md border border-border bg-muted/50" data-testid="text-active-account">
+                  <Building2 className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">{currentAccount?.name || "No account selected"}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Switch accounts using the sidebar.</p>
               </div>
 
               <div className="space-y-3 pt-2 border-t border-border">

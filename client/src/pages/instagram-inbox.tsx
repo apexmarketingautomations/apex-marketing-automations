@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
@@ -45,6 +45,11 @@ export default function InstagramInboxPage() {
   const [selectedConversation, setSelectedConversation] = useState<InstagramConversation | null>(null);
 
   const [messageText, setMessageText] = useState("");
+
+  useEffect(() => {
+    setSelectedConversation(null);
+    setMessageText("");
+  }, [subAccountId]);
 
   const { data: conversations = [], isLoading } = useQuery<InstagramConversation[]>({
     queryKey: ["/api/meta/instagram/conversations", subAccountId],
