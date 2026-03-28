@@ -1,0 +1,71 @@
+Upgrade the digital card access and feature system to properly support:
+
+1. Product type (platform vs standalone)
+2. Entitlement (subscription vs purchase)
+3. Tier (feature level access)
+
+Problem:
+The current system incorrectly relies on paymentStatus alone, which breaks:
+- platform cards (subscription-based)
+- standalone cards (purchase-based)
+- tiered feature access
+
+Required architecture:
+
+1. Product Type Separation
+- platform cards → tied to subAccountId
+- standalone cards → tied to purchase/order (purchaseId)
+
+2. Entitlement Logic
+- platform cards → governed by active subscription / account status
+- standalone cards → governed by successful purchase
+- DO NOT mix these two models
+
+3. Tier System (critical)
+Introduce a tier field (or equivalent) for both:
+- platform accounts (e.g. plan tier)
+- standalone purchases (e.g. product tier)
+
+Example tiers:
+- basic
+- pro
+- premium
+
+4. Feature Gating (core requirement)
+- Define which features are available per tier
+- Enforce feature access based on tier, NOT just payment status
+
+Examples:
+- basic → limited fields, limited themes
+- pro → full card features
+- premium → advanced features (analytics, customization, etc.)
+
+5. Shared Core + Separate Entitlements
+- Both platform and standalone cards should use the SAME core card engine
+- Apply different entitlement + tier logic on top
+
+6. Access Control Rules
+- Platform card access:
+  - allowed if isActive && isPublic && status === "published"
+  - tier determines features, NOT visibility
+- Standalone card access:
+  - allowed if purchase is valid
+  - tier determines feature set
+
+7. Refactor Requirements
+- Remove any logic that treats all cards as requiring paymentStatus === "paid"
+- Replace with:
+  - product-type-aware logic
+  - tier-aware feature gating
+
+Return:
+- How product type is determined (platform vs standalone)
+- How entitlement is enforced for each
+- How tiers are stored and applied
+- Which features are gated by tier
+- Exact files/components/services updated
+- Confirmation that:
+  - platform cards work under subscription
+  - standalone cards work under purchase
+  - tiers are respected across both systems
+  - no cross-breaking occurs

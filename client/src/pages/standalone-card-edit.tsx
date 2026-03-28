@@ -4,6 +4,7 @@ import {
   ArrowLeft, Save, Loader2, Check, Eye, User, Phone,
   Globe, Image, Palette, Star, AlertTriangle
 } from "lucide-react";
+import { CARD_THEMES, getAvailableThemes } from "@/components/card-core";
 
 function Field({ label, value, onChange, testId, type = "text", placeholder = "" }: any) {
   return (
@@ -195,6 +196,27 @@ export default function StandaloneCardEdit() {
           <ColorField label="Theme Color" value={card.themeColor} onChange={(v: string) => update("themeColor", v)} testId="input-color" />
           {(card.tier === "premium" || card.tier === "pro") && (
             <div className="space-y-3">
+              <div>
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Card Theme</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {getAvailableThemes(card.tier).map(themeKey => {
+                    const t = CARD_THEMES[themeKey];
+                    const selected = (card.cardTheme || "executive-dark") === themeKey;
+                    return (
+                      <button key={themeKey} data-testid={`theme-${themeKey}`}
+                        onClick={() => update("cardTheme", themeKey)}
+                        className={`p-3 rounded-xl border text-left transition-all ${
+                          selected
+                            ? "border-cyan-500/50 bg-cyan-500/10"
+                            : "border-white/[0.08] bg-white/[0.03] hover:border-white/[0.15]"
+                        }`}>
+                        <div className={`w-full h-6 rounded-lg mb-2 ${t.bg}`} />
+                        <p className="text-xs text-white font-medium capitalize">{themeKey.replace(/-/g, " ")}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <div>
                 <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Card Layout</label>
                 <select

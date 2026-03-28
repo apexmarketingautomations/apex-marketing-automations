@@ -62,23 +62,27 @@ Preferred communication style: Simple, everyday language.
 - **Meta Campaign Background Sync**: Job-queue-based 45-minute interval sync for Meta ad campaigns with `lastSyncedAt` tracking.
 - **FLHSMV API**: For polling and retrieving crash reports.
 
-## Digital Business Card System (Standalone Product — Hard-Isolated from Apex)
-- **Product**: "Digital Business Card + Lead Funnel" — $29 one-time payment, no login required
-- **Flow**: Landing → Stripe Checkout → Card Created (webhook) → Success Page (card URL + edit link) → Email with edit token
-- **Schema**: `digitalCards` table with `ownerEmail` (replaces subAccountId dependency), `editToken` (UUID for no-auth editing), `customerId`, `purchaseId`, `paymentStatus` (gate for public access). `cardAnalyticsEvents` with `ipHash`, `deviceType`, `country`, `city` enrichment.
-- **Backend** (`server/routes/cards.ts`): 
-  - `POST /api/card-checkout` — Creates Stripe one-time payment session ($29), no auth required
-  - `GET /api/card/edit/:token` — Returns full card data by edit token, no auth required
-  - `PUT /api/card/edit/:token` — Updates card data by edit token, no auth required
-  - `GET /api/card/session/:sessionId` — Polls checkout session status, triggers fallback fulfillment
-  - `handleDigitalCardWebhook()` — Called from main Stripe webhook when `source=digital_card`, creates card + slug
-  - Public card API (`/api/public-card/:slug`) enforces `paymentStatus === "paid"` gate
-  - Analytics event tracking with device detection and IP hashing
-- **Frontend Pages**:
-  - `/card/:slug` — Public card view (6 themes, sticky action bar, share modal, QR, services, links, social)
-  - `/card/success` — Post-checkout success page with card URL and edit link
-  - `/card/edit/:token` — Full card editor (basic info, contact, images, appearance, social links, custom links, services, SEO)
-- **Standalone Product** (separate referral system): `/standalone/*` routes with `standalone_cards`, `standalone_orders`, `standalone_referral_codes`, `standalone_referrals`, `standalone_page_views` tables. Promo pricing ($24.50 for first 20 orders), $10 referral commissions.
-- **Server-Side Analytics**: `standalone_page_views` table tracks page views across the entire funnel (landing → create → preview → checkout → upsell → success) with IP hashing, session tracking, and referral attribution. Admin analytics endpoint at `GET /api/standalone/admin/analytics` returns funnel metrics, daily views, unique visitors, and referral sources by period.
-- **Landing Page**: 7-section conversion page with interactive demo card, price comparison (paper vs digital), stats bar, how-it-works steps, buying-objection FAQs, strong price anchoring, and "See a live example" button.
-- **Routing**: `/card/:slug` is the canonical URL. `/card/success`, `/card/edit/:token` are public routes.
+## Digital Business Card System
+
+### Shared Card Core Engine (`client/src/components/card-core/`)
+Both platform and standalone card products share a unified rendering engine:
+- **Types** (`types.ts`): `SharedCardData` interface, `CardRenderConfig` (source, tier, branding, tracking), `SocialLink`, `CustomLink`, `Service`, `Testimonial`.
+- **Theme Engine** (`themes.ts`): 6 premium themes (`executive-dark`, `luxury-dark`, `clean-light`, `bold-agency`, `modern-gradient`, `minimal-neutral`). Tier-based gating: base=executive-dark only, premium/pro=all themes. `getCardTheme()`, `getAvailableThemes()`, `resolveThemeForTier()`.
+- **Data Adapters** (`adapters.ts`): `adaptPlatformCard()` normalizes `digitalCards` schema (socialLinks JSON array, logoImageUrl, googleReviewLink). `adaptStandaloneCard()` normalizes `standaloneCards` schema (individual social columns → socialLinks array, profileImageUrl → photoUrl, etc.).
+- **Shared Components** (`components.tsx`): HeroSection, PrimaryActions, SaveShareBar, QRPanel, AboutSection, ServicesSection, TestimonialSection, LinksSection, SocialLinksSection, ReviewBookingLinks, StickyActionBar, ShareModal, CardFooter, BackgroundGlow, CardLoading/NotFound/Unavailable/Error. Components accept `SharedCardData` + `CardTheme` + optional `CardRenderConfig`.
+- **Product-Specific Logic**: Platform keeps analytics tracking (`useCardAnalytics` hook), standalone keeps referral CTA, branding toggle, tier gating, and vCard via server endpoint.
+
+### Platform Card Product (Apex-Integrated)
+- **Schema**: `digitalCards` table with `ownerEmail`, `editToken`, `paymentStatus` gate, `socialLinks` (JSON array), `services`, `testimonial`, `brandColor`/`accentColor`, `theme`.
+- **Backend** (`server/routes/cards.ts`): Checkout, edit-by-token, public card API, analytics events.
+- **Frontend**: `/card/:slug` (public view), `/card/success`, `/card/edit/:token`.
+
+### Standalone Card Product (Hard-Isolated from Apex)
+- **Product**: "Digital Business Card + Lead Funnel" — $29 one-time payment, no login required.
+- **Schema**: `standaloneCards` with `fullName`, individual social URL columns, `themeColor`, `cardTheme` (tier-gated), `tier` (base/premium/pro), `cardLayout`, `removeApexBranding`.
+- **Backend** (`server/routes/standalone-cards.ts`): Server-side validation of `cardTheme` against allowed theme keys and `cardLayout` against tier.
+- **Tier System**: Base = default theme + Apex branding shown. Premium = all 6 themes + standard layouts + branding removal. Pro = all premium + executive/creative layouts.
+- **Referral System**: `/standalone/*` routes, `standalone_orders`, `standalone_referral_codes`, `standalone_referrals`, `standalone_page_views`. Promo pricing ($24.50 for first 20 orders), $10 commissions.
+- **Analytics**: `standalone_page_views` table with funnel tracking, IP hashing, session tracking, referral attribution. Admin analytics at `GET /api/standalone/admin/analytics`.
+- **Landing Page**: 7-section conversion page with interactive demo card.
+- **Routing**: `/standalone/card/:slug` and `/standalone/c/:slug` are canonical.

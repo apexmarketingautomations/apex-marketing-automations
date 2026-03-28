@@ -1,0 +1,54 @@
+Investigate and fix the digital business card regression immediately.
+
+Problem:
+Digital cards were working, and now they are not. This likely happened after recent merges, route changes, or publish-related updates. Treat this as a regression caused by recent code changes, not a net-new feature request.
+
+Priority:
+Restore working digital card behavior without rewriting the whole card system.
+
+What to audit first:
+- Review recent merges and commits affecting the digital card system, especially:
+  - routing
+  - standalone/public card view
+  - slug resolution
+  - save/publish flow
+  - card preview vs live card rendering
+  - card dashboard links
+- Specifically inspect route changes in `client/src/App.tsx` and any related card routes such as:
+  - `/standalone/c/:slug`
+  - `/standalone/card/:slug`
+  - any dashboard/editor/view routes tied to digital cards
+- Check whether one route now overrides, conflicts with, or bypasses the correct card view component
+- Verify whether published card URLs still resolve correctly from both preview and production links
+- Check whether slug lookup, token lookup, or saved card retrieval is failing after the merge
+- Audit any recent changes to public card rendering, standalone card components, and save/publish actions
+
+Required fixes:
+- Restore full working digital card access for existing cards
+- Ensure saved cards load correctly by slug/token
+- Ensure public/live card URLs resolve correctly
+- Ensure preview, save, publish, and standalone view all point to the correct routes/components
+- Fix any broken route conflicts or fallback behavior introduced by recent merges
+- Preserve existing card data; do not break existing saved cards or links
+- Do NOT rebuild the digital card product from scratch
+
+Validation required:
+- Test an existing saved card from dashboard → preview → live/public link
+- Test direct access via current production/public card URL
+- Test both route patterns if both exist, and determine which one should be canonical
+- Confirm whether old links need backward-compatible support
+- Confirm save/publish still works after the fix
+
+Return:
+- Root cause of the regression
+- Exact files/routes/components changed
+- Which merge or code path caused the break
+- What was fixed
+- Whether backward compatibility for older card URLs is preserved
+- Confirmation that digital cards now load correctly again in preview and live/public mode
+
+Execution constraints:
+- Do NOT hand-wave
+- Do NOT claim complete until an actual existing card is tested end-to-end
+- Do NOT do a broad rebuild
+- Focus on regression isolation, route repair, and working validation

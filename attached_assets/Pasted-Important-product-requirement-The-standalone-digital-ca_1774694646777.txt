@@ -1,0 +1,58 @@
+Important product requirement:
+
+The standalone digital card service should offer the same core card value, quality, and major user-facing capabilities as the paid platform card experience, while still preserving its own standalone upsell/payment structure.
+
+What this means:
+- Do NOT treat the standalone service as a stripped-down broken version
+- Do NOT remove the standalone purchase funnel, upsell flow, or separate monetization logic
+- Do NOT force standalone users into the full Apex subscription model just to get a quality card product
+
+Required product rule:
+- Standalone card customers should be able to access a premium digital card experience with the same core end-user value as platform-paid users
+- The standalone service must remain its own product with its own:
+  - checkout flow
+  - upsells
+  - order/payment structure
+  - post-purchase journey
+- Feature parity should apply to the card product experience where appropriate, without breaking the standalone business model
+
+Implementation guidance:
+- Identify which card capabilities should be shared between:
+  1. platform-paid/sub-account cards
+  2. standalone purchased cards
+- Create a clear separation between:
+  - shared card capabilities
+  - platform-only account/admin features
+  - standalone-only monetization/upsell logic
+- Refactor the card system so both products can use the same high-quality core card engine/components where possible, while applying different entitlement and billing rules by product type
+- Avoid duplicate logic where the same card rendering/editing features can be shared safely
+- Preserve backward compatibility for existing standalone customers and existing platform cards
+
+What should likely be shared:
+- premium card rendering
+- card themes/layout quality
+- public card viewing experience
+- save/share/contact actions
+- core card fields and presentation
+- polished UX and responsive behavior
+
+What can still differ by product model:
+- checkout/payment flow
+- upsells/order bumps
+- subscription/account management
+- platform admin/dashboard functions
+- broader Apex-only automation/account features if those are intentionally outside the standalone offer
+
+Return:
+- Which features are now shared across both card products
+- Which features remain platform-only
+- Which features remain standalone-specific
+- Exact files/components/services refactored
+- How feature parity was achieved without breaking standalone monetization
+- Confirmation that standalone users now receive a premium, full-value card product while upsell/payment structure remains intact
+
+Execution constraints:
+- Do NOT flatten both products into one billing model
+- Do NOT break the standalone funnel
+- Do NOT degrade the subscribed platform card experience
+- Implement this as a shared-core / separate-entitlement architecture, not a messy one-off patch

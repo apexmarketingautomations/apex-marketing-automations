@@ -1930,6 +1930,7 @@ export const standaloneCards = pgTable("standalone_cards", {
   youtubeUrl: text("youtube_url"),
   customLinks: jsonb("custom_links"),
   themeColor: text("theme_color").default("#0ea5e9"),
+  cardTheme: text("card_theme").default("executive-dark"),
   tier: text("tier").default("base").notNull(),
   cardLayout: text("card_layout").default("default"),
   removeApexBranding: boolean("remove_apex_branding").default(false),

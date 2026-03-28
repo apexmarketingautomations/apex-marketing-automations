@@ -1,0 +1,45 @@
+Shared Card Core with Separate Entitlements
+What & Why
+The platform card and standalone card products currently have fully duplicated rendering, editing, and UX code with no shared components. Both products should deliver the same premium card experience to end users, while maintaining separate entitlement models (platform subscription vs standalone purchase). This task creates a shared card core that both products use, introduces proper tier-based feature gating, and ensures standalone customers get premium card quality without being forced into the full Apex subscription.
+
+Currently:
+
+digital-card.tsx (695 lines) and standalone-card-view.tsx (365 lines) are fully independent with duplicated logic for QR, share modals, copy links, vCard, and layout
+Platform cards have 6+ rich themes; standalone cards have a single dark layout with one accent color
+Standalone cards have a tier system (base/premium/pro) that gates layouts and branding removal, but the platform cards have no equivalent tier concept
+The two card tables use different schemas (e.g., socialLinks JSON array vs individual social URL columns)
+Done looks like
+Standalone card viewers see the same premium theme quality, rich layout sections, and polished UX as platform card viewers
+Shared card rendering components power both /card/:slug and /standalone/card/:slug views
+Standalone tier system (base/premium/pro) is preserved and respected — base cards get a default theme, premium/pro cards get full theme selection
+Platform cards continue to use their existing theme system with no degradation
+Standalone checkout, upsell, and payment flow remain completely intact and unchanged
+Platform dashboard, builder, and admin features remain platform-only
+Shared logic includes: card rendering, theme engine, QR/share modals, save contact, social links display, responsive layout
+Separate logic includes: checkout/payment (standalone), builder/dashboard (platform), analytics events (platform), referral system (standalone), upsell flow (standalone)
+No existing card data or links are broken
+Out of scope
+Merging the two database tables into one
+Changing the standalone checkout/upsell pricing or flow
+Adding new card features beyond what already exists in the platform card
+Modifying platform subscription or billing logic
+Database schema changes to column types
+Tasks
+Create shared card rendering components that both views can use — extract the common sections (hero, primary actions, about/bio, social links, links, QR modal, share modal, save contact bar, sticky action bar) into reusable components that accept a normalized card data interface
+Create a shared theme engine that works for both products — the platform's 6 preset themes should be available to standalone premium/pro cards; standalone base cards get a default theme derived from their accent color
+Normalize the card data adapter layer — create adapter functions that transform each table's schema into the shared card interface (e.g., mapping standalone's individual social columns to the platform's socialLinks array format)
+Update the standalone card view to use the shared rendering components and theme engine, preserving standalone-specific elements (referral CTA, Apex branding toggle, tier gating)
+Update the platform card view to use the shared rendering components, preserving platform-specific elements (analytics tracking, testimonials, services section)
+Implement tier-based feature gating for shared components — base standalone cards get limited themes and Apex branding shown; premium/pro standalone cards get full theme access and branding removal; platform cards get full access by default
+Verify end-to-end that both card products render correctly, standalone upsell/checkout flow still works, and no existing links or card data are broken
+Relevant files
+client/src/pages/digital-card.tsx
+client/src/pages/standalone-card-view.tsx
+client/src/pages/standalone-card-edit.tsx:200-237
+client/src/pages/digital-card-builder.tsx
+client/src/lib/vcard.ts
+shared/schema.ts:1134-1184
+shared/schema.ts:1910-1960
+server/routes/cards.ts:279-346
+server/routes/standalone-cards.ts:351-375
+Dependencies

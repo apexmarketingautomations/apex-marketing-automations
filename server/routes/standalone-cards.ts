@@ -499,14 +499,25 @@ export function registerStandaloneCardsRoutes(app: Express) {
     if (!updates) return res.status(400).json({ error: "No updates provided" });
 
     const allowed: Record<string, any> = {};
-    const fields = ["fullName","businessName","title","phone","website","address","bio",
+    const fields = ["fullName","businessName","title","phone","email","website","address","bio",
       "profileImageUrl","logoUrl","reviewLink","bookingLink","instagramUrl","facebookUrl",
       "tiktokUrl","linkedinUrl","youtubeUrl","customLinks","themeColor"];
     for (const f of fields) {
       if (f in updates) allowed[f] = updates[f];
     }
+    const VALID_THEMES = ["executive-dark","luxury-dark","clean-light","bold-agency","modern-gradient","minimal-neutral"];
+    const VALID_LAYOUTS = ["default","modern","bold","minimal","executive","creative"];
     if (card.tier === "premium" || card.tier === "pro") {
-      if ("cardLayout" in updates) allowed.cardLayout = updates.cardLayout;
+      if ("cardLayout" in updates && VALID_LAYOUTS.includes(updates.cardLayout)) {
+        if (card.tier !== "pro" && ["executive","creative"].includes(updates.cardLayout)) {
+          /* skip pro-only layouts for premium tier */
+        } else {
+          allowed.cardLayout = updates.cardLayout;
+        }
+      }
+      if ("cardTheme" in updates && VALID_THEMES.includes(updates.cardTheme)) {
+        allowed.cardTheme = updates.cardTheme;
+      }
       if ("removeApexBranding" in updates) allowed.removeApexBranding = !!updates.removeApexBranding;
     }
     allowed.updatedAt = new Date();
