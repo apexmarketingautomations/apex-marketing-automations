@@ -93,6 +93,27 @@
   p, span, div, li, td, th, label, a, h1, h2, h3, h4, h5, h6 {
     color: inherit;
   }
+
+  input, textarea, [contenteditable] {
+    color: var(--color-foreground, hsl(0 0% 98%));
+    caret-color: currentColor;
+  }
+
+  input::selection, textarea::selection, [contenteditable]::selection {
+    background: color-mix(in srgb, var(--vibe-glow, #6366f1) 40%, transparent);
+    color: var(--color-foreground, hsl(0 0% 98%));
+  }
+
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  textarea:-webkit-autofill,
+  textarea:-webkit-autofill:hover,
+  textarea:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--color-foreground, hsl(0 0% 98%));
+    -webkit-box-shadow: 0 0 0px 1000px transparent inset;
+    transition: background-color 5000s ease-in-out 0s;
+  }
 }
 
 /* 1. THE GRID BACKGROUND (The Sci-Fi Look) */

@@ -665,7 +665,7 @@ export default function SmsDashboard() {
                           <FormControl>
                             <Textarea
                               placeholder={selectedConv ? `Type your ${form.watch("channel") === 'facebook' ? 'Facebook DM' : form.watch("channel") === 'instagram' ? 'Instagram DM' : form.watch("channel") === 'whatsapp' ? 'WhatsApp message' : 'SMS'}...` : 'Select a conversation to reply...'}
-                              className="min-h-[80px] resize-none pr-12 text-sm bg-muted/30 border-muted-foreground/20 focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
+                              className="min-h-[80px] resize-none pr-12 text-sm text-foreground bg-muted/30 border-muted-foreground/20 focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
                               {...field}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter' && !e.shiftKey) {
