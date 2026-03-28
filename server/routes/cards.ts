@@ -6,6 +6,16 @@ import { eq, sql, and, desc, gte } from "drizzle-orm";
 import crypto from "crypto";
 import { asyncHandler, parseIntParam, verifyAccountOwnership } from "./helpers";
 
+function isCardAccessible(card: { subAccountId?: number | null; purchaseId?: string | null; isActive?: boolean | null; isPublic?: boolean | null; status?: string | null; paymentStatus?: string | null }): boolean {
+  if (card.subAccountId) {
+    return !!(card.isActive && card.isPublic && card.status === "published");
+  }
+  if (card.purchaseId) {
+    return card.paymentStatus === "paid";
+  }
+  return false;
+}
+
 function generateVCard(card: any, baseUrl?: string): string {
   const lines = [
     "BEGIN:VCARD",
@@ -99,6 +109,19 @@ export async function handleDigitalCardWebhook(session: any) {
 }
 
 export function registerCardsRoutes(app: Express) {
+  db.update(digitalCards)
+    .set({ paymentStatus: "paid" })
+    .where(and(
+      sql`${digitalCards.subAccountId} IS NOT NULL`,
+      sql`${digitalCards.paymentStatus} = 'pending'`
+    ))
+    .then((result) => {
+      console.log("[cards] Fixed platform cards with pending payment_status");
+    })
+    .catch((err) => {
+      console.error("[cards] Failed to fix platform card payment_status:", err);
+    });
+
   app.post("/api/card-checkout", asyncHandler(async (req, res) => {
     const { cardData } = req.body;
     if (!cardData?.name || !cardData?.email) {
@@ -280,8 +303,7 @@ export function registerCardsRoutes(app: Express) {
     const slug = req.params.slug.toLowerCase();
     const [card] = await db.select().from(digitalCards).where(eq(digitalCards.slug, slug)).limit(1);
     if (!card) return res.status(404).json({ error: "Card not found" });
-    if (!card.isActive || !card.isPublic) return res.status(404).json({ error: "Card not available" });
-    if (card.paymentStatus !== "paid") return res.status(403).json({ error: "Not available" });
+    if (!isCardAccessible(card)) return res.status(403).json({ error: "Not available" });
 
     await db.update(digitalCards).set({ viewCount: sql`${digitalCards.viewCount} + 1` }).where(eq(digitalCards.id, card.id));
 
@@ -291,8 +313,8 @@ export function registerCardsRoutes(app: Express) {
   app.get("/api/public-card/:slug/vcard", asyncHandler(async (req, res) => {
     const slug = req.params.slug.toLowerCase();
     const [card] = await db.select().from(digitalCards).where(eq(digitalCards.slug, slug)).limit(1);
-    if (!card || !card.isActive || !card.isPublic) return res.status(404).json({ error: "Card not found" });
-    if (card.paymentStatus !== "paid") return res.status(403).json({ error: "Not available" });
+    if (!card) return res.status(404).json({ error: "Card not found" });
+    if (!isCardAccessible(card)) return res.status(403).json({ error: "Not available" });
 
     const baseUrl = `${req.protocol}://${req.get("host")}`;
     const vcard = generateVCard(card, baseUrl);
@@ -307,9 +329,9 @@ export function registerCardsRoutes(app: Express) {
 
   app.post("/api/public-card/:slug/event", asyncHandler(async (req, res) => {
     const slug = req.params.slug.toLowerCase();
-    const [card] = await db.select({ id: digitalCards.id, isActive: digitalCards.isActive, isPublic: digitalCards.isPublic, paymentStatus: digitalCards.paymentStatus }).from(digitalCards).where(eq(digitalCards.slug, slug)).limit(1);
-    if (!card || !card.isActive || !card.isPublic) return res.status(404).json({ error: "Card not found" });
-    if (card.paymentStatus !== "paid") return res.status(403).json({ error: "Not available" });
+    const [card] = await db.select({ id: digitalCards.id, subAccountId: digitalCards.subAccountId, purchaseId: digitalCards.purchaseId, isActive: digitalCards.isActive, isPublic: digitalCards.isPublic, status: digitalCards.status, paymentStatus: digitalCards.paymentStatus }).from(digitalCards).where(eq(digitalCards.slug, slug)).limit(1);
+    if (!card) return res.status(404).json({ error: "Card not found" });
+    if (!isCardAccessible(card)) return res.status(403).json({ error: "Not available" });
 
     const { eventType, eventTarget, visitorId } = req.body;
     if (typeof eventTarget === "string" && eventTarget.length > 500) return res.status(400).json({ error: "eventTarget too long" });
