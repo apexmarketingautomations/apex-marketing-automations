@@ -142,7 +142,7 @@ export default function DashboardPage() {
               </Link>
             )}
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4">
             {[
               { icon: MessageSquare, label: "Unified Inbox" },
               { icon: Kanban, label: "Pipeline CRM" },
@@ -184,7 +184,7 @@ export default function DashboardPage() {
               <Zap size={16} className="text-cyan-400" />
               Service Status
             </h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2">
               {Object.entries(serviceStatus).map(([key, svc]) => (
                 <div key={key} className="flex items-center gap-2 p-2 rounded-lg bg-white/5" data-testid={`status-service-${key}`}>
                   {svc.status === "connected_verified" ? (
@@ -209,7 +209,7 @@ export default function DashboardPage() {
       {isLoading ? (
         <div className="text-center py-20 text-slate-200">Loading dashboard...</div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
           {metricCards.map((card, idx) => {
             const value = metrics?.[card.key as keyof DashboardMetrics] ?? 0;
             const displayValue = card.isCurrency ? `$${Number(value).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : Number(value).toLocaleString();
@@ -356,8 +356,8 @@ export default function DashboardPage() {
             </h2>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-black/40 border border-white/10 rounded-xl p-4" data-testid="stat-conversion-rate">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+            <div className="bg-black/40 border border-white/10 rounded-xl p-3 md:p-4" data-testid="stat-conversion-rate">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
                   <PieChart size={16} className="text-cyan-400" />

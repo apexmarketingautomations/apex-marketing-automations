@@ -365,7 +365,7 @@ export default function SmsDashboard() {
 
   return (
     <div className="p-4 md:p-8 font-sans">
-      <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
         
         {/* Left Sidebar: Configuration */}
         <div className="space-y-6">
@@ -488,7 +488,7 @@ export default function SmsDashboard() {
         </div>
 
         {/* Main Content: Chat Interface */}
-        <div className="md:col-span-2 h-[calc(100vh-4rem)] md:h-[800px] flex flex-col">
+        <div className="lg:col-span-2 h-[calc(100vh-12rem)] md:h-[800px] flex flex-col">
           <Card className="flex-1 flex flex-col shadow-md border-border overflow-hidden">
             
             {/* Header */}
@@ -524,20 +524,20 @@ export default function SmsDashboard() {
                   </div>
                 </div>
               </div>
-              <div className="flex gap-2 flex-wrap">
-                 <Badge variant="outline" className="gap-1">
+              <div className="flex gap-1.5 flex-wrap">
+                 <Badge variant="outline" className="gap-1 text-xs">
                    <Phone className="h-3 w-3" /> SMS
                  </Badge>
-                 <Badge variant="outline" className="gap-1 border-green-500/30 text-green-400" data-testid="badge-whatsapp">
+                 <Badge variant="outline" className="gap-1 text-xs border-green-500/30 text-green-400 hidden sm:inline-flex" data-testid="badge-whatsapp">
                    <MessageCircle className="h-3 w-3" /> WhatsApp
                  </Badge>
-                 <Badge variant="outline" className="gap-1 border-purple-500/30 text-purple-400" data-testid="badge-vapi-sms">
+                 <Badge variant="outline" className="gap-1 text-xs border-purple-500/30 text-purple-400 hidden sm:inline-flex" data-testid="badge-vapi-sms">
                    <Bot className="h-3 w-3" /> Vapi SMS
                  </Badge>
-                 <Badge variant="outline" className="gap-1 border-blue-500/30 text-blue-400" data-testid="badge-facebook">
+                 <Badge variant="outline" className="gap-1 text-xs border-blue-500/30 text-blue-400 hidden md:inline-flex" data-testid="badge-facebook">
                    <Facebook className="h-3 w-3" /> Facebook
                  </Badge>
-                 <Badge variant="outline" className={`gap-1 ${!instagramConnected && 'opacity-50'}`}>
+                 <Badge variant="outline" className={`gap-1 text-xs hidden md:inline-flex ${!instagramConnected && 'opacity-50'}`}>
                    <Instagram className="h-3 w-3" /> Instagram
                  </Badge>
               </div>
@@ -611,36 +611,36 @@ export default function SmsDashboard() {
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                   
                   {/* Channel Selector for Sending */}
-                  <div className="flex gap-2 mb-2">
+                  <div className="flex gap-1.5 mb-2 flex-wrap">
                      <Button
                       type="button"
                       variant={form.watch("channel") === "sms" ? "default" : "outline"}
                       size="sm"
                       onClick={() => form.setValue("channel", "sms")}
-                      className="text-xs h-7"
+                      className="text-xs h-8 min-w-[44px]"
                       data-testid="button-channel-sms"
                      >
-                       <Phone className="mr-1.5 h-3 w-3" /> SMS
+                       <Phone className="mr-1 h-3 w-3" /> SMS
                      </Button>
                      <Button
                       type="button"
                       variant={form.watch("channel") === "whatsapp" ? "default" : "outline"}
                       size="sm"
                       onClick={() => form.setValue("channel", "whatsapp")}
-                      className={`text-xs h-7 ${form.watch("channel") === "whatsapp" ? "bg-green-600 hover:bg-green-700" : ""}`}
+                      className={`text-xs h-8 min-w-[44px] ${form.watch("channel") === "whatsapp" ? "bg-green-600 hover:bg-green-700" : ""}`}
                       data-testid="button-channel-whatsapp"
                      >
-                       <MessageCircle className="mr-1.5 h-3 w-3" /> WhatsApp
+                       <MessageCircle className="mr-1 h-3 w-3" /> WA
                      </Button>
                      <Button
                       type="button"
                       variant={form.watch("channel") === "facebook" ? "default" : "outline"}
                       size="sm"
                       onClick={() => form.setValue("channel", "facebook")}
-                      className={`text-xs h-7 ${form.watch("channel") === "facebook" ? "bg-blue-600 hover:bg-blue-700" : ""}`}
+                      className={`text-xs h-8 min-w-[44px] ${form.watch("channel") === "facebook" ? "bg-blue-600 hover:bg-blue-700" : ""}`}
                       data-testid="button-channel-facebook"
                      >
-                       <Facebook className="mr-1.5 h-3 w-3" /> Facebook
+                       <Facebook className="mr-1 h-3 w-3" /> FB
                      </Button>
                      {instagramConnected && (
                        <Button

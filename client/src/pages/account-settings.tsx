@@ -137,24 +137,24 @@ export default function AccountSettings() {
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="p-4 md:p-8 space-y-6 max-w-3xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-black text-white flex items-center gap-3" data-testid="text-settings-title">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-2xl md:text-3xl font-black text-white flex items-center gap-3" data-testid="text-settings-title">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shrink-0">
               <Settings size={20} className="text-white" />
             </div>
             Account Settings
           </h1>
-          <p className="text-slate-400 mt-1">Customize your sub-account details and preferences</p>
+          <p className="text-slate-400 mt-1 text-sm">Customize your sub-account details and preferences</p>
         </div>
-        <div className="flex items-center gap-3">
-          <Badge variant="outline" className="border-slate-600 text-slate-400">
+        <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
+          <Badge variant="outline" className="border-slate-600 text-slate-400 text-xs">
             {account.plan?.toUpperCase() || "STARTER"} Plan
           </Badge>
           <Button
             onClick={() => saveMutation.mutate()}
             disabled={!hasChanges || saveMutation.isPending}
-            className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700"
+            className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 flex-1 sm:flex-none"
             data-testid="button-save-settings"
           >
             {saveMutation.isPending ? <Loader2 size={16} className="mr-2 animate-spin" /> : <Save size={16} className="mr-2" />}

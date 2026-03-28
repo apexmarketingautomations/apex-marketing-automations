@@ -328,15 +328,15 @@ export default function PipelinePage() {
   }
 
   return (
-    <div className="flex-1 p-6 md:p-10 overflow-y-auto">
+    <div className="flex-1 p-4 md:p-6 lg:p-10 overflow-y-auto overflow-x-hidden">
       <div className="max-w-full mx-auto">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold border border-cyan-500/30 bg-cyan-500/10 text-cyan-400 mb-4">
             <Layers size={12} /> CRM PIPELINE
           </div>
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div className="flex items-center gap-3">
-              <h1 className="text-3xl md:text-4xl font-black tracking-tight" data-testid="text-pipeline-title">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <h1 className="text-2xl md:text-3xl lg:text-4xl font-black tracking-tight" data-testid="text-pipeline-title">
                 <span className="bg-gradient-to-r from-cyan-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent">Pipeline</span>
               </h1>
               <button onClick={startTutorial} className="flex items-center gap-1 text-xs text-slate-300 hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-white/5" data-testid="button-start-tutorial"><Info size={14} className="mr-1" /> Tutorial</button>
@@ -488,7 +488,7 @@ export default function PipelinePage() {
                 </Button>
               </motion.div>
             ) : (
-              <div className="flex gap-4 overflow-x-auto pb-4" data-testid="kanban-board">
+              <div className="flex gap-3 md:gap-4 overflow-x-auto pb-4 -mx-4 px-4 md:mx-0 md:px-0 snap-x snap-mandatory md:snap-none" data-testid="kanban-board">
                 {sortedStages.map((stage) => {
                   const stageDeals = deals.filter((d) => d.stageId === stage.id);
                   return (
@@ -496,7 +496,7 @@ export default function PipelinePage() {
                       key={stage.id}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="min-w-[280px] w-[280px] flex-shrink-0"
+                      className="min-w-[260px] w-[260px] md:min-w-[280px] md:w-[280px] flex-shrink-0 snap-start"
                       onDragOver={onDragOver}
                       onDrop={(e) => onDrop(e, stage.id)}
                       data-testid={`stage-column-${stage.id}`}
@@ -567,16 +567,16 @@ export default function PipelinePage() {
                     <p className="text-slate-200 text-sm">No contacts yet</p>
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                  <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
+                    <table className="w-full text-sm min-w-[700px]">
                       <thead>
                         <tr className="border-b border-white/10">
                           <th className="text-left py-3 px-3 text-slate-400 font-medium">Name</th>
-                          <th className="text-left py-3 px-3 text-slate-400 font-medium">Email</th>
+                          <th className="text-left py-3 px-3 text-slate-400 font-medium hidden sm:table-cell">Email</th>
                           <th className="text-left py-3 px-3 text-slate-400 font-medium">Phone</th>
-                          <th className="text-left py-3 px-3 text-slate-400 font-medium">Address</th>
-                          <th className="text-left py-3 px-3 text-slate-400 font-medium">Source</th>
-                          <th className="text-left py-3 px-3 text-slate-400 font-medium">Tags</th>
+                          <th className="text-left py-3 px-3 text-slate-400 font-medium hidden lg:table-cell">Address</th>
+                          <th className="text-left py-3 px-3 text-slate-400 font-medium hidden md:table-cell">Source</th>
+                          <th className="text-left py-3 px-3 text-slate-400 font-medium hidden lg:table-cell">Tags</th>
                           <th className="text-right py-3 px-3 text-slate-400 font-medium">Actions</th>
                         </tr>
                       </thead>
@@ -606,22 +606,22 @@ export default function PipelinePage() {
                             setEditContactOpen(true);
                           }} data-testid={`contact-row-${contact.id}`}>
                             <td className="py-3 px-3 text-white font-medium" data-testid={`contact-name-${contact.id}`}>
-                              {[contact.firstName, contact.lastName].filter(Boolean).join(" ") || "—"}
+                              <span className="truncate block max-w-[150px] md:max-w-none">{[contact.firstName, contact.lastName].filter(Boolean).join(" ") || "—"}</span>
                               {isCrashLead && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30 uppercase font-bold">Crash Lead</span>}
                             </td>
-                            <td className="py-3 px-3 text-slate-200" data-testid={`contact-email-${contact.id}`}>{contact.email || "—"}</td>
+                            <td className="py-3 px-3 text-slate-200 hidden sm:table-cell" data-testid={`contact-email-${contact.id}`}>{contact.email || "—"}</td>
                             <td className="py-3 px-3 text-slate-200" data-testid={`contact-phone-${contact.id}`}>{contact.phone || "—"}</td>
-                            <td className="py-3 px-3 text-slate-200" data-testid={`contact-address-${contact.id}`}>
+                            <td className="py-3 px-3 text-slate-200 hidden lg:table-cell" data-testid={`contact-address-${contact.id}`}>
                               {contact.address ? (
                                 <span className="text-xs">{contact.address}{contact.city ? `, ${contact.city}` : ""}{contact.state ? `, ${contact.state}` : ""} {contact.zip || ""}</span>
                               ) : "—"}
                             </td>
-                            <td className="py-3 px-3">
+                            <td className="py-3 px-3 hidden md:table-cell">
                               <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30" data-testid={`contact-source-${contact.id}`}>
                                 {contact.source || "—"}
                               </span>
                             </td>
-                            <td className="py-3 px-3">
+                            <td className="py-3 px-3 hidden lg:table-cell">
                               <div className="flex flex-wrap gap-1" data-testid={`contact-tags-${contact.id}`}>
                                 {contact.tags?.map((tag, i) => (
                                   <span key={i} className={`text-[10px] px-1.5 py-0.5 rounded-full ${

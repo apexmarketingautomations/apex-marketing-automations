@@ -320,15 +320,15 @@ function ReportDetailView({ reportId, onBack }: { reportId: number; onBack: () =
         <ChevronLeft size={16} className="mr-1" /> Back to Crash Reports
       </Button>
 
-      <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6 mb-6">
-        <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
-          <div>
-            <h2 className="text-2xl font-black text-white" data-testid="text-report-number">
+      <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-4 md:p-6 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div className="min-w-0">
+            <h2 className="text-xl md:text-2xl font-black text-white truncate" data-testid="text-report-number">
               Report #{report.reportNumber}
             </h2>
             <p className="text-slate-500 text-sm">Requested {formatDate(report.createdAt)}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <StatusBadge status={report.status} />
             <DataSourceBadge source={source} />
           </div>
@@ -858,26 +858,27 @@ export default function CrashReports() {
   const failedReports = reports.filter(r => r.status === "FAILED" || r.status === "NOT_FOUND" || r.status === "AWAITING");
 
   return (
-    <div className="p-6 md:p-10 max-w-6xl mx-auto">
+    <div className="p-4 md:p-6 lg:p-10 max-w-6xl mx-auto">
       {health && <FLHSMVHealthBanner health={health} />}
 
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-6 md:mb-8">
         <div className="flex items-center gap-3 mb-2">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-red-600 to-orange-500 flex items-center justify-center">
-            <FileText size={24} className="text-white" />
+          <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-gradient-to-br from-red-600 to-orange-500 flex items-center justify-center shrink-0">
+            <FileText size={20} className="text-white md:hidden" />
+            <FileText size={24} className="text-white hidden md:block" />
           </div>
-          <div>
-            <h1 className="text-3xl font-black text-white tracking-tight" data-testid="text-crash-reports-title">
+          <div className="min-w-0">
+            <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight" data-testid="text-crash-reports-title">
               Crash Reports
             </h1>
-            <p className="text-slate-400 text-sm">
+            <p className="text-slate-400 text-xs md:text-sm truncate">
               FLHSMV crash report data — reports typically available 10+ days after incident
             </p>
           </div>
         </div>
       </motion.div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
         <StatCard label="Total Reports" value={reports.length} icon={FileText} color="red" delay={0.05} testId="card-total-reports" />
         <StatCard label="Completed" value={completedReports.length} icon={CheckCircle2} color="green" delay={0.1} testId="card-completed-reports" />
         <StatCard label="Processing" value={pendingReports.length} icon={Loader2} color="amber" delay={0.15} testId="card-processing-reports" />

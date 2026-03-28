@@ -260,17 +260,17 @@ function DigitalCardBuilderInner() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2" data-testid="text-page-title">
-            <ContactRound className="text-cyan-400" /> Digital Identity Builder
+          <h1 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2" data-testid="text-page-title">
+            <ContactRound className="text-cyan-400 shrink-0" /> Digital Identity Builder
           </h1>
-          <p className="text-slate-400 mt-1">Create a premium digital card for sharing and networking</p>
+          <p className="text-slate-400 mt-1 text-sm">Create a premium digital card for sharing and networking</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" className="border-white/10 text-slate-300" onClick={() => setShowPreview(!showPreview)} data-testid="button-preview">
+        <div className="flex gap-2 flex-wrap w-full sm:w-auto">
+          <Button variant="outline" className="border-white/10 text-slate-300 flex-1 sm:flex-none" onClick={() => setShowPreview(!showPreview)} data-testid="button-preview">
             {showPreview ? <EyeOff size={16} className="mr-1" /> : <Eye size={16} className="mr-1" />}
-            {showPreview ? "Hide Preview" : "Preview"}
+            {showPreview ? "Hide" : "Preview"}
           </Button>
           <select
             value={config.status}
@@ -283,12 +283,12 @@ function DigitalCardBuilderInner() {
             <option value="archived" className="bg-gray-900">Archived</option>
           </select>
           <Button
-            className="bg-gradient-to-r from-cyan-600 to-indigo-600 text-white font-bold"
+            className="bg-gradient-to-r from-cyan-600 to-indigo-600 text-white font-bold flex-1 sm:flex-none"
             onClick={() => saveMutation.mutate(config)}
             disabled={saveMutation.isPending}
             data-testid="button-save"
           >
-            <Save size={16} className="mr-1" /> {saveMutation.isPending ? "Saving..." : "Save Card"}
+            <Save size={16} className="mr-1" /> {saveMutation.isPending ? "Saving..." : "Save"}
           </Button>
         </div>
       </div>
@@ -312,7 +312,7 @@ function DigitalCardBuilderInner() {
 
       <AnalyticsSummary card={config} />
 
-      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
         {sections.map(s => (
           <button key={s.id} onClick={() => setActiveSection(s.id)}
             className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all
@@ -330,7 +330,7 @@ function DigitalCardBuilderInner() {
             <Card className="bg-black/40 border-white/10">
               <CardContent className="p-6 space-y-4">
                 <h2 className="text-lg font-bold text-white">Personal Info</h2>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-slate-300">Full Name</Label>
                     <Input value={config.name} onChange={e => update("name", e.target.value)} placeholder="Dante Smith" className="bg-white/5 border-white/10 text-white" data-testid="input-name" />
@@ -340,7 +340,7 @@ function DigitalCardBuilderInner() {
                     <Input value={config.preferredName} onChange={e => update("preferredName", e.target.value)} placeholder="Dante" className="bg-white/5 border-white/10 text-white" data-testid="input-preferred-name" />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-slate-300">Title / Role</Label>
                     <Input value={config.title} onChange={e => update("title", e.target.value)} placeholder="CEO & Founder" className="bg-white/5 border-white/10 text-white" data-testid="input-title" />
@@ -354,7 +354,7 @@ function DigitalCardBuilderInner() {
                   <Label className="text-slate-300">Tagline</Label>
                   <Input value={config.tagline} onChange={e => update("tagline", e.target.value)} placeholder="Building AI-powered platforms..." className="bg-white/5 border-white/10 text-white" data-testid="input-tagline" />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-slate-300"><MapPin size={14} className="inline mr-1" />Location</Label>
                     <Input value={config.location} onChange={e => update("location", e.target.value)} placeholder="Fort Myers, FL" className="bg-white/5 border-white/10 text-white" data-testid="input-location" />
@@ -373,7 +373,7 @@ function DigitalCardBuilderInner() {
             <Card className="bg-black/40 border-white/10">
               <CardContent className="p-6 space-y-4">
                 <h2 className="text-lg font-bold text-white">Contact Details</h2>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-slate-300"><Phone size={14} className="inline mr-1" />Phone</Label>
                     <Input value={config.phone} onChange={e => update("phone", e.target.value)} placeholder="(239) 555-0123" className="bg-white/5 border-white/10 text-white" data-testid="input-phone" />
@@ -383,7 +383,7 @@ function DigitalCardBuilderInner() {
                     <Input value={config.email} onChange={e => update("email", e.target.value)} placeholder="you@company.com" className="bg-white/5 border-white/10 text-white" data-testid="input-email" />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-slate-300"><Globe size={14} className="inline mr-1" />Website</Label>
                     <Input value={config.website} onChange={e => update("website", e.target.value)} placeholder="https://yoursite.com" className="bg-white/5 border-white/10 text-white" data-testid="input-website" />
@@ -393,7 +393,7 @@ function DigitalCardBuilderInner() {
                     <Input value={config.googleReviewLink} onChange={e => update("googleReviewLink", e.target.value)} placeholder="https://g.page/r/..." className="bg-white/5 border-white/10 text-white" data-testid="input-review-link" />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-slate-300"><Calendar size={14} className="inline mr-1" />Booking URL</Label>
                     <Input value={config.bookingUrl} onChange={e => update("bookingUrl", e.target.value)} placeholder="https://calendly.com/..." className="bg-white/5 border-white/10 text-white" data-testid="input-booking" />
@@ -424,7 +424,7 @@ function DigitalCardBuilderInner() {
                   <Label className="text-slate-300">Logo URL</Label>
                   <Input value={config.logoImageUrl} onChange={e => update("logoImageUrl", e.target.value)} placeholder="https://example.com/logo.png" className="bg-white/5 border-white/10 text-white" data-testid="input-logo" />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-slate-300">Brand Color</Label>
                     <div className="flex gap-2 items-center">
@@ -503,7 +503,7 @@ function DigitalCardBuilderInner() {
                     <Label className="text-slate-300">Quote</Label>
                     <Textarea value={config.testimonial?.quote || ""} onChange={e => update("testimonial", { ...config.testimonial, quote: e.target.value, author: config.testimonial?.author || config.name, role: config.testimonial?.role || `${config.title}, ${config.company}` })} placeholder="A powerful quote..." className="bg-white/5 border-white/10 text-white min-h-[80px]" data-testid="input-testimonial-quote" />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <Label className="text-slate-300">Author</Label>
                       <Input value={config.testimonial?.author || ""} onChange={e => update("testimonial", { ...config.testimonial, author: e.target.value })} placeholder="Name" className="bg-white/5 border-white/10 text-white" data-testid="input-testimonial-author" />
