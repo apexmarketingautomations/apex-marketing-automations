@@ -1,0 +1,34 @@
+Investigate and fix Facebook/Instagram DM contact name resolution so real user names are saved and displayed correctly instead of placeholders like “FB User ...2698”.
+
+Problem:
+In the DM/inbox chat, the real user name is visible, but Apex is saving or displaying fallback names like “FB User ...2698” in conversations, contacts, or related UI. That means the Meta identity mapping and/or contact persistence logic is broken.
+
+What to audit:
+- Trace the full Meta DM ingestion flow from webhook/event payload to conversation record to contact creation/update
+- Identify exactly where the real Meta display name is available in the payload or API response
+- Identify why the system is falling back to generic labels like “FB User” plus ID suffix
+- Audit thread-level display data versus stored CRM/contact-level name data
+- Check whether the contact is first created with a placeholder name and never updated later when the real name becomes available
+- Audit deduplication and upsert logic for Meta contacts so placeholders are replaced by real names when known
+- Verify whether Facebook Messenger and Instagram DM are handled differently and whether both paths are correct
+
+Required fix:
+- Always prefer the real Meta display name when available
+- Only use fallback labels if absolutely no real name exists
+- If a placeholder contact already exists, automatically replace it with the correct name when real identity data is received
+- Keep thread name, contact name, and inbox display name consistent
+- Ensure names persist across refreshes, sync jobs, and account switching
+- Preserve strict sub-account isolation while doing this
+
+Also verify:
+- Existing affected contacts/conversations can be backfilled or corrected where possible
+- New inbound DM users are stored with the correct display name immediately
+- No regression is introduced for contact dedupe or message threading
+
+Return:
+- Root cause
+- Exact files/services/hooks/routes involved
+- Which Meta payload fields are being used now
+- What fallback logic was changed
+- Whether existing placeholder contacts were repaired
+- Confirmation that real FB/IG names now save correctly instead of “FB User ...xxxx”

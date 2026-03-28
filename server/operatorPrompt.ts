@@ -72,6 +72,38 @@ INTEGRATIONS:
     }
   } catch {}
 
+  let metricsContext = "";
+  try {
+    const [contacts, automations, messages, deals, stages] = await Promise.all([
+      storage.getContacts(subAccountId).catch(() => []),
+      storage.getLiveAutomations(subAccountId).catch(() => []),
+      storage.getMessages(subAccountId).catch(() => []),
+      storage.getDeals(subAccountId).catch(() => []),
+      storage.getPipelineStages(subAccountId).catch(() => []),
+    ]);
+
+    const totalMessages = messages?.length || 0;
+    const failedMessages = messages?.filter((m: any) => m.status === "failed")?.length || 0;
+    const inboundMessages = messages?.filter((m: any) => m.direction === "inbound")?.length || 0;
+    const outboundMessages = messages?.filter((m: any) => m.direction === "outbound")?.length || 0;
+    const failRate = totalMessages > 0 ? Math.round((failedMessages / totalMessages) * 100) : 0;
+
+    const totalDealValue = deals?.reduce((sum: number, d: any) => sum + (Number(d.value) || 0), 0) || 0;
+
+    metricsContext = `
+REAL-TIME METRICS (use these exact numbers in your responses):
+- Total Contacts: ${contacts?.length || 0}
+- Active Automations: ${automations?.length || 0}
+- Total Messages: ${totalMessages} (Inbound: ${inboundMessages}, Outbound: ${outboundMessages})
+- Failed Messages: ${failedMessages} (${failRate}% failure rate)${failRate > 10 ? " ⚠️ HIGH — investigate phone number or Twilio config" : ""}
+- Pipeline Stages: ${stages?.length || 0}
+- Active Deals: ${deals?.length || 0} (Total Value: $${(totalDealValue / 100).toFixed(0)})
+- Recent Activity: ${messages?.filter((m: any) => {
+      const d = new Date(m.createdAt);
+      return d > new Date(Date.now() - 24 * 60 * 60 * 1000);
+    })?.length || 0} messages in last 24h`;
+  } catch {}
+
   const pageContext = currentPath ? getPageContext(currentPath) : "";
   let entityContext = "";
   if (frontendContext) {
@@ -94,6 +126,7 @@ VOICE & TONE:
 ${pageContext ? `\n${pageContext}\n` : ""}${entityContext}
 ${accountContext}
 ${integrationStatus}
+${metricsContext}
 
 PHASE 1 CAPABILITIES:
 1. Search & navigate — find contacts, workflows, integrations. Navigate the user to any page/entity.

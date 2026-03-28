@@ -291,12 +291,37 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
                   )}
                   {tr.data.success && !tr.data.sideEffects?.length && tr.data.data && (
                     <div className="text-slate-500 space-y-0.5">
-                      {Object.entries(tr.data.data).slice(0, 5).map(([key, value]) => (
-                        <div key={key} className="truncate">
-                          <span className="text-slate-600">{key}:</span> {Array.isArray(value) ? value.join(", ") : String(value).slice(0, 80)}
-                        </div>
-                      ))}
+                      {Object.entries(tr.data.data).slice(0, 8).map(([key, value]) => {
+                        let display: string;
+                        if (value === null || value === undefined) {
+                          display = "—";
+                        } else if (Array.isArray(value)) {
+                          if (value.length === 0) {
+                            display = "None";
+                          } else if (typeof value[0] === "object") {
+                            display = value.map((item: any) => {
+                              if (item.provider) return `${item.provider} (${item.status || "unknown"})`;
+                              if (item.name) return item.name;
+                              return Object.values(item).filter(v => typeof v === "string" || typeof v === "number").slice(0, 2).join(": ");
+                            }).join(", ");
+                          } else {
+                            display = value.join(", ");
+                          }
+                        } else if (typeof value === "object") {
+                          display = Object.entries(value as Record<string, any>).map(([k, v]) => `${k}: ${v}`).slice(0, 3).join(", ");
+                        } else {
+                          display = String(value).slice(0, 120);
+                        }
+                        return (
+                          <div key={key} className="truncate">
+                            <span className="text-slate-600">{key}:</span> {display || "—"}
+                          </div>
+                        );
+                      })}
                     </div>
+                  )}
+                  {!tr.data.success && tr.data.error && (
+                    <div className="text-red-400/70">{tr.data.error}</div>
                   )}
                 </div>
               ))}
