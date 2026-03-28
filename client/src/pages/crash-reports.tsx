@@ -107,6 +107,7 @@ const STATUS_CONFIG: Record<string, { icon: typeof CheckCircle2; color: string; 
   COMPLETED: { icon: CheckCircle2, color: "text-green-400", bg: "bg-green-500/20 border-green-500/30", label: "Completed" },
   PENDING: { icon: Loader2, color: "text-amber-400", bg: "bg-amber-500/20 border-amber-500/30", label: "Pending" },
   PROCESSING: { icon: Loader2, color: "text-cyan-400", bg: "bg-cyan-500/20 border-cyan-500/30", label: "Processing" },
+  AWAITING: { icon: Clock, color: "text-orange-400", bg: "bg-orange-500/20 border-orange-500/30", label: "Awaiting Report" },
   FAILED: { icon: XCircle, color: "text-red-400", bg: "bg-red-500/20 border-red-500/30", label: "Failed" },
   NOT_FOUND: { icon: FileWarning, color: "text-slate-400", bg: "bg-slate-500/20 border-slate-500/30", label: "Not Found" },
 };
@@ -304,12 +305,14 @@ function ReportDetailView({ reportId, onBack }: { reportId: number; onBack: () =
   const source = getDataSource(report.data);
   const isSentinelOnly = source === "sentinel" && !d;
   const isWaitingForReport = report.status === "PENDING" || report.status === "PROCESSING";
+  const isAwaitingReport = report.status === "AWAITING";
   const isFailedOrNotFound = report.status === "FAILED" || report.status === "NOT_FOUND";
+  const canRetry = isFailedOrNotFound || isAwaitingReport;
   const retryCount = report.retryCount ?? 0;
   const updatedAt = report.updatedAt ? new Date(report.updatedAt).getTime() : 0;
   const ageMinutes = updatedAt ? (Date.now() - updatedAt) / 60000 : 0;
   const isStuck = isWaitingForReport && (retryCount >= 3 || ageMinutes > 15);
-  const showManualSubmit = (isFailedOrNotFound || isStuck) && !d;
+  const showManualSubmit = (canRetry || isStuck) && !d;
 
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}>
@@ -330,6 +333,20 @@ function ReportDetailView({ reportId, onBack }: { reportId: number; onBack: () =
             <DataSourceBadge source={source} />
           </div>
         </div>
+
+        {report.status === "AWAITING" && (
+          <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-3 text-orange-300 text-sm mb-4" data-testid="text-awaiting-info">
+            <div className="flex items-start gap-2">
+              <Clock size={16} className="mt-0.5 shrink-0" />
+              <div>
+                <p className="font-semibold mb-1">Automatic Checking Paused</p>
+                <p className="text-orange-300/80 text-xs">
+                  FLHSMV crash reports typically take 10+ days after the incident to appear in the state system. Automatic checking has paused, but you can retry manually anytime using the button below.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {report.status === "FAILED" && report.errorLog && (
           <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-red-300 text-sm mb-4" data-testid="text-error-log">
@@ -373,7 +390,7 @@ function ReportDetailView({ reportId, onBack }: { reportId: number; onBack: () =
           </div>
         )}
 
-        {isFailedOrNotFound && (
+        {canRetry && (
           <div className="mt-4 flex gap-3 flex-wrap">
             <ReportRetryButton reportId={reportId} variant="detail" />
           </div>
@@ -381,7 +398,7 @@ function ReportDetailView({ reportId, onBack }: { reportId: number; onBack: () =
 
         {showManualSubmit && (
           <div className="mt-4">
-            {isStuck && !isFailedOrNotFound && (
+            {isStuck && !canRetry && (
               <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-amber-300 text-sm mb-3 flex items-start gap-2">
                 <AlertCircle size={16} className="mt-0.5 shrink-0" />
                 <p className="text-xs">This report appears stuck. You can submit raw data manually while the system continues retrying.</p>
@@ -838,7 +855,7 @@ export default function CrashReports() {
 
   const completedReports = reports.filter(r => r.status === "COMPLETED");
   const pendingReports = reports.filter(r => r.status === "PENDING" || r.status === "PROCESSING");
-  const failedReports = reports.filter(r => r.status === "FAILED" || r.status === "NOT_FOUND");
+  const failedReports = reports.filter(r => r.status === "FAILED" || r.status === "NOT_FOUND" || r.status === "AWAITING");
 
   return (
     <div className="p-6 md:p-10 max-w-6xl mx-auto">
@@ -864,7 +881,7 @@ export default function CrashReports() {
         <StatCard label="Total Reports" value={reports.length} icon={FileText} color="red" delay={0.05} testId="card-total-reports" />
         <StatCard label="Completed" value={completedReports.length} icon={CheckCircle2} color="green" delay={0.1} testId="card-completed-reports" />
         <StatCard label="Processing" value={pendingReports.length} icon={Loader2} color="amber" delay={0.15} testId="card-processing-reports" />
-        <StatCard label="Failed" value={failedReports.length} icon={XCircle} color="red" delay={0.2} testId="card-failed-reports" />
+        <StatCard label="Needs Attention" value={failedReports.length} icon={XCircle} color="red" delay={0.2} testId="card-failed-reports" />
       </div>
 
       <FetchReportForm subAccountId={currentAccount?.id} onQueued={() => queryClient.invalidateQueries({ queryKey: ["/api/crash-reports"] })} />
@@ -981,7 +998,7 @@ function ReportRow({ report, index, onClick }: { report: CrashReportSummary; ind
         {report.hasData && (
           <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider" data-testid={`text-data-available-${report.id}`}>Data Available</span>
         )}
-        {(report.status === "FAILED" || report.status === "NOT_FOUND") && (
+        {(report.status === "FAILED" || report.status === "NOT_FOUND" || report.status === "AWAITING") && (
           <ReportRetryButton reportId={report.id} />
         )}
         <Eye size={16} className="text-slate-600 group-hover:text-white transition-colors" />

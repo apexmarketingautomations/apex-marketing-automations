@@ -1606,7 +1606,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateCrashReport(id: number, data: Partial<InsertCrashReport>) {
-    const clearLockStatuses = ["COMPLETED", "FAILED", "NOT_FOUND", "PENDING"];
+    const clearLockStatuses = ["COMPLETED", "FAILED", "NOT_FOUND", "PENDING", "AWAITING"];
     const shouldClearLock = data.status && clearLockStatuses.includes(data.status);
     const updatePayload: Partial<InsertCrashReport> & { updatedAt: Date; lockedAt?: null; lockedBy?: null } = {
       ...data,

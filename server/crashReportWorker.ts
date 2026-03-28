@@ -326,10 +326,10 @@ async function processReport(reportId: number, reportNumber: string): Promise<vo
     const ageMs = Date.now() - new Date(report.createdAt).getTime();
     if (ageMs > MAX_AGE_MS) {
       await storage.updateCrashReport(reportId, {
-        status: "FAILED",
-        errorLog: `Report exceeded 24-hour age limit. Created ${Math.round(ageMs / 3600000)}h ago. Stopping retries.`,
+        status: "AWAITING",
+        errorLog: `Automatic checking paused — FLHSMV reports typically take 10+ days to appear in the state system. You can retry manually anytime.`,
       });
-      console.log(`[CRASH-WORKER] Report ${reportNumber} exceeded 24h age limit, marked FAILED`);
+      console.log(`[CRASH-WORKER] Report ${reportNumber} exceeded 24h auto-check window, marked AWAITING`);
       return;
     }
 

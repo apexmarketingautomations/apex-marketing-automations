@@ -1243,8 +1243,8 @@ export function registerPropertyRoutes(app: Express) {
       if (!(await verifyAccountOwnership(req, res, report.subAccountId))) return;
     }
 
-    if (report.status !== "FAILED" && report.status !== "NOT_FOUND") {
-      return res.status(400).json({ error: "Only FAILED or NOT_FOUND reports can be retried" });
+    if (report.status !== "FAILED" && report.status !== "NOT_FOUND" && report.status !== "AWAITING") {
+      return res.status(400).json({ error: "Only FAILED, NOT_FOUND, or AWAITING reports can be retried" });
     }
 
     await storage.updateCrashReport(id, {
