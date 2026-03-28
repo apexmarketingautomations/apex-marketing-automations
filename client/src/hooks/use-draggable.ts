@@ -25,8 +25,8 @@ export function useDraggable() {
       ev.preventDefault();
       const cx = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
       const cy = "touches" in ev ? ev.touches[0].clientY : ev.clientY;
-      const maxX = window.innerWidth * 0.4;
-      const maxY = window.innerHeight * 0.4;
+      const maxX = window.innerWidth * 0.8;
+      const maxY = window.innerHeight * 0.8;
       setOffset({
         x: clamp(startOffset.current.x + (cx - startPos.current.x), -maxX, maxX),
         y: clamp(startOffset.current.y + (cy - startPos.current.y), -maxY, maxY),

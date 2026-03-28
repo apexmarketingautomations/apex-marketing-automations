@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { Brain, X, Bell, TrendingUp, Terminal, Crosshair, Factory, Bot, BookOpen, Shield, GripHorizontal } from "lucide-react";
+import { Brain, X, Bell, TrendingUp, Terminal, Crosshair, Factory, Bot, BookOpen, Shield } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { useAccount } from "@/hooks/use-account";
@@ -119,7 +119,14 @@ export function ApexIntelligence({
             }}
             data-testid="panel-apex-intelligence"
           >
-            <div className="relative px-4 pt-4 pb-2">
+            <div
+              className={`relative px-4 pt-4 pb-2 ${!isInline ? "cursor-grab active:cursor-grabbing" : ""}`}
+              {...(!isInline ? {
+                onMouseDown: onPointerDown as any,
+                onTouchStart: onPointerDown as any,
+              } : {})}
+              data-testid="handle-intel-drag"
+            >
               <div className="absolute inset-0 bg-gradient-to-r from-violet-600/[0.06] via-transparent to-cyan-600/[0.06]" />
               <div className="absolute inset-0 overflow-hidden">
                 <motion.div
@@ -129,18 +136,13 @@ export function ApexIntelligence({
                   transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
                 />
               </div>
+              {!isInline && (
+                <div className="flex justify-center mb-2">
+                  <div className="w-10 h-1 rounded-full bg-white/[0.12] hover:bg-white/[0.2] transition-colors" />
+                </div>
+              )}
               <div className="relative flex justify-between items-center">
                 <div className="flex items-center gap-3">
-                  {!isInline && (
-                    <div
-                      className="cursor-grab active:cursor-grabbing p-1 -ml-1 rounded-lg hover:bg-white/[0.06] transition-colors touch-none"
-                      onMouseDown={onPointerDown as any}
-                      onTouchStart={onPointerDown as any}
-                      data-testid="handle-intel-drag"
-                    >
-                      <GripHorizontal size={14} className="text-slate-600" />
-                    </div>
-                  )}
                   <div className="relative">
                     <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500/25 to-cyan-500/20 flex items-center justify-center border border-violet-500/25">
                       <Brain size={20} className="text-violet-400" />
@@ -159,6 +161,8 @@ export function ApexIntelligence({
                 {showToggle && (
                   <button
                     onClick={handleToggle}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
                     className="p-2.5 rounded-xl hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
                     data-testid="button-intel-close"
                   >
@@ -167,7 +171,7 @@ export function ApexIntelligence({
                 )}
               </div>
 
-              <div className="relative flex mt-3 gap-0.5 bg-white/[0.02] rounded-lg p-0.5 border border-white/[0.04] overflow-x-auto scrollbar-none">
+              <div className="relative flex mt-3 gap-0.5 bg-white/[0.02] rounded-lg p-0.5 border border-white/[0.04] overflow-x-auto scrollbar-none" onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
                 {TABS.map(tab => {
                   const isActive = activeTab === tab.id;
                   const TabIcon = tab.icon;
