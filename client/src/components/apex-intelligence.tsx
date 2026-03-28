@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { useAccount } from "@/hooks/use-account";
 import { useDraggable } from "@/hooks/use-draggable";
+import { useResizable } from "@/hooks/use-resizable";
 import { CommandTab, InsightsTab, NudgesTab, IndustryTab, TrendsTab, ChatTab, AgentTab, MemoryTab } from "./intelligence";
 import type { TabId, HealthScore } from "./intelligence";
 
@@ -49,9 +50,11 @@ export function ApexIntelligence({
   const [activeTab, setActiveTab] = useState<TabId>("command");
   const { activeAccountId } = useAccount();
   const subAccountId = accountId ?? activeAccountId;
-  const { offset, onPointerDown, resetOffset } = useDraggable();
+  const { offset, onPointerDown, resetOffset, wasDragged } = useDraggable();
+  const { size, onResizeStart } = useResizable(panelWidth, panelHeight);
 
   const handleToggle = useCallback(() => {
+    if (wasDragged()) return;
     if (isOpen) resetOffset();
     setIsOpen(!isOpen);
   }, [isOpen, resetOffset]);
@@ -108,9 +111,9 @@ export function ApexIntelligence({
             className={`${isInline ? "" : "mb-4"} rounded-2xl overflow-hidden flex flex-col`}
             onClick={(e) => e.stopPropagation()}
             style={{
-              width: isInline ? "100%" : `min(${panelWidth}px, 92vw)`,
-              maxHeight: isInline ? undefined : `min(${panelHeight}px, calc(100vh - 120px))`,
-              height: isInline ? undefined : `${panelHeight}px`,
+              width: isInline ? "100%" : `min(${size.width}px, 92vw)`,
+              maxHeight: isInline ? undefined : `min(${size.height}px, calc(100vh - 120px))`,
+              height: isInline ? undefined : `${size.height}px`,
               background: "linear-gradient(180deg, rgba(8,8,24,0.99) 0%, rgba(6,6,18,0.995) 100%)",
               boxShadow: isInline
                 ? "0 0 0 1px rgba(139,92,246,0.12)"
@@ -240,6 +243,21 @@ export function ApexIntelligence({
               </div>
               <span className="text-[9px] text-slate-700">{subAccountId ? `Account #${subAccountId}` : ""}</span>
             </div>
+
+            {!isInline && (
+              <div
+                className="absolute bottom-0 right-0 w-5 h-5 cursor-nwse-resize group/resize touch-none"
+                onMouseDown={onResizeStart as any}
+                onTouchStart={onResizeStart as any}
+                data-testid="handle-intel-resize"
+              >
+                <svg viewBox="0 0 20 20" className="w-full h-full text-slate-700 group-hover/resize:text-violet-400 transition-colors">
+                  <line x1="14" y1="20" x2="20" y2="14" stroke="currentColor" strokeWidth="1.5" />
+                  <line x1="10" y1="20" x2="20" y2="10" stroke="currentColor" strokeWidth="1.5" />
+                  <line x1="6" y1="20" x2="20" y2="6" stroke="currentColor" strokeWidth="1.5" />
+                </svg>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -249,7 +267,9 @@ export function ApexIntelligence({
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={handleToggle}
-          className="group relative w-20 h-20 rounded-3xl flex items-center justify-center transition-all"
+          onMouseDown={onPointerDown as any}
+          onTouchStart={onPointerDown as any}
+          className="group relative w-20 h-20 rounded-3xl flex items-center justify-center transition-all touch-none select-none"
           style={{
             background: isOpen
               ? "linear-gradient(135deg, rgba(139,92,246,0.2), rgba(6,182,212,0.15))"

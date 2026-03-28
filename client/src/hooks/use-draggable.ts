@@ -8,6 +8,7 @@ interface Position {
 export function useDraggable() {
   const [offset, setOffset] = useState<Position>({ x: 0, y: 0 });
   const dragging = useRef(false);
+  const didDrag = useRef(false);
   const startPos = useRef<Position>({ x: 0, y: 0 });
   const startOffset = useRef<Position>({ x: 0, y: 0 });
 
@@ -15,6 +16,7 @@ export function useDraggable() {
 
   const onPointerDown = useCallback((e: MouseEvent | TouchEvent) => {
     dragging.current = true;
+    didDrag.current = false;
     const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
     const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
     startPos.current = { x: clientX, y: clientY };
@@ -25,11 +27,15 @@ export function useDraggable() {
       ev.preventDefault();
       const cx = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
       const cy = "touches" in ev ? ev.touches[0].clientY : ev.clientY;
+      const dx = cx - startPos.current.x;
+      const dy = cy - startPos.current.y;
+      if (!didDrag.current && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+      didDrag.current = true;
       const maxX = window.innerWidth * 0.8;
       const maxY = window.innerHeight * 0.8;
       setOffset({
-        x: clamp(startOffset.current.x + (cx - startPos.current.x), -maxX, maxX),
-        y: clamp(startOffset.current.y + (cy - startPos.current.y), -maxY, maxY),
+        x: clamp(startOffset.current.x + dx, -maxX, maxX),
+        y: clamp(startOffset.current.y + dy, -maxY, maxY),
       });
     };
 
@@ -47,7 +53,8 @@ export function useDraggable() {
     window.addEventListener("touchend", onPointerUp);
   }, [offset]);
 
+  const wasDragged = useCallback(() => didDrag.current, []);
   const resetOffset = useCallback(() => setOffset({ x: 0, y: 0 }), []);
 
-  return { offset, onPointerDown, resetOffset };
+  return { offset, onPointerDown, resetOffset, wasDragged };
 }

@@ -1,0 +1,52 @@
+Address the following production-readiness gaps with targeted fixes, accurate status reporting, and no false “fully working” claims.
+
+Current issues that must be treated as real gaps, not edge cases:
+
+1. **Vapi private key missing in dev**
+- Voice agent features are unavailable in development because `VAPI_PRIVATE_KEY` is not configured
+- Confirm whether production has the correct secret configured
+- If production is configured, separate dev-vs-prod status clearly
+- If not configured anywhere, treat Vapi as partially implemented, not complete
+
+2. **System Pulse showing degraded**
+- Audit the health-check logic that drives overall platform status
+- Verify whether the degraded state is being triggered solely by the Vapi failure
+- Make health reporting more precise so one partial integration does not create misleading platform-wide status
+- Return the exact reason the pulse is degraded and whether that behavior should be adjusted
+
+3. **Message failure rate at 16%**
+- Investigate the 14 failed nudge/message attempts
+- Determine whether failures are caused by Twilio number provisioning, message routing, invalid recipients, opt-out handling, webhook issues, provider errors, or retry logic gaps
+- Identify root cause instead of guessing
+- Return a clear breakdown of failure sources and the exact fix required
+
+4. **Predictive Lead Scoring is still a stub**
+- Audit the current implementation and identify everywhere mock data is being returned
+- Mark this feature as partial until replaced with real scoring logic
+- Either implement a real scoring pipeline or isolate the stub so it is not presented as production-ready intelligence
+- Return what inputs, logic, and data sources would be required for a real implementation
+
+5. **Subscription guard gaps**
+- Audit premium feature access across routes, components, APIs, and direct URL entry points
+- Identify where plan-based access control is enforced only in the UI and not at the backend or route level
+- Add strict enforcement so premium features cannot be accessed through direct URLs, unguarded endpoints, or weak client-side checks
+- Return all routes/features that were vulnerable and what was hardened
+
+6. **Ad campaign ROI depends on manual sync**
+- Audit the ROI/reporting pipeline and identify which parts still depend on manual triggers
+- Replace manual sync dependencies with reliable background processing where appropriate
+- Make sure reporting freshness, attribution consistency, and sync timing are deterministic
+- Return what is automated now versus what still requires operator intervention
+
+Execution rules:
+- Do NOT mark any of these as fully working unless they are verified end-to-end
+- Do NOT perform a broad rebuild
+- Fix only the affected integrations, health checks, guards, workers, and reporting logic
+- Separate verified production-ready functionality from partial/stubbed functionality
+
+Return required:
+- Root cause for each issue
+- Exact files/services/routes/components changed
+- What was fixed
+- What remains partial
+- Whether each item is now: **Fully working**, **Partially working**, or **Blocked by configuration**
