@@ -1,0 +1,80 @@
+Investigate and fully fix the platform-wide text input visibility bug.
+
+Problem:
+Across multiple areas of the site, users can type into fields but the entered text does not visibly render while typing. The content often only becomes visible after submit/send or after focus changes. This is a serious UX failure that makes core interactions feel broken.
+
+Treat this as a shared platform-level rendering/styling/state issue, not as isolated field bugs.
+
+Scope:
+Audit and fix all affected input surfaces across the app, including but not limited to:
+- standard text inputs
+- textareas
+- chat/message composers
+- search fields
+- modal inputs
+- form fields
+- inline editors
+- filter/search bars
+- settings fields
+- dark-theme and red-theme surfaces
+- mobile and compressed layouts
+
+Required investigation:
+Identify the root cause(s) across the design system and rendering pipeline. Specifically audit for:
+- text color matching or nearly matching the background
+- caret color invisibility
+- placeholder styles overriding entered text styles
+- controlled input state bugs
+- delayed state updates or render lag
+- CSS opacity, blend, filter, or visibility issues
+- z-index or overlay interference
+- theme token / CSS variable misconfiguration
+- dark mode styling conflicts
+- autofill styling conflicts
+- disabled/read-only/focus state style leakage
+- component wrappers masking or inheriting bad text styles
+- shared input component regressions
+- mobile-specific or breakpoint-specific styling issues
+
+Required fix:
+- Entered text must be visible immediately while the user is typing
+- Caret/cursor must be visible in every affected input
+- Placeholder, active text, selection, focus, hover, disabled, read-only, and autofill states must all render correctly
+- Fix the issue at the shared component/design-system level wherever possible so it resolves the platform broadly
+- Eliminate one-off patches unless absolutely necessary
+- Preserve visual consistency with the Apex theme while maintaining strong readability and contrast
+
+Validation requirements:
+Do not mark this complete until actual end-to-end verification is done across multiple real app surfaces.
+
+Minimum required verification:
+- chat/message input
+- search field
+- modal/form input
+- textarea
+- settings/profile field
+- at least one mobile-sized viewport
+- at least one compressed desktop/tablet viewport
+- dark/red themed UI surfaces
+
+For each tested area, verify:
+- typed text appears live while typing
+- caret is visible
+- placeholder behaves correctly
+- submitted value matches visible value
+- no field only reveals content after send/submit
+- no regression to spacing, layout, or theme styling
+
+Return:
+- exact root cause
+- whether this came from shared input styles, theme tokens, component logic, or multiple causes
+- exact files/components/styles changed
+- which areas were verified
+- any remaining edge cases
+- explicit confirmation that typed text is now visible in real time across the platform
+
+Execution constraints:
+- Do NOT patch just one field
+- Do NOT hand-wave this as a browser quirk
+- Do NOT mark complete based only on code inspection
+- Fix the underlying shared issue and verify it in the running app
