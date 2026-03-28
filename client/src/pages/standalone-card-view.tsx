@@ -6,7 +6,7 @@ import {
   HeroSection, PrimaryActions, SaveShareBar, QRPanel,
   AboutSection, ReviewBookingLinks, LinksSection,
   SocialLinksSection, StickyActionBar, ShareModal, CardFooter, BackgroundGlow,
-  adaptStandaloneCard, getCardTheme, resolveThemeForTier,
+  adaptStandaloneCard, getCardTheme, resolveThemeForTier, canRemoveBranding,
 } from "@/components/card-core";
 import type { SharedCardData, CardRenderConfig } from "@/components/card-core";
 
@@ -47,11 +47,12 @@ export default function StandaloneCardView() {
   const theme = getCardTheme(card.theme);
   const cardUrl = `${window.location.origin}/standalone/card/${card.slug}`;
   const referralUrl = rawCard.referralCode ? `/standalone/card?ref=${rawCard.referralCode}` : "/standalone/card";
-  const showBranding = !rawCard.removeApexBranding;
+  const tier = rawCard.tier || "base";
+  const showBranding = canRemoveBranding("standalone", tier) ? !rawCard.removeApexBranding : true;
 
   const config: CardRenderConfig = {
     source: "standalone",
-    tier: rawCard.tier || "base",
+    tier,
     showBranding,
     referralUrl,
     cardUrl,

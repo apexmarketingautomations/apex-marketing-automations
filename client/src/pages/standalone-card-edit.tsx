@@ -4,7 +4,7 @@ import {
   ArrowLeft, Save, Loader2, Check, Eye, User, Phone,
   Globe, Image, Palette, Star, AlertTriangle
 } from "lucide-react";
-import { CARD_THEMES, getAvailableThemes } from "@/components/card-core";
+import { CARD_THEMES, getAvailableThemes, getAvailableLayouts, canRemoveBranding } from "@/components/card-core";
 
 function Field({ label, value, onChange, testId, type = "text", placeholder = "" }: any) {
   return (
@@ -225,31 +225,40 @@ export default function StandaloneCardEdit() {
                   onChange={e => update("cardLayout", e.target.value)}
                   className="w-full px-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white text-sm focus:outline-none focus:border-cyan-500/50 transition"
                 >
-                  <option value="default">Default</option>
-                  <option value="modern">Modern</option>
-                  <option value="bold">Bold</option>
-                  <option value="minimal">Minimal</option>
-                  {card.tier === "pro" && <option value="executive">Executive</option>}
-                  {card.tier === "pro" && <option value="creative">Creative</option>}
+                  {getAvailableLayouts(card.tier).map(layout => (
+                    <option key={layout} value={layout}>{layout.charAt(0).toUpperCase() + layout.slice(1)}</option>
+                  ))}
                 </select>
               </div>
-              <div className="flex items-center justify-between p-3 bg-white/[0.03] border border-white/[0.06] rounded-xl">
-                <div>
-                  <p className="text-sm text-white font-medium">Remove Apex Branding</p>
-                  <p className="text-xs text-slate-500">Hide "Powered by Apex" on your public card</p>
+              {canRemoveBranding("standalone", card.tier) ? (
+                <div className="flex items-center justify-between p-3 bg-white/[0.03] border border-white/[0.06] rounded-xl">
+                  <div>
+                    <p className="text-sm text-white font-medium">Remove Apex Branding</p>
+                    <p className="text-xs text-slate-500">Hide "Powered by Apex" on your public card</p>
+                  </div>
+                  <button
+                    data-testid="toggle-branding"
+                    onClick={() => update("removeApexBranding", !card.removeApexBranding)}
+                    className={`w-11 h-6 rounded-full transition-colors ${
+                      card.removeApexBranding ? "bg-cyan-500" : "bg-neutral-700"
+                    }`}
+                  >
+                    <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                      card.removeApexBranding ? "translate-x-[22px]" : "translate-x-[2px]"
+                    }`} />
+                  </button>
                 </div>
-                <button
-                  data-testid="toggle-branding"
-                  onClick={() => update("removeApexBranding", !card.removeApexBranding)}
-                  className={`w-11 h-6 rounded-full transition-colors ${
-                    card.removeApexBranding ? "bg-cyan-500" : "bg-neutral-700"
-                  }`}
-                >
-                  <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform ${
-                    card.removeApexBranding ? "translate-x-[22px]" : "translate-x-[2px]"
-                  }`} />
-                </button>
-              </div>
+              ) : (
+                <div className="flex items-center justify-between p-3 bg-white/[0.03] border border-white/[0.06] rounded-xl opacity-50">
+                  <div>
+                    <p className="text-sm text-white font-medium">Remove Apex Branding</p>
+                    <p className="text-xs text-slate-500">Upgrade to Premium to remove branding</p>
+                  </div>
+                  <div className="w-11 h-6 rounded-full bg-neutral-700 cursor-not-allowed">
+                    <div className="w-5 h-5 bg-white rounded-full shadow translate-x-[2px] translate-y-[2px]" />
+                  </div>
+                </div>
+              )}
             </div>
           )}
           {card.tier === "base" && (

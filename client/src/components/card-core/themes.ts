@@ -104,3 +104,14 @@ export function resolveThemeForTier(requestedTheme: string | undefined, tier?: s
   if (requestedTheme && available.includes(requestedTheme)) return requestedTheme;
   return BASE_THEME;
 }
+
+export function canRemoveBranding(source: "platform" | "standalone", tier?: string): boolean {
+  if (source === "platform") return true;
+  return tier === "premium" || tier === "pro";
+}
+
+export function getAvailableLayouts(tier?: string): string[] {
+  const base = ["default", "modern", "bold", "minimal"];
+  if (tier === "pro") return [...base, "executive", "creative"];
+  return base;
+}
