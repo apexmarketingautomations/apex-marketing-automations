@@ -986,8 +986,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteContact(id: number) {
-    const rows = await db.delete(contacts).where(eq(contacts.id, id)).returning();
-    return rows.length > 0;
+    return await db.transaction(async (tx) => {
+      await tx.update(deals).set({ contactId: null }).where(eq(deals.contactId, id));
+      await tx.update(appointments).set({ contactId: null }).where(eq(appointments.contactId, id));
+      await tx.update(funnelLeads).set({ contactId: null }).where(eq(funnelLeads.contactId, id));
+      await tx.update(skipTraceResults).set({ savedAsContactId: null }).where(eq(skipTraceResults.savedAsContactId, id));
+      await tx.delete(mailchimpEmailLogs).where(eq(mailchimpEmailLogs.contactId, id));
+      await tx.delete(mailchimpSyncLogs).where(eq(mailchimpSyncLogs.contactId, id));
+      const rows = await tx.delete(contacts).where(eq(contacts.id, id)).returning();
+      return rows.length > 0;
+    });
   }
 
   async getPipelineStages(subAccountId: number) {

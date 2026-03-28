@@ -8,6 +8,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { Plus, Trash2, GripVertical, Users, Loader2, Layers, Info } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { PIPELINE_STEPS } from "@/components/tutorial-steps";
@@ -46,6 +50,8 @@ interface Contact {
   city?: string | null;
   state?: string | null;
   zip?: string | null;
+  smsOptOut?: boolean;
+  emailOptOut?: boolean;
 }
 
 const DEFAULT_STAGES = [
@@ -79,7 +85,9 @@ export default function PipelinePage() {
   const [contactForm, setContactForm] = useState({ firstName: "", lastName: "", email: "", phone: "", company: "", address: "", city: "", state: "", zip: "" });
   const [editContactOpen, setEditContactOpen] = useState(false);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
-  const [editContactForm, setEditContactForm] = useState({ firstName: "", lastName: "", email: "", phone: "", company: "", address: "", city: "", state: "", zip: "" });
+  const [editContactForm, setEditContactForm] = useState({ firstName: "", lastName: "", email: "", phone: "", company: "", source: "", tags: "" as string, notes: "", address: "", city: "", state: "", zip: "", smsOptOut: false, emailOptOut: false });
+  const [deleteContactOpen, setDeleteContactOpen] = useState(false);
+  const [contactToDelete, setContactToDelete] = useState<Contact | null>(null);
 
   const { data: stages = [], isLoading: stagesLoading } = useQuery<PipelineStage[]>({
     queryKey: ["/api/pipeline/stages", subAccountId],
@@ -177,6 +185,7 @@ export default function PipelinePage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/contacts", subAccountId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/messages"] });
       toast({ title: "Contact created" });
       setContactForm({ firstName: "", lastName: "", email: "", phone: "", company: "", address: "", city: "", state: "", zip: "" });
       setAddContactOpen(false);
@@ -185,14 +194,45 @@ export default function PipelinePage() {
 
   const updateContactMutation = useMutation({
     mutationFn: async ({ id, ...data }: { id: number } & typeof editContactForm) => {
-      const res = await apiRequest("PATCH", `/api/contacts/${id}`, data);
+      const { tags: tagsStr, ...rest } = data;
+      const payload = {
+        ...rest,
+        tags: tagsStr ? tagsStr.split(",").map((t: string) => t.trim()).filter(Boolean) : [],
+      };
+      const res = await apiRequest("PATCH", `/api/contacts/${id}`, payload);
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/contacts", subAccountId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/deals", subAccountId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/messages"] });
       toast({ title: "Contact updated" });
       setEditContactOpen(false);
       setSelectedContact(null);
+    },
+    onError: () => {
+      toast({ title: "Failed to update contact", variant: "destructive" });
+    },
+  });
+
+  const deleteContactMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("DELETE", `/api/contacts/${id}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts", subAccountId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/deals", subAccountId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/messages"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
+      toast({ title: "Contact deleted" });
+      setDeleteContactOpen(false);
+      setContactToDelete(null);
+      setEditContactOpen(false);
+      setSelectedContact(null);
+    },
+    onError: () => {
+      toast({ title: "Failed to delete contact", variant: "destructive" });
     },
   });
 
@@ -537,6 +577,7 @@ export default function PipelinePage() {
                           <th className="text-left py-3 px-3 text-slate-400 font-medium">Address</th>
                           <th className="text-left py-3 px-3 text-slate-400 font-medium">Source</th>
                           <th className="text-left py-3 px-3 text-slate-400 font-medium">Tags</th>
+                          <th className="text-right py-3 px-3 text-slate-400 font-medium">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -552,10 +593,15 @@ export default function PipelinePage() {
                               email: contact.email || "",
                               phone: contact.phone || "",
                               company: contact.company || "",
+                              source: contact.source || "",
+                              tags: (contact.tags || []).join(", "),
+                              notes: contact.notes || "",
                               address: contact.address || "",
                               city: contact.city || "",
                               state: contact.state || "",
                               zip: contact.zip || "",
+                              smsOptOut: contact.smsOptOut || false,
+                              emailOptOut: contact.emailOptOut || false,
                             });
                             setEditContactOpen(true);
                           }} data-testid={`contact-row-${contact.id}`}>
@@ -587,6 +633,21 @@ export default function PipelinePage() {
                                   </span>
                                 )) || "—"}
                               </div>
+                            </td>
+                            <td className="py-3 px-3 text-right">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-400 hover:text-red-300 hover:bg-red-500/10 h-7 w-7 p-0"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setContactToDelete(contact);
+                                  setDeleteContactOpen(true);
+                                }}
+                                data-testid={`button-row-delete-contact-${contact.id}`}
+                              >
+                                <Trash2 size={14} />
+                              </Button>
                             </td>
                           </tr>
                           );
@@ -721,7 +782,7 @@ export default function PipelinePage() {
         </Dialog>
 
         <Dialog open={editContactOpen} onOpenChange={setEditContactOpen}>
-          <DialogContent className="bg-slate-900 border-white/10">
+          <DialogContent className="bg-slate-900 border-white/10 max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-white">Edit Contact</DialogTitle>
             </DialogHeader>
@@ -757,6 +818,34 @@ export default function PipelinePage() {
                 className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
                 data-testid="input-edit-contact-phone"
               />
+              <Input
+                placeholder="Company"
+                value={editContactForm.company}
+                onChange={(e) => setEditContactForm(f => ({ ...f, company: e.target.value }))}
+                className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                data-testid="input-edit-contact-company"
+              />
+              <Input
+                placeholder="Source (e.g. manual, website, referral)"
+                value={editContactForm.source}
+                onChange={(e) => setEditContactForm(f => ({ ...f, source: e.target.value }))}
+                className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                data-testid="input-edit-contact-source"
+              />
+              <Input
+                placeholder="Tags (comma-separated)"
+                value={editContactForm.tags}
+                onChange={(e) => setEditContactForm(f => ({ ...f, tags: e.target.value }))}
+                className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                data-testid="input-edit-contact-tags"
+              />
+              <Textarea
+                placeholder="Notes"
+                value={editContactForm.notes}
+                onChange={(e) => setEditContactForm(f => ({ ...f, notes: e.target.value }))}
+                className="bg-white/5 border-white/10 text-white placeholder:text-white/30 min-h-[80px]"
+                data-testid="input-edit-contact-notes"
+              />
               <AddressAutocomplete
                 value={editContactForm.address}
                 onAddressSelect={(data) => setEditContactForm(f => ({ ...f, address: data.address, city: data.city, state: data.state, zip: data.zip }))}
@@ -788,17 +877,81 @@ export default function PipelinePage() {
                   data-testid="input-edit-contact-zip"
                 />
               </div>
-              <Button
-                onClick={() => { if (selectedContact) updateContactMutation.mutate({ id: selectedContact.id, ...editContactForm }); }}
-                disabled={updateContactMutation.isPending}
-                className="w-full bg-indigo-600 hover:bg-indigo-500"
-                data-testid="button-save-contact"
-              >
-                {updateContactMutation.isPending ? "Saving..." : "Save Changes"}
-              </Button>
+              <div className="space-y-3 rounded-lg bg-white/5 p-3 border border-white/10">
+                <p className="text-sm text-slate-400 font-medium">Opt-out Preferences</p>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="sms-opt-out" className="text-sm text-slate-200">SMS Opt Out</Label>
+                  <Switch
+                    id="sms-opt-out"
+                    checked={editContactForm.smsOptOut}
+                    onCheckedChange={(checked) => setEditContactForm(f => ({ ...f, smsOptOut: checked }))}
+                    data-testid="switch-edit-contact-sms-opt-out"
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="email-opt-out" className="text-sm text-slate-200">Email Opt Out</Label>
+                  <Switch
+                    id="email-opt-out"
+                    checked={editContactForm.emailOptOut}
+                    onCheckedChange={(checked) => setEditContactForm(f => ({ ...f, emailOptOut: checked }))}
+                    data-testid="switch-edit-contact-email-opt-out"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => { if (selectedContact) updateContactMutation.mutate({ id: selectedContact.id, ...editContactForm }); }}
+                  disabled={updateContactMutation.isPending}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-500"
+                  data-testid="button-save-contact"
+                >
+                  {updateContactMutation.isPending ? "Saving..." : "Save Changes"}
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (selectedContact) {
+                      setContactToDelete(selectedContact);
+                      setDeleteContactOpen(true);
+                    }
+                  }}
+                  variant="destructive"
+                  className="bg-red-600 hover:bg-red-500"
+                  data-testid="button-delete-contact"
+                >
+                  <Trash2 size={16} />
+                </Button>
+              </div>
             </div>
           </DialogContent>
         </Dialog>
+
+        <AlertDialog open={deleteContactOpen} onOpenChange={setDeleteContactOpen}>
+          <AlertDialogContent className="bg-slate-900 border-white/10">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-white">Delete Contact</AlertDialogTitle>
+              <AlertDialogDescription className="text-slate-300">
+                Are you sure you want to delete{" "}
+                <span className="font-semibold text-white">
+                  {[contactToDelete?.firstName, contactToDelete?.lastName].filter(Boolean).join(" ")}
+                </span>
+                ? This will permanently remove the contact. Any linked deals and appointments will have their contact reference removed, and associated email logs will be deleted. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10" data-testid="button-cancel-delete-contact">
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => { if (contactToDelete) deleteContactMutation.mutate(contactToDelete.id); }}
+                disabled={deleteContactMutation.isPending}
+                className="bg-red-600 hover:bg-red-500 text-white"
+                data-testid="button-confirm-delete-contact"
+              >
+                {deleteContactMutation.isPending ? "Deleting..." : "Delete Contact"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
       {showTutorial && <TutorialOverlay steps={PIPELINE_STEPS} storageKey="apex_pipeline_tutorial_completed" onClose={closeTutorial} accentColor="purple" finishLabel="Start Closing" />}
     </div>

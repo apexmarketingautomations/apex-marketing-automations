@@ -2247,26 +2247,56 @@ export function registerPropertyRoutes(app: Express) {
   app.patch("/api/contacts/:id", asyncHandler(async (req, res) => {
     const id = parseIntParam(req.params.id, "id");
 
-    let updateData = { ...req.body };
-    if (updateData.address) {
-      const existing = await storage.getContactById(id);
-      if (existing && existing.address !== updateData.address) {
-        const geo = await geocodeAddress(updateData.address);
-        if (geo) {
-          updateData = {
-            ...updateData,
-            formattedAddress: geo.formattedAddress,
-            city: updateData.city || geo.city,
-            state: updateData.state || geo.state,
-            zip: updateData.zip || geo.zip,
-            lat: geo.lat,
-            lng: geo.lng,
-            geocodeStatus: "success",
-            geocodedAt: new Date(),
-          };
-        } else {
-          updateData.geocodeStatus = "failed";
-        }
+    const existing = await storage.getContactById(id);
+    if (!existing) return res.status(404).json({ error: "Contact not found" });
+
+    const ownerOk = await verifyAccountOwnership(req, res, existing.subAccountId);
+    if (!ownerOk) return;
+
+    const allowedFields = ["firstName", "lastName", "email", "phone", "company", "source", "tags", "notes", "address", "city", "state", "zip", "smsOptOut", "emailOptOut"] as const;
+    let updateData: Record<string, any> = {};
+    for (const key of allowedFields) {
+      if (req.body[key] !== undefined) {
+        updateData[key] = req.body[key];
+      }
+    }
+    if (updateData.firstName !== undefined && (typeof updateData.firstName !== "string" || !updateData.firstName.trim())) {
+      return res.status(400).json({ error: "firstName must be a non-empty string" });
+    }
+    if (updateData.email !== undefined && typeof updateData.email !== "string") {
+      return res.status(400).json({ error: "email must be a string" });
+    }
+    if (updateData.phone !== undefined && typeof updateData.phone !== "string") {
+      return res.status(400).json({ error: "phone must be a string" });
+    }
+    if (updateData.smsOptOut !== undefined && typeof updateData.smsOptOut !== "boolean") {
+      return res.status(400).json({ error: "smsOptOut must be a boolean" });
+    }
+    if (updateData.emailOptOut !== undefined && typeof updateData.emailOptOut !== "boolean") {
+      return res.status(400).json({ error: "emailOptOut must be a boolean" });
+    }
+    if (updateData.tags !== undefined && !Array.isArray(updateData.tags)) {
+      return res.status(400).json({ error: "tags must be an array of strings" });
+    }
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ error: "No valid fields to update" });
+    }
+    if (updateData.address && existing.address !== updateData.address) {
+      const geo = await geocodeAddress(updateData.address);
+      if (geo) {
+        updateData = {
+          ...updateData,
+          formattedAddress: geo.formattedAddress,
+          city: updateData.city || geo.city,
+          state: updateData.state || geo.state,
+          zip: updateData.zip || geo.zip,
+          lat: geo.lat,
+          lng: geo.lng,
+          geocodeStatus: "success",
+          geocodedAt: new Date(),
+        };
+      } else {
+        updateData.geocodeStatus = "failed";
       }
     }
 
@@ -2277,6 +2307,13 @@ export function registerPropertyRoutes(app: Express) {
 
   app.delete("/api/contacts/:id", asyncHandler(async (req, res) => {
     const id = parseIntParam(req.params.id, "id");
+
+    const existing = await storage.getContactById(id);
+    if (!existing) return res.status(404).json({ error: "Contact not found" });
+
+    const ownerOk = await verifyAccountOwnership(req, res, existing.subAccountId);
+    if (!ownerOk) return;
+
     const deleted = await storage.deleteContact(id);
     if (!deleted) return res.status(404).json({ error: "Contact not found" });
     res.json({ success: true });
