@@ -1906,12 +1906,13 @@ export function registerPropertyRoutes(app: Express) {
 
     const site = await storage.createClientWebsite({
       ...parsed.data,
-      status: "connected",
+      status: "draft",
       widgetEnabled: false,
       widgetColor: "#6366f1",
       widgetGreeting: "Hi there! How can I help you today?",
       widgetPosition: "bottom-right",
       pagesCrawled: 0,
+      verificationAttempts: 0,
     });
     res.json(site);
   }));
@@ -1954,23 +1955,55 @@ export function registerPropertyRoutes(app: Express) {
       logs: [],
     });
 
-    runRealTraining(job.id);
-
     await storage.updateClientWebsite(id, {
       status: "training",
       trainingJobId: job.id,
       botPersona: persona,
       lastCrawlStatus: "in_progress",
+      lastError: null,
     });
 
-    setTimeout(async () => {
-      await storage.updateClientWebsite(id, {
-        status: "trained",
-        scrapedAt: new Date(),
-        pagesCrawled: Math.floor(Math.random() * 20) + 5,
-        lastCrawlStatus: "completed",
-      });
-    }, 9000);
+    (async () => {
+      try {
+        await runRealTraining(job.id);
+        const completedJob = await storage.getTrainingJob(job.id);
+
+        if (completedJob && completedJob.state === "failed") {
+          const errorMsg = (completedJob.logs && completedJob.logs.length > 0)
+            ? completedJob.logs[completedJob.logs.length - 1]
+            : "Training failed for an unknown reason";
+          console.error(`[WebsiteIntegration] Training failed for site ${id}: ${errorMsg}`);
+          await storage.updateClientWebsite(id, {
+            status: "error",
+            lastCrawlStatus: "failed",
+            lastError: errorMsg,
+          });
+          return;
+        }
+
+        let realPageCount = 0;
+        if (completedJob?.scrapedContent) {
+          const lines = completedJob.scrapedContent.split("\n").filter((l: string) => l.trim().length > 0);
+          realPageCount = lines.length;
+        }
+
+        console.log(`[WebsiteIntegration] Training complete for site ${id}: ${realPageCount} content blocks extracted`);
+        await storage.updateClientWebsite(id, {
+          status: "trained",
+          scrapedAt: new Date(),
+          pagesCrawled: realPageCount,
+          lastCrawlStatus: "completed",
+          lastError: null,
+        });
+      } catch (err: any) {
+        console.error(`[WebsiteIntegration] Scrape/training error for site ${id}:`, err.message);
+        await storage.updateClientWebsite(id, {
+          status: "error",
+          lastCrawlStatus: "failed",
+          lastError: err.message || "An unexpected error occurred during training",
+        });
+      }
+    })();
 
     res.json({ jobId: job.id, status: "training" });
   }));
@@ -1992,6 +2025,109 @@ export function registerPropertyRoutes(app: Express) {
   </script>`;
 
     res.json({ embedCode: embedScript, siteId: site.id });
+  }));
+
+  app.post("/api/client-websites/:id/verify-install", asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id as string);
+    const site = await storage.getClientWebsite(id);
+    if (!site) return res.status(404).json({ error: "Site not found" });
+
+    await storage.updateClientWebsite(id, {
+      verificationAttempts: (site.verificationAttempts || 0) + 1,
+    });
+
+    console.log(`[WebsiteIntegration] Verify install attempt #${(site.verificationAttempts || 0) + 1} for site ${id} (${site.url})`);
+
+    if (!["trained", "install_pending", "verified", "error"].includes(site.status)) {
+      console.warn(`[WebsiteIntegration] Verification rejected for site ${id}: status is "${site.status}", training required first`);
+      return res.json({
+        verified: false,
+        reason: "training_required",
+        message: "Train the AI on this website before verifying the widget installation.",
+      });
+    }
+
+    let fetchedUrl: string;
+    let html: string;
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      const response = await fetch(site.url, {
+        signal: controller.signal,
+        redirect: "follow",
+        headers: {
+          "User-Agent": "Mozilla/5.0 (compatible; ApexVerifier/1.0)",
+          "Accept": "text/html,application/xhtml+xml",
+        },
+      });
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        console.error(`[WebsiteIntegration] Verification fetch failed for site ${id}: HTTP ${response.status}`);
+        return res.json({
+          verified: false,
+          reason: "page_unreachable",
+          message: `Could not load ${site.url} — the server returned HTTP ${response.status}. Make sure the URL is correct and the website is online.`,
+        });
+      }
+
+      fetchedUrl = response.url;
+      html = await response.text();
+    } catch (fetchErr: any) {
+      const errMsg = fetchErr.name === "AbortError" ? "Request timed out" : fetchErr.message;
+      console.error(`[WebsiteIntegration] Verification fetch error for site ${id}:`, errMsg);
+      return res.json({
+        verified: false,
+        reason: "request_blocked",
+        message: `Could not reach ${site.url} — ${errMsg}. Ensure the website is publicly accessible and not blocking requests.`,
+      });
+    }
+
+    const enteredDomain = new URL(site.url).hostname.replace(/^www\./, "");
+    const fetchedDomain = new URL(fetchedUrl).hostname.replace(/^www\./, "");
+    if (enteredDomain !== fetchedDomain) {
+      console.warn(`[WebsiteIntegration] Domain mismatch for site ${id}: entered ${enteredDomain}, resolved to ${fetchedDomain}`);
+      return res.json({
+        verified: false,
+        reason: "domain_mismatch",
+        message: `The URL redirected to a different domain (${fetchedDomain}). Make sure the embed script is installed on ${enteredDomain}, not ${fetchedDomain}.`,
+      });
+    }
+
+    const widgetPatterns = [
+      /widget\.js\?siteId=/i,
+      /api\/widget\.js\?siteId=/i,
+      /ApexBot/i,
+      /apex-chat-btn/i,
+      /apex-chat-box/i,
+    ];
+
+    const scriptFound = widgetPatterns.some(pattern => pattern.test(html));
+
+    if (scriptFound) {
+      console.log(`[WebsiteIntegration] Verification SUCCESS for site ${id}: widget script detected on ${fetchedUrl}`);
+      await storage.updateClientWebsite(id, {
+        status: "verified",
+        installVerifiedAt: new Date(),
+        lastError: null,
+      });
+      return res.json({
+        verified: true,
+        reason: "script_found",
+        message: "Widget script detected and verified. Your AI chatbot is live!",
+      });
+    }
+
+    console.warn(`[WebsiteIntegration] Verification FAILED for site ${id}: widget script not found on ${fetchedUrl}`);
+    await storage.updateClientWebsite(id, {
+      status: "install_pending",
+      lastError: "Widget script not detected on the website",
+    });
+    return res.json({
+      verified: false,
+      reason: "script_not_found",
+      message: "Widget script not detected on the page. Ensure the embed code is placed before the closing </body> tag. If you just added it, wait a few minutes for CDN caches to clear and try again.",
+    });
   }));
 
   app.get("/api/widget.js", async (_req, res) => {

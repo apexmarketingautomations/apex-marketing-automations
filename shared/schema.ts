@@ -517,7 +517,7 @@ export const clientWebsites = pgTable("client_websites", {
   subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
   url: text("url").notNull(),
   name: text("name").notNull(),
-  status: text("status").notNull().default("connected"),
+  status: text("status").notNull().default("draft"),
   scrapedAt: timestamp("scraped_at"),
   trainingJobId: integer("training_job_id").references(() => trainingJobs.id),
   widgetEnabled: boolean("widget_enabled").default(false),
@@ -527,6 +527,9 @@ export const clientWebsites = pgTable("client_websites", {
   botPersona: text("bot_persona"),
   pagesCrawled: integer("pages_crawled").default(0),
   lastCrawlStatus: text("last_crawl_status"),
+  installVerifiedAt: timestamp("install_verified_at"),
+  lastError: text("last_error"),
+  verificationAttempts: integer("verification_attempts").default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
