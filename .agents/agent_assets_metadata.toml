@@ -24,3 +24,9 @@ id = "D-KpFZKc9vaYEbcKW_K_V"
 uri = "file://.local/APEX_GROWTH_PROJECTION.md"
 type = "text"
 title = "Apex 5-Year Growth Projection — Post-Hardening"
+
+[[outputs]]
+id = "k7FbF_REam4-ohYJnfuJ3"
+uri = "file://output/fiverr-web-dev-profile.md"
+type = "text"
+title = "Fiverr Web Dev Profile Document"
