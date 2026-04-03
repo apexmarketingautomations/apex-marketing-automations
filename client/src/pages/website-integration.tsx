@@ -731,7 +731,7 @@ export default function WebsiteIntegration() {
                     <CardTitle className="text-white flex items-center gap-2">
                       <Eye className="w-5 h-5 text-cyan-400" /> {selectedSite.name}
                     </CardTitle>
-                    <CardDescription>Live preview of the website</CardDescription>
+                    <CardDescription>Website preview &amp; quick access</CardDescription>
                   </div>
                   <Button
                     variant="outline"
@@ -745,18 +745,45 @@ export default function WebsiteIntegration() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="rounded-xl overflow-hidden border border-slate-700/50 bg-white" style={{ height: "600px" }}>
-                  <iframe
-                    src={selectedSite.url}
-                    className="w-full h-full"
-                    title={`Preview of ${selectedSite.name}`}
-                    sandbox="allow-scripts allow-same-origin allow-popups"
-                    data-testid="iframe-site-preview"
-                  />
+                <div
+                  className="rounded-xl overflow-hidden border border-slate-700/50 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex flex-col items-center justify-center gap-6 cursor-pointer hover:border-cyan-500/40 transition-all"
+                  style={{ height: "400px" }}
+                  onClick={() => window.open(selectedSite.url, "_blank")}
+                  data-testid="preview-open-site"
+                >
+                  <div className="w-20 h-20 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center">
+                    <Globe className="w-10 h-10 text-cyan-400" />
+                  </div>
+                  <div className="text-center space-y-2 px-6">
+                    <h3 className="text-lg font-semibold text-white">{selectedSite.name}</h3>
+                    <p className="text-sm text-cyan-400 font-mono break-all">{selectedSite.url}</p>
+                    <p className="text-xs text-slate-400 max-w-md">
+                      Click anywhere to open the live website. External sites use security headers that prevent in-app previews — this is expected and healthy.
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 mt-2"
+                    data-testid="button-visit-site"
+                  >
+                    <ExternalLink className="w-4 h-4 mr-2" /> Visit Live Site
+                  </Button>
                 </div>
-                <p className="text-xs text-slate-500 mt-3 text-center">
-                  Some websites may block being embedded in iframes. Use "Open in New Tab" if the preview doesn't load.
-                </p>
+                <div className="mt-4 grid grid-cols-3 gap-3">
+                  <div className="bg-slate-800/60 border border-slate-700/50 rounded-lg p-3 text-center">
+                    <p className="text-xs text-slate-400">Status</p>
+                    <StatusBadge status={selectedSite.status} />
+                  </div>
+                  <div className="bg-slate-800/60 border border-slate-700/50 rounded-lg p-3 text-center">
+                    <p className="text-xs text-slate-400">Pages Crawled</p>
+                    <p className="text-lg font-bold text-white">{selectedSite.pagesCrawled || 0}</p>
+                  </div>
+                  <div className="bg-slate-800/60 border border-slate-700/50 rounded-lg p-3 text-center">
+                    <p className="text-xs text-slate-400">Last Trained</p>
+                    <p className="text-sm text-white">{selectedSite.scrapedAt ? new Date(selectedSite.scrapedAt).toLocaleDateString() : "Not yet"}</p>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           )}
