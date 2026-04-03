@@ -49,6 +49,10 @@ const WEBHOOK_PATH_PREFIXES = [
   "/api/card/edit/",
   "/api/card/checkout",
   "/api/card/session/",
+  "/api/v1/external/leads",
+  "/api/v1/external/consultations",
+  "/api/v1/external/events",
+  "/api/v1/external/status",
 ];
 
 function isExempt(path: string): boolean {

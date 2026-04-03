@@ -131,6 +131,10 @@ export function registerAuthRoutes(app: Express) {
     if (fullPath.startsWith("/api/card/edit/")) return next();
     if (fullPath.startsWith("/api/card/checkout")) return next();
     if (fullPath.startsWith("/api/card/session/")) return next();
+    if (fullPath.startsWith("/api/v1/external/leads")) return next();
+    if (fullPath.startsWith("/api/v1/external/consultations")) return next();
+    if (fullPath.startsWith("/api/v1/external/events")) return next();
+    if (fullPath.startsWith("/api/v1/external/status")) return next();
 
     if (!req.isAuthenticated || !req.isAuthenticated()) {
       return res.status(401).json({ error: "Not authenticated" });

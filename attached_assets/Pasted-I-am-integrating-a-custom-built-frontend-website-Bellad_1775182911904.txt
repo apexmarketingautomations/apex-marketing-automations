@@ -1,0 +1,116 @@
+I am integrating a custom-built frontend website (Belladonna House of Beauty) with Apex, and I need to configure this correctly for real-world use.
+
+This is NOT a template — this is a live client site, so accuracy matters.
+
+Here is the setup:
+
+The website is already built and functional.
+It captures:
+
+* lead form submissions
+* consultation requests
+* user interaction events (button clicks, booking clicks, artist views)
+
+Right now, the integration is in simulated mode.
+I need to switch it to live mode using Apex.
+
+---
+
+### What I need from Apex
+
+1. API Configuration
+   Provide:
+
+* API Base URL
+* API Key
+
+---
+
+2. Lead Capture Endpoint
+   I need an endpoint that accepts:
+
+* name
+* phone
+* email
+* service interest
+* message/notes
+
+This should:
+
+* create a new lead/contact in Apex
+* trigger follow-up workflows
+
+---
+
+3. Consultation Request Flow
+   When a consultation is submitted:
+
+* create or update contact
+* tag or segment the lead based on service
+* trigger an automation workflow
+
+Workflow should include:
+
+* SMS follow-up (immediate)
+* optional notification to team
+* logging inside CRM
+
+---
+
+4. Event Tracking
+   I want to send events such as:
+
+* booking button clicked
+* artist profile viewed
+* service page viewed
+
+These should:
+
+* be logged in Apex
+* optionally trigger automations
+
+---
+
+5. Booking / Conversion Flow
+   If Apex supports it:
+
+* trigger guided booking sequences
+  OR
+* send SMS follow-up with booking link
+
+---
+
+6. Integration Requirements
+
+* This must be API-based (no iframe embeds or hacks)
+* Must support real-time data flow
+* Must not break the website if Apex is temporarily unavailable
+* Include error handling and fallback logic
+
+---
+
+### Important Design Requirement
+
+Apex must function as a **bridge, not a dependency**
+
+Meaning:
+
+* The website must still function if Apex is down
+* Data should queue or fail gracefully
+* No UI should break due to API failure
+
+---
+
+### Final Goal
+
+Once configured:
+
+* all form submissions go into Apex
+* all consultation requests trigger workflows
+* key user actions are tracked
+* SMS and follow-ups are automated
+* the system runs hands-free for the business
+
+---
+
+If anything is missing for this integration, tell me exactly what needs to be configured or provided.
