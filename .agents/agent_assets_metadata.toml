@@ -30,3 +30,9 @@ id = "k7FbF_REam4-ohYJnfuJ3"
 uri = "file://output/fiverr-web-dev-profile.md"
 type = "text"
 title = "Fiverr Web Dev Profile"
+
+[[outputs]]
+id = "iqa_f3q-pD9Hx0sdiHBS1"
+uri = "file://output/fiverr-web-dev-profile.docx"
+type = "word_document"
+title = "Fiverr Web Dev Profile (DOCX)"
