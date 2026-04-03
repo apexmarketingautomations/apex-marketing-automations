@@ -64,6 +64,15 @@ Preferred communication style: Simple, everyday language.
 - **Meta Campaign Background Sync**: Job-queue-based 45-minute interval sync for Meta ad campaigns with `lastSyncedAt` tracking.
 - **FLHSMV API**: For polling and retrieving crash reports.
 
+## External API Integration (`/api/v1/external/`)
+Public API endpoints for external website integrations, authenticated via `X-API-Key` header (maps to `webhookToken` on sub-accounts).
+- **Status**: `GET /api/v1/external/status` — health check + auth verification
+- **Leads**: `POST /api/v1/external/leads` — name, email, phone, serviceInterest, message, source, tags → creates contact + triggers automations
+- **Consultations**: `POST /api/v1/external/consultations` — name, phone, email, service, preferredDate, preferredTime, notes → creates contact with consultation tags + triggers workflows
+- **Events**: `POST /api/v1/external/events` — event name, metadata, sessionId, pageUrl → logged as messages + fires automation triggers
+- All endpoints have CORS `*`, are in CSRF + auth bypass lists, and wrapped in `asyncHandler`.
+- **Connected Accounts**: Belladonna House of Beauty (id=21, industry=beauty-salon, apiKey=apex_59b71...).
+
 ## Digital Business Card System
 
 ### Shared Card Core Engine (`client/src/components/card-core/`)
