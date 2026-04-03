@@ -527,11 +527,18 @@ async function validateMetaCredentials() {
     console.error("[STARTUP] Seed failed (non-fatal):", seedErr);
   }
 
+  const DISABLE_BACKGROUND_WORKERS = process.env.DISABLE_BACKGROUND_WORKERS === "true";
+  if (DISABLE_BACKGROUND_WORKERS) {
+    console.log("[STARTUP] ⏸ Background workers DISABLED (DISABLE_BACKGROUND_WORKERS=true)");
+  }
+
+  if (!DISABLE_BACKGROUND_WORKERS) {
   try {
     const { startCrashReportWorker } = await import("./crashReportWorker");
     startCrashReportWorker();
   } catch (workerErr) {
     console.error("[STARTUP] Crash report worker failed (non-fatal):", workerErr);
+  }
   }
 
   try {
@@ -542,11 +549,13 @@ async function validateMetaCredentials() {
     console.error("[STARTUP] Event bus init failed (non-fatal):", ebErr);
   }
 
+  if (!DISABLE_BACKGROUND_WORKERS) {
   try {
     const { initOperator } = await import("./operator/index");
     initOperator();
   } catch (opErr) {
     console.error("[STARTUP] Operator init failed (non-fatal):", opErr);
+  }
   }
 
   const { vapiCallLogs } = await import("@shared/schema");
@@ -1610,6 +1619,7 @@ RULES:
     },
     async () => {
       log(`serving on port ${port}`);
+      if (!DISABLE_BACKGROUND_WORKERS) {
       try {
         const { startAutoLearningLoop: startLoop } = await import("./callIntelligence");
         startLoop();
@@ -1640,6 +1650,7 @@ RULES:
         startMetaCampaignSyncScheduler();
       } catch (err: any) {
         console.error("[META-SYNC] Failed to start:", err?.message);
+      }
       }
     },
   );

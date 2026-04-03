@@ -61,6 +61,7 @@ GA_MEASUREMENT_ID = "G-4CVF9NV7MT"
 GA_API_SECRET = "jIlJtysAS2OdBVNRyAQi5w"
 SENTINEL_CAD_API_KEY = "sentinel-cad-key-2026"
 "AUDIENCE ID MAIL CHIMP" = "ed40b38879"
+DISABLE_BACKGROUND_WORKERS = "true"
 
 [postMerge]
 path = "scripts/post-merge.sh"
