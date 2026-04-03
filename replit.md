@@ -38,6 +38,7 @@ Preferred communication style: Simple, everyday language.
 - **Access Control & Multi-Tenancy**: Authentication via Replit OIDC, native email/password, Google OAuth 2.0, Firebase Auth, with plan-based feature gating and strict account ownership enforcement.
 - **Platform Infrastructure**: Includes rate limiting, centralized system logging, feature flags, server-side enforcement of plan limits (with `requireActiveSubscription` and `checkPlanLimitMiddleware` guards on premium routes), automation safety mechanisms, startup health checks, and a robust subscription lifecycle managed by Stripe webhooks.
 - **System Pulse**: Service health monitoring with core vs optional service categorization. Optional services (Vapi) report informational status when unconfigured rather than degraded. Includes message failure root-cause analysis endpoint (`/api/admin/message-failures`).
+- **Process Safety**: Global `unhandledRejection` and `uncaughtException` handlers in `server/index.ts` prevent server crashes from async errors in unwrapped routes. All external sentinel API routes wrapped in `asyncHandler` for proper Express error forwarding.
 - **Messaging Infrastructure**: SMS Opt-Out Guard with phone normalization.
 - **Audit Trail**: Detailed logging of audit actions for compliance.
 - **Database Backup**: JSON snapshot manifests for data integrity.

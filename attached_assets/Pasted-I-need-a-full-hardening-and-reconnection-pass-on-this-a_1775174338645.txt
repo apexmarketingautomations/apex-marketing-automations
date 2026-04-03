@@ -1,0 +1,123 @@
+I need a full hardening and reconnection pass on this application.
+
+Do **not** give me a vague summary.  
+Do an actual scan of the project and return a concrete report with fixes.
+
+## Part 1: Full application hardening scan
+Scan the entire app for weak points, instability, broken logic, risky architecture, and production gaps.
+
+Check all of this:
+
+1. **Project structure / architecture**
+- routing conflicts
+- duplicated logic
+- dead code
+- unstable shared components
+- inconsistent platform vs standalone logic
+- state management issues
+- fragile dependencies between modules
+
+2. **Frontend**
+- broken UI states
+- missing loading/error/empty states
+- hydration/render issues
+- mobile responsiveness problems
+- accessibility issues
+- inconsistent form validation
+- bad user flow friction
+- anything that could break in production
+
+3. **Backend / API**
+- broken or inconsistent routes
+- missing validation
+- auth/session weaknesses
+- unhandled errors
+- unsafe assumptions in controllers/services
+- missing guards around database operations
+- background workers or loops that waste credits/resources
+- webhook reliability issues
+- rate-limit / retry / timeout issues
+
+4. **Database / data integrity**
+- schema mismatches
+- bad defaults
+- orphaned relationships
+- nullable fields that should not be nullable
+- inconsistent status models
+- unsafe migrations
+- places where bad data can be written silently
+
+5. **Deployment / production readiness**
+- anything that works in dev but is fragile in production
+- environment variable issues
+- port/start/build issues
+- insecure dev-only behavior
+- performance bottlenecks
+- anything causing unnecessary usage/credit drain
+
+6. **Security / reliability**
+- exposed secrets risk
+- unsafe logging
+- weak auth assumptions
+- missing permission checks
+- insecure public endpoints
+- missing sanitation/validation
+- third-party integration risks
+
+## Part 2: Reconnect and verify all APIs/integrations
+I also need you to audit **every integration/API connection** in the project and reconnect/fix them where needed.
+
+Check and verify all current integrations, including any:
+- OpenAI
+- Google OAuth / Google APIs
+- Stripe
+- Twilio
+- Mailchimp
+- webhook endpoints
+- domain / DNS related integrations
+- any other external service present in the codebase or env
+
+For each one:
+1. identify where it is configured
+2. confirm whether credentials/env vars are present
+3. confirm whether the connection is healthy
+4. reconnect or repair it if broken
+5. tell me exactly what is still missing if you cannot fully reconnect it
+
+## Required output format
+Give me the results in this structure:
+
+### 1. Executive summary
+- top issues found
+- severity level for each
+- what most urgently needs tightening
+
+### 2. Exact findings
+For every issue found, give:
+- exact file(s)
+- exact problem
+- why it matters
+- exact fix
+
+### 3. Integration/API audit
+For every API/integration, give:
+- status: working / broken / partial / missing config
+- exact config location
+- what was reconnected or fixed
+- what still needs manual action from me
+
+### 4. Apply fixes
+Apply the safe fixes directly where possible.
+
+### 5. Final report
+Tell me:
+- what is now tightened up
+- what still needs manual credentials or approval
+- what remaining risks still exist
+
+Important:
+- Prioritize the **biggest risks first**
+- Do not create new features
+- Focus on **hardening, reconnection, correctness, and production stability**
+- If credentials are missing, tell me the exact variable names needed
+- If an API cannot be reconnected automatically, tell me exactly why

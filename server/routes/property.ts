@@ -1608,7 +1608,7 @@ export function registerPropertyRoutes(app: Express) {
     return tokenAccountId;
   }
 
-  app.get("/api/v1/external/sentinel/incidents", async (req, res) => {
+  app.get("/api/v1/external/sentinel/incidents", asyncHandler(async (req, res) => {
     const token = (req.headers["x-api-token"] || req.query.token) as string;
     const account = await resolveTokenAccount(token);
     if (!account) return res.status(401).json({ error: "Invalid or missing token" });
@@ -1664,11 +1664,11 @@ export function registerPropertyRoutes(app: Express) {
         detectedAt: i.detectedAt,
       })),
     });
-  });
+  }));
 
   const purgeScanLastRun = new Map<string, number>();
 
-  app.post("/api/v1/external/sentinel/purge", async (req, res) => {
+  app.post("/api/v1/external/sentinel/purge", asyncHandler(async (req, res) => {
     const token = (req.headers["x-api-token"] || req.query.token) as string;
     const account = await resolveTokenAccount(token);
     if (!account) return res.status(401).json({ error: "Invalid or missing token" });
@@ -1708,9 +1708,9 @@ export function registerPropertyRoutes(app: Express) {
       purged: purgedCount,
       olderThan: olderThan.toISOString(),
     });
-  });
+  }));
 
-  app.get("/api/v1/external/sentinel/incidents/:id", async (req, res) => {
+  app.get("/api/v1/external/sentinel/incidents/:id", asyncHandler(async (req, res) => {
     const token = (req.headers["x-api-token"] || req.query.token) as string;
     const account = await resolveTokenAccount(token);
     if (!account) return res.status(401).json({ error: "Invalid or missing token" });
@@ -1732,9 +1732,9 @@ export function registerPropertyRoutes(app: Express) {
       rawPayload: incident.rawPayload,
       detectedAt: incident.detectedAt,
     });
-  });
+  }));
 
-  app.get("/api/v1/external/sentinel/stats", async (req, res) => {
+  app.get("/api/v1/external/sentinel/stats", asyncHandler(async (req, res) => {
     const token = (req.headers["x-api-token"] || req.query.token) as string;
     const account = await resolveTokenAccount(token);
     if (!account) return res.status(401).json({ error: "Invalid or missing token" });
@@ -1765,18 +1765,18 @@ export function registerPropertyRoutes(app: Express) {
       bySeverity,
       byStatus,
     });
-  });
+  }));
 
-  app.get("/api/v1/external/sentinel/config", async (req, res) => {
+  app.get("/api/v1/external/sentinel/config", asyncHandler(async (req, res) => {
     const token = (req.headers["x-api-token"] || req.query.token) as string;
     const account = await resolveTokenAccount(token);
     if (!account) return res.status(401).json({ error: "Invalid or missing token" });
     const sourceAccountId = await resolveSentinelSourceAccountId(account.id);
     const config = await storage.getSentinelConfig(sourceAccountId);
     res.json(config || { enabled: false });
-  });
+  }));
 
-  app.put("/api/v1/external/sentinel/config", async (req, res) => {
+  app.put("/api/v1/external/sentinel/config", asyncHandler(async (req, res) => {
     const token = (req.headers["x-api-token"] || req.query.token) as string;
     const account = await resolveTokenAccount(token);
     if (!account) return res.status(401).json({ error: "Invalid or missing token" });
@@ -1794,10 +1794,10 @@ export function registerPropertyRoutes(app: Express) {
       targetStates: targetStates || [],
     });
     res.json(config);
-  });
+  }));
 
   const externalScanLastRun = new Map<string, number>();
-  app.post("/api/v1/external/sentinel/scan", async (req, res) => {
+  app.post("/api/v1/external/sentinel/scan", asyncHandler(async (req, res) => {
     const token = (req.headers["x-api-token"] || req.query.token) as string;
     const account = await resolveTokenAccount(token);
     if (!account) return res.status(401).json({ error: "Invalid or missing token" });
@@ -1832,9 +1832,9 @@ export function registerPropertyRoutes(app: Express) {
       console.error(`[EXTERNAL SENTINEL] Scan error: ${err.message}`);
       res.json({ found: 0, source: "external_trigger", error: err.message });
     }
-  });
+  }));
 
-  app.post("/api/v1/external/sentinel/incidents/:id/acknowledge", async (req, res) => {
+  app.post("/api/v1/external/sentinel/incidents/:id/acknowledge", asyncHandler(async (req, res) => {
     const token = (req.headers["x-api-token"] || req.query.token) as string;
     const account = await resolveTokenAccount(token);
     if (!account) return res.status(401).json({ error: "Invalid or missing token" });
@@ -1843,9 +1843,9 @@ export function registerPropertyRoutes(app: Express) {
     if (!incident || incident.subAccountId !== sourceAccountId) return res.status(404).json({ error: "Not found" });
     await storage.updateSentinelIncident(incident.id, { actionStatus: "acknowledged" });
     res.json({ success: true });
-  });
+  }));
 
-  app.post("/api/v1/external/sentinel/incidents/:id/deploy-geofence", async (req, res) => {
+  app.post("/api/v1/external/sentinel/incidents/:id/deploy-geofence", asyncHandler(async (req, res) => {
     const token = (req.headers["x-api-token"] || req.query.token) as string;
     const account = await resolveTokenAccount(token);
     if (!account) return res.status(401).json({ error: "Invalid or missing token" });
@@ -1854,9 +1854,9 @@ export function registerPropertyRoutes(app: Express) {
     if (!incident || incident.subAccountId !== sourceAccountId) return res.status(404).json({ error: "Not found" });
     await storage.updateSentinelIncident(incident.id, { geofenceDeployed: true, actionStatus: "actioned" });
     res.json({ success: true, message: "Geofence deployed" });
-  });
+  }));
 
-  app.post("/api/v1/external/sentinel/incidents/:id/send-sms", async (req, res) => {
+  app.post("/api/v1/external/sentinel/incidents/:id/send-sms", asyncHandler(async (req, res) => {
     const token = (req.headers["x-api-token"] || req.query.token) as string;
     const account = await resolveTokenAccount(token);
     if (!account) return res.status(401).json({ error: "Invalid or missing token" });
@@ -1886,7 +1886,7 @@ export function registerPropertyRoutes(app: Express) {
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
-  });
+  }));
 
   // ─── Client Website Integration ───────────────────────────────────
   app.get("/api/client-websites/:subAccountId", asyncHandler(async (req, res) => {

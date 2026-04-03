@@ -12,6 +12,22 @@ import path from "path";
 import fs from "fs";
 import { runStartupChecks } from "./startupChecks";
 import { logSystemError, logSystemEvent } from "./systemLogger";
+
+process.on("unhandledRejection", (reason: any) => {
+  console.error("[PROCESS] Unhandled promise rejection (caught, not crashing):", reason?.message || reason);
+  logSystemError("process", "Unhandled promise rejection", {
+    message: reason?.message || String(reason),
+    stack: reason?.stack?.substring(0, 500),
+  });
+});
+
+process.on("uncaughtException", (err: Error) => {
+  console.error("[PROCESS] Uncaught exception (caught, not crashing):", err.message);
+  logSystemError("process", "Uncaught exception", {
+    message: err.message,
+    stack: err.stack?.substring(0, 500),
+  });
+});
 import { apiLimiter, authLimiter, webhookLimiter, creditTopupLimiter, uploadLimiter } from "./rateLimiter";
 import { dispatchAlert, generateDeepLink } from "./pushAlertService";
 import { initEventSubscribers } from "./eventSubscribers";
