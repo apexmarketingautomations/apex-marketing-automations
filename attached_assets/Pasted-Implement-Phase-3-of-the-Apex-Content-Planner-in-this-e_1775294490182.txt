@@ -1,0 +1,58 @@
+Implement Phase 3 of the Apex Content Planner in this existing project.
+
+Current status:
+
+* Phase 1 backend is working
+* Phase 2 publishing pipeline is working
+* mock adapters and publish jobs are already implemented
+* do not break existing architecture
+
+Build Phase 3 only.
+
+Goal:
+Replace mock publishing with real platform integration starting with Meta.
+
+Scope for Phase 3:
+
+1. Implement real Facebook Page publishing
+2. Implement real Instagram Business publishing
+3. Keep X and TikTok as mock adapters for now
+4. Reuse the existing publishing pipeline, scheduler, routes, and logs
+5. Keep everything tied strictly to req.tenant.subAccountId
+
+Requirements:
+
+* Do not create a new backend
+* Do not redesign the app
+* Do not rewrite unrelated files
+* Use the existing content planner adapter structure
+* Use existing encrypted token storage
+* Validate required account/token fields before publish
+* Write all success/failure results into cp_publish_logs
+* Update cp_publish_jobs status correctly
+* Update cp_posts status/publishedAt correctly
+* Keep tenant isolation strict
+* Do not use URL/query tenant switching
+* Do not assume req.user exists
+
+Meta requirements:
+
+* Facebook publishing should support Page posts
+* Instagram publishing should support Business account publishing through Meta Graph APIs
+* If the connected account is missing required Meta fields/tokens, fail gracefully and log the reason
+* Add only the minimum schema changes required if current stored connection fields are insufficient
+* Keep the adapter interface clean so real APIs can replace mocks without changing the rest of the pipeline
+
+Testing requirements:
+
+* Run typecheck / startup checks
+* Test one Facebook publish flow if credentials exist
+* Test one Instagram publish flow if credentials exist
+* If live credentials are not available, report exactly what is missing and stop without faking success
+
+When done:
+
+1. list every changed file
+2. list any new env vars required
+3. report exact test results
+4. stop and wait for review before Phase 4

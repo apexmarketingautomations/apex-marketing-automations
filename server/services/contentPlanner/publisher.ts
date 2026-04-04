@@ -1,10 +1,11 @@
 import { db } from "../../db";
 import { eq, and } from "drizzle-orm";
 import {
-  cpPosts, cpPublishLogs, cpPublishJobs, cpSocialConnections,
+  cpPosts, cpPublishLogs, cpPublishJobs, cpSocialConnections, subAccounts,
 } from "@shared/schema";
 import { getAdapter } from "./adapters";
-import type { PublishInput, PublishResult } from "./adapters";
+import type { PublishInput, PublishResult, PlatformCredentials } from "./adapters";
+import { decrypt } from "../contentEncryption";
 
 interface PublishPostOptions {
   postId: number;
@@ -12,6 +13,91 @@ interface PublishPostOptions {
   trigger: "manual" | "scheduled";
   platforms?: string[];
   connectionIds?: number[];
+}
+
+async function resolveCredentials(
+  subAccountId: number,
+  platform: string,
+  connectionId: number | null,
+): Promise<PlatformCredentials | null> {
+  if (connectionId) {
+    const [conn] = await db.select().from(cpSocialConnections)
+      .where(and(
+        eq(cpSocialConnections.id, connectionId),
+        eq(cpSocialConnections.subAccountId, subAccountId),
+      ));
+    if (conn && conn.accessTokenEnc) {
+      try {
+        const accessToken = decrypt(conn.accessTokenEnc);
+        return {
+          accessToken,
+          pageId: conn.accountId || undefined,
+          igUserId: undefined,
+        };
+      } catch (e: any) {
+        console.error(`[CP-PUBLISHER] Failed to decrypt token for connection ${connectionId}:`, e.message);
+      }
+    }
+  }
+
+  const connections = await db.select().from(cpSocialConnections)
+    .where(and(
+      eq(cpSocialConnections.subAccountId, subAccountId),
+      eq(cpSocialConnections.platform, platform),
+      eq(cpSocialConnections.isActive, true),
+    ));
+
+  if (connections.length > 0 && connections[0].accessTokenEnc) {
+    try {
+      const accessToken = decrypt(connections[0].accessTokenEnc);
+      return {
+        accessToken,
+        pageId: connections[0].accountId || undefined,
+        igUserId: undefined,
+      };
+    } catch (e: any) {
+      console.error(`[CP-PUBLISHER] Failed to decrypt token for connection ${connections[0].id}:`, e.message);
+    }
+  }
+
+  if (platform === "facebook" || platform === "instagram") {
+    const [account] = await db.select().from(subAccounts)
+      .where(eq(subAccounts.id, subAccountId));
+    if (account && account.metaAccessToken && account.metaPageId) {
+      const creds: PlatformCredentials = {
+        accessToken: account.metaAccessToken,
+        pageId: account.metaPageId,
+        appSecret: account.metaAppSecret || undefined,
+      };
+
+      if (platform === "instagram") {
+        try {
+          const igUserId = await resolveInstagramBusinessId(account.metaPageId, account.metaAccessToken);
+          creds.igUserId = igUserId || undefined;
+        } catch (e: any) {
+          console.error(`[CP-PUBLISHER] Failed to resolve IG business ID:`, e.message);
+        }
+      }
+
+      return creds;
+    }
+  }
+
+  return null;
+}
+
+async function resolveInstagramBusinessId(pageId: string, accessToken: string): Promise<string | null> {
+  try {
+    const url = `https://graph.facebook.com/v19.0/${pageId}?fields=instagram_business_account&access_token=${accessToken}`;
+    const response = await fetch(url);
+    const data = await response.json() as any;
+    if (data.instagram_business_account?.id) {
+      return data.instagram_business_account.id;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 export async function publishPost(opts: PublishPostOptions): Promise<{
@@ -75,6 +161,8 @@ export async function publishPost(opts: PublishPostOptions): Promise<{
       if (match) connectionId = match.id;
     }
 
+    const credentials = await resolveCredentials(subAccountId, platform, connectionId);
+
     const input: PublishInput = {
       postId,
       subAccountId,
@@ -83,6 +171,7 @@ export async function publishPost(opts: PublishPostOptions): Promise<{
       title: post.title,
       body: post.body,
       mediaIds: post.mediaIds,
+      credentials,
     };
 
     const validation = adapter.validate(input);

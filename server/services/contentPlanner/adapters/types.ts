@@ -6,6 +6,14 @@ export interface PublishInput {
   title: string | null;
   body: string | null;
   mediaIds: number[] | null;
+  credentials: PlatformCredentials | null;
+}
+
+export interface PlatformCredentials {
+  accessToken: string;
+  pageId?: string;
+  igUserId?: string;
+  appSecret?: string;
 }
 
 export interface PublishResult {
