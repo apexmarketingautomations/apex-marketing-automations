@@ -3,7 +3,7 @@ export default function Privacy() {
     <div className="min-h-screen bg-[#030014] text-white" data-testid="privacy-page">
       <div className="max-w-3xl mx-auto px-6 py-16">
         <h1 className="text-3xl font-bold mb-2" data-testid="text-page-title">Privacy Policy</h1>
-        <p className="text-sm text-slate-400 mb-8">Last updated: March 14, 2026</p>
+        <p className="text-sm text-slate-400 mb-8">Last updated: April 4, 2026</p>
 
         <div className="space-y-8 text-slate-300 text-sm leading-relaxed">
           <section>
@@ -83,12 +83,29 @@ export default function Privacy() {
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold text-white mb-3">11. Changes to This Policy</h2>
+            <h2 className="text-lg font-semibold text-white mb-3" data-testid="text-law-enforcement-heading">11. Law Enforcement & Government Data Requests</h2>
+            <p className="mb-2">Apex is committed to protecting the privacy of our users. When we receive requests for user personal data from law enforcement agencies, government bodies, or other public authorities, we follow strict internal procedures to safeguard your rights.</p>
+
+            <p className="mb-1"><strong className="text-white">Legal Review:</strong></p>
+            <p className="mb-2">Every request from a public authority for user data is reviewed by qualified legal counsel before any information is disclosed. We verify that each request is valid, legally binding, and issued through proper legal channels (such as a court order, subpoena, or equivalent instrument under applicable law). Requests that lack a proper legal basis are rejected.</p>
+
+            <p className="mb-1"><strong className="text-white">Right to Challenge:</strong></p>
+            <p className="mb-2">Apex reserves the right to challenge any government or law enforcement data request that we determine, in consultation with legal counsel, to be unlawful, overbroad, or otherwise inappropriate. We may seek to narrow the scope of a request or contest it through available legal mechanisms before disclosing any data.</p>
+
+            <p className="mb-1"><strong className="text-white">Data Minimization:</strong></p>
+            <p className="mb-2">When disclosure is required by law, we limit the information provided to the minimum necessary to satisfy the specific legal obligation. We do not provide bulk or unrestricted access to user data.</p>
+
+            <p className="mb-1"><strong className="text-white">Documentation & Logging:</strong></p>
+            <p>All public authority data requests, our responses, the legal reasoning behind each decision, and the individuals involved in the review process are documented and retained in an internal log. This ensures accountability and supports audit and compliance efforts.</p>
+          </section>
+
+          <section>
+            <h2 className="text-lg font-semibold text-white mb-3">12. Changes to This Policy</h2>
             <p>We may update this Privacy Policy from time to time. We will notify you of any material changes by posting the updated policy on this page with a revised "Last updated" date.</p>
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold text-white mb-3">12. Contact Us</h2>
+            <h2 className="text-lg font-semibold text-white mb-3">13. Contact Us</h2>
             <p>If you have questions about this Privacy Policy, please contact us at:</p>
             <p className="mt-2 text-indigo-400">apexmarketingautomations@gmail.com</p>
           </section>

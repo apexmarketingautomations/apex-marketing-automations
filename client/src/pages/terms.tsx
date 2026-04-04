@@ -3,7 +3,7 @@ export default function Terms() {
     <div className="min-h-screen bg-[#030014] text-white" data-testid="terms-page">
       <div className="max-w-3xl mx-auto px-6 py-16">
         <h1 className="text-3xl font-bold mb-2" data-testid="text-page-title">Terms of Service</h1>
-        <p className="text-sm text-slate-400 mb-8">Last updated: March 14, 2026</p>
+        <p className="text-sm text-slate-400 mb-8">Last updated: April 4, 2026</p>
 
         <div className="space-y-8 text-slate-300 text-sm leading-relaxed">
           <section>
@@ -99,12 +99,25 @@ export default function Terms() {
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold text-white mb-3">14. Governing Law</h2>
+            <h2 className="text-lg font-semibold text-white mb-3" data-testid="text-law-enforcement-heading">14. Law Enforcement & Government Data Requests</h2>
+            <p className="mb-2">Apex maintains formal policies and procedures for responding to requests for user personal data from law enforcement agencies, government bodies, and other public authorities. These policies are described in detail in our <a href="/privacy" className="text-indigo-400 hover:text-indigo-300">Privacy Policy</a>.</p>
+            <p className="mb-2">In summary, Apex will:</p>
+            <ul className="list-disc list-inside space-y-1 mb-2">
+              <li>Require valid legal process before disclosing any user data to public authorities</li>
+              <li>Challenge requests that are unlawful, overbroad, or otherwise inappropriate</li>
+              <li>Limit disclosure to the minimum information necessary to comply with a valid legal obligation</li>
+              <li>Document all requests, responses, and associated legal reasoning</li>
+            </ul>
+            <p>Where legally permitted, Apex will notify affected users of a data request from a public authority. If notification is delayed or prohibited by law, we will provide notice as soon as the restriction is lifted.</p>
+          </section>
+
+          <section>
+            <h2 className="text-lg font-semibold text-white mb-3">15. Governing Law</h2>
             <p>These terms shall be governed by and construed in accordance with the laws of the State of Florida, United States, without regard to conflict of law provisions.</p>
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold text-white mb-3">15. Contact</h2>
+            <h2 className="text-lg font-semibold text-white mb-3">16. Contact</h2>
             <p>For questions about these Terms of Service, contact us at:</p>
             <p className="mt-2 text-indigo-400">apexmarketingautomations@gmail.com</p>
           </section>
