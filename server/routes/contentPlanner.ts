@@ -677,6 +677,31 @@ export function registerContentPlannerRoutes(app: Express) {
       diag.appInfo = { status: "error", message: err.message };
     }
 
+    const pageOk = diag.pageAccess.status === "ok";
+    const permsOk = diag.pagePermissions.status === "ok";
+    const permsFailed = diag.pagePermissions.status === "failed";
+    const igLinked = diag.instagramBusiness.status === "linked";
+
+    const facebookReady = pageOk && (permsOk || (permsFailed && diag.pageAccess.hasPageToken));
+    const instagramReady = facebookReady && igLinked;
+
+    diag.facebookReady = facebookReady;
+    diag.instagramReady = instagramReady;
+
+    const steps: string[] = [];
+    if (!account.metaPageId) steps.push("Set metaPageId on your sub-account");
+    if (!account.metaAccessToken) steps.push("Set metaAccessToken on your sub-account");
+    if (!pageOk) steps.push("Fix page access — check that the token and Page ID are valid");
+    if (!permsOk && !permsFailed) {
+      steps.push("Grant pages_read_engagement and pages_manage_posts permissions in Meta Developer Console");
+    }
+    if (permsFailed) {
+      steps.push("Token appears to be a Page token (permissions check returned an error). Try a test publish — if it fails with #200, regenerate the token with pages_manage_posts scope");
+    }
+    if (!igLinked) steps.push("Link an Instagram Business account to this Facebook Page in Meta Business Suite");
+    if (steps.length === 0) steps.push("All checks passed — ready to publish");
+    diag.recommendedNextSteps = steps;
+
     res.json(diag);
   }));
 }
