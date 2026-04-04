@@ -1572,6 +1572,8 @@ RULES:
   app.use("/api", apiLimiter);
 
   await setupAuth(app);
+  const { tenantMiddleware } = await import("./middleware/tenant");
+  app.use("/api", tenantMiddleware);
   app.use("/api", csrfProtection);
   registerAuthRoutes(app);
   await registerRoutes(httpServer, app);
