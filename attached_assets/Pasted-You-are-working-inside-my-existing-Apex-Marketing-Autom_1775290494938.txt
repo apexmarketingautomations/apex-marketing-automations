@@ -1,0 +1,98 @@
+You are working inside my existing Apex Marketing Automations Replit project.
+
+I need you to implement **Phase 1** of a new **multi-tenant Content Planner** feature directly into this existing app.
+
+## Existing architecture facts
+
+* This is **not** a new app
+* Do **not** create a new server
+* Do **not** create a standalone backend
+* Do **not** redesign the project structure
+* Use the existing project architecture exactly as it exists
+
+### Existing backend structure
+
+* Main DB connection is in: `server/db.ts`
+* Main schema file is: `shared/schema.ts`
+* Main route registration file is: `server/routes.ts`
+* Routes are registered through modular `registerXRoutes(app)` functions inside `registerRoutes(httpServer, app)`
+* Existing tenant middleware already provides:
+  `req.tenant.subAccountId`
+* `req.tenant.subAccountId` is currently hardcoded to `1` for now and is available on all `/api` routes
+
+### Important routing/security rules
+
+* Use ONLY `req.tenant.subAccountId` for tenant resolution
+* Do **not** use `req.params.subAccountId`
+* Do **not** use `req.query.subAccountId`
+* Do **not** allow tenant switching through the URL
+* All tenant ownership must be tied to `sub_account_id`
+* Every `subAccountId` foreign key must use:
+  `.references(() => subAccounts.id, { onDelete: "cascade" })`
+
+### Existing tenant table
+
+The existing tenant model is `sub_accounts` in `shared/schema.ts`.
+
+Use it as the multi-tenant owner for all content planner data.
+
+## Phase 1 scope only
+
+Build only the backend foundation CRUD for the Content Planner.
+
+### Phase 1 includes
+
+1. **Schema additions** in `shared/schema.ts`
+2. **Route file** at `server/routes/contentPlanner.ts`
+3. **Route registration** in `server/routes.ts`
+4. **Encryption helper** at `server/services/contentEncryption.ts` if needed
+5. Any required env usage for:
+   `CONTENT_PLANNER_ENCRYPTION_KEY`
+
+### Phase 1 features to implement
+
+* **social connections CRUD**
+
+  * Instagram
+  * Facebook
+  * X
+  * TikTok
+* **content posts CRUD**
+* **calendar feed endpoint**
+* **media CRUD**
+* **approvals CRUD**
+* **content library CRUD**
+* **labels CRUD**
+* **publish logs read endpoint only**
+
+## Content Planner requirements
+
+* Multi-tenant by `sub_accounts`
+* Each sub-account must have fully separate platform integrations
+* Use the existing `server/db.ts`
+* Use the existing modular route style
+* Keep everything compatible with the current app
+* Do not assume `req.user` exists
+* `createdByUserId` can be `null` for now
+
+## Do NOT build yet
+
+* workers
+* schedulers
+* publishers
+* queue logic
+* frontend
+* auth rewrites
+* unrelated refactors
+
+## What I want you to do
+
+Implement the files directly in this Replit project.
+
+When done:
+
+1. Tell me exactly which files were changed
+2. Tell me any env variable I need to add
+3. Run the app / typecheck if needed
+4. Report any TypeScript, import, or schema errors
+5. Stop and wait for review before Phase 2

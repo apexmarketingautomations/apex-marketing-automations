@@ -34,6 +34,7 @@ import { registerMailchimpRoutes } from "./routes/mailchimp";
 import { registerPublicPlatformRoutes } from "./routes/public-platform";
 import { registerStandaloneCardsRoutes } from "./routes/standalone-cards";
 import { registerExternalApiRoutes } from "./routes/external-api";
+import { registerContentPlannerRoutes } from "./routes/contentPlanner";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -72,6 +73,7 @@ export async function registerRoutes(
   registerPublicPlatformRoutes(app);
   registerStandaloneCardsRoutes(app);
   registerExternalApiRoutes(app);
+  registerContentPlannerRoutes(app);
 
   return httpServer;
 }

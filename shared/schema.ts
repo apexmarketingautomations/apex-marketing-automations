@@ -2041,3 +2041,110 @@ export const PLAN_LIMITS: Record<string, Record<string, number>> = {
     integrations: 50,
   },
 };
+
+export const cpSocialConnections = pgTable("cp_social_connections", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  platform: text("platform").notNull(),
+  accountName: text("account_name"),
+  accountId: text("account_id"),
+  accessTokenEnc: text("access_token_enc"),
+  refreshTokenEnc: text("refresh_token_enc"),
+  tokenExpiresAt: timestamp("token_expires_at"),
+  scopes: text("scopes").array(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export const insertCpSocialConnectionSchema = createInsertSchema(cpSocialConnections).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertCpSocialConnection = z.infer<typeof insertCpSocialConnectionSchema>;
+export type CpSocialConnection = typeof cpSocialConnections.$inferSelect;
+
+export const cpLabels = pgTable("cp_labels", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull(),
+  color: text("color").default("#6366f1"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertCpLabelSchema = createInsertSchema(cpLabels).omit({ id: true, createdAt: true });
+export type InsertCpLabel = z.infer<typeof insertCpLabelSchema>;
+export type CpLabel = typeof cpLabels.$inferSelect;
+
+export const cpMedia = pgTable("cp_media", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  filename: text("filename").notNull(),
+  url: text("url").notNull(),
+  mimeType: text("mime_type"),
+  sizeBytes: integer("size_bytes"),
+  altText: text("alt_text"),
+  createdByUserId: text("created_by_user_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertCpMediaSchema = createInsertSchema(cpMedia).omit({ id: true, createdAt: true });
+export type InsertCpMedia = z.infer<typeof insertCpMediaSchema>;
+export type CpMedia = typeof cpMedia.$inferSelect;
+
+export const cpContentLibrary = pgTable("cp_content_library", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  title: text("title").notNull(),
+  body: text("body"),
+  category: text("category"),
+  tags: text("tags").array(),
+  mediaIds: integer("media_ids").array(),
+  createdByUserId: text("created_by_user_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export const insertCpContentLibrarySchema = createInsertSchema(cpContentLibrary).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertCpContentLibrary = z.infer<typeof insertCpContentLibrarySchema>;
+export type CpContentLibraryItem = typeof cpContentLibrary.$inferSelect;
+
+export const cpPosts = pgTable("cp_posts", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  title: text("title"),
+  body: text("body"),
+  platforms: text("platforms").array(),
+  mediaIds: integer("media_ids").array(),
+  labelIds: integer("label_ids").array(),
+  status: text("status").default("draft").notNull(),
+  scheduledAt: timestamp("scheduled_at"),
+  publishedAt: timestamp("published_at"),
+  connectionIds: integer("connection_ids").array(),
+  createdByUserId: text("created_by_user_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export const insertCpPostSchema = createInsertSchema(cpPosts).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertCpPost = z.infer<typeof insertCpPostSchema>;
+export type CpPost = typeof cpPosts.$inferSelect;
+
+export const cpApprovals = pgTable("cp_approvals", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  postId: integer("post_id").references(() => cpPosts.id, { onDelete: "cascade" }).notNull(),
+  status: text("status").default("pending").notNull(),
+  reviewerUserId: text("reviewer_user_id"),
+  reviewNote: text("review_note"),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertCpApprovalSchema = createInsertSchema(cpApprovals).omit({ id: true, createdAt: true });
+export type InsertCpApproval = z.infer<typeof insertCpApprovalSchema>;
+export type CpApproval = typeof cpApprovals.$inferSelect;
+
+export const cpPublishLogs = pgTable("cp_publish_logs", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  postId: integer("post_id").references(() => cpPosts.id, { onDelete: "cascade" }).notNull(),
+  connectionId: integer("connection_id").references(() => cpSocialConnections.id, { onDelete: "set null" }),
+  platform: text("platform").notNull(),
+  status: text("status").notNull(),
+  externalPostId: text("external_post_id"),
+  errorMessage: text("error_message"),
+  publishedAt: timestamp("published_at").defaultNow().notNull(),
+});
+export type CpPublishLog = typeof cpPublishLogs.$inferSelect;
