@@ -704,4 +704,35 @@ export function registerContentPlannerRoutes(app: Express) {
 
     res.json(diag);
   }));
+
+  // ─── Meta Token Update ──────────────────────────────────────────
+
+  app.post("/api/content-planner/meta-token", asyncHandler(async (req, res) => {
+    const subAccountId = req.tenant.subAccountId;
+
+    const schema = z.object({
+      accessToken: z.string().min(10).max(1000),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "A valid accessToken string is required" });
+
+    const { accessToken } = parsed.data;
+
+    const [account] = await db.select().from(subAccounts)
+      .where(eq(subAccounts.id, subAccountId));
+    if (!account) return res.status(404).json({ error: "Sub-account not found" });
+
+    await db.update(subAccounts).set({
+      metaAccessToken: accessToken,
+    }).where(eq(subAccounts.id, subAccountId));
+
+    const masked = `${accessToken.substring(0, 8)}...${accessToken.substring(accessToken.length - 4)}`;
+    console.log(`[CP-META-TOKEN] Updated Meta access token for subAccount ${subAccountId} (masked: ${masked})`);
+
+    res.json({
+      success: true,
+      subAccountId,
+      maskedToken: masked,
+    });
+  }));
 }
