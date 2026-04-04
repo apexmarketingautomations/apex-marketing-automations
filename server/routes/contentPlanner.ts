@@ -5,6 +5,7 @@ import { eq, and, gte, lte, desc } from "drizzle-orm";
 import {
   cpSocialConnections, cpPosts, cpMedia, cpApprovals,
   cpContentLibrary, cpLabels, cpPublishLogs, cpPublishJobs,
+  subAccounts,
 } from "@shared/schema";
 import { asyncHandler } from "./helpers";
 import { encrypt, decrypt } from "../services/contentEncryption";
@@ -579,5 +580,103 @@ export function registerContentPlannerRoutes(app: Express) {
   app.post("/api/content-planner/scheduler/process", asyncHandler(async (req, res) => {
     const result = await processDueScheduledPosts();
     res.json(result);
+  }));
+
+  // ─── Meta Diagnostics ───────────────────────────────────────────
+
+  app.get("/api/content-planner/meta-diagnostics", asyncHandler(async (req, res) => {
+    const subAccountId = req.tenant.subAccountId;
+    const [account] = await db.select().from(subAccounts)
+      .where(eq(subAccounts.id, subAccountId));
+
+    if (!account) return res.status(404).json({ error: "Sub-account not found" });
+
+    const diag: Record<string, any> = {
+      subAccountId,
+      accountName: account.name,
+      credentials: {
+        metaPageId: account.metaPageId || null,
+        metaAccessToken: account.metaAccessToken
+          ? `${account.metaAccessToken.substring(0, 8)}...${account.metaAccessToken.substring(account.metaAccessToken.length - 4)}`
+          : null,
+        metaAppSecret: account.metaAppSecret ? "present" : "missing",
+      },
+      pageAccess: { status: "not_tested" },
+      pagePermissions: { status: "not_tested" },
+      instagramBusiness: { status: "not_tested" },
+    };
+
+    if (!account.metaAccessToken || !account.metaPageId) {
+      diag.pageAccess = { status: "skipped", reason: "Missing metaAccessToken or metaPageId" };
+      diag.pagePermissions = { status: "skipped", reason: "No token to check" };
+      diag.instagramBusiness = { status: "skipped", reason: "No token to check" };
+      return res.json(diag);
+    }
+
+    const token = account.metaAccessToken;
+    const pageId = account.metaPageId;
+
+    try {
+      const pageRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}?fields=id,name,access_token&access_token=${token}`);
+      const pageData = await pageRes.json() as any;
+      if (pageData.error) {
+        diag.pageAccess = { status: "failed", error: pageData.error.message, code: pageData.error.code, type: pageData.error.type };
+      } else {
+        diag.pageAccess = { status: "ok", pageId: pageData.id, pageName: pageData.name, hasPageToken: !!pageData.access_token };
+      }
+    } catch (err: any) {
+      diag.pageAccess = { status: "error", message: err.message };
+    }
+
+    try {
+      const permRes = await fetch(`https://graph.facebook.com/v19.0/me/permissions?access_token=${token}`);
+      const permData = await permRes.json() as any;
+      if (permData.error) {
+        diag.pagePermissions = { status: "failed", error: permData.error.message };
+      } else {
+        const perms = (permData.data || []) as Array<{ permission: string; status: string }>;
+        const granted = perms.filter((p: any) => p.status === "granted").map((p: any) => p.permission);
+        const declined = perms.filter((p: any) => p.status === "declined").map((p: any) => p.permission);
+        const required = ["pages_read_engagement", "pages_manage_posts"];
+        const missing = required.filter(r => !granted.includes(r));
+        diag.pagePermissions = {
+          status: missing.length === 0 ? "ok" : "incomplete",
+          granted,
+          declined,
+          requiredForPublishing: required,
+          missingForPublishing: missing,
+        };
+      }
+    } catch (err: any) {
+      diag.pagePermissions = { status: "error", message: err.message };
+    }
+
+    try {
+      const igRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}?fields=instagram_business_account&access_token=${token}`);
+      const igData = await igRes.json() as any;
+      if (igData.error) {
+        diag.instagramBusiness = { status: "failed", error: igData.error.message };
+      } else if (igData.instagram_business_account?.id) {
+        diag.instagramBusiness = { status: "linked", igUserId: igData.instagram_business_account.id };
+      } else {
+        diag.instagramBusiness = { status: "not_linked", reason: "No Instagram Business account connected to this Facebook Page" };
+      }
+    } catch (err: any) {
+      diag.instagramBusiness = { status: "error", message: err.message };
+    }
+
+    try {
+      const appRes = await fetch(`https://graph.facebook.com/v19.0/app?access_token=${token}`);
+      const appData = await appRes.json() as any;
+      if (appData.error) {
+        diag.appInfo = { status: "failed", error: appData.error.message };
+      } else {
+        diag.appInfo = { status: "ok", appId: appData.id, appName: appData.name, category: appData.category };
+      }
+    } catch (err: any) {
+      diag.appInfo = { status: "error", message: err.message };
+    }
+
+    res.json(diag);
   }));
 }
