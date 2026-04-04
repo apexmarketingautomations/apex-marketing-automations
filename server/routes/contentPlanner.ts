@@ -4,10 +4,12 @@ import { db } from "../db";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import {
   cpSocialConnections, cpPosts, cpMedia, cpApprovals,
-  cpContentLibrary, cpLabels, cpPublishLogs,
+  cpContentLibrary, cpLabels, cpPublishLogs, cpPublishJobs,
 } from "@shared/schema";
 import { asyncHandler } from "./helpers";
 import { encrypt, decrypt } from "../services/contentEncryption";
+import { publishPost } from "../services/contentPlanner/publisher";
+import { processDueScheduledPosts } from "../services/contentPlanner/scheduler";
 
 const VALID_PLATFORMS = ["instagram", "facebook", "x", "tiktok"] as const;
 const POST_STATUSES = ["draft", "scheduled", "published", "failed", "archived"] as const;
@@ -477,5 +479,105 @@ export function registerContentPlannerRoutes(app: Express) {
       .where(conditions)
       .orderBy(desc(cpPublishLogs.publishedAt));
     res.json(rows);
+  }));
+
+  // ─── Publish: Manual Trigger ─────────────────────────────────────
+
+  app.post("/api/content-planner/posts/:id/publish", asyncHandler(async (req, res) => {
+    const subAccountId = req.tenant.subAccountId;
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) return res.status(400).json({ error: "Invalid post id" });
+
+    const schema = z.object({
+      platforms: z.array(z.enum(VALID_PLATFORMS)).max(4).optional(),
+      connectionIds: z.array(z.number().int()).max(10).optional(),
+    });
+    const parsed = schema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ error: "Validation failed", details: parsed.error.flatten().fieldErrors });
+
+    try {
+      const result = await publishPost({
+        postId,
+        subAccountId,
+        trigger: "manual",
+        platforms: parsed.data.platforms,
+        connectionIds: parsed.data.connectionIds,
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }));
+
+  // ─── Publish: Schedule a Post ────────────────────────────────────
+
+  app.post("/api/content-planner/posts/:id/schedule", asyncHandler(async (req, res) => {
+    const subAccountId = req.tenant.subAccountId;
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) return res.status(400).json({ error: "Invalid post id" });
+
+    const schema = z.object({
+      scheduledAt: z.string().datetime(),
+      platforms: z.array(z.enum(VALID_PLATFORMS)).min(1).max(4),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Validation failed", details: parsed.error.flatten().fieldErrors });
+
+    const scheduledDate = new Date(parsed.data.scheduledAt);
+    if (scheduledDate <= new Date()) {
+      return res.status(400).json({ error: "Scheduled time must be in the future" });
+    }
+
+    const [post] = await db.select().from(cpPosts)
+      .where(and(eq(cpPosts.id, postId), eq(cpPosts.subAccountId, subAccountId)));
+    if (!post) return res.status(404).json({ error: "Post not found" });
+
+    const [updated] = await db.update(cpPosts).set({
+      status: "scheduled",
+      scheduledAt: scheduledDate,
+      platforms: parsed.data.platforms,
+      updatedAt: new Date(),
+    }).where(and(eq(cpPosts.id, postId), eq(cpPosts.subAccountId, subAccountId)))
+      .returning();
+
+    res.json(updated);
+  }));
+
+  // ─── Publish Jobs: List / Status ─────────────────────────────────
+
+  app.get("/api/content-planner/publish-jobs", asyncHandler(async (req, res) => {
+    const subAccountId = req.tenant.subAccountId;
+    const postIdParam = req.query.postId as string | undefined;
+
+    let conditions = eq(cpPublishJobs.subAccountId, subAccountId);
+    if (postIdParam) {
+      const postId = parseInt(postIdParam);
+      if (!isNaN(postId)) {
+        conditions = and(conditions, eq(cpPublishJobs.postId, postId))!;
+      }
+    }
+
+    const rows = await db.select().from(cpPublishJobs)
+      .where(conditions)
+      .orderBy(desc(cpPublishJobs.createdAt));
+    res.json(rows);
+  }));
+
+  app.get("/api/content-planner/publish-jobs/:id", asyncHandler(async (req, res) => {
+    const subAccountId = req.tenant.subAccountId;
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
+
+    const [job] = await db.select().from(cpPublishJobs)
+      .where(and(eq(cpPublishJobs.id, id), eq(cpPublishJobs.subAccountId, subAccountId)));
+    if (!job) return res.status(404).json({ error: "Publish job not found" });
+    res.json(job);
+  }));
+
+  // ─── Scheduler: Process due posts (internal trigger) ─────────────
+
+  app.post("/api/content-planner/scheduler/process", asyncHandler(async (req, res) => {
+    const result = await processDueScheduledPosts();
+    res.json(result);
   }));
 }

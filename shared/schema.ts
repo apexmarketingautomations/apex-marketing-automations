@@ -2148,3 +2148,19 @@ export const cpPublishLogs = pgTable("cp_publish_logs", {
   publishedAt: timestamp("published_at").defaultNow().notNull(),
 });
 export type CpPublishLog = typeof cpPublishLogs.$inferSelect;
+
+export const cpPublishJobs = pgTable("cp_publish_jobs", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  postId: integer("post_id").references(() => cpPosts.id, { onDelete: "cascade" }).notNull(),
+  status: text("status").default("pending").notNull(),
+  trigger: text("trigger").default("manual").notNull(),
+  platforms: text("platforms").array(),
+  connectionIds: integer("connection_ids").array(),
+  result: jsonb("result"),
+  errorMessage: text("error_message"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type CpPublishJob = typeof cpPublishJobs.$inferSelect;
