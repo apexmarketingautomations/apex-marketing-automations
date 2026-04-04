@@ -68,7 +68,7 @@ export function ApexIntelligence({
     },
     enabled: !!subAccountId && !isOpen,
     staleTime: 120000,
-    refetchInterval: 300000,
+    refetchInterval: 3_600_000,
   });
 
   const { data: healthData } = useQuery<HealthScore>({

@@ -44,7 +44,7 @@ export function AgentTab({ subAccountId }: { subAccountId: number }) {
       return res.json();
     },
     enabled: !!subAccountId,
-    refetchInterval: 15000,
+    refetchInterval: 3_600_000,
   });
 
   const { data: tasksData } = useQuery({
@@ -55,7 +55,7 @@ export function AgentTab({ subAccountId }: { subAccountId: number }) {
       return res.json();
     },
     enabled: !!subAccountId,
-    refetchInterval: 15000,
+    refetchInterval: 3_600_000,
   });
 
   const { data: briefingData } = useQuery({

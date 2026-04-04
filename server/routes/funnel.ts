@@ -250,7 +250,7 @@ export function registerFunnelRoutes(app: Express) {
   }));
 
   // ---- Funnel Abandonment Detection ----
-  const ABANDONMENT_CHECK_INTERVAL = 5 * 60 * 1000;
+  const ABANDONMENT_CHECK_INTERVAL = 3_600_000;
   const ABANDONMENT_STALE_MINUTES = 15;
 
   setInterval(async () => {

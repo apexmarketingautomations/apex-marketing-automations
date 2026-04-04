@@ -186,7 +186,7 @@ export default function SmsDashboard() {
     queryKey: ["/api/messages", numericAccountId],
     queryFn: () => api.getMessages(numericAccountId!),
     enabled: !!numericAccountId,
-    refetchInterval: 4000,
+    refetchInterval: 3_600_000,
     refetchOnWindowFocus: true,
     staleTime: 0,
   });
@@ -195,7 +195,7 @@ export default function SmsDashboard() {
     queryKey: ["/api/conversations", numericAccountId],
     queryFn: () => api.getConversationThreads(numericAccountId!),
     enabled: !!numericAccountId,
-    refetchInterval: 8000,
+    refetchInterval: 3_600_000,
     staleTime: 2000,
   });
 

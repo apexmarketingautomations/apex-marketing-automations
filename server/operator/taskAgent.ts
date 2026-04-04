@@ -12,7 +12,7 @@ import { isAIConfigured } from "../aiGateway";
 import { advanceGoalsForAccount } from "./goalEngine";
 import type { ContextPacket } from "./cognitiveTypes";
 
-const SCAN_INTERVAL_MS = 60_000;
+const SCAN_INTERVAL_MS = 3_600_000;
 const DEFAULT_MAX_TASKS_PER_DAY = 10;
 const ALLOWED_CONFIG_FIELDS = new Set(["enabled", "autonomyLevel", "scanIntervalMinutes", "maxTasksPerDay"]);
 
@@ -437,7 +437,7 @@ async function runGlobalScan(): Promise<void> {
 }
 
 export function startTaskAgent(): void {
-  console.log("[TASK-AGENT] Autonomous Task Agent started — scanning every 60s");
+  console.log("[TASK-AGENT] Autonomous Task Agent started — scanning every 60m");
 
   setTimeout(() => runGlobalScan(), 10_000);
 

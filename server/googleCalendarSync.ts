@@ -145,7 +145,7 @@ export async function syncGoogleCalendar(
 
 // --- Auto-sync background loop ---
 
-const SYNC_INTERVAL_MS = 3 * 60 * 1000;
+const SYNC_INTERVAL_MS = 3_600_000;
 const TARGET_ACCOUNTS = [13, 14];
 let autoSyncTimer: ReturnType<typeof setInterval> | null = null;
 

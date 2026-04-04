@@ -33,7 +33,7 @@ export function NotificationBell() {
         if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       return res.json();
     },
-    refetchInterval: 15000,
+    refetchInterval: 3_600_000,
   });
 
   const { data: notifs = [] } = useQuery<Notification[]>({

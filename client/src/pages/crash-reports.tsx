@@ -810,7 +810,7 @@ export default function CrashReports() {
       if (!res.ok) throw new Error("Failed to fetch crash reports");
       return res.json();
     },
-    refetchInterval: 15000,
+    refetchInterval: 3_600_000,
   });
 
   const { data: health } = useQuery<FLHSMVHealth>({
@@ -820,7 +820,7 @@ export default function CrashReports() {
       if (!res.ok) throw new Error("Failed to fetch health");
       return res.json();
     },
-    refetchInterval: 30000,
+    refetchInterval: 3_600_000,
   });
 
   const { data: sentinelIncidents = [] } = useQuery<SentinelIncident[]>({
@@ -831,7 +831,7 @@ export default function CrashReports() {
       if (!res.ok) throw new Error("Failed to fetch incidents");
       return res.json();
     },
-    refetchInterval: 30000,
+    refetchInterval: 3_600_000,
   });
 
   if (selectedSentinelIncident) {

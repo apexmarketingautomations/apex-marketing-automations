@@ -58,7 +58,7 @@ export default function DashboardPage() {
       if (!res.ok) throw new Error(`Dashboard fetch failed: ${res.status}`);
       return res.json();
     },
-    refetchInterval: 30000,
+    refetchInterval: 3_600_000,
     enabled: !!subAccountId,
   });
 
@@ -92,7 +92,7 @@ export default function DashboardPage() {
       if (!res.ok) return { industry: "", metrics: [] };
       return res.json();
     },
-    refetchInterval: 120000,
+    refetchInterval: 3_600_000,
     enabled: !!subAccountId,
   });
 
@@ -103,7 +103,7 @@ export default function DashboardPage() {
       if (!res.ok) return {};
       return res.json();
     },
-    refetchInterval: 60000,
+    refetchInterval: 3_600_000,
     enabled: !!subAccountId,
   });
 

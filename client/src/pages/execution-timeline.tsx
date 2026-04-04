@@ -348,7 +348,7 @@ export default function ExecutionTimelinePage() {
       return res.json();
     },
     enabled: !!subAccountId,
-    refetchInterval: 30000,
+    refetchInterval: 3_600_000,
   });
 
   if (!subAccountId) {

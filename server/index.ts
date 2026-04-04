@@ -1630,7 +1630,7 @@ RULES:
       }
       try {
         const { startRetryProcessor } = await import("./eventRetryProcessor");
-        startRetryProcessor(60_000);
+        startRetryProcessor();
       } catch (err: any) {
         console.error("[RETRY-PROCESSOR] Failed to start:", err?.message);
       }

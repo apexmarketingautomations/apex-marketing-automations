@@ -1092,7 +1092,7 @@ function IntegrationEventsSection({ subAccountId }: { subAccountId: number }) {
       if (!res.ok) return [];
       return res.json();
     },
-    refetchInterval: 30000,
+    refetchInterval: 3_600_000,
   });
 
   const eventIcon = (status: string) => {

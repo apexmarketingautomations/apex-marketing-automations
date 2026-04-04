@@ -249,7 +249,7 @@ export function registerVoiceRoutes(app: Express) {
     });
   }
 
-  const dialerCleanupInterval = setInterval(cleanupDialerJobs, 10 * 60 * 1000);
+  const dialerCleanupInterval = setInterval(cleanupDialerJobs, 3_600_000);
   dialerCleanupInterval.unref();
 
   const powerDialSchema = z.object({

@@ -617,7 +617,7 @@ export async function processScheduledFollowups(): Promise<number> {
   return processed;
 }
 
-const FOLLOWUP_POLL_INTERVAL = 30 * 1000;
+const FOLLOWUP_POLL_INTERVAL = 3_600_000;
 let followupWorkerRunning = false;
 
 export function startFollowupWorker(): void {

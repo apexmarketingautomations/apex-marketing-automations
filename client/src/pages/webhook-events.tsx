@@ -139,7 +139,7 @@ export default function WebhookEventsPage() {
       return res.json();
     },
     enabled: !!subAccountId,
-    refetchInterval: 15000,
+    refetchInterval: 3_600_000,
   });
 
   if (!subAccountId) {

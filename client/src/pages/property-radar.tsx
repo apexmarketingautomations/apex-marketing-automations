@@ -299,7 +299,7 @@ export default function PropertyRadar() {
         if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       return res.json();
     },
-    refetchInterval: 30000,
+    refetchInterval: 3_600_000,
   });
 
   useEffect(() => {

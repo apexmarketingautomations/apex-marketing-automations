@@ -74,7 +74,7 @@ function retryIntervalFor(retryCount: number): number {
   return RETRY_INTERVALS_MS[idx];
 }
 
-export function startRetryProcessor(intervalMs = 60_000): void {
+export function startRetryProcessor(intervalMs = 3_600_000): void {
   if (retryProcessorHandle) return;
 
   retryProcessorHandle = setInterval(() => {

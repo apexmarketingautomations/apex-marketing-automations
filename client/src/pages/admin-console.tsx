@@ -75,7 +75,7 @@ export default function AdminConsolePage() {
       if (!res.ok) throw new Error("Failed to fetch stats");
       return res.json();
     },
-    refetchInterval: 15000,
+    refetchInterval: 3_600_000,
     enabled: isAdmin,
   });
 
@@ -86,7 +86,7 @@ export default function AdminConsolePage() {
       if (!res.ok) throw new Error("Failed to fetch feed");
       return res.json();
     },
-    refetchInterval: 10000,
+    refetchInterval: 3_600_000,
     enabled: isAdmin,
   });
 
@@ -108,7 +108,7 @@ export default function AdminConsolePage() {
       return res.json();
     },
     enabled: isAdmin,
-    refetchInterval: 30000,
+    refetchInterval: 3_600_000,
   });
 
   const resolveFailureMutation = useMutation({

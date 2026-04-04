@@ -2,7 +2,7 @@ import { jobQueue } from "./jobQueue";
 import { storage } from "./storage";
 import { getMetaConfig } from "./metaConfig";
 
-const SYNC_INTERVAL_MS = 45 * 60 * 1000;
+const SYNC_INTERVAL_MS = 3_600_000;
 let syncIntervalHandle: ReturnType<typeof setInterval> | null = null;
 
 async function syncCampaignInsights(campaignId: number): Promise<{ synced: boolean; error?: string }> {

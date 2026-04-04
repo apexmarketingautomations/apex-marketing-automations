@@ -69,7 +69,7 @@ export default function ExternalSentinel() {
     queryKey: ["ext-sentinel-incidents", token],
     queryFn: () => apiFetch("/incidents", token),
     enabled: !!token,
-    refetchInterval: 30000,
+    refetchInterval: 3_600_000,
   });
 
   const { data: configData } = useQuery({

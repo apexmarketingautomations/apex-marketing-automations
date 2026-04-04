@@ -84,7 +84,7 @@ export default function CalendarPage() {
     },
     enabled: !!subAccountId,
     staleTime: 0,
-    refetchInterval: 30_000,
+    refetchInterval: 3_600_000,
   });
 
   const { data: contacts = [] } = useQuery<Contact[]>({

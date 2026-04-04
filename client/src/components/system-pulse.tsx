@@ -65,7 +65,7 @@ export function SystemPulse() {
       if (!res.ok) throw new Error("Pulse check failed");
       return res.json();
     },
-    refetchInterval: 60000,
+    refetchInterval: 3_600_000,
     retry: 1,
   });
 
