@@ -136,6 +136,7 @@ export function registerAuthRoutes(app: Express) {
     if (fullPath.startsWith("/api/v1/external/events")) return next();
     if (fullPath.startsWith("/api/v1/external/status")) return next();
     if (fullPath === "/api/comment-bot/reengage") return next();
+    if (fullPath === "/api/comment-bot/sync-dms") return next();
 
     if (!req.isAuthenticated || !req.isAuthenticated()) {
       return res.status(401).json({ error: "Not authenticated" });

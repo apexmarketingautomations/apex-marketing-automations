@@ -1,7 +1,8 @@
 import type { Express, Request, Response } from "express";
 import { db } from "../db";
-import { commentAutoReplies, subAccounts } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { commentAutoReplies, subAccounts, messages } from "@shared/schema";
+import { eq, and, desc, sql } from "drizzle-orm";
+import { getMetaConfig } from "../metaConfig";
 
 function getTenant(req: Request): number {
   const id = (req as any).tenant?.subAccountId;
@@ -146,6 +147,90 @@ export function registerCommentBotRoutes(app: Express) {
 
       res.json(updatedConfig.commentBot);
     } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/comment-bot/sync-dms", async (req: Request, res: Response) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const { subAccountId = 22, maxPages = 50 } = req.body || {};
+      const metaCfg = await getMetaConfig(subAccountId);
+
+      let convUrl: string | null = `https://graph.facebook.com/v19.0/${metaCfg.pageId}/conversations?fields=id,updated_time,participants,messages.limit(25){message,from,created_time}&limit=25&access_token=${metaCfg.accessToken}${metaCfg.appsecretProof ? `&appsecret_proof=${metaCfg.appsecretProof}` : ""}`;
+
+      let totalConversations = 0;
+      let totalMessages = 0;
+      let skippedDuplicates = 0;
+      let pageCount = 0;
+
+      while (convUrl && pageCount < maxPages) {
+        pageCount++;
+        const convRes = await fetch(convUrl);
+        const convData = await convRes.json() as any;
+        if (!convData.data) {
+          console.log(`[DM-SYNC] Error fetching conversations page ${pageCount}:`, convData.error?.message);
+          break;
+        }
+
+        for (const conv of convData.data) {
+          totalConversations++;
+          const participants = conv.participants?.data || [];
+          const otherUser = participants.find((p: any) => p.id !== metaCfg.pageId);
+          const senderId = otherUser?.id || "unknown";
+          const threadId = `${subAccountId}::${senderId}::facebook`;
+
+          const msgList = conv.messages?.data || [];
+          for (const msg of msgList) {
+            if (!msg.message) continue;
+
+            const isFromPage = msg.from?.id === metaCfg.pageId;
+            const direction = isFromPage ? "outbound" : "inbound";
+            const msgSid = `meta_${conv.id}_${msg.id || new Date(msg.created_time).getTime()}`;
+
+            const existing = await db.select({ id: messages.id }).from(messages)
+              .where(and(
+                eq(messages.messageSid, msgSid),
+                eq(messages.subAccountId, subAccountId),
+              )).limit(1);
+
+            if (existing.length > 0) {
+              skippedDuplicates++;
+              continue;
+            }
+
+            await db.insert(messages).values({
+              subAccountId,
+              direction,
+              body: msg.message,
+              status: "delivered",
+              contactPhone: senderId,
+              channel: "facebook",
+              messageSid: msgSid,
+              threadId,
+              senderId: direction === "inbound" ? senderId : metaCfg.pageId,
+              pageId: metaCfg.pageId,
+              traceId: `sync-${Date.now()}`,
+              createdAt: new Date(msg.created_time),
+            });
+            totalMessages++;
+          }
+        }
+
+        console.log(`[DM-SYNC] Page ${pageCount}: ${convData.data.length} conversations, running total: ${totalMessages} messages synced`);
+        convUrl = convData.paging?.next || null;
+      }
+
+      res.json({
+        subAccountId,
+        totalConversations,
+        totalMessagesSynced: totalMessages,
+        skippedDuplicates,
+        pagesProcessed: pageCount,
+        hasMore: !!convUrl,
+      });
+    } catch (err: any) {
+      console.error("[DM-SYNC] Error:", err.message);
       res.status(500).json({ error: err.message });
     }
   });
