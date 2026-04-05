@@ -124,6 +124,7 @@ export interface ContextPacket {
     sampleSize: number;
     unit: string;
   }>;
+  sharedInsights?: Array<{ category: string; content: string }>;
 }
 
 export interface IndustryKnowledge {

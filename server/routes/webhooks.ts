@@ -14,6 +14,7 @@ import { startTrace, recordStepValue } from "../traceRecorder";
 import { resolveSubAccount, isRoutingFailure } from "../routing/resolver";
 import { persistRoutingFailure } from "../routing/failureQueue";
 import { withIdempotency, markEventCompleted, markEventFailed } from "../idempotency";
+import { extractAndStoreInsights } from "../services/insightExtractor";
 
 export function registerWebhooksRoutes(app: Express) {
   // ---- Unified Webhook (Twilio inbound SMS/WhatsApp/Messenger -> AI auto-reply) ----
@@ -1645,6 +1646,8 @@ export function registerWebhooksRoutes(app: Express) {
                     pageId: entryPageId,
                     senderId,
                   });
+
+                  extractAndStoreInsights(subAccountId!, senderId, channel).catch(() => {});
                 }
               } catch (aiErr: any) {
                 console.error("[META DM] AI reply error:", aiErr.message);

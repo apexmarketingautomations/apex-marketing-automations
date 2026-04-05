@@ -1,0 +1,44 @@
+What & Why
+Accounts 13 (APEX MARKETING) and 22 (Officer Layla) currently operate as isolated DM bots — each with its own context, memory, and learnings. The main Apex intelligence agent also has its own separate episodic memory. None of them share what they learn from conversations.
+
+This task creates a shared intelligence layer (the "super brain") so that insights extracted from every DM conversation across accounts 13 and 22 flow into a central knowledge pool. All three agents — Layla, the APEX business bot, and the main Apex intelligence agent — can then pull from and contribute to that shared pool, making each one smarter over time.
+
+Done looks like
+After each DM conversation (inbound message processed on account 13 or 22), a lightweight summarizer extracts actionable insights — common questions, objections, customer interests, conversion signals, what topics are trending
+Insights are stored in a new shared_insights table at the organization level (not locked to one account), tagged with category, source account, confidence score, and timestamp
+When any DM bot (account 13 or 22) generates a response, it pulls the top relevant shared insights and injects them into its prompt context — so Layla knows what the business account is hearing, and vice versa
+The main Apex intelligence agent (the operator bot) also reads from shared insights when answering questions about customer trends, common objections, or "what are people asking about"
+Insights have a natural decay — older insights lose weight over time, recent patterns are prioritized
+A simple admin API shows current shared insights, top trends, and insight counts: GET /api/intelligence/insights
+Duplicate or near-duplicate insights are merged rather than stacked
+Out of scope
+Vector database or embeddings — use the existing SQL-based relevance scoring pattern from episodic memory
+Real-time streaming of insights between accounts — batch extraction after each conversation is sufficient
+UI dashboard for insights (admin API only for now)
+Changing the Layla persona voice or APEX brand voice — this only adds shared context, not personality changes
+Tasks
+Shared insights schema — Create a shared_insights table with fields for category (objection, interest, question, trend, conversion_signal), content summary, source account, confidence score, decay rate, occurrence count, and timestamps. Add a dedup mechanism.
+
+Insight extraction pipeline — Build a lightweight post-conversation summarizer that runs after each inbound DM is processed. It sends the last few messages to the LLM with a structured extraction prompt and parses out insights. Merge with existing insights if similar content already exists (increment occurrence count and refresh timestamp).
+
+Shared context injector for DM bots — Modify the DM context assembly (dmContextAssembler.ts) to pull the top 5-8 most relevant active shared insights and inject them as "organizational knowledge" into the system prompt. Weight by recency, occurrence count, and relevance to the current conversation topic.
+
+Wire into operator agent — Extend the main Apex intelligence agent's context building to include shared insights when answering questions about customer trends, common objections, or business intelligence. Add a dedicated tool or memory source the operator can reference.
+
+Admin insights API — Create GET /api/intelligence/insights (admin-secret protected) that returns current active insights, top trends by category, and stats (total insights, insights per account, most common categories). Add POST /api/intelligence/insights/refresh to manually trigger a re-extraction pass over recent conversations.
+
+Decay and cleanup — Implement time-based decay so insights older than 90 days with low occurrence counts are automatically deprioritized. Add a periodic cleanup that archives stale insights.
+
+Relevant files
+server/dmContextAssembler.ts
+server/operator/episodicMemory.ts
+server/operator/memoryEngine.ts
+server/operator/memory.ts
+server/services/personas/laylaPipeline.ts
+server/services/commentBot/reengageJob.ts
+server/routes/commentBot.ts
+server/routes/bot.ts
+server/aiGateway.ts
+shared/schema.ts
+server/routes/auth.ts
+server/csrfProtection.ts

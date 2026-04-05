@@ -6,8 +6,8 @@ import { getBenchmarksForIndustry } from "./benchmarkAggregator";
 import { eventBus } from "../eventBus";
 import { runDiagnostics } from "./diagnostics";
 import { db } from "../db";
-import { operatorNudges } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { operatorNudges, sharedInsights } from "@shared/schema";
+import { eq, and, sql } from "drizzle-orm";
 
 export async function buildContext(subAccountId: number): Promise<ContextPacket> {
   const [workspace, behavior, performance, patterns, pastExperiences] = await Promise.all([
@@ -62,6 +62,17 @@ export async function buildContext(subAccountId: number): Promise<ContextPacket>
     crossAccountBenchmarks = undefined;
   }
 
+  let sharedInsightRows: Array<{ category: string; content: string }> | undefined;
+  try {
+    const rows = await db
+      .select({ category: sharedInsights.category, content: sharedInsights.content })
+      .from(sharedInsights)
+      .where(eq(sharedInsights.orgId, 1))
+      .orderBy(sql`confidence * occurrence_count * EXP(-decay_rate * EXTRACT(EPOCH FROM (NOW() - last_seen_at)) / 86400) DESC`)
+      .limit(10);
+    if (rows.length > 0) sharedInsightRows = rows;
+  } catch {}
+
   return {
     workspace,
     behavior,
@@ -73,6 +84,7 @@ export async function buildContext(subAccountId: number): Promise<ContextPacket>
     industryKnowledge,
     pastExperiences,
     crossAccountBenchmarks,
+    sharedInsights: sharedInsightRows,
   };
 }
 
@@ -118,6 +130,14 @@ export function buildPromptContext(context: ContextPacket): string {
   if (context.pastExperiences && context.pastExperiences.length > 0) {
     parts.push("");
     parts.push(buildPastExperiencePrompt(context.pastExperiences));
+  }
+
+  if (context.sharedInsights && context.sharedInsights.length > 0) {
+    parts.push("");
+    parts.push("--- Customer Intelligence (from DM conversations) ---");
+    for (const ins of context.sharedInsights) {
+      parts.push(`  ${ins.category}: ${ins.content}`);
+    }
   }
 
   return parts.join("\n");

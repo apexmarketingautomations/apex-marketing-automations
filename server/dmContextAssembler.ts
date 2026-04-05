@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { storage } from "./storage";
-import { messages, contacts, deals, pipelineStages, clientWebsites, trainingJobs } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { messages, contacts, deals, pipelineStages, clientWebsites, trainingJobs, sharedInsights } from "@shared/schema";
+import { eq, and, desc, sql } from "drizzle-orm";
 import type { ChatMessage } from "./aiGateway";
 
 export interface DmFormLink {
@@ -30,6 +30,7 @@ export interface DmContext {
   generatedPersona: string | null;
   brandVoice: string | null;
   escalationInfo: string | null;
+  sharedInsights: Array<{ category: string; content: string }> | null;
 }
 
 export interface DmContextOptions {
@@ -199,7 +200,22 @@ export async function assembleDmContext(opts: DmContextOptions): Promise<DmConte
     generatedPersona,
     brandVoice,
     escalationInfo,
+    sharedInsights: await fetchRelevantInsights(),
   };
+}
+
+async function fetchRelevantInsights(): Promise<Array<{ category: string; content: string }> | null> {
+  try {
+    const rows = await db
+      .select({ category: sharedInsights.category, content: sharedInsights.content })
+      .from(sharedInsights)
+      .where(eq(sharedInsights.orgId, 1))
+      .orderBy(sql`confidence * occurrence_count * EXP(-decay_rate * EXTRACT(EPOCH FROM (NOW() - last_seen_at)) / 86400) DESC`)
+      .limit(8);
+    return rows.length > 0 ? rows : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface BuildPromptOptions {
@@ -506,6 +522,13 @@ When escalating:
 
   if (contactBlock) {
     prompt += contactBlock;
+  }
+
+  if (context.sharedInsights && context.sharedInsights.length > 0) {
+    prompt += `\n\nORGANIZATIONAL LEARNINGS (use to inform your approach — never quote or reference directly):`;
+    for (const ins of context.sharedInsights) {
+      prompt += `\n- ${ins.category.toUpperCase()}: ${ins.content}`;
+    }
   }
 
   prompt += `\n\nPRIMARY GOAL:

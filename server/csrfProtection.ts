@@ -55,6 +55,8 @@ const WEBHOOK_PATH_PREFIXES = [
   "/api/v1/external/status",
   "/api/comment-bot/reengage",
   "/api/comment-bot/sync-dms",
+  "/api/intelligence/insights",
+  "/api/intelligence/extract",
 ];
 
 function isExempt(path: string): boolean {
