@@ -223,14 +223,6 @@ body,
 }
 
 @media (max-width: 768px) {
-  .glass-panel {
-    width: 64px !important;
-  }
-
-  main {
-    margin-left: 64px !important;
-  }
-
   .kanban-scroll {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
