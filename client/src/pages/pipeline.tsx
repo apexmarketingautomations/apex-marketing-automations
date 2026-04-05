@@ -52,6 +52,7 @@ interface Contact {
   zip?: string | null;
   smsOptOut?: boolean;
   emailOptOut?: boolean;
+  channel?: string | null;
 }
 
 const DEFAULT_STAGES = [
@@ -610,7 +611,13 @@ export default function PipelinePage() {
                               {isCrashLead && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30 uppercase font-bold">Crash Lead</span>}
                             </td>
                             <td className="py-3 px-3 text-slate-200 hidden sm:table-cell" data-testid={`contact-email-${contact.id}`}>{contact.email || "—"}</td>
-                            <td className="py-3 px-3 text-slate-200" data-testid={`contact-phone-${contact.id}`}>{contact.phone || "—"}</td>
+                            <td className="py-3 px-3 text-slate-200" data-testid={`contact-phone-${contact.id}`}>
+                              {contact.phone ? (
+                                (contact.channel === "facebook" || contact.channel === "instagram") && /^\d{10,20}$/.test(contact.phone) ? (
+                                  <span className="text-xs text-slate-400">{contact.channel === "instagram" ? "IG" : "FB"} ID ...{contact.phone.slice(-4)}</span>
+                                ) : contact.phone
+                              ) : "—"}
+                            </td>
                             <td className="py-3 px-3 text-slate-200 hidden lg:table-cell" data-testid={`contact-address-${contact.id}`}>
                               {contact.address ? (
                                 <span className="text-xs">{contact.address}{contact.city ? `, ${contact.city}` : ""}{contact.state ? `, ${contact.state}` : ""} {contact.zip || ""}</span>
