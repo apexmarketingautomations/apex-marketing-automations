@@ -210,8 +210,8 @@ async function fetchRelevantInsights(): Promise<Array<{ category: string; conten
     const rows = await db
       .select({ category: sharedInsights.category, content: sharedInsights.content })
       .from(sharedInsights)
-      .where(eq(sharedInsights.orgId, 1))
-      .orderBy(sql`confidence * occurrence_count * EXP(-decay_rate * EXTRACT(EPOCH FROM (NOW() - last_seen_at)) / 86400) DESC`)
+      .where(eq(sharedInsights.isArchived, false))
+      .orderBy(sql`confidence_score * occurrence_count * EXP(-decay_rate * EXTRACT(EPOCH FROM (NOW() - last_seen_at)) / 86400) DESC`)
       .limit(8);
     return rows.length > 0 ? rows : null;
   } catch {

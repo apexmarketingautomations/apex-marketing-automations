@@ -80,10 +80,11 @@ export async function extractAndStoreInsights(
     }
 
     const corePhrase = cleaned.substring(0, Math.min(40, cleaned.length));
+    const coreHash = cleaned.toLowerCase().replace(/[^a-z0-9]/g, "").substring(0, 64);
     const existing = await db
-      .select({ id: sharedInsights.id, occurrenceCount: sharedInsights.occurrenceCount, confidence: sharedInsights.confidence })
+      .select({ id: sharedInsights.id, occurrenceCount: sharedInsights.occurrenceCount, confidenceScore: sharedInsights.confidenceScore })
       .from(sharedInsights)
-      .where(and(eq(sharedInsights.orgId, 1), eq(sharedInsights.category, insight.category), ilike(sharedInsights.content, `%${corePhrase}%`)))
+      .where(and(eq(sharedInsights.isArchived, false), eq(sharedInsights.category, insight.category), ilike(sharedInsights.content, `%${corePhrase}%`)))
       .limit(1);
 
     if (existing.length > 0) {
@@ -93,18 +94,18 @@ export async function extractAndStoreInsights(
         .set({
           occurrenceCount: row.occurrenceCount + 1,
           lastSeenAt: new Date(),
-          confidence: Math.min(1.0, row.confidence + 0.05),
+          confidenceScore: Math.min(1.0, row.confidenceScore + 0.05),
         })
         .where(eq(sharedInsights.id, row.id));
       console.log(`[INSIGHT] Merged into existing #${row.id}: ${cleaned.substring(0, 60)}`);
     } else {
       await db.insert(sharedInsights).values({
-        orgId: 1,
         category: insight.category,
         content: cleaned,
+        contentHash: coreHash,
         sourceAccountId: subAccountId,
         occurrenceCount: 1,
-        confidence: 0.5,
+        confidenceScore: 0.5,
         lastSeenAt: new Date(),
       });
       console.log(`[INSIGHT] Stored new [${insight.category}]: ${cleaned.substring(0, 60)}`);

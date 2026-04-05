@@ -2209,18 +2209,3 @@ export const contentLibrary = pgTable("content_library", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 export type ContentLibraryItem = typeof contentLibrary.$inferSelect;
-
-export const sharedInsights = pgTable("shared_insights", {
-  id: serial("id").primaryKey(),
-  orgId: integer("org_id").notNull().default(1),
-  category: text("category").notNull(),
-  content: text("content").notNull(),
-  sourceAccountId: integer("source_account_id").references(() => subAccounts.id),
-  occurrenceCount: integer("occurrence_count").notNull().default(1),
-  confidence: real("confidence").notNull().default(0.5),
-  lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
-  decayRate: real("decay_rate").notNull().default(0.02),
-  tags: text("tags").array().default([]),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-export type SharedInsight = typeof sharedInsights.$inferSelect;

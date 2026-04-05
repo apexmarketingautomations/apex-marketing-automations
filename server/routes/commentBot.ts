@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { db } from "../db";
-import { commentAutoReplies, subAccounts, messages, sharedInsights } from "@shared/schema";
+import { commentAutoReplies, subAccounts, messages } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { getMetaConfig } from "../metaConfig";
 
@@ -238,54 +238,4 @@ export function registerCommentBotRoutes(app: Express) {
     }
   });
 
-  app.get("/api/intelligence/insights", async (req: Request, res: Response) => {
-    if (req.headers["x-admin-secret"] !== ADMIN_SECRET) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    try {
-      const category = req.query.category as string | undefined;
-      const limitParam = parseInt(req.query.limit as string) || 50;
-      const conditions = [eq(sharedInsights.orgId, 1)];
-      if (category) conditions.push(eq(sharedInsights.category, category));
-      const rows = await db
-        .select()
-        .from(sharedInsights)
-        .where(and(...conditions))
-        .orderBy(sql`confidence * occurrence_count * EXP(-decay_rate * EXTRACT(EPOCH FROM (NOW() - last_seen_at)) / 86400) DESC`)
-        .limit(limitParam);
-      res.json({ count: rows.length, insights: rows });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  app.post("/api/intelligence/extract", async (req: Request, res: Response) => {
-    if (req.headers["x-admin-secret"] !== ADMIN_SECRET) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    try {
-      const { extractAndStoreInsights } = await import("../services/insightExtractor");
-      const subAccountId = req.body.subAccountId || 22;
-      const batchLimit = req.body.batchLimit || 20;
-      const threads = await db
-        .select({ contactPhone: messages.contactPhone })
-        .from(messages)
-        .where(and(eq(messages.subAccountId, subAccountId), eq(messages.direction, "inbound")))
-        .groupBy(messages.contactPhone)
-        .orderBy(sql`MAX(${messages.id}) DESC`)
-        .limit(batchLimit);
-
-      let extracted = 0;
-      for (const t of threads) {
-        try {
-          await extractAndStoreInsights(subAccountId, t.contactPhone, "instagram");
-          extracted++;
-        } catch {}
-      }
-      res.json({ subAccountId, threadsProcessed: threads.length, extractionRuns: extracted });
-    } catch (err: any) {
-      console.error("[INSIGHT-BATCH] Error:", err.message);
-      res.status(500).json({ error: err.message });
-    }
-  });
 }
