@@ -1,0 +1,793 @@
+import type { Express, Request, Response } from "express";
+import { db } from "../db";
+import {
+  socialAccounts,
+  contentPosts,
+  contentPostPlatforms,
+  contentMedia,
+  contentCalendarLabels,
+  contentApprovals,
+  contentPublishingJobs,
+  contentLibrary,
+} from "@shared/schema";
+import { eq, and, gte, lte, asc, desc } from "drizzle-orm";
+import { encryptToken } from "../services/contentEncryption";
+import { z } from "zod";
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+
+function getSubAccountId(req: Request): number {
+  const id = parseInt(req.params.subAccountId || req.query.subAccountId as string);
+  if (!id || isNaN(id)) throw new Error("Valid subAccountId is required");
+  return id;
+}
+
+function tenantGuard(col: any, subAccountId: number) {
+  return eq(col, subAccountId);
+}
+
+// ─── VALIDATION SCHEMAS ───────────────────────────────────────────────────────
+
+const createConnectionSchema = z.object({
+  platform: z.enum(["instagram", "facebook", "x", "tiktok"]),
+  platformAccountId: z.string().min(1),
+  username: z.string().optional(),
+  displayName: z.string().optional(),
+  avatarUrl: z.string().optional(),
+  accessToken: z.string().min(1),
+  refreshToken: z.string().optional(),
+  tokenExpiresAt: z.string().optional(),
+  scopes: z.string().optional(),
+  meta: z.any().optional(),
+});
+
+const createPostSchema = z.object({
+  title: z.string().optional(),
+  caption: z.string().optional(),
+  hashtags: z.string().optional(),
+  callToAction: z.string().optional(),
+  firstComment: z.string().optional(),
+  contentType: z.string().optional(),
+  scheduledAt: z.string().optional(),
+  platforms: z
+    .array(
+      z.object({
+        platform: z.enum(["instagram", "facebook", "x", "tiktok"]),
+        socialAccountId: z.number(),
+      })
+    )
+    .optional(),
+});
+
+const updatePostSchema = createPostSchema.partial().extend({
+  status: z
+    .enum(["draft", "scheduled", "published", "failed", "retrying", "cancelled"])
+    .optional(),
+  approvalStatus: z
+    .enum(["not_required", "pending", "approved", "rejected"])
+    .optional(),
+});
+
+// ─── ROUTE REGISTRATION ───────────────────────────────────────────────────────
+
+export function registerContentPlannerRoutes(app: Express) {
+
+  // ── SOCIAL CONNECTIONS ────────────────────────────────────────────────────
+
+  // GET /api/content-planner/:subAccountId/connections
+  app.get(
+    "/api/content-planner/:subAccountId/connections",
+    async (req: Request, res: Response) => {
+      try {
+        const subAccountId = getSubAccountId(req);
+        const connections = await db
+          .select({
+            id: socialAccounts.id,
+            platform: socialAccounts.platform,
+            platformAccountId: socialAccounts.platformAccountId,
+            username: socialAccounts.username,
+            displayName: socialAccounts.displayName,
+            avatarUrl: socialAccounts.avatarUrl,
+            status: socialAccounts.status,
+            tokenExpiresAt: socialAccounts.tokenExpiresAt,
+            scopes: socialAccounts.scopes,
+            lastSyncAt: socialAccounts.lastSyncAt,
+            createdAt: socialAccounts.createdAt,
+            // tokens are never returned to frontend
+          })
+          .from(socialAccounts)
+          .where(tenantGuard(socialAccounts.subAccountId, subAccountId))
+          .orderBy(asc(socialAccounts.platform));
+
+        res.json(connections);
+      } catch (err: any) {
+        res.status(400).json({ error: err.message });
+      }
+    }
+  );
+
+  // POST /api/content-planner/:subAccountId/connections
+  app.post(
+    "/api/content-planner/:subAccountId/connections",
+    async (req: Request, res: Response) => {
+      try {
+        const subAccountId = getSubAccountId(req);
+        const parsed = createConnectionSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return res.status(400).json({ error: parsed.error.flatten() });
+        }
+        const data = parsed.data;
+
+        const [connection] = await db
+          .insert(socialAccounts)
+          .values({
+            subAccountId,
+            platform: data.platform,
+            platformAccountId: data.platformAccountId,
+            username: data.username,
+            displayName: data.displayName,
+            avatarUrl: data.avatarUrl,
+            accessTokenEncrypted: encryptToken(data.accessToken),
+            refreshTokenEncrypted: data.refreshToken
+              ? encryptToken(data.refreshToken)
+              : null,
+            tokenExpiresAt: data.tokenExpiresAt
+              ? new Date(data.tokenExpiresAt)
+              : null,
+            scopes: data.scopes,
+            meta: data.meta,
+            status: "active",
+            lastSyncAt: new Date(),
+          })
+          .returning({
+            id: socialAccounts.id,
+            platform: socialAccounts.platform,
+            username: socialAccounts.username,
+            status: socialAccounts.status,
+          });
+
+        res.status(201).json(connection);
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    }
+  );
+
+  // PUT /api/content-planner/:subAccountId/connections/:id
+  app.put(
+    "/api/content-planner/:subAccountId/connections/:id",
+    async (req: Request, res: Response) => {
+      try {
+        const subAccountId = getSubAccountId(req);
+        const id = parseInt(req.params.id);
+        const { accessToken, refreshToken, tokenExpiresAt, status } = req.body;
+
+        const updates: any = { updatedAt: new Date() };
+        if (accessToken) updates.accessTokenEncrypted = encryptToken(accessToken);
+        if (refreshToken) updates.refreshTokenEncrypted = encryptToken(refreshToken);
+        if (tokenExpiresAt) updates.tokenExpiresAt = new Date(tokenExpiresAt);
+        if (status) updates.status = status;
+
+        const [updated] = await db
+          .update(socialAccounts)
+          .set(updates)
+          .where(
+            and(
+              eq(socialAccounts.id, id),
+              tenantGuard(socialAccounts.subAccountId, subAccountId)
+            )
+          )
+          .returning({
+            id: socialAccounts.id,
+            status: socialAccounts.status,
+            updatedAt: socialAccounts.updatedAt,
+          });
+
+        if (!updated) return res.status(404).json({ error: "Connection not found" });
+        res.json(updated);
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    }
+  );
+
+  // DELETE /api/content-planner/:subAccountId/connections/:id
+  app.delete(
+    "/api/content-planner/:subAccountId/connections/:id",
+    async (req: Request, res: Response) => {
+      try {
+        const subAccountId = getSubAccountId(req);
+        const id = parseInt(req.params.id);
+
+        await db
+          .delete(socialAccounts)
+          .where(
+            and(
+              eq(socialAccounts.id, id),
+              tenantGuard(socialAccounts.subAccountId, subAccountId)
+            )
+          );
+
+        res.json({ success: true });
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    }
+  );
+
+  // ── CONTENT POSTS ─────────────────────────────────────────────────────────
+
+  // GET /api/content-planner/:subAccountId/posts
+  app.get(
+    "/api/content-planner/:subAccountId/posts",
+    async (req: Request, res: Response) => {
+      try {
+        const subAccountId = getSubAccountId(req);
+        const { status, from, to } = req.query;
+
+        const conditions: any[] = [
+          tenantGuard(contentPosts.subAccountId, subAccountId),
+        ];
+        if (status) conditions.push(eq(contentPosts.status, status as any));
+        if (from) conditions.push(gte(contentPosts.scheduledAt, new Date(from as string)));
+        if (to) conditions.push(lte(contentPosts.scheduledAt, new Date(to as string)));
+
+        const posts = await db
+          .select()
+          .from(contentPosts)
+          .where(and(...conditions))
+          .orderBy(desc(contentPosts.createdAt));
+
+        res.json(posts);
+      } catch (err: any) {
+        res.status(400).json({ error: err.message });
+      }
+    }
+  );
+
+  // GET /api/content-planner/:subAccountId/posts/:id
+  app.get(
+    "/api/content-planner/:subAccountId/posts/:id",
+    async (req: Request, res: Response) => {
+      try {
+        const subAccountId = getSubAccountId(req);
+        const id = parseInt(req.params.id);
+
+        const [post] = await db
+          .select()
+          .from(contentPosts)
+          .where(
+            and(
+              eq(contentPosts.id, id),
+              tenantGuard(contentPosts.subAccountId, subAccountId)
+            )
+          )
+          .limit(1);
+
+        if (!post) return res.status(404).json({ error: "Post not found" });
+
+        const platforms = await db
+          .select()
+          .from(contentPostPlatforms)
+          .where(eq(contentPostPlatforms.postId, id));
+
+        const media = await db
+          .select()
+          .from(contentMedia)
+          .where(eq(contentMedia.postId, id))
+          .orderBy(asc(contentMedia.sortOrder));
+
+        res.json({ ...post, platforms, media });
+      } catch (err: any) {
+        res.status(400).json({ error: err.message });
+      }
+    }
+  );
+
+  // POST /api/content-planner/:subAccountId/posts
+  app.post(
+    "/api/content-planner/:subAccountId/posts",
+    async (req: Request, res: Response) => {
+      try {
+        const subAccountId = getSubAccountId(req);
+        const parsed = createPostSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return res.status(400).json({ error: parsed.error.flatten() });
+        }
+        const { platforms, ...postData } = parsed.data;
+
+        const [post] = await db
+          .insert(contentPosts)
+          .values({
+            subAccountId,
+            ...postData,
+            scheduledAt: postData.scheduledAt
+              ? new Date(postData.scheduledAt)
+              : null,
+            createdByUserId: (req as any).user?.id || null,
+          })
+          .returning();
+
+        if (platforms && platforms.length > 0) {
+          await db.insert(contentPostPlatforms).values(
+            platforms.map((p) => ({
+              postId: post.id,
+              subAccountId,
+              platform: p.platform,
+              socialAccountId: p.socialAccountId,
+              platformStatus: "draft" as const,
+            }))
+          );
+        }
+
+        res.status(201).json(post);
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    }
+  );
+
+  // PUT /api/content-planner/:subAccountId/posts/:id
+  app.put(
+    "/api/content-planner/:subAccountId/posts/:id",
+    async (req: Request, res: Response) => {
+      try {
+        const subAccountId = getSubAccountId(req);
+        const id = parseInt(req.params.id);
+        const parsed = updatePostSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return res.status(400).json({ error: parsed.error.flatten() });
+        }
+        const { platforms, ...postData } = parsed.data as any;
+
+        const updates: any = {
+          ...postData,
+          updatedAt: new Date(),
+        };
+        if (postData.scheduledAt) updates.scheduledAt = new Date(postData.scheduledAt);
+
+        const [updated] = await db
+          .update(contentPosts)
+          .set(updates)
+          .where(
+            and(
+              eq(contentPosts.id, id),
+              tenantGuard(contentPosts.subAccountId, subAccountId)
+            )
+          )
+          .returning();
+
+        if (!updated) return res.status(404).json({ error: "Post not found" });
+        res.json(updated);
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    }
+  );
+
+  // DELETE /api/content-planner/:subAccountId/posts/:id
+  app.delete(
+    "/api/content-planner/:subAccountId/posts/:id",
+    async (req: Request, res: Response) => {
+      try {
+        const subAccountId = getSubAccountId(req);
+        const id = parseInt(req.params.id);
+
+        await db
+          .delete(contentPosts)
+          .where(
+            and(
+              eq(contentPosts.id, id),
+              tenantGuard(contentPosts.subAccountId, subAccountId)
+            )
+          );
+
+        res.json({ success: true });
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    }
+  );
+
+  // ── CALENDAR ──────────────────────────────────────────────────────────────
+
+  // GET /api/content-planner/:subAccountId/calendar?from=&to=
+  app.get(
+    "/api/content-planner/:subAccountId/calendar",
+    async (req: Request, res: Response) => {
+      try {
+        const subAccountId = getSubAccountId(req);
+        const { from, to } = req.query;
+
+        const conditions: any[] = [
+          tenantGuard(contentPosts.subAccountId, subAccountId),
+        ];
+        if (from) conditions.push(gte(contentPosts.scheduledAt, new Date(from as string)));
+        if (to) conditions.push(lte(contentPosts.scheduledAt, new Date(to as string)));
+
+        const posts = await db
+          .select({
+            id: contentPosts.id,
+            title: contentPosts.title,
+            caption: contentPosts.caption,
+            status: contentPosts.status,
+            scheduledAt: contentPosts.scheduledAt,
+            contentType: contentPosts.contentType,
+            approvalStatus: contentPosts.approvalStatus,
+          })
+          .from(contentPosts)
+          .where(and(...conditions))
+          .orderBy(asc(contentPosts.scheduledAt));
+
+        res.json(posts);
+      } catch (err: any) {
+        res.status(400).json({ error: err.message });
+      }
+    }
+  );
+
+  // ── MEDIA ─────────────────────────────────────────────────────────────────
+
+  // GET /api/content-planner/:subAccountId/media
+  app.get(
+    "/api/content-planner/:subAccountId/media",
+    async (req: Request, res: Response) => {
+      try {
+        const subAccountId = getSubAccountId(req);
+        const media = await db
+          .select()
+          .from(contentMedia)
+          .where(tenantGuard(contentMedia.subAccountId, subAccountId))
+          .orderBy(desc(contentMedia.createdAt));
+        res.json(media);
+      } catch (err: any) {
+        res.status(400).json({ error: err.message });
+      }
+    }
+  );
+
+  // POST /api/content-planner/:subAccountId/media
+  app.post(
+    "/api/content-planner/:subAccountId/media",
+    async (req: Request, res: Response) => {
+      try {
+        const subAccountId = getSubAccountId(req);
+        const { postId, fileUrl, fileKey, fileType, fileSize, sortOrder, altText } =
+          req.body;
+
+        if (!fileUrl) return res.status(400).json({ error: "fileUrl is required" });
+
+        const [media] = await db
+          .insert(contentMedia)
+          .values({
+            subAccountId,
+            postId: postId || null,
+            fileUrl,
+            fileKey,
+            fileType,
+            fileSize,
+            sortOrder: sortOrder ?? 0,
+            altText,
+          })
+          .returning();
+
+        res.status(201).json(media);
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    }
+  );
+
+  // DELETE /api/content-planner/:subAccountId/media/:id
+  app.delete(
+    "/api/content-planner/:subAccountId/media/:id",
+    async (req: Request, res: Response) => {
+      try {
+        const subAccountId = getSubAccountId(req);
+        const id = parseInt(req.params.id);
+
+        await db
+          .delete(contentMedia)
+          .where(
+            and(
+              eq(contentMedia.id, id),
+              tenantGuard(contentMedia.subAccountId, subAccountId)
+            )
+          );
+
+        res.json({ success: true });
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    }
+  );
+
+  // ── APPROVALS ─────────────────────────────────────────────────────────────
+
+  // GET /api/content-planner/:subAccountId/approvals
+  app.get(
+    "/api/content-planner/:subAccountId/approvals",
+    async (req: Request, res: Response) => {
+      try {
+        const subAccountId = getSubAccountId(req);
+        const approvals = await db
+          .select()
+          .from(contentApprovals)
+          .where(tenantGuard(contentApprovals.subAccountId, subAccountId))
+          .orderBy(desc(contentApprovals.createdAt));
+        res.json(approvals);
+      } catch (err: any) {
+        res.status(400).json({ error: err.message });
+      }
+    }
+  );
+
+  // POST /api/content-planner/:subAccountId/approvals
+  app.post(
+    "/api/content-planner/:subAccountId/approvals",
+    async (req: Request, res: Response) => {
+      try {
+        const subAccountId = getSubAccountId(req);
+        const { postId, requestedBy } = req.body;
+        if (!postId || !requestedBy) {
+          return res.status(400).json({ error: "postId and requestedBy are required" });
+        }
+
+        const [approval] = await db
+          .insert(contentApprovals)
+          .values({ postId, subAccountId, requestedBy })
+          .returning();
+
+        await db
+          .update(contentPosts)
+          .set({ approvalStatus: "pending", updatedAt: new Date() })
+          .where(
+            and(
+              eq(contentPosts.id, postId),
+              tenantGuard(contentPosts.subAccountId, subAccountId)
+            )
+          );
+
+        res.status(201).json(approval);
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    }
+  );
+
+  // PUT /api/content-planner/:subAccountId/approvals/:id
+  app.put(
+    "/api/content-planner/:subAccountId/approvals/:id",
+    async (req: Request, res: Response) => {
+      try {
+        const subAccountId = getSubAccountId(req);
+        const id = parseInt(req.params.id);
+        const { decision, notes, reviewedBy } = req.body;
+
+        if (!decision || !["approved", "rejected"].includes(decision)) {
+          return res.status(400).json({ error: "decision must be approved or rejected" });
+        }
+
+        const [approval] = await db
+          .update(contentApprovals)
+          .set({ decision, notes, reviewedBy, reviewedAt: new Date() })
+          .where(
+            and(
+              eq(contentApprovals.id, id),
+              tenantGuard(contentApprovals.subAccountId, subAccountId)
+            )
+          )
+          .returning();
+
+        if (!approval) return res.status(404).json({ error: "Approval not found" });
+
+        await db
+          .update(contentPosts)
+          .set({
+            approvalStatus: decision as any,
+            updatedAt: new Date(),
+          })
+          .where(eq(contentPosts.id, approval.postId));
+
+        res.json(approval);
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    }
+  );
+
+  // ── CONTENT LIBRARY ───────────────────────────────────────────────────────
+
+  // GET /api/content-planner/:subAccountId/library
+  app.get(
+    "/api/content-planner/:subAccountId/library",
+    async (req: Request, res: Response) => {
+      try {
+        const subAccountId = getSubAccountId(req);
+        const { type } = req.query;
+
+        const conditions: any[] = [
+          tenantGuard(contentLibrary.subAccountId, subAccountId),
+        ];
+        if (type) conditions.push(eq(contentLibrary.type, type as string));
+
+        const items = await db
+          .select()
+          .from(contentLibrary)
+          .where(and(...conditions))
+          .orderBy(desc(contentLibrary.createdAt));
+
+        res.json(items);
+      } catch (err: any) {
+        res.status(400).json({ error: err.message });
+      }
+    }
+  );
+
+  // POST /api/content-planner/:subAccountId/library
+  app.post(
+    "/api/content-planner/:subAccountId/library",
+    async (req: Request, res: Response) => {
+      try {
+        const subAccountId = getSubAccountId(req);
+        const { type, title, body, tags } = req.body;
+
+        if (!type) return res.status(400).json({ error: "type is required" });
+
+        const [item] = await db
+          .insert(contentLibrary)
+          .values({
+            subAccountId,
+            type,
+            title,
+            body,
+            tags: tags || [],
+            createdByUserId: (req as any).user?.id || null,
+          })
+          .returning();
+
+        res.status(201).json(item);
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    }
+  );
+
+  // PUT /api/content-planner/:subAccountId/library/:id
+  app.put(
+    "/api/content-planner/:subAccountId/library/:id",
+    async (req: Request, res: Response) => {
+      try {
+        const subAccountId = getSubAccountId(req);
+        const id = parseInt(req.params.id);
+        const { title, body, tags } = req.body;
+
+        const [item] = await db
+          .update(contentLibrary)
+          .set({ title, body, tags, updatedAt: new Date() })
+          .where(
+            and(
+              eq(contentLibrary.id, id),
+              tenantGuard(contentLibrary.subAccountId, subAccountId)
+            )
+          )
+          .returning();
+
+        if (!item) return res.status(404).json({ error: "Library item not found" });
+        res.json(item);
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    }
+  );
+
+  // DELETE /api/content-planner/:subAccountId/library/:id
+  app.delete(
+    "/api/content-planner/:subAccountId/library/:id",
+    async (req: Request, res: Response) => {
+      try {
+        const subAccountId = getSubAccountId(req);
+        const id = parseInt(req.params.id);
+
+        await db
+          .delete(contentLibrary)
+          .where(
+            and(
+              eq(contentLibrary.id, id),
+              tenantGuard(contentLibrary.subAccountId, subAccountId)
+            )
+          );
+
+        res.json({ success: true });
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    }
+  );
+
+  // ── PUBLISH LOGS ──────────────────────────────────────────────────────────
+
+  // GET /api/content-planner/:subAccountId/logs
+  app.get(
+    "/api/content-planner/:subAccountId/logs",
+    async (req: Request, res: Response) => {
+      try {
+        const subAccountId = getSubAccountId(req);
+        const logs = await db
+          .select()
+          .from(contentPublishingJobs)
+          .where(tenantGuard(contentPublishingJobs.subAccountId, subAccountId))
+          .orderBy(desc(contentPublishingJobs.createdAt))
+          .limit(100);
+        res.json(logs);
+      } catch (err: any) {
+        res.status(400).json({ error: err.message });
+      }
+    }
+  );
+
+  // ── CALENDAR LABELS ───────────────────────────────────────────────────────
+
+  // GET /api/content-planner/:subAccountId/labels
+  app.get(
+    "/api/content-planner/:subAccountId/labels",
+    async (req: Request, res: Response) => {
+      try {
+        const subAccountId = getSubAccountId(req);
+        const labels = await db
+          .select()
+          .from(contentCalendarLabels)
+          .where(tenantGuard(contentCalendarLabels.subAccountId, subAccountId))
+          .orderBy(asc(contentCalendarLabels.name));
+        res.json(labels);
+      } catch (err: any) {
+        res.status(400).json({ error: err.message });
+      }
+    }
+  );
+
+  // POST /api/content-planner/:subAccountId/labels
+  app.post(
+    "/api/content-planner/:subAccountId/labels",
+    async (req: Request, res: Response) => {
+      try {
+        const subAccountId = getSubAccountId(req);
+        const { name, color } = req.body;
+        if (!name) return res.status(400).json({ error: "name is required" });
+
+        const [label] = await db
+          .insert(contentCalendarLabels)
+          .values({ subAccountId, name, color })
+          .returning();
+
+        res.status(201).json(label);
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    }
+  );
+
+  // DELETE /api/content-planner/:subAccountId/labels/:id
+  app.delete(
+    "/api/content-planner/:subAccountId/labels/:id",
+    async (req: Request, res: Response) => {
+      try {
+        const subAccountId = getSubAccountId(req);
+        const id = parseInt(req.params.id);
+
+        await db
+          .delete(contentCalendarLabels)
+          .where(
+            and(
+              eq(contentCalendarLabels.id, id),
+              tenantGuard(contentCalendarLabels.subAccountId, subAccountId)
+            )
+          );
+
+        res.json({ success: true });
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    }
+  );
+}
