@@ -1,0 +1,138 @@
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Download, Play, Pause } from "lucide-react";
+
+interface VoiceClip {
+  file: string;
+  text: string;
+  url: string;
+}
+
+interface VoiceClipsData {
+  total: number;
+  categories: Record<string, VoiceClip[]>;
+  downloadPage: string;
+}
+
+const categoryNames: Record<string, string> = {
+  greetings: "Greetings",
+  flirty: "Flirty Responses",
+  hooks_site: "Hooks - Push to Site",
+  hooks_telegram: "Hooks - Push to Telegram",
+  jealousy: "Jealousy Triggers",
+  warm: "Warm / Sweet",
+  cold: "Cold / Distant",
+  gaslighting: "Gaslighting",
+  broke_boy: "Broke Boy Energy",
+  ruthless: "Ruthless",
+  goodbyes: "Goodbyes",
+  compliments: "Compliment Responses",
+  teasing: "Teasing / Playful",
+};
+
+export default function GhlVoiceClipsPage() {
+  const [data, setData] = useState<VoiceClipsData | null>(null);
+  const [playing, setPlaying] = useState<string | null>(null);
+  const [audio, setAudio] = useState<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    fetch("/api/ghl/voice-clips")
+      .then(res => res.json())
+      .then(setData)
+      .catch(console.error);
+  }, []);
+
+  const playClip = (url: string, file: string) => {
+    if (audio) {
+      audio.pause();
+    }
+    
+    if (playing === file) {
+      setPlaying(null);
+      return;
+    }
+
+    const newAudio = new Audio(url);
+    newAudio.onended = () => setPlaying(null);
+    newAudio.play();
+    setAudio(newAudio);
+    setPlaying(file);
+  };
+
+  if (!data) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-[#1a1a2e] to-[#16213e] flex items-center justify-center">
+        <div className="text-white">Loading...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-[#1a1a2e] to-[#16213e] p-8">
+      <div className="max-w-6xl mx-auto">
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-[#ff6b9d] mb-2" data-testid="page-title">Layla Voice Clips for GHL</h1>
+          <p className="text-gray-300" data-testid="clip-count">{data.total} clips ready for automation</p>
+        </div>
+
+        <div className="space-y-8">
+          {Object.entries(data.categories).map(([category, clips]) => (
+            <Card key={category} className="bg-[#16213e] border-[#4fc3f7]/20">
+              <CardHeader>
+                <CardTitle className="text-[#c44569]">
+                  {categoryNames[category] || category} ({clips.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-3">
+                  {clips.map((clip) => (
+                    <div
+                      key={clip.file}
+                      className="flex items-center justify-between p-3 bg-[#1a1a2e] rounded-lg"
+                      data-testid={`clip-${clip.file}`}
+                    >
+                      <div className="flex items-center gap-4 flex-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-[#4fc3f7] hover:bg-[#4fc3f7]/10"
+                          onClick={() => playClip(clip.url, clip.file)}
+                          data-testid={`play-${clip.file}`}
+                        >
+                          {playing === clip.file ? <Pause size={16} /> : <Play size={16} />}
+                        </Button>
+                        <div>
+                          <div className="text-white font-mono text-sm">{clip.file}</div>
+                          <div className="text-gray-400 text-sm">"{clip.text}"</div>
+                        </div>
+                      </div>
+                      <a
+                        href={clip.url}
+                        download={`${clip.file}.mp3`}
+                        className="text-[#4fc3f7] hover:text-[#ff6b9d] transition-colors"
+                        data-testid={`download-${clip.file}`}
+                      >
+                        <Download size={20} />
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        <div className="mt-8 p-6 bg-[#16213e] rounded-lg border border-[#4fc3f7]/20">
+          <h2 className="text-xl font-bold text-[#ff6b9d] mb-4">How to Use in GHL</h2>
+          <ol className="text-gray-300 space-y-2 list-decimal list-inside">
+            <li>Click the download icon next to any clip to save it</li>
+            <li>Upload the mp3 files to GHL Media Library</li>
+            <li>In your workflow, attach clips as audio messages</li>
+            <li>Use different categories for different workflow branches</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  );
+}
