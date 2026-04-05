@@ -595,7 +595,7 @@ export default function SmsDashboard() {
                 <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Conversations</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <ScrollArea className="max-h-[300px]">
+                <ScrollArea className="max-h-[60vh]">
                   <div className="divide-y divide-border">
                     {conversations.map((conv) => {
                       const isActive = selectedConv?.contactPhone === conv.contactPhone && selectedConv?.channel === conv.channel;
