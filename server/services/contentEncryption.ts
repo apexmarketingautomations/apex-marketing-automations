@@ -31,3 +31,6 @@ export function decrypt(ciphertext: string): string {
   decipher.setAuthTag(tag);
   return decipher.update(encrypted) + decipher.final("utf8");
 }
+
+export const encryptToken = encrypt;
+export const decryptToken = decrypt;

@@ -60,6 +60,7 @@ Preferred communication style: Simple, everyday language.
 - **Firebase SDK**: Analytics, Push Notifications (FCM), and Google Auth.
 - **Shopify Integration**: E-commerce automation via Shopify Admin API and webhooks.
 - **Meta Webhooks**: For multi-tenant Facebook/Instagram DM bot functionality with rich context assembly.
+- **Content Planner**: Full social media content management system with 8 tables (`social_accounts`, `content_posts`, `content_post_platforms`, `content_media`, `content_calendar_labels`, `content_approvals`, `content_publishing_jobs`, `content_library`). Routes at `server/routes/contentPlanner.ts`, publisher at `server/services/contentPlanner/publisher.ts`, scheduler at `server/services/contentPlanner/scheduler.ts`. Per-platform tracking via junction table `content_post_platforms`. Encryption via `server/services/contentEncryption.ts` (AES-256-GCM). Platform adapters for Facebook (working), Instagram, X, TikTok. Real Facebook publishing confirmed. Supports per-post platform status tracking, approval workflows, media management, content library, calendar labels, and scheduling.
 - **Google Calendar Auto-Sync**: Background service for syncing Google Calendar events with appointments and triggers.
 - **Meta Campaign Background Sync**: Job-queue-based 45-minute interval sync for Meta ad campaigns with `lastSyncedAt` tracking.
 - **FLHSMV API**: For polling and retrieving crash reports.

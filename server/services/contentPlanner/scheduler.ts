@@ -1,6 +1,6 @@
 import { db } from "../../db";
 import { eq, and, lte } from "drizzle-orm";
-import { cpPosts } from "@shared/schema";
+import { contentPosts, contentPostPlatforms } from "@shared/schema";
 import { publishPost } from "./publisher";
 
 export async function processDueScheduledPosts(): Promise<{
@@ -10,10 +10,10 @@ export async function processDueScheduledPosts(): Promise<{
 }> {
   const now = new Date();
 
-  const duePosts = await db.select().from(cpPosts)
+  const duePosts = await db.select().from(contentPosts)
     .where(and(
-      eq(cpPosts.status, "scheduled"),
-      lte(cpPosts.scheduledAt, now),
+      eq(contentPosts.status, "scheduled"),
+      lte(contentPosts.scheduledAt, now),
     ));
 
   let succeeded = 0;
@@ -22,12 +22,19 @@ export async function processDueScheduledPosts(): Promise<{
   for (const post of duePosts) {
     try {
       console.log(`[CP-SCHEDULER] Processing due post ${post.id} (subAccount ${post.subAccountId})`);
+
+      const postPlatforms = await db.select().from(contentPostPlatforms)
+        .where(eq(contentPostPlatforms.postId, post.id));
+
+      const platforms = postPlatforms.length > 0
+        ? postPlatforms.map(pp => pp.platform)
+        : undefined;
+
       const result = await publishPost({
         postId: post.id,
         subAccountId: post.subAccountId,
         trigger: "scheduled",
-        platforms: post.platforms || undefined,
-        connectionIds: post.connectionIds || undefined,
+        platforms,
       });
       const allOk = result.results.every(r => r.success);
       if (allOk) succeeded++;
@@ -36,10 +43,10 @@ export async function processDueScheduledPosts(): Promise<{
       console.error(`[CP-SCHEDULER] Failed to process post ${post.id}:`, err.message);
       failed++;
 
-      await db.update(cpPosts).set({
+      await db.update(contentPosts).set({
         status: "failed",
         updatedAt: new Date(),
-      }).where(eq(cpPosts.id, post.id));
+      }).where(eq(contentPosts.id, post.id));
     }
   }
 

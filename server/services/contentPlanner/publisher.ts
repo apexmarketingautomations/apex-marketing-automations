@@ -1,62 +1,62 @@
 import { db } from "../../db";
 import { eq, and } from "drizzle-orm";
 import {
-  cpPosts, cpPublishLogs, cpPublishJobs, cpSocialConnections, subAccounts,
+  contentPosts, contentPostPlatforms, contentPublishingJobs,
+  socialAccounts, subAccounts,
 } from "@shared/schema";
 import { getAdapter } from "./adapters";
 import type { PublishInput, PublishResult, PlatformCredentials } from "./adapters";
-import { decrypt } from "../contentEncryption";
+import { decryptToken } from "../contentEncryption";
 
 interface PublishPostOptions {
   postId: number;
   subAccountId: number;
   trigger: "manual" | "scheduled";
   platforms?: string[];
-  connectionIds?: number[];
 }
 
 async function resolveCredentials(
   subAccountId: number,
   platform: string,
-  connectionId: number | null,
+  socialAccountId: number | null,
 ): Promise<PlatformCredentials | null> {
-  if (connectionId) {
-    const [conn] = await db.select().from(cpSocialConnections)
+  if (socialAccountId) {
+    const [conn] = await db.select().from(socialAccounts)
       .where(and(
-        eq(cpSocialConnections.id, connectionId),
-        eq(cpSocialConnections.subAccountId, subAccountId),
+        eq(socialAccounts.id, socialAccountId),
+        eq(socialAccounts.subAccountId, subAccountId),
       ));
-    if (conn && conn.accessTokenEnc) {
+    if (conn && conn.accessTokenEncrypted) {
       try {
-        const accessToken = decrypt(conn.accessTokenEnc);
+        const accessToken = decryptToken(conn.accessTokenEncrypted);
         return {
           accessToken,
-          pageId: conn.accountId || undefined,
+          pageId: conn.platformAccountId || undefined,
           igUserId: undefined,
         };
       } catch (e: any) {
-        console.error(`[CP-PUBLISHER] Failed to decrypt token for connection ${connectionId}:`, e.message);
+        console.error(`[CP-PUBLISHER] Failed to decrypt token for socialAccount ${socialAccountId}:`, e.message);
       }
     }
   }
 
-  const connections = await db.select().from(cpSocialConnections)
+  const connections = await db.select().from(socialAccounts)
     .where(and(
-      eq(cpSocialConnections.subAccountId, subAccountId),
-      eq(cpSocialConnections.platform, platform),
-      eq(cpSocialConnections.isActive, true),
+      eq(socialAccounts.subAccountId, subAccountId),
+      eq(socialAccounts.platform, platform),
+      eq(socialAccounts.status, "active"),
     ));
 
-  if (connections.length > 0 && connections[0].accessTokenEnc) {
+  if (connections.length > 0 && connections[0].accessTokenEncrypted) {
     try {
-      const accessToken = decrypt(connections[0].accessTokenEnc);
+      const accessToken = decryptToken(connections[0].accessTokenEncrypted);
       return {
         accessToken,
-        pageId: connections[0].accountId || undefined,
+        pageId: connections[0].platformAccountId || undefined,
         igUserId: undefined,
       };
     } catch (e: any) {
-      console.error(`[CP-PUBLISHER] Failed to decrypt token for connection ${connections[0].id}:`, e.message);
+      console.error(`[CP-PUBLISHER] Failed to decrypt token for socialAccount ${connections[0].id}:`, e.message);
     }
   }
 
@@ -101,32 +101,39 @@ async function resolveInstagramBusinessId(pageId: string, accessToken: string): 
 }
 
 export async function publishPost(opts: PublishPostOptions): Promise<{
-  jobId: number;
+  jobIds: number[];
   results: PublishResult[];
 }> {
   const { postId, subAccountId, trigger } = opts;
 
-  const [post] = await db.select().from(cpPosts)
-    .where(and(eq(cpPosts.id, postId), eq(cpPosts.subAccountId, subAccountId)));
+  const [post] = await db.select().from(contentPosts)
+    .where(and(eq(contentPosts.id, postId), eq(contentPosts.subAccountId, subAccountId)));
   if (!post) throw new Error(`Post ${postId} not found for subAccount ${subAccountId}`);
 
-  const platforms = opts.platforms || post.platforms || [];
-  if (platforms.length === 0) throw new Error("No platforms specified for publishing");
+  const postPlatforms = await db.select().from(contentPostPlatforms)
+    .where(and(
+      eq(contentPostPlatforms.postId, postId),
+      eq(contentPostPlatforms.subAccountId, subAccountId),
+    ));
 
-  const [job] = await db.insert(cpPublishJobs).values({
-    subAccountId,
-    postId,
-    trigger,
-    platforms,
-    connectionIds: opts.connectionIds || post.connectionIds || null,
-    status: "processing",
-    startedAt: new Date(),
-  }).returning();
+  let platformsToPublish: Array<{ platform: string; socialAccountId: number | null }> = [];
+
+  if (postPlatforms.length > 0) {
+    platformsToPublish = postPlatforms.map(pp => ({
+      platform: pp.platform,
+      socialAccountId: pp.socialAccountId,
+    }));
+  } else if (opts.platforms && opts.platforms.length > 0) {
+    platformsToPublish = opts.platforms.map(p => ({ platform: p, socialAccountId: null }));
+  }
+
+  if (platformsToPublish.length === 0) throw new Error("No platforms specified for publishing");
 
   const results: PublishResult[] = [];
+  const jobIds: number[] = [];
   let allSucceeded = true;
 
-  for (const platform of platforms) {
+  for (const { platform, socialAccountId } of platformsToPublish) {
     const adapter = getAdapter(platform);
     if (!adapter) {
       const failResult: PublishResult = {
@@ -138,39 +145,31 @@ export async function publishPost(opts: PublishPostOptions): Promise<{
       results.push(failResult);
       allSucceeded = false;
 
-      await db.insert(cpPublishLogs).values({
+      const [job] = await db.insert(contentPublishingJobs).values({
         subAccountId,
         postId,
-        connectionId: null,
         platform,
+        socialAccountId,
+        trigger,
         status: "failed",
-        externalPostId: null,
         errorMessage: failResult.errorMessage,
-      });
+        startedAt: new Date(),
+        completedAt: new Date(),
+      }).returning();
+      jobIds.push(job.id);
       continue;
     }
 
-    let connectionId: number | null = null;
-    if (opts.connectionIds && opts.connectionIds.length > 0) {
-      const connections = await db.select().from(cpSocialConnections)
-        .where(and(
-          eq(cpSocialConnections.subAccountId, subAccountId),
-          eq(cpSocialConnections.platform, platform),
-        ));
-      const match = connections.find(c => opts.connectionIds!.includes(c.id));
-      if (match) connectionId = match.id;
-    }
-
-    const credentials = await resolveCredentials(subAccountId, platform, connectionId);
+    const credentials = await resolveCredentials(subAccountId, platform, socialAccountId);
 
     const input: PublishInput = {
       postId,
       subAccountId,
-      connectionId,
+      connectionId: socialAccountId,
       platform,
       title: post.title,
-      body: post.body,
-      mediaIds: post.mediaIds,
+      body: post.caption || post.title,
+      mediaIds: null,
       credentials,
     };
 
@@ -185,15 +184,18 @@ export async function publishPost(opts: PublishPostOptions): Promise<{
       results.push(failResult);
       allSucceeded = false;
 
-      await db.insert(cpPublishLogs).values({
+      const [job] = await db.insert(contentPublishingJobs).values({
         subAccountId,
         postId,
-        connectionId,
         platform,
+        socialAccountId,
+        trigger,
         status: "failed",
-        externalPostId: null,
         errorMessage: failResult.errorMessage,
-      });
+        startedAt: new Date(),
+        completedAt: new Date(),
+      }).returning();
+      jobIds.push(job.id);
       continue;
     }
 
@@ -202,15 +204,38 @@ export async function publishPost(opts: PublishPostOptions): Promise<{
       results.push(publishResult);
       if (!publishResult.success) allSucceeded = false;
 
-      await db.insert(cpPublishLogs).values({
+      const [job] = await db.insert(contentPublishingJobs).values({
         subAccountId,
         postId,
-        connectionId,
         platform,
-        status: publishResult.success ? "published" : "failed",
+        socialAccountId,
+        trigger,
+        status: publishResult.success ? "completed" : "failed",
         externalPostId: publishResult.externalPostId,
         errorMessage: publishResult.errorMessage,
-      });
+        startedAt: new Date(),
+        completedAt: new Date(),
+      }).returning();
+      jobIds.push(job.id);
+
+      if (publishResult.success) {
+        await db.update(contentPostPlatforms).set({
+          platformStatus: "published",
+          externalPostId: publishResult.externalPostId,
+          publishedAt: new Date(),
+        }).where(and(
+          eq(contentPostPlatforms.postId, postId),
+          eq(contentPostPlatforms.platform, platform),
+        ));
+      } else {
+        await db.update(contentPostPlatforms).set({
+          platformStatus: "failed",
+          errorMessage: publishResult.errorMessage,
+        }).where(and(
+          eq(contentPostPlatforms.postId, postId),
+          eq(contentPostPlatforms.platform, platform),
+        ));
+      }
     } catch (err: any) {
       const failResult: PublishResult = {
         success: false,
@@ -221,33 +246,27 @@ export async function publishPost(opts: PublishPostOptions): Promise<{
       results.push(failResult);
       allSucceeded = false;
 
-      await db.insert(cpPublishLogs).values({
+      const [job] = await db.insert(contentPublishingJobs).values({
         subAccountId,
         postId,
-        connectionId,
         platform,
+        socialAccountId,
+        trigger,
         status: "failed",
-        externalPostId: null,
         errorMessage: failResult.errorMessage,
-      });
+        startedAt: new Date(),
+        completedAt: new Date(),
+      }).returning();
+      jobIds.push(job.id);
     }
   }
 
-  const finalStatus = allSucceeded ? "completed" : (results.some(r => r.success) ? "partial" : "failed");
-
-  await db.update(cpPublishJobs).set({
-    status: finalStatus,
-    result: results,
-    errorMessage: allSucceeded ? null : results.filter(r => !r.success).map(r => `${r.platform}: ${r.errorMessage}`).join("; "),
-    completedAt: new Date(),
-  }).where(eq(cpPublishJobs.id, job.id));
-
   const newPostStatus = allSucceeded ? "published" : "failed";
-  await db.update(cpPosts).set({
+  await db.update(contentPosts).set({
     status: newPostStatus,
     publishedAt: allSucceeded ? new Date() : post.publishedAt,
     updatedAt: new Date(),
-  }).where(eq(cpPosts.id, postId));
+  }).where(eq(contentPosts.id, postId));
 
-  return { jobId: job.id, results };
+  return { jobIds, results };
 }

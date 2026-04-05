@@ -2048,125 +2048,120 @@ export const PLAN_LIMITS: Record<string, Record<string, number>> = {
   },
 };
 
-export const cpSocialConnections = pgTable("cp_social_connections", {
+export const socialAccounts = pgTable("social_accounts", {
   id: serial("id").primaryKey(),
   subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
   platform: text("platform").notNull(),
-  accountName: text("account_name"),
-  accountId: text("account_id"),
-  accessTokenEnc: text("access_token_enc"),
-  refreshTokenEnc: text("refresh_token_enc"),
+  platformAccountId: text("platform_account_id").notNull(),
+  username: text("username"),
+  displayName: text("display_name"),
+  avatarUrl: text("avatar_url"),
+  accessTokenEncrypted: text("access_token_encrypted"),
+  refreshTokenEncrypted: text("refresh_token_encrypted"),
   tokenExpiresAt: timestamp("token_expires_at"),
-  scopes: text("scopes").array(),
-  isActive: boolean("is_active").default(true).notNull(),
+  scopes: text("scopes"),
+  meta: jsonb("meta"),
+  status: text("status").default("active").notNull(),
+  lastSyncAt: timestamp("last_sync_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
-export const insertCpSocialConnectionSchema = createInsertSchema(cpSocialConnections).omit({ id: true, createdAt: true, updatedAt: true });
-export type InsertCpSocialConnection = z.infer<typeof insertCpSocialConnectionSchema>;
-export type CpSocialConnection = typeof cpSocialConnections.$inferSelect;
+export type SocialAccount = typeof socialAccounts.$inferSelect;
 
-export const cpLabels = pgTable("cp_labels", {
+export const contentPosts = pgTable("content_posts", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  title: text("title"),
+  caption: text("caption"),
+  hashtags: text("hashtags"),
+  callToAction: text("call_to_action"),
+  firstComment: text("first_comment"),
+  contentType: text("content_type"),
+  status: text("status").default("draft").notNull(),
+  approvalStatus: text("approval_status").default("not_required").notNull(),
+  scheduledAt: timestamp("scheduled_at"),
+  publishedAt: timestamp("published_at"),
+  createdByUserId: text("created_by_user_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type ContentPost = typeof contentPosts.$inferSelect;
+
+export const contentPostPlatforms = pgTable("content_post_platforms", {
+  id: serial("id").primaryKey(),
+  postId: integer("post_id").references(() => contentPosts.id, { onDelete: "cascade" }).notNull(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  platform: text("platform").notNull(),
+  socialAccountId: integer("social_account_id").references(() => socialAccounts.id, { onDelete: "set null" }),
+  platformStatus: text("platform_status").default("draft").notNull(),
+  externalPostId: text("external_post_id"),
+  publishedAt: timestamp("published_at"),
+  errorMessage: text("error_message"),
+});
+export type ContentPostPlatform = typeof contentPostPlatforms.$inferSelect;
+
+export const contentMedia = pgTable("content_media", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  postId: integer("post_id").references(() => contentPosts.id, { onDelete: "set null" }),
+  fileUrl: text("file_url").notNull(),
+  fileKey: text("file_key"),
+  fileType: text("file_type"),
+  fileSize: integer("file_size"),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  altText: text("alt_text"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type ContentMediaItem = typeof contentMedia.$inferSelect;
+
+export const contentCalendarLabels = pgTable("content_calendar_labels", {
   id: serial("id").primaryKey(),
   subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
   name: text("name").notNull(),
   color: text("color").default("#6366f1"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
-export const insertCpLabelSchema = createInsertSchema(cpLabels).omit({ id: true, createdAt: true });
-export type InsertCpLabel = z.infer<typeof insertCpLabelSchema>;
-export type CpLabel = typeof cpLabels.$inferSelect;
+export type ContentCalendarLabel = typeof contentCalendarLabels.$inferSelect;
 
-export const cpMedia = pgTable("cp_media", {
+export const contentApprovals = pgTable("content_approvals", {
   id: serial("id").primaryKey(),
+  postId: integer("post_id").references(() => contentPosts.id, { onDelete: "cascade" }).notNull(),
   subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
-  filename: text("filename").notNull(),
-  url: text("url").notNull(),
-  mimeType: text("mime_type"),
-  sizeBytes: integer("size_bytes"),
-  altText: text("alt_text"),
-  createdByUserId: text("created_by_user_id"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-export const insertCpMediaSchema = createInsertSchema(cpMedia).omit({ id: true, createdAt: true });
-export type InsertCpMedia = z.infer<typeof insertCpMediaSchema>;
-export type CpMedia = typeof cpMedia.$inferSelect;
-
-export const cpContentLibrary = pgTable("cp_content_library", {
-  id: serial("id").primaryKey(),
-  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
-  title: text("title").notNull(),
-  body: text("body"),
-  category: text("category"),
-  tags: text("tags").array(),
-  mediaIds: integer("media_ids").array(),
-  createdByUserId: text("created_by_user_id"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-export const insertCpContentLibrarySchema = createInsertSchema(cpContentLibrary).omit({ id: true, createdAt: true, updatedAt: true });
-export type InsertCpContentLibrary = z.infer<typeof insertCpContentLibrarySchema>;
-export type CpContentLibraryItem = typeof cpContentLibrary.$inferSelect;
-
-export const cpPosts = pgTable("cp_posts", {
-  id: serial("id").primaryKey(),
-  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
-  title: text("title"),
-  body: text("body"),
-  platforms: text("platforms").array(),
-  mediaIds: integer("media_ids").array(),
-  labelIds: integer("label_ids").array(),
-  status: text("status").default("draft").notNull(),
-  scheduledAt: timestamp("scheduled_at"),
-  publishedAt: timestamp("published_at"),
-  connectionIds: integer("connection_ids").array(),
-  createdByUserId: text("created_by_user_id"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-export const insertCpPostSchema = createInsertSchema(cpPosts).omit({ id: true, createdAt: true, updatedAt: true });
-export type InsertCpPost = z.infer<typeof insertCpPostSchema>;
-export type CpPost = typeof cpPosts.$inferSelect;
-
-export const cpApprovals = pgTable("cp_approvals", {
-  id: serial("id").primaryKey(),
-  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
-  postId: integer("post_id").references(() => cpPosts.id, { onDelete: "cascade" }).notNull(),
-  status: text("status").default("pending").notNull(),
-  reviewerUserId: text("reviewer_user_id"),
-  reviewNote: text("review_note"),
+  requestedBy: text("requested_by"),
+  decision: text("decision"),
+  notes: text("notes"),
+  reviewedBy: text("reviewed_by"),
   reviewedAt: timestamp("reviewed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
-export const insertCpApprovalSchema = createInsertSchema(cpApprovals).omit({ id: true, createdAt: true });
-export type InsertCpApproval = z.infer<typeof insertCpApprovalSchema>;
-export type CpApproval = typeof cpApprovals.$inferSelect;
+export type ContentApproval = typeof contentApprovals.$inferSelect;
 
-export const cpPublishLogs = pgTable("cp_publish_logs", {
+export const contentPublishingJobs = pgTable("content_publishing_jobs", {
   id: serial("id").primaryKey(),
   subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
-  postId: integer("post_id").references(() => cpPosts.id, { onDelete: "cascade" }).notNull(),
-  connectionId: integer("connection_id").references(() => cpSocialConnections.id, { onDelete: "set null" }),
+  postId: integer("post_id").references(() => contentPosts.id, { onDelete: "cascade" }).notNull(),
   platform: text("platform").notNull(),
-  status: text("status").notNull(),
-  externalPostId: text("external_post_id"),
-  errorMessage: text("error_message"),
-  publishedAt: timestamp("published_at").defaultNow().notNull(),
-});
-export type CpPublishLog = typeof cpPublishLogs.$inferSelect;
-
-export const cpPublishJobs = pgTable("cp_publish_jobs", {
-  id: serial("id").primaryKey(),
-  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
-  postId: integer("post_id").references(() => cpPosts.id, { onDelete: "cascade" }).notNull(),
+  socialAccountId: integer("social_account_id").references(() => socialAccounts.id, { onDelete: "set null" }),
   status: text("status").default("pending").notNull(),
   trigger: text("trigger").default("manual").notNull(),
-  platforms: text("platforms").array(),
-  connectionIds: integer("connection_ids").array(),
+  externalPostId: text("external_post_id"),
   result: jsonb("result"),
   errorMessage: text("error_message"),
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
-export type CpPublishJob = typeof cpPublishJobs.$inferSelect;
+export type ContentPublishingJob = typeof contentPublishingJobs.$inferSelect;
+
+export const contentLibrary = pgTable("content_library", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  type: text("type").notNull(),
+  title: text("title"),
+  body: text("body"),
+  tags: text("tags").array(),
+  createdByUserId: text("created_by_user_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type ContentLibraryItem = typeof contentLibrary.$inferSelect;
