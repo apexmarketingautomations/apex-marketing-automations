@@ -1,4 +1,5 @@
 import { postProcessAndGuard, checkEscalationKeywords, maskPiiForLogs } from "./laylaPostProcessor";
+import { shouldSendVoiceMessage } from "./laylaVoice";
 
 export interface ConversationMessage {
   role: "user" | "layla";
@@ -14,6 +15,7 @@ export interface ConversationState {
   interestScore: number;
   telegramOffered: boolean;
   botDenialUsed: boolean;
+  voiceMessagesSent?: number;
 }
 
 export interface PipelineAction {
@@ -22,6 +24,7 @@ export interface PipelineAction {
   delayMs: number;
   reason?: string;
   telegramOffered?: boolean;
+  sendAsVoice?: boolean;
   handoverPriority?: "highest" | "high" | "normal";
   auditLog?: TelegramAuditEntry;
 }
@@ -257,11 +260,14 @@ export function runLaylaPipeline(
     };
   }
 
+  const useVoice = shouldSendVoiceMessage() && (state.voiceMessagesSent || 0) < 3;
+
   return {
     type: "delay_then_send",
     reply: "__LLM__",
     delayMs: sampleDelay(),
     reason: "normal_conversation",
+    sendAsVoice: useVoice,
   };
 }
 
