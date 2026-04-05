@@ -695,7 +695,8 @@ export default function SmsDashboard() {
                     const Icon = ch.icon;
                     const active = channelFilter === ch.key;
                     const cnt = channelCounts[ch.key] || 0;
-                    if (ch.key !== "all" && cnt === 0) return null;
+                    const alwaysShow = ["all", "facebook", "instagram"].includes(ch.key);
+                    if (!alwaysShow && cnt === 0) return null;
                     return (
                       <button key={ch.key} onClick={() => setChannelFilter(ch.key)}
                         className={`flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium whitespace-nowrap transition-all ${
