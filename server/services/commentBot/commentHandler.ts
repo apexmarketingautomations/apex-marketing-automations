@@ -58,6 +58,23 @@ export async function handleCommentEvent(event: CommentWebhookEvent): Promise<vo
     return;
   }
 
+  const replyChance = 0.4 + Math.random() * 0.2;
+  if (Math.random() > replyChance) {
+    console.log(`[COMMENT-BOT] Randomly skipping comment ${commentId} (selective reply mode)`);
+    await db.insert(commentAutoReplies).values({
+      subAccountId,
+      platform,
+      postId,
+      commentId,
+      commentText,
+      commenterName,
+      commenterId,
+      status: "skipped",
+      sentiment: "neutral",
+    }).onConflictDoNothing();
+    return;
+  }
+
   const inserted = await db.insert(commentAutoReplies).values({
     subAccountId,
     platform,

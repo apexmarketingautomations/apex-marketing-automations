@@ -67,13 +67,13 @@ function buildCommentReplyPrompt(ctx: CommentReplyContext): string {
   const tone = toneMap[ctx.replyStyle] || toneMap.friendly;
 
   const platformRules = ctx.platform === "instagram"
-    ? `- Keep replies SHORT (1-2 sentences max, under 150 chars ideal)
-- Emojis are welcome but don't overdo it (1-2 max)
-- Never use hashtags in replies
-- Feel free to use casual internet language (lol, haha, etc)`
-    : `- Keep replies concise but can be slightly longer than Instagram (1-3 sentences)
-- Professional emojis are okay but optional
-- Address the commenter by name when possible`;
+    ? `- Maximum 2 sentences. Most replies should be 1 sentence only.
+- 5–25 words ideal. Never exceed 40 words.
+- Emojis welcome but 1-2 max. No hashtags.
+- Casual internet language ok (lol, haha, etc)`
+    : `- Maximum 2 sentences. Most replies should be 1 sentence only.
+- 5–25 words ideal. Never exceed 40 words.
+- Professional emojis optional. Address by name when possible.`;
 
   return `You are the social media manager for ${ctx.businessName}${ctx.industry ? ` (${ctx.industry} industry)` : ""}.
 You are replying to a comment on a ${ctx.platform} post.
