@@ -5,7 +5,7 @@ import {
   MessageCircle, Bot, Facebook, RefreshCw, Search, ArrowLeft,
   CheckCheck, Filter, BarChart3, ThumbsUp, ThumbsDown, Minus,
   HelpCircle, ShieldAlert, Clock, CheckCircle2, Heart, Smile,
-  Frown, Angry, Check, X, MoreHorizontal, ChevronDown
+  Frown, Angry, Check, X, MoreHorizontal, ChevronDown, Settings
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -40,22 +40,26 @@ function formatTime(date: Date) {
 }
 
 function isSocialId(phone: string, channel: string) {
-  return (channel === "facebook" || channel === "instagram") && /^\d{10,20}$/.test(phone);
+  return (channel === "facebook" || channel === "instagram" || channel === "telegram") && /^\d{5,20}$/.test(phone);
 }
 
 function displayName(phone: string, ch: string, first?: string, last?: string) {
-  if (first && !first.startsWith("FB User") && !first.startsWith("IG User") && !first.startsWith("IG ")) {
+  if (first && !first.startsWith("FB User") && !first.startsWith("IG User") && !first.startsWith("IG ") && !first.startsWith("TG User")) {
     return `${first}${last ? ` ${last}` : ""}`;
   }
   if (ch === "facebook") return `FB ...${phone.slice(-4)}`;
   if (ch === "instagram") return `IG ...${phone.slice(-4)}`;
+  if (ch === "telegram") return `TG ...${phone.slice(-4)}`;
+  if (ch === "whatsapp") return phone;
   return phone;
 }
 
 function avatarInitial(phone: string, ch: string, first?: string) {
-  if (first && !first.startsWith("FB") && !first.startsWith("IG")) return first.charAt(0).toUpperCase();
+  if (first && !first.startsWith("FB") && !first.startsWith("IG") && !first.startsWith("TG")) return first.charAt(0).toUpperCase();
   if (ch === "facebook") return "F";
   if (ch === "instagram") return "I";
+  if (ch === "telegram") return "T";
+  if (ch === "whatsapp") return "W";
   return phone.charAt(phone.length - 1) || "?";
 }
 
@@ -717,9 +721,12 @@ export default function SmsDashboard() {
               <TabsTrigger value="comments" className="text-[11px] h-6 px-2.5 data-[state=active]:bg-white/10 data-[state=active]:text-white" data-testid="tab-comments">Comments</TabsTrigger>
             </TabsList>
             <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-slate-400 hover:text-white"
-              onClick={() => syncMut.mutate()} disabled={syncMut.isPending} data-testid="button-sync-dms" title="Sync from Meta">
+              onClick={() => syncMut.mutate()} disabled={syncMut.isPending} data-testid="button-sync-dms" title="Sync DMs from Meta/Instagram">
               <RefreshCw className={`h-3.5 w-3.5 ${syncMut.isPending ? "animate-spin" : ""}`} />
             </Button>
+            <a href="/integrations" className="h-7 w-7 p-0 flex items-center justify-center text-slate-400 hover:text-white rounded-md hover:bg-white/10 transition-colors" title="Channel Settings" data-testid="link-channel-settings">
+              <Settings className="h-3.5 w-3.5" />
+            </a>
           </div>
         </div>
 
@@ -733,7 +740,7 @@ export default function SmsDashboard() {
                     className="h-7 pl-8 text-xs bg-white/5 border-white/10 placeholder:text-slate-600 text-slate-200" data-testid="input-search" />
                 </div>
                 <div className="flex gap-1 overflow-x-auto pb-0.5">
-                  {CHANNELS.filter(ch => ch.key === "all" || (channelCounts[ch.key] || 0) > 0).map(ch => {
+                  {CHANNELS.filter(ch => ch.key === "all" || ["facebook","instagram","whatsapp","telegram","sms"].includes(ch.key)).map(ch => {
                     const Icon = ch.icon;
                     const active = channelFilter === ch.key;
                     const cnt = channelCounts[ch.key] || 0;

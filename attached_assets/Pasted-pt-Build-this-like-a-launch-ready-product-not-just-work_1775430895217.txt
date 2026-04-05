@@ -1,0 +1,92 @@
+pt/
+
+Build this like a **launch-ready product**, not just working code.
+
+I need you to do **2 things in this task**:
+
+## 1) Build the missing UI for already-connected features
+The backend/pipeline for some services is already built, but the **frontend controls and visibility are missing**. I want you to identify those and install the missing **steering wheel + dashboard**.
+
+For this inbox specifically:
+- If WhatsApp and Telegram are wired in the backend, then build the **UI layer** for them
+- Add any missing:
+  - tabs
+  - filters
+  - channel selectors
+  - badges
+  - labels
+  - settings access points
+  - conversation visibility
+  - send/reply controls
+  - status indicators
+- Make them work inside the **existing inbox UI**, not as a disconnected mockup
+- Match the existing design and navigation pattern already used for Facebook / Instagram / Comments tabs
+
+## 2) Audit the full app for “backend exists but UI missing”
+I want you to scan the whole codebase and identify features that are already partially or fully implemented in code, but are **not exposed properly in the UI**.
+
+That means I want you to check for:
+- routes/endpoints that exist but have no visible screen or controls
+- database-backed features with no dashboard card, tab, page, or settings entry
+- integrations that are connected but not surfaced in the interface
+- automation features that work in logic but cannot be managed visually
+- channel support that exists in backend but is missing from inbox filters/tabs
+- settings/configuration flows that exist in API but have no frontend form
+- analytics/data being stored but not displayed anywhere
+- actions supported in code that a normal user cannot trigger
+
+## Rules
+Do **not** stop at “the backend is already there.”
+Do **not** mark anything complete unless the feature is:
+- connected
+- visible
+- usable
+- tested in the actual app flow
+
+If a feature needs a button, tab, form, modal, card, section, or page in order to be usable, then build that too unless I explicitly say backend only.
+
+## Your process
+Before changing code:
+1. Scan the backend, frontend, routes, schema, and navigation
+2. Compare what exists in logic vs what exists in UI
+3. Make a list of missing UI surfaces
+4. Prioritize the ones that are most important for launch readiness
+5. Then implement the missing UI for the highest-priority items, starting with inbox channel visibility
+
+## Deliverables
+Return your results in this exact format:
+
+### Missing UI Audit
+- Feature:
+- Backend status:
+- What exists already:
+- What UI is missing:
+- Priority: High / Medium / Low
+
+### What you built now
+- [list frontend pieces added]
+- [list backend/frontend connections completed]
+- [list where these features now appear in the app]
+
+### What is now usable
+- [list what I can now see, click, manage, or use]
+
+### What you tested
+- [list exact end-to-end tests performed]
+
+### What is still missing
+- [only list real remaining gaps]
+
+## Important
+Assume I want **product completion**, not just technical completion.
+
+Do not give me:
+- “mostly wired”
+- “backend ready”
+- “pipeline complete”
+- “can add UI later”
+
+I want the **engine, steering wheel, dashboard, buttons, and visibility** installed.
+If something is built under the hood, I need to be able to actually use it in the app.
+
+Start by auditing the inbox, messaging channels, settings, automations, analytics, and any other launch-critical features first.

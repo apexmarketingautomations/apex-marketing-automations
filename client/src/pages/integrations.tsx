@@ -20,7 +20,7 @@ import {
   XCircle, Loader2, ChevronDown, ChevronUp, Shield, Link2, Clock, Activity,
   RefreshCw, Instagram, Megaphone, FileSearch, ChevronRight,
   Briefcase, Video, PlayCircle, LayoutGrid, TrendingUp, Calendar,
-  MailOpen, BookOpen, Contact, Radio,
+  MailOpen, BookOpen, Contact, Radio, Send,
   type LucideIcon
 } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
@@ -131,6 +131,13 @@ const LEGACY_PROVIDER_CREDENTIALS: Record<string, { fields: CredentialField[]; h
     helpUrl: "https://www.twilio.com/docs/whatsapp",
     helpText: "Connect your WhatsApp Business number through Twilio.",
   },
+  "telegram": {
+    fields: [
+      { key: "botToken", label: "Bot Token", placeholder: "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11", type: "password" },
+    ],
+    helpUrl: "https://t.me/BotFather",
+    helpText: "Create a bot with @BotFather on Telegram to get your token. Webhook will be auto-configured.",
+  },
 };
 
 const GOOGLE_CHILD_SERVICES = [
@@ -201,6 +208,7 @@ const LEGACY_INTEGRATIONS: LegacyIntegration[] = [
   { provider: "shopify", name: "Shopify", description: "E-commerce automation", icon: ShoppingCart, color: "bg-green-600/20", iconColor: "text-green-400", category: "tools" },
   { provider: "elevenlabs", name: "ElevenLabs", description: "AI voice synthesis", icon: Volume2, color: "bg-fuchsia-500/20", iconColor: "text-fuchsia-400", category: "tools" },
   { provider: "skip-trace", name: "Skip Trace (BatchData)", description: "People data lookup", icon: Users, color: "bg-violet-500/20", iconColor: "text-violet-400", category: "tools" },
+  { provider: "telegram", name: "Telegram Bot", description: "Receive and reply to Telegram DMs", icon: Send, color: "bg-sky-500/20", iconColor: "text-sky-400", category: "communication" },
 ];
 
 interface ProviderAsset {
@@ -1248,6 +1256,29 @@ export default function IntegrationsPage() {
     },
   });
 
+  const telegramSetupMutation = useMutation({
+    mutationFn: async (config: Record<string, string>) => {
+      const res = await fetch(`/api/telegram/setup/${subAccountId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ botToken: config.botToken }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Telegram setup failed");
+      }
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Telegram Connected", description: `Bot @${data.botUsername} is now active. Webhook configured.` });
+      queryClient.invalidateQueries({ queryKey: ["/api/integrations", subAccountId] });
+      connectMutation.mutate({ provider: "telegram", config: { botUsername: data.botUsername, webhookUrl: data.webhookUrl } });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Telegram Setup Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   const isConnected = (provider: string) =>
     connections.some((c) => c.provider === provider && c.connected);
 
@@ -1494,8 +1525,14 @@ export default function IntegrationsPage() {
               setConnectingProvider(null);
               setConfiguringProvider(null);
             }}
-            onSave={(config) => connectMutation.mutate({ provider: activeProvider, config })}
-            isSaving={connectMutation.isPending}
+            onSave={(config) => {
+              if (activeProvider === "telegram") {
+                telegramSetupMutation.mutate(config);
+              } else {
+                connectMutation.mutate({ provider: activeProvider, config });
+              }
+            }}
+            isSaving={connectMutation.isPending || telegramSetupMutation.isPending}
           />
         )}
       </AnimatePresence>
