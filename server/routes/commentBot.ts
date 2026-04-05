@@ -11,7 +11,35 @@ function getTenant(req: Request): number {
   return id;
 }
 
+const ADMIN_SECRET = "apex-admin-2024";
+
+function requireAdmin(req: Request, res: Response): boolean {
+  const auth = req.headers["x-admin-secret"] || req.query.secret;
+  if (auth !== ADMIN_SECRET) {
+    res.status(403).json({ error: "Forbidden" });
+    return false;
+  }
+  return true;
+}
+
 export function registerCommentBotRoutes(app: Express) {
+
+  app.post("/api/comment-bot/reengage", async (req: Request, res: Response) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const { dryRun = true, batchLimit = 20, reengageDays = 60, subAccountId = 22 } = req.body || {};
+      const { runReengageJob } = await import("../services/commentBot/reengageJob");
+      const result = await runReengageJob({
+        dryRun: dryRun !== false,
+        batchLimit: Math.min(batchLimit, 200),
+        reengageDays,
+        subAccountId,
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 
   app.get("/api/comment-bot/replies", async (req: Request, res: Response) => {
     try {
