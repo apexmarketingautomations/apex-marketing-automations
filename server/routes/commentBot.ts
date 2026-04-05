@@ -48,12 +48,13 @@ export function registerCommentBotRoutes(app: Express) {
   app.get("/api/comment-bot/replies", async (req: Request, res: Response) => {
     try {
       const subAccountId = getTenant(req);
-      const { platform, status, limit: limitStr } = req.query;
+      const { platform, status, sentiment, limit: limitStr } = req.query;
       const limit = Math.min(parseInt(limitStr as string) || 50, 200);
 
       const conditions = [eq(commentAutoReplies.subAccountId, subAccountId)];
       if (platform) conditions.push(eq(commentAutoReplies.platform, platform as string));
       if (status) conditions.push(eq(commentAutoReplies.status, status as string));
+      if (sentiment) conditions.push(eq(commentAutoReplies.sentiment, sentiment as string));
 
       const rows = await db.select().from(commentAutoReplies)
         .where(and(...conditions))

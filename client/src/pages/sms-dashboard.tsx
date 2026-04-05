@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { format } from "date-fns";
-import { Send, Phone, User, Building2, MessageSquare, Loader2, CheckCircle2, Clock, Instagram, Mail, Bell, BookOpen, MessageCircle, CheckCheck, Bot, Facebook, Zap, Play, Pause } from "lucide-react";
+import { Send, Phone, User, Building2, MessageSquare, Loader2, CheckCircle2, Clock, Instagram, Mail, Bell, BookOpen, MessageCircle, CheckCheck, Bot, Facebook, Zap, Play, Pause, Filter, BarChart3, ThumbsUp, ThumbsDown, Minus, HelpCircle, ShieldAlert } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { INBOX_STEPS } from "@/components/tutorial-steps";
 import { motion, AnimatePresence } from "framer-motion";
@@ -33,9 +33,17 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 import { api } from "@/lib/api";
-import type { SubAccount, Message } from "@shared/schema";
+import type { SubAccount, Message, CommentAutoReply } from "@shared/schema";
 
 const formSchema = z.object({
   subAccountId: z.string().min(1, "Please select an account"),
@@ -144,9 +152,213 @@ function DmSequenceCard({ subAccountId }: { subAccountId?: number }) {
   );
 }
 
+interface CommentStats {
+  total: number;
+  replied: number;
+  skipped: number;
+  failed: number;
+  disabled: number;
+  byPlatform: { facebook: number; instagram: number };
+  bySentiment: { positive: number; negative: number; neutral: number; question: number; spam: number };
+}
+
+const sentimentConfig: Record<string, { label: string; color: string; icon: typeof ThumbsUp }> = {
+  positive: { label: "Positive", color: "text-green-400 bg-green-400/10 border-green-400/20", icon: ThumbsUp },
+  negative: { label: "Negative", color: "text-red-400 bg-red-400/10 border-red-400/20", icon: ThumbsDown },
+  neutral: { label: "Neutral", color: "text-slate-400 bg-slate-400/10 border-slate-400/20", icon: Minus },
+  question: { label: "Question", color: "text-blue-400 bg-blue-400/10 border-blue-400/20", icon: HelpCircle },
+  spam: { label: "Spam", color: "text-amber-400 bg-amber-400/10 border-amber-400/20", icon: ShieldAlert },
+};
+
+const statusConfig: Record<string, { label: string; color: string }> = {
+  replied: { label: "Replied", color: "text-green-400 bg-green-400/10 border-green-400/20" },
+  skipped: { label: "Skipped", color: "text-slate-400 bg-slate-400/10 border-slate-400/20" },
+  failed: { label: "Failed", color: "text-red-400 bg-red-400/10 border-red-400/20" },
+  pending: { label: "Pending", color: "text-amber-400 bg-amber-400/10 border-amber-400/20" },
+  disabled: { label: "Disabled", color: "text-slate-500 bg-slate-500/10 border-slate-500/20" },
+};
+
+function CommentsView({ subAccountId }: { subAccountId?: number }) {
+  const [platformFilter, setPlatformFilter] = useState<string>("all");
+  const [sentimentFilter, setSentimentFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  const queryParams = new URLSearchParams();
+  if (platformFilter !== "all") queryParams.set("platform", platformFilter);
+  if (sentimentFilter !== "all") queryParams.set("sentiment", sentimentFilter);
+  if (statusFilter !== "all") queryParams.set("status", statusFilter);
+  queryParams.set("limit", "100");
+
+  const { data: replies = [], isLoading: repliesLoading } = useQuery<CommentAutoReply[]>({
+    queryKey: ["/api/comment-bot/replies", subAccountId, platformFilter, sentimentFilter, statusFilter],
+    queryFn: async () => {
+      const res = await fetch(`/api/comment-bot/replies?${queryParams.toString()}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!subAccountId,
+    staleTime: 30_000,
+  });
+
+  const { data: stats } = useQuery<CommentStats>({
+    queryKey: ["/api/comment-bot/stats", subAccountId],
+    queryFn: async () => {
+      const res = await fetch("/api/comment-bot/stats", { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!subAccountId,
+    staleTime: 30_000,
+  });
+
+  return (
+    <div className="flex flex-col h-full">
+      {stats && (
+        <div className="p-3 border-b border-border bg-card" data-testid="comments-stats-bar">
+          <div className="flex items-center gap-4 flex-wrap text-xs">
+            <div className="flex items-center gap-1.5">
+              <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-muted-foreground">Total:</span>
+              <span className="font-semibold text-foreground" data-testid="stat-total">{stats.total}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+              <span className="text-muted-foreground">Replied:</span>
+              <span className="font-semibold text-green-400" data-testid="stat-replied">{stats.replied}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Clock className="h-3.5 w-3.5 text-slate-400" />
+              <span className="text-muted-foreground">Skipped:</span>
+              <span className="font-semibold text-slate-400" data-testid="stat-skipped">{stats.skipped}</span>
+            </div>
+            <div className="h-3 w-px bg-border" />
+            <div className="flex items-center gap-1.5">
+              <Facebook className="h-3.5 w-3.5 text-blue-500" />
+              <span className="font-medium" data-testid="stat-facebook">{stats.byPlatform.facebook}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Instagram className="h-3.5 w-3.5 text-pink-500" />
+              <span className="font-medium" data-testid="stat-instagram">{stats.byPlatform.instagram}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="p-3 border-b border-border bg-card/50 flex items-center gap-2 flex-wrap" data-testid="comments-filters">
+        <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+        <Select value={platformFilter} onValueChange={setPlatformFilter}>
+          <SelectTrigger className="h-7 w-[130px] text-xs" data-testid="filter-platform">
+            <SelectValue placeholder="Platform" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Platforms</SelectItem>
+            <SelectItem value="facebook">Facebook</SelectItem>
+            <SelectItem value="instagram">Instagram</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={sentimentFilter} onValueChange={setSentimentFilter}>
+          <SelectTrigger className="h-7 w-[120px] text-xs" data-testid="filter-sentiment">
+            <SelectValue placeholder="Sentiment" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Sentiment</SelectItem>
+            <SelectItem value="positive">Positive</SelectItem>
+            <SelectItem value="negative">Negative</SelectItem>
+            <SelectItem value="neutral">Neutral</SelectItem>
+            <SelectItem value="question">Question</SelectItem>
+            <SelectItem value="spam">Spam</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="h-7 w-[110px] text-xs" data-testid="filter-status">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="replied">Replied</SelectItem>
+            <SelectItem value="skipped">Skipped</SelectItem>
+            <SelectItem value="failed">Failed</SelectItem>
+            <SelectItem value="pending">Pending</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <ScrollArea className="flex-1 bg-muted/30">
+        <div className="p-4 space-y-3">
+          {repliesLoading ? (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : replies.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
+              <MessageSquare className="h-10 w-10 mb-2 opacity-20" />
+              <p className="text-sm">No comments found</p>
+              <p className="text-xs mt-1">Comments from Facebook and Instagram posts will appear here</p>
+            </div>
+          ) : (
+            replies.map((reply) => {
+              const sentiment = sentimentConfig[reply.sentiment || "neutral"] || sentimentConfig.neutral;
+              const status = statusConfig[reply.status] || statusConfig.pending;
+              const SentimentIcon = sentiment.icon;
+              return (
+                <motion.div
+                  key={reply.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="rounded-lg border border-border bg-card p-3 space-y-2"
+                  data-testid={`comment-entry-${reply.id}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {reply.platform === "facebook" ? (
+                        <Facebook className="h-4 w-4 text-blue-500 flex-shrink-0" />
+                      ) : (
+                        <Instagram className="h-4 w-4 text-pink-500 flex-shrink-0" />
+                      )}
+                      <span className="text-sm font-medium truncate" data-testid={`commenter-name-${reply.id}`}>
+                        {reply.commenterName || "Unknown User"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 h-5 gap-1 border ${sentiment.color}`} data-testid={`sentiment-badge-${reply.id}`}>
+                        <SentimentIcon className="h-2.5 w-2.5" />
+                        {sentiment.label}
+                      </Badge>
+                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 h-5 border ${status.color}`} data-testid={`status-badge-${reply.id}`}>
+                        {status.label}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <div className="rounded-md bg-muted/50 px-3 py-2">
+                    <p className="text-sm text-foreground" data-testid={`comment-text-${reply.id}`}>{reply.commentText}</p>
+                  </div>
+
+                  {reply.replyText && (
+                    <div className="flex items-start gap-2 pl-4 border-l-2 border-primary/30">
+                      <Bot className="h-3.5 w-3.5 text-primary mt-0.5 flex-shrink-0" />
+                      <p className="text-sm text-muted-foreground" data-testid={`reply-text-${reply.id}`}>{reply.replyText}</p>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-1">
+                    <span className="capitalize">{reply.platform}</span>
+                    <span data-testid={`comment-time-${reply.id}`}>{format(new Date(reply.createdAt), "MMM d, h:mm a")}</span>
+                  </div>
+                </motion.div>
+              );
+            })
+          )}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
+
 export default function SmsDashboard() {
   const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_inbox");
   const { activeAccountId } = useAccount();
+  const [inboxTab, setInboxTab] = useState<string>("messages");
   const [instagramConnected, setInstagramConnected] = useState(false);
   const [localMessages, setLocalMessages] = useState<LocalMessage[]>([]);
   const [selectedConv, setSelectedConv] = useState<{ contactPhone: string; channel: string } | null>(null);
@@ -489,6 +701,17 @@ export default function SmsDashboard() {
 
         {/* Main Content: Chat Interface */}
         <div className="lg:col-span-2 h-[calc(100vh-12rem)] md:h-[800px] flex flex-col">
+          <Tabs value={inboxTab} onValueChange={setInboxTab} className="flex flex-col h-full">
+            <TabsList className="bg-muted/50 border border-border p-1 mb-3 self-start" data-testid="inbox-tab-list">
+              <TabsTrigger value="messages" className="text-sm gap-1.5 data-[state=active]:bg-background data-[state=active]:text-foreground" data-testid="tab-messages">
+                <MessageSquare className="h-3.5 w-3.5" /> Messages
+              </TabsTrigger>
+              <TabsTrigger value="comments" className="text-sm gap-1.5 data-[state=active]:bg-background data-[state=active]:text-foreground" data-testid="tab-comments">
+                <MessageCircle className="h-3.5 w-3.5" /> Comments
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="messages" className="flex-1 flex flex-col mt-0 min-h-0">
           <Card className="flex-1 flex flex-col shadow-md border-border overflow-hidden">
             
             {/* Header */}
@@ -704,6 +927,14 @@ export default function SmsDashboard() {
               </Form>
             </div>
           </Card>
+            </TabsContent>
+
+            <TabsContent value="comments" className="flex-1 flex flex-col mt-0 min-h-0">
+              <Card className="flex-1 flex flex-col shadow-md border-border overflow-hidden" data-testid="card-comments-view">
+                <CommentsView subAccountId={numericAccountId} />
+              </Card>
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
       {showTutorial && <TutorialOverlay steps={INBOX_STEPS} storageKey="apex_tutorial_inbox" onClose={closeTutorial} accentColor="indigo" />}
