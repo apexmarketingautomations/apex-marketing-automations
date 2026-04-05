@@ -72,6 +72,7 @@ Public API endpoints for external website integrations, authenticated via `X-API
 - **Events**: `POST /api/v1/external/events` — event name, metadata, sessionId, pageUrl → logged as messages + fires automation triggers
 - All endpoints have CORS `*`, are in CSRF + auth bypass lists, and wrapped in `asyncHandler`.
 - **Connected Accounts**: Belladonna House of Beauty (id=21, industry=beauty-salon, apiKey=apex_59b71...).
+- **Internal Accounts**: Officer Layla (id=22, role=internal_ai_operator, parent=13). Permanent, billing-exempt, non-deletable AI persona operator. Shares Meta credentials with parent APEX MARKETING account.
 
 ## Digital Business Card System
 

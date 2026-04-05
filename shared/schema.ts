@@ -60,6 +60,12 @@ export const subAccounts = pgTable("sub_accounts", {
   twilioSubaccountSid: text("twilio_subaccount_sid"),
   twilioSubaccountAuthToken: text("twilio_subaccount_auth_token"),
   twilioStatus: text("twilio_status").default("legacy"),
+  isInternal: boolean("is_internal").default(false),
+  billingExempt: boolean("billing_exempt").default(false),
+  isDeletable: boolean("is_deletable").default(true),
+  role: text("role"),
+  parentAccountId: integer("parent_account_id"),
+  operatorConfig: json("operator_config"),
 });
 
 export const insertSubAccountSchema = createInsertSchema(subAccounts).omit({ id: true });
