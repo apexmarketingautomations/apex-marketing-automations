@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { format } from "date-fns";
-import { Send, Phone, User, Building2, MessageSquare, Loader2, CheckCircle2, Clock, Instagram, Mail, Bell, BookOpen, MessageCircle, CheckCheck, Bot, Facebook, Zap, Play, Pause, Filter, BarChart3, ThumbsUp, ThumbsDown, Minus, HelpCircle, ShieldAlert } from "lucide-react";
+import { Send, Phone, User, Building2, MessageSquare, Loader2, CheckCircle2, Clock, Instagram, Mail, Bell, BookOpen, MessageCircle, CheckCheck, Bot, Facebook, Zap, Play, Pause, Filter, BarChart3, ThumbsUp, ThumbsDown, Minus, HelpCircle, ShieldAlert, RefreshCw } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { INBOX_STEPS } from "@/components/tutorial-steps";
 import { motion, AnimatePresence } from "framer-motion";
@@ -360,6 +360,7 @@ export default function SmsDashboard() {
   const [inboxTab, setInboxTab] = useState<string>("messages");
   const instagramConnected = true;
   const [localMessages, setLocalMessages] = useState<LocalMessage[]>([]);
+  const [syncResult, setSyncResult] = useState<any>(null);
   const [selectedConv, setSelectedConv] = useState<{ contactPhone: string; channel: string } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -486,6 +487,34 @@ export default function SmsDashboard() {
     form.setValue("channel", "sms");
   };
 
+  const syncDmsMutation = useMutation({
+    mutationFn: async () => {
+      if (!numericAccountId) throw new Error("No account selected");
+      const res = await fetch(`/api/sync-dms/${numericAccountId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ maxPages: 15 }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Sync failed (${res.status})`);
+      }
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      setSyncResult(data);
+      queryClient.invalidateQueries({ queryKey: ["/api/messages"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+      toast({
+        title: "DM Sync Complete",
+        description: `${data.totalMessagesSynced} new messages, ${data.contactsCreated} contacts resolved across ${data.totalConversations} conversations`,
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Sync Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollIntoView({ behavior: "smooth" });
@@ -583,6 +612,36 @@ export default function SmsDashboard() {
                     <Badge variant="outline" className="text-xs text-green-400 border-green-500/30">Active</Badge>
                  </div>
                  <p className="text-xs text-muted-foreground">Instagram DMs appear automatically via Meta webhook.</p>
+              </div>
+
+              <div className="space-y-3 pt-2 border-t border-border">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-blue-100 rounded-md">
+                      <RefreshCw className="h-4 w-4 text-blue-600" />
+                    </div>
+                    <span className="text-sm font-medium">Sync DMs</span>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">Pull recent Facebook & Instagram DMs from Meta and resolve contact names.</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full text-xs"
+                  onClick={() => syncDmsMutation.mutate()}
+                  disabled={syncDmsMutation.isPending}
+                  data-testid="button-sync-dms"
+                >
+                  <RefreshCw className={`mr-2 h-3 w-3 ${syncDmsMutation.isPending ? "animate-spin" : ""}`} />
+                  {syncDmsMutation.isPending ? "Syncing..." : "Sync Messages from Meta"}
+                </Button>
+                {syncResult && (
+                  <div className="text-[11px] text-muted-foreground bg-muted/50 rounded p-2 space-y-0.5" data-testid="text-sync-result">
+                    <p>{syncResult.totalMessagesSynced} messages synced</p>
+                    <p>{syncResult.contactsCreated} contacts resolved</p>
+                    <p>{syncResult.totalConversations} conversations scanned</p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

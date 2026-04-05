@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { insertMessageSchema, insertWhatsappTemplateSchema, messages, whatsappTemplates, integrationConnections } from "@shared/schema";
+import { insertMessageSchema, insertWhatsappTemplateSchema, messages, whatsappTemplates, integrationConnections, contacts } from "@shared/schema";
 import { sql, eq, and } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -50,6 +50,104 @@ export function registerMessagingRoutes(app: Express) {
     const filtered = msgs.filter(m => m.contactPhone === contactPhone && (m.channel || "sms") === channel);
     filtered.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
     res.json(filtered);
+  }));
+
+  app.post("/api/sync-dms/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    let metaCfg: any;
+    try {
+      metaCfg = await getMetaConfig(subAccountId);
+    } catch {
+      return res.status(400).json({ error: "Meta not configured for this account" });
+    }
+
+    const maxPages = Math.min(Number(req.body?.maxPages) || 10, 25);
+    let convUrl: string | null = `https://graph.facebook.com/v19.0/${metaCfg.pageId}/conversations?fields=id,updated_time,participants,messages.limit(25){message,from,created_time}&limit=25&access_token=${metaCfg.accessToken}${metaCfg.appsecretProof ? `&appsecret_proof=${metaCfg.appsecretProof}` : ""}`;
+
+    let totalConversations = 0, totalMessages = 0, skippedDuplicates = 0, pageCount = 0, contactsCreated = 0;
+
+    while (convUrl && pageCount < maxPages) {
+      pageCount++;
+      const convRes = await fetch(convUrl);
+      const convData = await convRes.json() as any;
+      if (!convData.data) {
+        console.log(`[DM-SYNC] Error page ${pageCount}:`, convData.error?.message);
+        break;
+      }
+
+      for (const conv of convData.data) {
+        totalConversations++;
+        const participants = conv.participants?.data || [];
+        const otherUser = participants.find((p: any) => p.id !== metaCfg.pageId);
+        const senderId = otherUser?.id || "unknown";
+        const senderName = otherUser?.name || null;
+        const threadId = `${subAccountId}::${senderId}::facebook`;
+
+        if (senderId !== "unknown" && senderName) {
+          const nameParts = senderName.split(" ");
+          const firstName = nameParts[0] || senderName;
+          const lastName = nameParts.slice(1).join(" ") || "";
+          const existingContact = await db.select({ id: contacts.id }).from(contacts)
+            .where(and(eq(contacts.phone, senderId), eq(contacts.subAccountId, subAccountId)))
+            .limit(1);
+          if (existingContact.length === 0) {
+            await db.insert(contacts).values({
+              subAccountId,
+              firstName,
+              lastName,
+              phone: senderId,
+              channel: "facebook",
+              source: "meta-sync",
+            });
+            contactsCreated++;
+          }
+        }
+
+        const msgList = conv.messages?.data || [];
+        for (const msg of msgList) {
+          if (!msg.message) continue;
+          const isFromPage = msg.from?.id === metaCfg.pageId;
+          const direction = isFromPage ? "outbound" : "inbound";
+          const msgSid = `meta_${conv.id}_${msg.id || new Date(msg.created_time).getTime()}`;
+
+          const existing = await db.select({ id: messages.id }).from(messages)
+            .where(and(eq(messages.messageSid, msgSid), eq(messages.subAccountId, subAccountId)))
+            .limit(1);
+
+          if (existing.length > 0) { skippedDuplicates++; continue; }
+
+          await db.insert(messages).values({
+            subAccountId,
+            direction,
+            body: msg.message,
+            status: "delivered",
+            contactPhone: senderId,
+            channel: "facebook",
+            messageSid: msgSid,
+            threadId,
+            senderId: direction === "inbound" ? senderId : metaCfg.pageId,
+            pageId: metaCfg.pageId,
+            traceId: `sync-${Date.now()}`,
+            createdAt: new Date(msg.created_time),
+          });
+          totalMessages++;
+        }
+      }
+
+      console.log(`[DM-SYNC] Account ${subAccountId} page ${pageCount}: ${convData.data.length} convos, ${totalMessages} msgs synced`);
+      convUrl = convData.paging?.next || null;
+    }
+
+    res.json({
+      subAccountId,
+      totalConversations,
+      totalMessagesSynced: totalMessages,
+      contactsCreated,
+      skippedDuplicates,
+      pagesProcessed: pageCount,
+    });
   }));
 
   app.post("/api/messages", messagingLimiter, asyncHandler(async (req, res) => {
