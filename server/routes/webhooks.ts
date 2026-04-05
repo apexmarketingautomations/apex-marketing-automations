@@ -152,6 +152,16 @@ export function registerWebhooksRoutes(app: Express) {
           traceId: trace.traceId,
           messageSid: messageSid || null,
         });
+        broadcastNewMessage(matchedAccountId, {
+          id: storedMsg.id,
+          subAccountId: matchedAccountId,
+          contactPhone: senderClean,
+          body: incomingMsg,
+          direction: "inbound",
+          channel,
+          status: "received",
+          createdAt: new Date().toISOString(),
+        });
         recordStepValue(trace, "crm_write", "success", Date.now() - crmStart, {
           metadata: { channel, direction: "inbound", messageId: storedMsg.id },
           disambiguator: messageSid || String(storedMsg.id),
@@ -257,7 +267,7 @@ export function registerWebhooksRoutes(app: Express) {
         }
 
         try {
-          await storage.createMessage({
+          const outMsg = await storage.createMessage({
             subAccountId: matchedAccountId,
             contactPhone: senderClean,
             body: aiReply,
@@ -266,6 +276,16 @@ export function registerWebhooksRoutes(app: Express) {
             status: outboundStatus,
             messageSid: outboundSid || null,
             traceId: trace.traceId,
+          });
+          broadcastNewMessage(matchedAccountId, {
+            id: outMsg.id,
+            subAccountId: matchedAccountId,
+            contactPhone: senderClean,
+            body: aiReply,
+            direction: "outbound",
+            channel,
+            status: outboundStatus,
+            createdAt: new Date().toISOString(),
           });
         } catch (logErr: any) {
           console.error("[WEBHOOKS] Failed to log outbound reply:", logErr.message);
@@ -2231,5 +2251,172 @@ export function registerWebhooksRoutes(app: Express) {
       stream.sendError(err.message || "God Mode launch failed");
       stream.end();
     }
+  }));
+
+  // ---- Telegram Bot Webhook ----
+  app.post("/api/webhooks/telegram", async (req: Request, res: Response) => {
+    try {
+      const update = req.body;
+      const message = update?.message;
+      if (!message || !message.text) {
+        return res.json({ ok: true });
+      }
+
+      const chatId = String(message.chat.id);
+      const text = message.text;
+      const username = message.from?.username || message.from?.first_name || "Unknown";
+      const firstName = message.from?.first_name || username;
+      const lastName = message.from?.last_name || "";
+
+      console.log(`[TELEGRAM] Inbound from ${username} (${chatId}): ${text.substring(0, 100)}`);
+
+      const allAccounts = await db.select().from(subAccounts);
+      const matchedAccount = allAccounts.find(a => a.telegramBotToken);
+      if (!matchedAccount) {
+        console.error("[TELEGRAM] No account with telegram_bot_token configured");
+        return res.json({ ok: true });
+      }
+
+      const subAccountId = matchedAccount.id;
+      const contactPhone = chatId;
+
+      const existingContact = await db.select({ id: contacts.id }).from(contacts)
+        .where(and(eq(contacts.phone, contactPhone), eq(contacts.subAccountId, subAccountId)))
+        .limit(1);
+
+      if (existingContact.length === 0) {
+        await db.insert(contacts).values({
+          subAccountId,
+          firstName,
+          lastName,
+          phone: contactPhone,
+          channel: "telegram",
+          source: "telegram-webhook",
+        });
+      }
+
+      const inboundMsg = await storage.createMessage({
+        subAccountId,
+        contactPhone,
+        body: text,
+        direction: "inbound",
+        channel: "telegram",
+        status: "received",
+        messageSid: `tg_${update.update_id}`,
+        traceId: `tg-${Date.now()}`,
+      });
+
+      broadcastNewMessage(subAccountId, {
+        id: inboundMsg.id,
+        subAccountId,
+        contactPhone,
+        body: text,
+        direction: "inbound",
+        channel: "telegram",
+        status: "received",
+        createdAt: new Date().toISOString(),
+      });
+
+      let aiReply = "Thanks for your message! We'll get back to you shortly.";
+      if (isAIConfigured()) {
+        try {
+          const dmCtx = await assembleDmContext({ subAccountId, contactPhone, channel: "telegram" });
+          const aiMessages = await buildDmMessages(dmCtx, "telegram", text);
+          const langInstr = getLanguageInstruction(dmCtx.language);
+          if (langInstr && aiMessages.length > 0 && aiMessages[0].role === "system") {
+            aiMessages[0].content += langInstr;
+          }
+          const aiResult = await aiChat(aiMessages, { temperature: 0.7, maxTokens: 1024, route: "webhook-telegram-reply" });
+          aiReply = aiResult.text || aiReply;
+        } catch (aiErr: any) {
+          console.error("[TELEGRAM] AI reply error:", aiErr.message);
+        }
+      }
+
+      const tgSendUrl = `https://api.telegram.org/bot${matchedAccount.telegramBotToken}/sendMessage`;
+      const tgRes = await fetch(tgSendUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, text: aiReply }),
+      });
+      const tgData = await tgRes.json() as any;
+
+      const outStatus = tgData.ok ? "sent" : "failed";
+      const outMsgSid = tgData.result?.message_id ? `tg_out_${tgData.result.message_id}` : `tg_out_${Date.now()}`;
+
+      const outboundMsg = await storage.createMessage({
+        subAccountId,
+        contactPhone,
+        body: aiReply,
+        direction: "outbound",
+        channel: "telegram",
+        status: outStatus,
+        messageSid: outMsgSid,
+        traceId: `tg-reply-${Date.now()}`,
+      });
+
+      broadcastNewMessage(subAccountId, {
+        id: outboundMsg.id,
+        subAccountId,
+        contactPhone,
+        body: aiReply,
+        direction: "outbound",
+        channel: "telegram",
+        status: outStatus,
+        createdAt: new Date().toISOString(),
+      });
+
+      if (!tgData.ok) {
+        console.error("[TELEGRAM] Send failed:", tgData.description);
+      } else {
+        console.log(`[TELEGRAM] Reply sent to ${chatId}: ${aiReply.substring(0, 80)}...`);
+      }
+
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[TELEGRAM] Webhook error:", err.message);
+      res.json({ ok: true });
+    }
+  });
+
+  // ---- Telegram Bot Setup Endpoint ----
+  app.post("/api/telegram/setup/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
+    const subAccountId = Number(req.params.subAccountId);
+    const { botToken } = req.body;
+    if (!botToken) {
+      return res.status(400).json({ error: "botToken is required" });
+    }
+
+    const meRes = await fetch(`https://api.telegram.org/bot${botToken}/getMe`);
+    const meData = await meRes.json() as any;
+    if (!meData.ok) {
+      return res.status(400).json({ error: `Invalid bot token: ${meData.description}` });
+    }
+
+    const botUsername = meData.result.username;
+
+    const deployedDomain = process.env.REPLIT_DOMAINS?.split(",")[0] || process.env.REPL_SLUG + ".replit.app";
+    const webhookUrl = `https://${deployedDomain}/api/webhooks/telegram`;
+
+    const setRes = await fetch(`https://api.telegram.org/bot${botToken}/setWebhook`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: webhookUrl }),
+    });
+    const setData = await setRes.json() as any;
+
+    await db.update(subAccounts)
+      .set({ telegramBotToken: botToken, telegramBotUsername: botUsername })
+      .where(eq(subAccounts.id, subAccountId));
+
+    console.log(`[TELEGRAM] Bot @${botUsername} webhook set to ${webhookUrl}`);
+
+    res.json({
+      success: true,
+      botUsername,
+      webhookUrl,
+      webhookSet: setData.ok,
+      description: setData.description,
+    });
   }));
 }

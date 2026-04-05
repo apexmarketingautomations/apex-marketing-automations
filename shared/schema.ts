@@ -66,6 +66,8 @@ export const subAccounts = pgTable("sub_accounts", {
   role: text("role"),
   parentAccountId: integer("parent_account_id"),
   operatorConfig: json("operator_config"),
+  telegramBotToken: text("telegram_bot_token"),
+  telegramBotUsername: text("telegram_bot_username"),
 });
 
 export const insertSubAccountSchema = createInsertSchema(subAccounts).omit({ id: true });

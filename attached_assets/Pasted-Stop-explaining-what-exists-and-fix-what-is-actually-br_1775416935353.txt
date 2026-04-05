@@ -1,0 +1,144 @@
+Stop explaining what exists and fix what is actually broken. Treat this as a production SaaS system, not a demo.
+
+The Unified Inbox currently LOOKS better but is NOT functionally working. Real messages are not flowing, replies are not triggering, and channels are not truly connected.
+
+You are now responsible for taking this from partial UI to a fully working multi-channel inbox.
+
+Execute this in order, no deviations:
+
+---
+
+### PHASE 1 — LIVE MESSAGE PIPELINE (NON-NEGOTIABLE)
+
+1. Verify Meta webhook is connected to the LIVE deployed domain (not preview/dev URL)
+2. Confirm webhook events are being received for BOTH:
+   - Facebook page
+   - Instagram account
+3. Log and show a real inbound message event
+4. Confirm message is inserted into `messages` table with:
+   - correct `channel`
+   - correct `sub_account_id`
+   - correct contact identifier (PSID / IG ID)
+
+If ANY of the above fails, fix it immediately before continuing.
+
+---
+
+### PHASE 2 — AUTO-REPLY EXECUTION
+
+1. Confirm inbound message triggers AI response pipeline
+2. Show logs of:
+   - response generation
+   - send attempt
+   - success/failure
+3. If replies are not sending:
+   - identify exact failure point (token, API call, routing, etc.)
+   - fix it
+
+End result:
+- Send a real message → it appears → bot replies
+
+---
+
+### PHASE 3 — REAL-TIME UPDATES (NO POLLING)
+
+Replace polling with real-time updates:
+
+- Implement WebSocket or Server-Sent Events
+- When a new message is inserted:
+  - UI updates instantly
+  - conversation list updates
+  - active thread updates
+
+No delay. No refresh. No polling loops.
+
+---
+
+### PHASE 4 — CHANNEL SYSTEM (TRUTH-BASED, NOT FAKE)
+
+Fix channel architecture:
+
+1. Each message MUST have:
+   - `channel`: facebook | instagram | whatsapp | telegram | sms
+
+2. Channel pills must:
+   - only show channels that are ACTUALLY connected
+   - filter correctly using real data
+   - never show empty/fake channels
+
+3. Verify Instagram specifically:
+   - messages are being received
+   - stored in DB
+   - visible in inbox
+
+If IG is not working, diagnose permissions, webhook, or API issues and fix.
+
+---
+
+### PHASE 5 — UNIFIED INBOX STABILITY
+
+Fix all UI/UX issues:
+
+- Conversation list must scroll fully (no clipping)
+- Message thread must scroll correctly
+- No fake phone numbers or placeholders
+- Contact identity must be accurate per channel
+- No dead buttons anywhere
+
+This should feel like:
+Stripe / Intercom / HighLevel — NOT a prototype
+
+---
+
+### PHASE 6 — COMMENTS TAB (FUNCTIONAL, NOT DECORATIVE)
+
+1. Fix FB/IG filters so they are clickable and actually filter
+2. Confirm `comment_auto_replies` has real data
+3. If empty:
+   - explain why (webhook, storage, or bot issue)
+   - fix ingestion
+
+4. Add per-comment actions:
+   - reply (if API allows)
+   - react (platform-specific)
+
+---
+
+### PHASE 7 — MULTI-CHANNEL EXPANSION (AFTER CORE WORKS)
+
+ONLY after FB/IG are 100% working:
+
+#### WhatsApp
+- Integrate via Twilio
+- Add webhook: `/api/webhooks/twilio`
+- Store messages with `channel = 'whatsapp'`
+- Enable send + receive
+
+#### Telegram
+- Create bot via BotFather
+- Set webhook: `/api/webhooks/telegram`
+- Store `chat_id`
+- Enable send + receive
+
+All channels must flow into SAME inbox + SAME AI system.
+
+---
+
+### FINAL REQUIREMENTS
+
+Do NOT give summaries.
+
+For each phase:
+- confirm completion
+- show proof (logs, DB rows, or working UI behavior)
+- then move forward
+
+End state must be:
+
+- Real messages appear instantly
+- Replies trigger automatically
+- Channels are accurate
+- Inbox is stable and usable
+- No simulated behavior anywhere
+
+This is now a production system. Build it like one.

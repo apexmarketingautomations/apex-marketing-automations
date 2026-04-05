@@ -1,0 +1,91 @@
+Implement WhatsApp and Telegram as real, fully functional channels in the Unified Inbox. Do not treat them as UI-only or placeholder channels — they must be live, end-to-end integrations.
+
+---
+
+### GOAL
+Both WhatsApp and Telegram must:
+- Receive inbound messages
+- Store them in the `messages` table with correct `channel`
+- Appear in the Unified Inbox instantly
+- Trigger AI auto-replies
+- Send replies back successfully
+
+---
+
+### WHATSAPP (Twilio Integration)
+
+1. Use Twilio WhatsApp API (not custom or mock)
+2. Configure webhook:
+   - POST `/api/webhooks/twilio`
+   - Must be connected to LIVE deployed domain (not preview)
+
+3. Handle inbound:
+   - Parse `From`, `Body`, `ProfileName`
+   - Normalize:
+     - `channel = 'whatsapp'`
+     - `contact_id = phone number`
+   - Insert into `messages` with correct `sub_account_id`
+
+4. Reply logic:
+   - Use Twilio `messages.create`
+   - Send response back to user
+   - Log success/failure
+
+5. Routing:
+   - Map incoming number → correct `sub_account_id`
+   - Do NOT hardcode account IDs
+
+---
+
+### TELEGRAM (Bot API)
+
+1. Create Telegram bot (BotFather)
+2. Set webhook:
+   - POST `/api/webhooks/telegram`
+   - Use LIVE domain
+
+3. Handle inbound:
+   - Extract `chat.id`, `message.text`, `username`
+   - Normalize:
+     - `channel = 'telegram'`
+     - `contact_id = chat.id`
+   - Insert into `messages` with correct `sub_account_id`
+
+4. Reply logic:
+   - Use `sendMessage` API
+   - Send response back to same `chat_id`
+
+---
+
+### UNIFIED INBOX INTEGRATION
+
+1. Ensure both channels:
+   - Appear in channel pills ONLY when connected
+   - Filter correctly by `channel`
+
+2. Messages must:
+   - Appear instantly (no polling delay)
+   - Show correct platform label/icon
+   - Merge into same conversation system
+
+---
+
+### CRITICAL REQUIREMENTS
+
+- NO mock data
+- NO simulated messages
+- NO fake channels
+- Everything must be live + verifiable
+
+---
+
+### VALIDATION (must pass all)
+
+- Send WhatsApp message → appears in inbox → auto-reply sent
+- Send Telegram message → appears in inbox → auto-reply sent
+- Messages stored correctly in DB
+- Channel filter correctly isolates them
+
+---
+
+Do not respond with explanation. Implement and confirm with real test results.

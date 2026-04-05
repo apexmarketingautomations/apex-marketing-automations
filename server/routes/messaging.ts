@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { insertMessageSchema, insertWhatsappTemplateSchema, messages, whatsappTemplates, integrationConnections, contacts } from "@shared/schema";
+import { insertMessageSchema, insertWhatsappTemplateSchema, messages, whatsappTemplates, integrationConnections, contacts, subAccounts } from "@shared/schema";
 import { sql, eq, and } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -390,9 +390,68 @@ export function registerMessagingRoutes(app: Express) {
           twilioError = fbErr.message || "Facebook send failed";
         }
       }
+    } else if (channel === "telegram") {
+      const account = await db.select().from(subAccounts).where(eq(subAccounts.id, subAccountId)).limit(1);
+      const tgToken = account[0]?.telegramBotToken;
+      if (!tgToken) {
+        twilioStatus = "failed";
+        twilioError = "No Telegram bot token configured for this account.";
+      } else {
+        try {
+          const tgUrl = `https://api.telegram.org/bot${tgToken}/sendMessage`;
+          const tgRes = await fetch(tgUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chat_id: contactPhone, text: body }),
+          });
+          const tgData = await tgRes.json() as any;
+          if (tgData.ok) {
+            twilioStatus = "sent";
+            twilioSid = `tg_out_${tgData.result.message_id}`;
+          } else {
+            twilioStatus = "failed";
+            twilioError = tgData.description || "Telegram send failed";
+          }
+        } catch (tgErr: any) {
+          twilioStatus = "failed";
+          twilioError = tgErr.message || "Telegram send failed";
+        }
+      }
+    } else if (channel === "instagram") {
+      const account = await db.select().from(subAccounts).where(eq(subAccounts.id, subAccountId)).limit(1);
+      const metaToken = account[0]?.metaAccessToken;
+      const metaPageId = account[0]?.metaPageId;
+      if (!metaToken || !metaPageId) {
+        twilioStatus = "failed";
+        twilioError = "No Meta credentials configured for Instagram sending.";
+      } else {
+        try {
+          const igUrl = `https://graph.facebook.com/v19.0/${metaPageId}/messages`;
+          const igRes = await fetch(igUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              recipient: { id: contactPhone },
+              message: { text: body },
+              access_token: metaToken,
+            }),
+          });
+          const igData = await igRes.json() as any;
+          if (igRes.ok) {
+            twilioStatus = "sent";
+            twilioSid = igData.message_id || null;
+          } else {
+            twilioStatus = "failed";
+            twilioError = igData?.error?.message || "Instagram send failed";
+          }
+        } catch (igErr: any) {
+          twilioStatus = "failed";
+          twilioError = igErr.message || "Instagram send failed";
+        }
+      }
     } else {
       twilioStatus = "unsupported";
-      twilioError = `Channel '${channel}' is not supported for outbound sending. Use 'sms', 'whatsapp', or 'facebook'.`;
+      twilioError = `Channel '${channel}' is not supported for outbound sending. Use 'sms', 'whatsapp', 'facebook', 'instagram', or 'telegram'.`;
     }
 
     const sendStartMs = Date.now();
