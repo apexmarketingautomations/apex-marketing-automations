@@ -7,7 +7,7 @@ import { z } from "zod";
 import { aiChat, isAIConfigured } from "../aiGateway";
 import { ProgressStream } from "../streaming";
 import crypto from "crypto";
-import { asyncHandler, getUserId, requireAdmin, getIndustryContext, getLanguageInstruction, getTwilioClient, vapiConfig } from "./helpers";
+import { asyncHandler, getUserId, requireAdmin, getIndustryContext, getLanguageInstruction, getTwilioClient, vapiConfig, verifyAccountOwnership } from "./helpers";
 import { broadcastNewMessage } from "../sse";
 import { enforceSmsProvider } from "../smsGatewayGuard";
 import { assembleDmContext, buildDmMessages } from "../dmContextAssembler";
@@ -19,6 +19,10 @@ import { withIdempotency, markEventCompleted, markEventFailed } from "../idempot
 import { extractAndStoreInsights } from "../services/insightExtractor";
 
 export function registerWebhooksRoutes(app: Express) {
+  if (!process.env.TELEGRAM_WEBHOOK_SECRET_SALT && !process.env.SESSION_SECRET) {
+    console.error("[STARTUP] WARNING: Neither TELEGRAM_WEBHOOK_SECRET_SALT nor SESSION_SECRET is set. Telegram webhook setup and verification will fail at runtime.");
+  }
+
   // ---- Unified Webhook (Twilio inbound SMS/WhatsApp/Messenger -> AI auto-reply) ----
 
   function detectChannel(from: string): "whatsapp" | "messenger" | "sms" {
@@ -240,6 +244,10 @@ export function registerWebhooksRoutes(app: Express) {
           : channel === "messenger" ? `messenger:${stripChannelPrefix(toRaw)}`
           : toRaw;
 
+        if (channel === "whatsapp") {
+          console.log(`[WHATSAPP] Sending AI reply via Twilio — from=${replyFrom} to=${senderRaw} account=${matchedAccountId}`);
+        }
+
         let outboundSid: string | null = null;
         let outboundStatus = "sent";
         try {
@@ -250,6 +258,9 @@ export function registerWebhooksRoutes(app: Express) {
             to: senderRaw,
           });
           outboundSid = sentReply.sid;
+          if (channel === "whatsapp") {
+            console.log(`[WHATSAPP] Reply sent successfully — sid=${sentReply.sid} to=${senderClean}`);
+          }
           recordStepValue(trace, "outbound_send", "success", Date.now() - sendStart, {
             provider: "twilio",
             metadata: { channel, to: senderClean, messageSid: sentReply.sid },
@@ -257,7 +268,7 @@ export function registerWebhooksRoutes(app: Express) {
           });
         } catch (sendErr: any) {
           outboundStatus = "failed";
-          console.error("[WEBHOOKS] Outbound send failed:", sendErr.message);
+          console.error(`[${channel.toUpperCase()}] Outbound send failed for account ${matchedAccountId}:`, sendErr.message);
           recordStepValue(trace, "outbound_send", "error", Date.now() - sendStart, {
             provider: "twilio",
             error: sendErr.message,
@@ -2254,11 +2265,25 @@ export function registerWebhooksRoutes(app: Express) {
   }));
 
   // ---- Telegram Bot Webhook ----
-  app.post("/api/webhooks/telegram", async (req: Request, res: Response) => {
+  function getTelegramSecretSalt(): string {
+    const salt = process.env.TELEGRAM_WEBHOOK_SECRET_SALT || process.env.SESSION_SECRET;
+    if (!salt) {
+      throw new Error("TELEGRAM_WEBHOOK_SECRET_SALT or SESSION_SECRET must be set for Telegram webhook security");
+    }
+    return salt;
+  }
+
+  function generateTelegramWebhookSecret(subAccountId: number): string {
+    const salt = getTelegramSecretSalt();
+    return crypto.createHash("sha256").update(`tg-webhook-${subAccountId}-${salt}`).digest("hex").substring(0, 32);
+  }
+
+  const telegramWebhookHandler = async (req: Request, res: Response) => {
     try {
       const update = req.body;
       const message = update?.message;
       if (!message || !message.text) {
+        console.log("[TELEGRAM] Ignoring non-text update (type: " + (update?.message ? "non-text-message" : update?.edited_message ? "edited_message" : update?.callback_query ? "callback_query" : "unknown") + ")");
         return res.json({ ok: true });
       }
 
@@ -2268,12 +2293,39 @@ export function registerWebhooksRoutes(app: Express) {
       const firstName = message.from?.first_name || username;
       const lastName = message.from?.last_name || "";
 
-      console.log(`[TELEGRAM] Inbound from ${username} (${chatId}): ${text.substring(0, 100)}`);
+      console.log(`[TELEGRAM] Inbound from @${username} (chat_id=${chatId}): ${text.substring(0, 100)}`);
 
-      const allAccounts = await db.select().from(subAccounts);
-      const matchedAccount = allAccounts.find(a => a.telegramBotToken);
+      let matchedAccount: typeof subAccounts.$inferSelect | undefined;
+
+      const paramId = req.params.subAccountId ? Number(req.params.subAccountId) : null;
+
+      if (paramId && paramId > 0) {
+        const expectedSecret = generateTelegramWebhookSecret(paramId);
+        const receivedSecret = req.headers["x-telegram-bot-api-secret-token"] as string | undefined;
+
+        if (!receivedSecret || receivedSecret !== expectedSecret) {
+          console.error(`[TELEGRAM] Webhook secret missing or invalid for account ${paramId} — rejecting request`);
+          return res.status(403).json({ ok: false });
+        }
+
+        const [account] = await db.select().from(subAccounts).where(eq(subAccounts.id, paramId)).limit(1);
+        if (account?.telegramBotToken) {
+          matchedAccount = account;
+          console.log(`[TELEGRAM] Matched account ${account.id} (${account.name}) via URL parameter (secret verified)`);
+        } else if (account) {
+          console.error(`[TELEGRAM] Account ${paramId} found but has no Telegram bot token configured — dropping message`);
+          return res.json({ ok: true });
+        } else {
+          console.error(`[TELEGRAM] Account ${paramId} from URL parameter not found — dropping message`);
+          return res.json({ ok: true });
+        }
+      } else {
+        console.error("[TELEGRAM] No subAccountId in URL — this route requires /api/webhooks/telegram/:subAccountId");
+        return res.status(400).json({ ok: false, error: "subAccountId required" });
+      }
+
       if (!matchedAccount) {
-        console.error("[TELEGRAM] No account with telegram_bot_token configured");
+        console.error("[TELEGRAM] No account with telegram_bot_token configured — dropping message");
         return res.json({ ok: true });
       }
 
@@ -2367,9 +2419,9 @@ export function registerWebhooksRoutes(app: Express) {
       });
 
       if (!tgData.ok) {
-        console.error("[TELEGRAM] Send failed:", tgData.description);
+        console.error(`[TELEGRAM] Send failed for account ${subAccountId} to chat_id=${chatId}: ${tgData.description}`);
       } else {
-        console.log(`[TELEGRAM] Reply sent to ${chatId}: ${aiReply.substring(0, 80)}...`);
+        console.log(`[TELEGRAM] Reply sent successfully for account ${subAccountId} to chat_id=${chatId} (msg_id=${tgData.result?.message_id}): ${aiReply.substring(0, 80)}...`);
       }
 
       res.json({ ok: true });
@@ -2377,39 +2429,86 @@ export function registerWebhooksRoutes(app: Express) {
       console.error("[TELEGRAM] Webhook error:", err.message);
       res.json({ ok: true });
     }
+  };
+  app.post("/api/webhooks/telegram/:subAccountId", telegramWebhookHandler);
+
+  app.post("/api/webhooks/telegram", (_req: Request, res: Response) => {
+    console.warn("[TELEGRAM] Legacy fallback route /api/webhooks/telegram called without subAccountId — rejected. Use /api/webhooks/telegram/:subAccountId with secret_token.");
+    res.status(400).json({ ok: false, error: "subAccountId required in URL path. Use /api/webhooks/telegram/:subAccountId" });
   });
 
   // ---- Telegram Bot Setup Endpoint ----
   app.post("/api/telegram/setup/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
-    const subAccountId = Number(req.params.subAccountId);
-    const { botToken } = req.body;
-    if (!botToken) {
-      return res.status(400).json({ error: "botToken is required" });
+    const user = (req as any).user;
+    if (!user) {
+      return res.status(401).json({ error: "Not authenticated" });
     }
 
-    const meRes = await fetch(`https://api.telegram.org/bot${botToken}/getMe`);
-    const meData = await meRes.json() as any;
+    const subAccountId = Number(req.params.subAccountId);
+    if (!subAccountId || isNaN(subAccountId) || subAccountId <= 0) {
+      return res.status(400).json({ error: "Valid subAccountId is required" });
+    }
+
+    const ownershipValid = await verifyAccountOwnership(req, res, subAccountId);
+    if (!ownershipValid) return;
+
+    const { botToken } = req.body;
+    if (!botToken || typeof botToken !== "string" || botToken.trim().length === 0) {
+      return res.status(400).json({ error: "botToken is required and must be a non-empty string" });
+    }
+
+    const [existingAccount] = await db.select().from(subAccounts).where(eq(subAccounts.id, subAccountId)).limit(1);
+    if (!existingAccount) {
+      console.error(`[TELEGRAM-SETUP] Sub-account ${subAccountId} not found`);
+      return res.status(404).json({ error: `Sub-account ${subAccountId} not found` });
+    }
+
+    console.log(`[TELEGRAM-SETUP] Starting setup for account ${subAccountId} (${existingAccount.name})`);
+
+    let meData: any;
+    try {
+      const meRes = await fetch(`https://api.telegram.org/bot${botToken}/getMe`);
+      meData = await meRes.json() as any;
+    } catch (fetchErr: any) {
+      console.error(`[TELEGRAM-SETUP] Failed to reach Telegram API (getMe): ${fetchErr.message}`);
+      return res.status(502).json({ error: `Could not reach Telegram API: ${fetchErr.message}` });
+    }
+
     if (!meData.ok) {
+      console.error(`[TELEGRAM-SETUP] Invalid bot token for account ${subAccountId}: ${meData.description}`);
       return res.status(400).json({ error: `Invalid bot token: ${meData.description}` });
     }
 
     const botUsername = meData.result.username;
+    console.log(`[TELEGRAM-SETUP] Bot token validated: @${botUsername} (bot_id=${meData.result.id})`);
 
     const deployedDomain = process.env.REPLIT_DOMAINS?.split(",")[0] || process.env.REPL_SLUG + ".replit.app";
-    const webhookUrl = `https://${deployedDomain}/api/webhooks/telegram`;
+    const webhookUrl = `https://${deployedDomain}/api/webhooks/telegram/${subAccountId}`;
+    const webhookSecret = generateTelegramWebhookSecret(subAccountId);
 
-    const setRes = await fetch(`https://api.telegram.org/bot${botToken}/setWebhook`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: webhookUrl }),
-    });
-    const setData = await setRes.json() as any;
+    let setData: any;
+    try {
+      const setRes = await fetch(`https://api.telegram.org/bot${botToken}/setWebhook`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: webhookUrl, secret_token: webhookSecret }),
+      });
+      setData = await setRes.json() as any;
+    } catch (webhookErr: any) {
+      console.error(`[TELEGRAM-SETUP] Failed to register webhook with Telegram: ${webhookErr.message}`);
+      return res.status(502).json({ error: `Could not register webhook with Telegram: ${webhookErr.message}` });
+    }
+
+    if (!setData.ok) {
+      console.error(`[TELEGRAM-SETUP] Telegram rejected webhook registration: ${setData.description}`);
+      return res.status(502).json({ error: `Telegram webhook registration failed: ${setData.description}` });
+    }
 
     await db.update(subAccounts)
       .set({ telegramBotToken: botToken, telegramBotUsername: botUsername })
       .where(eq(subAccounts.id, subAccountId));
 
-    console.log(`[TELEGRAM] Bot @${botUsername} webhook set to ${webhookUrl}`);
+    console.log(`[TELEGRAM-SETUP] Complete — Bot @${botUsername} webhook set to ${webhookUrl} for account ${subAccountId} (${existingAccount.name})`);
 
     res.json({
       success: true,

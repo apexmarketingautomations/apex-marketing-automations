@@ -347,11 +347,28 @@ function getChannelToneInstructions(channel: string): string {
 - Warm and helpful tone`;
   }
 
-  if (channel === "sms" || channel === "whatsapp") {
-    return `CHANNEL TONE (${channel.toUpperCase()}):
+  if (channel === "whatsapp") {
+    return `CHANNEL TONE (WhatsApp):
+- Brief and conversational
+- Emojis are welcome but not excessive
+- Keep messages concise — under 200 characters when possible
+- Friendly and direct, like texting a friend`;
+  }
+
+  if (channel === "sms") {
+    return `CHANNEL TONE (SMS):
 - Brief and to the point
 - Keep messages under 160 characters when possible
 - Conversational but efficient`;
+  }
+
+  if (channel === "telegram") {
+    return `CHANNEL TONE (Telegram):
+- Casual and conversational
+- Slightly longer messages are OK — Telegram users expect richer chat
+- Emojis are fine, but don't overdo it
+- Can use Markdown formatting if helpful (bold, links)
+- Be direct and helpful`;
   }
 
   return `CHANNEL TONE:
