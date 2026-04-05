@@ -5,7 +5,7 @@ import {
   MessageCircle, Bot, Facebook, RefreshCw, Search, ArrowLeft,
   CheckCheck, Filter, BarChart3, ThumbsUp, ThumbsDown, Minus,
   HelpCircle, ShieldAlert, Clock, CheckCircle2, Heart, Smile,
-  Frown, Angry, Check, X, MoreHorizontal, ChevronDown, Globe
+  Frown, Angry, Check, X, MoreHorizontal, ChevronDown
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -68,29 +68,53 @@ function channelBg(ch: string) {
 }
 
 function useSSE(subAccountId: number | undefined, onMessage: (msg: any) => void) {
+  const onMessageRef = useRef(onMessage);
+  onMessageRef.current = onMessage;
+  const seenIdsRef = useRef(new Set<string>());
+
   useEffect(() => {
     if (!subAccountId) return;
     let es: EventSource | null = null;
     let retryTimer: ReturnType<typeof setTimeout>;
+    let retryCount = 0;
+    let disposed = false;
 
     function connect() {
+      if (disposed) return;
       es = new EventSource(`/api/inbox/stream/${subAccountId}`);
+
+      es.onopen = () => {
+        retryCount = 0;
+      };
+
       es.onmessage = (ev) => {
         try {
           const data = JSON.parse(ev.data);
           if (data.type === "new_message" && data.message) {
-            onMessage(data.message);
+            const dedupKey = data.message.messageSid || data.message.id || `${data.message.contactPhone}_${data.message.body}_${data.message.createdAt}`;
+            if (seenIdsRef.current.has(dedupKey)) return;
+            seenIdsRef.current.add(dedupKey);
+            if (seenIdsRef.current.size > 500) {
+              const arr = Array.from(seenIdsRef.current);
+              seenIdsRef.current = new Set(arr.slice(arr.length - 300));
+            }
+            onMessageRef.current(data.message);
           }
         } catch {}
       };
+
       es.onerror = () => {
         es?.close();
-        retryTimer = setTimeout(connect, 3000);
+        if (disposed) return;
+        retryCount++;
+        const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
+        retryTimer = setTimeout(connect, delay);
       };
     }
     connect();
 
     return () => {
+      disposed = true;
       es?.close();
       clearTimeout(retryTimer);
     };
@@ -475,6 +499,8 @@ export default function SmsDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const threadContainerRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
 
   const [inboxTab, setInboxTab] = useState("messages");
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>("all");
@@ -496,6 +522,7 @@ export default function SmsDashboard() {
     setMobileShowThread(false);
     setLiveMessages([]);
     setMessageBody("");
+    setChannelFilter("all");
   }, [activeAccountId]);
 
   const { data: serverMessages = [], isLoading: messagesLoading, dataUpdatedAt } = useQuery<Message[]>({
@@ -601,9 +628,24 @@ export default function SmsDashboard() {
   }, [conversations.length]);
 
   const convKey = selectedConv ? `${selectedConv.contactPhone}__${selectedConv.channel}` : "";
+
+  const handleThreadScroll = useCallback(() => {
+    const el = threadContainerRef.current;
+    if (!el) return;
+    const threshold = 80;
+    isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+  }, []);
+
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollIntoView({ behavior: "smooth" });
-  }, [threadMessages.length, convKey]);
+    if (scrollRef.current) scrollRef.current.scrollIntoView({ behavior: "auto" });
+    isNearBottomRef.current = true;
+  }, [convKey]);
+
+  useEffect(() => {
+    if (isNearBottomRef.current && scrollRef.current) {
+      scrollRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [threadMessages.length]);
 
   const [isSending, setIsSending] = useState(false);
 
@@ -683,20 +725,18 @@ export default function SmsDashboard() {
 
         <TabsContent value="messages" className="flex-1 mt-0 min-h-0">
           <div className="flex h-full">
-            <div className={`w-full md:w-80 lg:w-[340px] border-r border-white/5 flex flex-col bg-[#0d0d1a] flex-shrink-0 ${mobileShowThread ? "hidden md:flex" : "flex"}`}>
-              <div className="p-2.5 space-y-2 border-b border-white/5">
+            <div className={`w-full md:w-80 lg:w-[340px] border-r border-white/5 flex flex-col bg-[#0d0d1a] flex-shrink-0 min-h-0 ${mobileShowThread ? "hidden md:flex" : "flex"}`}>
+              <div className="p-2.5 space-y-2 border-b border-white/5 flex-shrink-0">
                 <div className="relative">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
                   <Input placeholder="Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
                     className="h-7 pl-8 text-xs bg-white/5 border-white/10 placeholder:text-slate-600 text-slate-200" data-testid="input-search" />
                 </div>
                 <div className="flex gap-1 overflow-x-auto pb-0.5">
-                  {CHANNELS.map(ch => {
+                  {CHANNELS.filter(ch => ch.key === "all" || (channelCounts[ch.key] || 0) > 0).map(ch => {
                     const Icon = ch.icon;
                     const active = channelFilter === ch.key;
                     const cnt = channelCounts[ch.key] || 0;
-                    const alwaysShow = ["all", "facebook", "instagram"].includes(ch.key);
-                    if (!alwaysShow && cnt === 0) return null;
                     return (
                       <button key={ch.key} onClick={() => setChannelFilter(ch.key)}
                         className={`flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium whitespace-nowrap transition-all ${
@@ -773,7 +813,7 @@ export default function SmsDashboard() {
                     </div>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto px-4 py-3" data-testid="message-thread">
+                  <div className="flex-1 overflow-y-auto px-4 py-3" data-testid="message-thread" ref={threadContainerRef} onScroll={handleThreadScroll}>
                     <div className="space-y-2 flex flex-col">
                       {threadMessages.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-32 text-slate-600">
