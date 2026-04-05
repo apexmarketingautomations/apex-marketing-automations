@@ -71,80 +71,98 @@ export function registerMessagingRoutes(app: Express) {
     }
 
     const maxPages = Math.min(Number(req.body?.maxPages) || 10, 25);
-    let convUrl: string | null = `https://graph.facebook.com/v19.0/${metaCfg.pageId}/conversations?fields=id,updated_time,participants,messages.limit(25){message,from,created_time}&limit=25&access_token=${metaCfg.accessToken}${metaCfg.appsecretProof ? `&appsecret_proof=${metaCfg.appsecretProof}` : ""}`;
-
     let totalConversations = 0, totalMessages = 0, skippedDuplicates = 0, pageCount = 0, contactsCreated = 0;
 
-    while (convUrl && pageCount < maxPages) {
-      pageCount++;
-      const convRes = await fetch(convUrl);
-      const convData = await convRes.json() as any;
-      if (!convData.data) {
-        console.log(`[DM-SYNC] Error page ${pageCount}:`, convData.error?.message);
-        break;
-      }
+    const platforms: Array<{ channel: "facebook" | "instagram"; endpoint: string }> = [
+      {
+        channel: "facebook",
+        endpoint: `https://graph.facebook.com/v19.0/${metaCfg.pageId}/conversations?fields=id,updated_time,participants,messages.limit(25){message,from,created_time}&limit=25&access_token=${metaCfg.accessToken}${metaCfg.appsecretProof ? `&appsecret_proof=${metaCfg.appsecretProof}` : ""}`,
+      },
+      {
+        channel: "instagram",
+        endpoint: `https://graph.facebook.com/v19.0/${metaCfg.pageId}/conversations?fields=id,updated_time,participants,messages.limit(25){message,from,created_time}&limit=25&platform=instagram&access_token=${metaCfg.accessToken}${metaCfg.appsecretProof ? `&appsecret_proof=${metaCfg.appsecretProof}` : ""}`,
+      },
+    ];
 
-      for (const conv of convData.data) {
-        totalConversations++;
-        const participants = conv.participants?.data || [];
-        const otherUser = participants.find((p: any) => p.id !== metaCfg.pageId);
-        const senderId = otherUser?.id || "unknown";
-        const senderName = otherUser?.name || null;
-        const threadId = `${subAccountId}::${senderId}::facebook`;
+    for (const plat of platforms) {
+      let convUrl: string | null = plat.endpoint;
+      let platPageCount = 0;
 
-        if (senderId !== "unknown" && senderName) {
-          const nameParts = senderName.split(" ");
-          const firstName = nameParts[0] || senderName;
-          const lastName = nameParts.slice(1).join(" ") || "";
-          const existingContact = await db.select({ id: contacts.id }).from(contacts)
-            .where(and(eq(contacts.phone, senderId), eq(contacts.subAccountId, subAccountId)))
-            .limit(1);
-          if (existingContact.length === 0) {
-            await db.insert(contacts).values({
+      while (convUrl && platPageCount < maxPages) {
+        platPageCount++;
+        pageCount++;
+        const convRes = await fetch(convUrl);
+        const convData = await convRes.json() as any;
+        if (!convData.data) {
+          console.log(`[DM-SYNC] ${plat.channel} error page ${platPageCount}:`, convData.error?.message);
+          break;
+        }
+
+        for (const conv of convData.data) {
+          totalConversations++;
+          const participants = conv.participants?.data || [];
+          const otherUser = participants.find((p: any) => p.id !== metaCfg.pageId);
+          const senderId = otherUser?.id || "unknown";
+          const senderName = otherUser?.name || null;
+          const threadId = `${subAccountId}::${senderId}::${plat.channel}`;
+
+          if (senderId !== "unknown" && senderName) {
+            const nameParts = senderName.split(" ");
+            const firstName = nameParts[0] || senderName;
+            const lastName = nameParts.slice(1).join(" ") || "";
+            const existingContact = await db.select({ id: contacts.id }).from(contacts)
+              .where(and(eq(contacts.phone, senderId), eq(contacts.subAccountId, subAccountId)))
+              .limit(1);
+            if (existingContact.length === 0) {
+              await db.insert(contacts).values({
+                subAccountId,
+                firstName,
+                lastName,
+                phone: senderId,
+                channel: plat.channel,
+                source: "meta-sync",
+              });
+              contactsCreated++;
+            } else {
+              await db.update(contacts).set({ channel: plat.channel })
+                .where(and(eq(contacts.phone, senderId), eq(contacts.subAccountId, subAccountId)));
+            }
+          }
+
+          const msgList = conv.messages?.data || [];
+          for (const msg of msgList) {
+            if (!msg.message) continue;
+            const isFromPage = msg.from?.id === metaCfg.pageId;
+            const direction = isFromPage ? "outbound" : "inbound";
+            const msgSid = `meta_${conv.id}_${msg.id || new Date(msg.created_time).getTime()}`;
+
+            const existing = await db.select({ id: messages.id }).from(messages)
+              .where(and(eq(messages.messageSid, msgSid), eq(messages.subAccountId, subAccountId)))
+              .limit(1);
+
+            if (existing.length > 0) { skippedDuplicates++; continue; }
+
+            await db.insert(messages).values({
               subAccountId,
-              firstName,
-              lastName,
-              phone: senderId,
-              channel: "facebook",
-              source: "meta-sync",
+              direction,
+              body: msg.message,
+              status: "delivered",
+              contactPhone: senderId,
+              channel: plat.channel,
+              messageSid: msgSid,
+              threadId,
+              senderId: direction === "inbound" ? senderId : metaCfg.pageId,
+              pageId: metaCfg.pageId,
+              traceId: `sync-${Date.now()}`,
+              createdAt: new Date(msg.created_time),
             });
-            contactsCreated++;
+            totalMessages++;
           }
         }
 
-        const msgList = conv.messages?.data || [];
-        for (const msg of msgList) {
-          if (!msg.message) continue;
-          const isFromPage = msg.from?.id === metaCfg.pageId;
-          const direction = isFromPage ? "outbound" : "inbound";
-          const msgSid = `meta_${conv.id}_${msg.id || new Date(msg.created_time).getTime()}`;
-
-          const existing = await db.select({ id: messages.id }).from(messages)
-            .where(and(eq(messages.messageSid, msgSid), eq(messages.subAccountId, subAccountId)))
-            .limit(1);
-
-          if (existing.length > 0) { skippedDuplicates++; continue; }
-
-          await db.insert(messages).values({
-            subAccountId,
-            direction,
-            body: msg.message,
-            status: "delivered",
-            contactPhone: senderId,
-            channel: "facebook",
-            messageSid: msgSid,
-            threadId,
-            senderId: direction === "inbound" ? senderId : metaCfg.pageId,
-            pageId: metaCfg.pageId,
-            traceId: `sync-${Date.now()}`,
-            createdAt: new Date(msg.created_time),
-          });
-          totalMessages++;
-        }
+        console.log(`[DM-SYNC] Account ${subAccountId} ${plat.channel} page ${platPageCount}: ${convData.data.length} convos, ${totalMessages} msgs synced`);
+        convUrl = convData.paging?.next || null;
       }
-
-      console.log(`[DM-SYNC] Account ${subAccountId} page ${pageCount}: ${convData.data.length} convos, ${totalMessages} msgs synced`);
-      convUrl = convData.paging?.next || null;
     }
 
     res.json({
