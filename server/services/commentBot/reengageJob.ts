@@ -183,8 +183,9 @@ export async function runReengageJob(options?: {
           }
         }
 
+        const agentLabel = isLayla ? "LAYLA" : "AGENT";
         const contextLines = recentMsgs.map(m =>
-          `${m.direction === "inbound" ? "USER" : "LAYLA"}: ${m.body}`
+          `${m.direction === "inbound" ? "USER" : agentLabel}: ${m.body}`
         ).join("\n");
 
         const summaryResult = await aiChat(

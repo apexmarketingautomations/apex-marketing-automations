@@ -13,7 +13,7 @@ import {
 } from "./laylaCommentPrompt";
 import { aiChat } from "../../aiGateway";
 
-const LAYLA_ACCOUNT_IDS = new Set([13, 22]);
+const LAYLA_ACCOUNT_IDS = new Set([22]);
 
 export interface CommentWebhookEvent {
   platform: "facebook" | "instagram";
