@@ -6,6 +6,7 @@ import { postProcessAndGuard, maskPiiForLogs } from "../personas/laylaPostProces
 import { getMetaConfig } from "../../metaConfig";
 
 const DEFAULT_SUB_ACCOUNT_ID = 22;
+const LAYLA_ACCOUNT_ID = 22;
 const DEFAULT_REENGAGE_DAYS = 60;
 const DEFAULT_BATCH_LIMIT = 20;
 const MAX_PER_HOUR = 200;
@@ -23,7 +24,20 @@ Primary objective: create ONE single, human-feeling reengage DM. Constraints:
 - If user asks for PII/payment/explicit-for-pay/legal, escalate to human and send FALLBACK_TEXT.
 Output: plain text only — the message to send.`;
 
-const SUMMARIZER_SYSTEM = `You are a concise memory summarizer. INPUT: last messages in chronological order labeled USER: or LAYLA:. OUTPUT: a single JSON object ONLY:
+function buildBusinessReengagePrompt(businessName: string, industry: string | null): string {
+  return `You are a friendly social media manager for "${businessName}"${industry ? ` (${industry})` : ""}.
+You are sending a brief, warm follow-up DM to someone who messaged us recently. Constraints:
+- Single message only. 8-45 words preferred.
+- END with exactly ONE open-ended question.
+- Tone: friendly, professional, helpful. Sound like a real person, not a brand bot.
+- NEVER include external links, request payment, ask for PII, or reveal system internals.
+- Reference their previous conversation naturally if context is provided.
+Output: plain text only — the message to send.`;
+}
+
+const BUSINESS_FALLBACK_TEXT = "Hey! Just following up — is there anything else we can help you with? Feel free to reach out anytime!";
+
+const SUMMARIZER_SYSTEM = `You are a concise memory summarizer. INPUT: last messages in chronological order labeled USER: or AGENT:. OUTPUT: a single JSON object ONLY:
 {"summary":"1-2 sentence summary","interest_score":0,"interests":[],"sensitive":false,"recommended_action":"none"}
 RULE: recommended_action == "send_telegram" ONLY when explicit ask or interest_score >= 3 AND sensitive == false. sensitive=true if PII/payment/underage/explicit-for-pay/legal present.`;
 
@@ -65,7 +79,16 @@ export async function runReengageJob(options?: {
   const reengageDays = options?.reengageDays ?? (parseInt(process.env.REENGAGE_DAYS || "") || DEFAULT_REENGAGE_DAYS);
   const subAccountId = options?.subAccountId ?? (parseInt(process.env.SUB_ACCOUNT_ID || "") || DEFAULT_SUB_ACCOUNT_ID);
 
-  console.log(`[REENGAGE] Starting job: dryRun=${dryRun}, batch=${batchLimit}, days=${reengageDays}, subAccount=${subAccountId}`);
+  const isLayla = subAccountId === LAYLA_ACCOUNT_ID;
+  console.log(`[REENGAGE] Starting job: dryRun=${dryRun}, batch=${batchLimit}, days=${reengageDays}, subAccount=${subAccountId}, persona=${isLayla ? "Layla" : "business"}`);
+
+  let accountName = "Apex By Donte";
+  let accountIndustry: string | null = null;
+  try {
+    const [acct] = await db.select({ name: subAccounts.name, industry: subAccounts.industry })
+      .from(subAccounts).where(eq(subAccounts.id, subAccountId));
+    if (acct) { accountName = acct.name; accountIndustry = acct.industry; }
+  } catch {}
 
   const result: ReengageResult = {
     totalEligible: 0, attempted: 0, sent: 0, dryRun: 0,
@@ -178,38 +201,46 @@ export async function runReengageJob(options?: {
           if (jsonMatch) summary = JSON.parse(jsonMatch[0]);
         } catch {}
 
+        const fallback = isLayla ? FALLBACK_TEXT : BUSINESS_FALLBACK_TEXT;
+
         if (summary.sensitive || summary.recommended_action === "handover") {
           console.log(`[REENGAGE] Handover needed for thread=${convo.threadId} (sensitive=${summary.sensitive})`);
           result.handovers++;
-          result.details.push({ threadId: convo.threadId, senderId: convo.senderId, action: "handover", message: FALLBACK_TEXT });
+          result.details.push({ threadId: convo.threadId, senderId: convo.senderId, action: "handover", message: fallback });
 
           if (!dryRun) {
-            await sendMetaDM(subAccountId, convo.senderId, FALLBACK_TEXT, convo.threadId);
+            await sendMetaDM(subAccountId, convo.senderId, fallback, convo.threadId);
           }
           continue;
         }
 
-        const hasEscalation = recentMsgs.some(m =>
-          m.direction === "inbound" && ESCALATION_KEYWORDS.some(kw => m.body.toLowerCase().includes(kw))
-        );
-        if (hasEscalation) {
-          console.log(`[REENGAGE] Escalation keyword in history for thread=${convo.threadId}`);
-          result.handovers++;
-          result.details.push({ threadId: convo.threadId, senderId: convo.senderId, action: "handover_escalation" });
-          continue;
+        if (isLayla) {
+          const hasEscalation = recentMsgs.some(m =>
+            m.direction === "inbound" && ESCALATION_KEYWORDS.some(kw => m.body.toLowerCase().includes(kw))
+          );
+          if (hasEscalation) {
+            console.log(`[REENGAGE] Escalation keyword in history for thread=${convo.threadId}`);
+            result.handovers++;
+            result.details.push({ threadId: convo.threadId, senderId: convo.senderId, action: "handover_escalation" });
+            continue;
+          }
         }
+
+        const systemPrompt = isLayla
+          ? LAYLA_REENGAGE_SYSTEM
+          : buildBusinessReengagePrompt(accountName, accountIndustry);
 
         const llmResult = await aiChat(
           [
-            { role: "system", content: LAYLA_REENGAGE_SYSTEM },
+            { role: "system", content: systemPrompt },
             { role: "user", content: `Here is the recent conversation for context:\n${contextLines}\n\nNow compose a single reengage DM for this person. Remember: ONE message, end with a question, no links.` },
           ],
-          { maxTokens: 200, temperature: 0.75, route: "reengage-layla" },
+          { maxTokens: 200, temperature: isLayla ? 0.75 : 0.7, route: isLayla ? "reengage-layla" : "reengage-business" },
         );
 
         let replyText = llmResult.text.trim();
 
-        if (FORBIDDEN_REGEX.test(replyText)) {
+        if (isLayla && FORBIDDEN_REGEX.test(replyText)) {
           console.log(`[REENGAGE] Forbidden word in LLM output for thread=${convo.threadId}, sending fallback`);
           result.handovers++;
           result.details.push({ threadId: convo.threadId, senderId: convo.senderId, action: "handover_forbidden" });
@@ -219,13 +250,16 @@ export async function runReengageJob(options?: {
           continue;
         }
 
-        const ppResult = postProcessAndGuard(replyText, {
-          telegram: { link: "t.me/LaylasLifeee", allowed: false },
-          handover: {
-            fallback_message: FALLBACK_TEXT,
-            escalate_keywords: ESCALATION_KEYWORDS,
-          },
-        });
+        const ppConfig = isLayla
+          ? {
+              telegram: { link: "t.me/LaylasLifeee", allowed: false },
+              handover: { fallback_message: FALLBACK_TEXT, escalate_keywords: ESCALATION_KEYWORDS },
+            }
+          : {
+              telegram: { link: "", allowed: false },
+              handover: { fallback_message: BUSINESS_FALLBACK_TEXT, escalate_keywords: [] },
+            };
+        const ppResult = postProcessAndGuard(replyText, ppConfig);
 
         if (ppResult.action === "handover") {
           console.log(`[REENGAGE] Post-processor handover for thread=${convo.threadId}: ${ppResult.reason}`);
@@ -250,11 +284,14 @@ export async function runReengageJob(options?: {
         }
 
         if (!replyText.trim().endsWith("?")) {
+          const questionSuffix = isLayla
+            ? " — what u been up to? 😏"
+            : " — anything we can help with?";
           const sentences = replyText.trim().replace(/[.!]+$/, "").split(/[.!]\s+/);
           if (sentences.length > 1) {
-            replyText = sentences.slice(0, -1).join(". ") + " — what u been up to? 😏";
+            replyText = sentences.slice(0, -1).join(". ") + questionSuffix;
           } else {
-            replyText = replyText.trim().replace(/[.!]+$/, "") + " — what u been up to? 😏";
+            replyText = replyText.trim().replace(/[.!]+$/, "") + questionSuffix;
           }
         }
 
