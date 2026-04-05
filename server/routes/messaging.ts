@@ -352,9 +352,15 @@ export function registerMessagingRoutes(app: Express) {
         .catch(() => []);
 
       const fbConfig = fbConnections.length > 0 ? fbConnections[0].config as any : null;
-      const metaToken = fbConfig?.accessToken || fbConfig?.META_ACCESS_TOKEN || null;
-      const metaPageId = fbConfig?.pageId || fbConfig?.page_id || fbConfig?.META_PAGE_ID || null;
+      let metaToken = fbConfig?.accessToken || fbConfig?.META_ACCESS_TOKEN || null;
+      let metaPageId = fbConfig?.pageId || fbConfig?.page_id || fbConfig?.META_PAGE_ID || null;
       const metaAppSecret = fbConfig?.appSecret || fbConfig?.META_APP_SECRET || null;
+
+      if (!metaToken || !metaPageId) {
+        const account = await db.select().from(subAccounts).where(eq(subAccounts.id, subAccountId)).limit(1);
+        metaToken = metaToken || account[0]?.metaAccessToken;
+        metaPageId = metaPageId || account[0]?.metaPageId;
+      }
 
       if (!metaToken || !metaPageId) {
         twilioStatus = "failed";
@@ -368,6 +374,7 @@ export function registerMessagingRoutes(app: Express) {
             proofParam = `?appsecret_proof=${proof}`;
           }
           const fbUrl = `https://graph.facebook.com/v19.0/${metaPageId}/messages${proofParam}`;
+          console.log(`[FACEBOOK] Sending outbound to ${contactPhone} via pageId=${metaPageId}, hasAppSecret=${!!metaAppSecret}`);
           const fbRes = await fetch(fbUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -381,13 +388,16 @@ export function registerMessagingRoutes(app: Express) {
           if (fbRes.ok) {
             twilioStatus = "sent";
             twilioSid = fbData.message_id || null;
+            console.log(`[FACEBOOK] Outbound sent to ${contactPhone}: messageId=${fbData.message_id}`);
           } else {
             twilioStatus = "failed";
             twilioError = fbData?.error?.message || "Facebook send failed";
+            console.error(`[FACEBOOK] Outbound failed to ${contactPhone}: ${twilioError}`);
           }
         } catch (fbErr: any) {
           twilioStatus = "failed";
           twilioError = fbErr.message || "Facebook send failed";
+          console.error(`[FACEBOOK] Outbound exception to ${contactPhone}: ${twilioError}`);
         }
       }
     } else if (channel === "telegram") {
@@ -418,15 +428,40 @@ export function registerMessagingRoutes(app: Express) {
         }
       }
     } else if (channel === "instagram") {
-      const account = await db.select().from(subAccounts).where(eq(subAccounts.id, subAccountId)).limit(1);
-      const metaToken = account[0]?.metaAccessToken;
-      const metaPageId = account[0]?.metaPageId;
+      const igConnections = await db.select().from(integrationConnections)
+        .where(and(
+          eq(integrationConnections.subAccountId, subAccountId),
+          eq(integrationConnections.provider, "meta"),
+          eq(integrationConnections.status, "connected")
+        ))
+        .limit(1)
+        .execute()
+        .catch(() => []);
+
+      const igConfig = igConnections.length > 0 ? igConnections[0].config as any : null;
+      let metaToken = igConfig?.accessToken || igConfig?.META_ACCESS_TOKEN || null;
+      let metaPageId = igConfig?.pageId || igConfig?.page_id || igConfig?.META_PAGE_ID || null;
+      const metaAppSecret = igConfig?.appSecret || igConfig?.META_APP_SECRET || null;
+
+      if (!metaToken || !metaPageId) {
+        const account = await db.select().from(subAccounts).where(eq(subAccounts.id, subAccountId)).limit(1);
+        metaToken = metaToken || account[0]?.metaAccessToken;
+        metaPageId = metaPageId || account[0]?.metaPageId;
+      }
+
       if (!metaToken || !metaPageId) {
         twilioStatus = "failed";
-        twilioError = "No Meta credentials configured for Instagram sending.";
+        twilioError = `No Instagram/Meta credentials found for subAccount ${subAccountId}. Connect Meta integration with a pageId and accessToken for this account.`;
       } else {
         try {
-          const igUrl = `https://graph.facebook.com/v19.0/${metaPageId}/messages`;
+          let proofParam = "";
+          if (metaAppSecret) {
+            const crypto = await import("crypto");
+            const proof = crypto.createHmac("sha256", metaAppSecret).update(metaToken).digest("hex");
+            proofParam = `?appsecret_proof=${proof}`;
+          }
+          const igUrl = `https://graph.facebook.com/v19.0/${metaPageId}/messages${proofParam}`;
+          console.log(`[INSTAGRAM] Sending outbound to ${contactPhone} via pageId=${metaPageId}, hasAppSecret=${!!metaAppSecret}`);
           const igRes = await fetch(igUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -440,13 +475,16 @@ export function registerMessagingRoutes(app: Express) {
           if (igRes.ok) {
             twilioStatus = "sent";
             twilioSid = igData.message_id || null;
+            console.log(`[INSTAGRAM] Outbound sent to ${contactPhone}: messageId=${igData.message_id}`);
           } else {
             twilioStatus = "failed";
             twilioError = igData?.error?.message || "Instagram send failed";
+            console.error(`[INSTAGRAM] Outbound failed to ${contactPhone}: ${twilioError}`);
           }
         } catch (igErr: any) {
           twilioStatus = "failed";
           twilioError = igErr.message || "Instagram send failed";
+          console.error(`[INSTAGRAM] Outbound exception to ${contactPhone}: ${twilioError}`);
         }
       }
     } else {

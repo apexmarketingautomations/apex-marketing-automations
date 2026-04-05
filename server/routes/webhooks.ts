@@ -93,6 +93,7 @@ export function registerWebhooksRoutes(app: Express) {
       }
 
       const matchedAccountId = routingResult.subAccountId;
+      console.log(`[${channel.toUpperCase()}][PIPELINE-START] channel=${channel}, sender=${senderClean}, to=${toClean}, subAccountId=${matchedAccountId}`);
 
       const trace = startTrace(matchedAccountId, { contactPhone: senderClean });
 
@@ -166,12 +167,13 @@ export function registerWebhooksRoutes(app: Express) {
           status: "received",
           createdAt: new Date().toISOString(),
         });
+        console.log(`[${channel.toUpperCase()}][CRM-WRITE] Inbound message stored — messageId=${storedMsg.id}, sender=${senderClean}, subAccountId=${matchedAccountId}, messageSid=${messageSid || "none"}, elapsed=${Date.now() - crmStart}ms`);
         recordStepValue(trace, "crm_write", "success", Date.now() - crmStart, {
           metadata: { channel, direction: "inbound", messageId: storedMsg.id },
           disambiguator: messageSid || String(storedMsg.id),
         });
       } catch (e: any) {
-        console.log(`[${channel.toUpperCase()}] Message storage error:`, e.message);
+        console.error(`[${channel.toUpperCase()}][CRM-WRITE] Message storage error — sender=${senderClean}, subAccountId=${matchedAccountId}, error=${e.message}`);
         recordStepValue(trace, "crm_write", "error", Date.now() - crmStart, {
           error: e.message,
           disambiguator: messageSid || `err-${senderClean}`,
@@ -216,6 +218,7 @@ export function registerWebhooksRoutes(app: Express) {
           }
           const smsAiResult = await aiChat(aiMessages, { temperature: 0.7, maxTokens: 1024, route: "webhook-sms-reply" });
           aiReply = smsAiResult.text || aiReply;
+          console.log(`[${channel.toUpperCase()}][AI-REPLY] Generated — provider=${smsAiResult.provider}, replyLength=${aiReply.length}, elapsed=${Date.now() - aiStart}ms`);
 
           extractInsightsFromConversation(
             dmCtx.threadHistory.map(h => ({ role: h.role, content: h.content })),
@@ -228,7 +231,7 @@ export function registerWebhooksRoutes(app: Express) {
             disambiguator: inboundSid || `ai-${senderClean}`,
           });
         } catch (aiErr: any) {
-          console.error("AI reply error:", aiErr.message);
+          console.error(`[${channel.toUpperCase()}][AI-REPLY] Error — sender=${senderClean}, subAccountId=${matchedAccountId}, error=${aiErr.message}`);
           recordStepValue(trace, "ai_response_generated", "error", Date.now() - aiStart, {
             provider: "ai",
             error: aiErr.message,
@@ -303,10 +306,11 @@ export function registerWebhooksRoutes(app: Express) {
         }
       }
 
+      console.log(`[${channel.toUpperCase()}][PIPELINE-COMPLETE] sender=${senderClean}, subAccountId=${matchedAccountId}, messageSid=${messageSid || "none"}, aiConfigured=${isAIConfigured()}, twilioAvailable=${!!(await getTwilioClient(matchedAccountId))}`);
       await markEventCompleted(req);
       res.type("text/xml").send("<Response></Response>");
     } catch (err: any) {
-      console.error("Unified webhook error:", err);
+      console.error(`[UNIFIED-WEBHOOK][ERROR] Unhandled pipeline error — from=${req.body?.From}, to=${req.body?.To}, error=${err.message}`, err.stack?.substring(0, 500));
       await markEventFailed(req, err.message).catch(() => {});
       res.type("text/xml").send("<Response></Response>");
     }
@@ -1134,25 +1138,29 @@ export function registerWebhooksRoutes(app: Express) {
       return res.sendStatus(403);
     }
 
-    console.log(`[META WEBHOOK] Inbound POST received — object=${body?.object}, entries=${body?.entry?.length ?? 0}`);
+    console.log(`[META WEBHOOK] Inbound POST received — object=${body?.object}, entries=${body?.entry?.length ?? 0}, verified_against=${tenantSecret ? "tenant_secret" : "global_secret"}`);
     res.sendStatus(200);
 
     try {
       if (body.object === "page" || body.object === "instagram") {
         for (const entry of body.entry || []) {
           const entryPageId = entry.id as string | undefined;
+          const entryTime = entry.time ? new Date(entry.time * 1000).toISOString() : "unknown";
+          console.log(`[META WEBHOOK] Processing entry — pageId=${entryPageId}, time=${entryTime}, messaging_events=${entry.messaging?.length ?? 0}, changes=${entry.changes?.length ?? 0}`);
 
           for (const event of entry.messaging || []) {
             const senderId = event.sender?.id;
             const message = event.message?.text;
             const mid = event.message?.mid as string | undefined;
+            const pipelineStart = Date.now();
 
             if (!senderId || !message) {
-              console.warn(`[META DM] Skipping event — missing sender (${senderId}) or message text`);
+              console.warn(`[META DM] Skipping event — missing sender (${senderId}) or message text, mid=${mid}, event_keys=${Object.keys(event).join(",")}`);
               continue;
             }
 
             const channel = body.object === "instagram" ? "instagram" : "facebook";
+            console.log(`[META DM][PIPELINE-START] channel=${channel}, sender=${senderId}, mid=${mid || "none"}, bodyLength=${message.length}`);
 
             // --- STRICT TENANT RESOLUTION: look up sub-account by page_id ---
             if (!entryPageId) {
@@ -1172,7 +1180,9 @@ export function registerWebhooksRoutes(app: Express) {
               accessToken = metaCfg.accessToken;
               pageId = metaCfg.pageId;
               appSecret = metaCfg.appSecret;
-            } catch {
+              console.log(`[META DM][TENANT-RESOLVED] channel=${channel}, sender=${senderId}, subAccountId=${subAccountId}, pageId=${pageId}, hasToken=${!!accessToken}, hasAppSecret=${!!appSecret}, source=subAccounts`);
+            } catch (resolveErr: any) {
+              console.warn(`[META DM][TENANT-RESOLVE] Primary resolution failed for pageId=${entryPageId}: ${resolveErr.message} — trying integrationConnections fallback`);
               const integrationRows = await db.select()
                 .from(integrationConnections)
                 .where(
@@ -1192,8 +1202,12 @@ export function registerWebhooksRoutes(app: Express) {
                   accessToken = cfg?.accessToken || cfg?.META_ACCESS_TOKEN || null;
                   pageId = connPageId;
                   appSecret = cfg?.appSecret || cfg?.META_APP_SECRET || null;
+                  console.log(`[META DM][TENANT-RESOLVED] channel=${channel}, sender=${senderId}, subAccountId=${subAccountId}, pageId=${pageId}, hasToken=${!!accessToken}, hasAppSecret=${!!appSecret}, source=integrationConnections`);
                   break;
                 }
+              }
+              if (!subAccountId) {
+                console.warn(`[META DM][TENANT-RESOLVE] integrationConnections fallback also failed — checked ${integrationRows.length} rows, none matched pageId=${entryPageId}`);
               }
             }
 
@@ -1209,12 +1223,13 @@ export function registerWebhooksRoutes(app: Express) {
               try {
                 const existingEvent = await storage.getEventLogByExternalId("meta", mid);
                 if (existingEvent && (existingEvent.status === "completed" || existingEvent.status === "processing")) {
-                  console.log(`[IDEMPOTENCY] Duplicate Meta event mid=${mid} (status: ${existingEvent.status}) — skipping`);
+                  console.log(`[META DM][IDEMPOTENCY] Duplicate event mid=${mid} (status: ${existingEvent.status}) — skipping`);
                   continue;
                 }
                 if (existingEvent) {
                   metaTraceId = existingEvent.traceId;
                   await storage.updateEventLogStatus(existingEvent.id, "processing");
+                  console.log(`[META DM][IDEMPOTENCY] Resuming previously failed event mid=${mid}, traceId=${metaTraceId}`);
                 } else {
                   await storage.createEventLog({
                     traceId: metaTraceId,
@@ -1225,10 +1240,14 @@ export function registerWebhooksRoutes(app: Express) {
                     status: "processing",
                     maxRetries: 3,
                   });
+                  console.log(`[META DM][IDEMPOTENCY] New event logged mid=${mid}, traceId=${metaTraceId}`);
                 }
               } catch (idempErr: any) {
-                if (!idempErr?.message?.includes("unique")) {
-                  console.error(`[META DM] Idempotency check error for mid=${mid}:`, idempErr.message);
+                if (idempErr?.message?.includes("unique")) {
+                  console.log(`[META DM][IDEMPOTENCY] Race condition duplicate for mid=${mid} — skipping`);
+                  continue;
+                } else {
+                  console.error(`[META DM][IDEMPOTENCY] Check error for mid=${mid}:`, idempErr.message);
                 }
               }
             }
@@ -1266,6 +1285,7 @@ export function registerWebhooksRoutes(app: Express) {
 
             const metaCrmStart = Date.now();
             const metaInboundThreadId = `${subAccountId}::${senderId}::${channel}`;
+            const metaMessageSid = mid ? `meta_${mid}` : null;
             try {
               await db.insert(messages).values({
                 subAccountId,
@@ -1278,16 +1298,19 @@ export function registerWebhooksRoutes(app: Express) {
                 threadId: metaInboundThreadId,
                 pageId: entryPageId,
                 senderId,
+                messageSid: metaMessageSid,
               });
               broadcastNewMessage(subAccountId, {
                 subAccountId, channel, direction: "inbound", contactPhone: senderId,
                 body: message, status: "received", threadId: metaInboundThreadId, createdAt: new Date().toISOString(),
               });
+              console.log(`[META DM][CRM-WRITE] Inbound message stored — channel=${channel}, sender=${senderId}, subAccountId=${subAccountId}, threadId=${metaInboundThreadId}, mid=${mid || "none"}, elapsed=${Date.now() - metaCrmStart}ms`);
               recordStepValue(metaTrace, "crm_write", "success", Date.now() - metaCrmStart, {
                 metadata: { channel, direction: "inbound" },
                 disambiguator: mid || `meta-crm-${senderId}`,
               });
             } catch (crmWriteErr: any) {
+              console.error(`[META DM][CRM-WRITE] Failed to store inbound message — channel=${channel}, sender=${senderId}, subAccountId=${subAccountId}, error=${crmWriteErr.message}`);
               recordStepValue(metaTrace, "crm_write", "error", Date.now() - metaCrmStart, {
                 error: crmWriteErr.message,
                 disambiguator: mid ? `${mid}-crm-err` : `meta-crm-err-${senderId}`,
@@ -1496,8 +1519,11 @@ export function registerWebhooksRoutes(app: Express) {
                 try {
                   const existing = await storage.getEventLogByExternalId("meta", mid);
                   if (existing) await storage.updateEventLogStatus(existing.id, "completed", { processedAt: new Date() });
-                } catch {}
+                } catch (eventLogErr: any) {
+                  console.warn(`[META DM][IDEMPOTENCY] Failed to mark hot-lead event completed for mid=${mid}: ${eventLogErr.message}`);
+                }
               }
+              console.log(`[META DM][PIPELINE-COMPLETE] channel=${channel}, sender=${senderId}, subAccountId=${subAccountId}, mid=${mid || "none"}, path=hot_lead, totalElapsed=${Date.now() - pipelineStart}ms`);
               continue;
             }
 
@@ -1719,8 +1745,11 @@ export function registerWebhooksRoutes(app: Express) {
                 if (existing) {
                   await storage.updateEventLogStatus(existing.id, "completed", { processedAt: new Date() });
                 }
-              } catch {}
+              } catch (eventLogErr: any) {
+                console.warn(`[META DM][IDEMPOTENCY] Failed to mark event completed for mid=${mid}: ${eventLogErr.message}`);
+              }
             }
+            console.log(`[META DM][PIPELINE-COMPLETE] channel=${channel}, sender=${senderId}, subAccountId=${subAccountId}, mid=${mid || "none"}, totalElapsed=${Date.now() - pipelineStart}ms`);
           }
 
           // ─── COMMENT AUTO-REPLY: handle entry.changes (feed/comments) ───

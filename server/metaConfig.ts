@@ -40,7 +40,10 @@ export async function resolveSubAccountByPageId(pageId: string): Promise<number>
   const allAccounts = await storage.getSubAccounts();
   const match = allAccounts.find(a => a.metaPageId === pageId);
 
-  if (match) return match.id;
+  if (match) {
+    console.log(`[META-CONFIG] Resolved pageId=${pageId} -> subAccountId=${match.id} (name="${match.name}") via subAccounts table`);
+    return match.id;
+  }
 
   try {
     const { db } = await import("./db");
@@ -50,9 +53,15 @@ export async function resolveSubAccountByPageId(pageId: string): Promise<number>
       .from(socialAccounts)
       .where(eq(socialAccounts.platformAccountId, pageId))
       .limit(1);
-    if (igMatch.length > 0) return igMatch[0].subAccountId;
-  } catch {}
+    if (igMatch.length > 0) {
+      console.log(`[META-CONFIG] Resolved pageId=${pageId} -> subAccountId=${igMatch[0].subAccountId} via socialAccounts table`);
+      return igMatch[0].subAccountId;
+    }
+  } catch (socialErr: any) {
+    console.warn(`[META-CONFIG] socialAccounts lookup failed for pageId=${pageId}: ${socialErr.message}`);
+  }
 
+  console.warn(`[META-CONFIG] No sub-account matched pageId=${pageId}. Checked ${allAccounts.length} accounts in subAccounts table.`);
   throw new Error(`[META-CONFIG] No sub-account mapped to Facebook pageId=${pageId}. Register this page in a sub-account's Meta settings.`);
 }
 
