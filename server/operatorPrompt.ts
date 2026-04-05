@@ -1,4 +1,5 @@
 import { storage } from "./storage";
+import { getTopSharedInsights, buildSharedInsightsPrompt } from "./sharedIntelligence";
 
 const PAGE_CONTEXT: Record<string, string> = {
   "/": "USER IS ON: Unified Inbox — where all SMS, Instagram DMs, and email conversations live.",
@@ -104,6 +105,14 @@ REAL-TIME METRICS (use these exact numbers in your responses):
     })?.length || 0} messages in last 24h`;
   } catch {}
 
+  let sharedInsightsContext = "";
+  try {
+    const insights = await getTopSharedInsights({ limit: 8, minConfidence: 0.15 });
+    if (insights.length > 0) {
+      sharedInsightsContext = `\n${buildSharedInsightsPrompt(insights)}`;
+    }
+  } catch {}
+
   const pageContext = currentPath ? getPageContext(currentPath) : "";
   let entityContext = "";
   if (frontendContext) {
@@ -127,6 +136,7 @@ ${pageContext ? `\n${pageContext}\n` : ""}${entityContext}
 ${accountContext}
 ${integrationStatus}
 ${metricsContext}
+${sharedInsightsContext}
 
 PHASE 1 CAPABILITIES:
 1. Search & navigate — find contacts, workflows, integrations. Navigate the user to any page/entity.

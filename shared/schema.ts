@@ -2172,6 +2172,31 @@ export const commentAutoReplies = pgTable("comment_auto_replies", {
 });
 export type CommentAutoReply = typeof commentAutoReplies.$inferSelect;
 
+// ---- Shared Intelligence Layer (Super Brain) ----
+
+export const sharedInsights = pgTable("shared_insights", {
+  id: serial("id").primaryKey(),
+  category: text("category").notNull(),
+  content: text("content").notNull(),
+  contentHash: text("content_hash").notNull(),
+  sourceAccountId: integer("source_account_id").references(() => subAccounts.id),
+  confidenceScore: real("confidence_score").default(0.7).notNull(),
+  decayRate: real("decay_rate").default(0.005).notNull(),
+  occurrenceCount: integer("occurrence_count").default(1).notNull(),
+  lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+  isArchived: boolean("is_archived").default(false).notNull(),
+  metadata: json("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_shared_insights_category").on(table.category),
+  index("idx_shared_insights_hash").on(table.contentHash),
+  index("idx_shared_insights_active").on(table.isArchived, table.confidenceScore),
+]);
+
+export const insertSharedInsightSchema = createInsertSchema(sharedInsights).omit({ id: true, createdAt: true });
+export type InsertSharedInsight = z.infer<typeof insertSharedInsightSchema>;
+export type SharedInsight = typeof sharedInsights.$inferSelect;
+
 export const contentLibrary = pgTable("content_library", {
   id: serial("id").primaryKey(),
   subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),

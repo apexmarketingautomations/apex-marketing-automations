@@ -5,8 +5,30 @@ import { aiChat } from "../../aiGateway";
 import { postProcessAndGuard, maskPiiForLogs } from "../personas/laylaPostProcessor";
 import { getMetaConfig } from "../../metaConfig";
 
-const DEFAULT_SUB_ACCOUNT_ID = 22;
-const LAYLA_ACCOUNT_ID = 22;
+const APEX_PARENT_ACCOUNT_ID = 13;
+const FALLBACK_LAYLA_ACCOUNT_ID = 22;
+
+async function resolveLaylaAccountId(): Promise<number> {
+  try {
+    const [layla] = await db.select({ id: subAccounts.id })
+      .from(subAccounts)
+      .where(and(
+        eq(subAccounts.name, "Officer Layla"),
+        eq(subAccounts.parentAccountId, APEX_PARENT_ACCOUNT_ID),
+      ))
+      .limit(1);
+    return layla?.id || FALLBACK_LAYLA_ACCOUNT_ID;
+  } catch {
+    return FALLBACK_LAYLA_ACCOUNT_ID;
+  }
+}
+
+function isLaylaAccount(subAccountId: number, resolvedLaylaId: number): boolean {
+  return subAccountId === resolvedLaylaId;
+}
+
+const DEFAULT_SUB_ACCOUNT_ID = FALLBACK_LAYLA_ACCOUNT_ID;
+const LAYLA_ACCOUNT_ID = FALLBACK_LAYLA_ACCOUNT_ID;
 const DEFAULT_REENGAGE_DAYS = 60;
 const DEFAULT_BATCH_LIMIT = 20;
 const MAX_PER_HOUR = 200;
@@ -77,10 +99,11 @@ export async function runReengageJob(options?: {
   const dryRun = options?.dryRun ?? (process.env.DRY_RUN !== "false");
   const batchLimit = options?.batchLimit ?? (parseInt(process.env.BATCH_LIMIT || "") || DEFAULT_BATCH_LIMIT);
   const reengageDays = options?.reengageDays ?? (parseInt(process.env.REENGAGE_DAYS || "") || DEFAULT_REENGAGE_DAYS);
-  const subAccountId = options?.subAccountId ?? (parseInt(process.env.SUB_ACCOUNT_ID || "") || DEFAULT_SUB_ACCOUNT_ID);
+  const resolvedLaylaId = await resolveLaylaAccountId();
+  const subAccountId = options?.subAccountId ?? (parseInt(process.env.SUB_ACCOUNT_ID || "") || resolvedLaylaId);
 
-  const isLayla = subAccountId === LAYLA_ACCOUNT_ID;
-  console.log(`[REENGAGE] Starting job: dryRun=${dryRun}, batch=${batchLimit}, days=${reengageDays}, subAccount=${subAccountId}, persona=${isLayla ? "Layla" : "business"}`);
+  const isLayla = isLaylaAccount(subAccountId, resolvedLaylaId);
+  console.log(`[REENGAGE] Starting job: dryRun=${dryRun}, batch=${batchLimit}, days=${reengageDays}, subAccount=${subAccountId}, persona=${isLayla ? "Layla" : "business"}, resolvedLaylaId=${resolvedLaylaId}`);
 
   let accountName = "Apex By Donte";
   let accountIndustry: string | null = null;

@@ -108,14 +108,15 @@ async function syncAdminAccounts() {
   if (!adminUserId) return;
 
   const existing = await db
-    .select({ id: subAccounts.id, name: subAccounts.name, ownerUserId: subAccounts.ownerUserId })
+    .select({ id: subAccounts.id, name: subAccounts.name, ownerUserId: subAccounts.ownerUserId, parentAccountId: subAccounts.parentAccountId })
     .from(subAccounts);
 
   const hasApex = existing.some((a) => a.name === "APEX MARKETING Account");
   const hasCrashConnect = existing.some((a) => a.name?.includes("Crash Connect") && a.name?.includes("Giovanni"));
 
-  const isRealAccount = (name: string | null) =>
+  const isRealAccount = (name: string | null, id?: number) =>
     name === "APEX MARKETING Account" ||
+    name === "Officer Layla" ||
     (name?.includes("Crash Connect") && name?.includes("Giovanni"));
 
   const junkAccounts = existing.filter(
@@ -133,7 +134,7 @@ async function syncAdminAccounts() {
     );
   }
 
-  const orphaned = existing.filter((a) => !a.ownerUserId);
+  const orphaned = existing.filter((a) => !a.ownerUserId && !a.parentAccountId && !isRealAccount(a.name));
   if (orphaned.length > 0) {
     for (const o of orphaned) {
       await db
@@ -227,7 +228,10 @@ async function syncAdminAccounts() {
     }
   }
 
+  await ensureLaylaAccount(adminUserId, existing);
+
   if (hasApex && hasCrashConnect) {
+    console.log("[SYNC] Admin account sync complete");
     return;
   }
 
@@ -376,6 +380,104 @@ async function syncAdminAccounts() {
   console.log("[SYNC] Admin account sync complete");
   } catch (error) {
     console.warn("[SYNC] syncAdminAccounts failed (non-fatal):", error);
+  }
+}
+
+async function ensureLaylaAccount(
+  adminUserId: string,
+  existing: Array<{ id: number; name: string; ownerUserId: string | null; parentAccountId: number | null }>
+) {
+  try {
+    const laylaAccount = existing.find((a) => a.name === "Officer Layla");
+    if (!laylaAccount) {
+      console.log("[SYNC] Officer Layla account not found — skipping (will be created when needed)");
+      return;
+    }
+
+    const laylaId = laylaAccount.id;
+    const apexAccount = existing.find((a) => a.name === "APEX MARKETING Account");
+    const apexId = apexAccount?.id || 13;
+
+    if (laylaAccount.ownerUserId === "_archived" || !laylaAccount.ownerUserId) {
+      await db.update(subAccounts)
+        .set({
+          ownerUserId: adminUserId,
+          parentAccountId: apexId,
+          isInternal: true,
+          plan: "enterprise",
+          billingExempt: true,
+          isDeletable: false,
+        })
+        .where(eq(subAccounts.id, laylaId));
+      console.log(`[SYNC] Restored Officer Layla account #${laylaId} — ownerUserId=${adminUserId}, parentAccountId=${apexId}`);
+    }
+
+    if (!laylaAccount.parentAccountId) {
+      await db.update(subAccounts)
+        .set({ parentAccountId: apexId })
+        .where(eq(subAccounts.id, laylaId));
+      console.log(`[SYNC] Set Officer Layla parentAccountId=${apexId}`);
+    }
+
+    const existingWallet = await db.select({ id: creditWallets.id })
+      .from(creditWallets).where(eq(creditWallets.subAccountId, laylaId)).limit(1);
+    if (existingWallet.length === 0) {
+      await db.insert(creditWallets).values({
+        subAccountId: laylaId,
+        balance: 25,
+        lifetimeTopUp: 0,
+        lifetimeSpend: 0,
+        autoTopUp: false,
+        autoTopUpAmount: 25,
+        lowBalanceThreshold: 5,
+      });
+      console.log(`[SYNC] Created credit wallet for Officer Layla #${laylaId}`);
+    }
+
+    const existingConnections = await db.select({ id: integrationConnections.id })
+      .from(integrationConnections).where(eq(integrationConnections.subAccountId, laylaId)).limit(1);
+    if (existingConnections.length === 0) {
+      const laylaIntegrations = [
+        { provider: "facebook", config: { pageAccessToken: "configured", pageId: "configured" }, status: "connected" },
+        { provider: "meta-ads", config: { accessToken: "configured", adAccountId: "configured" }, status: "connected" },
+      ];
+      for (const integ of laylaIntegrations) {
+        await db.insert(integrationConnections).values({
+          subAccountId: laylaId,
+          provider: integ.provider,
+          config: integ.config,
+          status: integ.status,
+        });
+      }
+      console.log(`[SYNC] Created ${laylaIntegrations.length} integration connections for Officer Layla #${laylaId}`);
+    }
+
+    const [currentConfig] = await db.select({ config: subAccounts.config })
+      .from(subAccounts).where(eq(subAccounts.id, laylaId));
+    if (!currentConfig?.config) {
+      await db.update(subAccounts)
+        .set({
+          config: {
+            commentBot: {
+              enabled: true,
+              replyStyle: "layla",
+              skipRepliesOnReplies: true,
+              maxRepliesPerHour: 30,
+            },
+            reengage: {
+              enabled: true,
+              daysThreshold: 60,
+              batchLimit: 20,
+            },
+          },
+        })
+        .where(eq(subAccounts.id, laylaId));
+      console.log(`[SYNC] Set default config for Officer Layla #${laylaId}`);
+    }
+
+    console.log(`[SYNC] Officer Layla account #${laylaId} fully configured`);
+  } catch (e: any) {
+    console.warn("[SYNC] ensureLaylaAccount failed (non-fatal):", e.message);
   }
 }
 

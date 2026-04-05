@@ -3,6 +3,7 @@ import { storage } from "./storage";
 import { messages, contacts, deals, pipelineStages, clientWebsites, trainingJobs, sharedInsights } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import type { ChatMessage } from "./aiGateway";
+import { getTopSharedInsights, buildSharedInsightsPrompt } from "./sharedIntelligence";
 
 export interface DmFormLink {
   label: string;
@@ -540,12 +541,22 @@ Reply with only the message that should be sent to the customer. Respond via ${c
   return prompt;
 }
 
-export function buildDmMessages(
+export async function buildDmMessages(
   context: DmContext,
   channel: string,
   currentMessage: string
-): ChatMessage[] {
-  const systemPrompt = buildDmSystemPrompt(context, channel, currentMessage);
+): Promise<ChatMessage[]> {
+  let systemPrompt = buildDmSystemPrompt(context, channel, currentMessage);
+
+  try {
+    const insights = await getTopSharedInsights({ limit: 6, minConfidence: 0.2 });
+    if (insights.length > 0) {
+      const insightsBlock = buildSharedInsightsPrompt(insights);
+      if (insightsBlock) {
+        systemPrompt += `\n${insightsBlock}`;
+      }
+    }
+  } catch {}
 
   const msgs: ChatMessage[] = [{ role: "system", content: systemPrompt }];
 

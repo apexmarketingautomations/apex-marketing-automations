@@ -13,7 +13,28 @@ import {
 } from "./laylaCommentPrompt";
 import { aiChat } from "../../aiGateway";
 
-const LAYLA_ACCOUNT_IDS = new Set([22]);
+const APEX_PARENT_ACCOUNT_ID = 13;
+const FALLBACK_LAYLA_ID = 22;
+let _cachedLaylaIds: Set<number> | null = null;
+
+async function getLaylaAccountIds(): Promise<Set<number>> {
+  if (_cachedLaylaIds) return _cachedLaylaIds;
+  try {
+    const rows = await db.select({ id: subAccounts.id })
+      .from(subAccounts)
+      .where(and(
+        eq(subAccounts.name, "Officer Layla"),
+        eq(subAccounts.parentAccountId, APEX_PARENT_ACCOUNT_ID),
+      ));
+    _cachedLaylaIds = new Set(rows.map(r => r.id));
+    if (_cachedLaylaIds.size === 0) _cachedLaylaIds.add(FALLBACK_LAYLA_ID);
+  } catch {
+    _cachedLaylaIds = new Set([FALLBACK_LAYLA_ID]);
+  }
+  return _cachedLaylaIds;
+}
+
+const LAYLA_ACCOUNT_IDS = new Set([FALLBACK_LAYLA_ID]);
 
 export interface CommentWebhookEvent {
   platform: "facebook" | "instagram";
@@ -124,7 +145,8 @@ export async function handleCommentEvent(event: CommentWebhookEvent): Promise<vo
       return;
     }
 
-    const isLayla = LAYLA_ACCOUNT_IDS.has(subAccountId);
+    const laylaIds = await getLaylaAccountIds();
+    const isLayla = laylaIds.has(subAccountId);
 
     if (isLayla) {
       if (checkEscalationKeywords(commentText, ESCALATION_KEYWORDS)) {

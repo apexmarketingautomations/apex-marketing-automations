@@ -12,11 +12,14 @@ function getTenant(req: Request): number {
   return id;
 }
 
-const ADMIN_SECRET = "apex-admin-2024";
-
 function requireAdmin(req: Request, res: Response): boolean {
-  const auth = req.headers["x-admin-secret"] || req.query.secret;
-  if (auth !== ADMIN_SECRET) {
+  const secret = process.env.ADMIN_API_SECRET || process.env.ADMIN_USER_ID;
+  if (!secret) {
+    res.status(503).json({ error: "Admin API not configured" });
+    return false;
+  }
+  const auth = req.headers["x-admin-secret"];
+  if (auth !== secret) {
     res.status(403).json({ error: "Forbidden" });
     return false;
   }

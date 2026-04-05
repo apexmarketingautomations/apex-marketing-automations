@@ -10,6 +10,7 @@ import crypto from "crypto";
 import { asyncHandler, getUserId, requireAdmin, getIndustryContext, getLanguageInstruction, getTwilioClient, vapiConfig } from "./helpers";
 import { enforceSmsProvider } from "../smsGatewayGuard";
 import { assembleDmContext, buildDmMessages } from "../dmContextAssembler";
+import { extractInsightsFromConversation } from "../sharedIntelligence";
 import { startTrace, recordStepValue } from "../traceRecorder";
 import { resolveSubAccount, isRoutingFailure } from "../routing/resolver";
 import { persistRoutingFailure } from "../routing/failureQueue";
@@ -193,13 +194,19 @@ export function registerWebhooksRoutes(app: Express) {
             contactPhone: senderClean,
             channel,
           });
-          const aiMessages = buildDmMessages(dmCtx, channel, incomingMsg);
+          const aiMessages = await buildDmMessages(dmCtx, channel, incomingMsg);
           const langInstr = getLanguageInstruction(dmCtx.language);
           if (langInstr && aiMessages.length > 0 && aiMessages[0].role === "system") {
             aiMessages[0].content += langInstr;
           }
           const smsAiResult = await aiChat(aiMessages, { temperature: 0.7, maxTokens: 1024, route: "webhook-sms-reply" });
           aiReply = smsAiResult.text || aiReply;
+
+          extractInsightsFromConversation(
+            dmCtx.threadHistory.map(h => ({ role: h.role, content: h.content })),
+            matchedAccountId,
+            incomingMsg
+          ).catch(err => console.error(`[SHARED-INTEL] Background extraction failed:`, err instanceof Error ? err.message : err));
           recordStepValue(trace, "ai_response_generated", "success", Date.now() - aiStart, {
             provider: "ai",
             metadata: { replyLength: aiReply.length },
@@ -752,7 +759,7 @@ export function registerWebhooksRoutes(app: Express) {
             channel: "sms",
           });
           const langInstr = getLanguageInstruction(dmCtx.language);
-          const aiMsgs = buildDmMessages(dmCtx, "sms", incomingMsg);
+          const aiMsgs = await buildDmMessages(dmCtx, "sms", incomingMsg);
           if (langInstr && aiMsgs.length > 0 && aiMsgs[0].role === "system") {
             aiMsgs[0].content += langInstr;
           }
@@ -976,7 +983,7 @@ export function registerWebhooksRoutes(app: Express) {
         try {
           const dmCtx = await assembleDmContext({ subAccountId: subAccountIdParam, contactPhone: senderClean, channel: "sms" });
           const langInstr = getLanguageInstruction(dmCtx.language);
-          const aiMsgs = buildDmMessages(dmCtx, "sms", incomingMsg);
+          const aiMsgs = await buildDmMessages(dmCtx, "sms", incomingMsg);
           if (langInstr && aiMsgs.length > 0 && aiMsgs[0].role === "system") {
             aiMsgs[0].content += langInstr;
           }
@@ -1557,7 +1564,7 @@ export function registerWebhooksRoutes(app: Express) {
                   });
                 const ctxMs = Date.now() - metaAiStart;
 
-                const aiMessages = buildDmMessages(dmCtx, channel, message);
+                const aiMessages = await buildDmMessages(dmCtx, channel, message);
                 const langInstr = getLanguageInstruction(dmCtx.language);
                 if (langInstr && aiMessages.length > 0 && aiMessages[0].role === "system") {
                   aiMessages[0].content += langInstr;
@@ -1569,6 +1576,12 @@ export function registerWebhooksRoutes(app: Express) {
                 const aiMs = Date.now() - aiCallStart;
 
                 console.log(`[META DM] Timing: context=${ctxMs}ms, ai=${aiMs}ms, total_so_far=${Date.now() - metaAiStart}ms`);
+
+                extractInsightsFromConversation(
+                  dmCtx.threadHistory.map(h => ({ role: h.role, content: h.content })),
+                  subAccountId,
+                  message
+                ).catch(err => console.error(`[SHARED-INTEL] Background extraction failed:`, err instanceof Error ? err.message : err));
 
                 recordStepValue(metaTrace, "ai_response_generated", "success", Date.now() - metaAiStart, {
                   provider: "ai",
