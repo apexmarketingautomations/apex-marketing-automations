@@ -1,0 +1,173 @@
+I now have the real project structure. Use this exact structure and do not invent a new one.
+Project facts:
+Main route registration:
+* `server/routes.ts`
+* routes are registered through modular `registerXRoutes(app)` functions inside `registerRoutes(httpServer, app)`
+Important server behavior from `server/index.ts`:
+* rate limiters are applied before route registration
+* `await setupAuth(app);`
+* `app.use("/api", csrfProtection);`
+* `await registerRoutes(httpServer, app);`
+Sub-account schema exists in:
+* `shared/schema.ts`
+Current `sub_accounts` table:
+
+```ts
+export const subAccounts = pgTable("sub_accounts", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  twilioNumber: text("twilio_number").notNull(),
+  googleReviewLink: text("google_review_link"),
+  trustpilotLink: text("trustpilot_link"),
+  ownerPhone: text("owner_phone"),
+  industry: text("industry"),
+  config: json("config"),
+  vibeTheme: text("vibe_theme").default("cyber-glass"),
+  ownerUserId: text("owner_user_id"),
+  parentSnapshotId: integer("parent_snapshot_id"),
+  isFork: boolean("is_fork").default(false),
+  language: text("language").default("en"),
+  aiPromptConfig: json("ai_prompt_config"),
+  plan: text("plan").default("starter").notNull(),
+  planFeatures: text("plan_features").array(),
+  webhookToken: text("webhook_token"),
+  address: text("address"),
+  formattedAddress: text("formatted_address"),
+  city: text("city"),
+  state: text("state"),
+  zip: text("zip"),
+  lat: real("lat"),
+  lng: real("lng"),
+  geocodeStatus: text("geocode_status"),
+  geocodedAt: timestamp("geocoded_at"),
+  metaPageId: text("meta_page_id"),
+  metaAccessToken: text("meta_access_token"),
+  metaAppSecret: text("meta_app_secret"),
+  twilioSubaccountSid: text("twilio_subaccount_sid"),
+  twilioSubaccountAuthToken: text("twilio_subaccount_auth_token"),
+  twilioStatus: text("twilio_status").default("legacy"),
+});
+
+```
+
+Primary DB connection:
+* `server/db.ts`
+
+```ts
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
+import * as schema from "@shared/schema";
+
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL must be set");
+}
+
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
+export const db = drizzle(pool, { schema });
+
+```
+
+I now have the real project structure. Use this exact structure and do not invent a new one.
+Project facts
+Main route registration
+* `server/routes.ts`
+* Routes are registered through modular `registerXRoutes(app)` functions inside `registerRoutes(httpServer, app)`
+Important server behavior from `server/index.ts`
+* rate limiters are applied before route registration
+* `await setupAuth(app);`
+* `app.use("/api", csrfProtection);`
+* `await registerRoutes(httpServer, app);`
+Sub-account schema exists in
+* `shared/schema.ts`
+Current `sub_accounts` table
+
+```
+export const subAccounts = pgTable("sub_accounts", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  twilioNumber: text("twilio_number").notNull(),
+  googleReviewLink: text("google_review_link"),
+  trustpilotLink: text("trustpilot_link"),
+  ownerPhone: text("owner_phone"),
+  industry: text("industry"),
+  config: json("config"),
+  vibeTheme: text("vibe_theme").default("cyber-glass"),
+  ownerUserId: text("owner_user_id"),
+  parentSnapshotId: integer("parent_snapshot_id"),
+  isFork: boolean("is_fork").default(false),
+  language: text("language").default("en"),
+  aiPromptConfig: json("ai_prompt_config"),
+  plan: text("plan").default("starter").notNull(),
+  planFeatures: text("plan_features").array(),
+  webhookToken: text("webhook_token"),
+  address: text("address"),
+  formattedAddress: text("formatted_address"),
+  city: text("city"),
+  state: text("state"),
+  zip: text("zip"),
+  lat: real("lat"),
+  lng: real("lng"),
+  geocodeStatus: text("geocode_status"),
+  geocodedAt: timestamp("geocoded_at"),
+  metaPageId: text("meta_page_id"),
+  metaAccessToken: text("meta_access_token"),
+  metaAppSecret: text("meta_app_secret"),
+  twilioSubaccountSid: text("twilio_subaccount_sid"),
+  twilioSubaccountAuthToken: text("twilio_subaccount_auth_token"),
+  twilioStatus: text("twilio_status").default("legacy"),
+});
+```
+
+Primary DB connection
+* `server/db.ts`
+
+```
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
+import * as schema from "@shared/schema";
+
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL must be set");
+}
+
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
+export const db = drizzle(pool, { schema });
+```
+
+Requirements
+* Multi-tenant by `sub_accounts`
+* Each sub-account must have fully separate platform integrations
+* Support Instagram, Facebook, X, and TikTok
+* Use existing Express modular route style
+* Use existing Drizzle schema style in `shared/schema.ts`
+* Use existing `server/db.ts`
+* Do not redesign the app structure
+* Do not replace the whole routing system
+* Do not create a new standalone backend
+* Integrate cleanly into current project
+What I want now
+Build Phase 1 only.
+Phase 1 scope:
+* schema
+* route registration
+* basic CRUD routes for content planner tied to `sub_accounts`
+Output rules
+1. Show the exact new tables to add to `shared/schema.ts`
+2. Show the exact new route file(s) to add under `server/routes/`
+3. Show exactly how to register those new routes in `server/routes.ts`
+4. Show any service/helper files needed for Phase 1 only
+5. Output complete code files only
+6. Do not include summaries
+7. Do not include pseudo-code
+8. Do not include placeholders
+9. When modifying an existing file, rewrite the full file from scratch
+10. Label every file path clearly
+11. Do not generate workers, publishers, schedulers, frontend, auth rewrites, or a new DB connection yet
+12. Keep all tenant ownership tied to `sub_account_id`
+13. Assume this must coexist with the existing Apex platform without breaking current features
