@@ -2153,6 +2153,25 @@ export const contentPublishingJobs = pgTable("content_publishing_jobs", {
 });
 export type ContentPublishingJob = typeof contentPublishingJobs.$inferSelect;
 
+export const commentAutoReplies = pgTable("comment_auto_replies", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  platform: text("platform").notNull(),
+  postId: text("post_id").notNull(),
+  commentId: text("comment_id").notNull(),
+  commentText: text("comment_text").notNull(),
+  commenterName: text("commenter_name"),
+  commenterId: text("commenter_id"),
+  replyText: text("reply_text"),
+  replyId: text("reply_id"),
+  status: text("status").default("pending").notNull(),
+  sentiment: text("sentiment"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  repliedAt: timestamp("replied_at"),
+});
+export type CommentAutoReply = typeof commentAutoReplies.$inferSelect;
+
 export const contentLibrary = pgTable("content_library", {
   id: serial("id").primaryKey(),
   subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),

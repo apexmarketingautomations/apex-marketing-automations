@@ -35,6 +35,7 @@ import { registerPublicPlatformRoutes } from "./routes/public-platform";
 import { registerStandaloneCardsRoutes } from "./routes/standalone-cards";
 import { registerExternalApiRoutes } from "./routes/external-api";
 import { registerContentPlannerRoutes } from "./routes/contentPlanner";
+import { registerCommentBotRoutes } from "./routes/commentBot";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -74,6 +75,7 @@ export async function registerRoutes(
   registerStandaloneCardsRoutes(app);
   registerExternalApiRoutes(app);
   registerContentPlannerRoutes(app);
+  registerCommentBotRoutes(app);
 
   return httpServer;
 }

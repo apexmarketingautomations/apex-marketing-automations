@@ -1666,6 +1666,60 @@ export function registerWebhooksRoutes(app: Express) {
               } catch {}
             }
           }
+
+          // ─── COMMENT AUTO-REPLY: handle entry.changes (feed/comments) ───
+          for (const change of entry.changes || []) {
+            if (change.field !== "feed" && change.field !== "comments") continue;
+            const value = change.value;
+            if (!value) continue;
+
+            const isComment = value.item === "comment" ||
+              (value.verb === "add" && value.comment_id) ||
+              (change.field === "comments" && value.id);
+
+            if (!isComment) continue;
+
+            const commentId = value.comment_id || value.id;
+            const commentText = value.message || value.text || "";
+            const commenterId = value.from?.id || value.sender_id || "";
+            const commenterName = value.from?.name || null;
+            const postId = value.post_id || value.media_id || value.media?.id || "";
+            const parentId = value.parent_id || null;
+
+            if (!commentId || !commentText || !entryPageId) continue;
+
+            const channel = body.object === "instagram" ? "instagram" : "facebook";
+
+            let commentSubAccountId: number | null = null;
+            try {
+              const { resolveSubAccountByPageId } = await import("../metaConfig");
+              commentSubAccountId = await resolveSubAccountByPageId(String(entryPageId));
+            } catch {
+              console.warn(`[COMMENT-BOT] Could not resolve sub-account for page ${entryPageId}`);
+              continue;
+            }
+
+            if (!commentSubAccountId) continue;
+
+            try {
+              const { handleCommentEvent } = await import("../services/commentBot/commentHandler");
+              handleCommentEvent({
+                platform: channel as "facebook" | "instagram",
+                subAccountId: commentSubAccountId,
+                pageId: entryPageId,
+                postId,
+                commentId,
+                commentText,
+                commenterId,
+                commenterName,
+                parentId,
+              }).catch(err => {
+                console.error(`[COMMENT-BOT] Async handler error for comment ${commentId}:`, err.message);
+              });
+            } catch (importErr: any) {
+              console.error(`[COMMENT-BOT] Failed to import handler:`, importErr.message);
+            }
+          }
         }
       }
 

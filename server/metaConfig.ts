@@ -42,6 +42,17 @@ export async function resolveSubAccountByPageId(pageId: string): Promise<number>
 
   if (match) return match.id;
 
+  try {
+    const { db } = await import("./db");
+    const { socialAccounts } = await import("@shared/schema");
+    const { eq } = await import("drizzle-orm");
+    const igMatch = await db.select({ subAccountId: socialAccounts.subAccountId })
+      .from(socialAccounts)
+      .where(eq(socialAccounts.platformAccountId, pageId))
+      .limit(1);
+    if (igMatch.length > 0) return igMatch[0].subAccountId;
+  } catch {}
+
   throw new Error(`[META-CONFIG] No sub-account mapped to Facebook pageId=${pageId}. Register this page in a sub-account's Meta settings.`);
 }
 
