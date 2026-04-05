@@ -32,7 +32,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Select,
@@ -359,7 +358,7 @@ export default function SmsDashboard() {
   const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_inbox");
   const { activeAccountId } = useAccount();
   const [inboxTab, setInboxTab] = useState<string>("messages");
-  const [instagramConnected, setInstagramConnected] = useState(false);
+  const instagramConnected = true;
   const [localMessages, setLocalMessages] = useState<LocalMessage[]>([]);
   const [selectedConv, setSelectedConv] = useState<{ contactPhone: string; channel: string } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -487,40 +486,6 @@ export default function SmsDashboard() {
     form.setValue("channel", "sms");
   };
 
-  const simulateInstagramMessage = () => {
-    if (!instagramConnected) {
-      toast({
-        variant: "destructive",
-        title: "Integration Required",
-        description: "Please connect your Instagram account first.",
-      });
-      return;
-    }
-
-    if (!numericAccountId) return;
-
-    const newMessage: LocalMessage = {
-      id: Date.now(),
-      subAccountId: numericAccountId,
-      direction: 'inbound',
-      body: "Hey! Saw your story about the 6-week challenge. Can I get more info?",
-      status: 'received',
-      createdAt: new Date(),
-      contactPhone: "instagram_user_123",
-      channel: "instagram",
-      messageSid: null,
-      threadId: null,
-      traceId: null,
-      _local: true,
-    };
-    
-    setLocalMessages(prev => [...prev, newMessage]);
-    toast({
-      title: "New Instagram Message",
-      description: "Received from @instagram_user_123",
-    });
-  };
-
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollIntoView({ behavior: "smooth" });
@@ -613,24 +578,11 @@ export default function SmsDashboard() {
                       <div className="p-1.5 bg-pink-100 rounded-md">
                         <Instagram className="h-4 w-4 text-pink-600" />
                       </div>
-                      <span className="text-sm font-medium">Instagram</span>
+                      <span className="text-sm font-medium">Instagram DMs</span>
                     </div>
-                    <Switch 
-                      checked={instagramConnected}
-                      onCheckedChange={setInstagramConnected}
-                    />
+                    <Badge variant="outline" className="text-xs text-green-400 border-green-500/30">Active</Badge>
                  </div>
-                 {instagramConnected && (
-                   <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="w-full text-xs"
-                    onClick={simulateInstagramMessage}
-                  >
-                    <Bell className="mr-2 h-3 w-3" />
-                    Simulate Incoming DM
-                  </Button>
-                 )}
+                 <p className="text-xs text-muted-foreground">Instagram DMs appear automatically via Meta webhook.</p>
               </div>
             </CardContent>
           </Card>
@@ -760,7 +712,7 @@ export default function SmsDashboard() {
                  <Badge variant="outline" className="gap-1 text-xs border-blue-500/30 text-blue-400 hidden md:inline-flex" data-testid="badge-facebook">
                    <Facebook className="h-3 w-3" /> Facebook
                  </Badge>
-                 <Badge variant="outline" className={`gap-1 text-xs hidden md:inline-flex ${!instagramConnected && 'opacity-50'}`}>
+                 <Badge variant="outline" className="gap-1 text-xs border-pink-500/30 text-pink-400 hidden md:inline-flex">
                    <Instagram className="h-3 w-3" /> Instagram
                  </Badge>
               </div>
@@ -865,18 +817,16 @@ export default function SmsDashboard() {
                      >
                        <Facebook className="mr-1 h-3 w-3" /> FB
                      </Button>
-                     {instagramConnected && (
                        <Button
                         type="button"
                         variant={form.watch("channel") === "instagram" ? "default" : "outline"}
                         size="sm"
                         onClick={() => form.setValue("channel", "instagram")}
-                        className={`text-xs h-7 ${form.watch("channel") === "instagram" ? "bg-pink-600 hover:bg-pink-700" : ""}`}
+                        className={`text-xs h-8 min-w-[44px] ${form.watch("channel") === "instagram" ? "bg-pink-600 hover:bg-pink-700" : ""}`}
                         data-testid="button-channel-instagram"
                        >
-                         <Instagram className="mr-1.5 h-3 w-3" /> Instagram
+                         <Instagram className="mr-1 h-3 w-3" /> IG
                        </Button>
-                     )}
                   </div>
 
                   <div className="relative">

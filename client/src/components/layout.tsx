@@ -50,7 +50,6 @@ const navSections = [
     items: [
       { href: "/meta-ads", icon: Target, label: "Ad Campaigns" },
       { href: "/meta-leads", icon: Users, label: "Lead Forms" },
-      { href: "/instagram-inbox", icon: Instagram, label: "Instagram Inbox" },
     ],
   },
   {
