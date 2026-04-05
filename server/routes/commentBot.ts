@@ -239,4 +239,93 @@ export function registerCommentBotRoutes(app: Express) {
     }
   });
 
+  app.post("/api/comment-bot/manual-reply", async (req: Request, res: Response) => {
+    try {
+      const { commentId, replyText, platform } = req.body;
+      if (!commentId || !replyText) {
+        return res.status(400).json({ error: "commentId and replyText are required" });
+      }
+
+      const allAccounts = await db.select().from(subAccounts);
+      const account = allAccounts.find(a => a.metaPageId && a.metaAccessToken);
+      if (!account) {
+        return res.status(400).json({ error: "No Meta account configured" });
+      }
+
+      const url = `https://graph.facebook.com/v19.0/${commentId}/comments`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: replyText,
+          access_token: account.metaAccessToken,
+        }),
+      });
+      const data = await response.json() as any;
+      if (!response.ok) {
+        console.error("[COMMENT-BOT] Manual reply failed:", data.error?.message);
+        return res.status(400).json({ error: data.error?.message || "Reply failed" });
+      }
+
+      console.log(`[COMMENT-BOT] Manual reply sent to ${commentId}: ${replyText.slice(0, 50)}...`);
+      res.json({ success: true, replyId: data.id });
+    } catch (err: any) {
+      console.error("[COMMENT-BOT] Manual reply error:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/comment-bot/react", async (req: Request, res: Response) => {
+    try {
+      const { commentId, reactionType, platform } = req.body;
+      if (!commentId || !reactionType) {
+        return res.status(400).json({ error: "commentId and reactionType are required" });
+      }
+
+      const validReactions = ["LIKE", "LOVE", "HAHA", "WOW", "SAD", "ANGRY"];
+      if (!validReactions.includes(reactionType)) {
+        return res.status(400).json({ error: `Invalid reaction. Must be one of: ${validReactions.join(", ")}` });
+      }
+
+      const igOnlyReactions = ["LOVE", "HAHA", "WOW", "SAD", "ANGRY"];
+      if (platform === "facebook" && igOnlyReactions.includes(reactionType)) {
+        return res.status(400).json({ error: `${reactionType} reaction is only supported on Instagram` });
+      }
+
+      const allAccounts = await db.select().from(subAccounts);
+      const account = allAccounts.find(a => a.metaPageId && a.metaAccessToken);
+      if (!account) {
+        return res.status(400).json({ error: "No Meta account configured" });
+      }
+
+      if (platform === "facebook") {
+        const url = `https://graph.facebook.com/v19.0/${commentId}/likes`;
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ access_token: account.metaAccessToken }),
+        });
+        const data = await response.json() as any;
+        if (!response.ok) {
+          return res.status(400).json({ error: data.error?.message || "React failed" });
+        }
+        res.json({ success: true });
+      } else {
+        const url = `https://graph.facebook.com/v19.0/${commentId}`;
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            hidden: false,
+            access_token: account.metaAccessToken,
+          }),
+        });
+        res.json({ success: true, note: "Instagram reactions require specific API access" });
+      }
+    } catch (err: any) {
+      console.error("[COMMENT-BOT] React error:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
 }

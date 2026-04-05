@@ -13,11 +13,18 @@ import { recordSuccess } from "../pulse";
 import { startTrace, recordStepValue } from "../traceRecorder";
 import { getMetaConfig, buildMetaUrl } from "../metaConfig";
 import { requireActiveSubscription, checkPlanLimitMiddleware } from "../subscriptionGuard";
+import { addSSEClient } from "../sse";
 
 const subscriptionGuard = requireActiveSubscription();
 const messagesGuard = checkPlanLimitMiddleware("messages_per_month");
 
 export function registerMessagingRoutes(app: Express) {
+  app.get("/api/inbox/stream/:subAccountId", async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    addSSEClient(req, res, subAccountId);
+  });
+
   // ---- Messages ----
   app.get("/api/messages/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");

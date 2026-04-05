@@ -8,6 +8,7 @@ import { aiChat, isAIConfigured } from "../aiGateway";
 import { ProgressStream } from "../streaming";
 import crypto from "crypto";
 import { asyncHandler, getUserId, requireAdmin, getIndustryContext, getLanguageInstruction, getTwilioClient, vapiConfig } from "./helpers";
+import { broadcastNewMessage } from "../sse";
 import { enforceSmsProvider } from "../smsGatewayGuard";
 import { assembleDmContext, buildDmMessages } from "../dmContextAssembler";
 import { extractInsightsFromConversation } from "../sharedIntelligence";
@@ -1247,6 +1248,10 @@ export function registerWebhooksRoutes(app: Express) {
                 pageId: entryPageId,
                 senderId,
               });
+              broadcastNewMessage(subAccountId, {
+                subAccountId, channel, direction: "inbound", contactPhone: senderId,
+                body: message, status: "received", threadId: metaInboundThreadId, createdAt: new Date().toISOString(),
+              });
               recordStepValue(metaTrace, "crm_write", "success", Date.now() - metaCrmStart, {
                 metadata: { channel, direction: "inbound" },
                 disambiguator: mid || `meta-crm-${senderId}`,
@@ -1658,6 +1663,10 @@ export function registerWebhooksRoutes(app: Express) {
                     threadId: metaDmThreadId,
                     pageId: entryPageId,
                     senderId,
+                  });
+                  broadcastNewMessage(subAccountId, {
+                    subAccountId, channel, direction: "outbound", contactPhone: senderId,
+                    body: aiReply, status: aiSendStatus, threadId: metaDmThreadId, createdAt: new Date().toISOString(),
                   });
 
                   extractAndStoreInsights(subAccountId!, senderId, channel).catch(() => {});
