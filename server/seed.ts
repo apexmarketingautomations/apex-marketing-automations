@@ -408,6 +408,7 @@ async function ensureLaylaAccount(
         protectedReason: "Core AI persona account — do not modify or delete",
         industry: "AI Persona / Marketing Automation",
         metaPageId: "736112766259045",
+        metaAccessToken: "EAARowjzmH3sBROPHTpcdikeUPCAUGnirXQkEBiVed79KKT5gH40ezeZC5o4DfXaM3PrdpZCN6m0CXYy2l3usBUwFQTHPdCreZCK8gc1YeSjvNf8SICVmrd6uRRJeMZBzSg6lvx8XsehU2EBMdzRh5ORcLlM0xyABEvZCY9VZBAsCpNMPtgYY5TgZCWmuQt7Qvzm5mzDu68Q7sqvNimV5URl",
         config: {
           commentBot: {
             enabled: true,
@@ -447,6 +448,18 @@ async function ensureLaylaAccount(
         .set({ parentAccountId: apexId })
         .where(eq(subAccounts.id, laylaId));
       console.log(`[SYNC] Set Officer Layla parentAccountId=${apexId}`);
+    }
+
+    const [currentMeta] = await db.select({ metaPageId: subAccounts.metaPageId, metaAccessToken: subAccounts.metaAccessToken })
+      .from(subAccounts).where(eq(subAccounts.id, laylaId));
+    if (!currentMeta?.metaAccessToken || !currentMeta?.metaPageId) {
+      await db.update(subAccounts)
+        .set({
+          metaPageId: "736112766259045",
+          metaAccessToken: "EAARowjzmH3sBROPHTpcdikeUPCAUGnirXQkEBiVed79KKT5gH40ezeZC5o4DfXaM3PrdpZCN6m0CXYy2l3usBUwFQTHPdCreZCK8gc1YeSjvNf8SICVmrd6uRRJeMZBzSg6lvx8XsehU2EBMdzRh5ORcLlM0xyABEvZCY9VZBAsCpNMPtgYY5TgZCWmuQt7Qvzm5mzDu68Q7sqvNimV5URl",
+        })
+        .where(eq(subAccounts.id, laylaId));
+      console.log(`[SYNC] Set Meta credentials for Officer Layla #${laylaId}`);
     }
 
     const existingWallet = await db.select({ id: creditWallets.id })
