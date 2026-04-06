@@ -1455,9 +1455,20 @@ export function registerWebhooksRoutes(app: Express) {
             }
 
             // Call Request Flow — intent detection for Meta DMs (AI bypass)
+            // Skip for accounts with full persona override — persona handles all engagement
+            let skipCallRequestFlow = false;
+            try {
+              const acctCheck = await storage.getSubAccount(subAccountId);
+              const promptCfg = (acctCheck?.aiPromptConfig as any) || {};
+              if (promptCfg.systemPrompt && promptCfg.systemPrompt.length > 200) {
+                skipCallRequestFlow = true;
+                console.log(`[META DM] Full persona override active for subAccountId=${subAccountId} — skipping callRequestFlow`);
+              }
+            } catch {}
+
             const { detectIntent: detectMetaIntent, handleCallRequestFlow: handleMetaCallFlow } = await import("../callRequestFlow");
             const metaIntent = detectMetaIntent(message);
-            if (metaIntent.isHotLead && existingContactRecord) {
+            if (!skipCallRequestFlow && metaIntent.isHotLead && existingContactRecord) {
               console.log(`[META DM] HOT LEAD detected — intent=${metaIntent.intentType}, channel=${channel}, sender=${senderId}`);
 
               const metaLeadData = {
