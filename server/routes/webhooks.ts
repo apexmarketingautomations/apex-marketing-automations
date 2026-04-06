@@ -1150,9 +1150,41 @@ export function registerWebhooksRoutes(app: Express) {
 
           for (const event of entry.messaging || []) {
             const senderId = event.sender?.id;
-            const message = event.message?.text;
+            let message = event.message?.text;
             const mid = event.message?.mid as string | undefined;
             const pipelineStart = Date.now();
+
+            if (!message && event.message?.attachments) {
+              const audioAttachment = (event.message.attachments as any[]).find(
+                (a: any) => a.type === "audio" && a.payload?.url
+              );
+              if (audioAttachment) {
+                try {
+                  console.log(`[META DM] Voice message detected from ${senderId}, mid=${mid} — downloading and transcribing`);
+                  const audioUrl = audioAttachment.payload.url;
+                  const audioRes = await fetch(audioUrl, { signal: AbortSignal.timeout(15000) });
+                  if (audioRes.ok) {
+                    const audioBuffer = Buffer.from(await audioRes.arrayBuffer());
+                    const { detectAudioFormat, convertToWav, speechToText } = await import("../replit_integrations/audio/client");
+                    let format = detectAudioFormat(audioBuffer);
+                    let processBuffer = audioBuffer;
+                    if (format !== "wav" && format !== "mp3" && format !== "webm") {
+                      processBuffer = await convertToWav(audioBuffer);
+                      format = "wav";
+                    }
+                    const transcribed = await speechToText(processBuffer, format as "wav" | "mp3" | "webm");
+                    if (transcribed && transcribed.trim().length > 0) {
+                      message = transcribed.trim();
+                      console.log(`[META DM] Voice transcribed (${audioBuffer.length} bytes → ${message.length} chars): "${message.substring(0, 100)}"`);
+                    } else {
+                      console.warn(`[META DM] Voice transcription returned empty for mid=${mid}`);
+                    }
+                  }
+                } catch (voiceErr: any) {
+                  console.error(`[META DM] Voice transcription failed for mid=${mid}: ${voiceErr.message}`);
+                }
+              }
+            }
 
             if (!senderId || !message) {
               console.warn(`[META DM] Skipping event — missing sender (${senderId}) or message text, mid=${mid}, event_keys=${Object.keys(event).join(",")}`);
