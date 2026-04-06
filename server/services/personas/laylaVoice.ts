@@ -1,17 +1,14 @@
 import { textToSpeech } from "../../replit_integrations/audio/client";
-import { writeFile, unlink, readFile, mkdir } from "fs/promises";
+import { writeFile, unlink } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { randomUUID } from "crypto";
-import { spawn } from "child_process";
 
 const LAYLA_VOICE: "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer" = "nova";
 const OUTPUT_FORMAT: "wav" | "mp3" | "flac" | "opus" | "pcm16" = "mp3";
 
-const VOICE_SYSTEM_PROMPT = `You are Layla Woods reading a DM response aloud. 
-Speak naturally like a young confident woman texting — casual, warm, slightly flirty. 
-Use natural pauses, don't sound robotic. Keep the energy relaxed but engaging.
-Read the text exactly as written, preserving tone and intent.`;
+const MAX_VOICE_WORDS = 25;
+const MAX_VOICE_CHARS = 140;
 
 export interface VoiceMessageResult {
   audioBuffer: Buffer;
@@ -20,23 +17,47 @@ export interface VoiceMessageResult {
   textUsed: string;
 }
 
+export function condenseForVoice(fullReply: string): string | null {
+  let text = fullReply
+    .replace(/💕|😉|😏|👍|🍷|✨|🔥|😍|❤️|😘|🥵|💦|👀|🙂|😂|🤣|😭|💀|🫶|🤷‍♀️|💅|👏|🎉|❤️‍🔥/g, "")
+    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/\n+/g, " ")
+    .trim();
+
+  if (!text || text.length < 5) return null;
+
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  let memo = sentences[0] || text;
+
+  if (memo.split(/\s+/).length > MAX_VOICE_WORDS) {
+    memo = memo.split(/\s+/).slice(0, MAX_VOICE_WORDS).join(" ");
+    if (!/[.!?]$/.test(memo)) memo += ".";
+  }
+
+  if (memo.length > MAX_VOICE_CHARS) {
+    memo = memo.substring(0, MAX_VOICE_CHARS).replace(/\s+\S*$/, "");
+    if (!/[.!?]$/.test(memo)) memo += ".";
+  }
+
+  if (memo.length < 5) return null;
+
+  return memo;
+}
+
 export async function generateLaylaVoiceMessage(
   text: string
 ): Promise<VoiceMessageResult> {
-  const cleanText = text
-    .replace(/💕|😉|😏|👍|🍷|✨|🔥|😍|❤️|😘|🥵|💦|👀|🙂/g, "")
-    .trim();
-
-  if (!cleanText || cleanText.length < 2) {
-    throw new Error("Text too short for voice generation");
+  const memo = condenseForVoice(text);
+  if (!memo) {
+    throw new Error("Text too short or empty after condensing for voice");
   }
 
-  console.log(`[LAYLA-VOICE] Generating voice message (${cleanText.length} chars)`);
+  console.log(`[LAYLA-VOICE] Generating short memo (${memo.length} chars, ${memo.split(/\s+/).length} words): "${memo}"`);
 
-  const audioBuffer = await textToSpeech(cleanText, LAYLA_VOICE, OUTPUT_FORMAT);
+  const audioBuffer = await textToSpeech(memo, LAYLA_VOICE, OUTPUT_FORMAT);
 
-  const wordCount = cleanText.split(/\s+/).length;
-  const durationEstimateMs = Math.max(wordCount * 400, 2000);
+  const wordCount = memo.split(/\s+/).length;
+  const durationEstimateMs = Math.max(wordCount * 400, 1500);
 
   console.log(`[LAYLA-VOICE] Generated ${audioBuffer.length} bytes, ~${Math.round(durationEstimateMs / 1000)}s`);
 
@@ -44,7 +65,7 @@ export async function generateLaylaVoiceMessage(
     audioBuffer,
     format: "mp3",
     durationEstimateMs,
-    textUsed: cleanText,
+    textUsed: memo,
   };
 }
 
@@ -64,15 +85,24 @@ export async function cleanupVoiceFile(filepath: string): Promise<void> {
   } catch {}
 }
 
-export function shouldSendVoiceMessage(): boolean {
+export function shouldSendVoiceMessage(
+  messageCount: number,
+  voicesSentThisThread: number
+): boolean {
+  if (voicesSentThisThread >= 2) return false;
+
+  if (messageCount < 3) return false;
+
   const roll = Math.random();
-  return roll < 0.15;
+  return roll < 0.12;
 }
 
 export function getLaylaVoiceConfig() {
   return {
     voice: LAYLA_VOICE,
     format: OUTPUT_FORMAT,
-    voiceChance: 0.15,
+    voiceChance: 0.12,
+    maxPerThread: 2,
+    maxWords: MAX_VOICE_WORDS,
   };
 }

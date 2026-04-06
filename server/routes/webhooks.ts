@@ -1720,7 +1720,68 @@ export function registerWebhooksRoutes(app: Express) {
 
                 const metaSendStart = Date.now();
                 const metaDmThreadId = `${subAccountId}::${senderId}::${channel}`;
-                if (aiReply && (!accessToken || !pageId)) {
+
+                let sentAsVoice = false;
+                const voicePersonaCfg = subAccountId ? (await storage.getSubAccount(subAccountId))?.aiPromptConfig as any : null;
+                const isFullPersona = voicePersonaCfg?.systemPrompt && voicePersonaCfg.systemPrompt.length > 200;
+                if (aiReply && accessToken && pageId && isFullPersona) {
+                  try {
+                    const { shouldSendVoiceMessage, generateLaylaVoiceMessage, condenseForVoice } = await import("../services/personas/laylaVoice");
+                    const threadMsgCount = (dmCtx.threadHistory?.length || 0);
+                    const priorVoiceCount = (dmCtx.threadHistory || []).filter((h: any) => h.content?.startsWith?.("[voice memo]")).length;
+                    if (shouldSendVoiceMessage(threadMsgCount, priorVoiceCount)) {
+                      const memo = condenseForVoice(aiReply);
+                      if (memo) {
+                        console.log(`[LAYLA-VOICE] Voice roll HIT — generating memo for ${senderId}: "${memo}"`);
+                        const voiceResult = await generateLaylaVoiceMessage(aiReply);
+                        const FormData = (await import("form-data")).default;
+                        const form = new FormData();
+                        form.append("recipient", JSON.stringify({ id: senderId }));
+                        form.append("message", JSON.stringify({ attachment: { type: "audio", payload: { is_reusable: false } } }));
+                        form.append("filedata", voiceResult.audioBuffer, {
+                          filename: `voice_${Date.now()}.mp3`,
+                          contentType: "audio/mpeg",
+                        });
+                        const voiceUrl = `https://graph.facebook.com/v19.0/${pageId}/messages?access_token=${accessToken}` + (appsecretProof ? `&appsecret_proof=${appsecretProof}` : "");
+                        const voiceSendRes = await fetch(voiceUrl, {
+                          method: "POST",
+                          body: form as any,
+                          headers: form.getHeaders(),
+                        });
+                        const voiceSendData = await voiceSendRes.json() as any;
+                        if (voiceSendRes.ok) {
+                          console.log(`[LAYLA-VOICE] Voice memo sent to ${senderId}: OK, messageId=${voiceSendData?.message_id}`);
+                          sentAsVoice = true;
+                          await db.insert(messages).values({
+                            subAccountId,
+                            channel,
+                            direction: "outbound",
+                            contactPhone: senderId,
+                            body: `[voice memo] ${voiceResult.textUsed}`,
+                            status: "sent",
+                            traceId: metaTraceId,
+                            threadId: metaDmThreadId,
+                            pageId: entryPageId,
+                            senderId,
+                          });
+                          recordStepValue(metaTrace, "outbound_send", "success", Date.now() - metaSendStart, {
+                            provider: "meta",
+                            metadata: { channel, to: senderId, type: "voice_memo", metaMsgId: voiceSendData?.message_id },
+                            disambiguator: voiceSendData?.message_id || mid || `meta-voice-${senderId}`,
+                          });
+                        } else {
+                          console.error(`[LAYLA-VOICE] Voice send FAILED — HTTP ${voiceSendRes.status}: ${JSON.stringify(voiceSendData).substring(0, 300)}`);
+                        }
+                      }
+                    }
+                  } catch (voiceGenErr: any) {
+                    console.error(`[LAYLA-VOICE] Voice generation/send error: ${voiceGenErr.message}`);
+                  }
+                }
+
+                if (sentAsVoice) {
+                  console.log(`[LAYLA-PIPELINE] Step 5: Voice memo sent — skipping text send`);
+                } else if (aiReply && (!accessToken || !pageId)) {
                   console.warn(`[META DM] AI reply generated but cannot send to ${senderId} (subAccount=${subAccountId}): per-account accessToken or pageId missing from integration config.`);
                   await db.insert(messages).values({
                     subAccountId,
