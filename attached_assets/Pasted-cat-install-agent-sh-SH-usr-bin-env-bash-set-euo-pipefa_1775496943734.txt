@@ -1,0 +1,302 @@
+cat > install_agent.sh <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "=== Creating agent files (agent_worker, commands, migration, scripts)... ==="
+
+cat > agent_worker.js <<'JS'
+/* agent_worker.js (safe agent) */
+import express from "express";
+import bodyParser from "body-parser";
+import crypto from "crypto";
+import fs from "fs/promises";
+import path from "path";
+import { spawn } from "child_process";
+import pg from "pg";
+
+const {
+  DATABASE_URL,
+  AGENT_SECRET,
+  AGENT_POLL_SECS = 10,
+  AGENT_MAX_RUNTIME = 60,
+  AGENT_PORT = 3001
+} = process.env;
+
+if (!DATABASE_URL) { console.error("DATABASE_URL not set"); process.exit(1); }
+if (!AGENT_SECRET) { console.error("AGENT_SECRET not set"); process.exit(1); }
+
+const pool = new pg.Pool({ connectionString: DATABASE_URL });
+const app = express();
+app.use(bodyParser.json());
+
+async function loadCommandMap(){
+  const txt = await fs.readFile(path.join(process.cwd(),'agent_commands.json'),'utf8');
+  return JSON.parse(txt);
+}
+
+function verifyHmacSignature(body, signature){
+  try {
+    const h = crypto.createHmac('sha256', AGENT_SECRET);
+    h.update(JSON.stringify(body));
+    const expected = 'sha256=' + h.digest('hex');
+    return signature && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+  } catch(e){
+    return false;
+  }
+}
+
+async function logAgent(taskId, level, meta){
+  await pool.query(
+    `INSERT INTO agent_logs (task_id, level, meta, created_at) VALUES ($1,$2,$3,now())`,
+    [taskId, level, meta ? JSON.stringify(meta) : null]
+  );
+}
+
+async function markTask(id, status, result){
+  await pool.query(`UPDATE agent_tasks SET status=$1, result=$2, updated_at=now() WHERE id=$3`, [status, JSON.stringify(result), id]);
+}
+
+function runCommand(cmd, args=[], maxRuntime=AGENT_MAX_RUNTIME){
+  return new Promise((resolve)=>{
+    const child = spawn(cmd, args, { shell: true, env: process.env });
+    let stdout = '', stderr = '';
+    child.stdout.on('data', d => stdout += d.toString());
+    child.stderr.on('data', d => stderr += d.toString());
+    const timeout = setTimeout(()=> {
+      child.kill('SIGKILL');
+      resolve({ code: null, signal: 'SIGKILL', stdout, stderr, timedOut:true });
+    }, maxRuntime*1000);
+    child.on('close', (code, signal) => {
+      clearTimeout(timeout);
+      resolve({ code, signal, stdout, stderr, timedOut:false });
+    });
+  });
+}
+
+async function processTaskRow(row, commandsMap){
+  const { id, job_type, payload, created_by, sub_account_id } = row;
+  try {
+    if(sub_account_id){
+      const r = await pool.query('SELECT is_protected FROM sub_accounts WHERE id=$1', [sub_account_id]);
+      if(r.rows[0]?.is_protected){
+        await logAgent(id, 'warn', { reason:'protected_account', sub_account_id });
+        await markTask(id, 'rejected', { reason: 'protected_account' });
+        return;
+      }
+    }
+
+    if(!commandsMap[job_type]){
+      await logAgent(id, 'error', { reason:'unknown_job_type', job_type });
+      await markTask(id, 'failed', { reason: 'unknown_job_type' });
+      return;
+    }
+
+    const cmd = commandsMap[job_type].cmd;
+    const args = commandsMap[job_type].args || [];
+    await logAgent(id, 'info', { action:'exec_start', cmd, args, created_by, payload });
+
+    const res = await runCommand(cmd, args);
+    await logAgent(id, 'info', { action:'exec_finish', exit: res.code, signal:res.signal, timedOut:res.timedOut });
+    await markTask(id, 'done', { exit: res.code, signal: res.signal, stdout: res.stdout.slice(0,20000), stderr: res.stderr.slice(0,20000) });
+  } catch(err){
+    await logAgent(id, 'error', { error: String(err) });
+    await markTask(id, 'failed', { error: String(err) });
+  }
+}
+
+async function pollLoop(){
+  const commandsMap = await loadCommandMap();
+  while(true){
+    try{
+      const { rows } = await pool.query(`SELECT * FROM agent_tasks WHERE status='pending' ORDER BY created_at ASC LIMIT 5 FOR UPDATE SKIP LOCKED`);
+      for(const r of rows){
+        await pool.query('UPDATE agent_tasks SET status=$1, updated_at=now() WHERE id=$2', ['processing', r.id]);
+        processTaskRow(r, commandsMap).catch(e=>console.error('processTaskRow',e));
+      }
+    }catch(e){
+      console.error("poll error", e);
+    }
+    await new Promise(r=>setTimeout(r, AGENT_POLL_SECS*1000));
+  }
+}
+
+app.post('/api/agent/tasks', async (req,res)=>{
+  const sig = req.headers['x-agent-signature'];
+  if(!verifyHmacSignature(req.body, sig)) return res.status(401).json({error:'invalid_signature'});
+  const { job_type, payload, created_by, sub_account_id } = req.body;
+  const result = await pool.query(
+    `INSERT INTO agent_tasks (job_type, payload, status, created_by, sub_account_id, created_at) VALUES ($1,$2,'pending',$3,$4,now()) RETURNING id`,
+    [job_type, payload ? JSON.stringify(payload) : null, created_by, sub_account_id]
+  );
+  await logAgent(result.rows[0].id, 'info', { action:'task_created', job_type, created_by });
+  res.json({ id: result.rows[0].id });
+});
+
+const PORT = parseInt(process.env.AGENT_PORT || '3001',10);
+app.listen(PORT, ()=> console.log('Agent webhook listening on', PORT));
+pollLoop().catch(e=>console.error(e));
+JS
+
+cat > agent_commands.json <<'JSON'
+{
+  "run_backfill_for_subaccount": {
+    "cmd": "node scripts/run_live_backfill.js",
+    "args": []
+  },
+  "seed_demo_subaccount": {
+    "cmd": "node scripts/seed_demo_subaccount.js",
+    "args": []
+  }
+}
+JSON
+
+mkdir -p migrations scripts
+
+cat > migrations/2025xx_agent_tasks.sql <<'SQL'
+CREATE TABLE IF NOT EXISTS agent_tasks (
+  id bigserial PRIMARY KEY,
+  job_type text NOT NULL,
+  payload jsonb,
+  status text NOT NULL DEFAULT 'pending',
+  created_by text,
+  sub_account_id int,
+  created_at timestamp default now(),
+  updated_at timestamp
+);
+
+CREATE TABLE IF NOT EXISTS agent_logs (
+  id bigserial PRIMARY KEY,
+  task_id bigint,
+  level text,
+  meta jsonb,
+  created_at timestamp default now()
+);
+SQL
+
+cat > scripts/run_live_backfill.js <<'JS'
+/* scripts/run_live_backfill.js */
+import pg from 'pg';
+import fetch from 'node-fetch';
+import fs from 'fs/promises';
+import { v4 as uuidv4 } from 'uuid';
+
+const { DATABASE_URL } = process.env;
+if(!DATABASE_URL) { console.error('DATABASE_URL required'); process.exit(1); }
+const pool = new pg.Pool({ connectionString: DATABASE_URL });
+
+async function main(){
+  const args = Object.fromEntries(process.argv.slice(2).map(a=>{
+    const [k,v] = a.replace(/^--/,'').split('=');
+    return [k,v];
+  }));
+  const taskId = args.taskId;
+  if(!taskId) throw new Error("Usage: node scripts/run_live_backfill.js --taskId=<id>");
+
+  const t = await pool.query('SELECT * FROM agent_tasks WHERE id=$1', [taskId]);
+  if(!t.rows.length) throw new Error("Task not found");
+  const task = t.rows[0];
+  const payload = task.payload || {};
+  const subAccountId = (payload.sub_account_id || task.sub_account_id);
+  const ticketId = `AGENT-${taskId}-${Date.now()}`;
+
+  // check is_protected
+  const r = await pool.query('SELECT is_protected FROM sub_accounts WHERE id=$1', [subAccountId]);
+  if(r.rows[0]?.is_protected){
+    await pool.query(`INSERT INTO system_logs (severity, module, message, metadata, created_at) VALUES ($1, $2, $3, $4, now())`,
+      ['warn','agent','backfill_aborted', JSON.stringify({ reason:'protected_account', ticketId })]);
+    console.log("protected account - abort");
+    return;
+  }
+
+  // check owner unlock
+  const ul = await pool.query(`SELECT * FROM owner_unlocks WHERE sub_account_id=$1 AND used=false ORDER BY created_at DESC LIMIT 1`, [subAccountId]);
+  if(!ul.rows.length) throw new Error("No owner unlock found");
+  const unlock = ul.rows[0];
+  if(new Date(unlock.expires_at) < new Date()) throw new Error("Unlock expired");
+
+  const toScan = await pool.query(`SELECT id, comment_id, commenter_name FROM comment_auto_replies WHERE sub_account_id=$1 AND (commenter_name IS NULL OR commenter_name='')`, [subAccountId]);
+  let scanned=0, updated=0, skipped=0, errors=0;
+  const diffs=[];
+
+  const tok = await pool.query(`SELECT access_token FROM oauth_tokens WHERE sub_account_id=$1 ORDER BY created_at DESC LIMIT 1`, [subAccountId]);
+  const accessToken = tok.rows[0]?.access_token;
+  if(!accessToken) throw new Error("Missing oauth token for sub_account");
+
+  for(const row of toScan.rows){
+    scanned++;
+    try{
+      const commentId = row.comment_id;
+      const url = `https://graph.facebook.com/v21.0/${commentId}?fields=from&access_token=${accessToken}`;
+      const res = await fetch(url);
+      if(!res.ok){ skipped++; continue; }
+      const data = await res.json();
+      const from = data.from;
+      if(from && from.name){
+        const old = row.commenter_name;
+        await pool.query(`UPDATE comment_auto_replies SET commenter_name=$1 WHERE id=$2`, [from.name, row.id]);
+        updated++;
+        diffs.push({ id: row.id, comment_id: commentId, old_value: old, new_value: from.name });
+        await pool.query(`INSERT INTO system_logs (severity, module, message, metadata, created_at) VALUES ($1,$2,$3,$4,now())`, ['security','agent','backfill_update', JSON.stringify({ comment_id: commentId, old_value: old, new_value: from.name, ticketId })]);
+      } else {
+        skipped++;
+      }
+    } catch(e){
+      errors++;
+      await pool.query(`INSERT INTO system_logs (severity, module, message, metadata, created_at) VALUES ($1,$2,$3,$4,now())`, ['error','agent','backfill_error', JSON.stringify({ error: String(e), id: row.id, ticketId })]);
+    }
+  }
+
+  await pool.query(`UPDATE owner_unlocks SET used=true WHERE id=$1`, [unlock.id]);
+  const diffPath = `/tmp/backfill_diff_${taskId}_${Date.now()}.json`;
+  await fs.writeFile(diffPath, JSON.stringify({ scanned, updated, skipped, errors, diffs }, null, 2));
+  await pool.query(`INSERT INTO system_logs (severity, module, message, metadata, created_at) VALUES ($1,$2,$3,$4,now())`, ['info','agent','backfill_summary', JSON.stringify({ scanned, updated, skipped, errors, diffPath, ticketId })]);
+  console.log("Backfill done:", { scanned, updated, skipped, errors, diffPath });
+  process.exit(0);
+}
+
+main().catch(err => { console.error(err); process.exit(1); });
+JS
+
+cat > scripts/seed_demo_subaccount.js <<'JS'
+/* scripts/seed_demo_subaccount.js */
+import pg from 'pg';
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+
+async function main(){
+  const { rows } = await pool.query(`SELECT * FROM sub_accounts WHERE id=$1`, [22]);
+  if(!rows.length) throw new Error('source sub_account not found');
+  const s = rows[0];
+  const res = await pool.query(`INSERT INTO sub_accounts (name, white_label_settings, is_protected, created_at) VALUES ($1,$2,false,now()) RETURNING id`, [s.name + ' (demo)', s.white_label_settings || null]);
+  console.log("Created demo sub_account:", res.rows[0].id);
+  process.exit(0);
+}
+
+main().catch(err=>{ console.error(err); process.exit(1); });
+JS
+
+chmod +x install_agent.sh
+echo "Files created. Next: install node deps, run migration, and start agent."
+
+echo "=== Installing node deps (pg, node-fetch, uuid)... ==="
+npm install pg node-fetch uuid
+
+git checkout -b feature/agent-worker || true
+git add agent_worker.js agent_commands.json migrations/2025xx_agent_tasks.sql scripts/run_live_backfill.js scripts/seed_demo_subaccount.js
+git commit -m "feat(agent): add agent worker, backfill script, migration" || true
+git push -u origin feature/agent-worker || true
+
+echo "=== Running DB migration (if psql available) ==="
+if command -v psql >/dev/null 2>&1; then
+  psql "$DATABASE_URL" -f migrations/2025xx_agent_tasks.sql
+else
+  echo "psql not found -- run the SQL in migrations/2025xx_agent_tasks.sql in your DB admin UI."
+fi
+
+echo "=== Starting agent in background (nohup) ==="
+nohup node agent_worker.js > agent_agent.log 2>&1 & disown
+sleep 1
+echo "Agent started. Tail logs with: tail -n 200 agent_agent.log"
+SH
+
+chmod +x install_agent.sh
+echo "=== Ready. Run: ./install_agent.sh ==="
