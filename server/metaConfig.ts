@@ -30,8 +30,9 @@ export async function getMetaConfig(subAccountId: number): Promise<MetaConfig> {
   return { pageId, accessToken, appSecret, appsecretProof };
 }
 
-export function buildMetaUrl(pageId: string, appsecretProof: string): string {
-  return `https://graph.facebook.com/v19.0/${pageId}/messages${appsecretProof ? `?appsecret_proof=${appsecretProof}` : ""}`;
+export function buildMetaUrl(pageId: string, appsecretProof: string, channel?: string): string {
+  const endpoint = channel === "instagram" ? "me" : pageId;
+  return `https://graph.facebook.com/v19.0/${endpoint}/messages${appsecretProof ? `?appsecret_proof=${appsecretProof}` : ""}`;
 }
 
 export async function resolveSubAccountByPageId(pageId: string): Promise<number> {
@@ -43,6 +44,12 @@ export async function resolveSubAccountByPageId(pageId: string): Promise<number>
   if (match) {
     console.log(`[META-CONFIG] Resolved pageId=${pageId} -> subAccountId=${match.id} (name="${match.name}") via subAccounts table`);
     return match.id;
+  }
+
+  const igMatch = allAccounts.find(a => (a as any).metaInstagramAccountId === pageId);
+  if (igMatch) {
+    console.log(`[META-CONFIG] Resolved igAccountId=${pageId} -> subAccountId=${igMatch.id} (name="${igMatch.name}") via metaInstagramAccountId`);
+    return igMatch.id;
   }
 
   try {

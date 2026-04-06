@@ -1113,7 +1113,10 @@ export function registerWebhooksRoutes(app: Express) {
     if (entryPageIds.length > 0) {
       try {
         const allAccounts = await storage.getSubAccounts();
-        const matchedAccount = allAccounts.find(a => a.metaPageId && entryPageIds.includes(a.metaPageId));
+        const matchedAccount = allAccounts.find(a =>
+          (a.metaPageId && entryPageIds.includes(a.metaPageId)) ||
+          ((a as any).metaInstagramAccountId && entryPageIds.includes((a as any).metaInstagramAccountId))
+        );
         if (matchedAccount?.metaAppSecret) {
           tenantSecret = matchedAccount.metaAppSecret;
         }
@@ -1515,7 +1518,8 @@ export function registerWebhooksRoutes(app: Express) {
 
               const metaSendReply = async (body: string) => {
                 if (!accessToken || !pageId) return;
-                const replyUrl = `https://graph.facebook.com/v19.0/${pageId}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
+                const replyEndpoint = channel === "instagram" ? "me" : pageId;
+                const replyUrl = `https://graph.facebook.com/v19.0/${replyEndpoint}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
                 const sendRes = await fetch(replyUrl, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -1614,7 +1618,8 @@ export function registerWebhooksRoutes(app: Express) {
                 await new Promise(resolve => setTimeout(resolve, kwDelayMs));
                 console.log(`[META DM] Natural delay applied: ${kwDelayMs}ms before keyword reply to ${senderId}`);
 
-                const kwUrl = `https://graph.facebook.com/v19.0/${pageId}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
+                const kwEndpoint = channel === "instagram" ? "me" : pageId;
+                const kwUrl = `https://graph.facebook.com/v19.0/${kwEndpoint}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
                 console.log(`[META DM] Sending keyword reply to ${senderId} via pageId=${pageId}, keyword="${kw.keyword}"`);
                 const kwSendRes = await fetch(kwUrl, {
                   method: "POST",
@@ -1742,7 +1747,8 @@ export function registerWebhooksRoutes(app: Express) {
                           filename: `voice_${Date.now()}.mp3`,
                           contentType: "audio/mpeg",
                         });
-                        const voiceUrl = `https://graph.facebook.com/v19.0/${pageId}/messages?access_token=${accessToken}` + (appsecretProof ? `&appsecret_proof=${appsecretProof}` : "");
+                        const voiceEndpoint = channel === "instagram" ? "me" : pageId;
+                        const voiceUrl = `https://graph.facebook.com/v19.0/${voiceEndpoint}/messages?access_token=${accessToken}` + (appsecretProof ? `&appsecret_proof=${appsecretProof}` : "");
                         const voiceSendRes = await fetch(voiceUrl, {
                           method: "POST",
                           body: form as any,
@@ -1802,8 +1808,9 @@ export function registerWebhooksRoutes(app: Express) {
                     disambiguator: mid ? `${mid}-send-err` : `meta-send-err-${senderId}`,
                   });
                 } else if (aiReply && accessToken && pageId) {
-                  const aiUrl = `https://graph.facebook.com/v19.0/${pageId}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
-                  console.log(`[META DM] Sending AI reply to ${senderId} via pageId=${pageId}, token_set=${!!accessToken}, appsecret_proof=${!!appsecretProof}`);
+                  const aiEndpoint = channel === "instagram" ? "me" : pageId;
+                  const aiUrl = `https://graph.facebook.com/v19.0/${aiEndpoint}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
+                  console.log(`[META DM] Sending AI reply to ${senderId} via endpoint=${aiEndpoint}, pageId=${pageId}, channel=${channel}, token_set=${!!accessToken}, appsecret_proof=${!!appsecretProof}`);
                   const sendRes = await fetch(aiUrl, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },

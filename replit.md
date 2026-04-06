@@ -68,7 +68,7 @@ Preferred communication style: Simple, everyday language.
 - **Firebase SDK**: Analytics, Push Notifications (FCM), and Google Auth.
 - **Shopify Integration**: E-commerce automation via Shopify Admin API and webhooks.
 - **Shared Intelligence Layer**: Cross-account organizational learning system extracting insights from DM conversations.
-- **Meta Webhooks**: For multi-tenant Facebook/Instagram DM bot functionality and Comment Auto-Reply Bot. Webhook callback URL registered to Meta App 1241083361501051 for live event delivery.
+- **Meta Webhooks**: For multi-tenant Facebook/Instagram DM bot functionality and Comment Auto-Reply Bot. Webhook callback URL registered to Meta App 1241083361501051 for live event delivery. Instagram DMs use `me/messages` endpoint (not `{pageId}/messages`). IG account IDs stored in `sub_accounts.meta_instagram_account_id` for tenant resolution (IG webhooks send IG account ID as `entry.id`, not Facebook Page ID).
 - **Per-Account AI Persona System**: Full persona override via `ai_prompt_config.systemPrompt` (>200 chars bypasses generic front-desk framing). Per-account `autoReplyEnabled` flag gates AI replies. DM context assembler (`server/dmContextAssembler.ts`) supports two modes: generic business front-desk (default) and full character persona (when systemPrompt is substantial). Officer Layla (account 22) has a trained persona learned from 100+ manual DM replies covering fan mode (short, warm, Telegram redirect) and deep vetting mode (probing questions, psychological depth).
 - **Content Planner**: Social media content management system with scheduling, approval workflows, and platform adapters (Facebook, Instagram, X, TikTok).
 - **Google Calendar Auto-Sync**: Background service for syncing Google Calendar events.

@@ -55,6 +55,7 @@ export const subAccounts = pgTable("sub_accounts", {
   geocodeStatus: text("geocode_status"),
   geocodedAt: timestamp("geocoded_at"),
   metaPageId: text("meta_page_id"),
+  metaInstagramAccountId: text("meta_instagram_account_id"),
   metaAccessToken: text("meta_access_token"),
   metaAppSecret: text("meta_app_secret"),
   twilioSubaccountSid: text("twilio_subaccount_sid"),
