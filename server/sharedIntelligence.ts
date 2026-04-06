@@ -260,7 +260,7 @@ export async function getTopSharedInsights(options: {
       FROM shared_insights
       WHERE is_archived = false
         AND (${effectiveScoreExpr}) >= ${minConfidence}
-        AND source_account_id = ANY(${allowedIds})
+        AND source_account_id = ANY(ARRAY[${sql.join(allowedIds.map(id => sql`${id}`), sql`, `)}]::int[])
     `;
 
     if (category) {
