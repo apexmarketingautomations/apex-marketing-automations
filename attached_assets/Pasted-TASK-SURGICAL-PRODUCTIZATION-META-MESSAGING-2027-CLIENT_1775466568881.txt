@@ -1,0 +1,175 @@
+TASK — SURGICAL PRODUCTIZATION: META MESSAGING — 2027 CLIENT LAYER
+Branch: feature/meta-messaging-2027-client
+Priority: P0 (Do not merge without all acceptance checks)
+Assignees: FE Lead, BE Lead, Designer, QA, DevOps, Product Owner (review)
+Do not touch: Protected accounts (replace below with exact sub_account IDs)
+
+PROTECTED ACCOUNT IDs (DO NOT MODIFY): 22 (Officer Layla), __ID2__, __ID3__
+(If you don’t know the other IDs, halt — do not proceed until product owner confirms them.)
+NON-NEGOTIABLE RULES (read before coding)
+This is product-layer work only. Do NOT alter core hardening, auth middleware, or cross-tenant security files. If an infra change is required, open a separate security/P0 ticket — stop work until approved.
+Protected accounts are sacrosanct. Any write to the protected IDs must be rejected by middleware (403) and must create a security/P0 ticket. Test coverage must prove it.
+Small PRs only. No massive 5k-line PR. Every sub-feature is a separate branch/PR with its own unit + integration + e2e tests.
+Idempotent & audit-logged. All actions that send, retry, or requeue must be idempotent and logged to system_logs with traceId, userId, subAccountId.
+Feature flags & soft launch. All new product routes and UI are behind a feature flag named meta_messaging_2027. Default OFF in prod.
+Demo mode default. Onboarding runs against a new demo sub_account by default. Never reuse an existing account unless the Owner explicitly unlocks it via two-step confirmation.
+Stop if risky. Any dev who finds a required infra change must immediately stop, open the security/P0 ticket with evidence, and notify Product Owner.
+SURGICAL EXECUTION PLAN (ordered, minimal blast radius)
+
+Make each step a small PR. Do NOT merge the next step until the prior PR is green and reviewed.
+
+Step 0 — Protect accounts + gating (first PR)
+Add protected_accounts table or add is_protected boolean to sub_accounts. Migration with up/down. Add entries for the three protected IDs.
+Implement ensureNotProtectedAccount(req, res, next) and ensureProtectedReadOnly and add to all mutating routes that accept :subAccountId (onboarding, seed, approve/send, retry, backfill).
+Add unit tests proving 403 on write attempts and allowed reads (which also produce a system_logs info entry).
+Add Agent policy: Apex Intelligent/Agent must abort if target subAccountId in protected list.
+Goal: Protected accounts locked in DB and enforced by middleware.
+Step 1 — Branch + scaffolding (PR per microtask)
+Create branch feature/meta-messaging-2027-client. Add feature_flags entry: meta_messaging_2027=false.
+Add route skeletons (no heavy logic) under /api/meta-messaging/product/* so we do not touch core engine routes. Each endpoint must call requireAuth, ensureSubAccountOwner, ensureNotProtectedAccount.
+Step 2 — Onboarding & Meta connect (Core product backend + UI)
+
+Backend (product endpoints)
+
+POST /api/meta-messaging/product/create-subaccount — create demo sub_account, owner user, white_label_settings.
+POST /api/meta-messaging/product/meta/oauth/start — returns OAuth URL (no change to engine).
+POST /api/meta-messaging/product/meta/oauth/callback — store safe tokens into oauth_tokens via product-layer (do not change hardening flow). Validate tokens and show expiry.
+POST /api/meta-messaging/product/test-webhook — fires test webhook; record to webhook_delivery_logs.
+All endpoints must: validate params, attach subAccountId to req (checked by ensureSubAccountOwner), audit to system_logs, return safe views (no stack traces).
+
+Frontend
+
+Add /client/meta-messaging-2027 route and a Onboarding stepper:
+Company Info
+Connect Meta (OAuth) — show clear 1-click connect, token status, expiry, reconnect button
+Select pages/IG accounts (discover)
+Test webhook (shows delivery result)
+Configure Safety & Tone (defaults)
+Launch Demo (creates demo seed data)
+UX: clearly indicate Demo mode vs Live. Default is Demo mode. Show obvious “PROTECTED ACCOUNT — DO NOT TOUCH” when any protected account would be chosen (UI must refuse).
+Step 3 — Unified Inbox + Approve/Edit/Send
+
+Backend
+
+GET /api/meta-messaging/product/inbox/:subAccountId — unified feed (FB DMs, IG DMs, FB comments, IG comments). Paginated; 200 max.
+POST /api/meta-messaging/product/approve-send/:subAccountId — approves an AI suggestion, records in system_logs, enqueues message (idempotent).
+Ensure idempotency token header Idempotency-Key support.
+
+Frontend
+
+Inbox UI (mobile-first): unified list with filters (channel, unread, priority, safety flag), each conversation with AI suggestion card (Approve / Edit / Send). Safety flag tooltip. Approval modal shows the exact outgoing text and modelVersion + “audit” link.
+Step 4 — Bot Scaffolding (DM bot + Comment bot)
+Product endpoints to create default DM chatbot and comment bot per channel in manual-approve mode.
+Default bot settings: ManualApprove = true, Safety = conservative, RateLimit = 1 msg/sec, Burst = 5.
+UI to edit bot settings and switch to AutoPublish (explicit toggle with confirmation and audit).
+Step 5 — Personalized Workflow Generator
+Guided questionnaire UI (industry, tone, hours, VIP list, banned words) that generates editable templates:
+Sales DM template, Support DM template, Booking DM template
+Comment auto-reply templates (brand-protect, lead-capture)
+Save templates to workflows table and show editable UI.
+Step 6 — Safety & Human Review Queue
+Safety engine integration (reuse existing detection signals). Product layer aggregates flags and exposes GET /api/meta-messaging/product/safety-queue/:subAccountId.
+UI: Safety queue with assign/resolve/appeal actions. Actions audit-logged.
+Step 7 — Demo Data, Analytics, Billing
+POST /api/meta-messaging/product/seed-demo/:subAccountId (writes only to demo sub_accounts). Seed realistic messages, analytics, and system logs.
+Analytics endpoints: usage (message count), average response times, export CSV.
+Billing UI: show usage meter and invoice download (if billing enabled).
+Step 8 — Observability & Tests
+Add traceId propagation in all product endpoints and confirm system_logs entries.
+Add tests:
+Unit tests for all business logic.
+Integration tests using test DB.
+E2E (Playwright/Cypress) for onboarding → connect → test webhook → approve/send.
+Performance smoke: Inbox read p95 < 500ms for 1000 convs (or provide remediation plan).
+Add protected-account tests for middleware.
+Step 9 — Deploy, Preview, Rollout & Rollback
+Deploy to preview environment (feature flag OFF). Share preview URL.
+Run CI: lint, unit, integration, e2e. Security scan.
+Merge gated by: PR approvals (BE, FE, QA, Product), CI green, Demo video attached (60–120s).
+Rollback procedure: feature flag OFF + revert migration (run down script). DB migration must have up/down and be reversible; take DB snapshot before prod migration.
+SURGERY RULES (how to keep the build intact)
+No changes to server/auth, server/security, or ensureSubAccountOwner files. Reference them. If you must change them, stop and open security/P0.
+Every DB migration must include down and be tested on staging. Do not run any migration against production without Product Owner sign-off.
+Each PR must: run tests, include screenshots (mobile + desktop), include sample curl commands and an example system_logs entry for each action, and include a recorded walkthrough (60–120s) of the feature in the preview environment.
+One change = one PR. Keep PRs <= 300 LOC where possible. Tiny, reviewable PRs reduce risk.
+SMOKE COMMANDS (paste for verification)
+# Local dev
+npm ci
+cp .env.example .env
+# fill minimal demo keys (or use safe demo tokens)
+npm run seed:demo
+npm run dev
+
+# Smoke API calls (replace HOST & TOKEN)
+HOST=https://localhost:5000
+TOKEN="Bearer <dev-token>"
+
+# Onboarding create demo account
+curl -X POST -H "Authorization: $TOKEN" "$HOST/api/meta-messaging/product/create-subaccount" -d '{"company":"Acme Demo"}'
+
+# Test webhook
+curl -X POST -H "Authorization: $TOKEN" "$HOST/api/meta-messaging/product/test-webhook" -d '{"subAccountId":123}'
+
+# Approve & send
+curl -X POST -H "Authorization: $TOKEN" -H "Content-Type: application/json" \
+  -d '{"threadId":"th_1","reply":"Approved reply"}' \
+  "$HOST/api/meta-messaging/product/approve-send/123"
+FINISHED (ACCEPTANCE) CHECKLIST — EVERY ITEM MUST BE ✅ WITH EVIDENCE
+
+Attach screenshots, logs, PR links, test outputs, and the 60–120s walkthrough.
+
+Protected & Safety
+
+ Protected accounts recorded in DB and write attempts return 403 with system_logs entry and security/P0 ticket created (evidence: curl response + system_logs + ticket).
+ Agent/Agent-policy aborts when attempting to act on protected accounts (logs/evidence).
+
+Back end / Product endpoints
+
+ All /api/meta-messaging/product/* endpoints implemented and documented.
+ All endpoints require requireAuth, ensureSubAccountOwner, and ensureNotProtectedAccount.
+ Idempotency applied to approve/send/retry APIs.
+ All state changes logged to system_logs with traceId, userId, subAccountId.
+ DB migrations include up/down and tested on staging.
+
+Front end / UX
+
+ Route /client/meta-messaging-2027 present and in nav (feature flag gated).
+ Onboarding stepper implemented and flows work end-to-end (OAuth connect, discover pages, test webhook, launch demo).
+ Unified Inbox present (mobile + desktop), renders FB/IG DMs + comments, filters work.
+ Approve / Edit / Send UI works and sends messages verified in outbound logs.
+ DM bot & Comment bot created automatically in manual-approve mode and editable.
+ Safety panel & human review queue exist and actions audit-log.
+ Demo mode seeds realistic data and toggles on/off cleanly.
+ White-label settings apply instantly to header/logo/colors.
+ Breadcrumbs and “PROTECTED ACCOUNT — DO NOT TOUCH” banner show on protected accounts.
+
+Tests & QA
+
+ Unit tests for business logic; integration tests using test DB; E2E tests (onboarding → connect → approve/send) exist and pass.
+ Performance smoke: inbox read p95 < 500ms at 1000 convs OR documented remediation plan.
+ Accessibility: keyboard nav and ARIA checks pass for critical flows.
+
+Docs & Deliverables
+
+ Figma hi-fi link present and referenced in PR.
+ PR includes screenshots (mobile + desktop) and 60–120s walkthrough recorded in preview environment.
+ replit.md updated with product endpoints and dev onboarding steps.
+ Admin Guide (1-page) present: how to onboard, manage bots, escalate incidents, rollback steps.
+ Demo preview URL is live and safe (does not touch account 22 or other protected IDs).
+
+Release & Rollback
+
+ Feature flag gating in place; default OFF in production.
+ Merge only after CI green, BE/FE/QA reviews, Product Owner sign-off.
+ Rollback plan tested and documented (down migration and feature-flag off).
+
+Final sign-off
+
+ Product Owner (you) signs off after reviewing screenshots, logs, demo, and test artifacts.
+IF YOU HIT INFRA/SECURITY NEEDS
+Stop. Open security/P0 with: 1) exact file(s) to change, 2) reason, 3) test plan, 4) mitigation/rollback plan. Do not proceed without Product Owner approval.
+
+Paste this entire block into the task system now. Assign FE/BE and demand:
+
+6-hour execution plan (subtasks + owners) within 6 hours, and
+Preview demo (basic onboarding + demo data + approve/send) within 24 hours.

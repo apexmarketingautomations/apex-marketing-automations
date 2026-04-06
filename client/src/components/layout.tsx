@@ -50,6 +50,7 @@ const navSections = [
   {
     label: "META",
     items: [
+      { href: "/meta-messaging", icon: MessageSquare, label: "Meta Messaging" },
       { href: "/meta-ops", icon: Activity, label: "Ops Center" },
       { href: "/meta-ads", icon: Target, label: "Ad Campaigns" },
       { href: "/meta-leads", icon: Users, label: "Lead Forms" },

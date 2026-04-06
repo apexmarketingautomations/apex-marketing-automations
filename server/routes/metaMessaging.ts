@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { asyncHandler, parseIntParam } from "./helpers";
+import { asyncHandler, parseIntParam, verifyAccountOwnership } from "./helpers";
 import { db } from "../db";
 import { messages, commentAutoReplies, subAccounts, auditLogs, systemLogs, contacts } from "@shared/schema";
 import { eq, and, gte, desc, sql, or, asc } from "drizzle-orm";
@@ -185,6 +185,7 @@ export function registerMetaMessagingRoutes(app: Express) {
 
   app.get("/api/meta-messaging/dashboard/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const now = new Date();
     const h24 = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const d7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -234,6 +235,7 @@ export function registerMetaMessagingRoutes(app: Express) {
 
   app.get("/api/meta-messaging/inbox/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const channel = req.query.channel as string || "all";
     const priority = req.query.priority as string || "all";
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
@@ -288,6 +290,7 @@ export function registerMetaMessagingRoutes(app: Express) {
 
   app.get("/api/meta-messaging/thread/:subAccountId/:senderId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const senderId = req.params.senderId;
     const channel = req.query.channel as string || "facebook";
 
@@ -329,6 +332,7 @@ export function registerMetaMessagingRoutes(app: Express) {
 
   app.post("/api/meta-messaging/approve/:subAccountId/:messageId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const messageId = parseIntParam(req.params.messageId, "messageId");
     const editedText = req.body.editedText as string | undefined;
     const userId = (req as any).user?.id || "system";
@@ -380,6 +384,7 @@ export function registerMetaMessagingRoutes(app: Express) {
 
   app.post("/api/meta-messaging/send-reply/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const { senderId, channel, text } = req.body;
     const userId = (req as any).user?.id || "system";
 
@@ -425,6 +430,7 @@ export function registerMetaMessagingRoutes(app: Express) {
 
   app.get("/api/meta-messaging/moderation/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
 
     const pendingComments = await db.select().from(commentAutoReplies)
       .where(and(eq(commentAutoReplies.subAccountId, subAccountId), eq(commentAutoReplies.status, "processing")))
@@ -459,6 +465,7 @@ export function registerMetaMessagingRoutes(app: Express) {
 
   app.post("/api/meta-messaging/moderation-config/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const userId = (req as any).user?.id || "system";
 
     const [account] = await db.select().from(subAccounts).where(eq(subAccounts.id, subAccountId));
@@ -483,6 +490,7 @@ export function registerMetaMessagingRoutes(app: Express) {
 
   app.get("/api/meta-messaging/safety/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const h24 = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     const recentInbound = await db.select({
@@ -533,6 +541,7 @@ export function registerMetaMessagingRoutes(app: Express) {
 
   app.get("/api/meta-messaging/analytics/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const days = Math.min(parseInt(req.query.days as string) || 7, 90);
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
@@ -576,6 +585,7 @@ export function registerMetaMessagingRoutes(app: Express) {
 
   app.get("/api/meta-messaging/usage/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const monthStart = new Date();
     monthStart.setDate(1);
     monthStart.setHours(0, 0, 0, 0);
@@ -612,6 +622,7 @@ export function registerMetaMessagingRoutes(app: Express) {
 
   app.get("/api/meta-messaging/connect-status/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
 
     const [account] = await db.select().from(subAccounts).where(eq(subAccounts.id, subAccountId));
     if (!account) return res.status(404).json({ error: "Account not found" });
@@ -653,6 +664,7 @@ export function registerMetaMessagingRoutes(app: Express) {
 
   app.post("/api/meta-messaging/toggle-bot/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const userId = (req as any).user?.id || "system";
 
     const [account] = await db.select().from(subAccounts).where(eq(subAccounts.id, subAccountId));

@@ -40,6 +40,7 @@ import { registerIntelligenceRoutes } from "./routes/intelligence";
 import { registerCommandEngineRoutes } from "./routes/commandEngine";
 import { registerReadinessRoutes } from "./routes/readiness";
 import { registerMetaOpsRoutes } from "./routes/metaOps";
+import { registerMetaMessagingRoutes } from "./routes/metaMessaging";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -84,6 +85,7 @@ export async function registerRoutes(
   registerCommandEngineRoutes(app);
   registerReadinessRoutes(app);
   registerMetaOpsRoutes(app);
+  registerMetaMessagingRoutes(app);
 
   return httpServer;
 }
