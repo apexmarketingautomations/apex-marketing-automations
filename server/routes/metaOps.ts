@@ -586,7 +586,9 @@ export function registerMetaOpsRoutes(app: Express) {
     const commentText = req.query.commentText as string;
     if (!commentText) return res.status(400).json({ error: "commentText query param required" });
 
-    const subAccountId = parseInt(req.query.subAccountId as string) || 22;
+    const { getLaylaAccountId } = await import("../services/laylaAccountResolver");
+    const defaultLaylaId = await getLaylaAccountId();
+    const subAccountId = parseInt(req.query.subAccountId as string) || defaultLaylaId;
     const platform = (req.query.platform as string || "facebook") as "facebook" | "instagram";
 
     const { generateRagCommentReply } = await import("../services/styleTraining/commentRag");

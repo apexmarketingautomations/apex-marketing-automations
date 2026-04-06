@@ -31,7 +31,9 @@ export function registerCommentBotRoutes(app: Express) {
   app.post("/api/comment-bot/reengage", async (req: Request, res: Response) => {
     if (!requireAdmin(req, res)) return;
     try {
-      const { dryRun = true, batchLimit = 20, reengageDays = 60, subAccountId = 22 } = req.body || {};
+      const { getLaylaAccountId } = await import("../services/laylaAccountResolver");
+      const defaultLaylaId = await getLaylaAccountId();
+      const { dryRun = true, batchLimit = 20, reengageDays = 60, subAccountId = defaultLaylaId } = req.body || {};
       const { runReengageJob } = await import("../services/commentBot/reengageJob");
       const result = await runReengageJob({
         dryRun: dryRun !== false,
@@ -158,7 +160,9 @@ export function registerCommentBotRoutes(app: Express) {
   app.post("/api/comment-bot/sync-dms", async (req: Request, res: Response) => {
     if (!requireAdmin(req, res)) return;
     try {
-      const { subAccountId = 22, maxPages = 50 } = req.body || {};
+      const { getLaylaAccountId: getLaylaId } = await import("../services/laylaAccountResolver");
+      const defaultId = await getLaylaId();
+      const { subAccountId = defaultId, maxPages = 50 } = req.body || {};
       const metaCfg = await getMetaConfig(subAccountId);
 
       let convUrl: string | null = `https://graph.facebook.com/v21.0/${metaCfg.pageId}/conversations?fields=id,updated_time,participants,messages.limit(25){message,from,created_time}&limit=25&access_token=${metaCfg.accessToken}${metaCfg.appsecretProof ? `&appsecret_proof=${metaCfg.appsecretProof}` : ""}`;

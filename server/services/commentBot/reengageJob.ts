@@ -5,8 +5,8 @@ import { aiChat } from "../../aiGateway";
 import { postProcessAndGuard, maskPiiForLogs } from "../personas/laylaPostProcessor";
 import { getMetaConfig } from "../../metaConfig";
 
+import { getLaylaAccountId } from "../laylaAccountResolver";
 const APEX_PARENT_ACCOUNT_ID = 13;
-const FALLBACK_LAYLA_ACCOUNT_ID = 22;
 
 async function resolveLaylaAccountId(): Promise<number> {
   try {
@@ -17,9 +17,10 @@ async function resolveLaylaAccountId(): Promise<number> {
         eq(subAccounts.parentAccountId, APEX_PARENT_ACCOUNT_ID),
       ))
       .limit(1);
-    return layla?.id || FALLBACK_LAYLA_ACCOUNT_ID;
+    if (layla) return layla.id;
+    return await getLaylaAccountId();
   } catch {
-    return FALLBACK_LAYLA_ACCOUNT_ID;
+    return await getLaylaAccountId();
   }
 }
 

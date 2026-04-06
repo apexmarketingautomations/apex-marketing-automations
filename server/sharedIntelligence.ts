@@ -12,7 +12,14 @@ const DECAY_THRESHOLD_DAYS = 90;
 const MAX_INSIGHTS = 500;
 const SIMILARITY_HASH_PREFIX_LEN = 64;
 
-const APEX_INTELLIGENCE_ACCOUNT_IDS = new Set([13, 22]);
+import { getLaylaAccountId } from "./services/laylaAccountResolver";
+let _apexIntelligenceIds: Set<number> | null = null;
+async function getApexIntelligenceAccountIds(): Promise<Set<number>> {
+  if (_apexIntelligenceIds) return _apexIntelligenceIds;
+  const laylaId = await getLaylaAccountId();
+  _apexIntelligenceIds = new Set([13, laylaId]);
+  return _apexIntelligenceIds;
+}
 
 function hashContent(content: string): string {
   const normalized = content.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
@@ -56,7 +63,8 @@ export async function extractInsightsFromConversation(
   sourceAccountId: number,
   currentMessage: string
 ): Promise<void> {
-  if (!APEX_INTELLIGENCE_ACCOUNT_IDS.has(sourceAccountId)) return;
+  const apexIds = await getApexIntelligenceAccountIds();
+  if (!apexIds.has(sourceAccountId)) return;
   if (!isAIConfigured()) return;
   if (threadHistory.length < 2 && currentMessage.length < 20) return;
 
@@ -251,7 +259,8 @@ export async function getTopSharedInsights(options: {
 
     const fetchLimit = topic ? limit * 3 : limit;
 
-    const allowedIds = Array.from(APEX_INTELLIGENCE_ACCOUNT_IDS);
+    const apexIds = await getApexIntelligenceAccountIds();
+    const allowedIds = Array.from(apexIds);
 
     let query = sql`
       SELECT id, category, content, confidence_score, occurrence_count,

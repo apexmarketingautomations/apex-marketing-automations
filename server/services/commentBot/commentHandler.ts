@@ -13,8 +13,8 @@ import {
 } from "./laylaCommentPrompt";
 import { aiChat } from "../../aiGateway";
 
+import { getLaylaAccountId } from "../laylaAccountResolver";
 const APEX_PARENT_ACCOUNT_ID = 13;
-const FALLBACK_LAYLA_ID = 22;
 let _cachedLaylaIds: Set<number> | null = null;
 
 async function getLaylaAccountIds(): Promise<Set<number>> {
@@ -27,14 +27,16 @@ async function getLaylaAccountIds(): Promise<Set<number>> {
         eq(subAccounts.parentAccountId, APEX_PARENT_ACCOUNT_ID),
       ));
     _cachedLaylaIds = new Set(rows.map(r => r.id));
-    if (_cachedLaylaIds.size === 0) _cachedLaylaIds.add(FALLBACK_LAYLA_ID);
+    if (_cachedLaylaIds.size === 0) {
+      const fallbackId = await getLaylaAccountId();
+      _cachedLaylaIds.add(fallbackId);
+    }
   } catch {
-    _cachedLaylaIds = new Set([FALLBACK_LAYLA_ID]);
+    const fallbackId = await getLaylaAccountId();
+    _cachedLaylaIds = new Set([fallbackId]);
   }
   return _cachedLaylaIds;
 }
-
-const LAYLA_ACCOUNT_IDS = new Set([FALLBACK_LAYLA_ID]);
 
 export interface CommentWebhookEvent {
   platform: "facebook" | "instagram";

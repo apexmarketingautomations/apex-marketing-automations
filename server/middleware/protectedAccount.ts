@@ -3,24 +3,16 @@ import { db } from "../db";
 import { subAccounts, systemLogs } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
-
-const DEFAULT_PROTECTED_IDS = [22, 13];
+import { getProtectedAccountIds as resolveProtectedIds } from "../services/laylaAccountResolver";
 
 export function getProtectedAccountIds(): number[] {
-  const envIds = process.env.PROTECTED_ACCOUNT_IDS;
-  if (envIds) {
-    try {
-      return envIds.split(",").map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
-    } catch {
-      return DEFAULT_PROTECTED_IDS;
-    }
-  }
-  return DEFAULT_PROTECTED_IDS;
+  return [13];
 }
 
 export async function isProtectedAccountId(subAccountId: number): Promise<boolean> {
-  if (getProtectedAccountIds().includes(subAccountId)) return true;
   try {
+    const dynamicIds = await resolveProtectedIds();
+    if (dynamicIds.includes(subAccountId)) return true;
     const [account] = await db.select({ isProtected: subAccounts.isProtected }).from(subAccounts).where(eq(subAccounts.id, subAccountId));
     return account?.isProtected === true;
   } catch {
