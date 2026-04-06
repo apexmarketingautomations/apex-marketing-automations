@@ -375,7 +375,7 @@ async function sendCommentReply(opts: SendCommentReplyOptions): Promise<{
     appsecretProof = crypto.createHmac("sha256", appSecret).update(accessToken).digest("hex");
   }
 
-  const url = `https://graph.facebook.com/v19.0/${commentId}/replies`;
+  const url = `https://graph.facebook.com/v19.0/${commentId}/comments`;
 
   const params = new URLSearchParams({
     message: replyText,

@@ -118,4 +118,38 @@ export function registerAdminRoutes(app: Express) {
     const report = await runBillingAudit(backfill);
     res.json(report);
   }));
+
+  app.post("/api/admin/comment-bot/backfill", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
+    const subAccountId = parseIntParam(req.body.subAccountId);
+    if (!subAccountId) return res.status(400).json({ error: "subAccountId required" });
+    const dryRun = req.query.dryRun === "true" || req.body.dryRun === true;
+    const maxPosts = parseInt(req.body.maxPosts) || 10;
+    const { backfillComments } = await import("../services/commentBot/commentBackfill");
+    const result = await backfillComments({ subAccountId, maxPosts, dryRun });
+    res.json(result);
+  }));
+
+  app.get("/api/admin/comment-bot/stats/:subAccountId", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
+    const subAccountId = parseIntParam(req.params.subAccountId);
+    if (!subAccountId) return res.status(400).json({ error: "Invalid subAccountId" });
+    const { db } = await import("../db");
+    const { commentAutoReplies } = await import("@shared/schema");
+    const { eq, sql, desc } = await import("drizzle-orm");
+    const [stats] = await db.select({
+      total: sql<number>`count(*)`,
+      replied: sql<number>`count(*) filter (where status = 'replied')`,
+      skipped: sql<number>`count(*) filter (where status = 'skipped')`,
+      failed: sql<number>`count(*) filter (where status = 'failed')`,
+      processing: sql<number>`count(*) filter (where status = 'processing')`,
+      rateLimited: sql<number>`count(*) filter (where status = 'rate_limited')`,
+    }).from(commentAutoReplies).where(eq(commentAutoReplies.subAccountId, subAccountId));
+    const recent = await db.select().from(commentAutoReplies)
+      .where(eq(commentAutoReplies.subAccountId, subAccountId))
+      .orderBy(desc(commentAutoReplies.id)).limit(20);
+    res.json({ stats, recent });
+  }));
 }

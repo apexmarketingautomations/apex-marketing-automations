@@ -1920,6 +1920,7 @@ export function registerWebhooksRoutes(app: Express) {
 
           // ─── COMMENT AUTO-REPLY: handle entry.changes (feed/comments) ───
           for (const change of entry.changes || []) {
+            console.log(`[COMMENT-BOT][WEBHOOK] change.field=${change.field}, value.item=${change.value?.item}, value.verb=${change.value?.verb}, comment_id=${change.value?.comment_id || change.value?.id || 'none'}`);
             if (change.field !== "feed" && change.field !== "comments") continue;
             const value = change.value;
             if (!value) continue;
@@ -1928,7 +1929,10 @@ export function registerWebhooksRoutes(app: Express) {
               (value.verb === "add" && value.comment_id) ||
               (change.field === "comments" && value.id);
 
-            if (!isComment) continue;
+            if (!isComment) {
+              console.log(`[COMMENT-BOT][WEBHOOK] Non-comment change skipped — field=${change.field}, item=${value.item}, verb=${value.verb}`);
+              continue;
+            }
 
             const commentId = value.comment_id || value.id;
             const commentText = value.message || value.text || "";
