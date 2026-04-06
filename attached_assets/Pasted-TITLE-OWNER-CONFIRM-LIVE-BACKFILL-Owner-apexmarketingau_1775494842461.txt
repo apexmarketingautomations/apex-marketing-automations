@@ -1,0 +1,116 @@
+TITLE: OWNER CONFIRM + LIVE BACKFILL (Owner: apexmarketingautomations@gmail.com) — EXECUTE AS OWNER
+
+NOTE (critical) — Do NOT run this unless:
+- You (apexmarketingautomations@gmail.com) are authenticated as Owner in the preview, AND
+- You explicitly accept the audit trail and DB snapshot restore responsibility.
+This prompt will NOT start any model training. It will only perform the confirm→snapshot→backfill→prepare steps.
+
+OWNER PASS (one-time)
+- Unlock token (admin confirm link parameter): a3f4c9e1d2b7f5c6e8d9b0a1c2f3e4b
+- One-time passphrase: UL-K7P9-ZQ2H
+- Target sub_account_id: 22
+
+OBJECTIVE
+1. Ensure the admin confirm UI route `/admin/owner-unlock/confirm` exists (create a minimal page if needed).
+2. Ensure server endpoint `/api/admin/owner-unlock/confirm` validates token+passphrase and opens a 15-minute unlock window.
+3. Confirm unlock as Owner using the passphrase — open the unlock window.
+4. Snapshot the DB for affected tables.
+5. Execute live backfill for `sub_account_id = 22` (only while unlock is active).
+6. Audit/log every action to `system_logs` with a unique `ticketId`.
+7. Produce Phase-2 artifacts: `layla_train.jsonl` (redacted), training manifest & cost estimate.
+8. Report results: snapshot path, rows scanned/updated/skipped, system_logs snippet, training artifact path.
+
+INSTRUCTIONS TO AGENT (run exactly, stop on errors, post each step to this chat)
+
+A. PRECHECKS (must pass)
+1. Verify agent is running as Owner user (apexmarketingautomations@gmail.com). If not, abort with message: "AUTH REQUIRED: run as Owner."
+   - Confirm by GET `/api/me` (or existing endpoint that returns current user email). Expect `email === "apexmarketingautomations@gmail.com"`.
+2. Confirm unlock record exists with `unlock_id = 4873` and `status = pending_confirmation` in `owner_unlocks`. If absent, abort and report.
+
+B. FRONTEND (ensure confirm page)
+3. Check client route `/admin/owner-unlock/confirm`. If the page is missing, create a minimal secure page:
+   - Render passphrase input and a confirm button.
+   - On submit, POST `{ token, passphrase }` to `/api/admin/owner-unlock/confirm`.
+   - Ensure page is behind normal admin auth (do not expose to public).
+   - Commit the change on a small branch `hotfix/owner-unlock-confirm-page` and push.
+   - Rebuild / restart preview (or ensure HMR picks up change).
+
+C. SERVER (ensure confirm endpoint)
+4. Verify server handler exists at POST `/api/admin/owner-unlock/confirm`. If missing, add a minimal handler that:
+   - Accepts `{ token, passphrase }` from authenticated Owner.
+   - Looks up `owner_unlocks` by `token`. If not found or `used = true` or expired, return 400.
+   - Compare passphrase via bcrypt with stored hashed passphrase.
+   - If valid: set `expires_at = now() + interval '15 minutes'`, set `status = 'confirmed'` (pending use), return `{ unlockWindowUntil }`.
+   - Log to `system_logs` at level `security` with a new `ticketId`.
+   - **Important:** do NOT mark `used = true` yet — mark after backfill completes.
+
+D. OWNER CONFIRM (you will perform)
+5. When frontend + server are ready, present the admin confirm page to Owner.
+   - Owner (you) must enter passphrase `UL-K7P9-ZQ2H` and submit.
+6. Wait for successful response `{ unlockWindowUntil: <timestamp> }`. If not received, abort and post error.
+
+E. DB SNAPSHOT (run immediately once unlock is confirmed)
+7. Generate unique `ticketId`, e.g., `P0-4873-<timestamp>`.
+8. Run logical export for affected tables and store snapshot:
+
+pg_dump --host=$PG_HOST --username=$PG_USER --dbname=$PG_DB
+--table=sub_accounts --table=messages --table=comments --table=comment_auto_replies
+--file=/tmp/pre_backfill_snapshot_4873_<timestamp>.sql
+
+- Record snapshot filename and MD5. Log snapshot creation to `system_logs` with `ticketId`.
+
+F. LIVE BACKFILL (only during unlock window)
+9. Query rows to update:
+
+SELECT id, comment_id, commenter_name, commenter_id
+FROM comment_auto_replies
+WHERE sub_account_id = 22 AND (commenter_name IS NULL OR commenter_name = '')
+
+10. For each row:
+ a. Call Graph API:
+    ```
+    GET https://graph.facebook.com/v21.0/{comment_id}?fields=from,message,created_time&access_token=<oauth_token>
+    ```
+    (Use `oauth_tokens` row for sub_account 22).
+ b. If response includes `.from` with a name, update the DB row `commenter_name = from.name`.
+ c. If `.from` missing → DO NOT UPDATE and increment `skipped_count`.
+11. For every DB update, insert audit `system_logs` row:
+ `{ level: "security", traceId: "<uuid>", userId: "<owner>", subAccountId:22, action: "backfill_update", meta: { comment_id, old_value, new_value, ticketId } }`
+12. Count totals: `scanned_count`, `updated_count`, `skipped_count`, `errors_count`. Log final summary to `system_logs`.
+
+G. POST-BACKFILL
+13. Mark `owner_unlocks.used = true` for unlock_id 4873 and set status `completed`.
+14. Save DB diff: create a compact diff / list of updated id pairs and store at `/tmp/backfill_diff_4873_<timestamp>.json`. Log its path.
+
+H. PHASE-2 PREP (read-only, already started)
+15. Run `scripts/extract_layla_pairs.py` in read-only mode to produce `layla_train.jsonl` in `/tmp/layla_train_4873.jsonl`. Apply strict PII redaction (phones, emails, urls, 16+ digit sequences).
+16. Validate sample of 50 lines for redaction; export 2% (or 50 lines, whichever smaller) to `/tmp/layla_train_sample_4873.csv` for manual review.
+17. Produce `train_lora_config.json` with recommended hyperparams and three cost/time options and output as `/tmp/train_estimate_4873.json`.
+
+I. FINAL REPORT
+18. Post a single final report to this chat including:
+- Snapshot path and md5 (pre-backfill)
+- Backfill summary: scanned/updated/skipped/errors, path to `backfill_diff`
+- `system_logs` snippet for `ticketId` (first and last 5 entries)
+- `layla_train.jsonl` path and sample path
+- `train_estimate_4873.json`
+- Any rows skipped because Graph API returned no `from` (this is expected for historical items).
+19. Do not start any GPU training or enable autocreate/autopublish.
+
+ERROR HANDLING
+- If any step returns unexpected error, abort and post full error, and do NOT continue to writes. Preserve snapshot and logs.
+- If more than 5% unexpected DB changes (unexpected updates), pause and report before proceeding.
+
+ACCEPTANCE
+- Backfill snapshot exists and is posted.
+- `system_logs` contains audit entries for all updates including `ticketId`.
+- `layla_train.jsonl` produced and redacted.
+- Phase-2 estimates posted.
+
+USER ACTION (owner)
+- After you paste this prompt to your agent, I’ll wait for the agent to finish the steps. When it asks you to confirm the passphrase on the admin confirm page, paste `UL-K7P9-ZQ2H` there and click Confirm. The 15-minute window will start. If you want me to do the confirm on your behalf in the UI, the agent can simulate that as long as it runs under your authenticated Owner session.
+
+SECURITY NOTE (final)
+- This prompt performs only authorized operations and creates a full audit trail. It does not bypass authentication and does not start any model training.
+
+EXECUTE when ready.
