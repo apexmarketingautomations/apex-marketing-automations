@@ -1,0 +1,106 @@
+A — Foundation & Protection (what’s good)
+Correct priority: protection + gating first.
+Protects accounts 22 (Layla) and 13 (APEX) and makes that configurable.
+Adds is_protected/protected_accounts, ensureNotProtectedAccount middleware, feature flag meta_messaging_2027, and route skeletons.
+Adds Agent/Operator policy and UI banner.
+What to add (must do before merging)
+Exact semantics for “mutating route”
+Define which HTTP methods and routes count (POST/PUT/PATCH/DELETE + any GET with side effects). Add a helper isMutating(req) to ensure no bypass.
+Fail-safe default for feature flag gating
+If feature_flags table missing or DB unreachable, default OFF and log incident. Don’t let an error enable product routes.
+Migration safety & backups
+Migration must run with an explicit down and include a sanity check script that verifies no writes accepted for protected IDs. Add DB snapshot instruction for staging/preview and prod migration rollbacks.
+Agent policy enforcement tests
+Add an automated smoke agent test that calls Agent runner with target subAccountId=22 and asserts abort + security ticket created.
+Audit log schema
+Standardize system_logs structure for these events: {level(security/info), traceId, userId, subAccountId, action, meta:{ip, agentId, reason}}.
+UI & API error messages
+Make 403 response include an error_code like sub_account_protected and an opaque ticketId for tracking.
+Testing to include
+Unit: middleware returns 403 and writes system_log.
+Integration: route skeletons run behind flag; tests toggle flag on/off.
+Agent simulation: Agent tries to seed 22/13 → abort + ticket.
+Manual: UI shows banner and disables mutating controls for protected sub_accounts.
+Done looks like (A)
+is_protected set for 22 and 13.
+Middleware rejects mutating calls (403 + system_logs).
+Feature flag exists (OFF by default) and gates routes.
+Product route skeletons registered and return safe placeholders.
+Agent policy rejects protected IDs.
+CI tests pass and migrations have up/down.
+Preview deploy with UI banner visible for protected accounts.
+
+Accept only when all above are verified with evidence.
+
+B — Core Product Layer (Onboarding, Inbox, Bots, Workflows)
+What’s good
+Scope covers all client UX and product endpoints (onboarding, OAuth, inbox, approve/send, bot scaffolding, workflow generator).
+Manual-approve default for bots is correct.
+Idempotency + audit logging requirements are called out.
+Missing / risky items to add now
+OAuth human step — make the flow operator-assisted: product endpoint should return OAuth URL, but do not attempt headless account linking unless explicit credentials are supplied. Log the human approval step.
+Ownership/tenant checks — require ensureSubAccountOwner on all product endpoints; show the flow in PR.
+Idempotency policy — define Idempotency-Key usage and TTL (e.g., 24 hrs), and what the response shape is for duplicate requests (409 vs 200 no-op).
+Rate limiting for approve/send — backend must enforce per-account and global rate limits and return clear 429 with retry-after. This avoids runaway sends.
+Bot defaults + versioning — store bot config version and modelVersion, include in audit logs.
+Data privacy in logs — finalText may contain PII; ensure system_logs has a privacy flag and optionally redaction for production.
+Preview/demo flag handling — ensure seed-demo only writes to demo sub_accounts and add a safety guard to prevent accidental reuse of existing account IDs.
+UX / Product notes
+Inbox: mobile-first, infinite scroll, optimistic UI for Approve (but show final server confirmation).
+Approve modal must show modelVersion, confidence, safety flags, and allow edit before send.
+Approval UI: show “Idempotency Key” or auto-generate and display for audit.
+Tests to include
+Integration test: onboarding → OAuth (simulated) → select page → test webhook → create bot → seed-demo.
+E2E: Inbox approve/send including idempotency, audit check, webhook log.
+Load: Inbox read and approve under concurrent moderators.
+Done looks like (B)
+Onboarding stepper + OAuth works and stores tokens safely.
+Unified Inbox renders and supports filters and Approve/Edit/Send.
+Bots auto-created in manual mode and are editable.
+Workflow generator creates editable templates saved in workflows.
+Approve/Send is idempotent, rate-limited, audited, and produces webhook_delivery entry.
+Demo seeding writes only to demo sub_accounts.
+All endpoints protected by requireAuth → ensureSubAccountOwner → ensureNotProtectedAccount.
+C — Safety, Analytics & Hardening
+What’s good
+Safety queue, analytics, exports, E2E, performance checks, and docs are included — exactly the right final pass.
+What to add / harden
+Safety policy library — define the detectors (PII, profanity, legal risk) and thresholds and make them configurable per account. Provide a test harness for false positives.
+Human review SLA/UI — provide queue prioritization, assignment, and SLA indicators. Add bulk-assignment and bulk-resolve with audit.
+Analytics storage & retention — define retention windows for analytics vs raw messages. Add scheduled jobs for aggregation to avoid realtime costly queries.
+Billing events — define exact billing granularity (per message, token usage) and test invoice generation.
+E2E & regression — include tests that simulate 1000 conversations and confirm p95. If fails, produce remediation plan (caching, pagination, read replicas).
+Tests
+Accessibility audit of critical flows (axe).
+Performance: k6 script for inbox read and retry storm.
+Security: SAST/secret scan and verify tokens encrypted at rest.
+Done looks like (C)
+Safety queue functioning with assign/resolve and audit.
+Analytics exports + billing meter + CSV.
+E2E tests in CI and performance smoke results.
+Figma + 60–120s demo, Admin Guide, and runbook for incidents.
+Cross-cutting risks & requirements
+Do NOT modify core auth files — add product layer wrappers only. Any change to core auth must be a separate security/P0 with justification and tests.
+Backups & migrations — all DB changes must include down scripts and a staging runbook.
+Data privacy — PII redaction in logs for prod.
+Feature flags — everything behind meta_messaging_2027 and per-account overrides via sub_account_feature_config. Default OFF.
+Agent governance — Agent must log all operations with a traceId and be testable. Provide a sandboxed Agent run environment.
+Required PR checklist for every PR (copy/paste into PR template)
+ Branch name follows convention.
+ Description: What/Why, Acceptance Criteria, How to test (manual & automated).
+ Migrations (up/down) and rollback tested on staging.
+ Unit tests added & passing.
+ Integration tests added & passing.
+ E2E tests (if applicable) added & passing in CI.
+ Feature flag gating implemented and OFF by default.
+ Protected accounts tested (403 + system_logs entry).
+ Demo preview link + screenshots (mobile + desktop) attached.
+ 60–120s walkthough recorded for major features.
+Recommended immediate next steps (6-hour plan for A)
+Create branch hotfix/protect-accounts. Add migration + seed for protected IDs (22,13). (30–60m)
+Implement ensureNotProtectedAccount middleware with unit tests (60–90m).
+Add feature flag meta_messaging_2027 entry and gate route registration (20–30m).
+Create route skeleton server/routes/metaMessagingProduct.ts with auth → ownership → protected guard in each endpoint (30–45m).
+Update Agent policy file and add agent smoke test trying to write to 22 (30–45m).
+Quick UI change: show banner for protected accounts and disable mutating buttons (15–30m).
+Run CI, fix failures, attach evidence screenshots & logs, open PR. (remaining time)
