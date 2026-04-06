@@ -146,7 +146,7 @@ export async function assembleDmContext(opts: DmContextOptions): Promise<DmConte
     config.customAiPrompt ||
     null;
 
-  const resolvedPersona = generatedPersona || customPromptRaw || botPersona || null;
+  const resolvedPersona = customPromptRaw || generatedPersona || botPersona || null;
 
   const serviceOfferings: string[] | null =
     aiPromptConfig.serviceOfferings ||
@@ -381,10 +381,17 @@ export function buildDmSystemPrompt(context: DmContext, channel: string, current
   const stageInstructions = getStageInstructions(stage);
   const channelTone = getChannelToneInstructions(channel);
 
+  const isFullPersonaOverride = context.customAiPrompt && context.customAiPrompt.length > 200;
+
   const businessDesc = context.businessName;
   const industryNote = context.industry ? ` in the ${context.industry} industry` : "";
 
-  let prompt = `You are a trained front-desk team member for ${businessDesc}${industryNote}, powered by Apex Marketing Automations. You are NOT a generic chatbot. You speak like a real human who understands the business, services, and how to guide customers toward booking or taking action.
+  let prompt: string;
+
+  if (isFullPersonaOverride) {
+    prompt = context.customAiPrompt!;
+  } else {
+    prompt = `You are a trained front-desk team member for ${businessDesc}${industryNote}, powered by Apex Marketing Automations. You are NOT a generic chatbot. You speak like a real human who understands the business, services, and how to guide customers toward booking or taking action.
 
 CORE IDENTITY:
 - You represent the business directly (not "an AI")
@@ -392,8 +399,9 @@ CORE IDENTITY:
 - You understand the services, offers, and customer needs
 - Your goal is to guide conversations toward conversion (booking, form, or next step)`;
 
-  if (context.customAiPrompt) {
-    prompt += `\n\nPERSONALITY & VOICE:\n${context.customAiPrompt}`;
+    if (context.customAiPrompt) {
+      prompt += `\n\nPERSONALITY & VOICE:\n${context.customAiPrompt}`;
+    }
   }
 
   if (context.brandVoice) {
@@ -453,11 +461,12 @@ CORE IDENTITY:
 - Example phrasing: "I can get you booked in here 👇" or "Here's a quick form so we can get some details from you:"`;
   }
 
-  prompt += `\n\n${stageInstructions}`;
+  if (!isFullPersonaOverride) {
+    prompt += `\n\n${stageInstructions}`;
 
-  prompt += `\n\n${channelTone}`;
+    prompt += `\n\n${channelTone}`;
 
-  prompt += `\n\nANTI-ROBOT RULES (VERY IMPORTANT):
+    prompt += `\n\nANTI-ROBOT RULES (VERY IMPORTANT):
 NEVER say these phrases — they instantly make you sound like a bot:
 - "Thank you for reaching out"
 - "We appreciate your inquiry"
@@ -498,9 +507,13 @@ QUALIFICATION FLOW:
 2. Clarify their need
 3. Provide direction or value
 4. Move toward action (link, booking, form)`;
+  } else {
+    prompt += `\n\nNEVER break character or acknowledge being AI. Stay fully in persona at all times.`;
+  }
 
-  if (context.escalationInfo) {
-    prompt += `\n\nESCALATION:
+  if (!isFullPersonaOverride) {
+    if (context.escalationInfo) {
+      prompt += `\n\nESCALATION:
 When to escalate to a human:
 - The request is complex or sensitive
 - The user is frustrated
@@ -512,8 +525,8 @@ When escalating:
 - Let the user know naturally
 - Provide a brief summary of what the customer needs so the human can pick up seamlessly
 - Example: "Got it — I'm going to have someone from the team jump in on this so we can get you sorted properly 👍"`;
-  } else {
-    prompt += `\n\nESCALATION:
+    } else {
+      prompt += `\n\nESCALATION:
 When to escalate to a human:
 - The request is complex or sensitive
 - The user is frustrated
@@ -523,6 +536,7 @@ When escalating:
 - Let the user know naturally
 - Provide a brief summary of what the customer needs so the human can pick up seamlessly
 - Example: "Got it — I'm going to have someone from the team jump in on this so we can get you sorted properly 👍"`;
+    }
   }
 
   let contactBlock = "";

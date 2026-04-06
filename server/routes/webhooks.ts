@@ -1619,7 +1619,22 @@ export function registerWebhooksRoutes(app: Express) {
               break;
             }
 
-            if (!keywordMatched && isAIConfigured()) {
+            let accountAutoReplyEnabled = true;
+            if (subAccountId) {
+              try {
+                const acctForAi = await storage.getSubAccount(subAccountId);
+                const aiCfg = (acctForAi?.aiPromptConfig as any) || {};
+                if (aiCfg.autoReplyEnabled === false) {
+                  accountAutoReplyEnabled = false;
+                  console.log(`[META DM] Auto-reply disabled for subAccountId=${subAccountId} — skipping AI`);
+                }
+              } catch (cfgErr: any) {
+                accountAutoReplyEnabled = false;
+                console.error(`[META DM] Failed to read auto-reply config for subAccountId=${subAccountId} — defaulting to OFF: ${cfgErr?.message}`);
+              }
+            }
+
+            if (!keywordMatched && isAIConfigured() && accountAutoReplyEnabled) {
               const metaAiStart = Date.now();
               console.log(`[LAYLA-PIPELINE] Step 3: Agent triggered — channel=${channel}, sender=${senderId}, subAccountId=${subAccountId}`);
               try {
