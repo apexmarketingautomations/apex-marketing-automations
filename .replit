@@ -64,6 +64,8 @@ SENTINEL_CAD_API_KEY = "sentinel-cad-key-2026"
 DISABLE_BACKGROUND_WORKERS = "true"
 CONTENT_PLANNER_ENCRYPTION_KEY = "e484cc21829bad2ce54e5507d7447aa91147a04813005f0dbf76a2b1017760c4"
 META_VERIFY_TOKEN = "apex_meta_verify_2024"
+AGENT_WEBHOOK = "https://55a31994-e873-464b-93ad-04f3d104c1c5-00-2f8u4wulsi3cm.spock.replit.dev/api/agent/webhook"
+AGENT_SECRET = "92a85989b054f4c152d07efeafd539b8bfbd356a50043e8f4ccc4917bb1379f3"
 
 [postMerge]
 path = "scripts/post-merge.sh"
