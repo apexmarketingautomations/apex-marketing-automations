@@ -9,9 +9,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import {
-  MessageSquare, Plus, Search, Filter, Copy, Trash2, Edit3, Eye,
-  FileText, CheckCircle2, Clock, AlertTriangle, X, ChevronDown,
-  Smartphone, Hash, Send, MoreVertical, Sparkles, Zap, Archive
+  MessageSquare, Plus, Search, Copy, Trash2, Edit3, Eye,
+  FileText, CheckCircle2, Clock, AlertTriangle, X,
+  Hash, Send, Sparkles, Archive
 } from "lucide-react";
 
 interface WhatsAppTemplate {
@@ -42,13 +42,20 @@ const STATUS_MAP: Record<string, { label: string; color: string; icon: any }> = 
 
 const CATEGORY_OPTIONS = ["marketing", "utility", "authentication", "service"];
 
+const STAT_CARDS = [
+  { key: "total", label: "Total", icon: FileText, bg: "bg-cyan-500/15", iconColor: "text-cyan-400" },
+  { key: "active", label: "Active", icon: CheckCircle2, bg: "bg-emerald-500/15", iconColor: "text-emerald-400" },
+  { key: "draft", label: "Drafts", icon: Clock, bg: "bg-amber-500/15", iconColor: "text-amber-400" },
+  { key: "pending", label: "Pending", icon: Send, bg: "bg-blue-500/15", iconColor: "text-blue-400" },
+];
+
 function PhonePreview({ template }: { template: Partial<WhatsAppTemplate> }) {
   const bodyWithVars = (template.body || "").replace(/\{\{(\d+)\}\}/g, (_, i) =>
     template.variables?.[parseInt(i) - 1] || `{{${i}}}`
   );
   return (
     <div className="flex justify-center">
-      <div className="w-[260px] rounded-[28px] border-2 border-white/10 bg-gradient-to-b from-gray-900 to-black p-2 shadow-2xl">
+      <div className="w-[260px] rounded-[28px] border-2 border-white/10 bg-gradient-to-b from-gray-900 to-black p-2 shadow-2xl shadow-black/50">
         <div className="rounded-[22px] bg-[#0b141a] overflow-hidden">
           <div className="bg-[#1f2c34] px-3 py-2 flex items-center gap-2">
             <div className="w-7 h-7 rounded-full bg-emerald-500/30 flex items-center justify-center">
@@ -59,11 +66,15 @@ function PhonePreview({ template }: { template: Partial<WhatsAppTemplate> }) {
               <div className="text-[9px] text-white/40">Template Preview</div>
             </div>
           </div>
-          <div className="p-3 min-h-[200px] bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9InAiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTTAgMGg0MHY0MEgweiIgZmlsbD0ibm9uZSIvPjxjaXJjbGUgY3g9IjIwIiBjeT0iMjAiIHI9IjEiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC4wMykiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjcCkiLz48L3N2Zz4=')]">
+          <div className="p-3 min-h-[200px] relative">
+            <div className="absolute inset-0 opacity-5" style={{
+              backgroundImage: "radial-gradient(circle at 20px 20px, white 1px, transparent 1px)",
+              backgroundSize: "30px 30px"
+            }} />
             {template.headerContent && (
-              <div className="text-[10px] font-bold text-white/90 mb-1">{template.headerContent}</div>
+              <div className="text-[10px] font-bold text-white/90 mb-1 relative z-10">{template.headerContent}</div>
             )}
-            <div className="bg-[#005c4b] rounded-lg rounded-tl-none p-2.5 max-w-[220px] shadow-sm">
+            <div className="bg-[#005c4b] rounded-lg rounded-tl-none p-2.5 max-w-[220px] shadow-sm relative z-10">
               <p className="text-[11px] text-white/95 leading-relaxed whitespace-pre-wrap">
                 {bodyWithVars || "Your message content will appear here..."}
               </p>
@@ -75,7 +86,7 @@ function PhonePreview({ template }: { template: Partial<WhatsAppTemplate> }) {
               </div>
             </div>
             {template.buttons && Array.isArray(template.buttons) && template.buttons.length > 0 && (
-              <div className="mt-1.5 space-y-1 max-w-[220px]">
+              <div className="mt-1.5 space-y-1 max-w-[220px] relative z-10">
                 {template.buttons.map((btn: any, i: number) => (
                   <div key={i} className="bg-[#005c4b]/60 rounded-md p-1.5 text-center">
                     <span className="text-[10px] text-cyan-300">{btn.text || btn.label || `Button ${i + 1}`}</span>
@@ -115,6 +126,8 @@ function TemplateEditor({
 
   const set = (k: string, v: any) => setForm((p) => ({ ...p, [k]: v }));
   const varCount = (form.body.match(/\{\{\d+\}\}/g) || []).length;
+  const charCount = form.body.length;
+  const MAX_CHARS = 1024;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -126,7 +139,7 @@ function TemplateEditor({
             value={form.name}
             onChange={(e) => set("name", e.target.value)}
             placeholder="e.g. welcome_message"
-            className="bg-white/5 border-white/10 focus:border-cyan-500/50 text-white"
+            className="bg-white/5 border-white/10 focus:border-[color:var(--vibe-glow,#06b6d4)]/50 text-white"
           />
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -164,17 +177,22 @@ function TemplateEditor({
             value={form.headerContent}
             onChange={(e) => set("headerContent", e.target.value)}
             placeholder="Header text or media URL"
-            className="bg-white/5 border-white/10 focus:border-cyan-500/50 text-white"
+            className="bg-white/5 border-white/10 focus:border-[color:var(--vibe-glow,#06b6d4)]/50 text-white"
           />
         </div>
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <label className="text-xs font-medium text-white/50 uppercase tracking-wider">Message Body</label>
-            {varCount > 0 && (
-              <span className="text-[10px] text-cyan-400 flex items-center gap-1">
-                <Hash className="w-3 h-3" /> {varCount} variable{varCount > 1 ? "s" : ""}
+            <div className="flex items-center gap-3">
+              {varCount > 0 && (
+                <span className="text-[10px] text-cyan-400 flex items-center gap-1">
+                  <Hash className="w-3 h-3" /> {varCount} variable{varCount > 1 ? "s" : ""}
+                </span>
+              )}
+              <span className={`text-[10px] ${charCount > MAX_CHARS ? "text-red-400" : "text-white/30"}`}>
+                {charCount}/{MAX_CHARS}
               </span>
-            )}
+            </div>
           </div>
           <Textarea
             data-testid="input-template-body"
@@ -182,7 +200,7 @@ function TemplateEditor({
             onChange={(e) => set("body", e.target.value)}
             placeholder="Hello {{1}}, your order {{2}} is ready for pickup."
             rows={5}
-            className="bg-white/5 border-white/10 focus:border-cyan-500/50 text-white resize-none"
+            className="bg-white/5 border-white/10 focus:border-[color:var(--vibe-glow,#06b6d4)]/50 text-white resize-none"
           />
           <p className="text-[10px] text-white/30 mt-1">Use {"{{1}}"}, {"{{2}}"} etc. for dynamic variables</p>
         </div>
@@ -193,15 +211,16 @@ function TemplateEditor({
             value={form.footerText}
             onChange={(e) => set("footerText", e.target.value)}
             placeholder="Reply STOP to unsubscribe"
-            className="bg-white/5 border-white/10 focus:border-cyan-500/50 text-white"
+            className="bg-white/5 border-white/10 focus:border-[color:var(--vibe-glow,#06b6d4)]/50 text-white"
           />
         </div>
         <div className="flex gap-3 pt-2">
           <Button
             data-testid="button-save-template"
             onClick={() => onSave(form)}
-            disabled={!form.name || !form.body || saving}
-            className="flex-1 bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white border-0"
+            disabled={!form.name || !form.body || saving || charCount > MAX_CHARS}
+            className="flex-1 text-white border-0 shadow-lg"
+            style={{ background: `linear-gradient(to right, var(--vibe-glow, #06b6d4), var(--vibe-accent, #4f46e5))` }}
           >
             {saving ? "Saving..." : initial?.name ? "Update Template" : "Create Template"}
           </Button>
@@ -215,7 +234,7 @@ function TemplateEditor({
           </Button>
         </div>
       </div>
-      <div>
+      <div className="hidden lg:block">
         <label className="text-xs font-medium text-white/50 uppercase tracking-wider mb-3 block">Live Preview</label>
         <PhonePreview template={form} />
       </div>
@@ -260,6 +279,7 @@ export default function WhatsAppTemplatesPage() {
       setEditing(null);
       toast({ title: "Template created", description: "Your WhatsApp template is ready." });
     },
+    onError: () => toast({ title: "Failed to create template", variant: "destructive" }),
   });
 
   const updateMut = useMutation({
@@ -278,6 +298,7 @@ export default function WhatsAppTemplatesPage() {
       setEditing(null);
       toast({ title: "Template updated" });
     },
+    onError: () => toast({ title: "Failed to update template", variant: "destructive" }),
   });
 
   const deleteMut = useMutation({
@@ -289,6 +310,7 @@ export default function WhatsAppTemplatesPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/whatsapp-templates"] });
       toast({ title: "Template deleted" });
     },
+    onError: () => toast({ title: "Failed to delete template", variant: "destructive" }),
   });
 
   const filtered = templates.filter((t) => {
@@ -298,7 +320,7 @@ export default function WhatsAppTemplatesPage() {
     return true;
   });
 
-  const stats = {
+  const stats: Record<string, number> = {
     total: templates.length,
     active: templates.filter((t) => t.status === "active" || t.status === "approved").length,
     draft: templates.filter((t) => t.status === "draft").length,
@@ -317,56 +339,54 @@ export default function WhatsAppTemplatesPage() {
     <div className="min-h-screen p-4 md:p-8 space-y-6">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-white flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+          <h1 className="text-2xl md:text-3xl font-black text-white flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg" style={{ background: `linear-gradient(to bottom right, var(--vibe-glow, #06b6d4), var(--vibe-accent, #4f46e5))` }}>
               <MessageSquare className="w-5 h-5 text-white" />
             </div>
-            WhatsApp Templates
+            <span>WhatsApp Templates</span>
           </h1>
-          <p className="text-white/40 mt-1 text-sm">Manage reusable message templates for WhatsApp Business campaigns</p>
+          <p className="text-slate-200 mt-1 text-sm">Manage reusable message templates for WhatsApp Business campaigns</p>
         </div>
         <Button
           data-testid="button-create-template"
           onClick={() => { setEditing(null); setEditorOpen(true); }}
-          className="bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white border-0 shadow-lg shadow-emerald-500/20"
+          className="text-white border-0 shadow-lg glow-box"
+          style={{ background: `linear-gradient(to right, var(--vibe-glow, #06b6d4), var(--vibe-accent, #4f46e5))` }}
         >
           <Plus className="w-4 h-4 mr-2" /> Create Template
         </Button>
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {[
-          { label: "Total", value: stats.total, icon: FileText, color: "cyan" },
-          { label: "Active", value: stats.active, icon: CheckCircle2, color: "emerald" },
-          { label: "Drafts", value: stats.draft, icon: Clock, color: "amber" },
-          { label: "Pending", value: stats.pending, icon: Send, color: "blue" },
-        ].map((s) => (
-          <Card key={s.label} className="bg-black/40 border-white/5 backdrop-blur-sm hover:border-white/10 transition-all">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className={`w-9 h-9 rounded-lg bg-${s.color}-500/15 flex items-center justify-center`}>
-                <s.icon className={`w-4 h-4 text-${s.color}-400`} />
-              </div>
-              <div>
-                <div className="text-xl font-bold text-white">{s.value}</div>
-                <div className="text-[11px] text-white/40">{s.label}</div>
-              </div>
-            </CardContent>
-          </Card>
+        {STAT_CARDS.map((s, idx) => (
+          <motion.div key={s.key} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 + idx * 0.04 }}>
+            <Card className="bg-black/40 border-white/10 hover:border-white/20 transition-all backdrop-blur-sm">
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-lg ${s.bg} flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                  <s.icon className={`w-4.5 h-4.5 ${s.iconColor}`} />
+                </div>
+                <div>
+                  <p className="text-2xl font-black text-white">{stats[s.key] ?? 0}</p>
+                  <p className="text-xs text-slate-200 mt-0.5">{s.label}</p>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
         ))}
       </motion.div>
 
       <AnimatePresence>
         {editorOpen && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
-            <Card className="bg-black/50 border-white/10 backdrop-blur-xl overflow-hidden">
+            <Card className="glass border-white/10 overflow-hidden">
               <div className="border-b border-white/5 px-6 py-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 flex items-center justify-center">
-                    <Sparkles className="w-4 h-4 text-cyan-400" />
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `linear-gradient(to bottom right, var(--vibe-glow, #06b6d4) 0%, transparent 100%)`, opacity: 0.3 }}>
+                    <Sparkles className="w-4 h-4" style={{ color: "var(--vibe-glow, #06b6d4)" }} />
                   </div>
-                  <h3 className="text-lg font-semibold text-white">{editing ? "Edit Template" : "New Template"}</h3>
+                  <h3 className="text-lg font-bold text-white">{editing ? "Edit Template" : "New Template"}</h3>
                 </div>
-                <button onClick={() => { setEditorOpen(false); setEditing(null); }} className="text-white/30 hover:text-white/60">
+                <button onClick={() => { setEditorOpen(false); setEditing(null); }} className="text-white/30 hover:text-white/60 transition-colors">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -421,11 +441,13 @@ export default function WhatsAppTemplatesPage() {
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
-            <Card key={i} className="bg-black/30 border-white/5 animate-pulse">
-              <CardContent className="p-5 space-y-3">
-                <div className="h-5 bg-white/5 rounded w-3/4" />
-                <div className="h-3 bg-white/5 rounded w-1/2" />
-                <div className="h-16 bg-white/5 rounded" />
+            <Card key={i} className="bg-black/40 border-white/10">
+              <CardContent className="p-5 space-y-3 animate-pulse">
+                <div className="flex items-center gap-3">
+                  <div className="h-5 bg-white/5 rounded w-3/4" />
+                  <div className="h-5 bg-white/5 rounded w-16" />
+                </div>
+                <div className="h-20 bg-white/5 rounded-lg" />
                 <div className="flex gap-2">
                   <div className="h-6 bg-white/5 rounded w-16" />
                   <div className="h-6 bg-white/5 rounded w-16" />
@@ -435,16 +457,19 @@ export default function WhatsAppTemplatesPage() {
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <Card className="bg-black/30 border-white/5 border-dashed">
-            <CardContent className="p-12 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 flex items-center justify-center mx-auto mb-4">
-                <MessageSquare className="w-8 h-8 text-emerald-400/50" />
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+          <Card className="bg-black/40 border-white/10 border-dashed">
+            <CardContent className="p-12 md:p-16 text-center">
+              <div className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6" style={{
+                background: `linear-gradient(to bottom right, color-mix(in srgb, var(--vibe-glow, #06b6d4) 15%, transparent), color-mix(in srgb, var(--vibe-accent, #4f46e5) 10%, transparent))`,
+                border: `1px solid color-mix(in srgb, var(--vibe-glow, #06b6d4) 20%, transparent)`,
+              }}>
+                <MessageSquare className="w-9 h-9 opacity-60" style={{ color: "var(--vibe-glow, #06b6d4)" }} />
               </div>
-              <h3 className="text-lg font-semibold text-white/80 mb-2">
+              <h3 className="text-xl font-bold text-white mb-2">
                 {search || statusFilter !== "all" ? "No templates match your filters" : "No templates yet"}
               </h3>
-              <p className="text-sm text-white/40 mb-6 max-w-md mx-auto">
+              <p className="text-sm text-slate-200 mb-8 max-w-md mx-auto leading-relaxed">
                 {search || statusFilter !== "all"
                   ? "Try adjusting your search or filters to find what you're looking for."
                   : "Create your first WhatsApp message template to start engaging contacts with pre-approved, reusable messages."}
@@ -453,9 +478,10 @@ export default function WhatsAppTemplatesPage() {
                 <Button
                   data-testid="button-create-first-template"
                   onClick={() => { setEditing(null); setEditorOpen(true); }}
-                  className="bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white border-0"
+                  className="text-white border-0 shadow-lg px-8 py-3 text-base"
+                  style={{ background: `linear-gradient(to right, var(--vibe-glow, #06b6d4), var(--vibe-accent, #4f46e5))` }}
                 >
-                  <Plus className="w-4 h-4 mr-2" /> Create Your First Template
+                  <Plus className="w-5 h-5 mr-2" /> Create Your First Template
                 </Button>
               )}
             </CardContent>
@@ -473,27 +499,27 @@ export default function WhatsAppTemplatesPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.04 }}
               >
-                <Card className="bg-black/40 border-white/5 hover:border-white/15 transition-all group cursor-pointer h-full" data-testid={`card-template-${t.id}`}>
+                <Card className="bg-black/40 border-white/10 hover:border-white/20 transition-all group cursor-pointer h-full" data-testid={`card-template-${t.id}`}>
                   <CardContent className="p-5 flex flex-col h-full">
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1 min-w-0">
-                        <h3 className="text-sm font-semibold text-white truncate">{t.name}</h3>
-                        <p className="text-[11px] text-white/30 mt-0.5">{t.category} &middot; {t.language}</p>
+                        <h3 className="text-sm font-bold text-white truncate">{t.name}</h3>
+                        <p className="text-[11px] text-slate-200 mt-0.5">{t.category} · {t.language}</p>
                       </div>
-                      <Badge className={`${st.color} border text-[10px] px-1.5 py-0 h-5 flex items-center gap-1`}>
+                      <Badge className={`${st.color} border text-[10px] px-1.5 py-0 h-5 flex items-center gap-1 shrink-0 ml-2`}>
                         <StIcon className="w-2.5 h-2.5" /> {st.label}
                       </Badge>
                     </div>
-                    <div className="flex-1 bg-white/3 rounded-lg p-3 mb-3 border border-white/5">
+                    <div className="flex-1 bg-white/[0.03] rounded-lg p-3 mb-3 border border-white/5">
                       <p className="text-xs text-white/60 line-clamp-4 leading-relaxed">{t.body}</p>
                     </div>
                     {t.variables && t.variables.length > 0 && (
                       <div className="flex items-center gap-1.5 mb-3">
-                        <Hash className="w-3 h-3 text-cyan-400/60" />
+                        <Hash className="w-3 h-3" style={{ color: "var(--vibe-glow, #06b6d4)" }} />
                         <span className="text-[10px] text-white/30">{t.variables.length} variable{t.variables.length > 1 ? "s" : ""}</span>
                       </div>
                     )}
-                    <div className="flex items-center gap-1.5 pt-2 border-t border-white/5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1 pt-2 border-t border-white/5 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                       <Button
                         data-testid={`button-edit-template-${t.id}`}
                         size="sm"
@@ -527,8 +553,8 @@ export default function WhatsAppTemplatesPage() {
                         data-testid={`button-delete-template-${t.id}`}
                         size="sm"
                         variant="ghost"
-                        className="h-7 px-2.5 text-[11px] text-red-400/60 hover:text-red-400 hover:bg-red-500/10 ml-auto"
-                        onClick={() => deleteMut.mutate(t.id)}
+                        className="h-7 px-2 text-[11px] text-red-400/60 hover:text-red-400 hover:bg-red-500/10 ml-auto"
+                        onClick={() => { if (confirm("Delete this template?")) deleteMut.mutate(t.id); }}
                       >
                         <Trash2 className="w-3 h-3" />
                       </Button>
@@ -547,29 +573,29 @@ export default function WhatsAppTemplatesPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4"
             onClick={() => setPreviewTemplate(null)}
           >
             <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
+              initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
+              exit={{ scale: 0.9, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-gray-900/95 border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl"
+              className="glass border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl"
             >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-white">{previewTemplate.name}</h3>
-                <button onClick={() => setPreviewTemplate(null)} className="text-white/30 hover:text-white">
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="text-lg font-bold text-white">{previewTemplate.name}</h3>
+                <button onClick={() => setPreviewTemplate(null)} className="text-white/30 hover:text-white transition-colors">
                   <X className="w-5 h-5" />
                 </button>
               </div>
               <PhonePreview template={previewTemplate} />
-              <div className="mt-4 flex justify-end gap-2">
+              <div className="mt-5 flex justify-end gap-2">
                 <Button
                   data-testid="button-edit-from-preview"
                   size="sm"
                   variant="outline"
-                  className="border-white/10 text-white/60"
+                  className="border-white/10 text-white/60 hover:text-white hover:bg-white/10"
                   onClick={() => { setEditing(previewTemplate); setEditorOpen(true); setPreviewTemplate(null); }}
                 >
                   <Edit3 className="w-3 h-3 mr-1.5" /> Edit

@@ -1,0 +1,152 @@
+pt/
+
+We are not starting something new yet.
+
+We are moving into **refinement + hardening mode** on what is already built.
+
+Do NOT assume Task #61 is ready just because it covers all 5 layers on paper.
+
+I want you to **pressure test and upgrade the plan to true product-level quality**, not just framework completeness.
+
+## What this really is
+Right now this is:
+- a well-scoped feature plan
+- technically aligned with the 5-layer framework
+
+But that does NOT mean:
+- UX is strong enough
+- UI is differentiated enough
+- the experience feels premium
+- the feature creates real advantage
+- it is launch-ready
+
+---
+
+## Your task now
+Refine Task #61 (Live Labor vs Sales Dashboard) to meet **Apex product standards**, not just technical completeness.
+
+Do NOT just restate the plan.
+
+You need to **upgrade it**.
+
+---
+
+## Focus areas for refinement
+
+### 1. UI / Visual Experience
+Upgrade the dashboard from:
+“data display”
+to:
+**command center experience**
+
+Define:
+- exact layout composition
+- section hierarchy
+- how KPI cards feel (not generic tiles)
+- how charts are presented (not default chart blocks)
+- how tables are styled (not raw tables)
+- where visual emphasis is placed
+- how it creates a “wow” moment
+
+---
+
+### 2. Interaction Depth
+Right now this is likely too static.
+
+Add:
+- drill-down interactions (click KPI → deeper view)
+- quick actions (filter, adjust, trigger)
+- hover states that reveal insight
+- expandable sections
+- real-time behavior (not just refresh-based thinking)
+
+Make it feel **alive**, not just rendered.
+
+---
+
+### 3. UX Flow
+Define clearly:
+- what the user sees first
+- what matters most immediately
+- what actions they are guided to take
+- how they move from overview → detail → action
+
+Remove any:
+- confusion
+- dead space
+- “what do I do here?” moments
+
+---
+
+### 4. Mobile Experience
+Do not assume desktop-first.
+
+Define:
+- how KPI cards stack
+- how charts adapt
+- how tables convert (scroll / collapse / cards)
+- how actions stay accessible
+- how spacing and readability hold up
+
+If mobile feels like an afterthought, the feature is not done.
+
+---
+
+### 5. Apex Advantage Layer
+This is the most important part.
+
+Answer this directly in your refinement:
+
+Why does this dashboard feel:
+- more powerful
+- more intelligent
+- more useful
+- more strategic
+
+than a typical labor vs sales dashboard?
+
+If it feels like a standard analytics page, it is not good enough.
+
+---
+
+## What to avoid
+Do NOT:
+- keep it generic
+- keep it safe
+- describe basic charts and tables
+- rely on “KPI cards + graph + table” as a finished concept
+- assume completeness because all layers exist
+
+---
+
+## Output format
+
+### What this feature currently is
+[truth — no fluff]
+
+### What is weak or generic right now
+[list real weaknesses]
+
+### Refined feature design (Apex-level)
+[fully upgraded version with layout, sections, UX, interactions]
+
+### Interaction upgrades
+[what makes it feel alive and powerful]
+
+### Mobile strategy
+[how it works on smaller screens]
+
+### What creates the “advantage”
+[why this is better than typical dashboards]
+
+### Final readiness
+Is this:
+- still a plan
+- or truly ready to build at Apex standards?
+
+---
+
+## Final rule
+Do not give me a “clean plan.”
+
+Give me a **sharpened, upgraded, product-level design** that is actually worth building.
