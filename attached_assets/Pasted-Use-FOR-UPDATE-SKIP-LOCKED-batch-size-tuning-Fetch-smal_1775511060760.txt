@@ -1,0 +1,49 @@
+Use FOR UPDATE SKIP LOCKED + batch size tuning
+Fetch small batches (e.g., LIMIT 5) to reduce lock contention and let concurrency scale.
+Per-job concurrency limits / priorities
+Some job types (training, backfill) consume lots of resources — limit them to 1 at a time or run on a dedicated worker queue.
+Circuit breaker for external APIs
+If a job calls external APIs (Meta, OpenAI), add circuit breaker and cooldown on repeated external failures.
+Cost controls / offload heavy jobs
+Offload long CPU/GPU tasks (training/backfills) to cloud VMs or RunPod. Agent enqueues/monitors only.
+Event-driven triggering (optional)
+Replace tight polling by DB LISTEN/NOTIFY or a message queue so agent is idle until work arrives (huge savings). If not possible yet, increase poll interval and use scheduler.
+Job prioritization & batching
+Merge low-value frequent jobs into one aggregated job per period (e.g., token sync every hour).
+Per-tenant quotas & fairness
+Prevent a single tenant from hogging concurrency; enforce per-sub_account concurrency/quotas.
+Tracing & profiling
+Add request traces (short spans) for slow jobs and profile CPU hotspots.
+Nice-to-have / future (lower priority)
+Read replicas for analytics and heavy reads.
+Caching of RAG / OpenAI responses.
+Automatic cost estimator / budget alerts.
+Role-based ACL in admin UI for job management.
+Job rewrite/policies for idempotent data writes (upserts).
+Sandboxed containers or ephemeral pods for dangerous commands.
+Suggested rollout (5 steps — minimal disruption)
+Quick wins (minutes):
+Set AGENT_POLL_SECS=60, AGENT_MAX_CONCURRENCY=1, AGENT_MAX_RUNTIME=120 in secrets. Restart agent.
+Add FOR UPDATE SKIP LOCKED and LIMIT 5 to polling query.
+
+Add indexes:
+
+CREATE INDEX IF NOT EXISTS idx_agent_jobs_status_runat ON agent_worker_jobs(status, run_at);
+CREATE INDEX IF NOT EXISTS idx_agent_jobs_sub ON agent_worker_jobs(sub_account_id);
+Safety & reliability (hours):
+Implement attempts/max_attempts/backoff + dead-letter queue + logging trimming.
+Add health endpoint & basic metrics (jobs processed, failures, queue depth).
+Operational tooling (hours → day):
+Add admin UI to view/requeue failures and to cancel jobs.
+Add unit/integration tests for protected account enforcement and retry logic.
+Harden & optimize (days):
+Add idempotency/dedupe, per-job concurrency limits, circuit breakers for external APIs.
+Implement scheduler (for scheduled jobs) and/or LISTEN/NOTIFY.
+Scale & cost control (days → weeks):
+Offload heavy work to cloud VMs/GPU, implement quotas, add trace/profiling and alerts.
+Metrics to watch (set alerts)
+Queue depth (agent_worker_jobs status != done) rising trend
+Failure rate > 1% over 5 minutes
+Average job runtime spike > 2× baseline
+Agent down / restart frequency
+Number of jobs targeting protected accounts
