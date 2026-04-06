@@ -68,6 +68,9 @@ const NotificationPreferencesPage = lazy(() => import("@/pages/notification-pref
 const ABTestingPage = lazy(() => import("@/pages/ab-testing"));
 const CrashReportsPage = lazy(() => import("@/pages/crash-reports"));
 const ExecutionTimelinePage = lazy(() => import("@/pages/execution-timeline"));
+const WhatsAppTemplatesPage = lazy(() => import("@/pages/whatsapp-templates"));
+const ContentPlannerPage = lazy(() => import("@/pages/content-planner"));
+const IntelligenceDashboardPage = lazy(() => import("@/pages/intelligence-dashboard"));
 const StandaloneCardLanding = lazy(() => import("@/pages/standalone-card-landing"));
 const StandaloneCardCreate = lazy(() => import("@/pages/standalone-card-create"));
 const StandaloneCardPreview = lazy(() => import("@/pages/standalone-card-preview"));
@@ -297,6 +300,9 @@ function Router() {
                   <Route path="/notification-preferences" component={NotificationPreferencesPage} />
                   <Route path="/ab-testing" component={ABTestingPage} />
                   <Route path="/execution-timeline" component={ExecutionTimelinePage} />
+                  <Route path="/whatsapp-templates" component={WhatsAppTemplatesPage} />
+                  <Route path="/content-planner" component={ContentPlannerPage} />
+                  <Route path="/intelligence" component={IntelligenceDashboardPage} />
                   <Route component={NotFound} />
                 </Switch>
               </Suspense>

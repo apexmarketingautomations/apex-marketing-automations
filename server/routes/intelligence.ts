@@ -23,9 +23,10 @@ export function registerIntelligenceRoutes(app: Express) {
       const category = req.query.category as string | undefined;
       const limitParam = parseInt(req.query.limit as string) || 20;
       const limit = Math.min(limitParam, 100);
+      const minConfidence = parseFloat(req.query.minConfidence as string) || 0.05;
 
       const [insights, stats] = await Promise.all([
-        getTopSharedInsights({ limit, category, minConfidence: 0.05 }),
+        getTopSharedInsights({ limit, category, minConfidence }),
         getInsightStats(),
       ]);
 

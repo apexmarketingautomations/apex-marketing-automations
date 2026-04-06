@@ -52,7 +52,7 @@ const createPostSchema = z.object({
     .array(
       z.object({
         platform: z.enum(VALID_PLATFORMS),
-        socialAccountId: z.number(),
+        socialAccountId: z.number().optional(),
       })
     )
     .optional(),

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Link, useLocation } from "wouter";
-import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2, History, Satellite, Building, BarChart3, Kanban, CalendarDays, Mail, Palette, Webhook, FileBarChart, Instagram, Target, Lock, Plug, Activity, Menu, X, ContactRound, MapPin, BellRing, FlaskConical, Home } from "lucide-react";
+import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2, History, Satellite, Building, BarChart3, Kanban, CalendarDays, Mail, Palette, Webhook, FileBarChart, Instagram, Target, Lock, Plug, Activity, Menu, X, ContactRound, MapPin, BellRing, FlaskConical, Home, Brain, PenTool } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { CommandMenu } from "@/components/command-menu";
@@ -42,6 +42,8 @@ const navSections = [
       { href: "/pipeline", icon: Kanban, label: "Pipeline & CRM" },
       { href: "/calendar", icon: CalendarDays, label: "Calendar" },
       { href: "/email-campaigns", icon: Mail, label: "Email Campaigns", requiredFeature: "email_campaigns" },
+      { href: "/content-planner", icon: PenTool, label: "Content Planner" },
+      { href: "/whatsapp-templates", icon: MessageSquare, label: "WA Templates" },
       { href: "/digital-card-builder", icon: ContactRound, label: "Digital Card", requiredFeature: "digital_card" },
     ],
   },
@@ -73,6 +75,7 @@ const navSections = [
       { href: "/execution-timeline", icon: Activity, label: "Execution Timeline" },
       { href: "/white-label", icon: Palette, label: "White Label", requiredFeature: "white_label" },
       { href: "/reports", icon: FileBarChart, label: "Reports" },
+      { href: "/intelligence", icon: Brain, label: "Intelligence", adminOnly: true },
       { href: "/launch-readiness", icon: Activity, label: "Launch Readiness", adminOnly: true },
       { href: "/god-mode", icon: Rocket, label: "God Mode", adminOnly: true },
     ],
@@ -339,7 +342,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       <div className={`flex-1 space-y-1 ${collapsed ? 'pr-0' : 'pr-4'} overflow-y-auto`} onClick={onNavClick}>
         {navSections.map((section) => {
-          const visibleItems = section.items;
+          const visibleItems = section.items.filter((item: any) => !item.adminOnly || isUserAdmin);
           if (visibleItems.length === 0) return null;
           return (
             <div key={section.label}>

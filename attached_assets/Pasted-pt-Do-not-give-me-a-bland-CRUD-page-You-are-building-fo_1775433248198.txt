@@ -1,0 +1,393 @@
+pt/
+
+Do not give me a bland CRUD page.
+
+You are building for **Apex Marketing Automations**, and the UI standard is:
+
+- **cutting-edge**
+- **futuristic**
+- **clean**
+- **simple**
+- **high-end**
+- **different in a way that feels like an advantage**
+- **mobile-first**
+- **not generic SaaS**
+- **not basic admin panel**
+- **not default shadcn-looking filler**
+- **not plain tables slapped on a page**
+
+The design should feel like:
+- an elite AI operating system
+- a premium command center
+- sleek dark UI
+- strong spacing
+- glowing accents used sparingly
+- purposeful cards
+- smooth hierarchy
+- polished states
+- premium UX
+
+## Global design direction for every page in this task
+Use this visual standard across all pages you build:
+
+### Style
+- dark futuristic interface
+- strong contrast
+- glassy or soft-surface cards where appropriate
+- subtle borders
+- premium shadows
+- tasteful neon/energy accents, not cheesy cyberpunk overload
+- clean typography with strong hierarchy
+- compact but breathable spacing
+- clear hover states
+- empty states that still feel premium
+- skeleton/loading states that match the brand
+- status badges that feel polished, not default
+
+### UX rules
+- every page must feel intentional
+- no dead space
+- no unfinished-looking forms
+- no ugly raw tables unless they are heavily styled and useful
+- no “just enough” UI
+- every important action should be obvious
+- every page needs a clear primary action
+- every section should answer: what do I see, what can I do, what matters most
+
+### Build quality rules
+- no placeholder UI
+- no bare forms dumped into cards
+- no plain backend admin surfaces
+- no default boring list views unless upgraded into a premium management experience
+- match the current Apex visual direction already in the app
+- everything must feel launch-ready
+
+# TASKS TO BUILD NOW
+
+Build these 4 missing features as real, premium UI experiences:
+
+---
+
+# 1) WhatsApp Templates Page
+
+## Goal
+Create a **dedicated WhatsApp Templates management page** for Apex.
+
+The backend CRUD already exists. This page needs to become a real premium interface, not just a form and a list.
+
+## Route
+Create a dedicated route/page for WhatsApp Templates.
+
+## Page structure
+Build this page with these sections:
+
+### A. Header / Hero
+- page title: **WhatsApp Templates**
+- short subtitle explaining this is where approved and reusable message templates are managed
+- top-right primary CTA button: **Create Template**
+- include a compact stats strip or summary cards for:
+  - total templates
+  - active/approved templates
+  - draft templates
+  - recently updated
+
+### B. Search + Filter Bar
+Include a polished top control bar with:
+- search input
+- status filter
+- category/type filter if supported
+- sort dropdown
+- quick filter chips if useful
+
+### C. Templates Grid or Advanced List
+Do **not** make this a boring plain table unless absolutely necessary.
+
+Preferred approach:
+- card-based template management layout
+- each card should show:
+  - template name
+  - status
+  - category/type
+  - preview snippet
+  - last updated
+  - actions menu
+- actions:
+  - edit
+  - duplicate if reasonable
+  - archive/delete
+  - preview/open details
+
+### D. Template Detail / Edit Experience
+When creating or editing, use either:
+- a slide-over panel
+- modal
+- or a strong inline editor experience
+
+It must include:
+- template name
+- body/content
+- variable placeholders if supported
+- status
+- category/type if supported
+- save/update action
+- cancel
+- validation states
+- success/error states
+
+### E. Preview Panel
+Add a preview area so the user can visually see what the message template looks like.
+
+### F. Empty State
+If there are no templates, the page should still look premium and useful.
+Include:
+- clear explanation
+- strong CTA to create first template
+
+## UX expectation
+This should feel like a **message asset control center**, not a basic database editor.
+
+---
+
+# 2) Content Planner Page
+
+## Goal
+Build a full **Content Planner** page using the existing 20+ backend endpoints.
+
+This is not a placeholder.
+This is a real usable feature.
+
+## Route
+Create a dedicated Content Planner page.
+
+## Page structure
+Build this as a premium planning workspace with these sections:
+
+### A. Header / Hero
+- page title: **Content Planner**
+- subtitle describing planning, organizing, and preparing brand content
+- top-right CTA: **Create Post**
+- optional secondary CTA: **Calendar View** / **Board View** toggle
+
+### B. Summary Row
+Create polished summary cards for:
+- scheduled posts
+- drafts
+- approvals pending
+- published
+- content gaps / unscheduled items if supported
+
+### C. View Switcher
+Support at least one strong main view, preferably two if backend supports it:
+- board/list view
+- calendar view
+
+If only one can be built right now, build the **best version** of that one fully.
+
+### D. Main Planner Workspace
+The main area should feel like a real planner, not a basic list.
+
+Preferred options:
+- kanban-style workflow by status
+or
+- advanced content cards list with date/status/platform controls
+or
+- calendar-driven layout with content cards
+
+Each content item should show:
+- post title or label
+- platform(s)
+- status
+- scheduled date
+- media indicator
+- approval state if supported
+- quick actions
+
+### E. Create / Edit Post Experience
+Build a premium composer/editor experience for posts.
+
+Include fields for supported backend data such as:
+- title
+- caption/body
+- platform
+- scheduled date
+- status
+- labels/tags if supported
+- approval state if supported
+- media attachment area if supported
+
+Use:
+- modal
+- drawer
+- or dedicated side panel
+
+Do not use a weak plain form page unless absolutely necessary.
+
+### F. Media / Asset Awareness
+If media endpoints exist, surface them visually:
+- media count or indicator
+- media attach area
+- content asset reference
+
+### G. Approval Visibility
+If approval endpoints exist, show approval status clearly in the UI.
+
+### H. Empty State
+If no content exists, the planner must still look impressive and intentional, with:
+- explanation
+- strong CTA
+- suggested first action
+
+## UX expectation
+This should feel like an **AI-powered content operations workspace**, not a blank CMS.
+
+---
+
+# 3) Intelligence Admin Dashboard
+
+## Goal
+Build a premium **admin-only intelligence dashboard** for cross-account insights already available by API.
+
+This page should feel like a hidden high-level control room for Apex operators.
+
+## Route
+Create a dedicated admin route/page.
+
+## Access
+Respect admin-only access rules already in the app.
+
+## Page structure
+
+### A. Header / Hero
+- page title: **Intelligence Dashboard**
+- subtitle explaining cross-account insights and strategic intelligence
+- premium admin feel
+- optional badge: Admin Only
+
+### B. Executive Summary Cards
+Build polished cards for the most important high-level metrics available from the API.
+
+Examples depending on available data:
+- total insights
+- active signals
+- top-performing accounts
+- flagged items
+- recent intelligence events
+- trend changes
+
+### C. Insights Panels
+Create multiple premium insight panels/sections such as:
+- recent insight feed
+- account performance summary
+- anomaly/flagged activity panel
+- system intelligence highlights
+- trend or recommendation section
+
+### D. Filters / Controls
+Include polished controls for:
+- timeframe
+- account selection
+- category/type if supported
+
+### E. Visual Hierarchy
+This page should not just be cards stacked randomly.
+Make it feel like a real command dashboard with:
+- layout hierarchy
+- focus zones
+- strong panel composition
+- premium empty/loading states
+
+## UX expectation
+This should feel like **operator intelligence**, not like a plain analytics page.
+
+---
+
+# 4) Content Planner Navigation
+
+## Goal
+Once Content Planner exists, wire it into the actual navigation so it is visible and reachable.
+
+## Requirements
+- add sidebar/nav entry
+- route must work
+- styling must match current app navigation
+- icon must feel aligned with the rest of Apex
+- mobile nav behavior should still feel clean
+
+---
+
+# IMPORTANT DESIGN REQUIREMENTS
+
+For all 4 features, build them with this visual standard:
+
+## Visual language
+- premium dark mode
+- futuristic but restrained
+- polished gradients only where useful
+- glowing accent used sparingly
+- smooth rounded corners
+- elevated cards/panels
+- clear section hierarchy
+- intentional density
+- beautiful empty states
+- premium hover/focus/selected states
+
+## Absolutely do NOT do this
+- no generic admin template look
+- no plain white forms in dark containers
+- no boring raw tables unless heavily styled
+- no bland CRUD screen
+- no “scaffold complete”
+- no “placeholder page”
+- no rushed shadcn defaults with no customization
+- no ugly spacing
+- no flat lifeless layouts
+
+## Frontend quality bar
+Every page must include:
+- loading state
+- empty state
+- error state if relevant
+- clear primary action
+- clear secondary actions
+- responsive layout
+- polished spacing
+- visual consistency with Apex dashboard
+
+# BEFORE YOU BUILD
+First inspect:
+- the existing Apex dashboard visual style
+- existing reusable UI primitives/components
+- current route structure
+- backend endpoints and supported fields for these features
+
+Then build the pages to match the product, not just the schema.
+
+# RETURN RESULTS IN THIS FORMAT
+
+### Built Now
+- [page/feature built]
+- [page/feature built]
+
+### UI/UX Added
+- [specific sections/components added]
+
+### Connected to Backend
+- [what real endpoints/data are now surfaced]
+
+### What I Can Now Do in the App
+- [actual user-visible capabilities]
+
+### What You Tested
+- [real checks performed]
+
+### Still Missing
+- [only true remaining gaps]
+
+# FINAL RULE
+Do not call this done unless each feature is:
+- visually polished
+- reachable in the UI
+- connected to real backend data
+- usable by a normal person
+- consistent with Apex’s premium futuristic design direction
+- strong enough for launch
