@@ -1,0 +1,573 @@
+Full audit: FB + IG DM bot, and FB + IG comment reply systems
+What this really is
+
+You do not currently have one fully proven, production-ready Meta messaging system.
+
+You have:
+
+a Facebook comment reply system that appears mostly working
+an Instagram comment system that is partially wired but not yet truly proven
+a DM bot layer that is not fully audited or proven from the evidence on screen
+a product that still has serious visibility / control / monitoring gaps
+
+So the truth is:
+
+You have parts of an engine running.
+You do not yet have a hardened command center for Meta conversations.
+
+1) Current status by channel
+A. Facebook comments
+Current status:
+
+Best-looking part of the system right now
+
+Visible evidence says:
+
+webhook pipeline receives comment events
+comment handler processes feed comment events
+reply endpoint was fixed from wrong endpoint to correct one
+real Facebook comments were replied to successfully
+backfill exists
+admin endpoints were added
+11 live replies were posted with 0 active failures after fix
+Audit verdict:
+
+Operational, but not fully production-ready
+
+Why it is not fully production-ready yet:
+
+Because “successful replies happened” is not the same as “system is hardened.”
+
+Missing proof / likely missing layers:
+
+no visible operator dashboard for comment queue health
+no visible moderation controls
+no visible fail/retry management UI
+no visible per-account rule tuning UI
+no visible analytics by post / campaign / response rate
+no visible audit trail screen for exactly why something replied/skipped/failed
+skip logic appears too aggressive / inconsistent for real deployment
+no proof of guardrails against bad replies on sensitive comments
+no proof of rate-limit handling at scale
+no proof of duplicate prevention under webhook replay conditions
+no proof of post-specific opt-out / blacklisting controls
+Production-ready solution:
+
+Facebook comments need to be elevated from “handler works” to a full operational module:
+
+Required product layer
+
+Comment Bot dashboard
+Live event stream
+Queue status counts: pending / replied / skipped / failed
+Per-post performance cards
+Filter by platform, page, post, status, date
+Retry failed button
+Pause bot toggle
+Manual approve mode toggle
+Blacklist words / topics UI
+VIP / ignore user lists
+Tone selector / strictness selector
+Dry-run preview mode
+
+Required backend hardening
+
+idempotency on webhook event + comment id
+retry queue with capped backoff
+dead-letter bucket for permanent failures
+structured logging per event
+rate-limit aware outbound sending
+post ownership validation
+comment thread awareness
+profanity / risk filter before posting
+B. Instagram comments
+Current status:
+
+Not proven production-ready
+
+Visible evidence says:
+
+instagram subscription for comments/mentions/story insights was added
+0 IG comments were found in one observed check
+the work log itself admits IG comments likely still have permission / delivery uncertainty
+Audit verdict:
+
+Wired, but not proven
+
+That matters a lot.
+
+“Subscription added” does not mean production-ready.
+You still need proof that:
+
+IG comment webhook events actually arrive
+they resolve to the right tenant
+replies post successfully on real IG comments
+permissions hold under production token conditions
+comment backfill works on real IG media
+you handle IG-specific payload differences cleanly
+Production-ready solution:
+
+Before calling IG comments done, you need hard proof from live production tests:
+
+Must verify
+
+real IG post gets a real new comment
+webhook event received and logged
+event mapped to correct IG account/subaccount
+AI generates reply
+reply posts successfully
+UI shows that event in history
+
+Required system additions
+
+IG-specific diagnostic panel:
+last webhook received
+last comment processed
+last reply posted
+permissions status
+token age / expiry state
+“Test IG comment flow” checklist in admin
+media-level mapping view so you can see which IG assets are monitored
+permission validation routine run nightly
+Current truth:
+
+Instagram comments are not launch-certified yet.
+
+C. Facebook + Instagram DMs
+Current status:
+
+Not sufficiently proven from what’s on screen
+
+The current visible task thread is much stronger on comments than DMs.
+
+You asked earlier about:
+
+inboxes
+requests
+accepted message requests
+whether bot can read/respond
+
+Those are real product concerns, but I do not see enough hard production evidence in the visible log to certify the DM bot as fully ready.
+
+Audit verdict:
+
+DM bot is still in “needs direct forensic verification” territory
+
+What must be audited for DMs:
+
+You need to split DMs into 5 separate realities:
+
+1. Facebook Messenger DMs
+
+Need proof of:
+
+webhook delivery
+tenant mapping
+conversation storage
+reply delivery
+message status tracking
+human handoff
+duplicate suppression
+attachment handling
+2. Instagram DMs: Primary / General
+
+Need proof of:
+
+inbound webhook receipt
+storage
+AI reply
+send success
+conversation continuity
+3. Instagram Requests
+
+This is a major production blind spot.
+
+Even if some request behavior works inconsistently, you should treat it as:
+
+not reliably automatable
+
+That means product logic should assume:
+
+requests may not trigger normal flows
+accepted requests may not re-fire as fresh inbound events
+request inbox behavior should not be treated like primary/general
+4. Accepted request conversations
+
+Need explicit logic for:
+
+whether accepted request becomes automation-eligible only on next user action
+whether you mark accepted threads as “waiting for re-engagement”
+whether system prompts operator to send manual warm opener
+5. Sending permissions / policy windows
+
+Need proof of:
+
+reply eligibility
+error handling
+token permissions
+policy-window compliance
+fallback logic when reply is blocked
+2) Biggest system weaknesses right now
+Weakness 1: Backend success is ahead of product readiness
+
+This is the exact trap you warned about.
+
+The system has evidence of technical wins, but still lacks the control surface a real operator needs.
+
+What’s missing:
+full inbox command center
+channel health visibility
+event diagnostics UI
+failure management UI
+replay / retry interface
+human override tools
+moderation safety layer
+testing console
+Weakness 2: Too much depends on logs and code, not operator-facing controls
+
+Right now, too much of the truth lives in:
+
+terminal output
+ad hoc checks
+code changes
+backfill scripts
+
+That is not production-ready operations.
+
+Production-ready solution:
+
+Build a Meta Operations Center inside Apex with these tabs:
+
+Overview
+DM Inbox Health
+Comment Bot Health
+Webhook Diagnostics
+Failed Events
+Permissions & Tokens
+Rules / Filters
+Backfill / Replay
+Audit Log
+Weakness 3: Comment selectivity logic is not business-controlled enough
+
+The logs show random skip behavior that is currently more engineering-driven than product-driven.
+
+That’s dangerous.
+
+Why:
+
+Random selective reply can cause:
+
+missed hot leads
+weird inconsistency
+poor brand perception
+operator confusion
+zero predictability for campaigns
+Production-ready solution:
+
+Replace vague randomness with explicit response policy modes:
+
+Reply to all
+Reply to qualified comments only
+Reply to high-intent only
+Engagement mode
+Sales mode
+Manual approval mode
+
+And add rules like:
+
+always reply if comment contains buying intent
+always skip if comment is hostile
+never reply to certain keywords
+limit replies per user per period
+suppress on sensitive posts
+Weakness 4: No proven safety layer
+
+I do not see proof of a proper reply safety system.
+
+That means risk for:
+
+cringe replies
+over-flirty replies in wrong context
+brand damage
+inappropriate replies to serious comments
+legal/compliance issues in some industries
+Production-ready solution:
+
+Every AI reply pipeline needs:
+
+content classifier before send
+tone guardrail
+prohibited topic list
+confidence score
+fallback templates
+approval requirement for risky messages
+brand/persona mode by client
+Weakness 5: IG-specific edge cases are still under-audited
+
+Instagram is where systems often look “connected” but break in reality.
+
+Risks:
+request inbox weirdness
+inconsistent permissions
+webhook payload differences
+media comment permissions
+account connection drift
+token expiration / invalidation
+page/IG mapping mismatch
+Production-ready solution:
+
+Add a nightly automated verification job that checks:
+
+FB page subscription status
+IG object subscription status
+token validity
+page ↔ IG business account linkage
+last successful inbound event per channel
+last successful outbound reply per channel
+
+If any fail:
+
+system health badge turns red
+operator sees exact failure reason
+suggested fix appears in UI
+3) Full production-ready solution architecture
+A. DM Bot: required final state
+Backend
+unified inbound event normalizer for FB Messenger + IG DMs
+canonical conversation model
+message status lifecycle:
+received
+processed
+drafted
+sent
+failed
+blocked
+idempotency on event/message IDs
+attachments support
+human takeover state
+request-thread state handling
+reply eligibility checks before send
+fallback template if AI fails
+per-tenant bot rules
+throttle / debounce / delay rules
+Frontend
+
+Need a real inbox UI, not just hidden automation.
+
+Required screens:
+All conversations
+Unread
+Awaiting AI
+Awaiting human
+Failed sends
+Request-origin threads
+AI-drafted replies needing approval
+Conversation detail view
+Message event timeline
+Sender profile card
+Reply controls
+Bot on/off toggle per thread
+UX must include:
+clear “bot active” badge
+clear “manual mode” badge
+last reply source: AI / human / template
+message source: FB / IG
+request-origin warning if applicable
+quick actions:
+send manually
+approve AI draft
+disable bot on thread
+assign to human
+mark lead hot
+B. Comment Bot: required final state
+Backend
+separate pipelines for FB comments and IG comments
+webhook + backfill both supported
+safe dedupe
+outbound reply retry logic
+moderation layer
+comment intent scoring
+parent/child thread awareness
+post-level rules
+campaign-level attribution
+Frontend
+
+Need a Comment Command Center with:
+
+live queue
+recent replies
+failed items
+skipped items with reason
+approval-required items
+per-post analytics
+per-platform breakdown
+post preview + reply preview
+rules editor
+backfill launcher
+diagnostics drawer
+UX must include:
+“why replied” / “why skipped” explanation
+reply preview before enablement
+platform badge
+original comment + generated response side by side
+one-click retry
+one-click suppress future replies on post
+one-click escalate to human
+4) Non-negotiable production controls you still need
+1. Health checks
+
+For each channel, show:
+
+webhook connected
+last inbound event
+last outbound reply
+permission status
+token validity
+rate limit status
+failure count 24h
+2. Event log
+
+Searchable event feed:
+
+timestamp
+platform
+channel
+event type
+object id
+tenant
+outcome
+reason
+3. Retry / replay
+
+Need:
+
+replay failed webhook
+retry failed send
+reprocess comment
+rerun backfill safely
+4. Human override
+
+Need:
+
+pause all automation
+pause per platform
+pause per tenant
+pause per post/thread
+manual takeover
+5. Safety / moderation
+
+Need:
+
+blocklist words
+category filters
+sentiment guardrails
+approval threshold
+confidence threshold
+safe fallback responses
+6. Analytics
+
+Need:
+
+response rate
+success/failure rate
+median reply time
+skipped reason breakdown
+engagement lift by post
+DM conversion funnel
+5) Hard truth: what is actually launch-ready right now?
+Launch-ready now:
+
+Not the whole Meta bot system
+
+Closest to ready:
+
+Facebook comment auto-replies, but only as a technical subsystem
+
+Not yet ready:
+IG comments as a fully proven production channel
+DM bot as a fully audited and operator-safe product module
+overall bot management UX
+production observability
+safety/moderation controls
+6) Priority fixes in exact order
+Priority 1 — certify DMs
+
+You asked for full audit, so this is the biggest gap.
+
+Must do:
+verify FB DM inbound → store → AI → send
+verify IG primary/general inbound → store → AI → send
+verify request-thread behavior and mark as limited
+verify accepted-request behavior
+build DM diagnostics panel
+
+Without this, your DM bot is not production-certified.
+
+Priority 2 — certify IG comments
+Must do:
+prove real IG comment webhook
+prove live IG reply success
+prove backfill on real IG media
+surface all of it in admin UI
+Priority 3 — build the operator control layer
+
+This is where Replit-style builds usually fail.
+
+Must build:
+Meta Operations Center
+Comment Command Center
+DM Inbox Command Center
+diagnostics + replay + fail management
+toggle controls and clear status indicators
+Priority 4 — add safety + quality controls
+Must build:
+risk scoring
+moderation rules
+confidence threshold
+fallback templates
+approval mode
+policy-based response modes
+Priority 5 — add production observability
+Must build:
+metrics
+event history
+failure explanations
+nightly verification checks
+alerting
+7) Final verdict
+DM bot
+
+Not fully proven, not fully production-ready
+
+Facebook comments
+
+Working, but still needs operator UX + hardening
+
+Instagram comments
+
+Connected in parts, but not proven enough to certify
+
+Whole system
+
+Strong progress, not launch-finished
+
+The biggest issue is not that the backend is trash.
+The biggest issue is that the system is still too dependent on hidden logic, logs, and engineering checks instead of a visible, controllable, premium operations product.
+
+That violates your own standard of done.
+
+Best next move
+
+We should turn this audit into a single execution prompt for Replit that forces it to build the full production layer:
+
+DM Bot Audit + hardening
+IG + FB Comment Bot Audit + hardening
+Meta Operations Center UI
+diagnostics
+retry/replay
+moderation
+controls
+analytics
+completion criteria
+
+I can

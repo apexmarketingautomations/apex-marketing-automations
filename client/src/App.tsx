@@ -54,6 +54,7 @@ const DashboardPage = lazy(() => import("@/pages/dashboard"));
 const MetaAdsPage = lazy(() => import("@/pages/meta-ads"));
 const MetaLeadsPage = lazy(() => import("@/pages/meta-leads"));
 const InstagramInboxPage = lazy(() => import("@/pages/instagram-inbox"));
+const MetaOpsPage = lazy(() => import("@/pages/meta-ops"));
 const NexusDemo = lazy(() => import("@/pages/nexus-demo"));
 const AdminConsolePage = lazy(() => import("@/pages/admin-console"));
 const LaunchReadinessPage = lazy(() => import("@/pages/launch-readiness"));
@@ -288,6 +289,7 @@ function Router() {
                   <Route path="/white-label" component={WhiteLabelPage} />
                   <Route path="/webhooks" component={WebhooksPage} />
                   <Route path="/reports" component={ReportsPage} />
+                  <Route path="/meta-ops" component={MetaOpsPage} />
                   <Route path="/meta-ads" component={MetaAdsPage} />
                   <Route path="/meta-leads" component={MetaLeadsPage} />
                   <Route path="/instagram-inbox" component={InstagramInboxPage} />
