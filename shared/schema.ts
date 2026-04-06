@@ -2227,3 +2227,42 @@ export const styleEmbeddings = pgTable("style_embeddings", {
   uniqueIndex("idx_style_emb_unique").on(table.subAccountId, table.messageId),
 ]);
 export type StyleEmbedding = typeof styleEmbeddings.$inferSelect;
+
+export const metaMessagingBillingEvents = pgTable("meta_messaging_billing_events", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  eventType: text("event_type").notNull(),
+  messageId: integer("message_id"),
+  channel: text("channel").notNull(),
+  messageCount: integer("message_count").default(1).notNull(),
+  tokenCount: integer("token_count").default(0).notNull(),
+  unitCostMessage: real("unit_cost_message").default(0).notNull(),
+  unitCostToken: real("unit_cost_token").default(0).notNull(),
+  totalCost: real("total_cost").default(0).notNull(),
+  invoiceId: text("invoice_id"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertMetaMessagingBillingEventSchema = createInsertSchema(metaMessagingBillingEvents).omit({ id: true, createdAt: true });
+export type InsertMetaMessagingBillingEvent = z.infer<typeof insertMetaMessagingBillingEventSchema>;
+export type MetaMessagingBillingEvent = typeof metaMessagingBillingEvents.$inferSelect;
+
+export const metaMessagingAnalyticsAggregates = pgTable("meta_messaging_analytics_aggregates", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  periodDate: timestamp("period_date").notNull(),
+  channel: text("channel").notNull(),
+  inboundCount: integer("inbound_count").default(0).notNull(),
+  outboundCount: integer("outbound_count").default(0).notNull(),
+  failedCount: integer("failed_count").default(0).notNull(),
+  avgResponseTimeMs: real("avg_response_time_ms"),
+  commentCount: integer("comment_count").default(0).notNull(),
+  commentReplyCount: integer("comment_reply_count").default(0).notNull(),
+  tokenUsage: integer("token_usage").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertMetaMessagingAnalyticsAggregateSchema = createInsertSchema(metaMessagingAnalyticsAggregates).omit({ id: true, createdAt: true });
+export type InsertMetaMessagingAnalyticsAggregate = z.infer<typeof insertMetaMessagingAnalyticsAggregateSchema>;
+export type MetaMessagingAnalyticsAggregate = typeof metaMessagingAnalyticsAggregates.$inferSelect;

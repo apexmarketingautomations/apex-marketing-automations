@@ -632,10 +632,17 @@ function SafetyTab({ subAccountId, demoMode }: { subAccountId: number; demoMode:
 
 function AnalyticsTab({ subAccountId, demoMode }: { subAccountId: number; demoMode: boolean }) {
   const [days, setDays] = useState(7);
+  const { toast } = useToast();
 
   const { data: analyticsData, isLoading } = useQuery({
     queryKey: ["/api/meta-messaging/analytics", subAccountId, days],
     queryFn: () => fetch(`/api/meta-messaging/analytics/${subAccountId}?days=${days}`).then(r => r.json()),
+    enabled: !demoMode,
+  });
+
+  const { data: productAnalytics } = useQuery({
+    queryKey: ["/api/meta-messaging/product/analytics/usage", subAccountId, days],
+    queryFn: () => fetch(`/api/meta-messaging/product/analytics/usage/${subAccountId}?days=${days}`).then(r => r.json()),
     enabled: !demoMode,
   });
 
@@ -652,19 +659,53 @@ function AnalyticsTab({ subAccountId, demoMode }: { subAccountId: number; demoMo
         return acc;
       }, {});
 
-  const dailyVolume = demoMode ? (demoData?.analytics?.dailyVolume || []) : (analyticsData?.dailyVolume || []);
+  const dailyVolume = demoMode
+    ? (demoData?.analytics?.dailyVolume || [])
+    : (productAnalytics?.dailyVolume || analyticsData?.dailyVolume || []);
+
+  const summary = productAnalytics?.summary;
+
+  const handleCsvExport = () => {
+    window.open(`/api/meta-messaging/product/analytics/export/${subAccountId}?days=${days}`, "_blank");
+    toast({ title: "CSV export started" });
+  };
 
   return (
     <div className="space-y-6" data-testid="analytics-tab">
-      <div className="flex gap-2">
-        {[7, 14, 30].map(d => (
-          <Button key={d} size="sm" variant={days === d ? "default" : "ghost"}
-            className={days === d ? "bg-cyan-600 text-white" : "text-slate-400"}
-            onClick={() => setDays(d)} data-testid={`button-days-${d}`}>
-            {d}d
-          </Button>
-        ))}
+      <div className="flex items-center justify-between">
+        <div className="flex gap-2">
+          {[7, 14, 30].map(d => (
+            <Button key={d} size="sm" variant={days === d ? "default" : "ghost"}
+              className={days === d ? "bg-cyan-600 text-white" : "text-slate-400"}
+              onClick={() => setDays(d)} data-testid={`button-days-${d}`}>
+              {d}d
+            </Button>
+          ))}
+        </div>
+        <Button size="sm" variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700"
+          onClick={handleCsvExport} data-testid="button-csv-export">
+          <ArrowRight size={14} className="mr-1 rotate-90" /> Export CSV
+        </Button>
       </div>
+
+      {summary && (
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          {[
+            { label: "Total Inbound", value: summary.totalInbound, color: "text-blue-400" },
+            { label: "Total Outbound", value: summary.totalOutbound, color: "text-green-400" },
+            { label: "Failed", value: summary.totalFailed, color: "text-red-400" },
+            { label: "Comments", value: summary.totalComments, color: "text-purple-400" },
+            { label: "Avg Response", value: summary.avgResponseTimeMs ? `${summary.avgResponseTimeMs}ms` : "N/A", color: "text-cyan-400" },
+          ].map(metric => (
+            <Card key={metric.label} className="bg-slate-900/80 border-slate-700/50" data-testid={`metric-${metric.label.replace(/\s/g, '-').toLowerCase()}`}>
+              <CardContent className="pt-3 pb-3 px-3 text-center">
+                <div className={`text-xl font-bold ${metric.color}`}>{metric.value}</div>
+                <div className="text-[10px] text-slate-400 mt-1">{metric.label}</div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="bg-slate-900/80 border-slate-700/50">
@@ -716,12 +757,12 @@ function AnalyticsTab({ subAccountId, demoMode }: { subAccountId: number; demoMo
             ) : (
               <div className="flex items-end gap-1 h-32">
                 {(demoMode ? dailyVolume : dailyVolume.slice(0, 14)).map((d: any, i: number) => {
-                  const val = demoMode ? (d.inbound + d.outbound) : Number(d.count || 0);
+                  const val = demoMode ? (d.inbound + d.outbound) : (d.inbound !== undefined ? d.inbound + d.outbound : Number(d.count || 0));
                   const maxVal = Math.max(...(demoMode ? dailyVolume : dailyVolume).map((x: any) =>
-                    demoMode ? (x.inbound + x.outbound) : Number(x.count || 0)), 1);
+                    demoMode ? (x.inbound + x.outbound) : (x.inbound !== undefined ? x.inbound + x.outbound : Number(x.count || 0))), 1);
                   const h = Math.max((val / maxVal) * 100, 4);
                   return (
-                    <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                    <div key={i} className="flex-1 flex flex-col items-center gap-1" title={d.date || ""}>
                       <span className="text-[9px] text-slate-500">{val}</span>
                       <div className="w-full rounded-t bg-gradient-to-t from-purple-600 to-pink-500 transition-all" style={{ height: `${h}%` }} />
                     </div>
@@ -732,6 +773,31 @@ function AnalyticsTab({ subAccountId, demoMode }: { subAccountId: number; demoMo
           </CardContent>
         </Card>
       </div>
+
+      {!demoMode && dailyVolume.length > 0 && dailyVolume.some((d: any) => d.avgResponseTimeMs != null) && (
+        <Card className="bg-slate-900/80 border-slate-700/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Clock size={18} className="text-cyan-400" /> Response Time Trend
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-end gap-1 h-24">
+              {dailyVolume.filter((d: any) => d.avgResponseTimeMs != null).map((d: any, i: number) => {
+                const val = d.avgResponseTimeMs;
+                const maxVal = Math.max(...dailyVolume.filter((x: any) => x.avgResponseTimeMs != null).map((x: any) => x.avgResponseTimeMs), 1);
+                const h = Math.max((val / maxVal) * 100, 4);
+                return (
+                  <div key={i} className="flex-1 flex flex-col items-center gap-1" title={`${d.date}: ${val}ms`}>
+                    <span className="text-[9px] text-slate-500">{val}ms</span>
+                    <div className="w-full rounded-t bg-gradient-to-t from-emerald-600 to-teal-400 transition-all" style={{ height: `${h}%` }} />
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {demoMode && demoData?.analytics?.topPosts && (
         <Card className="bg-slate-900/80 border-slate-700/50">
@@ -825,9 +891,24 @@ function SettingsTab({ subAccountId, demoMode }: { subAccountId: number; demoMod
 }
 
 function BillingTab({ subAccountId, demoMode }: { subAccountId: number; demoMode: boolean }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
   const { data: usageData, isLoading } = useQuery({
     queryKey: ["/api/meta-messaging/usage", subAccountId],
     queryFn: () => fetch(`/api/meta-messaging/usage/${subAccountId}`).then(r => r.json()),
+    enabled: !demoMode,
+  });
+
+  const { data: billingUsage } = useQuery({
+    queryKey: ["/api/meta-messaging/product/billing/usage", subAccountId],
+    queryFn: () => fetch(`/api/meta-messaging/product/billing/usage/${subAccountId}`).then(r => r.json()),
+    enabled: !demoMode,
+  });
+
+  const { data: invoicesData } = useQuery({
+    queryKey: ["/api/meta-messaging/product/billing/invoices", subAccountId],
+    queryFn: () => fetch(`/api/meta-messaging/product/billing/invoices/${subAccountId}`).then(r => r.json()),
     enabled: !demoMode,
   });
 
@@ -837,8 +918,19 @@ function BillingTab({ subAccountId, demoMode }: { subAccountId: number; demoMode
     enabled: demoMode,
   });
 
+  const generateInvoice = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/meta-messaging/product/billing/generate-test-invoice/${subAccountId}`),
+    onSuccess: () => {
+      toast({ title: "Test invoice generated" });
+      qc.invalidateQueries({ queryKey: ["/api/meta-messaging/product/billing/invoices"] });
+    },
+    onError: (e: any) => toast({ title: "Failed to generate invoice", description: e.message, variant: "destructive" }),
+  });
+
   const usage = demoMode ? demoData?.usage : usageData?.usage;
-  const plan = demoMode ? "pro" : usageData?.plan || "starter";
+  const plan = demoMode ? "pro" : billingUsage?.plan || usageData?.plan || "starter";
+  const bu = billingUsage?.usage;
+  const invoices = invoicesData?.invoices || [];
 
   const plans = [
     { id: "starter", name: "Starter", price: 29, msgs: 500, comments: 200, features: ["FB + IG DM Bot", "Comment Bot (FB)", "Basic Analytics"] },
@@ -848,37 +940,91 @@ function BillingTab({ subAccountId, demoMode }: { subAccountId: number; demoMode
 
   return (
     <div className="space-y-6" data-testid="billing-tab">
-      {usage && (
+      {(usage || bu) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Card className="bg-slate-900/80 border-slate-700/50">
             <CardContent className="pt-4 pb-4">
-              <div className="text-sm text-slate-400 mb-2">DM Messages Used</div>
+              <div className="text-sm text-slate-400 mb-2">Per-Message Usage</div>
               <div className="flex items-end gap-2 mb-2">
-                <span className="text-3xl font-bold text-white">{usage.messagesUsed}</span>
-                <span className="text-sm text-slate-400 mb-1">/ {usage.messagesLimit}</span>
+                <span className="text-3xl font-bold text-white" data-testid="text-messages-used">
+                  {bu?.totalMessages ?? usage?.messagesUsed ?? 0}
+                </span>
+                <span className="text-sm text-slate-400 mb-1">/ {bu?.messagesLimit ?? usage?.messagesLimit ?? 500}</span>
               </div>
               <div className="w-full bg-slate-800 rounded-full h-2">
                 <div className="h-2 rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all"
-                  style={{ width: `${Math.min((usage.messagesUsed / usage.messagesLimit) * 100, 100)}%` }} />
+                  style={{ width: `${Math.min(((bu?.totalMessages ?? usage?.messagesUsed ?? 0) / (bu?.messagesLimit ?? usage?.messagesLimit ?? 500)) * 100, 100)}%` }} />
               </div>
-              <div className="text-xs text-slate-500 mt-1">{Math.round((usage.messagesUsed / usage.messagesLimit) * 100)}% used</div>
+              <div className="text-xs text-slate-500 mt-1">
+                {Math.round(((bu?.totalMessages ?? usage?.messagesUsed ?? 0) / (bu?.messagesLimit ?? usage?.messagesLimit ?? 500)) * 100)}% used
+                {bu?.totalMessageCost != null && <span className="ml-2 text-cyan-400">${bu.totalMessageCost.toFixed(2)} cost</span>}
+              </div>
             </CardContent>
           </Card>
           <Card className="bg-slate-900/80 border-slate-700/50">
             <CardContent className="pt-4 pb-4">
-              <div className="text-sm text-slate-400 mb-2">Comments Processed</div>
+              <div className="text-sm text-slate-400 mb-2">Per-Token Usage</div>
               <div className="flex items-end gap-2 mb-2">
-                <span className="text-3xl font-bold text-white">{usage.commentsProcessed}</span>
-                <span className="text-sm text-slate-400 mb-1">/ {usage.commentsLimit}</span>
+                <span className="text-3xl font-bold text-white" data-testid="text-tokens-used">
+                  {bu?.totalTokens ?? 0}
+                </span>
+                <span className="text-sm text-slate-400 mb-1">/ {bu?.tokensLimit ? bu.tokensLimit.toLocaleString() : "50,000"}</span>
               </div>
               <div className="w-full bg-slate-800 rounded-full h-2">
                 <div className="h-2 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all"
-                  style={{ width: `${Math.min((usage.commentsProcessed / usage.commentsLimit) * 100, 100)}%` }} />
+                  style={{ width: `${Math.min(((bu?.totalTokens ?? 0) / (bu?.tokensLimit ?? 50000)) * 100, 100)}%` }} />
               </div>
-              <div className="text-xs text-slate-500 mt-1">{Math.round((usage.commentsProcessed / usage.commentsLimit) * 100)}% used</div>
+              <div className="text-xs text-slate-500 mt-1">
+                {Math.round(((bu?.totalTokens ?? 0) / (bu?.tokensLimit ?? 50000)) * 100)}% used
+                {bu?.totalTokenCost != null && <span className="ml-2 text-purple-400">${bu.totalTokenCost.toFixed(4)} cost</span>}
+              </div>
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {bu && (
+        <Card className="bg-slate-900/80 border-slate-700/50">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <CreditCard size={18} className="text-cyan-400" /> Billing Summary
+              </CardTitle>
+              <Button size="sm" variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700"
+                onClick={() => generateInvoice.mutate()} disabled={generateInvoice.isPending} data-testid="button-generate-invoice">
+                Generate Test Invoice
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="p-3 rounded-lg bg-slate-800/50 text-center">
+                <div className="text-lg font-bold text-white">${bu.totalCost?.toFixed(2) ?? "0.00"}</div>
+                <div className="text-xs text-slate-400">Total Cost (MTD)</div>
+              </div>
+              <div className="p-3 rounded-lg bg-slate-800/50 text-center">
+                <div className="text-lg font-bold text-white">{billingUsage?.eventCount ?? 0}</div>
+                <div className="text-xs text-slate-400">Billing Events</div>
+              </div>
+              <div className="p-3 rounded-lg bg-slate-800/50 text-center">
+                <div className="text-lg font-bold text-white capitalize">{plan}</div>
+                <div className="text-xs text-slate-400">Current Plan</div>
+              </div>
+            </div>
+            {billingUsage?.channelBreakdown && Object.keys(billingUsage.channelBreakdown).length > 0 && (
+              <div className="mt-4 space-y-2">
+                <div className="text-xs text-slate-400 font-medium">Channel Breakdown</div>
+                {Object.entries(billingUsage.channelBreakdown).map(([ch, data]: [string, any]) => (
+                  <div key={ch} className="flex items-center justify-between p-2 rounded bg-slate-800/30">
+                    <ChannelBadge channel={ch} />
+                    <span className="text-xs text-slate-300">{data.messages} msgs · {data.tokens} tokens</span>
+                    <span className="text-xs text-cyan-400">${data.cost?.toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -907,19 +1053,19 @@ function BillingTab({ subAccountId, demoMode }: { subAccountId: number; demoMode
         ))}
       </div>
 
-      {demoMode && demoData?.usage?.invoices && (
+      {(invoices.length > 0 || (demoMode && demoData?.usage?.invoices)) && (
         <Card className="bg-slate-900/80 border-slate-700/50">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Recent Invoices</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {demoData.usage.invoices.map((inv: any, i: number) => (
+              {(demoMode ? demoData?.usage?.invoices || [] : invoices).map((inv: any, i: number) => (
                 <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50" data-testid={`invoice-${i}`}>
-                  <div className="text-sm text-white">{inv.id}</div>
-                  <div className="text-sm text-slate-400">{new Date(inv.date).toLocaleDateString()}</div>
-                  <div className="text-sm text-white font-medium">${inv.amount.toFixed(2)}</div>
-                  <Badge className="bg-green-500/20 text-green-400">{inv.status}</Badge>
+                  <div className="text-sm text-white">{inv.invoiceId || inv.id}</div>
+                  <div className="text-sm text-slate-400">{new Date(inv.createdAt || inv.date).toLocaleDateString()}</div>
+                  <div className="text-sm text-white font-medium">${(inv.totalCost || inv.amount || 0).toFixed(2)}</div>
+                  <Badge className="bg-green-500/20 text-green-400">{inv.status || "paid"}</Badge>
                 </div>
               ))}
             </div>

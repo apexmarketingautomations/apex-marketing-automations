@@ -1,29 +1,54 @@
-import type { Express, Request, Response } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { asyncHandler, parseIntParam, verifyAccountOwnership } from "./helpers";
+import { ensureNotProtectedAccount as ensureNotProtectedAccountMiddleware, isProtectedAccountId } from "../middleware/protectedAccount";
+import { requireFeatureFlag } from "../middleware/featureGate";
 import { db } from "../db";
 import {
   subAccounts, messages, systemLogs, auditLogs, oauthTokens,
-  webhooks, webhookDeliveryLogs, workflows, whiteLabelSettings
+  webhooks, webhookDeliveryLogs, workflows, whiteLabelSettings,
+  commentAutoReplies, usageLogs,
+  metaMessagingBillingEvents, metaMessagingAnalyticsAggregates,
 } from "@shared/schema";
 import { eq, and, gte, desc, sql, or, asc, lt } from "drizzle-orm";
 import crypto from "crypto";
+import { randomUUID } from "crypto";
+
+const META_MESSAGING_FLAG = "meta_messaging_2027";
 
 const SAFETY_KEYWORDS = [
-  { pattern: /\b(lawsuit|attorney|lawyer|sue|legal action|court)\b/i, flag: "litigation_risk", severity: "high" },
-  { pattern: /\b(kill|threat|bomb|weapon|shoot)\b/i, flag: "threat_detected", severity: "critical" },
-  { pattern: /\b(ssn|social security|credit card|bank account|routing number)\b/i, flag: "personal_data", severity: "high" },
-  { pattern: /\b(fuck|shit|bitch|asshole|damn|hell)\b/i, flag: "profanity", severity: "medium" },
-  { pattern: /\b(scam|fraud|fake|rip.?off|ponzi)\b/i, flag: "scam_accusation", severity: "medium" },
-  { pattern: /\b(suicide|self.?harm|hurt myself)\b/i, flag: "crisis_flag", severity: "critical" },
+  { pattern: /\b(lawsuit|attorney|lawyer|sue|legal action|court)\b/i, flag: "litigation_risk", severity: "high" as const },
+  { pattern: /\b(kill|threat|bomb|weapon|shoot)\b/i, flag: "threat_detected", severity: "critical" as const },
+  { pattern: /\b(ssn|social security|credit card|bank account|routing number)\b/i, flag: "personal_data", severity: "high" as const },
+  { pattern: /\b(fuck|shit|bitch|asshole|damn|hell)\b/i, flag: "profanity", severity: "medium" as const },
+  { pattern: /\b(scam|fraud|fake|rip.?off|ponzi)\b/i, flag: "scam_accusation", severity: "medium" as const },
+  { pattern: /\b(suicide|self.?harm|hurt myself)\b/i, flag: "crisis_flag", severity: "critical" as const },
 ];
 
-function detectSafetyFlags(text: string): Array<{ flag: string; severity: string }> {
+export function detectSafetyFlags(text: string): Array<{ flag: string; severity: string; confidence: number }> {
   if (!text) return [];
-  const flags: Array<{ flag: string; severity: string }> = [];
+  const flags: Array<{ flag: string; severity: string; confidence: number }> = [];
   for (const { pattern, flag, severity } of SAFETY_KEYWORDS) {
-    if (pattern.test(text)) flags.push({ flag, severity });
+    if (pattern.test(text)) {
+      const confidence = severity === "critical" ? 0.95 : severity === "high" ? 0.85 : 0.7;
+      flags.push({ flag, severity, confidence });
+    }
   }
   return flags;
+}
+
+const BILLING_RATES = {
+  perMessage: { facebook: 0.005, instagram: 0.005 },
+  perToken: 0.00002,
+};
+
+export function calculateBillingCost(channel: string, messageCount: number, tokenCount: number): {
+  unitCostMessage: number; unitCostToken: number; totalCost: number;
+} {
+  const msgRate = BILLING_RATES.perMessage[channel as keyof typeof BILLING_RATES.perMessage] || 0.005;
+  const unitCostMessage = msgRate;
+  const unitCostToken = BILLING_RATES.perToken;
+  const totalCost = (messageCount * msgRate) + (tokenCount * BILLING_RATES.perToken);
+  return { unitCostMessage, unitCostToken, totalCost: Math.round(totalCost * 100000) / 100000 };
 }
 
 async function logAudit(action: string, performedBy: string, details: any) {
@@ -35,6 +60,27 @@ async function logAudit(action: string, performedBy: string, details: any) {
 async function logSystem(severity: string, module: string, message: string, metadata?: any) {
   try {
     await db.insert(systemLogs).values({ severity, module, message, metadata });
+  } catch {}
+}
+
+function traceIdMiddleware(req: Request, res: Response, next: NextFunction) {
+  const traceId = (req.headers["x-trace-id"] as string) || randomUUID();
+  (req as any).traceId = traceId;
+  res.setHeader("x-trace-id", traceId);
+  next();
+}
+
+async function logSystemWithTrace(severity: string, module: string, message: string, req: Request, extra?: any) {
+  const traceId = (req as any).traceId || randomUUID();
+  const userId = (req as any).user?.claims?.sub || (req as any).user?.id || "anonymous";
+  const subAccountId = parseInt(req.params.subAccountId, 10) || undefined;
+  try {
+    await db.insert(systemLogs).values({
+      severity,
+      module,
+      message,
+      metadata: { traceId, userId, subAccountId, ...extra },
+    });
   } catch {}
 }
 
@@ -148,6 +194,24 @@ async function authChain(req: Request, res: Response, subAccountId: number, requ
   return { userId: auth.userId, account };
 }
 
+function extractSubAccountIdFromParams(req: Request): number | null {
+  const raw = req.params.subAccountId;
+  if (!raw) return null;
+  const parsed = parseInt(raw, 10);
+  return isNaN(parsed) ? null : parsed;
+}
+
+function extractSubAccountIdFromBody(req: Request): number | null {
+  const raw = req.body?.subAccountId;
+  if (!raw) return null;
+  const parsed = typeof raw === "number" ? raw : parseInt(raw, 10);
+  return isNaN(parsed) ? null : parsed;
+}
+
+const featureGate = requireFeatureFlag(META_MESSAGING_FLAG);
+const protectedGuardParams = ensureNotProtectedAccountMiddleware(extractSubAccountIdFromParams);
+const protectedGuardBody = ensureNotProtectedAccountMiddleware(extractSubAccountIdFromBody);
+
 function generateDemoInboxData() {
   const channels = ["fb_dm", "ig_dm", "fb_comment", "ig_comment"] as const;
   const names = ["Sarah Chen", "Marcus Rivera", "Priya Patel", "James Thompson", "Aisha Mohammed", "Luca Ferrari", "Maya Johnson", "David Kim", "Elena Volkov", "Omar Hassan"];
@@ -215,6 +279,8 @@ function generateDemoInboxData() {
 export function registerMetaMessagingProductRoutes(app: Express) {
   const BASE = "/api/meta-messaging/product";
 
+  app.use(BASE, traceIdMiddleware);
+
   app.post(`${BASE}/create-subaccount`, asyncHandler(async (req: Request, res: Response) => {
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "Not authenticated" });
@@ -272,11 +338,11 @@ export function registerMetaMessagingProductRoutes(app: Express) {
       name: name.trim(),
       mode: "demo",
     });
-    await logSystem("info", "meta-messaging-product", `Sub-account ${newAccount.id} created by ${userId}`, {
+    await logSystemWithTrace("info", "meta-messaging-product", `Sub-account ${newAccount.id} created by ${userId}`, req, {
       subAccountId: newAccount.id,
     });
 
-    res.json({ success: true, subAccount: newAccount });
+    res.json({ success: true, subAccount: newAccount, traceId: (req as any).traceId });
   }));
 
   app.post(`${BASE}/meta/oauth/start`, asyncHandler(async (req: Request, res: Response) => {
@@ -301,7 +367,7 @@ export function registerMetaMessagingProductRoutes(app: Express) {
       operatorAssisted: true,
       note: "OAuth URL generated for human completion",
     });
-    await logSystem("info", "meta-messaging-product", `OAuth flow initiated for sub-account ${sid} by ${ctx.userId} (operator-assisted)`, {
+    await logSystemWithTrace("info", "meta-messaging-product", `OAuth flow initiated for sub-account ${sid} by ${ctx.userId} (operator-assisted)`, req, {
       subAccountId: sid,
     });
 
@@ -310,6 +376,7 @@ export function registerMetaMessagingProductRoutes(app: Express) {
       instructions: "Please open the OAuth URL in your browser and complete the authorization. The token will be stored automatically upon callback.",
       state,
       expiresIn: "10 minutes",
+      traceId: (req as any).traceId,
     });
   }));
 
@@ -363,7 +430,7 @@ export function registerMetaMessagingProductRoutes(app: Express) {
           tokenExpiry = new Date(Date.now() + (tokenData.expires_in || 5184000) * 1000);
         }
       } catch (err: any) {
-        await logSystem("error", "meta-messaging-product", `OAuth token exchange failed for ${sid}`, { error: err.message });
+        await logSystemWithTrace("error", "meta-messaging-product", `OAuth token exchange failed for ${sid}`, req, { error: err.message });
       }
     }
 
@@ -400,7 +467,7 @@ export function registerMetaMessagingProductRoutes(app: Express) {
       tokenExpiry: tokenExpiry.toISOString(),
       reconnect: existing.length > 0,
     });
-    await logSystem("info", "meta-messaging-product", `OAuth completed for sub-account ${sid} (${existing.length > 0 ? 'reconnect' : 'new'})`, {
+    await logSystemWithTrace("info", "meta-messaging-product", `OAuth completed for sub-account ${sid} (${existing.length > 0 ? 'reconnect' : 'new'})`, req, {
       subAccountId: sid,
       privacy: false,
     });
@@ -411,6 +478,7 @@ export function registerMetaMessagingProductRoutes(app: Express) {
       tokenExpiry: tokenExpiry.toISOString(),
       reconnect: existing.length > 0,
       providerAccountId,
+      traceId: (req as any).traceId,
     });
   }));
 
@@ -531,7 +599,7 @@ export function registerMetaMessagingProductRoutes(app: Express) {
 
     await logAudit("meta_messaging_product.test_webhook", userId, { subAccountId: sid, results: results.length });
 
-    res.json({ success: true, results, testedAt: new Date().toISOString() });
+    res.json({ success: true, results, testedAt: new Date().toISOString(), traceId: (req as any).traceId });
   }));
 
   app.get(`${BASE}/inbox/:subAccountId`, asyncHandler(async (req: Request, res: Response) => {
@@ -616,7 +684,9 @@ export function registerMetaMessagingProductRoutes(app: Express) {
     if (unreadOnly) filtered = filtered.filter((i: any) => i.unread);
     if (safetyFlag !== "all") filtered = filtered.filter((i: any) => i.safetyFlags.some((f: any) => f.flag === safetyFlag));
 
-    res.json({ items: filtered, nextCursor: null, total: filtered.length, mode: "live" });
+    await logSystemWithTrace("info", "meta-messaging-product", "inbox read", req, { subAccountId: sid });
+
+    res.json({ items: filtered, nextCursor: null, total: filtered.length, mode: "live", traceId: (req as any).traceId });
   }));
 
   app.post(`${BASE}/approve-send/:subAccountId`, asyncHandler(async (req: Request, res: Response) => {
@@ -624,7 +694,7 @@ export function registerMetaMessagingProductRoutes(app: Express) {
     const ctx = await authChain(req, res, sid, true);
     if (!ctx) return;
     const { userId, account } = ctx;
-    const traceId = crypto.randomUUID();
+    const traceId = (req as any).traceId || crypto.randomUUID();
 
     const idempotencyKey = req.headers["idempotency-key"] as string;
     if (!idempotencyKey) {
@@ -665,7 +735,7 @@ export function registerMetaMessagingProductRoutes(app: Express) {
 
     const botConfig = (account.config as any)?.dmBot || {};
 
-    await logSystem("info", "meta-messaging-product", `Message approved: ${messageId || 'new'}`, {
+    await logSystemWithTrace("info", "meta-messaging-product", `Message approved: ${messageId || 'new'}`, req, {
       traceId,
       userId,
       subAccountId: sid,
@@ -761,13 +831,13 @@ export function registerMetaMessagingProductRoutes(app: Express) {
       dmBot: { manualApprove: true, safety: "conservative" },
       commentBot: { autoApprove: false, safety: "conservative" },
     });
-    await logSystem("info", "meta-messaging-product", `Default bots created for sub-account ${sid}`, {
+    await logSystemWithTrace("info", "meta-messaging-product", `Default bots created for sub-account ${sid}`, req, {
       subAccountId: sid,
       configVersion,
       modelVersion,
     });
 
-    res.json({ success: true, bots: botDefaults });
+    res.json({ success: true, bots: botDefaults, traceId: (req as any).traceId });
   }));
 
   app.get(`${BASE}/bots/config/:subAccountId`, asyncHandler(async (req: Request, res: Response) => {
@@ -833,7 +903,7 @@ export function registerMetaMessagingProductRoutes(app: Express) {
       modelVersion: updatedBot.modelVersion,
     });
 
-    res.json({ success: true, botConfig: updatedBot });
+    res.json({ success: true, botConfig: updatedBot, traceId: (req as any).traceId });
   }));
 
   app.post(`${BASE}/mode/:subAccountId`, asyncHandler(async (req: Request, res: Response) => {
@@ -865,11 +935,11 @@ export function registerMetaMessagingProductRoutes(app: Express) {
       oldMode: (account.config as any)?.mode || "demo",
       newMode: mode,
     });
-    await logSystem("info", "meta-messaging-product", `Mode switched to ${mode} for sub-account ${sid}`, {
+    await logSystemWithTrace("info", "meta-messaging-product", `Mode switched to ${mode} for sub-account ${sid}`, req, {
       subAccountId: sid,
     });
 
-    res.json({ success: true, mode });
+    res.json({ success: true, mode, traceId: (req as any).traceId });
   }));
 
   app.post(`${BASE}/workflows/generate`, asyncHandler(async (req: Request, res: Response) => {
@@ -952,7 +1022,7 @@ export function registerMetaMessagingProductRoutes(app: Express) {
       tone,
     });
 
-    res.json({ success: true, templates: savedTemplates });
+    res.json({ success: true, templates: savedTemplates, traceId: (req as any).traceId });
   }));
 
   app.get(`${BASE}/workflows/:subAccountId`, asyncHandler(async (req: Request, res: Response) => {
@@ -989,7 +1059,7 @@ export function registerMetaMessagingProductRoutes(app: Express) {
     await logAudit("meta_messaging_product.workflow_updated", auth.userId, { workflowId, changes: Object.keys(updates) });
 
     const [updated] = await db.select().from(workflows).where(eq(workflows.id, workflowId));
-    res.json({ success: true, workflow: updated });
+    res.json({ success: true, workflow: updated, traceId: (req as any).traceId });
   }));
 
   app.post(`${BASE}/configure-safety`, asyncHandler(async (req: Request, res: Response) => {
@@ -1014,7 +1084,7 @@ export function registerMetaMessagingProductRoutes(app: Express) {
       safetyConfig,
     });
 
-    res.json({ success: true, safety: currentConfig.safety });
+    res.json({ success: true, safety: currentConfig.safety, traceId: (req as any).traceId });
   }));
 
   app.get(`${BASE}/white-label`, asyncHandler(async (req: Request, res: Response) => {
@@ -1031,4 +1101,503 @@ export function registerMetaMessagingProductRoutes(app: Express) {
   app.get(`${BASE}/demo-inbox`, (_req: Request, res: Response) => {
     res.json({ items: generateDemoInboxData(), mode: "demo" });
   });
+
+  app.get(`${BASE}/safety-queue/:subAccountId`,
+    featureGate,
+    asyncHandler(async (req: Request, res: Response) => {
+      const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+      if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+      return protectedGuardParams(req, res, async () => {
+        const page = Math.max(parseInt(req.query.page as string) || 1, 1);
+        const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
+        const offset = (page - 1) * limit;
+        const h24 = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+        const recentInbound = await db.select({
+          id: messages.id,
+          body: messages.body,
+          channel: messages.channel,
+          contactPhone: messages.contactPhone,
+          createdAt: messages.createdAt,
+          senderId: messages.senderId,
+        }).from(messages)
+          .where(and(
+            eq(messages.subAccountId, subAccountId),
+            eq(messages.direction, "inbound"),
+            or(eq(messages.channel, "facebook"), eq(messages.channel, "instagram")),
+            gte(messages.createdAt, h24),
+          ))
+          .orderBy(desc(messages.createdAt)).limit(500);
+
+        const flaggedAll = recentInbound
+          .map(m => ({ ...m, safetyFlags: detectSafetyFlags(m.body || "") }))
+          .filter(m => m.safetyFlags.length > 0)
+          .sort((a, b) => {
+            const sev = { critical: 3, high: 2, medium: 1 };
+            const maxA = Math.max(...a.safetyFlags.map(f => sev[f.severity as keyof typeof sev] || 0));
+            const maxB = Math.max(...b.safetyFlags.map(f => sev[f.severity as keyof typeof sev] || 0));
+            return maxB - maxA;
+          });
+
+        const paginated = flaggedAll.slice(offset, offset + limit);
+
+        await logSystemWithTrace("info", "meta-messaging-product", "safety-queue read", req, { subAccountId, totalFlagged: flaggedAll.length });
+
+        res.json({
+          items: paginated,
+          total: flaggedAll.length,
+          page,
+          limit,
+          severityCounts: {
+            critical: flaggedAll.filter(m => m.safetyFlags.some(f => f.severity === "critical")).length,
+            high: flaggedAll.filter(m => m.safetyFlags.some(f => f.severity === "high")).length,
+            medium: flaggedAll.filter(m => m.safetyFlags.some(f => f.severity === "medium")).length,
+          },
+          traceId: (req as any).traceId,
+        });
+      });
+    })
+  );
+
+  app.post(`${BASE}/safety-test`,
+    featureGate,
+    asyncHandler(async (req: Request, res: Response) => {
+      const { text } = req.body;
+      if (!text || typeof text !== "string") {
+        return res.status(400).json({ error: "text is required" });
+      }
+      const flags = detectSafetyFlags(text);
+      await logSystemWithTrace("info", "meta-messaging-product", "safety-test harness invoked", req, { textLength: text.length, flagCount: flags.length });
+      res.json({ text, flags, flagged: flags.length > 0, traceId: (req as any).traceId });
+    })
+  );
+
+  app.post(`${BASE}/seed-demo/:subAccountId`,
+    featureGate,
+    asyncHandler(async (req: Request, res: Response) => {
+      const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+      if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+      const isProtected = await isProtectedAccountId(subAccountId);
+      if (isProtected) {
+        await logSystemWithTrace("security", "meta-messaging-product", "seed-demo blocked on protected account", req, { subAccountId });
+        return res.status(403).json({ error: "Cannot seed demo data to a protected account", traceId: (req as any).traceId });
+      }
+
+      const [account] = await db.select().from(subAccounts).where(eq(subAccounts.id, subAccountId));
+      if (!account) return res.status(404).json({ error: "Account not found" });
+
+      const now = new Date();
+      const seededMessages: any[] = [];
+      const channels = ["facebook", "instagram"];
+      const names = ["Sarah Chen", "Marcus Rivera", "Priya Patel", "James Thompson", "Aisha Mohammed"];
+      const bodies = [
+        "Hi, I'd like to schedule a consultation",
+        "What are your hours?",
+        "Do you offer payment plans?",
+        "I need help with my account",
+        "Great service, thank you!",
+      ];
+
+      for (let i = 0; i < 20; i++) {
+        const channel = channels[i % 2];
+        const direction = i % 3 === 0 ? "outbound" : "inbound";
+        const body = direction === "inbound" ? bodies[i % bodies.length] : `Thanks for reaching out, ${names[i % names.length]}! We'll get back to you shortly.`;
+        try {
+          const [msg] = await db.insert(messages).values({
+            subAccountId,
+            direction,
+            body,
+            status: direction === "outbound" ? "sent" : "received",
+            contactPhone: `+1555${String(i).padStart(4, "0")}`,
+            channel,
+            senderId: `demo_sender_${i}`,
+            traceId: (req as any).traceId,
+          }).returning();
+          seededMessages.push(msg);
+        } catch {}
+      }
+
+      for (let i = 0; i < 5; i++) {
+        try {
+          await db.insert(metaMessagingBillingEvents).values({
+            subAccountId,
+            eventType: "dm_send",
+            channel: channels[i % 2],
+            messageCount: 1,
+            tokenCount: 50 + i * 10,
+            unitCostMessage: 0.005,
+            unitCostToken: 0.00002,
+            totalCost: 0.005 + (50 + i * 10) * 0.00002,
+          });
+        } catch {}
+      }
+
+      for (let d = 0; d < 7; d++) {
+        const periodDate = new Date(now.getTime() - d * 86400000);
+        periodDate.setHours(0, 0, 0, 0);
+        for (const ch of channels) {
+          try {
+            await db.insert(metaMessagingAnalyticsAggregates).values({
+              subAccountId,
+              periodDate,
+              channel: ch,
+              inboundCount: 5 + Math.floor(Math.random() * 10),
+              outboundCount: 3 + Math.floor(Math.random() * 8),
+              failedCount: Math.floor(Math.random() * 2),
+              avgResponseTimeMs: 200 + Math.random() * 300,
+              commentCount: 2 + Math.floor(Math.random() * 5),
+              commentReplyCount: 1 + Math.floor(Math.random() * 4),
+              tokenUsage: 100 + Math.floor(Math.random() * 500),
+            });
+          } catch {}
+        }
+      }
+
+      await logSystemWithTrace("info", "meta-messaging-product", "seed-demo completed", req, {
+        subAccountId,
+        messagesSeeded: seededMessages.length,
+        billingEventsSeeded: 5,
+        analyticsAggregatesSeeded: 14,
+      });
+
+      res.json({
+        ok: true,
+        seeded: {
+          messages: seededMessages.length,
+          billingEvents: 5,
+          analyticsAggregates: 14,
+        },
+        traceId: (req as any).traceId,
+      });
+    })
+  );
+
+  app.get(`${BASE}/analytics/usage/:subAccountId`,
+    featureGate,
+    asyncHandler(async (req: Request, res: Response) => {
+      const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+      if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+      const days = Math.min(parseInt(req.query.days as string) || 7, 90);
+      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+      const aggregates = await db.select().from(metaMessagingAnalyticsAggregates)
+        .where(and(
+          eq(metaMessagingAnalyticsAggregates.subAccountId, subAccountId),
+          gte(metaMessagingAnalyticsAggregates.periodDate, since),
+        ))
+        .orderBy(desc(metaMessagingAnalyticsAggregates.periodDate));
+
+      const totalInbound = aggregates.reduce((s, a) => s + a.inboundCount, 0);
+      const totalOutbound = aggregates.reduce((s, a) => s + a.outboundCount, 0);
+      const totalFailed = aggregates.reduce((s, a) => s + a.failedCount, 0);
+      const totalComments = aggregates.reduce((s, a) => s + a.commentCount, 0);
+      const totalCommentReplies = aggregates.reduce((s, a) => s + a.commentReplyCount, 0);
+      const avgResponseTimes = aggregates.filter(a => a.avgResponseTimeMs != null);
+      const avgResponseTimeMs = avgResponseTimes.length > 0
+        ? Math.round(avgResponseTimes.reduce((s, a) => s + (a.avgResponseTimeMs || 0), 0) / avgResponseTimes.length)
+        : null;
+
+      const dailyData = aggregates.reduce((acc: Record<string, any>, a) => {
+        const dateKey = new Date(a.periodDate).toISOString().split("T")[0];
+        if (!acc[dateKey]) acc[dateKey] = { date: dateKey, inbound: 0, outbound: 0, failed: 0, avgResponseTimeMs: 0, count: 0 };
+        acc[dateKey].inbound += a.inboundCount;
+        acc[dateKey].outbound += a.outboundCount;
+        acc[dateKey].failed += a.failedCount;
+        if (a.avgResponseTimeMs) {
+          acc[dateKey].avgResponseTimeMs += a.avgResponseTimeMs;
+          acc[dateKey].count += 1;
+        }
+        return acc;
+      }, {});
+
+      const dailyVolume = Object.values(dailyData).map((d: any) => ({
+        date: d.date,
+        inbound: d.inbound,
+        outbound: d.outbound,
+        failed: d.failed,
+        avgResponseTimeMs: d.count > 0 ? Math.round(d.avgResponseTimeMs / d.count) : null,
+      })).sort((a: any, b: any) => a.date.localeCompare(b.date));
+
+      await logSystemWithTrace("info", "meta-messaging-product", "analytics/usage read", req, { subAccountId, days });
+
+      res.json({
+        period: { days, since: since.toISOString() },
+        summary: { totalInbound, totalOutbound, totalFailed, totalComments, totalCommentReplies, avgResponseTimeMs },
+        dailyVolume,
+        traceId: (req as any).traceId,
+      });
+    })
+  );
+
+  app.get(`${BASE}/analytics/export/:subAccountId`,
+    featureGate,
+    asyncHandler(async (req: Request, res: Response) => {
+      const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+      if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+      const days = Math.min(parseInt(req.query.days as string) || 30, 90);
+      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+      const aggregates = await db.select().from(metaMessagingAnalyticsAggregates)
+        .where(and(
+          eq(metaMessagingAnalyticsAggregates.subAccountId, subAccountId),
+          gte(metaMessagingAnalyticsAggregates.periodDate, since),
+        ))
+        .orderBy(desc(metaMessagingAnalyticsAggregates.periodDate));
+
+      const csvHeader = "Date,Channel,Inbound,Outbound,Failed,AvgResponseTimeMs,Comments,CommentReplies,TokenUsage\n";
+      const csvRows = aggregates.map(a => {
+        const date = new Date(a.periodDate).toISOString().split("T")[0];
+        return `${date},${a.channel},${a.inboundCount},${a.outboundCount},${a.failedCount},${a.avgResponseTimeMs || ""},${a.commentCount},${a.commentReplyCount},${a.tokenUsage}`;
+      }).join("\n");
+
+      await logSystemWithTrace("info", "meta-messaging-product", "analytics/export CSV generated", req, { subAccountId, days, rows: aggregates.length });
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="meta-messaging-analytics-${subAccountId}-${days}d.csv"`);
+      res.send(csvHeader + csvRows);
+    })
+  );
+
+  app.post(`${BASE}/billing/record-event/:subAccountId`,
+    featureGate,
+    asyncHandler(async (req: Request, res: Response) => {
+      const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+      if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+      return protectedGuardParams(req, res, async () => {
+        const { eventType, channel, messageCount, tokenCount, messageId } = req.body;
+        if (!eventType || !channel) {
+          return res.status(400).json({ error: "eventType and channel are required" });
+        }
+        const billing = calculateBillingCost(channel, messageCount || 1, tokenCount || 0);
+        const [event] = await db.insert(metaMessagingBillingEvents).values({
+          subAccountId,
+          eventType,
+          messageId: messageId || null,
+          channel,
+          messageCount: messageCount || 1,
+          tokenCount: tokenCount || 0,
+          ...billing,
+        }).returning();
+
+        await logSystemWithTrace("info", "meta-messaging-product", "billing event recorded", req, { subAccountId, eventType, totalCost: billing.totalCost });
+
+        res.json({ ok: true, event, traceId: (req as any).traceId });
+      });
+    })
+  );
+
+  app.get(`${BASE}/billing/usage/:subAccountId`,
+    featureGate,
+    asyncHandler(async (req: Request, res: Response) => {
+      const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+      if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+
+      const billingEvents = await db.select().from(metaMessagingBillingEvents)
+        .where(and(
+          eq(metaMessagingBillingEvents.subAccountId, subAccountId),
+          gte(metaMessagingBillingEvents.createdAt, monthStart),
+        ));
+
+      const totalMessages = billingEvents.reduce((s, e) => s + e.messageCount, 0);
+      const totalTokens = billingEvents.reduce((s, e) => s + e.tokenCount, 0);
+      const totalMessageCost = billingEvents.reduce((s, e) => s + (e.messageCount * e.unitCostMessage), 0);
+      const totalTokenCost = billingEvents.reduce((s, e) => s + (e.tokenCount * e.unitCostToken), 0);
+      const totalCost = billingEvents.reduce((s, e) => s + e.totalCost, 0);
+
+      const [account] = await db.select().from(subAccounts).where(eq(subAccounts.id, subAccountId));
+      const plan = account?.plan || "starter";
+      const limits: Record<string, { messages: number; tokens: number }> = {
+        starter: { messages: 500, tokens: 50000 },
+        pro: { messages: 2000, tokens: 200000 },
+        enterprise: { messages: 10000, tokens: 1000000 },
+      };
+      const planLimits = limits[plan] || limits.starter;
+
+      const channelBreakdown = billingEvents.reduce((acc: Record<string, { messages: number; tokens: number; cost: number }>, e) => {
+        if (!acc[e.channel]) acc[e.channel] = { messages: 0, tokens: 0, cost: 0 };
+        acc[e.channel].messages += e.messageCount;
+        acc[e.channel].tokens += e.tokenCount;
+        acc[e.channel].cost += e.totalCost;
+        return acc;
+      }, {});
+
+      await logSystemWithTrace("info", "meta-messaging-product", "billing/usage read", req, { subAccountId });
+
+      res.json({
+        plan,
+        period: { start: monthStart.toISOString(), end: new Date().toISOString() },
+        usage: {
+          totalMessages,
+          messagesLimit: planLimits.messages,
+          totalTokens,
+          tokensLimit: planLimits.tokens,
+          totalMessageCost: Math.round(totalMessageCost * 100) / 100,
+          totalTokenCost: Math.round(totalTokenCost * 100) / 100,
+          totalCost: Math.round(totalCost * 100) / 100,
+        },
+        channelBreakdown,
+        eventCount: billingEvents.length,
+        traceId: (req as any).traceId,
+      });
+    })
+  );
+
+  app.post(`${BASE}/billing/generate-test-invoice/:subAccountId`,
+    featureGate,
+    asyncHandler(async (req: Request, res: Response) => {
+      const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+      if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+
+      const billingEvents = await db.select().from(metaMessagingBillingEvents)
+        .where(and(
+          eq(metaMessagingBillingEvents.subAccountId, subAccountId),
+          gte(metaMessagingBillingEvents.createdAt, monthStart),
+        ));
+
+      const totalMessages = billingEvents.reduce((s, e) => s + e.messageCount, 0);
+      const totalTokens = billingEvents.reduce((s, e) => s + e.tokenCount, 0);
+      const totalCost = billingEvents.reduce((s, e) => s + e.totalCost, 0);
+
+      const invoiceId = `INV-TEST-${subAccountId}-${Date.now()}`;
+
+      await db.update(metaMessagingBillingEvents)
+        .set({ invoiceId })
+        .where(and(
+          eq(metaMessagingBillingEvents.subAccountId, subAccountId),
+          gte(metaMessagingBillingEvents.createdAt, monthStart),
+        ));
+
+      const [account] = await db.select().from(subAccounts).where(eq(subAccounts.id, subAccountId));
+
+      const invoice = {
+        invoiceId,
+        subAccountId,
+        accountName: account?.name || "Unknown",
+        period: { start: monthStart.toISOString(), end: new Date().toISOString() },
+        lineItems: [
+          { description: "Meta Messaging - Per Message", quantity: totalMessages, unitPrice: 0.005, total: Math.round(totalMessages * 0.005 * 100) / 100 },
+          { description: "Meta Messaging - AI Tokens", quantity: totalTokens, unitPrice: 0.00002, total: Math.round(totalTokens * 0.00002 * 100) / 100 },
+        ],
+        subtotal: Math.round(totalCost * 100) / 100,
+        tax: 0,
+        total: Math.round(totalCost * 100) / 100,
+        status: "test",
+        generatedAt: new Date().toISOString(),
+      };
+
+      await logSystemWithTrace("info", "meta-messaging-product", "test invoice generated", req, { subAccountId, invoiceId, totalCost });
+
+      res.json({ ok: true, invoice, traceId: (req as any).traceId });
+    })
+  );
+
+  app.get(`${BASE}/billing/invoices/:subAccountId`,
+    featureGate,
+    asyncHandler(async (req: Request, res: Response) => {
+      const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+      if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+      const events = await db.select().from(metaMessagingBillingEvents)
+        .where(eq(metaMessagingBillingEvents.subAccountId, subAccountId))
+        .orderBy(desc(metaMessagingBillingEvents.createdAt));
+
+      const invoiceMap = new Map<string, { invoiceId: string; totalCost: number; totalMessages: number; totalTokens: number; createdAt: Date }>();
+      for (const e of events) {
+        if (!e.invoiceId) continue;
+        const existing = invoiceMap.get(e.invoiceId);
+        if (existing) {
+          existing.totalCost += e.totalCost;
+          existing.totalMessages += e.messageCount;
+          existing.totalTokens += e.tokenCount;
+        } else {
+          invoiceMap.set(e.invoiceId, {
+            invoiceId: e.invoiceId,
+            totalCost: e.totalCost,
+            totalMessages: e.messageCount,
+            totalTokens: e.tokenCount,
+            createdAt: e.createdAt,
+          });
+        }
+      }
+
+      const invoices = Array.from(invoiceMap.values()).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+      res.json({ invoices, traceId: (req as any).traceId });
+    })
+  );
+
+  app.post(`${BASE}/analytics/aggregate/:subAccountId`,
+    featureGate,
+    asyncHandler(async (req: Request, res: Response) => {
+      const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+      if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+      return protectedGuardParams(req, res, async () => {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        yesterday.setHours(0, 0, 0, 0);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const channels = ["facebook", "instagram"];
+        let aggregated = 0;
+
+        for (const channel of channels) {
+          const msgResults = await db.execute(sql`
+            SELECT
+              COUNT(*) FILTER (WHERE direction = 'inbound') as inbound_count,
+              COUNT(*) FILTER (WHERE direction = 'outbound') as outbound_count,
+              COUNT(*) FILTER (WHERE status = 'failed') as failed_count
+            FROM messages
+            WHERE sub_account_id = ${subAccountId}
+              AND channel = ${channel}
+              AND created_at >= ${yesterday}
+              AND created_at < ${today}
+          `);
+
+          const commentResults = await db.execute(sql`
+            SELECT
+              COUNT(*) as comment_count,
+              COUNT(*) FILTER (WHERE status = 'replied') as comment_reply_count
+            FROM comment_auto_replies
+            WHERE sub_account_id = ${subAccountId}
+              AND platform = ${channel}
+              AND created_at >= ${yesterday}
+              AND created_at < ${today}
+          `);
+
+          const row = msgResults.rows[0] as any;
+          const cRow = commentResults.rows[0] as any;
+
+          if (row) {
+            try {
+              await db.insert(metaMessagingAnalyticsAggregates).values({
+                subAccountId,
+                periodDate: yesterday,
+                channel,
+                inboundCount: Number(row.inbound_count || 0),
+                outboundCount: Number(row.outbound_count || 0),
+                failedCount: Number(row.failed_count || 0),
+                commentCount: Number(cRow?.comment_count || 0),
+                commentReplyCount: Number(cRow?.comment_reply_count || 0),
+              });
+              aggregated++;
+            } catch {}
+          }
+        }
+
+        await logSystemWithTrace("info", "meta-messaging-product", "analytics aggregation completed", req, { subAccountId, aggregated });
+
+        res.json({ ok: true, aggregated, date: yesterday.toISOString(), traceId: (req as any).traceId });
+      });
+    })
+  );
 }
