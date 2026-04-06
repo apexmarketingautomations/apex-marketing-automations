@@ -1,0 +1,31 @@
+Outstanding work (what’s not done yet — priority order)
+LoRA / Adapter training (Phase 2) — scripts and pipeline are present; actual training run requires a GPU. This produces layla-v1 adapter and is needed for the highest fidelity.
+Style-score classifier & autopublish gate — training script exists but classifier needs training/validation, deployment, and a threshold set for autopublish.
+Autopublish safety & rate-limits — enforce per-account throttles, idempotency TTLs, and global rate limits for outbound messages.
+Retrain pipeline — scheduled retraining, automations for incorporating approved replies into training data.
+Full E2E tests & CI — E2E with auth flows (Playwright) and CI jobs to run tests and load smoke tests (k6). Auth complicates automation; CI config stubs exist but need final wiring.
+Canary/cascade rollout — per-account feature flags + canary strategy for layla-v1 model (10% → 100%).
+Admin UX polish & docs — Figma screens, final admin pages for embeddings, model stats, unlocking protected accounts (owner unlock flow if you want).
+Risks & mitigations
+Risk: LoRA training can produce unsafe outputs if trained on noisy data.
+Mitigation: Data cleaning, PII redaction, validation set, human review before autopublish.
+Risk: Autopublish could send incorrect replies at scale.
+Mitigation: Enforce style_score threshold, keep default manual-approve, throttle sends, canary rollout.
+Risk: Embedding privacy & retention.
+Mitigation: Redact PII in embeddings; store originals in secure DB if needed for audit only.
+Recommended next steps (exact & prioritized)
+Approve Phase 2 training resources — give go-ahead + GPU resource (I can estimate cost/time). Then run LoRA training and produce layla-v1.
+Train the style-score with human-labeled positives/negatives, set a conservative threshold (e.g., 0.75) and require it for autopublish.
+Run 50–100 human blind A/B tests (we already ran retrieval tests — do another for the adapter) and confirm targets: retrieval ≥60% vs baseline, adapter ≥75% vs baseline.
+Wire autopublish gating + rate-limits, schedule retraining cadence.
+Add final E2E tests to CI, then do a staged canary enabling for one non-critical account.
+Acceptance checklist (what we’re ready to sign off on now)
+ Protected accounts 22 & 13 flagged + write-blocked + logs.
+ UI banner + disabled mutating controls for protected accounts.
+ Product feature flag meta_messaging_2027 exists and is OFF.
+ DM/comment names resolved and backfill available.
+ RAG pipeline in place; 720 Layla pairs indexed; retrieval demo returns Layla-style replies.
+ Admin endpoints for persona & indexing present.
+ LoRA adapter trained & deployed (layla-v1).
+ Style-score classifier trained and autopublish gating enforced.
+ Full E2E & CI coverage + canary rollout plan.
