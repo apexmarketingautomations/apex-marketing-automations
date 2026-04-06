@@ -397,6 +397,7 @@ async function ensureLaylaAccount(
       console.log("[SYNC] Officer Layla account not found — creating...");
       const [created] = await db.insert(subAccounts).values({
         name: "Officer Layla",
+        twilioNumber: "",
         ownerUserId: adminUserId,
         parentAccountId: apexId,
         isInternal: true,
@@ -406,6 +407,7 @@ async function ensureLaylaAccount(
         isProtected: true,
         protectedReason: "Core AI persona account — do not modify or delete",
         industry: "AI Persona / Marketing Automation",
+        metaPageId: "736112766259045",
         config: {
           commentBot: {
             enabled: true,
