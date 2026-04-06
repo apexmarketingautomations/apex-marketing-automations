@@ -36,3 +36,21 @@ id = "iqa_f3q-pD9Hx0sdiHBS1"
 uri = "file://output/fiverr-web-dev-profile.docx"
 type = "word_document"
 title = "Fiverr Web Dev Profile (DOCX)"
+
+[[outputs]]
+id = "_Y_-sYiMlGgyCdx9lLym0"
+uri = "file://.canvas/assets/layla-test-voice-1.mp3"
+type = "audio"
+title = "Voice 1: Trucking company response"
+
+[[outputs]]
+id = "yFpFbg_tlCQ3vpqnR6A0r"
+uri = "file://.canvas/assets/layla-test-voice-2.mp3"
+type = "audio"
+title = "Voice 2: Running your own thing"
+
+[[outputs]]
+id = "LJryZgvX87S0n55was9rs"
+uri = "file://.canvas/assets/layla-test-voice-3.mp3"
+type = "audio"
+title = "Voice 3: SECRET REVEAL"
