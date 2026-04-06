@@ -1161,6 +1161,7 @@ export function registerWebhooksRoutes(app: Express) {
 
             const channel = body.object === "instagram" ? "instagram" : "facebook";
             console.log(`[META DM][PIPELINE-START] channel=${channel}, sender=${senderId}, mid=${mid || "none"}, bodyLength=${message.length}`);
+            console.log(`[LAYLA-PIPELINE] Step 1: Inbound message received — channel=${channel}, sender=${senderId}, mid=${mid || "none"}, bodyLength=${message.length}`);
 
             // --- STRICT TENANT RESOLUTION: look up sub-account by page_id ---
             if (!entryPageId) {
@@ -1213,10 +1214,12 @@ export function registerWebhooksRoutes(app: Express) {
 
             if (!subAccountId) {
               console.error(`[META DM] Rejected ${channel} event from sender=${senderId} — page_id=${entryPageId} not mapped to any sub-account.`);
+              console.error(`[LAYLA-PIPELINE] Step 2 FAILED: Routing failed — pageId=${entryPageId} not mapped to any sub-account`);
               continue;
             }
 
             console.log(`[META DM] ${channel} from ${senderId} -> subAccountId=${subAccountId} (page=${entryPageId}): ${message.substring(0, 100)}`);
+            console.log(`[LAYLA-PIPELINE] Step 2: Routed to correct handler — subAccountId=${subAccountId}, pageId=${entryPageId}`);
 
             let metaTraceId = crypto.randomUUID();
             if (mid) {
@@ -1618,6 +1621,7 @@ export function registerWebhooksRoutes(app: Express) {
 
             if (!keywordMatched && isAIConfigured()) {
               const metaAiStart = Date.now();
+              console.log(`[LAYLA-PIPELINE] Step 3: Agent triggered — channel=${channel}, sender=${senderId}, subAccountId=${subAccountId}`);
               try {
                 const dmCtx = await assembleDmContext({
                     subAccountId,
@@ -1637,6 +1641,7 @@ export function registerWebhooksRoutes(app: Express) {
                 const aiReply = metaDmAiResult.text;
                 const aiMs = Date.now() - aiCallStart;
 
+                console.log(`[LAYLA-PIPELINE] Step 4: Response generated — channel=${channel}, sender=${senderId}, replyLength=${aiReply?.length || 0}, aiMs=${aiMs}ms`);
                 console.log(`[META DM] Timing: context=${ctxMs}ms, ai=${aiMs}ms, total_so_far=${Date.now() - metaAiStart}ms`);
 
                 extractInsightsFromConversation(
@@ -1694,6 +1699,7 @@ export function registerWebhooksRoutes(app: Express) {
                   const aiSendStatus = sendRes.ok ? "sent" : "failed";
                   if (!sendRes.ok) {
                     console.error(`[META DM] AI reply FAILED to ${senderId} — HTTP ${sendRes.status}, pageId=${pageId}, error=${JSON.stringify(sendData).substring(0, 500)}`);
+                    console.error(`[LAYLA-PIPELINE] Step 5 FAILED: Response send failed — HTTP ${sendRes.status}, sender=${senderId}, subAccountId=${subAccountId}`);
                     recordStepValue(metaTrace, "outbound_send", "error", Date.now() - metaSendStart, {
                       provider: "meta",
                       error: JSON.stringify(sendData).substring(0, 200),
@@ -1702,6 +1708,7 @@ export function registerWebhooksRoutes(app: Express) {
                     });
                   } else {
                     console.log(`[META DM] AI reply sent to ${senderId}: OK, messageId=${sendData?.message_id}`);
+                    console.log(`[LAYLA-PIPELINE] Step 5: Response successfully sent — sender=${senderId}, messageId=${sendData?.message_id}`);
                     recordStepValue(metaTrace, "outbound_send", "success", Date.now() - metaSendStart, {
                       provider: "meta",
                       metadata: { channel, to: senderId, metaMsgId },
@@ -1721,6 +1728,7 @@ export function registerWebhooksRoutes(app: Express) {
                     pageId: entryPageId,
                     senderId,
                   });
+                  console.log(`[LAYLA-PIPELINE] Step 6: Response logged — direction=outbound, status=${aiSendStatus}, sender=${senderId}, subAccountId=${subAccountId}`);
                   broadcastNewMessage(subAccountId, {
                     subAccountId, channel, direction: "outbound", contactPhone: senderId,
                     body: aiReply, status: aiSendStatus, threadId: metaDmThreadId, createdAt: new Date().toISOString(),
@@ -1730,6 +1738,7 @@ export function registerWebhooksRoutes(app: Express) {
                 }
               } catch (aiErr: any) {
                 console.error("[META DM] AI reply error:", aiErr.message);
+                console.error(`[LAYLA-PIPELINE] Step 3/4 FAILED: AI agent error — ${aiErr.message}, sender=${senderId}, subAccountId=${subAccountId}`);
                 recordStepValue(metaTrace, "ai_response_generated", "error", Date.now() - metaAiStart, {
                   provider: "ai",
                   error: aiErr.message,
@@ -1737,6 +1746,10 @@ export function registerWebhooksRoutes(app: Express) {
                   disambiguator: mid ? `${mid}-ai-err` : `meta-ai-err-${senderId}`,
                 });
               }
+            }
+
+            if (!keywordMatched && !isAIConfigured()) {
+              console.warn(`[LAYLA-PIPELINE] Step 3 SKIPPED: AI not configured — no keyword match and AI gateway is not set up. sender=${senderId}, subAccountId=${subAccountId}`);
             }
 
             if (mid) {

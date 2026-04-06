@@ -1,5 +1,6 @@
-import { Loader2, Zap, Factory } from "lucide-react";
+import { Loader2, Zap, Factory, Settings, Clock, ArrowRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import type { IndustryKnowledge, GrowthReport } from "./types";
 
 export function IndustryTab({ subAccountId }: { subAccountId: number }) {
@@ -54,7 +55,10 @@ export function IndustryTab({ subAccountId }: { subAccountId: number }) {
     );
   }
 
+  const [, navigate] = useLocation();
   const benchmarks = benchmarkData?.industryBenchmarks || {};
+  const readiness = (benchmarkData as any)?.readiness as { phase: string; ready: boolean; reasons: string[]; cta?: { label: string; link: string } } | undefined;
+  const isReady = !readiness || readiness.ready;
 
   return (
     <div className="flex-1 overflow-y-auto p-3 space-y-3" data-testid="industry-tab">
@@ -68,7 +72,37 @@ export function IndustryTab({ subAccountId }: { subAccountId: number }) {
         </p>
       </div>
 
-      {Object.keys(benchmarks).length > 0 && (
+      {!isReady && readiness && (
+        <div className="p-3 rounded-xl border border-amber-500/20 bg-amber-500/[0.04]" data-testid="readiness-fallback">
+          <div className="flex items-center gap-2 mb-2">
+            {readiness.phase === "not_setup" ? (
+              <Settings size={14} className="text-amber-400" />
+            ) : (
+              <Clock size={14} className="text-amber-400" />
+            )}
+            <p className="text-xs font-semibold text-white" data-testid="readiness-title">
+              {readiness.phase === "not_setup" ? "Setup in progress" : "Agent not active yet"}
+            </p>
+          </div>
+          <p className="text-[10px] text-slate-400 leading-relaxed mb-3" data-testid="readiness-body">
+            {readiness.phase === "not_setup"
+              ? "Connect a channel and enable your AI agent to start tracking response performance."
+              : "Your agent is enabled but hasn't sent enough replies yet. Benchmarks will appear after at least 5 successful replies over 72 hours."}
+          </p>
+          {readiness.cta && (
+            <button
+              onClick={() => navigate(readiness.cta!.link)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[10px] font-medium transition-colors"
+              data-testid="readiness-cta"
+            >
+              {readiness.cta.label}
+              <ArrowRight size={10} />
+            </button>
+          )}
+        </div>
+      )}
+
+      {isReady && Object.keys(benchmarks).length > 0 && (
         <div className="space-y-1.5">
           <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 px-1">Your Performance vs Benchmarks</p>
           {Object.entries(benchmarks).map(([key, bm]) => (

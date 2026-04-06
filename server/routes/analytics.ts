@@ -1115,7 +1115,7 @@ export function registerAnalyticsRoutes(app: Express) {
 
       const { calculateHealthScore, generateStrategicInsights, detectMissedOpportunities } = await import("../operator/strategicAdvisor");
 
-      const healthScore = calculateHealthScore(context);
+      const healthScore = await calculateHealthScore(context);
       stream.sendResult({ section: "healthScore", data: healthScore });
       stream.sendProgress("Health score calculated", 40);
 

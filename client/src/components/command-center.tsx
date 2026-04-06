@@ -30,6 +30,7 @@ interface AccountReadiness {
   totalConditions: number;
 }
 
+
 interface Prediction {
   type: string;
   metric: string;
@@ -109,6 +110,7 @@ export function CommandCenter() {
   });
 
   const isReady = readinessData?.phase === "active_measurable";
+
 
   const { data: predictions } = useQuery<{ predictions: Prediction[] }>({
     queryKey: ["/api/command/predictions", subAccountId],

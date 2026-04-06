@@ -38,7 +38,15 @@ export async function generateNudges(subAccountId: number, context: ContextPacke
     return [];
   }
 
-  const insights = generateInsights(context);
+  let readiness;
+  try {
+    const { checkAccountReadiness } = await import("./accountReadiness");
+    readiness = await checkAccountReadiness(subAccountId);
+  } catch (err: any) {
+    console.error("[NUDGE] Readiness check failed:", err.message);
+  }
+
+  const insights = generateInsights(context, readiness);
   const existing = await getActiveNudges(subAccountId);
   const existingTypes = new Set(existing.map(n => n.nudgeType));
 

@@ -219,7 +219,7 @@ async function executeTask(taskId: number): Promise<void> {
 
     if (task.taskType === "health_scan") {
       const context = await buildContext(task.subAccountId);
-      const healthScore = calculateHealthScore(context);
+      const healthScore = await calculateHealthScore(context);
       const insights = generateStrategicInsights(context);
       result = { healthScore, insightCount: insights.length, topInsight: insights[0]?.observation || "No insights" };
     } else if (task.taskType === "generate_nudges") {

@@ -1,8 +1,9 @@
 import crypto from "crypto";
 import type { AdvisoryInsight, ContextPacket } from "./cognitiveTypes";
 import { getResponseTimeBenchmark } from "./industryKnowledge";
+import type { AccountReadiness } from "./accountReadiness";
 
-export function generateInsights(context: ContextPacket): AdvisoryInsight[] {
+export function generateInsights(context: ContextPacket, readiness?: AccountReadiness): AdvisoryInsight[] {
   const insights: AdvisoryInsight[] = [];
   const { workspace, performance, behavior, patterns, industryKnowledge } = context;
 
@@ -93,37 +94,59 @@ export function generateInsights(context: ContextPacket): AdvisoryInsight[] {
     }
   }
 
-  if (performance.inboundMessages > 5 && performance.outboundMessages === 0) {
-    insights.push({
-      id: crypto.randomUUID(),
-      subAccountId: performance.subAccountId,
-      category: "opportunity",
-      title: "Leads reaching out but no responses",
-      message: "You're receiving messages but haven't sent any replies. Responding quickly is crucial for conversion. Want me to set up automatic responses?",
-      dataBacking: { inbound: performance.inboundMessages, outbound: performance.outboundMessages },
-      confidence: 0.95,
-      priority: 92,
-      actionable: true,
-      suggestedTool: "createWorkflow",
-    });
-  }
+  const isReadyForResponseMetrics = !readiness || readiness.ready;
 
-  if (industryKnowledge && workspace.contactCount > 10) {
-    const benchmark = getResponseTimeBenchmark(workspace.industry);
-    if (performance.avgResponseTimeSec && performance.avgResponseTimeSec > benchmark * 2) {
+  if (isReadyForResponseMetrics) {
+    if (performance.inboundMessages > 5 && performance.outboundMessages === 0) {
       insights.push({
         id: crypto.randomUUID(),
         subAccountId: performance.subAccountId,
-        category: "optimization",
-        title: "Response time above industry benchmark",
-        message: `Your average response time is ${Math.round(performance.avgResponseTimeSec)}s, but ${industryKnowledge.industry} businesses convert best when responding within ${benchmark}s. An auto-response workflow could close this gap.`,
-        dataBacking: { yourTime: performance.avgResponseTimeSec, benchmark, industry: workspace.industry },
-        confidence: 0.8,
-        priority: 80,
+        category: "opportunity",
+        title: "Leads reaching out but no responses",
+        message: "You're receiving messages but haven't sent any replies. Responding quickly is crucial for conversion. Want me to set up automatic responses?",
+        dataBacking: { inbound: performance.inboundMessages, outbound: performance.outboundMessages },
+        confidence: 0.95,
+        priority: 92,
         actionable: true,
         suggestedTool: "createWorkflow",
       });
     }
+
+    if (industryKnowledge && workspace.contactCount > 10) {
+      const benchmark = getResponseTimeBenchmark(workspace.industry);
+      if (performance.avgResponseTimeSec && performance.avgResponseTimeSec > benchmark * 2) {
+        insights.push({
+          id: crypto.randomUUID(),
+          subAccountId: performance.subAccountId,
+          category: "optimization",
+          title: "Response time above industry benchmark",
+          message: `Your average response time is ${Math.round(performance.avgResponseTimeSec)}s, but ${industryKnowledge.industry} businesses convert best when responding within ${benchmark}s. An auto-response workflow could close this gap.`,
+          dataBacking: { yourTime: performance.avgResponseTimeSec, benchmark, industry: workspace.industry },
+          confidence: 0.8,
+          priority: 80,
+          actionable: true,
+          suggestedTool: "createWorkflow",
+        });
+      }
+    }
+  } else if (readiness) {
+    const setupMessage = readiness.phase === "not_setup"
+      ? "Connect a channel and enable your AI agent to start tracking response performance."
+      : "Your agent is enabled but hasn't sent enough replies yet. Benchmarks will appear after at least 5 successful replies over 72 hours.";
+    const setupCta = readiness.cta;
+    insights.push({
+      id: crypto.randomUUID(),
+      subAccountId: performance.subAccountId,
+      category: "setup" as any,
+      title: readiness.phase === "not_setup" ? "Setup in progress" : "Agent not active yet",
+      message: setupMessage,
+      dataBacking: { phase: readiness.phase, reasons: readiness.reasons },
+      confidence: 1.0,
+      priority: 40,
+      actionable: true,
+      suggestedTool: setupCta ? undefined : undefined,
+      suggestedParams: setupCta ? { link: setupCta.link, label: setupCta.label } : undefined,
+    });
   }
 
   if (workspace.integrationCount === 0) {

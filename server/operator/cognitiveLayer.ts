@@ -20,7 +20,12 @@ export async function getCognitivePromptContext(subAccountId: number): Promise<s
 
 export async function getCognitiveInsights(subAccountId: number): Promise<AdvisoryInsight[]> {
   const context = await buildContext(subAccountId);
-  return generateInsights(context);
+  let readiness;
+  try {
+    const { checkAccountReadiness } = await import("./accountReadiness");
+    readiness = await checkAccountReadiness(subAccountId);
+  } catch {}
+  return generateInsights(context, readiness);
 }
 
 export async function runTrendDetection(subAccountId: number): Promise<any[]> {

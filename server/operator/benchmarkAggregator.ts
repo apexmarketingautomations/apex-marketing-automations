@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { subAccounts, messages, contacts, liveAutomations, reviews, industryBenchmarks, clientWebsites, integrationConnections } from "@shared/schema";
 import { eq, sql, and, gte, count } from "drizzle-orm";
+import { checkAccountReadiness } from "./accountReadiness";
 
 const MIN_ACCOUNTS_FOR_BENCHMARK = 3;
 
@@ -247,9 +248,12 @@ export async function getAccountBenchmarkComparison(subAccountId: number): Promi
     percentile: string;
     unit: string;
   }>;
+  readiness?: { phase: string; ready: boolean; reasons: string[]; cta?: { label: string; link: string } };
 }> {
   const [account] = await db.select().from(subAccounts).where(eq(subAccounts.id, subAccountId)).execute();
   if (!account) return { industry: "unknown", metrics: [] };
+
+  const readiness = await checkAccountReadiness(subAccountId);
 
   const industry = (account.industry || "default").toLowerCase().trim();
   const benchmarks = await getBenchmarksForIndustry(industry);
@@ -341,7 +345,12 @@ export async function getAccountBenchmarkComparison(subAccountId: number): Promi
     });
   }
 
-  return { industry, metrics };
+  const responseRateKeys = new Set(["response_rate", "response_time_sec"]);
+  const filteredMetrics = readiness.ready
+    ? metrics
+    : metrics.filter(m => !responseRateKeys.has(m.key));
+
+  return { industry, metrics: filteredMetrics, readiness };
 }
 
 let benchmarkInterval: NodeJS.Timeout | null = null;

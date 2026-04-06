@@ -136,7 +136,7 @@ export async function generateAITaskPlan(
       ? Math.round((recentTasks.filter(t => t.status === "completed").length / recentTasks.length) * 100)
       : 0;
 
-    const healthScore = calculateHealthScore(context);
+    const healthScore = await calculateHealthScore(context);
     const promptContext = buildPromptContext(context);
     const tools = getToolManifest();
     const toolNames = tools.map(t => `${t.name}: ${t.description}`).join("\n");

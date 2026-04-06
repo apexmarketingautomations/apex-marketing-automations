@@ -33,7 +33,7 @@ Preferred communication style: Simple, everyday language.
 - **AI-Native Business OS (Apex Operator)**: An AI-native command layer for natural language task interpretation, multi-step execution planning, and tool interaction, with approval systems and per-tenant memory.
 - **Cognitive Intelligence Layer**: Extends the Operator with persistent memory, proactive advisory, strategic business analysis, and behavior-aware intelligence, including an Episodic Memory system and Nudge System.
 - **Proactive Push Alert System**: Multi-channel alert dispatching via browser push notifications and SMS, supporting various event types with quiet hours and per-account notification preferences.
-- **Cross-Account Industry Benchmarks**: Anonymized aggregate metrics for industry comparison and strategic recommendations.
+- **Cross-Account Industry Benchmarks**: Anonymized aggregate metrics for industry comparison and strategic recommendations, with readiness guards that prevent misleading response-rate/response-time benchmarks for accounts that are not fully set up or not yet active (see `server/operator/accountReadiness.ts`).
 - **Autonomous Task Agent (AI-Enhanced)**: A 24/7 background AI worker using Gemini AI for reasoning, task plan generation, execution, learning, and executive briefings.
 - **Access Control & Multi-Tenancy**: Authentication via Replit OIDC, native email/password, Google OAuth 2.0, Firebase Auth, with plan-based feature gating and strict account ownership.
 - **Platform Infrastructure**: Includes rate limiting, centralized system logging, feature flags, server-side enforcement of plan limits, automation safety mechanisms, startup health checks, and Stripe webhook-managed subscription lifecycle.

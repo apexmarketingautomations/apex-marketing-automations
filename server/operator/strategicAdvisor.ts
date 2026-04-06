@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import type { ContextPacket, WorkspaceProfile, PerformanceSnapshot, IndustryKnowledge } from "./cognitiveTypes";
 import { getBenchmarksForIndustry } from "./benchmarkAggregator";
+import { checkAccountReadiness, type AccountReadiness } from "./accountReadiness";
 
 export interface HealthScore {
   overall: number;
@@ -58,7 +59,7 @@ function calcLeadCaptureScore(w: WorkspaceProfile, p: PerformanceSnapshot): { sc
   return { score: Math.min(100, score), detail: reasons.join("; ") };
 }
 
-function calcCommunicationScore(w: WorkspaceProfile, p: PerformanceSnapshot): { score: number; detail: string } {
+function calcCommunicationScore(w: WorkspaceProfile, p: PerformanceSnapshot, readiness?: AccountReadiness): { score: number; detail: string } {
   let score = 0;
   const reasons: string[] = [];
 
@@ -77,7 +78,10 @@ function calcCommunicationScore(w: WorkspaceProfile, p: PerformanceSnapshot): { 
   if (p.inboundMessages > 0 && p.outboundMessages > 0) {
     const ratio = p.outboundMessages / p.inboundMessages;
     if (ratio >= 0.8) { score += 20; } else if (ratio >= 0.4) { score += 10; reasons.push("slow response rate"); }
-    else reasons.push("many unanswered messages");
+    else {
+      const isAccountReady = !readiness || readiness.ready;
+      reasons.push(isAccountReady ? "many unanswered messages" : "response data pending — agent warming up");
+    }
   }
 
   if (p.avgResponseTimeSec && p.avgResponseTimeSec < 300) score += 10;
@@ -169,11 +173,15 @@ function getGrowthStage(context: ContextPacket): string {
   return "Mature";
 }
 
-export function calculateHealthScore(context: ContextPacket): HealthScore {
+export async function calculateHealthScore(context: ContextPacket): Promise<HealthScore> {
   const { workspace, performance } = context;
 
   const leadCapture = calcLeadCaptureScore(workspace, performance);
-  const communication = calcCommunicationScore(workspace, performance);
+  let healthReadiness: AccountReadiness | undefined;
+  try {
+    healthReadiness = await checkAccountReadiness(performance.subAccountId);
+  } catch {}
+  const communication = calcCommunicationScore(workspace, performance, healthReadiness);
   const automation = calcAutomationScore(workspace, performance);
   const integration = calcIntegrationScore(workspace);
   const funnelCoverage = calcFunnelScore(workspace, performance);
@@ -463,12 +471,20 @@ export function detectMissedOpportunities(context: ContextPacket): StrategicInsi
   return missed.sort((a, b) => b.priority - a.priority);
 }
 
-export async function generateGrowthReport(context: ContextPacket): Promise<GrowthReport> {
-  const healthScore = calculateHealthScore(context);
+export async function generateGrowthReport(context: ContextPacket): Promise<GrowthReport & { readiness?: AccountReadiness }> {
+  const healthScore = await calculateHealthScore(context);
   const strategicInsights = generateStrategicInsights(context);
   const missedOpportunities = detectMissedOpportunities(context);
   const quickWins = strategicInsights.filter(i => i.effort === "quick-win");
   const growthStage = getGrowthStage(context);
+
+  let readiness: AccountReadiness | undefined;
+  try {
+    readiness = await checkAccountReadiness(context.performance.subAccountId);
+  } catch (err: any) {
+    console.error("[ADVISOR] Readiness check failed:", err.message);
+  }
+  const isReadyForResponseMetrics = !readiness || readiness.ready;
 
   const benchmarks: GrowthReport["industryBenchmarks"] = {};
 
@@ -482,7 +498,7 @@ export async function generateGrowthReport(context: ContextPacket): Promise<Grow
   if (Object.keys(crossAccountBenchmarks).length > 0) {
     const cab = crossAccountBenchmarks;
 
-    if (cab.response_rate) {
+    if (cab.response_rate && isReadyForResponseMetrics) {
       const responseRate = context.performance.inboundMessages > 0
         ? Math.round((context.performance.outboundMessages / context.performance.inboundMessages) * 100)
         : 0;
@@ -536,7 +552,7 @@ export async function generateGrowthReport(context: ContextPacket): Promise<Grow
 
   if (context.industryKnowledge) {
     const ik = context.industryKnowledge;
-    if (!benchmarks["response_time"]) {
+    if (!benchmarks["response_time"] && isReadyForResponseMetrics) {
       benchmarks["response_time"] = {
         yours: context.performance.avgResponseTimeSec ? `${Math.round(context.performance.avgResponseTimeSec)}s` : "N/A",
         benchmark: `${ik.avgResponseTimeBenchmark}s`,
@@ -558,5 +574,6 @@ export async function generateGrowthReport(context: ContextPacket): Promise<Grow
     missedOpportunities,
     quickWins,
     industryBenchmarks: benchmarks,
+    readiness,
   };
 }
