@@ -1,0 +1,191 @@
+**Task: Fix Apex live production inbox + Apex Intelligence regression for Officer Layla (Account #21)**
+
+You are working on the **live production issue** inside **Apex Marketing Automations**.
+
+## What is broken right now
+There are **3 production problems** introduced by recent changes:
+
+### 1) Apex Intelligence panel is interfering with top-right inbox actions
+After moving the **Apex Brain / Apex Intelligence panel to the right side of the screen**, the UI is glitching.
+
+**Current bug:**
+- When trying to click the **top-right refresh / resync / sync button** in the Inbox, it instead opens or triggers the **Apex Intelligence panel below**
+- This means the top-right controls are either:
+  - covered by an invisible layer
+  - losing z-index / pointer priority
+  - sharing event propagation with the panel
+  - being overlapped by a floating container
+
+### 2) Apex Intelligence is returning a forbidden protected-account abort
+Every time a request is made to Apex Intelligence, it responds with:
+
+`checkIntegrationHealth`
+`ABORT: Sub-account 21 is a protected account. All operations targeting this account are forbidden. Do not retry or attempt alternative approaches.`
+
+This should **NOT** appear in this context.
+
+**Expected behavior:**
+- Apex Intelligence should still be able to perform **safe read-only / diagnostic / UI-safe tasks**
+- Protected account enforcement should **not block harmless health checks, sync diagnostics, or operator assistance**
+- If a task is truly blocked, the user should receive a **clean, user-friendly message**, not a raw internal abort string
+- Internal guardrails should not leak directly into the UI
+
+### 3) Officer Layla DMs and Facebook comments are no longer syncing
+Officer Layla’s account was added to live production more recently after initially not existing in production DB.
+
+Now:
+- Her **DMs are not syncing**
+- Her **Facebook comments are not syncing**
+- Inbox shows no conversations
+- This suggests a failure in one or more of these areas:
+  - production sub-account provisioning
+  - meta integration linkage
+  - token/account mapping
+  - webhook registration
+  - webhook processing
+  - backfill/sync routing
+  - contact/comment mapping
+  - environment/seed mismatch between dev and production
+
+---
+
+## Critical context
+- This is **Account / Sub-account 21 (Officer Layla)**
+- This account is currently being treated as protected
+- That protection should **not** break core production functionality or basic diagnostics in the UI
+- Layla was **not originally on the live production database**, and was integrated later
+- The issue likely exists somewhere between:
+  - **Meta integration**
+  - **production DB records**
+  - **Replit live environment**
+  - **sync/backfill/webhook logic**
+
+---
+
+## What I need you to do
+
+### Part A — Fix the UI interaction bug first
+Investigate the inbox page and the Apex Brain/Apex Intelligence right-side layout.
+
+Find and fix why clicking the **top-right sync/refresh control** opens the Apex Intelligence panel instead.
+
+Check for:
+- overlapping containers
+- fixed/absolute positioned wrappers
+- z-index issues
+- invisible click-capture layers
+- pointer-events misuse
+- event bubbling from the floating intelligence panel
+- incorrect width/overlay from the right-side assistant container
+- mobile/responsive logic leaking into desktop layout
+
+**Required result:**
+- Top-right sync/refresh/resync button is fully clickable
+- Clicking it does **only** the intended sync action
+- Apex Intelligence panel no longer steals those clicks
+- No regressions to inbox layout
+
+---
+
+### Part B — Fix Apex Intelligence protected-account behavior
+Find where `checkIntegrationHealth` or similar operator actions are being blocked for protected account 21.
+
+I do **not** want raw internal abort text shown in the user-facing assistant.
+
+Fix this so that:
+- safe read-only diagnostics are allowed for account 21 where appropriate
+- protected write/destructive operations remain protected if needed
+- user-facing assistant never displays raw guardrail/internal abort text
+- assistant returns a proper helpful response instead
+
+**Required result:**
+- Asking Apex Intelligence for integration help no longer prints the raw:
+  `ABORT: Sub-account 21 is a protected account...`
+- The request is either:
+  - completed successfully, or
+  - gracefully handled with a clean user-facing explanation
+
+---
+
+### Part C — Restore Officer Layla Meta sync
+Trace the full production path for Officer Layla:
+
+1. confirm sub-account 21 exists correctly in production
+2. confirm Meta-related credentials and mappings exist correctly for this account
+3. confirm page/account linkage is valid
+4. confirm webhook subscriptions are active
+5. confirm webhook events are arriving
+6. confirm processing is not rejecting or misrouting account 21
+7. confirm DM sync job/backfill path works
+8. confirm Facebook comments sync/backfill path works
+9. confirm inbox queries return Layla’s records properly
+10. confirm comments are linked to the correct account and display correctly
+
+Check especially for:
+- missing or mismatched `meta_access_token`
+- missing page linkage
+- wrong sub-account mapping
+- protected-account logic blocking sync jobs
+- production-only env mismatch
+- seed/sync logic that partially created Layla but not fully
+- comments or messages being written under wrong account
+- webhook handlers ignoring account 21
+- contact joins missing for displayed conversations/comments
+
+**Required result:**
+- Layla DMs sync again
+- Layla Facebook comments sync again
+- Inbox shows synced conversations/comments
+- No fake “done” response unless verified
+
+---
+
+## Hard rules
+- **Do not touch protected accounts 22 or 13**
+- Be extremely careful with account 21
+- Do not remove protection broadly across the system
+- Do not use band-aid hacks
+- Do not claim success without verification
+- Do not return vague summaries
+- Fix root cause(s)
+
+---
+
+## Deliverables
+When finished, provide:
+
+### 1) Root cause summary
+Explain exactly what caused:
+- the UI click hijacking
+- the protected-account abort leak
+- the Meta sync failure for Layla
+
+### 2) Files changed
+List every file changed
+
+### 3) Full code changes
+Make the actual fixes
+
+### 4) Verification proof
+Explicitly verify:
+- sync button is clickable and no longer opens Apex Intelligence
+- Apex Intelligence no longer shows the raw protected-account abort
+- Layla DMs sync successfully
+- Layla FB comments sync successfully
+
+### 5) If a migration/backfill/reseed is required
+Run only what is necessary and explain exactly what was done
+
+---
+
+## Execution style
+Work like a senior production engineer:
+- inspect first
+- identify exact breakpoints
+- apply targeted fixes
+- verify in live/dev preview
+- then summarize clearly
+
+Do **not** stop at theory.
+Do **not** tell me what “might” be wrong without checking.
+Do the work and confirm the results.

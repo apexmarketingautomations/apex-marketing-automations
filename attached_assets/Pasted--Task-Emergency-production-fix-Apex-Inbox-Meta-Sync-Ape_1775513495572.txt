@@ -1,0 +1,171 @@
+**Task: Emergency production fix — Apex Inbox, Meta Sync, Apex Intelligence (Account 21)**
+
+You are fixing a LIVE production system. Do not guess. Do not partially fix.
+
+---
+
+## 🚨 CRITICAL RULES
+
+- DO NOT disable background workers
+- If `DISABLE_BACKGROUND_WORKERS = true`, set it to `false`
+- Workers MUST be running for Meta sync to function
+- DO NOT modify protected accounts 22 or 13
+- Account 21 must remain protected, BUT:
+  - safe read-only and sync diagnostics MUST be allowed
+
+---
+
+## 🔴 CURRENT FAILURES
+
+### 1. No DMs / Comments syncing
+Database shows:
+- instagram_messages = 0
+- instagram_conversations = 0
+- webhook_delivery_logs = 0
+
+This means:
+→ Meta data is NOT being processed
+
+---
+
+### 2. Apex Intelligence is blocked
+Error:
+"ABORT: Sub-account 21 is a protected account"
+
+This is incorrectly blocking:
+- integration health checks
+- sync diagnostics
+- inbox-related operations
+
+---
+
+### 3. Inbox UI is broken
+- Clicking sync/refresh triggers Apex Intelligence panel
+- Likely overlay / z-index / pointer-events bug
+
+---
+
+## 🛠️ REQUIRED FIXES
+
+### PART 1 — ENABLE WORKERS (NON-NEGOTIABLE)
+
+1. Set:
+```
+DISABLE_BACKGROUND_WORKERS = false
+```
+
+2. Ensure worker loop is running:
+- agent worker
+- webhook processor
+- message sync jobs
+
+3. Confirm:
+- jobs are being created
+- jobs are being processed
+- logs are being written
+
+---
+
+### PART 2 — FIX PROTECTED ACCOUNT LOGIC
+
+Modify protection logic so:
+
+ALLOW:
+- checkIntegrationHealth
+- sync diagnostics
+- read-only integration checks
+- inbox sync triggers
+
+BLOCK ONLY:
+- destructive writes
+- account modifications
+
+ALSO:
+- NEVER return raw "ABORT" messages to UI
+- Replace with clean response
+
+---
+
+### PART 3 — VERIFY META PIPELINE
+
+Trace FULL flow for account 21:
+
+1. Confirm:
+- meta_access_token exists
+- meta_page_id exists
+
+2. Confirm webhook:
+- endpoint registered
+- receiving events
+
+3. Confirm processing:
+- webhook → event stored
+- event → message created
+- message → conversation linked
+
+4. If missing:
+- fix webhook handler extraction:
+  - sender id
+  - sender name
+  - message content
+
+---
+
+### PART 4 — FIX UI CLICK BUG
+
+Fix Apex Intelligence panel:
+
+Check:
+- z-index stacking
+- overlay width
+- pointer-events
+- absolute/fixed positioning
+
+Result:
+- Sync button is clickable
+- Apex panel does NOT intercept clicks
+
+---
+
+## ✅ VERIFICATION (MANDATORY)
+
+You MUST confirm:
+
+1. Workers running:
+- jobs processed > 0
+- logs appear
+
+2. Meta:
+- new message arrives OR test sync works
+- records appear in:
+  - instagram_messages
+  - instagram_conversations
+
+3. UI:
+- sync button works correctly
+
+4. Apex Intelligence:
+- no ABORT message
+- returns proper response
+
+---
+
+## 🚫 DO NOT
+
+- Do NOT say "should work"
+- Do NOT skip verification
+- Do NOT leave workers disabled
+- Do NOT fake success
+
+---
+
+## 🎯 GOAL
+
+Restore FULL production functionality:
+- DMs syncing
+- Comments syncing
+- Inbox working
+- Apex Intelligence usable
+- UI fixed
+
+Execute step-by-step. Verify everything before finishing.
