@@ -42,6 +42,7 @@ import { registerReadinessRoutes } from "./routes/readiness";
 import { registerMetaOpsRoutes } from "./routes/metaOps";
 import { registerMetaMessagingRoutes } from "./routes/metaMessaging";
 import { registerMetaMessagingProductRoutes } from "./routes/metaMessagingProduct";
+export { registerAgentWorkerRoutes } from "./routes/agentWorker";
 
 export async function registerRoutes(
   httpServer: Server,

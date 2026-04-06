@@ -1579,6 +1579,9 @@ RULES:
   app.use("/api/upload-ad-image", uploadLimiter);
   app.use("/api", apiLimiter);
 
+  const { registerAgentWorkerRoutes } = await import("./routes/agentWorker");
+  registerAgentWorkerRoutes(app);
+
   await setupAuth(app);
   const { tenantMiddleware } = await import("./middleware/tenant");
   app.use("/api", tenantMiddleware);
