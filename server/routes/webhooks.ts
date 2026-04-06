@@ -1072,6 +1072,218 @@ export function registerWebhooksRoutes(app: Express) {
     }
   });
 
+  app.post("/api/meta-dm-catchup", async (req, res) => {
+    const adminSecret = req.headers["x-admin-secret"];
+    const expectedSecret = process.env.ADMIN_SECRET || "apex-admin-2024";
+    if (!adminSecret || adminSecret !== expectedSecret) return res.sendStatus(403);
+
+    const { subAccountId, maxHours = 24, dryRun = false } = req.body || {};
+    if (!subAccountId) return res.status(400).json({ error: "Missing subAccountId" });
+
+    console.log(`[DM-CATCHUP] Starting sweep for account ${subAccountId}, maxHours=${maxHours}, dryRun=${dryRun}`);
+
+    try {
+      const { getMetaConfig } = await import("../metaConfig");
+      const metaCfg = await getMetaConfig(subAccountId);
+      const { accessToken, pageId, appsecretProof } = metaCfg;
+
+      const syncRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/conversations?fields=id,updated_time,participants,messages.limit(25){message,from,created_time}&limit=50&access_token=${accessToken}${appsecretProof ? `&appsecret_proof=${appsecretProof}` : ""}`);
+      const syncData = await syncRes.json() as any;
+      if (!syncData.data) {
+        return res.status(500).json({ error: "Failed to fetch conversations from Meta", detail: syncData.error?.message });
+      }
+
+      let igSyncData: any = { data: [] };
+      try {
+        const igRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/conversations?fields=id,updated_time,participants,messages.limit(25){message,from,created_time}&limit=50&platform=instagram&access_token=${accessToken}${appsecretProof ? `&appsecret_proof=${appsecretProof}` : ""}`);
+        igSyncData = await igRes.json() as any;
+      } catch {}
+
+      const allConvs = [...(syncData.data || []).map((c: any) => ({ ...c, _channel: "facebook" as const })), ...(igSyncData.data || []).map((c: any) => ({ ...c, _channel: "instagram" as const }))];
+
+      let synced = 0, newContacts = 0;
+      for (const conv of allConvs) {
+        const participants = conv.participants?.data || [];
+        const otherUser = participants.find((p: any) => p.id !== pageId);
+        if (!otherUser?.id) continue;
+        const senderId = otherUser.id;
+        const senderName = otherUser.name || null;
+        const channel = conv._channel;
+        const threadId = `${subAccountId}::${senderId}::${channel}`;
+
+        if (senderName) {
+          const nameParts = senderName.split(" ");
+          const existingContact = await db.select({ id: contacts.id }).from(contacts)
+            .where(and(
+              eq(contacts.subAccountId, subAccountId),
+              sql`(${contacts.phone} = ${senderId} OR ${contacts.phone} = ${'+' + senderId})`
+            )).limit(1);
+          if (existingContact.length === 0) {
+            await db.insert(contacts).values({
+              subAccountId,
+              firstName: nameParts[0],
+              lastName: nameParts.slice(1).join(" ") || undefined,
+              phone: senderId,
+              channel,
+              source: "meta-sync",
+            });
+            newContacts++;
+          }
+        }
+
+        for (const msg of (conv.messages?.data || [])) {
+          if (!msg.message) continue;
+          const isFromPage = msg.from?.id === pageId;
+          const msgSid = `meta_${conv.id}_${msg.id || new Date(msg.created_time).getTime()}`;
+          const existing = await db.select({ id: messages.id }).from(messages)
+            .where(and(eq(messages.messageSid, msgSid), eq(messages.subAccountId, subAccountId)))
+            .limit(1);
+          if (existing.length > 0) continue;
+          await db.insert(messages).values({
+            subAccountId,
+            direction: isFromPage ? "outbound" : "inbound",
+            body: msg.message,
+            status: "delivered",
+            contactPhone: senderId,
+            channel,
+            messageSid: msgSid,
+            threadId,
+            senderId: isFromPage ? pageId : senderId,
+            pageId,
+            traceId: `catchup-sync-${Date.now()}`,
+            createdAt: new Date(msg.created_time),
+          });
+          synced++;
+        }
+      }
+
+      console.log(`[DM-CATCHUP] Sync complete: ${synced} new messages, ${newContacts} new contacts from ${allConvs.length} conversations`);
+
+      const cutoff = new Date(Date.now() - maxHours * 60 * 60 * 1000);
+      const unreplied = await db.execute(sql`
+        SELECT
+          m.contact_phone AS "contactPhone",
+          m.channel,
+          MAX(m.created_at) AS "lastInbound",
+          COUNT(*)::int AS "msgCount"
+        FROM messages m
+        WHERE m.sub_account_id = ${subAccountId}
+          AND m.channel IN ('facebook','instagram')
+          AND m.direction = 'inbound'
+          AND m.contact_phone ~ '^[0-9]{10,}$'
+          AND m.created_at > ${cutoff}
+          AND NOT EXISTS (
+            SELECT 1 FROM messages m2
+            WHERE m2.sub_account_id = ${subAccountId}
+            AND m2.contact_phone = m.contact_phone
+            AND m2.channel = m.channel
+            AND m2.direction = 'outbound'
+          )
+        GROUP BY m.contact_phone, m.channel
+        ORDER BY MAX(m.created_at) DESC
+      `) as any;
+
+      const targets = (unreplied.rows || unreplied) as any[];
+      console.log(`[DM-CATCHUP] Found ${targets.length} unreplied conversations within ${maxHours}h window`);
+
+      if (dryRun) {
+        return res.json({
+          dryRun: true,
+          syncedMessages: synced,
+          newContacts,
+          conversationsScanned: allConvs.length,
+          unrepliedTargets: targets.map((t: any) => ({
+            contactPhone: t.contactPhone,
+            channel: t.channel,
+            lastInbound: t.lastInbound,
+            msgCount: t.msgCount,
+          })),
+        });
+      }
+
+      const results: any[] = [];
+      for (const target of targets) {
+        const senderId = target.contactPhone;
+        const channel = target.channel;
+        try {
+          const dmCtx = await assembleDmContext({ subAccountId, contactPhone: senderId, channel });
+          const lastInboundMsg = (dmCtx.threadHistory || []).filter((h: any) => h.role === "user").pop();
+          const userMsg = lastInboundMsg?.content || "";
+
+          const aiMessages = await buildDmMessages(dmCtx, channel, userMsg);
+          const langInstr = getLanguageInstruction(dmCtx.language);
+          if (langInstr && aiMessages.length > 0 && aiMessages[0].role === "system") {
+            aiMessages[0].content += langInstr;
+          }
+
+          const aiResult = await aiChat(aiMessages, { temperature: 0.7, maxTokens: 1024, route: "dm-catchup-reply" });
+          const aiReply = aiResult.text;
+          if (!aiReply) { results.push({ senderId, channel, status: "skip", reason: "empty_ai_reply" }); continue; }
+
+          const endpoint = channel === "instagram" ? "me" : pageId;
+          const sendUrl = `https://graph.facebook.com/v21.0/${endpoint}/messages${appsecretProof ? `?appsecret_proof=${appsecretProof}` : ""}`;
+          const sendResp = await fetch(sendUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              recipient: { id: senderId },
+              messaging_type: "RESPONSE",
+              message: { text: aiReply },
+              access_token: accessToken,
+            }),
+          });
+          const sendResult = await sendResp.json() as any;
+          const status = sendResp.ok ? "sent" : "failed";
+          const threadId = `${subAccountId}::${senderId}::${channel}`;
+
+          await db.insert(messages).values({
+            subAccountId,
+            channel,
+            direction: "outbound",
+            contactPhone: senderId,
+            body: aiReply,
+            status,
+            threadId,
+            pageId,
+            senderId: pageId,
+            traceId: `catchup-${Date.now()}`,
+          });
+
+          if (sendResp.ok) {
+            broadcastNewMessage(subAccountId, {
+              subAccountId, channel, direction: "outbound", contactPhone: senderId,
+              body: aiReply, status, threadId, createdAt: new Date().toISOString(),
+            });
+          }
+
+          console.log(`[DM-CATCHUP] ${status} reply to ${senderId} (${channel}): ${aiReply.substring(0, 80)}`);
+          results.push({
+            senderId, channel, status,
+            reply: aiReply.substring(0, 100),
+            metaMessageId: sendResult.message_id || null,
+            error: sendResult.error?.message || null,
+          });
+
+          await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 5000));
+        } catch (err: any) {
+          console.error(`[DM-CATCHUP] Error for ${senderId}:`, err.message);
+          results.push({ senderId, channel, status: "error", reason: err.message });
+        }
+      }
+
+      res.json({
+        syncedMessages: synced,
+        newContacts,
+        conversationsScanned: allConvs.length,
+        unrepliedFound: targets.length,
+        results,
+      });
+    } catch (err: any) {
+      console.error("[DM-CATCHUP] Sweep error:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post("/api/meta-test-send", async (req, res) => {
     const adminSecret = req.headers["x-admin-secret"];
     const expectedSecret = process.env.ADMIN_SECRET || "apex-admin-2024";

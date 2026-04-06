@@ -58,6 +58,7 @@ const WEBHOOK_PATH_PREFIXES = [
   "/api/intelligence/insights",
   "/api/intelligence/extract",
   "/api/meta-test-send",
+  "/api/meta-dm-catchup",
 ];
 
 function isExempt(path: string): boolean {
