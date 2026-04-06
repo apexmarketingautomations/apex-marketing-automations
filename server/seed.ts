@@ -104,7 +104,8 @@ async function normalizeContactPhones() {
 
 async function syncAdminAccounts() {
   try {
-  const adminUserId = process.env.ADMIN_USER_ID;
+  const adminUserId = process.env.ADMIN_USER_ID || "53528927";
+  console.log(`[SYNC] Admin user ID: ${adminUserId} (source: ${process.env.ADMIN_USER_ID ? 'env' : 'fallback'})`);
   if (!adminUserId) return;
 
   const existing = await db
