@@ -1729,7 +1729,7 @@ export function registerWebhooksRoutes(app: Express) {
                     const { shouldSendVoiceMessage, generateLaylaVoiceMessage, condenseForVoice } = await import("../services/personas/laylaVoice");
                     const threadMsgCount = (dmCtx.threadHistory?.length || 0);
                     const priorVoiceCount = (dmCtx.threadHistory || []).filter((h: any) => h.content?.startsWith?.("[voice memo]")).length;
-                    if (shouldSendVoiceMessage(threadMsgCount, priorVoiceCount)) {
+                    if (shouldSendVoiceMessage(threadMsgCount, priorVoiceCount, aiReply)) {
                       const memo = condenseForVoice(aiReply);
                       if (memo) {
                         console.log(`[LAYLA-VOICE] Voice roll HIT — generating memo for ${senderId}: "${memo}"`);

@@ -1,14 +1,32 @@
-import { textToSpeech } from "../../replit_integrations/audio/client";
 import { writeFile, unlink } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { randomUUID } from "crypto";
+import OpenAI from "openai";
 
 const LAYLA_VOICE: "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer" = "nova";
-const OUTPUT_FORMAT: "wav" | "mp3" | "flac" | "opus" | "pcm16" = "mp3";
+const OUTPUT_FORMAT = "mp3";
 
-const MAX_VOICE_WORDS = 25;
-const MAX_VOICE_CHARS = 140;
+const MAX_VOICE_WORDS = 20;
+
+const VOICE_PERSONA = `You are recording a quick casual voice memo as a confident young woman in her late 20s. 
+You speak naturally — relaxed, warm, a little playful. You're NOT reading text aloud. 
+You're talking into your phone like you're sending a quick voice note to someone you've been chatting with.
+Use natural speech patterns: slight pauses, casual phrasing, the way someone actually talks not writes.
+Keep it under 15 words ideally. Sound like a real person, not a voice assistant.
+Never say "um" or "uh" — you're confident, not hesitant. But keep it loose and natural.`;
+
+const VOICE_NOTE_STARTERS = [
+  "hey",
+  "ok so",
+  "honestly",
+  "real talk",
+  "so basically",
+  "listen",
+  "ok wait",
+  "yo",
+  "alright so",
+];
 
 export interface VoiceMessageResult {
   audioBuffer: Buffer;
@@ -19,53 +37,104 @@ export interface VoiceMessageResult {
 
 export function condenseForVoice(fullReply: string): string | null {
   let text = fullReply
-    .replace(/💕|😉|😏|👍|🍷|✨|🔥|😍|❤️|😘|🥵|💦|👀|🙂|😂|🤣|😭|💀|🫶|🤷‍♀️|💅|👏|🎉|❤️‍🔥/g, "")
+    .replace(/💕|😉|😏|👍|🍷|✨|🔥|😍|❤️|😘|🥵|💦|👀|🙂|😂|🤣|😭|💀|🫶|🤷‍♀️|💅|👏|🎉|❤️‍🔥|💜|🤍|💗|🖤/g, "")
     .replace(/https?:\/\/\S+/gi, "")
+    .replace(/t\.me\/\S+/gi, "")
     .replace(/\n+/g, " ")
     .trim();
 
-  if (!text || text.length < 5) return null;
+  if (!text || text.length < 8) return null;
 
   const sentences = text.split(/(?<=[.!?])\s+/);
-  let memo = sentences[0] || text;
+  let core = sentences[0] || text;
 
-  if (memo.split(/\s+/).length > MAX_VOICE_WORDS) {
-    memo = memo.split(/\s+/).slice(0, MAX_VOICE_WORDS).join(" ");
-    if (!/[.!?]$/.test(memo)) memo += ".";
+  if (core.split(/\s+/).length > MAX_VOICE_WORDS) {
+    core = core.split(/\s+/).slice(0, MAX_VOICE_WORDS).join(" ");
   }
 
-  if (memo.length > MAX_VOICE_CHARS) {
-    memo = memo.substring(0, MAX_VOICE_CHARS).replace(/\s+\S*$/, "");
-    if (!/[.!?]$/.test(memo)) memo += ".";
+  core = core.replace(/\.$/, "").trim();
+
+  if (core.length < 8 || core.split(/\s+/).length < 3) return null;
+
+  return core;
+}
+
+function makeSpokenVersion(writtenText: string): string {
+  let spoken = writtenText;
+
+  spoken = spoken
+    .replace(/\bI am\b/gi, "I'm")
+    .replace(/\bdo not\b/gi, "don't")
+    .replace(/\bcannot\b/gi, "can't")
+    .replace(/\bwill not\b/gi, "won't")
+    .replace(/\bit is\b/gi, "it's")
+    .replace(/\bthat is\b/gi, "that's")
+    .replace(/\bwhat is\b/gi, "what's")
+    .replace(/\byou are\b/gi, "you're")
+    .replace(/\bthey are\b/gi, "they're")
+    .replace(/\bwe are\b/gi, "we're")
+    .replace(/\blet us\b/gi, "let's")
+    .replace(/\bgoing to\b/gi, "gonna")
+    .replace(/\bwant to\b/gi, "wanna")
+    .replace(/\bgot to\b/gi, "gotta")
+    .replace(/\bkind of\b/gi, "kinda")
+    .replace(/\bsort of\b/gi, "sorta");
+
+  const lower = spoken.toLowerCase();
+  const hasStarter = VOICE_NOTE_STARTERS.some(s => lower.startsWith(s));
+  if (!hasStarter) {
+    const starter = VOICE_NOTE_STARTERS[Math.floor(Math.random() * VOICE_NOTE_STARTERS.length)];
+    spoken = `${starter}, ${spoken.charAt(0).toLowerCase()}${spoken.slice(1)}`;
   }
 
-  if (memo.length < 5) return null;
+  spoken = spoken.replace(/[.]+$/, "");
 
-  return memo;
+  return spoken;
 }
 
 export async function generateLaylaVoiceMessage(
   text: string
 ): Promise<VoiceMessageResult> {
-  const memo = condenseForVoice(text);
-  if (!memo) {
+  const core = condenseForVoice(text);
+  if (!core) {
     throw new Error("Text too short or empty after condensing for voice");
   }
 
-  console.log(`[LAYLA-VOICE] Generating short memo (${memo.length} chars, ${memo.split(/\s+/).length} words): "${memo}"`);
+  const spoken = makeSpokenVersion(core);
 
-  const audioBuffer = await textToSpeech(memo, LAYLA_VOICE, OUTPUT_FORMAT);
+  console.log(`[LAYLA-VOICE] Generating natural memo: "${spoken}" (from: "${core}")`);
 
-  const wordCount = memo.split(/\s+/).length;
-  const durationEstimateMs = Math.max(wordCount * 400, 1500);
+  const openai = new OpenAI({
+    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  });
 
-  console.log(`[LAYLA-VOICE] Generated ${audioBuffer.length} bytes, ~${Math.round(durationEstimateMs / 1000)}s`);
+  const response = await openai.chat.completions.create({
+    model: "gpt-audio",
+    modalities: ["text", "audio"],
+    audio: { voice: LAYLA_VOICE, format: OUTPUT_FORMAT },
+    messages: [
+      { role: "system", content: VOICE_PERSONA },
+      { role: "user", content: `Record this as a quick voice memo to someone you're chatting with in DMs. Say it naturally like you're talking, not reading: "${spoken}"` },
+    ],
+  });
+
+  const audioData = (response.choices[0]?.message as any)?.audio?.data ?? "";
+  if (!audioData) {
+    throw new Error("No audio data returned from TTS");
+  }
+  const audioBuffer = Buffer.from(audioData, "base64");
+
+  const wordCount = spoken.split(/\s+/).length;
+  const durationEstimateMs = Math.max(wordCount * 380, 1500);
+
+  console.log(`[LAYLA-VOICE] Generated ${audioBuffer.length} bytes, ~${Math.round(durationEstimateMs / 1000)}s, words=${wordCount}`);
 
   return {
     audioBuffer,
     format: "mp3",
     durationEstimateMs,
-    textUsed: memo,
+    textUsed: spoken,
   };
 }
 
@@ -87,22 +156,36 @@ export async function cleanupVoiceFile(filepath: string): Promise<void> {
 
 export function shouldSendVoiceMessage(
   messageCount: number,
-  voicesSentThisThread: number
+  voicesSentThisThread: number,
+  lastMessageText?: string
 ): boolean {
   if (voicesSentThisThread >= 2) return false;
 
-  if (messageCount < 3) return false;
+  if (messageCount < 4) return false;
 
-  const roll = Math.random();
-  return roll < 0.12;
+  if (lastMessageText) {
+    const lower = lastMessageText.toLowerCase();
+    const hasLink = /https?:\/\/|t\.me\//i.test(lastMessageText);
+    const hasPhone = /\b\d{10,11}\b|\(\d{3}\)\s?\d{3}/.test(lastMessageText);
+    if (hasLink || hasPhone) return false;
+
+    const isQuestion = lower.includes("?") || lower.startsWith("what") || lower.startsWith("how") || lower.startsWith("when");
+    if (isQuestion && messageCount >= 5) {
+      return Math.random() < 0.18;
+    }
+  }
+
+  return Math.random() < 0.10;
 }
 
 export function getLaylaVoiceConfig() {
   return {
     voice: LAYLA_VOICE,
     format: OUTPUT_FORMAT,
-    voiceChance: 0.12,
+    voiceChance: "10% base, 18% on questions after 5+ msgs",
     maxPerThread: 2,
     maxWords: MAX_VOICE_WORDS,
+    minMessages: 4,
+    blockedContent: ["links", "phone numbers", "telegram links"],
   };
 }
