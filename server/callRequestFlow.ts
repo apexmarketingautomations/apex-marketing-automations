@@ -509,7 +509,7 @@ async function sendFollowUpMessage(
     if (!ctx.senderId) throw new Error("Meta follow-up missing senderId");
     const metaCreds = await resolveMetaCredentials(subAccountId);
     if (!metaCreds) throw new Error(`No Meta credentials found for account ${subAccountId}`);
-    const replyUrl = `https://graph.facebook.com/v19.0/${metaCreds.pageId}/messages`;
+    const replyUrl = `https://graph.facebook.com/v21.0/${metaCreds.pageId}/messages`;
     const sendRes = await fetch(replyUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

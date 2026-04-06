@@ -1075,7 +1075,7 @@ export function registerV1Routes(app: Express) {
                 const crypto = await import("crypto");
                 proof = crypto.createHmac("sha256", metaCfg.appSecret).update(metaCfg.accessToken).digest("hex");
               }
-              const dmUrl = `https://graph.facebook.com/v19.0/${metaCfg.pageId}/messages${proof ? `?appsecret_proof=${proof}` : ""}`;
+              const dmUrl = `https://graph.facebook.com/v21.0/${metaCfg.pageId}/messages${proof ? `?appsecret_proof=${proof}` : ""}`;
               const dmRes = await fetch(dmUrl, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },

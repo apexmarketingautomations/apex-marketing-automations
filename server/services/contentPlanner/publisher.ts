@@ -88,7 +88,7 @@ async function resolveCredentials(
 
 async function resolveInstagramBusinessId(pageId: string, accessToken: string): Promise<string | null> {
   try {
-    const url = `https://graph.facebook.com/v19.0/${pageId}?fields=instagram_business_account&access_token=${accessToken}`;
+    const url = `https://graph.facebook.com/v21.0/${pageId}?fields=instagram_business_account&access_token=${accessToken}`;
     const response = await fetch(url);
     const data = await response.json() as any;
     if (data.instagram_business_account?.id) {

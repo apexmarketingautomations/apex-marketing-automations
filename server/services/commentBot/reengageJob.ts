@@ -369,7 +369,7 @@ async function sendMetaDM(
   const metaCfg = await getMetaConfig(subAccountId);
   const { pageId, accessToken, appsecretProof } = metaCfg;
 
-  const url = `https://graph.facebook.com/v19.0/${pageId}/messages` +
+  const url = `https://graph.facebook.com/v21.0/${pageId}/messages` +
     (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
 
   const res = await fetch(url, {

@@ -64,7 +64,7 @@ export function registerMetaRoutes(app: Express) {
     }
 
     try {
-      const fbRes = await fetch(`https://graph.facebook.com/v19.0/${campaign.metaCampaignId}/insights?fields=impressions,clicks,spend,cpc,ctr,actions&access_token=${metaCfg.accessToken}`);
+      const fbRes = await fetch(`https://graph.facebook.com/v21.0/${campaign.metaCampaignId}/insights?fields=impressions,clicks,spend,cpc,ctr,actions&access_token=${metaCfg.accessToken}`);
       const fbData = await fbRes.json() as any;
       if (fbData.data && fbData.data[0]) {
         const insights = fbData.data[0];
@@ -106,7 +106,7 @@ export function registerMetaRoutes(app: Express) {
     }
 
     try {
-      const fbRes = await fetch(`https://graph.facebook.com/v19.0/act_${adAccountId}/campaigns`, {
+      const fbRes = await fetch(`https://graph.facebook.com/v21.0/act_${adAccountId}/campaigns`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -159,13 +159,13 @@ export function registerMetaRoutes(app: Express) {
     }
 
     try {
-      const formsRes = await fetch(`https://graph.facebook.com/v19.0/${metaCfg.pageId}/leadgen_forms?access_token=${metaCfg.accessToken}`);
+      const formsRes = await fetch(`https://graph.facebook.com/v21.0/${metaCfg.pageId}/leadgen_forms?access_token=${metaCfg.accessToken}`);
       const formsData = await formsRes.json() as any;
       let totalSynced = 0;
 
       if (formsData.data) {
         for (const form of formsData.data) {
-          const leadsRes = await fetch(`https://graph.facebook.com/v19.0/${form.id}/leads?access_token=${metaCfg.accessToken}`);
+          const leadsRes = await fetch(`https://graph.facebook.com/v21.0/${form.id}/leads?access_token=${metaCfg.accessToken}`);
           const leadsData = await leadsRes.json() as any;
           if (leadsData.data) {
             const existingLeads = await storage.getMetaLeads(subAccountId);
@@ -357,7 +357,7 @@ export function registerMetaRoutes(app: Express) {
     if (conversation.igUserId) {
       try {
         const metaCfg = await getMetaConfig(conversation.subAccountId);
-        const sendUrl = `https://graph.facebook.com/v19.0/${metaCfg.pageId}/messages` + (metaCfg.appsecretProof ? `?appsecret_proof=${metaCfg.appsecretProof}` : "");
+        const sendUrl = `https://graph.facebook.com/v21.0/${metaCfg.pageId}/messages` + (metaCfg.appsecretProof ? `?appsecret_proof=${metaCfg.appsecretProof}` : "");
         await fetch(sendUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -392,7 +392,7 @@ export function registerMetaRoutes(app: Express) {
     }
 
     try {
-      const convRes = await fetch(`https://graph.facebook.com/v19.0/${metaCfg.pageId}/conversations?platform=instagram&fields=participants,messages{message,from,created_time}&access_token=${metaCfg.accessToken}` + (metaCfg.appsecretProof ? `&appsecret_proof=${metaCfg.appsecretProof}` : ""));
+      const convRes = await fetch(`https://graph.facebook.com/v21.0/${metaCfg.pageId}/conversations?platform=instagram&fields=participants,messages{message,from,created_time}&access_token=${metaCfg.accessToken}` + (metaCfg.appsecretProof ? `&appsecret_proof=${metaCfg.appsecretProof}` : ""));
       const convData = await convRes.json() as any;
 
       if (convData.error) {

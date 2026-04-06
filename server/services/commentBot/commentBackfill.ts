@@ -175,7 +175,7 @@ async function fetchFacebookPosts(
   const results: PostWithComments[] = [];
 
   try {
-    const url = `https://graph.facebook.com/v19.0/${pageId}/posts?fields=id,message,created_time,comments.limit(${maxCommentsPerPost}){id,message,from,created_time,parent}&limit=${maxPosts}&access_token=${token}`;
+    const url = `https://graph.facebook.com/v21.0/${pageId}/posts?fields=id,message,created_time,comments.limit(${maxCommentsPerPost}){id,message,from,created_time,parent}&limit=${maxPosts}&access_token=${token}`;
     const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
     if (!res.ok) {
       console.error(`[COMMENT-BACKFILL] Failed to fetch FB posts: HTTP ${res.status}`);
@@ -221,7 +221,7 @@ async function fetchInstagramPosts(
   if (!igAccountId) return results;
 
   try {
-    const url = `https://graph.facebook.com/v19.0/${igAccountId}/media?fields=id,caption,timestamp,comments.limit(${maxCommentsPerPost}){id,text,from,timestamp}&limit=${maxPosts}&access_token=${token}`;
+    const url = `https://graph.facebook.com/v21.0/${igAccountId}/media?fields=id,caption,timestamp,comments.limit(${maxCommentsPerPost}){id,text,from,timestamp}&limit=${maxPosts}&access_token=${token}`;
     const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
     if (!res.ok) {
       console.error(`[COMMENT-BACKFILL] Failed to fetch IG media: HTTP ${res.status}`);

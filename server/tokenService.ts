@@ -98,7 +98,7 @@ async function refreshMetaToken(token: OAuthToken): Promise<OAuthToken> {
   }
 
   const response = await fetch(
-    `https://graph.facebook.com/v19.0/oauth/access_token?` +
+    `https://graph.facebook.com/v21.0/oauth/access_token?` +
     new URLSearchParams({
       grant_type: "fb_exchange_token",
       client_id: appId,
@@ -148,7 +148,7 @@ export async function revokeToken(subAccountId: number, provider: string): Promi
       const appSecret = process.env.META_APP_SECRET;
       if (appId && appSecret) {
         await fetch(
-          `https://graph.facebook.com/v19.0/me/permissions?access_token=${token.accessToken}`,
+          `https://graph.facebook.com/v21.0/me/permissions?access_token=${token.accessToken}`,
           { method: "DELETE", signal: AbortSignal.timeout(10000) }
         );
       }
@@ -178,7 +178,7 @@ export async function checkTokenHealth(subAccountId: number, provider: string): 
       }
       return { healthy: true };
     } else if (provider === "meta") {
-      const response = await fetch("https://graph.facebook.com/v19.0/me", {
+      const response = await fetch("https://graph.facebook.com/v21.0/me", {
         headers: { Authorization: `Bearer ${token.accessToken}` },
         signal: AbortSignal.timeout(10000),
       });

@@ -181,8 +181,8 @@ export async function handleCommentEvent(event: CommentWebhookEvent): Promise<vo
     try {
       const metaCfg = await getMetaConfig(subAccountId);
       const postUrl = platform === "instagram"
-        ? `https://graph.facebook.com/v19.0/${postId}?fields=caption&access_token=${metaCfg.accessToken}`
-        : `https://graph.facebook.com/v19.0/${postId}?fields=message&access_token=${metaCfg.accessToken}`;
+        ? `https://graph.facebook.com/v21.0/${postId}?fields=caption&access_token=${metaCfg.accessToken}`
+        : `https://graph.facebook.com/v21.0/${postId}?fields=message&access_token=${metaCfg.accessToken}`;
       const postRes = await fetch(postUrl, { signal: AbortSignal.timeout(5000) });
       if (postRes.ok) {
         const postData = await postRes.json() as any;
@@ -375,7 +375,7 @@ async function sendCommentReply(opts: SendCommentReplyOptions): Promise<{
     appsecretProof = crypto.createHmac("sha256", appSecret).update(accessToken).digest("hex");
   }
 
-  const url = `https://graph.facebook.com/v19.0/${commentId}/comments`;
+  const url = `https://graph.facebook.com/v21.0/${commentId}/comments`;
 
   const params = new URLSearchParams({
     message: replyText,

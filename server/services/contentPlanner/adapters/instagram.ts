@@ -1,6 +1,6 @@
 import type { PlatformAdapter, PublishInput, PublishResult } from "./types";
 
-const GRAPH_API_BASE = "https://graph.facebook.com/v19.0";
+const GRAPH_API_BASE = "https://graph.facebook.com/v21.0";
 
 export const instagramAdapter: PlatformAdapter = {
   platform: "instagram",

@@ -294,7 +294,7 @@ export function registerMetaOpsRoutes(app: Express) {
       const { getMetaConfig, buildMetaUrl } = await import("../metaConfig");
       const metaCfg = await getMetaConfig(msg.subAccountId);
       const endpoint = msg.channel === "instagram" ? "me" : metaCfg.pageId;
-      const url = `https://graph.facebook.com/v19.0/${endpoint}/messages${metaCfg.appsecretProof ? `?appsecret_proof=${metaCfg.appsecretProof}` : ""}`;
+      const url = `https://graph.facebook.com/v21.0/${endpoint}/messages${metaCfg.appsecretProof ? `?appsecret_proof=${metaCfg.appsecretProof}` : ""}`;
 
       const sendRes = await fetch(url, {
         method: "POST",
@@ -404,25 +404,25 @@ export function registerMetaOpsRoutes(app: Express) {
     let tokenDebug: any = null;
 
     try {
-      const permRes = await fetch(`https://graph.facebook.com/v19.0/me/permissions?access_token=${token}`);
+      const permRes = await fetch(`https://graph.facebook.com/v21.0/me/permissions?access_token=${token}`);
       const permData = await permRes.json() as any;
       permissions = (permData.data || []).map((p: any) => ({ name: p.permission, status: p.status }));
     } catch {}
 
     try {
-      const subRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}/subscribed_apps?access_token=${token}`);
+      const subRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/subscribed_apps?access_token=${token}`);
       const subData = await subRes.json() as any;
       subscriptions = (subData.data || []).map((s: any) => ({ name: s.name, fields: s.subscribed_fields }));
     } catch {}
 
     try {
-      const igRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}?fields=instagram_business_account{id,username,name}&access_token=${token}`);
+      const igRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}?fields=instagram_business_account{id,username,name}&access_token=${token}`);
       const igData = await igRes.json() as any;
       igAccount = igData.instagram_business_account || null;
     } catch {}
 
     try {
-      const debugRes = await fetch(`https://graph.facebook.com/v19.0/debug_token?input_token=${token}&access_token=${token}`);
+      const debugRes = await fetch(`https://graph.facebook.com/v21.0/debug_token?input_token=${token}&access_token=${token}`);
       const debugData = await debugRes.json() as any;
       tokenDebug = debugData.data || null;
     } catch {}

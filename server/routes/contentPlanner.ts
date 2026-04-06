@@ -757,7 +757,7 @@ export function registerContentPlannerRoutes(app: Express) {
       const pageId = account.metaPageId;
 
       try {
-        const pageRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}?fields=id,name,access_token&access_token=${token}`);
+        const pageRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}?fields=id,name,access_token&access_token=${token}`);
         const pageData = await pageRes.json() as any;
         if (pageData.error) {
           diag.pageAccess = { status: "failed", error: pageData.error.message, code: pageData.error.code, type: pageData.error.type };
@@ -769,7 +769,7 @@ export function registerContentPlannerRoutes(app: Express) {
       }
 
       try {
-        const permRes = await fetch(`https://graph.facebook.com/v19.0/me/permissions?access_token=${token}`);
+        const permRes = await fetch(`https://graph.facebook.com/v21.0/me/permissions?access_token=${token}`);
         const permData = await permRes.json() as any;
         if (permData.error) {
           diag.pagePermissions = { status: "failed", error: permData.error.message };
@@ -789,7 +789,7 @@ export function registerContentPlannerRoutes(app: Express) {
       }
 
       try {
-        const igRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}?fields=instagram_business_account&access_token=${token}`);
+        const igRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}?fields=instagram_business_account&access_token=${token}`);
         const igData = await igRes.json() as any;
         if (igData.error) {
           diag.instagramBusiness = { status: "failed", error: igData.error.message };

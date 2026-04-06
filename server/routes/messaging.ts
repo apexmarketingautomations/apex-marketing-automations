@@ -76,11 +76,11 @@ export function registerMessagingRoutes(app: Express) {
     const platforms: Array<{ channel: "facebook" | "instagram"; endpoint: string }> = [
       {
         channel: "facebook",
-        endpoint: `https://graph.facebook.com/v19.0/${metaCfg.pageId}/conversations?fields=id,updated_time,participants,messages.limit(25){message,from,created_time}&limit=25&access_token=${metaCfg.accessToken}${metaCfg.appsecretProof ? `&appsecret_proof=${metaCfg.appsecretProof}` : ""}`,
+        endpoint: `https://graph.facebook.com/v21.0/${metaCfg.pageId}/conversations?fields=id,updated_time,participants,messages.limit(25){message,from,created_time}&limit=25&access_token=${metaCfg.accessToken}${metaCfg.appsecretProof ? `&appsecret_proof=${metaCfg.appsecretProof}` : ""}`,
       },
       {
         channel: "instagram",
-        endpoint: `https://graph.facebook.com/v19.0/${metaCfg.pageId}/conversations?fields=id,updated_time,participants,messages.limit(25){message,from,created_time}&limit=25&platform=instagram&access_token=${metaCfg.accessToken}${metaCfg.appsecretProof ? `&appsecret_proof=${metaCfg.appsecretProof}` : ""}`,
+        endpoint: `https://graph.facebook.com/v21.0/${metaCfg.pageId}/conversations?fields=id,updated_time,participants,messages.limit(25){message,from,created_time}&limit=25&platform=instagram&access_token=${metaCfg.accessToken}${metaCfg.appsecretProof ? `&appsecret_proof=${metaCfg.appsecretProof}` : ""}`,
       },
     ];
 
@@ -373,13 +373,14 @@ export function registerMessagingRoutes(app: Express) {
             const proof = crypto.createHmac("sha256", metaAppSecret).update(metaToken).digest("hex");
             proofParam = `?appsecret_proof=${proof}`;
           }
-          const fbUrl = `https://graph.facebook.com/v19.0/${metaPageId}/messages${proofParam}`;
+          const fbUrl = `https://graph.facebook.com/v21.0/${metaPageId}/messages${proofParam}`;
           console.log(`[FACEBOOK] Sending outbound to ${contactPhone} via pageId=${metaPageId}, hasAppSecret=${!!metaAppSecret}`);
           const fbRes = await fetch(fbUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               recipient: { id: contactPhone },
+              messaging_type: "RESPONSE",
               message: { text: body },
               access_token: metaToken,
             }),
@@ -460,13 +461,14 @@ export function registerMessagingRoutes(app: Express) {
             const proof = crypto.createHmac("sha256", metaAppSecret).update(metaToken).digest("hex");
             proofParam = `?appsecret_proof=${proof}`;
           }
-          const igUrl = `https://graph.facebook.com/v19.0/${metaPageId}/messages${proofParam}`;
-          console.log(`[INSTAGRAM] Sending outbound to ${contactPhone} via pageId=${metaPageId}, hasAppSecret=${!!metaAppSecret}`);
+          const igUrl = `https://graph.facebook.com/v21.0/me/messages${proofParam}`;
+          console.log(`[INSTAGRAM] Sending outbound to ${contactPhone} via me endpoint (pageId=${metaPageId}), hasAppSecret=${!!metaAppSecret}`);
           const igRes = await fetch(igUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               recipient: { id: contactPhone },
+              messaging_type: "RESPONSE",
               message: { text: body },
               access_token: metaToken,
             }),

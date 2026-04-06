@@ -20,7 +20,7 @@ async function syncCampaignInsights(campaignId: number): Promise<{ synced: boole
 
   try {
     const fbRes = await fetch(
-      `https://graph.facebook.com/v19.0/${campaign.metaCampaignId}/insights?fields=impressions,clicks,spend,cpc,ctr,actions&access_token=${metaCfg.accessToken}`,
+      `https://graph.facebook.com/v21.0/${campaign.metaCampaignId}/insights?fields=impressions,clicks,spend,cpc,ctr,actions&access_token=${metaCfg.accessToken}`,
       { signal: AbortSignal.timeout(15000) }
     );
 
@@ -63,7 +63,7 @@ async function syncLeadsForAccount(subAccountId: number): Promise<{ synced: numb
 
   try {
     const formsRes = await fetch(
-      `https://graph.facebook.com/v19.0/${metaCfg.pageId}/leadgen_forms?access_token=${metaCfg.accessToken}`,
+      `https://graph.facebook.com/v21.0/${metaCfg.pageId}/leadgen_forms?access_token=${metaCfg.accessToken}`,
       { signal: AbortSignal.timeout(15000) }
     );
     if (!formsRes.ok) {
@@ -75,7 +75,7 @@ async function syncLeadsForAccount(subAccountId: number): Promise<{ synced: numb
     if (formsData.data) {
       for (const form of formsData.data) {
         const leadsRes = await fetch(
-          `https://graph.facebook.com/v19.0/${form.id}/leads?access_token=${metaCfg.accessToken}`,
+          `https://graph.facebook.com/v21.0/${form.id}/leads?access_token=${metaCfg.accessToken}`,
           { signal: AbortSignal.timeout(15000) }
         );
         if (!leadsRes.ok) continue;

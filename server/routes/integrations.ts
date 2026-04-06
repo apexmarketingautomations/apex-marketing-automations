@@ -70,7 +70,7 @@ export function registerIntegrationsRoutes(app: Express) {
         const appId = process.env.META_APP_ID;
         const appSecret = process.env.META_APP_SECRET;
         if (appId && appSecret) {
-          const debugRes = await fetch(`https://graph.facebook.com/v19.0/debug_token?input_token=${config.pageAccessToken}&access_token=${appId}|${appSecret}`, {
+          const debugRes = await fetch(`https://graph.facebook.com/v21.0/debug_token?input_token=${config.pageAccessToken}&access_token=${appId}|${appSecret}`, {
             signal: AbortSignal.timeout(5000),
           });
           const debugData = await debugRes.json() as any;
@@ -78,7 +78,7 @@ export function registerIntegrationsRoutes(app: Express) {
             validationResult = { valid: false, error: `Invalid Facebook Page Access Token. ${debugData?.data?.error?.message || "Token validation failed."}` };
           }
         } else {
-          const fbRes = await fetch(`https://graph.facebook.com/v19.0/me?access_token=${config.pageAccessToken}`, {
+          const fbRes = await fetch(`https://graph.facebook.com/v21.0/me?access_token=${config.pageAccessToken}`, {
             signal: AbortSignal.timeout(5000),
           });
           if (!fbRes.ok) validationResult = { valid: false, error: "Invalid Facebook Page Access Token." };
@@ -87,7 +87,7 @@ export function registerIntegrationsRoutes(app: Express) {
         const appId = process.env.META_APP_ID;
         const appSecret = process.env.META_APP_SECRET;
         if (appId && appSecret) {
-          const debugRes = await fetch(`https://graph.facebook.com/v19.0/debug_token?input_token=${config.accessToken}&access_token=${appId}|${appSecret}`, {
+          const debugRes = await fetch(`https://graph.facebook.com/v21.0/debug_token?input_token=${config.accessToken}&access_token=${appId}|${appSecret}`, {
             signal: AbortSignal.timeout(5000),
           });
           const debugData = await debugRes.json() as any;
@@ -95,7 +95,7 @@ export function registerIntegrationsRoutes(app: Express) {
             validationResult = { valid: false, error: `Invalid Meta Access Token. ${debugData?.data?.error?.message || "Token validation failed."}` };
           }
         } else {
-          const metaRes = await fetch(`https://graph.facebook.com/v19.0/me?access_token=${config.accessToken}`, {
+          const metaRes = await fetch(`https://graph.facebook.com/v21.0/me?access_token=${config.accessToken}`, {
             signal: AbortSignal.timeout(5000),
           });
           if (!metaRes.ok) validationResult = { valid: false, error: "Invalid Meta Access Token." };
@@ -302,7 +302,7 @@ export function registerIntegrationsRoutes(app: Express) {
       state,
     });
 
-    res.redirect(`https://www.facebook.com/v19.0/dialog/oauth?${params}`);
+    res.redirect(`https://www.facebook.com/v21.0/dialog/oauth?${params}`);
   }));
 
   // ---- YouTube OAuth ----
@@ -741,7 +741,7 @@ export function registerIntegrationsRoutes(app: Express) {
 
     const redirectUri = `${req.protocol}://${req.get("host")}/api/oauth/meta/callback`;
 
-    const tokenResponse = await fetch("https://graph.facebook.com/v19.0/oauth/access_token?" +
+    const tokenResponse = await fetch("https://graph.facebook.com/v21.0/oauth/access_token?" +
       new URLSearchParams({
         client_id: appId,
         client_secret: appSecret,
@@ -759,7 +759,7 @@ export function registerIntegrationsRoutes(app: Express) {
 
     const shortLivedData = await tokenResponse.json() as OAuthTokenExchangeResponse;
 
-    const longLivedResponse = await fetch("https://graph.facebook.com/v19.0/oauth/access_token?" +
+    const longLivedResponse = await fetch("https://graph.facebook.com/v21.0/oauth/access_token?" +
       new URLSearchParams({
         grant_type: "fb_exchange_token",
         client_id: appId,
@@ -781,7 +781,7 @@ export function registerIntegrationsRoutes(app: Express) {
     let providerEmail = "";
     let providerAccountId = "";
     try {
-      const profileRes = await fetch("https://graph.facebook.com/v19.0/me?fields=id,name,email", {
+      const profileRes = await fetch("https://graph.facebook.com/v21.0/me?fields=id,name,email", {
         headers: { Authorization: `Bearer ${accessToken}` },
         signal: AbortSignal.timeout(10000),
       });
@@ -981,7 +981,7 @@ export function registerIntegrationsRoutes(app: Express) {
     const assets: any[] = [];
 
     try {
-      const pagesRes = await fetch("https://graph.facebook.com/v19.0/me/accounts", {
+      const pagesRes = await fetch("https://graph.facebook.com/v21.0/me/accounts", {
         headers: { Authorization: `Bearer ${token.accessToken}` },
         signal: AbortSignal.timeout(10000),
       });
@@ -996,7 +996,7 @@ export function registerIntegrationsRoutes(app: Express) {
     }
 
     try {
-      const adsRes = await fetch("https://graph.facebook.com/v19.0/me/adaccounts?fields=id,name,account_status", {
+      const adsRes = await fetch("https://graph.facebook.com/v21.0/me/adaccounts?fields=id,name,account_status", {
         headers: { Authorization: `Bearer ${token.accessToken}` },
         signal: AbortSignal.timeout(10000),
       });
@@ -1011,7 +1011,7 @@ export function registerIntegrationsRoutes(app: Express) {
     }
 
     try {
-      const igRes = await fetch("https://graph.facebook.com/v19.0/me/accounts?fields=instagram_business_account{id,name,username}", {
+      const igRes = await fetch("https://graph.facebook.com/v21.0/me/accounts?fields=instagram_business_account{id,name,username}", {
         headers: { Authorization: `Bearer ${token.accessToken}` },
         signal: AbortSignal.timeout(10000),
       });

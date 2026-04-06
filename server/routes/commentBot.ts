@@ -161,7 +161,7 @@ export function registerCommentBotRoutes(app: Express) {
       const { subAccountId = 22, maxPages = 50 } = req.body || {};
       const metaCfg = await getMetaConfig(subAccountId);
 
-      let convUrl: string | null = `https://graph.facebook.com/v19.0/${metaCfg.pageId}/conversations?fields=id,updated_time,participants,messages.limit(25){message,from,created_time}&limit=25&access_token=${metaCfg.accessToken}${metaCfg.appsecretProof ? `&appsecret_proof=${metaCfg.appsecretProof}` : ""}`;
+      let convUrl: string | null = `https://graph.facebook.com/v21.0/${metaCfg.pageId}/conversations?fields=id,updated_time,participants,messages.limit(25){message,from,created_time}&limit=25&access_token=${metaCfg.accessToken}${metaCfg.appsecretProof ? `&appsecret_proof=${metaCfg.appsecretProof}` : ""}`;
 
       let totalConversations = 0;
       let totalMessages = 0;
@@ -252,7 +252,7 @@ export function registerCommentBotRoutes(app: Express) {
         return res.status(400).json({ error: "No Meta account configured" });
       }
 
-      const url = `https://graph.facebook.com/v19.0/${commentId}/comments`;
+      const url = `https://graph.facebook.com/v21.0/${commentId}/comments`;
       const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -299,7 +299,7 @@ export function registerCommentBotRoutes(app: Express) {
       }
 
       if (platform === "facebook") {
-        const url = `https://graph.facebook.com/v19.0/${commentId}/likes`;
+        const url = `https://graph.facebook.com/v21.0/${commentId}/likes`;
         const response = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -311,7 +311,7 @@ export function registerCommentBotRoutes(app: Express) {
         }
         res.json({ success: true });
       } else {
-        const url = `https://graph.facebook.com/v19.0/${commentId}`;
+        const url = `https://graph.facebook.com/v21.0/${commentId}`;
         const response = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

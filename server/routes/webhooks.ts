@@ -1072,6 +1072,46 @@ export function registerWebhooksRoutes(app: Express) {
     }
   });
 
+  app.post("/api/meta-test-send", async (req, res) => {
+    const adminSecret = req.headers["x-admin-secret"];
+    const expectedSecret = process.env.ADMIN_SECRET || "apex-admin-2024";
+    if (!adminSecret || adminSecret !== expectedSecret) return res.sendStatus(403);
+
+    const { subAccountId, recipientId, message, channel = "facebook" } = req.body;
+    if (!subAccountId || !recipientId || !message) {
+      return res.status(400).json({ error: "Missing subAccountId, recipientId, or message" });
+    }
+
+    try {
+      const { getMetaConfig } = await import("../metaConfig");
+      const metaCfg = await getMetaConfig(subAccountId);
+      const endpoint = channel === "instagram" ? "me" : metaCfg.pageId;
+      const url = `https://graph.facebook.com/v21.0/${endpoint}/messages${metaCfg.appsecretProof ? `?appsecret_proof=${metaCfg.appsecretProof}` : ""}`;
+
+      console.log(`[META TEST-SEND] Sending to ${recipientId} via ${endpoint}, channel=${channel}`);
+      const sendRes = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipient: { id: recipientId },
+          messaging_type: "RESPONSE",
+          message: { text: message },
+          access_token: metaCfg.accessToken,
+        }),
+      });
+      const sendData = await sendRes.json() as any;
+      console.log(`[META TEST-SEND] Result: HTTP ${sendRes.status}, data=${JSON.stringify(sendData)}`);
+
+      if (sendRes.ok) {
+        res.json({ success: true, messageId: sendData.message_id, httpStatus: sendRes.status });
+      } else {
+        res.json({ success: false, httpStatus: sendRes.status, error: sendData.error });
+      }
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   // ---- Meta/Facebook Webhook (Instagram/Facebook DMs) ----
   app.get("/api/meta-webhook", (req, res) => {
     const mode = req.query["hub.mode"];
@@ -1370,7 +1410,7 @@ export function registerWebhooksRoutes(app: Express) {
                 const fn = existingContactRecord.firstName || "";
                 if (fn.startsWith("FB User") || fn.startsWith("IG User") || fn.startsWith("IG ")) {
                   try {
-                    const profileUrl = `https://graph.facebook.com/v19.0/${senderId}?fields=first_name,last_name` +
+                    const profileUrl = `https://graph.facebook.com/v21.0/${senderId}?fields=first_name,last_name` +
                       (appsecretProof ? `&appsecret_proof=${appsecretProof}` : "") +
                       `&access_token=${accessToken}`;
                     const profileRes = await fetch(profileUrl, { signal: AbortSignal.timeout(5000) });
@@ -1403,7 +1443,7 @@ export function registerWebhooksRoutes(app: Express) {
                   const fn2 = existingContactRecord.firstName || "";
                   if (fn2.startsWith("FB User") || fn2.startsWith("IG User") || fn2.startsWith("IG ")) {
                     try {
-                      const profileUrl = `https://graph.facebook.com/v19.0/${senderId}?fields=first_name,last_name` +
+                      const profileUrl = `https://graph.facebook.com/v21.0/${senderId}?fields=first_name,last_name` +
                         (appsecretProof ? `&appsecret_proof=${appsecretProof}` : "") +
                         `&access_token=${accessToken}`;
                       const profileRes = await fetch(profileUrl, { signal: AbortSignal.timeout(5000) });
@@ -1431,7 +1471,7 @@ export function registerWebhooksRoutes(app: Express) {
                   let realFirstName = `${channel === "instagram" ? "IG" : "FB"} User ${senderId.slice(-4)}`;
                   let realLastName: string | undefined;
                   try {
-                    const profileUrl = `https://graph.facebook.com/v19.0/${senderId}?fields=first_name,last_name` +
+                    const profileUrl = `https://graph.facebook.com/v21.0/${senderId}?fields=first_name,last_name` +
                       (appsecretProof ? `&appsecret_proof=${appsecretProof}` : "") +
                       `&access_token=${accessToken}`;
                     const profileRes = await fetch(profileUrl, { signal: AbortSignal.timeout(5000) });
@@ -1519,16 +1559,21 @@ export function registerWebhooksRoutes(app: Express) {
               const metaSendReply = async (body: string) => {
                 if (!accessToken || !pageId) return;
                 const replyEndpoint = channel === "instagram" ? "me" : pageId;
-                const replyUrl = `https://graph.facebook.com/v19.0/${replyEndpoint}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
+                const replyUrl = `https://graph.facebook.com/v21.0/${replyEndpoint}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
                 const sendRes = await fetch(replyUrl, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
                     recipient: { id: senderId },
+                    messaging_type: "RESPONSE",
                     message: { text: body },
                     access_token: accessToken,
                   }),
                 });
+                if (!sendRes.ok) {
+                  const errData = await sendRes.clone().json().catch(() => ({})) as any;
+                  console.error(`[META DM] Hot-lead reply FAILED to ${senderId} — HTTP ${sendRes.status}, error=${JSON.stringify(errData).substring(0, 500)}`);
+                }
                 const metaDmThreadId = `${subAccountId}::${senderId}::${channel}`;
                 await db.insert(messages).values({
                   subAccountId,
@@ -1619,13 +1664,14 @@ export function registerWebhooksRoutes(app: Express) {
                 await new Promise(resolve => setTimeout(resolve, kwDelayMs));
 
                 const kwEndpoint = channel === "instagram" ? "me" : pageId;
-                const kwUrl = `https://graph.facebook.com/v19.0/${kwEndpoint}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
+                const kwUrl = `https://graph.facebook.com/v21.0/${kwEndpoint}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
                 console.log(`[META DM] Sending keyword reply to ${senderId} via pageId=${pageId}, keyword="${kw.keyword}"`);
                 const kwSendRes = await fetch(kwUrl, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
                     recipient: { id: senderId },
+                    messaging_type: "RESPONSE",
                     message: { text: kw.responseText },
                     access_token: accessToken,
                   }),
@@ -1769,13 +1815,14 @@ export function registerWebhooksRoutes(app: Express) {
                         const FormData = (await import("form-data")).default;
                         const form = new FormData();
                         form.append("recipient", JSON.stringify({ id: senderId }));
+                        form.append("messaging_type", "RESPONSE");
                         form.append("message", JSON.stringify({ attachment: { type: "audio", payload: { is_reusable: false } } }));
                         form.append("filedata", voiceResult.audioBuffer, {
                           filename: `voice_${Date.now()}.mp3`,
                           contentType: "audio/mpeg",
                         });
                         const voiceEndpoint = channel === "instagram" ? "me" : pageId;
-                        const voiceUrl = `https://graph.facebook.com/v19.0/${voiceEndpoint}/messages?access_token=${accessToken}` + (appsecretProof ? `&appsecret_proof=${appsecretProof}` : "");
+                        const voiceUrl = `https://graph.facebook.com/v21.0/${voiceEndpoint}/messages?access_token=${accessToken}` + (appsecretProof ? `&appsecret_proof=${appsecretProof}` : "");
                         const voiceSendRes = await fetch(voiceUrl, {
                           method: "POST",
                           body: form as any,
@@ -1836,13 +1883,14 @@ export function registerWebhooksRoutes(app: Express) {
                   });
                 } else if (aiReply && accessToken && pageId) {
                   const aiEndpoint = channel === "instagram" ? "me" : pageId;
-                  const aiUrl = `https://graph.facebook.com/v19.0/${aiEndpoint}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
+                  const aiUrl = `https://graph.facebook.com/v21.0/${aiEndpoint}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
                   console.log(`[META DM] Sending AI reply to ${senderId} via endpoint=${aiEndpoint}, pageId=${pageId}, channel=${channel}, token_set=${!!accessToken}, appsecret_proof=${!!appsecretProof}`);
                   const sendRes = await fetch(aiUrl, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                       recipient: { id: senderId },
+                      messaging_type: "RESPONSE",
                       message: { text: aiReply },
                       access_token: accessToken,
                     }),

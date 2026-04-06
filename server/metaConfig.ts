@@ -32,7 +32,7 @@ export async function getMetaConfig(subAccountId: number): Promise<MetaConfig> {
 
 export function buildMetaUrl(pageId: string, appsecretProof: string, channel?: string): string {
   const endpoint = channel === "instagram" ? "me" : pageId;
-  return `https://graph.facebook.com/v19.0/${endpoint}/messages${appsecretProof ? `?appsecret_proof=${appsecretProof}` : ""}`;
+  return `https://graph.facebook.com/v21.0/${endpoint}/messages${appsecretProof ? `?appsecret_proof=${appsecretProof}` : ""}`;
 }
 
 export async function resolveSubAccountByPageId(pageId: string): Promise<number> {
@@ -75,7 +75,7 @@ export async function resolveSubAccountByPageId(pageId: string): Promise<number>
 export async function validateMetaConfigForAccount(subAccountId: number): Promise<{ valid: boolean; pageName?: string; error?: string }> {
   try {
     const config = await getMetaConfig(subAccountId);
-    const res = await fetch(`https://graph.facebook.com/v19.0/${config.pageId}?fields=id,name&access_token=${config.accessToken}${config.appsecretProof ? `&appsecret_proof=${config.appsecretProof}` : ""}`);
+    const res = await fetch(`https://graph.facebook.com/v21.0/${config.pageId}?fields=id,name&access_token=${config.accessToken}${config.appsecretProof ? `&appsecret_proof=${config.appsecretProof}` : ""}`);
     const data = await res.json() as any;
     if (data.name) {
       return { valid: true, pageName: data.name };

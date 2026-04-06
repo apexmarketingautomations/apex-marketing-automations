@@ -354,7 +354,7 @@ export function registerMetaMessagingRoutes(app: Express) {
       const { getMetaConfig } = await import("../metaConfig");
       const cfg = await getMetaConfig(subAccountId);
       const endpoint = msg.channel === "instagram" ? "me" : cfg.pageId;
-      const url = `https://graph.facebook.com/v19.0/${endpoint}/messages${cfg.appsecretProof ? `?appsecret_proof=${cfg.appsecretProof}` : ""}`;
+      const url = `https://graph.facebook.com/v21.0/${endpoint}/messages${cfg.appsecretProof ? `?appsecret_proof=${cfg.appsecretProof}` : ""}`;
 
       const sendRes = await fetch(url, {
         method: "POST",
@@ -399,7 +399,7 @@ export function registerMetaMessagingRoutes(app: Express) {
       const { getMetaConfig } = await import("../metaConfig");
       const cfg = await getMetaConfig(subAccountId);
       const endpoint = channel === "instagram" ? "me" : cfg.pageId;
-      const url = `https://graph.facebook.com/v19.0/${endpoint}/messages${cfg.appsecretProof ? `?appsecret_proof=${cfg.appsecretProof}` : ""}`;
+      const url = `https://graph.facebook.com/v21.0/${endpoint}/messages${cfg.appsecretProof ? `?appsecret_proof=${cfg.appsecretProof}` : ""}`;
 
       const sendRes = await fetch(url, {
         method: "POST",
@@ -646,7 +646,7 @@ export function registerMetaMessagingRoutes(app: Express) {
 
       try {
         const token = account.metaAccessToken;
-        const subRes = await fetch(`https://graph.facebook.com/v19.0/${account.metaPageId}/subscribed_apps?access_token=${token}`);
+        const subRes = await fetch(`https://graph.facebook.com/v21.0/${account.metaPageId}/subscribed_apps?access_token=${token}`);
         const subData = await subRes.json() as any;
         steps.webhookActive = (subData.data || []).length > 0;
       } catch {}
