@@ -1,0 +1,84 @@
+No. This is not what I asked for.
+
+I did not ask you to only fix the Facebook comment reply pipeline and then summarize that subsystem.
+
+I asked for a FULL AUDIT of:
+- Facebook DM bot
+- Instagram DM bot
+- Facebook comment replies
+- Instagram comment replies
+
+And I asked for FULL PRODUCTION-READY SOLUTIONS.
+
+That means I do not want partial backend success presented as completion.
+
+Your current work only proves part of the Facebook comment system is working.
+It does NOT yet prove:
+- FB DM bot end-to-end production readiness
+- IG DM bot end-to-end production readiness
+- IG comment reply production readiness
+- full operator visibility / controls / diagnostics UI
+- moderation / safety controls
+- replay / retry management
+- production monitoring and failure handling
+- complete launch-ready management experience
+
+You are still thinking too narrowly and too backend-first.
+
+I need you to now do the actual full assignment.
+
+Execute a complete forensic audit across all 4 Meta channels:
+1. Facebook DMs
+2. Instagram DMs
+3. Facebook comments
+4. Instagram comments
+
+For each one, I need:
+- current status
+- what is proven
+- what is not proven
+- exact weaknesses
+- exact missing backend pieces
+- exact missing frontend/UI pieces
+- exact missing controls / diagnostics / monitoring
+- exact missing UX needed for a real operator
+- exact production risks
+- exact fixes required
+
+Then I need you to IMPLEMENT the missing production-ready layers, not just describe them.
+
+That includes building the actual product-facing control surface where needed:
+- Meta operations dashboard
+- DM health / diagnostics
+- comment bot health / diagnostics
+- retry / replay controls
+- failed event management
+- moderation / safety controls
+- visibility into why messages/comments were replied to, skipped, or failed
+- platform-specific status for FB vs IG
+- clear admin controls, not hidden logic
+
+Important:
+A feature is NOT done because the endpoint works or because some replies posted.
+It is only done if:
+- backend works
+- frontend exists
+- controls exist
+- operators can see status
+- operators can manage failures
+- operators can understand what is happening
+- the system is launch-ready end-to-end
+
+So stop treating “Facebook comments now reply” as task completion.
+
+I want you to continue from here and complete the FULL audit + FULL production-ready implementation for all Meta messaging/comment channels.
+Do not ask me for permission.
+Do not stop at technical completion.
+Do not leave UI/control layers for later.
+
+At the end, give me:
+1. channel-by-channel audit
+2. exact production issues found
+3. exact fixes implemented
+4. exact remaining gaps, if any
+5. final launch-readiness verdict for each channel
