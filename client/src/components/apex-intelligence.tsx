@@ -98,7 +98,7 @@ export function ApexIntelligence({
         />
       )}
     <div
-      className={`${positionClass} ${isInline ? "flex flex-col" : "flex flex-col items-start"} ${className}`}
+      className={`${positionClass} ${isInline ? "flex flex-col" : "flex flex-col items-start"} pointer-events-none ${className}`}
       style={!isInline ? { transform: `translate(${offset.x}px, ${offset.y}px)` } : undefined}
     >
       <AnimatePresence>
@@ -108,7 +108,7 @@ export function ApexIntelligence({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={isInline ? undefined : { opacity: 0, y: 20, scale: 0.96 }}
             transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-            className={`${isInline ? "" : "mb-4"} rounded-2xl overflow-hidden flex flex-col`}
+            className={`${isInline ? "" : "mb-4"} rounded-2xl overflow-hidden flex flex-col pointer-events-auto`}
             onClick={(e) => e.stopPropagation()}
             style={{
               width: isInline ? "100%" : `min(${size.width}px, 92vw)`,
@@ -269,7 +269,7 @@ export function ApexIntelligence({
           onClick={handleToggle}
           onMouseDown={onPointerDown as any}
           onTouchStart={onPointerDown as any}
-          className="group relative w-14 h-14 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl flex items-center justify-center transition-all touch-none select-none"
+          className="group relative w-14 h-14 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl flex items-center justify-center transition-all touch-none select-none pointer-events-auto"
           style={{
             background: isOpen
               ? "linear-gradient(135deg, rgba(139,92,246,0.2), rgba(6,182,212,0.15))"

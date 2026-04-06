@@ -538,12 +538,15 @@ async function validateMetaCredentials() {
   const DISABLE_BACKGROUND_WORKERS = process.env.DISABLE_BACKGROUND_WORKERS === "true";
   if (DISABLE_BACKGROUND_WORKERS) {
     console.log("[STARTUP] ⏸ Background workers DISABLED (DISABLE_BACKGROUND_WORKERS=true)");
+  } else {
+    console.log("[STARTUP] ✅ Background workers ENABLED (DISABLE_BACKGROUND_WORKERS is not 'true')");
   }
 
   if (!DISABLE_BACKGROUND_WORKERS) {
   try {
     const { startCrashReportWorker } = await import("./crashReportWorker");
     startCrashReportWorker();
+    console.log("[STARTUP] ✅ Crash report worker started");
   } catch (workerErr) {
     console.error("[STARTUP] Crash report worker failed (non-fatal):", workerErr);
   }
@@ -561,6 +564,7 @@ async function validateMetaCredentials() {
   try {
     const { initOperator } = await import("./operator/index");
     initOperator();
+    console.log("[STARTUP] ✅ Operator initialized");
   } catch (opErr) {
     console.error("[STARTUP] Operator init failed (non-fatal):", opErr);
   }
@@ -1633,27 +1637,32 @@ RULES:
     async () => {
       log(`serving on port ${port}`);
       if (!DISABLE_BACKGROUND_WORKERS) {
+      console.log("[STARTUP] Starting post-listen background workers...");
       try {
         const { startAutoLearningLoop: startLoop } = await import("./callIntelligence");
         startLoop();
+        console.log("[STARTUP] ✅ Auto-learning loop started");
       } catch (err: any) {
         console.error("[CALL-INTEL] Failed to start auto-learning loop:", err?.message);
       }
       try {
         const { startRetryProcessor } = await import("./eventRetryProcessor");
         startRetryProcessor();
+        console.log("[STARTUP] ✅ Retry processor started");
       } catch (err: any) {
         console.error("[RETRY-PROCESSOR] Failed to start:", err?.message);
       }
       try {
         const { startFollowupWorker } = await import("./callRequestFlow");
         startFollowupWorker();
+        console.log("[STARTUP] ✅ Follow-up worker started");
       } catch (err: any) {
         console.error("[FOLLOWUP-WORKER] Failed to start:", err?.message);
       }
       try {
         const { startAutoSync } = await import("./googleCalendarSync");
         startAutoSync();
+        console.log("[STARTUP] ✅ Calendar sync started");
       } catch (err: any) {
         console.error("[GCAL-AUTO] Failed to start:", err?.message);
       }
@@ -1661,8 +1670,30 @@ RULES:
         const { registerMetaCampaignSyncJob, startMetaCampaignSyncScheduler } = await import("./metaCampaignSync");
         registerMetaCampaignSyncJob();
         startMetaCampaignSyncScheduler();
+        console.log("[STARTUP] ✅ Meta campaign sync started");
       } catch (err: any) {
         console.error("[META-SYNC] Failed to start:", err?.message);
+      }
+
+      try {
+        const { validateMetaConfigForAccount } = await import("./metaConfig");
+        const { storage: metaStorage } = await import("./storage");
+        const account21 = await metaStorage.getSubAccount(21);
+        if (account21) {
+          const hasPageId = !!account21.metaPageId;
+          const hasToken = !!account21.metaAccessToken;
+          console.log(`[STARTUP][META-DIAG] Account 21 (${account21.name}): metaPageId=${hasPageId ? account21.metaPageId : "MISSING"}, metaAccessToken=${hasToken ? "configured" : "MISSING"}`);
+          if (hasPageId && hasToken) {
+            const validation = await validateMetaConfigForAccount(21);
+            console.log(`[STARTUP][META-DIAG] Account 21 Meta API validation: ${validation.valid ? "✅ VALID" : "❌ INVALID"} ${validation.pageName ? `(page: ${validation.pageName})` : ""} ${validation.error ? `error: ${validation.error}` : ""}`);
+          } else {
+            console.warn(`[STARTUP][META-DIAG] Account 21 is missing Meta credentials — webhook pipeline will not route to this account`);
+          }
+        } else {
+          console.warn(`[STARTUP][META-DIAG] Account 21 does not exist in sub_accounts table`);
+        }
+      } catch (diagErr: any) {
+        console.warn(`[STARTUP][META-DIAG] Account 21 diagnostic check failed: ${diagErr.message}`);
       }
       }
     },

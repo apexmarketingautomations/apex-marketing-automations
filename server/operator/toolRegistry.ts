@@ -145,7 +145,7 @@ export async function executeTool(toolName: string, params: Record<string, any>,
     return { success: false, error: `Tool "${toolName}" requires approval before execution. Create an approval request first.` };
   }
 
-  const protectedBlock = await verifyNotProtectedAccount(context.subAccountId, context.userId || "agent");
+  const protectedBlock = await verifyNotProtectedAccount(context.subAccountId, context.userId || "agent", tool.autonomyRequired);
   if (protectedBlock) return protectedBlock;
 
   if (tool.idempotencyKey) {

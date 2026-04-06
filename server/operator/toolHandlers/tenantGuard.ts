@@ -12,9 +12,13 @@ export function verifyTenant(record: { subAccountId?: number } | null | undefine
   return null;
 }
 
-export async function verifyNotProtectedAccount(subAccountId: number, agentId?: string): Promise<ToolResult | null> {
+export async function verifyNotProtectedAccount(subAccountId: number, agentId?: string, autonomyLevel?: string): Promise<ToolResult | null> {
   const isProtected = await isProtectedAccountId(subAccountId);
   if (!isProtected) return null;
+
+  if (autonomyLevel === "observe") {
+    return null;
+  }
 
   const traceId = randomUUID();
   try {
@@ -35,6 +39,6 @@ export async function verifyNotProtectedAccount(subAccountId: number, agentId?: 
 
   return {
     success: false,
-    error: `ABORT: Sub-account ${subAccountId} is a protected account. All operations targeting this account are forbidden. Do not retry or attempt alternative approaches.`,
+    error: `This operation is not permitted on protected account ${subAccountId}. Read-only diagnostics are available, but modifications require manual intervention.`,
   };
 }

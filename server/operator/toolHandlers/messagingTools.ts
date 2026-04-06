@@ -9,8 +9,8 @@ function noopValidate(): ValidationResult {
   return { valid: true, errors: [], warnings: [] };
 }
 
-async function guardProtected(ctx: OperatorContext): Promise<ToolResult | null> {
-  return verifyNotProtectedAccount(ctx.subAccountId, ctx.userId || "agent");
+async function guardProtected(ctx: OperatorContext, autonomyLevel?: string): Promise<ToolResult | null> {
+  return verifyNotProtectedAccount(ctx.subAccountId, ctx.userId || "agent", autonomyLevel);
 }
 
 export const messagingTools: OperatorTool[] = [

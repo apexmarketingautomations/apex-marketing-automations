@@ -384,10 +384,14 @@ export function registerMetaRoutes(app: Express) {
     const subAccountId = Number(req.params.subAccountId);
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
 
+    console.log(`[META INSTAGRAM SYNC] Manual sync triggered for subAccountId=${subAccountId}`);
+
     let metaCfg;
     try {
       metaCfg = await getMetaConfig(subAccountId);
+      console.log(`[META INSTAGRAM SYNC] Credentials resolved for subAccountId=${subAccountId}: pageId=${metaCfg.pageId}, hasToken=${!!metaCfg.accessToken}, hasAppSecret=${!!metaCfg.appSecret}`);
     } catch (err: any) {
+      console.error(`[META INSTAGRAM SYNC] Credential resolution failed for subAccountId=${subAccountId}: ${err.message}`);
       return res.status(503).json({ error: err.message });
     }
 

@@ -8,8 +8,8 @@ function noopValidate(): ValidationResult {
   return { valid: true, errors: [], warnings: [] };
 }
 
-async function guardProtected(ctx: OperatorContext): Promise<ToolResult | null> {
-  return verifyNotProtectedAccount(ctx.subAccountId, ctx.userId || "agent");
+async function guardProtected(ctx: OperatorContext, autonomyLevel?: string): Promise<ToolResult | null> {
+  return verifyNotProtectedAccount(ctx.subAccountId, ctx.userId || "agent", autonomyLevel);
 }
 
 export const crmTools: OperatorTool[] = [
@@ -351,7 +351,7 @@ export const crmTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
-      const pb = await guardProtected(ctx); if (pb) return pb;
+      const pb = await guardProtected(ctx, "observe"); if (pb) return pb;
       const contact = await storage.getContactById(params.contactId);
       const guard = verifyTenant(contact, ctx.subAccountId, "Contact");
       if (guard) return guard;
@@ -393,7 +393,7 @@ export const crmTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
-      const pb = await guardProtected(ctx); if (pb) return pb;
+      const pb = await guardProtected(ctx, "observe"); if (pb) return pb;
       const contacts = await storage.getContacts(ctx.subAccountId);
       let filtered = contacts || [];
 
