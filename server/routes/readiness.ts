@@ -56,7 +56,7 @@ export async function computeAccountReadiness(subAccountId: number): Promise<Acc
   });
 
   const outboundReplies = accountMessages.filter(
-    m => m.direction === "outbound" && m.status === "sent" && new Date(m.createdAt).getTime() > windowStart
+    m => m.direction === "outbound" && (m.status === "sent" || m.status === "delivered") && new Date(m.createdAt).getTime() > windowStart
   );
   const outboundSuccessful = outboundReplies.length >= MIN_OUTBOUND_REPLIES;
 
