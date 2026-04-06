@@ -69,6 +69,8 @@ export const subAccounts = pgTable("sub_accounts", {
   operatorConfig: json("operator_config"),
   telegramBotToken: text("telegram_bot_token"),
   telegramBotUsername: text("telegram_bot_username"),
+  isProtected: boolean("is_protected").default(false),
+  protectedReason: text("protected_reason"),
 });
 
 export const insertSubAccountSchema = createInsertSchema(subAccounts).omit({ id: true });
@@ -2212,3 +2214,16 @@ export const contentLibrary = pgTable("content_library", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 export type ContentLibraryItem = typeof contentLibrary.$inferSelect;
+
+export const styleEmbeddings = pgTable("style_embeddings", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  messageId: integer("message_id"),
+  contextText: text("context_text").notNull(),
+  replyText: text("reply_text").notNull(),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("idx_style_emb_unique").on(table.subAccountId, table.messageId),
+]);
+export type StyleEmbedding = typeof styleEmbeddings.$inferSelect;

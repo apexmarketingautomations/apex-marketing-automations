@@ -275,7 +275,7 @@ function DmFeedTab({ subAccountId }: { subAccountId: number }) {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
-                  <span className="text-xs font-medium text-white">{m.contactPhone || m.senderId}</span>
+                  <span className="text-xs font-medium text-white">{m.displayName || m.contactFirstName || m.contactPhone || m.senderId}</span>
                   <Badge variant="outline" className={`text-[10px] px-1 py-0 ${m.direction === "inbound" ? "border-cyan-500/30 text-cyan-400" : "border-emerald-500/30 text-emerald-400"}`}>
                     {m.direction === "inbound" ? "IN" : "OUT"}
                   </Badge>

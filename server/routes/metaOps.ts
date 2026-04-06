@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { asyncHandler, parseIntParam } from "./helpers";
 import { db } from "../db";
-import { messages, commentAutoReplies, subAccounts } from "@shared/schema";
+import { messages, commentAutoReplies, subAccounts, contacts } from "@shared/schema";
 import { eq, and, gte, desc, sql, or } from "drizzle-orm";
 
 export function registerMetaOpsRoutes(app: Express) {
@@ -149,26 +149,41 @@ export function registerMetaOpsRoutes(app: Express) {
     if (channel !== "all") conditions.push(eq(messages.channel, channel));
     if (status !== "all") conditions.push(eq(messages.status, status));
 
-    const rows = await db.select({
-      id: messages.id,
-      direction: messages.direction,
-      channel: messages.channel,
-      body: messages.body,
-      status: messages.status,
-      contactPhone: messages.contactPhone,
-      senderId: messages.senderId,
-      traceId: messages.traceId,
-      createdAt: messages.createdAt,
-    }).from(messages)
-      .where(and(...conditions))
-      .orderBy(desc(messages.createdAt))
-      .limit(limit)
-      .offset(offset);
+    const rows = await db.execute(sql`
+      SELECT
+        m.id, m.direction, m.channel, m.body, m.status,
+        m.contact_phone AS "contactPhone",
+        m.sender_id AS "senderId",
+        m.trace_id AS "traceId",
+        m.created_at AS "createdAt",
+        dc.first_name AS "contactFirstName",
+        dc.last_name AS "contactLastName"
+      FROM messages m
+      LEFT JOIN LATERAL (
+        SELECT first_name, last_name
+        FROM contacts
+        WHERE sub_account_id = ${subAccountId}
+          AND (phone = m.contact_phone OR phone = '+' || m.contact_phone OR phone = LTRIM(m.contact_phone, '+'))
+        ORDER BY id DESC
+        LIMIT 1
+      ) dc ON true
+      WHERE m.sub_account_id = ${subAccountId}
+        AND m.channel IN ('facebook', 'instagram')
+        ${channel !== "all" ? sql`AND m.channel = ${channel}` : sql``}
+        ${status !== "all" ? sql`AND m.status = ${status}` : sql``}
+      ORDER BY m.created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `) as any;
 
     const [total] = await db.select({ c: sql<number>`count(*)` }).from(messages)
       .where(and(...conditions));
 
-    res.json({ messages: rows, total: Number(total?.c || 0), limit, offset });
+    const dmRows = (rows.rows || rows).map((r: any) => ({
+      ...r,
+      displayName: [r.contactFirstName, r.contactLastName].filter(Boolean).join(" ") || null,
+    }));
+
+    res.json({ messages: dmRows, total: Number(total?.c || 0), limit, offset });
   }));
 
   app.get("/api/meta-ops/comment-feed/:subAccountId", asyncHandler(async (req, res) => {
@@ -501,5 +516,136 @@ export function registerMetaOpsRoutes(app: Express) {
     `);
 
     res.json({ dailyStats: dailyStats.rows, responseTimeStats: responseTimeStats.rows });
+  }));
+
+  app.post("/api/meta-ops/backfill-comment-names/:subAccountId", asyncHandler(async (req, res) => {
+    const adminSecret = req.headers["x-admin-secret"];
+    if (adminSecret !== "apex-admin-2024") return res.status(403).json({ error: "Forbidden" });
+
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!subAccountId) return res.status(400).json({ error: "Invalid subAccountId" });
+
+    const { getMetaConfig } = await import("../metaConfig");
+    const metaCfg = await getMetaConfig(subAccountId);
+    if (!metaCfg?.accessToken) return res.status(400).json({ error: "No Meta access token for this account" });
+
+    const nullNameRows = await db.select({
+      id: commentAutoReplies.id,
+      commentId: commentAutoReplies.commentId,
+    }).from(commentAutoReplies)
+      .where(and(
+        eq(commentAutoReplies.subAccountId, subAccountId),
+        sql`${commentAutoReplies.commenterName} IS NULL`,
+      ));
+
+    let updated = 0;
+    const errors: string[] = [];
+
+    for (const row of nullNameRows) {
+      try {
+        const graphUrl = `https://graph.facebook.com/v21.0/${row.commentId}?fields=from{id,name}&access_token=${metaCfg.accessToken}`;
+        const graphResp = await fetch(graphUrl);
+        if (!graphResp.ok) {
+          errors.push(`${row.commentId}: HTTP ${graphResp.status}`);
+          continue;
+        }
+        const graphData = await graphResp.json() as any;
+        if (graphData?.from?.name) {
+          await db.update(commentAutoReplies)
+            .set({
+              commenterName: graphData.from.name,
+              commenterId: graphData.from.id || undefined,
+            })
+            .where(eq(commentAutoReplies.id, row.id));
+          updated++;
+        }
+      } catch (err: any) {
+        errors.push(`${row.commentId}: ${err.message}`);
+      }
+    }
+
+    res.json({ total: nullNameRows.length, updated, errors: errors.length, errorDetails: errors.slice(0, 10) });
+  }));
+
+  app.post("/api/admin/style-training/index/:subAccountId", asyncHandler(async (req, res) => {
+    const adminSecret = req.headers["x-admin-secret"];
+    if (adminSecret !== "apex-admin-2024") return res.status(403).json({ error: "Forbidden" });
+
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!subAccountId) return res.status(400).json({ error: "Invalid subAccountId" });
+
+    const { indexTrainingPairs } = await import("../services/styleTraining/embeddingPipeline");
+    const result = await indexTrainingPairs(subAccountId);
+    res.json({ success: true, ...result });
+  }));
+
+  app.get("/api/demo/layla-suggest", asyncHandler(async (req, res) => {
+    const adminSecret = req.headers["x-admin-secret"];
+    if (adminSecret !== "apex-admin-2024") return res.status(403).json({ error: "Forbidden" });
+
+    const commentText = req.query.commentText as string;
+    if (!commentText) return res.status(400).json({ error: "commentText query param required" });
+
+    const subAccountId = parseInt(req.query.subAccountId as string) || 22;
+    const platform = (req.query.platform as string || "facebook") as "facebook" | "instagram";
+
+    const { generateRagCommentReply } = await import("../services/styleTraining/commentRag");
+    const result = await generateRagCommentReply(subAccountId, {
+      commentText,
+      commenterName: (req.query.commenterName as string) || null,
+      platform,
+      postCaption: (req.query.postCaption as string) || null,
+    });
+
+    res.json(result);
+  }));
+
+  app.get("/api/admin/style-training/persona/:subAccountId", asyncHandler(async (req, res) => {
+    const adminSecret = req.headers["x-admin-secret"];
+    if (adminSecret !== "apex-admin-2024") return res.status(403).json({ error: "Forbidden" });
+
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!subAccountId) return res.status(400).json({ error: "Invalid subAccountId" });
+
+    const { analyzePersonaFromReplies, buildPersonaHeader } = await import("../services/styleTraining/personaSpec");
+    const profile = await analyzePersonaFromReplies(subAccountId);
+    const header = buildPersonaHeader(profile);
+    res.json({ profile, header });
+  }));
+
+  app.get("/api/admin/style-training/stats/:subAccountId", asyncHandler(async (req, res) => {
+    const adminSecret = req.headers["x-admin-secret"];
+    if (adminSecret !== "apex-admin-2024") return res.status(403).json({ error: "Forbidden" });
+
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!subAccountId) return res.status(400).json({ error: "Invalid subAccountId" });
+
+    const { getEmbeddingCount } = await import("../services/styleTraining/embeddingPipeline");
+    const embeddingCount = await getEmbeddingCount(subAccountId);
+
+    const { exportTrainingPairs } = await import("../services/styleTraining/dataExporter");
+    const pairs = await exportTrainingPairs(subAccountId);
+
+    res.json({
+      subAccountId,
+      trainingPairs: pairs.length,
+      indexedEmbeddings: embeddingCount,
+      ragReady: embeddingCount >= 10,
+    });
+  }));
+
+  app.get("/api/meta-ops/account-protection/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!subAccountId) return res.status(400).json({ error: "Invalid subAccountId" });
+
+    const [account] = await db.select({
+      id: subAccounts.id,
+      name: subAccounts.name,
+      isProtected: subAccounts.isProtected,
+      protectedReason: subAccounts.protectedReason,
+    }).from(subAccounts).where(eq(subAccounts.id, subAccountId));
+
+    if (!account) return res.status(404).json({ error: "Account not found" });
+    res.json({ isProtected: account.isProtected || false, reason: account.protectedReason || null });
   }));
 }

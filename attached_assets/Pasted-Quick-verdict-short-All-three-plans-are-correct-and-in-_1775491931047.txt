@@ -1,0 +1,125 @@
+Quick verdict — short
+
+All three plans are correct and in the right order.
+Foundation & Protection (A) must land first. Layla Voice Phase 1 (RAG + Persona) is the right immediate play. Phase 2 (Adapter + Style Score) is the correct mid-term follow-up.
+I added a few missing, high-risk items and exact acceptance checks so nothing slips through.
+
+Review — Foundation & Protection (A)
+
+What’s solid
+
+Protects IDs 22 & 13 with DB + middleware + UI banner.
+Adds meta_messaging_2027 feature flag and product route skeletons.
+Agent policy to abort actions on protected accounts.
+
+Must add before merge
+
+Define “mutating” exactly (POST/PUT/PATCH/DELETE + any GET with side-effects). Implement helper isMutating(req).
+Fail-safe flag behavior: if DB/feature_flags cannot be read, default to OFF. Log incident.
+403 payload: include error_code: "sub_account_protected" and ticketId for support.
+Audit log schema for these events: { level:'security', traceId, userId, subAccountId, action, meta }.
+Migration safety: up/down scripts and staging rollback steps + DB snapshot guidance.
+Agent smoke test that tries to act on 22 and asserts abort + security ticket created.
+
+Acceptance (A)
+
+Protected rows present for 22 & 13.
+Mutating curl → 403 + system_logs warn entry.
+UI banner visible and mutating buttons disabled.
+CI unit/integration tests covering middleware and flag gating.
+Review — Layla Voice Phase 1 — RAG + Persona Header
+
+What’s solid
+
+Using retrieval with persona header is the correct, low-risk, high-impact first step.
+Data inventory is good: 722 context→reply pairs, 911 non-link replies, 191 threads — enough for a reliable RAG rollout.
+
+Must-have additions
+
+Vector DB choice & plan: add pgvector (self-host) or Pinecone. Recommend pgvector for speed + infra simplicity if you control the DB. Add schema and migration.
+Embedding model: use text-embedding-3-small (OK). Record embedding model and params in config.
+PII redaction: redact personally identifying tokens before storing embeddings. Keep original in secure DB for audit only. Document redaction rules.
+Prompt template (exact): persona header, k retrieved examples, context, instruction, safety checklist. Provide this template in the PR.
+Runtime latency budget: target <=300–500ms for retrieval+generate in demo mode. Add caching for frequent contexts.
+Human evaluation: define test harness — 30–50 pair A/B tests, blind grading, acceptance ≥60% preference.
+Feature flag + per-account gating: RAG behind meta_messaging_2027 and per-account feature_config.
+
+Deliverables
+
+scripts/seed_layla_embeddings.sh or migration to create vector table.
+GET /demo/layla-suggest?message_id=xxx runtime endpoint (feature-flagged, demo only).
+Persona spec doc and prompt template.
+Human eval report.
+
+Acceptance (Phase 1)
+
+Retrieval endpoint returns usable candidate replies.
+Human A/B: retrieval candidate preferred ≥60% vs baseline.
+PII redaction verified.
+Unit/integration tests for retrieval & persona prep.
+
+Timeline: 24–48 hours to produce a demo endpoint + evaluation harness.
+
+Review — Layla Voice Phase 2 — Adapter (LoRA) + Style Scorer
+
+What’s solid
+
+Fine-tuning adapter + style scoring is the correct mid-term plan for lasting fidelity.
+
+Must-have additions
+
+Data quality & size: 722 pairs are OK for an adapter + RAG hybrid, but aim for 2k+ pairs if possible. Add data-cleaning rules and label verification.
+Training infra: specify LoRA/adapter training stack (e.g., Hugging Face + bitsandbytes on GPU or OpenAI fine-tune if available), compute estimate, and modelVersion scheme.
+Style-score model: train a lightweight classifier on human labels (Layla vs not Layla). Decide architecture (embedding + logistic head or small transformer). Define threshold for autopublish.
+Deploy & gating: deploy layla-v1 behind feature flag + rollout plan (canary → 10% → 100%). Always require style_score >= T to autopublish.
+Continuous learning pipeline: approved replies stored as labeled data; schedule retraining cadence (weekly/biweekly). Include data retention & privacy rules.
+Safety checks & rollback: provide immediate disable (feature flag off) and clear rollback instruction.
+
+Deliverables
+
+Training notebook + adapter artifact.
+POST /model/layla-v1/generate or switch in AI gateway.
+Style scoring service + threshold config.
+Retrain job + CI checks and acceptance tests.
+
+Acceptance (Phase 2)
+
+Validation metrics: human preference >75% vs baseline on validation set.
+Style-score precision/recall validated on held-out dataset.
+Autopublish gate enforced (only when style_score >= threshold).
+Retraining pipeline working and auditable.
+
+Timeline: 3–14 days depending on compute & data.
+
+Cross-cutting items (non-negotiable)
+Do not change core auth middleware. Product layer only. Any core change requires security/P0.
+Logging: every generated reply + approve action must be logged with traceId, userId, subAccountId, modelVersion.
+Privacy: PII redaction documented and enforced before training or vector storage.
+Testing: unit + integration + E2E coverage for onboarding → OAuth → RAG → approve/send.
+Feature flags: everything OFF by default; per-account opt-in.
+Immediate 6-hour plan to unblock work (copy/paste for team)
+A: hotfix/protect-accounts branch — add is_protected column migration, set IDs 22,13, implement ensureNotProtectedAccount middleware and unit tests. (2–3 hrs)
+A: feature flag — insert meta_messaging_2027=false into feature_flags and gate route registration. (30m)
+Phase 1 scaffolding — create pgvector table migration + scripts/seed_layla_embeddings.sh stub, and the skeleton endpoint GET /demo/layla-suggest. Add persona doc placeholder. (2–3 hrs)
+Human eval harness — add a small internal UI or Google Sheet test harness and plan 30 blind A/B evaluations. (30–60m)
+Ready-to-post team message (paste verbatim)
+
+Task review & immediate plan — Meta Messaging / Layla voice
+
+Reviewed the three task plans (A: Foundation & Protection, Phase 1: RAG + Persona, Phase 2: Adapter + Style Score). Good structure and correct priorities — Foundation must land first, then RAG, then the adapter/fine-tune.
+
+Required changes before work:
+
+Define isMutating(req) semantics and implement in middleware.
+Fail-safe feature flag default OFF on DB/read error.
+Standardize 403 response: { error_code: "sub_account_protected", ticketId }.
+Add audit schema for system_logs and ensure all protected-account attempts write { level:'security', traceId, userId, subAccountId, action, meta }.
+Add Agent smoke test that aborts on protected IDs and creates a security/P0 when attempted.
+
+Phase 1 (24–48 hrs) — implement pgvector (or Pinecone), seed Layla embeddings with text-embedding-3-small (redact PII), create GET /demo/layla-suggest?message_id=xxx, and deliver persona header & prompt template. Run a 30–50 human blind A/B test; acceptance: retrieval preferred ≥60%.
+
+Phase 2 (3–14 days) — prepare training set, train LoRA/adapter layla-v1, build style-score classifier, and deploy with autopublish gate (style_score >= threshold). Acceptance: human preference >75% on validation set and safe autopublish gating.
+
+Immediate 6-hour plan (do this now): hotfix/protect-accounts branch + unit tests, feature flag, seed/pgvector scaffold, demo endpoint skeleton, and human evaluation harness.
+
+If you want I’ll write the exact migration + middleware diffs, persona header template, and the retrieval prompt template now. Confirm and I’ll produce them.

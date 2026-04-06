@@ -196,14 +196,36 @@ export async function handleCommentEvent(event: CommentWebhookEvent): Promise<vo
     let sentiment: string;
 
     if (isLayla) {
-      const laylaResult = await generateLaylaCommentReply({
-        platform,
-        commentText,
-        commenterName,
-        postCaption,
-      });
-      replyText = laylaResult.reply;
-      sentiment = laylaResult.sentiment;
+      let ragUsed = false;
+      try {
+        const { generateRagCommentReply } = await import("../styleTraining/commentRag");
+        const ragResult = await generateRagCommentReply(subAccountId, {
+          commentText,
+          commenterName,
+          platform,
+          postCaption,
+        });
+
+        if (ragResult.ragUsed && ragResult.reply) {
+          replyText = ragResult.reply;
+          sentiment = ragResult.sentiment;
+          ragUsed = true;
+          console.log(`[COMMENT-BOT] RAG reply generated (${ragResult.examplesCount} examples used, account ${subAccountId})`);
+        }
+      } catch (ragErr: any) {
+        console.warn(`[COMMENT-BOT] RAG fallback to static prompt: ${ragErr.message}`);
+      }
+
+      if (!ragUsed) {
+        const laylaResult = await generateLaylaCommentReply({
+          platform,
+          commentText,
+          commenterName,
+          postCaption,
+        });
+        replyText = laylaResult.reply;
+        sentiment = laylaResult.sentiment;
+      }
 
       if (sentiment === "spam" || !replyText) {
         console.log(`[COMMENT-BOT] Layla AI classified comment ${commentId} as spam — skipping`);

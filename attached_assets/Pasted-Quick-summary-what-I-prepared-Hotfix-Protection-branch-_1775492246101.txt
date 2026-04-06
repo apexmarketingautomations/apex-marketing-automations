@@ -1,0 +1,507 @@
+Quick summary (what I prepared)
+Hotfix & Protection (branch hotfix/protect-accounts) — DB migration, middleware, unit test, UI banner, agent policy.
+Scaffold & Feature Flag (branch feature/meta-messaging-2027-scaffold) — feature flag, route skeletons, seed scripts, docs.
+Phase 1 (branch feature/layla-rag) — pgvector migration, scripts/seed_layla_embeddings.sh, persona persona/layla.md, retrieval endpoint GET /demo/layla-suggest, human eval harness.
+Phase 2 (branch feature/layla-lora) — dataset extraction script, LoRA training scripts (train_lora.py), style-score training (style_score_train.py), generation+scoring flow, retraining pipeline.
+CI & Tests — unit/integration stubs, E2E plan, k6 load scripts.
+Agent policy updates — abort on protected IDs & auto-create security/P0 ticket.
+Runbook, rollout/rollback, and resource/cost notes.
+
+Below are the exact files / scripts / code and the exact commands to run everything. Copy-paste them into the repo or tell me “POST PRs” and I’ll publish them.
+
+A — HOTFIX: Protect accounts (branch hotfix/protect-accounts)
+1) DB migration (SQL)
+
+File: migrations/2025xx_add_is_protected_to_sub_accounts.sql
+
+-- UP
+ALTER TABLE sub_accounts
+  ADD COLUMN IF NOT EXISTS is_protected boolean DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS protected_reason text;
+
+-- mark the protected accounts
+UPDATE sub_accounts
+  SET is_protected = true, protected_reason = 'Owner-protected: DO NOT TOUCH'
+  WHERE id IN (22, 13);
+
+-- DOWN
+-- (reverse)
+-- Note: data preservation is intentional; down will remove the columns
+2) Middleware (Node/Express)
+
+File: server/middleware/ensureNotProtectedAccount.js
+
+// server/middleware/ensureNotProtectedAccount.js
+const db = require('../db'); // your knex/pg pool
+const { parseIntParam } = require('../routes/helpers');
+
+function isMutating(req) {
+  const mutatingMethods = ['POST','PUT','PATCH','DELETE'];
+  if (mutatingMethods.includes(req.method)) return true;
+  // Optional: detect GETs with side-effects by route name header or param
+  return false;
+}
+
+module.exports = async function ensureNotProtectedAccount(req, res, next) {
+  try {
+    // find candidate id in params or body
+    const candidate = req.params.subAccountId || req.body.subAccountId || req.query.subAccountId;
+    if (!candidate) return next(); // not sub-account scoped
+    const subAccountId = parseInt(candidate, 10);
+    if (Number.isNaN(subAccountId)) return res.status(400).json({ error: 'bad_subAccountId' });
+
+    const row = await db('sub_accounts').where({ id: subAccountId }).first('id','is_protected');
+    if (!row) return res.status(404).json({ error: 'sub_account_not_found' });
+
+    if (row.is_protected && isMutating(req)) {
+      const traceId = req.traceId || null;
+      const userId = req.user?.id || null;
+      const ticketId = `P0-${Date.now()}-${Math.floor(Math.random() * 9000) + 1000}`;
+
+      await db('system_logs').insert({
+        level: 'security',
+        traceId,
+        userId,
+        subAccountId,
+        action: `${req.method} ${req.originalUrl}`,
+        meta: JSON.stringify({ msg: 'Blocked write to protected account', ticketId }),
+        created_at: new Date()
+      });
+
+      // also create a security ticket record if you have a tickets table; else the ticketId is enough
+      return res.status(403).json({ error_code: 'sub_account_protected', ticketId });
+    }
+
+    // On reads, log an info entry (optional)
+    if (row.is_protected && !isMutating(req)) {
+      await db('system_logs').insert({
+        level: 'info',
+        traceId: req.traceId || null,
+        userId: req.user?.id || null,
+        subAccountId,
+        action: `READ ${req.originalUrl}`,
+        meta: JSON.stringify({ msg: 'Read access to protected account' }),
+        created_at: new Date()
+      });
+    }
+
+    next();
+  } catch (err) {
+    next(err);
+  }
+};
+3) Unit test stub (jest)
+
+File: server/middleware/__tests__/ensureNotProtectedAccount.test.js
+
+const request = require('supertest');
+const express = require('express');
+const ensureNotProtectedAccount = require('../ensureNotProtectedAccount');
+const db = require('../../db');
+
+// Minimal express app
+const app = express();
+app.use(express.json());
+app.post('/mutate/:subAccountId', ensureNotProtectedAccount, (req, res)=>res.json({ok:true}));
+app.get('/read/:subAccountId', ensureNotProtectedAccount, (req,res)=>res.json({ok:true}));
+
+test('blocks writes to protected account', async () => {
+  // seed protected sub_account id 999 for test
+  await db('sub_accounts').insert({ id: 999, is_protected: true }).catch(()=>{});
+  const r = await request(app).post('/mutate/999').send({});
+  expect(r.status).toBe(403);
+  expect(r.body.error_code).toBe('sub_account_protected');
+});
+
+test('allows reads but logs info', async () => {
+  await db('sub_accounts').insert({ id: 998, is_protected: true }).catch(()=>{});
+  const r = await request(app).get('/read/998');
+  expect(r.status).toBe(200);
+});
+4) UI Banner (React)
+
+File: client/src/components/ProtectedAccountBanner.tsx
+
+export default function ProtectedAccountBanner({isProtected}:{isProtected:boolean}) {
+  if (!isProtected) return null;
+  return (
+    <div className="protected-banner" role="alert" style={{background:'#330000',color:'#fff',padding:'12px',borderRadius:6}}>
+      <strong>PROTECTED ACCOUNT — DO NOT TOUCH</strong>
+      <div style={{opacity:.85,fontSize:13}}>This account is locked. Any write attempts will be blocked and audited.</div>
+    </div>
+  );
+}
+
+Place this component at the top of meta-messaging pages and ensure mutating buttons are disabled when isProtected.
+
+5) Agent policy stub
+
+Add into Agent runner config (pseudocode):
+
+"protected_accounts": [22,13],
+"on_task_plan": {
+  "if_plan_targets_protected": {
+    "action": "abort",
+    "create_ticket": true,
+    "ticket_type": "security/P0",
+    "notify": ["product_owner", "pager"]
+  }
+}
+B — FEATURE FLAG & SKELETONS (branch feature/meta-messaging-2027-scaffold)
+1) Feature flag insert (SQL)
+INSERT INTO feature_flags(feature_key, enabled, created_at)
+VALUES ('meta_messaging_2027', false, now())
+ON CONFLICT (feature_key) DO UPDATE SET enabled = false;
+2) Route skeleton (Express)
+
+File: server/routes/metaMessagingProduct.ts
+
+const express = require('express');
+const router = express.Router();
+const requireAuth = require('../middleware/requireAuth');
+const ensureSubAccountOwner = require('../middleware/ensureSubAccountOwner');
+const ensureNotProtectedAccount = require('../middleware/ensureNotProtectedAccount');
+
+// helper: feature flag check middleware
+const featureFlagGate = (req,res,next) => {
+  // load flag from db or config cache
+  const enabled = req.app.locals.featureFlags?.meta_messaging_2027;
+  if (!enabled) return res.status(404).json({ error: 'feature_off' });
+  next();
+};
+
+router.use(featureFlagGate, requireAuth);
+
+router.post('/create-subaccount', ensureNotProtectedAccount, async (req,res) => {
+  // placeholder: create demo sub-account (product layer)
+  res.json({ ok: true, stub: 'create-subaccount' });
+});
+
+router.post('/meta/oauth/start', (req,res)=>res.json({ ok:true, url: 'https://meta.oauth/...' }));
+router.post('/meta/oauth/callback', (req,res)=>res.json({ ok:true, stub:'oauth callback' }));
+
+router.post('/test-webhook', ensureSubAccountOwner, ensureNotProtectedAccount, async (req,res)=>res.json({ ok:true }));
+router.get('/inbox/:subAccountId', ensureSubAccountOwner, ensureNotProtectedAccount, async (req,res)=>res.json({ ok:true, messages: [] }));
+router.post('/approve-send/:subAccountId', ensureSubAccountOwner, ensureNotProtectedAccount, async (req,res)=>res.json({ ok:true }));
+router.post('/seed-demo/:subAccountId', ensureSubAccountOwner, ensureNotProtectedAccount, async (req,res)=>res.json({ ok:true }));
+
+router.get('/safety-queue/:subAccountId', ensureSubAccountOwner, ensureNotProtectedAccount, async (req,res)=>res.json({ ok:true }));
+router.get('/analytics/:subAccountId', ensureSubAccountOwner, ensureNotProtectedAccount, async (req,res)=>res.json({ ok:true }));
+
+module.exports = router;
+
+Register it in server/routes.ts behind the meta_messaging_2027 flag.
+
+3) scripts/seed-demo.sh (safe)
+
+File: scripts/seed-demo.sh
+
+#!/usr/bin/env bash
+set -e
+echo "Creating demo sub_account..."
+node ./scripts/create_demo_subaccount.js
+echo "Seeding demo messages (demo-only)..."
+node ./scripts/seed_demo_messages.js
+echo "Done. (did not touch protected accounts)"
+
+create_demo_subaccount.js must generate new sub_account and ensure is_protected=false.
+
+C — PHASE 1: RAG + Persona (branch feature/layla-rag)
+1) Migration for pgvector
+
+If PostgreSQL with pgvector is available:
+
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE IF NOT EXISTS layla_embeddings (
+  id bigserial PRIMARY KEY,
+  message_id bigint NOT NULL,
+  sub_account_id int NOT NULL,
+  embedding vector(1536), -- match embedding dim of model
+  meta jsonb,
+  created_at timestamp default now()
+);
+
+CREATE INDEX ON layla_embeddings USING ivfflat (embedding vector_l2_ops) WITH (lists = 100);
+
+(Adjust dimension to chosen embedding model — text-embedding-3-small uses 1536.)
+
+2) scripts/seed_layla_embeddings.sh (Node)
+
+File: scripts/seed_layla_embeddings.sh
+
+#!/usr/bin/env bash
+# usage: ./scripts/seed_layla_embeddings.sh SUB_ACCOUNT_ID
+set -e
+SUB_ACCOUNT_ID=${1:-22}
+node -e "
+const { Pool } = require('pg');
+const OpenAI = require('openai');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+(async()=>{
+  const res = await pool.query(\`
+    SELECT m1.id as message_id, m1.body as inbound, m2.body as reply
+    FROM messages m1
+    JOIN messages m2 ON m1.thread_id = m2.thread_id AND m2.direction='outbound' AND m2.created_at > m1.created_at
+    WHERE m1.sub_account_id = $1 AND m1.direction='inbound' AND LENGTH(m1.body) > 2
+  \`, [${SUB_ACCOUNT_ID}]);
+  for (const row of res.rows) {
+    // simple PII redaction - implement a better one in production
+    const inbound = row.inbound.replace(/\\b\\d{10,}\\b/g,'[REDACTED]');
+    const text = inbound + '\\nReply:\\n' + row.reply;
+    const emb = await client.embeddings.create({ model: 'text-embedding-3-small', input: text });
+    const vector = emb.data[0].embedding;
+    await pool.query('INSERT INTO layla_embeddings (message_id, sub_account_id, embedding, meta) VALUES ($1,$2,$3,$4)', [row.message_id, ${SUB_ACCOUNT_ID}, vector, JSON.stringify({source:'seed'})]);
+    console.log('seeded', row.message_id);
+  }
+  await pool.end();
+})();
+"
+
+Env required: DATABASE_URL, OPENAI_API_KEY.
+
+3) Persona doc
+
+File: persona/layla.md (canonical)
+
+LAYLA PERSONA SPEC — (short form)
+1) Tone / Starters:
+  - Often starts with: "Real talk," "Ok so," "Look" — use ~20–30% of replies.
+  - Short sentences, conversational; contractions allowed (I'm, gonna).
+2) Voice:
+  - Confident, a little street-wise, empathetic. Avoid clinical/robotic phrasing.
+  - Uses light sardonic humor sparingly.
+3) Length:
+  - Keep replies ~8–25 words for DMs; up to 40 for complex replies.
+4) Forbidden:
+  - Never include legal/advice terms like "liability", "waiver", "attorney".
+  - Never use emojis in professional replies except when the user used them.
+5) Signature:
+  - No formal sign-off; optional single word "— Layla" only for long replies.
+6) Examples:
+  - [Include 10 curated historical examples of inbound + Layla reply]
+4) Prompt template
+
+File: persona/layla_prompt_template.txt
+
+You are Layla, a confident, empathetic, short-response social media rep. Follow these rules:
+- Start with one of: "Real talk,", "Ok so,", "Look" about 20% of time.
+- Use contractions, short sentences, occasional humor.
+- Avoid legal words, do not invent phone numbers or links.
+- Keep reply < 35 words unless long explanation is required.
+
+EXAMPLES (retrieved)
+{retrieved_examples}
+
+CONTEXT:
+{conversation_context}
+
+TASK:
+Write a single reply in Layla's voice to the last message above. If private information (PII) is present, redact it or ask a clarifying question. Output only the reply text, no explanation.
+
+SAFETY CHECKS:
+- If message contains an urgent safety issue (harm, self-harm, threats) respond: "This looks serious — I'd escalate this right away." (Human review)
+5) Retrieval endpoint (Express)
+
+File: server/routes/laylaSuggest.js
+
+const express = require('express');
+const router = express.Router();
+const { Pool } = require('pg');
+const OpenAI = require('openai');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// feature-flag gated; demo only
+router.get('/demo/layla-suggest', async (req,res,next) => {
+  try {
+    const { message_id } = req.query;
+    // 1) fetch context
+    const ctxReq = await pool.query('SELECT thread_id, body FROM messages WHERE id=$1', [message_id]);
+    if (!ctxReq.rows[0]) return res.status(404).json({error:'message_not_found'});
+    const thread_id = ctxReq.rows[0].thread_id;
+    // 2) get inbound context
+    const messages = await pool.query('SELECT id, body, direction FROM messages WHERE thread_id=$1 ORDER BY created_at ASC', [thread_id]);
+    const conversation = messages.rows.map(r => `${r.direction.toUpperCase()}: ${r.body}`).join('\n');
+
+    // 3) embed the context and run pgvector similarity
+    const emb = await client.embeddings.create({ model: 'text-embedding-3-small', input: ctxReq.rows[0].body });
+    const vec = emb.data[0].embedding;
+    const k = 6;
+    const pgRes = await pool.query(`SELECT message_id, meta FROM layla_embeddings ORDER BY embedding <#> $1 LIMIT $2`, [vec, k]);
+
+    // 4) fetch the actual examples
+    const ids = pgRes.rows.map(r => r.message_id);
+    const examples = ids.length ? await pool.query('SELECT m1.body as inbound, m2.body as reply FROM messages m1 JOIN messages m2 ON m1.thread_id=m2.thread_id AND m2.direction=$2 WHERE m1.id = ANY($1::int[]) LIMIT 6', [ids, 'inbound']) : {rows:[]};
+
+    const retrieved_examples = examples.rows.map(r => `IN: ${r.inbound}\nOUT: ${r.reply}`).join('\n\n');
+
+    // 5) assemble prompt and call OpenAI
+    const prompt = require('fs').readFileSync('./persona/layla_prompt_template.txt','utf8')
+      .replace('{retrieved_examples}', retrieved_examples)
+      .replace('{conversation_context}', conversation);
+
+    const completion = await client.chat.completions.create({
+      model: 'gpt-4o-mini', // choose availability
+      messages: [{role:'system', content: prompt}],
+      max_tokens: 120
+    });
+    const replyText = completion.choices[0].message.content.trim();
+    // 6) return
+    res.json({ reply: replyText, examples: retrieved_examples });
+  } catch (err) { next(err); }
+});
+
+module.exports = router;
+
+Note: Replace <#> operator with your DB-specific vector similarity operator (pgvector uses <-> or <#> depending on version).
+
+D — PHASE 2: LO-RA TRAINING + STYLE-SCORE (branch feature/layla-lora)
+1) Extract dataset script
+
+File: scripts/extract_layla_pairs.py
+
+#!/usr/bin/env python3
+# Fetch inbound->Layla_reply pairs, redact, write JSONL for training
+import os, json, psycopg2, re
+conn = psycopg2.connect(os.environ['DATABASE_URL'])
+cur = conn.cursor()
+cur.execute("""
+  SELECT m1.id,m1.body as inbound, m2.body as reply
+  FROM messages m1
+  JOIN messages m2 ON m1.thread_id=m2.thread_id
+  WHERE m1.sub_account_id=22 AND m1.direction='inbound' AND m2.direction='outbound' AND m2.sub_account_id=22
+""")
+rows = cur.fetchall()
+def redact(s):
+    s = re.sub(r'\b\\d{10,}\\b','[REDACTED]',s)
+    s = re.sub(r'https?://\\S+','[LINK]',s)
+    return s
+out = []
+for id,inbound,reply in rows:
+  inbound_r = redact(inbound)
+  reply_r = redact(reply)
+  out.append({"prompt": inbound_r, "completion": reply_r})
+with open('layla_train.jsonl','w') as f:
+  for o in out: f.write(json.dumps(o)+'\\n')
+print('Wrote', len(out))
+2) LoRA training command (Hugging Face + PEFT)
+
+File: train_lora.py (simplified — uses trl/transformers + peft)
+
+# This is an example. In practice use the Hugging Face examples with accelerate + peft.
+# See README below for exact commands.
+
+from datasets import load_dataset
+from peft import LoraConfig, get_peft_model
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, Trainer
+
+model_name = "meta-llama/Llama-2-13b-chat-hf"  # choose appropriately
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForCausalLM.from_pretrained(model_name, load_in_8bit=True, device_map='auto')
+
+# load dataset
+ds = load_dataset('json', data_files='layla_train.jsonl', split='train')
+
+# tokenization, etc.
+def preprocess(example):
+    prompt = "### Instruction:\\n" + example['prompt'] + "\\n### Response:\\n"
+    input_ids = tokenizer(prompt + example['completion'], truncation=True, max_length=512)
+    return input_ids
+
+ds = ds.map(preprocess)
+
+# peft config
+lora_config = LoraConfig(r=8, lora_alpha=32, target_modules=["q_proj","v_proj"], lora_dropout=0.05, bias="none")
+model = get_peft_model(model, lora_config)
+
+training_args = TrainingArguments(
+    output_dir="lora-layla-v1",
+    per_device_train_batch_size=4,
+    num_train_epochs=3,
+    learning_rate=2e-4,
+    fp16=True,
+    logging_steps=50
+)
+
+trainer = Trainer(model=model, args=training_args, train_dataset=ds)
+trainer.train()
+model.save_pretrained("lora-layla-v1")
+
+RUN (example):
+
+export DATABASE_URL=...
+export HUGGINGFACE_TOKEN=...
+# Setup accelerate config: run `accelerate config` interactively or provide start config
+python3 scripts/extract_layla_pairs.py
+python3 train_lora.py
+
+Notes: LoRA training requires GPUs. If you prefer to fine-tune with OpenAI fine-tunes, I can provide that flow instead.
+
+3) Style-score classifier (Python/sklearn)
+
+File: scripts/style_score_train.py
+
+# Train a binary classifier on embeddings: Layla vs non-Layla
+from sentence_transformers import SentenceTransformer
+import numpy as np
+from sklearn.linear_model import LogisticRegression
+import joblib, json
+model = SentenceTransformer('all-mpnet-base-v2')
+# Prepare labeled data: positive = layla replies; negative = non-layla
+with open('layla_train.jsonl') as f:
+  layla = [json.loads(l)['completion'] for l in f]
+neg = []
+# create negatives from other agents / bot replies
+# ...
+X_pos = model.encode(layla, show_progress_bar=True)
+X_neg = model.encode(neg, show_progress_bar=True)
+X = np.vstack([X_pos, X_neg])
+y = np.array([1]*len(X_pos) + [0]*len(X_neg))
+clf = LogisticRegression(max_iter=1000).fit(X, y)
+joblib.dump((model,clf), 'style_score.pkl')
+
+Runtime: load style_score.pkl, encode candidate reply, score probability. Set threshold (e.g., 0.75).
+
+4) Generation + scoring flow (pseudocode)
+Generate candidate(s) with adapter layla-v1 or base+RAG.
+Compute style_score via style_score.pkl.
+If style_score >= threshold and account opt-in → autopublish (with rate limit).
+Else → present to operator.
+E — EVALUATION & HUMAN A/B HARNESS
+Provide a simple Google Sheet template with columns: CaseID | Context | Candidate A | Candidate B | Rater| Preferred(A/B/None). Or use the human-eval UI (I can supply a small React app).
+Run at least 30 blind judgements (recommended 50) for early signals.
+Accept if retrieval ≥ 60% preference; accept adapter if validation preference ≥ 75%.
+F — CI, E2E, Load
+CI: Add GH Actions or Replit CI to run unit tests, run integration tests (against a test DB), and run E2E (Playwright) for critical flows.
+E2E plan: onboarding → oauth (simulate) → seed-demo → suggest → approve/send (mock webhook) → audit log check.
+k6: provide scripts for inbox reads and retry storm. (I’ll attach them on PR.)
+G — Runbook & Rollback
+Rollback on DB migration: run down script. Whenever running migration, snapshot DB.
+Disable product: set meta_messaging_2027=false.
+To stop model autopublish: set per-account feature flag or global off.
+Critical incident: turn feature flag off, disable Agent runner queue, open security/P0 ticket.
+H — Resource & timeline (GO FULL)
+
+Timeline (aggressive):
+
+0-6 hrs: Hotfix protect accounts, feature flag, route skeletons, seed scripts, UI banner PRs.
+24–48 hrs: Phase 1 — pgvector + seed embeddings, retrieval endpoint + persona doc, demo and human eval harness.
+3–14 days: Phase 2 — dataset cleaning, LoRA training, style-scoring, deploy, autopublish gating, retrain pipeline, E2E & load tests, docs & demo video.
+
+Resources / Cost (estimate):
+
+pgvector: small cost (DB).
+Embedding calls: OpenAI text-embedding-3-small — depends on row count (722 ≈ negligible cost).
+LoRA training: requires at least one 24–48 GB GPU (A100/3090 equivalent) for reasonable speed. Estimate: 4–24 hours on 1xA100 depending on model size. Budget — $100–$200 (very rough).
+Style-score: CPU-only training is fine.
+I — Next step (two options)
+I. POST PRs now — I will create the branches and PRs and attach all files above, with PR descriptions, tests, and checklists. (Say POST PRs.)
+II. Deliver artifacts only — I’ve supplied everything above. You or your engineer can paste these files into the repo. If you want me to make edits or tailor commands to a specific model/provider, tell me.
+Final — immediate action I’ll take if you say POST PRs
+Create hotfix/protect-accounts PR with migration + middleware + tests + UI banner + agent policy doc.
+Create feature/meta-messaging-2027-scaffold PR with feature flag + skeletons + seed scripts + docs.
+Create feature/layla-rag PR with pgvector migration, seed script, persona doc, retrieval endpoint, and human evaluation harness.
+Create feature/layla-lora PR with dataset script, training notebooks, style-score scripts, and generation flow.
+Attach acceptance checklists and CI job stubs for each PR.

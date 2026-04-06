@@ -2196,7 +2196,7 @@ export function registerWebhooksRoutes(app: Express) {
             const commentId = value.comment_id || value.id;
             const commentText = value.message || value.text || "";
             const commenterId = value.from?.id || value.sender_id || "";
-            const commenterName = value.from?.name || null;
+            let commenterName: string | null = value.from?.name || null;
             const postId = value.post_id || value.media_id || value.media?.id || "";
             const parentId = value.parent_id || null;
 
@@ -2211,6 +2211,26 @@ export function registerWebhooksRoutes(app: Express) {
             } catch {
               console.warn(`[COMMENT-BOT] Could not resolve sub-account for page ${entryPageId}`);
               continue;
+            }
+
+            if (!commenterName && commentId && commentSubAccountId) {
+              try {
+                const { getMetaConfig } = await import("../metaConfig");
+                const metaCfg = await getMetaConfig(commentSubAccountId);
+                if (metaCfg?.accessToken) {
+                  const graphUrl = `https://graph.facebook.com/v21.0/${commentId}?fields=from{id,name}&access_token=${metaCfg.accessToken}`;
+                  const graphResp = await fetch(graphUrl);
+                  if (graphResp.ok) {
+                    const graphData = await graphResp.json() as any;
+                    if (graphData?.from?.name) {
+                      commenterName = graphData.from.name;
+                      console.log(`[COMMENT-BOT] Resolved commenter name via Graph API: ${commenterName}`);
+                    }
+                  }
+                }
+              } catch (graphErr: any) {
+                console.warn(`[COMMENT-BOT] Graph API name lookup failed for comment ${commentId}: ${graphErr.message}`);
+              }
             }
 
             if (!commentSubAccountId) continue;

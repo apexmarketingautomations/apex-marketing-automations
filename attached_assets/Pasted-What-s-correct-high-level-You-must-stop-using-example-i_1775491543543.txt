@@ -1,0 +1,56 @@
+What’s correct (high level)
+You must stop using “example-in-prompt” as the only strategy. The agent correctly replaced that with a plan that actually learns Layla’s voice.
+Retrieval-augmented generation (RAG) + persona header is the right fast win: low risk, immediate quality gains.
+Supervised fine-tune / adapter (LoRA) is the right mid-term move to bias a model toward Layla’s patterns.
+Style-score classifier and generating multiple candidates + scoring is the right way to pick the best “Layla-like” output.
+Human-in-the-loop + continuous training (approved replies as training data) is mandatory and was included.
+Safety/privacy + audit are correctly called out (PII redaction, system_logs, traceId, manual-approve default).
+What’s missing / risky (must be added)
+Exact data sources & QA for training
+How many high-quality (Layla-authored) reply pairs exist, how to label them, and a redaction policy. (If you train on noisy or incorrectly-labeled data you’ll get garbage.)
+Evaluation plan & metrics
+Define numeric thresholds (e.g., “Layla-like” human preference ≥ 60% vs baseline, style_score ≥ X) and acceptance gates for autopublish.
+Rollout & gating safety
+Explicit fallback: if style_score < threshold, never autopublish. Rate-limiting + throttles for outbound messages.
+Operational controls
+Idempotency, rate limits, log retention, PII redaction, model-version rollout strategy, and an undo/rollback path.
+Resource & infra requirements
+Where to host vector DB, fine-tune infrastructure (LoRA), scheduler for re-training, cost estimate, and latency budget for real-time replies.
+Legal & compliance
+Consent rules, storage of PII in training corpus, GDPR/CCPA implications.
+Immediate, surgical next steps (do these now — can be completed in hours → 48 hrs)
+1) Fix the name/display issue (hotfix — low risk)
+Goal: UI shows human names instead of phone IDs.
+Run a quick backfill & front-end fix:
+
+Backfill:
+
+-- example (adapt columns to your schema)
+UPDATE messages m
+SET sender_name = COALESCE(m.sender_name, sc.display_name)
+FROM social_accounts sc
+WHERE m.page_id = sc.page_id
+  AND m.sender_name IS NULL;
+Frontend: prefer sender_name || contact.display_name || sender_id when rendering rows.
+Test: pick 10 recent rows → validate screenshot shows names.
+Why first: It’s trivial, immediate UX improvement and removes confusion.
+2) Short-term win — Retrieval + Persona header (24–48 hrs)
+Build a small pipeline:
+Export Layla’s approved replies + contexts → redact PII → create embeddings (OpenAI/Any) → store in pgvector/Pinecone.
+Runtime: retrieve top-6 examples, assemble prompt: [Persona header] + [retrieved examples] + [context] + "Generate 1 reply in Layla's voice. Keep under 30 words."
+Deliverable: GET /demo/layla-suggest?message_id=xxx that returns a candidate reply.
+Test: human-rated A/B (baseline vs retrieval). Expect 60%+ preference.
+3) Persona spec + prompt template (same day)
+Draft Layla persona spec: 6–8 strict rules + 10 examples + forbidden phrases + signature style. This becomes the persona header for all prompts.
+Deliverable: Persona document + prompt template to prepend to all generations.
+4) Begin supervised adapter training (LoRA) + style-score (3–14 days)
+Create training set (context → Layla reply) from approved replies (2k+ pairs preferred). Redact PII, hold out validation set.
+Train small adapter (LoRA) on base model; expose as layla-v1.
+Build a small classifier that scores “Layla-ness” using embeddings + small head or human-labeled dataset.
+Acceptance: human evaluation: fine-tuned model preferred >75% on validation.
+Quick acceptance checks/tests you should require
+Name fix: screenshot with names shown for 10 messages.
+Retrieval demo: 30 human judgments; retrieval wins ≥60%.
+Persona spec: review + 10 sample replies matching spec.
+Adapter test: validation preference >75% and style_score uplift.
+Audit & safety: every Approve/Send logged with traceId & modelVersion; no PII stored unredacted in training store.

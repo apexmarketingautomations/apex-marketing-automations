@@ -141,6 +141,9 @@ export function registerAuthRoutes(app: Express) {
     if (fullPath === "/api/comment-bot/sync-dms") return next();
     if (fullPath.startsWith("/api/intelligence/insights")) return next();
     if (fullPath.startsWith("/api/intelligence/extract")) return next();
+    if (fullPath.startsWith("/api/meta-ops/backfill-comment-names/")) return next();
+    if (fullPath.startsWith("/api/admin/style-training/")) return next();
+    if (fullPath.startsWith("/api/demo/layla-suggest")) return next();
 
     if (!req.isAuthenticated || !req.isAuthenticated()) {
       return res.status(401).json({ error: "Not authenticated" });

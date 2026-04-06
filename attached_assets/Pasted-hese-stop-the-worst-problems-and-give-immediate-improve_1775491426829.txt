@@ -1,0 +1,83 @@
+hese stop the worst problems and give immediate improvements.
+
+Fix the name/display problem in Meta Ops
+Verify what the UI reads: messages table should include sender_name or a social_accounts join. If the UI is showing phone numbers instead of names, it’s likely reading sender_id.
+Quick debug steps:
+SQL: SELECT id, sender_id, sender_name, created_at FROM messages WHERE sub_account_id = <X> ORDER BY created_at DESC LIMIT 10;
+SQL: SELECT * FROM social_accounts WHERE provider='facebook' AND page_id = '<pageId>'; — confirm display_name.
+Frontend: check client/src/pages/meta-messaging.tsx (or meta-ops) row renderer — ensure it prefers sender_name || contact.display_name || sender_id.
+Hotfix: change display logic to Prefer sender_name then contact.name then sender_id. Also add a small “sync names” script that backfills sender_name from integration_events or social_accounts.
+Acceptance: UI shows human names on rows for 10 recent messages (screenshot).
+Retrieval-Augmented Few-Shot (low risk, big win)
+Build an embedding index of Layla’s past messages and replies (use existing messages and any approved responses). Use an embeddings service + vector DB (Pinecone/Weaviate/pgvector).
+At generation time: find top 6–8 most similar past (context→Layla_reply) pairs, inject them into the prompt template (careful to redact PII), then generate.
+This drastically improves style without retraining. Keep manual-approve ON.
+Acceptance: A/B test generation with and without retrieval; human raters prefer retrieval outputs 60%+ of the time for “sounds like Layla”.
+Persona Template in Prompt (cheap, immediate)
+Create a strict Layla persona doc (5–8 bullet rules + example signature lines + forbidden phrases). Always prepend to the prompt.
+Example bullets: “starts with ‘Real talk,’ or ‘Ok so’ 20% of the time; uses contractions; never uses @@legal terms@@; short sentences; no emojis unless text contains emoji.”
+This reduces “bot-speak” immediately.
+Mid-term (3–14 days)
+
+These give durable improvements and create a trainable persona.
+
+Supervised Fine-Tune / Adapter
+Prepare dataset: (context window → Layla reply) pairs extracted from historical conversations where Layla wrote the reply. Clean/redact PII. Aim for a few thousand high-quality pairs.
+Options:
+Adapter / LoRA on a capable model (cheaper) or fine-tune an instruction-tuned base model (OpenAI fine-tuning or local Llama-family with LoRA).
+Keep a small validation set for style/fluency.
+Train to reproduce Layla’s style; include a “safety classifier” as a loss penalty to avoid risky outputs.
+Serve via feature-flag: persona_model=layla-v1 for that sub_account.
+Style-Score Classifier
+Train a lightweight classifier that scores outputs for “Layla-ness” (0–1). Use embeddings and an SVM/ML head or a small transformer.
+At runtime, generate candidate replies (or use beam/temperature sampling), score them, and present the top-scoring candidate. If below threshold, fall back to human-only.
+Acceptance: classifier precision/recall thresholds defined and validated with human raters.
+Human-in-the-loop & Continuous Learning
+Every approved reply (Approve/Send) gets stored as labeled training data. Once N approved items are collected, schedule a re-training/adapter update (weekly or biweekly).
+Keep an audit log linking approved replies → training dataset entry.
+Long-term (1–3 months)
+
+Advanced, but optional unless you need top-tier fidelity.
+
+RLHF-style Tuning
+If you have the resources and strict acceptance tests, run a preference model and reinforcement step to push the model towards Layla’s nuanced choices. This is expensive but produces the best alignment.
+Deployment & Monitoring
+Add metrics: auto_accept_rate, human_override_rate, safety_flags_rate, style_score_avg.
+A/B test the live experience with real users (with safe, manual-approve gating) before turning on autopublish.
+How to implement the end-to-end serving pipeline (developer steps)
+Data pipeline
+ETL from messages, messages_replies, system_logs into a training store. Redact PII. Label role=layla replies.
+Embedding index
+Create embeddings per conversation chunk. Maintain freshness. Use top-k retrieval in 200–400 token budget.
+Prompt assembler
+Template = Persona header + context + retrieved examples + current message + instruction + safety checks.
+Generate → score → present
+Generate N candidates, score for style & safety, pick top candidate for human review or auto-send if above threshold and allowed by config.
+Approved → audit & queue for training
+Persist approved reply to training corpus with metadata. Batch retrain adapter.
+Safety & privacy
+Always redact or mask PII in training data stored outside secure DB.
+Audit logs must include traceId, userId, subAccountId, modelVersion, and approved_by.
+Default to manual-approve for most accounts; autopublish only after acceptance goals reached and with owner opt-in.
+Fixing the “agent sounds bot-like” problem technically
+Cause: generic LLM behavior + lack of historical context.
+Fix: combine retrieval of Layla’s real replies + persona header + optionally a small adapter fine-tuned on her replies. Also add a style-scoring classifier.
+Why it works: retrieval supplies exact phrasing patterns; fine-tune gives global stylistic bias; classifier picks the most Layla-like candidate.
+Immediate dev checklist (copy/paste)
+Backfill sender_name for recent messages and change front-end to prefer display name; screenshot.
+Build embedding index from Layla’s approved replies. Push a retrieval demo endpoint GET /demo/layla-suggest?message_id=xxx.
+Implement persona header + retrieval few-shot generator (temporary, manual-approve). Demo within 24–48 hours.
+Create labeling pipeline: store approved replies to S3/secure DB for later fine-tuning.
+Train a small adapter/LoRA on the collected pairs (2–7 days).
+Build style-score classifier and integrate.
+Set up monitoring and A/B testing.
+Acceptance criteria (what “done” looks like)
+Name problem fixed: UI shows human names for sample messages (screenshot).
+Retrieval demo: Retrieval+prompt produces replies judged by humans as “Layla-like” >60% of the time vs baseline.
+Fine-tune: Adapter model yields higher Layla-style score and human preference >75% on validation set.
+Production safety: Manual-approve workflow logs approvals, no PII leakage in training store.
+Metrics: style_score, user_accept_rate, safety_flags captured and within thresholds.
+Quick test scenarios (what QA should do)
+Give the same context to (A) baseline prompt-only generator, (B) retrieval few-shot, (C) fine-tuned model — have human graders pick which sounds most like Layla.
+Try edge cases (sarcasm, profanity, references) and ensure safety filters and style hold.
+Simulate a name-missing case and confirm UI now resolves and displays names.
