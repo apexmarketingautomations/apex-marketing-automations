@@ -506,7 +506,7 @@ export class DatabaseStorage implements IStorage {
             SELECT first_name, last_name
             FROM contacts
             WHERE sub_account_id = ${subAccountId}
-              AND phone = t."contactPhone"
+              AND (phone = t."contactPhone" OR phone = '+' || t."contactPhone" OR phone = LTRIM(t."contactPhone", '+'))
             ORDER BY id DESC
             LIMIT 1
           ) dc ON true

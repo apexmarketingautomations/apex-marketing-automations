@@ -39,7 +39,7 @@ Preferred communication style: Simple, everyday language.
 - **Platform Infrastructure**: Includes rate limiting, centralized system logging, feature flags, server-side enforcement of plan limits, automation safety mechanisms, startup health checks, and Stripe webhook-managed subscription lifecycle.
 - **System Pulse**: Service health monitoring with core vs. optional service categorization.
 - **Process Safety**: Global error handlers for `unhandledRejection` and `uncaughtException`.
-- **Messaging Infrastructure**: SMS Opt-Out Guard with phone normalization. Unified Inbox with SSE real-time updates across all channels.
+- **Messaging Infrastructure**: SMS Opt-Out Guard with phone normalization. Unified Inbox with SSE real-time updates across all channels. Contact name resolution in conversation threads uses flexible phone matching (with/without `+` prefix) to handle PSID format differences between messages and contacts tables.
 - **Telegram Integration**: Bot API webhook at `/api/webhooks/telegram` with per-account `telegramBotToken`/`telegramBotUsername` in `sub_accounts`. Setup endpoint at `/api/telegram/setup/:subAccountId` auto-registers webhook with Telegram.
 - **Audit Trail**: Detailed logging of actions for compliance.
 - **Database Backup**: JSON snapshot manifests for data integrity.

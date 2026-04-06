@@ -1400,8 +1400,7 @@ export function registerWebhooksRoutes(app: Express) {
               const existingContact = await db.select().from(contacts)
                 .where(and(
                   eq(contacts.subAccountId, subAccountId),
-                  eq(contacts.source, `${channel}_dm`),
-                  eq(contacts.phone, senderId)
+                  sql`(${contacts.phone} = ${senderId} OR ${contacts.phone} = ${'+' + senderId} OR ${contacts.phone} = ${senderId.replace(/^\+/, '')})`
                 )).limit(1);
 
               if (existingContact.length > 0) {
