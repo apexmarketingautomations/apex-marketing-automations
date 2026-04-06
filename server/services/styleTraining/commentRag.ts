@@ -1,6 +1,7 @@
 import { searchSimilarReplies, getEmbeddingCount } from "./embeddingPipeline";
 import { analyzePersonaFromReplies, buildPersonaHeader, type PersonaProfile } from "./personaSpec";
 import { aiChat } from "../../aiGateway";
+import { isRepetitiveOpener, stripOpener } from "../validation/isRepetitiveOpener";
 
 const personaCache = new Map<number, { profile: PersonaProfile; header: string; cachedAt: number }>();
 const PERSONA_CACHE_TTL = 60 * 60 * 1000;
@@ -111,9 +112,34 @@ export async function generateRagCommentReply(
     return { reply: "", sentiment: "neutral", ragUsed: false, examplesCount: 0, retries: 0 };
   }
 
+  let effectiveText = ctx.commentText;
+  if (isRepetitiveOpener(ctx.commentText)) {
+    console.log(`[RAG] Pure opener detected: "${ctx.commentText.substring(0, 40)}…" — using follow-up prompt`);
+    const { profile, header: personaHeader } = await getPersonaCached(subAccountId);
+    const openerReply = await aiChat(
+      [
+        { role: "system", content: `${personaHeader}\nSomeone just sent a short greeting or emoji. Reply casually in your style — invite them to say more. Max 15 words. No generic openers.` },
+        { role: "user", content: `They said: "${ctx.commentText}"\nReply:` },
+      ],
+      { temperature: 0.9, maxTokens: 30 },
+    );
+    let reply = (openerReply?.text || "hey what's good 😊").replace(/^["']|["']$/g, "").trim();
+    const lower = reply.toLowerCase();
+    if (lower.includes("mmm") && lower.includes("messaged") || lower.startsWith("you messaged")) {
+      reply = "hey what's good 😊";
+    }
+    return { reply, sentiment: "neutral", ragUsed: true, examplesCount: 0, retries: 0 };
+  }
+
+  const { stripped, hadOpener } = stripOpener(effectiveText);
+  if (hadOpener) {
+    effectiveText = stripped;
+    console.log(`[RAG] Stripped opener, using: "${effectiveText.substring(0, 50)}…"`);
+  }
+
   const { profile, header: personaHeader } = await getPersonaCached(subAccountId);
 
-  const rawSimilar = await searchSimilarReplies(subAccountId, ctx.commentText, 12);
+  const rawSimilar = await searchSimilarReplies(subAccountId, effectiveText, 12);
   const similar = diversifyExamples(rawSimilar, 8);
 
   const examplesBlock = similar.map((s, i) =>
@@ -126,7 +152,7 @@ export async function generateRagCommentReply(
   if (ctx.postCaption) contextLines.push(`POST CONTEXT: "${ctx.postCaption.substring(0, 300)}"`);
   if (ctx.commenterName) contextLines.push(`COMMENTER: ${ctx.commenterName}`);
   contextLines.push(`PLATFORM: ${ctx.platform}`);
-  contextLines.push(`COMMENT: "${ctx.commentText}"`);
+  contextLines.push(`COMMENT: "${effectiveText}"`);
 
   const buildSystemPrompt = (retryHint: string) => `${personaHeader}
 

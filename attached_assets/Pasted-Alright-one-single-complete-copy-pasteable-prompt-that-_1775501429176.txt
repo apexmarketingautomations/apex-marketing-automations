@@ -1,0 +1,327 @@
+Alright — **one single, complete, copy-pasteable prompt** that does everything you asked: adds a visible, launch-ready **Media Upload UI** to the Content Planner, implements a safe **server upload route**, wires **protected-account** checks, adds the **repetitive-opener** validation, includes unit + integration tests, gives exact commands to run, E2E verification steps, rollback guidance, and the exact branch/PR flow. **Do not split.** Paste this entire block to the developer/agent or into your Replit terminal/task description and run it as Owner/Admin. **Do not expose secrets.**
+
+---
+
+## ONE FULL PROMPT — Add Content Planner Media Upload + Repetitive-Opener Validation (RUN THIS AS OWNER/ADMIN)
+
+````
+TITLE: Content Planner — Add Media Upload UI + Server Upload Route + Repetitive-Opener Validation
+BRANCH: feature/content-planner-media
+PR_TITLE: feat(content-planner): media upload + upload route + repetitive-opener validation + tests
+AUDIT_TAG: CP-MEDIA-<timestamp>
+
+IMPORTANT PRE-CONDITIONS (READ BEFORE RUNNING)
+1. Do NOT modify or write to protected accounts (IDs: 22, 13, and any other IDs flagged as protected in config). Any write targeting a protected account must be rejected and logged.
+2. Ensure Replit Secrets are configured: DATABASE_URL (Postgres), AGENT_SECRET (HMAC) and optionally MEDIA_UPLOAD_DIR (default: /tmp/uploads), S3/GCS creds if you will swap to cloud storage.
+3. Do NOT print secrets in logs or PR. Always read secrets from process.env.
+
+OBJECTIVE
+1. Add a visible Media Upload area to the Content Planner (/content-planner) sidebar usable by Admin/Owner.
+2. Implement POST /api/media/upload (multipart) with:
+   - auth & ownership verification,
+   - protected-account write blocking (403 + system_log),
+   - safe storage (local default, optional S3),
+   - audit logging to system_logs.
+3. Add `isRepetitiveOpener()` validation helper and integrate it into the training/validation pipeline to tag/strip/skip pure openers.
+4. Add tests (unit + integration), migration (optional), and E2E verification steps. Open a PR on branch feature/content-planner-media.
+
+IMPLEMENTATION STEPS — RUN IN ORDER
+
+A) Create feature branch
+- Run:
+  git checkout -b feature/content-planner-media
+
+B) Client: MediaUpload component
+1. Create file `client/src/components/MediaUpload.tsx` with exactly the contents below. This is a compact, launch-ready uploader showing selected files, Upload/Clear buttons and error handling.
+
+```tsx
+// client/src/components/MediaUpload.tsx
+import React, { useState, useRef } from "react";
+
+export default function MediaUpload({ subAccountId, onUploaded }:{
+  subAccountId?: number;
+  onUploaded?: (items:any)=>void;
+}) {
+  const [files,setFiles] = useState<File[]>([]);
+  const [uploading,setUploading] = useState(false);
+  const [error,setError] = useState<string|null>(null);
+  const fileRef = useRef<HTMLInputElement|null>(null);
+
+  function onSelect(e:React.ChangeEvent<HTMLInputElement>){
+    const chosen = e.target.files ? Array.from(e.target.files) : [];
+    setFiles(chosen);
+  }
+
+  async function upload(){
+    if(!files.length) return;
+    setUploading(true); setError(null);
+    try{
+      const fd = new FormData();
+      files.forEach(f => fd.append("files", f));
+      if(subAccountId) fd.append("sub_account_id", String(subAccountId));
+      const res = await fetch("/api/media/upload",{ method:"POST", body:fd, credentials:"include" });
+      if(!res.ok){
+        const txt = await res.text();
+        throw new Error(txt || `Upload failed: ${res.status}`);
+      }
+      const json = await res.json();
+      setFiles([]);
+      if(fileRef.current) fileRef.current.value = "";
+      if(onUploaded) onUploaded(json);
+    }catch(err:any){
+      setError(err.message || "Upload failed");
+    }finally{ setUploading(false); }
+  }
+
+  return (
+    <div style={{border:"1px solid rgba(255,255,255,0.06)",padding:12,borderRadius:8,background:"rgba(255,255,255,0.02)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div>
+          <strong>Media library & upload</strong>
+          <div style={{fontSize:12,color:"#9aa"}}>Upload images and videos for posts. Drag & drop or click to choose files.</div>
+        </div>
+        <div>
+          <input ref={fileRef} type="file" multiple accept="image/*,video/*" onChange={onSelect} />
+        </div>
+      </div>
+
+      {files.length>0 && (
+        <div style={{marginTop:12,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8}}>
+          {files.map((f,i)=>(
+            <div key={i} style={{border:"1px solid rgba(0,0,0,0.12)",padding:6,borderRadius:6,textAlign:"center"}}>
+              <div style={{fontSize:12,fontWeight:600}}>{f.name}</div>
+              <div style={{fontSize:11,color:"#999"}}>{Math.round(f.size/1024)} KB</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{marginTop:12,display:"flex",gap:8}}>
+        <button onClick={upload} disabled={uploading || !files.length} className="btn btn-primary">
+          {uploading ? "Uploading…" : "Upload"}
+        </button>
+        <button onClick={()=>{ setFiles([]); if(fileRef.current) fileRef.current.value=""; }} className="btn btn-ghost">Clear</button>
+      </div>
+
+      {error && <div style={{color:"#ff6b6b",marginTop:10}}>{error}</div>}
+    </div>
+  );
+}
+````
+
+C) Client: Wire into Content Planner
+2. Edit `client/src/pages/content-planner.tsx` (or the planner page file):
+
+* Add `import MediaUpload from "../components/MediaUpload";`
+* In the planner sidebar/composer, add:
+
+```tsx
+<aside className="planner-sidebar">
+  <MediaUpload subAccountId={currentSubAccount?.id} onUploaded={() => { /* refresh media library or call existing refresh */ }} />
+</aside>
+```
+
+* Ensure this sidebar renders for Admin/Owner and at desktop/tablet breakpoints.
+
+D) Server: Media upload route
+3. Create `server/routes/media.ts` with the exact code below (uses multer memory store, writes to local folder by default, checks `sub_accounts.is_protected`, logs to system_logs):
+
+```ts
+// server/routes/media.ts
+import express from "express";
+import multer from "multer";
+import path from "path";
+import fs from "fs/promises";
+import { v4 as uuidv4 } from "uuid";
+
+const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+const UPLOAD_DIR = process.env.MEDIA_UPLOAD_DIR || "/tmp/uploads";
+(async()=>{ try{ await fs.mkdir(UPLOAD_DIR,{recursive:true}); }catch(e){} })();
+
+router.post("/upload", upload.array("files"), async (req, res) => {
+  try {
+    const db = (req as any).db ?? req.app.get("db");
+    const subAccountId = req.body.sub_account_id ? Number(req.body.sub_account_id) : null;
+
+    if(subAccountId){
+      const r = await db.query("SELECT is_protected FROM sub_accounts WHERE id=$1", [subAccountId]);
+      if(r.rows[0]?.is_protected){
+        await db.query(`INSERT INTO system_logs (severity,module,message,metadata,created_at) VALUES ($1,$2,$3,$4,now())`, ['warn','media','upload_blocked_protected', JSON.stringify({subAccountId, user: req.user?.id||'unknown'})]);
+        return res.status(403).json({ error: "protected_account" });
+      }
+    }
+
+    const files = (req.files as Express.Multer.File[]) || [];
+    const out:any[] = [];
+    for(const f of files){
+      const ext = path.extname(f.originalname) || "";
+      const filename = `${Date.now()}-${uuidv4()}${ext}`;
+      const target = path.join(UPLOAD_DIR, filename);
+      await fs.writeFile(target, f.buffer);
+      out.push({ originalName: f.originalname, filename, path: target, size: f.size, mime: f.mimetype });
+      // optionally insert into media_items table here
+    }
+
+    await db.query(`INSERT INTO system_logs (severity,module,message,metadata,created_at) VALUES ($1,$2,$3,$4,now())`, ['info','media','media_uploaded', JSON.stringify({ count: out.length, subAccountId, uploadedBy: req.user?.id||null })]);
+
+    res.json({ ok: true, uploaded: out });
+  } catch (err) {
+    console.error("media upload error", err);
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+export default router;
+```
+
+4. Register the route in `server/routes.ts`:
+
+```ts
+import mediaRoutes from "./routes/media";
+app.use("/api/media", requireAuth, mediaRoutes); // keep requireAuth per app auth pattern
+```
+
+E) Validation: Repetitive-Opener helper and pipeline integration
+5. Create `server/services/validation/isRepetitiveOpener.ts` with this exact helper:
+
+```ts
+// server/services/validation/isRepetitiveOpener.ts
+export function isRepetitiveOpener(text?: string) {
+  if (!text || typeof text !== "string") return false;
+  const s = text.trim();
+  if (s.length === 0) return false;
+  const patterns = [
+    /^\s*(you are (so )?beautiful\b)/i,
+    /^\s*(i love you\b)/i,
+    /^\s*(can i get your number\b)/i,
+    /^\s*(you the baddest\b)/i,
+    /^\s*(hey|hi|hello|babe|baby)[\s!,.]?$/i
+  ];
+  const words = s.split(/\s+/);
+  if (words.length <= 3) {
+    const first = words[0]?.toLowerCase();
+    if (words.every(w => w.toLowerCase() === first)) return true;
+  }
+  if (/^[\p{Emoji_Presentation}\p{So}\p{Sk}]+$/u.test(s)) return true;
+  return patterns.some(re => re.test(s));
+}
+```
+
+6. In training/validation pipeline (e.g., `server/services/styleTraining/commentRag.ts` or the place that validates examples), **call this helper early** on the inbound text:
+
+   * If `isRepetitiveOpener(text)` AND `words.length <= 4` → set `example.meta.repetitiveOpener = true` AND **skip** adding to training set (return skip_reason = 'pure_opener').
+   * If `isRepetitiveOpener(text)` AND there is a substantive rest after the opener, strip opener (detect substring matched by regex) and set `example.cleanedText = remainder` for training/validation use.
+   * For live replies: if pure opener, produce an inviting follow-up response rather than a canned flirt reply.
+
+F) Optional DB migration (media_items)
+7. If you want persistent metadata, create migration `migrations/2025xx_add_media_items.sql`:
+
+```sql
+CREATE TABLE IF NOT EXISTS media_items (
+  id bigserial PRIMARY KEY,
+  sub_account_id int REFERENCES sub_accounts(id),
+  original_name text,
+  filename text NOT NULL,
+  path text,
+  url text,
+  mime text,
+  size bigint,
+  created_by text,
+  created_at timestamp default now()
+);
+```
+
+(Only run if you need DB rows. Not required for first pass.)
+
+G) Tests
+8. Add unit test `server/tests/validation/isRepetitiveOpener.test.ts` (example using vitest/jest):
+
+* Cases:
+
+  * "you are so beautiful babe" => true
+  * "where are you from" => false
+  * "I love you baby" => true
+  * "can I get your number" => true
+  * "you the baddest on here fr" => true
+
+9. Add integration test for `/api/media/upload` (use supertest or curl):
+
+* Happy path: upload small image -> assert 200, response.ok true, uploaded length >=1, system_logs row created (query system_logs).
+* Protected account: set `sub_accounts.is_protected = true` for id 22 -> attempt upload with sub_account_id=22 -> expect 403 and a `system_logs` warn entry. Revert after test.
+
+H) Commit & push
+10. Commit files and push:
+
+```
+git add client/src/components/MediaUpload.tsx client/src/pages/content-planner.tsx server/routes/media.ts server/services/validation/isRepetitiveOpener.ts migrations/...
+git commit -m "feat(content-planner): add media upload, media route, repetitive-opener validation"
+git push -u origin feature/content-planner-media
+```
+
+I) Run & verify locally / in Replit
+11. Install deps (if changed):
+npm install
+12. Start dev server (repo-specific command):
+npm run dev
+13. Open Preview -> /content-planner as Admin/Owner. Verify sidebar shows **Media Upload** component.
+14. Upload test (replace dev-url):
+
+```
+curl -F "files=@/absolute/path/sample.jpg" -F "sub_account_id=22" https://<dev-url>/api/media/upload
+# Expect JSON: { ok:true, uploaded:[{originalName,filename,path,size,mime}] }
+```
+
+15. Check system_logs:
+
+```
+psql "$DATABASE_URL" -c "SELECT * FROM system_logs WHERE module='media' ORDER BY created_at DESC LIMIT 5;"
+```
+
+16. Protected account test:
+
+```
+psql "$DATABASE_URL" -c "UPDATE sub_accounts SET is_protected=true WHERE id=22;"
+# Attempt upload -> expect HTTP 403
+psql "$DATABASE_URL" -c "UPDATE sub_accounts SET is_protected=false WHERE id=22;"
+```
+
+J) Acceptance criteria (MUST PASS)
+
+* MediaUpload is visible and usable in Content Planner sidebar for Admin/Owner.
+* /api/media/upload accepts multipart, returns uploaded meta, and logs a system_logs entry with module='media'.
+* Upload attempts targeting protected accounts return 403 and write a syslog warn entry.
+* isRepetitiveOpener unit test passes and validation pipeline tags/skips pure openers.
+* Integration tests pass.
+* PR created and contains screenshots, test results, and the acceptance checklist.
+
+K) Rollback & safety
+
+* If finds unexpected writes, revert DB from snapshot.
+* Do not commit secrets to repo or PR. Do not print AGENT_SECRET/DATABASE_URL.
+
+L) Final PR instructions
+
+* Open PR from feature/content-planner-media -> main.
+* PR body: summary + files changed + acceptance criteria + test commands + screenshots of UI upload + sample curl response + system_logs snippet.
+
+EXECUTION NOTE
+
+* This is a single transactional change: frontend component + backend route + validation hook + tests. Run on feature branch, validate in dev preview, then open PR.
+
+RUN IT:
+
+* If you want me to execute these changes in your Replit workspace (create branch, commit files, run migrations, start server, run tests, open PR and post artifacts), reply exactly:
+  YES_RUN
+* If you will run it yourself, reply:
+  I WILL RUN
+  and run the commands above. If anything fails, paste the error logs and I’ll debug.
+
+END OF PROMPT
+
+```
+
+---
+
+You now have **one single full prompt** — everything included, no fragments. Paste exactly and run. If you want me to execute it, say **`YES_RUN`** and I’ll perform all steps in your workspace, commit the branch, run the verification, and post the PR and verification outputs. If you’ll run it yourself, say **`I WILL RUN`** and run the commands above; paste logs/errors and I’ll fix anything.
+```

@@ -14,6 +14,7 @@ import {
   Image, Instagram, Facebook, Hash, Sparkles, ChevronLeft, ChevronRight,
   Globe, ArrowRight, Zap, Wand2, Rocket, Loader2
 } from "lucide-react";
+import MediaUpload from "../components/MediaUpload";
 
 interface ContentPost {
   id: number;
@@ -651,7 +652,13 @@ export default function ContentPlannerPage() {
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="p-6">
+              <div className="p-6 space-y-5">
+                <MediaUpload
+                  subAccountId={subAccountId || undefined}
+                  onUploaded={(items) => {
+                    toast({ title: `${items.length} file${items.length > 1 ? "s" : ""} uploaded` });
+                  }}
+                />
                 <PostComposer
                   initial={editing || undefined}
                   onSave={handleSave}
