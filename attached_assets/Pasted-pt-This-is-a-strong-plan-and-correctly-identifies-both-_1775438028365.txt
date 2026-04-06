@@ -1,0 +1,115 @@
+pt/
+
+This is a strong plan and correctly identifies both the metric issue and pipeline issue.
+
+Before you start building, I need you to tighten this to **product-level behavior**, not just backend logic.
+
+## Add these requirements to the task
+
+### 1. Define exact readiness conditions (no vague checks)
+
+Response-rate scoring should ONLY activate when ALL of the following are true:
+
+- channel is fully connected
+- agent/auto-reply is enabled
+- reply workflow is active
+- outbound replies have successfully been sent (not just attempted)
+- minimum message threshold is met (define exact number)
+- minimum time window is met (define exact duration)
+
+Do not leave this as a generic “readiness check.”  
+Define exact logic.
+
+---
+
+### 2. Add explicit UI fallback states
+
+When readiness is NOT met, the UI must NOT show:
+- “below average”
+- negative benchmarks
+- fix-it recommendations
+
+Instead show clear states such as:
+- “Setup in progress”
+- “Agent not active”
+- “Waiting for reply data”
+- “Benchmark unavailable”
+
+Also include:
+- a clear CTA (ex: “Enable Auto-Reply” or “Activate Workflow”)
+
+---
+
+### 3. Verify the reply pipeline actually works
+
+Do not assume the pipeline is functional.
+
+Trace Layla’s message flow end-to-end:
+
+- inbound message received
+- routed to correct handler
+- agent triggered
+- response generated
+- response successfully sent
+- response logged
+
+If ANY step fails:
+- identify exact failure point
+- fix it
+- confirm success with real test
+
+---
+
+### 4. Separate 3 states clearly
+
+The system must distinguish between:
+
+1. **Not set up**
+   - no automation active
+   - no replies expected
+
+2. **Set up but inactive**
+   - system enabled but no usage yet
+
+3. **Active and measurable**
+   - real reply behavior exists
+   - benchmarks valid
+
+Do not mix these states.
+
+---
+
+### 5. Prevent false intelligence
+
+The intelligence layer must NOT:
+- generate recommendations
+- trigger nudges
+- show performance alerts
+
+until the account is in the “active and measurable” state.
+
+---
+
+## Output update
+
+Before building, update the plan to include:
+
+### Readiness logic (explicit conditions)
+### UI fallback states
+### Pipeline verification steps
+### State definitions (3 phases)
+### Guardrails for intelligence layer
+
+Then proceed with implementation.
+
+## Final rule
+
+Do not fix this as a backend patch.
+
+Fix this as:
+- logic
+- UX
+- intelligence behavior
+- real system flow
+
+This must prevent false insights AND ensure the agent actually works.

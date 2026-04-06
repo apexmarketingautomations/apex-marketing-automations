@@ -6,11 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { useActiveSubAccountId } from "@/components/account-required";
 import {
   Brain, RefreshCw, Shield, TrendingUp, AlertTriangle,
   Lightbulb, Eye, Archive, Clock, BarChart3, Zap, Activity,
   Search, Target, Users, MessageSquare, Wand2, ArrowRight,
-  FileText, Send, Loader2
+  FileText, Send, Loader2, CheckCircle2
 } from "lucide-react";
 import { Link } from "wouter";
 import { Input } from "@/components/ui/input";
@@ -50,12 +51,39 @@ const EXEC_STATS = [
 
 export default function IntelligenceDashboard() {
   const { user } = useAuth();
+  const subAccountId = useActiveSubAccountId();
   const adminSecret = user?.id || "";
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [minConfidence, setMinConfidence] = useState(0.3);
+  const [executingInsight, setExecutingInsight] = useState<string | null>(null);
+  const [lastCommandResult, setLastCommandResult] = useState<any>(null);
+
+  const executeInsightAction = async (command: string, params?: any) => {
+    if (!subAccountId) return;
+    setExecutingInsight(command);
+    try {
+      const r = await fetch("/api/command/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-sub-account-id": String(subAccountId) },
+        body: JSON.stringify({ command, params, subAccountId }),
+      });
+      if (r.ok) {
+        const result = await r.json();
+        setLastCommandResult(result);
+        const done = result.actions?.filter((a: any) => a.status === "done").length || 0;
+        toast({ title: `${done} action${done !== 1 ? "s" : ""} executed`, description: result.summary });
+        queryClient.invalidateQueries({ queryKey: ["/api/readiness"] });
+      } else {
+        toast({ title: "Action failed", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Action failed", variant: "destructive" });
+    }
+    setExecutingInsight(null);
+  };
 
   const isAdmin = user?.isAdmin === "true" || (user as any)?.role === "DEV_ADMIN";
 
@@ -306,6 +334,31 @@ export default function IntelligenceDashboard() {
         </select>
       </motion.div>
 
+      {lastCommandResult && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass border border-green-500/20 rounded-xl p-4"
+          data-testid="section-command-result"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-green-400" />
+              <span className="text-sm font-bold text-white">{lastCommandResult.summary}</span>
+            </div>
+            <button onClick={() => setLastCommandResult(null)} className="text-xs text-white/30 hover:text-white/50">Dismiss</button>
+          </div>
+          <div className="flex gap-3 mt-2 flex-wrap">
+            {lastCommandResult.actions?.map((a: any, i: number) => (
+              <span key={i} className={`text-[10px] flex items-center gap-1 ${a.status === "done" ? "text-green-400/70" : a.status === "skipped" ? "text-white/20" : "text-red-400/50"}`}>
+                {a.status === "done" ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                {a.step}
+              </span>
+            ))}
+          </div>
+        </motion.div>
+      )}
+
       {isLoading ? (
         <div className="space-y-3">
           {[1, 2, 3, 4, 5].map((i) => (
@@ -404,50 +457,63 @@ export default function IntelligenceDashboard() {
                       </div>
                       <div className="flex items-center gap-1.5 mt-3 pt-2.5 border-t border-white/5 flex-wrap">
                         {(() => {
-                          const actions: { label: string; link: string; icon: any }[] = [];
+                          const instantActions: { label: string; command: string; params?: any; icon: any }[] = [];
+                          const navActions: { label: string; link: string; icon: any }[] = [];
                           switch (insight.category) {
                             case "customer_objection":
-                              actions.push({ label: "Create Response Template", link: "/whatsapp-templates", icon: FileText });
-                              actions.push({ label: "Build Follow-up Flow", link: "/workflows", icon: Zap });
+                            case "pricing_concern":
+                              instantActions.push({ label: "Deploy Counter-Response", command: "handle-objections", params: { insightContent: insight.content }, icon: Zap });
+                              navActions.push({ label: "View Templates", link: "/whatsapp-templates", icon: FileText });
                               break;
                             case "competitor_mention":
-                              actions.push({ label: "Draft Comparison", link: "/content-planner", icon: FileText });
-                              actions.push({ label: "Launch Counter-Campaign", link: "/meta-ads", icon: Target });
+                              instantActions.push({ label: "Generate Content", command: "boost-content", params: { count: 3 }, icon: Zap });
+                              navActions.push({ label: "Launch Campaign", link: "/meta-ads", icon: Target });
                               break;
                             case "buying_signal":
-                              actions.push({ label: "Send Offer Now", link: "/inbox", icon: Send });
-                              actions.push({ label: "Create Deal", link: "/pipeline", icon: Zap });
+                              instantActions.push({ label: "Activate Lead Gen", command: "launch-lead-gen", icon: Zap });
+                              navActions.push({ label: "Open Inbox", link: "/inbox", icon: Send });
                               break;
                             case "feature_request":
-                              actions.push({ label: "Log Feedback", link: "/content-planner", icon: FileText });
-                              break;
                             case "product_feedback":
-                              actions.push({ label: "Review Feedback", link: "/content-planner", icon: FileText });
-                              actions.push({ label: "Create Response", link: "/inbox", icon: Send });
+                              instantActions.push({ label: "Create Content Response", command: "boost-content", params: { count: 2 }, icon: Zap });
+                              navActions.push({ label: "View Feedback", link: "/content-planner", icon: FileText });
                               break;
                             case "pain_point":
-                              actions.push({ label: "Create Solution Post", link: "/content-planner", icon: FileText });
-                              actions.push({ label: "Build Nurture Sequence", link: "/workflows", icon: Zap });
-                              break;
-                            case "pricing_concern":
-                              actions.push({ label: "Send Pricing Info", link: "/whatsapp-templates", icon: Send });
-                              actions.push({ label: "Create Discount Offer", link: "/email-campaigns", icon: FileText });
+                              instantActions.push({ label: "Deploy Nurture Sequence", command: "activate-nurture", icon: Zap });
+                              navActions.push({ label: "Create Post", link: "/content-planner", icon: FileText });
                               break;
                             case "churn_risk":
-                              actions.push({ label: "Send Retention Message", link: "/inbox", icon: Send });
-                              actions.push({ label: "Create Save Campaign", link: "/workflows", icon: Zap });
+                              instantActions.push({ label: "Fix Response Rate", command: "fix-response-rate", icon: Zap });
+                              instantActions.push({ label: "Activate Nurture", command: "activate-nurture", icon: Zap });
                               break;
                             default:
-                              actions.push({ label: "Take Action", link: "/inbox", icon: ArrowRight });
+                              navActions.push({ label: "Take Action", link: "/inbox", icon: ArrowRight });
                           }
-                          return actions.map((act) => (
-                            <Link key={act.label} href={act.link}
-                              data-testid={`button-action-${insight.id}-${act.label.replace(/\s+/g, "-").toLowerCase()}`}
-                              className="flex items-center gap-1 text-[10px] font-medium px-2 py-1 rounded-md transition-all border border-white/10 hover:border-white/20 text-white/40 hover:text-white/70 no-underline"
-                            >
-                              <act.icon className="w-3 h-3" /> {act.label}
-                            </Link>
-                          ));
+                          return (
+                            <>
+                              {instantActions.map((act) => (
+                                <button
+                                  key={act.label}
+                                  data-testid={`button-execute-${insight.id}-${act.label.replace(/\s+/g, "-").toLowerCase()}`}
+                                  onClick={() => executeInsightAction(act.command, act.params)}
+                                  disabled={executingInsight !== null}
+                                  className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-md transition-all text-white disabled:opacity-50 hover:scale-105 active:scale-95"
+                                  style={{ background: `linear-gradient(135deg, var(--vibe-glow, #06b6d4), var(--vibe-accent, #4f46e5))` }}
+                                >
+                                  {executingInsight === act.command ? <Loader2 className="w-3 h-3 animate-spin" /> : <act.icon className="w-3 h-3" />}
+                                  {act.label}
+                                </button>
+                              ))}
+                              {navActions.map((act) => (
+                                <Link key={act.label} href={act.link}
+                                  data-testid={`button-nav-${insight.id}-${act.label.replace(/\s+/g, "-").toLowerCase()}`}
+                                  className="flex items-center gap-1 text-[10px] font-medium px-2 py-1 rounded-md transition-all border border-white/10 hover:border-white/20 text-white/40 hover:text-white/70 no-underline"
+                                >
+                                  <act.icon className="w-3 h-3" /> {act.label}
+                                </Link>
+                              ))}
+                            </>
+                          );
                         })()}
                       </div>
                     </div>

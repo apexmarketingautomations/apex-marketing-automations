@@ -1,10 +1,13 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
+import { useToast } from "@/hooks/use-toast";
 import { useActiveSubAccountId } from "@/components/account-required";
 import { Card, CardContent } from "@/components/ui/card";
-import { MessageSquare, Users, Kanban, CalendarDays, Mail, Megaphone, Target, Instagram, DollarSign, TrendingUp, Bell, Clock, BarChart3, PieChart, Zap, Eye, Rocket, Shield, Info, CheckCircle2, XCircle, AlertTriangle, ArrowUp, ArrowDown, Minus, Trophy } from "lucide-react";
+import { MessageSquare, Users, Kanban, CalendarDays, Mail, Megaphone, Target, Instagram, DollarSign, TrendingUp, Bell, Clock, BarChart3, PieChart, Zap, Eye, Rocket, Shield, Info, CheckCircle2, XCircle, AlertTriangle, ArrowUp, ArrowDown, Minus, Trophy, Loader2 } from "lucide-react";
 import { Link } from "wouter";
 import { TutorialCenter } from "@/components/tutorial-center";
+import { CommandCenter } from "@/components/command-center";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { DASHBOARD_STEPS } from "@/components/tutorial-steps";
 import { useAuth } from "@/hooks/use-auth";
@@ -48,8 +51,31 @@ const metricCards = [
 export default function DashboardPage() {
   const subAccountId = useActiveSubAccountId();
   const { user } = useAuth();
+  const { toast } = useToast();
   const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_dashboard_tutorial_completed");
   const isAdmin = user?.isAdmin === "true" || (user as any)?.role === "DEV_ADMIN";
+  const [executingCmd, setExecutingCmd] = useState<string | null>(null);
+
+  const executeCommand = async (command: string, params?: any) => {
+    setExecutingCmd(command);
+    try {
+      const r = await fetch("/api/command/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-sub-account-id": String(subAccountId) },
+        body: JSON.stringify({ command, params, subAccountId }),
+      });
+      if (r.ok) {
+        const result = await r.json();
+        const done = result.actions?.filter((a: any) => a.status === "done").length || 0;
+        toast({ title: `${done} action${done !== 1 ? "s" : ""} executed`, description: result.summary });
+      } else {
+        toast({ title: "Action failed", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Action failed", variant: "destructive" });
+    }
+    setExecutingCmd(null);
+  };
 
   const { data: metrics, isLoading } = useQuery<DashboardMetrics>({
     queryKey: ["/api/dashboard", subAccountId],
@@ -69,6 +95,22 @@ export default function DashboardPage() {
       if (!res.ok) throw new Error(`Analytics fetch failed: ${res.status}`);
       return res.json();
     },
+    enabled: !!subAccountId,
+  });
+
+  const { data: readinessData } = useQuery<{
+    phase: "not_setup" | "setup_inactive" | "active_measurable";
+    phaseLabel: string;
+    benchmarkReady: boolean;
+    intelligenceReady: boolean;
+  }>({
+    queryKey: ["/api/readiness", subAccountId],
+    queryFn: async () => {
+      const res = await fetch(`/api/readiness/${subAccountId}`);
+      if (!res.ok) return { phase: "not_setup", phaseLabel: "Unknown", benchmarkReady: false, intelligenceReady: false };
+      return res.json();
+    },
+    refetchInterval: 60000,
     enabled: !!subAccountId,
   });
 
@@ -93,7 +135,7 @@ export default function DashboardPage() {
       return res.json();
     },
     refetchInterval: 3_600_000,
-    enabled: !!subAccountId,
+    enabled: !!subAccountId && readinessData?.benchmarkReady === true,
   });
 
   const { data: serviceStatus } = useQuery<Record<string, { status: string; label: string }>>({
@@ -258,6 +300,8 @@ export default function DashboardPage() {
         </Card>
       )}
 
+      <CommandCenter />
+
       <TutorialCenter />
 
       {isLoading ? (
@@ -352,13 +396,13 @@ export default function DashboardPage() {
           <p className="text-slate-300 text-sm">Your key metrics vs. anonymized industry benchmarks from businesses like yours on Apex</p>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {benchmarkData.metrics.map((metric) => {
-              const recommendations: Record<string, { text: string; link: string }> = {
-                response_time: { text: "Enable auto-reply in inbox settings", link: "/inbox" },
-                conversion_rate: { text: "Build a nurture automation sequence", link: "/workflows" },
-                messages_per_contact: { text: "Increase follow-up frequency", link: "/inbox" },
-                contacts_per_month: { text: "Launch a lead gen ad campaign", link: "/meta-ads" },
-                deals_per_contact: { text: "Add pipeline stages and track deals", link: "/pipeline" },
-                deal_close_rate: { text: "Review and optimize your pipeline", link: "/pipeline" },
+              const recommendations: Record<string, { text: string; command: string; impact: string }> = {
+                response_time: { text: "Enable auto-reply now", command: "fix-response-rate", impact: "+35% response rate" },
+                conversion_rate: { text: "Deploy nurture sequence", command: "activate-nurture", impact: "Automate follow-ups" },
+                messages_per_contact: { text: "Fix response rate", command: "fix-response-rate", impact: "Increase engagement" },
+                contacts_per_month: { text: "Launch lead gen system", command: "launch-lead-gen", impact: "Restart lead flow" },
+                deals_per_contact: { text: "Optimize pipeline", command: "optimize-pipeline", impact: "Fix deal tracking" },
+                deal_close_rate: { text: "Optimize pipeline", command: "optimize-pipeline", impact: "Improve close rate" },
               };
               const rec = metric.status === "below" ? recommendations[metric.key] : null;
               return (
@@ -403,13 +447,20 @@ export default function DashboardPage() {
                     })()}
                   </div>
                   {rec && (
-                    <Link href={rec.link}>
-                      <div className="mt-3 flex items-center gap-2 p-2 rounded-lg bg-red-500/5 border border-red-500/10 hover:border-red-500/25 transition-all cursor-pointer group" data-testid={`benchmark-action-${metric.key}`}>
+                    <button
+                      onClick={() => executeCommand(rec.command)}
+                      disabled={executingCmd !== null}
+                      className="mt-3 w-full flex items-center gap-2 p-2 rounded-lg bg-red-500/5 border border-red-500/10 hover:border-red-500/25 transition-all cursor-pointer group text-left disabled:opacity-50"
+                      data-testid={`benchmark-action-${metric.key}`}
+                    >
+                      {executingCmd === rec.command ? (
+                        <Loader2 size={12} className="text-red-400 shrink-0 animate-spin" />
+                      ) : (
                         <Zap size={12} className="text-red-400 shrink-0" />
-                        <span className="text-[11px] text-red-300/80 flex-1">{rec.text}</span>
-                        <ArrowUp size={10} className="text-red-400/50 group-hover:text-red-400 rotate-45 shrink-0" />
-                      </div>
-                    </Link>
+                      )}
+                      <span className="text-[11px] text-red-300/80 flex-1">{rec.text}</span>
+                      <span className="text-[9px] text-green-400/50 shrink-0">{rec.impact}</span>
+                    </button>
                   )}
                 </CardContent>
               </Card>

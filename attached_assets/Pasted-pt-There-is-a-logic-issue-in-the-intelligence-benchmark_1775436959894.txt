@@ -1,0 +1,65 @@
+pt/
+
+There is a logic issue in the intelligence / benchmark layer.
+
+For Layla’s account, the response-rate insight is misleading.
+
+Context:
+- this account was just added today
+- the inbox has inbound messages
+- but the agent is not actually replying yet through the intelligence/automation setup
+- so there is not enough valid reply behavior to score real response performance
+
+Do NOT treat unreplied inbound messages on a newly connected account as a real response-rate failure.
+
+## Fix this logic
+Update the response-rate and benchmark system so it checks account readiness before generating performance judgments.
+
+Before showing response-rate insights, verify:
+- account is fully connected
+- agent/automation replies are actually enabled
+- reply workflow is active
+- outbound replies have successfully been sent
+- minimum data threshold/time window has been met
+
+## Required behavior
+If those conditions are NOT met, do not show:
+- “below average response rate”
+- negative response benchmarks
+- fix-it recommendations based on reply speed/performance
+
+Instead show a setup-aware state such as:
+- Setup in progress
+- Agent not active yet
+- No valid response-rate data yet
+- Waiting for live automation data
+- Benchmark unavailable until minimum activity threshold is met
+
+## Also audit the reply pipeline
+For Layla specifically, trace why messages are not being replied to by the intelligence agent.
+
+Check:
+- whether the account/channel is actually connected correctly
+- whether the auto-reply agent is enabled
+- whether the workflow is active
+- whether messages are entering the correct queue
+- whether replies are failing silently
+- whether there are webhook / auth / routing issues
+- whether the intelligence layer is reading inbox data without the action layer being live
+
+## Return results in this format
+
+### Root cause
+[why Layla is not actually getting replies]
+
+### Metric issue
+[why the current response-rate insight is misleading]
+
+### Logic fix
+[what guardrails were added before scoring response performance]
+
+### Pipeline fix
+[what was changed so the agent can actually reply]
+
+### New fallback state
+[what the UI now shows before enough valid data exists]
