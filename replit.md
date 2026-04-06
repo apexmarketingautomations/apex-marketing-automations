@@ -47,9 +47,10 @@ Preferred communication style: Simple, everyday language.
 - **Event Bus**: In-memory pub/sub system with priority queuing, dedup, retry logic, and logging.
 - **Job Queue**: Background async task processor with retry mechanisms, concurrency control, and history tracking.
 - **UI/UX**: Mobile-responsive design with 4-tier breakpoint system, bottom navigation on mobile, guided 5-step onboarding wizard, and an Apex Intelligence premium panel for advanced analytics and AI interaction.
-- **WhatsApp Templates Page** (`/whatsapp-templates`): Full CRUD management UI for WhatsApp Business message templates with phone preview, variable support, status filtering, and card-based layout.
-- **Content Planner Page** (`/content-planner`): Social content planning workspace with board (kanban) and calendar views, post composer, platform selection, approval status, and media indicators.
-- **Intelligence Dashboard** (`/intelligence`): Admin-only cross-account intelligence dashboard showing shared insights by category, confidence scores, occurrence tracking, and refresh/cleanup controls.
+- **WhatsApp Templates Page** (`/whatsapp-templates`): Full CRUD management UI for WhatsApp Business message templates with phone preview, variable support, status filtering, card-based layout, and AI body generator (uses `/api/bot/chat` with `mode: "quick"`) with loading state and error feedback.
+- **Content Planner Page** (`/content-planner`): Social content planning workspace with board (kanban) and calendar views, post composer, platform selection, approval status, media indicators, AI caption generator, and Publish Now button.
+- **Intelligence Dashboard** (`/intelligence`): Admin-only cross-account intelligence dashboard showing shared insights by category, confidence scores, occurrence tracking, refresh/cleanup controls, and contextual action buttons per insight category (e.g., "Create Response Template", "Send Offer Now", "Build Follow-up Flow") linking to relevant pages.
+- **Dashboard Smart Alerts & Benchmarks**: Dynamic alert section reading actual metrics with one-click action links. Benchmark comparison cards show actionable recommendations when metrics fall below industry average, linking to relevant fix-it pages.
 - **Real-time Streaming**: SSE-based streaming for AI text and step-by-step progress events.
 - **Self-Optimizing Workflows**: Per-step execution metrics tracking, visual funnel analytics, and AI-powered optimization, including auto-optimization of WAIT step timings.
 - **Digital Business Card System**: Shared core engine for platform-integrated and standalone digital business cards, featuring themes, data adapters, shared components, tier-based features, and a referral system.

@@ -9,8 +9,10 @@ import { useAuth } from "@/hooks/use-auth";
 import {
   Brain, RefreshCw, Shield, TrendingUp, AlertTriangle,
   Lightbulb, Eye, Archive, Clock, BarChart3, Zap, Activity,
-  Search, Target, Users, MessageSquare
+  Search, Target, Users, MessageSquare, Wand2, ArrowRight,
+  FileText, Send, Loader2
 } from "lucide-react";
+import { Link } from "wouter";
 import { Input } from "@/components/ui/input";
 
 interface SharedInsight {
@@ -399,6 +401,54 @@ export default function IntelligenceDashboard() {
                         <span className="text-[10px] text-white/20 flex items-center gap-1">
                           <Clock className="w-2.5 h-2.5" /> {age === 0 ? "Today" : `${age}d ago`}
                         </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-3 pt-2.5 border-t border-white/5 flex-wrap">
+                        {(() => {
+                          const actions: { label: string; link: string; icon: any }[] = [];
+                          switch (insight.category) {
+                            case "customer_objection":
+                              actions.push({ label: "Create Response Template", link: "/whatsapp-templates", icon: FileText });
+                              actions.push({ label: "Build Follow-up Flow", link: "/workflows", icon: Zap });
+                              break;
+                            case "competitor_mention":
+                              actions.push({ label: "Draft Comparison", link: "/content-planner", icon: FileText });
+                              actions.push({ label: "Launch Counter-Campaign", link: "/meta-ads", icon: Target });
+                              break;
+                            case "buying_signal":
+                              actions.push({ label: "Send Offer Now", link: "/inbox", icon: Send });
+                              actions.push({ label: "Create Deal", link: "/pipeline", icon: Zap });
+                              break;
+                            case "feature_request":
+                              actions.push({ label: "Log Feedback", link: "/content-planner", icon: FileText });
+                              break;
+                            case "product_feedback":
+                              actions.push({ label: "Review Feedback", link: "/content-planner", icon: FileText });
+                              actions.push({ label: "Create Response", link: "/inbox", icon: Send });
+                              break;
+                            case "pain_point":
+                              actions.push({ label: "Create Solution Post", link: "/content-planner", icon: FileText });
+                              actions.push({ label: "Build Nurture Sequence", link: "/workflows", icon: Zap });
+                              break;
+                            case "pricing_concern":
+                              actions.push({ label: "Send Pricing Info", link: "/whatsapp-templates", icon: Send });
+                              actions.push({ label: "Create Discount Offer", link: "/email-campaigns", icon: FileText });
+                              break;
+                            case "churn_risk":
+                              actions.push({ label: "Send Retention Message", link: "/inbox", icon: Send });
+                              actions.push({ label: "Create Save Campaign", link: "/workflows", icon: Zap });
+                              break;
+                            default:
+                              actions.push({ label: "Take Action", link: "/inbox", icon: ArrowRight });
+                          }
+                          return actions.map((act) => (
+                            <Link key={act.label} href={act.link}
+                              data-testid={`button-action-${insight.id}-${act.label.replace(/\s+/g, "-").toLowerCase()}`}
+                              className="flex items-center gap-1 text-[10px] font-medium px-2 py-1 rounded-md transition-all border border-white/10 hover:border-white/20 text-white/40 hover:text-white/70 no-underline"
+                            >
+                              <act.icon className="w-3 h-3" /> {act.label}
+                            </Link>
+                          ));
+                        })()}
                       </div>
                     </div>
                   </CardContent>

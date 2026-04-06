@@ -12,7 +12,7 @@ import {
   CalendarDays, Plus, Search, LayoutGrid, Calendar, FileText, Clock,
   CheckCircle2, Send, Eye, AlertTriangle, X, Edit3, Trash2,
   Image, Instagram, Facebook, Hash, Sparkles, ChevronLeft, ChevronRight,
-  Globe, ArrowRight, Zap
+  Globe, ArrowRight, Zap, Wand2, Rocket, Loader2
 } from "lucide-react";
 
 interface ContentPost {
@@ -76,11 +76,42 @@ function PostComposer({
     platforms: initial?.platforms?.map((p) => p.platform) || [],
   });
 
+  const [aiGenerating, setAiGenerating] = useState(false);
+
   const set = (k: string, v: any) => setForm((p) => ({ ...p, [k]: v }));
   const togglePlatform = (p: string) => {
     set("platforms", form.platforms.includes(p) ? form.platforms.filter((x) => x !== p) : [...form.platforms, p]);
   };
   const captionLen = form.caption.length;
+
+  const generateCaption = async () => {
+    setAiGenerating(true);
+    try {
+      const platformList = form.platforms.length > 0 ? form.platforms.join(", ") : "social media";
+      const r = await fetch("/api/bot/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: `Write a compelling ${form.contentType || "post"} caption for ${platformList}. Topic: "${form.title || "our brand"}". Keep it engaging, include a call to action, and suggest 3-5 relevant hashtags at the end. Keep it under 300 characters for the main text. Do not use markdown formatting.`,
+          mode: "quick"
+        }),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        const text = data.response || data.text || "";
+        if (text) {
+          const hashtagMatch = text.match(/(#\w+[\s]*)+$/);
+          if (hashtagMatch) {
+            set("caption", text.replace(hashtagMatch[0], "").trim());
+            set("hashtags", hashtagMatch[0].trim());
+          } else {
+            set("caption", text.trim());
+          }
+        }
+      }
+    } catch { }
+    setAiGenerating(false);
+  };
 
   return (
     <div className="space-y-5">
@@ -97,13 +128,25 @@ function PostComposer({
       <div>
         <div className="flex items-center justify-between mb-1.5">
           <label className="text-xs font-medium text-white/50 uppercase tracking-wider">Caption</label>
-          <span className="text-[10px] text-white/30">{captionLen} characters</span>
+          <div className="flex items-center gap-2">
+            <button
+              data-testid="button-ai-caption"
+              onClick={generateCaption}
+              disabled={aiGenerating}
+              className="flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md transition-all border border-white/10 hover:border-white/20 text-white/40 hover:text-white/70 disabled:opacity-50"
+              style={aiGenerating ? {} : { borderColor: "color-mix(in srgb, var(--vibe-glow, #6366f1) 30%, transparent)" }}
+            >
+              {aiGenerating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
+              {aiGenerating ? "Generating..." : "AI Generate"}
+            </button>
+            <span className="text-[10px] text-white/30">{captionLen} characters</span>
+          </div>
         </div>
         <Textarea
           data-testid="input-post-caption"
           value={form.caption}
           onChange={(e) => set("caption", e.target.value)}
-          placeholder="Write your post content..."
+          placeholder="Write your post content... or click AI Generate"
           rows={4}
           className="bg-white/5 border-white/10 text-white resize-none focus:border-[color:var(--vibe-glow,#6366f1)]/50"
         />
@@ -280,9 +323,10 @@ function CalendarView({ posts, onEdit }: { posts: ContentPost[]; onEdit: (p: Con
   );
 }
 
-function PostDetailPanel({ post, onEdit, onClose, onDelete }: { post: ContentPost; onEdit: () => void; onClose: () => void; onDelete: () => void }) {
+function PostDetailPanel({ post, onEdit, onClose, onDelete, onPublish, publishing }: { post: ContentPost; onEdit: () => void; onClose: () => void; onDelete: () => void; onPublish: () => void; publishing?: boolean }) {
   const st = STATUS_CONFIG[post.status] || STATUS_CONFIG.draft;
   const StIcon = st.icon;
+  const canPublish = post.status === "draft" || post.status === "scheduled";
   return (
     <motion.div
       initial={{ opacity: 0, x: 20 }}
@@ -361,8 +405,20 @@ function PostDetailPanel({ post, onEdit, onClose, onDelete }: { post: ContentPos
           </div>
         )}
         <div className="flex gap-2 pt-3 border-t border-white/5">
-          <Button data-testid="button-edit-from-detail" onClick={onEdit} className="flex-1 text-white border-0" style={{ background: `linear-gradient(to right, var(--vibe-glow, #6366f1), var(--vibe-accent, #818cf8))` }}>
-            <Edit3 className="w-3.5 h-3.5 mr-1.5" /> Edit Post
+          {canPublish && (
+            <Button
+              data-testid="button-publish-post"
+              onClick={onPublish}
+              disabled={publishing}
+              className="flex-1 text-white border-0 shadow-lg"
+              style={{ background: "linear-gradient(to right, #34d399, #06b6d4)" }}
+            >
+              {publishing ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Rocket className="w-3.5 h-3.5 mr-1.5" />}
+              {publishing ? "Publishing..." : "Publish Now"}
+            </Button>
+          )}
+          <Button data-testid="button-edit-from-detail" onClick={onEdit} className={`${canPublish ? "" : "flex-1"} text-white border-0`} style={{ background: `linear-gradient(to right, var(--vibe-glow, #6366f1), var(--vibe-accent, #818cf8))` }}>
+            <Edit3 className="w-3.5 h-3.5 mr-1.5" /> Edit
           </Button>
           <Button data-testid="button-delete-from-detail" onClick={onDelete} variant="outline" className="border-red-500/20 text-red-400 hover:bg-red-500/10 hover:text-red-300">
             <Trash2 className="w-3.5 h-3.5" />
@@ -460,6 +516,26 @@ export default function ContentPlannerPage() {
       toast({ title: "Post deleted" });
     },
     onError: () => toast({ title: "Failed to delete post", variant: "destructive" }),
+  });
+
+  const publishMut = useMutation({
+    mutationFn: async (id: number) => {
+      const r = await fetch(`/api/content-planner/posts/${id}/publish`, {
+        method: "POST",
+        headers: { "x-sub-account-id": String(subAccountId) },
+      });
+      if (!r.ok) {
+        const err = await r.text();
+        throw new Error(err || "Publish failed");
+      }
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/content-planner/posts"] });
+      setDetailPost(null);
+      toast({ title: "Post published", description: "Your content is now live." });
+    },
+    onError: (e: Error) => toast({ title: "Publish failed", description: e.message, variant: "destructive" }),
   });
 
   const filtered = posts.filter((p) => {
@@ -597,6 +673,8 @@ export default function ContentPlannerPage() {
               onEdit={() => { openEdit(detailPost); setDetailPost(null); }}
               onClose={() => setDetailPost(null)}
               onDelete={() => { if (confirm("Delete this post?")) deleteMut.mutate(detailPost.id); }}
+              onPublish={() => publishMut.mutate(detailPost.id)}
+              publishing={publishMut.isPending}
             />
           </>
         )}

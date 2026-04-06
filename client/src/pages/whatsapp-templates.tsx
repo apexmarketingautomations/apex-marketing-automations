@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   MessageSquare, Plus, Search, Copy, Trash2, Edit3, Eye,
   FileText, CheckCircle2, Clock, AlertTriangle, X,
-  Hash, Send, Sparkles, Archive
+  Hash, Send, Sparkles, Archive, Wand2, Loader2, Rocket
 } from "lucide-react";
 
 interface WhatsAppTemplate {
@@ -124,10 +124,35 @@ function TemplateEditor({
     status: initial?.status || "draft",
   });
 
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const { toast } = useToast();
+
   const set = (k: string, v: any) => setForm((p) => ({ ...p, [k]: v }));
   const varCount = (form.body.match(/\{\{\d+\}\}/g) || []).length;
   const charCount = form.body.length;
   const MAX_CHARS = 1024;
+
+  const generateBody = async () => {
+    setAiGenerating(true);
+    try {
+      const r = await fetch("/api/bot/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: `Write a WhatsApp Business message template body for category "${form.category}". Template name: "${form.name || "business message"}". Requirements: 1) Use {{1}}, {{2}} etc for dynamic variables (name, business, date, etc). 2) Keep under 500 characters. 3) Professional but warm tone. 4) Include a clear call to action. 5) Output ONLY the template body text, no markdown, no explanation. 6) Use line breaks for readability.`,
+          mode: "quick"
+        }),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        const text = data.response || data.text || "";
+        if (text) set("body", text.trim());
+      }
+    } catch {
+      toast({ title: "AI generation failed", description: "Please try again.", variant: "destructive" });
+    }
+    setAiGenerating(false);
+  };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -184,6 +209,16 @@ function TemplateEditor({
           <div className="flex items-center justify-between mb-1.5">
             <label className="text-xs font-medium text-white/50 uppercase tracking-wider">Message Body</label>
             <div className="flex items-center gap-3">
+              <button
+                data-testid="button-ai-body"
+                onClick={generateBody}
+                disabled={aiGenerating}
+                className="flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md transition-all border border-white/10 hover:border-white/20 text-white/40 hover:text-white/70 disabled:opacity-50"
+                style={aiGenerating ? {} : { borderColor: "color-mix(in srgb, var(--vibe-glow, #06b6d4) 30%, transparent)" }}
+              >
+                {aiGenerating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
+                {aiGenerating ? "Writing..." : "AI Generate"}
+              </button>
               {varCount > 0 && (
                 <span className="text-[10px] text-cyan-400 flex items-center gap-1">
                   <Hash className="w-3 h-3" /> {varCount} variable{varCount > 1 ? "s" : ""}

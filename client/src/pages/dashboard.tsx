@@ -177,6 +177,60 @@ export default function DashboardPage() {
 
       {isAdmin && <SystemPulse />}
 
+      {metrics && (() => {
+        const alerts: { type: "critical" | "warning" | "opportunity"; message: string; action: string; link: string; icon: any }[] = [];
+        if ((metrics.unreadIgMessages ?? 0) > 0)
+          alerts.push({ type: "critical", message: `${metrics.unreadIgMessages} unread Instagram messages waiting`, action: "Open Inbox", link: "/inbox", icon: MessageSquare });
+        if ((metrics.todayMessages ?? 0) === 0 && (metrics.totalContacts ?? 0) > 0)
+          alerts.push({ type: "warning", message: "No messages sent today — your pipeline is silent", action: "Send Message", link: "/inbox", icon: MessageSquare });
+        if ((metrics.upcomingAppointments ?? 0) === 0 && (metrics.totalContacts ?? 0) > 5)
+          alerts.push({ type: "warning", message: "No upcoming appointments — consider sending booking reminders", action: "View Calendar", link: "/calendar", icon: CalendarDays });
+        if ((metrics.totalDeals ?? 0) > 0 && (metrics.totalDealValue ?? 0) === 0)
+          alerts.push({ type: "warning", message: "Active deals have $0 value — update deal amounts for accurate forecasting", action: "Open Pipeline", link: "/pipeline", icon: Kanban });
+        if ((metrics.totalAdSpend ?? 0) > 0 && (metrics.totalAdLeads ?? 0) === 0)
+          alerts.push({ type: "critical", message: `$${metrics.totalAdSpend.toLocaleString()} ad spend with 0 leads — check your ad targeting`, action: "Check Ads", link: "/meta-ads", icon: Target });
+        if ((metrics.totalCampaigns ?? 0) === 0)
+          alerts.push({ type: "opportunity", message: "No email campaigns running — launch one to re-engage contacts", action: "Create Campaign", link: "/email-campaigns", icon: Mail });
+        if ((metrics.metaAdCampaigns ?? 0) === 0 && (metrics.totalContacts ?? 0) > 10)
+          alerts.push({ type: "opportunity", message: "No Meta ad campaigns — you have contacts but aren't scaling with ads", action: "Launch Ads", link: "/meta-ads", icon: Target });
+
+        if (alerts.length === 0) return null;
+        return (
+          <Card className="bg-black/40 border-white/10" data-testid="card-smart-alerts">
+            <CardContent className="p-4">
+              <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                <Zap size={16} className="text-amber-400" />
+                Action Required
+                <span className="text-[10px] text-white/30 bg-white/5 px-2 py-0.5 rounded-full ml-1">{alerts.length}</span>
+              </h3>
+              <div className="space-y-2">
+                {alerts.map((alert, i) => (
+                  <Link key={i} href={alert.link}>
+                    <div className={`flex items-center gap-3 p-3 rounded-xl transition-all cursor-pointer group border ${
+                      alert.type === "critical" ? "bg-red-500/5 border-red-500/10 hover:border-red-500/30" :
+                      alert.type === "warning" ? "bg-amber-500/5 border-amber-500/10 hover:border-amber-500/30" :
+                      "bg-cyan-500/5 border-cyan-500/10 hover:border-cyan-500/30"
+                    }`} data-testid={`alert-${i}`}>
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                        alert.type === "critical" ? "bg-red-500/15" : alert.type === "warning" ? "bg-amber-500/15" : "bg-cyan-500/15"
+                      }`}>
+                        <alert.icon size={14} className={
+                          alert.type === "critical" ? "text-red-400" : alert.type === "warning" ? "text-amber-400" : "text-cyan-400"
+                        } />
+                      </div>
+                      <p className="text-sm text-white/70 flex-1">{alert.message}</p>
+                      <span className="text-[11px] font-medium text-white/40 group-hover:text-white/70 transition-colors shrink-0 flex items-center gap-1">
+                        {alert.action} <ArrowUp size={10} className="rotate-45" />
+                      </span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
       {serviceStatus && Object.keys(serviceStatus).length > 0 && (
         <Card className="bg-black/40 border-white/10" data-testid="card-service-status">
           <CardContent className="p-4">
@@ -297,7 +351,17 @@ export default function DashboardPage() {
           </h2>
           <p className="text-slate-300 text-sm">Your key metrics vs. anonymized industry benchmarks from businesses like yours on Apex</p>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {benchmarkData.metrics.map((metric) => (
+            {benchmarkData.metrics.map((metric) => {
+              const recommendations: Record<string, { text: string; link: string }> = {
+                response_time: { text: "Enable auto-reply in inbox settings", link: "/inbox" },
+                conversion_rate: { text: "Build a nurture automation sequence", link: "/workflows" },
+                messages_per_contact: { text: "Increase follow-up frequency", link: "/inbox" },
+                contacts_per_month: { text: "Launch a lead gen ad campaign", link: "/meta-ads" },
+                deals_per_contact: { text: "Add pipeline stages and track deals", link: "/pipeline" },
+                deal_close_rate: { text: "Review and optimize your pipeline", link: "/pipeline" },
+              };
+              const rec = metric.status === "below" ? recommendations[metric.key] : null;
+              return (
               <Card key={metric.key} className="bg-black/40 border-white/10" data-testid={`benchmark-${metric.key}`}>
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-3">
@@ -338,9 +402,19 @@ export default function DashboardPage() {
                       );
                     })()}
                   </div>
+                  {rec && (
+                    <Link href={rec.link}>
+                      <div className="mt-3 flex items-center gap-2 p-2 rounded-lg bg-red-500/5 border border-red-500/10 hover:border-red-500/25 transition-all cursor-pointer group" data-testid={`benchmark-action-${metric.key}`}>
+                        <Zap size={12} className="text-red-400 shrink-0" />
+                        <span className="text-[11px] text-red-300/80 flex-1">{rec.text}</span>
+                        <ArrowUp size={10} className="text-red-400/50 group-hover:text-red-400 rotate-45 shrink-0" />
+                      </div>
+                    </Link>
+                  )}
                 </CardContent>
               </Card>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
