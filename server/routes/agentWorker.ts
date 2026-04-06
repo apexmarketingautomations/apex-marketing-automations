@@ -124,10 +124,21 @@ async function executeJob(job: AgentWorkerJob) {
   if (subAccountId) {
     const prot = await isProtectedAccount(subAccountId);
     if (prot) {
-      const errMsg = `Rejected: sub_account ${subAccountId} is protected`;
-      await db.update(agentWorkerJobs).set({ status: "failed", error: errMsg, completedAt: new Date() }).where(eq(agentWorkerJobs.id, job.id));
-      await writeJobLog(job.id, "error", errMsg);
-      return;
+      if (commandConfig.requires_unlock) {
+        const unlockToken = payload.owner_unlock_token;
+        const unlockResult = await validateUnlockExists(subAccountId, job.jobType, unlockToken);
+        if (!unlockResult.valid) {
+          const errMsg = `Rejected: sub_account ${subAccountId} is protected and unlock failed: ${unlockResult.error}`;
+          await db.update(agentWorkerJobs).set({ status: "failed", error: errMsg, completedAt: new Date() }).where(eq(agentWorkerJobs.id, job.id));
+          await writeJobLog(job.id, "error", errMsg);
+          return;
+        }
+      } else {
+        const errMsg = `Rejected: sub_account ${subAccountId} is protected`;
+        await db.update(agentWorkerJobs).set({ status: "failed", error: errMsg, completedAt: new Date() }).where(eq(agentWorkerJobs.id, job.id));
+        await writeJobLog(job.id, "error", errMsg);
+        return;
+      }
     }
   }
 
@@ -261,7 +272,16 @@ export function registerAgentWorkerRoutes(app: Express) {
     if (subAccountId) {
       const prot = await isProtectedAccount(subAccountId);
       if (prot) {
-        return res.status(403).json({ error: `Sub-account ${subAccountId} is protected` });
+        const cmd = registry.commands[body.job_type];
+        const unlockToken = typeof body.payload?.owner_unlock_token === "string" ? body.payload.owner_unlock_token : undefined;
+        if (cmd?.requires_unlock && unlockToken) {
+          const unlockCheck = await validateUnlockExists(subAccountId, body.job_type, unlockToken);
+          if (!unlockCheck.valid) {
+            return res.status(403).json({ error: `Sub-account ${subAccountId} is protected and unlock failed: ${unlockCheck.error}` });
+          }
+        } else {
+          return res.status(403).json({ error: `Sub-account ${subAccountId} is protected` });
+        }
       }
     }
 

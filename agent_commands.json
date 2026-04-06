@@ -11,6 +11,12 @@
       "script": "npx tsx scripts/seed_demo_subaccount.ts",
       "timeout_seconds": 60,
       "requires_unlock": false
+    },
+    "run_finetune_training": {
+      "description": "Extract training pairs, PII-redact, moderate content, upload to OpenAI and start fine-tuning job",
+      "script": "npx tsx scripts/run_finetune_training.ts",
+      "timeout_seconds": 300,
+      "requires_unlock": true
     }
   }
 }
