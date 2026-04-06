@@ -39,16 +39,6 @@ function validateReply(reply: string, profile: PersonaProfile): { valid: boolean
     }
   }
 
-  const genericOpeners = [
-    "mmm you messaged", "mmm, you messaged", "mmm… you messaged",
-    "you messaged me", "you messaged first", "you slid in",
-  ];
-  for (const opener of genericOpeners) {
-    if (lower.startsWith(opener)) {
-      return { valid: false, reason: "generic_opener" };
-    }
-  }
-
   for (const forbidden of profile.forbiddenPhrases) {
     if (lower.includes(forbidden.toLowerCase())) {
       return { valid: false, reason: "forbidden_phrase" };
@@ -123,11 +113,7 @@ export async function generateRagCommentReply(
       ],
       { temperature: 0.9, maxTokens: 30 },
     );
-    let reply = (openerReply?.text || "hey what's good 😊").replace(/^["']|["']$/g, "").trim();
-    const lower = reply.toLowerCase();
-    if (lower.includes("mmm") && lower.includes("messaged") || lower.startsWith("you messaged")) {
-      reply = "hey what's good 😊";
-    }
+    const reply = (openerReply?.text || "hey what's good 😊").replace(/^["']|["']$/g, "").trim();
     return { reply, sentiment: "neutral", ragUsed: true, examplesCount: 0, retries: 0 };
   }
 
@@ -162,7 +148,6 @@ ${examplesBlock}
 
 HARD CONSTRAINTS:
 - Your reply MUST directly respond to what the person actually said. Read their message and reply to its content.
-- Do NOT start with a generic opener. No "mmm you messaged" or similar filler — go straight into your response.
 - Maximum ${wordBudget} words. Shorter is better. Your median is ${profile.medianReplyLength} words.
 - Write EXACTLY like the examples above — same slang, same energy, same brevity.
 - If the examples use "u" instead of "you", YOU must use "u".
