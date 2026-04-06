@@ -159,23 +159,7 @@ export function shouldSendVoiceMessage(
   voicesSentThisThread: number,
   lastMessageText?: string
 ): boolean {
-  if (voicesSentThisThread >= 2) return false;
-
-  if (messageCount < 4) return false;
-
-  if (lastMessageText) {
-    const lower = lastMessageText.toLowerCase();
-    const hasLink = /https?:\/\/|t\.me\//i.test(lastMessageText);
-    const hasPhone = /\b\d{10,11}\b|\(\d{3}\)\s?\d{3}/.test(lastMessageText);
-    if (hasLink || hasPhone) return false;
-
-    const isQuestion = lower.includes("?") || lower.startsWith("what") || lower.startsWith("how") || lower.startsWith("when");
-    if (isQuestion && messageCount >= 5) {
-      return Math.random() < 0.18;
-    }
-  }
-
-  return Math.random() < 0.10;
+  return false;
 }
 
 export function getLaylaVoiceConfig() {
