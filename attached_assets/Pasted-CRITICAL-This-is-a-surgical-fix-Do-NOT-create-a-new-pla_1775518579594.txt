@@ -1,0 +1,99 @@
+CRITICAL: This is a surgical fix. Do NOT create a new plan. Do NOT restate the problem. Execute immediately.
+
+We have a regression caused by protected-account logic that is blocking ALL operations for Sub-account 21.
+
+This is breaking:
+- Meta webhook processing
+- message creation
+- conversation linking
+- inbox visibility
+- integration diagnostics
+
+---
+
+## OBJECTIVE
+
+Fix the protected-account guard so it ONLY blocks destructive/admin operations and DOES NOT block:
+
+- webhook processing
+- message/comment creation
+- background processing
+- read operations
+- inbox queries
+- integration health checks
+
+---
+
+## TASKS
+
+1. Locate the protected-account guard logic
+   Likely in:
+   - tenantGuard.ts
+   - verifyNotProtectedAccount
+   - middleware
+   - tool execution layer
+
+2. Identify all places where:
+   - account 21 is being blocked
+   - errors like "ABORT: protected account" are thrown
+
+3. Modify the logic so:
+
+   IF operation is:
+   - webhook ingestion
+   - message processing
+   - background job execution
+   - read/query
+   - integration diagnostics
+
+   → ALLOW execution
+
+   IF operation is:
+   - destructive write
+   - account modification
+   - credential update
+   - admin override
+
+   → BLOCK execution
+
+---
+
+## IMPLEMENTATION REQUIREMENTS
+
+- Do NOT remove protection globally
+- Do NOT affect protected accounts 22 or 13
+- Scope changes narrowly
+- If needed, introduce operation-type checks:
+  - e.g. "mode", "intent", "autonomy level", or route-based allowance
+- Ensure no raw "ABORT" messages leak to UI
+
+---
+
+## VERIFICATION (MANDATORY)
+
+Show proof that:
+
+1. A webhook event is processed for account 21
+2. A message is inserted into DB
+3. A conversation is created/linked
+4. Inbox can read the data
+5. Protected accounts 22 and 13 remain protected for destructive actions
+
+---
+
+## OUTPUT
+
+Return:
+
+- exact file(s) changed
+- exact logic before/after
+- explanation of how protection is now scoped correctly
+- proof of message flow restored
+
+---
+
+## HARD RULE
+
+Do NOT say "fixed" unless messages are actually appearing in DB and flowing into inbox.
+
+Execute now.

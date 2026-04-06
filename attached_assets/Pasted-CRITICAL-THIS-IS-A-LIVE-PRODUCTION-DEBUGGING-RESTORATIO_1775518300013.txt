@@ -1,0 +1,336 @@
+CRITICAL: THIS IS A LIVE PRODUCTION DEBUGGING + RESTORATION TASK. EXECUTE WITH EXTREME CAUTION. THIS TASK IS NON-NEGOTIABLE, VERIFICATION-DRIVEN, AND MUST NOT END IN THEORY, GUESSWORK, OR “SHOULD WORK” LANGUAGE.
+
+You are working inside the live **Apex Marketing Automations** Replit codebase and production-connected environment.
+
+## PRIMARY OBJECTIVE
+Restore the full **Meta → webhook → processing → DB → inbox** flow for **Officer Layla / Sub-account 21** so that:
+- Instagram/Facebook DMs sync into the inbox
+- Facebook comments sync into the inbox/comments view
+- Related records are inserted and linked correctly in the database
+- The issue is verified with real evidence, not assumptions
+
+---
+
+## CURRENT KNOWN FACTS
+Use these facts as constraints. Do not ignore them.
+
+### Production / environment facts
+- Production site is live
+- Production DB is connected
+- `DISABLE_BACKGROUND_WORKERS = false`
+- Server is running on port 5000
+- Replit app is already active
+- There are webhook events in the DB
+- There are zero processed Meta message records showing in expected tables
+
+### Current DB state observed
+- `webhook_events = 29`
+- `webhook_delivery_logs = 0`
+- `instagram_messages = 0`
+- `instagram_conversations = 0`
+- `agent_worker_jobs = 0`
+- `agent_worker_logs = 0`
+- `integration_connections = 28`
+- `sub_accounts = 19`
+- `messages = 2047`
+- `contacts = 409`
+- `owner_unlocks = 0`
+
+### Account-specific facts
+- Target account is **Sub-account 21**
+- This account has been treated as protected in parts of the system
+- A raw abort error has been shown in UI before:
+  - protected account / do not retry / forbidden
+- Layla was not originally present in the production DB and was integrated later
+- There may be an account mapping mismatch or protection logic blocking processing
+
+### Security / caution facts
+- Do not expose secret values in output
+- Do not touch protected accounts 22 or 13
+- Do not perform destructive writes or broad cleanup
+- Do not rotate secrets in this task
+- Do not change domains, billing, DNS, or unrelated production settings
+- Do not modify UI/layout in this task unless absolutely required for proving pipeline visibility
+
+---
+
+## THE PROBLEM TO SOLVE
+The system appears to be receiving Meta webhook events, but the pipeline is failing after ingestion.
+
+This means the break is likely in one or more of these layers:
+1. webhook parsing
+2. event routing
+3. account identification / mapping
+4. protected-account guard logic
+5. queue/job creation
+6. worker pickup
+7. direct message insertion logic
+8. conversation linking logic
+9. comment sync path
+10. inbox query/display path
+
+Your job is to trace the exact break and fix it fully.
+
+---
+
+## NON-NEGOTIABLE EXECUTION RULES
+
+### RULE 1 — NO GUESSING
+Do not speculate.
+Do not say “likely.”
+Do not say “probably.”
+Inspect code, DB behavior, and logs until the exact breakpoint is identified.
+
+### RULE 2 — NO FAKE SUCCESS
+Do not say “fixed” unless you verify all of the following:
+- a webhook event is processed
+- a message or comment record is created
+- a conversation record is created or linked
+- the inbox can read/display the result for account 21
+
+### RULE 3 — NO UNRELATED CHANGES
+Do not touch:
+- unrelated UI
+- marketing pages
+- domains
+- billing
+- SEO assets
+- content planner
+- Telegram
+- social sharing image work
+- failover/deployment prep
+Only work on the Meta inbox pipeline and only the minimum necessary files.
+
+### RULE 4 — PROTECT LIVE PRODUCTION
+Before any code change:
+- identify exact file(s) responsible
+- document intended change internally
+- keep changes minimal and reversible
+- do not mass-refactor
+
+### RULE 5 — HANDLE PROTECTED ACCOUNT LOGIC SAFELY
+If account 21 protection is blocking this flow:
+- do not remove protection globally
+- do not weaken protections for 22 or 13
+- allow only the minimum safe processing/diagnostic path needed for account 21 Meta inbox sync to function
+- if the issue is raw UI abort leakage, stop the leak and fix the true blocker
+
+### RULE 6 — VERIFICATION IS MANDATORY
+At the end, provide explicit proof, not generic statements.
+
+---
+
+## REQUIRED EXECUTION ORDER
+Follow this order exactly.
+
+# PHASE 1 — DISCOVERY AND TRACE
+First inspect the system end-to-end.
+
+### Step 1. Locate the Meta webhook entry points
+Find all files/functions/routes involved in:
+- Meta webhook receipt
+- webhook verification
+- webhook event persistence
+- webhook event processing
+- DM sync
+- comment sync
+- inbox record creation
+
+Explicitly identify:
+- route file(s)
+- service file(s)
+- worker file(s)
+- DB write path(s)
+- inbox read/query path(s)
+
+### Step 2. Identify the actual event pipeline
+For a Meta event, determine exactly which path happens:
+- webhook route receives payload
+- payload is validated
+- event is stored in `webhook_events` or another table
+- then what happens next?
+  - direct processing?
+  - queue job?
+  - background worker claim?
+  - delayed retry?
+  - per-account processor?
+
+Map the real execution flow in order.
+
+### Step 3. Trace account resolution
+Determine exactly how Sub-account 21 is resolved during Meta event processing.
+Check:
+- page ID to account mapping
+- integration connection mapping
+- social account mapping
+- contact ownership mapping
+- tenant / sub-account lookup logic
+- any hardcoded exceptions
+- any `verifyNotProtectedAccount` / tenant guard logic
+- any mismatch between 21 and another account ID
+
+### Step 4. Trace queue / worker behavior
+Because `agent_worker_jobs = 0` and `agent_worker_logs = 0`, determine:
+- whether this pipeline is supposed to create jobs
+- whether jobs are being skipped
+- whether jobs are being created elsewhere
+- whether the Meta pipeline bypasses the worker system
+- whether a guard condition prevents job creation for account 21
+- whether jobs are created under a different table or path
+
+### Step 5. Trace DB write behavior
+Find the exact code path that should create:
+- `instagram_messages`
+- `instagram_conversations`
+- or alternative message/conversation tables used by the inbox
+
+Verify whether the inbox actually reads from:
+- `instagram_messages`
+- `instagram_conversations`
+- `messages`
+- another channel-normalized table
+Do not assume the empty Instagram tables alone prove total failure until read paths are confirmed.
+
+---
+
+# PHASE 2 — ROOT CAUSE IDENTIFICATION
+After discovery, identify the exact root cause(s).
+
+Possible root causes to confirm or eliminate:
+- webhook arrives but parser drops Meta payload fields
+- event is saved but never processed
+- processing is blocked by protected-account logic
+- account mapping for 21 is missing or wrong
+- page/token linkage incomplete for Layla
+- worker dispatch never fires
+- comments path and DMs path diverge and both are broken differently
+- records are inserted into the wrong tables
+- inbox query ignores the records even if created
+- message/comment creation is silently failing without logs
+
+You must identify the exact failure point(s), not just the symptom.
+
+---
+
+# PHASE 3 — MINIMAL SAFE FIX
+Apply only the minimum code changes needed.
+
+### Required standards for the fix
+- keep protections for 22 and 13 intact
+- do not globally disable tenant guards
+- do not add hacky bypasses without scope
+- do not suppress errors without fixing root cause
+- add logging only where necessary for proof/debugging
+- preserve current app behavior outside this pipeline
+
+### If the issue is protected-account blocking
+Implement the safest fix possible:
+- allow required read-only/processing operations for account 21 only where needed
+- distinguish destructive tools from passive processing
+- stop raw internal abort text from surfacing in user-facing assistant flows
+- do not create a broad bypass
+
+### If the issue is mapping
+Fix the account/page/integration mapping cleanly and explicitly.
+
+### If the issue is worker dispatch
+Fix dispatch/queue trigger logic and verify jobs are created and/or processed.
+
+### If the issue is direct insertion path
+Fix the insertion code and ensure created records are queryable by the inbox.
+
+---
+
+# PHASE 4 — VERIFICATION
+This phase is mandatory and cannot be skipped.
+
+You must verify with evidence covering both **DMs** and **comments** if both are part of the broken flow.
+
+## REQUIRED VERIFICATION CHECKLIST
+
+### Verification A — Ingestion
+Show that a webhook event is being received and recognized for the Layla path.
+
+### Verification B — Processing
+Show that the event is actually processed after ingestion.
+
+### Verification C — Record creation
+Show that one or more of the following now occurs:
+- a message row is created
+- a conversation row is created
+- a comment row/path is created if comments are stored separately
+- related contact/account linkage is correct
+
+### Verification D — Account mapping
+Show that the processed record is tied to the correct sub-account (21) and not routed elsewhere.
+
+### Verification E — Inbox visibility
+Show that the inbox query path can now surface the synced content for the correct account.
+
+### Verification F — No collateral damage
+Confirm no changes were applied to protected accounts 22 or 13 and no unrelated systems were modified.
+
+---
+
+## REQUIRED OUTPUT FORMAT
+At the end, return your result in this exact structure:
+
+### 1. Executive summary
+A short clear statement of:
+- what was broken
+- what fixed it
+- current verified status
+
+### 2. Root cause(s)
+List each confirmed root cause with exact file/function names.
+
+### 3. Files changed
+List every modified file.
+
+### 4. Code changes made
+For each file, explain what changed and why.
+
+### 5. Verification proof
+Provide concrete proof for:
+- webhook received
+- processing occurred
+- message/comment inserted
+- conversation linked
+- inbox visibility restored
+
+### 6. Remaining risks
+State anything still unverified or requiring manual external testing from Meta’s side.
+
+### 7. What you did NOT change
+Explicitly confirm you did not change:
+- accounts 22 or 13
+- domain settings
+- billing
+- unrelated UI/pages
+- secrets
+
+---
+
+## HARD STOP CONDITIONS
+If you cannot verify a step, do not bluff.
+Instead:
+- stop
+- state the exact blocker
+- state the exact file/function/table/log causing the blocker
+- state the exact next action required
+
+But do not end early unless truly blocked by something external.
+
+---
+
+## SUCCESS DEFINITION
+This task is successful only if all of the following are true:
+- the true break in the Meta pipeline is identified
+- the minimum safe fix is applied
+- processing for account 21 is no longer blocked incorrectly
+- Layla-related Meta data can flow into DB records
+- the inbox can surface the synced result
+- proof is provided
+
+This is an execution task, not a brainstorming task.
+Inspect. Trace. Fix. Verify. Report.

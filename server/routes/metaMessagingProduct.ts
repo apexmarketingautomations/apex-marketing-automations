@@ -691,7 +691,7 @@ export function registerMetaMessagingProductRoutes(app: Express) {
 
   app.post(`${BASE}/approve-send/:subAccountId`, asyncHandler(async (req: Request, res: Response) => {
     const sid = parseIntParam(req.params.subAccountId, "subAccountId");
-    const ctx = await authChain(req, res, sid, true);
+    const ctx = await authChain(req, res, sid, false);
     if (!ctx) return;
     const { userId, account } = ctx;
     const traceId = (req as any).traceId || crypto.randomUUID();
@@ -908,7 +908,7 @@ export function registerMetaMessagingProductRoutes(app: Express) {
 
   app.post(`${BASE}/mode/:subAccountId`, asyncHandler(async (req: Request, res: Response) => {
     const sid = parseIntParam(req.params.subAccountId, "subAccountId");
-    const ctx = await authChain(req, res, sid, true);
+    const ctx = await authChain(req, res, sid, false);
     if (!ctx) return;
     const { userId, account } = ctx;
     const { mode, confirmLive } = req.body;
