@@ -5,14 +5,20 @@ import { promisify } from "util";
 import { db } from "../db";
 import { agentWorkerJobs, agentWorkerLogs, ownerUnlocks, subAccounts } from "@shared/schema";
 import type { AgentWorkerJob } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import fs from "fs";
 import path from "path";
 import { z } from "zod";
 import type { Express } from "express";
 
 const execAsync = promisify(exec);
-const POLL_INTERVAL_MS = 5000;
+
+const AGENT_POLL_SECS = Math.max(1, parseInt(process.env.AGENT_POLL_SECS || "60", 10));
+const POLL_INTERVAL_MS = AGENT_POLL_SECS * 1000;
+const AGENT_MAX_CONCURRENCY = Math.max(1, parseInt(process.env.AGENT_MAX_CONCURRENCY || "2", 10));
+const AGENT_MAX_RUNTIME = Math.max(10, parseInt(process.env.AGENT_MAX_RUNTIME || "120", 10));
+
+let activeJobs = 0;
 
 interface CommandConfig {
   description: string;
@@ -108,6 +114,15 @@ async function validateUnlockExists(subAccountId: number, purpose: string, token
 }
 
 async function executeJob(job: AgentWorkerJob) {
+  activeJobs++;
+  try {
+    await executeJobInner(job);
+  } finally {
+    activeJobs--;
+  }
+}
+
+async function executeJobInner(job: AgentWorkerJob) {
   const registry = loadCommandRegistry();
   const commandConfig = registry.commands[job.jobType];
 
@@ -153,14 +168,11 @@ async function executeJob(job: AgentWorkerJob) {
     }
   }
 
-  await db.update(agentWorkerJobs).set({
-    status: "running",
-    startedAt: new Date(),
-    attempts: (job.attempts || 0) + 1,
-  }).where(eq(agentWorkerJobs.id, job.id));
   await writeJobLog(job.id, "info", `Starting execution: ${job.jobType}`, { payload: job.payload as Record<string, unknown> });
 
-  const timeoutMs = (commandConfig.timeout_seconds || 60) * 1000;
+  const commandTimeout = commandConfig.timeout_seconds || AGENT_MAX_RUNTIME;
+  const effectiveTimeout = Math.min(commandTimeout, AGENT_MAX_RUNTIME);
+  const timeoutMs = effectiveTimeout * 1000;
   const env = {
     ...process.env,
     AGENT_JOB_ID: String(job.id),
@@ -181,7 +193,7 @@ async function executeJob(job: AgentWorkerJob) {
     console.log(`[AGENT-WORKER] Job #${job.id} (${job.jobType}) completed`);
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message.substring(0, 2000) : String(err);
-    const currentAttempts = (job.attempts || 0) + 1;
+    const currentAttempts = job.attempts;
     if (currentAttempts < job.maxAttempts) {
       await db.update(agentWorkerJobs).set({ status: "pending", error: errMsg }).where(eq(agentWorkerJobs.id, job.id));
       await writeJobLog(job.id, "warn", `Attempt ${currentAttempts}/${job.maxAttempts} failed, will retry`, { error: errMsg });
@@ -194,16 +206,51 @@ async function executeJob(job: AgentWorkerJob) {
   }
 }
 
+async function claimPendingJobs(batchLimit: number): Promise<AgentWorkerJob[]> {
+  const result = await db.execute(
+    sql`UPDATE agent_worker_jobs
+        SET status = 'running', started_at = NOW(), attempts = attempts + 1
+        WHERE id IN (
+          SELECT id FROM agent_worker_jobs
+          WHERE status = 'pending'
+          ORDER BY created_at ASC
+          LIMIT ${batchLimit}
+          FOR UPDATE SKIP LOCKED
+        )
+        RETURNING *`
+  );
+  if (!result.rows || result.rows.length === 0) return [];
+  return result.rows.map((row) => ({
+    id: row.id as number,
+    jobType: row.job_type as string,
+    payload: row.payload,
+    status: row.status as string,
+    createdBy: row.created_by as string,
+    subAccountId: row.sub_account_id as number | null,
+    result: row.result,
+    error: row.error as string | null,
+    attempts: row.attempts as number,
+    maxAttempts: row.max_attempts as number,
+    startedAt: row.started_at as Date | null,
+    completedAt: row.completed_at as Date | null,
+    createdAt: row.created_at as Date,
+  }));
+}
+
 async function pollForJobs() {
+  if (activeJobs >= AGENT_MAX_CONCURRENCY) {
+    return;
+  }
+
   try {
-    const [job] = await db
-      .select()
-      .from(agentWorkerJobs)
-      .where(eq(agentWorkerJobs.status, "pending"))
-      .orderBy(agentWorkerJobs.createdAt)
-      .limit(1);
-    if (job) {
-      await executeJob(job);
+    const slotsAvailable = AGENT_MAX_CONCURRENCY - activeJobs;
+    const batchLimit = Math.min(slotsAvailable, 5);
+
+    const jobs = await claimPendingJobs(batchLimit);
+
+    if (jobs.length > 0) {
+      const promises = jobs.map((job) => executeJob(job));
+      await Promise.all(promises);
     }
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
@@ -213,6 +260,7 @@ async function pollForJobs() {
 
 export function registerAgentWorkerRoutes(app: Express) {
   const AGENT_SECRET = process.env.AGENT_SECRET;
+  const DISABLE_BACKGROUND_WORKERS = process.env.DISABLE_BACKGROUND_WORKERS === "true";
 
   if (!AGENT_SECRET) {
     console.warn("[AGENT-WORKER] AGENT_SECRET not set — agent webhook will reject all requests");
@@ -311,6 +359,15 @@ export function registerAgentWorkerRoutes(app: Express) {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
+  if (DISABLE_BACKGROUND_WORKERS) {
+    console.log(`[AGENT-WORKER] Routes mounted on main app, poll loop DISABLED (DISABLE_BACKGROUND_WORKERS=true)`);
+    return;
+  }
+
+  console.log(`[AGENT-WORKER] Configuration:`);
+  console.log(`[AGENT-WORKER]   AGENT_POLL_SECS=${AGENT_POLL_SECS} (interval: ${POLL_INTERVAL_MS}ms)`);
+  console.log(`[AGENT-WORKER]   AGENT_MAX_CONCURRENCY=${AGENT_MAX_CONCURRENCY}`);
+  console.log(`[AGENT-WORKER]   AGENT_MAX_RUNTIME=${AGENT_MAX_RUNTIME}s`);
   console.log(`[AGENT-WORKER] Routes mounted on main app, starting poll loop (${POLL_INTERVAL_MS}ms)`);
   setInterval(pollForJobs, POLL_INTERVAL_MS);
 }

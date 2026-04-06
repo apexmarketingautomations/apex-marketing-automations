@@ -37,6 +37,9 @@ CREATE TABLE IF NOT EXISTS owner_unlocks (
   expires_at TIMESTAMP NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS idx_agent_worker_jobs_status_created ON agent_worker_jobs(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_agent_worker_jobs_sub ON agent_worker_jobs(sub_account_id);
 `;
 
 export async function ensureAgentWorkerTables(): Promise<void> {
