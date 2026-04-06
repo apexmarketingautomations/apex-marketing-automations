@@ -435,6 +435,7 @@ function validateEnvVars() {
     { key: "Gemini_API_Key_saas", label: "Gemini API Key (AI features, fallback)", critical: false },
     { key: "GOOGLE_API_KEY", label: "Google API Key (Maps, Places, etc.)", critical: false },
     { key: "META_APP_ID", label: "Meta App ID (optional, for app-level ops)", critical: false },
+    { key: "AGENT_SECRET", label: "Agent Worker HMAC Secret (webhook signature verification)", critical: false },
   ];
 
   let missingCritical = false;
@@ -519,6 +520,13 @@ async function validateMetaCredentials() {
     await initStripe();
   } catch (stripeErr) {
     console.error("[STARTUP] Stripe init failed (non-fatal):", stripeErr);
+  }
+
+  try {
+    const { ensureAgentWorkerTables } = await import("./agentWorkerMigration");
+    await ensureAgentWorkerTables();
+  } catch (migErr) {
+    console.error("[STARTUP] Agent worker migration failed (non-fatal):", migErr);
   }
 
   try {

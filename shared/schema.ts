@@ -2266,3 +2266,54 @@ export const metaMessagingAnalyticsAggregates = pgTable("meta_messaging_analytic
 export const insertMetaMessagingAnalyticsAggregateSchema = createInsertSchema(metaMessagingAnalyticsAggregates).omit({ id: true, createdAt: true });
 export type InsertMetaMessagingAnalyticsAggregate = z.infer<typeof insertMetaMessagingAnalyticsAggregateSchema>;
 export type MetaMessagingAnalyticsAggregate = typeof metaMessagingAnalyticsAggregates.$inferSelect;
+
+// ---- Agent Worker Job Queue ----
+
+export const agentWorkerJobs = pgTable("agent_worker_jobs", {
+  id: serial("id").primaryKey(),
+  jobType: text("job_type").notNull(),
+  payload: jsonb("payload").notNull(),
+  status: text("status").default("pending").notNull(),
+  createdBy: text("created_by").notNull(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id),
+  result: jsonb("result"),
+  error: text("error"),
+  attempts: integer("attempts").default(0).notNull(),
+  maxAttempts: integer("max_attempts").default(3).notNull(),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertAgentWorkerJobSchema = createInsertSchema(agentWorkerJobs).omit({ id: true, createdAt: true });
+export type InsertAgentWorkerJob = z.infer<typeof insertAgentWorkerJobSchema>;
+export type AgentWorkerJob = typeof agentWorkerJobs.$inferSelect;
+
+export const agentWorkerLogs = pgTable("agent_worker_logs", {
+  id: serial("id").primaryKey(),
+  jobId: integer("job_id").references(() => agentWorkerJobs.id, { onDelete: "cascade" }).notNull(),
+  level: text("level").default("info").notNull(),
+  message: text("message").notNull(),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertAgentWorkerLogSchema = createInsertSchema(agentWorkerLogs).omit({ id: true, createdAt: true });
+export type InsertAgentWorkerLog = z.infer<typeof insertAgentWorkerLogSchema>;
+export type AgentWorkerLog = typeof agentWorkerLogs.$inferSelect;
+
+export const ownerUnlocks = pgTable("owner_unlocks", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  token: text("token").notNull(),
+  purpose: text("purpose").notNull(),
+  createdBy: text("created_by").notNull(),
+  used: boolean("used").default(false).notNull(),
+  usedAt: timestamp("used_at"),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertOwnerUnlockSchema = createInsertSchema(ownerUnlocks).omit({ id: true, createdAt: true });
+export type InsertOwnerUnlock = z.infer<typeof insertOwnerUnlockSchema>;
+export type OwnerUnlock = typeof ownerUnlocks.$inferSelect;

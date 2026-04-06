@@ -1,0 +1,16 @@
+{
+  "commands": {
+    "run_backfill_for_subaccount": {
+      "description": "Run live backfill for a sub-account — fetches missing commenter names from Facebook Graph API",
+      "script": "npx tsx scripts/run_live_backfill.ts",
+      "timeout_seconds": 120,
+      "requires_unlock": true
+    },
+    "seed_demo_subaccount": {
+      "description": "Clone a source sub-account as a non-protected demo copy",
+      "script": "npx tsx scripts/seed_demo_subaccount.ts",
+      "timeout_seconds": 60,
+      "requires_unlock": false
+    }
+  }
+}
