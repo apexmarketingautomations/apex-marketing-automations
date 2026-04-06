@@ -482,14 +482,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <BlitzBanner />
         {location !== "/" && (
           <div className="px-4 md:px-6 pt-4 pb-0">
-            <Link
-              href="/"
+            <button
+              onClick={() => {
+                if (window.history.length > 1) {
+                  window.history.back();
+                } else {
+                  window.location.href = "/";
+                }
+              }}
               className="inline-flex items-center gap-1.5 text-sm text-slate-200 hover:text-white transition-colors group"
               data-testid="button-back"
             >
               <ArrowLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
-              Back to Home
-            </Link>
+              Back
+            </button>
           </div>
         )}
         {children}

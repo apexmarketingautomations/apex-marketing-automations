@@ -41,10 +41,23 @@ export function WelcomeModal() {
 
   useEffect(() => {
     const seen = localStorage.getItem(WELCOME_SEEN_KEY);
-    if (!seen) {
+    if (seen) return;
+
+    const checkAccounts = async () => {
+      try {
+        const res = await fetch("/api/accounts", { credentials: "include" });
+        if (res.ok) {
+          const accounts = await res.json();
+          if (Array.isArray(accounts) && accounts.length > 0) {
+            localStorage.setItem(WELCOME_SEEN_KEY, "true");
+            return;
+          }
+        }
+      } catch {}
       const timer = setTimeout(() => setShow(true), 2000);
       return () => clearTimeout(timer);
-    }
+    };
+    checkAccounts();
   }, []);
 
   const dismiss = () => {

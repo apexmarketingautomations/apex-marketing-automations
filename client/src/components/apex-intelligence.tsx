@@ -31,14 +31,14 @@ export interface ApexIntelligenceProps {
 
 const POSITION_CLASSES: Record<string, string> = {
   "bottom-left": "fixed bottom-6 left-6 md:left-[304px] z-50",
-  "bottom-right": "fixed bottom-6 right-6 z-50",
+  "bottom-right": "fixed bottom-24 sm:bottom-6 right-6 z-50",
   "top-left": "fixed top-20 left-6 md:left-[304px] z-50",
   "top-right": "fixed top-20 right-6 z-50",
   "inline": "relative z-10",
 };
 
 export function ApexIntelligence({
-  position = "bottom-left",
+  position = "bottom-right",
   defaultOpen = false,
   accountId,
   showToggle = true,
@@ -269,7 +269,7 @@ export function ApexIntelligence({
           onClick={handleToggle}
           onMouseDown={onPointerDown as any}
           onTouchStart={onPointerDown as any}
-          className="group relative w-20 h-20 rounded-3xl flex items-center justify-center transition-all touch-none select-none"
+          className="group relative w-14 h-14 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl flex items-center justify-center transition-all touch-none select-none"
           style={{
             background: isOpen
               ? "linear-gradient(135deg, rgba(139,92,246,0.2), rgba(6,182,212,0.15))"

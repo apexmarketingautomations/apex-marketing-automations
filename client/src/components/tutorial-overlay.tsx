@@ -95,6 +95,16 @@ export function TutorialOverlay({ steps, storageKey, onClose, finishLabel = "Get
   const complete = () => { localStorage.setItem(storageKey, "true"); onClose(); };
 
   const getPopoverPosition = (): React.CSSProperties => {
+    const isMobileView = window.innerWidth < 640;
+    if (isMobileView) {
+      return {
+        bottom: 80,
+        left: "50%",
+        transform: `translate(calc(-50% + ${offset.x}px), ${offset.y}px)`,
+        maxWidth: "calc(100vw - 32px)",
+        width: "100%",
+      };
+    }
     if (step.position === "center" || !highlightRect || !targetFound) {
       return { top: "50%", left: "50%", transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px))` };
     }
@@ -138,7 +148,7 @@ export function TutorialOverlay({ steps, storageKey, onClose, finishLabel = "Get
 
       <AnimatePresence mode="wait">
         <motion.div key={currentStep} initial={{ opacity: 0, y: 20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -20, scale: 0.95 }} transition={{ duration: 0.25 }} className="absolute" style={{ ...getPopoverPosition(), zIndex: 10 }} data-testid={`tutorial-step-${step.id}`}>
-          <div className={`bg-neutral-950 border ${c.border} rounded-2xl shadow-2xl ${c.glow} overflow-hidden w-[400px] max-w-[90vw]`}>
+          <div className={`bg-neutral-950 border ${c.border} rounded-2xl shadow-2xl ${c.glow} overflow-hidden w-full sm:w-[400px] max-w-[calc(100vw-32px)]`}>
             <div
               className="h-6 flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
               onMouseDown={onPointerDown as any}
@@ -203,10 +213,24 @@ export function useTutorial(storageKey: string) {
   const [showTutorial, setShowTutorial] = useState(false);
   useEffect(() => {
     const completed = localStorage.getItem(storageKey);
-    if (!completed) {
-      const timer = setTimeout(() => setShowTutorial(true), 1500);
-      return () => clearTimeout(timer);
+    if (completed) return;
+
+    const allTutorialKeys = [
+      "apex_welcome_seen",
+      "apex_tutorial_workflows",
+      "apex_tutorial_site_builder",
+      "apex_tutorial_bot_trainer",
+      "apex_tutorial_growth_center",
+      "apex_tutorial_inbox",
+    ];
+    const hasSeenAny = allTutorialKeys.some(k => localStorage.getItem(k) === "true");
+    if (hasSeenAny) {
+      localStorage.setItem(storageKey, "true");
+      return;
     }
+
+    const timer = setTimeout(() => setShowTutorial(true), 1500);
+    return () => clearTimeout(timer);
   }, [storageKey]);
   return {
     showTutorial,

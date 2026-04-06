@@ -388,15 +388,42 @@ async function ensureLaylaAccount(
   existing: Array<{ id: number; name: string; ownerUserId: string | null; parentAccountId: number | null }>
 ) {
   try {
-    const laylaAccount = existing.find((a) => a.name === "Officer Layla");
+    let laylaAccount = existing.find((a) => a.name === "Officer Layla");
+    const apexAccount = existing.find((a) => a.name === "APEX MARKETING Account");
+    const apexId = apexAccount?.id || 13;
+
     if (!laylaAccount) {
-      console.log("[SYNC] Officer Layla account not found — skipping (will be created when needed)");
-      return;
+      console.log("[SYNC] Officer Layla account not found — creating...");
+      const [created] = await db.insert(subAccounts).values({
+        name: "Officer Layla",
+        ownerUserId: adminUserId,
+        parentAccountId: apexId,
+        isInternal: true,
+        plan: "enterprise",
+        billingExempt: true,
+        isDeletable: false,
+        isProtected: true,
+        protectedReason: "Core AI persona account — do not modify or delete",
+        industry: "AI Persona / Marketing Automation",
+        config: {
+          commentBot: {
+            enabled: true,
+            replyStyle: "layla",
+            skipRepliesOnReplies: true,
+            maxRepliesPerHour: 30,
+          },
+          reengage: {
+            enabled: true,
+            daysThreshold: 60,
+            batchLimit: 20,
+          },
+        },
+      }).returning({ id: subAccounts.id, name: subAccounts.name, ownerUserId: subAccounts.ownerUserId, parentAccountId: subAccounts.parentAccountId });
+      laylaAccount = created;
+      console.log(`[SYNC] Created Officer Layla account #${created.id}`);
     }
 
     const laylaId = laylaAccount.id;
-    const apexAccount = existing.find((a) => a.name === "APEX MARKETING Account");
-    const apexId = apexAccount?.id || 13;
 
     if (laylaAccount.ownerUserId === "_archived" || !laylaAccount.ownerUserId) {
       await db.update(subAccounts)
