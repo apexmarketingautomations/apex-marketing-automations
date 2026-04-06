@@ -1,12 +1,16 @@
 import type { OperatorTool, ValidationResult, ToolResult, OperatorContext } from "../types";
 import { storage } from "../../storage";
 import { publishEventAsync, EVENT_TYPES } from "../../eventBus";
-import { verifyTenant } from "./tenantGuard";
+import { verifyTenant, verifyNotProtectedAccount } from "./tenantGuard";
 import { validateRouting } from "../../routing/gate";
 import { enforceSmsProvider } from "../../smsGatewayGuard";
 
 function noopValidate(): ValidationResult {
   return { valid: true, errors: [], warnings: [] };
+}
+
+async function guardProtected(ctx: OperatorContext): Promise<ToolResult | null> {
+  return verifyNotProtectedAccount(ctx.subAccountId, ctx.userId || "agent");
 }
 
 export const messagingTools: OperatorTool[] = [
@@ -26,6 +30,7 @@ export const messagingTools: OperatorTool[] = [
       return { valid: errors.length === 0, errors, warnings: [] };
     },
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       const gateResult = await validateRouting({
         subAccountId: ctx.subAccountId,
         source: "operator",
@@ -71,6 +76,7 @@ export const messagingTools: OperatorTool[] = [
       return { valid: errors.length === 0, errors, warnings: [] };
     },
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       return {
         success: true,
         data: {
@@ -103,6 +109,7 @@ export const messagingTools: OperatorTool[] = [
       return { valid: errors.length === 0, errors, warnings: [] };
     },
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       return {
         success: true,
         data: {
@@ -132,6 +139,7 @@ export const messagingTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       return {
         success: true,
         data: {
@@ -162,6 +170,7 @@ export const messagingTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       const campaign = await storage.createEmailCampaign({
         subAccountId: ctx.subAccountId,
         name: params.name,
@@ -191,6 +200,7 @@ export const messagingTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       return {
         success: true,
         data: {
@@ -218,6 +228,7 @@ export const messagingTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       const contact = await storage.getContactById(params.contactId);
       const guard = verifyTenant(contact, ctx.subAccountId, "Contact");
       if (guard) return guard;
@@ -250,6 +261,7 @@ export const messagingTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       return {
         success: true,
         data: {

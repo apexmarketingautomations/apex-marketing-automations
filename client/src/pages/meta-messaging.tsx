@@ -15,8 +15,10 @@ import {
   MessageSquare, Instagram, Facebook, Send, Shield, BarChart3, Settings, CreditCard,
   CheckCircle2, XCircle, AlertTriangle, ArrowRight, Zap, Eye, Edit3, Bot, Power,
   TrendingUp, Clock, MessageCircle, Users, ExternalLink, RefreshCw, Wifi, WifiOff,
-  Sparkles, ChevronRight, Filter, Search, ToggleLeft, ToggleRight, Play, Pause
+  Sparkles, ChevronRight, Filter, Search, ToggleLeft, ToggleRight, Play, Pause,
+  ShieldAlert, Lock
 } from "lucide-react";
+import type { SubAccount } from "@shared/schema";
 
 const TABS = [
   { id: "dashboard", label: "Dashboard", icon: TrendingUp },
@@ -928,13 +930,38 @@ function BillingTab({ subAccountId, demoMode }: { subAccountId: number; demoMode
   );
 }
 
+function ProtectedAccountBanner() {
+  return (
+    <div className="rounded-xl border-2 border-red-500/50 bg-red-950/40 p-4 flex items-center gap-3" data-testid="banner-protected-account">
+      <div className="w-12 h-12 rounded-xl bg-red-500/20 flex items-center justify-center flex-shrink-0">
+        <ShieldAlert size={24} className="text-red-400" />
+      </div>
+      <div className="flex-1">
+        <div className="flex items-center gap-2 mb-1">
+          <Lock size={14} className="text-red-400" />
+          <span className="text-sm font-bold text-red-400 uppercase tracking-wide">Protected Account — Do Not Touch</span>
+        </div>
+        <p className="text-xs text-red-300/80">
+          This account is protected. All write operations (send, approve, edit, seed, toggle) are disabled. Read-only access is available for auditing purposes.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function MetaMessagingPage() {
   const subAccountId = useActiveSubAccountId();
   const [activeTab, setActiveTab] = useState("dashboard");
   const [demoMode, setDemoMode] = useState(false);
 
+  const { data: accounts = [] } = useQuery<SubAccount[]>({ queryKey: ["/api/accounts"] });
+  const activeAccount = accounts.find(a => a.id === subAccountId);
+  const isProtected = activeAccount?.isProtected === true;
+
   return (
     <div className="min-h-screen p-4 lg:p-6 space-y-6" data-testid="meta-messaging-page">
+      {isProtected && <ProtectedAccountBanner />}
+
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2" data-testid="text-page-title">
@@ -970,25 +997,25 @@ export default function MetaMessagingPage() {
 
         <div className="mt-4">
           <TabsContent value="dashboard">
-            {subAccountId && <DashboardTab subAccountId={subAccountId} demoMode={demoMode} />}
+            {subAccountId && <DashboardTab subAccountId={subAccountId} demoMode={demoMode || isProtected} />}
           </TabsContent>
           <TabsContent value="inbox">
-            {subAccountId && <InboxTab subAccountId={subAccountId} demoMode={demoMode} />}
+            {subAccountId && <InboxTab subAccountId={subAccountId} demoMode={demoMode || isProtected} />}
           </TabsContent>
           <TabsContent value="comments">
-            {subAccountId && <CommentsTab subAccountId={subAccountId} demoMode={demoMode} />}
+            {subAccountId && <CommentsTab subAccountId={subAccountId} demoMode={demoMode || isProtected} />}
           </TabsContent>
           <TabsContent value="safety">
-            {subAccountId && <SafetyTab subAccountId={subAccountId} demoMode={demoMode} />}
+            {subAccountId && <SafetyTab subAccountId={subAccountId} demoMode={demoMode || isProtected} />}
           </TabsContent>
           <TabsContent value="analytics">
-            {subAccountId && <AnalyticsTab subAccountId={subAccountId} demoMode={demoMode} />}
+            {subAccountId && <AnalyticsTab subAccountId={subAccountId} demoMode={demoMode || isProtected} />}
           </TabsContent>
           <TabsContent value="settings">
-            {subAccountId && <SettingsTab subAccountId={subAccountId} demoMode={demoMode} />}
+            {subAccountId && <SettingsTab subAccountId={subAccountId} demoMode={demoMode || isProtected} />}
           </TabsContent>
           <TabsContent value="billing">
-            {subAccountId && <BillingTab subAccountId={subAccountId} demoMode={demoMode} />}
+            {subAccountId && <BillingTab subAccountId={subAccountId} demoMode={demoMode || isProtected} />}
           </TabsContent>
         </div>
       </Tabs>

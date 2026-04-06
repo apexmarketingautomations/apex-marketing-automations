@@ -1,10 +1,14 @@
 import type { OperatorTool, ValidationResult, ToolResult, OperatorContext } from "../types";
 import { storage } from "../../storage";
 import { publishEventAsync, EVENT_TYPES } from "../../eventBus";
-import { verifyTenant } from "./tenantGuard";
+import { verifyTenant, verifyNotProtectedAccount } from "./tenantGuard";
 
 function noopValidate(): ValidationResult {
   return { valid: true, errors: [], warnings: [] };
+}
+
+async function guardProtected(ctx: OperatorContext): Promise<ToolResult | null> {
+  return verifyNotProtectedAccount(ctx.subAccountId, ctx.userId || "agent");
 }
 
 export const appointmentTools: OperatorTool[] = [
@@ -23,6 +27,7 @@ export const appointmentTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       const contact = await storage.getContactById(params.contactId);
       const contactGuard = verifyTenant(contact, ctx.subAccountId, "Contact");
       if (contactGuard) return contactGuard;
@@ -60,6 +65,7 @@ export const appointmentTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       const appt = await storage.getAppointmentById(params.appointmentId);
       const guard = verifyTenant(appt, ctx.subAccountId, "Appointment");
       if (guard) return guard;
@@ -93,6 +99,7 @@ export const appointmentTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       const appt = await storage.getAppointmentById(params.appointmentId);
       const guard = verifyTenant(appt, ctx.subAccountId, "Appointment");
       if (guard) return guard;
@@ -125,6 +132,7 @@ export const appointmentTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       const appt = await storage.getAppointmentById(params.appointmentId);
       const guard1 = verifyTenant(appt, ctx.subAccountId, "Appointment");
       if (guard1) return guard1;
@@ -158,6 +166,7 @@ export const appointmentTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       const appt = await storage.getAppointmentById(params.appointmentId);
       const guard2 = verifyTenant(appt, ctx.subAccountId, "Appointment");
       if (guard2) return guard2;

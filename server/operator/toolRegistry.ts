@@ -4,6 +4,7 @@ import { crmTools, messagingTools, workflowTools, appointmentTools, campaignTool
 import { storage } from "../storage";
 import { publishEventAsync, EVENT_TYPES } from "../eventBus";
 import { startTrace, recordStepValue } from "../traceRecorder";
+import { verifyNotProtectedAccount } from "./toolHandlers/tenantGuard";
 
 const tools = new Map<string, OperatorTool>();
 const idempotencyCache = new Map<string, { result: ToolResult; timestamp: number }>();
@@ -143,6 +144,9 @@ export async function executeTool(toolName: string, params: Record<string, any>,
   if (tool.requiresApproval && context.autonomyLevel !== "execute" && context.sessionId !== "approved") {
     return { success: false, error: `Tool "${toolName}" requires approval before execution. Create an approval request first.` };
   }
+
+  const protectedBlock = await verifyNotProtectedAccount(context.subAccountId, context.userId || "agent");
+  if (protectedBlock) return protectedBlock;
 
   if (tool.idempotencyKey) {
     const rawKey = tool.idempotencyKey(params);

@@ -1,11 +1,15 @@
 import type { OperatorTool, ValidationResult, ToolResult, OperatorContext } from "../types";
 import { storage } from "../../storage";
 import { publishEventAsync, EVENT_TYPES } from "../../eventBus";
-import { verifyTenant } from "./tenantGuard";
+import { verifyTenant, verifyNotProtectedAccount } from "./tenantGuard";
 import { validateRouting } from "../../routing/gate";
 
 function noopValidate(): ValidationResult {
   return { valid: true, errors: [], warnings: [] };
+}
+
+async function guardProtected(ctx: OperatorContext): Promise<ToolResult | null> {
+  return verifyNotProtectedAccount(ctx.subAccountId, ctx.userId || "agent");
 }
 
 export const crmTools: OperatorTool[] = [
@@ -25,6 +29,7 @@ export const crmTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       const gateResult = await validateRouting({
         subAccountId: ctx.subAccountId,
         source: params.source || "operator",
@@ -65,6 +70,7 @@ export const crmTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       const { contactId, ...updates } = params;
       const existing = await storage.getContactById(contactId);
       const guard = verifyTenant(existing, ctx.subAccountId, "Contact");
@@ -88,6 +94,7 @@ export const crmTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       const existing = await storage.getContactById(params.contactId);
       const guard = verifyTenant(existing, ctx.subAccountId, "Contact");
       if (guard) return guard;
@@ -110,6 +117,7 @@ export const crmTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       const existing = await storage.getContactById(params.contactId);
       const guard = verifyTenant(existing, ctx.subAccountId, "Contact");
       if (guard) return guard;
@@ -136,6 +144,7 @@ export const crmTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       const task = {
         id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         subAccountId: ctx.subAccountId,
@@ -164,6 +173,7 @@ export const crmTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       return {
         success: true,
         data: { taskId: params.taskId, assignedTo: params.assignedTo, status: "assigned" },
@@ -183,6 +193,7 @@ export const crmTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       const created: Array<{ id: number; name: string; color: string | null; position: number }> = [];
       for (let i = 0; i < params.stages.length; i++) {
         const s = params.stages[i];
@@ -212,6 +223,7 @@ export const crmTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       const stages = await storage.getPipelineStages(ctx.subAccountId);
       const stage = await storage.createPipelineStage({
         subAccountId: ctx.subAccountId,
@@ -235,6 +247,7 @@ export const crmTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       const existing = await storage.getDealById(params.dealId);
       const guard = verifyTenant(existing, ctx.subAccountId, "Deal");
       if (guard) return guard;
@@ -259,6 +272,7 @@ export const crmTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       const gateResult = await validateRouting({
         subAccountId: ctx.subAccountId,
         source: "operator",
@@ -292,6 +306,7 @@ export const crmTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       const existing = await storage.getDealById(params.dealId);
       const guard = verifyTenant(existing, ctx.subAccountId, "Deal");
       if (guard) return guard;
@@ -313,6 +328,7 @@ export const crmTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       const existing = await storage.getContactById(params.contactId);
       const guard = verifyTenant(existing, ctx.subAccountId, "Contact");
       if (guard) return guard;
@@ -335,6 +351,7 @@ export const crmTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       const contact = await storage.getContactById(params.contactId);
       const guard = verifyTenant(contact, ctx.subAccountId, "Contact");
       if (guard) return guard;
@@ -376,6 +393,7 @@ export const crmTools: OperatorTool[] = [
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
+      const pb = await guardProtected(ctx); if (pb) return pb;
       const contacts = await storage.getContacts(ctx.subAccountId);
       let filtered = contacts || [];
 
