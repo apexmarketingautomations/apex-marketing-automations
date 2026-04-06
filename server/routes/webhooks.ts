@@ -1614,9 +1614,9 @@ export function registerWebhooksRoutes(app: Express) {
                   senderId,
                 });
               } else if (kw.responseText && accessToken && pageId) {
-                const kwDelayMs = Math.floor(1500 + Math.random() * 2500 * Math.min(message.length, 200) / 200);
+                const kwDelayMs = Math.floor(45000 + Math.random() * 15000);
+                console.log(`[META DM] Natural delay applied: ${Math.floor(kwDelayMs / 1000)}s before keyword reply to ${senderId}`);
                 await new Promise(resolve => setTimeout(resolve, kwDelayMs));
-                console.log(`[META DM] Natural delay applied: ${kwDelayMs}ms before keyword reply to ${senderId}`);
 
                 const kwEndpoint = channel === "instagram" ? "me" : pageId;
                 const kwUrl = `https://graph.facebook.com/v19.0/${kwEndpoint}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
@@ -1719,9 +1719,36 @@ export function registerWebhooksRoutes(app: Express) {
                   disambiguator: mid || `meta-ai-${senderId}`,
                 });
 
-                const naturalDelayMs = Math.floor(1500 + Math.random() * 2500 * Math.min(message.length, 200) / 200);
+                const DEFAULT_DELAY_MS = 45000;
+                const MIN_DELAY_MS = 8000;
+                const MAX_DELAY_MS = 120000;
+                let naturalDelayMs = DEFAULT_DELAY_MS;
+
+                const inboundTimes = (dmCtx.threadHistory || [])
+                  .filter((h: any) => h.role === "user")
+                  .map((h: any) => h.timestamp || h.createdAt)
+                  .filter(Boolean)
+                  .map((t: any) => new Date(t).getTime())
+                  .sort((a: number, b: number) => b - a);
+
+                if (inboundTimes.length >= 2) {
+                  const gaps: number[] = [];
+                  for (let i = 0; i < Math.min(inboundTimes.length - 1, 4); i++) {
+                    const gap = inboundTimes[i] - inboundTimes[i + 1];
+                    if (gap > 0 && gap < 3600000) gaps.push(gap);
+                  }
+                  if (gaps.length > 0) {
+                    const avgGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+                    const paceDelay = Math.floor(avgGap * (0.6 + Math.random() * 0.5));
+                    naturalDelayMs = Math.max(MIN_DELAY_MS, Math.min(MAX_DELAY_MS, paceDelay));
+                    console.log(`[META DM] Pace-matched delay: avgGap=${Math.floor(avgGap / 1000)}s, computed=${Math.floor(naturalDelayMs / 1000)}s`);
+                  }
+                } else {
+                  naturalDelayMs = DEFAULT_DELAY_MS + Math.floor(Math.random() * 15000);
+                }
+
+                console.log(`[META DM] Natural delay applied: ${Math.floor(naturalDelayMs / 1000)}s (${naturalDelayMs}ms) before sending AI reply to ${senderId}`);
                 await new Promise(resolve => setTimeout(resolve, naturalDelayMs));
-                console.log(`[META DM] Natural delay applied: ${naturalDelayMs}ms before sending AI reply to ${senderId}`);
 
                 const metaSendStart = Date.now();
                 const metaDmThreadId = `${subAccountId}::${senderId}::${channel}`;

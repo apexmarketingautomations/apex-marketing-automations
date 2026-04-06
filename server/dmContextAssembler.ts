@@ -173,6 +173,7 @@ export async function assembleDmContext(opts: DmContextOptions): Promise<DmConte
     .map((msg) => ({
       role: (msg.direction === "inbound" ? "user" : "assistant") as "user" | "assistant",
       content: msg.body || "",
+      timestamp: msg.createdAt ? new Date(msg.createdAt).getTime() : undefined,
     }));
 
   return {
