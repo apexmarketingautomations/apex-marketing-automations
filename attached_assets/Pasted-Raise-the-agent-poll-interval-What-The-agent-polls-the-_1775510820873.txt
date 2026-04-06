@@ -1,0 +1,124 @@
+Raise the agent poll interval
+What: The agent polls the DB constantly. Increase AGENT_POLL_SECS from 10 → 60 or 300.
+Why: Reduces CPU wake-ups and DB checks by 6–30×.
+How: In Replit Secrets / env, set:
+
+AGENT_POLL_SECS=60
+
+Or 300 for larger savings. Restart the agent.
+
+Disable background workers in dev / previews
+You already have a DISABLE_BACKGROUND_WORKERS=true env var visible. Make sure it is ON for preview/dev runs so background services aren’t running unnecessarily.
+How: In Replit Secrets toggle to true (dev), and ensure your start command respects it:
+
+if (process.env.DISABLE_BACKGROUND_WORKERS === 'true') {
+  console.log('Background workers disabled (dev mode)');
+} else {
+  startAgent();
+}
+
+Limit agent concurrency
+Bottleneck the number of child processes the agent runs at once. Set AGENT_MAX_CONCURRENCY=1 (or 2).
+Why: Prevents CPU overload and multiple parallel heavy jobs.
+Code snippet (add to agent_worker.js):*
+
+// near top
+const MAX_CONCURRENCY = parseInt(process.env.AGENT_MAX_CONCURRENCY || '2', 10);
+let running = 0;
+
+async function processTaskRow(row, commandsMap) {
+  if (running >= MAX_CONCURRENCY) {
+    // push back by not marking processing; agent poll loop will skip or use next rows
+    return;
+  }
+  running++;
+  try {
+    // ... existing work ...
+  } finally {
+    running--;
+  }
+}
+
+Then set AGENT_MAX_CONCURRENCY=1 in secrets if you want max savings.
+
+Increase AGENT_MAX_RUNTIME / timeouts conservatively
+If jobs hang, the process stays alive. Keep a sensible timeout (60s–300s). Longer timeouts do not save CPU directly but avoid retries causing extra runs.
+
+AGENT_MAX_RUNTIME=120
+Medium wins (small code changes, big effect)
+Switch quad-polling → scheduled / event-driven
+Replace frequent DB polling with:
+A tiny scheduler that wakes every 1–10 minutes and moves scheduled jobs to pending (instead of agents constantly polling), or
+Webhook trigger for admin actions/CRON so the agent is idle except when work exists.
+Files: scripts/scheduler.js (run every minute via Always-On or Replit cron). This lets you increase poll interval safely.
+Batch and de-dupe queued work
+For high-frequency triggers (syncs, token updates, backfills), aggregate them into one job every N minutes instead of many small jobs.
+SQL pattern: create scheduled_aggregator that merges pending sync_* jobs into one sync_meta_tokens job per hour. Saves agent tasks and spikes.
+Use cheaper alternatives for heavy work
+Training / fine-tunes: do off-Replit on RunPod / GCP / Hugging Face — cheaper and prevents long background CPU.
+Large backfills: run as batched jobs on an ephemeral cloud instance (only when needed).
+Why: Replit is convenient; long-running CPU/GPU tasks are expensive there.
+Offload media storage to S3/GCS
+Storing and processing media on Replit can cost I/O and previews. Upload files to S3 and keep only metadata in your DB. This reduces disk and network strain in the Replit container.
+Cache OpenAI responses & RAG retrievals
+Cache inference results for identical prompts.
+Cache embedding/RAG results (Redis or DB) so you don’t recompute every request.
+Why: each OpenAI call costs tokens and CPU/IO. Caching reduces repeated calls.
+DB & query optimizations (huge cost reduction if your app is DB-heavy)
+Add missing indexes
+Many small, frequent queries (lookups by sub_account_id, status) should be indexed:
+CREATE INDEX IF NOT EXISTS idx_agent_worker_jobs_status_runat ON agent_worker_jobs(status, run_at);
+CREATE INDEX IF NOT EXISTS idx_agent_worker_jobs_sub ON agent_worker_jobs(sub_account_id);
+Change FOR UPDATE SKIP LOCKED batch size
+Agent should select small batches (5–10) not 100s. That reduces DB locking time:
+SELECT * FROM agent_worker_jobs WHERE status='pending' ORDER BY created_at ASC LIMIT 5 FOR UPDATE SKIP LOCKED;
+Use read replicas for analytics
+If you run heavy analytics, do so against a read replica instead of primary DB.
+Logging & retention (small change, ongoing savings)
+Trim logs and reduce verbosity
+Avoid logging every debug line to system_logs. Keep only warnings/errors and periodic summaries.
+Add a LOG_LEVEL env var and honor it.
+Log sampling & rotation
+For high-frequency logs, keep only 1% of info lines or store a compressed daily archive.
+Rotate logs and delete older than N days.
+CI/build & preview savings (developer-level)
+Cache node_modules & skip full rebuilds
+Use workspace caching or avoid full npm install on every preview.
+Use incremental builds: tsc --incremental.
+Don’t leave Preview tabs or Always-On builds open
+Closing preview windows and turning off always-on preview in Replit reduces active time.
+OpenAI-specific savings (if using OpenAI)
+Use smaller models for automation & tests
+gpt-4o-mini/gpt-4o-mini-2024 or gpt-4o-std for non-critical tasks; reserve bigger models for canary/tests.
+Reduce token usage
+Shorter system prompts, compress examples, reduce max_tokens, use temperature=0.2 for deterministic outputs.
+Batch inference
+Send batched prompts if possible rather than many single calls.
+Practical low-effort script & env tweaks (copy/paste)
+
+Set poll to 1 minute (Replit Secrets / env):
+
+AGENT_POLL_SECS=60
+AGENT_MAX_CONCURRENCY=1
+DISABLE_BACKGROUND_WORKERS=true   # for preview/dev
+AGENT_MAX_RUNTIME=120
+Change agent_worker.js — implement concurrency/semaphore (snippet above).
+Add a scheduler scripts/scheduler.js (minute loop that flips scheduled → pending).
+
+Index SQL (run once):
+
+CREATE INDEX IF NOT EXISTS idx_agent_worker_jobs_status ON agent_worker_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_agent_worker_jobs_runat ON agent_worker_jobs(run_at);
+Highest-impact priority list (my recommendation)
+
+Do these in order for fastest, biggest savings:
+
+DISABLE_BACKGROUND_WORKERS=true in dev/previews (immediate).
+AGENT_POLL_SECS=60–300 (big reduction).
+AGENT_MAX_CONCURRENCY=1 and AGENT_MAX_RUNTIME=120.
+Implement scheduler + switch agent to event-driven/pull-at-schedule pattern.
+Batch job creation (aggregator).
+Offload heavy training/backfills off-Replit (RunPod/GCP).
+Optimize DB (indexes and LIMIT small batch).
+Cache OpenAI and RAG responses.
+Reduce logs + retention.
