@@ -1,0 +1,127 @@
+TITLE — META MESSAGING 2027: PUBLISH-READY, CLIENT-FRIENDLY EDITION (Separate from previous infra fixes)
+
+DO NOT START OR MERGE ANY INFRA/HARDENING WORK FOR THIS TASK.
+That work was done separately. This ticket is a productization job — convert the existing Meta Ops engine into a market-ready User/Client-facing product called “Meta Messaging — 2027 Edition”. This must be distinct and separated from backend fixes and internal ops pages. Treat the engine as a stable dependency you consume: do not change core hardening code or routing unless explicitly requested in a separate security ticket.
+
+GOAL
+
+Deliver a publish-ready, client-friendly SaaS product experience built on the existing Meta Ops platform. It must be elegant, simple for non-technical users, brandable for clients, mobile-first, and unambiguously launchable — marketing materials included. Make this product feel premium, modern, and sought after by agencies and SMB clients in 2027.
+
+WHAT THIS IS (one sentence)
+
+A white-label, user-safe client portal and onboarding experience that turns the engineering Meta Ops center into a sellable, supported product with polished UX, clear controls, guardrails, analytics, and go-to-market assets.
+
+WHO THIS IS FOR
+
+Agency owners, social media managers, and local business owners who want a no-BS way to manage FB/IG DMs and comments with AI assist — without touching technical internals.
+
+MUST-HAVE PRODUCT PRINCIPLES
+Product-first: backend exists — you must build steering wheel + dashboard + controls. No headless features.
+Client simplicity: 3 clicks to connect FB/IG, 1 view for health, 1 click to approve suggested reply.
+Transparency & safety: every AI reply shows a preview + safety flags and must be APPROVE/EDIT to publish (unless admin opts-in).
+Brandable: white-label options, branded welcome screens, custom legal text.
+Mobile-first & 2027 design: modern, clean, accessible, dark/light modes, subtle micro-interactions.
+Launch-ready: docs, demo, marketing kit, onboarding flow, support docs, test data.
+SCOPE — EXACT FEATURES (productable, drop-in)
+
+Front-end (client portal)
+
+New top-level product page: /client/meta-messaging-2027 and sidebar nav: Dashboard | Inbox | Publishing | Safety | Analytics | Settings | Billing & Support
+Onboarding & Connect Flow — stepper with: Connect Meta account → Select Pages/IG accounts → Grant permissions → Test webhook → Quick tour. Must handle token expiry and show clear next steps.
+Dashboard (client view) — simplified KPI cards: Inbound (24h), Replies (24h), Avg response time, Failed count, Bot on/off status, SLA banner. Visual trend sparkline for 7 days.
+Inbox (unified) — combines FB DMs, IG DMs, FB comments, IG comments in one list with filters (channel, unread, priority, safety flag). Each conversation shows: messages, attachments, AI suggested reply w/ Approve / Edit / Send buttons, safety/warning badge, traceId link. Mobile: stacked cards.
+Publishing / Moderation — queue for scheduled auto-replies, manual approve mode, blacklist words, VIP users, tone presets (Friendly/Professional/Direct). Dry-run preview mode for backfills.
+Safety panel — automated risk detection (profanity, personal data, litigation flags), human-review queue, per-account strictness slider.
+Analytics — per-post and per-account metrics, response times, conversation volumes, AI recall/precision, export CSV, date range pickers.
+Settings — branding (logo, colors), timezone, profile, per-user roles (Owner / Manager / Moderator / Viewer), API keys for integrations, webhooks, white-label settings.
+Billing & Support — usage meter (messages used), invoices, contact support form, in-app tour, help-center links.
+Demo Mode & Sample Data — toggle that populates a realistic demo inbox and analytics for sales demos. Must exist.
+
+Backend (product layer only)
+
+Consume existing stable endpoints. Build thin product APIs when required that:
+Return client safe summaries (no raw stack traces).
+Support Approve/Edit/Send operations with audit logging and idempotency.
+Per-account role checks (confirm subAccount ownership via existing auth/hardening).
+Safe dry-run endpoints for preview/backfills.
+Usage/billing telemetry endpoints.
+Do not modify core hardening code here. If a backend change is needed, open a separate ticket and get approval. Minimal data transformations only.
+
+Design
+
+Figma files: full high-fi screens for mobile XS, S, M, tablet, desktop.
+Component library tokens, color palettes (light/dark), typography, spacing, button/alert styles. Provide 2 palette options (warm & cool).
+Deliver micro-animation notes and accessible contrast values.
+
+Documentation & Marketing
+
+In-app onboarding copy + 1-page Quickstart guide.
+Launch marketing kit: 3 hero screenshots (mobile + desktop), 30-second product video script, 3x 15-second social ad captions, one landing page hero & subheadline.
+Support knowledge base: setup, FAQ, troubleshooting, safety guidelines.
+Release notes & one page “Admin guide” for operations staff.
+
+Quality & Testing
+
+Full manual QA steps for every flow.
+Automated tests: end-to-end tests that cover onboarding, connect, inbox approval flow, safety flag workflow, and analytics exports.
+Accessibility checks: keyboard nav, aria labels, color contrast.
+Performance test for inbox load (1000 conversations) w/ graceful pagination and UX loading states.
+DELIVERABLES (concrete)
+Branch: feature/meta-messaging-2027-client
+PR: include screenshots (mobile + desktop), Figma link, demo video link (or local preview), test results, sample customer data, and marketing kit.
+Production artifacts: frontend code, minimal product backend endpoints, Figma screens, marketing assets, docs.
+Demo environment: a deployable demo (Vercel/Netlify/Replit preview) with demo mode and test accounts.
+Release checklist: manual QA pass, automated tests passing, docs ready, marketing assets ready.
+ACCEPTANCE CRITERIA — (EVERY ITEM REQUIRED)
+
+Front end
+
+/client/meta-messaging-2027 route present and nav added.
+Dashboard, Inbox, Publishing, Safety, Analytics, Settings, Billing all implemented and responsive.
+Inbox supports Approve/Edit/Send and shows AI suggested reply previews and safety flags.
+Demo Mode toggles and populates realistic data.
+White-label branding settings apply to header/logo/colors.
+ARIA + keyboard nav present for critical flows.
+
+Back end
+
+Product endpoints implemented to support front-end flows and audit logs (approve/send/dry-run).
+Ownership checks use existing ensureSubAccountOwner middleware — no cross-tenant exposure.
+All state changes logged to system_logs with traceId and userId.
+
+Design & Docs
+
+Figma high-fi file with all screens and component specs.
+In-app onboarding / Quickstart written and included.
+Marketing kit present.
+
+Testing
+
+E2E tests for onboarding, connect, approve/send, safety flow, analytics export pass CI.
+Manual QA checklist completed and attached to PR.
+Accessibility and performance checks completed.
+
+Release
+
+Demo site running and shareable.
+PR includes release notes & one-page admin guide.
+Product owner sign-off checklist completed.
+NON-NEGOTIABLE RULES
+This task is only productization. Do not alter the security/hardening fixes or low-level routing. If you identify a needed infra change, open a distinct ticket referencing this task.
+No half-jobs. A feature is not done unless backend + frontend + connection + UX + testing + docs + marketing are complete.
+No bland UI. This must feel premium and different from default admin templates.
+If work is hacked together to meet scope quickly, it will be rejected.
+DELIVERY & COMMUNICATION
+Within 24 hours: post a short execution plan (subtasks, owners, and a minimum viable demo checklist).
+Weekly: status updates with screenshots and blockers.
+PR must include a short recorded walkthrough (60–120s) demonstrating demo flows.
+TEAM / ROLES (for assignment)
+Product Owner (you) — final acceptance.
+Frontend Engineer (React/TSX) — pages + components.
+Backend Engineer (Node/Express) — product endpoints + logs.
+Designer (Figma) — hi-fi screens & tokens.
+QA Engineer — automated + manual tests.
+Content/Marketing — quickstart + marketing assets.
+
+FINAL NOTE (read this twice)
+This is a revenue-grade product task. Build the user-facing product out of the existing engine. No excuses. No “mostly done.” If it’s not fully usable by a non-technical client and supported by docs and a demo, it’s not done. Deliver the Meta Messaging — 2027 Edition: simple, safe, beautiful, and paid-product ready.
