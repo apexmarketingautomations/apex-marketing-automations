@@ -1,0 +1,181 @@
+I need to integrate a new module called roomOS into this existing Apex Marketing Automations codebase. roomOS is a Chaturbate performer tool — it receives live room events (tips, viewer enters, broadcast start/end) and powers a real-time mobile companion app with AI coaching, whale tracking, and session analytics.
+
+Here is exactly what needs to be built:
+
+---
+
+## 1. SCHEMA CHANGES — shared/schema.ts
+
+Add these 4 columns to the existing sub_accounts table:
+- cb_username: varchar(100)
+- cb_goal_tokens: integer default 500
+- cb_pro_mode: boolean default false
+- cb_persona_prompt: text
+
+Add two new tables:
+
+cb_sessions:
+- id: serial primary key
+- sub_account_id: integer not null
+- total_tokens: integer default 0
+- goal_count: integer default 0
+- tip_count: integer default 0
+- top_tipper: varchar(100)
+- top_tip_amount: integer default 0
+- duration_ms: bigint
+- peak_viewers: integer
+- commands_fired: integer default 0
+- top_command: varchar(50)
+- session_date: timestamp default now()
+- created_at: timestamp default now()
+
+cb_commands_fired:
+- id: serial primary key
+- sub_account_id: integer not null
+- session_id: integer
+- category: varchar(50) not null
+- message_text: text
+- fired_at: timestamp default now()
+- tokens_after: integer
+- was_effective: boolean
+
+Run npm run db:push after adding.
+
+---
+
+## 2. NEW SERVER ROUTE — server/routes/chaturbate.ts
+
+Create this file and register it in server/routes.ts as:
+app.use('/api/chaturbate', chaturbateRouter)
+
+Endpoints needed:
+
+POST /api/chaturbate/webhook
+- Receives events from the Chaturbate overlay (tip, enter, broadcast_start, broadcast_end)
+- Verifies x-roomos-token header matches ROOMOS_WEBHOOK_SECRET env variable
+- Finds sub_account by cb_username field
+- On tip: updates in-memory session state, upserts contact in existing contacts table (source='chaturbate', external_id='cb_USERNAME'), emits to SSE channel roomos:{subAccountId}
+- On enter: checks if entering user is a known contact with totalValue >= 100, if so emits whale_alert to SSE channel
+- On broadcast_start: initializes fresh session state in memory Map, emits to SSE
+- On broadcast_end: saves session to cb_sessions table, emits to SSE
+- Always respond res.sendStatus(200) immediately before processing
+
+GET /api/chaturbate/stream?subAccountId=X
+- SSE endpoint using the existing SSE pattern from the unified inbox
+- Subscribes to roomos:{subAccountId} channel
+- Sends current session state immediately on connect
+
+GET /api/chaturbate/sessions/:subAccountId
+- Returns last 30 sessions from cb_sessions table ordered by session_date desc
+
+GET /api/chaturbate/whales/:subAccountId
+- Returns top 20 contacts where source='chaturbate' ordered by total_value desc
+
+POST /api/chaturbate/command
+- Logs a fired command to cb_commands_fired table
+- Sets tokens_after and was_effective after 60 seconds using setTimeout
+
+---
+
+## 3. NEW AI SERVICES — server/services/roomOS/
+
+Create server/services/roomOS/contextBuilder.ts
+- Exports buildRoomContext(session, event, goalTokens) function
+- Calculates room energy: hot (<30s since tip), warm (<90s), cooling (<180s), dead (180s+)
+- Returns structured RoomContext object with all session stats
+
+Create server/services/roomOS/aiCoach.ts
+- Exports getRoomCoachingSuggestion(context, account) async function
+- Uses the EXISTING aiGateway (OpenAI primary, Gemini fallback) — same pattern as the Layla persona
+- System prompt: real-time room coach for Chaturbate performer, suggest single best chat message based on room state, under 12 words, natural tone
+- Falls back to hardcoded message banks if AI fails
+- Returns null if room energy is 'hot' and recent trigger was a tip (no suggestion needed)
+
+---
+
+## 4. NEW FRONTEND PAGE — client/src/pages/roomos.tsx
+
+Create this page using the existing stack: React 18, TypeScript, Tailwind CSS, shadcn/ui, Framer Motion, TanStack Query.
+
+The page is a mobile-first performer dashboard with 4 tabs:
+
+Fire tab:
+- Grid of 7 command category buttons (Hype, Goal push, VIP, Countdown, Thank you, Tease, Reset)
+- Tap category to see 4 messages in that category
+- Each message has a Fire button that copies text to clipboard and logs to /api/chaturbate/command
+- Back button to return to category grid
+
+Feed tab:
+- Live tip activity feed using SSE from /api/chaturbate/stream
+- Color coded: big tips (>=100) orange, medium (>=25) amber, small gray
+- Rotating AI suggestion banner at top (updates from SSE suggestion events)
+- Whale alert banner (purple) appears when known whale enters room
+
+Stats tab:
+- 4 metric cards: session tokens, goals hit, tips received, top tip
+- Session history list from /api/chaturbate/sessions
+
+Whales tab:
+- Ranked list of top tippers from /api/chaturbate/whales
+- Gold/silver/bronze styling for top 3
+- Shows lifetime tokens and session count per tipper
+
+Goal bar always visible below header:
+- Shows goal progress, percentage, tokens remaining, top tipper
+- Animated fill bar using Framer Motion
+- Pulses red when within 50 tokens of goal
+
+Whale alert: animated banner using AnimatePresence, auto-dismisses after 8 seconds
+
+Color scheme:
+- Background: #0A0A0C
+- Accent: #FF5C35
+- Cards: #141418 with #1A1A20 border
+- Text primary: #F0EEE8
+- Text secondary: #888888
+
+---
+
+## 5. REGISTER THE PAGE — client/src/App.tsx
+
+Add import and route:
+import RoomOS from './pages/roomos';
+<Route path="/roomos" component={RoomOS} />
+
+Add to the sidebar nav under a new section called CREATOR TOOLS:
+{ path: '/roomos', label: 'roomOS', icon: 'zap' }
+
+Add to mobile bottom nav alongside existing tabs.
+
+---
+
+## 6. ADD CB WEBHOOK EVENTS to outbound webhook system
+
+In the existing webhook event system (wherever contact.created, deal.created etc are defined and fired), add these new event types:
+- cb.tip.received
+- cb.goal.completed
+- cb.session.started
+- cb.session.ended
+- cb.whale.entered
+
+Fire these from the chaturbate route handler at the appropriate moments using the existing webhook dispatch pattern.
+
+---
+
+## 7. ENVIRONMENT VARIABLE
+
+Add ROOMOS_WEBHOOK_SECRET to Replit secrets.
+Generate with: openssl rand -hex 32
+This is used to verify inbound CB webhook requests.
+
+---
+
+## IMPORTANT NOTES
+
+- The existing AI gateway already handles OpenAI + Gemini fallback with circuit breaker — use it exactly as the Layla persona uses it, do not create a new AI client
+- The existing SSE infrastructure from the unified inbox handles real-time push — use the same sseManager pattern, do not create new SSE infrastructure
+- The existing contacts table already handles multi-tenant CRM — upsert tippers into it using source='chaturbate' and external_id='cb_USERNAME' as the unique identifier
+- Session state (in-memory Map) is intentionally not persisted to DB during a live session for performance — only save to cb_sessions on broadcast_end
+- The CB app sends events via its overlay HTML (which runs in OBS browser source and CAN make fetch calls) — the overlay posts to POST /api/chaturbate/webhook with header x-roomos-token matching ROOMOS_WEBHOOK_SECRET
+
+Do not change any existing functionality. This is purely additive.

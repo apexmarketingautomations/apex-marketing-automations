@@ -73,6 +73,7 @@ const CrashReportsPage = lazy(() => import("@/pages/crash-reports"));
 const ExecutionTimelinePage = lazy(() => import("@/pages/execution-timeline"));
 const WhatsAppTemplatesPage = lazy(() => import("@/pages/whatsapp-templates"));
 const ContentPlannerPage = lazy(() => import("@/pages/content-planner"));
+const RoomOSPage = lazy(() => import("@/pages/roomos"));
 const IntelligenceDashboardPage = lazy(() => import("@/pages/intelligence-dashboard"));
 const StandaloneCardLanding = lazy(() => import("@/pages/standalone-card-landing"));
 const StandaloneCardCreate = lazy(() => import("@/pages/standalone-card-create"));
@@ -308,6 +309,7 @@ function Router() {
                   <Route path="/execution-timeline" component={ExecutionTimelinePage} />
                   <Route path="/whatsapp-templates" component={WhatsAppTemplatesPage} />
                   <Route path="/content-planner" component={ContentPlannerPage} />
+                  <Route path="/roomos" component={RoomOSPage} />
                   <Route path="/intelligence" component={IntelligenceDashboardPage} />
                   <Route component={NotFound} />
                 </Switch>

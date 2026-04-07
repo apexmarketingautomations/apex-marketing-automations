@@ -71,6 +71,10 @@ export const subAccounts = pgTable("sub_accounts", {
   telegramBotUsername: text("telegram_bot_username"),
   isProtected: boolean("is_protected").default(false),
   protectedReason: text("protected_reason"),
+  cbUsername: text("cb_username"),
+  cbGoalTokens: integer("cb_goal_tokens").default(500),
+  cbProMode: boolean("cb_pro_mode").default(false),
+  cbPersonaPrompt: text("cb_persona_prompt"),
 });
 
 export const insertSubAccountSchema = createInsertSchema(subAccounts).omit({ id: true });
@@ -2328,3 +2332,38 @@ export const ownerUnlocks = pgTable("owner_unlocks", {
 export const insertOwnerUnlockSchema = createInsertSchema(ownerUnlocks).omit({ id: true, createdAt: true });
 export type InsertOwnerUnlock = z.infer<typeof insertOwnerUnlockSchema>;
 export type OwnerUnlock = typeof ownerUnlocks.$inferSelect;
+
+export const cbSessions = pgTable("cb_sessions", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  totalTokens: integer("total_tokens").default(0),
+  goalCount: integer("goal_count").default(0),
+  tipCount: integer("tip_count").default(0),
+  topTipper: text("top_tipper"),
+  topTipAmount: integer("top_tip_amount").default(0),
+  durationMs: integer("duration_ms"),
+  peakViewers: integer("peak_viewers"),
+  commandsFired: integer("commands_fired").default(0),
+  topCommand: text("top_command"),
+  sessionDate: timestamp("session_date").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertCbSessionSchema = createInsertSchema(cbSessions).omit({ id: true, createdAt: true });
+export type InsertCbSession = z.infer<typeof insertCbSessionSchema>;
+export type CbSession = typeof cbSessions.$inferSelect;
+
+export const cbCommandsFired = pgTable("cb_commands_fired", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  sessionId: integer("session_id").references(() => cbSessions.id, { onDelete: "set null" }),
+  category: text("category").notNull(),
+  messageText: text("message_text"),
+  firedAt: timestamp("fired_at").defaultNow(),
+  tokensAfter: integer("tokens_after"),
+  wasEffective: boolean("was_effective"),
+});
+
+export const insertCbCommandFiredSchema = createInsertSchema(cbCommandsFired).omit({ id: true });
+export type InsertCbCommandFired = z.infer<typeof insertCbCommandFiredSchema>;
+export type CbCommandFired = typeof cbCommandsFired.$inferSelect;

@@ -43,6 +43,7 @@ import { registerMetaOpsRoutes } from "./routes/metaOps";
 import { registerMetaMessagingRoutes } from "./routes/metaMessaging";
 import { registerMetaMessagingProductRoutes } from "./routes/metaMessagingProduct";
 import { registerMediaRoutes } from "./routes/media";
+import { registerChaturbateRoutes } from "./routes/chaturbate";
 export { registerAgentWorkerRoutes } from "./routes/agentWorker";
 
 export async function registerRoutes(
@@ -91,6 +92,7 @@ export async function registerRoutes(
   registerMetaMessagingRoutes(app);
   registerMetaMessagingProductRoutes(app);
   registerMediaRoutes(app);
+  registerChaturbateRoutes(app);
 
   return httpServer;
 }
