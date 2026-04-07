@@ -238,6 +238,13 @@ function Router() {
         <Route path="/luxe/funnel" component={LuxeFunnel} />
         <Route path="/marketers/funnel" component={MarketersFunnel} />
 
+        {/* roomOS — accessible without login */}
+        <Route path="/roomos">
+          <Suspense fallback={<PageLoader />}>
+            <RoomOSPage />
+          </Suspense>
+        </Route>
+
         {/* Landing page for unauthenticated, dashboard for authenticated */}
         <Route path="/">
           {isAuthenticated ? (

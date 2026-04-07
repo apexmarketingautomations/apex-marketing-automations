@@ -66,8 +66,9 @@ const COLORS = {
 };
 
 export default function RoomOS() {
-  const { currentAccount } = useAccount();
-  const subAccountId = currentAccount?.id;
+  const { activeAccountId } = useAccount();
+  const params = new URLSearchParams(window.location.search);
+  const subAccountId = activeAccountId || parseInt(params.get("account") || "22");
   const [tab, setTab] = useState<Tab>("fire");
   const [tips, setTips] = useState<TipEvent[]>([]);
   const [session, setSession] = useState<SessionState>({
