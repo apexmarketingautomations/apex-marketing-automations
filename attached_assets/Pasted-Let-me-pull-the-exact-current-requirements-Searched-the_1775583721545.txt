@@ -1,0 +1,13 @@
+Let me pull the exact current requirements.Searched the webSearched the webGood — I can see the full directory. Here's the complete picture:
+The CB app directory is at directory-live.cb.dev/apps — that's the marketplace. Getting listed there is the exact process you already started in the dev portal. There's no separate "premium market" — it's one directory, free to list.
+Here's the exact step-by-step to get roomOS listed right now:
+Step 1 — Go to devportal.cb.dev → your app
+You need these things filled in before you can hit Release:
+FieldWhat to putNameroomOS — Tip Psychology + AI CoachingDescription"roomOS fires the right message at the right moment — automatically. Near goal? It pushes. Room dead? It wakes it up. Top tipper active? It calls them out. Includes whale tracker, silence detection, near-goal pressure, and AI coaching. Most performers earn more their first session."Summary"Earn more tokens every session with AI-powered room automation"IconOrange rectangle with white lightning bolt — 512x512pxScreenshots3 minimum — overlay running, tip flash firing, session stats
+Step 2 — Fix the Event Handlers error
+We already fixed this — all 5 handlers are declared. Hit "Update on testbed" first, confirm it works, then hit Release.
+Step 3 — Hit Release
+That submits it to CB for review. Review takes 1–7 days typically. Once approved it appears in the directory at directory-live.cb.dev/apps exactly like the apps I just pulled.
+What I notice from the directory — the top earning developer is basket1892 who has 10+ apps. The second biggest is noient and third is streamersuite. Nobody has anything close to what roomOS does — psychology triggers, silence detection, AI coaching. The most sophisticated thing in that list is "Oh My Goals" which is just a colored goal bar. You have zero real competition.
+The one thing that will make roomOS rank — the description. CB ranks apps by installs and engagement. Write the description focused entirely on what performers earn, not what the app does. "Earn more tokens" beats "automated message system" every time.
+Want me to write the full app store listing copy — title, description, summary, and tags — optimized to rank in that directory?
