@@ -1007,11 +1007,54 @@ export function registerPropertyRoutes(app: Express) {
     }
   }));
 
-  // ─── FLHSMV Health Check ────────────────────────────────────────
+  // ─── FLHSMV Health Check (extended with ingest pipeline stats) ─
   app.get("/api/crash-reports/health", asyncHandler(async (_req, res) => {
     const { getFLHSMVHealth } = await import("../crashReportWorker");
+    const { getIngestStats } = await import("../crashIngestPipeline");
     const health = getFLHSMVHealth();
-    res.json(health);
+    const ingest = getIngestStats();
+    res.json({
+      flhsmv: health,
+      ingestPipeline: {
+        latestPollTime: ingest.latestPollTime,
+        lastSuccessfulIngest: ingest.lastSuccessfulIngest,
+        lastFailureDetail: ingest.lastFailureDetail,
+        lastFailureTime: ingest.lastFailureTime,
+        totalCrashesDiscovered: ingest.totalCrashesDiscovered,
+        totalInserted: ingest.totalInserted,
+        totalLeadsCreated: ingest.totalLeadsCreated,
+        consecutiveFailures: ingest.consecutiveFailures,
+        totalPolls: ingest.totalPolls,
+        recentCycles: ingest.recentCycles,
+      },
+    });
+  }));
+
+  // ─── Crash Ingest Test Harness ───────────────────────────────────
+  // Auth: When AGENT_SECRET is configured, ONLY accepts x-harness-secret matching it.
+  // Session auth is NOT a fallback — secret required to prevent unauthenticated DB writes.
+  app.post("/api/crash-reports/test-harness", asyncHandler(async (req, res) => {
+    const agentSecret = process.env.AGENT_SECRET;
+    const providedSecret = req.headers["x-harness-secret"];
+
+    if (!agentSecret) {
+      return res.status(503).json({ error: "Test harness not configured: AGENT_SECRET not set" });
+    }
+    if (!providedSecret || providedSecret !== agentSecret) {
+      return res.status(401).json({ error: "Requires x-harness-secret header matching AGENT_SECRET" });
+    }
+
+    const parsed = z.object({
+      scenario: z.enum(["success", "empty", "malformed", "transient_failure", "duplicate"]).default("success"),
+    }).safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.flatten() });
+    }
+
+    const { runTestHarness } = await import("../crashIngestPipeline");
+    const result = await runTestHarness(parsed.data.scenario);
+    res.json(result);
   }));
 
   // ─── Crash Report Retrieval API ─────────────────────────────────

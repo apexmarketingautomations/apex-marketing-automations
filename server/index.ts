@@ -552,6 +552,16 @@ async function validateMetaCredentials() {
   }
   }
 
+  if (!DISABLE_BACKGROUND_WORKERS) {
+  try {
+    const { startCrashIngestPipeline } = await import("./crashIngestPipeline");
+    startCrashIngestPipeline();
+    console.log("[STARTUP] ✅ Crash ingest pipeline started");
+  } catch (pipeErr) {
+    console.error("[STARTUP] Crash ingest pipeline failed (non-fatal):", pipeErr);
+  }
+  }
+
   try {
     const { storage } = await import("./storage");
     initEventSubscribers(storage);

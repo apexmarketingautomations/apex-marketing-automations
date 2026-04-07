@@ -95,7 +95,7 @@ export function registerAuthRoutes(app: Express) {
   // ---- Auth Middleware ----
   app.use("/api", (req, res, next) => {
     const fullPath = req.originalUrl || req.baseUrl + req.path;
-    const openPaths = ["/api/auth/", "/api/login", "/api/logout", "/api/callback", "/api/stripe/webhook", "/api/webhooks/", "/api/snapshots/marketplace", "/api/v1/serve-native-ad", "/api/v1/ad-click/", "/api/crash-reports/health"];
+    const openPaths = ["/api/auth/", "/api/login", "/api/logout", "/api/callback", "/api/stripe/webhook", "/api/webhooks/", "/api/snapshots/marketplace", "/api/v1/serve-native-ad", "/api/v1/ad-click/", "/api/crash-reports/health", "/api/crash-reports/test-harness"];
     const openExact = ["/api/reviews", "/api/alert-owner", "/api/languages"];
 
     if (openPaths.some(p => fullPath.startsWith(p))) return next();

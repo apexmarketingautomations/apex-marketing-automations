@@ -359,6 +359,8 @@ export interface IStorage {
   resetStuckJobs(timeoutMinutes: number): Promise<number>;
   recoverFailedCrashReports(maxRetries: number): Promise<number>;
   getCrashReports(subAccountId?: number): Promise<CrashReport[]>;
+  getUnprocessedLeadCrashReports(subAccountId?: number): Promise<CrashReport[]>;
+  markCrashReportAsLead(id: number): Promise<CrashReport | undefined>;
 
   getShopifyEvents(subAccountId: number): Promise<ShopifyEvent[]>;
   createShopifyEvent(data: InsertShopifyEvent): Promise<ShopifyEvent>;
@@ -1674,6 +1676,25 @@ export class DatabaseStorage implements IStorage {
         .orderBy(desc(crashReports.createdAt));
     }
     return db.select().from(crashReports).orderBy(desc(crashReports.createdAt));
+  }
+
+  async getUnprocessedLeadCrashReports(subAccountId?: number) {
+    const conditions = [
+      eq(crashReports.processedToLead, false),
+      eq(crashReports.source, "sentinel_auto"),
+    ];
+    if (subAccountId) conditions.push(eq(crashReports.subAccountId, subAccountId));
+    return db.select().from(crashReports)
+      .where(and(...conditions))
+      .orderBy(desc(crashReports.createdAt));
+  }
+
+  async markCrashReportAsLead(id: number) {
+    const [row] = await db.update(crashReports)
+      .set({ processedToLead: true, updatedAt: new Date() })
+      .where(eq(crashReports.id, id))
+      .returning();
+    return row;
   }
   async getShopifyEvents(subAccountId: number) {
     return db.select().from(shopifyEvents)

@@ -1251,6 +1251,10 @@ export const crashReports = pgTable("crash_reports", {
   serviceFailureCount: integer("service_failure_count").default(0).notNull(),
   lockedAt: timestamp("locked_at"),
   lockedBy: text("locked_by"),
+  source: text("source").default("manual").notNull(),
+  processedToLead: boolean("processed_to_lead").default(false).notNull(),
+  ingestTraceId: text("ingest_trace_id"),
+  rawPayload: json("raw_payload"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
