@@ -27,12 +27,9 @@ export async function getProtectedAccountIds(): Promise<number[]> {
       .from(subAccounts)
       .where(eq(subAccounts.isProtected, true));
     _cachedProtectedIds = rows.map(r => r.id);
-    if (_cachedProtectedIds.length === 0) {
-      _cachedProtectedIds = [13];
-    }
     return _cachedProtectedIds;
   } catch {}
-  return [13];
+  return [];
 }
 
 export function clearLaylaCache() {

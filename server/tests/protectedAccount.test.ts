@@ -1,10 +1,11 @@
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, expect, afterAll, beforeEach } from "vitest";
 import { db } from "../db";
 import { subAccounts, featureFlags, systemLogs } from "@shared/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { isProtectedAccountId, isMutating, ensureNotProtectedAccount } from "../middleware/protectedAccount";
 import { isFeatureEnabled, requireFeatureFlag } from "../middleware/featureGate";
 import { verifyNotProtectedAccount } from "../operator/toolHandlers/tenantGuard";
+import { clearLaylaCache } from "../services/laylaAccountResolver";
 
 function mockReq(overrides: any = {}) {
   return {
@@ -55,14 +56,68 @@ describe("isMutating helper", () => {
 });
 
 describe("isProtectedAccountId", () => {
-  it("returns true for protected IDs (22, 13)", async () => {
-    expect(await isProtectedAccountId(22)).toBe(true);
-    expect(await isProtectedAccountId(13)).toBe(true);
+  beforeEach(() => {
+    clearLaylaCache();
+  });
+
+  it("returns false for formerly-protected IDs (22, 13) after protection removal", async () => {
+    expect(await isProtectedAccountId(22)).toBe(false);
+    expect(await isProtectedAccountId(13)).toBe(false);
   });
 
   it("returns false for non-protected IDs", async () => {
     expect(await isProtectedAccountId(1)).toBe(false);
     expect(await isProtectedAccountId(999999)).toBe(false);
+  });
+});
+
+describe("protection infrastructure still works for explicitly-protected accounts", () => {
+  beforeEach(() => {
+    clearLaylaCache();
+  });
+
+  afterAll(async () => {
+    await db.update(subAccounts).set({ isProtected: false, protectedReason: null }).where(eq(subAccounts.id, 13));
+    clearLaylaCache();
+  });
+
+  it("blocks writes when an account is explicitly marked is_protected=true in DB", async () => {
+    await db.update(subAccounts).set({ isProtected: true, protectedReason: "test" }).where(eq(subAccounts.id, 13));
+    clearLaylaCache();
+
+    expect(await isProtectedAccountId(13)).toBe(true);
+
+    const extractId = (req: any) => req.params?.subAccountId ? parseInt(req.params.subAccountId, 10) : null;
+    const middleware = ensureNotProtectedAccount(extractId);
+    const req = mockReq({ method: "POST", params: { subAccountId: "13" } });
+    const res = mockRes();
+    let nextCalled = false;
+    await middleware(req, res, () => { nextCalled = true; });
+
+    expect(nextCalled).toBe(false);
+    expect(res.statusCode).toBe(403);
+    expect(res.body.error_code).toBe("sub_account_protected");
+    expect(res.body.ticketId).toBeDefined();
+  });
+
+  it("agent tenant guard blocks when account is explicitly protected", async () => {
+    await db.update(subAccounts).set({ isProtected: true, protectedReason: "test" }).where(eq(subAccounts.id, 13));
+    clearLaylaCache();
+
+    const result = await verifyNotProtectedAccount(13, "test-agent");
+    expect(result).not.toBeNull();
+    expect(result!.success).toBe(false);
+    expect(result!.error).toContain("protected account");
+  });
+
+  it("unblocks after removing protection flag from DB", async () => {
+    await db.update(subAccounts).set({ isProtected: false, protectedReason: null }).where(eq(subAccounts.id, 13));
+    clearLaylaCache();
+
+    expect(await isProtectedAccountId(13)).toBe(false);
+
+    const result = await verifyNotProtectedAccount(13, "test-agent");
+    expect(result).toBeNull();
   });
 });
 
@@ -73,43 +128,17 @@ describe("ensureNotProtectedAccount middleware", () => {
   };
   const middleware = ensureNotProtectedAccount(extractId);
 
-  it("returns 403 with correct body on mutating request to protected account", async () => {
+  it("allows mutating requests to formerly-protected account 22 (protection removed)", async () => {
     const req = mockReq({ method: "POST", params: { subAccountId: "22" } });
     const res = mockRes();
     let nextCalled = false;
 
     await middleware(req, res, () => { nextCalled = true; });
 
-    expect(nextCalled).toBe(false);
-    expect(res.statusCode).toBe(403);
-    expect(res.body.error_code).toBe("sub_account_protected");
-    expect(res.body.ticketId).toBeDefined();
-    expect(typeof res.body.ticketId).toBe("string");
-    expect(res.body.ticketId.length).toBeGreaterThan(0);
+    expect(nextCalled).toBe(true);
   });
 
-  it("logs security-level entry with standardized schema on write attempt", async () => {
-    const req = mockReq({ method: "DELETE", params: { subAccountId: "22" }, url: "/api/test-delete" });
-    const res = mockRes();
-    await middleware(req, res, () => {});
-
-    const logs = await db.select().from(systemLogs)
-      .where(and(eq(systemLogs.severity, "security"), eq(systemLogs.module, "protected-account-guard")))
-      .orderBy(desc(systemLogs.timestamp))
-      .limit(1);
-
-    expect(logs.length).toBe(1);
-    const meta = logs[0].metadata as any;
-    expect(meta.level).toBe("security");
-    expect(meta.traceId).toBeDefined();
-    expect(meta.userId).toBe("test-user");
-    expect(meta.subAccountId).toBe(22);
-    expect(meta.action).toBe("protected_account_write_attempt");
-    expect(meta.meta.ip).toBeDefined();
-    expect(meta.meta.reason).toContain("Blocked");
-  });
-
-  it("allows read requests to protected accounts (info audit)", async () => {
+  it("allows read requests to formerly-protected account 22", async () => {
     const req = mockReq({ method: "GET", params: { subAccountId: "22" }, url: "/api/inbox/22" });
     const res = mockRes();
     let nextCalled = false;
@@ -158,48 +187,19 @@ describe("Feature Flag Gate", () => {
 });
 
 describe("Agent Tenant Guard - Protected Account", () => {
-  it("blocks tool calls targeting protected account 22 with abort", async () => {
+  it("allows tool calls targeting formerly-protected account 22 (protection removed)", async () => {
     const result = await verifyNotProtectedAccount(22, "test-agent");
-    expect(result).not.toBeNull();
-    expect(result!.success).toBe(false);
-    expect(result!.error).toContain("ABORT");
-    expect(result!.error).toContain("protected account");
+    expect(result).toBeNull();
   });
 
-  it("blocks tool calls targeting protected account 13", async () => {
+  it("allows tool calls targeting formerly-protected account 13 (protection removed)", async () => {
     const result = await verifyNotProtectedAccount(13, "test-agent");
-    expect(result).not.toBeNull();
-    expect(result!.success).toBe(false);
-    expect(result!.error).toContain("ABORT");
+    expect(result).toBeNull();
   });
 
   it("allows tool calls to non-protected accounts", async () => {
     const result = await verifyNotProtectedAccount(1, "test-agent");
     expect(result).toBeNull();
-  });
-
-  it("creates security log entry with standardized schema on blocked attempt", async () => {
-    const beforeLogs = await db.select({ id: systemLogs.id }).from(systemLogs)
-      .where(and(eq(systemLogs.severity, "security"), eq(systemLogs.module, "agent-tenant-guard")));
-
-    await verifyNotProtectedAccount(22, "simulation-agent");
-
-    const afterLogs = await db.select().from(systemLogs)
-      .where(and(eq(systemLogs.severity, "security"), eq(systemLogs.module, "agent-tenant-guard")))
-      .orderBy(desc(systemLogs.timestamp));
-
-    expect(afterLogs.length).toBeGreaterThan(beforeLogs.length);
-    const latest = afterLogs[0];
-    expect(latest.message).toContain("protected account 22");
-
-    const meta = latest.metadata as any;
-    expect(meta.level).toBe("security");
-    expect(meta.traceId).toBeDefined();
-    expect(meta.userId).toBe("simulation-agent");
-    expect(meta.subAccountId).toBe(22);
-    expect(meta.action).toBe("agent_protected_account_blocked");
-    expect(meta.meta.agentId).toBe("simulation-agent");
-    expect(meta.meta.reason).toContain("Protected account");
   });
 });
 
@@ -236,7 +236,7 @@ describe("Product Route Feature Gate Integration", () => {
     expect(nextCalled).toBe(true);
   });
 
-  it("flag ON + protected account POST returns 403 through full chain", async () => {
+  it("flag ON + formerly-protected account 22 POST passes through full chain (protection removed)", async () => {
     await db.update(featureFlags).set({ enabled: true }).where(eq(featureFlags.featureName, "meta_messaging_2027"));
 
     const extractId = (req: any) => req.params?.subAccountId ? parseInt(req.params.subAccountId, 10) : null;
@@ -251,9 +251,7 @@ describe("Product Route Feature Gate Integration", () => {
 
     let guardNextCalled = false;
     await protectedGuard(req, res, () => { guardNextCalled = true; });
-    expect(guardNextCalled).toBe(false);
-    expect(res.statusCode).toBe(403);
-    expect(res.body.error_code).toBe("sub_account_protected");
+    expect(guardNextCalled).toBe(true);
   });
 
   it("flag ON + non-protected account POST passes through full chain", async () => {
@@ -274,7 +272,7 @@ describe("Product Route Feature Gate Integration", () => {
     expect(guardNextCalled).toBe(true);
   });
 
-  it("flag ON + protected account GET (read) passes through full chain", async () => {
+  it("flag ON + formerly-protected account 22 GET (read) passes through full chain", async () => {
     await db.update(featureFlags).set({ enabled: true }).where(eq(featureFlags.featureName, "meta_messaging_2027"));
 
     const extractId = (req: any) => req.params?.subAccountId ? parseInt(req.params.subAccountId, 10) : null;
@@ -294,12 +292,9 @@ describe("Product Route Feature Gate Integration", () => {
 });
 
 describe("Agent Execution Central Guard - executeTool level", () => {
-  it("verifyNotProtectedAccount returns blocking result for protected account in tool context", async () => {
+  it("verifyNotProtectedAccount allows formerly-protected account 22 in tool context", async () => {
     const result = await verifyNotProtectedAccount(22, "agent-runner-123");
-    expect(result).not.toBeNull();
-    expect(result!.success).toBe(false);
-    expect(result!.error).toContain("ABORT");
-    expect(result!.error).toContain("protected account");
+    expect(result).toBeNull();
   });
 
   it("verifyNotProtectedAccount returns null (allow) for non-protected in tool context", async () => {

@@ -6,7 +6,7 @@ import { randomUUID } from "crypto";
 import { getProtectedAccountIds as resolveProtectedIds } from "../services/laylaAccountResolver";
 
 export function getProtectedAccountIds(): number[] {
-  return [13];
+  return [];
 }
 
 export async function isProtectedAccountId(subAccountId: number): Promise<boolean> {

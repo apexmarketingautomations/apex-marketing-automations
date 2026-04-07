@@ -12,6 +12,8 @@ import path from "path";
 import fs from "fs";
 import { runStartupChecks } from "./startupChecks";
 import { logSystemError, logSystemEvent } from "./systemLogger";
+import { clearLaylaCache } from "./services/laylaAccountResolver";
+import { ensureAccountsUnprotected } from "./startupPatches";
 
 process.on("unhandledRejection", (reason: any) => {
   console.error("[PROCESS] Unhandled promise rejection (caught, not crashing):", reason?.message || reason);
@@ -508,6 +510,8 @@ async function validateMetaCredentials() {
 
 (async () => {
   validateEnvVars();
+  clearLaylaCache();
+  await ensureAccountsUnprotected();
   runStartupChecks();
   try {
     await validateMetaCredentials();
