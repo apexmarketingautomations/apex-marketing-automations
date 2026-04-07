@@ -30,6 +30,8 @@ const TEMPLATE_KEYS = {
   OFFER_PROMO: "offer_promo",
   REACTIVATION: "reactivation",
   APPOINTMENT_CONFIRMATION: "appointment_confirmation",
+  ROOMOS_WELCOME: "roomos_welcome",
+  ROOMOS_ONBOARDING: "roomos_onboarding",
 } as const;
 
 type TemplateKey = typeof TEMPLATE_KEYS[keyof typeof TEMPLATE_KEYS];
@@ -41,6 +43,8 @@ const DEFAULT_SUBJECTS: Record<TemplateKey, string> = {
   [TEMPLATE_KEYS.OFFER_PROMO]: "A special offer just for you, *|FNAME|*",
   [TEMPLATE_KEYS.REACTIVATION]: "We miss you, *|FNAME|*!",
   [TEMPLATE_KEYS.APPOINTMENT_CONFIRMATION]: "Your appointment is booked, *|FNAME|*!",
+  [TEMPLATE_KEYS.ROOMOS_WELCOME]: "Welcome to roomOS — here's your webhook secret",
+  [TEMPLATE_KEYS.ROOMOS_ONBOARDING]: "roomOS Quick-Start — Go Live in 5 Minutes",
 };
 
 const REPLY_TO_MAP: Record<TemplateKey, string> = {
@@ -50,6 +54,8 @@ const REPLY_TO_MAP: Record<TemplateKey, string> = {
   [TEMPLATE_KEYS.OFFER_PROMO]: "sales@apexmarketingautomations.com",
   [TEMPLATE_KEYS.REACTIVATION]: "hello@apexmarketingautomations.com",
   [TEMPLATE_KEYS.APPOINTMENT_CONFIRMATION]: "onboarding@apexmarketingautomations.com",
+  [TEMPLATE_KEYS.ROOMOS_WELCOME]: "onboarding@apexmarketingautomations.com",
+  [TEMPLATE_KEYS.ROOMOS_ONBOARDING]: "onboarding@apexmarketingautomations.com",
 };
 
 const DEFAULT_FROM_EMAIL = "hello@apexmarketingautomations.com";
@@ -542,6 +548,35 @@ function generateFallbackHtml(templateKey: TemplateKey, vars: Record<string, str
       <p>Your appointment with ${businessName} has been confirmed.</p>
       ${bookingLink ? `<p>If you need to reschedule:</p>${btn("Manage Appointment")}` : ""}
       <p>See you soon!</p>
+    `,
+    [TEMPLATE_KEYS.ROOMOS_WELCOME]: `
+      <h2>Welcome to roomOS, ${fname}!</h2>
+      <p>Your account is set up and ready to go. Here's everything you need to start streaming with AI-powered coaching.</p>
+      <div style="background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:16px;margin:16px 0;">
+        <p style="color:#aaa;margin:0 0 8px;">Your Webhook Secret:</p>
+        <code style="background:#0d0d1a;color:#00ff88;padding:8px 12px;border-radius:4px;display:block;word-break:break-all;font-size:13px;">${vars["{{webhook_token}}"] || "—"}</code>
+      </div>
+      <p><strong>Paste this token into your Chaturbate bot/overlay settings</strong> as the <code>x-roomos-token</code> header value.</p>
+      <p>Your webhook URL:</p>
+      <code style="background:#f0f0f0;padding:6px 10px;border-radius:4px;display:block;margin:8px 0;font-size:13px;">https://apexmarketingautomations.com/api/chaturbate/webhook</code>
+      <p style="margin-top:16px;">
+        <a href="https://apexmarketingautomations.com/roomos" style="background:#7c3aed;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;font-weight:bold;">Open roomOS Dashboard</a>
+      </p>
+      <p>Welcome aboard,<br/>The Apex Team</p>
+    `,
+    [TEMPLATE_KEYS.ROOMOS_ONBOARDING]: `
+      <h2>Go Live in 5 Minutes, ${fname}</h2>
+      <p>Here's a quick-start checklist to get the most out of roomOS:</p>
+      <ol style="line-height:2;">
+        <li><strong>Paste your webhook secret</strong> into your Chaturbate bot config (Events API or overlay)</li>
+        <li><strong>Set your webhook URL</strong> to: <code>https://apexmarketingautomations.com/api/chaturbate/webhook</code></li>
+        <li><strong>Open your dashboard</strong> at <a href="https://apexmarketingautomations.com/roomos">apexmarketingautomations.com/roomos</a></li>
+        <li><strong>Start a broadcast</strong> — tips and AI coaching suggestions appear in real-time</li>
+        <li><strong>Use command buttons</strong> — tap Hype, Goal Push, or VIP to fire quick chat messages</li>
+      </ol>
+      <p><strong>Pro tip:</strong> The AI coach learns your room energy. The more you stream, the better the suggestions get.</p>
+      <p>Questions? Reply to this email — we're here to help.</p>
+      <p>— The Apex Team</p>
     `,
   };
 
