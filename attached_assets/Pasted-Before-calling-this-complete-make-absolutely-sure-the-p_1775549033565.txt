@@ -1,0 +1,94 @@
+Before calling this complete, make absolutely sure the protection-removal fix is in **production**, not just local preview or main workspace runtime.
+
+## GOAL
+
+Push the completed protection-removal fix for sub-accounts 13 and 22 all the way to production and verify the live deployment is using it.
+
+## REQUIRED PRODUCTION CHECKLIST
+
+1. Confirm the code changes are saved in the main branch / production-bound code:
+
+   * `server/services/laylaAccountResolver.ts`
+   * `server/middleware/protectedAccount.ts`
+   * `server/index.ts`
+   * `server/tests/protectedAccount.test.ts`
+
+2. Confirm the database in the production environment has:
+
+   * `is_protected = false` for sub-accounts 13 and 22
+   * `protected_reason = NULL` for sub-accounts 13 and 22 if that field exists
+
+3. Republish the app to production after all code changes and DB changes are confirmed.
+
+4. After republish, verify production specifically:
+
+   * not local dev preview
+   * not workspace runtime only
+   * not cached old process
+   * actual live production deployment
+
+5. Prove production is using the fix by checking all of the following:
+
+   * protection list now comes only from database
+   * no hardcoded fallback `[13]` remains active in production
+   * cache was cleared on startup in production
+   * accounts 13 and 22 are no longer blocked by protection middleware in production
+
+## REQUIRED EVIDENCE
+
+Return actual proof, not assumptions:
+
+### A. Deployment proof
+
+* latest successful production publish timestamp
+* deployment ID / version if available
+* confirmation that the publish completed successfully
+
+### B. Production code proof
+
+Show the exact relevant live code state for:
+
+* `laylaAccountResolver.ts`
+* `protectedAccount.ts`
+* `index.ts`
+
+### C. Production DB proof
+
+Show query results for sub-accounts 13 and 22 proving:
+
+* `is_protected = false`
+* `protected_reason = NULL` if applicable
+
+### D. Runtime proof
+
+Show that after production restart / republish:
+
+* cache is cleared
+* no fallback protection remains
+* middleware no longer blocks account 13
+* middleware no longer blocks account 22
+
+### E. Negative proof
+
+Confirm these were NOT touched in production:
+
+* `oauth_tokens`
+* `integration_connections`
+* `meta_access_token`
+* `meta_page_id`
+
+## DO NOT SAY COMPLETE UNLESS
+
+* code is in production
+* production DB is updated
+* production deployment succeeded
+* evidence is shown
+* live production behavior is verified
+
+## FINAL STANDARD
+
+I do not want “should be live.”
+I do not want “local changes are ready.”
+I do not want “preview is updated.”
+
+I want verified production completion with proof.
