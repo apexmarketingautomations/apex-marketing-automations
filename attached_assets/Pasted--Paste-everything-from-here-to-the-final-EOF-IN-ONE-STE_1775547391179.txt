@@ -1,0 +1,143 @@
+# Paste everything from here to the final EOF IN ONE STEP
+# Run like:
+# CONFIRM_REMOVE_PROTECTION=1 bash ./remove_protection_and_oauth.sh
+cat > /tmp/remove_protection_and_oauth.sh <<'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+# === Safety check: require explicit confirmation env var ===
+if [ "${CONFIRM_REMOVE_PROTECTION:-}" != "1" ]; then
+  echo "ABORT: To run this destructive operation, re-run with CONFIRM_REMOVE_PROTECTION=1"
+  echo "Example: CONFIRM_REMOVE_PROTECTION=1 bash /tmp/remove_protection_and_oauth.sh"
+  exit 1
+fi
+
+if [ -z "${DATABASE_URL:-}" ]; then
+  echo "ERROR: DATABASE_URL is not set in the environment. Set the Replit Secret DATABASE_URL and retry."
+  exit 1
+fi
+
+TS="$(date -u +%Y%m%dT%H%M%SZ)"
+BACKUP="/tmp/db_backup_${TS}.dump"
+echo "1) Creating a DB backup to ${BACKUP} (pg_dump custom format)..."
+pg_dump --format=custom "$DATABASE_URL" -f "${BACKUP}"
+echo "   Backup complete."
+
+echo "2) Preparing SQL to remove protection and oauth for sub_accounts 13 and 22..."
+cat > /tmp/remove_protection_and_oauth_${TS}.sql <<'SQL'
+-- Safe transactional script: removes protected flags and oauth for sub_accounts 13 and 22
+BEGIN;
+
+-- Ensure sub_accounts exist and set is_protected = FALSE
+-- (safe even if column missing will error: we assume is_protected exists as used by the app)
+ALTER TABLE IF EXISTS sub_accounts ALTER COLUMN is_protected SET DEFAULT false;
+
+UPDATE sub_accounts
+SET is_protected = FALSE
+WHERE id IN (13, 22);
+
+-- If a separate table protected_accounts exists, delete entries for these accounts
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='protected_accounts') THEN
+    DELETE FROM protected_accounts WHERE sub_account_id IN (13, 22);
+  END IF;
+END
+$$;
+
+-- Null out Meta/OAuth related fields on the sub_accounts record (if present)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name='sub_accounts' AND column_name='meta_access_token'
+  ) THEN
+    UPDATE sub_accounts SET meta_access_token = NULL WHERE id IN (13,22);
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name='sub_accounts' AND column_name='meta_page_id'
+  ) THEN
+    UPDATE sub_accounts SET meta_page_id = NULL WHERE id IN (13,22);
+  END IF;
+END
+$$;
+
+-- Delete oauth token rows referencing these sub_accounts if table exists
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='oauth_tokens') THEN
+    DELETE FROM oauth_tokens WHERE sub_account_id IN (13,22);
+  END IF;
+END
+$$;
+
+-- Delete integration_connections referencing these sub_accounts if present
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='integration_connections') THEN
+    DELETE FROM integration_connections WHERE sub_account_id IN (13,22);
+  END IF;
+END
+$$;
+
+-- Optional: delete any agent/worker protection rows for these subs (safe if table exists)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='agent_protected_accounts') THEN
+    DELETE FROM agent_protected_accounts WHERE sub_account_id IN (13,22);
+  END IF;
+END
+$$;
+
+-- Audit: record this admin action into system_logs if table exists
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='system_logs') THEN
+    INSERT INTO system_logs (severity, module, message, metadata, created_at)
+    VALUES (
+      'warn',
+      'admin',
+      'Removed protection and cleared OAuth for sub_accounts 13 and 22',
+      json_build_object('sub_accounts', ARRAY[13,22], 'action_by', 'owner', 'ts', now())::json,
+      now()
+    );
+  END IF;
+END
+$$;
+
+COMMIT;
+SQL
+
+echo "3) Executing SQL update (removing protection & oauth) ..."
+psql "$DATABASE_URL" -f "/tmp/remove_protection_and_oauth_${TS}.sql"
+echo "   DB update finished."
+
+echo "4) Verification queries (showing current sub_accounts rows, protected entries, oauth rows):"
+echo "---- sub_accounts ----"
+psql "$DATABASE_URL" -c "SELECT id, name, is_protected, meta_access_token IS NOT NULL as has_meta_access_token, meta_page_id FROM sub_accounts WHERE id IN (13,22);"
+echo "---- protected_accounts (if exists) ----"
+psql "$DATABASE_URL" -c "SELECT * FROM protected_accounts WHERE sub_account_id IN (13,22);" || true
+echo "---- oauth_tokens (if exists) ----"
+psql "$DATABASE_URL" -c "SELECT * FROM oauth_tokens WHERE sub_account_id IN (13,22);" || true
+echo "---- integration_connections (if exists) ----"
+psql "$DATABASE_URL" -c "SELECT * FROM integration_connections WHERE sub_account_id IN (13,22);" || true
+
+echo
+echo "SUCCESS: Protection removed and OAuth cleared (if those fields/tables existed)."
+echo "Backup preserved at: ${BACKUP}"
+echo
+echo "5) Next steps (manual):"
+echo " - Republish the Replit app via the Replit UI (Republish button) or restart your node process."
+echo " - After republish, verify the inbox / meta sync for the accounts 13 and 22."
+echo " - If anything looks wrong, you can restore DB from the backup:"
+echo "     pg_restore --verbose --clean --no-acl --no-owner -d \"\$DATABASE_URL\" ${BACKUP}"
+echo
+echo "NOTE: This script only clears DB-side protections/tokens. If your app has in-memory protection caches or middleware that reads a separate list, restart the app (Republish) so code picks up the change."
+BASH
+
+chmod +x /tmp/remove_protection_and_oauth.sh
+
+echo "To execute the changes now run:"
+echo "  CONFIRM_REMOVE_PROTECTION=1 bash /tmp/remove_protection_and_oauth.sh"
