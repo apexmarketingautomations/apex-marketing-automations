@@ -1,0 +1,173 @@
+pt/
+
+I need a full **backend agent health audit** across this project.
+
+Do not assume agents are working just because code exists.
+Do not assume data is flowing just because integrations are connected.
+I want you to verify which backend agents are actually:
+- receiving data
+- processing data
+- triggering actions
+- logging activity
+- failing silently
+- partially configured
+- fully operational
+
+## Goal
+Audit every backend agent / automation / intelligence process in the system and tell me what is truly working vs what only exists in code.
+
+This includes anything acting like:
+- AI agents
+- automation workers
+- webhook processors
+- inbox responders
+- intelligence engines
+- background jobs
+- schedulers
+- workflow executors
+- sync jobs
+- recommendation systems
+- command / optimization systems
+
+## What I want checked
+For each backend agent/system, verify all of the following:
+
+### 1. Exists in code
+- where it lives
+- what it is supposed to do
+
+### 2. Trigger path
+- what is supposed to activate it
+- webhook, cron, queue, event, API call, UI action, etc.
+
+### 3. Input/data flow
+- is it actually receiving live data?
+- what source is feeding it?
+- what recent real examples exist?
+
+### 4. Processing
+- is the logic actually executing?
+- is the agent making decisions / generating outputs / running tasks?
+
+### 5. Output/action
+- is it producing the expected result?
+- sending replies
+- creating logs
+- writing to DB
+- triggering workflows
+- updating status
+- generating recommendations
+- dispatching jobs
+
+### 6. Logging / observability
+- where can its activity be seen?
+- logs, tables, events, audit trail, status fields, system logs, webhook events, etc.
+
+### 7. Current real status
+Classify each one as:
+- Fully working
+- Working but misconfigured
+- Receiving data but not acting
+- Acting but not logging clearly
+- Trigger exists but no live data
+- Dead / unused / incomplete
+- Failing silently
+
+### 8. Root blocker
+If it is not fully working, explain the exact blocker:
+- missing config
+- missing secret
+- webhook not firing
+- queue not consumed
+- job disabled
+- background workers off
+- workflow missing
+- no recent data
+- auth broken
+- endpoint mismatch
+- code path never triggered
+- response send failing
+- etc.
+
+## Priority systems to inspect first
+Start with the most launch-critical backend agents:
+
+1. Inbox / DM auto-reply agents
+2. Intelligence / benchmark / recommendation engines
+3. Workflow / automation execution systems
+4. Sync jobs (Meta, Instagram, Telegram, WhatsApp, email, etc.)
+5. Content planner background jobs
+6. Notifications / nudges / pending actions
+7. Command / optimization actions
+8. Any scheduler / cron / background worker system
+
+## Very important
+I already suspect some systems may:
+- exist in code
+- look complete
+- even have UI
+- but are not actually receiving live data or doing real work
+
+So do NOT give me a code summary.
+Do NOT just describe architecture.
+
+I want a **working-state audit based on real evidence**:
+- logs
+- DB activity
+- recent events
+- webhook traces
+- queue records
+- real records in tables
+- actual trigger tests where possible
+
+## Required method
+For each system:
+- inspect code path
+- inspect related tables/logs/events
+- inspect relevant secrets/config
+- inspect whether triggers are live
+- confirm whether real recent activity exists
+- tell me the truth
+
+## Output format
+Respond exactly like this:
+
+### Agent/System Audit
+
+#### [Agent/System Name]
+- Purpose:
+- Trigger:
+- Input source:
+- Is it receiving live data?:
+- Is it processing?:
+- Is it producing output/actions?:
+- Evidence:
+- Current status:
+- Exact blocker:
+- What needs to be fixed:
+
+### Fully working systems
+[list]
+
+### Partially working / misconfigured systems
+[list]
+
+### Systems receiving data but not acting
+[list]
+
+### Dead / incomplete / not proven systems
+[list]
+
+### Highest-priority fixes
+[list in order]
+
+### Final truth
+Tell me plainly:
+- which backend agents are truly operational
+- which ones only look operational
+- which ones are not launch-ready
+
+## Final rule
+Do not answer from theory.
+Do not answer from “should work.”
+Answer from actual evidence in this project.
