@@ -14,15 +14,7 @@ function getSecret(): string {
 }
 
 export function registerChaturbateRoutes(app: Express) {
-  console.log("[ROOMOS] Registering chaturbate routes");
-
-  app.use("/api/chaturbate", (req: Request, res: Response, next) => {
-    console.log(`[ROOMOS-DEBUG] ${req.method} ${req.path} reached chaturbate middleware`);
-    next();
-  });
-
   app.post("/api/chaturbate/webhook", async (req: Request, res: Response) => {
-    console.log("[ROOMOS] Webhook hit");
     res.sendStatus(200);
 
     try {

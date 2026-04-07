@@ -144,6 +144,11 @@ export function registerAuthRoutes(app: Express) {
     if (fullPath.startsWith("/api/meta-ops/backfill-comment-names/")) return next();
     if (fullPath.startsWith("/api/admin/style-training/")) return next();
     if (fullPath.startsWith("/api/demo/layla-suggest")) return next();
+    if (fullPath.startsWith("/api/chaturbate/webhook")) return next();
+    if (fullPath.startsWith("/api/chaturbate/stream")) return next();
+    if (fullPath.startsWith("/api/chaturbate/sessions")) return next();
+    if (fullPath.startsWith("/api/chaturbate/whales")) return next();
+    if (fullPath.startsWith("/api/chaturbate/command")) return next();
 
     if (!req.isAuthenticated || !req.isAuthenticated()) {
       return res.status(401).json({ error: "Not authenticated" });
