@@ -204,7 +204,10 @@ function PostComposer({
         </div>
       </div>
       <div>
-        <label className="text-xs font-medium text-white/50 uppercase tracking-wider mb-1.5 block">Schedule</label>
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-xs font-medium text-white/50 uppercase tracking-wider">Schedule</label>
+          <span className="text-[10px] text-white/30">{Intl.DateTimeFormat().resolvedOptions().timeZone}</span>
+        </div>
         <Input
           data-testid="input-post-schedule"
           type="datetime-local"
@@ -212,6 +215,11 @@ function PostComposer({
           onChange={(e) => set("scheduledAt", e.target.value)}
           className="bg-white/5 border-white/10 text-white"
         />
+        {form.scheduledAt && (
+          <p className="text-[10px] text-white/30 mt-1">
+            Will publish at {new Date(form.scheduledAt).toLocaleString()} your local time
+          </p>
+        )}
       </div>
       <div>
         <label className="text-xs font-medium text-white/50 uppercase tracking-wider mb-2 block">Platforms</label>

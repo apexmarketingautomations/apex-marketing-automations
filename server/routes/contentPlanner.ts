@@ -254,12 +254,15 @@ export function registerContentPlannerRoutes(app: Express) {
         return res.status(400).json({ error: parsed.error.flatten() });
       }
       const { platforms, ...postData } = parsed.data;
+      const scheduledDate = postData.scheduledAt ? new Date(postData.scheduledAt) : null;
+      const autoStatus = scheduledDate && scheduledDate > new Date() ? "scheduled" : "draft";
       const [post] = await db
         .insert(contentPosts)
         .values({
           subAccountId,
           ...postData,
-          scheduledAt: postData.scheduledAt ? new Date(postData.scheduledAt) : null,
+          status: autoStatus,
+          scheduledAt: scheduledDate,
           createdByUserId: null,
         })
         .returning();
@@ -291,7 +294,16 @@ export function registerContentPlannerRoutes(app: Express) {
       }
       const { platforms: _platforms, ...postData } = parsed.data as any;
       const updates: any = { ...postData, updatedAt: new Date() };
-      if (postData.scheduledAt) updates.scheduledAt = new Date(postData.scheduledAt);
+      if (postData.scheduledAt) {
+        const scheduledDate = new Date(postData.scheduledAt);
+        updates.scheduledAt = scheduledDate;
+        if (scheduledDate > new Date() && (!postData.status || postData.status === "draft")) {
+          updates.status = "scheduled";
+        }
+      } else if (postData.scheduledAt === null || postData.scheduledAt === "") {
+        updates.scheduledAt = null;
+        if (!postData.status) updates.status = "draft";
+      }
       const [updated] = await db
         .update(contentPosts)
         .set(updates)
