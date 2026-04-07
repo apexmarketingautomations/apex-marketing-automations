@@ -4,3 +4,7 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gzgoogle-credentials.json
+logs/emergency-health-check.json
+logs/emergency-worker-status.json
+logs/emergency-recent-activity.json
+backups/snapshot_*.json
