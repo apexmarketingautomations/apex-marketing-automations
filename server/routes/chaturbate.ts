@@ -6,11 +6,16 @@ import { addSSEClient, broadcastToAccount } from "../sse";
 import { createFreshSession, buildRoomContext, type SessionState } from "../services/roomOS/contextBuilder";
 import { getRoomCoachingSuggestion } from "../services/roomOS/aiCoach";
 import { publishEvent } from "../eventBus";
+import crypto from "crypto";
 
 const activeSessions: Map<number, SessionState> = new Map();
 
-function getSecret(): string {
+function getGlobalSecret(): string {
   return process.env.ROOMOS_WEBHOOK_SECRET || "";
+}
+
+function generateWebhookToken(): string {
+  return crypto.randomBytes(32).toString("hex");
 }
 
 export function registerChaturbateRoutes(app: Express) {
@@ -18,12 +23,6 @@ export function registerChaturbateRoutes(app: Express) {
     res.sendStatus(200);
 
     try {
-      const token = req.headers["x-roomos-token"] as string;
-      if (!token || token !== getSecret()) {
-        console.error("[ROOMOS] Invalid webhook token");
-        return;
-      }
-
       const raw = req.body;
       const event = raw.event || raw.type;
       const username = raw.username || raw.cbUsername;
@@ -33,10 +32,29 @@ export function registerChaturbateRoutes(app: Express) {
       const viewers = raw.viewers || data.viewers;
       if (!event || !username) return;
 
-      const [account] = await db.select().from(subAccounts)
+      let [account] = await db.select().from(subAccounts)
         .where(eq(subAccounts.cbUsername, username));
+
       if (!account) {
-        console.error(`[ROOMOS] No account found for cb_username=${username}`);
+        const token = generateWebhookToken();
+        const [newAccount] = await db.insert(subAccounts).values({
+          name: `${username} (roomOS)`,
+          twilioNumber: "none",
+          cbUsername: username,
+          cbGoalTokens: 500,
+          cbProMode: false,
+          cbWebhookToken: token,
+          plan: "starter",
+        }).returning();
+        account = newAccount;
+        console.log(`[ROOMOS] Auto-provisioned account ${account.id} for cb_username=${username} (token generated)`);
+      }
+
+      const headerToken = req.headers["x-roomos-token"] as string;
+      const globalSecret = getGlobalSecret();
+      const accountToken = account.cbWebhookToken;
+      if (!headerToken || (headerToken !== globalSecret && headerToken !== accountToken)) {
+        console.error(`[ROOMOS] Invalid webhook token for cb_username=${username}`);
         return;
       }
 
@@ -312,6 +330,83 @@ export function registerChaturbateRoutes(app: Express) {
       }
 
       res.json(cmd);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/chaturbate/token/:subAccountId", async (req: Request, res: Response) => {
+    try {
+      const subAccountId = parseInt(req.params.subAccountId);
+      if (isNaN(subAccountId)) return res.status(400).json({ error: "Invalid subAccountId" });
+
+      const [account] = await db.select({
+        cbWebhookToken: subAccounts.cbWebhookToken,
+        cbUsername: subAccounts.cbUsername,
+      }).from(subAccounts).where(eq(subAccounts.id, subAccountId));
+
+      if (!account) return res.status(404).json({ error: "Account not found" });
+
+      if (!account.cbWebhookToken) {
+        const token = generateWebhookToken();
+        await db.update(subAccounts).set({ cbWebhookToken: token })
+          .where(eq(subAccounts.id, subAccountId));
+        return res.json({ cbWebhookToken: token, cbUsername: account.cbUsername });
+      }
+
+      res.json({ cbWebhookToken: account.cbWebhookToken, cbUsername: account.cbUsername });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/chaturbate/account/:subAccountId", async (req: Request, res: Response) => {
+    try {
+      const headerToken = req.headers["x-roomos-token"] as string;
+      if (!headerToken || headerToken !== getGlobalSecret()) {
+        return res.status(403).json({ error: "Forbidden — global admin token required" });
+      }
+
+      const subAccountId = parseInt(req.params.subAccountId);
+      if (isNaN(subAccountId)) return res.status(400).json({ error: "Invalid subAccountId" });
+
+      const [account] = await db.select({ id: subAccounts.id, name: subAccounts.name })
+        .from(subAccounts).where(eq(subAccounts.id, subAccountId));
+      if (!account) return res.status(404).json({ error: "Account not found" });
+
+      const sessionsDeleted = await db.delete(cbSessions)
+        .where(eq(cbSessions.subAccountId, subAccountId)).returning({ id: cbSessions.id });
+
+      const commandsDeleted = await db.delete(cbCommandsFired)
+        .where(eq(cbCommandsFired.subAccountId, subAccountId)).returning({ id: cbCommandsFired.id });
+
+      const contactsDeleted = await db.delete(contacts)
+        .where(and(
+          eq(contacts.subAccountId, subAccountId),
+          eq(contacts.source, "chaturbate"),
+        )).returning({ id: contacts.id });
+
+      await db.update(subAccounts).set({
+        cbUsername: null,
+        cbWebhookToken: null,
+        cbProMode: null,
+      }).where(eq(subAccounts.id, subAccountId));
+
+      activeSessions.delete(subAccountId);
+
+      const summary = {
+        subAccountId,
+        accountName: account.name,
+        deleted: {
+          sessions: sessionsDeleted.length,
+          commands: commandsDeleted.length,
+          contacts: contactsDeleted.length,
+        },
+        fieldsReset: ["cb_username", "cb_webhook_token", "cb_pro_mode"],
+      };
+
+      console.log(`[ROOMOS] Account ${subAccountId} wiped:`, JSON.stringify(summary));
+      res.json(summary);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

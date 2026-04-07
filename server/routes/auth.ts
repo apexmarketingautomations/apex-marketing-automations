@@ -149,6 +149,8 @@ export function registerAuthRoutes(app: Express) {
     if (fullPath.startsWith("/api/chaturbate/sessions")) return next();
     if (fullPath.startsWith("/api/chaturbate/whales")) return next();
     if (fullPath.startsWith("/api/chaturbate/command")) return next();
+    if (fullPath.startsWith("/api/chaturbate/token")) return next();
+    if (fullPath.startsWith("/api/chaturbate/account")) return next();
 
     if (!req.isAuthenticated || !req.isAuthenticated()) {
       return res.status(401).json({ error: "Not authenticated" });

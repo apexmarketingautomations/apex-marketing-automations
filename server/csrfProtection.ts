@@ -61,6 +61,7 @@ const WEBHOOK_PATH_PREFIXES = [
   "/api/meta-dm-catchup",
   "/api/chaturbate/webhook",
   "/api/chaturbate/command",
+  "/api/chaturbate/account",
 ];
 
 function isExempt(path: string): boolean {
