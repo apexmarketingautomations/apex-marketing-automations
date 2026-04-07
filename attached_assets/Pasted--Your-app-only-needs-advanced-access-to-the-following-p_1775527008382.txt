@@ -1,0 +1,352 @@
+
+Your app only needs advanced access to the following permissions and features if your business provides services of a Tech Provider. Business verification and access verification are required. Learn about access verification | Learn about Tech Providers
+​
+Search permissions and features
+Permissions and features
+Access level
+​
+API calls
+​
+Status
+Action
+​
+pages_read_engagement
+The pages_read_engagement permission allows your app to read content (posts, photos, videos, events) posted by the Page, read followers data (including name, PSID), and profile picture, and read metadata and other insights about the Page.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Active (1.19K)
+No App Review requested
+pages_show_list
+The pages_show_list permission allows your app to access the list of Pages a person manages.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Active (1.188K)
+No App Review requested
+instagram_branded_content_ads_brand
+The instagram_branded_content_ads_brand permission allows an app to read Instagram posts where the app user's Instagram account is tagged as a paid partner, and an app user to read, request, and revoke permissions to run Partnership Ads.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Active (6)
+No App Review requested
+pages_manage_instant_articles
+The pages_manage_instant_articles permission allows your app to manage Instant Articles on behalf of Facebook Pages administered by people using your app.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Active (6)
+No App Review requested
+instagram_manage_insights
+The instagram_manage_insights permission allows your app to get access to insights for the Instagram account linked to a Facebook Page. Your app can also discover and read the profile info and media of other business profiles.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Active (5)
+No App Review requested
+instagram_content_publish
+The instagram_content_publish permission allows your app to create organic feed photo and video posts on behalf of a business user.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Active (5)
+No App Review requested
+facebook_branded_content_ads_brand
+The facebook_branded_content_ads_brand allows an app to read Facebook posts where the app user's Facebook profile is tagged as a paid partner, and an app user to read, request, and revoke permissions to run Partnership Ads.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+instagram_manage_contents
+The instagram_manage_contents permission allows your app to delete posts on behalf of an Instagram account linked to a Facebook Page.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+facebook_creator_marketplace_discovery
+The facebook_creator_marketplace_discovery permission allows an app to discover content creators on Facebook's creator discovery platform.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+instagram_creator_marketplace_discovery
+The instagram_creator_marketplace_discovery permission allows your app to discover content creators on Instagram Creator Marketplace and access insights like creator bio, follower count, and account reach for Instagram businesses onboarded to the platform.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+paid_marketing_messages
+The paid_marketing_messages permission allows an app to create, manage, and send paid marketing messages on Messenger and to view the performance of these marketing messages campaigns on behalf of the app user.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+threads_business_basic
+The threads_business_basic permission allows a business app to fetch the Threads account ID that is associated with an Instagram account within the Business Portfolio through matching username.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+instagram_business_manage_insights
+The instagram_business_manage_insights permission allows an app to get insights from the app user's Instagram professional account metadata, posts, photos, and videos; and insights for an Instagram professional account's public profile metadata and media.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+pages_utility_messaging
+The pages_utility_messaging permission allows an app to access a Page's utility messaging templates.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+manage_app_solution
+The manage_app_solution permission allows an app to get a list of apps that a user can manage, and make API calls on behalf of those apps.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+instagram_business_content_publish
+The instagram_business_content_publish permission allows an app to create organic feed photo and video posts on behalf of a business user.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+instagram_business_basic
+The instagram_business_basic allows your app to read an Instagram Business account profile's info and media.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+instagram_branded_content_brand
+The instagram_branded_content_brand permission allows your app to add, remove and view creators from a specific brand’s approved creators list.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+instagram_branded_content_creator
+The instagram_branded_content_creator permission allows your app to read and change the boost status of a creator’s specific piece of content.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+read_insights
+The read_insights permission allows your app to read the Insights data for Pages, apps and web domains the person owns.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+pages_manage_ads
+The pages_manage_ads permission allows your app to manage ads associated with the Page.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+pages_read_user_content
+The pages_read_user_content permission allows your app to read user-generated content on the Page, such as posts, comments and ratings by users or other Pages, and to delete user comments on Page posts.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+pages_manage_cta
+The pages_manage_cta permission allows your app to carry out POST and DELETE functions on endpoints used to manage call-to-action buttons on a Facebook Page.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+pages_manage_posts
+The pages_manage_posts permission allows your app to create, edit and delete your Page posts.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+pages_manage_engagement
+The pages_manage_engagement permission allows your app to create, edit and delete comments posted on the Page.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+leads_retrieval
+The leads_retrieval permission allows your app to retrieve and read all information captured by a lead ads form associated with an ad created in Ads Manager or the Marketing API.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+page_events
+The page_events permissions allows your app permission to log events on behalf of Facebook Pages administered by people using your app and to send those events to Facebook for ads targeting, optimization and reporting.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+publish_video
+The publish_video permission allows your app to publish live videos to an app user's timeline, group, event or Page.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+instagram_basic
+The instagram_basic permission allows your app to read an Instagram account profile's info and media.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+catalog_management
+The catalog_management permission allows your app to create, read, update and delete business-owned product catalogs that the user is an admin of.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+business_management
+The business_management permission allows your app to read and write with the Business Manager API.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+attribution_read
+The attribution_read permission grants your app access to the Attribution API to pull attribution report data for lines of business you own or have been granted access to by the owner or owners of other lines of business.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+ads_read
+The ads_read permission allows your app to access the Ads Insights API to pull Ads report information for Ad accounts you own or have been granted access to by the owner or owners of other ad accounts through this permission. This permissions also grants your app access to the Server-Side API to allow advertisers to send web events from their servers directly to Facebook.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
+ads_management
+The ads_management permission allows your app to both read and manage the Ads account it owns, or has been granted access to, by the Ad account owner.
+…
+
+Full description
+Requirements
+Standard access
+Standard access
+Ready to use (0)
+No App Review requested
