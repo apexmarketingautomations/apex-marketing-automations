@@ -204,6 +204,22 @@ app.post(
           console.log(`[STRIPE] Subscription activated for user ${meta.userId} — ${meta.tierName}`);
         }
 
+        if (meta?.source === "roomos" && meta?.cbUsername && meta?.roomosPlan) {
+          try {
+            const { provisionRoomOSAccount } = await import("./services/roomOS/provisioning");
+            const result = await provisionRoomOSAccount({
+              cbUsername: meta.cbUsername,
+              email: meta.email || session.customer_email || "",
+              plan: meta.roomosPlan as "roomos_starter" | "roomos_pro",
+              userId: meta.userId,
+              firstName: meta.firstName,
+            });
+            console.log(`[ROOMOS] Stripe fulfillment complete: account=${result.subAccountId}, pro=${result.cbProMode}, welcomeEmail=${result.welcomeEmailSent}`);
+          } catch (roomErr: any) {
+            console.error(`[ROOMOS] Stripe fulfillment error:`, roomErr.message);
+          }
+        }
+
         if (meta?.source === "standalone_card") {
           try {
             const { handleStandaloneCardWebhook } = await import("./routes/standalone-cards");

@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
 import { z } from "zod";
 import { asyncHandler, getUserId } from "./helpers";
+import { provisionRoomOSAccount } from "../services/roomOS/provisioning";
 
 export function registerSubscriptionsRoutes(app: Express) {
   // ---- Subscription Management ----
@@ -141,4 +142,74 @@ export function registerSubscriptionsRoutes(app: Express) {
       res.status(500).json({ error: "Failed to create checkout session" });
     }
   }));
+
+  app.post("/api/subscription/roomos-checkout", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const parsed = z.object({
+      cbUsername: z.string().min(1).max(64),
+      plan: z.enum(["roomos_starter", "roomos_pro"]),
+      email: z.string().email(),
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const roomosPrices: Record<string, number> = {
+      roomos_starter: 1900,
+      roomos_pro: 4900,
+    };
+
+    const roomosPlanNames: Record<string, string> = {
+      roomos_starter: "roomOS Starter",
+      roomos_pro: "roomOS Pro",
+    };
+
+    const unitAmount = roomosPrices[parsed.data.plan];
+    const productName = roomosPlanNames[parsed.data.plan];
+
+    try {
+      const { getUncachableStripeClient } = await import("../stripeClient");
+      const stripe = await getUncachableStripeClient();
+
+      const session = await stripe.checkout.sessions.create({
+        mode: "subscription",
+        payment_method_collection: "always",
+        customer_email: parsed.data.email,
+        line_items: [{
+          price_data: {
+            currency: "usd",
+            product_data: { name: productName },
+            unit_amount: unitAmount,
+            recurring: { interval: "month" },
+          },
+          quantity: 1,
+        }],
+        metadata: {
+          source: "roomos",
+          userId: user.id,
+          cbUsername: parsed.data.cbUsername,
+          roomosPlan: parsed.data.plan,
+          email: parsed.data.email,
+          firstName: user.firstName || user.displayName || parsed.data.cbUsername,
+        },
+        subscription_data: {
+          metadata: {
+            source: "roomos",
+            userId: user.id,
+            cbUsername: parsed.data.cbUsername,
+            roomosPlan: parsed.data.plan,
+          },
+        },
+        success_url: `${req.protocol}://${req.get("host")}/roomos?welcome=true`,
+        cancel_url: `${req.protocol}://${req.get("host")}/pricing?canceled=true`,
+      });
+
+      res.json({ url: session.url });
+    } catch (err: any) {
+      console.error("[STRIPE] roomOS checkout error:", err.message);
+      res.status(500).json({ error: "Failed to create checkout session" });
+    }
+  }));
 }
+
+export { provisionRoomOSAccount };
