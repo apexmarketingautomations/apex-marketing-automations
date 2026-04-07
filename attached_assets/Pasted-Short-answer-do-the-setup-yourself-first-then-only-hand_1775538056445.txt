@@ -1,0 +1,120 @@
+Short answer — **do the setup yourself first, then only hand exact, tightly-scoped prompts to the Replit agent**.
+Don’t drop everything on the agent raw or unmonitored. Use the **Resurrection Starter** + the prioritized prompts I gave, but run them in a controlled, step-by-step way so you keep control, protect secrets, and demand the evidence you require.
+
+Below is exactly how to proceed — two safe paths (A = **You run it** — my recommendation, B = **Give to Replit agent** — only if you follow the rules). Both include the exact minimal context the agent needs and a strict checklist you must enforce.
+
+---
+
+## A — Recommended: you run it (best control, lowest risk)
+
+Do this if you want the highest-quality, safe outcome.
+
+1. **Open a fresh chat / Replit task window.**
+2. **Paste the Resurrection Starter** at the top of the chat (or the New Task body). This sets Dante rules and product standards.
+3. **Attach context** — right after the starter, paste:
+
+   * Replit project / plan link
+   * last commit hash
+   * DB snapshot or these SQL outputs: `SELECT count(*) FROM messages, content_posts, content_publishing_jobs, agent_tasks;` (or export small query results)
+   * note of any missing env secrets (e.g., `VAPI_PRIVATE_KEY`, production Meta tokens)
+   * target account(s) (e.g., Layla / sub_account_id = 22)
+4. **Run the Audit prompt** (paste the backend agent health audit). Wait for full audit output and real evidence (SQL rows, logs).
+5. **Review the audit** (I can help interpret). Only after you’re satisfied, paste *one* of the priority build prompts (start with Workflow Engine Repair).
+6. **Supervise the build**:
+
+   * Require the exact deliverable format I specified (What you built / What is usable / What was tested / Exact evidence / Anything still missing).
+   * Reject vague answers and ask for the evidence block (SQL + worker logs + UI screenshots).
+7. **Run E2E proof** yourself:
+
+   * For Layla: inbound DM → pipeline → auto-reply → check webhook & outbound logs.
+   * For Content Planner: schedule a test post, check `content_publishing_jobs`, worker logs, final `external_post_id`.
+8. **Make checkpoints** in Replit and backup the evidence to `/assets/evidence` and to Google Drive/Notion as you go.
+9. **Only** when evidence is clean, proceed to the next priority prompt.
+
+Why this is best: you control secrets, can validate the evidence, and stop work if the agent drifts.
+
+---
+
+## B — If you give the prompts to the Replit agent (only if you MUST)
+
+You **can** hand the full prompts to the Replit agent — but **only** if you follow these strict rules exactly.
+
+### Before you hand it over
+
+* **Create a checkpoint** in Replit.
+* **Confirm production secrets are set** (or enable `TEST_PUBLISH=true` if tokens are missing).
+* **Prepare the exact context bundle** to include with the task:
+
+  * Resurrection Starter (paste first)
+  * Audit output (if you ran it already) or include the audit prompt in the task
+  * Repo/plan link and last commit hash
+  * DB snapshot or query outputs (small CSVs)
+  * Which account to test (Layla: sub_account_id=22)
+  * Explicit limits: `DAILY_TOKEN_QUOTA`, `DISABLE_BACKGROUND_WORKERS` behavior, TEST_PUBLISH flag
+* **Do not paste secrets into the task text.** Ensure secrets live in Replit secrets/env — instruct the agent only to read them.
+
+### How to write the Replit task (exact wrapper)
+
+Paste this **first** into the New Task body, then paste the relevant priority prompt below it:
+
+```
+pt/
+
+Resurrection first — follow Dante Workflow OS. Operate under STRICT supervision rules:
+
+1) Read the attached context (repo link, commit, DB snapshots).
+2) Do only the task described below. Do not start other work.
+3) Report back ONLY using the exact deliverable format:
+   - What you built
+   - What is now usable
+   - What was tested
+   - Exact evidence (SQL outputs, logs, screenshots)
+   - Anything still missing
+
+4) If you need secrets, read them only from env (do NOT request secrets pasted here).
+5) If the work requires external tokens missing, implement TEST_PUBLISH mode and show simulated E2E evidence.
+6) If any ambiguity exists, stop and ask — do not guess.
+```
+
+Then paste the priority prompt (e.g., the Workflow Engine Repair prompt). When you create the task, pick agent mode that allows background work and **attach** the DB snapshot files.
+
+### While the agent runs
+
+* **Watch the task**. Replit agents can drift. Reject work that’s “mostly done.”
+* Demand the evidence block and run the SQL queries yourself.
+* Never accept “It should work” or “most likely” — only accept evidence.
+
+---
+
+## Quick checklist to keep the agent honest
+
+Always require this before approving any task:
+
+* [ ] `SELECT * FROM <new_table> ORDER BY created_at DESC LIMIT 5;` output included
+* [ ] Worker logs showing `worker-xxx started` and `job_id` timestamps
+* [ ] Screenshots of new UI routes or component states
+* [ ] Health endpoint output (`/api/health/<component>`)
+* [ ] E2E proof: sequence of steps & SQL traces that prove the outcome
+* [ ] If external platforms used, `integration_events` rows with redacted request/response
+* [ ] If secrets were required but unavailable, `TEST_PUBLISH` evidence shown
+
+If any of the above is missing — **reject and require rework**.
+
+---
+
+## Final practical tips
+
+* **Short-term:** You should **run the Resurrection Starter and Audit** yourself. That tells you exactly what’s broken and prevents wasted work.
+* **If you must hand to the agent**, give the wrapper I showed and the DB/commit/context. Insist on the deliverable format.
+* **Never paste secrets** inside a task prompt. Use environment secrets and reference them by name.
+* **Always make a Replit checkpoint** before the agent runs large changes so you can roll back.
+* **Use `TEST_PUBLISH`** if production tokens might be missing or if you want to prove everything without spending external credits.
+
+---
+
+Want me to:
+
+* paste the **exact wrapper** and the first priority prompt into your Replit New Task (I’ll attach the right context but **won’t** paste secrets), **or**
+* walk through running the **Audit + Workflow** with you step-by-step right now?
+
+Say which and I’ll put the exact text where you want it.
