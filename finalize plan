@@ -1,0 +1,527 @@
+# Production Hardening Plan for the FLHSMV Crash Scraper and Ingestion Pipeline
+
+## Executive summary
+
+Crash Connect’s FLHSMV ingestion needs to be treated like a **production data pipeline**, not “a script that sometimes runs.” The hardening work breaks down into four non‑negotiables: deterministic scheduling, correct request/time-window logic, idempotent storage + dedupe, and operational visibility (logs + health + admin UI). Replit supports deploying apps to the cloud as snapshots and running tasks on a schedule via Scheduled Deployments—this allows you to separate your always-on web app from your poller worker cleanly. citeturn6search0turn19search0
+
+The most common reasons “new crashes stop showing up” are not exotic: time windows that drift (timezone or inclusive/exclusive boundary mistakes), brittle parsing (HTML changes), overly-aggressive dedupe, and silent failures due to weak retry/backoff and weak logging. A hardened design therefore requires: (1) a scheduler that cannot accidentally double-run on autoscaled instances; (2) a request builder that always logs the exact params used; (3) a poll window strategy with overlap and a watermark; (4) robust retries with exponential backoff + jitter to avoid retry storms; and (5) database constraints (unique keys) plus UPSERT to guarantee idempotency. citeturn12search0turn12search4turn15search1turn15search4
+
+Your acceptance criteria should remain brutally evidence-based: either a live run produces ≥3 new `crash_reports` (non-test) **or** you provide simulated proof using a replay harness that still inserts into the real schema and creates leads. To prevent “engine works but nobody can see it,” the admin back office must also have a visible FLHSMV “Feed Health” card showing last sync time, counts, and last error. Health endpoints are a standard monitoring pattern: a known path such as `.health`, `.status`, or `.ping` should return system status and dependency readiness. citeturn16search3
+
+## Architecture audit checklist and hardening fixes
+
+### End-to-end pipeline flow
+
+A hardened ingestion loop should look like this:
+
+```mermaid
+flowchart TD
+  A[Scheduler trigger] --> B[Acquire ingest lock]
+  B --> C[Compute poll window: since/until with overlap]
+  C --> D[Build request: params + headers + auth]
+  D --> E[Fetch page 1]
+  E --> F{More pages?}
+  F -- yes --> G[Fetch next page]
+  G --> F
+  F -- no --> H[Parse raw items]
+  H --> I[Normalize + validate fields]
+  I --> J[Compute dedupe key / natural key]
+  J --> K[UPSERT crash_reports]
+  K --> L[Lead creation rule]
+  L --> M[Mark processed_to_lead + link lead_id]
+  M --> N[Write ingest_run summary + metrics]
+  N --> O[Release lock]
+```
+
+Key production implication: retries and pagination happen **before** parsing and database writes; idempotency and dedupe happen **before** lead creation; and every run writes a summarized “what happened” record that the admin UI can show.
+
+### Audit checklist with specific failure modes and concrete fixes
+
+The list below is an **audit checklist** you can run against your current code (search for `flhsmv`, `crash scraper`, `poll`, `cron`, `scheduler`, etc.). Where you find gaps, the fixes are the “production-ready” moves.
+
+| Component | What to verify in your current code | Common failure modes | Concrete hardening fixes (implementation steps) |
+|---|---|---|---|
+| Scheduler | How the worker runs (Replit Scheduled Deployment vs in-process cron/timers) | Double-runs if you scale; missed runs if process sleeps; no visibility into whether it ran | Prefer Replit Scheduled Deployments: define a command + schedule and Replit runs it in the app environment. citeturn19search0 If using Node in-process scheduling, use `node-cron` with explicit cron syntax and log every trigger. citeturn12search2turn12search6 Add DB-based locking (see below) to prevent overlaps. |
+| Request construction | Exact endpoint(s), query params, filters, headers, user-agent, cookies/session | Params drift; filters too narrow; missing required identifying headers | Log the full request “shape”: base URL, endpoint path, params, header names (never secret values). For scraping, set an explicit User-Agent; this is frequently required to avoid request rejection. citeturn12search1turn12search10 |
+| Auth/session | How you authenticate (token/cookie/login) and where secrets are stored | Token exposed in UI/code; auth expires without refresh | Store keys in Replit Secrets (not plaintext config shown in UI); apps commonly use Secrets to keep API keys secure. citeturn11search2 Access secrets at runtime via environment variables (`process.env`). citeturn18search0 Build a refresh/login step if cookies expire (in scraper mode). |
+| Params & filters | Date filters, region filters, crash type filters | “Not picking up new crashes” because your window is wrong or too tight | Implement a **watermark + overlap** strategy: `since = last_successful_until - overlap`, `until = now`, overlap 5–15 minutes (tune). Always persist `last_successful_until` only after a fully successful run (or persist partials with status). |
+| Time windows | Inclusive/exclusive handling, rounding, clock skew | Missing crashes at boundaries; duplicates after overlap | Normalize timestamps to UTC for storage; only convert for display. In JS, timezone conversions must be explicit to avoid local/UTC confusion. citeturn13search0turn13search4 Add a stable rule: `since` inclusive, `until` exclusive, and dedupe handles overlap safely. |
+| Timezone handling | FLHSMV timezone assumptions vs server timezone | Interpreting local as UTC; DST bugs | Convert all incoming times to a timezone-aware moment then store UTC. If your code uses JS Date methods, understand local defaults and use conversion helpers. citeturn13search3turn13search32 |
+| Pagination | Whether results come paginated and how you iterate | Only page 1 ingested; infinite loop; stops early | Implement a “page driver” loop with explicit termination conditions and a max page cap. If HTML paging, extract next links (BeautifulSoup/Cheerio patterns). citeturn14search0turn14search1 Always log `page_number`, `items_found`. |
+| Parser/normalization | HTML/JSON parsing and data cleaning rules | DOM changes break parsing silently; partial parsing produces invalid rows | Use robust scraping libraries (BeautifulSoup for Python; Cheerio for Node). citeturn14search0turn14search1 Add parse error handling instead of crashing the run; capture raw payload snapshot for forensic debugging (schema section). JSON/shape validation should reject incomplete rows with reason logged. |
+| Dedupe | Current dedupe key and logic | Over-dedupes and drops real new crashes; under-dedupes floods DB | Make dedupe **database-enforced** with unique constraints or unique indexes (see schema). PostgreSQL UNIQUE constraints and UNIQUE indexes are primary tools here. citeturn15search0turn15search4 Use UPSERT (`INSERT … ON CONFLICT …`) for idempotency. citeturn15search1 |
+| DB insert | Transactions, error handling, batch sizing | Inserts fail and you lose everything; deadlocks; partial writes | Write in transactions per page or per batch. On transient failures, retry the fetch, not the DB write, unless your DB is flaky. Add indexes for the queries used by back office. citeturn15search2turn15search6 |
+| Lead creation | Rule that turns crash_reports into leads | Creates duplicates; never creates leads; creates leads from junk | Drive lead creation off a deterministic state machine: `processed_to_lead=false` → create lead exactly once → set `processed_to_lead=true` and link `lead_id`. This is the simplest idempotent model (schema below). |
+| Retry/backoff | How you retry HTTP failures and rate limits | Retry storms; no retry; infinite retry; ignores 429 Retry‑After | Implement exponential backoff (1s,2s,4s…) and add jitter to avoid synchronized retry storms. citeturn12search0turn12search4 For 429, respect `Retry-After` if present; otherwise exponential backoff is recommended. citeturn12search24 |
+| Logging | Whether logs show request/response traces and counts | “It ran” but nobody knows what happened | Use a real logger: Winston (Node) supports formatting, exception handling, and multiple outputs. citeturn16search0 Also add HTTP request logging via middleware if you expose endpoints. citeturn16search2turn16search10 Log summaries per run + structured per-page metrics. |
+
+### Retry/backoff strategy comparison table
+
+Retries must be implemented carefully because careless retries can amplify outages and create “retry storms.” citeturn12search4 Exponential backoff is a standard strategy, and jitter is recommended to prevent synchronized retries. citeturn12search0
+
+| Strategy | How it works | Pros | Cons | When to use for FLHSMV |
+|---|---|---|---|---|
+| Immediate retry | Retry instantly on failure citeturn12search0 | Lowest latency | Can hammer FLHSMV; worsens outages | Almost never; only for a single retry on connection reset |
+| Fixed delay | Retry after constant delay | Simple | Can still synchronize; slow recovery tuning | Minor transient network errors when rate limits unlikely |
+| Exponential backoff | Delay doubles each failure (1s,2s,4s…) citeturn12search0 | Reduces load during failure; standard resilience | Without caps, can grow too large; without jitter can synchronize | Default for 5xx/timeout failures |
+| Exponential backoff + jitter | Backoff plus random spread to avoid storms citeturn12search0turn12search4 | Best overall behavior under partial outage | Slightly more logic | Recommended default for FLHSMV |
+| Retry with fallback | Retry, then degrade gracefully citeturn12search0turn12search3 | Avoids total failure | Must define fallback behavior | If scraper is blocked, fall back to replay harness or last cached ingest window |
+
+### Dedupe approach comparison table
+
+The difference between “stable pipeline” and “spam/flood/missing crashes” is often dedupe design. Database-enforced uniqueness is a strong baseline (UNIQUE constraint or unique index). citeturn15search0turn15search4 UPSERT then becomes your idempotent write primitive. citeturn15search1
+
+| Approach | Dedupe key | Pros | Cons | Best use |
+|---|---|---|---|---|
+| Natural source ID | `source_report_id` from FLHSMV | Strongest if stable | Not always available; sometimes changes | If FLHSMV exposes a stable report number |
+| Payload hash | `sha256(raw_payload)` | Easy; detects exact duplicates | Breaks if same crash updates fields; minor HTML differences create new hashes | Good as secondary constraint for raw snapshots |
+| Composite location/time | `(occurred_at_utc, lat, lng, county)` | Works when no ID | Collisions; needs careful rounding | If FLHSMV provides time + location reliably |
+| Fuzzy matching | heuristic match across rows | Handles messy data | Complex and error-prone | Only if FLHSMV is extremely inconsistent |
+| Stateful watermark | “Anything after last_seen” | Efficient | Misses late-arriving updates | Use only for fetching; still enforce DB dedupe |
+
+## Schema, migrations, and indexing recommendations
+
+You already target a relational table named `crash_reports`. To make ingestion reliable and debuggable, add **(a) raw snapshot storage**, **(b) traceability**, **(c) idempotent lead processing state**, and **(d) the right unique/index constraints**.
+
+### Recommended `crash_reports` fields
+
+PostgreSQL supports JSONB for efficient storage and querying of semi-structured data, which fits “raw payload snapshots” extremely well. citeturn15search3
+
+Add or ensure these columns (names are suggestions; align to your existing conventions):
+
+- `source` (TEXT, not null, default `'flhsmv'`)
+- `source_report_id` (TEXT nullable but preferred)  
+- `occurred_at` (TIMESTAMPTZ, not null if possible)
+- `reported_at` (TIMESTAMPTZ nullable)
+- `ingested_at` (TIMESTAMPTZ not null default now())
+- `last_seen_at` (TIMESTAMPTZ not null default now()) — updated on re-seen records
+- `raw_payload` (JSONB) — snapshot for debugging and proof  
+- `raw_payload_sha256` (TEXT) — optional secondary dedupe
+- `ingest_trace_id` (UUID/TEXT) — ties each row to a run/event
+- `processed_to_lead` (BOOLEAN not null default false)
+- `processed_to_lead_at` (TIMESTAMPTZ nullable)
+- `lead_id` (UUID nullable, FK to leads table)
+- `parse_status` (TEXT: `ok|partial|failed`) and `parse_error` (TEXT) for accountability
+
+Why this matters: when parsing breaks, you can still store the raw payload for investigation instead of “it just stopped working.” JSONB is designed specifically for storing JSON efficiently compared to plain JSON text storage. citeturn15search3
+
+### Recommended supporting table: `ingest_runs`
+
+Add an `ingest_runs` table to support monitoring, the admin “Feed Health” card, and acceptance evidence:
+
+- `run_id` UUID primary key
+- `source` TEXT (`flhsmv`)
+- `triggered_by` TEXT (`scheduled|manual|test_harness`)
+- `started_at`, `ended_at` TIMESTAMPTZ
+- `window_since`, `window_until` TIMESTAMPTZ
+- `status` TEXT (`success|partial|failed`)
+- `http_attempts` INT
+- `pages_fetched` INT
+- `items_received` INT
+- `items_parsed_ok` INT
+- `inserted_count` INT
+- `updated_count` INT
+- `deduped_count` INT
+- `leads_created_count` INT
+- `last_error` TEXT
+- `last_http_status` INT
+
+This is your run-level proof and your admin visibility backbone.
+
+### SQL migration examples
+
+Use PostgreSQL constraints to enforce integrity; UNIQUE constraints are explicitly designed to prevent duplicates. citeturn15search0turn15search14 Create indexes to speed up the back office queries and lead processing scans; PostgreSQL indexing is a primary lever for query performance. citeturn15search2turn15search6
+
+```sql
+-- 1) crash_reports hardening fields
+ALTER TABLE crash_reports
+  ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'flhsmv',
+  ADD COLUMN IF NOT EXISTS source_report_id TEXT,
+  ADD COLUMN IF NOT EXISTS occurred_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS reported_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS ingested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS raw_payload JSONB,
+  ADD COLUMN IF NOT EXISTS raw_payload_sha256 TEXT,
+  ADD COLUMN IF NOT EXISTS ingest_trace_id UUID,
+  ADD COLUMN IF NOT EXISTS processed_to_lead BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS processed_to_lead_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS lead_id UUID,
+  ADD COLUMN IF NOT EXISTS parse_status TEXT NOT NULL DEFAULT 'ok',
+  ADD COLUMN IF NOT EXISTS parse_error TEXT;
+
+-- 2) Uniqueness: prefer stable FLHSMV report id if available
+-- UNIQUE constraints prevent duplicates in specified columns. citeturn15search0
+ALTER TABLE crash_reports
+  ADD CONSTRAINT IF NOT EXISTS crash_reports_source_report_id_uniq
+  UNIQUE (source, source_report_id);
+
+-- 3) Indexes for back office + jobs (indexes improve retrieval speed). citeturn15search2turn15search6
+CREATE INDEX IF NOT EXISTS crash_reports_occurred_at_idx
+  ON crash_reports (occurred_at DESC);
+
+CREATE INDEX IF NOT EXISTS crash_reports_ingested_at_idx
+  ON crash_reports (ingested_at DESC);
+
+CREATE INDEX IF NOT EXISTS crash_reports_processed_to_lead_idx
+  ON crash_reports (processed_to_lead, occurred_at DESC);
+
+-- Optional: if you use JSONB fields in queries, index carefully (only if needed).
+-- JSONB is efficient for storage/querying, but indexes must match query patterns. citeturn15search3turn15search6
+```
+
+If FLHSMV does not provide a stable `source_report_id`, create a composite dedupe key column (`dedupe_key`) derived from normalized fields (time/location) and make it unique.
+
+### UPSERT patterns for idempotent ingestion
+
+UPSERT is purpose-built for “insert or update if exists,” which is exactly what resilient ingestion needs. citeturn15search1
+
+```sql
+INSERT INTO crash_reports (
+  source, source_report_id, occurred_at, reported_at,
+  raw_payload, raw_payload_sha256, ingest_trace_id,
+  last_seen_at
+) VALUES (
+  $1, $2, $3, $4,
+  $5::jsonb, $6, $7,
+  NOW()
+)
+ON CONFLICT (source, source_report_id)
+DO UPDATE SET
+  reported_at = EXCLUDED.reported_at,
+  raw_payload = EXCLUDED.raw_payload,
+  raw_payload_sha256 = EXCLUDED.raw_payload_sha256,
+  ingest_trace_id = EXCLUDED.ingest_trace_id,
+  last_seen_at = NOW();
+```
+
+This gives you three critical properties:
+
+1. You can re-run any window safely.
+2. Overlap windows don’t flood your DB.
+3. You can update a record if FLHSMV later enriches/fixes it.
+
+## Observability, monitoring, and admin control center design
+
+A production ingestion pipeline must be inspectable in <30 seconds by an admin. That means: **structured logs**, **health endpoints**, and a **visible back-office Feed Health card**.
+
+### Structured logging design
+
+Logging libraries matter because “console spam” doesn’t scale; Winston is widely used because it supports log levels, formatting, and multiple transports (console/files/etc.). citeturn16search0 If you’re using Express APIs, request logging via Morgan is built for capturing method, URL, status, and response time. citeturn16search2turn16search10
+
+Use JSON logs for ingestion events (easy to grep, easy to ship later). Example format:
+
+```json
+{
+  "ts":"2026-04-07T14:03:21.832Z",
+  "level":"info",
+  "service":"flhsmv_ingest",
+  "run_id":"8a7f...c2",
+  "event":"fetch_page_complete",
+  "page":2,
+  "http_status":200,
+  "duration_ms":842,
+  "items_received":57
+}
+```
+
+Minimum log events per run:
+
+- `ingest_start` (with window_since/until, trigger, version)
+- `request_built` (sanitized params)
+- `fetch_page_start` / `fetch_page_complete`
+- `parse_summary` (ok/failed counts)
+- `db_upsert_summary` (inserted/updated/deduped)
+- `lead_creation_summary`
+- `ingest_complete` (status + totals)
+- `ingest_failed` (error type + last_http_status + stack trace)
+
+Python logging (if your scraper is Python) should use the standard `logging` module rather than prints; it supports structured formats and levels. citeturn16search1turn16search32
+
+### Health endpoints and monitoring
+
+A health endpoint is a standard monitoring pattern: expose a known path like `.health`, `.status`, or `.ping` so monitoring tools (and humans) can check if the app is running and able to process requests. citeturn16search3
+
+Implement two endpoints:
+
+- `GET /api/internal/health` (simple “is app alive + DB reachable”)
+- `GET /api/internal/ingest/flhsmv` (detailed ingest health)
+
+Example response:
+
+```json
+{
+  "status": "ok",
+  "db": "ok",
+  "flhsmv": {
+    "last_success_at": "2026-04-07T13:58:00Z",
+    "last_run_status": "success",
+    "last_run_id": "8a7f...c2",
+    "items_received_last_run": 131,
+    "inserted_last_run": 12,
+    "leads_created_last_run": 4,
+    "last_error": null
+  }
+}
+```
+
+### Admin dashboard “Feed Health” card
+
+Build a first-class back-office UI card (Command Center style) backed by `ingest_runs`:
+
+**FLHSMV Feed Health**
+- Last successful sync: “2m ago”
+- New crash reports today: #
+- Leads created today: #
+- Errors last 24h: #
+- Current status: Healthy / Degraded / Down
+- Button: “Run now” (manual trigger)
+- Button: “View ingest log” (last 20 runs)
+
+This is directly aligned with the “Health Endpoint Monitoring Pattern” principle that a system should expose a clear status surface. citeturn16search3
+
+## Test harness, replay simulation, and acceptance tests
+
+Testing must prove ingestion **even when FLHSMV is unstable**. That means your harness needs to replay realistic responses and simulate failures.
+
+### Harness design goals
+
+Your harness should be able to:
+
+- Replay saved FLHSMV responses (HTML/JSON fixtures)
+- Simulate empty responses
+- Simulate malformed payloads
+- Simulate transient failures (timeouts/500s/429)
+- Simulate pagination (page 1, page 2, etc.)
+- Demonstrate DB insertion + dedupe + lead creation
+
+Mocking is a standard testing technique to isolate dependencies (like external APIs) and validate behavior under edge cases without relying on the live system. citeturn17search23
+
+### Suggested harness structure and plausible file-level layout
+
+You will adapt to your repo, but in a typical Node + Express + Postgres Replit app, these are **plausible** locations:
+
+- `src/ingest/flhsmv/client.ts` (HTTP calls + retries)
+- `src/ingest/flhsmv/parser.ts` (HTML/JSON parsing)
+- `src/ingest/flhsmv/normalize.ts` (field normalization + timezone)
+- `src/ingest/flhsmv/ingest.ts` (orchestrator: window → pages → parse → upsert → leads)
+- `src/routes/internal/health.ts` (health endpoints)
+- `src/routes/admin/ingest.ts` (manual trigger + run history)
+- `tests/fixtures/flhsmv/*.json` or `tests/fixtures/flhsmv/*.html`
+- `tests/flhsmv_ingest.test.ts` (Jest tests)
+
+If you’re using Python instead, mirror the same separation (`client.py`, `parser.py`, `ingest.py`, etc.) and use pytest/unittest.mock. Pytest is commonly used for both simple unit tests and more complex functional testing. citeturn17search13
+
+### Mocking and replay techniques
+
+For Node projects, Jest supports mocking and async test flows, which is crucial when your ingest function is promise-based. citeturn17search0
+
+For Python projects, you can mock external API calls via patching to replace real HTTP calls with controlled fake responses. citeturn17search2
+
+If you want a heavier “mock server” approach, tools like WireMock exist to simulate HTTP APIs and test failure modes. citeturn17search5turn17search1
+
+### Simulating scraping vs API mode
+
+If FLHSMV requires HTML scraping, use purpose-built scraping libraries:
+
+- Python: BeautifulSoup parses HTML and supports the standard scrape workflow “request → parse → extract.” citeturn14search0
+- Node: Cheerio is used for scraping and is based on a jQuery-like DOM model. citeturn14search1turn14search20
+
+If FLHSMV is JavaScript-heavy/dynamic, headless browser automation may be required; Selenium is explicitly used for scraping and data extraction from dynamic pages. citeturn14search6turn14search21
+
+### Acceptance tests and proof requirements
+
+Your acceptance proof should be automated and repeatable:
+
+**Live acceptance test**
+1. Run the ingest job manually (or via scheduled deployment trigger)
+2. Confirm ≥3 new `crash_reports` rows inserted (non-test)
+3. Confirm corresponding leads created
+4. Save logs for request/response traces + run summary
+
+**Simulated proof acceptance test**
+1. Run harness replay that simulates responses producing ≥3 crash reports
+2. Confirm rows inserted and leads created
+3. Save logs + run summaries + sample row outputs
+
+Example DB proof queries:
+
+```sql
+-- prove new crash_reports inserted recently
+SELECT COUNT(*)
+FROM crash_reports
+WHERE source='flhsmv'
+  AND ingested_at > NOW() - INTERVAL '1 hour';
+
+-- show latest records
+SELECT id, source_report_id, occurred_at, ingested_at, processed_to_lead, lead_id
+FROM crash_reports
+WHERE source='flhsmv'
+ORDER BY ingested_at DESC
+LIMIT 10;
+
+-- prove leads created today (adapt to your schema)
+SELECT COUNT(*)
+FROM leads
+WHERE created_at::date = CURRENT_DATE;
+```
+
+## Security, secrets in Replit, and token hygiene
+
+### Store secrets correctly
+
+Operational rule: **never hardcode tokens in code** and never expose them in back-office UI. The standard pattern is to store sensitive values in secrets and read them from environment variables at runtime (`process.env`). Environment variables are the standard mechanism for configuring runtime behavior without embedding secrets in code. citeturn18search0turn18search3
+
+Replit apps commonly store API keys in Replit Secrets; at least some Replit-hosted apps explicitly state that keys are stored securely in Replit Secrets. citeturn11search2
+
+Concrete implementation steps:
+
+- Move any FLHSMV credentials/token/cookie seed to Replit Secrets.
+- Read them only via environment variables:
+  - Node: `process.env.FLHSMV_TOKEN` citeturn18search0
+  - Python: `os.environ["FLHSMV_TOKEN"]` / `os.getenv("FLHSMV_TOKEN")` citeturn18search5turn18search12
+
+If you use a `.env` file locally, do not commit it; dotenv exists to load environment variables from `.env` during local development, and environment variables frequently contain sensitive information like API keys. citeturn18search2
+
+### Token rotation and “assume compromised” posture
+
+If a token ever appears in plaintext in the editor, logs, or a screenshot, treat it as compromised and rotate it. This is consistent with standard guidance to keep API keys out of public repositories and client-side code. citeturn18search7turn18search3
+
+### Avoid leaking secrets in logs
+
+Your logs should never print:
+- full Authorization headers
+- cookie values
+- raw tokens
+
+Instead, log “auth present: true” and optionally a short suffix hash.
+
+## Deployment, rollback, and rollout timeline
+
+### Replit deployment model fit for this pipeline
+
+Replit Deployments are described as publishing your app to the cloud and saving a snapshot of the app, which is a strong fit for controlled releases. citeturn6search0 Replit also supports **Scheduled Deployments**: you define a command-line operation and a schedule, and Replit runs the task automatically in the app environment—ideal for a poller/worker. citeturn19search0
+
+Because Replit has deployment types that include “Scheduled Tasks” and “Always-On” (and autoscale options), a clean production approach is:
+
+- Always-On deployment: the Crash Connect web app + back office
+- Scheduled deployment: `flhsmv_ingest` worker command every 1–5 minutes (tune interval)
+
+(“Autoscale, Scheduled Tasks, and Always-On deployments” are explicitly referenced as deployment modes.) citeturn6search1
+
+### Rollback plan
+
+Because deployments are snapshots, you can operationally treat each deployment artifact as a version. citeturn6search0 A rollback plan should be:
+
+1. Ship schema migrations first (backwards-compatible when possible).
+2. Deploy the new ingestion worker in “dry-run/log-only” mode for a short window.
+3. Enable writes + lead creation only after observing stable runs.
+4. Keep the previous snapshot deploy available; rollback means redeploying the prior snapshot and disabling the scheduled task.
+
+### Rollout timeline
+
+```mermaid
+gantt
+  title FLHSMV Ingestion Hardening Rollout (Production)
+  dateFormat  YYYY-MM-DD
+  section Stabilize
+  Add ingest_runs + crash_reports fields (backwards compatible) :a1, 2026-04-07, 1d
+  Add structured logs + health endpoints               :a2, 2026-04-08, 1d
+  section Prove
+  Build replay harness + fixtures + simulated failures :b1, 2026-04-09, 2d
+  Acceptance proof (live >=3 OR simulated proof)       :b2, 2026-04-11, 1d
+  section Deploy
+  Scheduled Deployment dry-run (no writes)             :c1, 2026-04-12, 1d
+  Enable writes + UPSERT + dedupe constraints          :c2, 2026-04-13, 1d
+  Enable lead creation + processed_to_lead workflow    :c3, 2026-04-14, 1d
+  section Operate
+  Add back office "Feed Health" card + run history     :d1, 2026-04-15, 2d
+  Monitor + tune polling interval + overlap            :d2, 2026-04-17, 2d
+```
+
+## Remaining risks and mitigations
+
+Scrapers break in the real world. The goal is to make failure **visible, recoverable, and non-destructive**.
+
+The biggest ongoing risks are:
+
+FLHSMV anti-bot defenses, rate limiting, and intermittent failures are common in public systems. When rate limits occur, exponential backoff is recommended, and for 429 you should respect Retry-After when available. citeturn12search24turn12search0 Use jitter to avoid retry storms. citeturn12search0turn12search4
+
+HTML structure changes are the #1 reason scrapers silently stop. Using robust parsing libraries (BeautifulSoup/Cheerio) plus storing raw payload snapshots (JSONB) helps you diagnose and patch quickly. citeturn14search0turn14search1turn15search3 For dynamic pages, Selenium-based extraction may be required but adds operational cost and fragility. citeturn14search6turn14search21
+
+Timezone boundary bugs can cause “missing” or duplicate crashes; converting dates explicitly and understanding that JavaScript defaults to local time unless specified is essential. citeturn13search0turn13search32 The watermark + overlap model reduces boundary misses but requires database dedupe to prevent flooding. citeturn15search0turn15search4
+
+Data integrity risks (duplicate leads, repeated processing) are best addressed by database uniqueness + UPSERT and a processed flag (`processed_to_lead`). UPSERT is designed exactly for insert/update merging. citeturn15search1turn15search4
+
+## Deliverables and acceptance evidence checklist
+
+Deliverables you should produce (and archive screenshots/log excerpts for):
+
+A hardened ingestion code path that includes: scheduler trigger, request builder, pagination loop, parser/normalizer, dedupe key computation, UPSERT insert/update, and deterministic lead creation with `processed_to_lead`. (Use UNIQUE constraints/indexes to enforce dedupe.) citeturn15search0turn15search1turn15search4
+
+Database migrations that add at minimum: `raw_payload` (JSONB), `ingest_trace_id`, `processed_to_lead`, and the required indexes for ingestion + back office queries. JSONB is built for efficient JSON storage/querying. citeturn15search3turn15search2
+
+Observability surfaces:
+- Structured logs (Winston if Node) and/or standard Python logging. citeturn16search0turn16search1  
+- Health endpoints using the health monitoring pattern. citeturn16search3  
+- Back-office “FLHSMV Feed Health” card showing last sync + counts + errors.
+
+A replay test harness with fixtures and simulated failure modes (mocking external APIs is an established pattern; Jest and Python patching are standard approaches). citeturn17search0turn17search2turn17search23
+
+Acceptance evidence (must be one of the two):
+- Live run proof: ≥3 new non-test `crash_reports` inserted + leads created + logs show request/response traces and summaries.  
+- Simulated proof: harness inserts ≥3 crash_reports + leads created + logs and DB queries demonstrate results.
+
+Security proof:
+- Secrets stored in Replit Secrets (not hardcoded), accessed via environment variables (`process.env`), and not printed in logs. citeturn11search2turn18search0turn18search3  
+- Token rotation completed if anything was exposed.
+
+Deployment proof:
+- Scheduled Deployment runs the ingestion command on schedule in the app environment, and the web app remains stable. citeturn19search0turn6search0
+
+What was built
+OpenAI-powered emergency terminal agent (scripts/emergency-agent.ts) plus six
+companion scripts registered in agent_commands.json for webhook invocation when
+the site is running.
+
+Files created
+scripts/emergency-agent.ts — Interactive REPL using OpenAI function calling.
+Connects directly to PostgreSQL (fully independent of Express server).
+9 tools: system_health_check, database_diagnostics (SELECT-only), find_stuck_jobs,
+reset_stuck_jobs (agent_worker/content_publishing/crash_reports/sms_retry),
+recent_activity (messages/errors/webhook events/agent jobs/publish jobs/crashes),
+database_backup, worker_status (all 4 workers), service_restart_guidance,
+emergency_notification (Twilio SMS optional).
+
+Startup banner: DB status, all env vars, stuck job counts across all queues
+Strict SELECT-only SQL enforcement in diagnostics (8-case tested)
+Explicit confirmation gates for destructive operations (type 'yes' in terminal)
+reset_stuck_jobs always dry_run=true first, user must confirm before real reset
+Streaming text output for final assistant replies (tool loop uses non-streaming)
+Local audit log: logs/emergency-agent-audit.log
+No bare any / e: any casts; all errors typed as err: unknown
+scripts/emergency-health-check.ts — Full health check (webhook-invokable, no unlock)
+
+scripts/emergency-worker-status.ts — All worker status (webhook-invokable, no unlock)
+
+scripts/emergency-recent-activity.ts — Pipeline activity incl. webhook events (no unlock)
+
+scripts/emergency-reset-stuck-jobs.ts — Reset stuck jobs: agent_worker, content_publishing, crash_reports (requires unlock)
+
+scripts/emergency-database-snapshot.ts — DB snapshot to /backups/ (requires unlock)
+
+Files modified
+agent_commands.json — Added 7 emergency commands:
+emergency_health_check, emergency_worker_status, emergency_recent_activity (no unlock)
+emergency_reset_stuck_agent_jobs, emergency_reset_stuck_publish_jobs,
+emergency_reset_stuck_crash_reports, emergency_database_snapshot (requires unlock)
+.gitignore — Added generated log/snapshot files to prevent artifact commits
+Verified
+All scripts pass tsc --noEmit with zero errors
+SQL safety: 8/8 test cases pass (SELECT allowed, writes blocked)
+emergency-health-check.ts: 117 tables, all env vars present
+emergency-worker-status.ts: all 4 workers queried successfully
+emergency-recent-activity.ts: messages/errors/webhook events/jobs all returned
+emergency-reset-stuck-jobs.ts: no stuck jobs, exits cleanly
+emergency-database-snapshot.ts: snapshot created (117 tables, 9468 records)
+Generated artifacts deleted and gitignored before commit

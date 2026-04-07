@@ -354,6 +354,7 @@ function PostDetailPanel({ post, onEdit, onClose, onDelete, onPublish, onCancel,
   const StIcon = st.icon;
   const canPublish = post.status === "draft" || post.status === "scheduled";
   const canCancel = post.status === "scheduled";
+  const hasPlatforms = post.platforms && post.platforms.length > 0;
   return (
     <motion.div
       initial={{ opacity: 0, x: 20 }}
@@ -382,11 +383,11 @@ function PostDetailPanel({ post, onEdit, onClose, onDelete, onPublish, onCancel,
             <span className="text-white/40">{post.hashtags}</span>
           </div>
         )}
-        {post.platforms && post.platforms.length > 0 && (
-          <div>
-            <span className="text-[10px] font-medium text-white/30 uppercase tracking-wider">Platforms</span>
+        <div>
+          <span className="text-[10px] font-medium text-white/30 uppercase tracking-wider">Platforms</span>
+          {hasPlatforms ? (
             <div className="flex gap-2 mt-2">
-              {post.platforms.map((p) => {
+              {post.platforms!.map((p) => {
                 const pi = PLATFORM_ICONS[p.platform];
                 if (!pi) return null;
                 const PIc = pi.icon;
@@ -403,8 +404,13 @@ function PostDetailPanel({ post, onEdit, onClose, onDelete, onPublish, onCancel,
                 );
               })}
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+              <span className="text-[11px] text-amber-300/80">No platforms selected — edit the post to add Facebook, Instagram, or other platforms before publishing.</span>
+            </div>
+          )}
+        </div>
         {post.scheduledAt && (
           <div className="flex items-center gap-2 text-xs text-white/40">
             <Clock className="w-3.5 h-3.5" />
@@ -441,12 +447,13 @@ function PostDetailPanel({ post, onEdit, onClose, onDelete, onPublish, onCancel,
             <Button
               data-testid="button-publish-post"
               onClick={onPublish}
-              disabled={publishing}
-              className="flex-1 text-white border-0 shadow-lg"
+              disabled={publishing || !hasPlatforms}
+              className="flex-1 text-white border-0 shadow-lg disabled:opacity-40 disabled:cursor-not-allowed"
               style={{ background: "linear-gradient(to right, #34d399, #06b6d4)" }}
+              title={!hasPlatforms ? "Select at least one platform before publishing" : undefined}
             >
               {publishing ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Rocket className="w-3.5 h-3.5 mr-1.5" />}
-              {publishing ? "Publishing..." : "Publish Now"}
+              {publishing ? "Publishing..." : !hasPlatforms ? "Select Platforms First" : "Publish Now"}
             </Button>
           )}
           {canCancel && (
