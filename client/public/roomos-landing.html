@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>roomOS — Try Free for 24 Hours</title>
+<meta name="description" content="roomOS fires the right message at the right moment — automatically. Try it free for 24 hours. No card required. Most performers earn more their first session.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --orange:#FF5C35;--orange-dim:#FF5C3518;--orange-border:#FF5C3530;
+  --bg:#080809;--surface:#0F0F12;--card:#141418;
+  --border:#1E1E26;--border-soft:#16161C;
+  --text:#F0EEE8;--muted:#777;--faint:#2E2E38;
+  --green:#22C55E;--purple:#A855F7;--gold:#FFD700;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;line-height:1.6;overflow-x:hidden;}
+h1,h2,h3,.brand-text{font-family:'Syne',sans-serif;}
+
+/* NAV */
+nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(8,8,9,0.9);backdrop-filter:blur(16px);border-bottom:1px solid var(--border-soft);padding:0 6%;height:62px;display:flex;align-items:center;justify-content:space-between;}
+.brand{display:flex;align-items:center;gap:9px;}
+.brand-mark{width:30px;height:30px;background:var(--orange);border-radius:8px;display:flex;align-items:center;justify-content:center;}
+.brand-mark svg{width:15px;height:15px;fill:white;}
+.brand-text{font-size:17px;font-weight:800;letter-spacing:-0.5px;}
+.brand-text span{color:var(--orange);}
+.nav-r{display:flex;align-items:center;gap:20px;}
+.nav-link{color:var(--muted);text-decoration:none;font-size:14px;transition:color 0.2s;}
+.nav-link:hover{color:var(--text);}
+.nav-trial{background:var(--orange);color:white;padding:9px 18px;border-radius:8px;font-size:13px;font-weight:500;text-decoration:none;transition:background 0.2s;white-space:nowrap;}
+.nav-trial:hover{background:#E04A24;color:white;}
+
+/* TRIAL BANNER */
+.trial-banner{background:linear-gradient(90deg,#FF5C3522,#FF5C3508,#FF5C3522);border-bottom:1px solid var(--orange-border);padding:10px 6%;text-align:center;margin-top:62px;}
+.trial-banner-text{font-size:13px;color:#FF8060;font-weight:500;}
+.trial-banner-text strong{color:var(--orange);}
+.trial-banner-text a{color:var(--orange);text-decoration:underline;cursor:pointer;}
+
+/* HERO */
+.hero{min-height:calc(100vh - 62px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:60px 6% 80px;position:relative;}
+.hero::before{content:'';position:absolute;top:10%;left:50%;transform:translateX(-50%);width:700px;height:500px;background:radial-gradient(circle,rgba(255,92,53,0.07) 0%,transparent 70%);pointer-events:none;}
+.eyebrow{display:inline-flex;align-items:center;gap:7px;background:var(--orange-dim);border:1px solid var(--orange-border);border-radius:20px;padding:5px 14px;font-size:11px;font-weight:500;color:#FF8060;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:24px;animation:fadeUp 0.5s ease both;}
+.eyebrow-dot{width:6px;height:6px;border-radius:50%;background:var(--orange);animation:blink 2s infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0.3;}}
+h1{font-size:clamp(40px,6.5vw,76px);font-weight:800;letter-spacing:-2px;line-height:1.0;margin-bottom:22px;animation:fadeUp 0.5s 0.08s ease both;}
+h1 em{font-style:normal;color:var(--orange);}
+.hero-sub{font-size:clamp(15px,2vw,19px);color:var(--muted);max-width:500px;margin:0 auto 36px;font-weight:300;line-height:1.7;animation:fadeUp 0.5s 0.16s ease both;}
+.hero-ctas{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:16px;animation:fadeUp 0.5s 0.24s ease both;}
+.btn-primary{background:var(--orange);color:white;padding:15px 30px;border-radius:10px;font-size:15px;font-weight:500;text-decoration:none;transition:all 0.2s;border:none;cursor:pointer;font-family:inherit;display:inline-block;}
+.btn-primary:hover{background:#E04A24;transform:translateY(-1px);color:white;}
+.btn-ghost{color:var(--muted);padding:15px 28px;border-radius:10px;font-size:15px;font-weight:400;text-decoration:none;border:1px solid var(--border);transition:all 0.2s;display:inline-block;}
+.btn-ghost:hover{color:var(--text);border-color:#333;}
+.trial-note{font-size:12px;color:var(--muted);margin-bottom:48px;animation:fadeUp 0.5s 0.28s ease both;}
+.trial-note strong{color:var(--green);}
+
+.hero-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:14px;overflow:hidden;max-width:520px;width:100%;animation:fadeUp 0.5s 0.32s ease both;}
+.hero-stat{background:var(--surface);padding:20px 14px;text-align:center;}
+.hero-stat-val{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:var(--orange);letter-spacing:-0.5px;margin-bottom:4px;}
+.hero-stat-label{font-size:11px;color:#444;letter-spacing:0.04em;}
+
+@keyframes fadeUp{from{opacity:0;transform:translateY(18px);}to{opacity:1;transform:none;}}
+
+/* FREE TRIAL SECTION */
+.free-trial{padding:80px 6%;background:var(--surface);border-top:1px solid var(--border-soft);border-bottom:1px solid var(--border-soft);}
+.free-trial-inner{max-width:700px;margin:0 auto;text-align:center;}
+.trial-card{background:var(--card);border:1px solid rgba(255,92,53,0.3);border-radius:20px;padding:40px;position:relative;overflow:hidden;}
+.trial-card::before{content:'';position:absolute;top:-60px;right:-60px;width:200px;height:200px;background:rgba(255,92,53,0.05);border-radius:50%;}
+.trial-badge{display:inline-block;background:var(--orange);color:white;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;padding:4px 12px;border-radius:10px;margin-bottom:16px;}
+.trial-card h2{font-size:clamp(28px,4vw,40px);font-weight:800;letter-spacing:-1px;margin-bottom:10px;line-height:1.1;}
+.trial-card p{font-size:15px;color:var(--muted);margin-bottom:28px;font-weight:300;line-height:1.6;}
+.trial-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px;text-align:left;}
+.trial-step{background:rgba(255,255,255,0.03);border-radius:10px;padding:14px;}
+.trial-step-num{font-family:'Syne',sans-serif;font-size:11px;font-weight:800;color:var(--orange);letter-spacing:0.06em;margin-bottom:6px;}
+.trial-step p{font-size:12px;color:#666;margin:0;line-height:1.5;}
+.trial-form{display:flex;gap:10px;max-width:420px;margin:0 auto;}
+.trial-input{flex:1;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;padding:13px 16px;font-size:14px;color:var(--text);font-family:inherit;outline:none;transition:border-color 0.2s;}
+.trial-input:focus{border-color:var(--orange);}
+.trial-input::placeholder{color:#444;}
+.trial-submit{background:var(--orange);color:white;border:none;border-radius:8px;padding:13px 20px;font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap;transition:background 0.2s;}
+.trial-submit:hover{background:#E04A24;}
+.trial-legal{font-size:11px;color:#444;margin-top:10px;}
+.trial-legal strong{color:var(--green);}
+
+/* DEMO */
+.demo{padding:80px 6%;}
+.demo-inner{max-width:820px;margin:0 auto;}
+.section-label{font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--orange);margin-bottom:10px;}
+.section-h2{font-size:clamp(26px,4vw,38px);font-weight:800;letter-spacing:-1px;margin-bottom:10px;line-height:1.1;}
+.section-sub{font-size:15px;color:var(--muted);margin-bottom:36px;font-weight:300;}
+.shell{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+.shell-bar{background:var(--bg);padding:10px 16px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--border-soft);}
+.s-dot{width:10px;height:10px;border-radius:50%;}
+.shell-title{font-size:12px;color:#333;margin-left:8px;flex:1;}
+.shell-live{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:700;color:var(--orange);letter-spacing:0.08em;}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--orange);animation:blink 1.5s infinite;}
+.shell-body{padding:20px;}
+.ov-panel{background:rgba(8,8,9,0.92);border:1px solid var(--orange-border);border-radius:12px;padding:14px 16px;margin-bottom:12px;}
+.ov-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.ov-brand{font-family:'Syne',sans-serif;font-size:12px;font-weight:800;color:var(--orange);letter-spacing:0.08em;}
+.ov-stats{display:flex;gap:18px;}
+.ov-s{text-align:right;}
+.ov-sv{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:var(--text);line-height:1;margin-bottom:2px;}
+.ov-sl{font-size:9px;color:#333;text-transform:uppercase;letter-spacing:0.06em;}
+.ov-gmeta{display:flex;justify-content:space-between;margin-bottom:5px;}
+.ov-glabel{font-size:12px;color:var(--muted);}
+.ov-gpct{font-size:13px;font-weight:700;color:var(--orange);}
+.ov-track{height:6px;background:rgba(255,255,255,0.05);border-radius:3px;overflow:hidden;margin-bottom:7px;}
+.ov-fill{height:100%;background:var(--orange);border-radius:3px;transition:width 0.6s cubic-bezier(0.4,0,0.2,1);}
+.ov-foot{display:flex;justify-content:space-between;font-size:11px;}
+.ov-rem{color:#333;}
+.ov-tt{color:var(--muted);}
+.flash-card{background:rgba(8,8,9,0.95);border:1px solid rgba(255,92,53,0.5);border-radius:11px;padding:11px 16px;display:flex;align-items:center;justify-content:space-between;animation:flashIn 0.3s cubic-bezier(0.34,1.56,0.64,1);}
+.flash-card.gold{border-color:rgba(255,215,0,0.5);}
+.flash-u{font-size:13px;font-weight:700;color:var(--text);margin-bottom:2px;}
+.flash-m{font-size:11px;color:#444;}
+.flash-a{font-family:'Syne',sans-serif;font-size:27px;font-weight:800;color:var(--orange);letter-spacing:-1px;}
+.flash-card.gold .flash-a{color:var(--gold);font-size:32px;}
+.chat-area{margin-top:12px;background:rgba(8,8,9,0.5);border:1px solid var(--border-soft);border-radius:10px;padding:12px;}
+.chat-notice{background:var(--orange-dim);border-radius:6px;padding:7px 10px;font-size:11px;color:#FF8060;font-weight:500;margin-bottom:8px;}
+.chat-row{display:flex;gap:8px;padding:5px 0;border-bottom:1px solid #0D0D10;font-size:12px;}
+.chat-row:last-child{border:none;}
+.chat-un{font-weight:700;flex-shrink:0;}
+.chat-t{color:var(--muted);}
+@keyframes flashIn{from{opacity:0;transform:translateY(8px) scale(0.96);}to{opacity:1;transform:none;}}
+
+/* HOW */
+.how{padding:90px 6%;max-width:1080px;margin:0 auto;}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:44px;}
+.step{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:26px;transition:border-color 0.2s;}
+.step:hover{border-color:#2A2A32;}
+.step-n{width:30px;height:30px;background:var(--orange-dim);border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:var(--orange);margin-bottom:14px;}
+.step h3{font-size:14px;font-weight:700;margin-bottom:7px;}
+.step p{font-size:13px;color:var(--muted);line-height:1.6;font-weight:300;}
+
+/* FEATURES */
+.features{padding:90px 6%;background:var(--surface);border-top:1px solid var(--border-soft);border-bottom:1px solid var(--border-soft);}
+.features-inner{max-width:1080px;margin:0 auto;}
+.feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:44px;}
+.feat{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px;display:flex;gap:12px;align-items:flex-start;transition:border-color 0.2s;}
+.feat:hover{border-color:#242430;}
+.feat-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;}
+.feat h3{font-size:13px;font-weight:700;margin-bottom:4px;}
+.feat p{font-size:12px;color:#555;line-height:1.5;font-weight:300;}
+
+/* PRICING */
+.pricing{padding:90px 6%;max-width:860px;margin:0 auto;text-align:center;}
+.pricing-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:44px;text-align:left;}
+.plan{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:28px;transition:border-color 0.2s;}
+.plan:hover{border-color:#242430;}
+.plan.featured{border-color:rgba(255,92,53,0.35);}
+.plan-tag{font-size:9px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;background:var(--orange-dim);color:#FF8060;padding:3px 9px;border-radius:8px;display:inline-block;margin-bottom:12px;}
+.plan-name{font-family:'Syne',sans-serif;font-size:19px;font-weight:800;margin-bottom:4px;}
+.plan-desc{font-size:12px;color:var(--muted);margin-bottom:18px;font-weight:300;}
+.plan-price{display:flex;align-items:baseline;gap:5px;margin-bottom:3px;}
+.plan-amt{font-family:'Syne',sans-serif;font-size:38px;font-weight:800;color:var(--orange);letter-spacing:-1.5px;}
+.plan-per{font-size:13px;color:var(--muted);}
+.plan-setup{font-size:11px;color:#333;margin-bottom:20px;}
+
+/* FREE trial highlight */
+.plan-free{background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:8px;padding:8px 12px;margin-bottom:16px;font-size:12px;color:var(--green);font-weight:500;}
+
+.plan-feats{list-style:none;margin-bottom:24px;display:flex;flex-direction:column;gap:8px;}
+.plan-feats li{display:flex;align-items:center;gap:8px;font-size:13px;color:#999;font-weight:300;}
+.chk{width:15px;height:15px;border-radius:50%;background:rgba(34,197,94,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.chk::after{content:'';display:block;width:6px;height:4px;border-left:1.5px solid var(--green);border-bottom:1.5px solid var(--green);transform:rotate(-45deg) translate(1px,-1px);}
+.plan-btn{width:100%;padding:12px;border-radius:9px;font-size:14px;font-weight:500;cursor:pointer;border:none;font-family:'DM Sans',sans-serif;transition:all 0.2s;text-decoration:none;display:block;text-align:center;}
+.plan-btn.p{background:var(--orange);color:white;}
+.plan-btn.p:hover{background:#E04A24;}
+.plan-btn.s{background:var(--surface);color:var(--muted);border:1px solid var(--border);}
+.plan-btn.s:hover{color:var(--text);}
+
+/* PITCH */
+.pitch{padding:80px 6%;background:var(--surface);border-top:1px solid var(--border-soft);text-align:center;}
+.pitch blockquote{font-family:'Syne',sans-serif;font-size:clamp(18px,2.8vw,30px);font-weight:700;letter-spacing:-0.5px;color:var(--text);max-width:660px;margin:0 auto 28px;line-height:1.4;}
+.pitch blockquote em{font-style:normal;color:var(--orange);}
+
+/* FOOTER */
+footer{background:var(--bg);border-top:1px solid var(--border-soft);padding:28px 6%;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;}
+.foot-links{display:flex;gap:18px;}
+.foot-links a{font-size:12px;color:#333;text-decoration:none;}
+.foot-links a:hover{color:var(--muted);}
+
+/* SCROLL REVEAL */
+.reveal{opacity:0;transform:translateY(20px);transition:opacity 0.5s ease,transform 0.5s ease;}
+.reveal.visible{opacity:1;transform:none;}
+
+/* RESPONSIVE */
+@media(max-width:768px){
+  .nav-link{display:none;}
+  .steps,.feat-grid,.pricing-grid,.trial-steps{grid-template-columns:1fr;}
+  .hero-stats{grid-template-columns:1fr;gap:1px;}
+  .trial-form{flex-direction:column;}
+  h1{letter-spacing:-1px;}
+}
+
+/* SUCCESS STATE */
+.success-msg{display:none;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:10px;padding:16px;text-align:center;color:var(--green);font-size:14px;margin-top:12px;}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="brand">
+    <div class="brand-mark">
+      <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+    </div>
+    <span class="brand-text">room<span>OS</span></span>
+  </div>
+  <div class="nav-r">
+    <a href="#how" class="nav-link">How it works</a>
+    <a href="#features" class="nav-link">Features</a>
+    <a href="#pricing" class="nav-link">Pricing</a>
+    <a href="#trial" class="nav-trial">Start free trial</a>
+  </div>
+</nav>
+
+<div class="trial-banner">
+  <span class="trial-banner-text">
+    &#x1F525; <strong>Limited time — 24-hour free trial.</strong> No card required. <a href="#trial">Claim yours →</a>
+  </span>
+</div>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="eyebrow">
+    <div class="eyebrow-dot"></div>
+    Built for Chaturbate performers · CB15 era
+  </div>
+  <h1>Earn more tokens.<br><em>Every session.</em></h1>
+  <p class="hero-sub">roomOS fires the right message at the right moment — automatically. Near goal? It pushes. Room dead? It wakes it up. Top tipper active? It calls them out.</p>
+  <div class="hero-ctas">
+    <a href="#trial" class="btn-primary">&#x26A1; Start free 24-hour trial</a>
+    <a href="#demo" class="btn-ghost">See it running live</a>
+  </div>
+  <p class="trial-note"><strong>No card required.</strong> Free for 24 hours. Then $20/mo — cancel anytime.</p>
+  <div class="hero-stats">
+    <div class="hero-stat">
+      <div class="hero-stat-val">+43%</div>
+      <div class="hero-stat-label">avg token lift</div>
+    </div>
+    <div class="hero-stat">
+      <div class="hero-stat-val">session 1</div>
+      <div class="hero-stat-label">results appear</div>
+    </div>
+    <div class="hero-stat">
+      <div class="hero-stat-val">200 tkns</div>
+      <div class="hero-stat-label">pays for a month</div>
+    </div>
+  </div>
+</section>
+
+<!-- FREE TRIAL -->
+<section class="free-trial" id="trial">
+  <div class="free-trial-inner">
+    <div class="trial-card">
+      <div class="trial-badge">&#x1F381; Free 24-hour trial</div>
+      <h2>Try it in your room tonight.<br>No card. No commitment.</h2>
+      <p>Tell us your CB username and we'll set up roomOS in your room within the hour. Run one full session. If you don't earn more — you owe us nothing.</p>
+      <div class="trial-steps">
+        <div class="trial-step">
+          <div class="trial-step-num">STEP 1</div>
+          <p>Enter your CB username below and hit claim</p>
+        </div>
+        <div class="trial-step">
+          <div class="trial-step-num">STEP 2</div>
+          <p>We set up your room within 1 hour — you get a DM with your setup link</p>
+        </div>
+        <div class="trial-step">
+          <div class="trial-step-num">STEP 3</div>
+          <p>Go live with roomOS running. See the difference in your first session</p>
+        </div>
+      </div>
+      <div class="trial-form">
+        <input class="trial-input" id="cb-username" placeholder="Your CB username" type="text" autocomplete="off">
+        <button class="trial-submit" onclick="claimTrial()">Claim free trial &#x2192;</button>
+      </div>
+      <div class="success-msg" id="success-msg">
+        &#x2705; Got it! We'll DM you on Twitter or CB within the hour with your setup link. Go check your messages.
+      </div>
+      <p class="trial-legal"><strong>No card required.</strong> After 24 hours, continue for $20/month or cancel — no questions asked.</p>
+    </div>
+  </div>
+</section>
+
+<!-- DEMO -->
+<section class="demo" id="demo">
+  <div class="demo-inner">
+    <div class="section-label">Live demo</div>
+    <h2 class="section-h2">What your room looks like with roomOS running</h2>
+    <p class="section-sub">The overlay sits on your stream. roomOS on your phone. Both update in real time.</p>
+    <div class="shell">
+      <div class="shell-bar">
+        <div class="s-dot" style="background:#FF5C35;"></div>
+        <div class="s-dot" style="background:#2A2A30;"></div>
+        <div class="s-dot" style="background:#2A2A30;"></div>
+        <span class="shell-title">roomOS overlay — live in OBS</span>
+        <div class="shell-live"><div class="live-dot"></div>LIVE</div>
+      </div>
+      <div class="shell-body">
+        <div class="ov-panel">
+          <div class="ov-top">
+            <div class="ov-brand">roomOS</div>
+            <div class="ov-stats">
+              <div class="ov-s"><div class="ov-sv" id="sv">3,240</div><div class="ov-sl">session</div></div>
+              <div class="ov-s"><div class="ov-sv" id="gv">4</div><div class="ov-sl">goals</div></div>
+            </div>
+          </div>
+          <div class="ov-gmeta">
+            <span class="ov-glabel">Goal: <span id="prog">375</span> / 500</span>
+            <span class="ov-gpct" id="gpct">75%</span>
+          </div>
+          <div class="ov-track"><div class="ov-fill" id="gfill" style="width:75%;"></div></div>
+          <div class="ov-foot">
+            <span class="ov-rem" id="grem">125 tokens to go</span>
+            <span class="ov-tt">&#x1F451; n877 (301)</span>
+          </div>
+        </div>
+        <div class="flash-card" id="flash">
+          <div>
+            <div class="flash-u" id="fu">d_a_n_n_y316</div>
+            <div class="flash-m" id="fm">you might get me in trouble...</div>
+          </div>
+          <div class="flash-a" id="fa">+50</div>
+        </div>
+        <div class="chat-area">
+          <div class="chat-notice" id="notice">&#x1F525; 125 tokens away — who's finishing this goal?</div>
+          <div class="chat-row"><span class="chat-un" style="color:#FFD700;">n877</span><span class="chat-t">|301| let's go</span></div>
+          <div class="chat-row"><span class="chat-un" style="color:#4ADE80;">d_a_n_n_y316</span><span class="chat-t">tipped 50 tokens</span></div>
+          <div class="chat-row"><span class="chat-un" style="color:#60A5FA;">raymy23</span><span class="chat-t">who's taking top spot??</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="how" id="how">
+  <div class="section-label">How it works</div>
+  <h2 class="section-h2">3 steps. Then go live.</h2>
+  <p class="section-sub">No technical knowledge needed. We handle the setup on a 30-minute call.</p>
+  <div class="steps">
+    <div class="step reveal">
+      <div class="step-n">1</div>
+      <h3>Install the CB app</h3>
+      <p>Find roomOS in the Chaturbate app directory and add it to your room. 60 seconds.</p>
+    </div>
+    <div class="step reveal">
+      <div class="step-n">2</div>
+      <h3>Open roomOS on your phone</h3>
+      <p>Bookmark the companion app. It syncs with your room automatically the moment you go live.</p>
+    </div>
+    <div class="step reveal">
+      <div class="step-n">3</div>
+      <h3>Go live. roomOS handles it.</h3>
+      <p>The system watches your room and fires the right message at the right moment. You just perform.</p>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="features" id="features">
+  <div class="features-inner">
+    <div class="section-label">Features</div>
+    <h2 class="section-h2">Everything your room needs.</h2>
+    <p class="section-sub">7 command categories. 28+ messages. All firing at the psychologically optimal moment.</p>
+    <div class="feat-grid">
+      <div class="feat reveal">
+        <div class="feat-icon" style="background:rgba(255,92,53,0.1);">&#x26A1;</div>
+        <div><h3>Silence detection</h3><p>Detects when your room goes quiet and fires a revival message before you lose the room.</p></div>
+      </div>
+      <div class="feat reveal">
+        <div class="feat-icon" style="background:rgba(245,158,11,0.1);">&#x1F3AF;</div>
+        <div><h3>Near-goal pressure</h3><p>Within 50 tokens of goal, roomOS fires a callout. The highest-converting moment in any room.</p></div>
+      </div>
+      <div class="feat reveal">
+        <div class="feat-icon" style="background:rgba(168,85,247,0.1);">&#x1F451;</div>
+        <div><h3>Whale tracker</h3><p>Remembers your top tippers across every session. Alerts you the moment they enter the room.</p></div>
+      </div>
+      <div class="feat reveal">
+        <div class="feat-icon" style="background:rgba(34,197,94,0.1);">&#x1F4CA;</div>
+        <div><h3>Session analytics</h3><p>Tokens per hour, goal completion rate, which commands drove your biggest tips. Your own data.</p></div>
+      </div>
+      <div class="feat reveal">
+        <div class="feat-icon" style="background:rgba(59,130,246,0.1);">&#x1F4F1;</div>
+        <div><h3>Mobile companion</h3><p>One tap to fire any command while live. AI suggestions based on what's happening in your room right now.</p></div>
+      </div>
+      <div class="feat reveal">
+        <div class="feat-icon" style="background:rgba(236,72,153,0.1);">&#x1F9E0;</div>
+        <div><h3>AI room coach</h3><p>Powered by GPT-4. Reads your room energy and suggests the single best message for this exact moment.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section class="pricing" id="pricing">
+  <div class="section-label">Pricing</div>
+  <h2 class="section-h2">Less than one good tip.</h2>
+  <p class="section-sub">200 tokens pays for a full month. Most performers make that back in the first 20 minutes.</p>
+  <div class="pricing-grid">
+    <div class="plan reveal">
+      <div class="plan-name">Starter</div>
+      <div class="plan-desc">For performers getting started with automation</div>
+      <div class="plan-free">&#x1F381; 24-hour free trial — no card required</div>
+      <div class="plan-price"><span class="plan-amt">$20</span><span class="plan-per">/month</span></div>
+      <div class="plan-setup">+ $50 one-time setup fee</div>
+      <ul class="plan-feats">
+        <li><div class="chk"></div>roomOS Pro Bot — all 7 command categories</li>
+        <li><div class="chk"></div>Overlay with goal bar + animated tip flash</li>
+        <li><div class="chk"></div>Session tracker + analytics dashboard</li>
+        <li><div class="chk"></div>30-min setup call included</li>
+        <li><div class="chk"></div>24-hour free trial to start</li>
+      </ul>
+      <a href="#trial" class="plan-btn s">Start free trial</a>
+    </div>
+    <div class="plan featured reveal">
+      <div class="plan-tag">Most popular</div>
+      <div class="plan-name">Pro</div>
+      <div class="plan-desc">For serious performers who want every edge</div>
+      <div class="plan-free">&#x1F381; 24-hour free trial — no card required</div>
+      <div class="plan-price"><span class="plan-amt">$49</span><span class="plan-per">/month</span></div>
+      <div class="plan-setup">+ $99 one-time setup fee</div>
+      <ul class="plan-feats">
+        <li><div class="chk"></div>Everything in Starter</li>
+        <li><div class="chk"></div>Whale Tracker — remember every top tipper</li>
+        <li><div class="chk"></div>AI Room Coach (GPT-4 powered)</li>
+        <li><div class="chk"></div>Weekly session report card</li>
+        <li><div class="chk"></div>Mobile companion app</li>
+        <li><div class="chk"></div>Priority support + monthly check-in</li>
+      </ul>
+      <a href="#trial" class="plan-btn p">Start free trial</a>
+    </div>
+  </div>
+</section>
+
+<!-- PITCH -->
+<section class="pitch">
+  <blockquote>
+    "I optimize your room to increase tips using <em>proven psychology</em> + automation — most performers see results <em>their first session.</em>"
+  </blockquote>
+  <a href="#trial" class="btn-primary">&#x26A1; Claim your free 24-hour trial</a>
+</section>
+
+<footer>
+  <div class="brand">
+    <div class="brand-mark">
+      <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+    </div>
+    <span class="brand-text">room<span>OS</span></span>
+  </div>
+  <div class="foot-links">
+    <a href="https://x.com/cbupdatenews">Twitter</a>
+    <a href="mailto:apexmarketingautomations@gmail.com">Contact</a>
+    <a href="#">Privacy</a>
+  </div>
+</footer>
+
+<script>
+// ── DEMO ANIMATION ──────────────────────────────────
+const tips=[
+  {u:'n877',a:'+301',m:"VIP tonight",c:'#FFD700',big:true},
+  {u:'raymy23',a:'+100',m:"let's go",c:'#FF5C35',big:false},
+  {u:'d_a_n_n_y316',a:'+50',m:'you might get me in trouble...',c:'#FF5C35',big:false},
+  {u:'csavie',a:'+25',m:'tease mode activated',c:'#FF5C35',big:false},
+];
+const notices=[
+  '&#x1F525; 125 tokens away — who\'s finishing this goal?',
+  '&#x1F451; n877 is top tipper — who\'s taking that crown?',
+  '&#x23F3; 60 seconds left on this goal — last chance',
+  '&#x2728; okayyy I see you raymy23',
+  '&#x1F525; we are SO close… 75 tokens. COME ON',
+];
+let ti=0,ni=0,pct=75;
+function tick(){
+  const t=tips[ti%tips.length];
+  document.getElementById('fu').textContent=t.u;
+  document.getElementById('fa').textContent=t.a;
+  document.getElementById('fa').style.color=t.c;
+  document.getElementById('fm').textContent=t.m;
+  const f=document.getElementById('flash');
+  f.className='flash-card'+(t.big?' gold':'');
+  f.style.animation='none';void f.offsetWidth;
+  f.style.animation='flashIn 0.3s cubic-bezier(0.34,1.56,0.64,1)';
+  pct=Math.min(98,pct+Math.floor(Math.random()*9+3));
+  document.getElementById('gfill').style.width=pct+'%';
+  document.getElementById('gpct').textContent=pct+'%';
+  const rem=Math.max(2,Math.round((100-pct)*5));
+  document.getElementById('grem').textContent=rem+' tokens to go';
+  document.getElementById('prog').textContent=Math.round(pct*5);
+  if(pct>=98)pct=38;
+  ti++;
+}
+function tickNotice(){
+  document.getElementById('notice').innerHTML=notices[ni%notices.length];
+  ni++;
+}
+setInterval(tick,2800);
+setInterval(tickNotice,3600);
+
+// ── TRIAL FORM ──────────────────────────────────────
+async function claimTrial(){
+  const un=document.getElementById('cb-username').value.trim();
+  if(!un){
+    document.getElementById('cb-username').style.borderColor='#FF5C35';
+    document.getElementById('cb-username').placeholder='Enter your CB username first';
+    return;
+  }
+  const btn=document.querySelector('.trial-submit');
+  btn.disabled=true;
+  btn.textContent='Setting up...';
+  try{
+    const resp=await fetch('/api/roomos/claim-trial',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({cbUsername:un})
+    });
+    const data=await resp.json();
+    if(resp.ok){
+      document.getElementById('success-msg').style.display='block';
+      document.getElementById('success-msg').innerHTML=
+        '&#x2705; You\'re in! Your roomOS dashboard is ready. <a href="/roomos?account='+data.accountId+'" style="color:#22C55E;text-decoration:underline;">Open your dashboard now →</a>';
+      document.getElementById('cb-username').value='';
+      document.getElementById('cb-username').style.borderColor='rgba(34,197,94,0.4)';
+    } else {
+      document.getElementById('success-msg').style.display='block';
+      document.getElementById('success-msg').style.borderColor='rgba(255,92,53,0.3)';
+      document.getElementById('success-msg').style.background='rgba(255,92,53,0.1)';
+      document.getElementById('success-msg').style.color='#FF8060';
+      document.getElementById('success-msg').textContent=data.message||'Something went wrong. Try again.';
+    }
+  }catch(e){
+    document.getElementById('success-msg').style.display='block';
+    document.getElementById('success-msg').textContent='Network error. Please try again.';
+  }
+  btn.disabled=false;
+  btn.innerHTML='Claim free trial &#x2192;';
+}
+
+document.getElementById('cb-username').addEventListener('keydown',function(e){
+  if(e.key==='Enter')claimTrial();
+});
+
+// ── SCROLL REVEAL ───────────────────────────────────
+const obs=new IntersectionObserver((entries)=>{
+  entries.forEach(e=>{if(e.isIntersecting)e.target.classList.add('visible');});
+},{threshold:0.12});
+document.querySelectorAll('.reveal').forEach(el=>obs.observe(el));
+</script>
+</body>
+</html>

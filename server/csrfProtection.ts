@@ -62,6 +62,7 @@ const WEBHOOK_PATH_PREFIXES = [
   "/api/chaturbate/webhook",
   "/api/chaturbate/command",
   "/api/chaturbate/account",
+  "/api/roomos/claim-trial",
 ];
 
 function isExempt(path: string): boolean {

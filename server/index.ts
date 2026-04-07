@@ -1643,6 +1643,15 @@ RULES:
     return res.status(status).json({ message });
   });
 
+  app.get("/roomos-landing", (_req, res) => {
+    const landingPath = path.join(process.cwd(), "client", "public", "roomos-landing.html");
+    if (fs.existsSync(landingPath)) {
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      return res.sendFile(landingPath);
+    }
+    res.redirect("/roomos");
+  });
+
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes

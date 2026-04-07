@@ -411,4 +411,49 @@ export function registerChaturbateRoutes(app: Express) {
       res.status(500).json({ error: err.message });
     }
   });
+
+  app.post("/api/roomos/claim-trial", async (req: Request, res: Response) => {
+    try {
+      const { cbUsername } = req.body;
+      if (!cbUsername || typeof cbUsername !== "string" || cbUsername.trim().length < 2) {
+        return res.status(400).json({ message: "Please enter a valid CB username." });
+      }
+
+      const username = cbUsername.trim().toLowerCase();
+
+      const [existing] = await db.select().from(subAccounts)
+        .where(eq(subAccounts.cbUsername, username));
+
+      if (existing) {
+        return res.json({
+          accountId: existing.id,
+          message: "Account already exists — welcome back!",
+          dashboardUrl: `/roomos?account=${existing.id}`,
+        });
+      }
+
+      const token = generateWebhookToken();
+      const [newAccount] = await db.insert(subAccounts).values({
+        name: `${username} (roomOS trial)`,
+        twilioNumber: "none",
+        cbUsername: username,
+        cbGoalTokens: 500,
+        cbProMode: false,
+        cbWebhookToken: token,
+        plan: "starter",
+      }).returning();
+
+      console.log(`[ROOMOS] Trial claimed: account ${newAccount.id} for cb_username=${username}`);
+
+      res.json({
+        accountId: newAccount.id,
+        message: "Trial activated!",
+        dashboardUrl: `/roomos?account=${newAccount.id}`,
+        webhookToken: token,
+      });
+    } catch (err: any) {
+      console.error("[ROOMOS] Trial claim error:", err.message);
+      res.status(500).json({ message: "Something went wrong. Please try again." });
+    }
+  });
 }
