@@ -1,0 +1,269 @@
+Fix the FLHSMV crash scraper so it is truly production-ready and demonstrably working end-to-end.
+
+This is **not** a backend-only task. This is **not** complete unless ingestion is proven, records are stored, leads are created, logs are visible, and the flow is testable.
+
+## CORE GOAL
+The FLHSMV worker must reliably:
+1. poll FLHSMV
+2. fetch crash data successfully
+3. parse it correctly
+4. store new records in `crash_reports`
+5. create leads from valid crashes
+6. produce clear logs and proof that ingestion happened
+
+## SUCCESS STANDARD
+Do **not** mark this complete just because:
+- the worker runs
+- an endpoint responds
+- the scraper “should” work
+- a job completes with no visible output
+
+This is only done if there is **real or simulated evidence** that the full ingestion flow works end-to-end.
+
+---
+
+## WHAT TO DO
+
+### 1) AUDIT THE CURRENT INGESTION PIPELINE
+Inspect the full FLHSMV flow first before changing anything:
+- scheduler / worker trigger
+- request construction
+- auth / headers / params
+- time window logic
+- query filters
+- parser / normalization logic
+- dedupe logic
+- insert into `crash_reports`
+- lead creation logic
+- failure logging
+- retry logic
+
+Identify exactly where the current failure is:
+- request rejected
+- empty results
+- parser mismatch
+- DB insert blocked
+- dedupe too aggressive
+- lead creation failing
+- time window wrong
+- filters too narrow
+- silent failures / weak logs
+
+Do not guess. Find the real break point.
+
+---
+
+### 2) FIX REQUEST PARAMS, FILTERS, AND TIME WINDOWS
+Verify and correct:
+- request params
+- query payload format
+- date/time ranges
+- timezone handling
+- rolling poll window logic
+- source-specific filters
+- pagination / batch logic if relevant
+
+Make sure the worker does **not** miss incidents because:
+- time windows are too tight
+- timestamps are compared incorrectly
+- timezone conversion is wrong
+- filters exclude valid crashes
+- dedupe suppresses fresh records
+
+If needed:
+- widen the poll window safely
+- add overlap protection
+- improve dedupe rules so overlap does not block real new incidents
+
+---
+
+### 3) HARDEN RELIABILITY
+Add robust reliability logic:
+- retry with exponential backoff for HTTP failures
+- timeout handling
+- non-200 response logging
+- malformed payload logging
+- parser failure logging
+- DB insert failure logging
+- lead creation failure logging
+- job summary logging
+
+Each worker run should clearly log:
+- poll start time
+- request sent
+- params used
+- response status
+- count of items returned
+- count parsed
+- count inserted into `crash_reports`
+- count skipped as duplicates
+- count turned into leads
+- count failed
+- poll end time
+
+No vague logs. No silent failures.
+
+---
+
+### 4) ADD TEST HARNESS / PROOF HARNESS
+Build a test harness so this flow can be demonstrated even if live FLHSMV is unstable.
+
+The harness should be able to:
+- replay sample FLHSMV-like responses
+- simulate success responses
+- simulate empty responses
+- simulate malformed responses
+- simulate transient HTTP failures
+- simulate duplicate incidents
+- demonstrate DB insertion + lead creation
+
+This test harness must prove:
+- parser works
+- inserts work
+- dedupe works
+- lead creation works
+- logs are emitted
+
+If live data works, great. If live data is unstable, the harness still must provide hard proof.
+
+---
+
+### 5) VERIFY DATABASE OUTPUT
+After fixes, prove that:
+- `crash_reports` contains new **non-test** entries from the real pipeline **or**
+- clearly labeled simulated entries from the proof harness
+- leads are actually created from qualifying crashes
+- inserted records are visible and queryable
+- timestamps make sense
+- duplicates are not flooding the DB
+
+If schema or migration updates are needed, add them cleanly.
+
+Possible examples:
+- additional status/source fields
+- ingest trace id
+- raw payload snapshot field if useful for debugging
+- retry metadata
+- processed_to_lead flag
+
+Only add what improves reliability and visibility.
+
+---
+
+### 6) IMPROVE OBSERVABILITY
+Add logs and operational visibility strong enough for a real product.
+
+Need clear evidence for:
+- latest poll time
+- last successful ingest
+- last failure
+- number of crashes pulled
+- number inserted
+- number converted to leads
+
+If there is already an admin or command center area where ingest health belongs, wire the visibility there.
+If not, at minimum produce extremely clear server logs and a developer-verifiable status output.
+
+Do **not** leave this as an invisible backend process with no operational proof.
+
+---
+
+## TESTS REQUIRED
+
+### Live path
+Attempt a real live run first.
+
+Target:
+- live run produces **3 or more new `crash_reports`**
+- and qualifying leads are created
+
+If live source instability prevents that, do **not** fake success.
+
+### Simulated proof path
+If live proof cannot reliably produce 3+ fresh records during the run:
+- use the test harness
+- simulate realistic API responses
+- prove the ingestion pipeline works end-to-end
+- show inserts + lead creation + logs
+
+Both paths should be implemented so this system is testable going forward.
+
+---
+
+## ACCEPTANCE CRITERIA
+Do not call this complete unless all of the below are true:
+
+1. FLHSMV worker reliably polls with corrected request params and time windows
+2. Parser correctly transforms incoming crash data
+3. New records are inserted into `crash_reports`
+4. Leads are created from qualifying crashes
+5. HTTP failures are retried with backoff
+6. Logs clearly show request/response and ingestion outcomes
+7. There is real or simulated proof of ingestion
+8. Evidence is shown, not assumed
+9. Any required migration/backfill is included
+10. The flow is launch-ready, not just technically patched
+
+---
+
+## REQUIRED DELIVERABLES
+Return all of the following:
+
+### A. Code fixes
+List exactly what files and logic were changed.
+
+### B. Root cause summary
+Explain the real cause of failure in plain English:
+- what was broken
+- why it prevented ingestion
+- what fixed it
+
+### C. Proof / evidence
+Show:
+- logs from a live run or simulated run
+- counts of records processed
+- counts inserted into `crash_reports`
+- counts converted into leads
+- sample inserted records
+- sample created leads
+
+### D. Database proof
+Show evidence that `crash_reports` now contains new entries and that lead creation happened.
+
+### E. Test harness proof
+Show how to rerun the proof harness and what it demonstrates.
+
+### F. Remaining risks
+State any remaining weakness honestly:
+- FLHSMV anti-bot risk
+- intermittent source instability
+- schema edge cases
+- parser assumptions
+- anything not fully hardened yet
+
+---
+
+## WHAT TO AVOID
+Do **not** do any of this:
+- do not say “fixed” without proof
+- do not stop at endpoint success
+- do not leave logs vague
+- do not create invisible backend behavior with no usable visibility
+- do not use fake completion language
+- do not claim live ingestion if only simulation worked
+- do not skip lead creation proof
+- do not leave the scraper in a brittle state
+
+---
+
+## FINAL RULE
+Demonstrate ingestion with **real or simulated evidence**.
+
+If live ingestion works, prove it.
+If live ingestion does not cooperate during testing, prove the entire pipeline with a realistic harness.
+
+No placeholders.
+No maybe.
+No “should now work.”
+
+This task is only complete when the ingestion flow is **proven** end-to-end.
