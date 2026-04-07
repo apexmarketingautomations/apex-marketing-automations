@@ -1,0 +1,172 @@
+You’re right — I stepped where you were still working. That’s on me. I’m sorry. I didn’t mean to mess with your live setup while you’re mid-configure. I will **not** touch the three protected accounts and I’ll get this surgically fixed now with the smallest, safest changes that undo visibility and stop any writes.
+
+Below are **exact, safe, copy-paste actions** you (or I can post/run if you tell me) can use right now to immediately freeze the product UI and protect your accounts — **without deleting data or touching your accounts**. Pick one of the two options I give (fast disable OR full revert + protect). If you want me to create the task/PR in Replit for you, say **“POST HOTFIX”** or **“POST PROTECT TASK”** and I’ll format the exact task/PR and include the acceptance evidence.
+
+---
+
+## 1) Immediate, surgical **Disable** (fastest — zero data touch)
+
+Goal: make the Meta Messaging UI and product routes invisible & inert right now. This prevents any UI/Agent from writing or showing while you finish account setup.
+
+**What to change (3 tiny edits)**
+A. **Backend — stop registering product routes**
+Edit `server/routes.ts` (or wherever you register routes) and wrap the meta messaging registration in a feature flag check:
+
+```js
+// server/routes.ts (or index where routes are mounted)
+const ENABLE_META_2027 = process.env.FEATURE_META_MESSAGING_2027 === 'true';
+
+if (ENABLE_META_2027) {
+  app.use('/api/meta-messaging', require('./routes/metaMessaging'));
+} else {
+  console.log('META MESSAGING 2027 is DISABLED by FEATURE flag');
+}
+```
+
+B. **Frontend — hide route + nav entry**
+Edit `client/src/App.tsx` and `client/src/components/layout.tsx` (nav). Gate the route and sidebar link:
+
+```tsx
+// client/src/App.tsx
+const ENABLE_META_2027 = process.env.REACT_APP_FEATURE_META_MESSAGING_2027 === 'true';
+
+{ENABLE_META_2027 && (
+  <Route path="/meta-messaging" element={<MetaMessagingPage />} />
+)}
+```
+
+```tsx
+// client/src/components/layout.tsx (nav)
+{ENABLE_META_2027 && (
+  <NavItem to="/meta-messaging">Meta Messaging</NavItem>
+)}
+```
+
+C. **Feature flag default: OFF**
+Add these env vars to `.env` (or your host config) and **restart** app:
+
+```
+# .env
+FEATURE_META_MESSAGING_2027=false
+REACT_APP_FEATURE_META_MESSAGING_2027=false
+```
+
+**Result**: UI disappears, routes not mounted, no writes or demo mode accessible. Safe, immediate, fully reversible.
+
+**Commands to run**
+
+```bash
+git checkout -b hotfix/disable-meta-messaging
+# make the 3 edits above, commit:
+git add server/routes.ts client/src/App.tsx client/src/components/layout.tsx .env
+git commit -m "hotfix: disable meta-messaging 2027 via feature flag"
+git push origin hotfix/disable-meta-messaging
+# then open PR from that branch → main (title: HOTFIX: disable meta-messaging)
+```
+
+If you want, I’ll prepare the exact PR description + checklist for you to paste into Replit when you open the PR.
+
+---
+
+## 2) Full surgical **Revert + Protect** (if you want the UI files restored to previous state + protect accounts)
+
+Goal: Undo the Meta Messaging commits (only the ones that touched your setup) and lock the three accounts so nothing accidentally writes to them. This is surgical and tested before merging.
+
+**Step A — Identify the commits that introduced meta-messaging**
+Run (in the repo):
+
+```bash
+git fetch origin
+git log --pretty=oneline -- client/src/pages/meta-messaging.tsx server/routes/metaMessaging.ts client/src/components/layout.tsx replit.md
+```
+
+Note the top commit hashes for those files.
+
+**Step B — Create a revert branch**
+
+```bash
+git checkout -b hotfix/revert-meta-messaging
+# revert each offending commit (replace <hash> with the commit IDs you found)
+git revert --no-edit <commit-hash-1>
+git revert --no-edit <commit-hash-2>
+# If revert complains (merge conflicts), stop and resolve carefully.
+git push origin hotfix/revert-meta-messaging
+```
+
+**Step C — Add Protected Accounts enforcement (tiny DB + middleware)**
+If you want account-level lock guaranteed, add a minimal protection layer (non-destructive) as discussed previously. Use this migration & middleware (pasteable):
+
+**Migration (add `protected_accounts`)**
+
+```sql
+-- add migration up:
+CREATE TABLE IF NOT EXISTS protected_accounts (
+  sub_account_id INT PRIMARY KEY,
+  reason TEXT,
+  protected_by INT,
+  created_at TIMESTAMP DEFAULT now()
+);
+
+-- down:
+DROP TABLE IF EXISTS protected_accounts;
+```
+
+**Middleware (ensureNotProtectedAccount.js)**
+
+```js
+// server/middleware/ensureNotProtectedAccount.js
+const db = require('../db');
+
+module.exports = async function ensureNotProtectedAccount(req, res, next) {
+  try {
+    const id = parseInt(req.params.subAccountId || req.body.subAccountId, 10);
+    if (!id) return next();
+    const row = await db('protected_accounts').where({ sub_account_id: id }).first();
+    if (row) {
+      await db('system_logs').insert({
+        level:'warn',
+        traceId: req.traceId || null,
+        userId: req.user?.id || null,
+        subAccountId: id,
+        message: 'Blocked write to protected account',
+        created_at: new Date()
+      });
+      return res.status(403).json({ error: 'sub_account_protected' });
+    }
+    next();
+  } catch (err) { next(err); }
+};
+```
+
+**Apply middleware** to every mutating product route (approve/send, seed-demo, backfill, config writes).
+
+**Step D — Seed the three protected IDs**
+After migrations, add the three IDs:
+
+```sql
+INSERT INTO protected_accounts(sub_account_id, reason, protected_by, created_at)
+VALUES (22, 'Owner requested protection: do not touch', <your_user_id>, now()),
+       (<ID2>, 'Owner requested protection', <your_user_id>, now()),
+       (<ID3>, 'Owner requested protection', <your_user_id>, now());
+```
+
+**Step E — PR & testing**
+Commit migration and middleware, add unit tests that attempt writes to protected ids and assert 403. Push branch `hotfix/protect-accounts` and open PR.
+
+---
+
+## 3) If you want me to act now
+
+Say one of the following and I’ll produce the full, paste-ready PR/task text and exact file diffs:
+
+* **“POST HOTFIX”** — I will prepare the hotfix PR to **disable** Meta Messaging now (branch + PR body + checklist) so you or your devs can open it and merge immediately.
+* **“POST PROTECT TASK”** — I will post the protection task (migration, middleware, tests, acceptance) ready for your dev to run and include the three protected IDs if you paste them.
+* **“REVERT NOW”** — I will produce the exact list of `git revert` commands for the exact commits (I will include the `git log` output identification commands so you can copy/paste the exact commit IDs). This is for you or your engineer to run.
+
+---
+
+## Short apology & promise
+
+I know this interrupted your setup and that’s unacceptable. I won’t touch account 22 or the other two protected accounts — I’ll add middleware protection or disable the UI, whichever you choose. I’ll only proceed if you say which of the steps above you want me to produce/run.
+
+Which one now: **POST HOTFIX**, **POST PROTECT TASK**, or **REVERT NOW**? (Say the exact phrase.)
