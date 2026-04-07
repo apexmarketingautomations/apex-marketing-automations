@@ -73,7 +73,7 @@ export function registerContentPlannerRoutes(app: Express) {
   app.get("/api/content-planner/connections", async (req: Request, res: Response) => {
     try {
       const subAccountId = getTenant(req);
-      const connections = await db
+      let connections = await db
         .select({
           id: socialAccounts.id,
           platform: socialAccounts.platform,
@@ -90,6 +90,70 @@ export function registerContentPlannerRoutes(app: Express) {
         .from(socialAccounts)
         .where(eq(socialAccounts.subAccountId, subAccountId))
         .orderBy(asc(socialAccounts.platform));
+
+      if (connections.length === 0) {
+        const [account] = await db.select().from(subAccounts).where(eq(subAccounts.id, subAccountId));
+        if (account?.metaPageId && account?.metaAccessToken) {
+          let pageName = account.name || "Facebook Page";
+          try {
+            const fbRes = await fetch(`https://graph.facebook.com/v21.0/${account.metaPageId}?fields=name,instagram_business_account&access_token=${account.metaAccessToken}`);
+            const fbData = await fbRes.json() as any;
+            if (fbData.name) pageName = fbData.name;
+
+            await db.insert(socialAccounts).values({
+              subAccountId,
+              platform: "facebook",
+              platformAccountId: account.metaPageId,
+              username: pageName,
+              displayName: pageName,
+              accessTokenEncrypted: encryptToken(account.metaAccessToken),
+              status: "active",
+            }).onConflictDoNothing();
+
+            if (fbData.instagram_business_account?.id) {
+              await db.insert(socialAccounts).values({
+                subAccountId,
+                platform: "instagram",
+                platformAccountId: fbData.instagram_business_account.id,
+                username: pageName,
+                displayName: `${pageName} (Instagram)`,
+                accessTokenEncrypted: encryptToken(account.metaAccessToken),
+                status: "active",
+              }).onConflictDoNothing();
+            }
+          } catch (e: any) {
+            console.error(`[CP] Auto-link social accounts failed for account ${subAccountId}:`, e.message);
+            await db.insert(socialAccounts).values({
+              subAccountId,
+              platform: "facebook",
+              platformAccountId: account.metaPageId,
+              username: pageName,
+              displayName: pageName,
+              accessTokenEncrypted: encryptToken(account.metaAccessToken),
+              status: "active",
+            }).onConflictDoNothing();
+          }
+
+          connections = await db
+            .select({
+              id: socialAccounts.id,
+              platform: socialAccounts.platform,
+              platformAccountId: socialAccounts.platformAccountId,
+              username: socialAccounts.username,
+              displayName: socialAccounts.displayName,
+              avatarUrl: socialAccounts.avatarUrl,
+              status: socialAccounts.status,
+              tokenExpiresAt: socialAccounts.tokenExpiresAt,
+              scopes: socialAccounts.scopes,
+              lastSyncAt: socialAccounts.lastSyncAt,
+              createdAt: socialAccounts.createdAt,
+            })
+            .from(socialAccounts)
+            .where(eq(socialAccounts.subAccountId, subAccountId))
+            .orderBy(asc(socialAccounts.platform));
+        }
+      }
+
       res.json(connections);
     } catch (err: any) {
       res.status(400).json({ error: err.message });
