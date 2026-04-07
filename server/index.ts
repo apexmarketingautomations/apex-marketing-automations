@@ -1676,6 +1676,14 @@ RULES:
       }
 
       try {
+        const { startContentPublisherWorker } = await import("./services/contentPlanner/schedulerWorker");
+        startContentPublisherWorker();
+        console.log("[STARTUP] ✅ Content publisher worker started");
+      } catch (err: any) {
+        console.error("[CP-WORKER] Failed to start:", err?.message);
+      }
+
+      try {
         const { validateMetaConfigForAccount } = await import("./metaConfig");
         const { storage: metaStorage } = await import("./storage");
         const account21 = await metaStorage.getSubAccount(21);

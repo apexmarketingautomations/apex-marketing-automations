@@ -1,0 +1,207 @@
+pt/
+
+**Goal — finish & harden Content Planner / Publisher so it runs automatically and reliably in production.**
+This is a product-level job: wire the scheduler into startup, implement robust background processing for scheduled posts, surface the full experience in the UI (create/edit/schedule/preview/approve/publish/reschedule/cancel), and harden everything for real-world failure modes (OAuth, rate limits, retries, idempotency, logging, observability). Do not stop at “it runs” — prove it with live end-to-end tests and clear evidence.
+
+---
+
+## Non-negotiable product rules (Apex standard)
+- Build to **Dante Workflow OS** standards: backend + frontend + connection + UX + testing.
+- UI must follow Apex identity: cutting-edge / futuristic / clean / simple / high-end / mobile-first. No bland CRUD.
+- Do not rely on “it should work” assumptions — show real proof (DB rows, logs, webhook traces, screenshots if possible).
+- Respect `DISABLE_BACKGROUND_WORKERS` config: scheduler must only start when background workers are enabled.
+
+---
+
+## Scope — exactly what to implement and harden
+
+### A — Scheduler & Worker (server)
+1. **Startup integration**
+   - Wire `processDueScheduledPosts()` into server startup (`server/index.ts` or equivalent) so a background loop runs when `DISABLE_BACKGROUND_WORKERS` is `false`.
+   - Use a resilient background pattern: `setInterval` (configurable interval) **plus** distributed lock (DB advisory lock or Redis lock) so multiple app instances don’t run the same jobs concurrently.
+
+2. **Job model & lifecycle**
+   - Use existing `content_publishing_jobs` table as the authoritative job queue. If missing fields, add: `id, content_post_id, platform, scheduled_at_utc, attempt_count, status (queued|processing|published|failed|skipped|cancelled), last_error, started_at, finished_at, lock_owner, lock_expires_at, created_at, updated_at, external_post_id`.
+   - Job processing semantics:
+     - Claim job atomically (UPDATE ... WHERE status='queued' AND scheduled_at <= now AND lock_owner is null -> set status='processing', lock_owner=instanceId, lock_expires_at=now+heartbeat).
+     - Heartbeat: worker refreshes `lock_expires_at` while processing; if heartbeat lost, other workers can recover job after expiry.
+     - On success: set `status=published`, write `external_post_id`, `finished_at`.
+     - On failure: increment `attempt_count`, set `last_error`, set status to `queued` with exponential backoff or `failed` after max attempts (configurable).
+     - Provide idempotency: dedupe by `external_post_id` and by a unique job fingerprint.
+
+3. **Publishing flow**
+   - For each platform (FB/IG, TikTok if integration exists):
+     - Validate integration and OAuth token before attempting.
+     - Upload media using platform-specific flows (image/video). Retry transient upload failures.
+     - Create the post with scheduled publish when API supports it, or publish immediately at scheduled moment.
+     - Respect platform rate limits: exponential backoff and retry with jitter.
+     - If token expired, attempt refresh and retry once; if refresh fails, mark job failed and notify operator.
+   - Fallback behavior: if publish to primary platform fails permanently but others succeed, mark job partially succeeded and surface failure in UI.
+
+4. **Readiness checks before scheduling**
+   - When creating `content_publishing_jobs`, validate that the account has valid platform credentials. If not, job should be created with `status=failed_setup` and UI should show actionable CTA (Connect account).
+   - Store `timezone` and schedule in UTC internally; allow user timezone input on create.
+
+5. **Metrics & Observability**
+   - Emit metrics / DB counters: jobs_processed_total, jobs_success_total, jobs_fail_total, publish_latency_seconds, queue_length.
+   - Record full request/response traces for external calls into `integration_events` or `webhook_delivery_logs` (redact secrets).
+
+6. **Testing & safety**
+   - Ensure safe dry-run mode (TEST_PUBLISH=true) that simulates external API responses for E2E testing.
+   - Provide `POST /api/debug/publish-test` to trigger a publish for a given post for manual verification.
+
+---
+
+### B — API & Backend endpoints
+1. **Create / Edit / Schedule**
+   - `POST /api/content/posts` — create post as draft
+   - `PUT /api/content/posts/:id` — update
+   - `POST /api/content/posts/:id/schedule` — schedule for platforms with `scheduled_at` and `timezone`
+   - `POST /api/content/posts/:id/publish-now` — immediate publish
+   - `POST /api/content/posts/:id/cancel` — cancel scheduled job(s)
+   - All create/update actions must:
+     - Validate media presence & size
+     - Validate platform connection
+     - Return the `content_publishing_jobs` records created (one per platform)
+
+2. **Job / Admin**
+   - `GET /api/content/publishing-jobs?status=queued|processing|failed|published&limit=...` — admin list
+   - `POST /api/content/publishing-jobs/:jobId/retry` — manual retry
+   - `POST /api/content/publishing-jobs/:jobId/cancel` — cancel
+   - Add health endpoint `GET /api/health/content-publisher` that returns scheduler status and queue stats.
+
+---
+
+### C — Frontend UX / Pages (Apex premium polish)
+1. **Content Planner Page**
+   - Add nav entry if missing; ensure mobile-first layout.
+   - Views:
+     - **Calendar view** — monthly/weekly, schedule drag/drop support
+     - **List/Board view** — kanban by status (Draft / Scheduled / Pending Approval / Published / Failed)
+   - Each content card shows:
+     - Title / caption snippet
+     - Scheduled date/time (user tz)
+     - Platforms icons (FB/IG/TikTok)
+     - Media thumbnail(s)
+     - Status badge with color (scheduled, publishing, published, failed)
+     - Quick actions: Edit, Preview, Publish Now, Cancel, Duplicate
+
+2. **Composer / Editor**
+   - Slide-over editor (or modal) consistent with Apex visual language:
+     - Title, body, platform toggles, schedule datetime (tz-aware), media upload area (drag/drop), labels/tags, approval toggle
+     - Preview pane showing how it will appear per platform
+     - Validation: warns when media > platform limits, missing captions for IG, link check
+   - Primary CTAs: Save Draft, Schedule, Publish Now
+   - Secondary: Add To Calendar / Duplicate / Approve
+
+3. **Approval & Publishing UI**
+   - If `requires_approval` feature exists: show `Pending Approval` state with Approve / Request Changes actions.
+   - Show `Publishing History` for each post with job entries (attempts, errors, external_post_id link).
+
+4. **Empty state / Loading / Error states**
+   - Beautiful Apex-themed empty states with CTA “Create your first post”
+   - Skeletons for loading
+   - Rich failure state showing `last_error` and `Retry` CTA
+
+---
+
+### D — Acceptance Criteria (Must pass before you mark done)
+**Backend**
+- Scheduler loop runs automatically in production (when `DISABLE_BACKGROUND_WORKERS=false`) and claims jobs with distributed lock across instances.
+- `content_publishing_jobs` records are created when scheduling a post.
+- Worker processes jobs, updates job `status`, `attempt_count`, and `external_post_id` (or `last_error` on fail).
+- Idempotency: re-running a job for the same scheduled timestamp does not produce duplicate posts on external platforms.
+- Retry/backoff behavior implemented; max attempts configurable (default 5).
+- Robust logging: each external call logged to `integration_events` or `webhook_delivery_logs`.
+- Metrics and health endpoint implemented.
+
+**Frontend**
+- Content Planner page is reachable from nav, mobile-friendly, and matches Apex visual standard.
+- Composer allows scheduling and previewing per platform, creates jobs, and shows status in UI.
+- Admin can view and manage publishing jobs and retry/cancel failed ones.
+- Empty/loading/error states implemented and polished.
+
+**Testing / Proof**
+- Create one test post (with small image) scheduled for immediate publish; verify:
+  - `content_publishing_jobs` row created
+  - Worker processed job within < 60s
+  - API calls to external platform logged
+  - `status=published` and `external_post_id` saved
+  - UI shows the post as `Published` and links to external post (if available)
+- Create a test post queued for future time (5 minutes in future); verify job waits and then processes at scheduled time.
+- Simulate platform transient failure and verify retry/backoff then eventual success or `failed` after max attempts.
+- Simulate OAuth token expiry, verify token refresh attempted and failure path not silent.
+- Run concurrency test: Simulate two worker instances; ensure job is processed exactly once (claim + heartbeat logic prevents double runs).
+- Timezone test: schedule in alternate user timezone; ensure final publish time aligns.
+
+**Edge cases to cover**
+- Media upload failures (oversize, invalid format)
+- OAuth revoked or expired
+- Platform rate-limit error (429)
+- Duplicate schedules for same content
+- Network failures mid-upload
+- Multiple platforms (one fails, others succeed)
+- Server restarts while processing a job (job recovers after lock expiry)
+
+---
+
+### E — Implementation notes & constraints
+- Respect `DISABLE_BACKGROUND_WORKERS` flag. When true, scheduler must not start.
+- Use existing `content_publishing_jobs` and `webhook_delivery_logs` tables if present. If you add columns/tables, document schema migrations.
+- For distributed locking, prefer DB advisory locks if Redis not available. Provide fallback.
+- Use UTC in DB; convert to user timezone only for UI display.
+- Redact secrets in logs; keep request/response bodies but mask tokens.
+- Keep code modular: `publisher/scheduler.ts`, `publisher/worker.ts`, `publisher/platforms/meta.ts`, `publisher/platforms/tiktok.ts`, `api/content/*`.
+- Keep tests in `tests/content_publisher/*.spec.ts` and include scripts to run them.
+
+---
+
+## Deliverables (exactly what to return)
+1. **Code changes** — list of files modified/added and short explanation.
+2. **DB changes** — migration SQL (if any) for added columns/tables.
+3. **UI changes** — screenshots or component references (routes included).
+4. **Deployment config** — confirm `DISABLE_BACKGROUND_WORKERS` default behavior, and env vars required for publishing (list).
+5. **Acceptance test logs** — output of each acceptance test above (e.g., SQL queries, HTTP traces, job rows, UI screenshots).
+6. **How to verify (step-by-step)** — exact steps I can run to prove E2E behavior.
+7. **What was tested** — list of tests executed and their pass/fail status.
+8. **Anything still missing** — any open risk or follow-up (with priority).
+
+**Return format (exact)**
+
+### What you built
+- [backend files added/modified]
+- [scheduler/worker behavior]
+- [platform adapters]
+- [API endpoints]
+- [DB migrations]
+
+### What is now usable in the app
+- [planner page]
+- [composer]
+- [scheduler running]
+- [job admin UI]
+
+### What was tested
+- [list tests and results]
+
+### Exact evidence
+- SQL query outputs (showing `content_publishing_jobs` entries)
+- Integration event logs (request/response snippets, redacted)
+- Worker logs with timestamps
+- UI screenshots or reproduction steps
+
+### Anything still missing
+- [real blockers, tokens, live platform access limitations, additional platform integrations]
+
+---
+
+## Final rule
+Do not mark this done until:
+- the scheduler and worker operate reliably across instances,
+- the UI surfaces scheduled posts and actions,
+- E2E tests (immediate + scheduled + failure cases) pass with documented evidence,
+- and the experience meets Apex visual and UX standards.
+
+If you cannot fully publish to external platforms due to missing production tokens or environment limitations, implement a proven **TEST_PUBLISH** simulation mode and provide the same evidence (jobs processed, logs, DB updates) under simulation.
+
+Finish by returning the deliverables in the **exact** output format above.

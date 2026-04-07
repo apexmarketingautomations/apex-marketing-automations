@@ -11,11 +11,12 @@ import {
   contentLibrary,
   subAccounts,
 } from "@shared/schema";
-import { eq, and, gte, lte, asc, desc } from "drizzle-orm";
+import { eq, and, gte, lte, asc, desc, or, sql, inArray } from "drizzle-orm";
 import { encryptToken, decryptToken } from "../services/contentEncryption";
 import { z } from "zod";
 import { publishPost } from "../services/contentPlanner/publisher";
 import { processDueScheduledPosts } from "../services/contentPlanner/scheduler";
+import { getPublisherStats, getQueueStats } from "../services/contentPlanner/schedulerWorker";
 
 function getTenant(req: Request): number {
   const id = (req as any).tenant?.subAccountId;
@@ -844,6 +845,136 @@ export function registerContentPlannerRoutes(app: Express) {
       res.json({ success: true, subAccountId, maskedToken: masked });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/content-planner/publishing-jobs", async (req: Request, res: Response) => {
+    try {
+      const subAccountId = getTenant(req);
+      const { status, platform, postId, limit: limitStr } = req.query;
+      const conditions: any[] = [eq(contentPublishingJobs.subAccountId, subAccountId)];
+      if (status) {
+        const statuses = (status as string).split(",");
+        if (statuses.length === 1) {
+          conditions.push(eq(contentPublishingJobs.status, statuses[0]));
+        } else {
+          conditions.push(inArray(contentPublishingJobs.status, statuses));
+        }
+      }
+      if (platform) conditions.push(eq(contentPublishingJobs.platform, platform as string));
+      if (postId) conditions.push(eq(contentPublishingJobs.postId, parseInt(postId as string)));
+      const rows = await db.select().from(contentPublishingJobs)
+        .where(and(...conditions))
+        .orderBy(desc(contentPublishingJobs.createdAt))
+        .limit(parseInt(limitStr as string) || 100);
+      res.json(rows);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/content-planner/publishing-jobs/:jobId/retry", async (req: Request, res: Response) => {
+    try {
+      const subAccountId = getTenant(req);
+      const jobId = parseInt(req.params.jobId);
+      if (isNaN(jobId)) return res.status(400).json({ error: "Invalid job id" });
+      const [job] = await db.select().from(contentPublishingJobs)
+        .where(and(eq(contentPublishingJobs.id, jobId), eq(contentPublishingJobs.subAccountId, subAccountId)));
+      if (!job) return res.status(404).json({ error: "Job not found" });
+      if (job.status !== "failed" && job.status !== "cancelled") {
+        return res.status(400).json({ error: `Cannot retry job with status '${job.status}'. Only failed or cancelled jobs can be retried.` });
+      }
+      const [updated] = await db.update(contentPublishingJobs).set({
+        status: "queued",
+        attemptCount: 0,
+        errorMessage: null,
+        lockOwner: null,
+        lockExpiresAt: null,
+        nextRetryAt: null,
+        completedAt: null,
+        startedAt: null,
+        updatedAt: new Date(),
+      }).where(eq(contentPublishingJobs.id, jobId)).returning();
+      console.log(`[CP-ADMIN] Job ${jobId} reset to queued for retry`);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/content-planner/publishing-jobs/:jobId/cancel", async (req: Request, res: Response) => {
+    try {
+      const subAccountId = getTenant(req);
+      const jobId = parseInt(req.params.jobId);
+      if (isNaN(jobId)) return res.status(400).json({ error: "Invalid job id" });
+      const [job] = await db.select().from(contentPublishingJobs)
+        .where(and(eq(contentPublishingJobs.id, jobId), eq(contentPublishingJobs.subAccountId, subAccountId)));
+      if (!job) return res.status(404).json({ error: "Job not found" });
+      if (job.status === "published") {
+        return res.status(400).json({ error: "Cannot cancel an already published job" });
+      }
+      const [updated] = await db.update(contentPublishingJobs).set({
+        status: "cancelled",
+        lockOwner: null,
+        lockExpiresAt: null,
+        completedAt: new Date(),
+        updatedAt: new Date(),
+      }).where(eq(contentPublishingJobs.id, jobId)).returning();
+      console.log(`[CP-ADMIN] Job ${jobId} cancelled`);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/content-planner/posts/:id/cancel", async (req: Request, res: Response) => {
+    try {
+      const subAccountId = getTenant(req);
+      const postId = parseInt(req.params.id);
+      if (isNaN(postId)) return res.status(400).json({ error: "Invalid post id" });
+      const [post] = await db.select().from(contentPosts)
+        .where(and(eq(contentPosts.id, postId), eq(contentPosts.subAccountId, subAccountId)));
+      if (!post) return res.status(404).json({ error: "Post not found" });
+      if (post.status === "published") {
+        return res.status(400).json({ error: "Cannot cancel an already published post" });
+      }
+      await db.update(contentPublishingJobs).set({
+        status: "cancelled",
+        lockOwner: null,
+        lockExpiresAt: null,
+        completedAt: new Date(),
+        updatedAt: new Date(),
+      }).where(and(
+        eq(contentPublishingJobs.postId, postId),
+        eq(contentPublishingJobs.subAccountId, subAccountId),
+        or(eq(contentPublishingJobs.status, "queued"), eq(contentPublishingJobs.status, "processing")),
+      ));
+      const [updated] = await db.update(contentPosts).set({
+        status: "draft",
+        updatedAt: new Date(),
+      }).where(and(eq(contentPosts.id, postId), eq(contentPosts.subAccountId, subAccountId)))
+        .returning();
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/content-planner/health", async (req: Request, res: Response) => {
+    try {
+      const subAccountId = getTenant(req);
+      const workerStats = getPublisherStats();
+      const queueStats = await getQueueStats(subAccountId);
+      res.json({
+        status: workerStats.isRunning ? "healthy" : "degraded",
+        worker: {
+          isRunning: workerStats.isRunning,
+          lastPollAt: workerStats.lastPollAt,
+        },
+        queue: queueStats,
+      });
+    } catch (err: any) {
+      res.status(500).json({ status: "error", error: err.message });
     }
   });
 }

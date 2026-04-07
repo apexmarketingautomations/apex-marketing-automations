@@ -2147,14 +2147,21 @@ export const contentPublishingJobs = pgTable("content_publishing_jobs", {
   postId: integer("post_id").references(() => contentPosts.id, { onDelete: "cascade" }).notNull(),
   platform: text("platform").notNull(),
   socialAccountId: integer("social_account_id").references(() => socialAccounts.id, { onDelete: "set null" }),
-  status: text("status").default("pending").notNull(),
+  status: text("status").default("queued").notNull(),
   trigger: text("trigger").default("manual").notNull(),
   externalPostId: text("external_post_id"),
   result: jsonb("result"),
   errorMessage: text("error_message"),
+  attemptCount: integer("attempt_count").default(0).notNull(),
+  maxAttempts: integer("max_attempts").default(5).notNull(),
+  scheduledAtUtc: timestamp("scheduled_at_utc"),
+  lockOwner: text("lock_owner"),
+  lockExpiresAt: timestamp("lock_expires_at"),
+  nextRetryAt: timestamp("next_retry_at"),
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 export type ContentPublishingJob = typeof contentPublishingJobs.$inferSelect;
 

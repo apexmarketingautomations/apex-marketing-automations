@@ -12,7 +12,8 @@ import {
   CalendarDays, Plus, Search, LayoutGrid, Calendar, FileText, Clock,
   CheckCircle2, Send, Eye, AlertTriangle, X, Edit3, Trash2,
   Image, Instagram, Facebook, Hash, Sparkles, ChevronLeft, ChevronRight,
-  Globe, ArrowRight, Zap, Wand2, Rocket, Loader2
+  Globe, ArrowRight, Zap, Wand2, Rocket, Loader2, Activity,
+  RotateCcw, Ban, RefreshCw, ListChecks
 } from "lucide-react";
 import MediaUpload from "../components/MediaUpload";
 
@@ -34,11 +35,35 @@ interface ContentPost {
   media?: { id: number; fileUrl: string; fileType: string }[];
 }
 
+interface PublishingJob {
+  id: number;
+  postId: number;
+  platform: string;
+  status: string;
+  trigger: string;
+  attemptCount: number;
+  maxAttempts: number;
+  errorMessage?: string;
+  externalPostId?: string;
+  startedAt?: string;
+  completedAt?: string;
+  nextRetryAt?: string;
+  createdAt: string;
+}
+
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any; bg: string; accent: string }> = {
   draft: { label: "Draft", color: "text-gray-400", icon: FileText, bg: "bg-gray-500/15", accent: "#9ca3af" },
   scheduled: { label: "Scheduled", color: "text-blue-400", icon: Clock, bg: "bg-blue-500/15", accent: "#60a5fa" },
   published: { label: "Published", color: "text-emerald-400", icon: CheckCircle2, bg: "bg-emerald-500/15", accent: "#34d399" },
   failed: { label: "Failed", color: "text-red-400", icon: AlertTriangle, bg: "bg-red-500/15", accent: "#f87171" },
+};
+
+const JOB_STATUS_CONFIG: Record<string, { label: string; accent: string; icon: any }> = {
+  queued: { label: "Queued", accent: "#60a5fa", icon: Clock },
+  processing: { label: "Processing", accent: "#f59e0b", icon: Loader2 },
+  published: { label: "Published", accent: "#34d399", icon: CheckCircle2 },
+  failed: { label: "Failed", accent: "#f87171", icon: AlertTriangle },
+  cancelled: { label: "Cancelled", accent: "#9ca3af", icon: Ban },
 };
 
 const PLATFORM_ICONS: Record<string, { icon: any; color: string; label: string }> = {
@@ -324,10 +349,11 @@ function CalendarView({ posts, onEdit }: { posts: ContentPost[]; onEdit: (p: Con
   );
 }
 
-function PostDetailPanel({ post, onEdit, onClose, onDelete, onPublish, publishing }: { post: ContentPost; onEdit: () => void; onClose: () => void; onDelete: () => void; onPublish: () => void; publishing?: boolean }) {
+function PostDetailPanel({ post, onEdit, onClose, onDelete, onPublish, onCancel, publishing }: { post: ContentPost; onEdit: () => void; onClose: () => void; onDelete: () => void; onPublish: () => void; onCancel: () => void; publishing?: boolean }) {
   const st = STATUS_CONFIG[post.status] || STATUS_CONFIG.draft;
   const StIcon = st.icon;
   const canPublish = post.status === "draft" || post.status === "scheduled";
+  const canCancel = post.status === "scheduled";
   return (
     <motion.div
       initial={{ opacity: 0, x: 20 }}
@@ -368,6 +394,11 @@ function PostDetailPanel({ post, onEdit, onClose, onDelete, onPublish, publishin
                   <div key={p.platform} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/5">
                     <PIc className={`w-3.5 h-3.5 ${pi.color}`} />
                     <span className="text-[11px] text-white/60">{pi.label}</span>
+                    {p.platformStatus && (
+                      <span className={`text-[9px] ml-1 ${p.platformStatus === "published" ? "text-emerald-400" : p.platformStatus === "failed" ? "text-red-400" : "text-white/30"}`}>
+                        ({p.platformStatus})
+                      </span>
+                    )}
                   </div>
                 );
               })}
@@ -418,6 +449,16 @@ function PostDetailPanel({ post, onEdit, onClose, onDelete, onPublish, publishin
               {publishing ? "Publishing..." : "Publish Now"}
             </Button>
           )}
+          {canCancel && (
+            <Button
+              data-testid="button-cancel-post"
+              onClick={onCancel}
+              variant="outline"
+              className="border-amber-500/20 text-amber-400 hover:bg-amber-500/10"
+            >
+              <Ban className="w-3.5 h-3.5 mr-1.5" /> Cancel
+            </Button>
+          )}
           <Button data-testid="button-edit-from-detail" onClick={onEdit} className={`${canPublish ? "" : "flex-1"} text-white border-0`} style={{ background: `linear-gradient(to right, var(--vibe-glow, #6366f1), var(--vibe-accent, #818cf8))` }}>
             <Edit3 className="w-3.5 h-3.5 mr-1.5" /> Edit
           </Button>
@@ -430,11 +471,229 @@ function PostDetailPanel({ post, onEdit, onClose, onDelete, onPublish, publishin
   );
 }
 
+function JobsPanel({ subAccountId }: { subAccountId: number }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [jobFilter, setJobFilter] = useState("all");
+
+  const { data: jobs = [], isLoading: jobsLoading } = useQuery<PublishingJob[]>({
+    queryKey: ["/api/content-planner/publishing-jobs", subAccountId],
+    queryFn: async () => {
+      const r = await fetch("/api/content-planner/publishing-jobs", {
+        headers: { "x-sub-account-id": String(subAccountId) },
+      });
+      if (!r.ok) return [];
+      return r.json();
+    },
+    refetchInterval: 10000,
+  });
+
+  const { data: health } = useQuery<any>({
+    queryKey: ["/api/content-planner/health"],
+    queryFn: async () => {
+      const r = await fetch("/api/content-planner/health", {
+        headers: { "x-sub-account-id": String(subAccountId) },
+      });
+      if (!r.ok) return null;
+      return r.json();
+    },
+    refetchInterval: 30000,
+  });
+
+  const retryMut = useMutation({
+    mutationFn: async (jobId: number) => {
+      const r = await fetch(`/api/content-planner/publishing-jobs/${jobId}/retry`, {
+        method: "POST",
+        headers: { "x-sub-account-id": String(subAccountId) },
+      });
+      if (!r.ok) throw new Error("Retry failed");
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/content-planner/publishing-jobs"] });
+      toast({ title: "Job queued for retry" });
+    },
+    onError: () => toast({ title: "Failed to retry job", variant: "destructive" }),
+  });
+
+  const cancelJobMut = useMutation({
+    mutationFn: async (jobId: number) => {
+      const r = await fetch(`/api/content-planner/publishing-jobs/${jobId}/cancel`, {
+        method: "POST",
+        headers: { "x-sub-account-id": String(subAccountId) },
+      });
+      if (!r.ok) throw new Error("Cancel failed");
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/content-planner/publishing-jobs"] });
+      toast({ title: "Job cancelled" });
+    },
+    onError: () => toast({ title: "Failed to cancel job", variant: "destructive" }),
+  });
+
+  const filteredJobs = jobFilter === "all" ? jobs : jobs.filter(j => j.status === jobFilter);
+
+  const jobCounts = {
+    queued: jobs.filter(j => j.status === "queued").length,
+    processing: jobs.filter(j => j.status === "processing").length,
+    published: jobs.filter(j => j.status === "published").length,
+    failed: jobs.filter(j => j.status === "failed").length,
+  };
+
+  return (
+    <div className="space-y-4">
+      {health && (
+        <Card className="bg-black/40 border-white/10">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={`w-2.5 h-2.5 rounded-full ${health.status === "healthy" ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
+                <span className="text-sm font-semibold text-white">Publisher Worker</span>
+                <span className="text-xs text-white/30">{health.status === "healthy" ? "Running" : "Degraded"}</span>
+              </div>
+              <div className="flex items-center gap-4 text-xs text-white/40">
+                {health.queue && (
+                  <>
+                    <span data-testid="text-queue-queued">{health.queue.queued} queued</span>
+                    <span data-testid="text-queue-processing">{health.queue.processing} processing</span>
+                  </>
+                )}
+                {health.worker?.lastPollAt && (
+                  <span>Last poll: {new Date(health.worker.lastPollAt).toLocaleTimeString()}</span>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        {[
+          { key: "all", label: "All", count: jobs.length },
+          { key: "queued", label: "Queued", count: jobCounts.queued },
+          { key: "processing", label: "Processing", count: jobCounts.processing },
+          { key: "published", label: "Published", count: jobCounts.published },
+          { key: "failed", label: "Failed", count: jobCounts.failed },
+        ].map(f => (
+          <button
+            key={f.key}
+            data-testid={`button-job-filter-${f.key}`}
+            onClick={() => setJobFilter(f.key)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              jobFilter === f.key ? "bg-white/10 text-white border border-white/20" : "bg-white/[0.02] text-white/40 border border-white/5 hover:text-white/60"
+            }`}
+          >
+            {f.label} <span className="text-white/20 ml-1">{f.count}</span>
+          </button>
+        ))}
+      </div>
+
+      {jobsLoading ? (
+        <div className="space-y-2">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="h-16 bg-white/5 rounded-xl animate-pulse" />
+          ))}
+        </div>
+      ) : filteredJobs.length === 0 ? (
+        <Card className="bg-black/40 border-white/10 border-dashed">
+          <CardContent className="p-8 text-center">
+            <ListChecks className="w-10 h-10 mx-auto mb-3 text-white/10" />
+            <p className="text-sm text-white/30">No publishing jobs {jobFilter !== "all" ? `with status "${jobFilter}"` : "yet"}</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {filteredJobs.map((job, idx) => {
+            const jcfg = JOB_STATUS_CONFIG[job.status] || JOB_STATUS_CONFIG.queued;
+            const JIcon = jcfg.icon;
+            const pi = PLATFORM_ICONS[job.platform];
+            const PIcon = pi?.icon || Globe;
+            const canRetry = job.status === "failed" || job.status === "cancelled";
+            const canCancelJob = job.status === "queued" || job.status === "processing";
+
+            return (
+              <motion.div
+                key={job.id}
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.02 }}
+              >
+                <Card className="bg-black/40 border-white/10 hover:border-white/20 transition-all" data-testid={`card-job-${job.id}`}>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <PIcon className={`w-4 h-4 flex-shrink-0 ${pi?.color || "text-white/40"}`} />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-white">Post #{job.postId}</span>
+                            <Badge className="text-[9px] px-1.5 py-0 h-4 border" style={{ background: `${jcfg.accent}15`, color: jcfg.accent, borderColor: `${jcfg.accent}30` }}>
+                              <JIcon className={`w-2.5 h-2.5 mr-0.5 ${job.status === "processing" ? "animate-spin" : ""}`} />
+                              {jcfg.label}
+                            </Badge>
+                            <span className="text-[10px] text-white/20">{job.trigger}</span>
+                          </div>
+                          <div className="flex items-center gap-3 mt-1 text-[10px] text-white/30">
+                            <span>{pi?.label || job.platform}</span>
+                            <span>Attempt {job.attemptCount}/{job.maxAttempts}</span>
+                            <span>{new Date(job.createdAt).toLocaleString()}</span>
+                          </div>
+                          {job.errorMessage && (
+                            <p className="text-[11px] text-red-400/80 mt-1.5 line-clamp-1">{job.errorMessage}</p>
+                          )}
+                          {job.nextRetryAt && job.status === "queued" && (
+                            <p className="text-[10px] text-amber-400/60 mt-1">
+                              Retry at: {new Date(job.nextRetryAt).toLocaleTimeString()}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {canRetry && (
+                          <button
+                            data-testid={`button-retry-job-${job.id}`}
+                            onClick={() => retryMut.mutate(job.id)}
+                            disabled={retryMut.isPending}
+                            className="p-1.5 rounded-lg text-blue-400/60 hover:text-blue-400 hover:bg-blue-400/10 transition-all"
+                            title="Retry"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {canCancelJob && (
+                          <button
+                            data-testid={`button-cancel-job-${job.id}`}
+                            onClick={() => cancelJobMut.mutate(job.id)}
+                            disabled={cancelJobMut.isPending}
+                            className="p-1.5 rounded-lg text-red-400/60 hover:text-red-400 hover:bg-red-400/10 transition-all"
+                            title="Cancel"
+                          >
+                            <Ban className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {job.externalPostId && (
+                          <span className="text-[9px] text-emerald-400/50 font-mono truncate max-w-[80px]" title={job.externalPostId}>
+                            {job.externalPostId.slice(0, 12)}...
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ContentPlannerPage() {
   const subAccountId = useActiveSubAccountId();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [view, setView] = useState<"board" | "calendar">("board");
+  const [view, setView] = useState<"board" | "calendar" | "jobs">("board");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [composerOpen, setComposerOpen] = useState(false);
@@ -533,10 +792,29 @@ export default function ContentPlannerPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/content-planner/posts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/content-planner/publishing-jobs"] });
       setDetailPost(null);
       toast({ title: "Post published", description: "Your content is now live." });
     },
     onError: (e: Error) => toast({ title: "Publish failed", description: e.message, variant: "destructive" }),
+  });
+
+  const cancelPostMut = useMutation({
+    mutationFn: async (id: number) => {
+      const r = await fetch(`/api/content-planner/posts/${id}/cancel`, {
+        method: "POST",
+        headers: { "x-sub-account-id": String(subAccountId) },
+      });
+      if (!r.ok) throw new Error("Cancel failed");
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/content-planner/posts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/content-planner/publishing-jobs"] });
+      setDetailPost(null);
+      toast({ title: "Post cancelled and reverted to draft" });
+    },
+    onError: () => toast({ title: "Failed to cancel post", variant: "destructive" }),
   });
 
   const filtered = posts.filter((p) => {
@@ -607,6 +885,15 @@ export default function ContentPlannerPage() {
             >
               <Calendar className="w-3.5 h-3.5" /> Calendar
             </button>
+            <button
+              data-testid="button-view-jobs"
+              onClick={() => setView("jobs")}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                view === "jobs" ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
+              }`}
+            >
+              <Activity className="w-3.5 h-3.5" /> Jobs
+            </button>
           </div>
           <Button
             data-testid="button-create-post"
@@ -619,23 +906,25 @@ export default function ContentPlannerPage() {
         </div>
       </motion.div>
 
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {STAT_CARDS.map((s, idx) => (
-          <motion.div key={s.key} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 + idx * 0.04 }}>
-            <Card className="bg-black/40 border-white/10 hover:border-white/20 transition-all backdrop-blur-sm">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-lg ${s.bg} flex items-center justify-center`}>
-                  <s.icon className={`w-4.5 h-4.5 ${s.iconColor}`} />
-                </div>
-                <div>
-                  <p className="text-2xl font-black text-white">{stats[s.key] ?? 0}</p>
-                  <p className="text-xs text-slate-200 mt-0.5">{s.label}</p>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
-      </motion.div>
+      {view !== "jobs" && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {STAT_CARDS.map((s, idx) => (
+            <motion.div key={s.key} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 + idx * 0.04 }}>
+              <Card className="bg-black/40 border-white/10 hover:border-white/20 transition-all backdrop-blur-sm">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-lg ${s.bg} flex items-center justify-center`}>
+                    <s.icon className={`w-4.5 h-4.5 ${s.iconColor}`} />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-black text-white">{stats[s.key] ?? 0}</p>
+                    <p className="text-xs text-slate-200 mt-0.5">{s.label}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ))}
+        </motion.div>
+      )}
 
       <AnimatePresence>
         {composerOpen && (
@@ -681,160 +970,167 @@ export default function ContentPlannerPage() {
               onClose={() => setDetailPost(null)}
               onDelete={() => { if (confirm("Delete this post?")) deleteMut.mutate(detailPost.id); }}
               onPublish={() => publishMut.mutate(detailPost.id)}
+              onCancel={() => cancelPostMut.mutate(detailPost.id)}
               publishing={publishMut.isPending}
             />
           </>
         )}
       </AnimatePresence>
 
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }} className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
-          <Input
-            data-testid="input-search-posts"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search posts..."
-            className="pl-9 bg-white/5 border-white/10 text-white"
-          />
-        </div>
-        <select
-          data-testid="select-filter-status"
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="h-10 rounded-md border border-white/10 bg-white/5 px-3 text-sm text-white min-w-[130px]"
-        >
-          <option value="all" className="bg-gray-900">All Status</option>
-          {Object.entries(STATUS_CONFIG).map(([k, v]) => (
-            <option key={k} value={k} className="bg-gray-900">{v.label}</option>
-          ))}
-        </select>
-      </motion.div>
+      {view === "jobs" ? (
+        subAccountId ? <JobsPanel subAccountId={subAccountId} /> : null
+      ) : (
+        <>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }} className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+              <Input
+                data-testid="input-search-posts"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search posts..."
+                className="pl-9 bg-white/5 border-white/10 text-white"
+              />
+            </div>
+            <select
+              data-testid="select-filter-status"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-10 rounded-md border border-white/10 bg-white/5 px-3 text-sm text-white min-w-[130px]"
+            >
+              <option value="all" className="bg-gray-900">All Status</option>
+              {Object.entries(STATUS_CONFIG).map(([k, v]) => (
+                <option key={k} value={k} className="bg-gray-900">{v.label}</option>
+              ))}
+            </select>
+          </motion.div>
 
-      {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="space-y-3">
-              <div className="h-5 bg-white/5 rounded w-24 animate-pulse" />
-              {[1, 2].map((j) => (
-                <Card key={j} className="bg-black/40 border-white/10 animate-pulse">
-                  <CardContent className="p-4 space-y-2">
-                    <div className="h-4 bg-white/5 rounded w-3/4" />
-                    <div className="h-12 bg-white/5 rounded" />
-                    <div className="h-3 bg-white/5 rounded w-1/2" />
-                  </CardContent>
-                </Card>
+          {isLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="space-y-3">
+                  <div className="h-5 bg-white/5 rounded w-24 animate-pulse" />
+                  {[1, 2].map((j) => (
+                    <Card key={j} className="bg-black/40 border-white/10 animate-pulse">
+                      <CardContent className="p-4 space-y-2">
+                        <div className="h-4 bg-white/5 rounded w-3/4" />
+                        <div className="h-12 bg-white/5 rounded" />
+                        <div className="h-3 bg-white/5 rounded w-1/2" />
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
               ))}
             </div>
-          ))}
-        </div>
-      ) : posts.length === 0 ? (
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <Card className="bg-black/40 border-white/10 border-dashed">
-            <CardContent className="p-12 md:p-16 text-center">
-              <div className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6" style={{
-                background: `linear-gradient(to bottom right, color-mix(in srgb, var(--vibe-glow, #6366f1) 15%, transparent), color-mix(in srgb, var(--vibe-accent, #818cf8) 10%, transparent))`,
-                border: `1px solid color-mix(in srgb, var(--vibe-glow, #6366f1) 20%, transparent)`,
-              }}>
-                <CalendarDays className="w-9 h-9 opacity-60" style={{ color: "var(--vibe-glow, #6366f1)" }} />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-2">Your content workspace is ready</h3>
-              <p className="text-sm text-slate-200 mb-8 max-w-md mx-auto leading-relaxed">
-                Start planning your social content. Create posts, schedule them, and manage approvals all from one place.
-              </p>
-              <Button
-                data-testid="button-create-first-post"
-                onClick={() => { setEditing(null); setComposerOpen(true); }}
-                className="text-white border-0 shadow-lg px-8 py-3 text-base"
-                style={{ background: `linear-gradient(to right, var(--vibe-glow, #6366f1), var(--vibe-accent, #818cf8))` }}
-              >
-                <Plus className="w-5 h-5 mr-2" /> Create Your First Post
-              </Button>
-            </CardContent>
-          </Card>
-        </motion.div>
-      ) : view === "calendar" ? (
-        <Card className="bg-black/40 border-white/10 backdrop-blur-sm">
-          <CardContent className="p-4 md:p-6">
-            <CalendarView posts={filtered} onEdit={(p) => setDetailPost(p)} />
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {Object.entries(grouped).map(([status, items]) => {
-            const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.draft;
-            const CfgIcon = cfg.icon;
-            return (
-              <div key={status}>
-                <div className="flex items-center gap-2 mb-3 px-1">
-                  <div className="w-2 h-2 rounded-full" style={{ background: cfg.accent }} />
-                  <span className="text-sm font-bold text-white/70">{cfg.label}</span>
-                  <span className="text-xs text-white/20 ml-auto bg-white/5 px-2 py-0.5 rounded-full">{items.length}</span>
-                </div>
-                <div className="space-y-3 min-h-[200px]">
-                  {items.map((post, pi) => (
-                    <motion.div key={post.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: pi * 0.03 }}>
-                      <Card
-                        className="bg-black/40 border-white/10 hover:border-white/20 transition-all cursor-pointer group"
-                        onClick={() => setDetailPost(post)}
-                        data-testid={`card-post-${post.id}`}
-                      >
-                        <CardContent className="p-4 space-y-2.5">
-                          <div className="flex items-start justify-between">
-                            <h4 className="text-sm font-bold text-white/90 line-clamp-1">{post.title || "Untitled"}</h4>
-                            <button
-                              data-testid={`button-delete-post-${post.id}`}
-                              onClick={(e) => { e.stopPropagation(); if (confirm("Delete?")) deleteMut.mutate(post.id); }}
-                              className="md:opacity-0 md:group-hover:opacity-100 text-white/20 hover:text-red-400 transition-all p-0.5"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                          {post.caption && (
-                            <p className="text-xs text-white/40 line-clamp-2 leading-relaxed">{post.caption}</p>
-                          )}
-                          <div className="flex items-center gap-2 pt-1">
-                            {post.platforms?.map((p) => {
-                              const pi = PLATFORM_ICONS[p.platform];
-                              if (!pi) return null;
-                              const PIc = pi.icon;
-                              return <PIc key={p.platform} className={`w-3.5 h-3.5 ${pi.color}`} />;
-                            })}
-                            {post.scheduledAt && (
-                              <span className="text-[10px] text-white/25 ml-auto">
-                                {new Date(post.scheduledAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                              </span>
-                            )}
-                          </div>
-                          {post.media && post.media.length > 0 && (
-                            <div className="flex items-center gap-1 text-white/20">
-                              <Image className="w-3 h-3" />
-                              <span className="text-[10px]">{post.media.length} media</span>
-                            </div>
-                          )}
-                          {post.approvalStatus && post.approvalStatus !== "none" && post.approvalStatus !== "not_required" && (
-                            <Badge className={`text-[9px] px-1.5 py-0 h-4 ${
-                              post.approvalStatus === "approved" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/20" :
-                              post.approvalStatus === "rejected" ? "bg-red-500/20 text-red-400 border-red-500/20" :
-                              "bg-amber-500/20 text-amber-400 border-amber-500/20"
-                            }`}>
-                              {post.approvalStatus}
-                            </Badge>
-                          )}
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  ))}
-                  {items.length === 0 && (
-                    <div className="border border-dashed border-white/5 rounded-xl p-6 text-center">
-                      <p className="text-[11px] text-white/15">No {cfg.label.toLowerCase()} posts</p>
+          ) : posts.length === 0 ? (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+              <Card className="bg-black/40 border-white/10 border-dashed">
+                <CardContent className="p-12 md:p-16 text-center">
+                  <div className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6" style={{
+                    background: `linear-gradient(to bottom right, color-mix(in srgb, var(--vibe-glow, #6366f1) 15%, transparent), color-mix(in srgb, var(--vibe-accent, #818cf8) 10%, transparent))`,
+                    border: `1px solid color-mix(in srgb, var(--vibe-glow, #6366f1) 20%, transparent)`,
+                  }}>
+                    <CalendarDays className="w-9 h-9 opacity-60" style={{ color: "var(--vibe-glow, #6366f1)" }} />
+                  </div>
+                  <h3 className="text-xl font-bold text-white mb-2">Your content workspace is ready</h3>
+                  <p className="text-sm text-slate-200 mb-8 max-w-md mx-auto leading-relaxed">
+                    Start planning your social content. Create posts, schedule them, and manage approvals all from one place.
+                  </p>
+                  <Button
+                    data-testid="button-create-first-post"
+                    onClick={() => { setEditing(null); setComposerOpen(true); }}
+                    className="text-white border-0 shadow-lg px-8 py-3 text-base"
+                    style={{ background: `linear-gradient(to right, var(--vibe-glow, #6366f1), var(--vibe-accent, #818cf8))` }}
+                  >
+                    <Plus className="w-5 h-5 mr-2" /> Create Your First Post
+                  </Button>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ) : view === "calendar" ? (
+            <Card className="bg-black/40 border-white/10 backdrop-blur-sm">
+              <CardContent className="p-4 md:p-6">
+                <CalendarView posts={filtered} onEdit={(p) => setDetailPost(p)} />
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {Object.entries(grouped).map(([status, items]) => {
+                const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.draft;
+                const CfgIcon = cfg.icon;
+                return (
+                  <div key={status}>
+                    <div className="flex items-center gap-2 mb-3 px-1">
+                      <div className="w-2 h-2 rounded-full" style={{ background: cfg.accent }} />
+                      <span className="text-sm font-bold text-white/70">{cfg.label}</span>
+                      <span className="text-xs text-white/20 ml-auto bg-white/5 px-2 py-0.5 rounded-full">{items.length}</span>
                     </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                    <div className="space-y-3 min-h-[200px]">
+                      {items.map((post, pi) => (
+                        <motion.div key={post.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: pi * 0.03 }}>
+                          <Card
+                            className="bg-black/40 border-white/10 hover:border-white/20 transition-all cursor-pointer group"
+                            onClick={() => setDetailPost(post)}
+                            data-testid={`card-post-${post.id}`}
+                          >
+                            <CardContent className="p-4 space-y-2.5">
+                              <div className="flex items-start justify-between">
+                                <h4 className="text-sm font-bold text-white/90 line-clamp-1">{post.title || "Untitled"}</h4>
+                                <button
+                                  data-testid={`button-delete-post-${post.id}`}
+                                  onClick={(e) => { e.stopPropagation(); if (confirm("Delete?")) deleteMut.mutate(post.id); }}
+                                  className="md:opacity-0 md:group-hover:opacity-100 text-white/20 hover:text-red-400 transition-all p-0.5"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                              {post.caption && (
+                                <p className="text-xs text-white/40 line-clamp-2 leading-relaxed">{post.caption}</p>
+                              )}
+                              <div className="flex items-center gap-2 pt-1">
+                                {post.platforms?.map((p) => {
+                                  const pInfo = PLATFORM_ICONS[p.platform];
+                                  if (!pInfo) return null;
+                                  const PIc = pInfo.icon;
+                                  return <PIc key={p.platform} className={`w-3.5 h-3.5 ${pInfo.color}`} />;
+                                })}
+                                {post.scheduledAt && (
+                                  <span className="text-[10px] text-white/25 ml-auto">
+                                    {new Date(post.scheduledAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                  </span>
+                                )}
+                              </div>
+                              {post.media && post.media.length > 0 && (
+                                <div className="flex items-center gap-1 text-white/20">
+                                  <Image className="w-3 h-3" />
+                                  <span className="text-[10px]">{post.media.length} media</span>
+                                </div>
+                              )}
+                              {post.approvalStatus && post.approvalStatus !== "none" && post.approvalStatus !== "not_required" && (
+                                <Badge className={`text-[9px] px-1.5 py-0 h-4 ${
+                                  post.approvalStatus === "approved" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/20" :
+                                  post.approvalStatus === "rejected" ? "bg-red-500/20 text-red-400 border-red-500/20" :
+                                  "bg-amber-500/20 text-amber-400 border-amber-500/20"
+                                }`}>
+                                  {post.approvalStatus}
+                                </Badge>
+                              )}
+                            </CardContent>
+                          </Card>
+                        </motion.div>
+                      ))}
+                      {items.length === 0 && (
+                        <div className="border border-dashed border-white/5 rounded-xl p-6 text-center">
+                          <p className="text-[11px] text-white/15">No {cfg.label.toLowerCase()} posts</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

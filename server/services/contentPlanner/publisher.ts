@@ -210,7 +210,7 @@ export async function publishPost(opts: PublishPostOptions): Promise<{
         platform,
         socialAccountId,
         trigger,
-        status: publishResult.success ? "completed" : "failed",
+        status: publishResult.success ? "published" : "failed",
         externalPostId: publishResult.externalPostId,
         errorMessage: publishResult.errorMessage,
         startedAt: new Date(),
