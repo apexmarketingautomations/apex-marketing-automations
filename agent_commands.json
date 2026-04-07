@@ -17,6 +17,48 @@
       "script": "npx tsx scripts/run_finetune_training.ts",
       "timeout_seconds": 300,
       "requires_unlock": true
+    },
+    "emergency_health_check": {
+      "description": "Run a full system health check: DB connectivity, table row counts, env var presence for all services (OpenAI, Twilio, VAPI, Stripe, Meta, Gemini), and stuck/failed job counts across all queues. Output written to logs/emergency-health-check.json.",
+      "script": "npx tsx scripts/emergency-health-check.ts",
+      "timeout_seconds": 60,
+      "requires_unlock": false
+    },
+    "emergency_worker_status": {
+      "description": "Check status of all background workers (agent worker, content publisher, crash report worker, SMS retry processor) based on recent job activity. Output written to logs/emergency-worker-status.json.",
+      "script": "npx tsx scripts/emergency-worker-status.ts",
+      "timeout_seconds": 30,
+      "requires_unlock": false
+    },
+    "emergency_recent_activity": {
+      "description": "Show recent activity across all pipeline surfaces: messages, DMs, webhook events, agent jobs, content publishing jobs, and crash reports. Output written to logs/emergency-recent-activity.json.",
+      "script": "npx tsx scripts/emergency-recent-activity.ts",
+      "timeout_seconds": 30,
+      "requires_unlock": false
+    },
+    "emergency_reset_stuck_agent_jobs": {
+      "description": "Reset stuck agent_worker_jobs that have been in 'running' state for more than 10 minutes back to 'pending'. Requires owner unlock.",
+      "script": "npx tsx scripts/emergency-reset-stuck-jobs.ts agent_worker",
+      "timeout_seconds": 30,
+      "requires_unlock": true
+    },
+    "emergency_reset_stuck_publish_jobs": {
+      "description": "Reset stuck content_publishing_jobs back to 'queued' and clear stale locks. Requires owner unlock.",
+      "script": "npx tsx scripts/emergency-reset-stuck-jobs.ts content_publishing",
+      "timeout_seconds": 30,
+      "requires_unlock": true
+    },
+    "emergency_reset_stuck_crash_reports": {
+      "description": "Unlock stuck crash_reports that have been locked for more than 15 minutes, allowing the crash report worker to reprocess them. Requires owner unlock.",
+      "script": "npx tsx scripts/emergency-reset-stuck-jobs.ts crash_reports",
+      "timeout_seconds": 30,
+      "requires_unlock": true
+    },
+    "emergency_database_snapshot": {
+      "description": "Create a database snapshot manifest (table row counts saved to /backups/ directory for audit purposes). Requires owner unlock.",
+      "script": "npx tsx scripts/emergency-database-snapshot.ts",
+      "timeout_seconds": 120,
+      "requires_unlock": true
     }
   }
 }
