@@ -24,7 +24,13 @@ export function registerChaturbateRoutes(app: Express) {
         return;
       }
 
-      const { event, username, user, amount, viewers } = req.body;
+      const raw = req.body;
+      const event = raw.event || raw.type;
+      const username = raw.username || raw.cbUsername;
+      const data = raw.data || {};
+      const user = raw.user || data.username;
+      const amount = raw.amount || data.tokens;
+      const viewers = raw.viewers || data.viewers;
       if (!event || !username) return;
 
       const [account] = await db.select().from(subAccounts)
@@ -38,7 +44,9 @@ export function registerChaturbateRoutes(app: Express) {
       const goalTokens = account.cbGoalTokens || 500;
 
       if (event === "broadcast_start") {
-        const session = createFreshSession(subAccountId, goalTokens);
+        const overrideGoal = data.goalTokens ? parseInt(data.goalTokens) : null;
+        const effectiveGoal = overrideGoal || goalTokens;
+        const session = createFreshSession(subAccountId, effectiveGoal);
         activeSessions.set(subAccountId, session);
         broadcastToAccount(subAccountId, "roomos:broadcast_start", { session });
         publishEvent("cb.session.started", { subAccountId, username }, "roomos");
