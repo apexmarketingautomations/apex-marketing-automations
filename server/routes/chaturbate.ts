@@ -31,7 +31,6 @@ export function registerChaturbateRoutes(app: Express) {
     res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-roomos-token");
     try {
       const raw = req.body;
-      console.log("[ROOMOS] Webhook POST received:", JSON.stringify(raw).slice(0, 500));
       const event = raw.event || raw.type;
       const username = raw.username || raw.cbUsername;
       const data = raw.data || {};
@@ -78,7 +77,7 @@ export function registerChaturbateRoutes(app: Express) {
         return res.sendStatus(403);
       }
 
-      console.log("[ROOMOS] Webhook ACCEPTED:", event, "from", username, "user:", user, "amount:", amount);
+      console.log("[ROOMOS] Webhook OK:", event, username);
       res.sendStatus(200);
 
       const subAccountId = account.id;
