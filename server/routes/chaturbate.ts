@@ -19,7 +19,16 @@ function generateWebhookToken(): string {
 }
 
 export function registerChaturbateRoutes(app: Express) {
+  app.options("/api/chaturbate/webhook", (_req: Request, res: Response) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-roomos-token");
+    res.sendStatus(204);
+  });
+
   app.post("/api/chaturbate/webhook", async (req: Request, res: Response) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-roomos-token");
     try {
       const raw = req.body;
       const event = raw.event || raw.type;
