@@ -181,7 +181,7 @@ function checkSilence() {
   var elapsed = (now - SESSION.lastTipTime) / 1000;
   if (SESSION.lastTipTime > 0 && elapsed >= SETTINGS.silence_threshold && SESSION.silenceCount < 3) {
     SESSION.silenceCount++;
-    $message.send_notice(getSilenceMsg(), {color: '#F87171', weight: 'bold'});
+    try { $room.sendNotice(getSilenceMsg(), '', '#F87171', 'bold'); } catch (e) {}
   }
 }
 
@@ -221,7 +221,7 @@ function maybeSendNotice() {
 
   noticeRotation++;
   if (msg) {
-    $message.send_notice(msg, {color: '#6366F1', weight: 'bold'});
+    try { $room.sendNotice(msg, '', '#6366F1', 'bold'); } catch (e) {}
   }
 }
 
@@ -232,11 +232,11 @@ function maybeSendNotice() {
 
 // ── onAppStart ─────────────────────────────────────────────────────
 // $onAppStart = function() {
-//   $message.send_notice(
+//   try { $room.sendNotice(
 //     '\u26A1 RoomOS by Apex AI Smart Room \u2014 loaded. ' +
 //     (SETTINGS.custom_welcome || "Let's go!"),
-//     {color: '#6366F1', weight: 'bold'}
-//   );
+//     '', '#6366F1', 'bold'
+//   ); } catch (e) {}
 // };
 
 // ── onBroadcastStart ───────────────────────────────────────────────
@@ -251,22 +251,22 @@ function maybeSendNotice() {
 //   SESSION.topTipAmount = 0;
 //   SESSION.viewers = {};
 //   SESSION.lastTipTime = Date.now();
-//   $message.send_notice(
+//   sendWebhook({ event: 'broadcast_start', username: SETTINGS.cb_username });
+//   try { $room.sendNotice(
 //     '\uD83D\uDD34 ' + DISPLAY_NAME + ' is LIVE! ' +
 //     (SETTINGS.custom_welcome || "Let's build something tonight"),
-//     {color: '#F87171', weight: 'bold'}
-//   );
-//   sendWebhook({ event: 'broadcast_start', username: SETTINGS.cb_username });
+//     '', '#F87171', 'bold'
+//   ); } catch (e) {}
 // };
 
 // ── onBroadcastEnd ─────────────────────────────────────────────────
 // $onBroadcastEnd = function() {
 //   SESSION.isLive = false;
-//   $message.send_notice(
-//     '\uD83D\uDC4B Stream ended \u2014 ' + SESSION.tokens + ' tokens tonight. See you next time!',
-//     {color: '#6366F1', weight: 'bold'}
-//   );
 //   sendWebhook({ event: 'broadcast_end', username: SETTINGS.cb_username });
+//   try { $room.sendNotice(
+//     '\uD83D\uDC4B Stream ended \u2014 ' + SESSION.tokens + ' tokens tonight. See you next time!',
+//     '', '#6366F1', 'bold'
+//   ); } catch (e) {}
 // };
 
 // ── onTipReceived ──────────────────────────────────────────────────
@@ -281,32 +281,32 @@ function maybeSendNotice() {
 //     SESSION.topTipper = username;
 //   }
 //   resetSilence();
-//   $message.send_notice(getTipThankMsg(username, amount), {color: '#F87171', weight: 'bold'});
-//   maybeSendNotice();
-//   if (!SESSION.goalReached && SESSION.tokens >= SESSION.goal) {
-//     SESSION.goalReached = true;
-//     $message.send_notice(getGoalReachedMsg(), {color: '#22C55E', weight: 'bold'});
-//   }
 //   sendWebhook({
 //     event: 'tip',
 //     username: SETTINGS.cb_username,
 //     user: username,
 //     amount: amount
 //   });
+//   try { $room.sendNotice(getTipThankMsg(username, amount), '', '#F87171', 'bold'); } catch (e) {}
+//   maybeSendNotice();
+//   if (!SESSION.goalReached && SESSION.tokens >= SESSION.goal) {
+//     SESSION.goalReached = true;
+//     try { $room.sendNotice(getGoalReachedMsg(), '', '#22C55E', 'bold'); } catch (e) {}
+//   }
 // };
 
 // ── onUserEnter ────────────────────────────────────────────────────
 // $onEnter = function(user) {
 //   var username = user.user;
 //   SESSION.viewers[username] = Date.now();
-//   checkSilence();
-//   maybeSendNotice();
-//   $message.send_notice(getWelcomeMsg(username), {color: '#6366F1'});
 //   sendWebhook({
 //     event: 'enter',
 //     username: SETTINGS.cb_username,
 //     user: username
 //   });
+//   checkSilence();
+//   maybeSendNotice();
+//   try { $room.sendNotice(getWelcomeMsg(username), '', '#6366F1'); } catch (e) {}
 // };
 
 // ── onChatMessage ──────────────────────────────────────────────────

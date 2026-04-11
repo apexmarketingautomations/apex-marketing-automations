@@ -31,16 +31,23 @@ export function registerChaturbateRoutes(app: Express) {
     res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-roomos-token");
     try {
       const raw = req.body;
+      console.log("[ROOMOS] Webhook POST received:", JSON.stringify(raw).slice(0, 500));
       const event = raw.event || raw.type;
       const username = raw.username || raw.cbUsername;
       const data = raw.data || {};
       const user = raw.user || data.username;
       const amount = raw.amount || data.tokens;
       const viewers = raw.viewers || data.viewers;
-      if (!event || !username) return res.sendStatus(400);
+      if (!event || !username) {
+        console.log("[ROOMOS] Webhook rejected: missing event or username", { event, username });
+        return res.sendStatus(400);
+      }
 
       const headerToken = req.headers["x-roomos-token"] as string;
-      if (!headerToken) return res.sendStatus(401);
+      if (!headerToken) {
+        console.log("[ROOMOS] Webhook rejected: no x-roomos-token header");
+        return res.sendStatus(401);
+      }
 
       const globalSecret = getGlobalSecret();
 
@@ -67,9 +74,11 @@ export function registerChaturbateRoutes(app: Express) {
 
       const accountToken = account.cbWebhookToken;
       if (headerToken !== globalSecret && headerToken !== accountToken) {
+        console.log("[ROOMOS] Webhook rejected: token mismatch for", username);
         return res.sendStatus(403);
       }
 
+      console.log("[ROOMOS] Webhook ACCEPTED:", event, "from", username, "user:", user, "amount:", amount);
       res.sendStatus(200);
 
       const subAccountId = account.id;

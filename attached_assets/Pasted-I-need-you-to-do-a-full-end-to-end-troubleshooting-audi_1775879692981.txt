@@ -1,0 +1,147 @@
+I need you to do a **full end-to-end troubleshooting audit** of this Chaturbate → overlay → webhook → dashboard system and **fix every verified failure point**, not just one file.
+
+## Goal
+Get this flow working reliably:
+
+**CB event handler → shared code → `$overlay.sendMessage()` → overlay `window.message` listener → `fetch()` POST to `/api/chaturbate/webhook` → server route → account/session update → RoomOS dashboard switches LIVE and shows events**
+
+Right now the dashboard is still not updating correctly, so I want a complete diagnostic and repair pass.
+
+## What you must troubleshoot
+Audit **all layers** of the system:
+
+### 1) Chaturbate app code
+Check:
+- shared code
+- Broadcast Start
+- Broadcast Stop
+- Tip Received
+- User Enter
+- Chat Message
+- App Start
+- any handler that calls notices, session state, or webhook logic
+
+Verify:
+- no invalid CB APIs are being used
+- no `$message.*` calls remain if unsupported
+- no `$http()` calls remain
+- `$overlay.sendMessage()` is used correctly
+- `SETTINGS` access is safe for **every** setting
+- no syntax errors in any handler
+- no swallowed runtime errors that hide the real failure
+- session variables are initialized correctly and available everywhere needed
+
+### 2) Overlay code
+Check:
+- `overlay.js`
+- `overlay.html` only if needed for render/DOM assumptions
+
+Verify:
+- `window.addEventListener('message', ...)` is actually receiving messages
+- message parsing handles both string and object payloads correctly
+- the listener does not silently fail before `fetch()`
+- the webhook relay sends the correct headers and JSON body
+- token is being passed correctly
+- no DOM/render code is crashing before or after listener setup
+- no syntax issues in slideshow / animation code that stop execution
+- `billboard` and required DOM nodes exist before init
+- fetch failures are logged during debug mode
+
+### 3) Browser/network behavior
+Verify:
+- whether the overlay is actually loaded in the live CB room
+- whether the overlay message listener is firing
+- whether a real network request is attempted
+- exact request URL being hit
+- request method, headers, payload shape
+- whether preflight `OPTIONS` occurs
+- exact browser-side failure if request is blocked
+
+### 4) Server/webhook route
+Inspect:
+- route file(s)
+- middleware
+- CORS config
+- body parsing
+- auth/token validation
+- username/account lookup
+- session/account update logic
+- logs
+
+Verify:
+- `OPTIONS /api/chaturbate/webhook` works
+- `POST /api/chaturbate/webhook` works
+- CORS headers are present on both
+- `Content-Type` and `x-roomos-token` are allowed
+- request body is parsed correctly
+- token validation is correct
+- account lookup matches the expected `cb_username`
+- route does not silently reject valid requests
+- webhook data updates the correct account/session/dashboard state
+
+### 5) Dashboard/live state
+Verify:
+- what condition makes dashboard show `LIVE` vs `OFFLINE`
+- whether webhook data is reaching persistence/state
+- whether frontend polling/subscription is reading updated state
+- whether the dashboard is looking at the correct account id / username mapping
+- whether the UI is stale even when backend updates succeed
+
+## How I want you to work
+Do **not** guess.
+Do **not** give me “probably” answers.
+Do **not** stop after one possible fix.
+
+I want you to:
+1. Trace the full flow step by step
+2. Identify every verified failure point
+3. Fix the failures in order
+4. Add temporary debug logging where needed
+5. Remove only unnecessary debug noise after confirming root cause
+6. Keep changes surgical unless a broader fix is required
+
+## Required debug instrumentation
+Temporarily add high-signal logs for:
+- CB-side outgoing overlay message payload shape
+- overlay message receipt
+- overlay fetch attempt
+- response status / response text
+- webhook server receipt
+- origin
+- headers
+- token presence
+- parsed body
+- username/account lookup result
+- rejection reason
+- session/dashboard update result
+
+## Deliverables
+Return your answer in this exact structure:
+
+### Root cause(s)
+- List each **verified** root cause in order of severity
+
+### Files changed
+- Exact file paths only
+
+### Exact fixes made
+- For each file, explain exactly what changed and why
+
+### Remaining blockers
+- Anything still unresolved
+
+### Exact next test
+- One precise test to run next
+- Include expected result
+- Include what log/event proves success
+
+## Hard rules
+- Do not claim success unless you verified the actual failure point
+- If multiple issues exist, fix all of them you can verify
+- If one layer is working, say so clearly and move to the next
+- If the issue is account mapping, tell me exactly which value mismatched
+- If the issue is CORS, show exactly where and why
+- If the issue is overlay execution, show exactly what crashed
+- If the issue is dashboard state, show exactly why it stayed OFFLINE
+
+Be blunt, specific, and complete. I need a real troubleshooting pass, not a theory dump.
