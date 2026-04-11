@@ -1,3 +1,4 @@
+/* eslint-disable no-undef, no-empty */
 // ═══════════════════════════════════════════════════════════════════
 // RoomOS by Apex AI Smart Room — Shared Code (CB Dev Portal)
 // Paste this into "Shared Code" in the Chaturbate app editor.
