@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { db } from "../db";
 import { subAccounts, contacts, cbSessions, cbCommandsFired } from "@shared/schema";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { addSSEClient, broadcastToAccount } from "../sse";
 import { createFreshSession, buildRoomContext, type SessionState } from "../services/roomOS/contextBuilder";
 import { getRoomCoachingSuggestion } from "../services/roomOS/aiCoach";
@@ -38,7 +38,7 @@ export function registerChaturbateRoutes(app: Express) {
       if (!account) {
         const token = generateWebhookToken();
         const [newAccount] = await db.insert(subAccounts).values({
-          name: `${username} (roomOS)`,
+          name: `${username} (RoomOS)`,
           twilioNumber: "none",
           cbUsername: username,
           cbGoalTokens: 500,
@@ -47,7 +47,7 @@ export function registerChaturbateRoutes(app: Express) {
           plan: "starter",
         }).returning();
         account = newAccount;
-        console.log(`[ROOMOS] Auto-provisioned account ${account.id} for cb_username=${username} (token generated)`);
+        console.log(`[ROOMOS] Auto-provisioned account ${account.id} for cb_username=${username}`);
       }
 
       const headerToken = req.headers["x-roomos-token"] as string;
@@ -146,8 +146,9 @@ export function registerChaturbateRoutes(app: Express) {
             notes: `CB tipper — lifetime: ${tipAmount} tokens`,
           });
         } else {
+          const tipNote = `CB tipper — last tip: ${tipAmount} tokens at ${new Date().toISOString()}`;
           await db.update(contacts).set({
-            notes: sql`'CB tipper — last tip: ' || ${tipAmount} || ' tokens at ' || now()::text`,
+            notes: tipNote,
           }).where(eq(contacts.id, existing[0].id));
         }
 
@@ -447,7 +448,7 @@ export function registerChaturbateRoutes(app: Express) {
 
       res.json({
         accountId: newAccount.id,
-        message: "Trial activated!",
+        message: "Trial activated! Your webhook token has been generated — copy it from your dashboard.",
         dashboardUrl: `/roomos?account=${newAccount.id}`,
         webhookToken: token,
       });
