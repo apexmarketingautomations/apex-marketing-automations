@@ -149,7 +149,7 @@ export default function RoomOS() {
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Zap className="w-5 h-5" style={{ color: COLORS.accent }} />
-            <h1 className="text-lg font-bold" data-testid="text-roomos-title">RoomOS</h1>
+            <h1 className="text-lg font-bold" data-testid="text-roomos-title">RoomOS by Apex AI Smart Room</h1>
           </div>
           <div className="flex items-center gap-2">
             <span

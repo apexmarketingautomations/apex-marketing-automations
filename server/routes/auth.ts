@@ -13,16 +13,29 @@ export function registerAuthRoutes(app: Express) {
     const { signed_request } = parsed.data;
     let userId = "unknown";
 
+    const signedRequestPayloadSchema = z.object({
+      user_id: z.string().optional(),
+    }).passthrough();
+
     if (signed_request) {
+      const parts = signed_request.split(".");
+      if (parts.length !== 2) {
+        console.error("[META-DEAUTH] Malformed signed_request: invalid format");
+        return res.status(400).send("Malformed signed_request");
+      }
+      let raw: unknown;
       try {
-        const parts = signed_request.split(".");
-        if (parts.length === 2) {
-          const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf8"));
-          userId = payload.user_id || "unknown";
-        }
+        raw = JSON.parse(Buffer.from(parts[1], "base64").toString("utf8"));
       } catch (err: any) {
         console.error("[META-DEAUTH] Failed to parse signed_request:", err.message);
+        return res.status(400).send("Invalid signed_request");
       }
+      const validated = signedRequestPayloadSchema.safeParse(raw);
+      if (!validated.success) {
+        console.error("[META-DEAUTH] Malformed signed_request payload rejected");
+        return res.status(400).send("Invalid signed_request");
+      }
+      userId = validated.data.user_id || "unknown";
     }
 
     console.log(`[META-DEAUTH] Facebook user ${userId} removed the app`);
@@ -52,17 +65,31 @@ export function registerAuthRoutes(app: Express) {
     if (!dparsed.success) return res.status(400).json({ error: "Invalid request body" });
     const { email, signed_request } = dparsed.data;
 
+    const deletionPayloadSchema = z.object({
+      email: z.string().optional(),
+      user_id: z.string().optional(),
+    }).passthrough();
+
     let userEmail = email;
     if (!userEmail && signed_request) {
+      const parts = signed_request.split(".");
+      if (parts.length !== 2) {
+        console.error("[DATA-DELETION] Malformed signed_request: invalid format");
+        return res.status(400).send("Malformed signed_request");
+      }
+      let raw: unknown;
       try {
-        const parts = signed_request.split(".");
-        if (parts.length === 2) {
-          const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf8"));
-          userEmail = payload.email || payload.user_id || "meta-user";
-        }
+        raw = JSON.parse(Buffer.from(parts[1], "base64").toString("utf8"));
       } catch (err: any) {
         console.error("[DATA-DELETION] Failed to parse signed_request:", err.message);
+        return res.status(400).send("Invalid signed_request");
       }
+      const validated = deletionPayloadSchema.safeParse(raw);
+      if (!validated.success) {
+        console.error("[DATA-DELETION] Malformed signed_request payload rejected");
+        return res.status(400).send("Invalid signed_request");
+      }
+      userEmail = validated.data.email || validated.data.user_id || "meta-user";
     }
 
     if (!userEmail) {

@@ -229,7 +229,7 @@ export async function syncContactToMailchimp(
       );
 
       if (!res.ok) {
-        throw new Error(`Mailchimp upsert failed: ${res.status} — ${JSON.stringify(res.data)}`);
+        throw new Error(`Mailchimp upsert failed: ${res.status} — mailchimp_error`);
       }
 
       return res;
@@ -281,7 +281,7 @@ export async function applyTagsToContact(
       );
 
       if (!res.ok) {
-        throw new Error(`Tag apply failed: ${res.status} — ${JSON.stringify(res.data)}`);
+        throw new Error(`Tag apply failed: ${res.status} — mailchimp_error`);
       }
 
       return res;
@@ -329,7 +329,7 @@ export async function removeTagsFromContact(
       );
 
       if (!res.ok) {
-        throw new Error(`Tag remove failed: ${res.status} — ${JSON.stringify(res.data)}`);
+        throw new Error(`Tag remove failed: ${res.status} — mailchimp_error`);
       }
 
       return res;
@@ -458,7 +458,7 @@ export async function sendEmailViaCampaign(
 
     const campaignRes = await withRetry(async () => {
       const res = await mcFetch(config, "/campaigns", "POST", campaignBody);
-      if (!res.ok) throw new Error(`Campaign creation failed: ${res.status} — ${JSON.stringify(res.data)}`);
+      if (!res.ok) throw new Error(`Campaign creation failed: ${res.status} — mailchimp_error`);
       return res;
     }, `campaign_create:${templateKey}`);
 
@@ -487,7 +487,7 @@ export async function sendEmailViaCampaign(
     await withRetry(async () => {
       const res = await mcFetch(config, `/campaigns/${campaignId}/actions/send`, "POST");
       if (!res.ok && res.status !== 204) {
-        throw new Error(`Campaign send failed: ${res.status} — ${JSON.stringify(res.data)}`);
+        throw new Error(`Campaign send failed: ${res.status} — mailchimp_error`);
       }
       return res;
     }, `campaign_send:${campaignId}`);
