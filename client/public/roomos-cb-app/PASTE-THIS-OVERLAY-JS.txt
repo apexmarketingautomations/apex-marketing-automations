@@ -11,15 +11,10 @@ var SETTINGS = {
 };
 
 try {
-  if (typeof $settings !== 'undefined') {
-    if ($settings.pro_mode) SETTINGS.pro_mode = $settings.pro_mode;
-    if ($settings.goal_tokens) SETTINGS.goal_tokens = parseInt($settings.goal_tokens, 10);
-    if ($settings.performer_name) SETTINGS.performer_name = $settings.performer_name;
-    if ($settings.cb_username) SETTINGS.cb_username = $settings.cb_username;
-    if ($settings.RoomOs_secret) SETTINGS.RoomOs_secret = $settings.RoomOs_secret;
-    if ($settings.silence_threshold) SETTINGS.silence_threshold = parseInt($settings.silence_threshold, 10);
-    if ($settings.custom_welcome) SETTINGS.custom_welcome = $settings.custom_welcome;
-  }
+  SETTINGS.pro_mode = $settings.pro_mode || 'yes';
+  SETTINGS.goal_tokens = parseInt($settings.goal_tokens || 100, 10);
+  SETTINGS.performer_name = $settings.performer_name || '';
+  SETTINGS.cb_username = $settings.cb_username || '';
 } catch (e) {}
 
 var WEBHOOK_URL = 'https://apexmarketingautomations.com/api/chaturbate/webhook';
