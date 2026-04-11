@@ -1,0 +1,273 @@
+You are acting as a **principal QA engineer, full-stack SDET, security tester, and production auditor**.
+
+You will perform a **true end-to-end, inside-and-out, real-user test** of my live application and all connected product surfaces.
+
+## Mission
+Test **everything from A to Z** as if you are:
+- a brand new visitor
+- a signed-up user
+- a returning logged-in user
+- an admin/operator
+- a malicious or careless user trying to break flows
+- a systems tester validating business logic, automations, intelligence, data integrity, and integrations
+
+I do **not** want a shallow review.  
+I want **actual execution**, actual clicks, actual submissions, actual workflow tests, and actual verification.
+
+## Non-negotiable testing standard
+You must:
+- click every meaningful button
+- open every meaningful page, tab, section, modal, drawer, settings view, and action menu
+- test every service
+- test every addon
+- test every workflow
+- test intelligence logic
+- test DMs / messaging flows
+- test webhook-dependent flows
+- test business card / Sentinel card flows
+- test settings and configuration flows
+- test web integrations
+- test the Liquid site and all related connected surfaces
+- test authenticated and unauthenticated behavior
+- create a test account if required
+- create test records/data if required
+- submit real forms if needed for validation
+- verify results in UI, network, storage, and backend behavior wherever possible
+
+Do not stop at “page loads.”
+You must verify whether the feature **actually works**.
+
+## Scope
+Test the full system, including but not limited to:
+
+### 1) Public site
+- homepage
+- nav
+- footer
+- CTAs
+- forms
+- all buttons
+- all links
+- all routes
+- responsiveness
+- empty states
+- console errors
+- broken assets
+- dead clicks
+
+### 2) Authentication
+- sign up flow
+- sign in flow
+- sign out flow
+- invalid login
+- forgot/reset password if present
+- session persistence
+- protected route access control
+- redirect logic
+- multi-tab/session edge cases if possible
+
+### 3) Internal app
+Test every visible section and action:
+- dashboard
+- inbox / DMs / messaging
+- CRM / contacts / leads / pipeline
+- calendar
+- analytics
+- billing / wallet / subscription
+- settings
+- profile/account
+- admin-only surfaces
+- any AI / intelligence / automation tools
+- any business card / Sentinel-related flows
+- any Liquid-related pages or features
+- any integrations pages
+- any import/export tools
+- any onboarding/setup wizard
+
+For each feature:
+- open it
+- interact with it
+- create/update/delete if supported
+- test valid input
+- test invalid input
+- test empty input
+- verify the result actually persists or updates correctly
+
+### 4) Intelligence / logic / automation testing
+Explicitly test:
+- trigger conditions
+- business logic branches
+- workflow execution
+- automation reliability
+- webhook-triggered flows
+- webhook failure handling
+- retry / fallback behavior
+- message routing logic
+- notification logic
+- lead/contact state changes
+- AI output generation logic where present
+- settings affecting behavior
+- cross-feature dependencies
+
+Do not merely inspect code and guess.  
+Use the live product behavior to verify logic wherever possible.
+
+### 5) Messaging / DMs
+Test:
+- compose/send flows
+- validation
+- failed send behavior
+- drafts if available
+- message history rendering
+- unread/read state
+- threaded behavior
+- attached context if any
+- integration-linked send actions
+- error handling if provider config is missing
+
+### 6) Webhooks and integrations
+Test every integration path you can find:
+- webhook endpoints
+- webhook-triggered UI changes
+- webhook-triggered data changes
+- auth/config requirements
+- missing-secret behavior
+- bad payload handling
+- duplicate event handling
+- timeout/failure behavior
+- whether UI and backend stay in sync
+
+### 7) Settings / configuration
+Test every setting and toggle:
+- save behavior
+- persistence after reload
+- invalid values
+- missing values
+- toggles impacting downstream behavior
+- secrets/config dependency behavior
+- whether settings are actually used by the product
+
+### 8) Business card / Sentinel / related product surfaces
+Test every route, action, and flow related to these areas:
+- open pages
+- create/edit/update flows
+- display/rendering
+- links/QR/share/download if present
+- backend persistence
+- connected automations
+- permissions
+- visibility behavior
+- edge cases and broken states
+
+### 9) Liquid site / related web surfaces
+Test the full user journey:
+- navigation
+- form submits
+- CTA behavior
+- integration hooks
+- account linking if present
+- rendering and mobile behavior
+- broken buttons
+- dead sections
+- state sync with backend if applicable
+
+### 10) API / network / storage validation
+For every major action:
+- inspect request
+- inspect response
+- confirm correct status code
+- confirm payload shape
+- confirm no silent failures
+- confirm frontend state matches backend result
+- inspect localStorage/sessionStorage/cookies where relevant
+- flag leaked sensitive data
+- flag incorrect caching/stale state
+
+### 11) Security / abuse / access control
+Run a practical production security pass:
+- attempt direct access to protected routes
+- test query param manipulation
+- test ID/account switching risks
+- test weak validation
+- test unsafe client-side exposure
+- test secrets leakage in frontend/network
+- test role/permission bypass risks
+- test missing auth guards
+- test unsafe error messages
+- test insecure default configs
+
+### 12) Reliability / production readiness
+Check:
+- loading failures
+- white-screen risks
+- missing error boundaries
+- stale data
+- race conditions
+- duplicate submits
+- double-click hazards
+- weak empty states
+- fragile navigation
+- broken back/forward behavior
+- mobile issues
+- console/runtime errors
+- slow pages
+- blocking operations
+
+## Execution rules
+- Do not assume anything works unless you actually test it.
+- Do not stop after public pages.
+- Do not give generic advice.
+- Do not give a “best guess.”
+- Do not mark something as passing unless you executed it.
+- If login is required, create a test account and proceed.
+- If email verification blocks progress, document exactly where it blocks and continue testing all reachable surfaces.
+- If a route 404s, verify whether the feature exists elsewhere before marking it broken.
+- Keep going until you have tested every reachable surface.
+
+## Required report format
+
+### Executive Verdict
+- Production ready: YES or NO
+
+### Critical Failures
+For each:
+- exact feature
+- exact route/location
+- exact reproduction steps
+- expected result
+- actual result
+- severity
+- probable root cause
+- exact fix direction
+
+### High Priority Issues
+Same structure.
+
+### Medium Issues
+Same structure.
+
+### Verified Working Areas
+List only features you actually executed and verified.
+
+### Untested or Blocked Areas
+List what you could not fully test and exactly why.
+
+### Security Risks
+List all real security findings.
+
+### Data Integrity Risks
+List any persistence, sync, or workflow inconsistency issues.
+
+### Workflow / Intelligence Findings
+State whether the actual logic, automations, DMs, webhook flows, and settings-dependent behavior truly work.
+
+### Files / Systems Likely Responsible
+Point to likely frontend files, backend files, services, or layers.
+
+### Final Fix Plan
+Give the top fixes in exact priority order.
+
+## Final instruction
+Be exhaustive.  
+Behave like a top-tier engineer doing a real production test before a serious launch.  
+I want real execution, real failures, real passes, and a brutally honest final verdict.
