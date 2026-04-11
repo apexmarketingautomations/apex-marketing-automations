@@ -3,6 +3,23 @@
 // Paste this into "Overlay JS" in the Chaturbate app editor.
 // ═══════════════════════════════════════════════════════════════════
 
+var WEBHOOK_URL = 'https://apexmarketingautomations.com/api/chaturbate/webhook';
+
+window.addEventListener('message', function(evt) {
+  try {
+    var msg = typeof evt.data === 'string' ? JSON.parse(evt.data) : evt.data;
+    if (!msg || msg.type !== 'webhook') return;
+    fetch(WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-roomos-token': msg.token || ''
+      },
+      body: JSON.stringify(msg.payload || {})
+    }).catch(function() {});
+  } catch (e) {}
+});
+
 var GOAL = SETTINGS.goal_tokens;
 var GOAL_PCT = 90;
 var GOAL_CURRENT = Math.round(GOAL * GOAL_PCT / 100);

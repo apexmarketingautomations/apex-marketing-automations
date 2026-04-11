@@ -34,19 +34,13 @@ var SESSION = {
 
 var DISPLAY_NAME = SETTINGS.performer_name || SETTINGS.cb_username || 'babe';
 
-var WEBHOOK_URL = 'https://apexmarketingautomations.com/api/chaturbate/webhook';
-
 function sendWebhook(payload) {
   if (!SETTINGS.cb_username || !SETTINGS.RoomOs_secret) return;
   try {
-    $http({
-      method: 'POST',
-      url: WEBHOOK_URL,
-      headers: {
-        'Content-Type': 'application/json',
-        'x-roomos-token': SETTINGS.RoomOs_secret
-      },
-      data: JSON.stringify(payload)
+    $overlay.sendMessage({
+      type: 'webhook',
+      token: SETTINGS.RoomOs_secret,
+      payload: payload
     });
   } catch (e) {}
 }
