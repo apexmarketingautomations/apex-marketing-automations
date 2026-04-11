@@ -28,8 +28,6 @@ function isLaylaAccount(subAccountId: number, resolvedLaylaId: number): boolean 
   return subAccountId === resolvedLaylaId;
 }
 
-const DEFAULT_SUB_ACCOUNT_ID = FALLBACK_LAYLA_ACCOUNT_ID;
-const LAYLA_ACCOUNT_ID = FALLBACK_LAYLA_ACCOUNT_ID;
 const DEFAULT_REENGAGE_DAYS = 60;
 const DEFAULT_BATCH_LIMIT = 20;
 const MAX_PER_HOUR = 200;
@@ -407,4 +405,34 @@ async function sendMetaDM(
   }
 
   console.log(`[REENGAGE] DM sent to ${recipientId}: "${maskPiiForLogs(text.substring(0, 60))}..."`);
+}
+
+const REENGAGE_INTERVAL_MS = 6 * 60 * 60 * 1000;
+let reengageTimer: ReturnType<typeof setInterval> | null = null;
+
+export function startReengageScheduler(): void {
+  if (reengageTimer) {
+    console.log("[REENGAGE] Scheduler already running");
+    return;
+  }
+
+  console.log(`[REENGAGE] Background scheduler started (interval: ${REENGAGE_INTERVAL_MS / 3600000}h)`);
+
+  const runJob = () => {
+    runReengageJob({ dryRun: false, batchLimit: 20 })
+      .then(result => console.log(`[REENGAGE] Scheduled run complete: ${result.sent} sent, ${result.errors} errors, ${result.totalEligible} eligible`))
+      .catch(err => console.error(`[REENGAGE] Scheduled run error: ${err.message}`));
+  };
+
+  setTimeout(runJob, 60_000);
+
+  reengageTimer = setInterval(runJob, REENGAGE_INTERVAL_MS);
+}
+
+export function stopReengageScheduler(): void {
+  if (reengageTimer) {
+    clearInterval(reengageTimer);
+    reengageTimer = null;
+  }
+  console.log("[REENGAGE] Scheduler stopped");
 }

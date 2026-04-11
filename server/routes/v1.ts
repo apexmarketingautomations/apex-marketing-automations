@@ -1282,6 +1282,38 @@ export function registerV1Routes(app: Express) {
     return result;
   }
 
+  const TRIGGER_ALIASES: Record<string, string[]> = {
+    "new_lead":            ["OnNewLead", "new_lead"],
+    "OnNewLead":           ["OnNewLead", "new_lead"],
+    "call_missed":         ["OnMissedCall", "call_missed"],
+    "OnMissedCall":        ["OnMissedCall", "call_missed"],
+    "call_completed":      ["OnCallCompleted", "call_completed"],
+    "OnCallCompleted":     ["OnCallCompleted", "call_completed"],
+    "appointment_booked":  ["OnAppointmentBooked", "appointment_booked"],
+    "OnAppointmentBooked": ["OnAppointmentBooked", "appointment_booked"],
+    "review_received":     ["OnReviewReceived", "review_received"],
+    "OnReviewReceived":    ["OnReviewReceived", "review_received"],
+    "crash_detected":      ["OnCrashDetected", "crash_detected"],
+    "OnCrashDetected":     ["OnCrashDetected", "crash_detected"],
+    "facebook_form_submit": ["OnFormSubmit", "facebook_form_submit", "OnNewLead", "new_lead"],
+    "OnFormSubmit":        ["OnFormSubmit", "facebook_form_submit"],
+    "OnSMSReply":          ["OnSMSReply", "sms_reply"],
+    "sms_reply":           ["OnSMSReply", "sms_reply"],
+    "OnWhatsAppReply":     ["OnWhatsAppReply", "whatsapp_reply"],
+    "whatsapp_reply":      ["OnWhatsAppReply", "whatsapp_reply"],
+    "contact_created":     ["contact_created", "OnNewLead", "new_lead"],
+    "deal_created":        ["deal_created"],
+    "shopify_abandoned_cart":   ["shopify_abandoned_cart"],
+    "shopify_order_created":    ["shopify_order_created"],
+    "shopify_order_fulfilled":  ["shopify_order_fulfilled"],
+    "consultation_request":     ["consultation_request", "OnNewLead", "new_lead"],
+    "external_event":           ["external_event"],
+  };
+
+  function getTriggerAliases(triggerName: string): string[] {
+    return TRIGGER_ALIASES[triggerName] ?? [triggerName];
+  }
+
   async function fireAutomationTrigger(
     triggerName: string,
     subAccountId: number,
@@ -1293,13 +1325,18 @@ export function registerV1Routes(app: Express) {
 
       console.log(`[TRACE-ENGINE] fireAutomationTrigger called: trigger="${triggerName}", subAccountId=${subAccountId}`);
 
+      const aliases = getTriggerAliases(triggerName);
       const unified: Array<{ id: number; name: string; steps: any[]; source: string }> = [];
+      const seenIds = new Set<number>();
 
       const liveAutomations = await storage.getLiveAutomations(subAccountId);
       console.log(`[TRACE-ENGINE] live_automations query returned ${liveAutomations.length} rows for account ${subAccountId}`);
       for (const a of liveAutomations) {
-        console.log(`[TRACE-ENGINE]   live_automation id=${a.id} name="${a.name}" status="${a.status}" manifest.trigger="${a.manifest?.trigger}"`);
-        if ((a.status === "compiled" || a.status === "active") && a.manifest?.trigger === triggerName) {
+        const manifestTrigger = a.manifest?.trigger;
+        const matches = (a.status === "compiled" || a.status === "active") && aliases.includes(manifestTrigger);
+        console.log(`[TRACE-ENGINE]   live_automation id=${a.id} name="${a.name}" status="${a.status}" manifest.trigger="${manifestTrigger}" matched=${matches}`);
+        if (matches && !seenIds.has(a.id)) {
+          seenIds.add(a.id);
           unified.push({ id: a.id, name: a.name, steps: a.manifest.steps || [], source: "live_automations" });
         }
       }
@@ -1307,12 +1344,15 @@ export function registerV1Routes(app: Express) {
       const allWorkflows = await storage.getWorkflows();
       const accountWorkflows = allWorkflows.filter(w => w.subAccountId === subAccountId);
       console.log(`[TRACE-ENGINE] workflows table returned ${allWorkflows.length} total, ${accountWorkflows.length} for account ${subAccountId}`);
-      const triggerMatched = accountWorkflows.filter(w => w.trigger === triggerName);
-      console.log(`[TRACE-ENGINE]   trigger="${triggerName}" matched ${triggerMatched.length} workflow(s): ${triggerMatched.map(w => `id=${w.id} name="${w.name}" trigger="${w.trigger}"`).join(", ") || "NONE"}`);
+      const triggerMatched = accountWorkflows.filter(w => aliases.includes(w.trigger));
+      console.log(`[TRACE-ENGINE]   trigger="${triggerName}" aliases=[${aliases.join(",")}] matched ${triggerMatched.length} workflow(s): ${triggerMatched.map(w => `id=${w.id} name="${w.name}" trigger="${w.trigger}"`).join(", ") || "NONE"}`);
       if (accountWorkflows.length > 0 && triggerMatched.length === 0) {
         console.log(`[TRACE-ENGINE]   available triggers in account workflows: ${accountWorkflows.map(w => `"${w.trigger}"`).join(", ")}`);
       }
       for (const w of triggerMatched) {
+        const wKey = w.id + 100000;
+        if (seenIds.has(wKey)) continue;
+        seenIds.add(wKey);
         const rawSteps = (w.steps as any[]) || [];
         const normalizedSteps = rawSteps.map((s: any) => ({
           action: s.action_type || s.action || s.type,

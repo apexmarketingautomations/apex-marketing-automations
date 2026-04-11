@@ -436,6 +436,38 @@ async function runGlobalScan(): Promise<void> {
   }
 }
 
+export async function drainQueuedBacklog(): Promise<{ drained: number; failed: number }> {
+  let drained = 0;
+  let failed = 0;
+  try {
+    const stuck = await db.select().from(agentTasks)
+      .where(eq(agentTasks.status, "queued"))
+      .execute();
+
+    if (stuck.length === 0) {
+      console.log("[TASK-AGENT] Backlog drain: no queued tasks found");
+      return { drained: 0, failed: 0 };
+    }
+
+    console.log(`[TASK-AGENT] Backlog drain: processing ${stuck.length} queued task(s)...`);
+
+    for (const task of stuck) {
+      try {
+        await executeTask(task.id);
+        drained++;
+      } catch (err: any) {
+        failed++;
+        console.error(`[TASK-AGENT] Backlog drain: task #${task.id} ("${task.title}") failed: ${err.message}`);
+      }
+    }
+
+    console.log(`[TASK-AGENT] Backlog drain complete: ${drained} executed, ${failed} failed`);
+  } catch (err: any) {
+    console.error(`[TASK-AGENT] Backlog drain error: ${err.message}`);
+  }
+  return { drained, failed };
+}
+
 export function startTaskAgent(): void {
   console.log("[TASK-AGENT] Autonomous Task Agent started — scanning every 60m");
 

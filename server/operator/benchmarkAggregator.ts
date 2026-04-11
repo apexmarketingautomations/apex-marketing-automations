@@ -3,7 +3,7 @@ import { subAccounts, messages, contacts, liveAutomations, reviews, industryBenc
 import { eq, sql, and, gte, count } from "drizzle-orm";
 import { checkAccountReadiness } from "./accountReadiness";
 
-const MIN_ACCOUNTS_FOR_BENCHMARK = 3;
+const MIN_ACCOUNTS_FOR_BENCHMARK = 1;
 
 interface AccountMetrics {
   industry: string;

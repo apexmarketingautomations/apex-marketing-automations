@@ -387,3 +387,33 @@ export async function deployGeofenceAd(incident: {
     return { status: "ERROR", error: errMsg };
   }
 }
+
+const SENTINEL_SCAN_INTERVAL_MS = 15 * 60 * 1000;
+let sentinelScanTimer: ReturnType<typeof setInterval> | null = null;
+
+export function startSentinelScheduler(): void {
+  if (sentinelScanTimer) {
+    console.log("[SENTINEL] Scheduler already running");
+    return;
+  }
+
+  console.log(`[SENTINEL] Background scan scheduler started (interval: ${SENTINEL_SCAN_INTERVAL_MS / 60000}m)`);
+
+  const runScan = () => {
+    processLiveSentinelFeed()
+      .then(results => console.log(`[SENTINEL] Scheduled scan complete: ${results.length} incident(s) found`))
+      .catch(err => console.error(`[SENTINEL] Scheduled scan error: ${err.message}`));
+  };
+
+  setTimeout(runScan, 30_000);
+
+  sentinelScanTimer = setInterval(runScan, SENTINEL_SCAN_INTERVAL_MS);
+}
+
+export function stopSentinelScheduler(): void {
+  if (sentinelScanTimer) {
+    clearInterval(sentinelScanTimer);
+    sentinelScanTimer = null;
+  }
+  console.log("[SENTINEL] Scheduler stopped");
+}

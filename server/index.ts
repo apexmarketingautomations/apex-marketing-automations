@@ -1723,6 +1723,35 @@ RULES:
       }
 
       try {
+        const { startSentinelScheduler } = await import("./sentinel");
+        startSentinelScheduler();
+        console.log("[STARTUP] ✅ Sentinel scan scheduler started (every 15m)");
+      } catch (err: any) {
+        console.error("[SENTINEL] Failed to start scheduler:", err?.message);
+      }
+
+      try {
+        const { startReengageScheduler } = await import("./services/commentBot/reengageJob");
+        startReengageScheduler();
+        console.log("[STARTUP] ✅ Re-engagement background scheduler started (every 6h)");
+      } catch (err: any) {
+        console.error("[REENGAGE] Failed to start scheduler:", err?.message);
+      }
+
+      try {
+        const { drainQueuedBacklog } = await import("./operator/taskAgent");
+        drainQueuedBacklog().then(result => {
+          if (result.drained > 0 || result.failed > 0) {
+            console.log(`[STARTUP] ✅ Task agent backlog drained: ${result.drained} executed, ${result.failed} failed`);
+          } else {
+            console.log("[STARTUP] ✅ Task agent backlog: no stuck tasks found");
+          }
+        }).catch(err => console.error("[TASK-AGENT] Backlog drain startup error:", err?.message));
+      } catch (err: any) {
+        console.error("[TASK-AGENT] Failed to drain backlog:", err?.message);
+      }
+
+      try {
         const { validateMetaConfigForAccount } = await import("./metaConfig");
         const { storage: metaStorage } = await import("./storage");
         const account21 = await metaStorage.getSubAccount(21);

@@ -464,6 +464,27 @@ async function runRecoverySweep(): Promise<void> {
 let workerRunning = false;
 let workerInterval: ReturnType<typeof setInterval> | null = null;
 
+async function probeFlhsmvConnectivity(): Promise<void> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    const res = await fetch(FLHSMV_HOME, {
+      method: "HEAD",
+      headers: { "User-Agent": getNextUserAgent() },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    console.log(`[CRASH-WORKER] FLHSMV connectivity probe: HTTP ${res.status} ${res.statusText} — ${res.ok ? "✅ REACHABLE" : "⚠️ UNEXPECTED STATUS"}`);
+  } catch (err: any) {
+    if (err.name === "AbortError") {
+      console.warn("[CRASH-WORKER] FLHSMV connectivity probe: ⏱️ TIMEOUT (10s) — service may be rate-limiting or temporarily down");
+    } else {
+      console.warn(`[CRASH-WORKER] FLHSMV connectivity probe: ❌ UNREACHABLE — ${err.message}`);
+      console.warn("[CRASH-WORKER] Crash report retrieval will be degraded until FLHSMV is reachable. Jobs will retry automatically when service recovers.");
+    }
+  }
+}
+
 export function startCrashReportWorker(): void {
   if (workerRunning) {
     console.log("[CRASH-WORKER] Already running");
@@ -471,6 +492,8 @@ export function startCrashReportWorker(): void {
   }
   workerRunning = true;
   console.log(`[CRASH-WORKER] Started (id=${WORKER_ID}) — polling every ${WORKER_INTERVAL_MS / 1000}s, max ${MAX_CONCURRENT} concurrent, max retries ${MAX_RETRIES}, max service failures ${MAX_SERVICE_FAILURES}`);
+
+  probeFlhsmvConnectivity().catch(() => {});
 
   const tick = async () => {
     try {
