@@ -180,31 +180,32 @@ function getUpgradeMsg() {
   ]);
 }
 
-function resetSilenceTimer() {
-  SESSION.silenceCount = 0;
-  if (SESSION.silenceTimer) {
-    $callback.cancelTimeout(SESSION.silenceTimer);
-    SESSION.silenceTimer = null;
-  }
-  startSilenceTimer();
-}
-
-function startSilenceTimer() {
+function checkSilence() {
   if (!SESSION.isLive) return;
   if (SETTINGS.silence_threshold <= 0) return;
-  SESSION.silenceTimer = $callback.setTimeout(function() {
+  var now = Date.now();
+  var elapsed = (now - SESSION.lastTipTime) / 1000;
+  if (SESSION.lastTipTime > 0 && elapsed >= SETTINGS.silence_threshold && SESSION.silenceCount < 3) {
     SESSION.silenceCount++;
-    if (SESSION.silenceCount <= 3) {
-      $message.send_notice(getSilenceMsg(), {color: '#F87171', weight: 'bold'});
-    }
-    startSilenceTimer();
-  }, SETTINGS.silence_threshold * 1000);
+    $message.send_notice(getSilenceMsg(), {color: '#F87171', weight: 'bold'});
+  }
+}
+
+function resetSilence() {
+  SESSION.silenceCount = 0;
+  SESSION.lastTipTime = Date.now();
 }
 
 var noticeRotation = 0;
+var lastNoticeTime = 0;
 
-function sendRotatingNotice() {
+function maybeSendNotice() {
   if (!SESSION.isLive) return;
+  if (SETTINGS.notice_interval <= 0) return;
+  var now = Date.now();
+  if (lastNoticeTime > 0 && (now - lastNoticeTime) < SETTINGS.notice_interval * 1000) return;
+  lastNoticeTime = now;
+
   var remaining = getGoalRemaining();
   var msg = '';
 
@@ -228,14 +229,6 @@ function sendRotatingNotice() {
   if (msg) {
     $message.send_notice(msg, {color: '#6366F1', weight: 'bold'});
   }
-}
-
-function startNoticeLoop() {
-  if (SETTINGS.notice_interval <= 0) return;
-  $callback.setTimeout(function loop() {
-    sendRotatingNotice();
-    $callback.setTimeout(loop, SETTINGS.notice_interval * 1000);
-  }, SETTINGS.notice_interval * 1000);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -263,23 +256,18 @@ function startNoticeLoop() {
 //   SESSION.topTipper = '';
 //   SESSION.topTipAmount = 0;
 //   SESSION.viewers = {};
+//   SESSION.lastTipTime = Date.now();
 //   $message.send_notice(
 //     '\uD83D\uDD34 ' + DISPLAY_NAME + ' is LIVE! ' +
 //     (SETTINGS.custom_welcome || "Let's build something tonight"),
 //     {color: '#F87171', weight: 'bold'}
 //   );
-//   startSilenceTimer();
-//   startNoticeLoop();
 //   sendWebhook({ event: 'broadcast_start', username: SETTINGS.cb_username });
 // };
 
 // ── onBroadcastEnd ─────────────────────────────────────────────────
 // $onBroadcastEnd = function() {
 //   SESSION.isLive = false;
-//   if (SESSION.silenceTimer) {
-//     $callback.cancelTimeout(SESSION.silenceTimer);
-//     SESSION.silenceTimer = null;
-//   }
 //   $message.send_notice(
 //     '\uD83D\uDC4B Stream ended \u2014 ' + SESSION.tokens + ' tokens tonight. See you next time!',
 //     {color: '#6366F1', weight: 'bold'}
@@ -293,14 +281,14 @@ function startNoticeLoop() {
 //   var amount = parseInt(tip.amount, 10) || 0;
 //   SESSION.tokens += amount;
 //   SESSION.tipCount++;
-//   SESSION.lastTipTime = Date.now();
 //   SESSION.tippers[username] = (SESSION.tippers[username] || 0) + amount;
 //   if (SESSION.tippers[username] > SESSION.topTipAmount) {
 //     SESSION.topTipAmount = SESSION.tippers[username];
 //     SESSION.topTipper = username;
 //   }
-//   resetSilenceTimer();
+//   resetSilence();
 //   $message.send_notice(getTipThankMsg(username, amount), {color: '#F87171', weight: 'bold'});
+//   maybeSendNotice();
 //   if (!SESSION.goalReached && SESSION.tokens >= SESSION.goal) {
 //     SESSION.goalReached = true;
 //     $message.send_notice(getGoalReachedMsg(), {color: '#22C55E', weight: 'bold'});
@@ -317,6 +305,8 @@ function startNoticeLoop() {
 // $onEnter = function(user) {
 //   var username = user.user;
 //   SESSION.viewers[username] = Date.now();
+//   checkSilence();
+//   maybeSendNotice();
 //   $message.send_notice(getWelcomeMsg(username), {color: '#6366F1'});
 //   sendWebhook({
 //     event: 'enter',
@@ -327,6 +317,6 @@ function startNoticeLoop() {
 
 // ── onChatMessage ──────────────────────────────────────────────────
 // $onMessage = function(msg) {
-//   resetSilenceTimer();
+//   checkSilence();
 //   return msg;
 // };
