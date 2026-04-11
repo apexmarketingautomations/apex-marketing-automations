@@ -1,0 +1,873 @@
+var SETTINGS = {
+  pro_mode: ($settings && $settings.pro_mode) || 'yes',
+  goal_tokens: parseInt(($settings && $settings.goal_tokens) || '100', 10),
+  performer_name: ($settings && $settings.performer_name) || 'babe',
+  cb_username: ($settings && $settings.cb_username) || '',
+  RoomOs_secret: ($settings && $settings.RoomOs_secret) || '',
+  notice_interval: parseInt(($settings && $settings.notice_interval) || '111', 10),
+  silence_threshold: parseInt(($settings && $settings.silence_threshold) || '10', 10),
+  custom_welcome: ($settings && $settings.custom_welcome) || "We're live \u2014 Let's build something tonight",
+  show_upgrade_prompt: ($settings && $settings.show_upgrade_prompt) || 'yes'
+};
+
+var WEBHOOK_URL = 'https://apexmarketingautomations.com/api/chaturbate/webhook';
+
+window.addEventListener('message', function(evt) {
+  try {
+    var msg = typeof evt.data === 'string' ? JSON.parse(evt.data) : evt.data;
+    if (!msg || msg.type !== 'webhook') return;
+    fetch(WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-roomos-token': msg.token || ''
+      },
+      body: JSON.stringify(msg.payload || {})
+    }).catch(function() {});
+  } catch (e) {}
+});
+
+var GOAL = SETTINGS.goal_tokens;
+var GOAL_PCT = 90;
+var GOAL_CURRENT = Math.round(GOAL * GOAL_PCT / 100);
+var DISPLAY_NAME = SETTINGS.performer_name || SETTINGS.cb_username || '';
+
+var HOOKS = [
+  {
+    lines: ['STOP GUESSING.', 'START <span class="red">EARNING</span>.'],
+    sub: 'RoomOS \u2014 Intelligent Room Management'
+  },
+  {
+    lines: ['YOUR ROOM IS', '<span class="red">LEAKING</span> MONEY'],
+    sub: "See What You're Missing"
+  },
+  {
+    lines: ['WHAT IF YOUR ROOM', 'RAN <span class="indigo">ITSELF</span>?'],
+    sub: 'Automation That Works While You Work'
+  },
+  {
+    lines: ['THE <span class="red">FUTURE</span> OF CAM', 'IS <span class="indigo">HERE</span>'],
+    sub: 'Real-Time Intelligence For Your Room'
+  },
+  {
+    lines: ['EVERY SECOND <span class="red">COUNTS</span>.', 'EVERY TIP <span class="indigo">MATTERS</span>.'],
+    sub: 'Track Everything. Miss Nothing.'
+  }
+];
+
+var BOLT = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>';
+
+function hookSlide(hook) {
+  return `
+  <div class="slide">
+    <div class="slide-inner">
+      <div class="hook-text anim-up">${(hook.lines && hook.lines[0]) || ''}</div>
+      <div class="hook-text anim-up d1" style="margin-top:4px">${(hook.lines && hook.lines[1]) || ''}</div>
+      <div class="hook-sub anim-up d2">${hook.sub}</div>
+    </div>
+  </div>`;
+}
+
+function logoSlide(useVideo) {
+  if (useVideo) {
+    return `
+    <div class="slide">
+      <div class="slide-inner">
+        <div class="logo-container">
+          <div class="logo-video-wrap anim-scale">
+            <video src="/roomos-logo.mp4" autoplay muted loop playsinline></video>
+          </div>
+          <div class="logo-title anim-up d1"><span class="room">Room</span><span class="os">OS</span></div>
+          <div class="logo-powered anim-up d2">Powered By <span>Apex</span></div>
+        </div>
+      </div>
+    </div>`;
+  }
+  return `
+  <div class="slide">
+    <div class="slide-inner">
+      <div class="logo-container">
+        <div class="logo-icon anim-scale">
+          <div class="logo-glow-red"></div>
+          <div class="logo-glow-indigo"></div>
+          <div class="logo-sweep"></div>
+          ${BOLT}
+        </div>
+        <div class="logo-title anim-up d1"><span class="room">Room</span><span class="os">OS</span></div>
+        <div class="logo-powered anim-up d2">Powered By <span>Apex</span></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function featureSlide() {
+  return `
+  <div class="slide">
+    <div class="slide-inner">
+      <div class="feature-label anim-up">AI-POWERED COACHING</div>
+      <div class="feature-headline anim-up d1">Real-Time Suggestions. Powered By Your <span class="accent">Live Chat Data</span>.</div>
+      <div class="feature-desc anim-up d2">RoomOS Reads Your Chat In Real Time And Delivers The Right Move At The Right Moment.</div>
+    </div>
+  </div>`;
+}
+
+function sessionSlide() {
+  return `
+  <div class="slide">
+    <div class="slide-inner">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:24px">
+        <div class="session-label anim-up">LIVE SESSION</div>
+        <div class="session-panel anim-scale d1">
+          <div class="session-header">
+            <div class="session-brand">Room<span class="os">OS</span></div>
+            <div class="session-live"><div class="session-live-dot"></div> LIVE</div>
+          </div>
+          <div class="session-big-num">
+            <div class="session-big-val" data-count="951">0</div>
+            <div class="session-big-label">Tokens This Session</div>
+          </div>
+          <div class="session-bar"><div class="session-bar-fill" style="width:0%"></div></div>
+          <div class="session-bar-meta">
+            <span class="session-bar-goal">Goal: ${GOAL_CURRENT} / ${GOAL}</span>
+            <span class="session-bar-pct">${GOAL_PCT}%</span>
+          </div>
+          <div class="session-tip">
+            <div>
+              <div class="session-tip-user">n877</div>
+              <div class="session-tip-tag">VIP Every Time</div>
+            </div>
+            <div class="session-tip-amt">+301</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function whaleSlide() {
+  return `
+  <div class="slide">
+    <div class="slide-inner">
+      <div style="display:flex;flex-direction:column;align-items:center">
+        <div class="whale-headline anim-up">Know Your <span class="red">Top Whale</span></div>
+        <div class="whale-hero">
+          <div class="whale-avatar anim-scale d1">B</div>
+          <div class="whale-hero-name anim-up d2">BigDave99</div>
+          <div class="whale-hero-amount anim-up d3" data-count-whale="4280">$0</div>
+          <div class="whale-hero-label anim-up d3">Lifetime Total</div>
+          <div class="whale-hero-visits anim-up d4">47 Sessions \u2014 Always Comes Back</div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function phoneSlide() {
+  var welcomeText = DISPLAY_NAME ? ` Welcome Them Back, ${DISPLAY_NAME}.` : ' Welcome Them Back.';
+  return `
+  <div class="slide">
+    <div class="slide-inner">
+      <div style="display:flex;flex-direction:column;align-items:center">
+        <div class="phone-label anim-up">MOBILE COMMAND CENTER</div>
+        <div class="phone-headline anim-up d1">Your Room. Your Phone.</div>
+        <div class="phone-device anim-scale d1">
+          <div class="phone-island"></div>
+          <div class="phone-screen">
+            <div class="phone-status-bar">
+              <div class="phone-time">9:41</div>
+              <div class="phone-icons">
+                <div class="phone-icon-bar" style="height:5px"></div>
+                <div class="phone-icon-bar" style="height:7px"></div>
+                <div class="phone-icon-bar" style="height:9px"></div>
+                <div class="phone-icon-bar" style="height:11px"></div>
+              </div>
+            </div>
+            <div class="phone-app-header">
+              <div class="phone-app-title">Room<span class="os">OS</span></div>
+              <div class="phone-live-badge"><span class="phone-live-dot"></span>LIVE</div>
+            </div>
+            <div class="phone-metric">
+              <div class="phone-metric-val" data-count-phone="1247">0</div>
+              <div class="phone-metric-label">Tokens This Session</div>
+            </div>
+            <div class="phone-tip-item">
+              <div class="phone-tip-user">KingVIP</div>
+              <div class="phone-tip-amt">+500</div>
+            </div>
+            <div class="phone-tip-item">
+              <div class="phone-tip-user">n877</div>
+              <div class="phone-tip-amt">+301</div>
+            </div>
+            <div class="phone-suggestion">
+              <div class="phone-sug-label">AI SUGGESTION</div>
+              <div class="phone-sug-text">KingVIP Is Back \u2014 They Tipped 500 Last Session.${welcomeText}</div>
+            </div>
+          </div>
+          <div class="phone-screen-pulse"></div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function pricingSlide() {
+  if (SETTINGS.pro_mode !== 'yes') return '';
+  return `
+  <div class="slide">
+    <div class="slide-inner">
+      <div class="price-hero">
+        <div class="price-label anim-up">PRO PLAN</div>
+        <div class="price-headline anim-up d1">Everything You Need</div>
+        <div class="price-amount anim-up d2"><span class="dollar">$</span>49<span class="period">/Mo</span></div>
+        <div class="price-tier anim-up d3">AI COACHING + WHALE TRACKER + SILENCE DETECTION</div>
+        <div class="price-features anim-up d4">
+          <div class="price-feat">Real-Time Suggestions</div>
+          <div class="price-feat">Session Analytics</div>
+          <div class="price-feat">Priority Support</div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function ctaSlide() {
+  return `
+  <div class="slide">
+    <div class="slide-inner">
+      <div class="cta-wrapper">
+        <div class="cta-logo-row anim-scale">
+          <div class="cta-logo-box"><div class="logo-sweep"></div>${BOLT}</div>
+          <div class="cta-brand"><span class="room">Room</span><span class="os">OS</span></div>
+        </div>
+        <div class="cta-url anim-up d1">RoomOS.io</div>
+        <div class="cta-tagline anim-up d2">Your Room. Smarter. Every Session.</div>
+        <div class="cta-powered anim-up d3">Powered By <span>Apex</span></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function silenceSlide() {
+  return `
+  <div class="slide">
+    <div class="slide-inner">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:28px">
+        <div class="demo-section-label anim-up">FEATURE SHOWCASE</div>
+        <div class="feature-label anim-up">SILENCE DETECTION</div>
+        <div class="silence-alert anim-scale d1">
+          <div class="silence-icon"><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l22 22"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .76-.12 1.49-.34 2.18"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></div>
+          <div class="silence-title">SILENCE DETECTED</div>
+          <div class="silence-timer">Room Quiet For <span data-count-silence="${SETTINGS.silence_threshold}">0</span>s</div>
+        </div>
+        <div class="silence-recovery anim-up d2">Auto-Triggered: Poll Launched</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function smartGoalSlide() {
+  var goalAdjusted = Math.round(GOAL * 1.5);
+  return `
+  <div class="slide">
+    <div class="slide-inner">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:28px">
+        <div class="feature-label anim-up">SMART GOAL SYSTEM</div>
+        <div class="goal-panel anim-scale d1">
+          <div class="goal-numbers">
+            <div class="goal-current" data-count-goal="${GOAL - 13}">0</div>
+            <div class="goal-target"><span class="goal-target-val">/ ${GOAL}</span></div>
+          </div>
+          <div class="goal-bar-outer"><div class="goal-bar-fill"></div></div>
+          <div class="goal-status goal-status-text" style="opacity:0;transition:opacity 0.5s">Goal Auto-Adjusted \u2014 Room Is Hot</div>
+        </div>
+        <div class="demo-headline anim-up d2" style="font-size:32px">Target Moved From ${GOAL} \u2192 <span class="indigo">${goalAdjusted}</span></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function analyticsSlide() {
+  return `
+  <div class="slide">
+    <div class="slide-inner">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:28px">
+        <div class="feature-label anim-up">SESSION ANALYTICS</div>
+        <div class="demo-headline anim-up d1" style="font-size:36px">Viewer <span class="red">Heatmap</span></div>
+        <div class="heatmap-timeline anim-scale d1">
+          <div class="heatmap-bar" id="heatmap-bar"></div>
+          <div class="heatmap-labels"><span>8:00 PM</span><span>9:00 PM</span><span>10:00 PM</span><span>11:00 PM</span></div>
+        </div>
+        <div class="heatmap-stat anim-up d2">
+          <div class="heatmap-stat-val">Peak: 9:47 PM \u2014 312 Tokens In 4 Minutes</div>
+          <div class="heatmap-stat-label">Post-Session Insight</div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function whaleCrmSlide() {
+  return `
+  <div class="slide">
+    <div class="slide-inner">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:24px">
+        <div class="feature-label anim-up">WHALE CRM</div>
+        <div class="crm-card anim-scale d1">
+          <div class="crm-header">
+            <div class="crm-avatar">B</div>
+            <div>
+              <div class="crm-name">BigDave99</div>
+              <div class="crm-tag">VIP WHALE</div>
+            </div>
+          </div>
+          <div class="crm-stats" style="grid-template-columns:1fr 1fr">
+            <div class="crm-stat"><div class="crm-stat-val">47</div><div class="crm-stat-label">Visits</div></div>
+            <div class="crm-stat"><div class="crm-stat-val">$4,280</div><div class="crm-stat-label">Lifetime</div></div>
+            <div class="crm-stat"><div class="crm-stat-val">$91</div><div class="crm-stat-label">Avg Tip</div></div>
+            <div class="crm-stat"><div class="crm-stat-val" style="font-size:16px">2 Days Ago</div><div class="crm-stat-label">Last Visit</div></div>
+          </div>
+          <div class="crm-welcome anim-up d2">
+            <div class="crm-welcome-label">PREFERRED WELCOME</div>
+            <div class="crm-welcome-text">"${SETTINGS.custom_welcome}"</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function benchmarkSlide() {
+  return `
+  <div class="slide">
+    <div class="slide-inner">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:28px">
+        <div class="feature-label anim-up">MULTI-ROOM BENCHMARKING</div>
+        <div class="bench-rank anim-scale d1">
+          <div class="bench-position">Your Room: Top <span>12%</span></div>
+          <div class="bench-bar-outer">
+            <div class="bench-bar-fill"></div>
+            <div class="bench-bar-marker"></div>
+          </div>
+          <div class="bench-compare">
+            <div class="bench-stat">
+              <div class="bench-stat-val">$347</div>
+              <div class="bench-stat-label">Your Avg Session</div>
+            </div>
+            <div class="bench-stat">
+              <div class="bench-stat-val platform">$189</div>
+              <div class="bench-stat-label">Platform Average</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function scheduleSlide() {
+  return `
+  <div class="slide">
+    <div class="slide-inner">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:24px">
+        <div class="feature-label anim-up">SCHEDULED AUTOMATION</div>
+        <div class="sched-block anim-scale d1">
+          <div class="sched-time">8PM \u2013 12AM</div>
+          <div class="sched-mode">PEAK HOURS MODE</div>
+          <div class="sched-trigger"><div class="sched-trigger-dot"></div><div class="sched-trigger-text">Whale Alerts: ON</div></div>
+          <div class="sched-trigger"><div class="sched-trigger-dot"></div><div class="sched-trigger-text">Silence Recovery: ${SETTINGS.silence_threshold}s</div></div>
+          <div class="sched-trigger"><div class="sched-trigger-dot"></div><div class="sched-trigger-text">Goal Pressure: Aggressive</div></div>
+        </div>
+        <div class="demo-headline anim-up d2" style="font-size:28px">Your Room Runs On <span class="indigo">Autopilot</span></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function aiSuggestSlide() {
+  return `
+  <div class="slide">
+    <div class="slide-inner">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:24px">
+        <div class="feature-label anim-up">AI CONTENT SUGGESTIONS</div>
+        <div class="suggest-card anim-scale d1">
+          <div class="suggest-trending">TRENDING FORMAT</div>
+          <div class="suggest-title">Try: Countdown Tip Race \u2014 Top 3 Tippers Win</div>
+          <div class="suggest-sub">Based On 2,400 Rooms This Week</div>
+        </div>
+        <div class="demo-headline anim-up d2" style="font-size:28px">Platform Intelligence, <span class="red">Surfaced</span></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function moodSlide() {
+  return `
+  <div class="slide">
+    <div class="slide-inner">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:24px">
+        <div class="feature-label anim-up">ROOM MOOD DETECTION</div>
+        <div class="mood-indicator anim-scale d1">
+          <div class="mood-energy">ROOM ENERGY: <span class="rising">RISING \u2191</span></div>
+          <div class="mood-graph">
+            <svg viewBox="0 0 400 80" preserveAspectRatio="none">
+              <polyline class="mood-graph-glow" points="0,70 40,65 80,60 120,55 160,48 200,42 240,35 280,25 320,18 360,12 400,5"/>
+              <polyline class="mood-graph-line" points="0,70 40,65 80,60 120,55 160,48 200,42 240,35 280,25 320,18 360,12 400,5"/>
+            </svg>
+          </div>
+          <div class="mood-sentiment">Chat Sentiment: <span>Positive</span> \u2014 Keep This Energy</div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function tipForecastSlide() {
+  return `
+  <div class="slide">
+    <div class="slide-inner">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:24px">
+        <div class="feature-label anim-up">TIP PATTERN FORECASTING</div>
+        <div class="predict-card anim-scale d1">
+          <div class="predict-user">
+            <div class="predict-avatar">B</div>
+            <div>
+              <div class="predict-name">BigDave99</div>
+              <div class="predict-chance">83% Likely To Tip</div>
+            </div>
+          </div>
+          <div class="predict-bar-outer"><div class="predict-bar-fill"></div></div>
+          <div class="predict-bar-label"><span>CONFIDENCE</span><span>83%</span></div>
+          <div class="predict-pattern"><span>Pattern:</span> Tips Within 5 Min Of Entry</div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function fanOverlaySlide() {
+  return `
+  <div class="slide">
+    <div class="slide-inner">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:20px">
+        <div class="fan-view-badge anim-up">FAN VIEW</div>
+        <div class="feature-label anim-up">LIVE ROOM OVERLAY</div>
+        <div class="fan-overlay anim-scale d1">
+          <div class="fan-stream-area"><div class="fan-stream-placeholder">LIVE STREAM AREA</div></div>
+          <div class="fan-overlay-label">VIEWER PERSPECTIVE</div>
+          <div class="fan-goal-bar">
+            <div class="fan-goal-outer"><div class="fan-goal-fill"></div></div>
+            <div class="fan-goal-text"><span>GOAL: ${GOAL_CURRENT} / ${GOAL}</span><span>${GOAL_PCT}%</span></div>
+          </div>
+          <div class="fan-tip-feed">
+            <div class="fan-tip-entry"><div class="fan-tip-name">KingVIP</div><div class="fan-tip-val">+500</div></div>
+            <div class="fan-tip-entry"><div class="fan-tip-name">n877</div><div class="fan-tip-val">+301</div></div>
+            <div class="fan-tip-entry"><div class="fan-tip-name">LuckyAce</div><div class="fan-tip-val">+120</div></div>
+          </div>
+          <div class="fan-countdown">
+            <div class="fan-countdown-val" data-count-fan-cd="4">0</div>
+            <div class="fan-countdown-label">MINUTES REMAINING</div>
+          </div>
+          <div class="fan-prompt">Tip <span>50</span> To Spin The Wheel</div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function fanCelebrateSlide() {
+  return `
+  <div class="slide">
+    <div class="slide-inner">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:20px">
+        <div class="fan-view-badge anim-up">FAN VIEW</div>
+        <div class="feature-label anim-up">ENGAGEMENT MOMENT</div>
+        <div class="fan-celebrate anim-scale d1">
+          <div class="fan-celebrate-banner">
+            <div class="fan-celebrate-emoji">\uD83C\uDF89</div>
+            <div class="fan-celebrate-text"><span class="name">KingVIP</span> Tipped <span class="amount">500!</span></div>
+          </div>
+          <div class="fan-celebrate-goal anim-up d2">
+            <div class="fan-celebrate-goal-label"><span>ROOM GOAL</span><span>${GOAL_CURRENT} / ${GOAL}</span></div>
+            <div class="fan-celebrate-goal-bar"><div class="fan-celebrate-goal-fill"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function fanSmartPromptSlide() {
+  return `
+  <div class="slide">
+    <div class="slide-inner">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:20px">
+        <div class="fan-view-badge anim-up">FAN VIEW</div>
+        <div class="feature-label anim-up">SMART PROMPT</div>
+        <div class="fan-nudge anim-scale d1">
+          <div class="fan-nudge-chatarea">
+            <div class="fan-nudge-msg"><div class="fan-nudge-msg-avatar">K</div><div class="fan-nudge-msg-text"><span class="user">KingVIP:</span> Great show tonight \uD83D\uDD25</div></div>
+            <div class="fan-nudge-msg"><div class="fan-nudge-msg-avatar">L</div><div class="fan-nudge-msg-text"><span class="user">LuckyAce:</span> Let's goooo</div></div>
+            <div class="fan-nudge-msg"><div class="fan-nudge-msg-avatar">n</div><div class="fan-nudge-msg-text"><span class="user">n877:</span> \uD83D\uDE4C\uD83D\uDE4C\uD83D\uDE4C</div></div>
+          </div>
+          <div class="fan-nudge-prompt anim-up d2">
+            <div class="fan-nudge-prompt-icon">ROOMOS</div>
+            <div class="fan-nudge-prompt-text">Room Goal Is <span>${GOAL_PCT}%</span> \u2014 Help Push It Over!</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function dashboardSlide() {
+  return `
+  <div class="slide">
+    <div class="dash" id="dash-live">
+      <div class="dash-center-money">
+        <div class="dash-token-val" data-count-dash-main="4280">$0</div>
+        <div class="dash-token-label">Session Tokens</div>
+        <div class="dash-token-goal">
+          <div class="dash-goal-bar"><div class="dash-goal-fill"></div></div>
+          <div class="dash-goal-meta"><span>Goal: ${GOAL_CURRENT} / ${GOAL}</span><span class="pct">${GOAL_PCT}%</span></div>
+        </div>
+      </div>
+      <div class="dash-left-ai">
+        <div class="dash-ai-float">
+          <div class="dash-ai-float-tag">AI COACHING \u2014 LIVE</div>
+          <div class="dash-ai-float-msg">"<span class="hl">Top 3 Get VIP Access</span> \u2014 Push Now"</div>
+        </div>
+        <div class="dash-ai-float">
+          <div class="dash-ai-float-tag">SILENCE DETECTION</div>
+          <div class="dash-ai-float-msg">No Tips In <span class="hl">2m 12s</span> \u2014 Recovery Triggered</div>
+          <div class="dash-ai-float-sub">Auto-Poll Deployed To Chat</div>
+        </div>
+        <div class="dash-ai-float">
+          <div class="dash-ai-float-tag">CONTENT SUGGESTION</div>
+          <div class="dash-ai-float-msg">Try <span class="hl">Countdown Tip Race</span> \u2014 Top 3 Win</div>
+          <div class="dash-ai-float-sub">Trending In 2,400 Rooms This Week</div>
+        </div>
+        <div class="dash-ai-float">
+          <div class="dash-ai-float-tag">ROOM MOOD</div>
+          <div class="dash-ai-float-msg">Mood: <span class="hl">Cooling</span> \u2014 Push Engagement Now</div>
+          <div class="dash-ai-float-sub">Sentiment Dropped 12% In 3 Min</div>
+        </div>
+      </div>
+      <div class="dash-right-money">
+        <div class="dash-whale-alert-box">
+          <div class="dash-whale-alert-tag">WHALE ALERT</div>
+          <div class="dash-whale-alert-name">blazeit420xx</div>
+          <div class="dash-whale-alert-meta">Lifetime: <span>42,300 Tokens</span> \u00B7 Avg Tip: <span>320</span></div>
+        </div>
+        <div class="dash-top-tippers">
+          <div class="dash-top-tippers-title">Top Tippers</div>
+          <div class="dash-tipper-row">
+            <div class="dash-tipper-name">BigDave99</div>
+            <div class="dash-tipper-amt" data-count-dash-earn="4280">0</div>
+          </div>
+          <div class="dash-tipper-row">
+            <div class="dash-tipper-name">KingVIP</div>
+            <div class="dash-tipper-amt">2,847</div>
+          </div>
+          <div class="dash-tipper-row">
+            <div class="dash-tipper-name">blazeit420xx</div>
+            <div class="dash-tipper-amt">1,920</div>
+          </div>
+        </div>
+        <div class="dash-predict-float">
+          <div class="dash-predict-tag">PREDICTION ENGINE</div>
+          <div class="dash-predict-msg">BigDave99 \u2014 <span>83%</span> Likely To Tip Within 5 Min</div>
+        </div>
+      </div>
+      <div class="dash-bottom-bar">
+        <div class="dash-bottom-item">Peak: <span class="val red">12:42</span> \u2014 2,100 Tokens Burst</div>
+        <div class="dash-bottom-item"><div class="dash-status-dot"></div>Peak Mode: <span class="val">ACTIVE</span></div>
+        <div class="dash-bottom-item"><div class="dash-status-dot"></div>Whale: <span class="val">ON</span></div>
+        <div class="dash-bottom-item">Goal Pressure: <span class="val">HIGH</span></div>
+        <div class="dash-bottom-item"><div class="dash-status-dot"></div>Recovery: <span class="val">ARMED</span></div>
+        <div class="dash-bottom-item"><span class="val indigo">Top 12%</span> \u2014 $347 Avg<div class="dash-mini-bar"><div class="dash-mini-fill"></div></div></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function countUp(el, target, prefix, duration) {
+  var start = performance.now();
+  var fmt = function(v) { return prefix + v.toLocaleString(); };
+  el.textContent = fmt(0);
+  function tick(now) {
+    var t = Math.min((now - start) / duration, 1);
+    var eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = fmt(Math.round(target * eased));
+    if (t < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+function startHUD() {
+  var clockEl = document.getElementById('hud-clock');
+  var uptimeEl = document.getElementById('hud-uptime');
+  var startTime = Date.now();
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+
+  setInterval(function() {
+    var now = new Date();
+    clockEl.textContent = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+
+    var elapsed = Math.floor((Date.now() - startTime) / 1000);
+    var m = Math.floor(elapsed / 60);
+    var s = elapsed % 60;
+    uptimeEl.textContent = `${pad(m)}:${pad(s)}`;
+  }, 1000);
+}
+
+function generateHeatmapSegments() {
+  var intensities = [0.15, 0.2, 0.3, 0.35, 0.25, 0.4, 0.55, 0.7, 0.85, 1.0, 0.95, 0.8, 0.6, 0.45, 0.35, 0.5, 0.65, 0.75, 0.6, 0.4, 0.3, 0.2, 0.15, 0.1];
+  return intensities.map(function(v) {
+    var r = Math.round(248 * v);
+    var g = Math.round(113 * v * 0.3);
+    var b = Math.round(113 * v * 0.3);
+    var h = Math.round(v * 32);
+    return `<div class="heatmap-segment" style="height:${h}px;background:rgba(${r},${g},${b},${Math.max(v, 0.2)})"></div>`;
+  }).join('');
+}
+
+function init() {
+  var billboard = document.getElementById('billboard');
+
+  var demoGroups = [
+    [silenceSlide, smartGoalSlide],
+    [analyticsSlide, whaleCrmSlide],
+    [benchmarkSlide, scheduleSlide],
+    [aiSuggestSlide, moodSlide],
+    [tipForecastSlide, fanOverlaySlide],
+  ];
+
+  var fanSlides = [fanCelebrateSlide, fanSmartPromptSlide];
+
+  var html = '';
+  for (var h = 0; h < HOOKS.length; h++) {
+    var useVideo = (h % 2 === 0);
+    html += hookSlide(HOOKS[h]);
+    html += dashboardSlide();
+    html += logoSlide(useVideo);
+    html += dashboardSlide();
+    html += featureSlide();
+    html += dashboardSlide();
+    html += sessionSlide();
+    html += dashboardSlide();
+
+    if (demoGroups[h]) {
+      for (var d = 0; d < demoGroups[h].length; d++) html += demoGroups[h][d]();
+    }
+
+    html += dashboardSlide();
+    html += whaleSlide();
+    html += dashboardSlide();
+    html += phoneSlide();
+    html += pricingSlide();
+
+    if (h === 2) html += fanSlides[0]();
+    if (h === 4) html += fanSlides[1]();
+
+    html += dashboardSlide();
+    html += ctaSlide();
+  }
+
+  billboard.innerHTML = html;
+
+  var heatmapBar = document.getElementById('heatmap-bar');
+  if (heatmapBar) heatmapBar.innerHTML = generateHeatmapSegments();
+
+  var nameTag = DISPLAY_NAME ? ` \u2014 Powered By <span class="accent">RoomOS</span>` : '';
+  var tickerItems = [
+    `<span class="brand">ROOMOS</span>${DISPLAY_NAME ? ` <span class="accent">${DISPLAY_NAME}'s Room</span>` : ''}`,
+    'Pro: AI Coaching + Whale Tracker + Silence Detection \u2014 $49/Mo',
+    '<span class="accent">Powered By Apex</span>',
+    'RoomOS.io',
+    'Real-Time Suggestions. Powered By Your Live Chat Data.',
+    '<span class="accent">Powered By Apex</span>',
+    `RoomOS.io \u2014 Your Room. Smarter.${nameTag}`,
+  ];
+  var ticker = document.getElementById('ticker');
+  var tickerHtml = '';
+  for (var r = 0; r < 4; r++) {
+    for (var i = 0; i < tickerItems.length; i++) {
+      tickerHtml += `<div class="ticker-item">${tickerItems[i]}</div><div class="ticker-sep">|</div>`;
+    }
+  }
+  ticker.innerHTML = tickerHtml;
+
+  var slides = document.querySelectorAll('.slide');
+  var current = 0;
+
+  function activateSlide(s) {
+    s.classList.remove('exiting');
+    s.classList.add('active', 'entering');
+    s.addEventListener('animationend', function handler() {
+      s.classList.remove('entering');
+      s.removeEventListener('animationend', handler);
+    });
+
+    var counter = s.querySelector('[data-count]');
+    if (counter) countUp(counter, parseInt(counter.dataset.count), '', 1500);
+
+    var whaleCounter = s.querySelector('[data-count-whale]');
+    if (whaleCounter) countUp(whaleCounter, parseInt(whaleCounter.dataset.countWhale), '$', 1500);
+
+    var phoneCounter = s.querySelector('[data-count-phone]');
+    if (phoneCounter) countUp(phoneCounter, parseInt(phoneCounter.dataset.countPhone), '', 1500);
+
+    var fill = s.querySelector('.session-bar-fill');
+    if (fill) setTimeout(function() { fill.style.width = GOAL_PCT + '%'; }, 300);
+
+    var silenceCounter = s.querySelector('[data-count-silence]');
+    if (silenceCounter) countUp(silenceCounter, parseInt(silenceCounter.dataset.countSilence), '', 1200);
+
+    var goalCounter = s.querySelector('[data-count-goal]');
+    if (goalCounter) countUp(goalCounter, parseInt(goalCounter.dataset.countGoal), '', 1800);
+
+    var goalFill = s.querySelector('.goal-bar-fill');
+    if (goalFill) {
+      setTimeout(function() { goalFill.style.width = '97%'; }, 300);
+      setTimeout(function() { goalFill.style.width = '65%'; }, 2500);
+    }
+
+    var goalTargetVal = s.querySelector('.goal-target-val');
+    if (goalTargetVal) {
+      goalTargetVal.textContent = `/ ${GOAL}`;
+      goalTargetVal.style.color = '';
+      setTimeout(function() {
+        goalTargetVal.textContent = `/ ${Math.round(GOAL * 1.5)}`;
+        goalTargetVal.style.color = '#6366F1';
+      }, 2200);
+    }
+
+    var goalStatusText = s.querySelector('.goal-status-text');
+    if (goalStatusText) {
+      goalStatusText.style.opacity = '0';
+      setTimeout(function() { goalStatusText.style.opacity = '1'; }, 2400);
+    }
+
+    var benchFill = s.querySelector('.bench-bar-fill');
+    if (benchFill) setTimeout(function() { benchFill.style.width = '88%'; }, 300);
+    var benchMarker = s.querySelector('.bench-bar-marker');
+    if (benchMarker) setTimeout(function() { benchMarker.style.left = '88%'; }, 300);
+
+    var predictFill = s.querySelector('.predict-bar-fill');
+    if (predictFill) setTimeout(function() { predictFill.style.width = '83%'; }, 300);
+
+    var moodLine = s.querySelector('.mood-graph-line');
+    if (moodLine) setTimeout(function() { moodLine.style.strokeDashoffset = '0'; }, 200);
+    var moodGlow = s.querySelector('.mood-graph-glow');
+    if (moodGlow) setTimeout(function() { moodGlow.style.strokeDashoffset = '0'; }, 200);
+
+    var fanGoalFill = s.querySelector('.fan-goal-fill');
+    if (fanGoalFill) setTimeout(function() { fanGoalFill.style.width = GOAL_PCT + '%'; }, 400);
+
+    var fanCdCounter = s.querySelector('[data-count-fan-cd]');
+    if (fanCdCounter) countUp(fanCdCounter, parseInt(fanCdCounter.dataset.countFanCd), '', 800);
+
+    var fanCelFill = s.querySelector('.fan-celebrate-goal-fill');
+    if (fanCelFill) setTimeout(function() { fanCelFill.style.width = GOAL_PCT + '%'; }, 400);
+
+    var dashEarn = s.querySelector('[data-count-dash-earn]');
+    if (dashEarn) countUp(dashEarn, parseInt(dashEarn.dataset.countDashEarn), '', 1800);
+    var dashMain = s.querySelector('[data-count-dash-main]');
+    if (dashMain) countUp(dashMain, parseInt(dashMain.dataset.countDashMain), '$', 2000);
+    var dashGoalFill = s.querySelector('.dash-goal-fill');
+    if (dashGoalFill) setTimeout(function() { dashGoalFill.style.width = GOAL_PCT + '%'; }, 400);
+    var dashMiniFill = s.querySelector('.dash-mini-fill');
+    if (dashMiniFill) setTimeout(function() { dashMiniFill.style.width = '88%'; }, 500);
+
+    if (dashMain) {
+      var base = parseInt(dashMain.dataset.countDashMain);
+      s._liveTick = setInterval(function() {
+        base += Math.floor(Math.random() * 25) + 10;
+        dashMain.textContent = '$' + base.toLocaleString();
+      }, 12000);
+    }
+
+    var predictMsg = s.querySelector('.dash-predict-msg span');
+    if (predictMsg) {
+      var pct = 83;
+      s._predictTick = setInterval(function() {
+        pct = Math.min(96, pct + Math.floor(Math.random() * 2) + 1);
+        predictMsg.textContent = pct + '%';
+      }, 15000);
+    }
+  }
+
+  function deactivateSlide(s) {
+    s.classList.remove('active');
+    s.classList.add('exiting');
+    s.addEventListener('animationend', function handler() {
+      s.classList.remove('exiting');
+      s.removeEventListener('animationend', handler);
+    });
+    var fill = s.querySelector('.session-bar-fill');
+    if (fill) fill.style.width = '0%';
+    var counter = s.querySelector('[data-count]');
+    if (counter) counter.textContent = '0';
+    var whaleCounter = s.querySelector('[data-count-whale]');
+    if (whaleCounter) whaleCounter.textContent = '$0';
+    var phoneCounter = s.querySelector('[data-count-phone]');
+    if (phoneCounter) phoneCounter.textContent = '0';
+
+    var silenceCounter = s.querySelector('[data-count-silence]');
+    if (silenceCounter) silenceCounter.textContent = '0';
+    var goalCounter = s.querySelector('[data-count-goal]');
+    if (goalCounter) goalCounter.textContent = '0';
+    var goalFill = s.querySelector('.goal-bar-fill');
+    if (goalFill) goalFill.style.width = '0%';
+    var goalTargetVal = s.querySelector('.goal-target-val');
+    if (goalTargetVal) { goalTargetVal.textContent = `/ ${GOAL}`; goalTargetVal.style.color = ''; }
+    var goalStatusText = s.querySelector('.goal-status-text');
+    if (goalStatusText) goalStatusText.style.opacity = '0';
+    var benchFill = s.querySelector('.bench-bar-fill');
+    if (benchFill) benchFill.style.width = '0%';
+    var benchMarker = s.querySelector('.bench-bar-marker');
+    if (benchMarker) benchMarker.style.left = '0%';
+    var predictFill = s.querySelector('.predict-bar-fill');
+    if (predictFill) predictFill.style.width = '0%';
+    var moodLine = s.querySelector('.mood-graph-line');
+    if (moodLine) moodLine.style.strokeDashoffset = '600';
+    var moodGlow = s.querySelector('.mood-graph-glow');
+    if (moodGlow) moodGlow.style.strokeDashoffset = '600';
+    var fanGoalFill = s.querySelector('.fan-goal-fill');
+    if (fanGoalFill) fanGoalFill.style.width = '0%';
+    var fanCdCounter = s.querySelector('[data-count-fan-cd]');
+    if (fanCdCounter) fanCdCounter.textContent = '0';
+    var fanCelFill = s.querySelector('.fan-celebrate-goal-fill');
+    if (fanCelFill) fanCelFill.style.width = '0%';
+    var dashEarn = s.querySelector('[data-count-dash-earn]');
+    if (dashEarn) dashEarn.textContent = '0';
+    var dashMain = s.querySelector('[data-count-dash-main]');
+    if (dashMain) dashMain.textContent = '$0';
+    var dashGoalFill = s.querySelector('.dash-goal-fill');
+    if (dashGoalFill) dashGoalFill.style.width = '0%';
+    var dashMiniFill = s.querySelector('.dash-mini-fill');
+    if (dashMiniFill) dashMiniFill.style.width = '0%';
+    if (s._liveTick) { clearInterval(s._liveTick); s._liveTick = null; }
+    if (s._predictTick) { clearInterval(s._predictTick); s._predictTick = null; }
+  }
+
+  function show(idx) {
+    for (var i = 0; i < slides.length; i++) {
+      if (i === idx) {
+        activateSlide(slides[i]);
+      } else if (slides[i].classList.contains('active')) {
+        deactivateSlide(slides[i]);
+      }
+    }
+  }
+
+  startHUD();
+  show(0);
+  setInterval(function() {
+    current = (current + 1) % slides.length;
+    show(current);
+  }, SETTINGS.notice_interval);
+}
+
+init();
