@@ -74,6 +74,7 @@ const ExecutionTimelinePage = lazy(() => import("@/pages/execution-timeline"));
 const WhatsAppTemplatesPage = lazy(() => import("@/pages/whatsapp-templates"));
 const ContentPlannerPage = lazy(() => import("@/pages/content-planner"));
 const RoomOSPage = lazy(() => import("@/pages/roomos"));
+const RoomOSDashboardPage = lazy(() => import("@/pages/roomos-dashboard"));
 const IntelligenceDashboardPage = lazy(() => import("@/pages/intelligence-dashboard"));
 const StandaloneCardLanding = lazy(() => import("@/pages/standalone-card-landing"));
 const StandaloneCardCreate = lazy(() => import("@/pages/standalone-card-create"));
@@ -238,10 +239,15 @@ function Router() {
         <Route path="/luxe/funnel" component={LuxeFunnel} />
         <Route path="/marketers/funnel" component={MarketersFunnel} />
 
-        {/* roomOS — accessible without login */}
+        {/* roomOS billboard — accessible without login */}
         <Route path="/roomos">
           <Suspense fallback={<PageLoader />}>
             <RoomOSPage />
+          </Suspense>
+        </Route>
+        <Route path="/roomos-dashboard">
+          <Suspense fallback={<PageLoader />}>
+            <RoomOSDashboardPage />
           </Suspense>
         </Route>
 
@@ -317,6 +323,7 @@ function Router() {
                   <Route path="/whatsapp-templates" component={WhatsAppTemplatesPage} />
                   <Route path="/content-planner" component={ContentPlannerPage} />
                   <Route path="/roomos" component={RoomOSPage} />
+                  <Route path="/roomos-dashboard" component={RoomOSDashboardPage} />
                   <Route path="/intelligence" component={IntelligenceDashboardPage} />
                   <Route component={NotFound} />
                 </Switch>
