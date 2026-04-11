@@ -1,0 +1,147 @@
+You are working inside the Apex Marketing Automations codebase. Execute this as a **hardening-first implementation task**. Do **not** invent architecture, do **not** refactor unrelated systems, and do **not** ship cosmetic changes. Preserve all existing business logic unless explicitly required below.
+
+## Objective
+Replace the old CB app references with the new app **“RoomOS by Apex AI Smart Room”**, wire the provided CB app to the Apex backend safely, and leave the codebase in a more secure state than you found it.
+
+## Non-negotiable rules
+- **Security before polish.**
+- **No placeholder secrets in code.**
+- **No hardcoded API keys, tokens, OAuth credentials, or connection strings anywhere in source, configs, logs, sample files, or comments.**
+- **Do not print secrets or auth tokens to stdout.**
+- **Do not weaken auth, CSRF, webhook validation, or rate limits to make testing easier.**
+- **Do not remove existing production features unless they are directly broken or unsafe.**
+- **Do not rely on raw SQL string construction with user input.**
+- **Do not use `pool.query()`, `db.execute()`, or `sql.raw()` with interpolated strings where Drizzle query builders or `sql\`\`` can be used safely.**
+- **Do not touch unrelated payment logic, subscription logic, or UI styling beyond branding changes explicitly requested.**
+
+## Primary deliverables
+1. **RoomOS rebrand**
+   - Update user-facing branding from the old CB app name to **“RoomOS by Apex AI Smart Room”** where appropriate.
+   - Keep “Powered By Apex” where it improves trust/conversion.
+   - Update:
+     - `client/public/roomos-landing.html`
+     - `client/src/pages/roomos.tsx`
+     - `server/mailchimp.ts`
+     - any directly related roomOS copy, email copy, dashboard headers, page titles, and meta text
+   - Do **not** rename stable API routes unless required.
+
+2. **CB app webhook integration**
+   - Use the provided CB shared code, overlay HTML, overlay JS, and event handlers as the source of truth.
+   - Add **fire-and-forget** webhook calls from the CB app event handlers to:
+     - `POST /api/chaturbate/webhook`
+   - Use:
+     - header: `x-roomos-token: SETTINGS.RoomOs_secret`
+     - payload fields: `{ event, username, user, amount, viewers }`
+     - route performer identity using `SETTINGS.cb_username`
+   - Add webhook posts for:
+     - broadcast start
+     - broadcast end
+     - tip received
+     - user enter
+   - Do not block the CB app flow if webhook delivery fails.
+   - Fail silently but safely inside the CB app runtime.
+
+3. **Save finalized CB app reference files**
+   - Save ready-to-paste files in:
+     - `client/public/roomos-cb-app/`
+   - Include three separate reference files:
+     - shared code JS
+     - overlay HTML
+     - overlay JS
+   - These files should exactly reflect the finalized integrated version the user can paste into the CB dev portal.
+
+## Security hardening requirements
+Address the hardening issues that are directly visible from the current project state:
+
+### A. Secrets and token exposure
+- Move all hardcoded secrets to Replit Secrets / environment variables.
+- Replace any exposed credentials in source usage with `process.env.*`.
+- Remove or sanitize any logging that outputs:
+  - auth tokens
+  - webhook secrets
+  - Twilio tokens
+  - OpenAI keys
+  - OAuth credentials
+  - connection strings
+- If a secret is currently committed in code, replace the code reference with env usage and leave a concise note in final summary listing which env vars must exist.
+- Do **not** echo actual secret values in any output.
+
+### B. SQL hardening
+- Replace unsafe raw SQL patterns with Drizzle-safe equivalents where touched by this task.
+- Eliminate manually constructed SQL strings using user input in touched files.
+- Prefer parameterization / query builder / `sql\`\`` usage.
+- Preserve current behavior.
+
+### C. Object/property hardening
+- Remove unsafe bracket-notation access with uncontrolled user input in touched code paths where feasible without broad refactors.
+- Add safe allowlisting or normalization if needed.
+
+### D. Crypto hardening
+- If `createDecipheriv` with GCM is used in touched code, ensure authentication tag handling is explicit and correct.
+- Do not change crypto behavior blindly; only apply a correct fix.
+
+### E. Dependency hygiene
+- Apply **safe patch/minor upgrades only when low-risk** for directly relevant vulnerable packages.
+- Do **not** mass-upgrade the whole stack if it risks breakage.
+- If a package upgrade is risky, document it instead of forcing it.
+
+## Input materials to use
+Use the provided CB app materials already discussed in this workspace:
+- shared code with SETTINGS, SESSION state, silence logic, notice loop, message generators
+- overlay HTML for **RoomOS Live Billboard**
+- overlay JS for slide generation / animations / rotation
+- event handlers for:
+  - app start
+  - broadcast start
+  - broadcast end
+  - chat message
+  - tip received
+  - user enter
+
+Do not ask for these again unless a file is genuinely missing.
+
+## Implementation constraints
+- Keep the webhook integration **minimal, explicit, and robust**.
+- Keep CB runtime compatibility in mind.
+- Do not introduce heavy dependencies just for webhook posting.
+- If CB environment fetch behavior is limited, implement the safest supported equivalent with minimal code.
+- Maintain existing roomOS trial-claim flow and current production routing.
+- Maintain existing dashboard functionality.
+
+## Required validation
+After implementing, verify all of the following:
+
+### Functional checks
+- Branding shows **RoomOS by Apex AI Smart Room** in the intended user-facing places.
+- CB reference files exist in `client/public/roomos-cb-app/`.
+- Webhook payloads are emitted on:
+  - broadcast start
+  - broadcast end
+  - tip received
+  - user enter
+- Existing roomOS dashboard still loads.
+- Trial claim flow still works.
+- No obvious regression in core roomOS routes.
+
+### Security checks
+- No secrets hardcoded in touched files.
+- No tokens printed in logs from touched flows.
+- No new raw SQL string interpolation added.
+- Any touched vulnerable patterns are safer than before, not worse.
+
+## Output format
+When finished, provide:
+1. **What changed** — concise bullet list by file
+2. **Security fixes applied** — explicit list
+3. **Env vars required** — names only, never values
+4. **Anything still risky** — concise and honest
+5. **Do not claim complete security perfection** if unresolved issues remain
+
+## Execution stance
+Be conservative, risk-aware, and production-minded.  
+Do the smallest set of changes that achieves:
+- successful RoomOS integration
+- safe webhook wiring
+- meaningful hardening of touched surfaces
+
+If you hit a risky tradeoff, choose the option that reduces security exposure and preserves production stability.
