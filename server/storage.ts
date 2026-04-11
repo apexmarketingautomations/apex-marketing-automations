@@ -1441,10 +1441,12 @@ export class DatabaseStorage implements IStorage {
   async updateCreditWalletBalance(subAccountId: number, delta: number) {
     const wallet = await this.getCreditWallet(subAccountId);
     if (!wallet) return undefined;
-    const newBalance = Math.max(0, wallet.balance + delta);
-    const updates: any = { balance: newBalance, updatedAt: new Date() };
-    if (delta > 0) updates.lifetimeTopUp = wallet.lifetimeTopUp + delta;
-    if (delta < 0) updates.lifetimeSpend = wallet.lifetimeSpend + Math.abs(delta);
+    const updates: Record<string, any> = {
+      balance: sql`GREATEST(0, ${creditWallets.balance} + ${delta})`,
+      updatedAt: new Date(),
+    };
+    if (delta > 0) updates.lifetimeTopUp = sql`${creditWallets.lifetimeTopUp} + ${delta}`;
+    if (delta < 0) updates.lifetimeSpend = sql`${creditWallets.lifetimeSpend} + ${Math.abs(delta)}`;
     const [row] = await db.update(creditWallets).set(updates).where(eq(creditWallets.subAccountId, subAccountId)).returning();
     return row;
   }

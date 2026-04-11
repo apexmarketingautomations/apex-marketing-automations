@@ -12,7 +12,7 @@ const CARD_PRICE_CENTS = 4900;
 const PROMO_PRICE_CENTS = 2450;
 const PROMO_LIMIT = 20;
 const COMMISSION_CENTS = 1000;
-const ADMIN_SECRET = process.env.STANDALONE_ADMIN_SECRET || "apex-admin-2024";
+const ADMIN_SECRET = process.env.STANDALONE_ADMIN_SECRET || "";
 
 function generateSlug(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48);

@@ -1,0 +1,102 @@
+You are performing a **full production readiness audit** on my live web application: Apex Marketing Automations.
+
+This is strictly about the **standalone website, backend, APIs, and dashboard system**.  
+Do NOT analyze or reference any third-party integrations, embeds, or external UI layers.
+
+## Goal
+Make this application:
+- secure
+- stable
+- production-ready
+- scalable
+- reliable under real user traffic
+
+## Audit Scope
+
+### 1) Frontend (client/)
+- routing structure (App.tsx, protected routes, redirects)
+- page load performance
+- API call handling (success/failure states)
+- error boundaries (prevent white screens)
+- auth gating (no unauthorized access)
+- loading + fallback states
+- mobile responsiveness
+
+### 2) Backend (server/)
+- all API routes
+- request validation (body, headers, params)
+- authentication + session handling
+- middleware order
+- error handling (no silent failures)
+- logging (requests, errors, edge cases)
+- rate limiting
+
+### 3) Security (CRITICAL)
+- find and remove ANY hardcoded secrets
+- verify all secrets are stored in environment variables
+- ensure no sensitive data is exposed to client
+- validate all incoming requests
+- protect all private routes (no access via query params alone)
+- verify CORS configuration is locked down properly
+- check for injection risks or unsafe parsing
+
+### 4) Dashboard system
+- verify live state logic works correctly
+- confirm backend updates actually reach frontend
+- confirm account/user mapping is correct
+- ensure no stale data or caching issues
+- verify UI reflects real backend state consistently
+
+### 5) Data + state integrity
+- ensure database writes succeed and are validated
+- ensure no silent failures in persistence
+- confirm data consistency across sessions
+- check for race conditions or duplicate writes
+
+### 6) Performance
+- identify slow routes or blocking operations
+- reduce unnecessary frontend bundle size
+- optimize API response times
+- ensure no memory leaks or runaway intervals
+- confirm scalable behavior under load
+
+### 7) Error handling + observability
+- add structured logging where missing
+- ensure all failures produce useful logs
+- differentiate between recoverable vs fatal errors
+- ensure production logs are actionable
+
+## Required Output Format
+
+Return your findings in this structure:
+
+### Critical Issues (must fix before production)
+- list each issue clearly
+- explain exact failure point
+
+### High Priority Issues
+- stability, performance, or reliability risks
+
+### Medium Issues
+- UX, maintainability, or inefficiencies
+
+### Files to Change
+- exact file paths
+
+### Exact Fixes
+- what to change and why (no vague advice)
+
+### Security Risks
+- any exposure, weak auth, or unsafe handling
+
+### Final Production Checklist
+- step-by-step list to confirm the app is safe to go live
+
+## Rules
+- Do NOT guess — only identify real issues
+- Do NOT give generic advice
+- Be direct and technical
+- Prioritize real failure points over theory
+- Focus on what would break under real users
+
+Your job is to make this application **production-grade, not just functional**

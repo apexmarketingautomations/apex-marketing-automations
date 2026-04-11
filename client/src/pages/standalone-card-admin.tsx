@@ -5,10 +5,30 @@ import {
   DollarSign, CheckCircle, Clock, Loader2, RefreshCw
 } from "lucide-react";
 
-const ADMIN_SECRET = "apex-admin-2024";
-
 function AdminLogin({ onLogin }: { onLogin: (secret: string) => void }) {
   const [secret, setSecret] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async (s: string) => {
+    if (!s) return;
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/standalone/admin/stats", {
+        headers: { "x-admin-secret": s, "Content-Type": "application/json" },
+      });
+      if (res.ok) {
+        onLogin(s);
+      } else {
+        setError("Invalid admin secret");
+      }
+    } catch {
+      setError("Connection error");
+    }
+    setLoading(false);
+  };
+
   return (
     <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center px-4">
       <div className="max-w-sm w-full">
@@ -18,16 +38,18 @@ function AdminLogin({ onLogin }: { onLogin: (secret: string) => void }) {
           type="password"
           value={secret}
           onChange={e => setSecret(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && onLogin(secret)}
+          onKeyDown={e => e.key === "Enter" && handleLogin(secret)}
           placeholder="Admin secret"
           className="w-full px-4 py-3 bg-neutral-800 border border-neutral-700 rounded-xl text-white mb-4"
         />
+        {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
         <button
           data-testid="button-admin-login"
-          onClick={() => onLogin(secret)}
-          className="w-full px-6 py-3 bg-cyan-500 hover:bg-cyan-400 text-white font-semibold rounded-xl transition"
+          onClick={() => handleLogin(secret)}
+          disabled={loading}
+          className="w-full px-6 py-3 bg-cyan-500 hover:bg-cyan-400 text-white font-semibold rounded-xl transition disabled:opacity-50"
         >
-          Login
+          {loading ? "Verifying..." : "Login"}
         </button>
       </div>
     </div>

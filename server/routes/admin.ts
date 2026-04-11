@@ -4,9 +4,19 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import express from "express";
+import rateLimit from "express-rate-limit";
 import { asyncHandler, isUserAdmin, parseIntParam } from "./helpers";
 import { storage } from "../storage";
 import { getBillingCoverage, runBillingAudit } from "../billing";
+
+const errorLogLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many error reports." },
+  validate: { xForwardedForHeader: false },
+});
 
 export function registerAdminRoutes(app: Express) {
   // ---- Image Uploads ----
@@ -56,7 +66,7 @@ export function registerAdminRoutes(app: Express) {
     timestamp: z.string().optional(),
   });
 
-  app.post("/api/log-error", (req: Request, res: Response) => {
+  app.post("/api/log-error", errorLogLimiter, (req: Request, res: Response) => {
     const parsed = errorLogSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Invalid error report" });
     const { message, stack, url, timestamp } = parsed.data;

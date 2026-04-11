@@ -408,7 +408,7 @@ async function ensureLaylaAccount(
         protectedReason: null,
         industry: "AI Persona / Marketing Automation",
         metaPageId: "736112766259045",
-        metaAccessToken: "EAARowjzmH3sBROPHTpcdikeUPCAUGnirXQkEBiVed79KKT5gH40ezeZC5o4DfXaM3PrdpZCN6m0CXYy2l3usBUwFQTHPdCreZCK8gc1YeSjvNf8SICVmrd6uRRJeMZBzSg6lvx8XsehU2EBMdzRh5ORcLlM0xyABEvZCY9VZBAsCpNMPtgYY5TgZCWmuQt7Qvzm5mzDu68Q7sqvNimV5URl",
+        metaAccessToken: process.env.META_ACCESS_TOKEN_LAYLA || "",
         config: {
           commentBot: {
             enabled: true,
@@ -456,7 +456,7 @@ async function ensureLaylaAccount(
       await db.update(subAccounts)
         .set({
           metaPageId: "736112766259045",
-          metaAccessToken: "EAARowjzmH3sBROPHTpcdikeUPCAUGnirXQkEBiVed79KKT5gH40ezeZC5o4DfXaM3PrdpZCN6m0CXYy2l3usBUwFQTHPdCreZCK8gc1YeSjvNf8SICVmrd6uRRJeMZBzSg6lvx8XsehU2EBMdzRh5ORcLlM0xyABEvZCY9VZBAsCpNMPtgYY5TgZCWmuQt7Qvzm5mzDu68Q7sqvNimV5URl",
+          metaAccessToken: process.env.META_ACCESS_TOKEN_LAYLA || "",
         })
         .where(eq(subAccounts.id, laylaId));
       console.log(`[SYNC] Set Meta credentials for Officer Layla #${laylaId}`);
