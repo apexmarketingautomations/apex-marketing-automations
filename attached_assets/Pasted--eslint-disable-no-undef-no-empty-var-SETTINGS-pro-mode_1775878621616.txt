@@ -1,0 +1,218 @@
+/* eslint-disable no-undef, no-empty */
+var SETTINGS = {
+  pro_mode: ($settings && $settings.pro_mode) || 'yes',
+  goal_tokens: parseInt(($settings && $settings.goal_tokens) || '100', 10),
+  performer_name: ($settings && $settings.performer_name) || 'babe',
+  cb_username: ($settings && $settings.cb_username) || '',
+  RoomOs_secret: ($settings && $settings.RoomOs_secret) || '',
+  notice_interval: parseInt(($settings && $settings.notice_interval) || '111', 10),
+  silence_threshold: parseInt(($settings && $settings.silence_threshold) || '10', 10),
+  custom_welcome: ($settings && $settings.custom_welcome) || "We're live — Let's build something tonight",
+  show_upgrade_prompt: ($settings && $settings.show_upgrade_prompt) || 'yes'
+};
+
+var SESSION = {
+  tokens: 0,
+  goal: SETTINGS.goal_tokens,
+  goalReached: false,
+  tipCount: 0,
+  topTipper: '',
+  topTipAmount: 0,
+  tippers: {},
+  lastTipTime: 0,
+  silenceTimer: null,
+  silenceCount: 0,
+  isLive: false,
+  startTime: 0,
+  viewers: {}
+};
+
+var DISPLAY_NAME = SETTINGS.performer_name || SETTINGS.cb_username || 'babe';
+
+function sendWebhook(payload) {
+  if (!SETTINGS.cb_username || !SETTINGS.RoomOs_secret) return;
+  try {
+    $overlay.sendMessage({
+      type: 'webhook',
+      token: SETTINGS.RoomOs_secret,
+      payload: payload
+    });
+  } catch (e) {}
+}
+
+function getGoalRemaining() {
+  var remaining = SESSION.goal - SESSION.tokens;
+  return remaining > 0 ? remaining : 0;
+}
+
+function getSessionTotal() {
+  return SESSION.tokens;
+}
+
+function getGoalPercent() {
+  if (SESSION.goal <= 0) return 100;
+  return Math.min(100, Math.round((SESSION.tokens / SESSION.goal) * 100));
+}
+
+function pick(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function getHypeMsg() {
+  var remaining = getGoalRemaining();
+  var total = getSessionTotal();
+  return pick([
+    remaining + " tokens to goal — let's make it happen!",
+    "who's finishing this goal? " + remaining + " left!",
+    "session total: " + total + " — keep it rolling!",
+    remaining + " tokens between us and glory!",
+    "room's been good tonight… let's finish strong!"
+  ]);
+}
+
+function getNearGoalMsg() {
+  var remaining = getGoalRemaining();
+  return pick([
+    remaining + " tokens away — SO close!",
+    "we are SO close… " + remaining + " to go!",
+    "literally " + remaining + " away… who's the hero?",
+    remaining + " away… I won't beg but… 😏",
+    "almost there! just " + remaining + " more!"
+  ]);
+}
+
+function getGoalReachedMsg() {
+  return pick([
+    "we did it!! goal " + SESSION.goal + " hit — you all are insane!",
+    "YESSS!! goal hit — you all are amazing!",
+    "goal SMASHED! " + SESSION.tokens + " tokens tonight!",
+    "🎉 GOAL REACHED! love this room!",
+    "that's a wrap on the goal! " + SESSION.tokens + " total!"
+  ]);
+}
+
+function getProHypeMsg() {
+  if (SETTINGS.pro_mode !== 'yes') return getHypeMsg();
+  var remaining = getGoalRemaining();
+  var total = getSessionTotal();
+  var pct = getGoalPercent();
+  return pick([
+    "🔥 RoomOS Pro: " + pct + "% to goal — " + remaining + " left!",
+    "⚡ session is at " + total + " tokens — room is on fire!",
+    "RoomOS says: room energy is UP — keep tipping!",
+    "📈 " + pct + "% done — only " + remaining + " to go!",
+    "⚡ Pro tip: top tipper gets VIP love — " + remaining + " to goal!"
+  ]);
+}
+
+function getWelcomeMsg(username) {
+  if (SESSION.tippers[username]) {
+    var amt = SESSION.tippers[username];
+    return pick([
+      "welcome back " + username + "! you've tipped " + amt + " this session ❤️",
+      username + " is back! legend status: " + amt + " tokens deep",
+      "ayy " + username + "! good to see you again 🙌"
+    ]);
+  }
+  return pick([
+    "hey " + username + "! welcome in ❤️",
+    "welcome " + username + "! glad you're here 🙌",
+    username + " just joined — welcome!"
+  ]);
+}
+
+function getTipThankMsg(username, amount) {
+  if (amount >= 500) {
+    return pick([
+      "💥 " + username + " just dropped " + amount + "!! absolute LEGEND!",
+      "😱 " + username + " with " + amount + " tokens!! you're unreal!",
+      username + " — " + amount + " tokens?! I'm speechless 🙏"
+    ]);
+  }
+  if (amount >= 100) {
+    return pick([
+      "🔥 " + username + " tipped " + amount + "! you're amazing!",
+      "big love to " + username + " for " + amount + " tokens! ❤️",
+      username + " coming in HOT with " + amount + "! 🙌"
+    ]);
+  }
+  if (amount >= 25) {
+    return pick([
+      "thank you " + username + "! " + amount + " tokens ❤️",
+      username + " — " + amount + " tokens! love it!",
+      "🙏 " + username + " with " + amount + "! thank you!"
+    ]);
+  }
+  return pick([
+    "thanks " + username + "! ❤️",
+    "appreciate you " + username + "!",
+    "🙌 " + username + "!"
+  ]);
+}
+
+function getSilenceMsg() {
+  return pick([
+    "room's been quiet for a bit… who's still here? 👀",
+    "it's getting quiet… let's wake this room up!",
+    "silence detected — anyone alive out there? 😂",
+    "room check! show some love ❤️",
+    "quiet room = missed moments — let's go!"
+  ]);
+}
+
+function getUpgradeMsg() {
+  if (SETTINGS.show_upgrade_prompt !== 'yes') return '';
+  return pick([
+    "⚡ This room runs on RoomOS — AI-powered smart room management. RoomOS.io",
+    "🤖 RoomOS Pro: real-time AI coaching, whale tracking, silence detection. RoomOS.io",
+    "📈 Want a smarter room? RoomOS handles it all. RoomOS.io"
+  ]);
+}
+
+function checkSilence() {
+  if (!SESSION.isLive) return;
+  if (SETTINGS.silence_threshold <= 0) return;
+  var now = Date.now();
+  var elapsed = (now - SESSION.lastTipTime) / 1000;
+  if (SESSION.lastTipTime > 0 && elapsed >= SETTINGS.silence_threshold && SESSION.silenceCount < 3) {
+    SESSION.silenceCount++;
+    $message.send_notice(getSilenceMsg(), {color: '#F87171', weight: 'bold'});
+  }
+}
+
+function resetSilence() {
+  SESSION.silenceCount = 0;
+  SESSION.lastTipTime = Date.now();
+}
+
+var noticeRotation = 0;
+var lastNoticeTime = 0;
+
+function maybeSendNotice() {
+  if (!SESSION.isLive) return;
+  if (SETTINGS.notice_interval <= 0) return;
+  var now = Date.now();
+  if (lastNoticeTime > 0 && (now - lastNoticeTime) < SETTINGS.notice_interval * 1000) return;
+  lastNoticeTime = now;
+  var remaining = getGoalRemaining();
+  var msg = '';
+  if (SESSION.goalReached) {
+    if (noticeRotation % 3 === 0 && SETTINGS.show_upgrade_prompt === 'yes') {
+      msg = getUpgradeMsg();
+    } else {
+      msg = getProHypeMsg();
+    }
+  } else if (remaining <= Math.round(SESSION.goal * 0.15)) {
+    msg = getNearGoalMsg();
+  } else {
+    if (noticeRotation % 4 === 0 && SETTINGS.show_upgrade_prompt === 'yes') {
+      msg = getUpgradeMsg();
+    } else {
+      msg = getProHypeMsg();
+    }
+  }
+  noticeRotation++;
+  if (msg) {
+    $message.send_notice(msg, {color: '#6366F1', weight: 'bold'});
+  }
+}
