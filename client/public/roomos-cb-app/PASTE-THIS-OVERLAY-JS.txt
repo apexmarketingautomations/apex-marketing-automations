@@ -10,13 +10,6 @@ var SETTINGS = {
   show_upgrade_prompt: 'yes'
 };
 
-try {
-  SETTINGS.pro_mode = $settings.pro_mode || 'yes';
-  SETTINGS.goal_tokens = parseInt($settings.goal_tokens || 100, 10);
-  SETTINGS.performer_name = $settings.performer_name || '';
-  SETTINGS.cb_username = $settings.cb_username || '';
-} catch (e) {}
-
 var WEBHOOK_URL = 'https://apexmarketingautomations.com/api/chaturbate/webhook';
 
 window.addEventListener('message', function(evt) {
