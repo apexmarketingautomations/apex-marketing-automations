@@ -20,8 +20,6 @@ function generateWebhookToken(): string {
 
 export function registerChaturbateRoutes(app: Express) {
   app.post("/api/chaturbate/webhook", async (req: Request, res: Response) => {
-    res.sendStatus(200);
-
     try {
       const raw = req.body;
       const event = raw.event || raw.type;
@@ -30,12 +28,20 @@ export function registerChaturbateRoutes(app: Express) {
       const user = raw.user || data.username;
       const amount = raw.amount || data.tokens;
       const viewers = raw.viewers || data.viewers;
-      if (!event || !username) return;
+      if (!event || !username) return res.sendStatus(400);
+
+      const headerToken = req.headers["x-roomos-token"] as string;
+      if (!headerToken) return res.sendStatus(401);
+
+      const globalSecret = getGlobalSecret();
 
       let [account] = await db.select().from(subAccounts)
         .where(eq(subAccounts.cbUsername, username));
 
       if (!account) {
+        if (!globalSecret || headerToken !== globalSecret) {
+          return res.sendStatus(403);
+        }
         const token = generateWebhookToken();
         const [newAccount] = await db.insert(subAccounts).values({
           name: `${username} (RoomOS)`,
@@ -47,16 +53,15 @@ export function registerChaturbateRoutes(app: Express) {
           plan: "starter",
         }).returning();
         account = newAccount;
-        console.log(`[ROOMOS] Auto-provisioned account ${account.id} for cb_username=${username}`);
+        console.log(`[ROOMOS] Auto-provisioned account ${account.id}`);
       }
 
-      const headerToken = req.headers["x-roomos-token"] as string;
-      const globalSecret = getGlobalSecret();
       const accountToken = account.cbWebhookToken;
-      if (!headerToken || (headerToken !== globalSecret && headerToken !== accountToken)) {
-        console.error(`[ROOMOS] Invalid webhook token for cb_username=${username}`);
-        return;
+      if (headerToken !== globalSecret && headerToken !== accountToken) {
+        return res.sendStatus(403);
       }
+
+      res.sendStatus(200);
 
       const subAccountId = account.id;
       const goalTokens = account.cbGoalTokens || 500;
@@ -225,6 +230,7 @@ export function registerChaturbateRoutes(app: Express) {
       }
     } catch (err: any) {
       console.error("[ROOMOS] Webhook processing error:", err.message);
+      if (!res.headersSent) res.sendStatus(500);
     }
   });
 
@@ -338,6 +344,11 @@ export function registerChaturbateRoutes(app: Express) {
 
   app.get("/api/chaturbate/token/:subAccountId", async (req: Request, res: Response) => {
     try {
+      const headerToken = req.headers["x-roomos-token"] as string;
+      if (!headerToken || headerToken !== getGlobalSecret()) {
+        return res.status(403).json({ error: "Forbidden — admin token required" });
+      }
+
       const subAccountId = parseInt(req.params.subAccountId);
       if (isNaN(subAccountId)) return res.status(400).json({ error: "Invalid subAccountId" });
 
@@ -435,7 +446,7 @@ export function registerChaturbateRoutes(app: Express) {
 
       const token = generateWebhookToken();
       const [newAccount] = await db.insert(subAccounts).values({
-        name: `${username} (roomOS trial)`,
+        name: `${username} (RoomOS trial)`,
         twilioNumber: "none",
         cbUsername: username,
         cbGoalTokens: 500,

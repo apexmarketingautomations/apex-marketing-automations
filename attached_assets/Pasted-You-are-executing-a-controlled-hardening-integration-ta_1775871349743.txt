@@ -1,0 +1,218 @@
+You are executing a **controlled hardening + integration task** inside the Apex Marketing Automations codebase.
+
+This is a **restricted, production-sensitive operation**.
+Do not improvise. Do not expand scope. Do not refactor beyond what is explicitly allowed.
+
+---
+
+# 🔒 EXECUTION PRIORITY (STRICT ORDER — DO NOT REORDER)
+
+You MUST execute in this exact sequence:
+
+### PHASE 1 — READ + SURFACE RISK (NO CODE CHANGES)
+
+* Inspect ONLY these files:
+
+  * client/public/roomos-landing.html
+  * client/src/pages/roomos.tsx
+  * server/mailchimp.ts
+  * server/routes/chaturbate.ts
+
+* Identify (do not fix yet):
+
+  * hardcoded secrets
+  * token logging
+  * raw SQL usage
+  * unsafe object access
+  * webhook auth weaknesses
+
+Output a **brief risk snapshot** before continuing.
+
+---
+
+### PHASE 2 — WEBHOOK SAFETY FIRST (BACKEND)
+
+* Secure `/api/chaturbate/webhook` BEFORE touching anything else
+
+Requirements:
+
+* Require header: `x-roomos-token`
+* Validate token against:
+
+  * env-based global fallback OR
+  * per-account token (existing logic)
+* Reject invalid requests (401/403)
+* Do NOT log:
+
+  * tokens
+  * headers
+  * request bodies containing secrets
+
+DO NOT:
+
+* change route path
+* weaken auth
+* remove existing logic
+
+---
+
+### PHASE 3 — CB APP INTEGRATION (ISOLATED)
+
+* Create ONLY this directory:
+  `client/public/roomos-cb-app/`
+
+* Create EXACTLY 3 files:
+
+  * shared-code.js
+  * overlay.html
+  * overlay.js
+
+* Inject webhook calls into event handlers:
+
+POST → `/api/chaturbate/webhook`
+
+Payloads:
+
+broadcast_start:
+{ event: "broadcast_start", username: SETTINGS.cb_username }
+
+broadcast_end:
+{ event: "broadcast_end", username: SETTINGS.cb_username }
+
+tip:
+{ event: "tip", username: SETTINGS.cb_username, user: tipper, amount: amount }
+
+enter:
+{ event: "enter", username: SETTINGS.cb_username, user: username }
+
+Headers:
+x-roomos-token: SETTINGS.RoomOs_secret
+
+Constraints:
+
+* fire-and-forget only
+* no blocking
+* silent fail (try/catch, ignore errors)
+* minimal code (CB runtime safe)
+
+DO NOT:
+
+* modify overlay design
+* add dependencies
+* change message logic
+
+---
+
+### PHASE 4 — TARGETED SECURITY PATCHES (LIMITED SCOPE)
+
+You may ONLY modify code in these files:
+
+* server/routes/chaturbate.ts
+* server/mailchimp.ts
+* server/routes/auth.ts
+* server/csrfProtection.ts
+
+Fix ONLY:
+
+* hardcoded secrets → process.env.*
+* token logging → remove or redact
+* raw SQL → parameterize or drizzle-safe
+* unsafe object access → safe mapping
+
+DO NOT:
+
+* touch unrelated services
+* refactor architecture
+* modify Stripe logic
+
+---
+
+### PHASE 5 — BRANDING (LAST)
+
+Update ONLY:
+
+* client/public/roomos-landing.html
+* client/src/pages/roomos.tsx
+* server/mailchimp.ts
+
+Replace user-facing references with:
+
+"RoomOS by Apex AI Smart Room"
+
+Keep:
+"Powered by Apex" where beneficial
+
+DO NOT:
+
+* rename API routes
+* change layout
+* alter pricing logic
+
+---
+
+# 🚫 HARD BOUNDARY RULES
+
+* DO NOT modify files outside the allowed list
+* DO NOT introduce new dependencies
+* DO NOT mass-upgrade packages
+* DO NOT log secrets or tokens
+* DO NOT break existing endpoints
+* DO NOT “clean up” unrelated code
+* DO NOT assume missing architecture
+
+---
+
+# ✅ VALIDATION (MANDATORY)
+
+You must verify:
+
+Functional:
+
+* webhook accepts valid requests
+* rejects invalid tokens
+* CB files exist in correct directory
+* dashboard still loads
+* trial flow still works
+
+Security:
+
+* no secrets in touched files
+* no token logging remains
+* no new raw SQL introduced
+
+---
+
+# 📋 REQUIRED OUTPUT FORMAT
+
+Return EXACTLY:
+
+## 1. Files Changed
+
+* file path + what changed (1 line each)
+
+## 2. Security Fixes Applied
+
+* explicit list
+
+## 3. Env Vars Required
+
+* names only
+
+## 4. Validation Results
+
+* pass/fail for each check
+
+## 5. Remaining Risks
+
+* concise + honest
+
+---
+
+# ⚠️ EXECUTION MINDSET
+
+* Minimize blast radius
+* Preserve production stability
+* Fix only what is necessary
+* If unsure → choose safer option
+
+This is a **surgical integration + hardening task**, not a rebuild.
