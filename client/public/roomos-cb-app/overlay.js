@@ -3,6 +3,27 @@
 // Paste this into "Overlay JS" in the Chaturbate app editor.
 // ═══════════════════════════════════════════════════════════════════
 
+var SETTINGS = {
+  pro_mode: 'yes',
+  goal_tokens: 100,
+  performer_name: '',
+  cb_username: '',
+  silence_threshold: 10,
+  custom_welcome: "We're live \u2014 Let's build something tonight",
+  show_upgrade_prompt: 'yes'
+};
+
+try {
+  if (typeof $settings !== 'undefined') {
+    if ($settings.pro_mode) SETTINGS.pro_mode = $settings.pro_mode;
+    if ($settings.goal_tokens) SETTINGS.goal_tokens = parseInt($settings.goal_tokens, 10);
+    if ($settings.performer_name) SETTINGS.performer_name = $settings.performer_name;
+    if ($settings.cb_username) SETTINGS.cb_username = $settings.cb_username;
+    if ($settings.silence_threshold) SETTINGS.silence_threshold = parseInt($settings.silence_threshold, 10);
+    if ($settings.custom_welcome) SETTINGS.custom_welcome = $settings.custom_welcome;
+  }
+} catch (e) {}
+
 var WEBHOOK_URL = 'https://apexmarketingautomations.com/api/chaturbate/webhook';
 
 window.addEventListener('message', function(evt) {
@@ -577,7 +598,7 @@ function dashboardSlide() {
 // SLIDE ENGINE — rotation, animations, counters, HUD
 // ═══════════════════════════════════════════════════════════════════
 
-var SLIDE_DURATION = 8000;
+var SLIDE_DURATION = 30000;
 var TRANSITION_DURATION = 400;
 var slides = [];
 var currentSlide = -1;
