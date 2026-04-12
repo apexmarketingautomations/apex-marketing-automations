@@ -6,7 +6,7 @@ import { useAccount } from "@/hooks/use-account";
 import { useToast } from "@/hooks/use-toast";
 import {
   Satellite, Radar, MapPin, Phone, Crosshair, AlertTriangle, CheckCircle2,
-  Settings, Play, Pause, Radio, Shield, Clock, ChevronRight, ChevronLeft, Send, Target, Zap, Eye, BookOpen, Lock, ArrowUpCircle, Plus, ExternalLink, Globe, MessageSquare
+  Settings, Play, Pause, Radio, Shield, Clock, ChevronRight, ChevronLeft, Send, Target, Zap, Eye, BookOpen, Lock, ArrowUpCircle, Plus, ExternalLink, Globe, MessageSquare, AlertCircle, Home
 } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { SENTINEL_STEPS } from "@/components/tutorial-steps";
@@ -101,7 +101,10 @@ export default function Sentinel() {
     geofenceRadiusMiles: 1,
     targetCities: "",
     targetStates: "",
+    niche: "accident" as "accident" | "home_services",
   });
+  const [originalNiche, setOriginalNiche] = useState<"accident" | "home_services">("accident");
+  const [nicheChangeConfirmed, setNicheChangeConfirmed] = useState(false);
   const [locationFilter, setLocationFilter] = useState("");
   const [showReportDialog, setShowReportDialog] = useState(false);
   const [reportForm, setReportForm] = useState({ title: "", location: "", description: "", severity: "medium" });
@@ -135,6 +138,7 @@ export default function Sentinel() {
 
   useEffect(() => {
     if (config) {
+      const niche = (config.niche === 'home_services' ? 'home_services' : 'accident') as "accident" | "home_services";
       setConfigForm({
         keywords: (config.keywords || []).join(", "),
         scanInterval: config.scanInterval || 60,
@@ -145,7 +149,10 @@ export default function Sentinel() {
         geofenceRadiusMiles: config.geofenceRadiusMiles || 1,
         targetCities: ((config as any).targetCities || []).join(", "),
         targetStates: ((config as any).targetStates || []).join(", "),
+        niche,
       });
+      setOriginalNiche(niche);
+      setNicheChangeConfirmed(false);
     }
   }, [config]);
 
@@ -211,6 +218,9 @@ export default function Sentinel() {
     },
   });
 
+  const nicheChanged = configForm.niche !== originalNiche;
+  const nicheSaveBlocked = nicheChanged && !nicheChangeConfirmed;
+
   const configMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("PUT", "/api/sentinel/config", {
@@ -224,11 +234,14 @@ export default function Sentinel() {
         geofenceRadiusMiles: configForm.geofenceRadiusMiles,
         targetCities: configForm.targetCities.split(",").map(c => c.trim()).filter(Boolean),
         targetStates: configForm.targetStates.split(",").map(s => s.trim()).filter(Boolean),
+        niche: configForm.niche,
       });
       return res.json();
     },
     onSuccess: () => {
       toast({ title: "Sentinel config saved!" });
+      setOriginalNiche(configForm.niche);
+      setNicheChangeConfirmed(false);
       queryClient.invalidateQueries({ queryKey: ["/api/sentinel/config", currentAccount?.id] });
       setShowConfig(false);
     },
@@ -324,13 +337,16 @@ export default function Sentinel() {
     );
   }
 
+  const activeNiche = config?.niche === 'home_services' ? 'home_services' : 'accident';
+  const isHomeSvc = activeNiche === 'home_services';
+
   return (
     <div className="p-6 md:p-10 max-w-6xl mx-auto">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-3">
-            <div className={`w-12 h-12 rounded-xl bg-gradient-to-br from-red-600 to-orange-500 flex items-center justify-center ${scanPulse ? "animate-pulse" : ""}`}>
-              <Satellite size={24} className="text-white" />
+            <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${isHomeSvc ? "from-blue-600 to-teal-500" : "from-red-600 to-orange-500"} flex items-center justify-center ${scanPulse ? "animate-pulse" : ""}`}>
+              {isHomeSvc ? <Home size={24} className="text-white" /> : <Satellite size={24} className="text-white" />}
             </div>
             <div>
               <h1 className="text-3xl font-black text-white tracking-tight" data-testid="text-sentinel-title">
@@ -339,6 +355,7 @@ export default function Sentinel() {
               <p className="text-slate-400 text-sm flex items-center gap-2">
                 <span className={`w-2 h-2 rounded-full ${config?.enabled ? "bg-green-400 animate-pulse" : "bg-slate-600"}`} />
                 {config?.enabled ? "Live Monitoring Active" : "Monitoring Offline"}
+                {isHomeSvc && <span className="text-blue-400 font-bold text-[10px] uppercase tracking-widest ml-1">Home Services</span>}
                 {currentAccount && <span className="text-slate-600">| {currentAccount.name}</span>}
               </p>
             </div>
@@ -347,14 +364,16 @@ export default function Sentinel() {
             <Button variant="ghost" size="sm" onClick={startTutorial} className="text-slate-400 hover:text-white" data-testid="button-start-tutorial">
               <BookOpen size={16} className="mr-1" /> Tutorial
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => navigate("/crash-reports")}
-              className="border-white/10 text-white hover:bg-white/10 gap-2"
-              data-testid="button-crash-reports"
-            >
-              <Eye size={16} /> Crash Reports
-            </Button>
+            {!isHomeSvc && (
+              <Button
+                variant="outline"
+                onClick={() => navigate("/crash-reports")}
+                className="border-white/10 text-white hover:bg-white/10 gap-2"
+                data-testid="button-crash-reports"
+              >
+                <Eye size={16} /> Crash Reports
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={() => setShowConfig(true)}
@@ -363,18 +382,20 @@ export default function Sentinel() {
             >
               <Settings size={16} /> Config
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => setShowReportDialog(true)}
-              className="border-white/10 text-white hover:bg-white/10 gap-2"
-              data-testid="button-report-incident"
-            >
-              <Plus size={16} /> Report
-            </Button>
+            {!isHomeSvc && (
+              <Button
+                variant="outline"
+                onClick={() => setShowReportDialog(true)}
+                className="border-white/10 text-white hover:bg-white/10 gap-2"
+                data-testid="button-report-incident"
+              >
+                <Plus size={16} /> Report
+              </Button>
+            )}
             <Button
               onClick={() => scanMutation.mutate()}
               disabled={scanMutation.isPending || !currentAccount}
-              className="bg-gradient-to-r from-red-600 to-orange-500 text-white font-bold gap-2 shadow-lg shadow-red-500/25"
+              className={`${isHomeSvc ? "bg-gradient-to-r from-blue-600 to-teal-500 shadow-blue-500/25" : "bg-gradient-to-r from-red-600 to-orange-500 shadow-red-500/25"} text-white font-bold gap-2 shadow-lg`}
               data-testid="button-scan-now"
             >
               {scanMutation.isPending ? (
@@ -387,6 +408,9 @@ export default function Sentinel() {
         </div>
       </motion.div>
 
+      {isHomeSvc ? (
+        <HomeSvcSentinelStub />
+      ) : (<>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
           className="bg-[#0a0a0a] border border-red-500/30 p-4 rounded-2xl shadow-[0_0_20px_rgba(239,68,68,0.1)]"
@@ -518,6 +542,7 @@ export default function Sentinel() {
           </div>
         )}
       </motion.div>
+      </>)}
 
       <Dialog open={showConfig} onOpenChange={setShowConfig}>
         <DialogContent className="bg-neutral-950 border-white/10 text-white max-w-lg">
@@ -527,6 +552,47 @@ export default function Sentinel() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-5">
+            <div>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Sentinel Mode</label>
+              <select
+                value={configForm.niche}
+                onChange={(e) => {
+                  const val = e.target.value as "accident" | "home_services";
+                  setConfigForm(f => ({ ...f, niche: val }));
+                  setNicheChangeConfirmed(false);
+                }}
+                className="w-full bg-white/5 border border-white/10 rounded-md px-3 py-2 text-sm text-white appearance-none cursor-pointer"
+                data-testid="select-niche"
+              >
+                <option value="accident" className="bg-neutral-900">Accident (Crash Detection)</option>
+                <option value="home_services" className="bg-neutral-900">Home Services</option>
+              </select>
+              {nicheChanged && (
+                <div className="mt-3 p-3 border border-amber-500/40 bg-amber-500/10 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle size={16} className="text-amber-400 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-xs text-amber-300 font-bold mb-1">Switching Sentinel mode changes scan behavior immediately for this account.</p>
+                      <p className="text-[10px] text-amber-400/70 mb-2">
+                        {configForm.niche === 'home_services'
+                          ? "Accident feed scanning will stop. Home Services is Phase 1 (stub — no live feed connected)."
+                          : "Home Services scanning will stop. Accident crash detection will resume."}
+                      </p>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={nicheChangeConfirmed}
+                          onChange={(e) => setNicheChangeConfirmed(e.target.checked)}
+                          className="rounded border-amber-500/50 bg-transparent"
+                          data-testid="checkbox-confirm-niche"
+                        />
+                        <span className="text-xs text-amber-300">I understand — switch this account's Sentinel mode</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
             <div>
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Incident Feed</label>
               <div className="bg-white/5 border border-white/10 rounded-md px-3 py-2 text-sm text-emerald-400 font-mono">
@@ -645,7 +711,7 @@ export default function Sentinel() {
             <Button variant="outline" onClick={() => setShowConfig(false)} className="border-white/10 text-white hover:bg-white/10">Cancel</Button>
             <Button
               onClick={() => configMutation.mutate()}
-              disabled={configMutation.isPending}
+              disabled={configMutation.isPending || nicheSaveBlocked}
               className="bg-gradient-to-r from-red-600 to-orange-500 text-white font-bold gap-2"
               data-testid="button-save-config"
             >
@@ -1092,5 +1158,71 @@ function DetailField({ label, value, testId }: { label: string; value: string | 
       <p className="text-[10px] text-slate-600 uppercase font-bold tracking-widest mb-0.5">{label}</p>
       <p className="text-sm text-white font-medium" data-testid={testId}>{value || "—"}</p>
     </div>
+  );
+}
+
+const HOME_SVC_CATEGORIES = [
+  "Water Damage", "Fire Damage", "Mold Remediation", "Storm Damage",
+  "Roofing", "Plumbing Emergency", "HVAC Failure", "Flood Cleanup",
+];
+
+function HomeSvcSentinelStub() {
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+      <div className="bg-[#0a0a0a] border border-blue-500/30 p-6 rounded-2xl" data-testid="home-svc-stub-banner">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center">
+            <Home size={20} className="text-blue-400" />
+          </div>
+          <div>
+            <h2 className="text-white font-black tracking-tight text-lg">Home Services Mode</h2>
+            <p className="text-blue-400 text-[10px] uppercase tracking-widest font-bold">Phase 1 — Feed Not Connected</p>
+          </div>
+        </div>
+        <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-4 mb-4">
+          <div className="flex items-start gap-2">
+            <AlertCircle size={16} className="text-blue-400 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm text-blue-300 font-medium">This account is configured for Home Services monitoring.</p>
+              <p className="text-xs text-slate-400 mt-1">Signal sources (weather alerts, permit feeds, service dispatches) are not yet connected. Scans will return zero results until Phase 2 integration is complete.</p>
+            </div>
+          </div>
+        </div>
+        <div>
+          <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-3">Service Categories (Planned)</p>
+          <div className="flex flex-wrap gap-2" data-testid="home-svc-categories">
+            {HOME_SVC_CATEGORIES.map(cat => (
+              <span key={cat} className="px-3 py-1 rounded-full bg-blue-500/10 text-blue-300 text-xs font-medium border border-blue-500/20">
+                {cat}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="bg-[#0a0a0a] border border-slate-700/50 p-6 rounded-2xl" data-testid="home-svc-status">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-2 h-2 rounded-full bg-amber-400" />
+          <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">System Status</p>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <p className="text-[10px] text-slate-600 uppercase tracking-widest mb-1">Feed Connection</p>
+            <p className="text-sm text-amber-400 font-bold">Not Connected</p>
+          </div>
+          <div>
+            <p className="text-[10px] text-slate-600 uppercase tracking-widest mb-1">Last Scan Result</p>
+            <p className="text-sm text-slate-400 font-medium">0 incidents (stub)</p>
+          </div>
+          <div>
+            <p className="text-[10px] text-slate-600 uppercase tracking-widest mb-1">Phase</p>
+            <p className="text-sm text-blue-400 font-bold">1 — Scaffold</p>
+          </div>
+          <div>
+            <p className="text-[10px] text-slate-600 uppercase tracking-widest mb-1">Next Milestone</p>
+            <p className="text-sm text-slate-400 font-medium">Phase 2 — Live Feeds</p>
+          </div>
+        </div>
+      </div>
+    </motion.div>
   );
 }

@@ -3,7 +3,7 @@ import { insertSentinelIncidentSchema, messages } from "@shared/schema";
 import type { CadUnitAssigned, CadTimelineEvent, SentinelIncident } from "@shared/schema";
 import { storage } from "../storage";
 import { z } from "zod";
-import { processLiveSentinelFeed, deployGeofenceAd } from "../sentinel";
+import { processLiveSentinelFeed, processLiveHomeSvcFeed, deployGeofenceAd } from "../sentinel";
 import { asyncHandler, parseIntParam, verifyAccountOwnership, requirePlanFeature } from "./helpers";
 import { enforceSmsProvider } from "../smsGatewayGuard";
 
@@ -174,6 +174,7 @@ export function registerSentinelRoutes(app: Express) {
       smsAlertEnabled: true,
       geofenceEnabled: true,
       geofenceRadiusMiles: 1,
+      niche: 'accident',
     });
   }));
 
@@ -189,6 +190,7 @@ export function registerSentinelRoutes(app: Express) {
       smsAlertEnabled: z.boolean().optional(),
       geofenceEnabled: z.boolean().optional(),
       geofenceRadiusMiles: z.number().min(0.1).max(50).optional(),
+      niche: z.enum(['accident', 'home_services']).optional(),
     }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -222,6 +224,16 @@ export function registerSentinelRoutes(app: Express) {
 
     const config = await storage.getSentinelConfig(parsed.data.subAccountId);
     const keywords = config?.keywords?.length ? config.keywords : ['MVA', 'EXTRICATION', 'ROLLOVER', 'INJURIES', 'SIGNAL 4', 'ENTRAPMENT', 'FATALITY'];
+
+    if (config?.niche === 'home_services') {
+      const stubResults = await processLiveHomeSvcFeed();
+      await storage.createAuditLog({
+        action: "SENTINEL_SCAN",
+        performedBy: user?.claims?.sub || user?.id || "system",
+        details: { subAccountId: parsed.data.subAccountId, source: "home_svc_stub", found: 0, niche: "home_services" },
+      });
+      return res.json({ source: "home_svc_stub", found: 0, incidents: stubResults });
+    }
 
     let incidents: any[] = [];
     const sources: string[] = [];
@@ -279,7 +291,7 @@ export function registerSentinelRoutes(app: Express) {
     await storage.createAuditLog({
       action: "SENTINEL_SCAN",
       performedBy: user?.claims?.sub || user?.id || "system",
-      details: { subAccountId: parsed.data.subAccountId, source, found: created.length },
+      details: { subAccountId: parsed.data.subAccountId, source, found: created.length, niche: config?.niche ?? "accident" },
     });
 
     res.json({ source, found: created.length, incidents: created });

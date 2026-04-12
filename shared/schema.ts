@@ -378,6 +378,7 @@ export const sentinelConfig = pgTable("sentinel_config", {
   smsAlertPhone: text("sms_alert_phone"),
   targetCities: text("target_cities").array().default([]),
   targetStates: text("target_states").array().default([]),
+  niche: text("niche").notNull().default("accident"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
