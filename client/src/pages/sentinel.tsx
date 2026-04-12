@@ -287,9 +287,19 @@ export default function Sentinel() {
   const filteredIncidents = locationFilter
     ? incidents.filter(i => (i.location || "").toLowerCase().includes(locationFilter.toLowerCase()))
     : incidents;
-  const pendingIncidents = filteredIncidents.filter(i => i.actionStatus === "pending");
-  const actionedIncidents = filteredIncidents.filter(i => i.actionStatus !== "pending");
-  const criticalCount = filteredIncidents.filter(i => i.severity === "critical" || i.severity === "high").length;
+  const getPriorityScore = (i: SentinelIncident) =>
+    (i.rawPayload as any)?.priorityScore ?? 0;
+
+  const pendingIncidents = filteredIncidents
+    .filter(i => i.actionStatus === "pending")
+    .sort((a, b) => getPriorityScore(b) - getPriorityScore(a));
+
+  const actionedIncidents = filteredIncidents
+    .filter(i => i.actionStatus !== "pending")
+    .sort((a, b) => new Date(b.detectedAt as any).getTime() - new Date(a.detectedAt as any).getTime());
+
+  const criticalCount  = filteredIncidents.filter(i => i.severity === "critical" || i.severity === "high").length;
+  const urgentCount    = filteredIncidents.filter(i => (i.rawPayload as any)?.operatorPriority === 'urgent').length;
 
   const liveSelectedIncident = selectedIncident
     ? incidents.find(i => i.id === selectedIncident.id) || selectedIncident
@@ -468,13 +478,14 @@ export default function Sentinel() {
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
           className="bg-[#0a0a0a] border border-orange-500/30 p-4 rounded-2xl"
-          data-testid="card-critical-incidents"
+          data-testid="card-urgent-incidents"
         >
           <div className="flex items-center gap-2 mb-1">
             <Shield size={14} className="text-orange-500" />
-            <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">High Priority</p>
+            <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">In Territory</p>
           </div>
-          <p className="text-3xl font-black text-white">{criticalCount}</p>
+          <p className="text-3xl font-black text-white">{urgentCount}</p>
+          <p className="text-[9px] text-slate-600 mt-1">urgent priority</p>
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
@@ -558,6 +569,31 @@ export default function Sentinel() {
                 />
               ))}
             </AnimatePresence>
+
+            {pendingIncidents.filter(i => (i.rawPayload as any)?.operatorPriority === 'monitor').length > 3 && (
+              <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/5 mb-2">
+                <p className="text-slate-400 text-xs">
+                  {pendingIncidents.filter(i => (i.rawPayload as any)?.operatorPriority === 'monitor').length} statewide-only crashes pending
+                </p>
+                <button
+                  onClick={() => {
+                    const monitorIds = pendingIncidents
+                      .filter(i => (i.rawPayload as any)?.operatorPriority === 'monitor')
+                      .map(i => i.id);
+                    Promise.all(monitorIds.map(id =>
+                      apiRequest("POST", `/api/sentinel/incidents/${id}/acknowledge`)
+                    )).then(() => {
+                      queryClient.invalidateQueries({ queryKey: ["/api/sentinel/incidents", currentAccount?.id] });
+                      toast({ title: `${monitorIds.length} statewide incidents acknowledged` });
+                    });
+                  }}
+                  className="text-xs text-slate-500 hover:text-white border border-white/10 px-3 py-1 rounded-lg hover:bg-white/5 transition-all"
+                  data-testid="button-bulk-ack-statewide"
+                >
+                  Acknowledge all statewide
+                </button>
+              </div>
+            )}
 
             {actionedIncidents.length > 0 && (
               <>
@@ -941,6 +977,20 @@ function IncidentCard({
           <span className={`${sev.bg} ${sev.text} text-[10px] px-2 py-1 rounded font-black tracking-wider`}>
             {sev.label}
           </span>
+          {(() => {
+            const priority = (incident.rawPayload as any)?.operatorPriority;
+            if (priority === 'urgent') return (
+              <span className="text-[8px] bg-red-500/30 text-red-300 px-1.5 py-0.5 rounded font-black border border-red-500/40">
+                IN TERRITORY
+              </span>
+            );
+            if (priority === 'monitor') return (
+              <span className="text-[8px] bg-slate-500/20 text-slate-500 px-1.5 py-0.5 rounded font-bold">
+                STATEWIDE
+              </span>
+            );
+            return null;
+          })()}
           {raw.source && (
             <span className="text-[8px] bg-cyan-500/10 text-cyan-400 px-1.5 py-0.5 rounded font-bold mt-1 inline-block">
               {raw.source === "lvmpd_live" ? "LVMPD" :

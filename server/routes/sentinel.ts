@@ -4,6 +4,7 @@ import type { CadUnitAssigned, CadTimelineEvent, SentinelIncident } from "@share
 import { storage } from "../storage";
 import { z } from "zod";
 import { processLiveSentinelFeed, deployGeofenceAd } from "../sentinel";
+import { buildCrashMergeUpdate, resolveGeofenceTarget } from "../sentinel-accident-v2";
 import { fetchHomeSvcSignals } from "../sentinel-home-svc";
 import type { HomeSvcSignal } from "../sentinel-home-svc";
 import { asyncHandler, parseIntParam, verifyAccountOwnership, requirePlanFeature } from "./helpers";
@@ -343,20 +344,54 @@ export function registerSentinelRoutes(app: Express) {
       const hash = Buffer.from(hashInput).toString("base64").substring(0, 64);
 
       const existing = await storage.getSentinelIncidentByHash(parsed.data.subAccountId, hash);
+
       if (!existing) {
         const record = await storage.createSentinelIncident({
-          subAccountId: parsed.data.subAccountId,
-          sourceHash: hash,
-          title: inc.title,
-          description: inc.description,
-          location: inc.location,
-          severity: inc.severity || "medium",
-          rawPayload: inc.rawPayload || null,
-          actionStatus: "pending",
-          smsSent: false,
+          subAccountId:     parsed.data.subAccountId,
+          sourceHash:       hash,
+          title:            inc.title,
+          description:      `${inc.title} at ${inc.location}. ${inc.distanceMiles !== 'unknown' ? inc.distanceMiles + ' mi from HQ.' : ''} County: ${inc.county || 'FL'}. ${inc.remarks || ''} [${inc.source?.toUpperCase() || 'UNKNOWN'}]`,
+          location:         inc.location,
+          severity:         inc.severity || "medium",
+          rawPayload: {
+            ...(inc.rawPayload || {}),
+            operatorPriority: (inc as any)._operatorPriority ?? 'monitor',
+            priorityScore:    (inc as any)._priorityScore    ?? 0,
+          },
+          actionStatus:     "pending",
+          smsSent:          false,
           geofenceDeployed: false,
         });
         created.push(record);
+
+      } else {
+        const mergeResult = buildCrashMergeUpdate({
+          existingSeverity:     existing.severity || 'low',
+          existingActionStatus: existing.actionStatus || 'pending',
+          newSeverity:          inc.severity || 'low',
+          newDescription:       inc.remarks || null,
+          newRawPayload: {
+            ...(existing.rawPayload as object || {}),
+            remarks:   inc.remarks,
+            received:  inc.received,
+            priorityScore: (inc as any)._priorityScore ?? 0,
+          },
+        });
+
+        if (
+          mergeResult &&
+          (mergeResult.action === 'severity_upgraded' || mergeResult.action === 're_pended') &&
+          Object.keys(mergeResult.updates).length > 0
+        ) {
+          const updated = await storage.updateSentinelIncident(existing.id, mergeResult.updates);
+          console.log(
+            `[SENTINEL MERGE] Incident ${existing.id} — ${mergeResult.action}: ` +
+            `${existing.severity} → ${inc.severity}`
+          );
+          if (mergeResult.action === 're_pended' && updated) {
+            created.push(updated);
+          }
+        }
       }
     }
 
@@ -409,18 +444,35 @@ export function registerSentinelRoutes(app: Express) {
 
     const rawPayload = incident.rawPayload as any;
 
+    const geoTarget = resolveGeofenceTarget({
+      lat:      rawPayload?.lat,
+      lng:      rawPayload?.lng,
+      location: incident.location,
+    });
+
+    if (!geoTarget) {
+      return res.status(400).json({
+        error:  "Cannot deploy geofence — no valid coordinates or address available for this incident.",
+        code:   "geofence_no_target",
+      });
+    }
+
     const metaConnection = await storage.getIntegrationConnection(incident.subAccountId, "meta-ads");
     const metaCreds = metaConnection?.status === "connected" && metaConnection.config
       ? { accessToken: (metaConnection.config as any).accessToken, adAccountId: (metaConnection.config as any).adAccountId }
       : undefined;
 
     const geoResult = await deployGeofenceAd({
-      id: incident.id,
+      id:       incident.id,
       location: incident.location || "",
-      lat: rawPayload?.lat || null,
-      lng: rawPayload?.lng || null,
-      title: incident.title || undefined,
+      lat:      geoTarget.type === 'coordinates' ? geoTarget.lat : null,
+      lng:      geoTarget.type === 'coordinates' ? geoTarget.lng : null,
+      title:    incident.title || undefined,
     }, radius, metaCreds);
+
+    console.log(
+      `[SENTINEL GEOFENCE] Deployed via ${geoTarget.type} targeting to ${incident.location}`
+    );
 
     await storage.updateSentinelIncident(id, {
       geofenceDeployed: true,
