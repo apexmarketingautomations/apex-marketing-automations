@@ -111,6 +111,18 @@ Apex Marketing Automations is a multi-tenant SaaS platform that centralizes busi
 - **Crash Worker**: Processes crash reports for downstream actions (hourly).
 - **Sentinel Dashboard**: Monitoring UI for crash incidents.
 
+### Sentinel Home Services (Level 3)
+- **Signal Ingestion**: Fetches NOAA NWS weather alerts, classifies signal types (tornado, hail, flood, etc.), infers service categories (roofing, water restoration, etc.).
+- **Opportunity Scoring**: Deterministic 0-100 score with breakdown: severity (30), urgency (20), signal type (20), service value (15), territory match (10), freshness (5), cluster bonus (5).
+- **Territory Resolution**: Matches alerts to operator-defined territories via state/county/city filters.
+- **Expired Alert Handling**: Skips expired NOAA alerts during scan; client-side expiry status detection dims/hides expired signals from active queue.
+- **Operator Queue**: Signals sorted by priority: auto-queued first, then by score descending. Expired alerts moved to bottom section.
+- **Delivery Rules**: Auto-queue logic based on score, territory, service type, and signal type thresholds.
+- **Score Tiers**: immediate (80+), strong (60+), standard (40+), monitor (<40).
+- **Lead Readiness**: ready (75+), warm (50+), developing (25+), monitoring (<25).
+- **Service Value Tiers**: premium (roofing, water restoration, mold), standard (HVAC, plumbing, tree removal), basic.
+- **Key Files**: `server/sentinel-home-svc.ts` (logic), `server/routes/sentinel.ts` (API), `client/src/pages/sentinel.tsx` (UI).
+
 ### Integrations
 - **Meta/Facebook**: Webhooks for DMs (production URL: `https://apex-marketing-automations.replit.app/api/meta-webhook`), Graph API for publishing, ad campaigns.
 - **Twilio**: SMS, phone provisioning, WhatsApp Business API.

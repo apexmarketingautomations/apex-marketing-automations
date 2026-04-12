@@ -1,7 +1,7 @@
 /**
  * server/sentinel-home-svc.ts
  *
- * Sentinel Home Services — Level 2 signal ingestion module.
+ * Sentinel Home Services — Level 3 signal ingestion module.
  *
  * ISOLATION CONTRACT — enforced:
  *   - Does NOT import from server/sentinel.ts
@@ -420,6 +420,36 @@ export const SIGNAL_FAMILY_MAP: Record<string, string> = {
 
 function getSignalFamily(signalType: string): string {
   return SIGNAL_FAMILY_MAP[signalType] ?? 'other';
+}
+
+// ---------------------------------------------------------------------------
+// Level 3 utility: expired alert detection
+//
+// NOAA alerts carry an `expires` ISO timestamp. Signals past expiry are
+// stale and should be demoted or marked expired by the operator queue.
+// This is a pure function — no DB or side-effects.
+// ---------------------------------------------------------------------------
+
+export function isAlertExpired(expiresIso: string | null | undefined): boolean {
+  if (!expiresIso) return false;
+  try {
+    return new Date(expiresIso).getTime() < Date.now();
+  } catch {
+    return false;
+  }
+}
+
+export function alertExpiryStatus(expiresIso: string | null | undefined): 'active' | 'expiring_soon' | 'expired' {
+  if (!expiresIso) return 'active';
+  try {
+    const expiresAt = new Date(expiresIso).getTime();
+    const now = Date.now();
+    if (expiresAt < now) return 'expired';
+    if (expiresAt - now < 60 * 60 * 1000) return 'expiring_soon';
+    return 'active';
+  } catch {
+    return 'active';
+  }
 }
 
 // ---------------------------------------------------------------------------

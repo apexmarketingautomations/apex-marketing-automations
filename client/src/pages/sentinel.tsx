@@ -1438,6 +1438,49 @@ function formatExpiry(expires: string | null | undefined): string | null {
   } catch { return null; }
 }
 
+function computeExpiryStatus(expires: string | null | undefined): 'active' | 'expiring_soon' | 'expired' {
+  if (!expires) return 'active';
+  try {
+    const expiresAt = new Date(expires).getTime();
+    const now = Date.now();
+    if (expiresAt < now) return 'expired';
+    if (expiresAt - now < 60 * 60 * 1000) return 'expiring_soon';
+    return 'active';
+  } catch { return 'active'; }
+}
+
+const SCORE_TIER_COLORS: Record<string, { bg: string; text: string; border: string; label: string }> = {
+  immediate: { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30', label: 'IMMEDIATE' },
+  strong:    { bg: 'bg-orange-500/20', text: 'text-orange-400', border: 'border-orange-500/30', label: 'STRONG' },
+  standard:  { bg: 'bg-amber-500/20', text: 'text-amber-400', border: 'border-amber-500/30', label: 'STANDARD' },
+  monitor:   { bg: 'bg-slate-500/20', text: 'text-slate-400', border: 'border-slate-500/30', label: 'MONITOR' },
+};
+
+const LEAD_READINESS_COLORS: Record<string, { bg: string; text: string; label: string }> = {
+  ready:      { bg: 'bg-green-500/20', text: 'text-green-400', label: 'Ready' },
+  warm:       { bg: 'bg-amber-500/20', text: 'text-amber-400', label: 'Warm' },
+  developing: { bg: 'bg-blue-500/20', text: 'text-blue-400', label: 'Developing' },
+  monitoring: { bg: 'bg-slate-500/20', text: 'text-slate-400', label: 'Monitoring' },
+};
+
+function sortByOperatorPriority(incidents: SentinelIncident[]): SentinelIncident[] {
+  return [...incidents].sort((a, b) => {
+    const rawA = a.rawPayload as any;
+    const rawB = b.rawPayload as any;
+    const expA = computeExpiryStatus(rawA?.expires);
+    const expB = computeExpiryStatus(rawB?.expires);
+    if (expA === 'expired' && expB !== 'expired') return 1;
+    if (expB === 'expired' && expA !== 'expired') return -1;
+    const statusOrder: Record<string, number> = { auto_queued: 0, pending: 1, lead_flagged: 2, acknowledged: 3, expired: 4 };
+    const sA = statusOrder[a.actionStatus || 'pending'] ?? 1;
+    const sB = statusOrder[b.actionStatus || 'pending'] ?? 1;
+    if (sA !== sB) return sA - sB;
+    const scoreA = rawA?.opportunityScore ?? 0;
+    const scoreB = rawB?.opportunityScore ?? 0;
+    return scoreB - scoreA;
+  });
+}
+
 function HomeSvcSentinelView({
   incidents,
   loadingIncidents,
@@ -1459,27 +1502,29 @@ function HomeSvcSentinelView({
   markLeadPending: boolean;
   onSelectIncident: (incident: SentinelIncident) => void;
 }) {
-  const isActive = (status: string | null | undefined) =>
-    status === 'pending' || status === 'auto_queued';
-
-  const pendingSignals = incidents
-    .filter(i => isActive(i.actionStatus))
-    .sort((a, b) => {
-      if (a.actionStatus === 'auto_queued' && b.actionStatus !== 'auto_queued') return -1;
-      if (b.actionStatus === 'auto_queued' && a.actionStatus !== 'auto_queued') return  1;
-      return (
-        ((b.rawPayload as any)?.opportunityScore ?? 0) -
-        ((a.rawPayload as any)?.opportunityScore ?? 0)
-      );
-    });
-
-  const actionedSignals = incidents.filter(i => !isActive(i.actionStatus));
-  const autoQueuedCount = incidents.filter(i => i.actionStatus === 'auto_queued').length;
+  const activeSignals  = incidents.filter(i => {
+    const exp = computeExpiryStatus((i.rawPayload as any)?.expires);
+    return exp !== 'expired' && (i.actionStatus === 'pending' || i.actionStatus === 'auto_queued');
+  });
+  const expiredSignals = incidents.filter(i => computeExpiryStatus((i.rawPayload as any)?.expires) === 'expired');
+  const actionedSignals = incidents.filter(i => {
+    const exp = computeExpiryStatus((i.rawPayload as any)?.expires);
+    return exp !== 'expired' && i.actionStatus !== 'pending' && i.actionStatus !== 'auto_queued';
+  });
+  const actionRequired  = incidents.filter(i => (i.rawPayload as any)?.actionRequired === true).length;
   const flaggedCount    = incidents.filter(i => i.actionStatus === 'lead_flagged').length;
+  const autoQueuedCount = incidents.filter(i => i.actionStatus === 'auto_queued').length;
+  const inTerritoryCount = incidents.filter(i => {
+    const t = (i.rawPayload as any)?.territory;
+    return t && t !== 'unassigned';
+  }).length;
+
+  const sortedActive = sortByOperatorPriority(activeSignals);
+  const sortedActioned = sortByOperatorPriority(actionedSignals);
 
   return (
     <>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
           className="bg-[#0a0a0a] border border-amber-500/30 p-4 rounded-2xl">
           <div className="flex items-center gap-2 mb-1">
@@ -1497,15 +1542,15 @@ function HomeSvcSentinelView({
           <p className="text-3xl font-black text-white" data-testid="text-home-svc-auto-queued">{autoQueuedCount}</p>
           <p className="text-[9px] text-slate-600 mt-0.5">delivery rules fired</p>
         </motion.div>
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}
           className="bg-[#0a0a0a] border border-cyan-500/30 p-4 rounded-2xl">
           <div className="flex items-center gap-2 mb-1">
-            <Clock size={14} className="text-cyan-500" />
-            <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Active Queue</p>
+            <Crosshair size={14} className="text-cyan-500" />
+            <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">In Territory</p>
           </div>
-          <p className="text-3xl font-black text-white" data-testid="text-home-svc-pending">{pendingSignals.length}</p>
+          <p className="text-3xl font-black text-white" data-testid="text-home-svc-in-territory">{inTerritoryCount}</p>
         </motion.div>
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
           className="bg-[#0a0a0a] border border-green-500/30 p-4 rounded-2xl">
           <div className="flex items-center gap-2 mb-1">
             <CheckCircle2 size={14} className="text-green-500" />
@@ -1515,14 +1560,24 @@ function HomeSvcSentinelView({
         </motion.div>
       </div>
 
+      {expiredSignals.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+          className="bg-slate-900/50 border border-slate-700/30 rounded-xl p-3 mb-4 flex items-center gap-3">
+          <Clock size={14} className="text-slate-500 flex-shrink-0" />
+          <p className="text-xs text-slate-500">
+            <span className="font-bold text-slate-400">{expiredSignals.length}</span> expired signal{expiredSignals.length !== 1 ? 's' : ''} hidden from active queue
+          </p>
+        </motion.div>
+      )}
+
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
         className="bg-[#0a0a0a] border border-amber-500/30 p-6 rounded-2xl mb-8">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
           <h2 className="text-amber-500 font-black tracking-widest uppercase flex items-center gap-2">
-            <Radio size={16} /> Home Services Signal Stream
+            <Radio size={16} /> Operator Queue
           </h2>
           <span className="text-[10px] text-gray-600 uppercase tracking-widest">
-            {incidents.length} signal{incidents.length !== 1 ? 's' : ''} · NOAA NWS
+            {sortedActive.length} active · {incidents.length} total · NOAA NWS
           </span>
         </div>
 
@@ -1542,7 +1597,7 @@ function HomeSvcSentinelView({
         ) : (
           <div className="space-y-3">
             <AnimatePresence>
-              {pendingSignals.map((incident, i) => (
+              {sortedActive.map((incident, i) => (
                 <HomeSvcIncidentCard
                   key={incident.id}
                   incident={incident}
@@ -1557,14 +1612,14 @@ function HomeSvcSentinelView({
               ))}
             </AnimatePresence>
 
-            {actionedSignals.length > 0 && (
+            {sortedActioned.length > 0 && (
               <>
                 <div className="flex items-center gap-3 mt-6 mb-3">
                   <div className="flex-1 h-px bg-white/10" />
                   <span className="text-xs text-slate-600 uppercase tracking-widest font-bold">Previously Actioned</span>
                   <div className="flex-1 h-px bg-white/10" />
                 </div>
-                {actionedSignals.slice(0, 10).map((incident, i) => (
+                {sortedActioned.slice(0, 10).map((incident, i) => (
                   <HomeSvcIncidentCard
                     key={incident.id}
                     incident={incident}
@@ -1580,6 +1635,31 @@ function HomeSvcSentinelView({
                 ))}
               </>
             )}
+
+            {expiredSignals.length > 0 && (
+              <>
+                <div className="flex items-center gap-3 mt-6 mb-3">
+                  <div className="flex-1 h-px bg-slate-800" />
+                  <span className="text-xs text-slate-700 uppercase tracking-widest font-bold">Expired</span>
+                  <div className="flex-1 h-px bg-slate-800" />
+                </div>
+                {expiredSignals.slice(0, 5).map((incident, i) => (
+                  <HomeSvcIncidentCard
+                    key={incident.id}
+                    incident={incident}
+                    index={i}
+                    onSms={() => onSms(incident.id)}
+                    onAck={() => onAck(incident.id)}
+                    onMarkLead={() => onMarkLead(incident.id)}
+                    onClick={() => onSelectIncident(incident)}
+                    smsPending={false}
+                    markLeadPending={false}
+                    dimmed
+                    isExpired
+                  />
+                ))}
+              </>
+            )}
           </div>
         )}
       </motion.div>
@@ -1588,7 +1668,7 @@ function HomeSvcSentinelView({
 }
 
 function HomeSvcIncidentCard({
-  incident, index, onSms, onAck, onMarkLead, onClick, smsPending, markLeadPending, dimmed,
+  incident, index, onSms, onAck, onMarkLead, onClick, smsPending, markLeadPending, dimmed, isExpired: forceExpired,
 }: {
   incident: SentinelIncident;
   index: number;
@@ -1599,22 +1679,30 @@ function HomeSvcIncidentCard({
   smsPending: boolean;
   markLeadPending: boolean;
   dimmed?: boolean;
+  isExpired?: boolean;
 }) {
   const sev = SEVERITY_COLORS[incident.severity || 'medium'] || SEVERITY_COLORS.medium;
   const raw = incident.rawPayload as any;
   const isPending = incident.actionStatus === 'pending' || incident.actionStatus === 'auto_queued';
   const serviceTypes: string[] = Array.isArray(raw?.serviceTypes) ? raw.serviceTypes : [];
   const expiryLabel = formatExpiry(raw?.expires);
-  const isExpired = raw?.expires ? new Date(raw.expires).getTime() < Date.now() : false;
+  const expiryStatus = forceExpired ? 'expired' : computeExpiryStatus(raw?.expires);
+  const score: number = raw?.opportunityScore ?? 0;
+  const scoreTier: string = raw?.scoreTier ?? 'monitor';
+  const territory: string = raw?.territory ?? 'unassigned';
+  const leadReadiness: string = raw?.leadReadiness ?? 'monitoring';
+  const tierStyle = SCORE_TIER_COLORS[scoreTier] || SCORE_TIER_COLORS.monitor;
+  const readinessStyle = LEAD_READINESS_COLORS[leadReadiness] || LEAD_READINESS_COLORS.monitoring;
+  const serviceValueTier: string = raw?.serviceValueTier ?? 'basic';
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: dimmed ? 0.5 : isExpired ? 0.4 : 1, y: 0 }}
+      animate={{ opacity: dimmed ? 0.5 : expiryStatus === 'expired' ? 0.4 : 1, y: 0 }}
       exit={{ opacity: 0, x: -20 }}
       transition={{ delay: index * 0.03 }}
-      className={`border-b border-white/5 pb-4 last:border-0 last:pb-0 cursor-pointer rounded-lg p-2 -mx-2 transition-colors ${
-        isExpired
+      className={`border-b border-white/5 pb-4 last:border-0 last:pb-0 cursor-pointer rounded-lg p-3 -mx-2 transition-colors ${
+        expiryStatus === 'expired'
           ? 'opacity-40 hover:opacity-60'
           : incident.actionStatus === 'auto_queued'
             ? 'border border-orange-500/20 bg-orange-500/5 hover:bg-orange-500/10'
@@ -1632,73 +1720,70 @@ function HomeSvcIncidentCard({
                 {raw.signalType.replace(/_/g, ' ')}
               </span>
             )}
-            {(() => {
-              const score = raw?.opportunityScore;
-              const tier  = raw?.scoreTier ?? 'monitor';
-              if (score === undefined || score === null) return null;
-              const colors: Record<string, string> = {
-                immediate: 'bg-red-500/20 text-red-300 border-red-500/30',
-                strong:    'bg-amber-500/20 text-amber-300 border-amber-500/30',
-                standard:  'bg-blue-500/20 text-blue-300 border-blue-500/30',
-                monitor:   'bg-slate-500/20 text-slate-400 border-slate-500/20',
-              };
-              return (
-                <span className={`text-[8px] px-1.5 py-0.5 rounded font-black border ${colors[tier]}`} data-testid={`badge-score-${incident.id}`}>
-                  {score}
-                </span>
-              );
-            })()}
             {incident.actionStatus === 'auto_queued' && (
-              <span className="text-[8px] bg-orange-500/20 text-orange-300 px-1.5 py-0.5 rounded font-black border border-orange-500/30">
-                AUTO-QUEUED
-              </span>
+              <span className="text-[8px] bg-orange-500/20 text-orange-300 px-1.5 py-0.5 rounded font-bold border border-orange-500/30" data-testid={`badge-auto-queued-${incident.id}`}>AUTO-QUEUED</span>
             )}
-            {isExpired && (
-              <span className="text-[8px] bg-slate-500/20 text-slate-400 px-1.5 py-0.5 rounded font-black border border-slate-500/20">
-                EXPIRED
-              </span>
-            )}
-            {(() => {
-              const territory = raw?.territory;
-              if (!territory || territory === 'unassigned') return null;
-              return (
-                <span className="text-[8px] bg-cyan-500/10 text-cyan-400 px-1.5 py-0.5 rounded font-bold border border-cyan-500/20">
-                  {territory}
-                </span>
-              );
-            })()}
             {incident.actionStatus === 'lead_flagged' && (
               <span className="text-[8px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded font-bold">FLAGGED</span>
             )}
             {incident.smsSent && (
               <span className="text-[8px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded font-bold">SMS SENT</span>
             )}
+            {expiryStatus === 'expired' && (
+              <span className="text-[8px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded font-bold border border-red-500/30" data-testid={`badge-expired-${incident.id}`}>EXPIRED</span>
+            )}
+            {expiryStatus === 'expiring_soon' && (
+              <span className="text-[8px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded font-bold border border-yellow-500/30 animate-pulse" data-testid={`badge-expiring-${incident.id}`}>EXPIRING SOON</span>
+            )}
           </div>
-          <p className="text-gray-500 text-xs flex items-center gap-1 mb-1">
-            <MapPin size={10} /> {incident.location || 'Area not specified'}
-          </p>
+          <div className="flex items-center gap-3 mb-1 flex-wrap">
+            <p className="text-gray-500 text-xs flex items-center gap-1">
+              <MapPin size={10} /> {incident.location || 'Area not specified'}
+            </p>
+            {territory !== 'unassigned' && (
+              <span className="text-[9px] bg-cyan-500/10 text-cyan-400 px-1.5 py-0.5 rounded font-bold border border-cyan-500/20" data-testid={`badge-territory-${incident.id}`}>
+                <Crosshair size={8} className="inline mr-0.5" />{territory}
+              </span>
+            )}
+          </div>
           {serviceTypes.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1">
               {serviceTypes.slice(0, 4).map(svc => (
-                <span key={svc} className="text-[9px] bg-white/5 text-slate-400 px-1.5 py-0.5 rounded border border-white/10">
+                <span key={svc} className={`text-[9px] px-1.5 py-0.5 rounded border ${
+                  serviceValueTier === 'premium' && ['roofing', 'water_restoration', 'mold_remediation', 'foundation_repair'].includes(svc)
+                    ? 'bg-amber-500/10 text-amber-300 border-amber-500/20 font-bold'
+                    : 'bg-white/5 text-slate-400 border-white/10'
+                }`}>
                   {serviceLabel(svc)}
                 </span>
               ))}
+              {serviceValueTier === 'premium' && (
+                <span className="text-[8px] text-amber-500 font-bold uppercase tracking-wider">Premium</span>
+              )}
             </div>
           )}
-          {expiryLabel && <p className="text-[10px] text-slate-600 mt-1">{expiryLabel}</p>}
+          {expiryLabel && expiryStatus !== 'expired' && <p className="text-[10px] text-slate-600 mt-1">{expiryLabel}</p>}
         </div>
-        <div className="text-right flex-shrink-0">
-          <span className={`${sev.bg} ${sev.text} text-[10px] px-2 py-1 rounded font-black tracking-wider`}>
-            {sev.label}
+        <div className="text-right flex-shrink-0 space-y-1">
+          <div className="flex items-center gap-1.5 justify-end">
+            <span className={`${tierStyle.bg} ${tierStyle.text} text-[10px] px-2 py-1 rounded font-black tracking-wider border ${tierStyle.border}`} data-testid={`badge-score-tier-${incident.id}`}>
+              {tierStyle.label}
+            </span>
+          </div>
+          <div className="flex items-center gap-1 justify-end" data-testid={`text-score-${incident.id}`}>
+            <span className="text-lg font-black text-white">{score}</span>
+            <span className="text-[9px] text-slate-600 font-bold">/100</span>
+          </div>
+          <span className={`${readinessStyle.bg} ${readinessStyle.text} text-[8px] px-1.5 py-0.5 rounded font-bold inline-block`} data-testid={`badge-readiness-${incident.id}`}>
+            {readinessStyle.label}
           </span>
-          <p className="text-gray-600 text-[9px] mt-1">
+          <p className="text-gray-600 text-[9px]">
             {timeAgo(incident.detectedAt as unknown as string)}
           </p>
         </div>
       </div>
 
-      {isPending && (
+      {isPending && expiryStatus !== 'expired' && (
         <div className="flex gap-2 mt-3" onClick={(e) => e.stopPropagation()}>
           <button
             onClick={onMarkLead}
@@ -1730,6 +1815,21 @@ function HomeSvcIncidentCard({
   );
 }
 
+function ScoreBreakdownBar({ label, points, maxPoints, color }: { label: string; points: number; maxPoints: number; color: string }) {
+  const pct = maxPoints > 0 ? Math.round((points / maxPoints) * 100) : 0;
+  return (
+    <div className="space-y-1">
+      <div className="flex justify-between text-[10px]">
+        <span className="text-slate-400 font-bold uppercase tracking-wider">{label}</span>
+        <span className="text-white font-bold">{points}/{maxPoints}</span>
+      </div>
+      <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
 function HomeSvcIncidentDetailView({
   incident, onBack, onSms, onAck, onMarkLead, smsPending, markLeadPending,
 }: {
@@ -1746,11 +1846,19 @@ function HomeSvcIncidentDetailView({
   const isPending = incident.actionStatus === 'pending' || incident.actionStatus === 'auto_queued';
   const serviceTypes: string[] = Array.isArray(raw?.serviceTypes) ? raw.serviceTypes : [];
   const expiryLabel = formatExpiry(raw?.expires);
-  const isExpired = raw?.expires ? new Date(raw.expires).getTime() < Date.now() : false;
+  const expiryStatus = computeExpiryStatus(raw?.expires);
   const effectiveLabel = raw?.onset ? formatDateTime(raw.onset) : null;
   const lat = raw?.lat || incident.lat;
   const lng = raw?.lng || incident.lng;
   const googleMapsUrl = raw?.googleMaps || (lat && lng ? `https://www.google.com/maps?q=${lat},${lng}` : null);
+  const score: number = raw?.opportunityScore ?? 0;
+  const scoreTier: string = raw?.scoreTier ?? 'monitor';
+  const breakdown = raw?.scoreBreakdown ?? {};
+  const territory: string = raw?.territory ?? 'unassigned';
+  const leadReadiness: string = raw?.leadReadiness ?? 'monitoring';
+  const serviceValueTier: string = raw?.serviceValueTier ?? 'basic';
+  const tierStyle = SCORE_TIER_COLORS[scoreTier] || SCORE_TIER_COLORS.monitor;
+  const readinessStyle = LEAD_READINESS_COLORS[leadReadiness] || LEAD_READINESS_COLORS.monitoring;
 
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}>
@@ -1760,13 +1868,27 @@ function HomeSvcIncidentDetailView({
 
       <div className="text-xs font-bold uppercase tracking-widest mb-3 text-amber-400 flex items-center gap-2">
         Source: NOAA NWS — Home Services Signal
-        {isExpired && (
-          <span className="text-[8px] bg-slate-500/20 text-slate-400 px-1.5 py-0.5 rounded font-black border border-slate-500/20">EXPIRED</span>
+        {expiryStatus === 'expired' && (
+          <span className="text-[8px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded font-black border border-red-500/20">EXPIRED</span>
         )}
         {incident.actionStatus === 'auto_queued' && (
           <span className="text-[8px] bg-orange-500/20 text-orange-300 px-1.5 py-0.5 rounded font-black border border-orange-500/30">AUTO-QUEUED</span>
         )}
       </div>
+
+      {expiryStatus === 'expired' && (
+        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 mb-4 flex items-center gap-3">
+          <AlertCircle size={16} className="text-red-400 flex-shrink-0" />
+          <p className="text-red-400 text-sm font-bold">This alert has expired. The NOAA alert is no longer active.</p>
+        </div>
+      )}
+
+      {expiryStatus === 'expiring_soon' && (
+        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-3 mb-4 flex items-center gap-3 animate-pulse">
+          <Clock size={16} className="text-yellow-400 flex-shrink-0" />
+          <p className="text-yellow-400 text-sm font-bold">This alert expires within the hour. Act quickly if needed.</p>
+        </div>
+      )}
 
       <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
         <div>
@@ -1775,9 +1897,52 @@ function HomeSvcIncidentDetailView({
             Detected {formatDateTime(incident.detectedAt as unknown as string)} · {timeAgo(incident.detectedAt as unknown as string)}
           </p>
         </div>
-        <span className={`${sev.bg} ${sev.text} text-xs px-3 py-1.5 rounded-full font-black tracking-wider border ${sev.border}`}>
-          {sev.label}
-        </span>
+        <div className="flex items-center gap-3">
+          {territory !== 'unassigned' && (
+            <span className="bg-cyan-500/10 text-cyan-400 text-xs px-3 py-1.5 rounded-full font-bold border border-cyan-500/20" data-testid="text-home-svc-territory">
+              <Crosshair size={12} className="inline mr-1" />{territory}
+            </span>
+          )}
+          <span className={`${tierStyle.bg} ${tierStyle.text} text-xs px-3 py-1.5 rounded-full font-black tracking-wider border ${tierStyle.border}`} data-testid="text-home-svc-score-tier">
+            {tierStyle.label}
+          </span>
+        </div>
+      </div>
+
+      <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6 mb-6" data-testid="panel-score-breakdown">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+            <ArrowUpCircle size={14} className="text-amber-400" /> Opportunity Score
+          </h3>
+          <div className="flex items-center gap-2">
+            <span className={`${readinessStyle.bg} ${readinessStyle.text} text-[10px] px-2 py-1 rounded font-bold`} data-testid="text-home-svc-readiness">
+              Lead: {readinessStyle.label}
+            </span>
+            <span className="text-3xl font-black text-white" data-testid="text-home-svc-score">{score}</span>
+            <span className="text-sm text-slate-600 font-bold">/100</span>
+          </div>
+        </div>
+        <div className="space-y-3">
+          <ScoreBreakdownBar label="Severity" points={breakdown.severityPoints ?? 0} maxPoints={30} color="bg-red-500" />
+          <ScoreBreakdownBar label="Urgency" points={breakdown.urgencyPoints ?? 0} maxPoints={20} color="bg-orange-500" />
+          <ScoreBreakdownBar label="Signal Type" points={breakdown.signalTypePoints ?? 0} maxPoints={20} color="bg-amber-500" />
+          <ScoreBreakdownBar label="Service Value" points={breakdown.serviceValuePoints ?? 0} maxPoints={15} color="bg-emerald-500" />
+          <ScoreBreakdownBar label="Territory Match" points={breakdown.territoryPoints ?? 0} maxPoints={10} color="bg-cyan-500" />
+          <ScoreBreakdownBar label="Freshness" points={breakdown.freshnessPoints ?? 0} maxPoints={5} color="bg-blue-500" />
+          <ScoreBreakdownBar label="Cluster Bonus" points={breakdown.clusterBonus ?? 0} maxPoints={5} color="bg-purple-500" />
+        </div>
+        {serviceValueTier && (
+          <div className="mt-4 pt-3 border-t border-white/5 flex items-center gap-2">
+            <span className="text-[10px] text-slate-600 uppercase font-bold tracking-widest">Service Value Tier:</span>
+            <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+              serviceValueTier === 'premium' ? 'bg-amber-500/20 text-amber-400' :
+              serviceValueTier === 'standard' ? 'bg-blue-500/20 text-blue-400' :
+              'bg-slate-500/20 text-slate-400'
+            }`} data-testid="text-home-svc-svc-tier">
+              {serviceValueTier.charAt(0).toUpperCase() + serviceValueTier.slice(1)}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
@@ -1792,12 +1957,11 @@ function HomeSvcIncidentDetailView({
             <DetailField label="Urgency"       value={raw?.noaaUrgency}                      testId="text-home-svc-urgency" />
             <DetailField label="Certainty"     value={raw?.noaaCertainty}                    testId="text-home-svc-certainty" />
             <DetailField label="State"         value={raw?.state}                            testId="text-home-svc-state" />
+            <DetailField label="Territory"     value={territory !== 'unassigned' ? territory : 'Unassigned'}  testId="text-home-svc-territory-field" />
           </div>
           {expiryLabel && (
-            <div className={`${isExpired ? 'bg-slate-500/10 border-slate-500/20' : 'bg-amber-500/10 border-amber-500/20'} border rounded-lg p-3 mb-4`}>
-              <p className={`${isExpired ? 'text-slate-400' : 'text-amber-400'} text-xs font-bold`}>
-                {isExpired ? 'EXPIRED — ' : ''}{expiryLabel}
-              </p>
+            <div className={`${expiryStatus === 'expired' ? 'bg-red-500/10 border-red-500/20' : expiryStatus === 'expiring_soon' ? 'bg-yellow-500/10 border-yellow-500/20' : 'bg-amber-500/10 border-amber-500/20'} border rounded-lg p-3 mb-4`}>
+              <p className={`${expiryStatus === 'expired' ? 'text-red-400' : expiryStatus === 'expiring_soon' ? 'text-yellow-400' : 'text-amber-400'} text-xs font-bold`}>{expiryStatus === 'expired' ? 'EXPIRED — ' : ''}{expiryLabel}</p>
             </div>
           )}
           {effectiveLabel && <DetailField label="Effective From" value={effectiveLabel} testId="text-home-svc-effective" />}
@@ -1814,102 +1978,26 @@ function HomeSvcIncidentDetailView({
         </div>
 
         <div className="space-y-6">
-          {(() => {
-            const score     = raw?.opportunityScore;
-            const tier      = raw?.scoreTier ?? 'monitor';
-            const label     = raw?.scoreTierLabel;
-            const readiness = raw?.leadReadiness;
-            const breakdown = raw?.scoreBreakdown;
-            if (score === undefined || score === null) return null;
-
-            const tierColor: Record<string, string> = {
-              immediate: 'text-red-400 border-red-500/30 bg-red-500/10',
-              strong:    'text-amber-400 border-amber-500/30 bg-amber-500/10',
-              standard:  'text-blue-400 border-blue-500/30 bg-blue-500/10',
-              monitor:   'text-slate-400 border-slate-500/20 bg-slate-500/10',
-            };
-
-            return (
-              <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6">
-                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                  <Zap size={14} className="text-amber-400" /> Opportunity Score
-                </h3>
-                <div className="flex items-center gap-3 mb-4">
-                  <div className={`w-14 h-14 rounded-xl flex items-center justify-center border ${tierColor[tier] ?? tierColor.monitor}`}>
-                    <span className="text-2xl font-black">{score}</span>
-                  </div>
-                  <div>
-                    <p className="text-white font-bold text-sm">{label ?? tier}</p>
-                    <p className="text-slate-500 text-xs">
-                      Lead readiness: <span className="text-white font-semibold capitalize">{readiness ?? '—'}</span>
-                    </p>
-                  </div>
-                </div>
-                {breakdown && (
-                  <div className="space-y-1.5">
-                    {([
-                      { label: 'Severity',      value: breakdown.severityPoints,     max: 30 },
-                      { label: 'Urgency',       value: breakdown.urgencyPoints,      max: 20 },
-                      { label: 'Signal Type',   value: breakdown.signalTypePoints,   max: 20 },
-                      { label: 'Service Value', value: breakdown.serviceValuePoints, max: 15 },
-                      { label: 'Territory',     value: breakdown.territoryPoints,    max: 10 },
-                      { label: 'Freshness',     value: breakdown.freshnessPoints,    max: 5  },
-                      { label: 'Cluster',       value: breakdown.clusterBonus,       max: 5  },
-                    ] as const).map(({ label: lbl, value, max }) => (
-                      <div key={lbl} className="flex items-center gap-2">
-                        <span className="text-[9px] text-slate-600 w-20 text-right flex-shrink-0">{lbl}</span>
-                        <div className="flex-1 h-1.5 bg-white/5 rounded-full">
-                          <div
-                            className="h-1.5 bg-amber-500/60 rounded-full"
-                            style={{ width: `${Math.min(100, (value / max) * 100)}%` }}
-                          />
-                        </div>
-                        <span className="text-[9px] text-slate-400 w-8 text-right">{value}/{max}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
-          {(() => {
-            const territory = raw?.territory;
-            const clusterSz = raw?.clusterSize;
-            const hasTerr   = territory && territory !== 'unassigned';
-            const hasClust  = clusterSz && clusterSz > 1;
-            if (!hasTerr && !hasClust) return null;
-            return (
-              <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-4">
-                <div className="grid grid-cols-2 gap-4">
-                  {hasTerr && (
-                    <div>
-                      <p className="text-[9px] text-slate-600 uppercase font-bold tracking-widest mb-1">Territory</p>
-                      <p className="text-white font-bold text-sm">{territory}</p>
-                      <p className="text-[9px] text-slate-600 mt-0.5">Operator ranking only</p>
-                    </div>
-                  )}
-                  {hasClust && (
-                    <div>
-                      <p className="text-[9px] text-slate-600 uppercase font-bold tracking-widest mb-1">Cluster</p>
-                      <p className="text-white font-bold text-sm">{clusterSz} signal{clusterSz !== 1 ? 's' : ''} · same event</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
           {serviceTypes.length > 0 && (
             <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6">
               <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                <Home size={14} className="text-amber-400" /> Inferred Service Categories
+                <Home size={14} className="text-amber-400" /> Recommended Service Categories
               </h3>
+              <p className="text-[10px] text-slate-600 mb-3">Based on signal type: {raw?.signalType?.replace(/_/g, ' ') || 'storm'}</p>
               <div className="flex flex-wrap gap-2" data-testid="list-home-svc-categories">
-                {serviceTypes.map(svc => (
-                  <span key={svc} className="px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-300 text-xs font-bold border border-amber-500/20">
-                    {serviceLabel(svc)}
-                  </span>
-                ))}
+                {serviceTypes.map(svc => {
+                  const isPremium = ['roofing', 'water_restoration', 'mold_remediation', 'foundation_repair'].includes(svc);
+                  return (
+                    <span key={svc} className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${
+                      isPremium
+                        ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                        : 'bg-white/5 text-slate-300 border-white/10'
+                    }`}>
+                      {serviceLabel(svc)}
+                      {isPremium && <span className="ml-1 text-[8px] text-amber-500 font-black">$$$</span>}
+                    </span>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1938,9 +2026,23 @@ function HomeSvcIncidentDetailView({
 
           <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6">
             <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-              <Shield size={14} className="text-emerald-400" /> Response Status
+              <Shield size={14} className="text-emerald-400" /> Operator State
             </h3>
             <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/5">
+                <div className="flex items-center gap-2">
+                  <Eye size={14} className={incident.actionStatus !== "pending" ? "text-green-400" : "text-slate-600"} />
+                  <span className="text-sm text-white">Action Status</span>
+                </div>
+                <span className={`text-xs font-bold px-2 py-1 rounded ${
+                  incident.actionStatus === 'auto_queued' ? "bg-emerald-500/20 text-emerald-400" :
+                  incident.actionStatus === 'lead_flagged' ? "bg-green-500/20 text-green-400" :
+                  incident.actionStatus !== "pending" ? "bg-green-500/20 text-green-400" :
+                  "bg-amber-500/20 text-amber-400"
+                }`} data-testid="text-home-svc-action-status">
+                  {(incident.actionStatus || "pending").replace(/_/g, " ").toUpperCase()}
+                </span>
+              </div>
               <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/5">
                 <div className="flex items-center gap-2">
                   <Target size={14} className={incident.actionStatus === 'lead_flagged' ? "text-green-400" : "text-slate-600"} />
@@ -1959,18 +2061,9 @@ function HomeSvcIncidentDetailView({
                   {incident.smsSent ? "Sent" : "Not Sent"}
                 </span>
               </div>
-              <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/5">
-                <div className="flex items-center gap-2">
-                  <Eye size={14} className={incident.actionStatus !== "pending" ? "text-green-400" : "text-slate-600"} />
-                  <span className="text-sm text-white">Action Status</span>
-                </div>
-                <span className={`text-xs font-bold px-2 py-1 rounded ${incident.actionStatus !== "pending" ? "bg-green-500/20 text-green-400" : "bg-amber-500/20 text-amber-400"}`} data-testid="text-home-svc-action-status">
-                  {(incident.actionStatus || "pending").replace(/_/g, " ").toUpperCase()}
-                </span>
-              </div>
             </div>
 
-            {isPending && (
+            {isPending && expiryStatus !== 'expired' && (
               <div className="flex gap-2 mt-4">
                 <button
                   onClick={onMarkLead}

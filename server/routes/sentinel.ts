@@ -11,6 +11,8 @@ import {
   resolveTerritory,
   findClusterMetadata,
   evaluateDeliveryRules,
+  isAlertExpired,
+  alertExpiryStatus,
 } from "../sentinel-home-svc";
 import type { HomeSvcSignal, HomeSvcConfigShape } from "../sentinel-home-svc";
 import { asyncHandler, parseIntParam, verifyAccountOwnership, requirePlanFeature } from "./helpers";
@@ -291,7 +293,15 @@ export function registerSentinelRoutes(app: Express) {
       const created: any[] = [];
       let autoQueuedCount = 0;
 
+      let expiredSkipped = 0;
+
       for (const sig of signals) {
+        const expired = isAlertExpired(sig.expires);
+        if (expired) {
+          expiredSkipped++;
+          continue;
+        }
+
         const hash = Buffer.from(sig.id).toString("base64").substring(0, 64);
 
         const existing = await storage.getSentinelIncidentByHash(
@@ -307,6 +317,7 @@ export function registerSentinelRoutes(app: Express) {
           clusterSize: cluster.clusterSize,
           sentAtIso:   sig.sent,
         });
+        const expiryStatus = alertExpiryStatus(sig.expires);
         const delivery  = evaluateDeliveryRules(
           sig,
           scoring.opportunityScore,
@@ -338,6 +349,7 @@ export function registerSentinelRoutes(app: Express) {
             noaaUrgency:     sig.noaaUrgency,
             noaaCertainty:   sig.noaaCertainty,
             expires:         sig.expires,
+            expiryStatus,
             onset:           sig.effective,
             state:           sig.state,
             county:          sig.areaDesc,
@@ -372,6 +384,7 @@ export function registerSentinelRoutes(app: Express) {
           signalsFound:  signals.length,
           newIncidents:  created.length,
           autoQueued:    autoQueuedCount,
+          expiredSkipped,
         },
       });
 
