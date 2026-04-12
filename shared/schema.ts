@@ -383,12 +383,35 @@ export const sentinelConfig = pgTable("sentinel_config", {
   targetCities: text("target_cities").array().default([]),
   targetStates: text("target_states").array().default([]),
   niche: text("niche").notNull().default("accident"),
+  homeSvcConfig: jsonb("home_svc_config"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const insertSentinelConfigSchema = createInsertSchema(sentinelConfig).omit({ id: true, updatedAt: true });
 export type InsertSentinelConfig = z.infer<typeof insertSentinelConfigSchema>;
 export type SentinelConfig = typeof sentinelConfig.$inferSelect;
+
+export interface SentinelHomeSvcTerritory {
+  name: string;
+  stateCodes: string[];
+  counties?: string[];
+  cities?: string[];
+}
+
+export interface SentinelDeliveryRule {
+  id: string;
+  name: string;
+  serviceTypes?: string[];
+  minScore?: number;
+  territory?: string;
+  signalTypes?: string[];
+  action: 'auto_queue';
+}
+
+export interface SentinelHomeSvcConfig {
+  territories?: SentinelHomeSvcTerritory[];
+  deliveryRules?: SentinelDeliveryRule[];
+}
 
 export const sentinelIncidents = pgTable("sentinel_incidents", {
   id: serial("id").primaryKey(),

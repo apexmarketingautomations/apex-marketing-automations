@@ -1,0 +1,252 @@
+You are implementing **Sentinel Home Services — Level 3** in a **live production codebase**.
+
+This is a **real production build**.  
+Level 2 is treated as already implemented.  
+Do **not** revisit Accident Sentinel work, and do **not** mix this task with separate accident-side improvements.
+
+## Mission
+Advance **Home Services Sentinel** from a working Level 2 signal stream into a **more intelligent operator-grade system** with:
+
+- territory-aware scoring
+- service recommendation logic
+- expired alert handling
+- configurable Home Services behavior
+- better opportunity ranking
+- cleaner lead-readiness flow
+
+while preserving:
+
+- existing **Accident / Crash Sentinel** behavior
+- existing **Home Services Level 2** behavior unless explicitly improved here
+- strict niche isolation
+- strict tenant isolation
+- no scheduler regression on the accident side
+- no cross-niche leakage
+
+## Critical separation rule
+This task is **Home Services only**.
+
+Do **not**:
+- modify accident-side Sentinel patches
+- merge this with accident-side improvements
+- refactor shared crash logic unless a verified blocker forces a minimal change
+- mix Home Services scoring/routing concepts into Accident Sentinel
+
+If a change touches accident behavior, stop and flag it before proceeding.
+
+## Source-of-truth file
+A Level 3 Home Services handoff file is attached.
+
+Treat that attached Level 3 handoff and its provided `sentinel-home-svc.ts` as the **implementation source of truth** for Home Services logic, but still follow these rules:
+- preserve existing project structure
+- make the smallest safe additive changes
+- do not blindly paste code if it conflicts with the real file structure
+- verify every change against the current live codebase before applying it
+
+## Approved Level 3 scope only
+Implement only the Home Services Level 3 behavior needed to make the system materially smarter and more usable.
+
+### 1. Home Services config expansion
+Add the minimum additive config support needed for Home Services Level 3, including a dedicated config object for Home Services behavior if required by the handoff.
+
+This config should support things like:
+- enabled service categories
+- territory/coverage preferences
+- scoring preferences
+- alert handling behavior
+- lead-readiness tuning
+- expired alert behavior
+
+Keep this **Home Services-specific**.
+
+### 2. Territory-aware impact/opportunity scoring
+Implement scoring for Home Services incidents/opportunities using factors such as:
+- territory fit
+- service match
+- alert severity
+- freshness
+- urgency
+- recommended service confidence
+- opportunity priority
+
+This must remain **Home Services only**.
+
+### 3. Service recommendation engine
+Implement a Home Services recommendation layer that maps weather/alert signals into likely service demand such as:
+- roofing
+- tree removal
+- restoration
+- plumbing
+- HVAC
+- electrical
+- gutters
+- siding
+- fencing
+- storm cleanup
+- related urgent exterior services
+
+Do not apply this logic to crash incidents.
+
+### 4. Expired alert handling
+Implement proper handling for expired Home Services alerts so stale NOAA/weather signals do not continue to present as live opportunities.
+
+At minimum:
+- clearly identify expired alerts
+- suppress or downgrade them appropriately
+- prevent misleading “active” presentation
+- keep behavior consistent across UI and backend processing
+
+### 5. Lead-readiness / lead pipeline preparation
+Implement the next step beyond Level 2’s mark-only behavior, but stay controlled.
+
+Allowed:
+- lead-readiness state
+- stronger opportunity classification
+- better operator-facing prioritization
+- structured signal-to-lead preparation
+
+Not allowed unless explicitly required by the handoff:
+- broad CRM automation sprawl
+- broad workflow trigger expansion
+- unrelated sales pipeline redesign
+
+### 6. Home Services operator UX improvement
+Improve the Home Services branch of the Sentinel page so operators can better understand:
+- what the signal is
+- what service it likely maps to
+- whether it is expired or still active
+- how strong the opportunity is
+- what territory relevance it has
+- what state it is in operationally
+
+Keep all UX changes inside the Home Services branch only.
+
+---
+
+## Explicitly out of scope
+Do **not** include any of the following unless a real blocker requires a minimal exception and you explain it first:
+
+- accident-side Sentinel improvements
+- accident scheduler changes
+- CAD ingest changes
+- crash severity logic changes
+- crash UI changes
+- shared multi-niche architecture rewrite
+- broad billing/pricing changes
+- generic route namespace redesign
+- geofence deployment for Home Services unless explicitly required and approved
+- unrelated platform refactors
+- support for customers selling sub-accounts/white-label admin rights unless separately tasked
+
+---
+
+## File discipline
+Keep file scope as tight as possible.
+
+Expected files should stay within the smallest necessary set, likely around:
+- `server/sentinel-home-svc.ts`
+- `server/routes/sentinel.ts`
+- `client/src/pages/sentinel.tsx`
+- `shared/schema.ts`
+
+Only touch additional files if truly required by the attached handoff.  
+If additional files are needed:
+- explain exactly why
+- keep changes additive
+- do not broaden scope casually
+
+## Data/model rules
+Do not add a `niche` column to `sentinel_incidents`.
+
+Any Level 3 Home Services data additions must be:
+- additive
+- minimal
+- justified by Level 3 requirements
+- safe for live production migration
+- clearly scoped to Home Services
+
+If a JSON/JSONB Home Services config field is required, keep it constrained and documented.
+
+## Scheduler rule
+Do **not** modify the accident scheduler.
+
+If the attached Home Services Level 3 handoff requires scheduled Home Services processing:
+- isolate it completely from the accident scheduler
+- explain the exact isolation method before implementation
+- do not piggyback on accident scheduling behavior
+
+If scheduled processing is not essential for this handoff, keep this task on the safer manual/on-demand path.
+
+## UI rules
+All Level 3 UI must remain inside the **Home Services branch only**.
+
+Required:
+- improved Home Services signal presentation
+- expired signal clarity
+- scoring/priority visibility
+- service recommendation visibility
+- territory relevance visibility
+
+Not allowed:
+- crash labels/actions in Home Services
+- Home Services labels/actions in Accident
+- broad shared UI rewrites for elegance
+
+## Safety rules
+- preserve working Accident / Crash Sentinel
+- preserve working Home Services Level 2 unless explicitly upgraded here
+- no cross-niche leakage
+- no cross-account leakage
+- no fake completion
+- no “done” claims for partially wired logic
+- fail closed
+
+## Build process
+Before coding:
+1. inspect the real current files
+2. compare them against the attached Level 3 handoff
+3. identify the minimum safe implementation path
+4. return the plan for approval
+
+Only then proceed.
+
+## Return format before coding
+Return only:
+- proposed scope
+- exact files expected to change
+- migration needs, if any
+- main production risks
+- what will remain untouched
+
+## Completion criteria
+Do not call Level 3 complete unless all of these are true:
+
+### Home Services Level 3
+- Level 3 config behavior is implemented
+- territory-aware scoring is implemented
+- service recommendation logic is implemented
+- expired alert handling works
+- Home Services operator view is materially improved
+- lead-readiness/opportunity state is clearer than Level 2
+
+### Preservation checks
+- Accident / Crash remains behaviorally unchanged
+- Home Services Level 2 core behavior still works
+- no scheduler regression on accident side
+- no cross-niche leakage
+- no cross-account leakage
+
+### Verification output
+When complete, return only:
+- exact files changed
+- exact Level 3 behaviors implemented
+- exact behaviors manually verified
+- any deferred items
+- any real production risks still remaining
+
+## Final instruction
+This is a **Home Services Level 3 task only**.
+
+Do not mix it with accident-side Sentinel work.  
+Do not broaden it into a platform redesign.  
+Start by returning the plan for approval before making code changes.

@@ -102,6 +102,7 @@ export default function Sentinel() {
     targetCities: "",
     targetStates: "",
     niche: "accident" as "accident" | "home_services",
+    homeSvcConfig: null as any,
   });
   const [originalNiche, setOriginalNiche] = useState<"accident" | "home_services">("accident");
   const [nicheChangeConfirmed, setNicheChangeConfirmed] = useState(false);
@@ -150,6 +151,7 @@ export default function Sentinel() {
         targetCities: ((config as any).targetCities || []).join(", "),
         targetStates: ((config as any).targetStates || []).join(", "),
         niche,
+        homeSvcConfig: (config as any)?.homeSvcConfig ?? null,
       });
       setOriginalNiche(niche);
       setNicheChangeConfirmed(false);
@@ -253,6 +255,7 @@ export default function Sentinel() {
         targetCities: configForm.targetCities.split(",").map(c => c.trim()).filter(Boolean),
         targetStates: configForm.targetStates.split(",").map(s => s.trim()).filter(Boolean),
         niche: configForm.niche,
+        homeSvcConfig: configForm.homeSvcConfig ?? null,
       });
       return res.json();
     },
@@ -718,8 +721,109 @@ export default function Sentinel() {
                     </div>
                   )}
                 </div>
-                <div className="text-[10px] text-slate-700 border border-white/5 rounded-lg p-3">
-                  Keywords, Geofence, and advanced targeting are not active in Home Services Level 2.
+                <div className="border border-white/5 rounded-lg p-3 space-y-3">
+                  <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Level 3 — Territories</p>
+                  {(() => {
+                    const territories = configForm.homeSvcConfig?.territories ?? [];
+                    return (
+                      <div className="space-y-2">
+                        {territories.map((t: any, idx: number) => (
+                          <div key={idx} className="bg-white/5 border border-white/10 rounded-md px-3 py-2 flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-xs text-white font-bold truncate">{t.name}</p>
+                              <p className="text-[9px] text-slate-500">{(t.stateCodes || []).join(', ')}{t.counties?.length ? ` · ${t.counties.join(', ')}` : ''}</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = [...territories];
+                                updated.splice(idx, 1);
+                                setConfigForm(f => ({ ...f, homeSvcConfig: { ...f.homeSvcConfig, territories: updated } }));
+                              }}
+                              className="text-red-400 text-[10px] font-bold hover:text-red-300 shrink-0"
+                              data-testid={`button-remove-territory-${idx}`}
+                            >Remove</button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const name = prompt('Territory name (e.g. "SWFL")');
+                            if (!name) return;
+                            const states = prompt('State codes, comma-separated (e.g. FL,TX)');
+                            if (!states) return;
+                            const counties = prompt('Counties (optional, comma-separated)') || '';
+                            const newTerritory = {
+                              name,
+                              stateCodes: states.split(',').map((s: string) => s.trim().toUpperCase()).filter(Boolean),
+                              counties: counties ? counties.split(',').map((c: string) => c.trim()).filter(Boolean) : undefined,
+                            };
+                            const current = configForm.homeSvcConfig?.territories ?? [];
+                            setConfigForm(f => ({ ...f, homeSvcConfig: { ...f.homeSvcConfig, territories: [...current, newTerritory] } }));
+                          }}
+                          className="flex items-center gap-1 text-[10px] text-amber-400 font-bold hover:text-amber-300"
+                          data-testid="button-add-territory"
+                        >
+                          <Plus size={10} /> Add Territory
+                        </button>
+                      </div>
+                    );
+                  })()}
+                  <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mt-3">Level 3 — Delivery Rules</p>
+                  {(() => {
+                    const rules = configForm.homeSvcConfig?.deliveryRules ?? [];
+                    return (
+                      <div className="space-y-2">
+                        {rules.map((r: any, idx: number) => (
+                          <div key={idx} className="bg-white/5 border border-white/10 rounded-md px-3 py-2 flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-xs text-white font-bold truncate">{r.name}</p>
+                              <p className="text-[9px] text-slate-500">
+                                {r.minScore ? `Score ≥ ${r.minScore}` : 'Any score'}
+                                {r.territory ? ` · ${r.territory}` : ''}
+                                {r.serviceTypes?.length ? ` · ${r.serviceTypes.join(', ')}` : ''}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = [...rules];
+                                updated.splice(idx, 1);
+                                setConfigForm(f => ({ ...f, homeSvcConfig: { ...f.homeSvcConfig, deliveryRules: updated } }));
+                              }}
+                              className="text-red-400 text-[10px] font-bold hover:text-red-300 shrink-0"
+                              data-testid={`button-remove-rule-${idx}`}
+                            >Remove</button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const name = prompt('Rule name (e.g. "High-score roofing")');
+                            if (!name) return;
+                            const minScoreStr = prompt('Min score to trigger (0–100, or leave empty for any)') || '';
+                            const territory = prompt('Territory name (or leave empty for any)') || '';
+                            const services = prompt('Service types, comma-separated (or leave empty for any)') || '';
+                            const newRule = {
+                              id: `rule-${Date.now()}`,
+                              name,
+                              action: 'auto_queue' as const,
+                              minScore: minScoreStr && !isNaN(parseInt(minScoreStr)) ? Math.max(0, Math.min(100, parseInt(minScoreStr))) : undefined,
+                              territory: territory || undefined,
+                              serviceTypes: services ? services.split(',').map((s: string) => s.trim()).filter(Boolean) : undefined,
+                            };
+                            const current = configForm.homeSvcConfig?.deliveryRules ?? [];
+                            setConfigForm(f => ({ ...f, homeSvcConfig: { ...f.homeSvcConfig, deliveryRules: [...current, newRule] } }));
+                          }}
+                          className="flex items-center gap-1 text-[10px] text-amber-400 font-bold hover:text-amber-300"
+                          data-testid="button-add-delivery-rule"
+                        >
+                          <Plus size={10} /> Add Delivery Rule
+                        </button>
+                      </div>
+                    );
+                  })()}
+                  <p className="text-[10px] text-slate-700 mt-2">Keywords, Geofence, and advanced targeting are not active in Home Services mode.</p>
                 </div>
               </div>
             ) : (
@@ -1355,9 +1459,22 @@ function HomeSvcSentinelView({
   markLeadPending: boolean;
   onSelectIncident: (incident: SentinelIncident) => void;
 }) {
-  const pendingSignals  = incidents.filter(i => i.actionStatus === 'pending');
-  const actionedSignals = incidents.filter(i => i.actionStatus !== 'pending');
-  const actionRequired  = incidents.filter(i => (i.rawPayload as any)?.actionRequired === true).length;
+  const isActive = (status: string | null | undefined) =>
+    status === 'pending' || status === 'auto_queued';
+
+  const pendingSignals = incidents
+    .filter(i => isActive(i.actionStatus))
+    .sort((a, b) => {
+      if (a.actionStatus === 'auto_queued' && b.actionStatus !== 'auto_queued') return -1;
+      if (b.actionStatus === 'auto_queued' && a.actionStatus !== 'auto_queued') return  1;
+      return (
+        ((b.rawPayload as any)?.opportunityScore ?? 0) -
+        ((a.rawPayload as any)?.opportunityScore ?? 0)
+      );
+    });
+
+  const actionedSignals = incidents.filter(i => !isActive(i.actionStatus));
+  const autoQueuedCount = incidents.filter(i => i.actionStatus === 'auto_queued').length;
   const flaggedCount    = incidents.filter(i => i.actionStatus === 'lead_flagged').length;
 
   return (
@@ -1372,18 +1489,19 @@ function HomeSvcSentinelView({
           <p className="text-3xl font-black text-white" data-testid="text-home-svc-total">{incidents.length}</p>
         </motion.div>
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-          className="bg-[#0a0a0a] border border-orange-500/30 p-4 rounded-2xl">
+          className="bg-[#0a0a0a] border border-red-500/30 p-4 rounded-2xl">
           <div className="flex items-center gap-2 mb-1">
-            <Shield size={14} className="text-orange-500" />
-            <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Action Required</p>
+            <Zap size={14} className="text-red-400" />
+            <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Auto-Queued</p>
           </div>
-          <p className="text-3xl font-black text-white" data-testid="text-home-svc-action-required">{actionRequired}</p>
+          <p className="text-3xl font-black text-white" data-testid="text-home-svc-auto-queued">{autoQueuedCount}</p>
+          <p className="text-[9px] text-slate-600 mt-0.5">delivery rules fired</p>
         </motion.div>
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
           className="bg-[#0a0a0a] border border-cyan-500/30 p-4 rounded-2xl">
           <div className="flex items-center gap-2 mb-1">
             <Clock size={14} className="text-cyan-500" />
-            <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Pending</p>
+            <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Active Queue</p>
           </div>
           <p className="text-3xl font-black text-white" data-testid="text-home-svc-pending">{pendingSignals.length}</p>
         </motion.div>
@@ -1484,17 +1602,24 @@ function HomeSvcIncidentCard({
 }) {
   const sev = SEVERITY_COLORS[incident.severity || 'medium'] || SEVERITY_COLORS.medium;
   const raw = incident.rawPayload as any;
-  const isPending = incident.actionStatus === 'pending';
+  const isPending = incident.actionStatus === 'pending' || incident.actionStatus === 'auto_queued';
   const serviceTypes: string[] = Array.isArray(raw?.serviceTypes) ? raw.serviceTypes : [];
   const expiryLabel = formatExpiry(raw?.expires);
+  const isExpired = raw?.expires ? new Date(raw.expires).getTime() < Date.now() : false;
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: dimmed ? 0.5 : 1, y: 0 }}
+      animate={{ opacity: dimmed ? 0.5 : isExpired ? 0.4 : 1, y: 0 }}
       exit={{ opacity: 0, x: -20 }}
       transition={{ delay: index * 0.03 }}
-      className="border-b border-white/5 pb-4 last:border-0 last:pb-0 cursor-pointer hover:bg-white/[0.02] rounded-lg p-2 -mx-2 transition-colors"
+      className={`border-b border-white/5 pb-4 last:border-0 last:pb-0 cursor-pointer rounded-lg p-2 -mx-2 transition-colors ${
+        isExpired
+          ? 'opacity-40 hover:opacity-60'
+          : incident.actionStatus === 'auto_queued'
+            ? 'border border-orange-500/20 bg-orange-500/5 hover:bg-orange-500/10'
+            : 'hover:bg-white/[0.02]'
+      }`}
       onClick={onClick}
       data-testid={`card-home-svc-incident-${incident.id}`}
     >
@@ -1507,6 +1632,41 @@ function HomeSvcIncidentCard({
                 {raw.signalType.replace(/_/g, ' ')}
               </span>
             )}
+            {(() => {
+              const score = raw?.opportunityScore;
+              const tier  = raw?.scoreTier ?? 'monitor';
+              if (score === undefined || score === null) return null;
+              const colors: Record<string, string> = {
+                immediate: 'bg-red-500/20 text-red-300 border-red-500/30',
+                strong:    'bg-amber-500/20 text-amber-300 border-amber-500/30',
+                standard:  'bg-blue-500/20 text-blue-300 border-blue-500/30',
+                monitor:   'bg-slate-500/20 text-slate-400 border-slate-500/20',
+              };
+              return (
+                <span className={`text-[8px] px-1.5 py-0.5 rounded font-black border ${colors[tier]}`} data-testid={`badge-score-${incident.id}`}>
+                  {score}
+                </span>
+              );
+            })()}
+            {incident.actionStatus === 'auto_queued' && (
+              <span className="text-[8px] bg-orange-500/20 text-orange-300 px-1.5 py-0.5 rounded font-black border border-orange-500/30">
+                AUTO-QUEUED
+              </span>
+            )}
+            {isExpired && (
+              <span className="text-[8px] bg-slate-500/20 text-slate-400 px-1.5 py-0.5 rounded font-black border border-slate-500/20">
+                EXPIRED
+              </span>
+            )}
+            {(() => {
+              const territory = raw?.territory;
+              if (!territory || territory === 'unassigned') return null;
+              return (
+                <span className="text-[8px] bg-cyan-500/10 text-cyan-400 px-1.5 py-0.5 rounded font-bold border border-cyan-500/20">
+                  {territory}
+                </span>
+              );
+            })()}
             {incident.actionStatus === 'lead_flagged' && (
               <span className="text-[8px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded font-bold">FLAGGED</span>
             )}
@@ -1583,9 +1743,10 @@ function HomeSvcIncidentDetailView({
 }) {
   const sev = SEVERITY_COLORS[incident.severity || 'medium'] || SEVERITY_COLORS.medium;
   const raw = incident.rawPayload as any;
-  const isPending = incident.actionStatus === 'pending';
+  const isPending = incident.actionStatus === 'pending' || incident.actionStatus === 'auto_queued';
   const serviceTypes: string[] = Array.isArray(raw?.serviceTypes) ? raw.serviceTypes : [];
   const expiryLabel = formatExpiry(raw?.expires);
+  const isExpired = raw?.expires ? new Date(raw.expires).getTime() < Date.now() : false;
   const effectiveLabel = raw?.onset ? formatDateTime(raw.onset) : null;
   const lat = raw?.lat || incident.lat;
   const lng = raw?.lng || incident.lng;
@@ -1597,8 +1758,14 @@ function HomeSvcIncidentDetailView({
         <ChevronLeft size={16} className="mr-1" /> Back to Signals
       </Button>
 
-      <div className="text-xs font-bold uppercase tracking-widest mb-3 text-amber-400">
+      <div className="text-xs font-bold uppercase tracking-widest mb-3 text-amber-400 flex items-center gap-2">
         Source: NOAA NWS — Home Services Signal
+        {isExpired && (
+          <span className="text-[8px] bg-slate-500/20 text-slate-400 px-1.5 py-0.5 rounded font-black border border-slate-500/20">EXPIRED</span>
+        )}
+        {incident.actionStatus === 'auto_queued' && (
+          <span className="text-[8px] bg-orange-500/20 text-orange-300 px-1.5 py-0.5 rounded font-black border border-orange-500/30">AUTO-QUEUED</span>
+        )}
       </div>
 
       <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
@@ -1627,8 +1794,10 @@ function HomeSvcIncidentDetailView({
             <DetailField label="State"         value={raw?.state}                            testId="text-home-svc-state" />
           </div>
           {expiryLabel && (
-            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 mb-4">
-              <p className="text-amber-400 text-xs font-bold">{expiryLabel}</p>
+            <div className={`${isExpired ? 'bg-slate-500/10 border-slate-500/20' : 'bg-amber-500/10 border-amber-500/20'} border rounded-lg p-3 mb-4`}>
+              <p className={`${isExpired ? 'text-slate-400' : 'text-amber-400'} text-xs font-bold`}>
+                {isExpired ? 'EXPIRED — ' : ''}{expiryLabel}
+              </p>
             </div>
           )}
           {effectiveLabel && <DetailField label="Effective From" value={effectiveLabel} testId="text-home-svc-effective" />}
@@ -1645,6 +1814,91 @@ function HomeSvcIncidentDetailView({
         </div>
 
         <div className="space-y-6">
+          {(() => {
+            const score     = raw?.opportunityScore;
+            const tier      = raw?.scoreTier ?? 'monitor';
+            const label     = raw?.scoreTierLabel;
+            const readiness = raw?.leadReadiness;
+            const breakdown = raw?.scoreBreakdown;
+            if (score === undefined || score === null) return null;
+
+            const tierColor: Record<string, string> = {
+              immediate: 'text-red-400 border-red-500/30 bg-red-500/10',
+              strong:    'text-amber-400 border-amber-500/30 bg-amber-500/10',
+              standard:  'text-blue-400 border-blue-500/30 bg-blue-500/10',
+              monitor:   'text-slate-400 border-slate-500/20 bg-slate-500/10',
+            };
+
+            return (
+              <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6">
+                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                  <Zap size={14} className="text-amber-400" /> Opportunity Score
+                </h3>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className={`w-14 h-14 rounded-xl flex items-center justify-center border ${tierColor[tier] ?? tierColor.monitor}`}>
+                    <span className="text-2xl font-black">{score}</span>
+                  </div>
+                  <div>
+                    <p className="text-white font-bold text-sm">{label ?? tier}</p>
+                    <p className="text-slate-500 text-xs">
+                      Lead readiness: <span className="text-white font-semibold capitalize">{readiness ?? '—'}</span>
+                    </p>
+                  </div>
+                </div>
+                {breakdown && (
+                  <div className="space-y-1.5">
+                    {([
+                      { label: 'Severity',      value: breakdown.severityPoints,     max: 30 },
+                      { label: 'Urgency',       value: breakdown.urgencyPoints,      max: 20 },
+                      { label: 'Signal Type',   value: breakdown.signalTypePoints,   max: 20 },
+                      { label: 'Service Value', value: breakdown.serviceValuePoints, max: 15 },
+                      { label: 'Territory',     value: breakdown.territoryPoints,    max: 10 },
+                      { label: 'Freshness',     value: breakdown.freshnessPoints,    max: 5  },
+                      { label: 'Cluster',       value: breakdown.clusterBonus,       max: 5  },
+                    ] as const).map(({ label: lbl, value, max }) => (
+                      <div key={lbl} className="flex items-center gap-2">
+                        <span className="text-[9px] text-slate-600 w-20 text-right flex-shrink-0">{lbl}</span>
+                        <div className="flex-1 h-1.5 bg-white/5 rounded-full">
+                          <div
+                            className="h-1.5 bg-amber-500/60 rounded-full"
+                            style={{ width: `${Math.min(100, (value / max) * 100)}%` }}
+                          />
+                        </div>
+                        <span className="text-[9px] text-slate-400 w-8 text-right">{value}/{max}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {(() => {
+            const territory = raw?.territory;
+            const clusterSz = raw?.clusterSize;
+            const hasTerr   = territory && territory !== 'unassigned';
+            const hasClust  = clusterSz && clusterSz > 1;
+            if (!hasTerr && !hasClust) return null;
+            return (
+              <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-4">
+                <div className="grid grid-cols-2 gap-4">
+                  {hasTerr && (
+                    <div>
+                      <p className="text-[9px] text-slate-600 uppercase font-bold tracking-widest mb-1">Territory</p>
+                      <p className="text-white font-bold text-sm">{territory}</p>
+                      <p className="text-[9px] text-slate-600 mt-0.5">Operator ranking only</p>
+                    </div>
+                  )}
+                  {hasClust && (
+                    <div>
+                      <p className="text-[9px] text-slate-600 uppercase font-bold tracking-widest mb-1">Cluster</p>
+                      <p className="text-white font-bold text-sm">{clusterSz} signal{clusterSz !== 1 ? 's' : ''} · same event</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
           {serviceTypes.length > 0 && (
             <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6">
               <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">

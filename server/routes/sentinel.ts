@@ -5,8 +5,14 @@ import { storage } from "../storage";
 import { z } from "zod";
 import { processLiveSentinelFeed, deployGeofenceAd } from "../sentinel";
 import { buildCrashMergeUpdate, resolveGeofenceTarget } from "../sentinel-accident-v2";
-import { fetchHomeSvcSignals } from "../sentinel-home-svc";
-import type { HomeSvcSignal } from "../sentinel-home-svc";
+import {
+  fetchHomeSvcSignals,
+  scoreHomeSvcOpportunity,
+  resolveTerritory,
+  findClusterMetadata,
+  evaluateDeliveryRules,
+} from "../sentinel-home-svc";
+import type { HomeSvcSignal, HomeSvcConfigShape } from "../sentinel-home-svc";
 import { asyncHandler, parseIntParam, verifyAccountOwnership, requirePlanFeature } from "./helpers";
 import { enforceSmsProvider } from "../smsGatewayGuard";
 
@@ -194,6 +200,27 @@ export function registerSentinelRoutes(app: Express) {
       geofenceEnabled: z.boolean().optional(),
       geofenceRadiusMiles: z.number().min(0.1).max(50).optional(),
       niche: z.enum(['accident', 'home_services']).optional(),
+      homeSvcConfig: z.object({
+        territories: z.array(
+          z.object({
+            name:       z.string().min(1),
+            stateCodes: z.array(z.string().length(2)).min(1),
+            counties:   z.array(z.string()).optional(),
+            cities:     z.array(z.string()).optional(),
+          })
+        ).optional(),
+        deliveryRules: z.array(
+          z.object({
+            id:           z.string().min(1),
+            name:         z.string().min(1),
+            action:       z.literal('auto_queue'),
+            serviceTypes: z.array(z.string()).optional(),
+            signalTypes:  z.array(z.string()).optional(),
+            territory:    z.string().optional(),
+            minScore:     z.number().min(0).max(100).optional(),
+          })
+        ).optional(),
+      }).optional().nullable(),
     }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -234,6 +261,10 @@ export function registerSentinelRoutes(app: Express) {
       const targetStates: string[] =
         Array.isArray(config?.targetStates) ? (config!.targetStates as string[]) : [];
 
+      const homeSvcConfig: HomeSvcConfigShape = (config as any)?.homeSvcConfig ?? {};
+      const territories   = homeSvcConfig.territories   ?? [];
+      const deliveryRules = homeSvcConfig.deliveryRules  ?? [];
+
       let signals: HomeSvcSignal[] = [];
       try {
         signals = await fetchHomeSvcSignals(targetStates);
@@ -242,7 +273,23 @@ export function registerSentinelRoutes(app: Express) {
         signals = [];
       }
 
+      let recentIncidents: any[] = [];
+      try {
+        const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const all = await storage.getSentinelIncidentsFiltered(parsed.data.subAccountId, {
+          since: since24h,
+          limit: 100,
+        });
+        recentIncidents = all.filter(
+          i => (i.rawPayload as any)?.source === 'sentinel_home_svc'
+        );
+      } catch (err: any) {
+        console.warn('[SENTINEL HOME SVC] Cluster pre-query failed — clustering disabled this scan:', err?.message);
+        recentIncidents = [];
+      }
+
       const created: any[] = [];
+      let autoQueuedCount = 0;
 
       for (const sig of signals) {
         const hash = Buffer.from(sig.id).toString("base64").substring(0, 64);
@@ -253,6 +300,22 @@ export function registerSentinelRoutes(app: Express) {
         );
         if (existing) continue;
 
+        const territory = resolveTerritory(sig, territories);
+        const cluster   = findClusterMetadata(sig, recentIncidents);
+        const scoring   = scoreHomeSvcOpportunity(sig, {
+          territory,
+          clusterSize: cluster.clusterSize,
+          sentAtIso:   sig.sent,
+        });
+        const delivery  = evaluateDeliveryRules(
+          sig,
+          scoring.opportunityScore,
+          territory,
+          deliveryRules,
+        );
+
+        if (delivery.actionStatus === 'auto_queued') autoQueuedCount++;
+
         const record = await storage.createSentinelIncident({
           subAccountId:     parsed.data.subAccountId,
           sourceHash:       hash,
@@ -260,27 +323,38 @@ export function registerSentinelRoutes(app: Express) {
           description:      sig.headline || null,
           location:         sig.areaDesc || null,
           severity:         sig.severity,
-          actionStatus:     'pending',
+          actionStatus:     delivery.actionStatus,
           smsSent:          false,
           geofenceDeployed: false,
-          lat:              sig.lat    ?? null,
-          lng:              sig.lng    ?? null,
+          lat:              sig.lat ?? null,
+          lng:              sig.lng ?? null,
           rawPayload: {
-            source:         'sentinel_home_svc',
-            noaaId:         sig.id,
-            noaaEvent:      sig.event,
-            signalType:     sig.signalType,
-            serviceTypes:   sig.serviceTypes,
-            noaaSeverity:   sig.noaaSeverity,
-            noaaUrgency:    sig.noaaUrgency,
-            noaaCertainty:  sig.noaaCertainty,
-            expires:        sig.expires,
-            onset:          sig.effective,
-            state:          sig.state,
-            county:         sig.areaDesc,
-            received:       sig.sent,
-            googleMaps:     sig.googleMaps,
-            actionRequired: sig.actionRequired,
+            source:          'sentinel_home_svc',
+            noaaId:          sig.id,
+            noaaEvent:       sig.event,
+            signalType:      sig.signalType,
+            serviceTypes:    sig.serviceTypes,
+            noaaSeverity:    sig.noaaSeverity,
+            noaaUrgency:     sig.noaaUrgency,
+            noaaCertainty:   sig.noaaCertainty,
+            expires:         sig.expires,
+            onset:           sig.effective,
+            state:           sig.state,
+            county:          sig.areaDesc,
+            received:        sig.sent,
+            googleMaps:      sig.googleMaps,
+            actionRequired:  sig.actionRequired,
+            opportunityScore:          scoring.opportunityScore,
+            scoreBreakdown:            scoring.scoreBreakdown,
+            scoreTier:                 scoring.scoreTier,
+            scoreTierLabel:            scoring.scoreTierLabel,
+            leadReadiness:             scoring.leadReadiness,
+            serviceValueTier:          scoring.serviceValueTier,
+            territory,
+            clusterId:                 cluster.clusterId,
+            clusterSize:               cluster.clusterSize,
+            clusterDominantSignalType: cluster.clusterDominantSignalType,
+            clusterOpportunityScore:   cluster.clusterOpportunityScore,
           },
         });
 
@@ -297,6 +371,7 @@ export function registerSentinelRoutes(app: Express) {
           targetStates,
           signalsFound:  signals.length,
           newIncidents:  created.length,
+          autoQueued:    autoQueuedCount,
         },
       });
 

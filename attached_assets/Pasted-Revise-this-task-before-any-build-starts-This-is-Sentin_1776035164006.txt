@@ -1,0 +1,83 @@
+Revise this task before any build starts.
+
+This is **Sentinel Home Services Level 3**, but the current task card is still too broad and gives too much room for scope creep.
+
+## Rewrite the task to this tighter execution scope
+
+### New task title
+**Sentinel Home Services Level 3 — scoring, expired alert handling, territory relevance, and operator state**
+
+### New task description
+Advance the **Home Services** side of Sentinel from Level 2 into a tighter operator-ready Level 3 focused on:
+
+- expired alert handling
+- opportunity scoring
+- service recommendation clarity
+- territory relevance
+- operator-facing priority state
+
+This task is **Home Services only**.  
+No accident-side Sentinel changes.  
+No scheduler changes.  
+No orchestrator work.  
+No CRM/workflow expansion.  
+No geofence deployment for Home Services.
+
+### Priority 1 only
+Build these first and treat them as the real scope:
+- expired alert handling
+- opportunity scoring
+- service recommendation clarity
+- territory relevance
+
+### Priority 2 only if Priority 1 is stable
+- delivery-rule preparation as operator-facing state only
+- light same-event grouping only
+- stronger operator queue ordering/state
+
+### Explicitly deferred
+Do **not** build these in this pass:
+- market heat intelligence
+- heavy cluster analysis
+- broad enhanced UI redesign
+- new endpoints unless strictly required
+- scheduler changes
+- CRM/contact/deal creation
+- workflow automation expansion
+- geofence logic for Home Services
+- accident-side improvements
+- orchestrator/cross-agent learning work
+
+## Hard constraints
+State these explicitly in the task:
+- no accident-side file changes
+- no scheduler changes
+- no CRM/contact/deal creation
+- no workflow automation expansion
+- no geofence deployment for Home Services
+- no regression to Level 2 Flag as Lead behavior
+- no cross-account/global intelligence logic
+- no orchestrator work
+- no broad dashboard redesign
+- no raw JSON editor UI for config
+
+## Config rule
+If `home_svc_config jsonb` is still proposed:
+- justify why it is required now
+- otherwise defer it
+- do not add schema just because it feels cleaner
+
+If config UI is needed, use **structured controls only**, not a raw JSON editor.
+
+## Exact return format
+Return only:
+- revised task title
+- revised task description
+- exact files expected to change
+- whether migration is required / optional / deferrable
+- main production risks
+- what remains untouched
+- what is explicitly deferred
+
+Do not start building yet.
+Return the revised task text for approval first.

@@ -1,0 +1,294 @@
+You are implementing **Sentinel Home Services — Level 3** in a **live production codebase**.
+
+This is a **production execution task**, not a brainstorm, not a rewrite, and not an invitation to redesign Sentinel.
+
+## Operating mode
+You must act like a **senior production engineer** working in an existing live system.
+
+That means:
+- preserve working structure
+- make the smallest safe additive changes
+- respect the current codebase shape
+- do not invent abstractions unless they are required
+- do not overbuild
+- do not mix this task with accident-side Sentinel work
+- do not mix this task with orchestrator work
+- fail closed
+
+## Mission
+Advance **Home Services Sentinel** from Level 2 into a **more intelligent operator-grade system** with:
+
+- stronger opportunity scoring
+- territory-aware prioritization
+- service recommendation logic
+- expired alert handling
+- delivery-rule preparation
+- market heat / cluster awareness
+- improved Home Services operator UX
+
+while preserving:
+- existing **Accident / Crash Sentinel**
+- existing **Home Services Level 2 behavior**
+- strict **niche isolation**
+- strict **tenant isolation**
+- no accident scheduler regression
+- no cross-niche leakage
+- no cross-account leakage
+
+## Absolute non-negotiables
+Do **not**:
+- rebuild Sentinel
+- refactor accident-side logic unless a verified blocker forces a minimal exception
+- modify the accident scheduler
+- touch CAD ingest
+- merge home-services and crash logic into a generic unified path
+- add a `niche` column to `sentinel_incidents`
+- create broad CRM/workflow automation sprawl
+- add geofence deployment for Home Services in this task
+- broaden scope into pricing, billing, sub-account admin, or white-label permissions
+- mix this with Apex Intelligence Orchestrator work
+- claim “done” for partially wired logic
+
+## Source of truth
+Use the attached **Home Services Level 3 handoff** and attached `sentinel-home-svc.ts` as the implementation spec for Home Services behavior.
+
+But:
+- do **not** paste blindly
+- verify against the real current codebase first
+- preserve current project structure
+- choose the least invasive safe implementation path
+
+## Approved Level 3 scope only
+
+### 1. Home Services config expansion
+Implement the minimum additive config support needed for Level 3.
+
+Allowed examples:
+- enabled service categories
+- scoring thresholds/weights
+- territory preferences
+- expired alert behavior
+- opportunity ranking settings
+- delivery-rule toggles or preferences
+
+Keep this **Home Services-only**.
+
+If you propose `home_svc_config jsonb`, justify why it is necessary now instead of forcing many new columns.
+
+### 2. Territory-aware opportunity scoring
+Implement scoring for Home Services signals/incidents using factors such as:
+- territory fit
+- service match
+- alert severity
+- freshness
+- urgency
+- confidence of recommendation
+- cluster intensity
+- lead-readiness state
+- operator priority
+
+This scoring must remain **Home Services-only**.
+
+### 3. Service recommendation logic
+Implement a recommendation layer that maps signal/weather context into likely home-service demand, such as:
+- roofing
+- tree removal
+- restoration
+- plumbing
+- HVAC
+- electrical
+- gutters
+- siding
+- fencing
+- storm cleanup
+- related exterior emergency work
+
+Do not apply this to accident incidents.
+
+### 4. Expired alert handling
+Implement real stale/expired handling for Home Services signals.
+
+At minimum:
+- clearly identify expired alerts
+- prevent expired alerts from presenting as active opportunities
+- downgrade, archive, suppress, or otherwise handle them consistently
+- keep UI and backend behavior aligned
+
+### 5. Delivery-rule preparation
+Implement the minimum useful delivery-rule layer for Home Services opportunities.
+
+Allowed:
+- contractor-fit preparation
+- territory relevance
+- service-match readiness
+- urgency-based delivery readiness
+- operator-facing delivery recommendation state
+
+Not allowed unless explicitly required:
+- full CRM automation rollout
+- mass workflow expansion
+- broad sales-pipeline redesign
+
+### 6. Market heat / cluster awareness
+Implement the minimum safe version of:
+- nearby signal clustering
+- repeated area intensity
+- opportunity density
+- territory heat/opportunity ranking
+
+This should support operator decision-making, not vanity graphics.
+
+### 7. Home Services UX improvement
+Improve only the **Home Services branch** of the Sentinel page so operators can understand:
+- what the signal is
+- what service it maps to
+- whether it is expired
+- how strong the opportunity is
+- what territory relevance it has
+- what its operational state is
+
+Do not redesign the crash UI.
+
+---
+
+## Explicitly out of scope
+Do **not** include any of these unless blocked and justified first:
+- accident-side Sentinel improvements
+- accident scheduler changes
+- crash UI changes
+- CAD ingest changes
+- CRM/contact/deal creation
+- workflow automation expansion
+- geofence deployment for Home Services
+- pricing/billing/plan changes
+- broad dashboard redesign
+- orchestrator/cross-agent learning work
+- cross-account/global intelligence logic
+- white-label admin/sub-account resale logic
+- generic platform architecture rewrite
+
+---
+
+## File discipline
+Keep file scope as tight as possible.
+
+Expected likely files:
+- `server/sentinel-home-svc.ts`
+- `server/routes/sentinel.ts`
+- `client/src/pages/sentinel.tsx`
+- `shared/schema.ts`
+
+Only touch more files if truly required.
+If additional files are needed, explain exactly why before implementation.
+
+## Data/model rules
+Do not add `niche` to `sentinel_incidents`.
+
+Any Level 3 Home Services data additions must be:
+- additive
+- minimal
+- justified
+- safe for live migration
+- clearly scoped to Home Services
+- compatible with existing Level 2 data
+
+Preserve distinction between Home Services and crash incidents using existing metadata/raw payload patterns where appropriate.
+
+## Scheduler rule
+Do **not** modify the accident scheduler.
+
+If scheduled Home Services processing is truly necessary:
+- isolate it completely
+- explain the isolation method first
+- do not piggyback on accident scheduling behavior
+
+If not necessary, keep Level 3 on the safer manual/on-demand path.
+
+## UI rule
+All Level 3 UI changes must remain inside the **Home Services branch only**.
+
+Required:
+- opportunity scoring visibility
+- service recommendation visibility
+- expired signal clarity
+- territory relevance visibility
+- stronger operator readiness cues
+
+Not allowed:
+- crash labels/actions in Home Services
+- Home Services labels/actions in Accident
+- broad shared UI rewrites for elegance
+
+## Build order
+Implement in this priority order:
+
+### Priority 1
+- expired alert handling
+- opportunity scoring
+- service recommendation clarity
+- territory relevance
+
+### Priority 2
+- delivery-rule preparation
+- territory-aware operator state
+- cluster/heat ranking inputs
+
+### Priority 3
+- richer Home Services UX polish
+- market heat presentation refinements
+
+Do not jump to polish before core behavior is correct.
+
+## Before coding
+First inspect:
+- current `server/sentinel-home-svc.ts`
+- current `server/routes/sentinel.ts`
+- current `client/src/pages/sentinel.tsx`
+- current `shared/schema.ts`
+- attached Level 3 handoff/spec
+
+Then return a plan for approval **before making code changes**.
+
+## Return format before coding
+Return only:
+- proposed scope
+- exact files expected to change
+- migration needs, if any
+- main production risks
+- what will remain untouched
+- what is explicitly deferred
+
+## Completion criteria
+Do not call Level 3 complete unless all of these are true:
+
+### Home Services Level 3
+- expired alert handling works
+- scoring is implemented and visible
+- service recommendation logic is implemented and visible
+- territory relevance works
+- delivery readiness/rule preparation is present
+- Home Services operator UX is materially improved from Level 2
+- cluster/heat intelligence is useful and not misleading
+
+### Preservation checks
+- Accident / Crash remains behaviorally unchanged
+- Home Services Level 2 core behavior still works
+- no accident scheduler regression
+- no cross-niche leakage
+- no cross-account leakage
+- no fake “done” claims for stubbed features
+
+### Verification output
+When complete, return only:
+- exact files changed
+- exact Level 3 behaviors implemented
+- exact behaviors manually verified
+- any deferred items
+- any real production risks still remaining
+
+## Final instruction
+This is a **Home Services Level 3 execution task only**.
+
+Do not mix it with accident-side Sentinel work.  
+Do not broaden it into platform redesign.  
+Do not build until the plan is reviewed and approved.
