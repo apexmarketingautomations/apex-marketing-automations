@@ -1,0 +1,114 @@
+You are working in a **live production environment** for a **real paying customer**. Proceed with **maximum safety**.
+
+Create and provision a new customer sub-account with these exact requirements:
+
+**Customer**
+- Name: **Roof 2 Roots**
+
+**Plan / billing**
+- Subscription tier: **God Mode**
+- Billing status: **Paid in full for 12 months**
+- Account status: **Active**
+- **Top-ups, usage overages, add-ons, credits, or metered consumption are NOT included** in the prepaid year
+- Any top-ups or overages must be billed **separately to Roof 2 Roots**
+
+**Access / permissions**
+- Create as a **non-admin** customer sub-account
+- Customer must have a **fully separate login**
+- Use separate authentication, separate session scope, and separate credential lifecycle
+- Do **not** grant owner, super-admin, platform-admin, global admin, or cross-tenant permissions
+- Do **not** allow shared credentials, inherited parent sessions, or default impersonation access
+
+**Integrations**
+- Roof 2 Roots must **set up and manage their own integrations**
+- Do **not** share integrations from the parent account
+- Do **not** share API keys, OAuth tokens, webhooks, calendars, phone systems, email providers, Stripe connections, Twilio credentials, Meta assets, Google assets, or any third-party auth from any other account
+- All integrations must be isolated to the Roof 2 Roots tenant only
+
+**Mandatory tenant isolation**
+There must be **zero cross-account data leakage**.
+
+Roof 2 Roots may access only its own:
+- contacts
+- leads
+- conversations
+- campaigns
+- pipelines
+- automations
+- files
+- forms
+- calendars
+- notes
+- analytics
+- integrations
+- billing-visible data allowed by role
+
+Roof 2 Roots must **never** be able to see, query, infer, search, export, or access:
+- any other sub-account’s data
+- parent account data
+- admin-only interfaces
+- shared search results across tenants
+- shared object/file storage paths
+- cached results from other tenants
+- logs containing other tenant data
+- hidden IDs or metadata from other accounts
+- secrets, API keys, access tokens, webhook secrets, config values, or internal credentials
+
+**Enforcement requirements**
+Validate strict isolation across all layers:
+- database queries and row scoping
+- API authorization and response filtering
+- storage buckets / object paths / file downloads
+- caching layers
+- background jobs and queues
+- search indexing
+- analytics aggregation
+- exports and imports
+- webhooks
+- auth/session middleware
+- audit logs
+- admin tooling
+
+**Production safety rules**
+- This is **not** a demo or test account
+- Do **not** use seed data or fake data
+- Do **not** run destructive tests on live customer records
+- Do **not** make schema, auth, or permission changes without rollback capability
+- Log all provisioning actions
+- Validate isolation before handoff
+- Fail closed, not open, on any permission uncertainty
+
+**Immediate security action required**
+Before finalizing customer onboarding:
+- identify any exposed or improperly surfaced secrets/config values
+- rotate any exposed production credentials
+- revoke and replace compromised tokens if exposure is confirmed
+- verify new credentials are stored only in approved secret storage
+- confirm no customer-facing account can access internal secrets or config
+
+**Acceptance checklist**
+Confirm all of the following:
+1. Sub-account **Roof 2 Roots** created
+2. Separate login created and working
+3. **Non-admin** role assigned
+4. **God Mode** tier applied
+5. **12 months paid in full** applied
+6. Top-ups/overages require separate payment
+7. Customer-owned integrations required
+8. No cross-account access in UI
+9. No cross-account access in API
+10. No cross-account access in DB/storage/search/exports/automations
+11. No internal secrets or config are exposed to customer scope
+12. Isolation verified end-to-end
+
+**Return only**
+- sub-account created
+- separate login created
+- non-admin role assigned
+- God Mode tier applied
+- 12-month paid term applied
+- top-ups billed separately
+- customer-owned integrations required
+- tenant isolation verified
+- secrets exposure reviewed
+- blockers requiring immediate production attention
