@@ -1,0 +1,75 @@
+Revise Level 2 to keep it production-safe and tightly scoped.
+
+## Keep Level 2 focused
+Level 2 is **not** a redesign and **not** Level 3.
+
+Approved Level 2 scope only:
+- integrate the provided `server/sentinel-home-svc.ts` NOAA module
+- replace the Home Services stub with real manual scan behavior
+- persist Home Services incidents safely
+- dedupe Home Services incidents safely
+- render Home Services incident stream/UI
+- add a **Flag as Lead** action that only marks an incident for follow-up
+- branch SMS wording for Home Services incidents only
+- hard-block geofence deployment for Home Services incidents
+
+## Do not expand beyond this
+Out of scope for Level 2:
+- scheduler changes
+- new background jobs
+- CRM/contact/deal creation
+- workflow automation triggers
+- geofence logic for Home Services
+- broad schema redesign
+- accident-mode refactors
+- shared component rewrites unless unavoidable
+
+## Persistence + dedupe must be explicit
+The plan must clearly state:
+- how NOAA incidents are identified uniquely
+- how duplicate alerts are prevented
+- how updates vs new incidents are handled
+- how Home Services incidents are distinguishable from crash incidents using existing fields/raw payload patterns
+
+## Flag-as-lead must stay limited
+The plan must explicitly say:
+- Flag as Lead does **not** create CRM records
+- Flag as Lead does **not** trigger workflows
+- Flag as Lead is a marking/status action only in Level 2
+
+## UI safety
+The plan must explicitly say:
+- all new UI stays inside the Home Services niche branch
+- Accident / Crash UI must remain behaviorally unchanged
+- no crash actions or labels should appear in Home Services mode
+- no Home Services actions should appear in Accident mode
+
+## SMS safety
+The plan must explicitly say:
+- Home Services SMS copy is branched only for Home Services incidents
+- existing Accident SMS copy must remain unchanged
+
+## Scheduler safety
+The plan must explicitly say:
+- Level 2 remains manual scan only
+- do not modify or extend the accident scheduler
+- do not add Home Services scheduling in this task
+
+## File discipline
+Keep file scope as tight as possible.
+If more than these are required, explain why before building:
+- `server/sentinel-home-svc.ts`
+- `server/sentinel.ts`
+- `server/routes/sentinel.ts`
+- `client/src/pages/sentinel.tsx`
+
+## Completion standard
+Do not mark Level 2 complete unless:
+- Accident mode still works exactly as before
+- Home Services manual scan returns real NOAA incidents
+- Home Services incidents persist and dedupe correctly
+- Flag as Lead works as a mark-only action
+- Home Services SMS wording is correct
+- geofence is blocked for Home Services
+- no scheduler changes were made
+- no cross-niche leakage is present

@@ -3,7 +3,9 @@ import { insertSentinelIncidentSchema, messages } from "@shared/schema";
 import type { CadUnitAssigned, CadTimelineEvent, SentinelIncident } from "@shared/schema";
 import { storage } from "../storage";
 import { z } from "zod";
-import { processLiveSentinelFeed, processLiveHomeSvcFeed, deployGeofenceAd } from "../sentinel";
+import { processLiveSentinelFeed, deployGeofenceAd } from "../sentinel";
+import { fetchHomeSvcSignals } from "../sentinel-home-svc";
+import type { HomeSvcSignal } from "../sentinel-home-svc";
 import { asyncHandler, parseIntParam, verifyAccountOwnership, requirePlanFeature } from "./helpers";
 import { enforceSmsProvider } from "../smsGatewayGuard";
 
@@ -225,14 +227,84 @@ export function registerSentinelRoutes(app: Express) {
     const config = await storage.getSentinelConfig(parsed.data.subAccountId);
     const keywords = config?.keywords?.length ? config.keywords : ['MVA', 'EXTRICATION', 'ROLLOVER', 'INJURIES', 'SIGNAL 4', 'ENTRAPMENT', 'FATALITY'];
 
-    if (config?.niche === 'home_services') {
-      const stubResults = await processLiveHomeSvcFeed();
+    const niche = config?.niche || 'accident';
+
+    if (niche === 'home_services') {
+      const targetStates: string[] =
+        Array.isArray(config?.targetStates) ? (config!.targetStates as string[]) : [];
+
+      let signals: HomeSvcSignal[] = [];
+      try {
+        signals = await fetchHomeSvcSignals(targetStates);
+      } catch (err: any) {
+        console.error('[SENTINEL HOME SVC] fetchHomeSvcSignals threw unexpectedly:', err?.message);
+        signals = [];
+      }
+
+      const created: any[] = [];
+
+      for (const sig of signals) {
+        const hash = Buffer.from(sig.id).toString("base64").substring(0, 64);
+
+        const existing = await storage.getSentinelIncidentByHash(
+          parsed.data.subAccountId,
+          hash,
+        );
+        if (existing) continue;
+
+        const record = await storage.createSentinelIncident({
+          subAccountId:     parsed.data.subAccountId,
+          sourceHash:       hash,
+          title:            sig.event,
+          description:      sig.headline || null,
+          location:         sig.areaDesc || null,
+          severity:         sig.severity,
+          actionStatus:     'pending',
+          smsSent:          false,
+          geofenceDeployed: false,
+          lat:              sig.lat    ?? null,
+          lng:              sig.lng    ?? null,
+          rawPayload: {
+            source:         'sentinel_home_svc',
+            noaaId:         sig.id,
+            noaaEvent:      sig.event,
+            signalType:     sig.signalType,
+            serviceTypes:   sig.serviceTypes,
+            noaaSeverity:   sig.noaaSeverity,
+            noaaUrgency:    sig.noaaUrgency,
+            noaaCertainty:  sig.noaaCertainty,
+            expires:        sig.expires,
+            onset:          sig.effective,
+            state:          sig.state,
+            county:         sig.areaDesc,
+            received:       sig.sent,
+            googleMaps:     sig.googleMaps,
+            actionRequired: sig.actionRequired,
+          },
+        });
+
+        created.push(record);
+      }
+
       await storage.createAuditLog({
-        action: "SENTINEL_SCAN",
+        action:      "SENTINEL_SCAN",
         performedBy: user?.claims?.sub || user?.id || "system",
-        details: { subAccountId: parsed.data.subAccountId, source: "home_svc_stub", found: 0, niche: "home_services" },
+        details: {
+          subAccountId:  parsed.data.subAccountId,
+          niche:         "home_services",
+          source:        "noaa_nws",
+          targetStates,
+          signalsFound:  signals.length,
+          newIncidents:  created.length,
+        },
       });
-      return res.json({ source: "home_svc_stub", found: 0, incidents: stubResults });
+
+      return res.json({
+        source:    "noaa_nws",
+        found:     created.length,
+        incidents: created,
+        niche:     "home_services",
+      });
     }
 
     let incidents: any[] = [];
@@ -318,6 +390,14 @@ export function registerSentinelRoutes(app: Express) {
     const incident = await storage.getSentinelIncident(id);
     if (!incident) return res.status(404).json({ error: "Incident not found" });
 
+    const incidentRaw = incident.rawPayload as any;
+    if (incidentRaw?.source === 'sentinel_home_svc') {
+      return res.status(400).json({
+        error: "Geofence deployment is not available for Home Services incidents.",
+        code:  "home_svc_geofence_unavailable",
+      });
+    }
+
     const config = await storage.getSentinelConfig(incident.subAccountId);
     if (config && config.geofenceEnabled === false) {
       return res.status(400).json({ error: "Geofence ads are disabled in Sentinel config." });
@@ -380,7 +460,37 @@ export function registerSentinelRoutes(app: Express) {
       return res.status(400).json({ error: "No owner phone number configured for this account." });
     }
 
-    const alertMsg = `🚨 APEX SENTINEL ALERT\n\n${incident.severity?.toUpperCase()} PRIORITY: ${incident.title}\n📍 ${incident.location}\n\n${incident.description}\n\nDeploy geofence ads now from your Sentinel dashboard.`;
+    const smsRaw = incident.rawPayload as any;
+    const isHomeSvcIncident = smsRaw?.source === 'sentinel_home_svc';
+
+    let alertMsg: string;
+
+    if (isHomeSvcIncident) {
+      const svcList = Array.isArray(smsRaw?.serviceTypes) && smsRaw.serviceTypes.length > 0
+        ? (smsRaw.serviceTypes as string[])
+            .map((s: string) => s.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()))
+            .join(', ')
+        : 'Home Services';
+
+      const expiresLine = smsRaw?.expires
+        ? `Expires: ${new Date(smsRaw.expires).toLocaleString()}`
+        : '';
+
+      alertMsg = [
+        `🏠 APEX SENTINEL — HOME SERVICES ALERT`,
+        ``,
+        `${incident.severity?.toUpperCase()} PRIORITY: ${incident.title}`,
+        `📍 ${incident.location || 'Area not specified'}`,
+        ``,
+        `Services: ${svcList}`,
+        expiresLine,
+        ``,
+        `Review this signal in your Sentinel dashboard and flag leads.`,
+      ].filter(Boolean).join('\n');
+
+    } else {
+      alertMsg = `🚨 APEX SENTINEL ALERT\n\n${incident.severity?.toUpperCase()} PRIORITY: ${incident.title}\n📍 ${incident.location}\n\n${incident.description}\n\nDeploy geofence ads now from your Sentinel dashboard.`;
+    }
 
     if (!account.twilioNumber) {
       return res.status(400).json({ error: "No Twilio phone number assigned to this account. Add one in account settings." });
@@ -428,6 +538,42 @@ export function registerSentinelRoutes(app: Express) {
 
     await storage.updateSentinelIncident(id, { actionStatus: "acknowledged" });
     res.json({ success: true });
+  }));
+
+  app.post("/api/sentinel/incidents/:id/flag-lead", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const id = parseIntParam(req.params.id, "id");
+    const incident = await storage.getSentinelIncident(id);
+    if (!incident) return res.status(404).json({ error: "Incident not found" });
+
+    const raw = incident.rawPayload as any;
+    if (raw?.source !== 'sentinel_home_svc') {
+      return res.status(400).json({
+        error: "flag-lead is only available for Home Services incidents.",
+        code:  "wrong_niche_for_action",
+      });
+    }
+
+    if (incident.actionStatus === 'lead_flagged') {
+      return res.json({ success: true, incidentId: id, actionStatus: 'lead_flagged', alreadyFlagged: true });
+    }
+
+    await storage.updateSentinelIncident(id, { actionStatus: 'lead_flagged' });
+
+    await storage.createAuditLog({
+      action:      "SENTINEL_HOME_SVC_LEAD_FLAGGED",
+      performedBy: user?.claims?.sub || user?.id || "system",
+      details: {
+        incidentId:   id,
+        signalType:   raw?.signalType,
+        serviceTypes: raw?.serviceTypes,
+        location:     incident.location,
+      },
+    });
+
+    res.json({ success: true, incidentId: id, actionStatus: 'lead_flagged' });
   }));
 
   app.get("/api/sentinel/live", asyncHandler(async (req, res) => {

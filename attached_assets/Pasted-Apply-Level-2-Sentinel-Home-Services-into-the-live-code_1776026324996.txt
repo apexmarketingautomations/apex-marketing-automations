@@ -1,0 +1,374 @@
+Apply **Level 2 — Sentinel Home Services** into the live codebase using the already-approved architecture and the completed `server/sentinel-home-svc.ts` module.
+
+This is a **production integration task**, not a redesign task.
+
+## Current truth
+
+The Home Services ingestion module already exists as:
+
+* `server/sentinel-home-svc.ts`
+
+It is considered the source of truth for:
+
+* NOAA fetch
+* Home Services signal classification
+* service-category inference
+* severity scoring
+* polygon centroid display coordinates
+* isolation from crash Sentinel
+
+Your job is to **integrate it safely** into the existing app.
+
+## Absolute rules
+
+* do **not** redesign Sentinel
+* do **not** refactor working crash logic
+* do **not** touch accident scheduler internals
+* do **not** touch CAD ingest
+* do **not** alter `sentinel_incidents` schema
+* do **not** introduce broad abstractions
+* do **not** mark Level 2 complete unless the integration is real and tested in-project
+* fail closed
+
+## Files in scope
+
+You are allowed to change only:
+
+* `server/sentinel.ts`
+* `server/routes/sentinel.ts`
+* `client/src/pages/sentinel.tsx`
+
+The existing `server/sentinel-home-svc.ts` file should only be changed if required for compile safety or to update the NOAA user agent string.
+
+---
+
+# REQUIRED WORK
+
+## 1. Integrate Home Services feed wrapper in `server/sentinel.ts`
+
+Replace the existing `processLiveHomeSvcFeed` stub body with:
+
+```ts id="w0i1y2"
+export async function processLiveHomeSvcFeed(
+  targetStates: string[] = [],
+): Promise<import('./sentinel-home-svc').HomeSvcSignal[]> {
+  const { fetchHomeSvcSignals } = await import('./sentinel-home-svc');
+  return fetchHomeSvcSignals(targetStates);
+}
+```
+
+### Rules
+
+* this must remain a thin delegating wrapper
+* do not add shared abstraction logic here
+* do not touch accident functions in this file
+
+---
+
+## 2. Integrate Level 2 Home Services branch in `server/routes/sentinel.ts`
+
+### Add imports
+
+Add:
+
+```ts id="q3r4s5"
+import { fetchHomeSvcSignals } from "../sentinel-home-svc";
+import type { HomeSvcSignal } from "../sentinel-home-svc";
+```
+
+### Replace the Phase 1 Home Services early-return block
+
+In the scan route, replace the current Home Services stub/early return with the full Level 2 branch that:
+
+* reads `targetStates`
+* calls `fetchHomeSvcSignals(targetStates)`
+* persists new incidents into `sentinel_incidents`
+* dedups by stable hash using existing `storage.getSentinelIncidentByHash`
+* stores Home Services metadata in `rawPayload`
+* writes an audit log
+* returns the created incidents
+* exits before accident logic runs
+
+### Required behavior
+
+For each Home Services signal:
+
+* create `sourceHash` from a stable dedup-safe signal ID using the project’s existing pattern
+* set:
+
+  * `title`
+  * `description`
+  * `location`
+  * `severity`
+  * `actionStatus: 'pending'`
+  * `smsSent: false`
+  * `geofenceDeployed: false`
+  * `lat`
+  * `lng`
+  * `rawPayload`
+
+### `rawPayload` must include
+
+* `source: 'sentinel_home_svc'`
+* `noaaId`
+* `noaaEvent`
+* `signalType`
+* `serviceTypes`
+* `noaaSeverity`
+* `noaaUrgency`
+* `noaaCertainty`
+* `expires`
+* `onset` or `effective`
+* `state`
+* `county` or `areaDesc`
+* `received`
+* `googleMaps`
+* `actionRequired`
+
+### Important
+
+* accident scan path below this branch must remain unchanged
+* do not move crash logic into a shared generic path
+
+---
+
+## 3. Add Home Services guard to deploy-geofence route
+
+In `server/routes/sentinel.ts`, add a guard in the deploy-geofence route so incidents with:
+
+```ts id="t6u7v8"
+(rawPayload as any)?.source === "sentinel_home_svc"
+```
+
+return a 400 response with a clear message that geofence deployment is not available for Home Services incidents in Level 2.
+
+### Rule
+
+* do not alter accident geofence behavior
+* only block Home Services incidents
+
+---
+
+## 4. Branch SMS template by incident source
+
+In the existing send-sms route:
+
+* keep the accident SMS message behavior unchanged
+* add a Home Services-specific branch when `rawPayload.source === 'sentinel_home_svc'`
+
+### Home Services SMS rules
+
+* no accident/crash language
+* no geofence call-to-action
+* may include:
+
+  * severity
+  * title
+  * location
+  * inferred service categories
+  * expiry if present
+* should direct the operator to review/flag in Sentinel
+
+### Accident rules
+
+* preserve the existing accident message exactly
+
+---
+
+## 5. Add flag-lead route
+
+In `server/routes/sentinel.ts`, add:
+
+```ts id="m9n0p1"
+POST /api/sentinel/incidents/:id/flag-lead
+```
+
+### Route behavior
+
+* authenticated only
+* fetch incident
+* require `rawPayload.source === 'sentinel_home_svc'`
+* if already flagged, return success idempotently
+* otherwise update only:
+
+  * `actionStatus: 'lead_flagged'`
+* create audit log
+* return success JSON
+
+### Critical rule
+
+This route does **not** create a CRM lead, contact, or deal.
+It only changes incident status.
+
+---
+
+## 6. Integrate Home Services UI in `client/src/pages/sentinel.tsx`
+
+### Add mutation
+
+Add `markLeadMutation` that calls:
+
+```ts id="a2b3c4"
+/api/sentinel/incidents/${incidentId}/flag-lead
+```
+
+### Branch selected-incident detail view
+
+When a selected incident has:
+
+```ts id="d5e6f7"
+(liveSelectedIncident.rawPayload as any)?.source === "sentinel_home_svc"
+```
+
+render a dedicated Home Services detail view component.
+
+Otherwise render the existing accident detail view unchanged.
+
+### Branch the main Sentinel content by niche
+
+When:
+
+```ts id="g8h9i0"
+(config as any)?.niche === "home_services"
+```
+
+render the Home Services operator view.
+
+Otherwise render the accident stats/live stream UI unchanged.
+
+### Config dialog
+
+For Home Services niche:
+
+* show `targetStates` prominently
+* show scan interval as informational/manual-scan context
+* allow SMS alert config
+* hide accident-only keywords/geofence targeting controls
+* keep niche-switch guard from Phase 1
+
+### Add components
+
+Add these UI components into `sentinel.tsx`:
+
+* `HomeSvcSentinelView`
+* `HomeSvcIncidentCard`
+* `HomeSvcIncidentDetailView`
+
+### Home Services UI scope only
+
+The UI may show:
+
+* mode indicator
+* signal count
+* pending/actioned counts
+* incident list
+* signal type
+* service category chips
+* severity badge
+* location
+* expiry/timing
+* flag as lead
+* SMS
+* acknowledge
+* detail view with NOAA/source context
+
+The UI must **not** show:
+
+* geofence actions
+* crash language
+* legal language
+* CRM creation claims
+* advanced reporting
+* territory monetization
+* automation-builder behavior
+
+### Copy rule
+
+Buttons and text must say:
+
+* “Flag as Lead”
+* “Lead flagged”
+* “Flagged for follow-up”
+
+Do **not** imply a CRM lead was created.
+
+---
+
+## 7. Update NOAA user agent
+
+In `server/sentinel-home-svc.ts`, replace the placeholder NOAA user agent/contact with the real production app identity and contact email.
+
+This must be done before first production scan.
+
+---
+
+# REQUIRED VALIDATION
+
+## Compile validation
+
+Run:
+
+```bash id="j1k2l3"
+tsc --noEmit
+```
+
+If compile fails:
+
+* fix only the minimum required integration/type issues
+* do not broaden scope
+
+## Manual functional validation
+
+Use a Home Services test account with:
+
+* `niche = home_services`
+* `targetStates = ['FL']` or equivalent valid state config
+
+Then verify:
+
+1. manual scan returns NOAA-driven Home Services incidents
+2. incidents are persisted
+3. second scan does not duplicate the same active alerts
+4. Home Services incidents display service chips and signal metadata
+5. flag-lead changes only `actionStatus`
+6. SMS uses Home Services wording
+7. geofence route blocks Home Services incidents
+8. accident accounts still behave exactly as before
+
+## Automation contamination check
+
+Search the project for any logic that acts on `sentinel_incidents` globally.
+If any workflow, notification, SMS, report, or job assumes all Sentinel incidents are crash incidents:
+
+* either add a safe source guard excluding `sentinel_home_svc`
+* or flag it as a blocker before deployment
+
+---
+
+# DONE MEANS
+
+You may only mark Level 2 complete when:
+
+* all three project files are actually updated
+* `tsc --noEmit` passes
+* Home Services manual scan works
+* dedup works
+* flag-lead works
+* Home Services SMS is correct
+* geofence is blocked for Home Services
+* accident behavior is unchanged
+
+---
+
+# RETURN FORMAT
+
+Return only:
+
+* completed
+* in progress
+* blocked
+* production risks
+* exact files changed
+* exact compile result
+* exact behaviors verified
+* next highest-leverage build step

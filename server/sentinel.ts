@@ -418,7 +418,9 @@ export function stopSentinelScheduler(): void {
   console.log("[SENTINEL] Scheduler stopped");
 }
 
-export async function processLiveHomeSvcFeed(): Promise<SentinelIncidentRaw[]> {
-  console.log("[SENTINEL HOME SVC] Phase 1 stub — no feed connected");
-  return [];
+export async function processLiveHomeSvcFeed(
+  targetStates: string[] = [],
+): Promise<import('./sentinel-home-svc').HomeSvcSignal[]> {
+  const { fetchHomeSvcSignals } = await import('./sentinel-home-svc');
+  return fetchHomeSvcSignals(targetStates);
 }

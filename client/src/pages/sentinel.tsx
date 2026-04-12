@@ -218,6 +218,24 @@ export default function Sentinel() {
     },
   });
 
+  const markLeadMutation = useMutation({
+    mutationFn: async (incidentId: number) => {
+      const res = await apiRequest("POST", `/api/sentinel/incidents/${incidentId}/flag-lead`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Lead flagged", description: "Incident marked for follow-up." });
+      queryClient.invalidateQueries({ queryKey: ["/api/sentinel/incidents", currentAccount?.id] });
+    },
+    onError: (err: any) => {
+      toast({
+        title:       "Could not flag lead",
+        description: err.message || "Check incident type and try again.",
+        variant:     "destructive",
+      });
+    },
+  });
+
   const nicheChanged = configForm.niche !== originalNiche;
   const nicheSaveBlocked = nicheChanged && !nicheChangeConfirmed;
 
@@ -278,17 +296,32 @@ export default function Sentinel() {
     : null;
 
   if (liveSelectedIncident) {
+    const isHomeSvcIncident =
+      (liveSelectedIncident.rawPayload as any)?.source === 'sentinel_home_svc';
+
     return (
       <div className="p-6 md:p-10 max-w-6xl mx-auto">
-        <IncidentDetailView
-          incident={liveSelectedIncident}
-          onBack={() => setSelectedIncident(null)}
-          onGeofence={() => geofenceMutation.mutate(liveSelectedIncident.id)}
-          onSms={() => smsMutation.mutate(liveSelectedIncident.id)}
-          onAck={() => { ackMutation.mutate(liveSelectedIncident.id); setSelectedIncident(null); }}
-          geofencePending={geofenceMutation.isPending}
-          smsPending={smsMutation.isPending}
-        />
+        {isHomeSvcIncident ? (
+          <HomeSvcIncidentDetailView
+            incident={liveSelectedIncident}
+            onBack={() => setSelectedIncident(null)}
+            onSms={() => smsMutation.mutate(liveSelectedIncident.id)}
+            onAck={() => { ackMutation.mutate(liveSelectedIncident.id); setSelectedIncident(null); }}
+            onMarkLead={() => markLeadMutation.mutate(liveSelectedIncident.id)}
+            smsPending={smsMutation.isPending}
+            markLeadPending={markLeadMutation.isPending}
+          />
+        ) : (
+          <IncidentDetailView
+            incident={liveSelectedIncident}
+            onBack={() => setSelectedIncident(null)}
+            onGeofence={() => geofenceMutation.mutate(liveSelectedIncident.id)}
+            onSms={() => smsMutation.mutate(liveSelectedIncident.id)}
+            onAck={() => { ackMutation.mutate(liveSelectedIncident.id); setSelectedIncident(null); }}
+            geofencePending={geofenceMutation.isPending}
+            smsPending={smsMutation.isPending}
+          />
+        )}
       </div>
     );
   }
@@ -409,7 +442,17 @@ export default function Sentinel() {
       </motion.div>
 
       {isHomeSvc ? (
-        <HomeSvcSentinelStub />
+        <HomeSvcSentinelView
+          incidents={filteredIncidents}
+          loadingIncidents={loadingIncidents}
+          currentAccount={currentAccount}
+          onSms={(id) => smsMutation.mutate(id)}
+          onAck={(id) => ackMutation.mutate(id)}
+          onMarkLead={(id) => markLeadMutation.mutate(id)}
+          smsPending={smsMutation.isPending}
+          markLeadPending={markLeadMutation.isPending}
+          onSelectIncident={setSelectedIncident}
+        />
       ) : (<>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
@@ -575,7 +618,7 @@ export default function Sentinel() {
                       <p className="text-xs text-amber-300 font-bold mb-1">Switching Sentinel mode changes scan behavior immediately for this account.</p>
                       <p className="text-[10px] text-amber-400/70 mb-2">
                         {configForm.niche === 'home_services'
-                          ? "Accident feed scanning will stop. Home Services is Phase 1 (stub — no live feed connected)."
+                          ? "Accident feed scanning will stop. Home Services NOAA weather alerts will activate."
                           : "Home Services scanning will stop. Accident crash detection will resume."}
                       </p>
                       <label className="flex items-center gap-2 cursor-pointer">
@@ -593,6 +636,58 @@ export default function Sentinel() {
                 </div>
               )}
             </div>
+            {configForm.niche === 'home_services' ? (
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">
+                    Target States for NOAA Alerts
+                  </label>
+                  <Input
+                    value={configForm.targetStates}
+                    onChange={(e) => setConfigForm(f => ({ ...f, targetStates: e.target.value }))}
+                    placeholder="FL, TX, GA, NC"
+                    className="bg-white/5 border-white/10 text-white"
+                    data-testid="input-target-states-home-svc"
+                  />
+                  <p className="text-[10px] text-amber-500/70 mt-1">
+                    Required — 2-letter state codes, comma-separated. Scans return nothing if empty.
+                  </p>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">
+                    Scan Interval (sec)
+                  </label>
+                  <Input
+                    type="number"
+                    value={configForm.scanInterval}
+                    onChange={(e) => setConfigForm(f => ({ ...f, scanInterval: parseInt(e.target.value) || 60 }))}
+                    className="bg-white/5 border-white/10 text-white"
+                  />
+                  <p className="text-[10px] text-slate-600 mt-1">Manual scan only — no scheduler in Level 2.</p>
+                </div>
+                <div className="space-y-3 pt-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-slate-300">SMS Alerts</span>
+                    <Switch checked={configForm.smsAlertEnabled} onCheckedChange={(v) => setConfigForm(f => ({ ...f, smsAlertEnabled: v }))} />
+                  </div>
+                  {configForm.smsAlertEnabled && (
+                    <div>
+                      <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Alert Phone Number</label>
+                      <Input
+                        value={configForm.smsAlertPhone}
+                        onChange={(e) => setConfigForm(f => ({ ...f, smsAlertPhone: e.target.value }))}
+                        placeholder="+1 (555) 123-4567"
+                        className="bg-white/5 border-white/10 text-white"
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="text-[10px] text-slate-700 border border-white/5 rounded-lg p-3">
+                  Keywords, Geofence, and advanced targeting are not active in Home Services Level 2.
+                </div>
+              </div>
+            ) : (
+              <>
             <div>
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Incident Feed</label>
               <div className="bg-white/5 border border-white/10 rounded-md px-3 py-2 text-sm text-emerald-400 font-mono">
@@ -706,6 +801,8 @@ export default function Sentinel() {
                 <Switch checked={configForm.geofenceEnabled} onCheckedChange={(v) => setConfigForm(f => ({ ...f, geofenceEnabled: v }))} data-testid="switch-geofence" />
               </div>
             </div>
+              </>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowConfig(false)} className="border-white/10 text-white hover:bg-white/10">Cancel</Button>
@@ -1161,65 +1258,441 @@ function DetailField({ label, value, testId }: { label: string; value: string | 
   );
 }
 
-const HOME_SVC_CATEGORIES = [
-  "Water Damage", "Fire Damage", "Mold Remediation", "Storm Damage",
-  "Roofing", "Plumbing Emergency", "HVAC Failure", "Flood Cleanup",
-];
+const HOME_SVC_LABEL: Record<string, string> = {
+  roofing:           'Roofing',
+  gutters:           'Gutters',
+  siding:            'Siding',
+  tree_removal:      'Tree Removal',
+  fencing:           'Fencing',
+  storm_cleanup:     'Storm Cleanup',
+  water_restoration: 'Water Restoration',
+  plumbing:          'Plumbing',
+  mold_remediation:  'Mold Remediation',
+  hvac:              'HVAC',
+  electrical:        'Electrical',
+};
 
-function HomeSvcSentinelStub() {
+function serviceLabel(key: string): string {
+  return HOME_SVC_LABEL[key] ?? key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function formatExpiry(expires: string | null | undefined): string | null {
+  if (!expires) return null;
+  try {
+    const d = new Date(expires);
+    return `Expires ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+  } catch { return null; }
+}
+
+function HomeSvcSentinelView({
+  incidents,
+  loadingIncidents,
+  currentAccount,
+  onSms,
+  onAck,
+  onMarkLead,
+  smsPending,
+  markLeadPending,
+  onSelectIncident,
+}: {
+  incidents: SentinelIncident[];
+  loadingIncidents: boolean;
+  currentAccount: SubAccount | undefined;
+  onSms: (id: number) => void;
+  onAck: (id: number) => void;
+  onMarkLead: (id: number) => void;
+  smsPending: boolean;
+  markLeadPending: boolean;
+  onSelectIncident: (incident: SentinelIncident) => void;
+}) {
+  const pendingSignals  = incidents.filter(i => i.actionStatus === 'pending');
+  const actionedSignals = incidents.filter(i => i.actionStatus !== 'pending');
+  const actionRequired  = incidents.filter(i => (i.rawPayload as any)?.actionRequired === true).length;
+  const flaggedCount    = incidents.filter(i => i.actionStatus === 'lead_flagged').length;
+
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      <div className="bg-[#0a0a0a] border border-blue-500/30 p-6 rounded-2xl" data-testid="home-svc-stub-banner">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center">
-            <Home size={20} className="text-blue-400" />
+    <>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+          className="bg-[#0a0a0a] border border-amber-500/30 p-4 rounded-2xl">
+          <div className="flex items-center gap-2 mb-1">
+            <AlertTriangle size={14} className="text-amber-500" />
+            <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Total Signals</p>
           </div>
-          <div>
-            <h2 className="text-white font-black tracking-tight text-lg">Home Services Mode</h2>
-            <p className="text-blue-400 text-[10px] uppercase tracking-widest font-bold">Phase 1 — Feed Not Connected</p>
+          <p className="text-3xl font-black text-white" data-testid="text-home-svc-total">{incidents.length}</p>
+        </motion.div>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+          className="bg-[#0a0a0a] border border-orange-500/30 p-4 rounded-2xl">
+          <div className="flex items-center gap-2 mb-1">
+            <Shield size={14} className="text-orange-500" />
+            <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Action Required</p>
           </div>
+          <p className="text-3xl font-black text-white" data-testid="text-home-svc-action-required">{actionRequired}</p>
+        </motion.div>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
+          className="bg-[#0a0a0a] border border-cyan-500/30 p-4 rounded-2xl">
+          <div className="flex items-center gap-2 mb-1">
+            <Clock size={14} className="text-cyan-500" />
+            <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Pending</p>
+          </div>
+          <p className="text-3xl font-black text-white" data-testid="text-home-svc-pending">{pendingSignals.length}</p>
+        </motion.div>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+          className="bg-[#0a0a0a] border border-green-500/30 p-4 rounded-2xl">
+          <div className="flex items-center gap-2 mb-1">
+            <CheckCircle2 size={14} className="text-green-500" />
+            <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Flagged</p>
+          </div>
+          <p className="text-3xl font-black text-white" data-testid="text-home-svc-flagged">{flaggedCount}</p>
+        </motion.div>
+      </div>
+
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
+        className="bg-[#0a0a0a] border border-amber-500/30 p-6 rounded-2xl mb-8">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+          <h2 className="text-amber-500 font-black tracking-widest uppercase flex items-center gap-2">
+            <Radio size={16} /> Home Services Signal Stream
+          </h2>
+          <span className="text-[10px] text-gray-600 uppercase tracking-widest">
+            {incidents.length} signal{incidents.length !== 1 ? 's' : ''} · NOAA NWS
+          </span>
         </div>
-        <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-4 mb-4">
-          <div className="flex items-start gap-2">
-            <AlertCircle size={16} className="text-blue-400 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-sm text-blue-300 font-medium">This account is configured for Home Services monitoring.</p>
-              <p className="text-xs text-slate-400 mt-1">Signal sources (weather alerts, permit feeds, service dispatches) are not yet connected. Scans will return zero results until Phase 2 integration is complete.</p>
-            </div>
+
+        {loadingIncidents ? (
+          <div className="space-y-4">
+            {[1, 2, 3].map(i => <div key={i} className="h-20 bg-white/5 rounded-xl animate-pulse" />)}
           </div>
-        </div>
-        <div>
-          <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-3">Service Categories (Planned)</p>
-          <div className="flex flex-wrap gap-2" data-testid="home-svc-categories">
-            {HOME_SVC_CATEGORIES.map(cat => (
-              <span key={cat} className="px-3 py-1 rounded-full bg-blue-500/10 text-blue-300 text-xs font-medium border border-blue-500/20">
-                {cat}
+        ) : incidents.length === 0 ? (
+          <div className="text-center py-12">
+            <Radar size={48} className="mx-auto text-slate-700 mb-4" />
+            <h3 className="text-white font-bold text-lg mb-2" data-testid="text-no-signals">No Signals Detected</h3>
+            <p className="text-slate-500 text-sm max-w-md mx-auto">
+              Click Scan Now to check NOAA for active alerts in your target states.
+              Ensure target states are configured in Settings.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <AnimatePresence>
+              {pendingSignals.map((incident, i) => (
+                <HomeSvcIncidentCard
+                  key={incident.id}
+                  incident={incident}
+                  index={i}
+                  onSms={() => onSms(incident.id)}
+                  onAck={() => onAck(incident.id)}
+                  onMarkLead={() => onMarkLead(incident.id)}
+                  onClick={() => onSelectIncident(incident)}
+                  smsPending={smsPending}
+                  markLeadPending={markLeadPending}
+                />
+              ))}
+            </AnimatePresence>
+
+            {actionedSignals.length > 0 && (
+              <>
+                <div className="flex items-center gap-3 mt-6 mb-3">
+                  <div className="flex-1 h-px bg-white/10" />
+                  <span className="text-xs text-slate-600 uppercase tracking-widest font-bold">Previously Actioned</span>
+                  <div className="flex-1 h-px bg-white/10" />
+                </div>
+                {actionedSignals.slice(0, 10).map((incident, i) => (
+                  <HomeSvcIncidentCard
+                    key={incident.id}
+                    incident={incident}
+                    index={i}
+                    onSms={() => onSms(incident.id)}
+                    onAck={() => onAck(incident.id)}
+                    onMarkLead={() => onMarkLead(incident.id)}
+                    onClick={() => onSelectIncident(incident)}
+                    smsPending={false}
+                    markLeadPending={false}
+                    dimmed
+                  />
+                ))}
+              </>
+            )}
+          </div>
+        )}
+      </motion.div>
+    </>
+  );
+}
+
+function HomeSvcIncidentCard({
+  incident, index, onSms, onAck, onMarkLead, onClick, smsPending, markLeadPending, dimmed,
+}: {
+  incident: SentinelIncident;
+  index: number;
+  onSms: () => void;
+  onAck: () => void;
+  onMarkLead: () => void;
+  onClick?: () => void;
+  smsPending: boolean;
+  markLeadPending: boolean;
+  dimmed?: boolean;
+}) {
+  const sev = SEVERITY_COLORS[incident.severity || 'medium'] || SEVERITY_COLORS.medium;
+  const raw = incident.rawPayload as any;
+  const isPending = incident.actionStatus === 'pending';
+  const serviceTypes: string[] = Array.isArray(raw?.serviceTypes) ? raw.serviceTypes : [];
+  const expiryLabel = formatExpiry(raw?.expires);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: dimmed ? 0.5 : 1, y: 0 }}
+      exit={{ opacity: 0, x: -20 }}
+      transition={{ delay: index * 0.03 }}
+      className="border-b border-white/5 pb-4 last:border-0 last:pb-0 cursor-pointer hover:bg-white/[0.02] rounded-lg p-2 -mx-2 transition-colors"
+      onClick={onClick}
+      data-testid={`card-home-svc-incident-${incident.id}`}
+    >
+      <div className="flex justify-between items-start gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <p className="text-white font-bold text-sm truncate">{incident.title}</p>
+            {raw?.signalType && (
+              <span className="text-[8px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-black uppercase tracking-wider border border-amber-500/30">
+                {raw.signalType.replace(/_/g, ' ')}
               </span>
-            ))}
+            )}
+            {incident.actionStatus === 'lead_flagged' && (
+              <span className="text-[8px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded font-bold">FLAGGED</span>
+            )}
+            {incident.smsSent && (
+              <span className="text-[8px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded font-bold">SMS SENT</span>
+            )}
           </div>
+          <p className="text-gray-500 text-xs flex items-center gap-1 mb-1">
+            <MapPin size={10} /> {incident.location || 'Area not specified'}
+          </p>
+          {serviceTypes.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {serviceTypes.slice(0, 4).map(svc => (
+                <span key={svc} className="text-[9px] bg-white/5 text-slate-400 px-1.5 py-0.5 rounded border border-white/10">
+                  {serviceLabel(svc)}
+                </span>
+              ))}
+            </div>
+          )}
+          {expiryLabel && <p className="text-[10px] text-slate-600 mt-1">{expiryLabel}</p>}
+        </div>
+        <div className="text-right flex-shrink-0">
+          <span className={`${sev.bg} ${sev.text} text-[10px] px-2 py-1 rounded font-black tracking-wider`}>
+            {sev.label}
+          </span>
+          <p className="text-gray-600 text-[9px] mt-1">
+            {timeAgo(incident.detectedAt as unknown as string)}
+          </p>
         </div>
       </div>
-      <div className="bg-[#0a0a0a] border border-slate-700/50 p-6 rounded-2xl" data-testid="home-svc-status">
-        <div className="flex items-center gap-2 mb-3">
-          <div className="w-2 h-2 rounded-full bg-amber-400" />
-          <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">System Status</p>
+
+      {isPending && (
+        <div className="flex gap-2 mt-3" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={onMarkLead}
+            disabled={incident.actionStatus === 'lead_flagged' || markLeadPending}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-bold hover:bg-amber-500/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+            data-testid={`button-flag-lead-${incident.id}`}
+          >
+            <Target size={12} />
+            {incident.actionStatus === 'lead_flagged' ? 'Flagged' : 'Flag as Lead'}
+          </button>
+          <button
+            onClick={onSms}
+            disabled={incident.smsSent || smsPending}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold hover:bg-blue-500/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+            data-testid={`button-sms-home-svc-${incident.id}`}
+          >
+            <Send size={12} /> {incident.smsSent ? 'Sent' : 'SMS Alert'}
+          </button>
+          <button
+            onClick={onAck}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-400 text-xs font-bold hover:bg-white/10 transition-all"
+            data-testid={`button-ack-home-svc-${incident.id}`}
+          >
+            <Eye size={12} /> Acknowledge
+          </button>
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <p className="text-[10px] text-slate-600 uppercase tracking-widest mb-1">Feed Connection</p>
-            <p className="text-sm text-amber-400 font-bold">Not Connected</p>
+      )}
+    </motion.div>
+  );
+}
+
+function HomeSvcIncidentDetailView({
+  incident, onBack, onSms, onAck, onMarkLead, smsPending, markLeadPending,
+}: {
+  incident: SentinelIncident;
+  onBack: () => void;
+  onSms: () => void;
+  onAck: () => void;
+  onMarkLead: () => void;
+  smsPending: boolean;
+  markLeadPending: boolean;
+}) {
+  const sev = SEVERITY_COLORS[incident.severity || 'medium'] || SEVERITY_COLORS.medium;
+  const raw = incident.rawPayload as any;
+  const isPending = incident.actionStatus === 'pending';
+  const serviceTypes: string[] = Array.isArray(raw?.serviceTypes) ? raw.serviceTypes : [];
+  const expiryLabel = formatExpiry(raw?.expires);
+  const effectiveLabel = raw?.onset ? formatDateTime(raw.onset) : null;
+  const lat = raw?.lat || incident.lat;
+  const lng = raw?.lng || incident.lng;
+  const googleMapsUrl = raw?.googleMaps || (lat && lng ? `https://www.google.com/maps?q=${lat},${lng}` : null);
+
+  return (
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}>
+      <Button variant="ghost" onClick={onBack} className="text-slate-400 hover:text-white mb-4">
+        <ChevronLeft size={16} className="mr-1" /> Back to Signals
+      </Button>
+
+      <div className="text-xs font-bold uppercase tracking-widest mb-3 text-amber-400">
+        Source: NOAA NWS — Home Services Signal
+      </div>
+
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
+        <div>
+          <h2 className="text-2xl font-black text-white" data-testid="text-home-svc-detail-title">{incident.title}</h2>
+          <p className="text-slate-500 text-sm">
+            Detected {formatDateTime(incident.detectedAt as unknown as string)} · {timeAgo(incident.detectedAt as unknown as string)}
+          </p>
+        </div>
+        <span className={`${sev.bg} ${sev.text} text-xs px-3 py-1.5 rounded-full font-black tracking-wider border ${sev.border}`}>
+          {sev.label}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6">
+          <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+            <Radio size={14} className="text-amber-400" /> Signal Details
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            <DetailField label="NOAA Event"    value={raw?.noaaEvent}                        testId="text-home-svc-event" />
+            <DetailField label="Signal Type"   value={raw?.signalType?.replace(/_/g, ' ')}   testId="text-home-svc-signal" />
+            <DetailField label="NOAA Severity" value={raw?.noaaSeverity}                     testId="text-home-svc-noaa-sev" />
+            <DetailField label="Urgency"       value={raw?.noaaUrgency}                      testId="text-home-svc-urgency" />
+            <DetailField label="Certainty"     value={raw?.noaaCertainty}                    testId="text-home-svc-certainty" />
+            <DetailField label="State"         value={raw?.state}                            testId="text-home-svc-state" />
           </div>
-          <div>
-            <p className="text-[10px] text-slate-600 uppercase tracking-widest mb-1">Last Scan Result</p>
-            <p className="text-sm text-slate-400 font-medium">0 incidents (stub)</p>
+          {expiryLabel && (
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 mb-4">
+              <p className="text-amber-400 text-xs font-bold">{expiryLabel}</p>
+            </div>
+          )}
+          {effectiveLabel && <DetailField label="Effective From" value={effectiveLabel} testId="text-home-svc-effective" />}
+          <div className="mt-4">
+            <p className="text-[10px] text-slate-600 uppercase font-bold tracking-widest mb-1">Affected Area</p>
+            <p className="text-sm text-white font-medium" data-testid="text-home-svc-area">{incident.location || 'Area not specified'}</p>
           </div>
-          <div>
-            <p className="text-[10px] text-slate-600 uppercase tracking-widest mb-1">Phase</p>
-            <p className="text-sm text-blue-400 font-bold">1 — Scaffold</p>
-          </div>
-          <div>
-            <p className="text-[10px] text-slate-600 uppercase tracking-widest mb-1">Next Milestone</p>
-            <p className="text-sm text-slate-400 font-medium">Phase 2 — Live Feeds</p>
+          {incident.description && (
+            <div className="mt-4">
+              <p className="text-[10px] text-slate-600 uppercase font-bold tracking-widest mb-1">Headline</p>
+              <p className="text-sm text-slate-300" data-testid="text-home-svc-headline">{incident.description}</p>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-6">
+          {serviceTypes.length > 0 && (
+            <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6">
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <Home size={14} className="text-amber-400" /> Inferred Service Categories
+              </h3>
+              <div className="flex flex-wrap gap-2" data-testid="list-home-svc-categories">
+                {serviceTypes.map(svc => (
+                  <span key={svc} className="px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-300 text-xs font-bold border border-amber-500/20">
+                    {serviceLabel(svc)}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {googleMapsUrl && (
+            <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6">
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <Globe size={14} className="text-cyan-400" /> Map
+              </h3>
+              <div className="bg-white/5 border border-white/10 rounded-xl p-6 text-center mb-4">
+                <MapPin size={36} className="mx-auto text-amber-400 mb-2" />
+                <p className="text-white font-bold text-sm mb-1">{incident.location}</p>
+                {lat && lng && <p className="text-slate-500 text-xs">{Number(lat).toFixed(4)}, {Number(lng).toFixed(4)}</p>}
+              </div>
+              <a
+                href={googleMapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-sm font-bold hover:bg-blue-500/20 transition-all w-full justify-center"
+                data-testid="link-home-svc-google-maps"
+              >
+                <ExternalLink size={14} /> Open in Google Maps
+              </a>
+            </div>
+          )}
+
+          <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6">
+            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+              <Shield size={14} className="text-emerald-400" /> Response Status
+            </h3>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/5">
+                <div className="flex items-center gap-2">
+                  <Target size={14} className={incident.actionStatus === 'lead_flagged' ? "text-green-400" : "text-slate-600"} />
+                  <span className="text-sm text-white">Flagged for Follow-up</span>
+                </div>
+                <span className={`text-xs font-bold px-2 py-1 rounded ${incident.actionStatus === 'lead_flagged' ? "bg-green-500/20 text-green-400" : "bg-slate-500/20 text-slate-500"}`} data-testid="text-home-svc-flag-status">
+                  {incident.actionStatus === 'lead_flagged' ? "Flagged" : "Not Flagged"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/5">
+                <div className="flex items-center gap-2">
+                  <MessageSquare size={14} className={incident.smsSent ? "text-green-400" : "text-slate-600"} />
+                  <span className="text-sm text-white">SMS Alert</span>
+                </div>
+                <span className={`text-xs font-bold px-2 py-1 rounded ${incident.smsSent ? "bg-green-500/20 text-green-400" : "bg-slate-500/20 text-slate-500"}`} data-testid="text-home-svc-sms-status">
+                  {incident.smsSent ? "Sent" : "Not Sent"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/5">
+                <div className="flex items-center gap-2">
+                  <Eye size={14} className={incident.actionStatus !== "pending" ? "text-green-400" : "text-slate-600"} />
+                  <span className="text-sm text-white">Action Status</span>
+                </div>
+                <span className={`text-xs font-bold px-2 py-1 rounded ${incident.actionStatus !== "pending" ? "bg-green-500/20 text-green-400" : "bg-amber-500/20 text-amber-400"}`} data-testid="text-home-svc-action-status">
+                  {(incident.actionStatus || "pending").replace(/_/g, " ").toUpperCase()}
+                </span>
+              </div>
+            </div>
+
+            {isPending && (
+              <div className="flex gap-2 mt-4">
+                <button
+                  onClick={onMarkLead}
+                  disabled={incident.actionStatus === 'lead_flagged' || markLeadPending}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-bold hover:bg-amber-500/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                  data-testid="button-detail-flag-lead"
+                >
+                  <Target size={12} /> {markLeadPending ? "Flagging..." : "Flag as Lead"}
+                </button>
+                <button
+                  onClick={onSms}
+                  disabled={incident.smsSent || smsPending}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold hover:bg-blue-500/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                  data-testid="button-detail-home-svc-sms"
+                >
+                  <Send size={12} /> {smsPending ? "Sending..." : "Send SMS"}
+                </button>
+                <button
+                  onClick={onAck}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-400 text-xs font-bold hover:bg-white/10 transition-all"
+                  data-testid="button-detail-home-svc-ack"
+                >
+                  <Eye size={12} /> Acknowledge
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
