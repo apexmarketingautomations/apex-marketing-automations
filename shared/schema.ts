@@ -17,6 +17,10 @@ export const PLAN_TIERS = {
     name: 'Enterprise',
     features: ['inbox', 'contacts', 'deals', 'appointments', 'reviews', 'site_builder', 'workflows', 'ai_bots', 'sentinel', 'voice_agents', 'email_campaigns', 'white_label', 'webhooks', 'multi_location', 'priority_support', 'digital_card'],
   },
+  god_mode: {
+    name: 'God Mode',
+    features: ['inbox', 'contacts', 'deals', 'appointments', 'reviews', 'site_builder', 'workflows', 'ai_bots', 'sentinel', 'voice_agents', 'email_campaigns', 'white_label', 'webhooks', 'multi_location', 'priority_support', 'digital_card', 'api_access', 'custom_integrations', 'advanced_analytics'],
+  },
 } as const;
 
 export type PlanTier = keyof typeof PLAN_TIERS;
