@@ -1,0 +1,188 @@
+You are reviewing a **live production architecture** for **Apex Marketing Automations**.
+
+I need you to improve and pressure-test an **Apex Intelligence Orchestrator** concept, but with one critical rule:
+
+## Critical rule
+
+Do **not** redesign the whole platform.
+
+You are **not** allowed to:
+
+* invent a greenfield architecture
+* recommend a sweeping rewrite
+* merge all services into one giant abstraction
+* casually refactor stable production systems
+* replace existing agent logic that already works
+* create a beautiful theoretical design that would be dangerous to apply in a live codebase
+
+Your job is to make this orchestrator concept **smarter, tighter, safer, and more implementation-ready** while preserving the existing system.
+
+## What exists already
+
+The platform already has many independent intelligence components, including things like:
+
+* agentBrain
+* cognitiveLayer
+* memoryEngine
+* episodicMemory
+* strategicAdvisor
+* trendDetection
+* Sentinel
+* crashIngestPipeline
+* laylaPipeline
+* contentPublisher
+* callIntelligence
+* eventHooks
+* taskAgent
+* contextBuilder
+* related operator/service modules
+
+These already work in production to varying degrees.
+
+## What I want
+
+I want an **Apex Intelligence Orchestrator** that acts as a **lightweight top-layer intelligence hub**, not a replacement brain.
+
+It should:
+
+* collect outcomes/signals from existing agents
+* normalize them into a common format
+* detect useful cross-agent patterns
+* write back distilled learnings into the existing memory/intelligence layers
+* enrich future decision-making across the platform
+
+But it must do this in the **least invasive, production-safe way possible**.
+
+## What I need from you
+
+Take this orchestrator idea and improve it with a **production-safe architecture review**.
+
+Return your answer in this exact structure:
+
+### 1. What should stay from the current orchestrator concept
+
+Identify what is good and should be preserved.
+
+### 2. What is too risky / too broad / too hand-wavy
+
+Call out anything that would likely create:
+
+* scope explosion
+* dangerous refactors
+* fragile coupling
+* fake intelligence complexity
+* performance risk
+* cross-account data leakage risk
+* agent contamination risk
+
+### 3. Safest version of the orchestrator
+
+Propose the **smallest viable real orchestrator** that can exist in production first.
+
+Favor:
+
+* contributor registry
+* normalized signal intake
+* additive intelligence signal storage
+* simple learning loop
+* write-back into existing episodic memory
+* read-only enrichment into existing context building
+
+Avoid:
+
+* giant knowledge graph claims unless actually necessary
+* replacing agent memory systems
+* deeply coupling every service in Phase 1
+
+### 4. Strong module boundaries
+
+Define what should remain:
+
+* inside the existing agents
+* inside the orchestrator
+* inside memory/episodic systems
+* inside context building
+* inside reporting/dashboard/UI
+
+Be explicit about what the orchestrator should **not** own.
+
+### 5. Production-safe build phases
+
+Break it into:
+
+* **Phase 1 — Minimal Orchestrator**
+* **Phase 2 — Cross-Agent Learning**
+* **Phase 3 — Richer Intelligence Layer**
+
+For each phase, specify:
+
+* exact responsibilities
+* lowest-risk implementation path
+* what should remain untouched
+* what would count as “done”
+
+### 6. Cross-account / multi-tenant safety
+
+This is critical.
+
+Explain how the orchestrator must avoid:
+
+* leaking learnings across client accounts incorrectly
+* mixing tenant data in the wrong context
+* over-generalizing account-specific patterns into global truths
+* exposing internal system-wide insights to customer-facing contexts
+
+Be specific about which learnings can be:
+
+* account-scoped
+* niche-scoped
+* global/system-scoped
+
+### 7. Signal model
+
+Design a **minimal normalized signal format** for agent outcomes, including fields like:
+
+* source agent
+* account/sub-account
+* niche/context
+* action
+* subject/entity
+* outcome/result
+* timestamp
+* confidence
+* metadata
+* scope
+
+Keep it minimal and realistic.
+
+### 8. Learning loop design
+
+Propose a **simple first-pass learning loop**:
+
+* how often it runs
+* what patterns it looks for
+* how it decides a pattern is worth storing
+* how it writes distilled learnings back into episodic memory
+* how it avoids polluting memory with noise
+
+### 9. API and dashboard scope
+
+Define the safest first version of:
+
+* `/api/intelligence/apex`
+* the “Apex Brain” dashboard tab
+
+Only include what is truly useful and low-risk in a first production version.
+
+### 10. Hard warnings
+
+Tell me what I absolutely should **not** build yet, even if it sounds impressive.
+
+## Tone
+
+Be blunt, conservative, and implementation-aware.
+
+## Final instruction
+
+Do **not** give me a visionary rewrite.
+Give me a **realistic, structure-preserving, production-safe orchestrator design** that can sit on top of the existing platform and genuinely improve it over time.

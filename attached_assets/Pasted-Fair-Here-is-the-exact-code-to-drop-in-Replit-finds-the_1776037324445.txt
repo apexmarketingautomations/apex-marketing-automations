@@ -1,0 +1,114 @@
+Fair. Here is the exact code to drop in. Replit finds the right spot.
+
+---
+
+### `server/sentinel.ts`
+
+After any `createSentinelIncident` call that succeeds, add:
+
+```typescript
+import("./operator/apexIntelligence").then(({ reportOutcome }) =>
+  reportOutcome({
+    agentName:    "sentinel",
+    action:       "incident_detected",
+    subject:      (rawPayload as any)?.signalType ?? (rawPayload as any)?.noaaEvent ?? "signal",
+    result:       `${severity} incident detected: ${title}`,
+    confidence:   severity === "critical" ? 0.95 : severity === "high" ? 0.8 : 0.65,
+    subAccountId: subAccountId,
+    metadata:     { incidentId: record.id, niche, severity, location },
+  })
+).catch(() => {});
+```
+
+Match `severity`, `title`, `subAccountId`, `rawPayload`, `niche`, `record`, `location` to whatever variable names exist at that call site.
+
+---
+
+### `server/crashIngestPipeline.ts`
+
+After a crash is successfully ingested or a lead is created:
+
+```typescript
+import("./operator/apexIntelligence").then(({ reportOutcome }) =>
+  reportOutcome({
+    agentName:    "crash-ingest",
+    action:       leadId ? "lead_created" : "crash_ingested",
+    subject:      "vehicle_crash",
+    result:       leadId
+                    ? `Lead created from crash (lead #${leadId})`
+                    : `Crash ingested for account ${subAccountId}`,
+    confidence:   0.9,
+    subAccountId: subAccountId,
+    metadata:     { incidentId, leadId: leadId ?? null },
+  })
+).catch(() => {});
+```
+
+---
+
+### `server/services/personas/laylaPipeline.ts`
+
+After Layla resolves an action (send, handover, qualify, etc.):
+
+```typescript
+import("../../operator/apexIntelligence").then(({ reportOutcome }) =>
+  reportOutcome({
+    agentName:    "layla",
+    action:       actionType ?? "respond",
+    subject:      "conversation",
+    result:       `Layla: ${actionType ?? "respond"}`,
+    confidence:   0.75,
+    subAccountId: subAccountId,
+    metadata:     { actionType, contactId: contactId ?? null },
+  })
+).catch(() => {});
+```
+
+Adjust the relative import path to match where `laylaPipeline.ts` actually sits relative to `server/operator/`.
+
+---
+
+### `client/src/pages/intelligence-dashboard.tsx`
+
+Three additions. Find each location by the surrounding code and add the line.
+
+**1 — Import:**
+```typescript
+import { ApexBrainTab } from "../components/intelligence/ApexBrainTab";
+```
+
+**2 — Tab definition** (wherever the tab list lives, add one entry):
+```typescript
+{ id: "apex", label: "Apex Brain" }
+```
+
+**3 — Tab content render** (wherever tab content is conditionally shown):
+```typescript
+{activeTab === "apex" && <ApexBrainTab />}
+```
+
+---
+
+### `client/src/components/intelligence/AgentTab.tsx`
+
+If the file renders agent cards or rows, add a link into the Apex Brain tab at the bottom of the component or after the last agent section:
+
+```tsx
+<div style={{ marginTop: 16, padding: "10px 0", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+  <button
+    onClick={() => onTabChange?.("apex")}
+    style={{
+      background:   "none",
+      border:       "none",
+      color:        "#64748b",
+      fontSize:     11,
+      cursor:       "pointer",
+      padding:      0,
+    }}
+  >
+    ⬡ View cross-agent patterns in Apex Brain →
+  </button>
+</div>
+```
+
+Pass `onTabChange` as a prop from the parent dashboard, or use whatever tab navigation method the dashboard already uses.
