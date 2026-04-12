@@ -54,3 +54,15 @@ id = "LJryZgvX87S0n55was9rs"
 uri = "file://.canvas/assets/layla-test-voice-3.mp3"
 type = "audio"
 title = "Voice 3: SECRET REVEAL"
+
+[[outputs]]
+id = "r7zE_OR6qJ9xKJXwBD2Oq"
+uri = "file://docs/META_APP_REVIEW_PACKAGE.md"
+type = "text"
+title = "Meta App Review - Complete Submission Package"
+
+[[outputs]]
+id = "IWCStkeGtoc1G8LIgK8o_"
+uri = "file://docs/META_SCREENCAST_GUIDE.md"
+type = "text"
+title = "Meta App Review - Screencast Recording Guide"
