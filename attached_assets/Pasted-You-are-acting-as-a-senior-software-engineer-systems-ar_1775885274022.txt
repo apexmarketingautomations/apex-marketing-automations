@@ -1,0 +1,164 @@
+You are acting as a **senior software engineer + systems architect + codebase auditor**.
+
+Your task is to perform a **deep codebase hygiene audit and cleanup** of my entire application.
+
+## Goal
+Identify and eliminate:
+- orphan files
+- dead code
+- unused components
+- stale features
+- overwritten logic
+- duplicate systems
+- abandoned integrations
+- unused API routes
+- outdated configs
+- dormant workflows
+- unused environment variables
+- legacy experiments that were never removed
+
+This is NOT optional cleanup — this is required to make the system **maintainable, debuggable, and production-grade**.
+
+---
+
+## What you must analyze
+
+### 1) File-level audit
+Scan the entire repo and identify:
+- files that are never imported or referenced
+- duplicate files doing similar things
+- old versions of features still sitting in the repo
+- unused utilities, helpers, or services
+- test files that are no longer relevant
+- abandoned feature directories
+
+For each file:
+- determine if it is used
+- determine where it is used
+- determine if it is safe to delete
+
+---
+
+### 2) Route and API audit
+- list all API endpoints
+- identify endpoints that are never called
+- identify endpoints replaced by newer versions
+- identify endpoints that silently fail or do nothing
+- identify duplicate endpoints doing similar work
+
+---
+
+### 3) Frontend usage audit
+- detect components that are never rendered
+- detect UI elements that are no longer reachable via navigation
+- detect routes that exist but are not linked anywhere
+- detect features that exist but are inaccessible to users
+
+---
+
+### 4) Logic + system duplication
+- find duplicate logic across files (same function written multiple times)
+- find conflicting implementations of the same feature
+- identify “version 1 vs version 2” systems both still present
+- identify partially migrated systems
+
+---
+
+### 5) Integration audit
+For ALL integrations (Stripe, Twilio, OpenAI, Meta, etc):
+- determine if they are actively used
+- determine where they are used
+- detect dead integration code
+- detect unused keys/configs
+- detect incomplete implementations
+
+---
+
+### 6) Environment + config audit
+- list ALL environment variables
+- mark:
+  - used
+  - unused
+  - deprecated
+  - duplicated
+- detect secrets/configs that are never referenced
+- detect configs that are no longer needed
+
+---
+
+### 7) Workflow / automation audit
+- identify automation flows that are never triggered
+- identify logic branches that can never execute
+- detect stale business logic
+- detect unreachable conditions
+- detect disabled or abandoned systems
+
+---
+
+### 8) Database / data model audit
+- identify tables/collections that are no longer used
+- detect fields that are never read
+- detect legacy schema remnants
+- detect duplicated data structures
+
+---
+
+## Required Output
+
+Return a **real cleanup report**:
+
+### 🗑 Orphan Files
+- file path
+- why it's unused
+- safe to delete: YES/NO
+
+### 🔁 Duplicate / Conflicting Systems
+- what duplicates what
+- which version should be kept
+- what should be removed
+
+### ⚠️ Dead Features
+- feature name
+- where it exists
+- why it’s no longer used
+
+### 🔌 Unused Integrations / Keys
+- integration
+- status (used / unused / partial)
+- cleanup recommendation
+
+### 🌱 Environment Variable Audit
+- variable name
+- used or unused
+- where referenced
+
+### 🧠 Logic Issues
+- unreachable code
+- conflicting logic
+- stale conditions
+
+### 🧹 Cleanup Plan
+Step-by-step:
+1. what to delete first
+2. what to refactor next
+3. what to consolidate
+4. what to verify after cleanup
+
+---
+
+## Rules
+- Do NOT guess — verify usage before marking unused
+- Do NOT delete anything without confirming it is safe
+- Do NOT ignore partially-used systems — explain them
+- Be aggressive but precise
+- Prioritize removing complexity and confusion
+
+## Objective
+Make this codebase:
+- clean
+- understandable
+- maintainable
+- scalable
+- free of dead weight
+
+Treat this like preparing a codebase for a serious production scale-up.
