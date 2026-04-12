@@ -49,7 +49,22 @@ export function registerAccountRoutes(app: Express) {
     if (!isAdmin && account.ownerUserId !== userId) {
       return res.status(403).json({ error: "Not authorized to change this account's plan" });
     }
-    const parsed = z.object({ plan: z.enum(['starter', 'pro', 'enterprise']) }).safeParse(req.body);
+
+    const allowedPlans: string[] = ['starter', 'pro', 'enterprise'];
+
+    if (!isAdmin && account.ownerUserId === userId) {
+      const ownerAccounts = await db.select().from(subAccounts).where(sql`${subAccounts.ownerUserId} = ${userId}`);
+      const ownerPrimaryAccount = ownerAccounts.find(a => a.plan === 'god_mode');
+      if (ownerPrimaryAccount && id !== ownerPrimaryAccount.id) {
+        allowedPlans.push('god_mode');
+      }
+    }
+
+    if (isAdmin) {
+      allowedPlans.push('god_mode');
+    }
+
+    const parsed = z.object({ plan: z.enum(allowedPlans as [string, ...string[]]) }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const updated = await db.update(subAccounts).set({ plan: parsed.data.plan }).where(sql`${subAccounts.id} = ${id}`).returning();
     res.json(updated[0]);
