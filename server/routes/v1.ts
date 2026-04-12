@@ -1033,7 +1033,7 @@ export function registerV1Routes(app: Express) {
         }
 
         case "start_vapi_call": {
-          const vapiKey = process.env.VAPI_PRIVATE_KEY;
+          const vapiKey = process.env.VAPI_PRIVATE_KEY_APEX || process.env.VAPI_PRIVATE_KEY;
           if (!vapiKey) {
             result = { status: "Error", message: "Vapi not configured" };
           } else {

@@ -443,7 +443,7 @@ function validateEnvVars() {
   console.log("=".repeat(60));
 
   const checks: { key: string; altKey?: string; label: string; critical: boolean }[] = [
-    { key: "VAPI_PRIVATE_KEY", altKey: "apex_private_vapi", label: "Vapi Private Key (server-side API calls)", critical: true },
+    { key: "VAPI_PRIVATE_KEY_APEX", altKey: "VAPI_PRIVATE_KEY", label: "Vapi Private Key (server-side API calls)", critical: true },
     { key: "VAPI_PUBLIC_KEY", altKey: "apex_public_vapi", label: "Vapi Public Key (browser demo calls)", critical: false },
     { key: "VAPI_ORG_ID", label: "Vapi Organization ID", critical: false },
     { key: "VAPI_PHONE_NUMBER_ID", label: "Vapi Default Phone Number ID (auto-inject for outbound)", critical: false },
