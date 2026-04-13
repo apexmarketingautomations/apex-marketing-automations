@@ -1,0 +1,83 @@
+Investigate and fix a **live production issue**.
+
+## Problems to fix
+1. The recent changes **did not make it into the production database**
+2. The **Apex Marketing** top-level account should have **full parent-level visibility and control across all sub-accounts**
+3. This top-level access must apply only to the true parent/internal Apex account — **not** to normal customer sub-accounts
+
+## Required outcome
+Make production behave like this:
+
+- **Apex Marketing** is the true top-level internal/master account
+- Apex Marketing can:
+  - view all sub-accounts
+  - switch into all sub-accounts
+  - inspect all sub-account dashboards/data/settings allowed for internal parent control
+  - manage sub-accounts
+  - troubleshoot sub-accounts
+- all normal customer accounts remain isolated from each other
+- sub-accounts must **not** gain parent visibility
+- tenant isolation must still hold for everyone except the explicitly authorized Apex internal parent scope
+
+## First investigate
+Return the exact root cause of why the changes did not hit production DB, including:
+- whether migration ran only locally/dev
+- whether production DB schema is missing the expected column/changes
+- whether production app code deployed without production DB migration
+- whether environment/database target mismatch exists
+- whether writes are going to the wrong DB
+- whether the app is reading stale production data or wrong connection
+
+## Then fix
+### A. Production DB propagation
+Verify and fix:
+- correct production database connection
+- required migration/schema changes applied to production DB
+- app is reading/writing the actual production DB
+- no drift between codebase schema and production schema
+- any required backfill/data correction is applied safely
+
+### B. Apex top-level parent access
+Implement or fix a **true parent/internal access model** for the Apex Marketing account.
+
+Requirements:
+- Apex Marketing must be able to access all sub-accounts as the top/master operator
+- this must be explicit in authorization logic, not an accidental bypass
+- this must not weaken customer-to-customer isolation
+- child/sub-accounts must remain unable to access sibling accounts
+- permission checks must distinguish:
+  - internal Apex parent/master access
+  - normal tenant/sub-account access
+
+### C. Authorization model
+Audit and fix all places where scoping may block parent access incorrectly, including:
+- dashboard queries
+- sub-account listings
+- account switching / impersonation logic if applicable
+- API ownership checks
+- route guards
+- data fetchers
+- UI visibility gates
+- admin/internal tools
+
+## Non-negotiables
+- do not break tenant isolation for customer accounts
+- do not grant cross-account access to any non-parent account
+- do not use hacky global bypasses without explicit parent-role checks
+- do not ship a fix that works only in dev
+- verify directly against production behavior
+
+## Verification required
+Return only:
+- root cause of production DB mismatch
+- exact production DB fix applied
+- exact authorization fix applied
+- exact files changed
+- exact production behaviors verified
+
+## Must verify in production
+1. Apex Marketing can access all sub-accounts
+2. normal sub-accounts cannot access each other
+3. production DB now contains the expected schema/data changes
+4. production app is reading the correct production DB
+5. parent-level access works without weakening tenant isolation

@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { insertSubAccountSchema, PLAN_TIERS, subAccounts } from "@shared/schema";
-import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, SUPPORTED_LANGUAGES } from "./helpers";
+import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, isApexParentUser, isUserAdmin, SUPPORTED_LANGUAGES } from "./helpers";
 
 export function registerAccountRoutes(app: Express) {
   app.get("/api/accounts", asyncHandler(async (req, res) => {
@@ -15,7 +15,8 @@ export function registerAccountRoutes(app: Express) {
     const isAdmin = adminUserId && userId === adminUserId;
     const allAccounts = await storage.getSubAccounts();
     const activeAccounts = allAccounts.filter((a: any) => a.ownerUserId !== "_archived");
-    const userAccounts = isAdmin
+    const isParent = !isAdmin && await isApexParentUser(userId);
+    const userAccounts = (isAdmin || isParent)
       ? activeAccounts
       : activeAccounts.filter((a: any) => a.ownerUserId === userId);
     res.json(userAccounts);
@@ -41,27 +42,24 @@ export function registerAccountRoutes(app: Express) {
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "Not authenticated" });
     const id = parseIntParam(req.params.id, "id");
+    if (!(await verifyAccountOwnership(req, res, id))) return;
     const account = await storage.getSubAccount(id);
     if (!account) return res.status(404).json({ error: "Account not found" });
+
     const userId = getUserId(user);
-    const adminUserId = process.env.ADMIN_USER_ID;
-    const isAdmin = adminUserId && userId === adminUserId;
-    if (!isAdmin && account.ownerUserId !== userId) {
-      return res.status(403).json({ error: "Not authorized to change this account's plan" });
-    }
+    const isAdmin = isUserAdmin(user);
+    const isParent = !isAdmin && await isApexParentUser(userId);
 
     const allowedPlans: string[] = ['starter', 'pro', 'enterprise'];
 
-    if (!isAdmin && account.ownerUserId === userId) {
+    if (isAdmin || isParent) {
+      allowedPlans.push('god_mode');
+    } else if (account.ownerUserId === userId) {
       const ownerAccounts = await db.select().from(subAccounts).where(sql`${subAccounts.ownerUserId} = ${userId}`);
       const ownerPrimaryAccount = ownerAccounts.find(a => a.plan === 'god_mode');
       if (ownerPrimaryAccount && id !== ownerPrimaryAccount.id) {
         allowedPlans.push('god_mode');
       }
-    }
-
-    if (isAdmin) {
-      allowedPlans.push('god_mode');
     }
 
     const parsed = z.object({ plan: z.enum(allowedPlans as [string, ...string[]]) }).safeParse(req.body);
@@ -106,14 +104,9 @@ export function registerAccountRoutes(app: Express) {
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "Not authenticated" });
     const id = parseIntParam(req.params.id, "id");
+    if (!(await verifyAccountOwnership(req, res, id))) return;
     const account = await storage.getSubAccount(id);
     if (!account) return res.status(404).json({ error: "Account not found" });
-    const userId = getUserId(user);
-    const adminUserId = process.env.ADMIN_USER_ID;
-    const isAdmin = adminUserId && userId === adminUserId;
-    if (!isAdmin && account.ownerUserId !== userId) {
-      return res.status(403).json({ error: "Not authorized" });
-    }
     const aiPromptConfig = (account.aiPromptConfig as any) || {};
     res.json({
       formLinks: aiPromptConfig.formLinks || [],
@@ -129,14 +122,9 @@ export function registerAccountRoutes(app: Express) {
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "Not authenticated" });
     const id = parseIntParam(req.params.id, "id");
+    if (!(await verifyAccountOwnership(req, res, id))) return;
     const account = await storage.getSubAccount(id);
     if (!account) return res.status(404).json({ error: "Account not found" });
-    const userId = getUserId(user);
-    const adminUserId = process.env.ADMIN_USER_ID;
-    const isAdmin = adminUserId && userId === adminUserId;
-    if (!isAdmin && account.ownerUserId !== userId) {
-      return res.status(403).json({ error: "Not authorized" });
-    }
     const parsed = dmAgentConfigSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 

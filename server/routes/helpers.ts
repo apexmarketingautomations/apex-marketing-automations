@@ -68,6 +68,23 @@ export function getUserId(user: any): string {
   return user.claims?.sub || user.id;
 }
 
+const APEX_PARENT_ACCOUNT_ID = 13;
+
+let _parentOwnerCache: { userId: string; ts: number } | null = null;
+const PARENT_CACHE_TTL = 60_000;
+
+export async function isApexParentUser(userId: string): Promise<boolean> {
+  if (_parentOwnerCache && _parentOwnerCache.userId === userId && Date.now() - _parentOwnerCache.ts < PARENT_CACHE_TTL) {
+    return true;
+  }
+  const parent = await storage.getSubAccount(APEX_PARENT_ACCOUNT_ID);
+  if (parent && parent.ownerUserId === userId) {
+    _parentOwnerCache = { userId, ts: Date.now() };
+    return true;
+  }
+  return false;
+}
+
 export async function verifyAccountOwnership(req: Request, res: Response, subAccountId: number): Promise<boolean> {
   const user = (req as any).user;
   if (!user) {
@@ -84,11 +101,14 @@ export async function verifyAccountOwnership(req: Request, res: Response, subAcc
     res.status(404).json({ error: "Account not found" });
     return false;
   }
-  if (account.ownerUserId !== userId) {
-    res.status(403).json({ error: "Access denied" });
-    return false;
+  if (account.ownerUserId === userId) {
+    return true;
   }
-  return true;
+  if (await isApexParentUser(userId)) {
+    return true;
+  }
+  res.status(403).json({ error: "Access denied" });
+  return false;
 }
 
 export function isUserAdmin(user: any): boolean {
