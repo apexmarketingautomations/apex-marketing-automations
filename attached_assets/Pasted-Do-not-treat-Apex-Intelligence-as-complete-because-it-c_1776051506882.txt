@@ -1,0 +1,367 @@
+Do not treat Apex Intelligence as complete because it can track, score, recommend, and display intelligence.
+
+We are now entering the **autonomy layer**.
+
+This phase is not optional.
+
+Apex must move beyond:
+- observing
+- scoring
+- recommending
+- alerting
+
+Apex must become capable of:
+- detecting missing or broken internal setup
+- deciding the highest-confidence next action
+- preparing everything required for execution
+- automatically executing safe internal actions
+- stopping only at true human/auth/consent/payment boundaries
+- resuming completion immediately after that boundary is cleared
+
+This phase is about turning Apex from an intelligence system into an **autonomous internal operator**.
+
+---
+
+## CORE RULE
+
+Apex should automatically do everything that:
+- is internal to the platform
+- does not require outside authentication
+- does not require regulated/legal consent
+- does not require irreversible financial commitment
+- does not create destructive risk beyond approved safety thresholds
+
+If Apex can safely do it itself, it should do it.
+
+If Apex cannot safely complete the final step because of an auth/consent/payment boundary, it should:
+- do all internal prep first
+- reduce the human step to the smallest possible action
+- resume automatically once that boundary is cleared
+
+---
+
+## OBJECTIVE
+
+Build the Apex autonomy layer so the platform can:
+- self-detect gaps
+- self-prepare fixes
+- self-build missing internal pieces
+- self-heal broken internal states
+- self-stage external integrations up to the auth wall
+- self-resume after approval/auth
+- surface operator review only when safety rules require it
+
+This must feel like a real internal autonomous operating system, not a recommendation engine pretending to be autonomous.
+
+---
+
+## PART 1 — AUTONOMY DECISION MODEL
+
+Create a formal autonomy decision framework.
+
+For every possible Apex action, the system must classify it into one of these modes:
+
+### A. Auto-execute
+Safe internal action with high confidence.
+No operator approval required.
+
+### B. Auto-prepare + request minimal human step
+Apex does all internal work, but requires:
+- OAuth/login
+- external API key
+- registrar/provider login
+- payment approval
+- legal/regulated confirmation
+
+### C. Require operator review
+Potentially risky, ambiguous, or high-impact internal action.
+Apex prepares the action and explains why it wants to do it, but waits for approval.
+
+### D. Blocked
+Unsafe, destructive, or non-permitted action.
+
+Implement explicit autonomy rules so Apex does not guess blindly.
+
+---
+
+## PART 2 — SAFE ACTIONS ENGINE
+
+Build an autonomy/safe-actions engine that can automatically perform internal platform actions.
+
+At minimum, Apex must be able to autonomously:
+
+### Internal setup actions
+- create missing account defaults
+- create missing sub-account defaults
+- create missing pipelines
+- create missing pipeline stages
+- create missing calendars
+- create missing booking types
+- create missing forms
+- create missing CTA modules
+- create missing site sections/pages where appropriate
+- create missing digital card records/assets
+- create missing workflows/automation scaffolds
+- create missing alert rules
+- create missing integration placeholder records
+- create missing internal mappings/linkages
+- create missing readiness/checklist states
+- create missing operator dashboard baseline records if needed
+
+### Internal repair actions
+- repair broken internal references
+- repair orphaned records
+- reconnect internal entity mappings
+- republish/rebuild stale derived internal state
+- restore required defaults
+- fix incomplete setup state
+- fix misaligned config combinations
+- repair internal linkage between site/domain/card/campaign/account/contact where safely determinable
+- retry failed internal sync jobs where safe
+- regenerate missing intelligence artifacts/rollups when needed
+
+### Internal optimization actions
+- shorten weak forms when rules allow
+- recommend and optionally apply CTA additions
+- reorder or enable internal conversion modules
+- activate recommended internal defaults
+- improve follow-up routing logic
+- enable recommended modules/features
+- adjust safe thresholds/config defaults where rule-based and reversible
+- queue best-next-action states automatically
+
+Do not implement these as vague future placeholders. Build the actual execution framework and action handlers.
+
+---
+
+## PART 3 — PRE-AUTH INTEGRATION STAGING
+
+For all external systems, Apex must support pre-auth staging.
+
+Before asking the operator to connect an outside service, Apex must do everything internally possible first.
+
+For integrations such as:
+- Meta
+- Google
+- email providers
+- calendar providers
+- domain/registrar connections
+- webhook destinations
+- messaging channels
+- external CRMs or partner systems
+
+Apex must:
+- create the internal integration record
+- choose provider type
+- map account/sub-account/site/entity context
+- prefill all known business/account information
+- prepare scopes/settings/config payload
+- generate pending connection state
+- identify only the exact missing human/auth step
+- show the operator one minimal next action
+
+Example standard:
+Do not say “Meta integration incomplete.”
+Instead:
+- create the integration record
+- prefill business mapping
+- prepare scopes/settings
+- map related internal assets
+- mark the exact pending OAuth state
+- surface one action: “Connect Meta”
+
+This is the required model.
+
+---
+
+## PART 4 — POST-AUTH CONTINUATION
+
+Once an external auth/approval step is completed, Apex must resume automatically.
+
+Implement continuation flows so that after auth/approval:
+- connection is verified
+- provider resources are fetched/synced
+- internal mappings are completed
+- health state is updated
+- readiness state is updated
+- downstream setup continues automatically
+- operator is only notified of completion, exceptions, or next required boundary
+
+Do not make the operator manually restart the whole process after auth.
+
+---
+
+## PART 5 — AUTONOMY ORCHESTRATION LAYER
+
+Build a centralized autonomy orchestration layer that does all of the following:
+
+- watches intelligence scores, recommendations, health states, readiness states, and event patterns
+- detects actionable internal gaps
+- selects the highest-confidence next action
+- checks safety rules
+- checks dependency order
+- prepares required context/payloads
+- executes internal action handlers
+- records results
+- escalates only when needed
+- resumes when blocked states are cleared
+
+This should not be scattered randomly across modules.
+There must be a coherent central orchestration pattern.
+
+---
+
+## PART 6 — AUTONOMY STATE / DATA MODEL
+
+Add or harden the necessary data model for autonomy.
+
+Apex must have explicit storage/state for:
+- proposed actions
+- approved actions
+- auto-executed actions
+- blocked actions
+- pending-auth actions
+- resumed actions
+- failed actions
+- action dependencies
+- confidence score
+- safety classification
+- reason/explanation
+- related entity/module/account
+- created_by_system vs operator
+- execution timestamps
+- rollback/reversal capability where appropriate
+
+If existing tables can safely support this, use them.
+If not, add proper autonomy-layer tables/state.
+
+Do not keep autonomy state implicit or buried in logs.
+
+---
+
+## PART 7 — OPERATOR AUTONOMY UI
+
+Apex must expose autonomy visibly and clearly in the UI.
+
+Build or harden operator surfaces for:
+
+### Autonomy queue
+- actions Apex already executed
+- actions waiting on auth
+- actions waiting on approval
+- blocked actions
+- failed actions
+- resumed/completed actions
+
+### Action detail view
+- what Apex detected
+- what it decided
+- why it chose that action
+- what safety class it assigned
+- what it already completed
+- what is still blocked
+- exact next operator action if needed
+
+### Controls
+- approve
+- reject
+- snooze
+- retry
+- force-run where allowed
+- acknowledge
+- view dependencies
+- see rollback/reversal option if supported
+
+### Trust layer
+- confidence score
+- risk level
+- explanation of why this is safe
+- exact impacted entities/modules
+
+This must feel like a real autonomous operations console, not a passive log page.
+
+---
+
+## PART 8 — SAFETY / GOVERNANCE RULES
+
+Build explicit safety boundaries.
+
+Apex must NOT autonomously do actions that:
+- require outside auth it does not have
+- require payment approval
+- create destructive irreversible loss without approval
+- cross legal/regulated consent boundaries
+- have low confidence / ambiguous entity mapping
+- impact external live systems without proper readiness/permission checks
+
+Apex may autonomously do actions that are:
+- internal
+- reversible or low-risk
+- high-confidence
+- rule-valid
+- properly logged
+- visible to the operator afterward
+
+Implement a real policy layer, not hand-wavy comments.
+
+---
+
+## PART 9 — PRODUCTION READINESS FOR AUTONOMY
+
+Production must not ship with “autonomy code” that is effectively dormant or unsafe.
+
+Ensure production includes:
+- baseline autonomy configuration
+- safe-action rules baseline
+- default autonomy policy states
+- pending-auth workflow support
+- operator approval queue support
+- proper production seed for autonomy config/state where required
+- production verification that the autonomy layer is initialized correctly
+
+Separate:
+- dev/demo autonomy behavior
+from
+- production autonomy behavior
+
+Production must default to safe, explainable, auditable behavior.
+
+---
+
+## PART 10 — REQUIRED OUTPUT
+
+Return exactly this:
+
+1. Existing intelligence capabilities Apex already has
+2. New autonomy-layer architecture
+3. Autonomy state/data model added or hardened
+4. Safe actions Apex can now auto-execute
+5. Pre-auth integration staging implemented
+6. Post-auth continuation flows implemented
+7. Operator approval / review flows implemented
+8. Safety/governance rules implemented
+9. Operator autonomy UI surfaces implemented
+10. Production seed / baseline config added for autonomy
+11. Publish-time / production verification added
+12. What was implemented
+13. What is still missing
+
+---
+
+## FINAL STANDARD
+
+This phase is complete ONLY when Apex can:
+- detect internal gaps automatically
+- decide a safe next action
+- prepare execution context itself
+- execute safe internal work itself
+- stop only at real auth/consent/payment boundaries
+- reduce human involvement to the smallest required step
+- resume automatically after that step clears
+- expose all of this visibly and clearly to the operator
+
+Do not give me advisory AI.
+Do not give me a dashboard that just flags issues.
+Do not give me a recommendation system pretending to be autonomy.
+
+Build Apex into a real autonomous internal operator that can self-build, self-heal, self-stage, and self-resume across the platform wherever external auth or true risk boundaries do not prevent it.
