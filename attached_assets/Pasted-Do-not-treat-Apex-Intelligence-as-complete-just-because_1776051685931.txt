@@ -1,0 +1,254 @@
+Do not treat Apex Intelligence as complete just because the backend, workers, events, scores, and recommendations exist.
+
+We are now entering the required UI/UX hardening phase **AND production readiness phase**.
+
+This phase is not optional.
+
+Apex Intelligence must become:
+- a real operator-facing command system
+- a fully initialized production system
+- not a backend-heavy build with missing visibility or missing live configuration
+
+---
+
+CORE RULE
+
+A feature is not complete unless:
+- the operator can see it
+- the operator can understand it
+- the operator can trust it
+- the operator can control it
+- the system is correctly initialized in production
+
+---
+
+OBJECTIVE
+
+Turn Apex Intelligence into a complete premium operator experience with:
+- full visibility
+- strong control surfaces
+- explanation layer
+- real status clarity
+- actionability
+- confidence/trust signals
+- no hidden intelligence capability
+- correct production initialization (no empty state system)
+
+---
+
+## PART 1 — UI / UX HARDENING
+
+### 1. Audit current UI vs backend capabilities
+For every backend feature already built, verify:
+
+- visible surface
+- status indicator
+- explanation layer
+- management control
+- action path
+- proof/testing visibility
+
+If missing → must be built.
+
+---
+
+### 2. Required Apex Intelligence UI surfaces
+
+#### A. Executive Command Layer
+- overall platform health
+- launch readiness
+- top risks
+- top opportunities
+- system health summary
+- module coverage summary
+- unresolved blockers
+- priority action queue
+
+#### B. Live Intelligence
+- live event stream
+- filtered timeline
+- entity activity timelines
+- module-by-module activity
+- account / sub-account intelligence state
+- site / domain / card / campaign / workflow views
+
+#### C. Scores
+- lead intent
+- launch readiness
+- account maturity
+- site health
+- domain health
+- workflow/campaign health
+- explanation panels
+- score inputs
+
+#### D. Recommendations
+- active recommendations
+- priority
+- “why this exists”
+- suggested action
+- related entity/module
+- lifecycle states (resolved, dismissed, accepted)
+
+#### E. Health + Trust Layer
+- integration health
+- failure visibility
+- degraded states
+- incomplete setup detection
+- fake completion detection
+- confidence indicators
+
+#### F. Module Coverage Truth Layer
+- fully wired modules
+- partially wired modules
+- not wired modules
+- event types per module
+- tested vs untested
+- no fake “all connected”
+
+#### G. Operator Controls
+- filtering (account, module, entity, severity)
+- quick actions (safe only)
+- retry actions
+- dismiss/snooze recommendations
+- pending auth visibility
+- acknowledgment states
+
+---
+
+### 3. UX Standard
+- dark mode
+- premium layout
+- clean hierarchy
+- polished panels
+- strong status indicators
+- responsive/mobile-first
+- no raw admin tables
+- no hidden backend capability
+
+---
+
+### 4. Hard UI Rule
+For every backend feature:
+- where is it visible?
+- where is it explained?
+- where is it controlled?
+- where is it proven?
+
+If no answer → UI incomplete
+
+---
+
+## PART 2 — PRODUCTION SEED + LIVE INITIALIZATION
+
+Apex Intelligence must NOT go live as “empty infrastructure”.
+
+### REQUIRED PRODUCTION BASELINE
+
+The production environment must include:
+
+- module event registry populated
+- module coverage baseline records
+- intelligence score definitions
+- recommendation type definitions
+- integration health baseline states
+- execution timeline baseline markers
+- required config/enums/state records
+- UI-required baseline records (if needed)
+- readiness baseline data
+
+---
+
+### PRODUCTION SEED RULES
+
+- idempotent (safe to run multiple times)
+- non-destructive
+- additive only
+- environment-aware
+- no demo/test data in production
+
+---
+
+### SEPARATION
+
+- dev seed ≠ production seed
+- production seed = clean baseline only
+
+---
+
+### PUBLISH REQUIREMENTS
+
+On deploy/publish:
+
+System must verify:
+- tables exist
+- indexes exist
+- required baseline records exist
+- workers won’t start empty
+- UI will not render blank/broken
+
+If missing:
+- block publish OR
+- raise critical warning
+
+---
+
+### IMPLEMENTATION REQUIREMENTS
+
+You must:
+
+- create production seed script/process
+- define required baseline records explicitly
+- ensure safe upsert behavior
+- log all seed actions
+- verify seed success
+- expose readiness state in admin/operator UI
+
+---
+
+### HARD RULE
+
+Do NOT ship:
+- empty intelligence tables
+- unseeded registry
+- missing config
+- backend-only completion
+
+Production must be:
+👉 initialized  
+👉 usable  
+👉 trustworthy  
+
+---
+
+## REQUIRED OUTPUT
+
+Return exactly:
+
+1. Backend capabilities currently built
+2. UI surfaces that exist
+3. Backend capabilities missing UI
+4. New UI surfaces to build
+5. UI surfaces to harden
+6. Operator controls added
+7. Trust/explanation layers added
+8. Module coverage/proof surfaces added
+9. Production baseline records defined
+10. Production seed implementation
+11. Publish-time verification logic
+12. What was implemented
+13. What is still missing
+
+---
+
+## FINAL STANDARD
+
+This phase is complete ONLY when:
+
+- Apex Intelligence is visible and usable
+- the operator can trust and act on it
+- all major backend capability has UI surface
+- production is correctly seeded
+- system is not just “working code” but a **real live operating system**
+
+This is the step that turns the engine into a drivable vehicle.
