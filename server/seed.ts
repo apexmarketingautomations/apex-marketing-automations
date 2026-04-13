@@ -230,6 +230,7 @@ async function syncAdminAccounts() {
   }
 
   await ensureLaylaAccount(adminUserId, existing);
+  await ensureRoof2RootsAccount(existing);
 
   if (hasApex && hasCrashConnect) {
     console.log("[SYNC] Admin account sync complete");
@@ -521,6 +522,95 @@ async function ensureLaylaAccount(
     console.log(`[SYNC] Officer Layla account #${laylaId} fully configured`);
   } catch (e: any) {
     console.warn("[SYNC] ensureLaylaAccount failed (non-fatal):", e.message);
+  }
+}
+
+async function ensureRoof2RootsAccount(
+  existing: Array<{ id: number; name: string; ownerUserId: string | null; parentAccountId: number | null }>
+) {
+  try {
+    let r2r = existing.find((a) => a.name === "Roof 2 Roots");
+    const apexAccount = existing.find((a) => a.name === "APEX MARKETING Account");
+    const apexId = apexAccount?.id || 13;
+
+    if (!r2r) {
+      console.log("[SYNC] Roof 2 Roots account not found — creating...");
+      const [created] = await db.insert(subAccounts).values({
+        name: "Roof 2 Roots",
+        twilioNumber: "",
+        ownerUserId: `apex_roof2roots_${Date.now()}`,
+        parentAccountId: apexId,
+        isInternal: false,
+        plan: "god_mode",
+        billingExempt: true,
+        isDeletable: false,
+        isProtected: false,
+        protectedReason: null,
+        industry: "roofing",
+      }).returning({ id: subAccounts.id, name: subAccounts.name, ownerUserId: subAccounts.ownerUserId, parentAccountId: subAccounts.parentAccountId });
+      r2r = created;
+      console.log(`[SYNC] Created Roof 2 Roots account #${created.id}`);
+    }
+
+    const r2rId = r2r.id;
+
+    if (r2r.ownerUserId === "_archived" || !r2r.ownerUserId) {
+      await db.update(subAccounts)
+        .set({
+          ownerUserId: `apex_roof2roots_${Date.now()}`,
+          parentAccountId: apexId,
+          plan: "god_mode",
+          billingExempt: true,
+          isDeletable: false,
+        })
+        .where(eq(subAccounts.id, r2rId));
+      console.log(`[SYNC] Restored Roof 2 Roots account #${r2rId}`);
+    }
+
+    if (!r2r.parentAccountId) {
+      await db.update(subAccounts)
+        .set({ parentAccountId: apexId })
+        .where(eq(subAccounts.id, r2rId));
+      console.log(`[SYNC] Set Roof 2 Roots parentAccountId=${apexId}`);
+    }
+
+    const existingSentinel = await db.select({ id: sentinelConfig.id })
+      .from(sentinelConfig).where(eq(sentinelConfig.subAccountId, r2rId)).limit(1);
+    if (existingSentinel.length === 0) {
+      await db.insert(sentinelConfig).values({
+        subAccountId: r2rId,
+        feedUrl: "",
+        keywords: [],
+        scanInterval: 15,
+        enabled: true,
+        smsAlertEnabled: false,
+        geofenceEnabled: false,
+        geofenceRadiusMiles: 0,
+        targetCities: [],
+        targetStates: ["FL", "TX", "GA", "NC", "SC", "LA"],
+        niche: "home_services",
+      });
+      console.log(`[SYNC] Created sentinel_config for Roof 2 Roots #${r2rId} (home_services niche)`);
+    }
+
+    const existingWallet = await db.select({ id: creditWallets.id })
+      .from(creditWallets).where(eq(creditWallets.subAccountId, r2rId)).limit(1);
+    if (existingWallet.length === 0) {
+      await db.insert(creditWallets).values({
+        subAccountId: r2rId,
+        balance: 50,
+        lifetimeTopUp: 0,
+        lifetimeSpend: 0,
+        autoTopUp: false,
+        autoTopUpAmount: 50,
+        lowBalanceThreshold: 10,
+      });
+      console.log(`[SYNC] Created credit wallet for Roof 2 Roots #${r2rId}`);
+    }
+
+    console.log(`[SYNC] Roof 2 Roots account #${r2rId} fully configured`);
+  } catch (e: any) {
+    console.warn("[SYNC] ensureRoof2RootsAccount failed (non-fatal):", e.message);
   }
 }
 
