@@ -168,7 +168,8 @@ export function ApexBrainTab({ subAccountId: propSubAccountId }: { subAccountId?
                       {AGENT_LABELS[o.agentName] || o.agentName}
                     </span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-[10px] text-white font-medium truncate">{o.result}</p>
+                      <p className="text-[10px] text-white font-medium truncate">{o.subject}</p>
+                      <p className="text-[9px] text-slate-400 truncate mt-0.5">{o.result}</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className="text-[8px] text-slate-600">{o.action}</span>
                         {o.niche && (

@@ -1533,12 +1533,14 @@ export function registerAnalyticsRoutes(app: Express) {
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "Not authenticated" });
 
-    const subAccountId = req.query.subAccountId ? parseInt(req.query.subAccountId as string) : undefined;
-    if (subAccountId) {
-      if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const subAccountId = parseInt(req.query.subAccountId as string);
+    if (!Number.isInteger(subAccountId) || subAccountId <= 0) {
+      return res.status(400).json({ error: "Valid subAccountId is required" });
     }
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
     const agentName = req.query.agent as string | undefined;
-    const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+    const limit = req.query.limit ? Math.min(Math.max(parseInt(req.query.limit as string) || 50, 1), 500) : 50;
     const since = req.query.since as string | undefined;
 
     const { getOutcomes, getOutcomeSummary } = await import("../operator/apexIntelligence");
