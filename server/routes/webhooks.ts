@@ -1136,8 +1136,14 @@ export function registerWebhooksRoutes(app: Express) {
           if (!msg.message) continue;
           const isFromPage = msg.from?.id === pageId;
           const msgSid = `meta_${conv.id}_${msg.id || new Date(msg.created_time).getTime()}`;
+          const msgTimestamp = new Date(msg.created_time);
+
           const existing = await db.select({ id: messages.id }).from(messages)
-            .where(and(eq(messages.messageSid, msgSid), eq(messages.subAccountId, subAccountId)))
+            .where(and(
+              eq(messages.subAccountId, subAccountId),
+              eq(messages.threadId, threadId),
+              sql`(${messages.messageSid} = ${msgSid} OR (${messages.body} = ${msg.message} AND ${messages.direction} = ${isFromPage ? "outbound" : "inbound"} AND ABS(EXTRACT(EPOCH FROM (${messages.createdAt} - ${msgTimestamp}::timestamp))) < 10))`
+            ))
             .limit(1);
           if (existing.length > 0) continue;
           await db.insert(messages).values({
@@ -1152,7 +1158,7 @@ export function registerWebhooksRoutes(app: Express) {
             senderId: isFromPage ? pageId : senderId,
             pageId,
             traceId: `catchup-sync-${Date.now()}`,
-            createdAt: new Date(msg.created_time),
+            createdAt: msgTimestamp,
           });
           synced++;
         }

@@ -168,8 +168,16 @@ export async function assembleDmContext(opts: DmContextOptions): Promise<DmConte
   const brandVoice: string | null = aiPromptConfig.brandVoice || null;
   const escalationInfo: string | null = aiPromptConfig.escalationInfo || null;
 
-  const threadHistory = [...threadMessages]
-    .reverse()
+  const dedupedMessages = [...threadMessages].reverse();
+  const seen = new Set<string>();
+  const uniqueMessages = dedupedMessages.filter((msg) => {
+    const key = `${msg.direction}::${msg.body?.trim()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  const threadHistory = uniqueMessages
     .map((msg) => ({
       role: (msg.direction === "inbound" ? "user" : "assistant") as "user" | "assistant",
       content: msg.body || "",
@@ -509,7 +517,18 @@ QUALIFICATION FLOW:
 3. Provide direction or value
 4. Move toward action (link, booking, form)`;
   } else {
-    prompt += `\n\nNEVER break character or acknowledge being AI. Stay fully in persona at all times.`;
+    prompt += `\n\n${channelTone}`;
+
+    prompt += `\n\nCRITICAL PERSONA ENFORCEMENT:
+- NEVER break character or acknowledge being AI. Stay fully in persona at all times.
+- Keep replies to 2-4 short lines MAX — write like you are texting, NOT writing an essay.
+- Each reply MUST feel different — NEVER repeat the same opener, closer, or structure twice.
+- NEVER end every message the same way (e.g. always ending with "what u been up to?" is a dead giveaway you are a bot).
+- Vary your openers: sometimes start with their name, sometimes a reaction, sometimes a tease, sometimes jump straight into the topic.
+- Vary your closers: sometimes end with a question, sometimes a statement, sometimes an emoji, sometimes nothing.
+- Mirror the user's energy and length — if they send 3 words, don't reply with a paragraph.
+- Read the conversation history carefully and REFERENCE specific things they said — generic replies = bot behavior.
+- If the persona specifies forbidden words (e.g. "never use baby"), that is ABSOLUTE — violating persona rules is a critical failure.`;
   }
 
   if (!isFullPersonaOverride) {
