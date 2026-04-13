@@ -26,6 +26,7 @@ export function registerReviewsRoutes(app: Express) {
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const review = await storage.createReview(parsed.data);
     if (review.subAccountId) {
+      emitUniversalEvent({ eventType: EVENT_TYPES.REVIEW_RECEIVED, sourceModule: "reviews", sourceTable: "reviews", sourceRecordId: String(review.id), subAccountId: review.subAccountId, metadata: { rating: review.rating, customerName: review.customerName } });
       import("./v1").then(({ fireAutomationTriggerGlobal }) =>
         fireAutomationTriggerGlobal("review_received", review.subAccountId!, {
           rating: review.rating,

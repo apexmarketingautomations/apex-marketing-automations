@@ -152,6 +152,8 @@ export function registerIntegrationsRoutes(app: Express) {
       config: config || {},
       connectedAt: new Date(),
     });
+    const { emitUniversalEvent: emitEvent, EVENT_TYPES: EV } = await import("../intelligence/eventEmitter");
+    emitEvent({ eventType: EV.INTEGRATION_CONNECTED, sourceModule: "integrations", subAccountId, metadata: { provider, status: connectionStatus, validated: isValidatedProvider } });
     res.json({ ...connection, validated: isValidatedProvider, status: connectionStatus });
   }));
 
@@ -182,6 +184,8 @@ export function registerIntegrationsRoutes(app: Express) {
       payload: { connectionType: existingConnection?.connectionType || "legacy" },
     });
 
+    const { emitUniversalEvent: emitEvtDisc, EVENT_TYPES: EVD } = await import("../intelligence/eventEmitter");
+    emitEvtDisc({ eventType: EVD.INTEGRATION_DISCONNECTED, sourceModule: "integrations", subAccountId, metadata: { provider } });
     res.json(connection);
   }));
 

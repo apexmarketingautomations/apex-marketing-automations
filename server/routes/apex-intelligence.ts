@@ -1,9 +1,9 @@
 import { Express } from "express";
 import { storage } from "../storage";
-import { verifyAccountOwnership } from "./helpers";
+import { verifyAccountOwnership, isApexParentUser } from "./helpers";
 import { db } from "../db";
 import { sql, eq, and, gte, desc } from "drizzle-orm";
-import { universalEvents } from "@shared/schema";
+import { universalEvents, integrationHealthState, entityIdentityMap } from "@shared/schema";
 import { runAllScoresForAccount } from "../intelligence/scoringEngine";
 import { runAllRecommendationsForAccount } from "../intelligence/recommendationEngine";
 
@@ -193,5 +193,182 @@ export function registerApexIntelligenceRoutes(app: Express) {
     await runAllScoresForAccount(subAccountId);
     const recCount = await runAllRecommendationsForAccount(subAccountId);
     res.json({ success: true, message: `Scores recalculated, ${recCount} new recommendations generated` });
+  }));
+
+  // ---- Operator-Level Cross-Account APIs ----
+
+  app.get("/api/operator/events-stream", asyncHandler(async (req, res) => {
+    const opUser = (req as any).user;
+    if (!opUser) return res.status(401).json({ error: "Not authenticated" });
+    const opUserId = opUser?.claims?.sub || opUser?.id || opUser?.userId;
+    const isAdmin = process.env.ADMIN_USER_ID && opUserId === process.env.ADMIN_USER_ID;
+    if (!isAdmin && !(await isApexParentUser(opUserId))) return res.status(403).json({ error: "Operator access required" });
+
+    const { module: sourceModule, eventType, limit, since } = req.query;
+    const limitN = limit ? parseInt(limit as string) : 100;
+    const sinceDate = since ? new Date(since as string) : new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const conditions: any[] = [gte(universalEvents.occurredAt, sinceDate)];
+    if (sourceModule) conditions.push(eq(universalEvents.sourceModule, sourceModule as string));
+    if (eventType) conditions.push(eq(universalEvents.eventType, eventType as string));
+
+    const events = await db.select({
+      id: universalEvents.id,
+      eventType: universalEvents.eventType,
+      sourceModule: universalEvents.sourceModule,
+      subAccountId: universalEvents.subAccountId,
+      occurredAt: universalEvents.occurredAt,
+      metadata: universalEvents.metadata,
+    })
+      .from(universalEvents)
+      .where(and(...conditions))
+      .orderBy(desc(universalEvents.occurredAt))
+      .limit(limitN);
+
+    res.json(events);
+  }));
+
+  app.get("/api/operator/module-health", asyncHandler(async (req, res) => {
+    const opUser = (req as any).user;
+    if (!opUser) return res.status(401).json({ error: "Not authenticated" });
+    const opUserId = opUser?.claims?.sub || opUser?.id || opUser?.userId;
+    const isAdmin = process.env.ADMIN_USER_ID && opUserId === process.env.ADMIN_USER_ID;
+    if (!isAdmin && !(await isApexParentUser(opUserId))) return res.status(403).json({ error: "Operator access required" });
+
+    const [eventsByModule, healthRows] = await Promise.all([
+      db.select({
+        sourceModule: universalEvents.sourceModule,
+        count: sql<number>`count(*)::int`,
+        lastSeen: sql<string>`max(${universalEvents.occurredAt})`,
+      })
+        .from(universalEvents)
+        .where(gte(universalEvents.occurredAt, new Date(Date.now() - 24 * 60 * 60 * 1000)))
+        .groupBy(universalEvents.sourceModule),
+      db.select({
+        integrationType: integrationHealthState.integrationType,
+        status: integrationHealthState.status,
+        count: sql<number>`count(*)::int`,
+      })
+        .from(integrationHealthState)
+        .groupBy(integrationHealthState.integrationType, integrationHealthState.status),
+    ]);
+
+    const moduleMap: Record<string, { events24h: number; lastSeen: string | null }> = {};
+    for (const row of eventsByModule) {
+      moduleMap[row.sourceModule] = { events24h: row.count, lastSeen: row.lastSeen };
+    }
+
+    const healthMap: Record<string, { healthy: number; degraded: number; error: number; disconnected: number }> = {};
+    for (const row of healthRows) {
+      if (!healthMap[row.integrationType]) healthMap[row.integrationType] = { healthy: 0, degraded: 0, error: 0, disconnected: 0 };
+      const s = row.status as keyof typeof healthMap[string];
+      if (s in healthMap[row.integrationType]) (healthMap[row.integrationType] as any)[s] = row.count;
+    }
+
+    res.json({ moduleActivity: moduleMap, integrationHealth: healthMap });
+  }));
+
+  app.get("/api/operator/failed-events", asyncHandler(async (req, res) => {
+    const opUser = (req as any).user;
+    if (!opUser) return res.status(401).json({ error: "Not authenticated" });
+    const opUserId = opUser?.claims?.sub || opUser?.id || opUser?.userId;
+    const isAdmin = process.env.ADMIN_USER_ID && opUserId === process.env.ADMIN_USER_ID;
+    if (!isAdmin && !(await isApexParentUser(opUserId))) return res.status(403).json({ error: "Operator access required" });
+
+    const FAILURE_TYPES = ["call_failed", "webhook_failed", "campaign_failed", "content_failed", "workflow_failed"];
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const failedEvents = await db.select({
+      id: universalEvents.id,
+      eventType: universalEvents.eventType,
+      sourceModule: universalEvents.sourceModule,
+      subAccountId: universalEvents.subAccountId,
+      occurredAt: universalEvents.occurredAt,
+      metadata: universalEvents.metadata,
+    })
+      .from(universalEvents)
+      .where(and(
+        gte(universalEvents.occurredAt, since),
+        sql`${universalEvents.eventType} = ANY(ARRAY[${sql.join(FAILURE_TYPES.map(t => sql`${t}`), sql`, `)}]::text[])`
+      ))
+      .orderBy(desc(universalEvents.occurredAt))
+      .limit(200);
+
+    const byModule: Record<string, number> = {};
+    for (const e of failedEvents) {
+      byModule[e.sourceModule] = (byModule[e.sourceModule] || 0) + 1;
+    }
+
+    res.json({ failedEvents, summary: { total: failedEvents.length, byModule } });
+  }));
+
+  app.get("/api/operator/entity-linkage-health", asyncHandler(async (req, res) => {
+    const opUser = (req as any).user;
+    if (!opUser) return res.status(401).json({ error: "Not authenticated" });
+    const opUserId = opUser?.claims?.sub || opUser?.id || opUser?.userId;
+    const isAdmin = process.env.ADMIN_USER_ID && opUserId === process.env.ADMIN_USER_ID;
+    if (!isAdmin && !(await isApexParentUser(opUserId))) return res.status(403).json({ error: "Operator access required" });
+
+    const [totalLinks, byType, recentLinks] = await Promise.all([
+      db.select({ count: sql<number>`count(*)::int` }).from(entityIdentityMap),
+      db.select({
+        entityType: entityIdentityMap.entityType,
+        count: sql<number>`count(*)::int`,
+      })
+        .from(entityIdentityMap)
+        .groupBy(entityIdentityMap.entityType),
+      db.select({
+        id: entityIdentityMap.id,
+        entityType: entityIdentityMap.entityType,
+        entityId: entityIdentityMap.entityId,
+        canonicalId: entityIdentityMap.canonicalId,
+        subAccountId: entityIdentityMap.subAccountId,
+        createdAt: entityIdentityMap.createdAt,
+      })
+        .from(entityIdentityMap)
+        .orderBy(desc(entityIdentityMap.createdAt))
+        .limit(50),
+    ]);
+
+    res.json({
+      totalLinks: totalLinks[0]?.count ?? 0,
+      byEntityType: byType,
+      recentLinks,
+    });
+  }));
+
+  app.get("/api/operator/account-activity", asyncHandler(async (req, res) => {
+    const opUser = (req as any).user;
+    if (!opUser) return res.status(401).json({ error: "Not authenticated" });
+    const opUserId = opUser?.claims?.sub || opUser?.id || opUser?.userId;
+    const isAdmin = process.env.ADMIN_USER_ID && opUserId === process.env.ADMIN_USER_ID;
+    if (!isAdmin && !(await isApexParentUser(opUserId))) return res.status(403).json({ error: "Operator access required" });
+
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const [accountActivity, allAccounts] = await Promise.all([
+      db.select({
+        subAccountId: universalEvents.subAccountId,
+        eventCount: sql<number>`count(*)::int`,
+        lastEvent: sql<string>`max(${universalEvents.occurredAt})`,
+        modules: sql<string[]>`array_agg(distinct ${universalEvents.sourceModule})`,
+      })
+        .from(universalEvents)
+        .where(gte(universalEvents.occurredAt, since))
+        .groupBy(universalEvents.subAccountId)
+        .orderBy(desc(sql`count(*)`))
+        .limit(50),
+      storage.getSubAccounts(),
+    ]);
+
+    const accountMap = new Map(allAccounts.map((a: any) => [a.id, a]));
+
+    const enriched = accountActivity.map(row => ({
+      ...row,
+      accountName: (accountMap.get(row.subAccountId) as any)?.name || `Account #${row.subAccountId}`,
+      plan: (accountMap.get(row.subAccountId) as any)?.plan || "unknown",
+    }));
+
+    res.json(enriched);
   }));
 }

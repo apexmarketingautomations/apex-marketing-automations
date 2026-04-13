@@ -8,6 +8,7 @@ import { recordSuccess } from "../pulse";
 import { db } from "../db";
 import { eq } from "drizzle-orm";
 import { requireActiveSubscription, checkPlanLimitMiddleware } from "../subscriptionGuard";
+import { emitUniversalEvent, EVENT_TYPES } from "../intelligence/eventEmitter";
 
 const subscriptionGuard = requireActiveSubscription();
 const voiceMinutesGuard = checkPlanLimitMiddleware("voice_minutes");
@@ -109,6 +110,10 @@ export function registerVoiceRoutes(app: Express) {
     }
 
     const agent = await response.json();
+    const subAccountId = req.body?.subAccountId;
+    if (subAccountId) {
+      emitUniversalEvent({ eventType: EVENT_TYPES.VOICE_AGENT_CREATED, sourceModule: "voice", subAccountId: Number(subAccountId), metadata: { agentId: agent.id, agentName: agent.name } });
+    }
     res.json({
       id: agent.id,
       name: agent.name,
@@ -224,6 +229,10 @@ export function registerVoiceRoutes(app: Express) {
 
     const call = await response.json();
     recordSuccess("vapi");
+    const callSubAccountId = req.body?.subAccountId;
+    if (callSubAccountId) {
+      emitUniversalEvent({ eventType: EVENT_TYPES.CALL_STARTED, sourceModule: "voice", subAccountId: Number(callSubAccountId), metadata: { callId: call.id, customerPhone: parsed.data.customerPhone, assistantId: parsed.data.assistantId } });
+    }
     res.json({
       callId: call.id,
       status: call.status || "queued",

@@ -4,12 +4,14 @@ import { useAccount } from "@/hooks/use-account";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Brain, Activity, Zap, Shield, Target, TrendingUp, AlertTriangle, CheckCircle2,
   XCircle, Clock, Globe, MessageSquare, Users, BarChart3, RefreshCw, Loader2,
   ChevronRight, ArrowUpRight, Eye, Lightbulb, Gauge, Server, Radio,
-  MousePointerClick, FileText, Mail, CalendarDays, CreditCard
+  MousePointerClick, FileText, Mail, CalendarDays, CreditCard, Network, Link2,
+  AlertOctagon, Box
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -77,6 +79,40 @@ type TopEvent = {
   count: number;
 };
 
+type OperatorEvent = {
+  id: number;
+  eventType: string;
+  sourceModule: string;
+  subAccountId: number;
+  occurredAt: string;
+  metadata: Record<string, unknown> | null;
+};
+
+type ModuleHealthData = {
+  moduleActivity: Record<string, { events24h: number; lastSeen: string | null }>;
+  integrationHealth: Record<string, { healthy: number; degraded: number; error: number; disconnected: number }>;
+};
+
+type FailedEventsData = {
+  failedEvents: OperatorEvent[];
+  summary: { total: number; byModule: Record<string, number> };
+};
+
+type EntityLinkageData = {
+  totalLinks: number;
+  byEntityType: { entityType: string; count: number }[];
+  recentLinks: { id: number; entityType: string; entityId: string; canonicalId: string; subAccountId: number; createdAt: string }[];
+};
+
+type AccountActivity = {
+  subAccountId: number;
+  eventCount: number;
+  lastEvent: string;
+  modules: string[];
+  accountName: string;
+  plan: string;
+};
+
 type IntelSummary = {
   events: { last24h: number; last7d: number };
   scores: IntelligenceScore[];
@@ -137,7 +173,8 @@ export default function ApexIntelligenceDashboard() {
   const subAccountId = activeAccountId || 13;
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<"overview" | "events" | "scores" | "recommendations" | "health" | "timeline">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "events" | "scores" | "recommendations" | "health" | "timeline" | "ecosystem">("overview");
+  const [ecosystemFilter, setEcosystemFilter] = useState("");
 
   const { data: summary, isLoading: summaryLoading } = useQuery<IntelSummary>({
     queryKey: ["/api/intelligence/summary", subAccountId],
@@ -205,6 +242,57 @@ export default function ApexIntelligenceDashboard() {
     },
   });
 
+  const { data: operatorEvents = [] } = useQuery<OperatorEvent[]>({
+    queryKey: ["/api/operator/events-stream"],
+    queryFn: async () => {
+      const res = await fetch("/api/operator/events-stream");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: activeTab === "ecosystem",
+    refetchInterval: activeTab === "ecosystem" ? 20000 : false,
+  });
+
+  const { data: moduleHealth } = useQuery<ModuleHealthData>({
+    queryKey: ["/api/operator/module-health"],
+    queryFn: async () => {
+      const res = await fetch("/api/operator/module-health");
+      if (!res.ok) return { moduleActivity: {}, integrationHealth: {} };
+      return res.json();
+    },
+    enabled: activeTab === "ecosystem",
+  });
+
+  const { data: failedEventsData } = useQuery<FailedEventsData>({
+    queryKey: ["/api/operator/failed-events"],
+    queryFn: async () => {
+      const res = await fetch("/api/operator/failed-events");
+      if (!res.ok) return { failedEvents: [], summary: { total: 0, byModule: {} } };
+      return res.json();
+    },
+    enabled: activeTab === "ecosystem",
+  });
+
+  const { data: linkageData } = useQuery<EntityLinkageData>({
+    queryKey: ["/api/operator/entity-linkage-health"],
+    queryFn: async () => {
+      const res = await fetch("/api/operator/entity-linkage-health");
+      if (!res.ok) return { totalLinks: 0, byEntityType: [], recentLinks: [] };
+      return res.json();
+    },
+    enabled: activeTab === "ecosystem",
+  });
+
+  const { data: accountActivity = [] } = useQuery<AccountActivity[]>({
+    queryKey: ["/api/operator/account-activity"],
+    queryFn: async () => {
+      const res = await fetch("/api/operator/account-activity");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: activeTab === "ecosystem",
+  });
+
   const refreshMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/intelligence/refresh/${subAccountId}`, { method: "POST" });
@@ -257,6 +345,7 @@ export default function ApexIntelligenceDashboard() {
     { id: "recommendations" as const, label: "Actions", icon: Lightbulb },
     { id: "health" as const, label: "Health", icon: Server },
     { id: "timeline" as const, label: "Timeline", icon: Clock },
+    { id: "ecosystem" as const, label: "Ecosystem", icon: Network },
   ];
 
   if (summaryLoading) {
@@ -618,6 +707,155 @@ export default function ApexIntelligenceDashboard() {
                     ))}
                     {timeline.length === 0 && <p className="text-xs text-slate-600 text-center py-10 pl-6">No timeline entries yet.</p>}
                   </div>
+                </div>
+              </Card>
+            </motion.div>
+          )}
+          {activeTab === "ecosystem" && (
+            <motion.div key="ecosystem" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} data-testid="ecosystem-panel">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <Card className="bg-white/[0.03] border-white/5 p-4" data-testid="stat-total-events">
+                  <div className="flex items-center gap-2 mb-2"><Radio size={14} className="text-green-400" /><span className="text-[10px] text-slate-500 uppercase tracking-wider">Cross-Account Events (24h)</span></div>
+                  <p className="text-2xl font-black">{operatorEvents.length}</p>
+                </Card>
+                <Card className="bg-white/[0.03] border-white/5 p-4" data-testid="stat-failed-events">
+                  <div className="flex items-center gap-2 mb-2"><AlertOctagon size={14} className="text-red-400" /><span className="text-[10px] text-slate-500 uppercase tracking-wider">Failed Events (7d)</span></div>
+                  <p className="text-2xl font-black text-red-400">{failedEventsData?.summary.total ?? 0}</p>
+                </Card>
+                <Card className="bg-white/[0.03] border-white/5 p-4" data-testid="stat-active-accounts">
+                  <div className="flex items-center gap-2 mb-2"><Users size={14} className="text-cyan-400" /><span className="text-[10px] text-slate-500 uppercase tracking-wider">Active Accounts (7d)</span></div>
+                  <p className="text-2xl font-black">{accountActivity.length}</p>
+                </Card>
+                <Card className="bg-white/[0.03] border-white/5 p-4" data-testid="stat-identity-links">
+                  <div className="flex items-center gap-2 mb-2"><Link2 size={14} className="text-purple-400" /><span className="text-[10px] text-slate-500 uppercase tracking-wider">Identity Links</span></div>
+                  <p className="text-2xl font-black">{linkageData?.totalLinks ?? 0}</p>
+                </Card>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                <Card className="bg-white/[0.03] border-white/5 p-4" data-testid="module-activity-panel">
+                  <h3 className="text-sm font-bold text-slate-300 mb-3 flex items-center gap-2">
+                    <Box size={14} className="text-indigo-400" /> Module Activity (24h)
+                  </h3>
+                  <div className="space-y-2">
+                    {Object.entries(moduleHealth?.moduleActivity || {}).sort((a, b) => b[1].events24h - a[1].events24h).map(([mod, data]) => (
+                      <div key={mod} className="flex items-center gap-3" data-testid={`module-row-${mod}`}>
+                        <span className="text-xs text-white w-32 truncate font-medium">{mod}</span>
+                        <div className="flex-1 h-3 bg-white/5 rounded-full overflow-hidden">
+                          <div className="h-full bg-gradient-to-r from-indigo-600 to-cyan-500 rounded-full" style={{ width: `${Math.min(100, (data.events24h / Math.max(...Object.values(moduleHealth?.moduleActivity || { x: { events24h: 1, lastSeen: null } }).map(d => d.events24h))) * 100)}%` }} />
+                        </div>
+                        <span className="text-xs font-bold text-white w-10 text-right">{data.events24h}</span>
+                        {data.lastSeen && <span className="text-[10px] text-slate-600 w-24 text-right shrink-0">{new Date(data.lastSeen).toLocaleTimeString()}</span>}
+                      </div>
+                    ))}
+                    {Object.keys(moduleHealth?.moduleActivity || {}).length === 0 && <p className="text-xs text-slate-600 text-center py-4">No module activity in the last 24h.</p>}
+                  </div>
+                </Card>
+
+                <Card className="bg-white/[0.03] border-white/5 p-4" data-testid="account-activity-panel">
+                  <h3 className="text-sm font-bold text-slate-300 mb-3 flex items-center gap-2">
+                    <Users size={14} className="text-cyan-400" /> Top Accounts by Activity (7d)
+                  </h3>
+                  <div className="space-y-2">
+                    {accountActivity.slice(0, 10).map(acc => (
+                      <div key={acc.subAccountId} className="flex items-center gap-3 p-2 rounded bg-white/[0.02]" data-testid={`account-activity-${acc.subAccountId}`}>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-white truncate">{acc.accountName}</p>
+                          <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                            {(acc.modules || []).slice(0, 4).map(m => <Badge key={m} className="text-[9px] bg-white/5 text-slate-500 border-0 px-1">{m}</Badge>)}
+                          </div>
+                        </div>
+                        <Badge className={`text-[9px] border-0 ${acc.plan === "enterprise" ? "bg-purple-500/20 text-purple-400" : acc.plan === "pro" ? "bg-cyan-500/20 text-cyan-400" : "bg-white/5 text-slate-500"}`}>{acc.plan}</Badge>
+                        <span className="text-xs font-bold text-indigo-400 w-10 text-right">{acc.eventCount}</span>
+                      </div>
+                    ))}
+                    {accountActivity.length === 0 && <p className="text-xs text-slate-600 text-center py-4">No account activity in the last 7 days.</p>}
+                  </div>
+                </Card>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                <Card className="bg-white/[0.03] border-white/5 p-4" data-testid="failed-events-panel">
+                  <h3 className="text-sm font-bold text-slate-300 mb-3 flex items-center gap-2">
+                    <AlertOctagon size={14} className="text-red-400" /> Failed Events (7d)
+                    {(failedEventsData?.summary.total ?? 0) > 0 && <Badge className="bg-red-500/20 text-red-400 border-0 text-[9px] px-1.5">{failedEventsData?.summary.total}</Badge>}
+                  </h3>
+                  {Object.keys(failedEventsData?.summary.byModule || {}).length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-3">
+                      {Object.entries(failedEventsData?.summary.byModule || {}).map(([mod, count]) => (
+                        <Badge key={mod} className="text-[9px] bg-red-500/10 text-red-400 border-0">{mod}: {count}</Badge>
+                      ))}
+                    </div>
+                  )}
+                  <div className="space-y-1.5 max-h-[240px] overflow-y-auto">
+                    {(failedEventsData?.failedEvents || []).slice(0, 20).map(evt => (
+                      <div key={evt.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-red-500/[0.05]" data-testid={`failed-evt-${evt.id}`}>
+                        <XCircle size={10} className="text-red-400 shrink-0" />
+                        <span className="text-xs font-mono text-red-300 truncate flex-1">{evt.eventType}</span>
+                        <span className="text-[10px] text-slate-600 shrink-0">{evt.sourceModule}</span>
+                        <span className="text-[10px] text-slate-600 shrink-0">{new Date(evt.occurredAt).toLocaleDateString()}</span>
+                      </div>
+                    ))}
+                    {(failedEventsData?.failedEvents || []).length === 0 && <p className="text-xs text-slate-600 text-center py-4">No failures in the last 7 days.</p>}
+                  </div>
+                </Card>
+
+                <Card className="bg-white/[0.03] border-white/5 p-4" data-testid="entity-linkage-panel">
+                  <h3 className="text-sm font-bold text-slate-300 mb-3 flex items-center gap-2">
+                    <Link2 size={14} className="text-purple-400" /> Entity Identity Linkage
+                  </h3>
+                  {(linkageData?.byEntityType || []).length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-3">
+                      {(linkageData?.byEntityType || []).map(item => (
+                        <Badge key={item.entityType} className="text-[9px] bg-purple-500/10 text-purple-400 border-0">{item.entityType}: {item.count}</Badge>
+                      ))}
+                    </div>
+                  )}
+                  <div className="space-y-1.5 max-h-[240px] overflow-y-auto">
+                    {(linkageData?.recentLinks || []).slice(0, 20).map(link => (
+                      <div key={link.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-white/[0.02]" data-testid={`link-${link.id}`}>
+                        <Badge className="text-[9px] bg-purple-500/10 text-purple-400 border-0 shrink-0">{link.entityType}</Badge>
+                        <span className="text-xs text-slate-300 truncate flex-1 font-mono">{link.entityId}</span>
+                        <ChevronRight size={10} className="text-slate-600 shrink-0" />
+                        <span className="text-xs text-indigo-400 truncate max-w-[100px] font-mono">{link.canonicalId}</span>
+                      </div>
+                    ))}
+                    {(linkageData?.recentLinks || []).length === 0 && <p className="text-xs text-slate-600 text-center py-4">No identity links created yet.</p>}
+                  </div>
+                </Card>
+              </div>
+
+              <Card className="bg-white/[0.03] border-white/5 p-4" data-testid="cross-account-stream-panel">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold text-slate-300 flex items-center gap-2">
+                    <Radio size={14} className="text-green-400" />
+                    Cross-Account Event Stream (24h)
+                    <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                  </h3>
+                  <Input
+                    placeholder="Filter by module or type..."
+                    value={ecosystemFilter}
+                    onChange={e => setEcosystemFilter(e.target.value)}
+                    className="h-7 w-48 text-xs bg-white/5 border-white/10 text-white placeholder:text-slate-600"
+                    data-testid="input-ecosystem-filter"
+                  />
+                </div>
+                <div className="space-y-1 max-h-[360px] overflow-y-auto">
+                  {operatorEvents
+                    .filter(e => !ecosystemFilter || e.eventType.includes(ecosystemFilter) || e.sourceModule.includes(ecosystemFilter))
+                    .slice(0, 100)
+                    .map(evt => (
+                      <div key={evt.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-white/[0.02] hover:bg-white/[0.04] transition-colors" data-testid={`operator-evt-${evt.id}`}>
+                        <EventIcon type={evt.eventType} />
+                        <span className="text-xs font-mono text-indigo-300 w-44 truncate">{evt.eventType}</span>
+                        <Badge className="text-[9px] bg-white/5 text-slate-400 border-0 shrink-0">{evt.sourceModule}</Badge>
+                        <span className="text-[10px] text-slate-500 shrink-0">acct:{evt.subAccountId}</span>
+                        <span className="text-[10px] text-slate-600 ml-auto shrink-0">{new Date(evt.occurredAt).toLocaleString()}</span>
+                      </div>
+                    ))}
+                  {operatorEvents.filter(e => !ecosystemFilter || e.eventType.includes(ecosystemFilter) || e.sourceModule.includes(ecosystemFilter)).length === 0 && (
+                    <p className="text-xs text-slate-600 text-center py-6">No events match the current filter.</p>
+                  )}
                 </div>
               </Card>
             </motion.div>

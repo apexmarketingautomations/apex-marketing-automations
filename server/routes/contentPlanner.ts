@@ -1,4 +1,5 @@
 import type { Express, Request, Response } from "express";
+import { emitUniversalEvent, EVENT_TYPES } from "../intelligence/eventEmitter";
 import { db } from "../db";
 import {
   socialAccounts,
@@ -735,6 +736,7 @@ export function registerContentPlannerRoutes(app: Express) {
         trigger: "manual",
         platforms: parsed.data.platforms,
       });
+      emitUniversalEvent({ eventType: EVENT_TYPES.CONTENT_PUBLISHED, sourceModule: "content_planner", subAccountId, metadata: { postId, platforms: parsed.data.platforms } });
       res.json(result);
     } catch (err: any) {
       res.status(400).json({ error: err.message });
@@ -770,6 +772,7 @@ export function registerContentPlannerRoutes(app: Express) {
       }).where(and(eq(contentPosts.id, postId), eq(contentPosts.subAccountId, subAccountId)))
         .returning();
 
+      emitUniversalEvent({ eventType: EVENT_TYPES.CONTENT_SCHEDULED, sourceModule: "content_planner", subAccountId, metadata: { postId, scheduledAt: parsed.data.scheduledAt, platforms: parsed.data.platforms } });
       for (const platform of parsed.data.platforms) {
         const [existing] = await db.select().from(contentPostPlatforms)
           .where(and(

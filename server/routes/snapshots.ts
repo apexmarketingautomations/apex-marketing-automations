@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
 import { z } from "zod";
 import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership } from "./helpers";
+import { emitUniversalEvent, EVENT_TYPES } from "../intelligence/eventEmitter";
 
 export function registerSnapshotsRoutes(app: Express) {
   // ---- Snapshot CRUD ----
@@ -66,6 +67,7 @@ export function registerSnapshotsRoutes(app: Express) {
       isPublic: parsed.data.isPublic,
     });
 
+    emitUniversalEvent({ eventType: EVENT_TYPES.SNAPSHOT_CREATED, sourceModule: "snapshots", subAccountId: parsed.data.subAccountId, metadata: { snapshotId: snapshot.id, name: snapshot.name, isPublic: snapshot.isPublic } });
     res.status(201).json(snapshot);
   }));
 
@@ -117,6 +119,7 @@ export function registerSnapshotsRoutes(app: Express) {
       details: { snapshotId: id, newAccountId: newAccount.id, businessName: parsed.data.businessName },
     });
 
+    emitUniversalEvent({ eventType: EVENT_TYPES.SNAPSHOT_DEPLOYED, sourceModule: "snapshots", subAccountId: newAccount.id, metadata: { snapshotId: id, snapshotName: snapshot.name, newAccountId: newAccount.id } });
     res.status(201).json({ account: newAccount, snapshotId: id });
   }));
 

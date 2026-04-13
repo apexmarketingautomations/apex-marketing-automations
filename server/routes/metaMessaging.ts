@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { asyncHandler, parseIntParam, verifyAccountOwnership } from "./helpers";
+import { emitUniversalEvent, EVENT_TYPES } from "../intelligence/eventEmitter";
 import { db } from "../db";
 import { messages, commentAutoReplies, subAccounts, auditLogs, systemLogs, contacts } from "@shared/schema";
 import { eq, and, gte, desc, sql, or, asc } from "drizzle-orm";
@@ -422,6 +423,7 @@ export function registerMetaMessagingRoutes(app: Express) {
       await logAudit("meta_messaging.manual_reply", userId, { senderId, channel, status, length: text.length });
 
       if (!sendRes.ok) return res.status(502).json({ error: sanitizeError({ message: sendData?.error?.message }) });
+      emitUniversalEvent({ eventType: EVENT_TYPES.INBOX_MESSAGE_SENT, sourceModule: "inbox", subAccountId, metadata: { senderId, channel, messageId: sendData?.message_id } });
       res.json({ success: true, messageId: sendData?.message_id });
     } catch (err: any) {
       res.status(500).json({ error: sanitizeError(err) });
