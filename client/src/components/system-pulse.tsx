@@ -201,7 +201,7 @@ export function SystemPulse() {
               <p className="text-xs text-slate-600">
                 Last checked: {pulse?.timestamp ? new Date(pulse.timestamp).toLocaleTimeString() : "—"}
               </p>
-              <p className="text-xs text-slate-600">Auto-refresh: 60s</p>
+              <p className="text-xs text-slate-600">Auto-refresh: 60 min</p>
             </div>
           </motion.div>
         )}

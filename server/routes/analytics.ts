@@ -1,11 +1,11 @@
 import type { Express, Request, Response } from "express";
-import { contacts, deals, messages, subAccounts, sentinelIncidents, propertyLeads } from "@shared/schema";
+import { contacts, deals, messages, subAccounts, sentinelIncidents, propertyLeads, workflows } from "@shared/schema";
 import { db } from "../db";
 import { storage } from "../storage";
 import { z } from "zod";
+import { eq, sql } from "drizzle-orm";
 import { isAIConfigured } from "../aiGateway";
 import { ProgressStream } from "../streaming";
-import {  } from "../eventBus";
 import { eventBus } from "../eventBus";
 import { jobQueue } from "../jobQueue";
 import crypto from "crypto";
@@ -16,7 +16,7 @@ export function registerAnalyticsRoutes(app: Express) {
   app.get("/api/analytics/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
-    const [allMessages, allContacts, allDeals, allAppts, allCampaigns, allMetaAds, allMetaLeads, allIncidents, allWebhookEvts] = await Promise.all([
+    const [allMessages, allContacts, allDeals, allAppts, allCampaigns, allMetaAds, allMetaLeads, allIncidents, allWebhookEvts, allWorkflows] = await Promise.all([
       storage.getMessages(subAccountId),
       storage.getContacts(subAccountId),
       storage.getDeals(subAccountId),
@@ -26,6 +26,7 @@ export function registerAnalyticsRoutes(app: Express) {
       storage.getMetaLeads(subAccountId),
       storage.getSentinelIncidents(subAccountId),
       storage.getWebhookEvents(subAccountId),
+      db.select().from(workflows).where(eq(workflows.subAccountId, subAccountId)),
     ]);
 
     const now = new Date();
@@ -59,6 +60,30 @@ export function registerAnalyticsRoutes(app: Express) {
     const totalClicks = allMetaAds.reduce((s, a) => s + (a.clicks || 0), 0);
     const avgCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
 
+    const activeWorkflows = allWorkflows.length;
+
+    const inboundMessages = allMessages.filter((m: any) => m.direction === "inbound");
+    let avgResponseTimeLabel = "N/A";
+    if (inboundMessages.length > 0) {
+      const responseTimes: number[] = [];
+      for (const inbound of inboundMessages) {
+        const inboundTime = new Date(inbound.createdAt).getTime();
+        const reply = allMessages.find((m: any) =>
+          m.direction !== "inbound" &&
+          m.contactPhone === inbound.contactPhone &&
+          new Date(m.createdAt).getTime() > inboundTime
+        );
+        if (reply) {
+          responseTimes.push(new Date(reply.createdAt).getTime() - inboundTime);
+        }
+      }
+      if (responseTimes.length > 0) {
+        const avgMs = responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length;
+        const avgMin = avgMs / 60000;
+        avgResponseTimeLabel = avgMin < 1 ? "< 1 min" : `${Math.round(avgMin)} min`;
+      }
+    }
+
     res.json({
       overview: {
         totalLeads: allContacts.length,
@@ -66,8 +91,8 @@ export function registerAnalyticsRoutes(app: Express) {
         totalDeals: allDeals.length,
         totalRevenue,
         conversionRate: Math.round(conversionRate * 10) / 10,
-        avgResponseTime: "< 2 min",
-        activeWorkflows: 0,
+        avgResponseTime: avgResponseTimeLabel,
+        activeWorkflows,
         sentinelIncidents: allIncidents.length,
       },
       charts: {

@@ -29,6 +29,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { useActiveSubAccountId } from "@/components/account-required";
 
 const CTA_LABELS: Record<string, string> = {
   BOOK_NOW: "Book Now",
@@ -286,10 +287,12 @@ export default function AdLauncher() {
   const [prompt, setPrompt] = useState("");
   const [campaign, setCampaign] = useState<any>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isLaunching, setIsLaunching] = useState(false);
   const [launched, setLaunched] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
   const { toast } = useToast();
   const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_ad_launcher");
+  const subAccountId = useActiveSubAccountId();
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
@@ -323,12 +326,42 @@ export default function AdLauncher() {
     }
   };
 
-  const handleLaunch = () => {
-    setLaunched(true);
-    toast({
-      title: "Campaign Queued!",
-      description: "Campaign created in PAUSED state. Connect your Facebook Ads account to go live.",
-    });
+  const handleLaunch = async () => {
+    if (!campaign || !subAccountId) return;
+    setIsLaunching(true);
+    try {
+      const res = await fetch("/api/meta/campaigns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subAccountId,
+          name: campaign.campaign_name,
+          objective: campaign.objective || "OUTCOME_LEADS",
+          status: "paused",
+          dailyBudget: campaign.daily_budget || 0,
+          adText: campaign.ad_copy?.primary_text || "",
+          creativeUrl: campaign.generated_image_url || null,
+          targeting: campaign.targeting || null,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to save campaign");
+      }
+      setLaunched(true);
+      toast({
+        title: "Campaign Saved!",
+        description: "Campaign created in PAUSED state and saved to your Meta Campaigns. Connect your Facebook Ads account to go live.",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Launch Failed",
+        description: err.message || "Could not save campaign. Try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLaunching(false);
+    }
   };
 
   return (
@@ -469,12 +502,16 @@ export default function AdLauncher() {
               size="sm"
               className={`text-white ${launched ? "bg-green-600" : "bg-orange-600 hover:bg-orange-700"}`}
               onClick={handleLaunch}
-              disabled={!campaign || launched}
+              disabled={!campaign || launched || isLaunching}
               data-testid="button-launch-campaign"
             >
-              {launched ? (
+              {isLaunching ? (
                 <>
-                  <CheckCircle2 size={14} className="mr-2" /> Queued
+                  <Loader2 size={14} className="mr-2 animate-spin" /> Saving...
+                </>
+              ) : launched ? (
+                <>
+                  <CheckCircle2 size={14} className="mr-2" /> Saved
                 </>
               ) : (
                 <>
@@ -503,8 +540,8 @@ export default function AdLauncher() {
                   >
                     <CheckCircle2 className="text-green-400" />
                     <div>
-                      <p className="text-sm font-medium text-green-300">Campaign Created (PAUSED)</p>
-                      <p className="text-xs text-neutral-400">Connect your Facebook Ads account to activate this campaign.</p>
+                      <p className="text-sm font-medium text-green-300">Campaign Saved (PAUSED)</p>
+                      <p className="text-xs text-neutral-400">Saved to Meta Campaigns. Connect your Facebook Ads account to publish and activate.</p>
                     </div>
                   </motion.div>
                 )}
