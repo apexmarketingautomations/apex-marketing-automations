@@ -130,17 +130,20 @@ async function detectScoreBasedGaps(accountId: number): Promise<DetectedGap[]> {
     }
 
     if (score.scoreType === "pipeline_health_score" && score.scoreValue <= 5) {
-      gaps.push({
-        accountId,
-        gapType: "empty_pipeline",
-        category: "setup",
-        actionType: "create_default_pipeline",
-        confidenceScore: 0.7,
-        priority: "medium",
-        description: "Pipeline is empty — no deals tracked",
-        context: { scoreValue: score.scoreValue, inputs },
-        dependencies: [],
-      });
+      const existingStages = await storage.getPipelineStages(accountId);
+      if (existingStages.length === 0) {
+        gaps.push({
+          accountId,
+          gapType: "empty_pipeline",
+          category: "setup",
+          actionType: "create_default_pipeline",
+          confidenceScore: 0.7,
+          priority: "medium",
+          description: "Pipeline is empty — no stages or deals configured",
+          context: { scoreValue: score.scoreValue, inputs },
+          dependencies: [],
+        });
+      }
     }
 
     if (score.scoreType === "domain_health_score" && score.scoreValue < 40 && inputs) {
@@ -261,7 +264,7 @@ function deduplicateAndSort(gaps: DetectedGap[]): DetectedGap[] {
   const seen = new Set<string>();
   const unique: DetectedGap[] = [];
   for (const gap of gaps) {
-    const key = `${gap.accountId}:${gap.actionType}:${gap.gapType}`;
+    const key = `${gap.accountId}:${gap.actionType}`;
     if (!seen.has(key)) {
       seen.add(key);
       unique.push(gap);

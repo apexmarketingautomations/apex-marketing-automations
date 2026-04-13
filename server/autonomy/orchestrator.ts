@@ -108,9 +108,10 @@ export async function runOrchestrationCycle(): Promise<OrchestrationCycleResult>
       if (gaps.length === 0) continue;
 
       const recentActions = await storage.getAutonomyActions(account.id, { limit: 50 });
+      const recentCutoff = Date.now() - 24 * 60 * 60 * 1000;
       const completedActionTypes = new Set(
         recentActions
-          .filter(a => a.status === "completed")
+          .filter(a => a.status === "completed" && (a.resolvedAt || a.executedAt) && new Date((a.resolvedAt || a.executedAt)!).getTime() > recentCutoff)
           .map(a => a.actionType)
       );
       const pendingActionTypes = new Set(
@@ -125,19 +126,33 @@ export async function runOrchestrationCycle(): Promise<OrchestrationCycleResult>
       );
 
       const eligibleGaps = resolveDependencies(gaps, completedActionTypes);
+      const recentCompleted = recentActions.filter(a => 
+        a.status === "completed" && (a.resolvedAt || a.executedAt) && 
+        new Date((a.resolvedAt || a.executedAt)!).getTime() > recentCutoff
+      );
+      const completedActionKeys = new Set(
+        recentCompleted.map(a => `${a.actionType}:${a.targetEntityId || ""}`)
+      );
       const newGaps = eligibleGaps.filter(g => {
+        if (pendingActionTypes.has(g.actionType)) return false;
+        if (completedActionTypes.has(g.actionType)) return false;
         const gapKey = `${g.actionType}:${g.context.provider || g.context.entityId || ""}`;
-        return !pendingActionTypes.has(g.actionType) && !pendingActionKeys.has(gapKey);
+        if (pendingActionKeys.has(gapKey)) return false;
+        if (completedActionKeys.has(gapKey)) return false;
+        return true;
       });
 
+      const dispatchedThisCycle = new Set<string>();
       let dispatched = 0;
       for (const gap of newGaps) {
         if (dispatched >= MAX_ACTIONS_PER_ACCOUNT) break;
+        if (dispatchedThisCycle.has(gap.actionType)) continue;
 
         try {
           const result = await dispatchGap(account.id, gap, cycleId);
           actionsDispatched++;
           dispatched++;
+          dispatchedThisCycle.add(gap.actionType);
 
           if (result.completed) actionsCompleted++;
           if (result.failed) actionsFailed++;
