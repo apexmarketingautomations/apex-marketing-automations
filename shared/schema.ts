@@ -2609,6 +2609,53 @@ export const insertIntelligenceRecommendationSchema = createInsertSchema(intelli
 export type InsertIntelligenceRecommendation = z.infer<typeof insertIntelligenceRecommendationSchema>;
 export type IntelligenceRecommendation = typeof intelligenceRecommendations.$inferSelect;
 
+// ---- Apex Intelligence Module Event Registry ----
+
+export const APEX_MODULE_GROUPS = [
+  "domains", "sites", "forms", "messaging", "crm", "workflows",
+  "calendar", "cards", "campaigns", "integrations", "reputation",
+  "sentinel", "analytics", "billing", "ai",
+] as const;
+export type ApexModuleGroup = typeof APEX_MODULE_GROUPS[number];
+
+export const apexModuleEventRegistry = pgTable("apex_module_event_registry", {
+  id: serial("id").primaryKey(),
+  moduleGroup: text("module_group").notNull(),
+  eventType: text("event_type").notNull(),
+  description: text("description"),
+  schema: jsonb("schema"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  moduleIdx: index("amer_module_idx").on(table.moduleGroup),
+  eventTypeIdx: index("amer_event_type_idx").on(table.eventType),
+  uniqueEvent: uniqueIndex("amer_unique_event").on(table.moduleGroup, table.eventType),
+}));
+
+export const insertApexModuleEventRegistrySchema = createInsertSchema(apexModuleEventRegistry).omit({ id: true, createdAt: true });
+export type InsertApexModuleEventRegistry = z.infer<typeof insertApexModuleEventRegistrySchema>;
+export type ApexModuleEventRegistry = typeof apexModuleEventRegistry.$inferSelect;
+
+export const apexModuleCoverage = pgTable("apex_module_coverage", {
+  id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  moduleGroup: text("module_group").notNull(),
+  totalEventTypes: integer("total_event_types").default(0).notNull(),
+  observedEventTypes: integer("observed_event_types").default(0).notNull(),
+  lastEventAt: timestamp("last_event_at"),
+  eventCount: integer("event_count").default(0).notNull(),
+  coverageScore: real("coverage_score").default(0).notNull(),
+  metadata: jsonb("metadata"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  coverageLookup: uniqueIndex("amc_lookup").on(table.accountId, table.moduleGroup),
+  accountIdx: index("amc_account_idx").on(table.accountId),
+}));
+
+export const insertApexModuleCoverageSchema = createInsertSchema(apexModuleCoverage).omit({ id: true, updatedAt: true });
+export type InsertApexModuleCoverage = z.infer<typeof insertApexModuleCoverageSchema>;
+export type ApexModuleCoverage = typeof apexModuleCoverage.$inferSelect;
+
 export const integrationHealthState = pgTable("integration_health_state", {
   id: serial("id").primaryKey(),
   accountId: integer("account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),

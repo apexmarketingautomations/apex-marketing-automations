@@ -87,6 +87,7 @@ import {
   type PendingAction, type InsertPendingAction,
   universalEvents, entityIdentityMap, entityActivityRollups,
   intelligenceScores, intelligenceRecommendations, integrationHealthState, executionTimeline,
+  apexModuleEventRegistry, apexModuleCoverage,
   type UniversalEvent, type InsertUniversalEvent,
   type EntityIdentityMap, type InsertEntityIdentityMap,
   type EntityActivityRollup, type InsertEntityActivityRollup,
@@ -94,6 +95,8 @@ import {
   type IntelligenceRecommendation, type InsertIntelligenceRecommendation,
   type IntegrationHealthState, type InsertIntegrationHealthState,
   type ExecutionTimeline, type InsertExecutionTimeline,
+  type ApexModuleEventRegistry, type InsertApexModuleEventRegistry,
+  type ApexModuleCoverage, type InsertApexModuleCoverage,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -465,6 +468,14 @@ export interface IStorage {
 
   createExecutionTimelineEntry(data: InsertExecutionTimeline): Promise<ExecutionTimeline>;
   getExecutionTimeline(accountId: number, opts?: { limit?: number; severity?: string; since?: Date }): Promise<ExecutionTimeline[]>;
+
+  registerModuleEvent(data: InsertApexModuleEventRegistry): Promise<ApexModuleEventRegistry>;
+  getModuleEventRegistry(moduleGroup?: string): Promise<ApexModuleEventRegistry[]>;
+  getModuleEventByType(moduleGroup: string, eventType: string): Promise<ApexModuleEventRegistry | undefined>;
+
+  upsertModuleCoverage(data: InsertApexModuleCoverage): Promise<ApexModuleCoverage>;
+  getModuleCoverage(accountId: number, moduleGroup?: string): Promise<ApexModuleCoverage[]>;
+  incrementModuleCoverageCount(accountId: number, moduleGroup: string, eventType: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2413,6 +2424,93 @@ export class DatabaseStorage implements IStorage {
       .where(and(...conditions))
       .orderBy(desc(executionTimeline.createdAt))
       .limit(opts?.limit ?? 100);
+  }
+
+  async registerModuleEvent(data: InsertApexModuleEventRegistry): Promise<ApexModuleEventRegistry> {
+    const [row] = await db.insert(apexModuleEventRegistry)
+      .values(data)
+      .onConflictDoUpdate({
+        target: [apexModuleEventRegistry.moduleGroup, apexModuleEventRegistry.eventType],
+        set: { description: data.description, schema: data.schema, isActive: data.isActive ?? true },
+      })
+      .returning();
+    return row;
+  }
+
+  async getModuleEventRegistry(moduleGroup?: string): Promise<ApexModuleEventRegistry[]> {
+    if (moduleGroup) {
+      return db.select().from(apexModuleEventRegistry)
+        .where(eq(apexModuleEventRegistry.moduleGroup, moduleGroup))
+        .orderBy(apexModuleEventRegistry.eventType);
+    }
+    return db.select().from(apexModuleEventRegistry).orderBy(apexModuleEventRegistry.moduleGroup, apexModuleEventRegistry.eventType);
+  }
+
+  async getModuleEventByType(moduleGroup: string, eventType: string): Promise<ApexModuleEventRegistry | undefined> {
+    const [row] = await db.select().from(apexModuleEventRegistry)
+      .where(and(
+        eq(apexModuleEventRegistry.moduleGroup, moduleGroup),
+        eq(apexModuleEventRegistry.eventType, eventType),
+      )).limit(1);
+    return row;
+  }
+
+  async upsertModuleCoverage(data: InsertApexModuleCoverage): Promise<ApexModuleCoverage> {
+    const [row] = await db.insert(apexModuleCoverage)
+      .values(data)
+      .onConflictDoUpdate({
+        target: [apexModuleCoverage.accountId, apexModuleCoverage.moduleGroup],
+        set: {
+          totalEventTypes: data.totalEventTypes,
+          observedEventTypes: data.observedEventTypes,
+          lastEventAt: data.lastEventAt,
+          eventCount: data.eventCount,
+          coverageScore: data.coverageScore,
+          metadata: data.metadata,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return row;
+  }
+
+  async getModuleCoverage(accountId: number, moduleGroup?: string): Promise<ApexModuleCoverage[]> {
+    const conditions = [eq(apexModuleCoverage.accountId, accountId)];
+    if (moduleGroup) conditions.push(eq(apexModuleCoverage.moduleGroup, moduleGroup));
+    return db.select().from(apexModuleCoverage)
+      .where(and(...conditions))
+      .orderBy(apexModuleCoverage.moduleGroup);
+  }
+
+  async incrementModuleCoverageCount(accountId: number, moduleGroup: string, eventType: string): Promise<void> {
+    const existing = await db.select().from(apexModuleCoverage)
+      .where(and(
+        eq(apexModuleCoverage.accountId, accountId),
+        eq(apexModuleCoverage.moduleGroup, moduleGroup),
+      )).limit(1);
+
+    if (existing.length > 0) {
+      const current = existing[0];
+      await db.update(apexModuleCoverage)
+        .set({
+          eventCount: (current.eventCount ?? 0) + 1,
+          lastEventAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(apexModuleCoverage.id, current.id));
+    } else {
+      const registryRows = await this.getModuleEventRegistry(moduleGroup);
+      const totalEventTypes = registryRows.length || 1;
+      await db.insert(apexModuleCoverage).values({
+        accountId,
+        moduleGroup,
+        totalEventTypes,
+        observedEventTypes: 1,
+        lastEventAt: new Date(),
+        eventCount: 1,
+        coverageScore: Math.round((1 / totalEventTypes) * 100),
+      });
+    }
   }
 }
 

@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { storage } from "./storage";
 import { EVENT_LOG_STATUS } from "@shared/schema";
 import { emitUniversalEvent } from "./intelligence/eventEmitter";
+import { MODULE_GROUP_EVENT_MAP, getModuleGroupForEvent } from "./intelligence/moduleRegistry";
 
 export interface ApexEvent {
   event_id: string;
@@ -300,56 +301,152 @@ export function publishEventAsync(eventType: string, payload: Record<string, any
 }
 
 export const EVENT_TYPES = {
+  // ---- CRM ----
   LEAD_CREATED: "lead.created",
   LEAD_UPDATED: "lead.updated",
   CONTACT_CREATED: "contact.created",
   CONTACT_UPDATED: "contact.updated",
-
-  FORM_SUBMITTED: "form.submitted",
-
-  MESSAGE_RECEIVED: "message.received",
-  MESSAGE_SENT: "message.sent",
-  MESSAGE_FAILED: "message.failed",
-
-  CALL_COMPLETED: "call.completed",
-  CALL_MISSED: "call.missed",
-
-  APPOINTMENT_BOOKED: "appointment.booked",
-  APPOINTMENT_CANCELLED: "appointment.cancelled",
-
-  PAYMENT_COMPLETED: "payment.completed",
-  PAYMENT_FAILED: "payment.failed",
-  SUBSCRIPTION_CHANGED: "subscription.changed",
-
-  WORKFLOW_STARTED: "workflow.started",
-  WORKFLOW_COMPLETED: "workflow.completed",
-  WORKFLOW_FAILED: "workflow.failed",
-  WORKFLOW_STEP_EXECUTED: "workflow.step.executed",
-
-  CRASH_DETECTED: "crash.detected",
-  SENTINEL_ALERT: "sentinel.alert",
-
-  INTEGRATION_CONNECTED: "integration.connected",
-  INTEGRATION_DISCONNECTED: "integration.disconnected",
-  INTEGRATION_ERROR: "integration.error",
-
-  AD_CAMPAIGN_LAUNCHED: "ad.campaign.launched",
-  AD_CAMPAIGN_COMPLETED: "ad.campaign.completed",
-
-  AI_CHAT_COMPLETED: "ai.chat.completed",
-  AI_TRAINING_COMPLETED: "ai.training.completed",
-
-  SITE_GENERATED: "site.generated",
-  SITE_PUBLISHED: "site.published",
-
+  CONTACT_DELETED: "contact.deleted",
   DEAL_CREATED: "deal.created",
   DEAL_STAGE_CHANGED: "deal.stage.changed",
   DEAL_WON: "deal.won",
   DEAL_LOST: "deal.lost",
+  DEAL_UPDATED: "deal.updated",
+  PIPELINE_STAGE_CREATED: "pipeline.stage.created",
+  PIPELINE_STAGE_UPDATED: "pipeline.stage.updated",
 
+  // ---- Forms ----
+  FORM_SUBMITTED: "form.submitted",
+  FORM_STARTED: "form.started",
+  FORM_ABANDONED: "form.abandoned",
+  FORM_CREATED: "form.created",
+  FORM_UPDATED: "form.updated",
+  FUNNEL_LEAD_CAPTURED: "funnel.lead.captured",
+  FUNNEL_LEAD_CONVERTED: "funnel.lead.converted",
+
+  // ---- Messaging ----
+  MESSAGE_RECEIVED: "message.received",
+  MESSAGE_SENT: "message.sent",
+  MESSAGE_FAILED: "message.failed",
+  MESSAGE_READ: "message.read",
+  CALL_COMPLETED: "call.completed",
+  CALL_MISSED: "call.missed",
+  CALL_STARTED: "call.started",
+  DM_KEYWORD_TRIGGERED: "dm.keyword.triggered",
+  INSTAGRAM_MESSAGE_RECEIVED: "instagram.message.received",
+  INSTAGRAM_COMMENT_RECEIVED: "instagram.comment.received",
+  META_LEAD_RECEIVED: "meta.lead.received",
+
+  // ---- Calendar ----
+  APPOINTMENT_BOOKED: "appointment.booked",
+  APPOINTMENT_CANCELLED: "appointment.cancelled",
+  APPOINTMENT_RESCHEDULED: "appointment.rescheduled",
+  APPOINTMENT_REMINDER_SENT: "appointment.reminder.sent",
+  CALENDAR_SYNCED: "calendar.synced",
+
+  // ---- Sites ----
+  SITE_GENERATED: "site.generated",
+  SITE_PUBLISHED: "site.published",
+  SITE_UPDATED: "site.updated",
+  SITE_CREATED: "site.created",
+  SITE_VERSION_CREATED: "site.version.created",
+  SITE_COLLABORATOR_ADDED: "site.collaborator.added",
+
+  // ---- Domains ----
+  DOMAIN_REGISTERED: "domain.registered",
+  DOMAIN_VERIFIED: "domain.verified",
+  DOMAIN_ATTACHED: "domain.attached",
+  DOMAIN_DNS_CONFIGURED: "domain.dns.configured",
+  DOMAIN_SSL_ACTIVATED: "domain.ssl.activated",
+  DOMAIN_SEARCHED: "domain.searched",
+
+  // ---- Cards ----
+  CARD_CREATED: "card.created",
+  CARD_UPDATED: "card.updated",
+  CARD_SCANNED: "card.scanned",
+  CARD_OPENED: "card.opened",
+  CARD_SHARED: "card.shared",
+  CARD_CONTACT_SAVED: "card.contact.saved",
+
+  // ---- Campaigns ----
+  CAMPAIGN_CREATED: "campaign.created",
+  CAMPAIGN_SENT: "campaign.sent",
+  CAMPAIGN_COMPLETED: "campaign.completed",
+  CAMPAIGN_FAILED: "campaign.failed",
+  CAMPAIGN_OPENED: "campaign.opened",
+  CAMPAIGN_CLICKED: "campaign.clicked",
+  CAMPAIGN_UNSUBSCRIBED: "campaign.unsubscribed",
+  AD_CAMPAIGN_LAUNCHED: "ad.campaign.launched",
+  AD_CAMPAIGN_COMPLETED: "ad.campaign.completed",
+  AD_CAMPAIGN_UPDATED: "ad.campaign.updated",
+
+  // ---- Workflows ----
+  WORKFLOW_STARTED: "workflow.started",
+  WORKFLOW_COMPLETED: "workflow.completed",
+  WORKFLOW_FAILED: "workflow.failed",
+  WORKFLOW_STEP_EXECUTED: "workflow.step.executed",
+  WORKFLOW_OPTIMIZED: "workflow.optimized",
+  AUTOMATION_TRIGGERED: "automation.triggered",
+  AUTOMATION_COMPLETED: "automation.completed",
+
+  // ---- Integrations ----
+  INTEGRATION_CONNECTED: "integration.connected",
+  INTEGRATION_DISCONNECTED: "integration.disconnected",
+  INTEGRATION_ERROR: "integration.error",
+  INTEGRATION_HEALTH_UPDATED: "integration.health.updated",
+  WEBHOOK_RECEIVED: "webhook.received",
+  WEBHOOK_SENT: "webhook.sent",
+  OAUTH_TOKEN_REFRESHED: "oauth.token.refreshed",
+  SHOPIFY_EVENT_RECEIVED: "shopify.event.received",
+
+  // ---- Reputation ----
+  REVIEW_RECEIVED: "review.received",
+  REVIEW_REPLIED: "review.replied",
+  REVIEW_FLAGGED: "review.flagged",
+  REPUTATION_SCORE_UPDATED: "reputation.score.updated",
+
+  // ---- Sentinel ----
+  CRASH_DETECTED: "crash.detected",
+  SENTINEL_ALERT: "sentinel.alert",
+  SENTINEL_INCIDENT_CREATED: "sentinel.incident.created",
+  SENTINEL_INCIDENT_RESOLVED: "sentinel.incident.resolved",
+  SENTINEL_HEALTH_CHECK: "sentinel.health.check",
+
+  // ---- Analytics ----
+  PAGE_VIEW: "page.view",
+  CTA_CLICKED: "cta.clicked",
+  BUTTON_CLICKED: "button.clicked",
+  AB_EXPERIMENT_STARTED: "ab.experiment.started",
+  AB_EXPERIMENT_CONVERTED: "ab.experiment.converted",
+  ROLLUP_COMPUTED: "rollup.computed",
+  SCORE_UPDATED: "score.updated",
+  RECOMMENDATION_GENERATED: "recommendation.generated",
+
+  // ---- Billing ----
+  PAYMENT_COMPLETED: "payment.completed",
+  PAYMENT_FAILED: "payment.failed",
+  SUBSCRIPTION_CHANGED: "subscription.changed",
+  CREDIT_PURCHASED: "credit.purchased",
+  CREDIT_CONSUMED: "credit.consumed",
+  MESSAGE_BILLED: "message.billed",
+
+  // ---- AI ----
+  AI_CHAT_COMPLETED: "ai.chat.completed",
+  AI_TRAINING_COMPLETED: "ai.training.completed",
+  AI_RESPONSE_GENERATED: "ai.response.generated",
+  AI_TOOL_EXECUTED: "ai.tool.executed",
+
+  // ---- Users ----
   USER_LOGIN: "user.login",
   USER_SIGNUP: "user.signup",
+  ACCOUNT_CREATED: "account.created",
+  ACCOUNT_UPDATED: "account.updated",
 
+  // ---- System ----
   SYSTEM_ERROR: "system.error",
   SYSTEM_HEALTH_CHECK: "system.health_check",
 } as const;
+
+export type ApexEventType = typeof EVENT_TYPES[keyof typeof EVENT_TYPES];
+
+export { MODULE_GROUP_EVENT_MAP, getModuleGroupForEvent };

@@ -3,13 +3,120 @@ import { subAccounts } from "@shared/schema";
 import { startRollupWorker } from "./rollupWorker";
 import { runAllScoresForAccount } from "./scoringEngine";
 import { runAllRecommendationsForAccount } from "./recommendationEngine";
+import { eventBus, EVENT_TYPES, type ApexEvent } from "../eventBus";
+import { MODULE_GROUP_EVENT_MAP } from "./moduleRegistry";
 
 let scoringInterval: NodeJS.Timeout | null = null;
+
+const SCORING_TRIGGER_EVENTS = new Set<string>([
+  EVENT_TYPES.CONTACT_CREATED,
+  EVENT_TYPES.CONTACT_UPDATED,
+  EVENT_TYPES.DEAL_CREATED,
+  EVENT_TYPES.DEAL_STAGE_CHANGED,
+  EVENT_TYPES.DEAL_WON,
+  EVENT_TYPES.DEAL_LOST,
+  EVENT_TYPES.APPOINTMENT_BOOKED,
+  EVENT_TYPES.SITE_PUBLISHED,
+  EVENT_TYPES.DOMAIN_VERIFIED,
+  EVENT_TYPES.INTEGRATION_CONNECTED,
+  EVENT_TYPES.INTEGRATION_DISCONNECTED,
+  EVENT_TYPES.INTEGRATION_ERROR,
+  EVENT_TYPES.WORKFLOW_COMPLETED,
+  EVENT_TYPES.FORM_SUBMITTED,
+  EVENT_TYPES.LEAD_CREATED,
+  EVENT_TYPES.REVIEW_RECEIVED,
+]);
+
+const pendingScoringAccounts = new Set<number>();
+let scoringDebounceTimer: NodeJS.Timeout | null = null;
+const SCORING_DEBOUNCE_MS = 10000;
+
+function scheduleScoringForAccount(accountId: number): void {
+  pendingScoringAccounts.add(accountId);
+  if (scoringDebounceTimer) return;
+  scoringDebounceTimer = setTimeout(async () => {
+    scoringDebounceTimer = null;
+    const accounts = [...pendingScoringAccounts];
+    pendingScoringAccounts.clear();
+    for (const id of accounts) {
+      try {
+        await runAllScoresForAccount(id);
+        await runAllRecommendationsForAccount(id);
+      } catch (err) {
+        console.error(`[APEX-INTEL] Event-triggered scoring failed for account ${id}:`, (err as Error).message);
+      }
+    }
+  }, SCORING_DEBOUNCE_MS);
+}
+
+function subscribeToModuleGroups(): void {
+  for (const [moduleGroup, eventTypes] of Object.entries(MODULE_GROUP_EVENT_MAP)) {
+    for (const eventType of eventTypes) {
+      eventBus.subscribe(eventType, `intelligence-worker:${moduleGroup}`, async (event: ApexEvent) => {
+        const accountId = event.payload.subAccountId ?? event.payload.accountId ?? event.payload.sub_account_id;
+        if (!accountId || typeof accountId !== "number") return;
+
+        if (SCORING_TRIGGER_EVENTS.has(event.event_type)) {
+          scheduleScoringForAccount(accountId);
+        }
+
+        if (event.payload.contactId && event.event_type === EVENT_TYPES.FORM_SUBMITTED) {
+          const { linkSessionToContact } = await import("./identityEngine");
+          if (event.payload.sessionId) {
+            await linkSessionToContact(accountId, event.payload.sessionId, event.payload.contactId).catch(() => {});
+          }
+        }
+
+        if (event.event_type === EVENT_TYPES.INTEGRATION_CONNECTED || event.event_type === EVENT_TYPES.INTEGRATION_ERROR || event.event_type === EVENT_TYPES.INTEGRATION_DISCONNECTED) {
+          const { trackIntegrationSuccess, trackIntegrationFailure, trackIntegrationDisconnected } = await import("./integrationHealth");
+          if (event.event_type === EVENT_TYPES.INTEGRATION_CONNECTED) {
+            await trackIntegrationSuccess(accountId, event.payload.provider || "unknown", event.payload.integrationKey || event.payload.provider || "unknown").catch(() => {});
+          } else if (event.event_type === EVENT_TYPES.INTEGRATION_ERROR) {
+            await trackIntegrationFailure(accountId, event.payload.provider || "unknown", event.payload.integrationKey || event.payload.provider || "unknown", event.payload.error || "Unknown error").catch(() => {});
+          } else if (event.event_type === EVENT_TYPES.INTEGRATION_DISCONNECTED) {
+            await trackIntegrationDisconnected(accountId, event.payload.provider || "unknown", event.payload.integrationKey || event.payload.provider || "unknown", event.payload.reason).catch(() => {});
+          }
+        }
+
+        if (event.event_type === EVENT_TYPES.CARD_SCANNED && event.payload.contactId && event.payload.cardId) {
+          const { linkCardScanToContact } = await import("./identityEngine");
+          await linkCardScanToContact(accountId, event.payload.cardId, event.payload.contactId, event.payload.sessionId).catch(() => {});
+        }
+      }, 0);
+    }
+  }
+
+  console.log(`[APEX-INTEL] Subscribed to ${Object.values(MODULE_GROUP_EVENT_MAP).reduce((n, arr) => n + arr.length, 0)} event types across ${Object.keys(MODULE_GROUP_EVENT_MAP).length} module groups`);
+}
+
+export async function seedModuleEventRegistry(): Promise<void> {
+  const { storage } = await import("../storage");
+  for (const [moduleGroup, eventTypes] of Object.entries(MODULE_GROUP_EVENT_MAP)) {
+    for (const eventType of eventTypes) {
+      try {
+        await storage.registerModuleEvent({
+          moduleGroup,
+          eventType,
+          description: `${moduleGroup} module: ${eventType}`,
+          isActive: true,
+        });
+      } catch {
+      }
+    }
+  }
+  console.log(`[APEX-INTEL] Module event registry seeded: ${Object.keys(MODULE_GROUP_EVENT_MAP).length} module groups`);
+}
 
 export function startIntelligenceWorkers(): void {
   console.log("[APEX-INTEL] Starting intelligence workers...");
 
   startRollupWorker(15 * 60 * 1000);
+
+  subscribeToModuleGroups();
+
+  seedModuleEventRegistry().catch(err => {
+    console.warn("[APEX-INTEL] Module event registry seed failed (non-fatal):", (err as Error).message);
+  });
 
   async function scoringCycle() {
     try {
@@ -27,12 +134,16 @@ export function startIntelligenceWorkers(): void {
   setTimeout(scoringCycle, 60000);
   scoringInterval = setInterval(scoringCycle, 30 * 60 * 1000);
 
-  console.log("[APEX-INTEL] Intelligence workers started — rollups every 15m, scoring every 30m");
+  console.log("[APEX-INTEL] Intelligence workers started — rollups every 15m, scoring every 30m, event subscriptions active");
 }
 
 export function stopIntelligenceWorkers(): void {
   if (scoringInterval) {
     clearInterval(scoringInterval);
     scoringInterval = null;
+  }
+  if (scoringDebounceTimer) {
+    clearTimeout(scoringDebounceTimer);
+    scoringDebounceTimer = null;
   }
 }
