@@ -246,16 +246,47 @@ export function registerBotRoutes(app: Express) {
           if (Date.now() - lastActivity < SESSION_EXPIRY_MS) {
             await storage.updateAgentConversationActivity(requestedSessionId);
             const dbMessages = await storage.getAgentMessages(requestedSessionId, 20);
-            const history: Array<{ role: string; content?: string | null; tool_calls?: any; tool_call_id?: string; name?: string }> = [];
+            const rawHistory: Array<{ role: string; content?: string | null; tool_calls?: any; tool_call_id?: string; name?: string }> = [];
             for (const m of dbMessages.reverse()) {
               if (m.role === "tool" && m.toolResults) {
-                history.push({ role: "tool", content: typeof m.content === "string" ? m.content : JSON.stringify(m.toolResults), tool_call_id: (m.toolResults as any)?.tool_call_id || "", name: (m.toolResults as any)?.name || "" });
+                rawHistory.push({ role: "tool", content: typeof m.content === "string" ? m.content : JSON.stringify(m.toolResults), tool_call_id: (m.toolResults as any)?.tool_call_id || "", name: (m.toolResults as any)?.name || "" });
               } else if (m.role === "assistant" && m.toolCalls) {
-                history.push({ role: "assistant", content: m.content || null, tool_calls: m.toolCalls });
+                rawHistory.push({ role: "assistant", content: m.content || null, tool_calls: m.toolCalls });
               } else {
-                history.push({ role: m.role, content: m.content || "" });
+                rawHistory.push({ role: m.role, content: m.content || "" });
               }
             }
+
+            const assistantToolCallIds = new Set<string>();
+            const toolResponseIds = new Set<string>();
+            for (const msg of rawHistory) {
+              if (msg.role === "assistant" && msg.tool_calls) {
+                for (const tc of Array.isArray(msg.tool_calls) ? msg.tool_calls : []) {
+                  const tcId = tc.id || tc.tool_call_id;
+                  if (tcId) assistantToolCallIds.add(tcId);
+                }
+              }
+              if (msg.role === "tool" && msg.tool_call_id) {
+                toolResponseIds.add(msg.tool_call_id);
+              }
+            }
+            const history = rawHistory.filter(msg => {
+              if (msg.role === "tool") {
+                return msg.tool_call_id && assistantToolCallIds.has(msg.tool_call_id);
+              }
+              if (msg.role === "assistant" && msg.tool_calls) {
+                const tcs = Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
+                const hasAnyResponse = tcs.some((tc: any) => {
+                  const tcId = tc.id || tc.tool_call_id;
+                  return tcId && toolResponseIds.has(tcId);
+                });
+                if (!hasAnyResponse) {
+                  return msg.content ? (delete (msg as any).tool_calls, true) : false;
+                }
+              }
+              return true;
+            });
+
             return { sessionId: requestedSessionId, history };
           }
         }
