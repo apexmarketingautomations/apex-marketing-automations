@@ -1743,6 +1743,14 @@ RULES:
       }
 
       try {
+        const { startIntelligenceWorkers } = await import("./intelligence/worker");
+        startIntelligenceWorkers();
+        console.log("[STARTUP] ✅ Apex Intelligence workers started (rollups 15m, scoring 30m)");
+      } catch (err: any) {
+        console.error("[APEX-INTEL] Failed to start intelligence workers:", err?.message);
+      }
+
+      try {
         const { drainQueuedBacklog } = await import("./operator/taskAgent");
         drainQueuedBacklog().then(result => {
           if (result.drained > 0 || result.failed > 0) {

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { aiChat, isAIConfigured } from "../aiGateway";
 import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, logUsageInternal } from "./helpers";
 import { requireActiveSubscription } from "../subscriptionGuard";
+import { emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
 
 const subscriptionGuard = requireActiveSubscription();
 
@@ -38,6 +39,9 @@ export function registerWorkflowsRoutes(app: Express) {
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     if (parsed.data.subAccountId && !(await verifyAccountOwnership(req, res, parsed.data.subAccountId))) return;
     const wf = await storage.createWorkflow(parsed.data);
+    if (wf.subAccountId) {
+      emitWithTimeline({ eventType: EVENT_TYPES.WORKFLOW_TRIGGERED, sourceModule: "workflows", sourceTable: "workflows", sourceRecordId: String(wf.id), subAccountId: wf.subAccountId, metadata: { name: wf.name, trigger: wf.trigger } });
+    }
     res.status(201).json(wf);
   }));
 

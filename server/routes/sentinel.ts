@@ -17,6 +17,7 @@ import {
 import type { HomeSvcSignal, HomeSvcConfigShape } from "../sentinel-home-svc";
 import { asyncHandler, parseIntParam, verifyAccountOwnership, requirePlanFeature } from "./helpers";
 import { enforceSmsProvider } from "../smsGatewayGuard";
+import { emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
 
 // --- Zod schema for CAD ingestion payload ---
 const cadUnitSchema = z.object({
@@ -540,6 +541,8 @@ export function registerSentinelRoutes(app: Express) {
         metadata:     { incidentId: incident.id },
       })
     ).catch(() => {});
+
+    emitWithTimeline({ eventType: EVENT_TYPES.SENTINEL_ALERT, sourceModule: "sentinel", sourceTable: "sentinel_incidents", sourceRecordId: String(incident.id), subAccountId: parsed.data.subAccountId, metadata: { title: incident.title, severity: incident.severity } });
 
     res.status(201).json(incident);
   }));

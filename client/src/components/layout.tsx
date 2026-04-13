@@ -69,6 +69,7 @@ const navSections = [
       { href: "/notification-preferences", icon: BellRing, label: "Alert Preferences" },
       { href: "/admin-console", icon: Shield, label: "System Command", adminOnly: true },
       { href: "/command-center", icon: Shield, label: "Command Center", adminOnly: true },
+      { href: "/apex-intelligence", icon: Brain, label: "Apex Intelligence", adminOnly: true },
       { href: "/snapshots", icon: History, label: "Snapshots" },
       { href: "/marketplace", icon: Store, label: "Marketplace" },
       { href: "/affiliate", icon: Users, label: "Affiliates" },

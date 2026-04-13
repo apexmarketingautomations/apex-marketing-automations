@@ -5,6 +5,7 @@ import { storage } from "../storage";
 import { eq, sql, and, desc, gte } from "drizzle-orm";
 import crypto from "crypto";
 import { asyncHandler, parseIntParam, verifyAccountOwnership } from "./helpers";
+import { emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
 
 function isCardAccessible(card: { subAccountId?: number | null; purchaseId?: string | null; isActive?: boolean | null; isPublic?: boolean | null; status?: string | null; paymentStatus?: string | null }): boolean {
   if (card.subAccountId) {
@@ -292,9 +293,11 @@ export function registerCardsRoutes(app: Express) {
     if (existing.length > 0) {
       const [updated] = await db.update(digitalCards).set(data)
         .where(eq(digitalCards.subAccountId, subAccountId)).returning();
+      emitWithTimeline({ eventType: EVENT_TYPES.CARD_CREATED, sourceModule: "cards", sourceTable: "digital_cards", sourceRecordId: String(updated.id), subAccountId, metadata: { action: "updated", slug: updated.slug } });
       res.json(updated);
     } else {
       const [created] = await db.insert(digitalCards).values({ subAccountId, ...data }).returning();
+      emitWithTimeline({ eventType: EVENT_TYPES.CARD_CREATED, sourceModule: "cards", sourceTable: "digital_cards", sourceRecordId: String(created.id), subAccountId, metadata: { action: "created", slug: created.slug } });
       res.json(created);
     }
   }));
@@ -362,6 +365,12 @@ export function registerCardsRoutes(app: Express) {
 
     if (eventType === "share") {
       await db.update(digitalCards).set({ shareCount: sql`${digitalCards.shareCount} + 1` }).where(eq(digitalCards.id, card.id));
+    }
+
+    const evMap: Record<string, string> = { view: EVENT_TYPES.CARD_OPENED, qr_scan: EVENT_TYPES.CARD_SCANNED };
+    const mappedType = evMap[eventType] || EVENT_TYPES.CARD_OPENED;
+    if (card.subAccountId) {
+      emitWithTimeline({ eventType: mappedType, sourceModule: "cards", sourceTable: "card_analytics_events", sourceRecordId: String(card.id), subAccountId: card.subAccountId, metadata: { eventType, eventTarget, deviceType } });
     }
 
     res.json({ ok: true });

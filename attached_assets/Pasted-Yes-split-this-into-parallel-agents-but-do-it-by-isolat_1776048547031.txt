@@ -1,0 +1,76 @@
+Yes — split this into parallel agents, but do it by isolated ownership boundaries to avoid merge collisions.
+
+Create parallel implementation tracks under one lead Apex Intelligence task.
+
+Rules:
+- do not have multiple agents editing the same core shared files at the same time
+- one owner only for shared schema, storage interface, eventBus bridge, worker bootstrap, and final merge
+- parallelize by module group / surface area, not vague backend/frontend categories
+- every parallel task must return exact files changed, exact events emitted, tested/not tested, and unresolved blockers
+
+Parallel task split:
+
+1. Lead / integration owner
+Own exclusively:
+- shared schema for Apex Intelligence tables
+- shared storage interface changes
+- eventBus bridge
+- intelligence worker bootstrap
+- final merge coordination
+- final truth audit
+
+2. Agent track: domains + sites + forms
+Own:
+- domain routes
+- site routes
+- site builder related routes
+- forms / funnels related routes
+Add real event emission and entity linkage only within this module group.
+
+3. Agent track: messaging + CRM + workflow + calendar
+Own:
+- messaging routes
+- inbox routes
+- CRM / contacts / pipeline routes
+- workflow routes
+- calendar routes
+Add real event emission and entity linkage only within this module group.
+
+4. Agent track: cards + campaigns + integrations + reputation + sentinel + analytics
+Own:
+- digital card routes
+- campaign/ad routes
+- integration/webhook routes
+- reputation routes
+- sentinel routes
+- analytics routes
+Add real event emission and entity linkage only within this module group.
+
+5. Agent track: operator UI
+Own:
+- Apex Intelligence dashboard UI
+- live event stream UI
+- health/status panels
+- recommendation queue
+- module coverage/proof surfaces
+No fake UI. Must use real backend data only.
+
+6. Agent track: audit / proof
+Own:
+- module-by-module coverage audit
+- tested vs untested matrix
+- exact events currently emitted
+- exact files changed
+- fake completion detection
+- unresolved gap list
+
+Required output from every agent:
+1. files changed
+2. routes/modules touched
+3. exact events added
+4. account/entity linkage included or not
+5. tested or not
+6. blockers
+7. what is still not wired
+
+Do not claim “whole site” unless the majority of major modules are actually wired, tested, and visible in UI.

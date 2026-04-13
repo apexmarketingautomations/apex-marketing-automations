@@ -76,6 +76,7 @@ const ContentPlannerPage = lazy(() => import("@/pages/content-planner"));
 const RoomOSPage = lazy(() => import("@/pages/roomos"));
 const RoomOSDashboardPage = lazy(() => import("@/pages/roomos-dashboard"));
 const IntelligenceDashboardPage = lazy(() => import("@/pages/intelligence-dashboard"));
+const ApexIntelligencePage = lazy(() => import("@/pages/apex-intelligence"));
 const StandaloneCardLanding = lazy(() => import("@/pages/standalone-card-landing"));
 const StandaloneCardCreate = lazy(() => import("@/pages/standalone-card-create"));
 const StandaloneCardPreview = lazy(() => import("@/pages/standalone-card-preview"));
@@ -291,6 +292,7 @@ function Router() {
                   <Route path="/marketplace" component={MarketplacePage} />
                   <Route path="/affiliate" component={AffiliateDashboard} />
                   <Route path="/command-center" component={CommandCenterPage} />
+                  <Route path="/apex-intelligence" component={ApexIntelligencePage} />
                   <Route path="/snapshots" component={SnapshotsPage} />
                   <Route path="/sentinel" component={SentinelPage} />
                   <Route path="/crash-reports" component={CrashReportsPage} />

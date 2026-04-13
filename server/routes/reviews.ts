@@ -8,6 +8,7 @@ import { getAIProviderStatus, isAIConfigured } from "../aiGateway";
 import crypto from "crypto";
 import dns from "dns";
 import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, isUserAdmin } from "./helpers";
+import { emitUniversalEvent, emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
 import { recordOutboundBilling } from "../billing";
 import { enforceSmsProvider } from "../smsGatewayGuard";
 
@@ -961,6 +962,17 @@ export function registerReviewsRoutes(app: Express) {
       description: `Domain reserved: ${domain} — must be registered at an external registrar`,
     });
 
+    emitWithTimeline({
+      eventType: EVENT_TYPES.DOMAIN_CLAIMED,
+      sourceModule: "domains",
+      sourceTable: "domains",
+      sourceRecordId: String(domainRecord.id),
+      subAccountId,
+      domainId: domainRecord.id,
+      siteId: siteId || undefined,
+      metadata: { domain, tld, pricing },
+    }, `Domain claimed: ${domain}`, `Domain ${domain} reserved for registration`, "info");
+
     if (siteId) {
       await storage.updateSavedSite(siteId, { customDomain: domain });
     }
@@ -1080,6 +1092,15 @@ export function registerReviewsRoutes(app: Express) {
           const { clearDomainCache } = await import("../middleware/customDomain");
           clearDomainCache(domain.domainName);
         } catch {}
+        emitWithTimeline({
+          eventType: EVENT_TYPES.DOMAIN_VERIFIED,
+          sourceModule: "domains",
+          sourceTable: "domains",
+          sourceRecordId: String(id),
+          subAccountId: domain.subAccountId,
+          domainId: id,
+          metadata: { domainName: domain.domainName },
+        }, `Domain verified: ${domain.domainName}`, `DNS verification passed for ${domain.domainName}`, "info");
         return res.json({ verified: true, domain: updated });
       }
 

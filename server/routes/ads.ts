@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { aiChat, aiGenerateImage, isAIConfigured } from "../aiGateway";
 import { asyncHandler, logUsageInternal } from "./helpers";
+import { emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
 import { requireActiveSubscription } from "../subscriptionGuard";
 
 const subscriptionGuard = requireActiveSubscription();
@@ -85,6 +86,12 @@ export function registerAdsRoutes(app: Express) {
     await logUsageInternal(null, "AI_CHAT", 1, "Ad campaign AI generation");
     if (campaign.generated_image_url) {
       await logUsageInternal(null, "AI_IMAGE_GEN", 1, "Ad creative DALL-E generation");
+    }
+
+    const user = (req as any).user;
+    const acctId = user?.currentAccountId || user?.accountId;
+    if (acctId) {
+      emitWithTimeline({ eventType: EVENT_TYPES.AD_CAMPAIGN_LAUNCHED, sourceModule: "ads", sourceTable: "ai_generated", sourceRecordId: campaign.campaign_name || "unknown", subAccountId: acctId, metadata: { objective: campaign.objective, dailyBudget: campaign.daily_budget } });
     }
 
     res.json(campaign);

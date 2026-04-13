@@ -4,8 +4,9 @@ import { sql, eq, and } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { messagingLimiter } from "../rateLimiter";
-import { publishEventAsync, EVENT_TYPES } from "../eventBus";
+import { publishEventAsync, EVENT_TYPES as BUS_EVENT_TYPES } from "../eventBus";
 import { asyncHandler, parseIntParam, verifyAccountOwnership, getTwilioClient } from "./helpers";
+import { emitUniversalEvent, EVENT_TYPES } from "../intelligence/eventEmitter";
 import { recordOutboundBilling, CHANNEL_PRICING } from "../billing";
 import { validateRouting } from "../routing/gate";
 import { enforceSmsProvider } from "../smsGatewayGuard";
@@ -532,7 +533,7 @@ export function registerMessagingRoutes(app: Express) {
       const errMsg = billingErr instanceof Error ? billingErr.message : String(billingErr);
       console.error(`[BILLING CRITICAL] Failed to bill message ${msg.id}: ${errMsg}`);
 
-      publishEventAsync(EVENT_TYPES.MESSAGE_SENT, "messaging", {
+      publishEventAsync(BUS_EVENT_TYPES.MESSAGE_SENT, "messaging", {
         subAccountId, to: contactPhone, channel: msgChannel, status: "billing_failed", messageId: msg.id,
       });
 
@@ -544,8 +545,18 @@ export function registerMessagingRoutes(app: Express) {
       });
     }
 
-    publishEventAsync(EVENT_TYPES.MESSAGE_SENT, "messaging", {
+    publishEventAsync(BUS_EVENT_TYPES.MESSAGE_SENT, "messaging", {
       subAccountId, to: contactPhone, channel: msgChannel, status: twilioStatus, messageId: msg.id,
+    });
+
+    emitUniversalEvent({
+      eventType: EVENT_TYPES.MESSAGE_SENT,
+      sourceModule: "messaging",
+      sourceTable: "messages",
+      sourceRecordId: String(msg.id),
+      subAccountId,
+      contactId: msg.contactId || undefined,
+      metadata: { channel: msgChannel, status: twilioStatus },
     });
 
     res.status(201).json({ ...msg, twilioSid, billingStatus: "success", billedAmount: billingResult.billedAmount });

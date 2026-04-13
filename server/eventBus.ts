@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { storage } from "./storage";
 import { EVENT_LOG_STATUS } from "@shared/schema";
+import { emitUniversalEvent } from "./intelligence/eventEmitter";
 
 export interface ApexEvent {
   event_id: string;
@@ -112,6 +113,22 @@ class EventBus {
     this.persistEvent(event, payload).catch(err =>
       console.error(`[EVENT-BUS] Failed to persist event ${eventType}:`, err?.message)
     );
+
+    const eventTypeMapped = eventType.replace(/\./g, "_");
+    emitUniversalEvent({
+      eventType: eventTypeMapped,
+      sourceModule: sourceModule,
+      subAccountId: payload.subAccountId || payload.sub_account_id || payload.accountId,
+      accountId: payload.accountId || payload.sub_account_id || payload.subAccountId,
+      contactId: payload.contactId || payload.contact_id,
+      siteId: payload.siteId || payload.site_id,
+      domainId: payload.domainId || payload.domain_id,
+      cardId: payload.cardId || payload.card_id,
+      campaignId: payload.campaignId || payload.campaign_id,
+      workflowId: payload.workflowId || payload.workflow_id,
+      userId: payload.userId || payload.user_id,
+      metadata: { ...payload, traceId: event.traceId, eventBusEventId: event.event_id },
+    });
 
     this.queue.push(event);
     if (!this.processing) {

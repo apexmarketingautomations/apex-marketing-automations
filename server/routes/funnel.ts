@@ -1,8 +1,10 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
 import express from "express";
-import { publishEventAsync, EVENT_TYPES } from "../eventBus";
+import { publishEventAsync, EVENT_TYPES as BUS_EVENT_TYPES } from "../eventBus";
 import { asyncHandler } from "./helpers";
+import { emitUniversalEvent, emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
+import { linkSessionToContact, linkLeadToContact } from "../intelligence/identityEngine";
 
 export function registerFunnelRoutes(app: Express) {
   // ---- Public Form Submission Endpoint (no auth required) ----
@@ -54,12 +56,19 @@ export function registerFunnelRoutes(app: Express) {
       status: "received",
     });
 
-    publishEventAsync(EVENT_TYPES.FORM_SUBMITTED, "form-endpoint", {
+    publishEventAsync(BUS_EVENT_TYPES.FORM_SUBMITTED, "form-endpoint", {
       subAccountId: accountId, formName, contactName, contactPhone, contactEmail, source: "public_form",
     });
-    publishEventAsync(EVENT_TYPES.CONTACT_CREATED, "form-endpoint", {
+    publishEventAsync(BUS_EVENT_TYPES.CONTACT_CREATED, "form-endpoint", {
       subAccountId: accountId, name: contactName, phone: contactPhone, email: contactEmail, source: "form",
     });
+
+    emitWithTimeline({
+      eventType: EVENT_TYPES.FORM_SUBMIT,
+      sourceModule: "funnel",
+      subAccountId: accountId,
+      metadata: { formName, contactName, contactPhone, contactEmail },
+    }, `Form submitted: ${formName || 'Lead Form'}`, `New lead from ${formName || 'form'}: ${contactName || contactEmail || contactPhone}`, "info");
 
     res.json({ success: true, message: "Thank you! Your submission has been received." });
   }));

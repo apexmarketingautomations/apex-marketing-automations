@@ -85,6 +85,15 @@ import {
   type AgentMessage, type InsertAgentMessage,
   pendingActions,
   type PendingAction, type InsertPendingAction,
+  universalEvents, entityIdentityMap, entityActivityRollups,
+  intelligenceScores, intelligenceRecommendations, integrationHealthState, executionTimeline,
+  type UniversalEvent, type InsertUniversalEvent,
+  type EntityIdentityMap, type InsertEntityIdentityMap,
+  type EntityActivityRollup, type InsertEntityActivityRollup,
+  type IntelligenceScore, type InsertIntelligenceScore,
+  type IntelligenceRecommendation, type InsertIntelligenceRecommendation,
+  type IntegrationHealthState, type InsertIntegrationHealthState,
+  type ExecutionTimeline, type InsertExecutionTimeline,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -429,6 +438,33 @@ export interface IStorage {
   createPendingAction(data: InsertPendingAction): Promise<PendingAction>;
   getActivePendingAction(sessionId: string): Promise<PendingAction | undefined>;
   resolvePendingAction(id: number, status: string): Promise<void>;
+
+  createUniversalEvent(data: InsertUniversalEvent): Promise<UniversalEvent>;
+  getUniversalEvents(accountId: number, opts?: { limit?: number; offset?: number; eventType?: string; since?: Date; entityType?: string; entityId?: string }): Promise<UniversalEvent[]>;
+  getUniversalEventCount(accountId: number, opts?: { eventType?: string; since?: Date }): Promise<number>;
+
+  createEntityIdentityLink(data: InsertEntityIdentityMap): Promise<EntityIdentityMap>;
+  getEntityLinks(accountId: number, entityType: string, entityId: string): Promise<EntityIdentityMap[]>;
+  getLinkedEntities(accountId: number, linkedEntityType: string, linkedEntityId: string): Promise<EntityIdentityMap[]>;
+
+  upsertActivityRollup(data: InsertEntityActivityRollup): Promise<EntityActivityRollup>;
+  getActivityRollups(accountId: number, entityType: string, entityId: string): Promise<EntityActivityRollup[]>;
+  getTopMetrics(accountId: number, metricName: string, opts?: { periodType?: string; limit?: number }): Promise<EntityActivityRollup[]>;
+
+  upsertIntelligenceScore(data: InsertIntelligenceScore): Promise<IntelligenceScore>;
+  getIntelligenceScores(accountId: number, entityType?: string, entityId?: string): Promise<IntelligenceScore[]>;
+  getScoresByType(accountId: number, scoreType: string): Promise<IntelligenceScore[]>;
+
+  createRecommendation(data: InsertIntelligenceRecommendation): Promise<IntelligenceRecommendation>;
+  getRecommendations(accountId: number, opts?: { status?: string; priority?: string; limit?: number }): Promise<IntelligenceRecommendation[]>;
+  updateRecommendationStatus(id: number, status: string, resolvedAt?: Date): Promise<IntelligenceRecommendation | undefined>;
+
+  upsertIntegrationHealth(data: InsertIntegrationHealthState): Promise<IntegrationHealthState>;
+  getIntegrationHealth(accountId: number): Promise<IntegrationHealthState[]>;
+  getIntegrationHealthByType(accountId: number, integrationType: string, integrationKey: string): Promise<IntegrationHealthState | undefined>;
+
+  createExecutionTimelineEntry(data: InsertExecutionTimeline): Promise<ExecutionTimeline>;
+  getExecutionTimeline(accountId: number, opts?: { limit?: number; severity?: string; since?: Date }): Promise<ExecutionTimeline[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2183,6 +2219,200 @@ export class DatabaseStorage implements IStorage {
     await db.update(pendingActions)
       .set({ status, resolvedAt: new Date() })
       .where(eq(pendingActions.id, id));
+  }
+
+  async createUniversalEvent(data: InsertUniversalEvent): Promise<UniversalEvent> {
+    const [row] = await db.insert(universalEvents).values(data).returning();
+    return row;
+  }
+
+  async getUniversalEvents(accountId: number, opts?: { limit?: number; offset?: number; eventType?: string; since?: Date; entityType?: string; entityId?: string }): Promise<UniversalEvent[]> {
+    const conditions = [eq(universalEvents.subAccountId, accountId)];
+    if (opts?.eventType) conditions.push(eq(universalEvents.eventType, opts.eventType));
+    if (opts?.since) conditions.push(gte(universalEvents.occurredAt, opts.since));
+    return db.select().from(universalEvents)
+      .where(and(...conditions))
+      .orderBy(desc(universalEvents.occurredAt))
+      .limit(opts?.limit ?? 100)
+      .offset(opts?.offset ?? 0);
+  }
+
+  async getUniversalEventCount(accountId: number, opts?: { eventType?: string; since?: Date }): Promise<number> {
+    const conditions = [eq(universalEvents.subAccountId, accountId)];
+    if (opts?.eventType) conditions.push(eq(universalEvents.eventType, opts.eventType));
+    if (opts?.since) conditions.push(gte(universalEvents.occurredAt, opts.since));
+    const [row] = await db.select({ count: sql<number>`count(*)::int` }).from(universalEvents).where(and(...conditions));
+    return row?.count ?? 0;
+  }
+
+  async createEntityIdentityLink(data: InsertEntityIdentityMap): Promise<EntityIdentityMap> {
+    const [row] = await db.insert(entityIdentityMap).values(data).returning();
+    return row;
+  }
+
+  async getEntityLinks(accountId: number, entityType: string, entityId: string): Promise<EntityIdentityMap[]> {
+    return db.select().from(entityIdentityMap)
+      .where(and(
+        eq(entityIdentityMap.accountId, accountId),
+        eq(entityIdentityMap.entityType, entityType),
+        eq(entityIdentityMap.entityId, entityId),
+      ));
+  }
+
+  async getLinkedEntities(accountId: number, linkedEntityType: string, linkedEntityId: string): Promise<EntityIdentityMap[]> {
+    return db.select().from(entityIdentityMap)
+      .where(and(
+        eq(entityIdentityMap.accountId, accountId),
+        eq(entityIdentityMap.linkedEntityType, linkedEntityType),
+        eq(entityIdentityMap.linkedEntityId, linkedEntityId),
+      ));
+  }
+
+  async upsertActivityRollup(data: InsertEntityActivityRollup): Promise<EntityActivityRollup> {
+    const existing = await db.select().from(entityActivityRollups)
+      .where(and(
+        eq(entityActivityRollups.accountId, data.accountId),
+        eq(entityActivityRollups.entityType, data.entityType),
+        eq(entityActivityRollups.entityId, data.entityId),
+        eq(entityActivityRollups.metricName, data.metricName),
+        eq(entityActivityRollups.periodType, data.periodType),
+        eq(entityActivityRollups.periodStart, data.periodStart),
+      )).limit(1);
+    if (existing.length > 0) {
+      const [row] = await db.update(entityActivityRollups)
+        .set({ metricValue: data.metricValue, updatedAt: new Date() })
+        .where(eq(entityActivityRollups.id, existing[0].id))
+        .returning();
+      return row;
+    }
+    const [row] = await db.insert(entityActivityRollups).values(data).returning();
+    return row;
+  }
+
+  async getActivityRollups(accountId: number, entityType: string, entityId: string): Promise<EntityActivityRollup[]> {
+    return db.select().from(entityActivityRollups)
+      .where(and(
+        eq(entityActivityRollups.accountId, accountId),
+        eq(entityActivityRollups.entityType, entityType),
+        eq(entityActivityRollups.entityId, entityId),
+      ))
+      .orderBy(desc(entityActivityRollups.updatedAt));
+  }
+
+  async getTopMetrics(accountId: number, metricName: string, opts?: { periodType?: string; limit?: number }): Promise<EntityActivityRollup[]> {
+    const conditions = [
+      eq(entityActivityRollups.accountId, accountId),
+      eq(entityActivityRollups.metricName, metricName),
+    ];
+    if (opts?.periodType) conditions.push(eq(entityActivityRollups.periodType, opts.periodType));
+    return db.select().from(entityActivityRollups)
+      .where(and(...conditions))
+      .orderBy(desc(entityActivityRollups.metricValue))
+      .limit(opts?.limit ?? 10);
+  }
+
+  async upsertIntelligenceScore(data: InsertIntelligenceScore): Promise<IntelligenceScore> {
+    const existing = await db.select().from(intelligenceScores)
+      .where(and(
+        eq(intelligenceScores.accountId, data.accountId),
+        eq(intelligenceScores.entityType, data.entityType),
+        eq(intelligenceScores.entityId, data.entityId),
+        eq(intelligenceScores.scoreType, data.scoreType),
+      )).limit(1);
+    if (existing.length > 0) {
+      const [row] = await db.update(intelligenceScores)
+        .set({ scoreValue: data.scoreValue, scoreBand: data.scoreBand, explanation: data.explanation, inputs: data.inputs, calculatedAt: new Date(), updatedAt: new Date() })
+        .where(eq(intelligenceScores.id, existing[0].id))
+        .returning();
+      return row;
+    }
+    const [row] = await db.insert(intelligenceScores).values(data).returning();
+    return row;
+  }
+
+  async getIntelligenceScores(accountId: number, entityType?: string, entityId?: string): Promise<IntelligenceScore[]> {
+    const conditions = [eq(intelligenceScores.accountId, accountId)];
+    if (entityType) conditions.push(eq(intelligenceScores.entityType, entityType));
+    if (entityId) conditions.push(eq(intelligenceScores.entityId, entityId));
+    return db.select().from(intelligenceScores).where(and(...conditions)).orderBy(desc(intelligenceScores.updatedAt));
+  }
+
+  async getScoresByType(accountId: number, scoreType: string): Promise<IntelligenceScore[]> {
+    return db.select().from(intelligenceScores)
+      .where(and(eq(intelligenceScores.accountId, accountId), eq(intelligenceScores.scoreType, scoreType)))
+      .orderBy(desc(intelligenceScores.scoreValue));
+  }
+
+  async createRecommendation(data: InsertIntelligenceRecommendation): Promise<IntelligenceRecommendation> {
+    const [row] = await db.insert(intelligenceRecommendations).values(data).returning();
+    return row;
+  }
+
+  async getRecommendations(accountId: number, opts?: { status?: string; priority?: string; limit?: number }): Promise<IntelligenceRecommendation[]> {
+    const conditions = [eq(intelligenceRecommendations.accountId, accountId)];
+    if (opts?.status) conditions.push(eq(intelligenceRecommendations.status, opts.status));
+    if (opts?.priority) conditions.push(eq(intelligenceRecommendations.priority, opts.priority));
+    return db.select().from(intelligenceRecommendations)
+      .where(and(...conditions))
+      .orderBy(desc(intelligenceRecommendations.createdAt))
+      .limit(opts?.limit ?? 50);
+  }
+
+  async updateRecommendationStatus(id: number, status: string, resolvedAt?: Date): Promise<IntelligenceRecommendation | undefined> {
+    const [row] = await db.update(intelligenceRecommendations)
+      .set({ status, resolvedAt: resolvedAt || (status === "resolved" ? new Date() : undefined), updatedAt: new Date() })
+      .where(eq(intelligenceRecommendations.id, id))
+      .returning();
+    return row;
+  }
+
+  async upsertIntegrationHealth(data: InsertIntegrationHealthState): Promise<IntegrationHealthState> {
+    const existing = await db.select().from(integrationHealthState)
+      .where(and(
+        eq(integrationHealthState.accountId, data.accountId),
+        eq(integrationHealthState.integrationType, data.integrationType),
+        eq(integrationHealthState.integrationKey, data.integrationKey),
+      )).limit(1);
+    if (existing.length > 0) {
+      const [row] = await db.update(integrationHealthState)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(integrationHealthState.id, existing[0].id))
+        .returning();
+      return row;
+    }
+    const [row] = await db.insert(integrationHealthState).values(data).returning();
+    return row;
+  }
+
+  async getIntegrationHealth(accountId: number): Promise<IntegrationHealthState[]> {
+    return db.select().from(integrationHealthState)
+      .where(eq(integrationHealthState.accountId, accountId))
+      .orderBy(desc(integrationHealthState.updatedAt));
+  }
+
+  async getIntegrationHealthByType(accountId: number, integrationType: string, integrationKey: string): Promise<IntegrationHealthState | undefined> {
+    const [row] = await db.select().from(integrationHealthState)
+      .where(and(
+        eq(integrationHealthState.accountId, accountId),
+        eq(integrationHealthState.integrationType, integrationType),
+        eq(integrationHealthState.integrationKey, integrationKey),
+      )).limit(1);
+    return row;
+  }
+
+  async createExecutionTimelineEntry(data: InsertExecutionTimeline): Promise<ExecutionTimeline> {
+    const [row] = await db.insert(executionTimeline).values(data).returning();
+    return row;
+  }
+
+  async getExecutionTimeline(accountId: number, opts?: { limit?: number; severity?: string; since?: Date }): Promise<ExecutionTimeline[]> {
+    const conditions = [eq(executionTimeline.accountId, accountId)];
+    if (opts?.severity) conditions.push(eq(executionTimeline.severity, opts.severity));
+    if (opts?.since) conditions.push(gte(executionTimeline.createdAt, opts.since));
+    return db.select().from(executionTimeline)
+      .where(and(...conditions))
+      .orderBy(desc(executionTimeline.createdAt))
+      .limit(opts?.limit ?? 100);
   }
 }
 

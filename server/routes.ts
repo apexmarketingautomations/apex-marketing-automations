@@ -44,6 +44,7 @@ import { registerMetaMessagingRoutes } from "./routes/metaMessaging";
 import { registerMetaMessagingProductRoutes } from "./routes/metaMessagingProduct";
 import { registerMediaRoutes } from "./routes/media";
 import { registerChaturbateRoutes } from "./routes/chaturbate";
+import { registerApexIntelligenceRoutes } from "./routes/apex-intelligence";
 export { registerAgentWorkerRoutes } from "./routes/agentWorker";
 
 export async function registerRoutes(
@@ -93,6 +94,7 @@ export async function registerRoutes(
   registerMetaMessagingProductRoutes(app);
   registerMediaRoutes(app);
   registerChaturbateRoutes(app);
+  registerApexIntelligenceRoutes(app);
 
   return httpServer;
 }

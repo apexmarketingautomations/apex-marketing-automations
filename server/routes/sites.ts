@@ -5,6 +5,7 @@ import { z } from "zod";
 import { aiChat, isAIConfigured } from "../aiGateway";
 import express from "express";
 import { asyncHandler, parseIntParam, logUsageInternal } from "./helpers";
+import { emitUniversalEvent, emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
 
 function renderSiteSection(section: any, theme: any): string {
   const p = section.props || {};
@@ -300,6 +301,15 @@ export function registerSitesRoutes(app: Express) {
     if (!siteCheck.success) return res.status(400).json({ error: "Invalid site data: must contain theme and sections" });
 
     const site = await storage.createSavedSite(parsed.data);
+    emitWithTimeline({
+      eventType: EVENT_TYPES.SITE_CREATED,
+      sourceModule: "sites",
+      sourceTable: "saved_sites",
+      sourceRecordId: String(site.id),
+      subAccountId: site.subAccountId,
+      siteId: site.id,
+      metadata: { name: site.name },
+    }, `Site created: ${site.name}`, undefined, "info");
     res.status(201).json(site);
   }));
 
@@ -318,7 +328,32 @@ export function registerSitesRoutes(app: Express) {
     if (req.body.customDomain !== undefined) updates.customDomain = req.body.customDomain;
     if (req.body.publishedUrl !== undefined) updates.publishedUrl = req.body.publishedUrl;
 
+    const wasPublished = !site.isPublished && req.body.isPublished;
+    if (req.body.isPublished !== undefined) updates.isPublished = req.body.isPublished;
+
     const updated = await storage.updateSavedSite(id, updates);
+
+    if (wasPublished) {
+      emitWithTimeline({
+        eventType: EVENT_TYPES.SITE_PUBLISHED,
+        sourceModule: "sites",
+        sourceTable: "saved_sites",
+        sourceRecordId: String(id),
+        subAccountId: site.subAccountId,
+        siteId: id,
+        metadata: { name: site.name, customDomain: site.customDomain },
+      }, `Site published: ${site.name}`, `Website "${site.name}" is now live`, "info");
+    } else {
+      emitUniversalEvent({
+        eventType: EVENT_TYPES.SITE_UPDATED,
+        sourceModule: "sites",
+        sourceTable: "saved_sites",
+        sourceRecordId: String(id),
+        subAccountId: site.subAccountId,
+        siteId: id,
+        metadata: { updates: Object.keys(updates) },
+      });
+    }
     res.json(updated);
   }));
 
