@@ -67,6 +67,9 @@ export function registerAccountRoutes(app: Express) {
     const parsed = z.object({ plan: z.enum(allowedPlans as [string, ...string[]]) }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const updated = await db.update(subAccounts).set({ plan: parsed.data.plan }).where(sql`${subAccounts.id} = ${id}`).returning();
+    if (updated[0]) {
+      emitUniversalEvent({ eventType: "account_plan_changed", sourceModule: "accounts", sourceTable: "sub_accounts", sourceRecordId: String(id), subAccountId: id, metadata: { oldPlan: account.plan, newPlan: parsed.data.plan, changedBy: getUserId(user) } });
+    }
     res.json(updated[0]);
   }));
 
@@ -143,6 +146,7 @@ export function registerAccountRoutes(app: Express) {
 
     const updated = await storage.updateSubAccount(id, { aiPromptConfig: updatedConfig });
     if (!updated) return res.status(404).json({ error: "Account not found" });
+    emitUniversalEvent({ eventType: "dm_config_updated", sourceModule: "accounts", sourceTable: "sub_accounts", sourceRecordId: String(id), subAccountId: id, metadata: { updatedFields: Object.keys(parsed.data), hasBrandVoice: !!updatedConfig.brandVoice, hasBookingLink: !!updatedConfig.bookingLink } });
     res.json({
       formLinks: updatedConfig.formLinks,
       offerUrls: updatedConfig.offerUrls,

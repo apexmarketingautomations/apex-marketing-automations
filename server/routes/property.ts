@@ -7,6 +7,7 @@ import { z } from "zod";
 import { aiChat, isAIConfigured } from "../aiGateway";
 import { processLiveSentinelFeed, deployGeofenceAd } from "../sentinel";
 import { publishEventAsync, EVENT_TYPES } from "../eventBus";
+import { emitUniversalEvent, EVENT_TYPES as INTEL_EVENT_TYPES } from "../intelligence/eventEmitter";
 import { scanDistressedProperties, calculateDealMetrics } from "../property-radar";
 import { skipTraceLookup, getCurrentMonthYear } from "../skip-trace";
 import crypto from "crypto";
@@ -2419,6 +2420,7 @@ export function registerPropertyRoutes(app: Express) {
         fireAutomationTriggerGlobal("new_lead", contact.subAccountId!, triggerCtx);
         fireAutomationTriggerGlobal("contact_created", contact.subAccountId!, { ...triggerCtx, contactId: contact.id });
       }).catch(e => console.error("[CONTACTS] trigger failed:", e instanceof Error ? e.message : e));
+      emitUniversalEvent({ eventType: INTEL_EVENT_TYPES.CONTACT_CREATED, sourceModule: "crm", sourceTable: "contacts", sourceRecordId: String(contact.id), subAccountId: contact.subAccountId, contactId: contact.id, metadata: { firstName: contact.firstName, lastName: contact.lastName, source: contact.source, channel: contact.channel } });
     }
     res.status(201).json(contact);
   }));
@@ -2481,6 +2483,7 @@ export function registerPropertyRoutes(app: Express) {
 
     const updated = await storage.updateContact(id, updateData);
     if (!updated) return res.status(404).json({ error: "Contact not found" });
+    emitUniversalEvent({ eventType: INTEL_EVENT_TYPES.CONTACT_UPDATED, sourceModule: "crm", sourceTable: "contacts", sourceRecordId: String(id), subAccountId: existing.subAccountId, contactId: id, metadata: { updatedFields: Object.keys(updateData) } });
     res.json(updated);
   }));
 
@@ -2495,6 +2498,7 @@ export function registerPropertyRoutes(app: Express) {
 
     const deleted = await storage.deleteContact(id);
     if (!deleted) return res.status(404).json({ error: "Contact not found" });
+    emitUniversalEvent({ eventType: "contact_deleted", sourceModule: "crm", sourceTable: "contacts", sourceRecordId: String(id), subAccountId: existing.subAccountId, contactId: id, metadata: { firstName: existing.firstName, lastName: existing.lastName } });
     res.json({ success: true });
   }));
 
@@ -2555,6 +2559,7 @@ export function registerPropertyRoutes(app: Express) {
           source: "api",
         });
       } catch {}
+      emitUniversalEvent({ eventType: INTEL_EVENT_TYPES.DEAL_CREATED, sourceModule: "crm", sourceTable: "deals", sourceRecordId: String(deal.id), subAccountId: deal.subAccountId, contactId: deal.contactId || undefined, metadata: { title: deal.title, value: deal.value, stage: deal.stageId } });
     }
     res.status(201).json(deal);
   }));
@@ -2565,15 +2570,24 @@ export function registerPropertyRoutes(app: Express) {
     if (body.stageId !== undefined) {
       body.stageId = parseInt(body.stageId, 10);
     }
+    const existingDeal = await storage.getDealById(id);
     const updated = await storage.updateDeal(id, body);
     if (!updated) return res.status(404).json({ error: "Deal not found" });
+    if (updated.subAccountId) {
+      const stageChanged = existingDeal && body.stageId !== undefined && body.stageId !== existingDeal.stageId;
+      emitUniversalEvent({ eventType: stageChanged ? INTEL_EVENT_TYPES.DEAL_STAGE_CHANGED : "deal_updated", sourceModule: "crm", sourceTable: "deals", sourceRecordId: String(id), subAccountId: updated.subAccountId, contactId: updated.contactId || undefined, metadata: { title: updated.title, value: updated.value, newStageId: body.stageId, previousStageId: existingDeal?.stageId } });
+    }
     res.json(updated);
   }));
 
   app.delete("/api/deals/:id", asyncHandler(async (req, res) => {
     const id = parseIntParam(req.params.id, "id");
+    const existingDeal2 = await storage.getDealById(id);
     const deleted = await storage.deleteDeal(id);
     if (!deleted) return res.status(404).json({ error: "Deal not found" });
+    if (existingDeal2?.subAccountId) {
+      emitUniversalEvent({ eventType: "deal_deleted", sourceModule: "crm", sourceTable: "deals", sourceRecordId: String(id), subAccountId: existingDeal2.subAccountId, contactId: existingDeal2.contactId || undefined, metadata: { title: existingDeal2.title } });
+    }
     res.json({ success: true });
   }));
 
@@ -2596,6 +2610,7 @@ export function registerPropertyRoutes(app: Express) {
           contactId: appt.contactId,
         });
       }).catch(e => console.error("[APPOINTMENTS] trigger failed:", e instanceof Error ? e.message : e));
+      emitUniversalEvent({ eventType: INTEL_EVENT_TYPES.CALENDAR_BOOKED, sourceModule: "calendar", sourceTable: "appointments", sourceRecordId: String(appt.id), subAccountId: appt.subAccountId, contactId: appt.contactId || undefined, metadata: { title: appt.title, startTime: appt.startTime, endTime: appt.endTime, source: "manual" } });
     }
     res.status(201).json(appt);
   }));
@@ -2608,6 +2623,10 @@ export function registerPropertyRoutes(app: Express) {
     }
     const updated = await storage.updateAppointment(id, req.body);
     if (!updated) return res.status(404).json({ error: "Appointment not found" });
+    if (updated.subAccountId && req.body.status) {
+      const apptEventType = req.body.status === "cancelled" ? INTEL_EVENT_TYPES.CALENDAR_CANCELLED : req.body.status === "completed" ? INTEL_EVENT_TYPES.CALENDAR_COMPLETED : "appointment_updated";
+      emitUniversalEvent({ eventType: apptEventType, sourceModule: "calendar", sourceTable: "appointments", sourceRecordId: String(id), subAccountId: updated.subAccountId, contactId: updated.contactId || undefined, metadata: { title: updated.title, status: updated.status, startTime: updated.startTime } });
+    }
     res.json(updated);
   }));
 

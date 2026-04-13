@@ -5,7 +5,7 @@ import { z } from "zod";
 import { aiChat, isAIConfigured } from "../aiGateway";
 import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, logUsageInternal } from "./helpers";
 import { requireActiveSubscription } from "../subscriptionGuard";
-import { emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
+import { emitWithTimeline, emitUniversalEvent, EVENT_TYPES } from "../intelligence/eventEmitter";
 
 const subscriptionGuard = requireActiveSubscription();
 
@@ -60,6 +60,9 @@ export function registerWorkflowsRoutes(app: Express) {
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const wf = await storage.updateWorkflow(id, parsed.data);
     if (!wf) return res.status(404).json({ error: "Not found" });
+    if (wf.subAccountId) {
+      emitUniversalEvent({ eventType: "workflow_updated", sourceModule: "workflows", sourceTable: "workflows", sourceRecordId: String(wf.id), subAccountId: wf.subAccountId, metadata: { name: wf.name, trigger: wf.trigger, updatedFields: Object.keys(parsed.data) } });
+    }
     res.json(wf);
   }));
 
@@ -69,6 +72,9 @@ export function registerWorkflowsRoutes(app: Express) {
     if (!existing) return res.status(404).json({ error: "Not found" });
     if (existing.subAccountId && !(await verifyAccountOwnership(req, res, existing.subAccountId))) return;
     await storage.deleteWorkflow(id);
+    if (existing.subAccountId) {
+      emitUniversalEvent({ eventType: "workflow_deleted", sourceModule: "workflows", sourceTable: "workflows", sourceRecordId: String(id), subAccountId: existing.subAccountId, metadata: { name: existing.name, trigger: existing.trigger } });
+    }
     res.json({ deleted: true, id });
   }));
 

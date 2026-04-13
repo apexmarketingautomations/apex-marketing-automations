@@ -633,6 +633,7 @@ export function registerMessagingRoutes(app: Express) {
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
     const [template] = await db.insert(whatsappTemplates).values(parsed.data).returning();
+    emitUniversalEvent({ eventType: "whatsapp_template_created", sourceModule: "messaging", sourceTable: "whatsapp_templates", sourceRecordId: String(template.id), subAccountId, metadata: { name: template.name, category: template.category } });
     res.status(201).json(template);
   }));
 
@@ -653,6 +654,7 @@ export function registerMessagingRoutes(app: Express) {
       .returning();
 
     if (!updated) return res.status(404).json({ error: "Template not found" });
+    emitUniversalEvent({ eventType: "whatsapp_template_updated", sourceModule: "messaging", sourceTable: "whatsapp_templates", sourceRecordId: String(id), subAccountId, metadata: { name: updated.name, updatedFields: Object.keys(parsed.data) } });
     res.json(updated);
   }));
 
@@ -664,6 +666,7 @@ export function registerMessagingRoutes(app: Express) {
     await db.delete(whatsappTemplates)
       .where(and(eq(whatsappTemplates.id, id), eq(whatsappTemplates.subAccountId, subAccountId)));
 
+    emitUniversalEvent({ eventType: "whatsapp_template_deleted", sourceModule: "messaging", sourceTable: "whatsapp_templates", sourceRecordId: String(id), subAccountId, metadata: { templateId: id } });
     res.json({ success: true });
   }));
 }

@@ -742,6 +742,7 @@ export function registerVoiceRoutes(app: Express) {
       } catch (saveErr: any) {
         console.error("[PHONE] Failed to save number to sub-account:", saveErr.message);
       }
+      emitUniversalEvent({ eventType: "phone_number_purchased", sourceModule: "voice", sourceRecordId: purchased.sid, subAccountId: Number(subAccountId), metadata: { phoneNumber: purchased.phoneNumber, sid: purchased.sid, vapiPhoneId, friendlyName: purchased.friendlyName } });
     }
 
     res.json({

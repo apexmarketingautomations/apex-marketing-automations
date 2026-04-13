@@ -1140,6 +1140,9 @@ async function validateMetaCredentials() {
                 eventBus.publish({ type: "call.missed" as any, subAccountId: missedSubId, data: { callId: msg?.call?.id, customerNumber: custNum, status: msg.status } });
                 const { fireAutomationTriggerGlobal } = await import("./routes/v1");
                 fireAutomationTriggerGlobal("call_missed", missedSubId, { leadPhone: custNum, status: msg.status, source: "vapi_call" });
+                import("./intelligence/eventEmitter").then(({ emitUniversalEvent, EVENT_TYPES: EVT }) => {
+                  emitUniversalEvent({ eventType: EVT.CALL_MISSED, sourceModule: "voice", sourceRecordId: msg?.call?.id || "unknown", subAccountId: missedSubId, metadata: { callId: msg?.call?.id, customerNumber: custNum, status: msg.status } });
+                }).catch(() => {});
               } catch {}
             })();
           }
@@ -1504,6 +1507,9 @@ RULES:
                   source: "vapi_call",
                 });
                 eventBus.publish({ type: "call.completed" as any, subAccountId: subId, data: { callId, customerNumber: custNum, duration, summary } });
+                import("./intelligence/eventEmitter").then(({ emitUniversalEvent, EVENT_TYPES: EVT }) => {
+                  emitUniversalEvent({ eventType: EVT.CALL_COMPLETED, sourceModule: "voice", sourceRecordId: callId, subAccountId: subId, contactId: contactRows[0]?.id || undefined, metadata: { callId, customerNumber: custNum, duration, summary, endedReason: call.endedReason || null, recordingUrl } });
+                }).catch(() => {});
               } catch {}
             }
           }

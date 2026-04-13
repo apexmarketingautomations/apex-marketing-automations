@@ -376,6 +376,7 @@ export function registerMetaMessagingRoutes(app: Express) {
       await db.update(messages).set({ status: "sent", body: textToSend }).where(eq(messages.id, messageId));
       await logAudit("meta_messaging.approve_sent", userId, { messageId, edited: !!editedText, channel: msg.channel });
       await logSystem("info", "meta-messaging", `Message ${messageId} approved and sent by ${userId}`, { messageId, channel: msg.channel });
+      emitUniversalEvent({ eventType: EVENT_TYPES.INBOX_MESSAGE_SENT, sourceModule: "inbox", sourceTable: "messages", sourceRecordId: String(messageId), subAccountId, metadata: { channel: msg.channel, approved: true, edited: !!editedText, approvedBy: userId } });
       res.json({ success: true, message: "Message sent successfully" });
     } catch (err: any) {
       await logAudit("meta_messaging.approve_error", userId, { messageId, error: err.message });
@@ -486,6 +487,7 @@ export function registerMetaMessagingRoutes(app: Express) {
     currentConfig.commentBot = commentBot;
     await db.update(subAccounts).set({ config: currentConfig }).where(eq(subAccounts.id, subAccountId));
     await logAudit("meta_messaging.config_updated", userId, { subAccountId, changes: body });
+    emitUniversalEvent({ eventType: "moderation_config_updated", sourceModule: "inbox", sourceTable: "sub_accounts", sourceRecordId: String(subAccountId), subAccountId, metadata: { updatedFields: Object.keys(body), autoApprove: commentBot.autoApprove, tonePreset: commentBot.tonePreset } });
 
     res.json({ success: true, config: commentBot });
   }));

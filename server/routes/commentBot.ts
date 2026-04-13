@@ -3,6 +3,7 @@ import { db } from "../db";
 import { commentAutoReplies, subAccounts, messages } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { getMetaConfig } from "../metaConfig";
+import { emitUniversalEvent, EVENT_TYPES } from "../intelligence/eventEmitter";
 
 function getTenant(req: Request): number {
   const id = (req as any).tenant?.subAccountId;
@@ -151,6 +152,7 @@ export function registerCommentBotRoutes(app: Express) {
       await db.update(subAccounts).set({ config: updatedConfig })
         .where(eq(subAccounts.id, subAccountId));
 
+      emitUniversalEvent({ eventType: "comment_bot_config_updated", sourceModule: "inbox", sourceTable: "sub_accounts", sourceRecordId: String(subAccountId), subAccountId, metadata: { enabled, replyStyle, skipRepliesOnReplies, maxRepliesPerHour } });
       res.json(updatedConfig.commentBot);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -272,6 +274,7 @@ export function registerCommentBotRoutes(app: Express) {
       }
 
       console.log(`[COMMENT-BOT] Manual reply sent to ${commentId}: ${replyText.slice(0, 50)}...`);
+      emitUniversalEvent({ eventType: EVENT_TYPES.INBOX_MESSAGE_SENT, sourceModule: "inbox", sourceRecordId: commentId, subAccountId: account.id, metadata: { commentId, replyId: data.id, platform: platform || "facebook", type: "manual_reply" } });
       res.json({ success: true, replyId: data.id });
     } catch (err: any) {
       console.error("[COMMENT-BOT] Manual reply error:", err.message);

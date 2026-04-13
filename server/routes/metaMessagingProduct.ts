@@ -1,5 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { asyncHandler, parseIntParam, verifyAccountOwnership } from "./helpers";
+import { emitUniversalEvent, EVENT_TYPES } from "../intelligence/eventEmitter";
 import { ensureNotProtectedAccount as ensureNotProtectedAccountMiddleware, isProtectedAccountId } from "../middleware/protectedAccount";
 import { requireFeatureFlag } from "../middleware/featureGate";
 import { db } from "../db";
@@ -771,6 +772,8 @@ export function registerMetaMessagingProductRoutes(app: Express) {
       modelVersion: modelVersion || botConfig.modelVersion,
     });
 
+    emitUniversalEvent({ eventType: EVENT_TYPES.INBOX_MESSAGE_SENT, sourceModule: "inbox", sourceRecordId: messageId || responsePayload.messageId, subAccountId: sid, metadata: { approved: true, edited: !!editedText, traceId, modelVersion: modelVersion || botConfig.modelVersion, approvedBy: userId } });
+
     res.json(responsePayload);
   }));
 
@@ -903,6 +906,8 @@ export function registerMetaMessagingProductRoutes(app: Express) {
       modelVersion: updatedBot.modelVersion,
     });
 
+    emitUniversalEvent({ eventType: "bot_config_updated", sourceModule: "inbox", sourceTable: "sub_accounts", sourceRecordId: String(sid), subAccountId: sid, metadata: { botType, updatedFields: Object.keys(settings), modelVersion: updatedBot.modelVersion, configVersion: updatedBot.configVersion } });
+
     res.json({ success: true, botConfig: updatedBot, traceId: (req as any).traceId });
   }));
 
@@ -938,6 +943,8 @@ export function registerMetaMessagingProductRoutes(app: Express) {
     await logSystemWithTrace("info", "meta-messaging-product", `Mode switched to ${mode} for sub-account ${sid}`, req, {
       subAccountId: sid,
     });
+
+    emitUniversalEvent({ eventType: "account_mode_changed", sourceModule: "inbox", sourceTable: "sub_accounts", sourceRecordId: String(sid), subAccountId: sid, metadata: { oldMode: (account.config as any)?.mode || "demo", newMode: mode } });
 
     res.json({ success: true, mode, traceId: (req as any).traceId });
   }));
