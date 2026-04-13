@@ -166,11 +166,12 @@ Based on this data, what tasks should the autonomous agent execute? Return a JSO
       maxTokens: 2048,
       jsonMode: true,
       route: "agent-brain-task-plan",
+      timeoutMs: 30_000,
     });
 
     let suggestions: AITaskSuggestion[] = [];
-    try 
-    {const normalized = (taskPlanAiResult.text || "").trim();
+    try {
+      const normalized = (taskPlanAiResult.text || "").trim();
       if (!normalized) {
         console.error("[AGENT-BRAIN] Empty AI response");
         return [];
@@ -181,7 +182,30 @@ Based on this data, what tasks should the autonomous agent execute? Return a JSO
         .replace(/```$/i, "")
         .trim();
 
-      const parsed = JSON.parse(cleaned || "[]");
+      let parsed: any;
+      try {
+        parsed = JSON.parse(cleaned || "[]");
+      } catch {
+        const lastBrace = cleaned.lastIndexOf("}");
+        if (lastBrace > 0) {
+          const truncated = cleaned.slice(0, lastBrace + 1) + "]";
+          try {
+            parsed = JSON.parse(truncated);
+            console.warn("[AGENT-BRAIN] Recovered truncated JSON response");
+          } catch {
+            console.error("[AGENT-BRAIN] Failed to parse AI response (truncated recovery failed)", {
+              responseSnippet: cleaned.slice(0, 300),
+            });
+            return [];
+          }
+        } else {
+          console.error("[AGENT-BRAIN] Failed to parse AI response", {
+            responseSnippet: cleaned.slice(0, 300),
+          });
+          return [];
+        }
+      }
+
       suggestions = Array.isArray(parsed)
         ? parsed
         : parsed.tasks || parsed.suggestions || [];
