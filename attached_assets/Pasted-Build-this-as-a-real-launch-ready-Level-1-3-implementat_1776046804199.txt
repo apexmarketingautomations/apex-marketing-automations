@@ -1,0 +1,317 @@
+Build this as a real launch-ready Level 1-3 implementation only. No explanation. No partial fix. No backend-only completion. No placeholder plumbing. No fake “connected” state. No mocked persistence. No hidden unfinished infrastructure. Apex Intelligence must be the real live brain behind the entire website ecosystem, including the Apex site, all sub-account sites, the Liquid website system, the site builder, the domain service, and all website-driven user interactions. Follow the operating standard already established for this product and treat this as a full product build, not a technical patch. :contentReference[oaicite:0]{index=0}
+
+CORE OBJECTIVE
+
+Make Apex Intelligence the universal intelligence, orchestration, data, and decision layer across:
+
+- Apex main site
+- all sub-account sites
+- Liquid website
+- site builder
+- domain search
+- domain validation
+- domain purchase/claim flow
+- domain verification
+- domain connection / attach flow
+- domain storage / retrieval / management
+- page builder components
+- forms
+- buttons
+- CTAs
+- popups
+- chat widgets
+- AI agent widgets
+- booking flows
+- lead capture flows
+- funnel steps
+- analytics surfaces
+- operator/admin controls
+
+Everything must be real, live, saved properly, retrievable, visible, testable, and usable by an operator and end user.
+
+LEVEL 1 — LIVE FOUNDATIONAL INTEGRATION + REAL DATA + REAL PERSISTENCE
+
+Build the full live integration foundation between the website ecosystem, site builder, domain service, and Apex Intelligence.
+
+Requirements:
+- Wire all website integrations so the Apex site, Liquid website, and site builder all report into Apex Intelligence.
+- Create a universal event and action pipeline for all meaningful website interactions.
+- Every button click, form interaction, submission, page visit, CTA interaction, chat event, agent response, booking action, and funnel step must report to Apex Intelligence in a standardized way.
+- Every domain action must also report into Apex Intelligence, including:
+  - domain search
+  - exact domain check
+  - domain suggestion generation
+  - domain availability result
+  - premium / restricted / unsupported result
+  - claim / purchase initiation
+  - verification request
+  - verification success/failure
+  - domain connect / attach
+  - domain save / assign
+  - domain removal / replacement
+- Build real persistence for domains and site-domain relationships. Domains must not be fake UI state or temporary client state. They must be stored correctly in the database with clear associations to:
+  - account
+  - sub-account
+  - site
+  - environment
+  - verification state
+  - provider state
+  - timestamps
+  - actor/user if relevant
+- Ensure site builder saves and retrieves real domain configuration, real site connections, and real account-linked settings.
+- Ensure Liquid website and site builder are using live backend data, not placeholder local arrays, fake success toasts, or stubbed connection flows.
+- Add live status handling and persistence for:
+  - connected
+  - pending
+  - verifying
+  - verified
+  - failed
+  - unsupported
+  - premium
+  - restricted
+  - disconnected
+- Add strong backend reliability:
+  - schema validation
+  - deduplication
+  - retry handling
+  - error logging
+  - provider response normalization
+  - account/site/domain linkage checks
+  - stale state protection
+- Build visible operator UI for:
+  - connected domains by site
+  - domain verification state
+  - provider status
+  - site-domain mapping
+  - failed domain actions
+  - recent domain activity
+  - website integration health
+  - Apex Intelligence ingestion health
+- Build settings UI for domain and website integration management, not hidden config-only logic.
+
+LEVEL 2 — APEX INTELLIGENCE AS LIVE WEBSITE + DOMAIN BRAIN
+
+Now make Apex Intelligence actively use the data and integrations across sites and domains.
+
+Requirements:
+- Apex Intelligence must not only collect website and domain data, but interpret and use it.
+- Use website behavior + domain behavior + account/site state to generate real intelligence.
+- Build intelligence logic for:
+  - site health
+  - funnel health
+  - conversion friction
+  - engagement quality
+  - lead intent
+  - domain readiness
+  - domain connection issues
+  - verification blockers
+  - broken setup states
+  - setup incompletion detection
+- Add recommendations such as:
+  - missing domain connection steps
+  - mismatched domain/site/account bindings
+  - broken verification path
+  - weak CTA coverage
+  - weak form placement
+  - weak button placement
+  - high abandonment areas
+  - sections/pages with poor performance
+  - improvement opportunities in site structure and conversion flow
+- Apex Intelligence must be able to help the website ecosystem grow, learn, and adapt using live data, including:
+  - best-performing CTAs
+  - best-performing forms
+  - best-performing page flows
+  - strongest domain-to-conversion patterns
+  - site setup friction patterns
+  - recurring domain attach/verify failures
+  - sub-account performance patterns
+- Add operator-facing UI for:
+  - site intelligence overview
+  - domain health overview
+  - sub-account readiness
+  - conversion blockers
+  - verification blockers
+  - recommended fixes
+  - account/site/domain mismatches
+  - ingestion / sync issues
+- Make recommendations interpretable and tied to real data, not generic “AI tips.”
+
+LEVEL 3 — FULL ORCHESTRATION THROUGH LIQUID WEBSITE + SITE BUILDER + DOMAIN SYSTEM
+
+Turn Apex Intelligence into the actual brain across the full website and domain ecosystem.
+
+Requirements:
+- Deeply integrate Apex Intelligence into Liquid website and the site builder so all new sites, pages, components, forms, CTAs, domains, and website modules are Apex-aware by default.
+- Every site object created through the builder must be architected to support:
+  - event reporting
+  - account/site linkage
+  - analytics visibility
+  - recommendation eligibility
+  - live saved state
+  - real backend retrieval
+- Domain system must be fully aligned end-to-end with the website builder and live site system:
+  - domain search
+  - domain validation
+  - domain pricing state
+  - domain purchase/claim flow
+  - domain verification
+  - site attach
+  - reconnect
+  - saved management state
+  - display state
+  - Apex Intelligence analysis
+- If a domain is attached to a site, that relationship must be persisted properly, surfaced properly, and reflected everywhere it matters:
+  - builder
+  - site settings
+  - deployment / publish flow
+  - domain management UI
+  - Apex Intelligence dashboards
+  - analytics context
+- Build the architecture so Apex Intelligence can eventually help create and improve all site objects and domain configuration using real observed patterns.
+- Add operator controls so Apex Intelligence can:
+  - flag broken domain/site states
+  - flag missing setup steps
+  - identify weak pages
+  - identify weak conversion components
+  - recommend better structure
+  - recommend missing modules
+  - detect sites that are not truly live/usable
+  - detect fake completion states where UI says connected but backend/provider/data reality disagrees
+
+NON-NEGOTIABLE DOMAIN + WEBSITE INTEGRATION RULES
+
+Do not ship this with:
+- fake “saved” states
+- local-only state pretending to be persistent
+- optimistic UI that lies
+- placeholder arrays
+- mocked provider success
+- disconnected builder and domain system
+- disconnected site builder and Apex Intelligence
+- disconnected form/button/chat events from Apex Intelligence
+- hidden backend with no usable controls
+- generic analytics that do not connect to site/domain/account reality
+
+WEBSITE EVENT + INTERACTION COVERAGE
+
+Everything meaningful across the sites must report into Apex Intelligence, including:
+- page view
+- session start
+- scroll depth
+- CTA click
+- button click
+- nav click
+- form start
+- field completion
+- form submission
+- form abandonment
+- popup open/close
+- chat open
+- chat message
+- agent response
+- booking step
+- funnel step advance
+- site publish action
+- builder save action
+- component add/edit/remove where relevant
+- domain search
+- domain selection
+- domain attach
+- domain verify
+- domain failure
+- domain status change
+
+DOMAIN SYSTEM REQUIREMENTS
+
+The domain system must be fully real and usable:
+- exact-input domain support
+- proper multi-part suffix support where applicable
+- truthful provider-driven domain states
+- purchase/claim flow aligned with provider capability
+- saved domain records in DB
+- saved site-domain associations in DB
+- retrieval on reload
+- visibility across site settings / builder / management
+- no partial front-end patch that leaves backend assumptions broken
+- no partial backend patch that leaves UI unusable
+
+REQUIRED SURFACES TO BUILD OR HARDEN
+
+Backend:
+- domain schemas
+- site-domain linkage schemas
+- website event schemas
+- Apex Intelligence ingestion routes/services
+- provider normalization layer
+- verification handling
+- saved state retrieval/update flows
+- account/site/domain mapping services
+- logging / observability
+- health endpoints or equivalent operator visibility
+
+Frontend / operator surfaces:
+- domain management panel
+- site-domain connection UI
+- verification state UI
+- website integration health UI
+- live event visibility UI
+- Apex Intelligence status surfaces
+- builder-linked settings
+- domain attach / detach / replace / retry flows
+- failure states
+- empty states
+- loading states
+- operator-readable explanations
+
+Connection:
+- frontend must use real backend data
+- real DB persistence
+- real provider response handling
+- real saved state on refresh
+- no invisible backend completion
+- no “done” unless operator can see and manage it
+
+UX:
+- obvious flows
+- no dead ends
+- clean management
+- status clarity
+- premium command-center feel
+- mobile-first and responsive
+- no bland CRUD admin filler
+
+TESTING / VERIFICATION
+
+Do not call this done unless verified end-to-end:
+- domain search works
+- domain status is truthful
+- domain can be attached and saved
+- domain remains saved after reload
+- site retrieves correct saved domain
+- builder reflects saved domain state
+- verification state is persistent and visible
+- Apex Intelligence receives domain events
+- Apex Intelligence receives site interaction events
+- buttons/forms/agent responses are truly reporting
+- sub-accounts are correctly linked
+- dashboards show real data
+- failure states are visible and recoverable
+- no fake placeholder completion remains
+
+OUTPUT FORMAT
+
+Return the work in this exact format:
+1. Current live limitations found
+2. Architecture plan
+3. Database/schema changes
+4. Backend systems to build or harden
+5. Frontend/operator surfaces to build or harden
+6. Liquid website integration points
+7. Site builder integration points
+8. Domain system integration points
+9. Apex Intelligence ingestion + intelligence logic
+10. End-to-end testing checklist
+11. What was implemented
+12. What is still missing or not yet truly live
+
+Build this like a production-grade live system where Apex Intelligence is the real brain, the Liquid website and site builder are truly connected, the domain service is actually saved and usable, and nothing is allowed to look finished unless it is real, persistent, visible, connected, and operator-usable.

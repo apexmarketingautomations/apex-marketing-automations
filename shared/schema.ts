@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, json, jsonb, timestamp, boolean, real, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, json, jsonb, timestamp, boolean, real, numeric, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -2396,3 +2396,160 @@ export const cbCommandsFired = pgTable("cb_commands_fired", {
 export const insertCbCommandFiredSchema = createInsertSchema(cbCommandsFired).omit({ id: true });
 export type InsertCbCommandFired = z.infer<typeof insertCbCommandFiredSchema>;
 export type CbCommandFired = typeof cbCommandsFired.$inferSelect;
+
+export const universalEvents = pgTable("universal_events", {
+  id: serial("id").primaryKey(),
+  eventType: text("event_type").notNull(),
+  sourceModule: text("source_module").notNull(),
+  sourceTable: text("source_table"),
+  sourceRecordId: text("source_record_id"),
+  accountId: integer("account_id").references(() => subAccounts.id, { onDelete: "cascade" }),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }),
+  userId: text("user_id"),
+  contactId: integer("contact_id"),
+  anonymousSessionId: text("anonymous_session_id"),
+  siteId: integer("site_id"),
+  domainId: integer("domain_id"),
+  cardId: integer("card_id"),
+  campaignId: integer("campaign_id"),
+  workflowId: integer("workflow_id"),
+  metadata: jsonb("metadata"),
+  occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  eventTypeIdx: index("ue_event_type_idx").on(table.eventType),
+  accountIdx: index("ue_account_idx").on(table.accountId),
+  subAccountIdx: index("ue_sub_account_idx").on(table.subAccountId),
+  contactIdx: index("ue_contact_idx").on(table.contactId),
+  occurredIdx: index("ue_occurred_idx").on(table.occurredAt),
+}));
+
+export const insertUniversalEventSchema = createInsertSchema(universalEvents).omit({ id: true, createdAt: true });
+export type InsertUniversalEvent = z.infer<typeof insertUniversalEventSchema>;
+export type UniversalEvent = typeof universalEvents.$inferSelect;
+
+export const entityIdentityMap = pgTable("entity_identity_map", {
+  id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  linkedEntityType: text("linked_entity_type").notNull(),
+  linkedEntityId: text("linked_entity_id").notNull(),
+  confidenceScore: real("confidence_score").default(1.0),
+  matchReason: text("match_reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  entityLookup: index("eim_entity_lookup").on(table.accountId, table.entityType, table.entityId),
+  linkedLookup: index("eim_linked_lookup").on(table.accountId, table.linkedEntityType, table.linkedEntityId),
+}));
+
+export const insertEntityIdentityMapSchema = createInsertSchema(entityIdentityMap).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertEntityIdentityMap = z.infer<typeof insertEntityIdentityMapSchema>;
+export type EntityIdentityMap = typeof entityIdentityMap.$inferSelect;
+
+export const entityActivityRollups = pgTable("entity_activity_rollups", {
+  id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  metricName: text("metric_name").notNull(),
+  metricValue: real("metric_value").default(0).notNull(),
+  periodType: text("period_type").notNull(),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  rollupLookup: index("ear_lookup").on(table.accountId, table.entityType, table.entityId, table.metricName),
+  periodIdx: index("ear_period_idx").on(table.periodType, table.periodStart),
+}));
+
+export const insertEntityActivityRollupSchema = createInsertSchema(entityActivityRollups).omit({ id: true, updatedAt: true });
+export type InsertEntityActivityRollup = z.infer<typeof insertEntityActivityRollupSchema>;
+export type EntityActivityRollup = typeof entityActivityRollups.$inferSelect;
+
+export const intelligenceScores = pgTable("intelligence_scores", {
+  id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  scoreType: text("score_type").notNull(),
+  scoreValue: real("score_value").notNull(),
+  scoreBand: text("score_band").notNull(),
+  explanation: text("explanation"),
+  inputs: jsonb("inputs"),
+  calculatedAt: timestamp("calculated_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  scoreLookup: index("is_lookup").on(table.accountId, table.entityType, table.entityId, table.scoreType),
+  bandIdx: index("is_band_idx").on(table.scoreBand),
+}));
+
+export const insertIntelligenceScoreSchema = createInsertSchema(intelligenceScores).omit({ id: true, calculatedAt: true, updatedAt: true });
+export type InsertIntelligenceScore = z.infer<typeof insertIntelligenceScoreSchema>;
+export type IntelligenceScore = typeof intelligenceScores.$inferSelect;
+
+export const intelligenceRecommendations = pgTable("intelligence_recommendations", {
+  id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  recommendationType: text("recommendation_type").notNull(),
+  priority: text("priority").notNull().default("medium"),
+  status: text("status").notNull().default("pending"),
+  title: text("title").notNull(),
+  description: text("description"),
+  whyThisExists: text("why_this_exists"),
+  recommendedAction: jsonb("recommended_action"),
+  sourceScoreId: integer("source_score_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  resolvedAt: timestamp("resolved_at"),
+}, (table) => ({
+  recLookup: index("ir_lookup").on(table.accountId, table.status, table.priority),
+  entityIdx: index("ir_entity_idx").on(table.entityType, table.entityId),
+}));
+
+export const insertIntelligenceRecommendationSchema = createInsertSchema(intelligenceRecommendations).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertIntelligenceRecommendation = z.infer<typeof insertIntelligenceRecommendationSchema>;
+export type IntelligenceRecommendation = typeof intelligenceRecommendations.$inferSelect;
+
+export const integrationHealthState = pgTable("integration_health_state", {
+  id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  integrationType: text("integration_type").notNull(),
+  integrationKey: text("integration_key").notNull(),
+  status: text("status").notNull().default("unknown"),
+  lastSuccessAt: timestamp("last_success_at"),
+  lastFailureAt: timestamp("last_failure_at"),
+  failureReason: text("failure_reason"),
+  healthScore: real("health_score").default(100),
+  metadata: jsonb("metadata"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  healthLookup: index("ihs_lookup").on(table.accountId, table.integrationType, table.integrationKey),
+}));
+
+export const insertIntegrationHealthStateSchema = createInsertSchema(integrationHealthState).omit({ id: true, updatedAt: true });
+export type InsertIntegrationHealthState = z.infer<typeof insertIntegrationHealthStateSchema>;
+export type IntegrationHealthState = typeof integrationHealthState.$inferSelect;
+
+export const executionTimeline = pgTable("execution_timeline", {
+  id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  relatedEntityType: text("related_entity_type"),
+  relatedEntityId: text("related_entity_id"),
+  title: text("title").notNull(),
+  description: text("description"),
+  sourceModule: text("source_module").notNull(),
+  eventId: integer("event_id"),
+  severity: text("severity").notNull().default("info"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  timelineLookup: index("et_lookup").on(table.accountId, table.createdAt),
+  entityIdx: index("et_entity_idx").on(table.relatedEntityType, table.relatedEntityId),
+}));
+
+export const insertExecutionTimelineSchema = createInsertSchema(executionTimeline).omit({ id: true, createdAt: true });
+export type InsertExecutionTimeline = z.infer<typeof insertExecutionTimelineSchema>;
+export type ExecutionTimeline = typeof executionTimeline.$inferSelect;

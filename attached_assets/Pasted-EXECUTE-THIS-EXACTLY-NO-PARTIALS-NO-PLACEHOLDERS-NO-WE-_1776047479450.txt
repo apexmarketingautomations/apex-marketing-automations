@@ -1,0 +1,371 @@
+EXECUTE THIS EXACTLY. NO PARTIALS. NO PLACEHOLDERS. NO “WE’LL HOOK THIS UP LATER.” THIS IS A HARD IMPLEMENTATION DIRECTIVE.
+
+GOAL  
+Unify the entire Apex platform (90+ tables, 45+ routes, 100+ pages, 60+ modules) under ONE real Apex Intelligence system that acts as the brain, nervous system, and decision layer across everything.
+
+EXECUTION ORDER (DO NOT BREAK)  
+1. Build Universal Event System  
+2. Build Identity + Entity Linkage  
+3. Build Intelligence Core (scores + rollups)  
+4. Build Recommendation Engine  
+5. Wire ALL modules into it  
+6. Build Operator Command Center UI  
+7. Verify end-to-end reality (no fake states)
+
+---
+
+1) UNIVERSAL EVENT SYSTEM (FOUNDATION – NOTHING ELSE MATTERS WITHOUT THIS)
+
+Create table: `universal_events`
+
+REQUIREMENTS:
+- Every meaningful action from every module writes here
+- Must be used by ALL routes (not optional)
+
+Schema:
+- id
+- event_type
+- source_module
+- source_table
+- source_record_id
+- account_id
+- sub_account_id
+- user_id nullable
+- contact_id nullable
+- anonymous_session_id nullable
+- site_id nullable
+- domain_id nullable
+- card_id nullable
+- campaign_id nullable
+- workflow_id nullable
+- metadata (jsonb)
+- occurred_at
+- created_at
+
+IMPLEMENT:
+- Create centralized event emitter utility (server-side)
+- Every route MUST call it after success state change
+- NO DIRECT DB WRITES WITHOUT EVENT EMIT
+
+EVENT TYPES TO COVER MINIMUM:
+- page_view
+- button_click
+- cta_click
+- form_start
+- form_submit
+- form_abandon
+- workflow_triggered
+- pipeline_moved
+- message_sent
+- message_received
+- card_scanned
+- card_opened
+- domain_searched
+- domain_attached
+- domain_verified
+- site_published
+- campaign_sent
+- calendar_booked
+
+FAIL CONDITION:
+If a feature works but does NOT emit an event → NOT DONE
+
+---
+
+2) IDENTITY + ENTITY LINKAGE (THIS IS HOW APEX “KNOWS”)
+
+Create table: `entity_identity_map`
+
+Purpose:
+- Link anonymous → lead → contact → user → activity
+
+Schema:
+- id
+- account_id
+- entity_type
+- entity_id
+- linked_entity_type
+- linked_entity_id
+- confidence_score
+- match_reason
+- created_at
+- updated_at
+
+IMPLEMENT:
+- When form submitted → link session → contact
+- When card scanned → link scan → contact if known
+- When login happens → link user → session history
+
+FAIL CONDITION:
+If events exist but cannot be tied together → NOT INTELLIGENCE
+
+---
+
+3) ACTIVITY ROLLUPS (REAL DASHBOARD DATA – NOT LIVE QUERIES)
+
+Create table: `entity_activity_rollups`
+
+Schema:
+- id
+- account_id
+- entity_type
+- entity_id
+- metric_name
+- metric_value
+- period_type
+- period_start
+- period_end
+- updated_at
+
+Examples:
+- total_clicks
+- total_page_views
+- total_card_scans
+- total_form_submits
+- total_conversions
+
+IMPLEMENT:
+- Background jobs aggregate universal_events into rollups
+- Dashboards READ from rollups (not raw queries)
+
+FAIL CONDITION:
+If dashboard runs raw event queries → system will break at scale
+
+---
+
+4) INTELLIGENCE SCORES (THIS IS THE “BRAIN THINKING”)
+
+Create table: `intelligence_scores`
+
+Schema:
+- id
+- account_id
+- entity_type
+- entity_id
+- score_type
+- score_value
+- score_band
+- explanation
+- inputs (jsonb)
+- calculated_at
+- updated_at
+
+MUST INCLUDE:
+- lead_intent_score
+- site_health_score
+- domain_health_score
+- workflow_health_score
+- launch_readiness_score
+- account_maturity_score
+
+IMPLEMENT:
+- Jobs calculate scores based on rollups + events
+- Must be explainable (store inputs + reasoning)
+
+FAIL CONDITION:
+If scores are hardcoded or guessed → NOT REAL INTELLIGENCE
+
+---
+
+5) RECOMMENDATION ENGINE (ACTION LAYER)
+
+Create table: `intelligence_recommendations`
+
+Schema:
+- id
+- account_id
+- entity_type
+- entity_id
+- recommendation_type
+- priority
+- status
+- title
+- description
+- why_this_exists
+- recommended_action (jsonb)
+- source_score_id
+- created_at
+- updated_at
+- resolved_at nullable
+
+EXAMPLES:
+- “Reconnect broken domain”
+- “Add CTA above fold”
+- “Follow up high-intent lead”
+- “Fix abandoned form”
+
+IMPLEMENT:
+- Generate based on score thresholds + patterns
+- Must link back to actual data
+
+FAIL CONDITION:
+If recommendations are generic → useless → NOT DONE
+
+---
+
+6) INTEGRATION HEALTH (NO FAKE CONNECTED STATES)
+
+Create table: `integration_health_state`
+
+Schema:
+- id
+- account_id
+- integration_type
+- integration_key
+- status
+- last_success_at
+- last_failure_at
+- failure_reason
+- health_score
+- metadata
+- updated_at
+
+TRACK:
+- domains
+- webhooks
+- email providers
+- Meta
+- calendar
+- voice agent
+- any external system
+
+FAIL CONDITION:
+If UI says “connected” but provider is broken → SYSTEM FAIL
+
+---
+
+7) EXECUTION TIMELINE (VISIBLE HISTORY)
+
+Create table: `execution_timeline`
+
+Schema:
+- id
+- account_id
+- related_entity_type
+- related_entity_id
+- title
+- description
+- source_module
+- event_id
+- severity
+- created_at
+
+PURPOSE:
+- Show operators EXACTLY what happened, in order
+
+---
+
+8) MODULE INTEGRATION (MANDATORY – NO EXCEPTIONS)
+
+YOU MUST MODIFY ALL MAJOR ROUTES:
+
+For EACH module:
+- CRM
+- Workflows
+- Inbox
+- Domains
+- Websites
+- Forms
+- Digital Cards
+- Campaigns
+- Ads
+- Calendar
+- Reputation
+- Sentinel
+- Integrations
+- etc.
+
+DO:
+- Add event emission after every important action
+- Add identity linkage where applicable
+- Ensure real DB persistence (no temp state)
+
+FAIL CONDITION:
+If ANY module does not emit events → NOT INTEGRATED
+
+---
+
+9) OPERATOR COMMAND CENTER (VISIBLE OR IT DOESN’T EXIST)
+
+Build UI:
+
+Apex Intelligence Dashboard MUST include:
+
+- Live Event Stream
+- Top Events
+- Lead Activity Timeline
+- Top Clicked Buttons
+- Top Pages
+- Card Scans
+- Domain Activity
+- Integration Health
+- Intelligence Scores
+- Recommendations Queue
+- System Alerts
+
+UI RULES:
+- dark mode
+- premium panels
+- no raw tables without styling
+- no hidden data
+- mobile responsive
+
+FAIL CONDITION:
+If backend exists but operator cannot SEE or USE it → NOT DONE
+
+---
+
+10) CONNECTION STANDARD (CRITICAL)
+
+EVERYTHING must be:
+- saved in DB
+- retrievable on reload
+- visible in UI
+- tied to account/sub-account
+- tied to entity (lead/contact/site/domain/card)
+- emitting events
+- feeding intelligence
+
+NO:
+- local state only
+- optimistic fake success
+- stubbed data
+- disconnected UI
+
+---
+
+11) TESTING (HARD REQUIREMENT)
+
+VERIFY:
+
+- click button → event saved → visible in dashboard
+- submit form → linked to contact → score updates
+- scan digital card → shows in activity
+- attach domain → saved + tracked
+- break integration → shows failure
+- reload app → ALL state persists
+- recommendations update based on behavior
+
+FAIL CONDITION:
+If any of the above fails → system is NOT complete
+
+---
+
+FINAL DEFINITION OF DONE
+
+This is ONLY done when:
+- every module emits real events
+- events are stored and linked
+- intelligence scores are computed
+- recommendations are generated from real data
+- operator can SEE everything
+- system survives reload
+- system reflects REAL state (not fake UI)
+
+Apex Intelligence must now:
+- see everything
+- understand everything
+- connect everything
+- guide everything
+
+Anything less = incomplete system.

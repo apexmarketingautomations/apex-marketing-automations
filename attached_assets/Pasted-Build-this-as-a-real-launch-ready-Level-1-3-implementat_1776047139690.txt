@@ -1,0 +1,392 @@
+Build this as a real launch-ready Level 1-3 implementation only. No explanation. No partial fix. No backend-only completion. No placeholder wiring. No fake saved state. No mocked “connected” status. No invisible infrastructure with no operator controls. No generic analytics pretending to be intelligence. Apex Intelligence must become the actual brain, spine, body, and operating system across the entire Apex ecosystem. Treat this as full product execution, not a patch.
+
+CORE OBJECTIVE
+
+Apex Intelligence must be the central live intelligence layer for **all** Apex surfaces, systems, tools, modules, websites, sub-accounts, interactions, domains, and lead journeys.
+
+Apex Intelligence must know, store, connect, interpret, and use the meaningful activity, status, configuration, and outcomes across all of these:
+
+- Dashboard
+- Unified Inbox
+- Workflows
+- Neural Trainer
+- New Account
+- Site Architect
+- Liquid Website
+- Growth Engine
+- Voice Agent
+- Growth Center
+- Reputation
+- Sentinel
+- Location Search
+- Property Radar
+- Website Integration
+- Form Builder
+- A/B Testing
+- Analytics
+- Pipeline & CRM
+- Calendar
+- Email Campaigns
+- Content Planner
+- WA Templates
+- Digital Card
+- Creator Tools
+- roomOS
+- META
+- Meta Messaging
+- Ops Center
+- Ad Campaigns
+- Lead Forms
+- Platform
+- Account Settings
+- Alert Preferences
+- System Command
+- Command Center
+- Snapshots
+- Marketplace
+- Affiliates
+- Plans & Pricing
+- Apex Wallet
+- Sponsorships
+- Revenue
+- Domains
+- Integrations
+- Webhooks
+- Event Log
+- Execution Timeline
+- White Label
+- Reports
+- Intelligence
+- Launch Readiness
+- God Mode
+
+Apex Intelligence must not be a passive dashboard. It must be the real live brain that receives data from all of these systems, links that data correctly, saves it properly, surfaces it visibly, and uses it to help the platform grow, learn, adapt, optimize, recommend, orchestrate, and improve.
+
+LEVEL 1 — TOTAL LIVE DATA FOUNDATION + REAL PERSISTENCE + REAL SYSTEM LINKAGE
+
+Build the full live data, event, state, and linkage foundation across the entire ecosystem.
+
+Requirements:
+- Create a universal Apex Intelligence ingestion architecture used by all major product surfaces.
+- Every meaningful system action, lead action, operator action, automation action, site action, campaign action, card action, domain action, and account action must be able to report into Apex Intelligence.
+- Create a shared event/state schema that standardizes ingestion across the platform.
+- Capture and persist:
+  - event type
+  - entity type
+  - account
+  - sub-account
+  - user/operator
+  - lead/contact when known
+  - anonymous session when unknown
+  - site
+  - page
+  - domain
+  - digital card
+  - campaign
+  - workflow
+  - integration/provider
+  - timestamp
+  - status/state metadata
+  - attribution/source context
+  - module/source system
+- Build identity stitching across anonymous visitor, known lead, contact, account, and operator states where applicable.
+- Build real persistence for all critical relationships, including:
+  - account-to-site
+  - account-to-domain
+  - site-to-domain
+  - account-to-digital-card
+  - lead-to-session
+  - campaign-to-outcome
+  - workflow-to-event history
+  - integration-to-health state
+- Ensure all major modules save real live data to the backend and can retrieve it again on reload.
+- No fake client-only state, no optimistic UI lying to the user, no placeholder local arrays, no “connected” label unless the backend and provider reality agree.
+- Build reliability protections:
+  - schema validation
+  - deduplication
+  - retry handling
+  - malformed payload protection
+  - stale state protection
+  - ingestion error logging
+  - status normalization
+  - provider response normalization
+  - account boundary enforcement
+- Build operator-facing visibility for:
+  - live event stream
+  - ingestion health
+  - source system health
+  - failed events
+  - failed syncs
+  - module integration status
+  - account linkage health
+  - domain/site/card linkage health
+  - real saved state visibility
+- Build settings and management UI so this is visible and usable, not hidden backend-only work.
+
+LEVEL 2 — APEX INTELLIGENCE AS THE LIVE DECISION + RECOMMENDATION LAYER
+
+Now make Apex Intelligence actively use the ecosystem data.
+
+Requirements:
+- Apex Intelligence must interpret behavior, status, outcomes, failures, friction, performance, and readiness across all major product systems.
+- Build intelligence logic for:
+  - lead intent scoring
+  - account readiness
+  - site readiness
+  - launch readiness
+  - workflow effectiveness
+  - campaign effectiveness
+  - messaging performance
+  - funnel friction
+  - operator bottlenecks
+  - domain health
+  - integration health
+  - reputation health
+  - pipeline health
+  - calendar conversion health
+  - content performance
+  - digital card effectiveness
+  - ad-to-lead quality
+  - system failure hotspots
+  - module adoption/usefulness
+- Generate real recommendations such as:
+  - missing setup steps
+  - broken or partial integrations
+  - weak pages or funnels
+  - weak CTA or form structure
+  - weak campaign paths
+  - weak follow-up logic
+  - dead workflows
+  - poor-performing content
+  - reputation blockers
+  - domain/setup blockers
+  - account configuration issues
+  - launch blockers
+  - data gaps
+  - white-label configuration issues
+  - revenue leakage opportunities
+- Add operator-facing intelligence UI for:
+  - top opportunities
+  - top blockers
+  - account health
+  - sub-account health
+  - launch readiness
+  - campaign intelligence
+  - workflow intelligence
+  - pipeline intelligence
+  - domain intelligence
+  - digital card intelligence
+  - integration intelligence
+  - system anomalies
+  - recommended fixes by priority
+  - “why this recommendation exists” transparency
+- Support both:
+  - per-account / per-sub-account intelligence
+  - Apex-wide cross-account learning and pattern detection
+- Keep tenant boundaries safe while still allowing aggregate pattern learning for Apex-wide improvement.
+
+LEVEL 3 — FULL APEX ORCHESTRATION ACROSS THE ENTIRE PRODUCT STACK
+
+Turn Apex Intelligence into the actual operating brain across the platform.
+
+Requirements:
+- Deeply integrate Apex Intelligence into all major product modules so new objects, actions, flows, and configurations are Apex-aware by default.
+- Every important system listed above must either:
+  - emit meaningful structured events and state updates into Apex Intelligence, or
+  - consume Apex Intelligence outputs such as recommendations, scoring, prioritization, anomaly detection, readiness state, or optimization guidance.
+- Apex Intelligence must be able to help orchestrate and improve:
+  - websites
+  - site builder outputs
+  - domains
+  - forms
+  - CTAs
+  - workflows
+  - inbox handling
+  - messaging
+  - campaigns
+  - digital cards
+  - CRM/pipeline paths
+  - scheduling paths
+  - reputation flows
+  - integrations/webhooks
+  - launch readiness
+  - operator action prioritization
+- Build the architecture so Apex Intelligence can:
+  - detect broken systems
+  - detect fake completion states
+  - detect incomplete account setup
+  - detect weak launch readiness
+  - detect failing workflows
+  - detect high-intent leads
+  - detect account friction
+  - detect integration failures
+  - detect dead pages and dead funnels
+  - detect revenue opportunities
+  - detect strongest cross-platform patterns
+  - recommend next best operator actions
+  - recommend next best system improvements
+- Build operator tools so Apex Intelligence can surface:
+  - priority queues
+  - alert states
+  - readiness scoring
+  - risk scoring
+  - opportunity scoring
+  - account health scoring
+  - system health scoring
+  - cross-platform performance patterns
+  - execution timeline insights
+  - launch blockers
+  - suggested next moves
+- Architect this so Apex Intelligence becomes the central decision and optimization layer for the entire Apex platform over time.
+
+NON-NEGOTIABLE RULES
+
+Do not ship:
+- fake analytics
+- fake connected states
+- fake persistence
+- fake readiness
+- backend-only “done”
+- hidden infrastructure with no UI
+- placeholder command-center screens
+- isolated module fixes with no shared Apex Intelligence layer
+- generic dashboards with no actionable intelligence
+- local-only state pretending to be platform state
+- hardcoded shortcuts that break real operator use
+
+REQUIRED TRACKING / STATE COVERAGE
+
+Apex Intelligence must be capable of receiving and using meaningful events and states from across the ecosystem, including:
+- page views
+- button clicks
+- CTA clicks
+- form starts
+- form progress
+- form submits
+- form abandons
+- chat opens/messages
+- AI agent responses
+- booking/calendar actions
+- workflow runs and failures
+- pipeline stage changes
+- inbox actions
+- campaign sends/opens/clicks/replies where available
+- content planner actions
+- digital card scans/views/clicks/lookups
+- ad campaign performance signals
+- lead form interactions
+- domain search/validation/attach/verify state
+- integration/webhook state changes
+- reputation/review events
+- alert preference changes
+- account setting changes
+- launch readiness changes
+- snapshot events
+- revenue/wallet/sponsorship signals where relevant
+- system command / command center actions
+- execution timeline events
+- white-label configuration state
+- intelligence recommendation lifecycle
+
+MODULE EXPECTATIONS
+
+For every major system listed above, do not treat it as integrated unless all of the following are true:
+- real backend connection exists
+- real data/state is emitted or consumed
+- real saved state exists
+- visible operator UI exists where needed
+- the integration is understandable and usable
+- failure states are visible
+- reload persistence works
+- the module contributes to or benefits from Apex Intelligence in a meaningful way
+
+REQUIRED SURFACES TO BUILD OR HARDEN
+
+Backend:
+- unified event and state schemas
+- ingestion services
+- identity stitching
+- account/sub-account/entity mapping
+- persistence layer
+- intelligence services
+- scoring services
+- recommendation services
+- anomaly detection hooks
+- health logging
+- retry/deduplication protections
+- integration normalization layer
+- analytics query layer
+- readiness/state services
+
+Frontend / operator surfaces:
+- Apex Intelligence command center
+- live event stream
+- integration health panels
+- account/sub-account intelligence views
+- system/module health panels
+- launch readiness panels
+- recommendation queues
+- anomaly alerts
+- opportunity alerts
+- execution timeline surfaces
+- domain/site/card/integration health views
+- failure state views
+- settings/mapping/configuration surfaces
+- real operator controls, not passive display-only dashboards
+
+CONNECTION STANDARD
+
+Frontend must talk to real backend systems.
+Real data must render.
+Real saved state must survive reload.
+Real account/entity mappings must exist.
+Real statuses must reflect reality.
+No invisible-only completion.
+No “done” unless the operator can see it, trust it, manage it, and use it.
+
+UX / DESIGN STANDARD
+
+The UI must feel like a premium elite AI command center:
+- sleek dark mode
+- strong hierarchy
+- polished panels
+- refined badges/status indicators
+- premium spacing
+- mobile-first responsiveness
+- powerful without clutter
+- futuristic without cheesy overload
+- not bland CRUD
+- not generic admin filler
+- not raw logs posing as finished product
+
+TESTING / VERIFICATION
+
+Do not call this done unless verified end-to-end:
+- major modules actually emit or consume Apex Intelligence data
+- button/form/page/card/domain/workflow/inbox/campaign events are real
+- saved state persists after reload
+- account/sub-account mappings are correct
+- dashboards show real live data
+- recommendations are grounded in real behavior/state
+- failure states are visible and actionable
+- no fake placeholder completion remains
+- operator can actually use the system
+- the product feels launch-ready, not technically half-done
+
+OUTPUT FORMAT
+
+Return the work in this exact format:
+1. Current live limitations found
+2. Architecture plan
+3. Shared data/event/state model
+4. Database/schema changes
+5. Backend systems to build or harden
+6. Frontend/operator surfaces to build or harden
+7. Module-by-module integration plan across all listed systems
+8. Apex Intelligence ingestion + scoring + recommendation logic
+9. Cross-account and sub-account learning model
+10. End-to-end testing checklist
+11. What was implemented
+12. What is still missing or not yet truly live
+
+Build this like a production-grade live platform where Apex Intelligence is truly the central brain for all major Apex systems, not just one module, not just websites, and not just analytics — but the real intelligence layer powering awareness, linkage, optimization, prioritization, readiness, and action across the full Apex ecosystem.

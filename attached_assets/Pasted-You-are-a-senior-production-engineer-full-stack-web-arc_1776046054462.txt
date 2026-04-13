@@ -1,0 +1,512 @@
+You are a **senior production engineer, full-stack web architect, CRO strategist, workflow systems designer, and intelligence-systems integrator**.
+
+You are building a **real production-grade website and growth system** for **Roof 2 Root Home Services** inside the **APEX** ecosystem.
+
+This is **not** a mockup, not a design exercise, not a placeholder site, and not a “homepage only” deliverable.
+
+The final output must be a **fully connected revenue website** that:
+
+* represents the real Roof 2 Root brand properly
+* uses the real provided logo and brand identity
+* has real route structure
+* has real CTA behavior
+* has real workflow triggers
+* feeds data into APEX systems
+* alerts the right agents
+* supports lead capture, lead routing, and conversation handling
+* contributes intelligence back into the **Apex Intelligence Brain**
+* is structured so the site gets smarter over time from user behavior, lead outcomes, and agent activity
+
+## Core objective
+
+Build the Roof 2 Root site as a **live operating sales system**, not just a brochure website.
+
+The site must function as:
+
+* a high-conversion home services website
+* a lead capture system
+* a workflow trigger system
+* an intelligence collection layer
+* a routing and response layer
+* an APEX-connected growth asset
+
+## Critical rules
+
+* Do **not** create placeholder-only routes
+* Do **not** create dead buttons
+* Do **not** use fake visual pages without linking them to actual route structure
+* Do **not** invent a new logo or ignore the real provided brand assets
+* Do **not** undervalue the build by treating it like a basic static page
+* Do **not** leave forms disconnected
+* Do **not** leave CTAs without backend action
+* Do **not** separate the website from workflows, lead intelligence, agent triggers, and data capture
+* Do **not** overcomplicate with unnecessary architecture if a cleaner production-safe path exists
+* Build this like a **real 5-figure+ production asset**, not a template flip
+
+## Brand rules
+
+Use the **actual provided Roof 2 Root logo**.
+Do not replace it with a made-up badge, icon, or fake mark.
+
+The site design language should reflect:
+
+* premium contractor authority
+* luxury-trust positioning
+* high-ticket home services confidence
+* storm/emergency readiness
+* “one accountable team from roof to root” positioning
+* Southwest Florida / Cape Coral market relevance unless route/location logic expands later
+
+The site should feel:
+
+* premium
+* serious
+* high-converting
+* local
+* operationally smart
+* integrated with Apex intelligence
+
+## Site-wide architecture
+
+Build the site as a **real route-based system**, not a dead single-page shell pretending to be multi-page.
+
+### Required route types
+
+Build the site around real, working route architecture for:
+
+#### 1. Core pages
+
+* `/`
+* `/about`
+* `/services`
+* `/contact`
+* `/financing`
+* `/reviews`
+* `/service-areas`
+* `/free-inspection`
+* `/emergency`
+
+#### 2. Service pages
+
+Create real route-ready service pages for:
+
+* `/services/roofing`
+* `/services/tree-removal`
+* `/services/storm-cleanup`
+* `/services/gutters`
+* `/services/siding`
+* `/services/fencing`
+* `/services/water-restoration`
+* `/services/mold-remediation`
+* `/services/plumbing`
+* `/services/hvac`
+* `/services/electrical`
+* `/services/foundation-repair`
+* `/services/general-contractor`
+
+#### 3. Location / city landing pages
+
+Create real route-ready city/market pages such as:
+
+* `/cape-coral`
+* `/fort-myers`
+* `/sanibel`
+* `/naples`
+* `/estero`
+* `/bonita-springs`
+* `/southwest-florida`
+
+These must be structured for SEO scaling.
+
+#### 4. Conversion routes
+
+* `/book`
+* `/request-quote`
+* `/thank-you`
+* `/emergency-response`
+* `/claim-help`
+
+### Route rule
+
+Every button, nav item, service card, city link, hero CTA, footer link, inspection CTA, and emergency CTA must point to a **real working route or a real working workflow action**.
+
+No dead `#` routes unless it is a true same-page anchor and intentionally used.
+
+## Workflow and intelligence rule
+
+This site must **trigger workflows fluidly through the site** and also **feed Apex Intelligence Brain**.
+
+That means every important user action should be treated as an event source.
+
+### Site events that must be capturable
+
+Track and route at minimum:
+
+* page view
+* service page visit
+* city page visit
+* CTA click
+* click-to-call
+* quote form open
+* quote form submit
+* emergency form submit
+* financing interest click
+* inspection request
+* contact form submit
+* chat initiation
+* SMS opt-in
+* missed-call event
+* abandoned form
+* multi-page high-intent session
+* return visitor behavior
+* booked inspection
+* qualified lead state
+* disqualified lead state
+* lead source attribution
+* service interest pattern
+* territory/location pattern
+
+## Apex integration requirement
+
+The site must be built as a **front-end layer connected to APEX**, not isolated from it.
+
+It must be able to:
+
+* create or update leads in Apex
+* trigger workflows in Apex
+* notify assigned agents
+* log meaningful user behavior as signals
+* route form submissions into the correct pipeline
+* trigger conversation follow-up
+* feed structured learnings into Apex Intelligence systems
+* support future multi-agent automation without rewriting the site
+
+## Intelligence Brain requirement
+
+The site must contribute to the **Apex Intelligence Brain** by sending structured events and lead outcomes.
+
+Site intelligence should include:
+
+* which pages convert
+* which CTAs produce actual leads
+* which service pages attract the strongest opportunities
+* which locations produce the best close rates
+* which lead types stall
+* which conversation paths convert
+* which emergency triggers generate same-day action
+* which service combinations are most common
+* what user behavior precedes a booked inspection
+* what content paths create the strongest lead-readiness
+
+### Brain integration rule
+
+The website should not just send raw analytics.
+It should send **useful normalized outcome signals** that can be learned from later.
+
+Examples:
+
+* user viewed roofing + gutters + emergency page in one session
+* user clicked call now from Cape Coral page after storm cleanup page
+* user submitted inspection request with service = roofing and urgency = same-day
+* user opened financing page before quote submit
+* user chat path converted after FAQ interaction
+* repeat sessions from same lead became a booked inspection
+
+## Agents and conversation orchestration
+
+The website must support fluid movement through Apex agents and workflows.
+
+### This includes
+
+* lead capture agent triggers
+* conversation agent triggers
+* notification triggers
+* follow-up triggers
+* routing triggers
+* scoring triggers
+* intelligence signals to the brain
+* lead status updates that feed back into the system
+
+### Agent flow principle
+
+The site should behave like:
+**visitor action → event captured → workflow/agent triggered → lead updated → agent responds → intelligence recorded**
+
+## SEO requirement
+
+This must be **SEO-ready for real deployment**, not “SEO later.”
+
+### Required SEO foundation
+
+* unique metadata per route
+* canonical handling
+* Open Graph
+* Twitter Card
+* LocalBusiness schema
+* FAQ schema where relevant
+* Review/testimonial schema where relevant
+* service schema where relevant
+* city/service route structure ready for indexing
+* internal linking that supports crawling and conversion
+* crawlable service and location architecture
+* real headings hierarchy
+* real conversion copy
+* no thin-page filler
+
+### SEO rule
+
+Service pages and city pages must be structured so they can become real search-entry pages, not just duplicate shells.
+
+## Forms and CTA requirements
+
+Every form must be real and connected.
+
+### Required form types
+
+* quote request form
+* free inspection form
+* emergency response form
+* contact form
+* financing interest form
+* quick mobile callback form
+* optional chat/lead intake widget
+
+### Form behavior
+
+Each form submission must:
+
+* validate properly
+* submit to a real backend/action
+* create/update a lead in Apex
+* tag source page
+* tag source CTA
+* tag service interest
+* tag location/territory
+* tag urgency
+* optionally assign lead score / lead-readiness
+* trigger the correct workflow path
+* trigger correct agent notifications if configured
+* feed event/outcome data into the Intelligence Brain path
+
+## Routing / pipeline logic
+
+The site must support routing by:
+
+* service type
+* geography
+* urgency
+* source page
+* source CTA
+* emergency vs non-emergency
+* financing interest
+* lead-readiness
+* operator rules if available
+
+The site should be built so this logic can evolve without rewriting the whole front end.
+
+## Required technical design principle
+
+Build the site in **three execution levels**.
+
+---
+
+# LEVEL 1 — PRODUCTION WEBSITE FOUNDATION
+
+## Goal
+
+Create the real brand-correct, route-correct, conversion-ready site foundation.
+
+## Level 1 must include
+
+* proper use of the real Roof 2 Root logo
+* correct branded visual system
+* real site-wide nav
+* real footer
+* real route architecture
+* real homepage
+* real core pages
+* real service page structure
+* real location page structure
+* real CTA wiring
+* real contact information placeholders clearly isolated for replacement if real data is not yet available
+* no dead buttons
+* no fake navigation
+* mobile-ready responsive behavior
+* trust-building content system
+* high-conversion hero and service sections
+* route-safe architecture for future scale
+
+## Level 1 deliverable standard
+
+A user can move through the site like a real customer and every CTA either:
+
+* lands on a real page
+* opens a real form flow
+* triggers a real contact action
+
+---
+
+# LEVEL 2 — WORKFLOW + LEAD ENGINE INTEGRATION
+
+## Goal
+
+Turn the site into a working lead engine connected to Apex workflows.
+
+## Level 2 must include
+
+* all forms connected
+* all quote/inspection/emergency submissions routed properly
+* event logging for high-intent actions
+* pipeline insertion logic
+* CTA source tagging
+* service + territory tagging
+* emergency handling logic
+* click-to-call tracking
+* abandoned form tracking if feasible
+* thank-you / conversion states
+* workflow triggers for follow-up
+* agent notification hooks
+* lead update logic
+* site-to-Apex data contract
+
+## Level 2 behavioral rule
+
+A lead should be able to move from site action into:
+
+* Apex lead record
+* workflow path
+* agent visibility
+* response flow
+
+without manual patchwork.
+
+---
+
+# LEVEL 3 — INTELLIGENCE + AGENT FEEDBACK + SITE LEARNING
+
+## Goal
+
+Make the site a smart growth asset that improves over time through Apex Intelligence.
+
+## Level 3 must include
+
+* normalized event model for site intelligence
+* route/page/CTA/service/location performance signals
+* lead-readiness signal contribution
+* cross-session behavior insight readiness
+* intelligence write-ins for meaningful site events
+* operator-facing visibility into what pages/paths produce better leads
+* support for agent-driven follow-up learnings
+* event-to-outcome relationship tracking
+* signals that can later support optimization decisions
+* structured feeding into Apex Intelligence Brain
+* site-generated signals that can be used by other Apex agents
+
+## Level 3 rule
+
+Do not build fake “AI” fluff.
+Only implement intelligence signals and feedback loops that have clear operational value.
+
+---
+
+## Required system outputs
+
+Design and/or produce the site so it includes:
+
+### A. Route map
+
+A full working route architecture for the entire site
+
+### B. Page system
+
+A reusable system for:
+
+* homepage
+* service pages
+* city pages
+* core business pages
+* conversion pages
+
+### C. CTA map
+
+A complete CTA/action map showing:
+
+* each CTA
+* where it goes
+* what it triggers
+* what gets logged
+* what workflow/agent it notifies
+
+### D. Workflow trigger map
+
+A site-to-Apex workflow map showing:
+
+* user action
+* event captured
+* system action
+* workflow triggered
+* lead/pipeline update
+* agent/intelligence update
+
+### E. Intelligence event map
+
+A site-to-Apex Brain map showing:
+
+* event name
+* event payload
+* source route
+* source CTA
+* lead context
+* service context
+* territory context
+* intelligence value
+
+### F. Implementation blueprint
+
+A clear Level 1 / 2 / 3 implementation order that can be executed without destabilizing the live environment
+
+## Required delivery style
+
+Your output must be:
+
+* production-grade
+* implementation-aware
+* route-aware
+* workflow-aware
+* SEO-aware
+* intelligence-aware
+* CTA-complete
+* systems-complete
+
+## What not to do
+
+* do not give me a surface-level homepage concept only
+* do not give me generic design fluff
+* do not ignore workflows
+* do not ignore Apex intelligence integration
+* do not ignore agent routing
+* do not leave route gaps
+* do not leave button/action gaps
+* do not treat this like a simple brochure build
+* do not use fake quality language to cover incomplete logic
+
+## Final instruction
+
+Return a **full execution-grade website systems plan and build blueprint** for Roof 2 Root that treats the website as a:
+
+* premium home services sales system
+* Apex-connected workflow trigger engine
+* intelligence signal source
+* agent-connected growth asset
+
+The response must cover:
+
+* Level 1 foundation
+* Level 2 workflows
+* Level 3 intelligence
+* full site structure
+* route logic
+* CTA logic
+* workflow triggers
+* intelligence feed design
+* how the site grows smarter over time inside Apex

@@ -1,0 +1,282 @@
+Build this as a real launch-ready Level 1-3 implementation, not backend-only, not partial plumbing, not hidden infrastructure with no operator controls. Apex Intelligence must become the central brain for the entire website ecosystem, including the Liquid website builder, the Apex site, and all connected sub-accounts. Every meaningful action across every site must feed Apex Intelligence so the system can learn, adapt, optimize, personalize, report, and improve performance across the full network. This must be built end-to-end with visible UI, usable controls, clear system status, and real operator-facing management.
+
+CORE OBJECTIVE
+
+Make Apex Intelligence the universal intelligence layer behind the full website ecosystem.
+
+That means all of the following must report into Apex Intelligence and be usable by it:
+
+- website visits
+- page views
+- scroll depth
+- clicks
+- CTA clicks
+- button clicks
+- form starts
+- form fills
+- form submissions
+- form abandonment
+- quiz/survey answers
+- chat interactions
+- AI agent conversations
+- booking actions
+- calendar selections
+- funnel steps
+- checkout steps
+- lead source attribution
+- ad source / UTM data
+- content engagement
+- review interactions
+- SMS/email engagement where connected
+- call events where connected
+- appointment outcomes where connected
+- pipeline movement where connected
+- user identity stitching where possible
+
+Apex Intelligence must ingest this data, normalize it, attach it to the correct account/site/contact/session when possible, and use it to improve both the individual sub-account and the Apex ecosystem as a whole.
+
+LEVEL STRUCTURE
+
+LEVEL 1 — FULL SITEWIDE DATA CAPTURE + APEX BRAIN FOUNDATION
+
+Build the complete event, identity, and reporting foundation.
+
+Requirements:
+- Create a universal event tracking architecture for all sites/pages/components built through the Liquid website builder and Apex site properties.
+- Instrument all core interactions automatically, not manually page by page.
+- Create a shared event schema so all captured actions are standardized.
+- Build identity stitching logic across anonymous visitor, known lead, returning contact, and customer states.
+- Capture source attribution, campaign data, landing page context, device/session data, and page journey data.
+- Send all tracked data into Apex Intelligence in real time or near-real time.
+- Create account-aware routing so events are linked to the correct sub-account/site while still supporting ecosystem-wide intelligence.
+- Add event reliability protections: retry handling, deduplication, fallback queueing, malformed payload handling, and status/error logging.
+- Create a visible admin/operator UI showing:
+  - data capture status
+  - live event stream
+  - failed events
+  - account routing status
+  - tracking health
+  - source breakdown
+  - top pages
+  - top CTAs
+  - top forms
+  - event volume by site/sub-account
+- Add settings UI for:
+  - which event families are enabled
+  - which sites are connected
+  - which builder components are tracked
+  - field mapping rules
+  - consent/privacy handling controls where relevant
+- Make the system feel like a premium AI command center, not a raw logs page.
+
+LEVEL 2 — APEX INTELLIGENCE ACTION LAYER FOR OPTIMIZATION + ADAPTATION
+
+Now make Apex Intelligence actually use the data.
+
+Requirements:
+- Build intelligence services that interpret captured site behavior and generate actionable outputs for each sub-account and for Apex globally.
+- Use the data to score visitor intent, lead quality, funnel strength, engagement quality, and conversion readiness.
+- Generate recommendations for:
+  - better CTAs
+  - better form structure
+  - better page sequencing
+  - better section ordering
+  - better content emphasis
+  - better follow-up timing
+  - better segmentation
+  - better offer matching
+- Enable Apex Intelligence to support dynamic adaptation logic such as:
+  - recommend alternate page sections
+  - recommend shorter or smarter forms
+  - recommend stronger agent responses
+  - recommend better booking prompts
+  - recommend better nurture paths
+  - identify drop-off points and likely causes
+- Build operator-facing UI for:
+  - intelligence summaries per site
+  - opportunity alerts
+  - friction alerts
+  - conversion blockers
+  - top-performing patterns across the network
+  - recommended fixes by priority
+  - lead intent scoring views
+  - journey analysis views
+- Build sub-account views that make the intelligence usable by operators, not buried in technical dashboards.
+- Add clear “why this recommendation exists” logic so the system is interpretable and trusted.
+- Support both per-account intelligence and cross-account pattern learning where appropriate.
+- Make sure Apex can learn from aggregate performance without contaminating or breaking tenant/account boundaries.
+
+LEVEL 3 — FULL SITE ECOSYSTEM ORCHESTRATION THROUGH APEX INTELLIGENCE
+
+Turn Apex Intelligence into the operating brain across the full website stack.
+
+Requirements:
+- Integrate Apex Intelligence deeply into the Liquid website builder so new sites, pages, sections, forms, funnels, widgets, and agent touchpoints are automatically Apex-aware by default.
+- Make all major website modules Apex-connected, including:
+  - landing pages
+  - multi-page sites
+  - forms
+  - quizzes
+  - surveys
+  - calendars
+  - chat widgets
+  - AI agent widgets
+  - review collection flows
+  - lead capture flows
+  - nurture entry points
+  - CTA modules
+  - popups
+  - sticky bars
+  - booking prompts
+  - contact/quote request modules
+- Build the architecture so Apex Intelligence can eventually help create, improve, and power every site object, not just observe it.
+- Add operator tools that allow Apex Intelligence to:
+  - suggest site improvements
+  - suggest funnel changes
+  - suggest copy upgrades
+  - suggest section replacements
+  - suggest conversion flow changes
+  - suggest follow-up path changes
+  - flag weak pages automatically
+  - identify missing high-converting components
+- Add ecosystem-level dashboards for Apex showing:
+  - best-performing sites
+  - best-performing page types
+  - best-performing CTAs
+  - best-performing forms
+  - highest-converting patterns
+  - common drop-off points
+  - emerging opportunities across sub-accounts
+  - AI-detected optimization opportunities
+- Build strong admin visibility into what Apex Intelligence is observing, learning, recommending, and influencing.
+- Ensure the system is structured so Apex Intelligence can become the intelligence backbone for site creation, site improvement, funnel optimization, lead conversion, and operator guidance over time.
+
+NON-NEGOTIABLE BUILD STANDARDS
+
+Do not treat this as complete unless all 5 layers are done:
+
+1. Backend
+- event ingestion
+- schemas
+- routing
+- storage
+- processing
+- account mapping
+- intelligence services
+- recommendation logic
+- error handling
+- auth/permissions
+- integration architecture
+
+2. Frontend
+- real pages
+- real dashboards
+- usable cards/panels
+- filters
+- settings
+- account views
+- intelligence views
+- live status
+- empty states
+- loading states
+- operator controls
+- builder integration visibility
+
+3. Connection
+- frontend must actually connect to backend
+- real tracked data must appear
+- real statuses must render
+- mapping must work
+- recommendations must display from real data
+- no fake placeholder UI
+
+4. UX
+- easy to find
+- easy to understand
+- easy to manage
+- obvious primary actions
+- clean operator workflows
+- no hidden capability
+- no dead-end admin surfaces
+
+5. Testing
+- verify event capture
+- verify builder component tracking
+- verify site-level routing
+- verify sub-account routing
+- verify Apex-wide aggregation
+- verify failures/retries
+- verify dashboard visibility
+- verify recommendations are grounded in real tracked behavior
+- verify mobile responsiveness
+- verify launch-readiness logically, not just compile success
+
+DATA + ARCHITECTURE EXPECTATIONS
+
+Implement this with a serious scalable architecture:
+- shared event taxonomy
+- account-aware event pipeline
+- contact/session identity resolution
+- centralized intelligence ingestion layer
+- clean separation between raw events, processed insights, and operator-facing recommendations
+- robust logging and observability
+- safe multi-tenant boundaries
+- future-ready design for broader automation/orchestration later
+
+DESIGN / UI STANDARD
+
+The UI must feel like a premium elite AI command center:
+- sleek dark mode
+- modern hierarchy
+- premium spacing
+- polished panels
+- refined badges/status states
+- powerful but uncluttered
+- mobile-first
+- high-end futuristic feel
+- not generic SaaS admin
+- not bland CRUD
+- not raw tables unless heavily upgraded
+- not hidden system screens with no usability
+
+WHAT TO AVOID
+
+Do not:
+- build only tracking endpoints
+- build only backend ingestion
+- create hidden infrastructure with no operator interface
+- use placeholder admin styling
+- leave builder integration vague
+- make manual instrumentation the core model
+- treat “events are being stored” as done
+- ship generic analytics only
+- make recommendations with no explanation or no visible workflow
+- ignore sub-account usability
+- ignore Apex-wide learning value
+- ignore launch-readiness
+
+DONE MEANS
+
+This is only done when:
+- the Liquid website builder is deeply connected to Apex Intelligence
+- the Apex site and sub-account sites all report meaningful data into Apex Intelligence
+- buttons, forms, agent responses, page interactions, and key site actions all feed the intelligence layer
+- the system can use that data to generate usable intelligence and optimization guidance
+- operators can clearly see, manage, trust, and act on it
+- the experience is end-to-end, visible, polished, and launch-ready
+
+OUTPUT FORMAT
+
+Return the work in this format:
+1. Architecture plan
+2. Data/event model
+3. Backend systems to build
+4. Frontend/admin/operator surfaces to build
+5. Liquid website builder integration points
+6. Apex Intelligence logic/services
+7. Sub-account + Apex-wide reporting model
+8. Testing/verification checklist
+9. What was implemented
+10. What is still missing, if anything
+
+Build this as a serious production-grade intelligence backbone for the entire website ecosystem, with Apex Intelligence as the brain powering collection, interpretation, adaptation, and improvement across everything.
