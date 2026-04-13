@@ -11,6 +11,7 @@ import { runFakeCompletionDetection } from "../intelligence/fakeCompletionDetect
 import { getPriorityActions, getOperatorActionSummary, dismissAction, snoozeAction } from "../intelligence/priorityActionQueue";
 import { getCrossPlatformPatterns, getPlaybookRecommendationsForAccount } from "../intelligence/crossPlatformPatterns";
 import { getSystemHealthReport } from "../intelligence/systemHealthOrchestrator";
+import { approveAction, rollbackAction, markFailed, resumeAction, getActionAuditTrail } from "../autonomy/decisionEngine";
 
 function asyncHandler(fn: (req: any, res: any, next: any) => Promise<any>) {
   return (req: any, res: any, next: any) => fn(req, res, next).catch(next);
@@ -502,6 +503,95 @@ export function registerApexIntelligenceRoutes(app: Express) {
     const recs = await storage.getRecommendations(subAccountId, { status: "pending", limit: 5 });
     const entityRecs = recs.filter((r: any) => r.entityType === entityType && r.entityId === entityId);
     res.json({ scores, recommendations: entityRecs });
+  }));
+
+  // ---- Autonomy Layer — Operator Autonomy UI Endpoints ----
+
+  app.get("/api/autonomy/actions/:accountId", asyncHandler(async (req, res) => {
+    const accountId = parseInt(req.params.accountId);
+    if (!(await verifyAccountOwnership(req, res, accountId))) return;
+    const { status, safetyClass, actionType, limit } = req.query;
+    const actions = await storage.getAutonomyActions(accountId, {
+      status: status as string | undefined,
+      safetyClass: safetyClass as string | undefined,
+      actionType: actionType as string | undefined,
+      limit: limit ? parseInt(limit as string) : 100,
+    });
+    res.json(actions);
+  }));
+
+  app.get("/api/autonomy/actions/:id/detail", asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id);
+    const action = await storage.getAutonomyAction(id);
+    if (!action) return res.status(404).json({ error: "Action not found" });
+    if (!(await verifyAccountOwnership(req, res, action.accountId))) return;
+    const dependsOn = action.dependsOnActionId
+      ? await storage.getAutonomyAction(action.dependsOnActionId)
+      : null;
+    const policyRule = await storage.getAutonomyPolicyRule(action.actionType);
+    res.json({ action, dependsOn, policyRule });
+  }));
+
+  app.post("/api/autonomy/actions/:id/approve", asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id);
+    const existing = await storage.getAutonomyAction(id);
+    if (!existing) return res.status(404).json({ error: "Action not found" });
+    if (!(await verifyAccountOwnership(req, res, existing.accountId))) return;
+    const action = await approveAction(id);
+    if (!action) return res.status(404).json({ error: "Action not found" });
+    res.json(action);
+  }));
+
+  app.post("/api/autonomy/actions/:id/reject", asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id);
+    const existing = await storage.getAutonomyAction(id);
+    if (!existing) return res.status(404).json({ error: "Action not found" });
+    if (!(await verifyAccountOwnership(req, res, existing.accountId))) return;
+    const action = await storage.updateAutonomyAction(id, {
+      status: "blocked",
+      updatedAt: new Date(),
+      resolvedAt: new Date(),
+    });
+    if (!action) return res.status(404).json({ error: "Action not found" });
+    res.json(action);
+  }));
+
+  app.post("/api/autonomy/actions/:id/snooze", asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id);
+    const existing = await storage.getAutonomyAction(id);
+    if (!existing) return res.status(404).json({ error: "Action not found" });
+    if (!(await verifyAccountOwnership(req, res, existing.accountId))) return;
+    const action = await storage.updateAutonomyAction(id, {
+      status: "proposed",
+      updatedAt: new Date(),
+    });
+    if (!action) return res.status(404).json({ error: "Action not found" });
+    res.json(action);
+  }));
+
+  app.post("/api/autonomy/actions/:id/retry", asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id);
+    const existing = await storage.getAutonomyAction(id);
+    if (!existing) return res.status(404).json({ error: "Action not found" });
+    if (!(await verifyAccountOwnership(req, res, existing.accountId))) return;
+    const action = await storage.updateAutonomyAction(id, {
+      status: "proposed",
+      executionResult: null,
+      resolvedAt: null,
+      executedAt: null,
+      updatedAt: new Date(),
+    });
+    res.json(action);
+  }));
+
+  app.post("/api/autonomy/actions/:id/rollback", asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id);
+    const existing = await storage.getAutonomyAction(id);
+    if (!existing) return res.status(404).json({ error: "Action not found" });
+    if (!(await verifyAccountOwnership(req, res, existing.accountId))) return;
+    const action = await rollbackAction(id);
+    if (!action) return res.status(404).json({ error: "Action not found or cannot be rolled back" });
+    res.json(action);
   }));
 }
 
