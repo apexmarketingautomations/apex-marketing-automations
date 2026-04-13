@@ -2221,6 +2221,101 @@ export const commentAutoReplies = pgTable("comment_auto_replies", {
 });
 export type CommentAutoReply = typeof commentAutoReplies.$inferSelect;
 
+// ---- Apex Intelligence: Site Tracking Event Taxonomy ----
+
+export const SITE_EVENT_TYPES = {
+  PAGE_VIEW: "page_view",
+  SCROLL_DEPTH: "scroll_depth",
+  CLICK: "click",
+  CTA_CLICK: "cta_click",
+  FORM_START: "form_start",
+  FORM_FILL: "form_fill",
+  FORM_SUBMIT: "form_submit",
+  FORM_ABANDON: "form_abandon",
+  QUIZ_ANSWER: "quiz_answer",
+  CHAT_INTERACTION: "chat_interaction",
+  BOOKING_ACTION: "booking_action",
+  CALENDAR_SELECTION: "calendar_selection",
+  FUNNEL_STEP: "funnel_step",
+  CHECKOUT_STEP: "checkout_step",
+  CONTENT_ENGAGEMENT: "content_engagement",
+  IDENTITY_RESOLVED: "identity_resolved",
+  SESSION_START: "session_start",
+  SESSION_END: "session_end",
+} as const;
+
+export type SiteEventType = typeof SITE_EVENT_TYPES[keyof typeof SITE_EVENT_TYPES];
+
+export const siteTrackingEvents = pgTable("site_tracking_events", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id").references(() => savedSites.id),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id),
+  eventType: text("event_type").notNull(),
+  sessionId: text("session_id").notNull(),
+  visitorId: text("visitor_id").notNull(),
+  contactId: integer("contact_id").references(() => contacts.id),
+  fingerprint: text("fingerprint").notNull(),
+  page: text("page"),
+  referrer: text("referrer"),
+  utmSource: text("utm_source"),
+  utmMedium: text("utm_medium"),
+  utmCampaign: text("utm_campaign"),
+  utmContent: text("utm_content"),
+  utmTerm: text("utm_term"),
+  device: text("device"),
+  browser: text("browser"),
+  os: text("os"),
+  country: text("country"),
+  payload: jsonb("payload").default({}),
+  processedAt: timestamp("processed_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_site_events_subaccount").on(table.subAccountId),
+  index("idx_site_events_site").on(table.siteId),
+  index("idx_site_events_session").on(table.sessionId),
+  index("idx_site_events_visitor").on(table.visitorId),
+  index("idx_site_events_type").on(table.eventType),
+  index("idx_site_events_created").on(table.createdAt),
+  uniqueIndex("idx_site_events_fingerprint").on(table.fingerprint),
+]);
+
+export const insertSiteTrackingEventSchema = createInsertSchema(siteTrackingEvents).omit({ id: true, createdAt: true });
+export type InsertSiteTrackingEvent = z.infer<typeof insertSiteTrackingEventSchema>;
+export type SiteTrackingEvent = typeof siteTrackingEvents.$inferSelect;
+
+export const siteTrackingDeadLetter = pgTable("site_tracking_dead_letter", {
+  id: serial("id").primaryKey(),
+  rawPayload: jsonb("raw_payload").notNull(),
+  errorMessage: text("error_message"),
+  retryCount: integer("retry_count").default(0).notNull(),
+  subAccountId: integer("sub_account_id"),
+  siteId: integer("site_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  lastRetryAt: timestamp("last_retry_at"),
+});
+
+export const insertSiteTrackingDeadLetterSchema = createInsertSchema(siteTrackingDeadLetter).omit({ id: true, createdAt: true });
+export type InsertSiteTrackingDeadLetter = z.infer<typeof insertSiteTrackingDeadLetterSchema>;
+export type SiteTrackingDeadLetter = typeof siteTrackingDeadLetter.$inferSelect;
+
+export const trackingSettings = pgTable("tracking_settings", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull().unique(),
+  enabledEventFamilies: text("enabled_event_families").array().default([
+    "page_view", "scroll_depth", "click", "cta_click", "form_start",
+    "form_fill", "form_submit", "form_abandon", "booking_action", "funnel_step",
+  ]),
+  consentRequired: boolean("consent_required").default(false),
+  dataRetentionDays: integer("data_retention_days").default(90),
+  fieldMappingRules: jsonb("field_mapping_rules").default({}),
+  captureConfig: jsonb("capture_config").default({}),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertTrackingSettingsSchema = createInsertSchema(trackingSettings).omit({ id: true, updatedAt: true });
+export type InsertTrackingSettings = z.infer<typeof insertTrackingSettingsSchema>;
+export type TrackingSettings = typeof trackingSettings.$inferSelect;
+
 // ---- Shared Intelligence Layer (Super Brain) ----
 
 export const sharedInsights = pgTable("shared_insights", {

@@ -45,6 +45,7 @@ import { registerMetaMessagingProductRoutes } from "./routes/metaMessagingProduc
 import { registerMediaRoutes } from "./routes/media";
 import { registerChaturbateRoutes } from "./routes/chaturbate";
 import { registerApexIntelligenceRoutes } from "./routes/apex-intelligence";
+import { registerSiteTrackingRoutes } from "./routes/siteTracking";
 export { registerAgentWorkerRoutes } from "./routes/agentWorker";
 
 export async function registerRoutes(
@@ -94,7 +95,11 @@ export async function registerRoutes(
   registerMetaMessagingProductRoutes(app);
   registerMediaRoutes(app);
   registerChaturbateRoutes(app);
+<<<<<<< HEAD
   registerApexIntelligenceRoutes(app);
+=======
+  registerSiteTrackingRoutes(app);
+>>>>>>> 7211cf4 (feat: Apex Intelligence Level 1 — Sitewide Data Capture & Brain Foundation)
 
   return httpServer;
 }

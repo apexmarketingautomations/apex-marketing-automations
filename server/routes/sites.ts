@@ -104,6 +104,50 @@ export async function renderSiteHtml(siteId: number, res: Response): Promise<voi
   const theme = data.theme;
   const sections = data.sections;
 
+  let subAccountId: number | null = null;
+  try {
+    const { db } = await import("../db");
+    const { domains } = await import("@shared/schema");
+    const { eq } = await import("drizzle-orm");
+    const domainRow = await db.select({ subAccountId: domains.subAccountId }).from(domains).where(eq(domains.siteId, siteId)).limit(1);
+    if (domainRow.length > 0) {
+      subAccountId = domainRow[0].subAccountId;
+    }
+  } catch {}
+
+  const trackingSnippet = `
+<script>
+(function(){
+  var VISITOR_KEY='apex_visitor_id',SESSION_KEY='apex_session_id',SESSION_EXP_KEY='apex_session_expiry',STICKY_KEY='apex_liquid_contact';
+  var SESSION_EXP=30*60*1000,batchTimer=null,queue=[];
+  var subAccountId=${subAccountId ?? "null"};
+  var siteId=${siteId};
+  if(!subAccountId){return;}
+  function genId(){return(crypto&&crypto.randomUUID)?crypto.randomUUID():Math.random().toString(36).slice(2)+Date.now().toString(36);}
+  function store(k,v){try{localStorage.setItem(k,v);}catch(e){}}
+  function load(k){try{return localStorage.getItem(k);}catch(e){return null;}}
+  function getOrCreate(k){var v=load(k);if(!v){v=genId();store(k,v);}return v;}
+  function getVisitorId(){return getOrCreate(VISITOR_KEY);}
+  function getSessionId(){var exp=parseInt(load(SESSION_EXP_KEY)||'0',10);if(Date.now()<exp){var s=load(SESSION_KEY);if(s){store(SESSION_EXP_KEY,String(Date.now()+SESSION_EXP));return s;}}var s=genId();store(SESSION_KEY,s);store(SESSION_EXP_KEY,String(Date.now()+SESSION_EXP));return s;}
+  function getUtm(){var p={},s=new URLSearchParams(location.search);[['utmSource','utm_source'],['utmMedium','utm_medium'],['utmCampaign','utm_campaign'],['utmContent','utm_content'],['utmTerm','utm_term']].forEach(function(x){var v=s.get(x[1]);if(v)p[x[0]]=v;});return p;}
+  function getDevice(){var ua=navigator.userAgent;return{device:/Mobi|Android|iPhone|iPad/i.test(ua)?'mobile':'desktop',browser:/Chrome/.test(ua)?'chrome':/Firefox/.test(ua)?'firefox':/Safari/.test(ua)?'safari':'other',os:/Windows/.test(ua)?'windows':/Mac/.test(ua)?'macos':/Android/.test(ua)?'android':/iOS|iPhone|iPad/.test(ua)?'ios':'other'};}
+  function getContact(){try{var r=load(STICKY_KEY);return r?JSON.parse(r):null;}catch(e){return null;}}
+  function buildEvent(type,payload){var c=getContact();var d=getDevice();var e=Object.assign({eventType:type,sessionId:getSessionId(),visitorId:getVisitorId(),page:location.href.slice(0,1024),referrer:document.referrer.slice(0,1024)||undefined,device:d.device,browser:d.browser,os:d.os,payload:payload||{},clientTimestamp:new Date().toISOString()},getUtm());if(c&&c.email)e.contactEmail=c.email;if(c&&c.phone)e.contactPhone=c.phone;return e;}
+  function flush(){if(!queue.length)return;var batch=queue.splice(0,50);var body=JSON.stringify({subAccountId:subAccountId,siteId:siteId,events:batch});try{fetch('/api/track/events',{method:'POST',headers:{'Content-Type':'application/json'},body:body,keepalive:true});}catch(e){queue.unshift.apply(queue,batch);}if(queue.length)schedBatch();}
+  function schedBatch(){if(batchTimer)return;batchTimer=setTimeout(function(){batchTimer=null;flush();},3000);}
+  function track(type,payload){queue.push(buildEvent(type,payload));if(queue.length>500)queue=queue.slice(-500);schedBatch();}
+  window.apexTrack=track;
+  window.apexIdentify=function(data){try{store(STICKY_KEY,JSON.stringify(data));}catch(e){}track('identity_resolved',data);};
+  track('page_view',{title:document.title,path:location.pathname});
+  var scrollDone={};window.addEventListener('scroll',function(){var pct=Math.round((window.scrollY+window.innerHeight)/document.documentElement.scrollHeight*100);[25,50,75,90].forEach(function(d){if(pct>=d&&!scrollDone[d]){scrollDone[d]=1;track('scroll_depth',{depth_pct:d});}});},{passive:true});
+  document.addEventListener('click',function(e){var el=e.target&&e.target.closest('a,button,[data-apex-cta]');if(!el)return;var isCta=el.hasAttribute('data-apex-cta')||/cta/i.test(el.className+' '+(el.getAttribute('data-testid')||''));track(isCta?'cta_click':'click',{element:el.tagName.toLowerCase(),text:(el.textContent||'').slice(0,100),href:el.href||undefined});});
+  var fStarted=new WeakSet();document.addEventListener('focusin',function(e){var f=e.target&&e.target.closest('form');if(f&&!fStarted.has(f)){fStarted.add(f);track('form_start',{formId:f.id||undefined});}});
+  document.addEventListener('submit',function(e){if(e.target)track('form_submit',{formId:e.target.id||undefined});});
+  window.addEventListener('beforeunload',flush);
+  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')flush();});
+})();
+</script>`;
+
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -119,6 +163,7 @@ export async function renderSiteHtml(siteId: number, res: Response): Promise<voi
   a { color: inherit; }
   img { max-width: 100%; }
 </style>
+${trackingSnippet}
 </head>
 <body>
 ${sections.map((s: any) => renderSiteSection(s, theme)).join('\n')}
