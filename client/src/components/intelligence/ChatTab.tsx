@@ -287,56 +287,48 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
         {toolResults.length > 0 && (
           <div className="flex justify-start">
             <div className="bg-white/[0.03] border border-white/[0.06] text-slate-400 rounded-xl rounded-bl-sm p-2.5 text-xs max-w-[85%]">
-              {toolResults.map((tr, i) => (
-                <div key={i} className="mb-2 last:mb-0">
-                  <div className="text-violet-400 font-medium mb-1">✓ {tr.tool}</div>
-                  {tr.data.success && tr.data.sideEffects?.length > 0 && (
-                    <div className="text-slate-500 space-y-0.5">
-                      {tr.data.sideEffects.map((effect: string, j: number) => (
-                        <div key={j} className="truncate">{effect}</div>
-                      ))}
-                    </div>
-                  )}
-                  {tr.data.success && !tr.data.sideEffects?.length && tr.data.data && (
-                    <div className="text-slate-500 space-y-0.5">
-                      {Object.entries(tr.data.data).slice(0, 8).map(([key, value]) => {
-                        let display: string;
-                        if (value === null || value === undefined) {
-                          display = "—";
-                        } else if (Array.isArray(value)) {
-                          if (value.length === 0) {
-                            display = "None";
-                          } else if (typeof value[0] === "object") {
-                            display = value.map((item: any) => {
-                              if (item.provider) return `${item.provider} (${item.status || "unknown"})`;
-                              if (item.name) return item.name;
-                              return Object.values(item).filter(v => typeof v === "string" || typeof v === "number").slice(0, 2).join(": ");
-                            }).join(", ");
-                          } else {
-                            display = value.join(", ");
-                          }
-                        } else if (typeof value === "object") {
-                          display = Object.entries(value as Record<string, any>).map(([k, v]) => {
-                            if (v === null || v === undefined) return `${k}: —`;
-                            if (typeof v === "object") return `${k}: ${Array.isArray(v) ? `[${v.length} items]` : JSON.stringify(v).slice(0, 40)}`;
-                            return `${k}: ${String(v).slice(0, 40)}`;
-                          }).slice(0, 3).join(", ");
-                        } else {
-                          display = String(value).slice(0, 120);
-                        }
-                        return (
-                          <div key={key} className="truncate">
-                            <span className="text-slate-400">{key}:</span> {display || "—"}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {!tr.data.success && tr.data.error && (
-                    <div className="text-red-400/70">{tr.data.error}</div>
-                  )}
-                </div>
-              ))}
+              {toolResults.map((tr, i) => {
+                const toolLabel = tr.tool
+                  .replace(/([A-Z])/g, " $1")
+                  .replace(/^./, (s: string) => s.toUpperCase())
+                  .trim();
+
+                const summarize = (data: any): string | null => {
+                  if (!data) return null;
+                  if (data.summary) return String(data.summary);
+                  if (data.message) return String(data.message);
+                  if (data.accountName && data.completionScore !== undefined) {
+                    return `${data.accountName} — ${data.completionScore}% complete`;
+                  }
+                  if (data.configured && data.missing) {
+                    return `${typeof data.configured === "string" ? data.configured : Array.isArray(data.configured) ? data.configured.join(", ") : "Setup checked"} configured`;
+                  }
+                  if (data.count !== undefined) return `${data.count} items found`;
+                  if (data.status) return `Status: ${data.status}`;
+                  return null;
+                };
+
+                return (
+                  <div key={i} className="mb-2 last:mb-0">
+                    <div className="text-violet-400 font-medium mb-1">✓ {toolLabel}</div>
+                    {tr.data.success && tr.data.sideEffects?.length > 0 && (
+                      <div className="text-slate-500 space-y-0.5">
+                        {tr.data.sideEffects.map((effect: string, j: number) => (
+                          <div key={j} className="truncate">{effect}</div>
+                        ))}
+                      </div>
+                    )}
+                    {tr.data.success && !tr.data.sideEffects?.length && tr.data.data && (
+                      <div className="text-slate-500">
+                        {summarize(tr.data.data) || "Done"}
+                      </div>
+                    )}
+                    {!tr.data.success && tr.data.error && (
+                      <div className="text-red-400/70">{tr.data.error}</div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
