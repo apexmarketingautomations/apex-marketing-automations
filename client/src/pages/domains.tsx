@@ -6,21 +6,19 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { DOMAINS_STEPS } from "@/components/tutorial-steps";
 import { useAccount } from "@/hooks/use-account";
 
-const TLDS = [".com", ".io", ".ai", ".co", ".app", ".dev", ".net", ".org"];
-
 type DomainCheckResult = {
-  available: boolean;
+  available: boolean | null;
   domain: string;
   tld: string;
   costPrice: number;
   salePrice: number;
   reason?: string;
+  error?: string;
 };
 
 type Domain = {
@@ -51,7 +49,6 @@ export default function Domains() {
   const { activeAccountId } = useAccount();
   const subAccountId = activeAccountId || 13;
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedTld, setSelectedTld] = useState(".com");
   const [checkResult, setCheckResult] = useState<DomainCheckResult | null>(null);
   const [searchResults, setSearchResults] = useState<DomainCheckResult[]>([]);
   const [showConfetti, setShowConfetti] = useState(false);
@@ -188,9 +185,11 @@ export default function Domains() {
 
   const handleSearch = () => {
     if (!searchQuery.trim()) return;
-    const fullDomain = searchQuery.includes(".") ? searchQuery.trim() : `${searchQuery.trim()}${selectedTld}`;
-    checkMutation.mutate(fullDomain);
-    searchMutation.mutate(searchQuery.trim());
+    const q = searchQuery.trim().toLowerCase();
+    if (q.includes(".")) {
+      checkMutation.mutate(q);
+    }
+    searchMutation.mutate(q);
   };
 
   const getStatusBadge = (domain: Domain) => {
@@ -292,53 +291,66 @@ export default function Domains() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                placeholder="Enter domain name (e.g. myawesomebiz)"
+                placeholder="Search a name (roof2roots) or exact domain (roof2roots.live)"
                 className="bg-white/5 border-white/10 text-white placeholder:text-white/20 flex-1"
                 data-testid="input-domain-search"
               />
-              <Select value={selectedTld} onValueChange={setSelectedTld}>
-                <SelectTrigger className="w-24 bg-white/5 border-white/10 text-white" data-testid="select-tld">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TLDS.map((tld) => (
-                    <SelectItem key={tld} value={tld}>{tld}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
               <Button
                 onClick={handleSearch}
-                disabled={checkMutation.isPending || !searchQuery.trim()}
+                disabled={checkMutation.isPending || searchMutation.isPending || !searchQuery.trim()}
                 className="bg-indigo-600 hover:bg-indigo-500"
                 data-testid="button-search-domain"
               >
-                {checkMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                {(checkMutation.isPending || searchMutation.isPending) ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
                 <span className="ml-2 hidden md:inline">Search</span>
               </Button>
             </div>
+            <p className="text-[11px] text-slate-600 mt-2">Supports 100+ TLDs: .com, .io, .ai, .live, .agency, .marketing, .services, .co.uk, .tech, .store, and more</p>
 
             {checkResult && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className={`mt-4 p-4 rounded-lg border ${checkResult.available ? "bg-emerald-500/10 border-emerald-500/30" : "bg-red-500/10 border-red-500/30"}`}
+                className={`mt-4 p-4 rounded-lg border ${
+                  checkResult.available === true
+                    ? "bg-emerald-500/10 border-emerald-500/30"
+                    : checkResult.available === null
+                      ? "bg-yellow-500/10 border-yellow-500/30"
+                      : "bg-red-500/10 border-red-500/30"
+                }`}
                 data-testid="domain-check-result"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    {checkResult.available ? (
+                    {checkResult.available === true ? (
                       <CheckCircle2 className="text-emerald-400" size={20} data-testid="icon-available" />
+                    ) : checkResult.available === null ? (
+                      <AlertTriangle className="text-yellow-400" size={20} data-testid="icon-unknown" />
                     ) : (
                       <XCircle className="text-red-400" size={20} data-testid="icon-taken" />
                     )}
                     <div>
                       <span className="font-bold text-white" data-testid="text-check-domain">{checkResult.domain}</span>
-                      <span className={`ml-2 text-sm ${checkResult.available ? "text-emerald-400" : "text-red-400"}`}>
-                        {checkResult.available ? "Available!" : "Not available"}
+                      <span className={`ml-2 text-sm ${
+                        checkResult.available === true ? "text-emerald-400"
+                          : checkResult.available === null ? "text-yellow-400"
+                            : "text-red-400"
+                      }`}>
+                        {checkResult.available === true
+                          ? "Available!"
+                          : checkResult.reason === "unsupported_tld"
+                            ? "Unsupported TLD"
+                            : checkResult.reason === "invalid_syntax"
+                              ? "Invalid domain"
+                              : checkResult.available === null
+                                ? "Could not verify"
+                                : checkResult.reason === "already_registered"
+                                  ? "Already in your account"
+                                  : "Taken"}
                       </span>
                     </div>
                   </div>
-                  {checkResult.available && (
+                  {checkResult.available === true && (
                     <div className="flex items-center gap-3">
                       <span className="text-lg font-black text-white" data-testid="text-check-price">${checkResult.salePrice.toFixed(2)}/yr</span>
                       <Button
@@ -348,11 +360,14 @@ export default function Domains() {
                         data-testid="button-buy-primary"
                       >
                         {purchaseMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <ShoppingCart size={16} />}
-                        <span className="ml-2">Buy</span>
+                        <span className="ml-2">Claim</span>
                       </Button>
                     </div>
                   )}
                 </div>
+                {checkResult.error && (
+                  <p className="text-xs text-yellow-400/70 mt-2">{checkResult.error}</p>
+                )}
               </motion.div>
             )}
           </Card>
@@ -365,27 +380,33 @@ export default function Domains() {
                 <Globe size={14} className="text-cyan-400" /> All TLD Options
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                {searchResults.map((result, i) => (
+                {searchResults
+                  .sort((a, b) => (a.available === true ? -1 : 1) - (b.available === true ? -1 : 1))
+                  .map((result, i) => (
                   <div
                     key={result.domain}
                     className={`p-4 rounded-lg border transition-colors ${
-                      result.available
+                      result.available === true
                         ? "bg-white/[0.03] border-white/10 hover:border-indigo-500/30 hover:bg-white/[0.06]"
-                        : "bg-white/[0.02] border-white/5 opacity-60"
+                        : result.available === null
+                          ? "bg-white/[0.02] border-yellow-500/10 opacity-70"
+                          : "bg-white/[0.02] border-white/5 opacity-50"
                     }`}
                     data-testid={`tld-option-${i}`}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-mono font-bold text-white text-sm" data-testid={`tld-domain-${i}`}>{result.domain}</span>
-                      {result.available ? (
+                      {result.available === true ? (
                         <CheckCircle2 size={14} className="text-emerald-400" />
+                      ) : result.available === null ? (
+                        <AlertTriangle size={14} className="text-yellow-400" />
                       ) : (
                         <XCircle size={14} className="text-red-400" />
                       )}
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-bold text-white">${result.salePrice.toFixed(2)}/yr</span>
-                      {result.available && (
+                      {result.available === true && (
                         <Button
                           size="sm"
                           onClick={() => purchaseMutation.mutate(result.domain)}
@@ -393,7 +414,7 @@ export default function Domains() {
                           className="bg-indigo-600 hover:bg-indigo-500 h-7 text-xs px-3"
                           data-testid={`button-buy-tld-${i}`}
                         >
-                          Buy
+                          Claim
                         </Button>
                       )}
                     </div>

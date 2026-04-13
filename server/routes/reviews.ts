@@ -678,27 +678,161 @@ export function registerReviewsRoutes(app: Express) {
 
   // ── Domain Manager ──────────────────────────────────────────
 
-  const TLD_PRICING: Record<string, { cost: number; sale: number }> = {
-    ".com": { cost: 12.00, sale: 25.00 },
-    ".io": { cost: 35.00, sale: 60.00 },
-    ".ai": { cost: 80.00, sale: 150.00 },
-    ".co": { cost: 10.00, sale: 22.00 },
-    ".app": { cost: 15.00, sale: 30.00 },
-    ".dev": { cost: 12.00, sale: 28.00 },
-    ".net": { cost: 10.00, sale: 20.00 },
-    ".org": { cost: 9.00, sale: 18.00 },
+  const MULTI_PART_SUFFIXES = new Set([
+    ".co.uk", ".org.uk", ".me.uk", ".com.au", ".net.au", ".org.au",
+    ".co.nz", ".net.nz", ".org.nz", ".co.za", ".co.in", ".com.br",
+    ".com.mx", ".com.ar", ".co.jp", ".co.kr", ".com.sg", ".com.hk",
+  ]);
+
+  const TLD_PRICING: Record<string, { cost: number; sale: number; category?: string }> = {
+    ".com": { cost: 12.00, sale: 25.00, category: "legacy" },
+    ".net": { cost: 10.00, sale: 20.00, category: "legacy" },
+    ".org": { cost: 9.00, sale: 18.00, category: "legacy" },
+    ".biz": { cost: 10.00, sale: 20.00, category: "legacy" },
+    ".info": { cost: 8.00, sale: 18.00, category: "legacy" },
+
+    ".io": { cost: 35.00, sale: 60.00, category: "tech" },
+    ".ai": { cost: 80.00, sale: 150.00, category: "tech" },
+    ".app": { cost: 15.00, sale: 30.00, category: "tech" },
+    ".dev": { cost: 12.00, sale: 28.00, category: "tech" },
+    ".tech": { cost: 10.00, sale: 25.00, category: "tech" },
+    ".cloud": { cost: 12.00, sale: 28.00, category: "tech" },
+    ".software": { cost: 25.00, sale: 45.00, category: "tech" },
+    ".systems": { cost: 18.00, sale: 35.00, category: "tech" },
+    ".digital": { cost: 10.00, sale: 22.00, category: "tech" },
+    ".tools": { cost: 18.00, sale: 35.00, category: "tech" },
+    ".solutions": { cost: 15.00, sale: 30.00, category: "tech" },
+    ".online": { cost: 5.00, sale: 15.00, category: "tech" },
+    ".website": { cost: 5.00, sale: 12.00, category: "tech" },
+    ".site": { cost: 5.00, sale: 12.00, category: "tech" },
+
+    ".co": { cost: 10.00, sale: 22.00, category: "business" },
+    ".agency": { cost: 15.00, sale: 30.00, category: "business" },
+    ".marketing": { cost: 18.00, sale: 35.00, category: "business" },
+    ".media": { cost: 18.00, sale: 35.00, category: "business" },
+    ".services": { cost: 15.00, sale: 30.00, category: "business" },
+    ".company": { cost: 12.00, sale: 25.00, category: "business" },
+    ".business": { cost: 12.00, sale: 25.00, category: "business" },
+    ".consulting": { cost: 18.00, sale: 35.00, category: "business" },
+    ".group": { cost: 15.00, sale: 30.00, category: "business" },
+    ".partners": { cost: 30.00, sale: 55.00, category: "business" },
+    ".studio": { cost: 15.00, sale: 30.00, category: "business" },
+    ".design": { cost: 18.00, sale: 35.00, category: "business" },
+    ".works": { cost: 18.00, sale: 35.00, category: "business" },
+
+    ".store": { cost: 10.00, sale: 22.00, category: "commerce" },
+    ".shop": { cost: 10.00, sale: 22.00, category: "commerce" },
+    ".sale": { cost: 18.00, sale: 35.00, category: "commerce" },
+    ".deals": { cost: 18.00, sale: 35.00, category: "commerce" },
+    ".boutique": { cost: 18.00, sale: 35.00, category: "commerce" },
+    ".market": { cost: 18.00, sale: 35.00, category: "commerce" },
+
+    ".live": { cost: 12.00, sale: 25.00, category: "content" },
+    ".tv": { cost: 30.00, sale: 55.00, category: "content" },
+    ".fm": { cost: 80.00, sale: 140.00, category: "content" },
+    ".world": { cost: 10.00, sale: 22.00, category: "content" },
+    ".today": { cost: 10.00, sale: 22.00, category: "content" },
+    ".news": { cost: 15.00, sale: 30.00, category: "content" },
+    ".show": { cost: 18.00, sale: 35.00, category: "content" },
+    ".zone": { cost: 18.00, sale: 35.00, category: "content" },
+    ".space": { cost: 5.00, sale: 12.00, category: "content" },
+    ".life": { cost: 10.00, sale: 22.00, category: "content" },
+    ".plus": { cost: 18.00, sale: 35.00, category: "content" },
+    ".pro": { cost: 12.00, sale: 25.00, category: "content" },
+    ".expert": { cost: 28.00, sale: 50.00, category: "content" },
+    ".network": { cost: 15.00, sale: 30.00, category: "content" },
+    ".social": { cost: 18.00, sale: 35.00, category: "content" },
+    ".events": { cost: 18.00, sale: 35.00, category: "content" },
+
+    ".homes": { cost: 18.00, sale: 35.00, category: "niche" },
+    ".house": { cost: 18.00, sale: 35.00, category: "niche" },
+    ".properties": { cost: 18.00, sale: 35.00, category: "niche" },
+    ".construction": { cost: 18.00, sale: 35.00, category: "niche" },
+    ".contractors": { cost: 18.00, sale: 35.00, category: "niche" },
+    ".repair": { cost: 18.00, sale: 35.00, category: "niche" },
+    ".care": { cost: 18.00, sale: 35.00, category: "niche" },
+    ".center": { cost: 15.00, sale: 30.00, category: "niche" },
+    ".dental": { cost: 35.00, sale: 60.00, category: "niche" },
+    ".fitness": { cost: 18.00, sale: 35.00, category: "niche" },
+    ".salon": { cost: 30.00, sale: 55.00, category: "niche" },
+    ".auto": { cost: 80.00, sale: 150.00, category: "niche" },
+    ".lawyer": { cost: 35.00, sale: 65.00, category: "niche" },
+    ".realty": { cost: 30.00, sale: 55.00, category: "niche" },
+    ".restaurant": { cost: 30.00, sale: 55.00, category: "niche" },
+    ".cafe": { cost: 18.00, sale: 35.00, category: "niche" },
+    ".plumbing": { cost: 30.00, sale: 55.00, category: "niche" },
+    ".roofing": { cost: 30.00, sale: 55.00, category: "niche" },
+    ".cleaning": { cost: 30.00, sale: 55.00, category: "niche" },
+    ".legal": { cost: 30.00, sale: 55.00, category: "niche" },
+
+    ".xyz": { cost: 3.00, sale: 10.00, category: "brandable" },
+    ".club": { cost: 8.00, sale: 18.00, category: "brandable" },
+    ".vip": { cost: 12.00, sale: 25.00, category: "brandable" },
+    ".one": { cost: 8.00, sale: 18.00, category: "brandable" },
+    ".me": { cost: 12.00, sale: 25.00, category: "brandable" },
+    ".cc": { cost: 12.00, sale: 25.00, category: "brandable" },
+    ".ws": { cost: 15.00, sale: 30.00, category: "brandable" },
+
+    ".us": { cost: 8.00, sale: 18.00, category: "country" },
+    ".ca": { cost: 12.00, sale: 25.00, category: "country" },
+    ".uk": { cost: 8.00, sale: 18.00, category: "country" },
+    ".de": { cost: 8.00, sale: 18.00, category: "country" },
+    ".fr": { cost: 10.00, sale: 22.00, category: "country" },
+    ".es": { cost: 10.00, sale: 22.00, category: "country" },
+    ".it": { cost: 10.00, sale: 22.00, category: "country" },
+    ".nl": { cost: 8.00, sale: 18.00, category: "country" },
+    ".in": { cost: 8.00, sale: 15.00, category: "country" },
+    ".au": { cost: 15.00, sale: 30.00, category: "country" },
+
+    ".co.uk": { cost: 8.00, sale: 18.00, category: "country" },
+    ".org.uk": { cost: 8.00, sale: 18.00, category: "country" },
+    ".com.au": { cost: 15.00, sale: 30.00, category: "country" },
+    ".net.au": { cost: 15.00, sale: 30.00, category: "country" },
+    ".co.nz": { cost: 18.00, sale: 35.00, category: "country" },
+    ".co.za": { cost: 10.00, sale: 22.00, category: "country" },
+    ".co.in": { cost: 8.00, sale: 15.00, category: "country" },
+    ".com.br": { cost: 15.00, sale: 30.00, category: "country" },
+    ".com.mx": { cost: 15.00, sale: 30.00, category: "country" },
   };
 
+  const DEFAULT_PRICING = { cost: 15.00, sale: 30.00, category: "other" };
+
+  const SEARCH_TLDS = [
+    ".com", ".net", ".org", ".io", ".ai", ".co", ".app", ".dev",
+    ".tech", ".live", ".agency", ".marketing", ".services", ".store",
+    ".shop", ".online", ".site", ".digital", ".media", ".pro",
+    ".world", ".cloud", ".solutions", ".design", ".studio",
+    ".xyz", ".me", ".us", ".uk",
+  ];
+
   function extractTld(domain: string): string {
-    const dotIndex = domain.indexOf(".");
-    if (dotIndex === -1) return ".com";
-    return domain.substring(dotIndex).toLowerCase();
+    const lower = domain.toLowerCase();
+    for (const suffix of MULTI_PART_SUFFIXES) {
+      if (lower.endsWith(suffix)) return suffix;
+    }
+    const lastDot = lower.lastIndexOf(".");
+    if (lastDot === -1) return ".com";
+    return lower.substring(lastDot);
   }
 
   function getBaseName(domain: string): string {
-    const dotIndex = domain.indexOf(".");
-    if (dotIndex === -1) return domain.toLowerCase();
-    return domain.substring(0, dotIndex).toLowerCase();
+    const lower = domain.toLowerCase();
+    for (const suffix of MULTI_PART_SUFFIXES) {
+      if (lower.endsWith(suffix)) {
+        return lower.substring(0, lower.length - suffix.length);
+      }
+    }
+    const lastDot = lower.lastIndexOf(".");
+    if (lastDot === -1) return lower;
+    return lower.substring(0, lower.indexOf("."));
+  }
+
+  function getPricing(tld: string): { cost: number; sale: number; category?: string } {
+    return TLD_PRICING[tld] || DEFAULT_PRICING;
+  }
+
+  function isValidDomainSyntax(domain: string): boolean {
+    return /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z]{2,})+$/.test(domain);
   }
 
   app.post("/api/domains/check", asyncHandler(async (req, res) => {
@@ -708,25 +842,22 @@ export function registerReviewsRoutes(app: Express) {
     }
 
     const normalizedDomain = domain.toLowerCase().trim();
-    const existing = await storage.getDomainByName(normalizedDomain);
-    if (existing) {
-      const tld = extractTld(normalizedDomain);
-      const pricing = TLD_PRICING[tld] || TLD_PRICING[".com"];
-      return res.json({ available: false, domain: normalizedDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, reason: "already_registered" });
+    if (!isValidDomainSyntax(normalizedDomain)) {
+      return res.json({ available: false, domain: normalizedDomain, tld: "", costPrice: 0, salePrice: 0, reason: "invalid_syntax" });
     }
 
     const tld = extractTld(normalizedDomain);
-    const baseName = getBaseName(normalizedDomain);
-    const pricing = TLD_PRICING[tld];
+    const pricing = getPricing(tld);
 
-    if (!pricing) {
-      return res.json({ available: false, domain: normalizedDomain, tld, costPrice: 0, salePrice: 0, reason: "unsupported_tld" });
+    const existing = await storage.getDomainByName(normalizedDomain);
+    if (existing) {
+      return res.json({ available: false, domain: normalizedDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, reason: "already_registered" });
     }
 
     try {
       const rdapRes = await fetch(`https://rdap.org/domain/${normalizedDomain}`, {
         headers: { "Accept": "application/rdap+json" },
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(8000),
       });
       if (rdapRes.ok) {
         return res.json({ available: false, domain: normalizedDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, reason: "taken" });
@@ -734,10 +865,13 @@ export function registerReviewsRoutes(app: Express) {
       if (rdapRes.status === 404) {
         return res.json({ available: true, domain: normalizedDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale });
       }
-      return res.status(502).json({ available: null, domain: normalizedDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, error: "Could not verify availability — RDAP returned unexpected status. Try again or check manually." });
+      if (rdapRes.status === 400) {
+        return res.json({ available: null, domain: normalizedDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, reason: "unsupported_tld", error: "This TLD is not supported by the RDAP registry. Check availability manually." });
+      }
+      return res.json({ available: null, domain: normalizedDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, error: "Could not verify availability — RDAP returned unexpected status. Try again or check manually." });
     } catch (rdapErr: any) {
       console.warn("[DOMAIN] RDAP lookup failed:", rdapErr.message);
-      return res.status(502).json({ available: null, domain: normalizedDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, error: "Could not verify availability — RDAP lookup timed out or failed. Try again later." });
+      return res.json({ available: null, domain: normalizedDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, error: "Could not verify availability — RDAP lookup timed out or failed. Try again later." });
     }
   }));
 
@@ -747,10 +881,14 @@ export function registerReviewsRoutes(app: Express) {
       return res.status(400).json({ error: "query is required" });
     }
 
-    const baseName = query.toLowerCase().trim().replace(/\.[a-z]+$/, "");
+    const baseName = query.toLowerCase().trim().replace(/\.[a-z.]+$/, "");
+    if (!baseName || !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(baseName)) {
+      return res.status(400).json({ error: "Invalid domain name" });
+    }
 
-    const rdapChecks = Object.entries(TLD_PRICING).map(async ([tld, pricing]) => {
+    const rdapChecks = SEARCH_TLDS.map(async (tld) => {
       const fullDomain = `${baseName}${tld}`;
+      const pricing = getPricing(tld);
       const existing = await storage.getDomainByName(fullDomain);
       if (existing) {
         return { available: false, domain: fullDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, reason: "already_registered" };
@@ -759,7 +897,7 @@ export function registerReviewsRoutes(app: Express) {
       try {
         const rdapRes = await fetch(`https://rdap.org/domain/${fullDomain}`, {
           headers: { "Accept": "application/rdap+json" },
-          signal: AbortSignal.timeout(5000),
+          signal: AbortSignal.timeout(6000),
         });
         if (rdapRes.ok) {
           return { available: false, domain: fullDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, reason: "taken" };
@@ -767,9 +905,9 @@ export function registerReviewsRoutes(app: Express) {
         if (rdapRes.status === 404) {
           return { available: true, domain: fullDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale };
         }
-        return { available: null, domain: fullDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, error: "Could not verify — unexpected RDAP status" };
+        return { available: null, domain: fullDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, error: "Could not verify" };
       } catch {
-        return { available: null, domain: fullDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, error: "Could not verify — RDAP lookup failed" };
+        return { available: null, domain: fullDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, error: "RDAP lookup failed" };
       }
     });
 
@@ -790,12 +928,13 @@ export function registerReviewsRoutes(app: Express) {
     const { subAccountId, domain: rawDomain, siteId } = parsed.data;
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const domain = rawDomain.toLowerCase().trim();
-    const tld = extractTld(domain);
-    const pricing = TLD_PRICING[tld];
 
-    if (!pricing) {
-      return res.status(400).json({ error: "Unsupported TLD" });
+    if (!isValidDomainSyntax(domain)) {
+      return res.status(400).json({ error: "Invalid domain syntax" });
     }
+
+    const tld = extractTld(domain);
+    const pricing = getPricing(tld);
 
     const existing = await storage.getDomainByName(domain);
     if (existing) {
