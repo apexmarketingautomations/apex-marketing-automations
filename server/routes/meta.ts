@@ -10,6 +10,7 @@ import { asyncHandler, verifyAccountOwnership, getUserId } from "./helpers";
 import { enforceSmsProvider } from "../smsGatewayGuard";
 import { getMetaConfig, validateMetaConfigForAccount } from "../metaConfig";
 import { requireActiveSubscription } from "../subscriptionGuard";
+import { emitUniversalEvent, emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
 
 const subscriptionGuard = requireActiveSubscription();
 
@@ -27,6 +28,12 @@ export function registerMetaRoutes(app: Express) {
     const data = insertMetaAdCampaignSchema.parse(req.body);
     if (!(await verifyAccountOwnership(req, res, data.subAccountId))) return;
     const campaign = await storage.createMetaAdCampaign(data);
+    emitWithTimeline(
+      { eventType: EVENT_TYPES.AD_CAMPAIGN_LAUNCHED, sourceModule: "meta", sourceTable: "meta_ad_campaigns", sourceRecordId: String(campaign.id), subAccountId: campaign.subAccountId, campaignId: campaign.id, metadata: { campaignName: campaign.name, objective: campaign.objective, status: campaign.status } },
+      "Meta Ad Campaign Created",
+      `Campaign "${campaign.name}" created for ${campaign.objective}`,
+      "info"
+    );
     res.json(campaign);
   }));
 
@@ -82,6 +89,7 @@ export function registerMetaRoutes(app: Express) {
         await storage.updateMetaAdCampaign(campaign.id, { lastSyncedAt: new Date() });
       }
       const updated = await storage.getMetaAdCampaign(campaign.id);
+      emitUniversalEvent({ eventType: EVENT_TYPES.AD_CAMPAIGN_UPDATED, sourceModule: "meta", sourceTable: "meta_ad_campaigns", sourceRecordId: String(campaign.id), subAccountId: campaign.subAccountId, campaignId: campaign.id, metadata: { campaignName: campaign.name, action: "synced", impressions: updated?.impressions, clicks: updated?.clicks, spend: updated?.totalSpend, leads: updated?.leads } });
       res.json({ synced: true, campaign: updated });
     } catch (err: any) {
       res.status(500).json({ error: `Meta sync failed: ${err.message}` });
@@ -125,6 +133,12 @@ export function registerMetaRoutes(app: Express) {
       }
       await storage.updateMetaAdCampaign(campaign.id, { metaCampaignId: fbData.id, status: "active" });
       const updated = await storage.getMetaAdCampaign(campaign.id);
+      emitWithTimeline(
+        { eventType: EVENT_TYPES.AD_CAMPAIGN_LAUNCHED, sourceModule: "meta", sourceTable: "meta_ad_campaigns", sourceRecordId: String(campaign.id), subAccountId: campaign.subAccountId, campaignId: campaign.id, metadata: { campaignName: campaign.name, metaCampaignId: fbData.id, objective: campaign.objective, action: "published" } },
+        "Meta Campaign Published",
+        `Campaign "${campaign.name}" published to Meta Ads (ID: ${fbData.id})`,
+        "info"
+      );
       res.json({ published: true, campaign: updated });
     } catch (err: any) {
       res.status(500).json({ error: `Campaign publish failed: ${err.message}` });
@@ -188,6 +202,8 @@ export function registerMetaRoutes(app: Express) {
               });
               existingFormLeadKeys.add(dedupeKey);
               totalSynced++;
+
+              emitUniversalEvent({ eventType: EVENT_TYPES.AD_LEAD_CAPTURED, sourceModule: "meta", sourceTable: "meta_leads", subAccountId, metadata: { name, email, phone: getName("phone_number"), formId: form.id, formName: form.name, action: "lead_synced" } });
 
               storage.createNotification({
                 subAccountId,
@@ -263,6 +279,12 @@ export function registerMetaRoutes(app: Express) {
     });
 
     await storage.updateMetaLead(lead.id, { syncedToCrm: true, contactId: contact.id });
+    emitWithTimeline(
+      { eventType: EVENT_TYPES.LEAD_CREATED, sourceModule: "meta", sourceTable: "meta_leads", sourceRecordId: String(lead.id), subAccountId: lead.subAccountId, contactId: contact.id, metadata: { leadName: lead.name, leadEmail: lead.email, leadPhone: lead.phone, contactId: contact.id, alreadyExisted: !!existingContact } },
+      "Meta Lead Synced to CRM",
+      `Facebook lead "${lead.name}" converted to CRM contact`,
+      "info"
+    );
     res.json({ success: true, contact });
   }));
 

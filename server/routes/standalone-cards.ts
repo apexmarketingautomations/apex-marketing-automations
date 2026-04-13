@@ -7,6 +7,7 @@ import { db } from "../db";
 import { eq, sql, and, or, desc, ilike } from "drizzle-orm";
 import crypto from "crypto";
 import { asyncHandler } from "./helpers";
+import { emitUniversalEvent, emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
 
 const CARD_PRICE_CENTS = 4900;
 const PROMO_PRICE_CENTS = 2450;
@@ -132,6 +133,18 @@ export async function handleStandaloneCardWebhook(session: any) {
       code: generateReferralCode(),
       active: true,
     });
+  }
+
+  const [newCard] = await db.select().from(standaloneCards)
+    .where(and(eq(standaloneCards.userId, existingUser.id), eq(standaloneCards.email, cardData.email)))
+    .orderBy(desc(standaloneCards.id)).limit(1);
+  if (newCard) {
+    emitWithTimeline(
+      { eventType: EVENT_TYPES.CARD_CREATED, sourceModule: "standalone-cards", sourceTable: "standalone_cards", sourceRecordId: String(newCard.id), cardId: newCard.id, metadata: { slug: newCard.slug, fullName: newCard.fullName, email: newCard.email, tier, premiumBump: hasPremiumBump, stripeSessionId: session.id, amount: session.amount_total } },
+      "Standalone Digital Card Created",
+      `Digital card for "${newCard.fullName}" (${tier} tier) created via Stripe checkout`,
+      "info"
+    );
   }
 
   if (referralCode) {

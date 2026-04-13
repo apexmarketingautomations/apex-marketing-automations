@@ -326,7 +326,7 @@ export function registerSentinelRoutes(app: Express) {
           deliveryRules,
         );
 
-        if (delivery.actionStatus === 'auto_queued') autoQueuedCount++;
+        if (delivery.actionStatus === "auto_queued") autoQueuedCount++;
 
         const record = await storage.createSentinelIncident({
           subAccountId:     parsed.data.subAccountId,
@@ -372,6 +372,13 @@ export function registerSentinelRoutes(app: Express) {
         });
 
         created.push(record);
+
+        emitWithTimeline(
+          { eventType: EVENT_TYPES.SENTINEL_ALERT, sourceModule: "sentinel", sourceTable: "sentinel_incidents", sourceRecordId: String(record.id), subAccountId: parsed.data.subAccountId, metadata: { title: sig.event, severity: sig.severity, location: sig.areaDesc, niche: "home_services", signalType: sig.signalType, opportunityScore: scoring.opportunityScore } },
+          "Home Services Signal Detected",
+          `${sig.severity?.toUpperCase()} ${sig.signalType ?? sig.event} at ${sig.areaDesc}`,
+          sig.severity === "critical" ? "critical" : sig.severity === "high" ? "high" : "info"
+        );
 
         import("../operator/apexIntelligence").then(({ reportOutcome }) =>
           reportOutcome({
@@ -516,6 +523,15 @@ export function registerSentinelRoutes(app: Express) {
       details: { subAccountId: parsed.data.subAccountId, source, found: created.length, niche: config?.niche ?? "accident" },
     });
 
+    for (const record of created) {
+      emitWithTimeline(
+        { eventType: EVENT_TYPES.SENTINEL_ALERT, sourceModule: "sentinel", sourceTable: "sentinel_incidents", sourceRecordId: String(record.id), subAccountId: parsed.data.subAccountId, metadata: { title: record.title, severity: record.severity, location: record.location, source } },
+        "Sentinel Incident Detected",
+        `${record.severity?.toUpperCase()} incident detected at ${record.location}`,
+        record.severity === "critical" ? "critical" : record.severity === "high" ? "high" : "info"
+      );
+    }
+
     res.json({ source, found: created.length, incidents: created });
   }));
 
@@ -615,6 +631,13 @@ export function registerSentinelRoutes(app: Express) {
       details: { incidentId: id, location: incident.location, radiusMiles: radius, metaResult: geoResult },
     });
 
+    emitWithTimeline(
+      { eventType: EVENT_TYPES.SENTINEL_DISPATCHED, sourceModule: "sentinel", sourceTable: "sentinel_incidents", sourceRecordId: String(id), subAccountId: incident.subAccountId, metadata: { incidentId: id, location: incident.location, radiusMiles: radius, adSetId: geoResult.adSetId || null, targetType: geoTarget.type } },
+      "Geofence Ads Deployed",
+      `Geofence deployed to ${radius}-mile radius of ${incident.location}`,
+      "high"
+    );
+
     res.json({
       success: true,
       message: `Geofence ads deployed to ${radius}-mile radius of ${incident.location}`,
@@ -706,6 +729,13 @@ export function registerSentinelRoutes(app: Express) {
       performedBy: user?.claims?.sub || user?.id || "system",
       details: { incidentId: id, sentTo: account.ownerPhone },
     });
+
+    emitWithTimeline(
+      { eventType: EVENT_TYPES.SENTINEL_ALERT, sourceModule: "sentinel", sourceTable: "sentinel_incidents", sourceRecordId: String(id), subAccountId: incident.subAccountId, metadata: { incidentId: id, smsSentTo: account.ownerPhone, title: incident.title, severity: incident.severity, isHomeSvc: isHomeSvcIncident } },
+      "Sentinel SMS Alert Sent",
+      `SMS alert dispatched for ${incident.severity?.toUpperCase()} incident at ${incident.location}`,
+      "high"
+    );
 
     res.json({ success: true, message: `SMS alert sent to ${account.ownerPhone}` });
   }));
@@ -880,6 +910,13 @@ export function registerSentinelRoutes(app: Express) {
         metadata:     { incidentId: newIncident.id, cadSource: normalizedSource, location: payload.location?.address },
       })
     ).catch(() => {});
+
+    emitWithTimeline(
+      { eventType: EVENT_TYPES.SENTINEL_ALERT, sourceModule: "sentinel", sourceTable: "sentinel_incidents", sourceRecordId: String(newIncident.id), subAccountId: payload.subAccountId, metadata: { incidentId: newIncident.id, cadSource: normalizedSource, externalId: normalizedExternalId, location: payload.location?.address, severity: newIncident.severity, action: "cad_created" } },
+      "CAD Incident Ingested",
+      `CAD dispatch from ${normalizedSource}: ${newIncident.title} at ${payload.location?.address || "unknown location"}`,
+      "high"
+    );
 
     return res.status(201).json({ action: "created", incidentId: newIncident.id, incident: newIncident });
   }));

@@ -14,6 +14,7 @@ import {
   TEMPLATE_KEYS,
 } from "../mailchimp";
 import { storage } from "../storage";
+import { emitUniversalEvent, emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
 
 export function registerMailchimpRoutes(app: Express) {
   app.get("/api/mailchimp/:subAccountId/status", asyncHandler(async (req, res) => {
@@ -100,6 +101,7 @@ export function registerMailchimpRoutes(app: Express) {
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
 
     const result = await bulkSyncContacts(subAccountId);
+    emitUniversalEvent({ eventType: EVENT_TYPES.INTEGRATION_CONNECTED, sourceModule: "mailchimp", subAccountId, metadata: { action: "bulk_sync", synced: (result as any)?.synced, failed: (result as any)?.failed } });
     res.json(result);
   }));
 
@@ -151,6 +153,10 @@ export function registerMailchimpRoutes(app: Express) {
       contactId,
       mergeVars
     );
+
+    if (result?.success !== false) {
+      emitUniversalEvent({ eventType: EVENT_TYPES.CAMPAIGN_SENT, sourceModule: "mailchimp", subAccountId, contactId: contactId || undefined, metadata: { email, templateKey, trigger: "manual_send", success: true } });
+    }
 
     res.json(result);
   }));

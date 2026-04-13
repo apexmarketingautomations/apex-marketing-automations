@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
 import { asyncHandler, parseIntParam } from "./helpers";
+import { emitUniversalEvent, emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
 
 export function registerAbTestingRoutes(app: Express) {
   async function getAbModule() {
@@ -57,6 +58,12 @@ export function registerAbTestingRoutes(app: Express) {
       confidenceLevel: 0,
       completedAt: null,
     });
+    emitWithTimeline(
+      { eventType: EVENT_TYPES.CAMPAIGN_CREATED, sourceModule: "ab-testing", sourceTable: "ab_experiments", sourceRecordId: String(experiment.id), subAccountId: subAccountId || undefined, metadata: { experimentName: name, contentType, trafficSplit: trafficSplit || 50, metric: metric || "conversion_rate" } },
+      "A/B Experiment Started",
+      `Experiment "${name}" launched for ${contentType} content`,
+      "info"
+    );
     res.json(experiment);
   }));
 
@@ -99,6 +106,7 @@ export function registerAbTestingRoutes(app: Express) {
     }
     const updated = await recordConversion(id, variant, visitorId, metadata);
     if (!updated) return res.status(404).json({ error: "Experiment not found" });
+    emitUniversalEvent({ eventType: EVENT_TYPES.CAMPAIGN_SENT, sourceModule: "ab-testing", sourceTable: "ab_experiments", sourceRecordId: String(id), subAccountId: updated.subAccountId || undefined, metadata: { experimentName: updated.name, variant, visitorId, contentType: updated.contentType, action: "conversion" } });
     res.json({ success: true, experiment: { ...updated, stats: getExperimentStats(updated) } });
   }));
 
@@ -120,6 +128,12 @@ export function registerAbTestingRoutes(app: Express) {
       winnerVariant: stats.winner,
       confidenceLevel: stats.confidence,
     });
+    emitWithTimeline(
+      { eventType: EVENT_TYPES.CAMPAIGN_SENT, sourceModule: "ab-testing", sourceTable: "ab_experiments", sourceRecordId: String(id), subAccountId: experiment.subAccountId || undefined, metadata: { experimentName: experiment.name, contentType: experiment.contentType, winnerVariant: stats.winner, confidenceLevel: stats.confidence, action: "stopped" } },
+      "A/B Experiment Concluded",
+      `Experiment "${experiment.name}" concluded — winner: Variant ${stats.winner || "undetermined"} (${Math.round(stats.confidence || 0)}% confidence)`,
+      "info"
+    );
     res.json({ ...updated, stats });
   }));
 }

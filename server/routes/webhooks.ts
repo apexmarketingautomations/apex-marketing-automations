@@ -17,6 +17,7 @@ import { resolveSubAccount, isRoutingFailure } from "../routing/resolver";
 import { persistRoutingFailure } from "../routing/failureQueue";
 import { withIdempotency, markEventCompleted, markEventFailed } from "../idempotency";
 import { extractAndStoreInsights } from "../services/insightExtractor";
+import { emitUniversalEvent, EVENT_TYPES } from "../intelligence/eventEmitter";
 
 export function registerWebhooksRoutes(app: Express) {
   if (!process.env.TELEGRAM_WEBHOOK_SECRET_SALT && !process.env.SESSION_SECRET) {
@@ -1599,6 +1600,7 @@ export function registerWebhooksRoutes(app: Express) {
                 metadata: { channel, direction: "inbound" },
                 disambiguator: mid || `meta-crm-${senderId}`,
               });
+              emitUniversalEvent({ eventType: EVENT_TYPES.WEBHOOK_RECEIVED, sourceModule: "meta-webhook", subAccountId, metadata: { channel, senderId, mid: mid || null, pageId: entryPageId, bodyLength: message.length, provider: "meta" } });
             } catch (crmWriteErr: any) {
               console.error(`[META DM][CRM-WRITE] Failed to store inbound message — channel=${channel}, sender=${senderId}, subAccountId=${subAccountId}, error=${crmWriteErr.message}`);
               recordStepValue(metaTrace, "crm_write", "error", Date.now() - metaCrmStart, {
@@ -2846,6 +2848,8 @@ export function registerWebhooksRoutes(app: Express) {
         status: "received",
         createdAt: new Date().toISOString(),
       });
+
+      emitUniversalEvent({ eventType: EVENT_TYPES.WEBHOOK_RECEIVED, sourceModule: "telegram-webhook", subAccountId, metadata: { channel: "telegram", chatId, username, updateId: update.update_id, bodyLength: text.length, provider: "telegram" } });
 
       let aiReply = "Thanks for your message! We'll get back to you shortly.";
       if (isAIConfigured()) {

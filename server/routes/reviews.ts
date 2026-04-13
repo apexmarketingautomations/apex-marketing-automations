@@ -44,6 +44,14 @@ export function registerReviewsRoutes(app: Express) {
     if (!existing) return res.status(404).json({ error: "Review not found" });
     const updated = await storage.updateReview(id, req.body);
     if (!updated) return res.status(404).json({ error: "Review not found" });
+    if (req.body.ownerReply && !existing.ownerReply && updated.subAccountId) {
+      emitWithTimeline(
+        { eventType: EVENT_TYPES.REVIEW_REPLIED, sourceModule: "reviews", sourceTable: "reviews", sourceRecordId: String(id), subAccountId: updated.subAccountId, metadata: { customerName: updated.customerName, rating: updated.rating, replyLength: req.body.ownerReply?.length || 0 } },
+        "Review Response Posted",
+        `Owner replied to ${updated.rating}-star review from ${updated.customerName}`,
+        updated.rating && updated.rating <= 2 ? "high" : "info"
+      );
+    }
     res.json(updated);
   }));
 

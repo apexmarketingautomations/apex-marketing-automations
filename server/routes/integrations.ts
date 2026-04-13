@@ -379,6 +379,8 @@ export function registerIntegrationsRoutes(app: Express) {
       subAccountId, provider: "youtube", status: "connected", config: { email: providerEmail }, connectionType: "oauth", connectedAt: new Date(),
     });
     await storage.createIntegrationEvent({ subAccountId, provider: "youtube", eventType: "oauth_connected", payload: { email: providerEmail } });
+    const { emitUniversalEvent: emitYtOAuth, EVENT_TYPES: YT_EV } = await import("../intelligence/eventEmitter");
+    emitYtOAuth({ eventType: YT_EV.INTEGRATION_CONNECTED, sourceModule: "integrations", subAccountId, metadata: { provider: "youtube", connectionType: "oauth", email: providerEmail } });
     res.redirect("/integrations?success=youtube_connected");
   }));
 
@@ -439,6 +441,8 @@ export function registerIntegrationsRoutes(app: Express) {
       subAccountId, provider: "linkedin", status: "connected", config: { email: providerEmail, name: providerName }, connectionType: "oauth", connectedAt: new Date(),
     });
     await storage.createIntegrationEvent({ subAccountId, provider: "linkedin", eventType: "oauth_connected", payload: { email: providerEmail } });
+    const { emitUniversalEvent: emitLiOAuth, EVENT_TYPES: LI_EV } = await import("../intelligence/eventEmitter");
+    emitLiOAuth({ eventType: LI_EV.INTEGRATION_CONNECTED, sourceModule: "integrations", subAccountId, metadata: { provider: "linkedin", connectionType: "oauth", email: providerEmail, name: providerName } });
     res.redirect("/integrations?success=linkedin_connected");
   }));
 
@@ -488,6 +492,8 @@ export function registerIntegrationsRoutes(app: Express) {
       subAccountId, provider: "tiktok", status: "connected", config: { advertiserId: tokenData.advertiser_id || "" }, connectionType: "oauth", connectedAt: new Date(),
     });
     await storage.createIntegrationEvent({ subAccountId, provider: "tiktok", eventType: "oauth_connected", payload: { advertiserId: tokenData.advertiser_id } });
+    const { emitUniversalEvent: emitTkOAuth, EVENT_TYPES: TK_EV } = await import("../intelligence/eventEmitter");
+    emitTkOAuth({ eventType: TK_EV.INTEGRATION_CONNECTED, sourceModule: "integrations", subAccountId, metadata: { provider: "tiktok", connectionType: "oauth", advertiserId: tokenData.advertiser_id } });
     res.redirect("/integrations?success=tiktok_connected");
   }));
 
@@ -548,6 +554,8 @@ export function registerIntegrationsRoutes(app: Express) {
       subAccountId, provider: "microsoft", status: "connected", config: { email: providerEmail, name: providerName }, connectionType: "oauth", connectedAt: new Date(),
     });
     await storage.createIntegrationEvent({ subAccountId, provider: "microsoft", eventType: "oauth_connected", payload: { email: providerEmail } });
+    const { emitUniversalEvent: emitMsOAuth, EVENT_TYPES: MS_EV } = await import("../intelligence/eventEmitter");
+    emitMsOAuth({ eventType: MS_EV.INTEGRATION_CONNECTED, sourceModule: "integrations", subAccountId, metadata: { provider: "microsoft", connectionType: "oauth", email: providerEmail, name: providerName } });
     res.redirect("/integrations?success=microsoft_connected");
   }));
 
@@ -607,6 +615,8 @@ export function registerIntegrationsRoutes(app: Express) {
       subAccountId, provider: "calendly", status: "connected", config: { email: providerEmail, name: providerName }, connectionType: "oauth", connectedAt: new Date(),
     });
     await storage.createIntegrationEvent({ subAccountId, provider: "calendly", eventType: "oauth_connected", payload: { email: providerEmail } });
+    const { emitUniversalEvent: emitCalOAuth, EVENT_TYPES: CAL_EV } = await import("../intelligence/eventEmitter");
+    emitCalOAuth({ eventType: CAL_EV.INTEGRATION_CONNECTED, sourceModule: "integrations", subAccountId, metadata: { provider: "calendly", connectionType: "oauth", email: providerEmail, name: providerName } });
     res.redirect("/integrations?success=calendly_connected");
   }));
 
@@ -709,6 +719,9 @@ export function registerIntegrationsRoutes(app: Express) {
       eventType: "oauth_connected",
       payload: { email: providerEmail },
     });
+
+    const { emitUniversalEvent: emitOAuthEvt, EVENT_TYPES: OAUTH_EV } = await import("../intelligence/eventEmitter");
+    emitOAuthEvt({ eventType: OAUTH_EV.INTEGRATION_CONNECTED, sourceModule: "integrations", subAccountId, metadata: { provider: "google", connectionType: "oauth", email: providerEmail } });
 
     res.redirect("/integrations?success=google_connected");
   }));
@@ -825,6 +838,9 @@ export function registerIntegrationsRoutes(app: Express) {
       eventType: "oauth_connected",
       payload: { email: providerEmail },
     });
+
+    const { emitUniversalEvent: emitMetaOAuth, EVENT_TYPES: META_EV } = await import("../intelligence/eventEmitter");
+    emitMetaOAuth({ eventType: META_EV.INTEGRATION_CONNECTED, sourceModule: "integrations", subAccountId, metadata: { provider: "meta", connectionType: "oauth", email: providerEmail } });
 
     res.redirect("/integrations?success=meta_connected");
   }));
