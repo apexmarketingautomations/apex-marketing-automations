@@ -288,7 +288,7 @@ export default function ApexIntelligenceDashboard() {
   const subAccountId = activeAccountId || 13;
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<"ecosystem" | "scores" | "opportunities" | "events" | "health" | "network" | "timeline" | "operator" | "autonomy">("ecosystem");
+  const [activeTab, setActiveTab] = useState<"ecosystem" | "scores" | "opportunities" | "events" | "health" | "network" | "timeline" | "operator" | "autonomy" | "readiness">("ecosystem");
   const [ecosystemFilter, setEcosystemFilter] = useState("");
   const [autonomyStatusFilter, setAutonomyStatusFilter] = useState<string>("");
   const [selectedActionId, setSelectedActionId] = useState<number | null>(null);
@@ -457,6 +457,16 @@ export default function ApexIntelligenceDashboard() {
     enabled: !!selectedActionId && activeTab === "autonomy",
   });
 
+  const { data: readinessData, isLoading: readinessLoading, refetch: refetchReadiness } = useQuery({
+    queryKey: ["/api/intelligence/readiness"],
+    queryFn: async () => {
+      const res = await fetch("/api/intelligence/readiness");
+      if (!res.ok) throw new Error("Failed to fetch readiness");
+      return res.json();
+    },
+    enabled: activeTab === "readiness",
+  });
+
   const autonomyMutation = useMutation({
     mutationFn: async ({ actionId, operation }: { actionId: number; operation: string }) => {
       const res = await fetch(`/api/autonomy/actions/${actionId}/${operation}`, { method: "POST" });
@@ -531,6 +541,7 @@ export default function ApexIntelligenceDashboard() {
     { id: "timeline" as const, label: "Timeline", icon: Clock },
     { id: "operator" as const, label: "Operator", icon: Box },
     { id: "autonomy" as const, label: "Autonomy", icon: ShieldCheck },
+    { id: "readiness" as const, label: "Readiness", icon: Shield },
   ];
 
   if (summaryLoading) {
@@ -1716,6 +1727,165 @@ export default function ApexIntelligenceDashboard() {
                   )}
                 </div>
               </div>
+            </motion.div>
+          )}
+
+          {activeTab === "readiness" && (
+            <motion.div key="readiness" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Shield size={16} className="text-indigo-400" />
+                  Production Readiness
+                </h3>
+                <Button
+                  data-testid="button-refresh-readiness"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => refetchReadiness()}
+                  className="h-7 text-[10px] border-white/10 bg-white/5 text-slate-300"
+                >
+                  <RefreshCw className="w-3 h-3 mr-1" /> Refresh
+                </Button>
+              </div>
+
+              {readinessLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-5 h-5 animate-spin text-indigo-400" />
+                </div>
+              ) : readinessData ? (
+                <div className="space-y-4">
+                  <Card className={`p-4 border ${readinessData.passed ? "bg-emerald-500/5 border-emerald-500/20" : "bg-red-500/5 border-red-500/20"}`} data-testid="readiness-status-card">
+                    <div className="flex items-center gap-3">
+                      {readinessData.passed ? (
+                        <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+                      ) : (
+                        <AlertTriangle className="w-8 h-8 text-red-400" />
+                      )}
+                      <div>
+                        <p className="text-lg font-bold text-white">
+                          {readinessData.passed ? "System Ready" : "Issues Detected"}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          {readinessData.passed
+                            ? "All required tables, registries, and policies are verified."
+                            : `${readinessData.errors?.length || 0} errors, ${readinessData.warnings?.length || 0} warnings found.`}
+                        </p>
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card className="bg-white/[0.03] border-white/5 p-4" data-testid="readiness-tables">
+                    <h4 className="text-xs font-bold text-white mb-3 flex items-center gap-2">
+                      <Server size={12} className="text-cyan-400" />
+                      Required Tables ({readinessData.tables?.filter((t: any) => t.exists).length}/{readinessData.tables?.length})
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {readinessData.tables?.map((t: any) => (
+                        <div key={t.name} className="flex items-center justify-between py-1.5 px-2 rounded bg-white/[0.02]" data-testid={`table-status-${t.name}`}>
+                          <div className="flex items-center gap-2">
+                            {t.exists ? <CheckCircle2 size={12} className="text-emerald-400" /> : <XCircle size={12} className="text-red-400" />}
+                            <span className="text-[11px] text-slate-300 font-mono">{t.name}</span>
+                          </div>
+                          <span className="text-[10px] text-slate-500">{t.rowCount} rows</span>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Card className="bg-white/[0.03] border-white/5 p-4" data-testid="readiness-registry">
+                      <h4 className="text-xs font-bold text-white mb-2 flex items-center gap-2">
+                        <Layers size={12} className="text-indigo-400" />
+                        Module Registry
+                      </h4>
+                      <div className="space-y-2 text-[11px]">
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Module Groups</span>
+                          <span className="text-white font-mono">{readinessData.registryStatus?.moduleGroups || 0}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Event Types</span>
+                          <span className="text-white font-mono">{readinessData.registryStatus?.eventTypes || 0}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Status</span>
+                          <Badge variant={readinessData.registryStatus?.complete ? "default" : "destructive"} className="text-[9px] h-4">
+                            {readinessData.registryStatus?.complete ? "Complete" : "Incomplete"}
+                          </Badge>
+                        </div>
+                      </div>
+                    </Card>
+
+                    <Card className="bg-white/[0.03] border-white/5 p-4" data-testid="readiness-policies">
+                      <h4 className="text-xs font-bold text-white mb-2 flex items-center gap-2">
+                        <ShieldCheck size={12} className="text-amber-400" />
+                        Policy Rules
+                      </h4>
+                      <div className="space-y-2 text-[11px]">
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Total Rules</span>
+                          <span className="text-white font-mono">{readinessData.policyRulesStatus?.count || 0}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Blocked Rules</span>
+                          <Badge variant={readinessData.policyRulesStatus?.hasBlocked ? "default" : "destructive"} className="text-[9px] h-4">
+                            {readinessData.policyRulesStatus?.hasBlocked ? "Present" : "Missing"}
+                          </Badge>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Auto-Execute</span>
+                          <Badge variant={readinessData.policyRulesStatus?.hasAutoExec ? "default" : "secondary"} className="text-[9px] h-4">
+                            {readinessData.policyRulesStatus?.hasAutoExec ? "Present" : "None"}
+                          </Badge>
+                        </div>
+                      </div>
+                    </Card>
+
+                    <Card className="bg-white/[0.03] border-white/5 p-4" data-testid="readiness-coverage">
+                      <h4 className="text-xs font-bold text-white mb-2 flex items-center gap-2">
+                        <BarChart3 size={12} className="text-emerald-400" />
+                        Coverage Baseline
+                      </h4>
+                      <div className="space-y-2 text-[11px]">
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Accounts</span>
+                          <span className="text-white font-mono">{readinessData.coverageStatus?.accountsWithCoverage || 0}</span>
+                        </div>
+                      </div>
+                    </Card>
+                  </div>
+
+                  {(readinessData.errors?.length > 0 || readinessData.warnings?.length > 0) && (
+                    <Card className="bg-white/[0.03] border-white/5 p-4" data-testid="readiness-issues">
+                      <h4 className="text-xs font-bold text-white mb-3 flex items-center gap-2">
+                        <AlertTriangle size={12} className="text-amber-400" />
+                        Issues
+                      </h4>
+                      <div className="space-y-1.5">
+                        {readinessData.errors?.map((e: string, i: number) => (
+                          <div key={`err-${i}`} className="flex items-start gap-2 text-[11px] text-red-400 bg-red-500/5 rounded px-2 py-1.5">
+                            <XCircle size={12} className="mt-0.5 shrink-0" />
+                            {e}
+                          </div>
+                        ))}
+                        {readinessData.warnings?.map((w: string, i: number) => (
+                          <div key={`warn-${i}`} className="flex items-start gap-2 text-[11px] text-amber-400 bg-amber-500/5 rounded px-2 py-1.5">
+                            <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                            {w}
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  )}
+                </div>
+              ) : (
+                <Card className="bg-white/[0.03] border-white/5 p-6">
+                  <div className="text-center py-8">
+                    <Shield className="w-8 h-8 mx-auto text-slate-700 mb-3" />
+                    <p className="text-xs text-slate-500">Unable to load readiness data</p>
+                  </div>
+                </Card>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

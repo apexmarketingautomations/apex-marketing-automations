@@ -556,10 +556,13 @@ async function validateMetaCredentials() {
   }
 
   try {
-    const { seedDefaultPolicyRules } = await import("./autonomy/seedPolicyRules");
-    await seedDefaultPolicyRules();
-  } catch (autonomySeedErr) {
-    console.error("[STARTUP] Autonomy policy seed failed (non-fatal):", autonomySeedErr);
+    const { runProductionSeed } = await import("./intelligence/productionSeed");
+    const seedResult = await runProductionSeed();
+    if (!seedResult.ready) {
+      console.warn("[STARTUP] ⚠️ Apex Intelligence production seed completed with issues — check logs above");
+    }
+  } catch (intSeedErr) {
+    console.error("[STARTUP] Apex Intelligence production seed failed (non-fatal):", intSeedErr);
   }
 
   const DISABLE_BACKGROUND_WORKERS = process.env.DISABLE_BACKGROUND_WORKERS === "true";

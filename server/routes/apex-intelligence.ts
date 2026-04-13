@@ -12,6 +12,7 @@ import { getPriorityActions, getOperatorActionSummary, dismissAction, snoozeActi
 import { getCrossPlatformPatterns, getPlaybookRecommendationsForAccount } from "../intelligence/crossPlatformPatterns";
 import { getSystemHealthReport } from "../intelligence/systemHealthOrchestrator";
 import { approveAction, rollbackAction, markFailed, resumeAction, getActionAuditTrail } from "../autonomy/decisionEngine";
+import { verifyIntelligenceTables, runProductionSeed } from "../intelligence/productionSeed";
 
 function asyncHandler(fn: (req: any, res: any, next: any) => Promise<any>) {
   return (req: any, res: any, next: any) => fn(req, res, next).catch(next);
@@ -592,6 +593,22 @@ export function registerApexIntelligenceRoutes(app: Express) {
     const action = await rollbackAction(id);
     if (!action) return res.status(404).json({ error: "Action not found or cannot be rolled back" });
     res.json(action);
+  }));
+
+  app.get("/api/intelligence/readiness", asyncHandler(async (req, res) => {
+    if (!(await isApexParentUser(req))) {
+      return res.status(403).json({ error: "Apex parent access required" });
+    }
+    const verification = await verifyIntelligenceTables();
+    res.json(verification);
+  }));
+
+  app.post("/api/intelligence/production-seed", asyncHandler(async (req, res) => {
+    if (!(await isApexParentUser(req))) {
+      return res.status(403).json({ error: "Apex parent access required" });
+    }
+    const result = await runProductionSeed();
+    res.json(result);
   }));
 }
 

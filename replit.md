@@ -64,9 +64,10 @@ Apex Marketing Automations is a multi-tenant SaaS platform that centralizes busi
 | `server/services/laylaAccountResolver.ts` | Resolves Layla account ID and protected accounts |
 | `server/startupPatches.ts` | Idempotent DB patches on every startup |
 | `server/seed.ts` | Database seeding |
+| `server/intelligence/productionSeed.ts` | Production seed + readiness verification for Apex Intelligence — runs on every startup, idempotent |
 | `server/autonomy/decisionEngine.ts` | Autonomy decision engine — classifies actions into safety classes, evaluates policies |
 | `server/autonomy/safetyPolicy.ts` | Safety policy evaluator — deterministic rules for auth boundaries, payment, destructive actions |
-| `server/autonomy/seedPolicyRules.ts` | Seeds default autonomy policy rules on startup |
+| `server/autonomy/seedPolicyRules.ts` | Seeds default autonomy policy rules (called by productionSeed) |
 
 ### Frontend
 | File/Directory | Purpose |
