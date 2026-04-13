@@ -3,6 +3,7 @@ import { vapiCallLogs } from "@shared/schema";
 import { eq, isNotNull, sql, desc } from "drizzle-orm";
 import { aiChat, isAIConfigured } from "./aiGateway";
 import { vapiConfig } from "./routes/helpers";
+import { emitCallAnalyzed, emitCallPatternsInjected } from "./intelligence/apexLearningFeed";
 
 const OUTBOUND_SPECIALIST_ID = "e30434f7-e7e0-4be7-8b89-40c384a52b4a";
 const AUTO_INJECT_EVERY_N_CALLS = 5;
@@ -167,6 +168,7 @@ export async function analyzeCallTranscript(callId: number): Promise<CallAnalysi
     }
 
     await db.update(vapiCallLogs).set({ analysis }).where(eq(vapiCallLogs.id, callId));
+    emitCallAnalyzed(call.subAccountId || 0, callId, analysis.outcome, analysis.engagement_score, analysis.agent_score);
     console.log(`[CALL-INTEL] Analyzed call ${callId}: outcome=${analysis.outcome}, engagement=${analysis.engagement_score}, agent=${analysis.agent_score}`);
     return analysis;
   } catch (err) {
@@ -412,6 +414,7 @@ export async function injectPatternsIntoAgent(assistantId: string): Promise<{ su
     return { success: false, promptPreview: "Failed to update assistant prompt" };
   }
 
+  emitCallPatternsInjected(report.total_calls_analyzed, report.conversion_rate, report.avg_engagement);
   console.log(`[CALL-INTEL] Injected patterns from ${report.total_calls_analyzed} calls into assistant ${assistantId}`);
   return { success: true, promptPreview: newPrompt.slice(-1500) };
 }

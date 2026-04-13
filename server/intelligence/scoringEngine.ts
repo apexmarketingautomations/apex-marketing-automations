@@ -6,8 +6,23 @@ import {
   deals, emailCampaigns, digitalCards, appointments,
   reviews, metaAdCampaigns, messages
 } from "@shared/schema";
+import { emitScoreUpdated } from "./apexLearningFeed";
 
 type ScoreBand = "critical" | "low" | "medium" | "high" | "excellent";
+
+async function upsertAndEmitScore(params: {
+  accountId: number;
+  entityType: string;
+  entityId: string;
+  scoreType: string;
+  scoreValue: number;
+  scoreBand: ScoreBand;
+  explanation: string;
+  inputs: Record<string, unknown>;
+}): Promise<void> {
+  await storage.upsertIntelligenceScore(params);
+  emitScoreUpdated(params.accountId, params.scoreType, params.entityType, params.entityId, params.scoreValue, params.scoreBand);
+}
 
 function getBand(value: number): ScoreBand {
   if (value <= 20) return "critical";
@@ -43,7 +58,7 @@ export async function calculateLeadIntentScore(accountId: number, contactId: num
   score += e.total > 10 ? 15 : e.total > 5 ? 10 : e.total > 0 ? 5 : 0;
   score = Math.min(score, 100);
 
-  await storage.upsertIntelligenceScore({
+  await upsertAndEmitScore({
     accountId,
     entityType: "contact",
     entityId: String(contactId),
@@ -92,7 +107,7 @@ export async function calculateSiteHealthScore(accountId: number, siteId: number
   score += hasContent ? 15 : 0;
   score = Math.min(score, 100);
 
-  await storage.upsertIntelligenceScore({
+  await upsertAndEmitScore({
     accountId,
     entityType: "site",
     entityId: String(siteId),
@@ -125,7 +140,7 @@ export async function calculateDomainHealthScore(accountId: number, domainId: nu
 
   score = Math.min(score, 100);
 
-  await storage.upsertIntelligenceScore({
+  await upsertAndEmitScore({
     accountId,
     entityType: "domain",
     entityId: String(domainId),
@@ -175,7 +190,7 @@ export async function calculateAccountMaturityScore(accountId: number): Promise<
 
   score = Math.min(score, 100);
 
-  await storage.upsertIntelligenceScore({
+  await upsertAndEmitScore({
     accountId,
     entityType: "account",
     entityId: String(accountId),
@@ -223,7 +238,7 @@ export async function calculateLaunchReadinessScore(accountId: number): Promise<
 
   score = Math.min(score, 100);
 
-  await storage.upsertIntelligenceScore({
+  await upsertAndEmitScore({
     accountId,
     entityType: "account",
     entityId: String(accountId),
@@ -243,7 +258,7 @@ export async function calculateWorkflowEffectivenessScore(accountId: number): Pr
   inputs.totalWorkflows = allWorkflows.length;
 
   if (allWorkflows.length === 0) {
-    await storage.upsertIntelligenceScore({
+    await upsertAndEmitScore({
       accountId,
       entityType: "account",
       entityId: String(accountId),
@@ -278,7 +293,7 @@ export async function calculateWorkflowEffectivenessScore(accountId: number): Pr
 
   score = Math.min(score, 100);
 
-  await storage.upsertIntelligenceScore({
+  await upsertAndEmitScore({
     accountId,
     entityType: "account",
     entityId: String(accountId),
@@ -298,7 +313,7 @@ export async function calculateCampaignEffectivenessScore(accountId: number): Pr
   inputs.totalCampaigns = campaigns.length;
 
   if (campaigns.length === 0) {
-    await storage.upsertIntelligenceScore({
+    await upsertAndEmitScore({
       accountId,
       entityType: "account",
       entityId: String(accountId),
@@ -330,7 +345,7 @@ export async function calculateCampaignEffectivenessScore(accountId: number): Pr
 
   score = Math.min(score, 100);
 
-  await storage.upsertIntelligenceScore({
+  await upsertAndEmitScore({
     accountId,
     entityType: "account",
     entityId: String(accountId),
@@ -350,7 +365,7 @@ export async function calculatePipelineHealthScore(accountId: number): Promise<v
   inputs.totalDeals = allDeals.length;
 
   if (allDeals.length === 0) {
-    await storage.upsertIntelligenceScore({
+    await upsertAndEmitScore({
       accountId,
       entityType: "account",
       entityId: String(accountId),
@@ -384,7 +399,7 @@ export async function calculatePipelineHealthScore(accountId: number): Promise<v
 
   score = Math.min(score, 100);
 
-  await storage.upsertIntelligenceScore({
+  await upsertAndEmitScore({
     accountId,
     entityType: "account",
     entityId: String(accountId),
@@ -442,7 +457,7 @@ export async function calculateMessagingPerformanceScore(accountId: number): Pro
 
   score = Math.min(score, 100);
 
-  await storage.upsertIntelligenceScore({
+  await upsertAndEmitScore({
     accountId,
     entityType: "account",
     entityId: String(accountId),
@@ -462,7 +477,7 @@ export async function calculateReputationHealthScore(accountId: number): Promise
   inputs.totalReviews = allReviews.length;
 
   if (allReviews.length === 0) {
-    await storage.upsertIntelligenceScore({
+    await upsertAndEmitScore({
       accountId,
       entityType: "account",
       entityId: String(accountId),
@@ -493,7 +508,7 @@ export async function calculateReputationHealthScore(accountId: number): Promise
 
   score = Math.min(score, 100);
 
-  await storage.upsertIntelligenceScore({
+  await upsertAndEmitScore({
     accountId,
     entityType: "account",
     entityId: String(accountId),
@@ -513,7 +528,7 @@ export async function calculateCalendarConversionScore(accountId: number): Promi
   inputs.totalAppointments = allAppts.length;
 
   if (allAppts.length === 0) {
-    await storage.upsertIntelligenceScore({
+    await upsertAndEmitScore({
       accountId,
       entityType: "account",
       entityId: String(accountId),
@@ -547,7 +562,7 @@ export async function calculateCalendarConversionScore(accountId: number): Promi
 
   score = Math.min(score, 100);
 
-  await storage.upsertIntelligenceScore({
+  await upsertAndEmitScore({
     accountId,
     entityType: "account",
     entityId: String(accountId),
@@ -567,7 +582,7 @@ export async function calculateDigitalCardEffectivenessScore(accountId: number):
   inputs.totalCards = cards.length;
 
   if (cards.length === 0) {
-    await storage.upsertIntelligenceScore({
+    await upsertAndEmitScore({
       accountId,
       entityType: "account",
       entityId: String(accountId),
@@ -602,7 +617,7 @@ export async function calculateDigitalCardEffectivenessScore(accountId: number):
 
   score = Math.min(score, 100);
 
-  await storage.upsertIntelligenceScore({
+  await upsertAndEmitScore({
     accountId,
     entityType: "account",
     entityId: String(accountId),
@@ -622,7 +637,7 @@ export async function calculateAdToLeadQualityScore(accountId: number): Promise<
   inputs.totalAdCampaigns = adCampaigns.length;
 
   if (adCampaigns.length === 0) {
-    await storage.upsertIntelligenceScore({
+    await upsertAndEmitScore({
       accountId,
       entityType: "account",
       entityId: String(accountId),
@@ -656,7 +671,7 @@ export async function calculateAdToLeadQualityScore(accountId: number): Promise<
 
   score = Math.min(score, 100);
 
-  await storage.upsertIntelligenceScore({
+  await upsertAndEmitScore({
     accountId,
     entityType: "account",
     entityId: String(accountId),
@@ -716,7 +731,7 @@ export async function calculateModuleAdoptionScore(accountId: number): Promise<v
   inputs.modulesUsed = modulesUsed;
   inputs.moduleCount = modulesUsed.length;
 
-  await storage.upsertIntelligenceScore({
+  await upsertAndEmitScore({
     accountId,
     entityType: "account",
     entityId: String(accountId),
@@ -736,7 +751,7 @@ export async function calculateIntegrationHealthScore(accountId: number): Promis
   inputs.totalIntegrations = healthRows.length;
 
   if (healthRows.length === 0) {
-    await storage.upsertIntelligenceScore({
+    await upsertAndEmitScore({
       accountId,
       entityType: "account",
       entityId: String(accountId),
@@ -765,7 +780,7 @@ export async function calculateIntegrationHealthScore(accountId: number): Promis
 
   score = Math.min(score, 100);
 
-  await storage.upsertIntelligenceScore({
+  await upsertAndEmitScore({
     accountId,
     entityType: "account",
     entityId: String(accountId),

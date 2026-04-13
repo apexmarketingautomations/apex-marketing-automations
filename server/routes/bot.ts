@@ -11,6 +11,11 @@ import { executeTool, getTool } from "../operator/toolRegistry";
 import type { OperatorContext } from "../operator/types";
 import { buildOperatorSystemPrompt } from "../operatorPrompt";
 import { requireActiveSubscription, checkPlanLimitMiddleware } from "../subscriptionGuard";
+import {
+  emitOperatorConversation,
+  emitOperatorToolExecution,
+  emitOperatorActionApproval,
+} from "../intelligence/apexLearningFeed";
 
 const subscriptionGuard = requireActiveSubscription();
 const aiRequestsGuard = checkPlanLimitMiddleware("ai_requests");
@@ -384,6 +389,7 @@ export function registerBotRoutes(app: Express) {
           await storage.resolvePendingAction(pendingAction.id, "expired");
         } else if (CONFIRM_PATTERNS.test(userMsg)) {
           await storage.resolvePendingAction(pendingAction.id, "approved");
+          emitOperatorActionApproval(subAccountId, pendingAction.toolName, pendingAction.summary, true);
 
           try { await storage.createAgentMessage({ sessionId, role: "user", content: userMsg }); } catch {}
 
@@ -426,6 +432,7 @@ export function registerBotRoutes(app: Express) {
           return;
         } else if (REJECT_PATTERNS.test(userMsg)) {
           await storage.resolvePendingAction(pendingAction.id, "rejected");
+          emitOperatorActionApproval(subAccountId, pendingAction.toolName, pendingAction.summary, false);
 
           try { await storage.createAgentMessage({ sessionId, role: "user", content: userMsg }); } catch {}
 
@@ -452,6 +459,8 @@ export function registerBotRoutes(app: Express) {
         ...history,
         { role: "user", content: userMsg },
       ];
+
+      emitOperatorConversation(subAccountId, "inbound", userMsg, { sessionId });
 
       try {
         await storage.createAgentMessage({ sessionId, role: "user", content: userMsg });
@@ -658,11 +667,16 @@ export function registerBotRoutes(app: Express) {
             : operatorContext;
 
           let result: any;
+          const toolStartMs = Date.now();
           try {
             result = await executeTool(toolCall.name, params, execContext);
           } catch (toolError: any) {
             result = { success: false, error: toolError.message || "Tool execution failed" };
           }
+          emitOperatorToolExecution(subAccountId, toolCall.name, !!result?.success, Date.now() - toolStartMs, {
+            sessionId,
+            hasData: !!result?.data,
+          });
 
           const doneLabels: Record<string, string> = {
             detectMissingSetup: "Scan complete",
@@ -695,6 +709,10 @@ export function registerBotRoutes(app: Express) {
       if (!closed) {
         sendSSEData(res, { done: true, fullText: fullAssistantText, sessionId });
         res.end();
+      }
+
+      if (fullAssistantText) {
+        emitOperatorConversation(subAccountId, "outbound", fullAssistantText, { sessionId });
       }
 
       clearInterval(keepalive);

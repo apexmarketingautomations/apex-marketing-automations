@@ -236,6 +236,25 @@ Full platform intelligence layer that interprets all platform data and delivers 
 
 **Types** (`server/autonomy/types.ts`): `ActionRequest`, `ActionResult`, `ActionHandler`, `EntityChange`, `ActionAuditEntry`
 
+### Apex Learning Feed — Central Intelligence Pipeline
+
+**Learning Feed** (`server/intelligence/apexLearningFeed.ts`): Central module that ensures every signal in the system flows into the `universal_events` table for the Apex brain to learn from. Closes gaps where subsystems were writing to their own tables but bypassing the universal event pipeline.
+
+**Event Sources Wired:**
+| Source | Events Emitted | Module |
+|---|---|---|
+| Operator Conversations | `operator_conversation` (inbound + outbound) | `operator` |
+| Operator Tool Calls | `operator_tool_executed` (with timing, success/fail) | `operator` |
+| Pending Action Approvals | `operator_action_approved`, `operator_action_rejected` | `operator` |
+| Scoring Engine (23 upserts) | `score_updated` (all 12 dimensions + per-entity) | `intelligence-scoring` |
+| Agent Brain Tasks | `agent_task_completed`, `agent_task_failed` | `agent-brain` |
+| Agent Briefings | `agent_briefing_generated` | `agent-brain` |
+| Call Intelligence | `call_analyzed`, `call_patterns_injected` | `call-intelligence` |
+| Autonomy Gaps | `autonomy_gap_detected` (per gap type per account) | `autonomy` |
+| Autonomy Actions | `autonomy_action_completed`, `autonomy_action_failed` | `autonomy` |
+
+**How it works**: Each emitter calls `emitUniversalEvent()` which batches events (2s flush, max 50 per batch) into the `universal_events` table and increments `apex_module_coverage` counts. The EventBus bridge (`server/eventBus.ts` line 118) also pipes all EventBus events through the same pathway. Together, this creates a single source of truth for the entire platform's activity history.
+
 ## External Services & API Keys
 
 | Service | Env Variable | Purpose |

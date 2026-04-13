@@ -5,6 +5,7 @@ import { checkAndContinueAuth } from "./postAuthContinuation";
 import { executeAction } from "./safeActionsEngine";
 import { evaluatePolicy } from "./decisionEngine";
 import { emitUniversalEvent } from "../intelligence/eventEmitter";
+import { emitAutonomyGapDetected, emitAutonomyActionResult } from "../intelligence/apexLearningFeed";
 import type { ActionCategory } from "./types";
 
 const ORCHESTRATOR_INTERVAL_MS = 10 * 60 * 1000;
@@ -104,6 +105,14 @@ export async function runOrchestrationCycle(): Promise<OrchestrationCycleResult>
     try {
       const gaps = await detectGapsForAccount(account.id);
       gapsDetected += gaps.length;
+
+      if (gaps.length > 0) {
+        const gapTypeCounts = new Map<string, number>();
+        for (const g of gaps) gapTypeCounts.set(g.actionType, (gapTypeCounts.get(g.actionType) || 0) + 1);
+        for (const [gapType, count] of gapTypeCounts) {
+          emitAutonomyGapDetected(account.id, gapType, count);
+        }
+      }
 
       if (gaps.length === 0) continue;
 
@@ -347,6 +356,11 @@ async function executeAndRecordAction(
       updatedAt: new Date(),
     });
   }
+
+  emitAutonomyActionResult(accountId, actionType, completed, {
+    correlationId,
+    error: failed ? actionResult.error : undefined,
+  });
 
   return {
     actionId: autonomyActionId,

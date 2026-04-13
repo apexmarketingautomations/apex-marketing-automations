@@ -8,6 +8,7 @@ import { calculateHealthScore, generateGrowthReport } from "./strategicAdvisor";
 import { getToolManifest } from "./toolRegistry";
 import { recordDecisionMemory, recordOutcomeMemory } from "./episodicMemory";
 import type { ContextPacket } from "./cognitiveTypes";
+import { emitAgentTaskResult, emitAgentBriefing } from "../intelligence/apexLearningFeed";
 
 const AI_TASK_SYSTEM_PROMPT = `You are the Apex Autonomous Agent Brain — an elite AI system that monitors business accounts 24/7 and makes intelligent decisions about what actions to take.
 
@@ -352,6 +353,8 @@ Do NOT use bullet points or markdown. Write flowing prose.`;
     seen: false,
   }).returning().execute();
 
+  emitAgentBriefing(subAccountId, summary, completed.length, failed.length);
+
   return {
     summary: briefing.summary,
     tasksCompleted: briefing.tasksCompleted || 0,
@@ -391,6 +394,11 @@ export async function recordTaskOutcomeAsMemory(
       { taskType: task.taskType, tool: task.toolUsed, priority: task.priority },
       "task-completion"
     );
+    emitAgentTaskResult(subAccountId, task.taskType, task.title, isSuccess, {
+      tool: task.toolUsed,
+      priority: task.priority,
+      error: task.error?.substring(0, 200),
+    });
   } catch (err: any) {
     console.error("[AGENT-BRAIN] Outcome memory recording failed:", err.message);
   }

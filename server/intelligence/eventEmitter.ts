@@ -279,6 +279,25 @@ export const EVENT_TYPES = {
 
   // ---- Operator / System ----
   OPERATOR_COMMAND: "operator_command",
+  OPERATOR_CONVERSATION: "operator_conversation",
+  OPERATOR_TOOL_EXECUTED: "operator_tool_executed",
+  OPERATOR_ACTION_APPROVED: "operator_action_approved",
+  OPERATOR_ACTION_REJECTED: "operator_action_rejected",
+
+  // ---- Agent Brain ----
+  AGENT_TASK_COMPLETED: "agent_task_completed",
+  AGENT_TASK_FAILED: "agent_task_failed",
+  AGENT_BRIEFING_GENERATED: "agent_briefing_generated",
+  AGENT_BRAIN_CYCLE: "agent_brain_cycle",
+
+  // ---- Call Intelligence ----
+  CALL_ANALYZED: "call_analyzed",
+  CALL_PATTERNS_INJECTED: "call_patterns_injected",
+
+  // ---- Autonomy ----
+  AUTONOMY_GAP_DETECTED: "autonomy_gap_detected",
+  AUTONOMY_ACTION_COMPLETED: "autonomy_action_completed",
+  AUTONOMY_ACTION_FAILED: "autonomy_action_failed",
 } as const;
 
 export type EventType = typeof EVENT_TYPES[keyof typeof EVENT_TYPES];
