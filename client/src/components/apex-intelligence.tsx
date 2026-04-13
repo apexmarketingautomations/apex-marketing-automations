@@ -17,7 +17,7 @@ const TABS: { id: TabId; label: string; icon: typeof Brain }[] = [
   { id: "chat", label: "Operator", icon: Brain },
   { id: "agent", label: "Agent", icon: Bot },
   { id: "memory", label: "Memory", icon: BookOpen },
-  { id: "apex", label: "Brain", icon: Activity },
+  { id: "apex", label: "Apex Brain", icon: Activity },
 ];
 
 export interface ApexIntelligenceProps {
