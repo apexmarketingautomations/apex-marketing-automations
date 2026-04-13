@@ -1,0 +1,74 @@
+Add this requirement to the current Apex Intelligence implementation and publishing standard:
+
+PRODUCTION SEED / LIVE DEPLOYMENT REQUIREMENT
+
+Do not treat Apex Intelligence as production-ready unless the correct production seed path exists and is verified.
+
+This is mandatory.
+
+When publishing live to production, the system must ensure the proper production seed is applied for Apex Intelligence so the live environment has the required baseline records, defaults, registries, coverage state, and operator-visible readiness — not an empty shell with code present but missing live data/config.
+
+REQUIRED PRODUCTION SEED COVERAGE
+
+The production seed must safely create or verify all required baseline Apex Intelligence records, including where applicable:
+- module event registry defaults
+- module coverage defaults
+- intelligence configuration defaults
+- score type definitions / baseline score config
+- recommendation type definitions / status defaults
+- integration health baseline states
+- execution timeline baseline/system markers
+- operator dashboard baseline panels/config records if needed
+- launch/readiness baseline records if needed
+- any required internal enum/config/state records used by the UI and workers
+- any required default mappings that the intelligence system depends on to function correctly in production
+
+PRODUCTION SEED RULES
+
+1. The production seed must be:
+- idempotent
+- safe to run more than once
+- non-destructive
+- additive / corrective only
+- environment-aware
+
+2. Do not use fake/demo/sample/test seed data in production.
+
+3. Separate:
+- development/demo seed data
+from
+- production baseline seed data
+
+4. The production publish path must explicitly verify:
+- required tables exist
+- required indexes/constraints exist
+- required baseline registry/config rows exist
+- workers will not boot into an empty/misaligned state
+- operator UI will not render broken/blank because seed-dependent records are missing
+
+5. If any required production seed step is missing, publishing should fail clearly or raise a launch-blocking warning.
+
+REQUIRED IMPLEMENTATION
+
+Add a production seed mechanism and verification path that does all of the following:
+- defines exactly which Apex Intelligence baseline records must exist in production
+- runs them safely on publish/deploy or via an explicit production-ready setup command
+- logs what was seeded, skipped, or already present
+- verifies successful completion
+- surfaces production seed/readiness state visibly in the operator/admin layer if appropriate
+
+REQUIRED OUTPUT
+
+Return exactly this:
+1. Apex Intelligence production baseline records required
+2. Production seed files/scripts added or updated
+3. How production seed is triggered
+4. How idempotency is enforced
+5. How production differs from dev/demo seed
+6. What publish-time verification was added
+7. What happens if required seed is missing
+8. What was implemented
+9. What is still missing
+
+Hard rule:
+Do not publish Apex Intelligence live with code-only completion. Production must have the proper baseline seed and verification so the live system is actually initialized, usable, and trustworthy.
