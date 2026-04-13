@@ -1,0 +1,149 @@
+Harden this task before any more code changes.
+
+This is a **live production codebase**.  
+Treat the current Apex Intelligence work as **Phase 1 only** and lock it down against scope creep, unsafe coupling, and cross-tenant leakage.
+
+## Mission
+Keep the current Apex Intelligence task limited to:
+
+- `reportOutcome` intake
+- normalized outcome storage
+- tightly scoped read APIs
+- safe contributor hooks in **Sentinel**, **Crash Ingest**, and **Layla**
+- the **Apex Brain** tab in the Intelligence UI
+
+Do **not** let this expand into a platform rewrite, cross-agent brain rewrite, or global orchestration system in this pass.
+
+## Absolute non-negotiables
+Do **not**:
+- redesign existing agent architecture
+- replace `memoryEngine`, `episodicMemory`, `cognitiveLayer`, or `agentBrain`
+- introduce broad cross-agent abstractions
+- create unsafe global learning across tenants
+- expose account data across accounts or sub-accounts
+- add background learning loops in this pass unless already isolated and approved
+- add cross-agent write-back into production memory automatically
+- add new contributors beyond the currently approved ones unless justified first
+- change working Sentinel / Crash / Layla behavior beyond minimal reporting hooks
+- build fake “intelligence” claims that are just UI decoration
+
+## Harden the current implementation around these rules
+
+### 1. Scope lock
+Keep this pass limited to:
+- `server/operator/apexIntelligence.ts`
+- minimal route registration / API exposure
+- minimal contributor hook calls in approved systems
+- minimal dashboard/tab wiring
+
+No broad refactors. No extra agent integrations. No new “smart” layers unless required.
+
+### 2. Tenant safety
+Every outcome and query must be explicitly scoped.
+
+Require and preserve:
+- `subAccountId` where applicable
+- `accountId` / tenant context where applicable
+- source agent identity
+- niche / domain context where applicable
+
+Do not allow:
+- accidental cross-account aggregation in user-facing responses
+- global learnings to show customer-specific patterns
+- account-specific outcomes to be treated as system-wide truth
+
+### 3. Signal discipline
+Treat `reportOutcome` as **structured telemetry**, not as permission to shove arbitrary blobs into storage.
+
+Require a normalized shape with fields like:
+- source agent
+- tenant/account/sub-account scope
+- niche/domain
+- action
+- subject
+- outcome/result
+- timestamp
+- confidence
+- metadata
+
+Reject or safely ignore malformed payloads.
+
+### 4. Hook discipline
+Hooks added to Sentinel, Crash Ingest, and Layla must be:
+- additive only
+- post-action only
+- non-blocking
+- failure-tolerant
+
+If `reportOutcome` fails:
+- it must not break the main production flow
+- it must fail safely and log appropriately
+
+### 5. No unsafe automatic learning yet
+In this pass, Apex Intelligence may **observe and aggregate**.
+
+It must **not**:
+- automatically write lessons into shared memory for all agents
+- mutate decision policy globally
+- auto-tune agent behavior
+- auto-promote weak patterns into strategy
+
+If any write-back path exists, it must be disabled, deferred, or explicitly admin/internal-only.
+
+### 6. API hardening
+Any `/api/intelligence/apex` or related endpoint must:
+- require auth
+- verify account ownership / access scope
+- avoid returning other tenants’ signals
+- avoid leaking internal system-wide intelligence to the wrong audience
+- expose only the minimum useful fields
+
+### 7. UI hardening
+The Apex Brain tab must remain:
+- operator/internal facing
+- read-oriented
+- clearly labeled as aggregated outcomes/signals
+- not a fake “AI knows everything” screen
+
+Do not imply autonomous learning beyond what is actually implemented.
+
+### 8. Data retention / noise control
+Do not let the system become a junk drawer.
+
+Require:
+- deduplication or idempotency where practical
+- rate limiting / noise suppression where practical
+- confidence-aware display
+- bounded storage behavior or at least a clear retention follow-up note
+
+### 9. What remains untouched
+Keep these untouched unless a verified blocker requires a minimal exception:
+- existing agent business logic
+- accident scheduler
+- Sentinel Level 3 Home Services work
+- memory architecture rewrites
+- cognitive layer redesign
+- pricing / billing / account permission structures
+- customer-facing dashboards outside the approved Intelligence UI scope
+
+## Return format before any more code changes
+Return only:
+- exact files currently changed
+- what is already implemented
+- what must be tightened/hardened
+- any tenant-safety risks
+- any coupling risks
+- any remaining production risks
+- exact minimal fixes proposed
+
+## Completion standard
+Do not call this hardened until all are true:
+- contributor hooks are non-blocking
+- tenant scoping is enforced
+- API access is scoped and safe
+- no unsafe cross-tenant intelligence leakage exists
+- no automatic memory write-back is active unless explicitly approved
+- UI language matches actual implementation
+- no new scope was added beyond this task
+
+Do not add more features before this hardening review is complete.

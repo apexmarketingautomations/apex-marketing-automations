@@ -1,0 +1,229 @@
+Audit and verify that the **dashboard is fully connected, functioning correctly, and firing properly across the site and all connected services**.
+
+This is a **live production verification task**, not a redesign and not a cosmetic pass.
+
+## Mission
+
+Perform a full end-to-end systems audit of the dashboard and all related service connections to confirm that:
+
+* dashboard data is actually connected to live sources
+* widgets, cards, counts, charts, alerts, and status states are rendering correct data
+* actions triggered from the dashboard fire correctly
+* backend services, APIs, jobs, hooks, and integrations are responding correctly
+* no silent failures, stale values, broken polling, bad mappings, or fake UI states exist
+* the dashboard reflects real platform state across all relevant services
+
+## What to verify
+
+### 1. Data connectivity
+
+Confirm every dashboard module is connected to a real backend source and not showing:
+
+* hardcoded values
+* stale cached placeholders
+* broken fallbacks
+* mock/demo values
+* orphaned fields
+* mismapped statuses
+
+For each dashboard component, identify:
+
+* source route/service
+* source table/store/state
+* transformation layer
+* refresh/update behavior
+* failure behavior
+
+### 2. Real-time / refresh behavior
+
+Verify whether dashboard values:
+
+* update on load
+* update after user actions
+* refresh after service events
+* refresh after background jobs
+* correctly handle polling / invalidation / websocket / event-driven updates
+* do not remain stale after successful backend changes
+
+### 3. Action firing
+
+Test every meaningful dashboard action and confirm it actually fires through the correct path.
+
+Examples:
+
+* buttons
+* CTA actions
+* scan / sync / refresh triggers
+* alert actions
+* retry actions
+* lead / incident actions
+* messaging actions
+* status acknowledgements
+* operational task launches
+
+For each action verify:
+
+* click path
+* handler path
+* backend route/function called
+* result state change
+* UI state update after success/failure
+* logging / audit / error behavior
+
+### 4. Cross-service integrity
+
+Trace the dashboard through all connected services it depends on.
+
+Confirm proper flow across:
+
+* frontend dashboard components
+* API routes
+* service modules
+* background jobs
+* schedulers
+* event hooks
+* storage/database reads
+* integrations
+* any service-specific logic feeding dashboard state
+
+The goal is to prove the dashboard is not just rendering — it is correctly wired end-to-end.
+
+### 5. Error and fallback handling
+
+Verify behavior when:
+
+* source service returns empty data
+* route fails
+* integration times out
+* service is partially available
+* stale data exists
+* auth/scope is missing
+* a dependent service is disabled
+
+Confirm the dashboard:
+
+* fails safely
+* shows accurate fallback state
+* does not pretend success
+* does not keep misleading counts
+* does not hide real failures
+
+### 6. Tenant / account / role scoping
+
+Verify that dashboard data and actions are properly scoped by:
+
+* account
+* sub-account
+* niche/module
+* role/permissions
+* tenant/service boundaries
+
+Confirm there is:
+
+* no cross-account leakage
+* no wrong-account counts
+* no mixed-tenant cards
+* no admin-only data leaking into lower scopes
+* no niche leakage between unrelated modules
+
+### 7. Logging and observability
+
+Confirm that dashboard-triggered actions and dashboard-fed services produce enough logs to debug failures.
+
+Identify:
+
+* where logs already exist
+* where silent failure risk exists
+* where missing instrumentation makes the dashboard hard to trust
+
+### 8. UI truthfulness
+
+Verify the dashboard does not claim things are:
+
+* online
+* synced
+* connected
+* active
+* healthy
+* completed
+* updated
+
+unless that is actually true from the underlying service state.
+
+No fake green states. No decorative telemetry. No misleading system pulse indicators.
+
+## Output requirements
+
+Return only:
+
+### A. Dashboard modules audited
+
+List each major dashboard section/component audited.
+
+### B. Connection map
+
+For each section, list:
+
+* frontend component
+* route/service feeding it
+* backend source
+* status: connected / partially connected / broken / misleading
+
+### C. Actions verified
+
+List each dashboard action tested and whether it:
+
+* fired correctly
+* partially worked
+* failed
+* updated UI correctly
+* updated backend correctly
+
+### D. Failures and weak points
+
+List every real issue found, including:
+
+* stale state
+* broken route
+* wrong data mapping
+* action not firing
+* UI not updating
+* false healthy state
+* scope leakage
+* missing logs
+* fragile refresh logic
+
+### E. Production risks
+
+List the highest-risk items that could mislead operators or break live workflows.
+
+### F. Exact fixes required
+
+Give the minimum safe fix list, prioritized by:
+
+1. critical live issues
+2. broken actions
+3. misleading UI states
+4. stale/refresh problems
+5. logging/instrumentation gaps
+
+## Constraints
+
+* do not redesign the dashboard
+* do not refactor unrelated platform systems
+* do not broaden into new feature work
+* do not mark things healthy without verifying the actual data path
+* do not give vague summaries
+* do not give a cosmetic UX review unless it affects operational truthfulness
+
+## Final instruction
+
+Treat this as a **truth audit** of the dashboard across the live platform.
+
+I need to know:
+
+* what is truly connected
+* what is truly firing
+* what is lying
+* what is broken
+* what must be fixed first
