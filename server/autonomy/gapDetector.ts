@@ -225,8 +225,10 @@ async function detectRecommendationGaps(accountId: number): Promise<DetectedGap[
 async function detectSetupGaps(accountId: number): Promise<DetectedGap[]> {
   const gaps: DetectedGap[] = [];
   const connections = await storage.getIntegrationConnections(accountId);
-  const connectedProviders = new Set(
-    connections.filter(c => c.status === "connected").map(c => c.provider)
+  const handledProviders = new Set(
+    connections
+      .filter(c => c.status === "connected" || c.status === "pending")
+      .map(c => c.provider)
   );
 
   const essentialProviders = [
@@ -236,7 +238,7 @@ async function detectSetupGaps(accountId: number): Promise<DetectedGap[]> {
   ];
 
   for (const ep of essentialProviders) {
-    if (!connectedProviders.has(ep.provider) && !connectedProviders.has(`${ep.provider}-ads`)) {
+    if (!handledProviders.has(ep.provider) && !handledProviders.has(`${ep.provider}-ads`)) {
       gaps.push({
         accountId,
         gapType: `missing_integration:${ep.provider}`,

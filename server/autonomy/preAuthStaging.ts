@@ -203,7 +203,7 @@ export async function stageIntegration(
 
   try {
     const existingConnection = await storage.getIntegrationConnection(accountId, provider);
-    if (existingConnection?.status === "connected") {
+    if (existingConnection?.status === "connected" || existingConnection?.status === "pending") {
       return null;
     }
 

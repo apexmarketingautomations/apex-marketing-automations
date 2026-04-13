@@ -118,9 +118,17 @@ export async function runOrchestrationCycle(): Promise<OrchestrationCycleResult>
           .filter(a => ["proposed", "approved", "executing", "pending_auth"].includes(a.status))
           .map(a => a.actionType)
       );
+      const pendingActionKeys = new Set(
+        recentActions
+          .filter(a => ["proposed", "approved", "executing", "pending_auth"].includes(a.status))
+          .map(a => `${a.actionType}:${a.targetEntityId || ""}`)
+      );
 
       const eligibleGaps = resolveDependencies(gaps, completedActionTypes);
-      const newGaps = eligibleGaps.filter(g => !pendingActionTypes.has(g.actionType));
+      const newGaps = eligibleGaps.filter(g => {
+        const gapKey = `${g.actionType}:${g.context.provider || g.context.entityId || ""}`;
+        return !pendingActionTypes.has(g.actionType) && !pendingActionKeys.has(gapKey);
+      });
 
       let dispatched = 0;
       for (const gap of newGaps) {
@@ -205,6 +213,7 @@ async function dispatchGap(
         const policyResult = await evaluatePolicy({
           accountId,
           actionType: gap.actionType,
+          actionCategory: gap.category,
           confidenceScore: gap.confidenceScore,
           targetModule: "integrations",
           targetEntityType: "integration",
@@ -248,6 +257,7 @@ async function dispatchGap(
   const policyResult = await evaluatePolicy({
     accountId,
     actionType: gap.actionType,
+    actionCategory: gap.category,
     confidenceScore: gap.confidenceScore,
     targetModule: gap.context.targetModule as string | undefined,
     targetEntityType: gap.context.entityType as string | undefined,

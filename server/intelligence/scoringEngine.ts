@@ -62,7 +62,8 @@ export async function calculateSiteHealthScore(accountId: number, siteId: number
   let score = 0;
   const inputs: Record<string, unknown> = {};
 
-  const hasContent = site.htmlContent && (site.htmlContent as string).length > 500;
+  const siteDataStr = typeof site.siteData === "string" ? site.siteData : JSON.stringify(site.siteData ?? "");
+  const hasContent = siteDataStr.length > 500;
   inputs.hasContent = hasContent;
   score += hasContent ? 25 : 0;
 
@@ -70,7 +71,7 @@ export async function calculateSiteHealthScore(accountId: number, siteId: number
   inputs.hasDomain = hasDomain;
   score += hasDomain ? 20 : 0;
 
-  const isPublished = site.isPublished;
+  const isPublished = !!site.publishedUrl;
   inputs.isPublished = isPublished;
   score += isPublished ? 20 : 0;
 
@@ -146,7 +147,7 @@ export async function calculateAccountMaturityScore(accountId: number): Promise<
   inputs.contacts = contactCount?.count ?? 0;
   score += Math.min((contactCount?.count ?? 0) * 2, 15);
 
-  const [siteCount] = await db.select({ count: sql<number>`count(*)::int` }).from(savedSites).where(eq(savedSites.subAccountId, accountId));
+  const [siteCount] = await db.select({ count: sql<number>`count(*)::int` }).from(savedSites);
   inputs.sites = siteCount?.count ?? 0;
   score += (siteCount?.count ?? 0) > 0 ? 10 : 0;
 
@@ -191,7 +192,7 @@ export async function calculateLaunchReadinessScore(accountId: number): Promise<
   let score = 0;
 
   const [siteCount] = await db.select({ count: sql<number>`count(*)::int` }).from(savedSites)
-    .where(and(eq(savedSites.subAccountId, accountId), eq(savedSites.isPublished, true)));
+    .where(sql`${savedSites.publishedUrl} IS NOT NULL`);
   inputs.publishedSites = siteCount?.count ?? 0;
   score += (siteCount?.count ?? 0) > 0 ? 20 : 0;
 
@@ -205,7 +206,7 @@ export async function calculateLaunchReadinessScore(accountId: number): Promise<
   score += (contactCount?.count ?? 0) >= 5 ? 15 : (contactCount?.count ?? 0) > 0 ? 10 : 0;
 
   const [autoCount] = await db.select({ count: sql<number>`count(*)::int` }).from(liveAutomations)
-    .where(and(eq(liveAutomations.subAccountId, accountId), eq(liveAutomations.active, true)));
+    .where(and(eq(liveAutomations.subAccountId, accountId), eq(liveAutomations.status, "compiled")));
   inputs.activeAutomations = autoCount?.count ?? 0;
   score += (autoCount?.count ?? 0) > 0 ? 20 : 0;
 
@@ -696,7 +697,7 @@ export async function calculateModuleAdoptionScore(accountId: number): Promise<v
   if ((reviewCount?.count ?? 0) > 0) { modulesUsed.push("reviews"); score += 10; }
   inputs.hasReviews = (reviewCount?.count ?? 0) > 0;
 
-  const [siteCount] = await db.select({ count: sql<number>`count(*)::int` }).from(savedSites).where(eq(savedSites.subAccountId, accountId));
+  const [siteCount] = await db.select({ count: sql<number>`count(*)::int` }).from(savedSites);
   if ((siteCount?.count ?? 0) > 0) { modulesUsed.push("sites"); score += 10; }
   inputs.hasSites = (siteCount?.count ?? 0) > 0;
 
@@ -794,7 +795,7 @@ export async function runAllScoresForAccount(accountId: number): Promise<void> {
       calculateIntegrationHealthScore(accountId),
     ]);
 
-    const siteRows = await db.select({ id: savedSites.id }).from(savedSites).where(eq(savedSites.subAccountId, accountId));
+    const siteRows = await db.select({ id: savedSites.id }).from(savedSites);
     for (const site of siteRows) {
       await calculateSiteHealthScore(accountId, site.id);
     }
