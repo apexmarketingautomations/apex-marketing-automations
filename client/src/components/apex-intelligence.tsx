@@ -187,7 +187,7 @@ export function ApexIntelligence({
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
-                      className={`relative flex-1 min-w-0 flex items-center justify-center gap-1 py-2 px-1.5 rounded-md text-[11px] font-semibold tracking-wide transition-all whitespace-nowrap ${
+                      className={`relative flex-none flex items-center justify-center gap-1 py-2 px-2.5 rounded-md text-[11px] font-semibold tracking-wide transition-all whitespace-nowrap ${
                         isActive ? "text-white" : "text-slate-400 hover:text-slate-200"
                       }`}
                       data-testid={`tab-intel-${tab.id}`}
