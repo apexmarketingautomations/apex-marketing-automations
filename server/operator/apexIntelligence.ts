@@ -59,7 +59,8 @@ export function reportOutcome(payload: AgentOutcome): void {
     return;
   }
 
-  const dedupKey = `${payload.agentName}:${payload.action}:${payload.subject}:${payload.subAccountId}`;
+  const entityId = payload.metadata?.incidentId ?? payload.metadata?.reportId ?? payload.metadata?.conversationId ?? "";
+  const dedupKey = `${payload.agentName}:${payload.action}:${payload.subject}:${payload.subAccountId}:${entityId}`;
   const now = Date.now();
   if (dedupKey === lastOutcomeKey && now - lastOutcomeTs < DEDUP_WINDOW_MS) {
     return;
