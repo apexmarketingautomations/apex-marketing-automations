@@ -28,7 +28,20 @@ const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 })();
 
 export function registerMediaRoutes(app: Express) {
-  app.post("/api/media/upload", upload.array("files", 10), async (req: Request, res: Response) => {
+  app.post("/api/media/upload", (req: Request, res: Response, next: Function) => {
+    upload.array("files", 10)(req, res, (err: any) => {
+      if (err) {
+        if (err.message?.includes("Only image and video")) {
+          return res.status(400).json({ message: err.message });
+        }
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(400).json({ message: "File exceeds 50MB size limit" });
+        }
+        return res.status(400).json({ message: err.message || "Upload error" });
+      }
+      next();
+    });
+  }, async (req: Request, res: Response) => {
     try {
       console.log(JSON.stringify({
         stage: "upload_received",
