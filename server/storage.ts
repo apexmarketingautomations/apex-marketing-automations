@@ -88,6 +88,9 @@ import {
   universalEvents, entityIdentityMap, entityActivityRollups,
   intelligenceScores, intelligenceRecommendations, integrationHealthState, executionTimeline,
   apexModuleEventRegistry, apexModuleCoverage,
+  autonomyActions, autonomyPolicyRules,
+  type AutonomyAction, type InsertAutonomyAction,
+  type AutonomyPolicyRule, type InsertAutonomyPolicyRule,
   type UniversalEvent, type InsertUniversalEvent,
   type EntityIdentityMap, type InsertEntityIdentityMap,
   type EntityActivityRollup, type InsertEntityActivityRollup,
@@ -476,6 +479,18 @@ export interface IStorage {
   upsertModuleCoverage(data: InsertApexModuleCoverage): Promise<ApexModuleCoverage>;
   getModuleCoverage(accountId: number, moduleGroup?: string): Promise<ApexModuleCoverage[]>;
   incrementModuleCoverageCount(accountId: number, moduleGroup: string, eventType: string): Promise<void>;
+
+  createAutonomyAction(data: InsertAutonomyAction): Promise<AutonomyAction>;
+  getAutonomyAction(id: number): Promise<AutonomyAction | undefined>;
+  getAutonomyActions(accountId: number, opts?: { status?: string; safetyClass?: string; actionType?: string; limit?: number }): Promise<AutonomyAction[]>;
+  updateAutonomyAction(id: number, data: Partial<InsertAutonomyAction> & { executedAt?: Date; resolvedAt?: Date; updatedAt?: Date }): Promise<AutonomyAction | undefined>;
+  getAutonomyActionsByStatus(status: string, limit?: number): Promise<AutonomyAction[]>;
+
+  createAutonomyPolicyRule(data: InsertAutonomyPolicyRule): Promise<AutonomyPolicyRule>;
+  getAutonomyPolicyRule(actionType: string): Promise<AutonomyPolicyRule | undefined>;
+  getAutonomyPolicyRules(activeOnly?: boolean): Promise<AutonomyPolicyRule[]>;
+  updateAutonomyPolicyRule(id: number, data: Partial<InsertAutonomyPolicyRule>): Promise<AutonomyPolicyRule | undefined>;
+  upsertAutonomyPolicyRule(data: InsertAutonomyPolicyRule): Promise<AutonomyPolicyRule>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2511,6 +2526,83 @@ export class DatabaseStorage implements IStorage {
         coverageScore: Math.round((1 / totalEventTypes) * 100),
       });
     }
+  }
+
+  async createAutonomyAction(data: InsertAutonomyAction): Promise<AutonomyAction> {
+    const [row] = await db.insert(autonomyActions).values(data).returning();
+    return row;
+  }
+
+  async getAutonomyAction(id: number): Promise<AutonomyAction | undefined> {
+    const [row] = await db.select().from(autonomyActions).where(eq(autonomyActions.id, id));
+    return row;
+  }
+
+  async getAutonomyActions(accountId: number, opts?: { status?: string; safetyClass?: string; actionType?: string; limit?: number }): Promise<AutonomyAction[]> {
+    const conditions = [eq(autonomyActions.accountId, accountId)];
+    if (opts?.status) conditions.push(eq(autonomyActions.status, opts.status));
+    if (opts?.safetyClass) conditions.push(eq(autonomyActions.safetyClass, opts.safetyClass));
+    if (opts?.actionType) conditions.push(eq(autonomyActions.actionType, opts.actionType));
+    return db.select().from(autonomyActions)
+      .where(and(...conditions))
+      .orderBy(desc(autonomyActions.createdAt))
+      .limit(opts?.limit ?? 1000);
+  }
+
+  async updateAutonomyAction(id: number, data: Partial<InsertAutonomyAction> & { executedAt?: Date; resolvedAt?: Date; updatedAt?: Date }): Promise<AutonomyAction | undefined> {
+    const updateData = { ...data, updatedAt: data.updatedAt ?? new Date() };
+    const [row] = await db.update(autonomyActions).set(updateData).where(eq(autonomyActions.id, id)).returning();
+    return row;
+  }
+
+  async getAutonomyActionsByStatus(status: string, limit?: number): Promise<AutonomyAction[]> {
+    return db.select().from(autonomyActions)
+      .where(eq(autonomyActions.status, status))
+      .orderBy(desc(autonomyActions.createdAt))
+      .limit(limit ?? 1000);
+  }
+
+  async createAutonomyPolicyRule(data: InsertAutonomyPolicyRule): Promise<AutonomyPolicyRule> {
+    const [row] = await db.insert(autonomyPolicyRules).values(data).returning();
+    return row;
+  }
+
+  async getAutonomyPolicyRule(actionType: string): Promise<AutonomyPolicyRule | undefined> {
+    const [row] = await db.select().from(autonomyPolicyRules)
+      .where(eq(autonomyPolicyRules.actionType, actionType));
+    return row;
+  }
+
+  async getAutonomyPolicyRules(activeOnly?: boolean): Promise<AutonomyPolicyRule[]> {
+    if (activeOnly) {
+      return db.select().from(autonomyPolicyRules).where(eq(autonomyPolicyRules.active, true));
+    }
+    return db.select().from(autonomyPolicyRules);
+  }
+
+  async updateAutonomyPolicyRule(id: number, data: Partial<InsertAutonomyPolicyRule>): Promise<AutonomyPolicyRule | undefined> {
+    const [row] = await db.update(autonomyPolicyRules).set(data).where(eq(autonomyPolicyRules.id, id)).returning();
+    return row;
+  }
+
+  async upsertAutonomyPolicyRule(data: InsertAutonomyPolicyRule): Promise<AutonomyPolicyRule> {
+    const [row] = await db.insert(autonomyPolicyRules)
+      .values(data)
+      .onConflictDoUpdate({
+        target: [autonomyPolicyRules.actionType],
+        set: {
+          defaultSafetyClass: data.defaultSafetyClass,
+          requiresExternalAuth: data.requiresExternalAuth,
+          requiresPayment: data.requiresPayment,
+          isDestructive: data.isDestructive,
+          isReversible: data.isReversible,
+          maxConfidenceForAutoExec: data.maxConfidenceForAutoExec,
+          description: data.description,
+          active: data.active,
+        },
+      })
+      .returning();
+    return row;
   }
 }
 

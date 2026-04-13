@@ -2695,3 +2695,68 @@ export const executionTimeline = pgTable("execution_timeline", {
 export const insertExecutionTimelineSchema = createInsertSchema(executionTimeline).omit({ id: true, createdAt: true });
 export type InsertExecutionTimeline = z.infer<typeof insertExecutionTimelineSchema>;
 export type ExecutionTimeline = typeof executionTimeline.$inferSelect;
+
+// ---- Autonomy Layer ----
+
+export const AUTONOMY_SAFETY_CLASSES = ["auto_execute", "auto_prepare", "require_review", "blocked"] as const;
+export type AutonomySafetyClass = typeof AUTONOMY_SAFETY_CLASSES[number];
+
+export const AUTONOMY_STATUSES = [
+  "proposed", "approved", "executing", "completed", "failed",
+  "blocked", "pending_auth", "resumed", "rolled_back",
+] as const;
+export type AutonomyStatus = typeof AUTONOMY_STATUSES[number];
+
+export const autonomyActions = pgTable("autonomy_actions", {
+  id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
+  actionType: text("action_type").notNull(),
+  actionCategory: text("action_category").notNull(),
+  targetModule: text("target_module"),
+  targetEntityType: text("target_entity_type"),
+  targetEntityId: text("target_entity_id"),
+  safetyClass: text("safety_class").notNull(),
+  confidenceScore: real("confidence_score").default(0).notNull(),
+  status: text("status").notNull().default("proposed"),
+  reason: text("reason"),
+  explanation: text("explanation"),
+  preparedPayload: jsonb("prepared_payload"),
+  executionResult: jsonb("execution_result"),
+  rollbackPayload: jsonb("rollback_payload"),
+  createdBySystem: boolean("created_by_system").default(true).notNull(),
+  dependsOnActionId: integer("depends_on_action_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  executedAt: timestamp("executed_at"),
+  resolvedAt: timestamp("resolved_at"),
+}, (table) => ({
+  accountStatusIdx: index("aa_account_status_idx").on(table.accountId, table.status),
+  safetyClassIdx: index("aa_safety_class_idx").on(table.safetyClass),
+  actionTypeIdx: index("aa_action_type_idx").on(table.actionType),
+  createdAtIdx: index("aa_created_at_idx").on(table.createdAt),
+}));
+
+export const insertAutonomyActionSchema = createInsertSchema(autonomyActions).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertAutonomyAction = z.infer<typeof insertAutonomyActionSchema>;
+export type AutonomyAction = typeof autonomyActions.$inferSelect;
+
+export const autonomyPolicyRules = pgTable("autonomy_policy_rules", {
+  id: serial("id").primaryKey(),
+  actionType: text("action_type").notNull().unique(),
+  defaultSafetyClass: text("default_safety_class").notNull(),
+  requiresExternalAuth: boolean("requires_external_auth").default(false).notNull(),
+  requiresPayment: boolean("requires_payment").default(false).notNull(),
+  isDestructive: boolean("is_destructive").default(false).notNull(),
+  isReversible: boolean("is_reversible").default(true).notNull(),
+  maxConfidenceForAutoExec: real("max_confidence_for_auto_exec").default(0.85).notNull(),
+  description: text("description"),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  actionTypeIdx: index("apr_action_type_idx").on(table.actionType),
+  activeIdx: index("apr_active_idx").on(table.active),
+}));
+
+export const insertAutonomyPolicyRuleSchema = createInsertSchema(autonomyPolicyRules).omit({ id: true, createdAt: true });
+export type InsertAutonomyPolicyRule = z.infer<typeof insertAutonomyPolicyRuleSchema>;
+export type AutonomyPolicyRule = typeof autonomyPolicyRules.$inferSelect;

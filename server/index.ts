@@ -555,6 +555,13 @@ async function validateMetaCredentials() {
     console.error("[STARTUP] Seed failed (non-fatal):", seedErr);
   }
 
+  try {
+    const { seedDefaultPolicyRules } = await import("./autonomy/seedPolicyRules");
+    await seedDefaultPolicyRules();
+  } catch (autonomySeedErr) {
+    console.error("[STARTUP] Autonomy policy seed failed (non-fatal):", autonomySeedErr);
+  }
+
   const DISABLE_BACKGROUND_WORKERS = process.env.DISABLE_BACKGROUND_WORKERS === "true";
   if (DISABLE_BACKGROUND_WORKERS) {
     console.log("[STARTUP] ⏸ Background workers DISABLED (DISABLE_BACKGROUND_WORKERS=true)");
