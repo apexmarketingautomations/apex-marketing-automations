@@ -216,6 +216,25 @@ Full platform intelligence layer that interprets all platform data and delivers 
 - **Network**: Platform benchmarks and cross-account patterns
 - **Timeline**: Execution history
 
+## Autonomy Layer — Safe Actions Engine
+
+**Safe Actions Engine** (`server/autonomy/safeActionsEngine.ts`): Central dispatcher that receives action requests, validates safety classification, dispatches to registered handlers, and logs audit trails via execution_timeline.
+
+**Action Handlers** (25 total across 3 categories):
+- **Setup** (`server/autonomy/handlers/setupHandlers.ts`, 10 handlers): Create default pipelines, pipeline stages, workflows, alert rules, digital cards, live automations, notification preferences, readiness baselines, credit wallets, integration health tracking.
+- **Repair** (`server/autonomy/handlers/repairHandlers.ts`, 8 handlers): Fix orphaned deals, broken contact references, restore sentinel defaults, fix incomplete setup state, retry failed event logs, regenerate missing rollups, reconnect orphaned automations, fix stale integration health.
+- **Optimization** (`server/autonomy/handlers/optimizationHandlers.ts`, 7 handlers): Activate recommended defaults, enable lead capture on cards, adjust alert thresholds, queue best-next-action, activate draft automations, optimize workflow steps, promote high-intent leads.
+
+**Key Features**:
+- Each handler returns structured `ActionResult` with success/failure, entities affected, changes summary, and rollback capability
+- Rollback support for reversible actions (13 handlers support rollback)
+- Safety classification: `safe`, `needs_review`, `blocked`
+- Dry-run mode for previewing actions without executing
+- Batch execution support
+- All actions logged to `execution_timeline` for full audit trail
+
+**Types** (`server/autonomy/types.ts`): `ActionRequest`, `ActionResult`, `ActionHandler`, `EntityChange`, `ActionAuditEntry`
+
 ## External Services & API Keys
 
 | Service | Env Variable | Purpose |
