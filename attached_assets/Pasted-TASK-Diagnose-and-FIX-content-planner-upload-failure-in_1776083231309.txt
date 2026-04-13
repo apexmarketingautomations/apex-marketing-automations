@@ -1,0 +1,138 @@
+TASK: Diagnose and FIX content planner upload failure in production (Apex Marketing Automations)
+
+CONTEXT:
+- App is deployed and healthy (production confirmed)
+- APIs + pipelines working (OpenAI, Meta, Twilio, etc.)
+- Issue is isolated to CONTENT PLANNER upload (likely frontend → backend → storage flow)
+- No assumption of infra failure — treat as logic / payload / parsing issue first
+
+OBJECTIVE:
+Identify why content planner uploads are failing and implement a hardened, production-safe fix with validation + logging
+
+---
+
+STEP 1 — TRACE THE FLOW
+Map full upload path:
+UI (upload form / file input)
+→ API endpoint (route handling upload)
+→ parser (CSV / JSON / text transform)
+→ validation layer
+→ database or storage write
+
+Log each stage explicitly:
+- request received
+- file detected (type, size)
+- parse success/failure
+- validation pass/fail
+- DB write success/fail
+
+---
+
+STEP 2 — ADD HARD LOGGING (NO SILENT FAILS)
+Inject structured logs:
+
+console.log({
+  stage: "upload_received",
+  fileType,
+  fileSize
+})
+
+console.log({
+  stage: "parse_result",
+  success: true/false,
+  error
+})
+
+console.log({
+  stage: "db_write",
+  success: true/false,
+  error
+})
+
+FAIL FAST with explicit error responses
+
+---
+
+STEP 3 — VALIDATE INPUT STRICTLY
+Check:
+- file type (csv/json only)
+- max size limits
+- required fields in planner (date, content, platform, etc.)
+
+Reject invalid uploads with clear response:
+"Invalid content planner format — missing required fields"
+
+---
+
+STEP 4 — FIX COMMON FAILURE POINTS
+Check and correct:
+
+1. Multipart handling
+- ensure middleware (multer / formData) is correctly configured
+
+2. Body parsing
+- confirm file isn’t being lost in req.body vs req.file
+
+3. Encoding issues
+- normalize to UTF-8 before parsing
+
+4. CSV parsing
+- enforce headers
+- handle empty rows safely
+
+5. Async handling
+- ensure await on DB writes
+- no silent promise failures
+
+---
+
+STEP 5 — HARDEN DATABASE WRITE
+- wrap in try/catch
+- validate transformed data BEFORE insert
+- log rejected rows (don’t crash whole upload)
+
+---
+
+STEP 6 — RETURN CLEAN RESPONSE
+Success:
+{
+  success: true,
+  rowsProcessed: X
+}
+
+Failure:
+{
+  success: false,
+  stage: "parse" | "validation" | "db",
+  error: "clear message"
+}
+
+---
+
+STEP 7 — TEST (MANDATORY)
+Run:
+- valid planner file → should fully insert
+- invalid file → should fail cleanly
+- edge case (empty rows, bad format)
+
+---
+
+STEP 8 — PRODUCTION SAFETY
+- no crashes
+- no silent failures
+- partial success allowed (log rejected rows)
+
+---
+
+FINAL OUTPUT:
+- Root cause identified
+- Fix implemented
+- Logs confirm full working upload pipeline
+- Content planner uploads successfully in production
+
+DO NOT:
+- touch unrelated systems (Sentinel, pipelines, webhooks)
+- introduce new architecture
+- skip logging or validation
+
+FOCUS: isolate → fix → harden → verify

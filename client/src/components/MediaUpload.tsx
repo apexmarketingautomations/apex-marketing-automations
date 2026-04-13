@@ -1,30 +1,57 @@
 import { useState, useRef } from "react";
-import { Upload, X, FileImage, Film, Loader2 } from "lucide-react";
+import { Upload, X, FileImage, Film, Loader2, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+
+interface UploadedItem {
+  originalName: string;
+  filename: string;
+  fileUrl: string;
+  fileType: string;
+  size: number;
+  mime: string;
+  mediaId?: number;
+}
 
 interface MediaUploadProps {
   subAccountId?: number;
-  onUploaded?: (items: any[]) => void;
+  postId?: number;
+  onUploaded?: (items: UploadedItem[]) => void;
 }
 
-export default function MediaUpload({ subAccountId, onUploaded }: MediaUploadProps) {
+export default function MediaUpload({ subAccountId, postId, onUploaded }: MediaUploadProps) {
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [recentUploads, setRecentUploads] = useState<UploadedItem[]>([]);
   const fileRef = useRef<HTMLInputElement | null>(null);
+
+  const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
   function onSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const chosen = e.target.files ? Array.from(e.target.files) : [];
-    setFiles(prev => [...prev, ...chosen]);
-    setError(null);
+    const valid = chosen.filter(f => {
+      if (f.size > MAX_FILE_SIZE) {
+        setError(`"${f.name}" exceeds 50MB limit`);
+        return false;
+      }
+      if (!f.type.startsWith("image/") && !f.type.startsWith("video/")) {
+        setError(`"${f.name}" is not a supported image or video file`);
+        return false;
+      }
+      return true;
+    });
+    if (valid.length) {
+      setFiles(prev => [...prev, ...valid]);
+      setError(null);
+    }
   }
 
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
     setDragOver(false);
     const dropped = Array.from(e.dataTransfer.files).filter(
-      f => f.type.startsWith("image/") || f.type.startsWith("video/")
+      f => (f.type.startsWith("image/") || f.type.startsWith("video/")) && f.size <= MAX_FILE_SIZE
     );
     if (dropped.length) {
       setFiles(prev => [...prev, ...dropped]);
@@ -44,15 +71,23 @@ export default function MediaUpload({ subAccountId, onUploaded }: MediaUploadPro
       const fd = new FormData();
       files.forEach(f => fd.append("files", f));
       if (subAccountId) fd.append("sub_account_id", String(subAccountId));
+      if (postId) fd.append("post_id", String(postId));
       const res = await fetch("/api/media/upload", { method: "POST", body: fd, credentials: "include" });
+      const json = await res.json().catch(() => null);
       if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error || `Upload failed: ${res.status}`);
+        const msg = json?.error || `Upload failed (${res.status})`;
+        const stage = json?.stage ? ` [${json.stage}]` : "";
+        throw new Error(`${msg}${stage}`);
       }
-      const json = await res.json();
+      const items: UploadedItem[] = json?.uploaded || [];
       setFiles([]);
       if (fileRef.current) fileRef.current.value = "";
-      if (onUploaded) onUploaded(json.uploaded || []);
+      setRecentUploads(prev => [...items, ...prev].slice(0, 10));
+      if (onUploaded) onUploaded(items);
+
+      if (json?.errors?.length) {
+        setError(`${items.length} uploaded, ${json.errors.length} failed`);
+      }
     } catch (err: any) {
       setError(err.message || "Upload failed");
     } finally {
@@ -152,6 +187,38 @@ export default function MediaUpload({ subAccountId, onUploaded }: MediaUploadPro
             >
               Clear
             </Button>
+          </div>
+        </div>
+      )}
+
+      {recentUploads.length > 0 && (
+        <div className="space-y-1.5">
+          <span className="text-[10px] text-white/30 uppercase tracking-wider">Recently Uploaded</span>
+          <div className="grid grid-cols-4 gap-1.5">
+            {recentUploads.map((item, i) => (
+              <div
+                key={item.filename}
+                data-testid={`recent-upload-${i}`}
+                className="relative aspect-square rounded-lg overflow-hidden border border-white/10 bg-white/5"
+              >
+                {item.fileType === "video" ? (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <Film className="w-5 h-5 text-cyan-400/60" />
+                  </div>
+                ) : (
+                  <img
+                    src={item.fileUrl}
+                    alt={item.originalName}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                )}
+                <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-1 py-0.5">
+                  <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400 inline mr-0.5" />
+                  <span className="text-[8px] text-white/60 truncate">{item.originalName}</span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
