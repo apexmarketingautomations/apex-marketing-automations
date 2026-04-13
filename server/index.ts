@@ -1764,6 +1764,14 @@ RULES:
       }
 
       try {
+        const { startOrchestrator } = await import("./autonomy/orchestrator");
+        startOrchestrator();
+        console.log("[STARTUP] ✅ Autonomy orchestrator started (interval: 10min)");
+      } catch (err: any) {
+        console.error("[AUTONOMY-ORCH] Failed to start orchestrator:", err?.message);
+      }
+
+      try {
         const { drainQueuedBacklog } = await import("./operator/taskAgent");
         drainQueuedBacklog().then(result => {
           if (result.drained > 0 || result.failed > 0) {
