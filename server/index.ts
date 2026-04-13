@@ -555,16 +555,6 @@ async function validateMetaCredentials() {
     console.error("[STARTUP] Seed failed (non-fatal):", seedErr);
   }
 
-  try {
-    const { runProductionSeed } = await import("./intelligence/productionSeed");
-    const seedResult = await runProductionSeed();
-    if (!seedResult.ready) {
-      console.warn("[STARTUP] ⚠️ Apex Intelligence production seed completed with issues — check logs above");
-    }
-  } catch (intSeedErr) {
-    console.error("[STARTUP] Apex Intelligence production seed failed (non-fatal):", intSeedErr);
-  }
-
   const DISABLE_BACKGROUND_WORKERS = process.env.DISABLE_BACKGROUND_WORKERS === "true";
   if (DISABLE_BACKGROUND_WORKERS) {
     console.log("[STARTUP] ⏸ Background workers DISABLED (DISABLE_BACKGROUND_WORKERS=true)");
@@ -1695,6 +1685,17 @@ RULES:
     },
     async () => {
       log(`serving on port ${port}`);
+
+      try {
+        const { runProductionSeed } = await import("./intelligence/productionSeed");
+        const seedResult = await runProductionSeed();
+        if (!seedResult.ready) {
+          console.warn("[STARTUP] ⚠️ Apex Intelligence production seed completed with issues — check logs above");
+        }
+      } catch (intSeedErr) {
+        console.error("[STARTUP] Apex Intelligence production seed failed (non-fatal):", intSeedErr);
+      }
+
       if (!DISABLE_BACKGROUND_WORKERS) {
       console.log("[STARTUP] Starting post-listen background workers...");
       try {
