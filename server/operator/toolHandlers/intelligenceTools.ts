@@ -18,56 +18,139 @@ export const intelligenceTools: OperatorTool[] = [
       const account = await storage.getSubAccount(ctx.subAccountId);
       if (!account) return { success: false, error: "Account not found" };
 
+      const config = (account as any)?.config || {};
+      const aiPromptConfig = (account as any)?.aiPromptConfig || {};
       const missing: string[] = [];
+      const configured: string[] = [];
       const recommendations: string[] = [];
+      let totalChecks = 0;
 
+      totalChecks++;
       if (!account.twilioNumber) {
-        missing.push("No phone number assigned — SMS and voice calls won't work");
-        recommendations.push("Connect a Twilio phone number in Integrations");
+        missing.push("No phone number — SMS and voice calls disabled");
+        recommendations.push("Connect a Twilio phone number in Settings > Integrations");
+      } else {
+        configured.push(`Phone: ${account.twilioNumber}`);
       }
 
       const connections = await storage.getIntegrationConnections(ctx.subAccountId);
       const connectedProviders = new Set(connections.filter(c => c.status === "connected").map(c => c.provider));
+      const disconnected = connections.filter(c => c.status !== "connected");
 
+      totalChecks++;
       if (!connectedProviders.has("twilio")) {
         missing.push("Twilio not connected — no SMS capability");
         recommendations.push("Add Twilio credentials in Integrations");
+      } else {
+        configured.push("Twilio: connected");
+      }
+
+      totalChecks++;
+      const hasMetaPage = !!(account as any).metaPageId;
+      const hasMetaToken = !!(account as any).metaAccessToken;
+      if (!hasMetaPage || !hasMetaToken) {
+        missing.push("Meta/Instagram not connected — no DM automation");
+        recommendations.push("Connect your Meta page in Settings to enable Instagram/Facebook DMs");
+      } else {
+        configured.push(`Meta: Page connected (ID: ${(account as any).metaPageId})`);
+      }
+
+      totalChecks++;
+      const hasAiPrompt = !!(aiPromptConfig.systemPrompt || aiPromptConfig.customPrompt || config.customAiPrompt);
+      const autoReplyEnabled = !!(aiPromptConfig.autoReplyEnabled || config.autoReplyEnabled);
+      if (!hasAiPrompt) {
+        missing.push("No AI prompt configured — DM auto-replies have no persona/instructions");
+        recommendations.push("Set up an AI prompt in Settings > AI Configuration");
+      } else {
+        configured.push("AI Prompt: configured");
+      }
+      if (!autoReplyEnabled) {
+        missing.push("Auto-reply disabled — incoming DMs won't get automatic responses");
+        recommendations.push("Enable auto-reply in Settings > AI Configuration");
+      } else {
+        configured.push("Auto-reply: enabled");
+      }
+
+      totalChecks++;
+      const bookingLink = aiPromptConfig.bookingLink || config.bookingLink;
+      if (!bookingLink) {
+        missing.push("No booking link — AI can't direct leads to schedule appointments");
+        recommendations.push("Add a booking/calendar link in Settings");
+      } else {
+        configured.push(`Booking link: ${bookingLink}`);
       }
 
       const automations = await storage.getLiveAutomations(ctx.subAccountId);
+      totalChecks++;
       if (!automations || automations.length === 0) {
         missing.push("No active automations — leads won't receive auto-responses");
         recommendations.push("Create a lead auto-response workflow");
+      } else {
+        configured.push(`Automations: ${automations.length} active`);
       }
 
       const contacts = await storage.getContacts(ctx.subAccountId);
+      totalChecks++;
       if (!contacts || contacts.length === 0) {
-        missing.push("No contacts in CRM");
+        missing.push("No contacts in CRM — no lead database");
         recommendations.push("Import contacts or set up a lead capture form");
+      } else {
+        configured.push(`Contacts: ${contacts.length} in CRM`);
       }
 
       const stages = await storage.getPipelineStages(ctx.subAccountId);
+      totalChecks++;
       if (!stages || stages.length === 0) {
         missing.push("No pipeline stages — deal tracking disabled");
         recommendations.push("Create a sales pipeline with stages");
+      } else {
+        configured.push(`Pipeline: ${stages.length} stages configured`);
       }
 
       const sites = await storage.getSavedSites();
+      totalChecks++;
       if (!sites || sites.length === 0) {
-        missing.push("No landing pages — no online presence");
-        recommendations.push("Generate a landing page for your business");
+        missing.push("No landing pages — no web presence");
+        recommendations.push("Generate a landing page in Site Architect");
+      } else {
+        configured.push(`Sites: ${sites.length} landing pages`);
       }
+
+      totalChecks++;
+      if (!account.industry) {
+        missing.push("No industry set — AI can't tailor recommendations");
+        recommendations.push("Set your industry in Settings");
+      } else {
+        configured.push(`Industry: ${account.industry}`);
+      }
+
+      if (disconnected.length > 0) {
+        for (const dc of disconnected) {
+          missing.push(`Integration "${dc.provider}" is ${dc.status}`);
+          recommendations.push(`Reconnect ${dc.provider} in Integrations`);
+        }
+      }
+
+      const completionScore = Math.round(((totalChecks - missing.length) / totalChecks) * 100);
 
       return {
         success: true,
         data: {
           accountName: account.name,
           industry: account.industry,
+          configured,
           missing,
           recommendations,
-          completionScore: Math.round(((6 - missing.length) / 6) * 100),
+          completionScore: Math.max(0, Math.min(100, completionScore)),
+          totalChecks,
+          passedChecks: totalChecks - missing.length,
           hasPhone: !!account.twilioNumber,
+          hasMeta: hasMetaPage && hasMetaToken,
+          hasAiPrompt,
+          autoReplyEnabled,
+          hasBookingLink: !!bookingLink,
           integrationCount: connectedProviders.size,
+          disconnectedIntegrations: disconnected.map(d => d.provider),
           automationCount: automations?.length || 0,
           contactCount: contacts?.length || 0,
           pipelineConfigured: (stages?.length || 0) > 0,
@@ -75,7 +158,7 @@ export const intelligenceTools: OperatorTool[] = [
         },
       };
     },
-    summarizeForAudit: (_params, result) => `Setup scan: ${result.data?.missing?.length || 0} missing items, score ${result.data?.completionScore || 0}%.`,
+    summarizeForAudit: (_params, result) => `Setup scan: ${result.data?.passedChecks || 0}/${result.data?.totalChecks || 0} passed (${result.data?.completionScore || 0}%), ${result.data?.missing?.length || 0} items missing.`,
   },
   {
     name: "checkIntegrationHealth",
