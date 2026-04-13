@@ -6,6 +6,7 @@ import { sql, eq, and, gte, desc } from "drizzle-orm";
 import { universalEvents, integrationHealthState, entityIdentityMap } from "@shared/schema";
 import { runAllScoresForAccount } from "../intelligence/scoringEngine";
 import { runAllRecommendationsForAccount } from "../intelligence/recommendationEngine";
+import { getNetworkIntelligence, getAccountIntelligenceSummary } from "../intelligence/networkIntelligence";
 
 function asyncHandler(fn: (req: any, res: any, next: any) => Promise<any>) {
   return (req: any, res: any, next: any) => fn(req, res, next).catch(next);
@@ -184,6 +185,22 @@ export function registerApexIntelligenceRoutes(app: Express) {
       integrationHealth: healthySummary,
       recentTimeline: timeline,
     });
+  }));
+
+  app.get("/api/intelligence/ecosystem/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const ecosystemSummary = await getAccountIntelligenceSummary(subAccountId);
+    res.json(ecosystemSummary);
+  }));
+
+  app.get("/api/intelligence/network-patterns", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const networkIntel = await getNetworkIntelligence();
+    res.json(networkIntel);
   }));
 
   app.post("/api/intelligence/refresh/:subAccountId", asyncHandler(async (req, res) => {

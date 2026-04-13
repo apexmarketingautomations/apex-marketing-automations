@@ -143,6 +143,43 @@ Apex Marketing Automations is a multi-tenant SaaS platform that centralizes busi
 - **God Mode**: Admin-only advanced controls.
 - **Marketplace**: Snapshot/template marketplace.
 - **Industry Benchmarks**: Cross-account metrics aggregation (hourly).
+- **Apex Intelligence (Level 2)**: Full ecosystem intelligence, scoring, and recommendations — see below.
+
+### Apex Intelligence — Level 2 (Task #117)
+Full platform intelligence layer that interprets all platform data and delivers actionable insights.
+
+**Scoring Engine** (`server/intelligence/scoringEngine.ts`): 12 scoring dimensions computed per account:
+- `account_maturity_score` — Overall platform usage completeness
+- `launch_readiness_score` — Readiness to go live (sites, domains, automations, deals)
+- `workflow_effectiveness_score` — Automation depth (multi-step, AI-powered, trigger diversity)
+- `campaign_effectiveness_score` — Email campaign open/click rates vs volume
+- `pipeline_health_score` — Deal count, conversion rate, won revenue
+- `messaging_performance_score` — Delivery rates, response rates, avg response time
+- `reputation_health_score` — Review count, avg rating, response rate
+- `calendar_conversion_score` — Appointment volume, completion/cancellation rates
+- `digital_card_effectiveness_score` — Card views, saves, shares, lead capture
+- `ad_to_lead_quality_score` — Meta ads: CTR, CPL, lead volume
+- `module_adoption_score` — Tracks which of 10 modules are in use
+- `integration_health_score` — Health of all connected integrations
+- Per-entity scores: `site_health_score`, `domain_health_score`, `lead_intent_score` (per contact)
+
+**Recommendation Engine** (`server/intelligence/recommendationEngine.ts`): 14 generators producing prioritized, data-backed recommendations with `whyThisExists` explanations for all platform areas: domains, sites, leads, integrations, workflows, campaigns, pipeline, reputation, calendar, digital cards, ads, messaging, module adoption, and account setup.
+
+**Network Intelligence** (`server/intelligence/networkIntelligence.ts`): Cross-account anonymized pattern detection — platform benchmarks (avg, median, top 25%) and common failure patterns across all accounts.
+
+**Routes** (`server/routes/apex-intelligence.ts`):
+- `GET /api/intelligence/ecosystem/:subAccountId` — Full ecosystem health summary
+- `GET /api/intelligence/network-patterns` — Cross-account network intelligence
+- All existing routes: events, scores, recommendations, health, timeline, rollups, identity, summary, refresh
+
+**Frontend** (`client/src/pages/apex-intelligence.tsx`): Tabbed operator dashboard:
+- **Ecosystem**: Overall health ring, blockers, opportunities, per-module score cards, all scores bar chart
+- **Scores**: All 12 dimensions with explanations + benchmark comparison
+- **Opportunities**: Prioritized recommendations by critical/high/medium/low with data-backed explanations
+- **Events**: Live event stream + top events 7d
+- **Health**: Integration health details with status breakdown
+- **Network**: Platform benchmarks and cross-account patterns
+- **Timeline**: Execution history
 
 ## External Services & API Keys
 
