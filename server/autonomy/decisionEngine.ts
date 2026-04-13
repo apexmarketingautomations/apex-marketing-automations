@@ -64,7 +64,7 @@ export async function evaluatePolicy(
     decision = "deny";
   } else if (classification.pendingAuth) {
     decision = "pending_auth";
-  } else if (classification.safetyClass === "auto_execute") {
+  } else if (classification.safetyClass === "auto_execute" || classification.safetyClass === "auto_prepare") {
     decision = "approve";
   } else {
     decision = "escalate";

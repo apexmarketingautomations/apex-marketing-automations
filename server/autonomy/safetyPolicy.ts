@@ -221,7 +221,7 @@ function deriveStatus(safetyClass: AutonomySafetyClass, blocked: boolean, pendin
   if (blocked) return "blocked";
   if (pendingAuth) return "pending_auth";
   if (safetyClass === "auto_execute") return "approved";
-  if (safetyClass === "auto_prepare") return "proposed";
+  if (safetyClass === "auto_prepare") return "approved";
   return "proposed";
 }
 
