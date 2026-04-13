@@ -3,6 +3,7 @@ import { asyncHandler } from "./helpers";
 import * as schema from "@shared/schema";
 import { getTableColumns } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
+import { emitUniversalEvent } from "../intelligence/eventEmitter";
 
 const CACHE_HEADERS = { "Cache-Control": "public, max-age=300, s-maxage=300" };
 
@@ -17,16 +18,41 @@ export function registerPublicPlatformRoutes(app: Express) {
   app.get("/api/public/platform", asyncHandler(async (req, res) => {
     if (!cachedRoutes) cachedRoutes = extractRoutes(req.app as Express);
     if (!cachedSchema) cachedSchema = introspectSchema();
+    emitUniversalEvent({
+      eventType: "platform_manifest_viewed",
+      sourceModule: "public-platform",
+      metadata: {
+        path: "/api/public/platform",
+        referrer: req.headers.referer || req.headers.referrer || null,
+        userAgent: req.headers["user-agent"] || null,
+      },
+    });
     res.set(CACHE_HEADERS).json(getPlatformManifest(cachedRoutes, cachedSchema));
   }));
 
-  app.get("/api/public/platform/schema", asyncHandler(async (_req, res) => {
+  app.get("/api/public/platform/schema", asyncHandler(async (req, res) => {
     if (!cachedSchema) cachedSchema = introspectSchema();
+    emitUniversalEvent({
+      eventType: "platform_schema_viewed",
+      sourceModule: "public-platform",
+      metadata: {
+        path: "/api/public/platform/schema",
+        userAgent: req.headers["user-agent"] || null,
+      },
+    });
     res.set(CACHE_HEADERS).json(cachedSchema);
   }));
 
   app.get("/api/public/platform/routes", asyncHandler(async (req, res) => {
     if (!cachedRoutes) cachedRoutes = extractRoutes(req.app as Express);
+    emitUniversalEvent({
+      eventType: "platform_routes_viewed",
+      sourceModule: "public-platform",
+      metadata: {
+        path: "/api/public/platform/routes",
+        userAgent: req.headers["user-agent"] || null,
+      },
+    });
     res.set(CACHE_HEADERS).json(cachedRoutes);
   }));
 }

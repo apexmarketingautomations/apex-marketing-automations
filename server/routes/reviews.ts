@@ -838,7 +838,7 @@ export function registerReviewsRoutes(app: Express) {
   }
 
   app.post("/api/domains/check", asyncHandler(async (req, res) => {
-    const { domain } = req.body;
+    const { domain, subAccountId: checkSubAccountId } = req.body;
     if (!domain || typeof domain !== "string") {
       return res.status(400).json({ error: "domain is required" });
     }
@@ -850,6 +850,13 @@ export function registerReviewsRoutes(app: Express) {
 
     const tld = extractTld(normalizedDomain);
     const pricing = getPricing(tld);
+
+    emitUniversalEvent({
+      eventType: EVENT_TYPES.DOMAIN_SEARCHED,
+      sourceModule: "domains",
+      subAccountId: checkSubAccountId ? parseInt(checkSubAccountId) : undefined,
+      metadata: { domain: normalizedDomain, tld, action: "check" },
+    });
 
     const existing = await storage.getDomainByName(normalizedDomain);
     if (existing) {
@@ -878,7 +885,7 @@ export function registerReviewsRoutes(app: Express) {
   }));
 
   app.post("/api/domains/search", asyncHandler(async (req, res) => {
-    const { query } = req.body;
+    const { query, subAccountId: reqSubAccountId } = req.body;
     if (!query || typeof query !== "string") {
       return res.status(400).json({ error: "query is required" });
     }
@@ -887,6 +894,13 @@ export function registerReviewsRoutes(app: Express) {
     if (!baseName || !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(baseName)) {
       return res.status(400).json({ error: "Invalid domain name" });
     }
+
+    emitUniversalEvent({
+      eventType: EVENT_TYPES.DOMAIN_SEARCHED,
+      sourceModule: "domains",
+      subAccountId: reqSubAccountId ? parseInt(reqSubAccountId) : undefined,
+      metadata: { query, baseName },
+    });
 
     const rdapChecks = SEARCH_TLDS.map(async (tld) => {
       const fullDomain = `${baseName}${tld}`;
@@ -1030,6 +1044,16 @@ export function registerReviewsRoutes(app: Express) {
 
     if (parsed.data.siteId !== undefined && parsed.data.siteId !== null) {
       await storage.updateSavedSite(parsed.data.siteId, { customDomain: existing.domainName });
+      emitWithTimeline({
+        eventType: EVENT_TYPES.DOMAIN_ATTACHED,
+        sourceModule: "domains",
+        sourceTable: "domains",
+        sourceRecordId: String(id),
+        subAccountId: existing.subAccountId,
+        domainId: id,
+        siteId: parsed.data.siteId,
+        metadata: { domainName: existing.domainName, siteId: parsed.data.siteId },
+      }, `Domain assigned: ${existing.domainName}`, `Domain ${existing.domainName} linked to site`, "info");
     }
 
     try {

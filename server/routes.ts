@@ -95,8 +95,8 @@ export async function registerRoutes(
   registerMetaMessagingProductRoutes(app);
   registerMediaRoutes(app);
   registerChaturbateRoutes(app);
-  registerSiteTrackingRoutes(app);
   registerApexIntelligenceRoutes(app);
+  registerSiteTrackingRoutes(app);
 
   return httpServer;
 }

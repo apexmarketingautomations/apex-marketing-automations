@@ -105,6 +105,7 @@ export function registerFunnelRoutes(app: Express) {
       return res.json(existing);
     }
 
+    const accountId = subAccountId ? parseInt(subAccountId) : null;
     const lead = await storage.createFunnelLead({
       sessionId,
       slug,
@@ -112,7 +113,15 @@ export function registerFunnelRoutes(app: Express) {
       step: 0,
       status: "in_progress",
       formData: {},
-      subAccountId: subAccountId ? parseInt(subAccountId) : null,
+      subAccountId: accountId,
+    });
+    emitUniversalEvent({
+      eventType: "funnel_started",
+      sourceModule: "funnel",
+      sourceTable: "funnel_leads",
+      sourceRecordId: String(lead.id),
+      subAccountId: accountId ?? undefined,
+      metadata: { sessionId, slug, niche },
     });
     res.status(201).json(lead);
   }));
@@ -130,6 +139,14 @@ export function registerFunnelRoutes(app: Express) {
       formData: merged,
       lastSeenAt: new Date(),
     } as any);
+    emitUniversalEvent({
+      eventType: "funnel_step_updated",
+      sourceModule: "funnel",
+      sourceTable: "funnel_leads",
+      sourceRecordId: String(lead.id),
+      subAccountId: lead.subAccountId ?? undefined,
+      metadata: { sessionId, slug: lead.slug, step: step ?? lead.step },
+    });
     res.json(updated);
   }));
 
@@ -141,6 +158,14 @@ export function registerFunnelRoutes(app: Express) {
     if (!lead) return res.status(404).json({ error: "Session not found" });
 
     await storage.updateFunnelLead(lead.id, { lastSeenAt: new Date() } as any);
+    emitUniversalEvent({
+      eventType: "funnel_heartbeat",
+      sourceModule: "funnel",
+      sourceTable: "funnel_leads",
+      sourceRecordId: String(lead.id),
+      subAccountId: lead.subAccountId ?? undefined,
+      metadata: { sessionId, slug: lead.slug, step: lead.step, status: lead.status },
+    });
     res.json({ ok: true });
   }));
 
@@ -255,6 +280,44 @@ export function registerFunnelRoutes(app: Express) {
 
     triggerWorkflows("funnel_submitted");
 
+    emitWithTimeline({
+      eventType: "funnel_completed",
+      sourceModule: "funnel",
+      sourceTable: "funnel_leads",
+      sourceRecordId: String(lead.id),
+      subAccountId: accountId,
+      contactId: contactId ?? undefined,
+      metadata: {
+        sessionId: lead.sessionId,
+        slug: lead.slug,
+        niche: lead.niche,
+        contactName: fd.firstName || fd.name || "Funnel Lead",
+        contactEmail: fd.email || null,
+        contactPhone: fd.phone || null,
+        appointmentId,
+        hasAppointment: !!appointmentId,
+      },
+    }, `Funnel completed: ${lead.slug}`, `Lead captured from ${lead.niche} funnel`, "info");
+
+    if (contactId) {
+      emitUniversalEvent({
+        eventType: EVENT_TYPES.LEAD_CREATED,
+        sourceModule: "funnel",
+        sourceTable: "funnel_leads",
+        sourceRecordId: String(lead.id),
+        subAccountId: accountId,
+        contactId,
+        metadata: {
+          source: "funnel",
+          slug: lead.slug,
+          niche: lead.niche,
+          contactName: fd.firstName || fd.name || "Funnel Lead",
+          contactEmail: fd.email || null,
+          contactPhone: fd.phone || null,
+        },
+      });
+    }
+
     res.json({ success: true, contactId, appointmentId, lead: updated });
   }));
 
@@ -270,6 +333,14 @@ export function registerFunnelRoutes(app: Express) {
         console.log(`[FUNNEL] Marked session ${lead.sessionId} as abandoned (slug: ${lead.slug})`);
 
         const accountId = lead.subAccountId || 1;
+        emitUniversalEvent({
+          eventType: "funnel_abandoned",
+          sourceModule: "funnel",
+          sourceTable: "funnel_leads",
+          sourceRecordId: String(lead.id),
+          subAccountId: accountId,
+          metadata: { sessionId: lead.sessionId, slug: lead.slug, niche: lead.niche, step: lead.step },
+        });
         try {
           const allWorkflows = await storage.getWorkflows();
           const matching = allWorkflows.filter((w: any) => {

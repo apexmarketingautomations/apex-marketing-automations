@@ -374,6 +374,8 @@ export function registerSitesRoutes(app: Express) {
     if (req.body.publishedUrl !== undefined) updates.publishedUrl = req.body.publishedUrl;
 
     const wasPublished = !site.isPublished && req.body.isPublished;
+    const wasUnpublished = site.isPublished && req.body.isPublished === false;
+    const domainAssigned = req.body.customDomain !== undefined && req.body.customDomain !== site.customDomain;
     if (req.body.isPublished !== undefined) updates.isPublished = req.body.isPublished;
 
     const updated = await storage.updateSavedSite(id, updates);
@@ -386,8 +388,18 @@ export function registerSitesRoutes(app: Express) {
         sourceRecordId: String(id),
         subAccountId: site.subAccountId,
         siteId: id,
-        metadata: { name: site.name, customDomain: site.customDomain },
+        metadata: { name: site.name, customDomain: updates.customDomain || site.customDomain },
       }, `Site published: ${site.name}`, `Website "${site.name}" is now live`, "info");
+    } else if (wasUnpublished) {
+      emitWithTimeline({
+        eventType: "site_unpublished",
+        sourceModule: "sites",
+        sourceTable: "saved_sites",
+        sourceRecordId: String(id),
+        subAccountId: site.subAccountId,
+        siteId: id,
+        metadata: { name: site.name },
+      }, `Site unpublished: ${site.name}`, `Website "${site.name}" taken offline`, "warn");
     } else {
       emitUniversalEvent({
         eventType: EVENT_TYPES.SITE_UPDATED,
@@ -399,13 +411,37 @@ export function registerSitesRoutes(app: Express) {
         metadata: { updates: Object.keys(updates) },
       });
     }
+
+    if (domainAssigned && req.body.customDomain) {
+      emitUniversalEvent({
+        eventType: EVENT_TYPES.DOMAIN_ATTACHED,
+        sourceModule: "sites",
+        sourceTable: "saved_sites",
+        sourceRecordId: String(id),
+        subAccountId: site.subAccountId,
+        siteId: id,
+        metadata: { customDomain: req.body.customDomain, siteName: site.name },
+      });
+    }
     res.json(updated);
   }));
 
   app.delete("/api/sites/:id", asyncHandler(async (req, res) => {
     const id = parseIntParam(req.params.id, "id");
+    const site = await storage.getSavedSite(id);
     const deleted = await storage.deleteSavedSite(id);
     if (!deleted) return res.status(404).json({ error: "Site not found" });
+    if (site) {
+      emitWithTimeline({
+        eventType: "site_deleted",
+        sourceModule: "sites",
+        sourceTable: "saved_sites",
+        sourceRecordId: String(id),
+        subAccountId: site.subAccountId,
+        siteId: id,
+        metadata: { name: site.name, customDomain: site.customDomain },
+      }, `Site deleted: ${site.name}`, `Website "${site.name}" has been deleted`, "warn");
+    }
     res.json({ success: true });
   }));
 
@@ -429,6 +465,15 @@ export function registerSitesRoutes(app: Express) {
       versionNumber: nextVersion,
       label: req.body.label || `Version ${nextVersion}`,
       siteData: site.siteData as any,
+    });
+    emitUniversalEvent({
+      eventType: "site_versioned",
+      sourceModule: "sites",
+      sourceTable: "saved_sites",
+      sourceRecordId: String(siteId),
+      subAccountId: site.subAccountId,
+      siteId,
+      metadata: { versionNumber: nextVersion, label: version.label, siteName: site.name },
     });
     res.status(201).json(version);
   }));
