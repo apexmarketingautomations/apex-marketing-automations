@@ -493,15 +493,26 @@ export function registerBotRoutes(app: Express) {
           break;
         }
 
+        const toolCallsPayload = aiResponse.toolCalls.map(tc => ({
+          id: tc.id,
+          type: "function",
+          function: { name: tc.name, arguments: tc.arguments },
+        }));
+
         chatMessages.push({
           role: "assistant",
           content: aiResponse.text || null,
-          tool_calls: aiResponse.toolCalls.map(tc => ({
-            id: tc.id,
-            type: "function",
-            function: { name: tc.name, arguments: tc.arguments },
-          })),
+          tool_calls: toolCallsPayload,
         });
+
+        try {
+          await storage.createAgentMessage({
+            sessionId,
+            role: "assistant",
+            content: aiResponse.text || null,
+            toolCalls: toolCallsPayload,
+          });
+        } catch {}
 
         for (const toolCall of aiResponse.toolCalls) {
           if (closed) break;
@@ -644,19 +655,6 @@ export function registerBotRoutes(app: Express) {
             });
           } catch {}
         }
-
-        try {
-          await storage.createAgentMessage({
-            sessionId,
-            role: "assistant",
-            content: aiResponse.text || null,
-            toolCalls: aiResponse.toolCalls.map(tc => ({
-              id: tc.id,
-              type: "function",
-              function: { name: tc.name, arguments: tc.arguments },
-            })),
-          });
-        } catch {}
       }
 
       if (!closed) {
