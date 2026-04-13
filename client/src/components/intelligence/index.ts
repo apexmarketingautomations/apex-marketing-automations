@@ -6,4 +6,5 @@ export { TrendsTab } from "./TrendsTab";
 export { ChatTab } from "./ChatTab";
 export { AgentTab } from "./AgentTab";
 export { MemoryTab } from "./MemoryTab";
+export { ApexBrainTab } from "./ApexBrainTab";
 export type { TabId, HealthScore } from "./types";

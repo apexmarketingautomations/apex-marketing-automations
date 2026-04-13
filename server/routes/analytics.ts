@@ -1528,4 +1528,23 @@ export function registerAnalyticsRoutes(app: Express) {
       ownedAccounts: ownedAccounts.map(a => ({ id: a.id, name: a.name, plan: a.plan })),
     });
   }));
+
+  app.get("/api/intelligence/apex/outcomes", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const subAccountId = req.query.subAccountId ? parseInt(req.query.subAccountId as string) : undefined;
+    if (subAccountId) {
+      if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    }
+    const agentName = req.query.agent as string | undefined;
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+    const since = req.query.since as string | undefined;
+
+    const { getOutcomes, getOutcomeSummary } = await import("../operator/apexIntelligence");
+    const outcomes = getOutcomes({ subAccountId, agentName, limit, since });
+    const summary = getOutcomeSummary(subAccountId);
+
+    res.json({ outcomes, summary });
+  }));
 }

@@ -1,11 +1,11 @@
 import { useState, useCallback } from "react";
-import { Brain, X, Bell, TrendingUp, Terminal, Crosshair, Factory, Bot, BookOpen, Shield } from "lucide-react";
+import { Brain, X, Bell, TrendingUp, Terminal, Crosshair, Factory, Bot, BookOpen, Shield, Activity } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { useAccount } from "@/hooks/use-account";
 import { useDraggable } from "@/hooks/use-draggable";
 import { useResizable } from "@/hooks/use-resizable";
-import { CommandTab, InsightsTab, NudgesTab, IndustryTab, TrendsTab, ChatTab, AgentTab, MemoryTab } from "./intelligence";
+import { CommandTab, InsightsTab, NudgesTab, IndustryTab, TrendsTab, ChatTab, AgentTab, MemoryTab, ApexBrainTab } from "./intelligence";
 import type { TabId, HealthScore } from "./intelligence";
 
 const TABS: { id: TabId; label: string; icon: typeof Brain }[] = [
@@ -17,6 +17,7 @@ const TABS: { id: TabId; label: string; icon: typeof Brain }[] = [
   { id: "chat", label: "Operator", icon: Brain },
   { id: "agent", label: "Agent", icon: Bot },
   { id: "memory", label: "Memory", icon: BookOpen },
+  { id: "apex", label: "Brain", icon: Activity },
 ];
 
 export interface ApexIntelligenceProps {
@@ -225,8 +226,9 @@ export function ApexIntelligence({
                   {activeTab === "industry" && <IndustryTab subAccountId={subAccountId} />}
                   {activeTab === "trends" && <TrendsTab subAccountId={subAccountId} />}
                   {activeTab === "chat" && <ChatTab subAccountId={subAccountId} />}
-                  {activeTab === "agent" && <AgentTab subAccountId={subAccountId} />}
+                  {activeTab === "agent" && <AgentTab subAccountId={subAccountId} onTabChange={setActiveTab} />}
                   {activeTab === "memory" && <MemoryTab subAccountId={subAccountId} />}
+                  {activeTab === "apex" && <ApexBrainTab subAccountId={subAccountId} />}
                 </>
               )}
             </div>

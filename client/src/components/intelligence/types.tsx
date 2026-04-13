@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Brain, Loader2, Sparkles, TrendingUp, Lightbulb, AlertTriangle, CheckCircle2, Bell, Zap, BarChart3, MessageSquare, ArrowRight, Eye, Target, Shield, Clock, RefreshCw, Activity, Crosshair, Award, ChevronDown, ArrowUpRight, Gauge, Layers, Factory, Radar, Heart, Bot, Play, Settings2, Power, BookOpen, Trash2, Edit3, Plus, Filter } from "lucide-react";
 import { motion } from "framer-motion";
 
-export type TabId = "command" | "insights" | "nudges" | "industry" | "trends" | "chat" | "agent" | "memory";
+export type TabId = "command" | "insights" | "nudges" | "industry" | "trends" | "chat" | "agent" | "memory" | "apex";
 
 export interface HealthScore {
   overall: number;

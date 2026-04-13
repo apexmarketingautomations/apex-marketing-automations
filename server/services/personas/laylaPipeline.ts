@@ -140,6 +140,31 @@ export function isExplicitAsk(
 export function runLaylaPipeline(
   inboundMessage: string,
   state: ConversationState,
+  operatorConfig: OperatorConfig,
+  hookContext?: { subAccountId?: number; contactId?: string }
+): PipelineAction {
+  const action = _runLaylaPipelineCore(inboundMessage, state, operatorConfig);
+
+  if (hookContext?.subAccountId) {
+    import("../../operator/apexIntelligence").then(({ reportOutcome }) =>
+      reportOutcome({
+        agentName:    "layla",
+        action:       action.type,
+        subject:      "conversation",
+        result:       `Layla: ${action.reason ?? action.type}`,
+        confidence:   action.type === "handover" ? 0.9 : 0.75,
+        subAccountId: hookContext.subAccountId!,
+        metadata:     { actionType: action.type, reason: action.reason, contactId: hookContext.contactId ?? null, conversationId: state.conversationId },
+      })
+    ).catch(() => {});
+  }
+
+  return action;
+}
+
+function _runLaylaPipelineCore(
+  inboundMessage: string,
+  state: ConversationState,
   operatorConfig: OperatorConfig
 ): PipelineAction {
   const { telegram, handover } = operatorConfig;

@@ -266,10 +266,34 @@ async function runIngestCycle(
         }, defaultSubAccountId);
         if (leadCreated) {
           leads++;
+          import("./operator/apexIntelligence").then(({ reportOutcome }) =>
+            reportOutcome({
+              agentName:    "crash-ingest",
+              action:       "lead_created",
+              subject:      "vehicle_crash",
+              result:       `Lead created from crash (report #${newReport.id})`,
+              confidence:   0.9,
+              subAccountId: defaultSubAccountId,
+              niche:        "accident",
+              metadata:     { reportId: newReport.id, severity: incident.severity, location: incident.location },
+            })
+          ).catch(() => {});
         } else {
           console.warn(`[CRASH-INGEST] Lead creation failed for new report ${newReport.id} (qualifying) — will retry in recovery pass`);
         }
       } else {
+        import("./operator/apexIntelligence").then(({ reportOutcome }) =>
+          reportOutcome({
+            agentName:    "crash-ingest",
+            action:       "crash_ingested",
+            subject:      "vehicle_crash",
+            result:       `Crash ingested for account ${defaultSubAccountId}`,
+            confidence:   0.9,
+            subAccountId: defaultSubAccountId,
+            niche:        "accident",
+            metadata:     { reportId: newReport.id, type: incident.type },
+          })
+        ).catch(() => {});
         console.log(`[CRASH-INGEST] Non-qualifying crash ${newReport.id} (type=${incident.type}) — processedToLead=true, no lead created`);
       }
     } catch (err: any) {

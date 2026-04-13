@@ -371,6 +371,19 @@ export function registerSentinelRoutes(app: Express) {
         });
 
         created.push(record);
+
+        import("../operator/apexIntelligence").then(({ reportOutcome }) =>
+          reportOutcome({
+            agentName:    "sentinel",
+            action:       "incident_detected",
+            subject:      sig.signalType ?? sig.event ?? "signal",
+            result:       `${sig.severity} incident detected: ${sig.event}`,
+            confidence:   sig.severity === "critical" ? 0.95 : sig.severity === "high" ? 0.8 : 0.65,
+            subAccountId: parsed.data.subAccountId,
+            niche:        "home_services",
+            metadata:     { incidentId: record.id, severity: sig.severity, location: sig.areaDesc },
+          })
+        ).catch(() => {});
       }
 
       await storage.createAuditLog({
@@ -452,6 +465,19 @@ export function registerSentinelRoutes(app: Express) {
         });
         created.push(record);
 
+        import("../operator/apexIntelligence").then(({ reportOutcome }) =>
+          reportOutcome({
+            agentName:    "sentinel",
+            action:       "incident_detected",
+            subject:      "vehicle_crash",
+            result:       `${inc.severity || "medium"} incident detected: ${inc.title}`,
+            confidence:   inc.severity === "critical" ? 0.95 : inc.severity === "high" ? 0.8 : 0.65,
+            subAccountId: parsed.data.subAccountId,
+            niche:        "accident",
+            metadata:     { incidentId: record.id, severity: inc.severity, location: inc.location },
+          })
+        ).catch(() => {});
+
       } else {
         const mergeResult = buildCrashMergeUpdate({
           existingSeverity:     existing.severity || 'low',
@@ -502,6 +528,19 @@ export function registerSentinelRoutes(app: Express) {
       return res.status(403).json({ error: "Access denied" });
     }
     const incident = await storage.createSentinelIncident(parsed.data);
+
+    import("../operator/apexIntelligence").then(({ reportOutcome }) =>
+      reportOutcome({
+        agentName:    "sentinel",
+        action:       "incident_created",
+        subject:      "manual_entry",
+        result:       `Manual incident created: ${incident.title}`,
+        confidence:   0.7,
+        subAccountId: parsed.data.subAccountId,
+        metadata:     { incidentId: incident.id },
+      })
+    ).catch(() => {});
+
     res.status(201).json(incident);
   }));
 
@@ -825,6 +864,19 @@ export function registerSentinelRoutes(app: Express) {
       cadExternalId: normalizedExternalId,
       cadLastUpdatedAt: new Date(),
     });
+
+    import("../operator/apexIntelligence").then(({ reportOutcome }) =>
+      reportOutcome({
+        agentName:    "sentinel",
+        action:       "incident_detected",
+        subject:      "cad_dispatch",
+        result:       `CAD incident created: ${newIncident.title}`,
+        confidence:   0.85,
+        subAccountId: payload.subAccountId,
+        niche:        "accident",
+        metadata:     { incidentId: newIncident.id, cadSource: normalizedSource, location: payload.location?.address },
+      })
+    ).catch(() => {});
 
     return res.status(201).json({ action: "created", incidentId: newIncident.id, incident: newIncident });
   }));

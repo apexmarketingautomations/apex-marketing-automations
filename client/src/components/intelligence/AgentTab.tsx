@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Brain, X, Loader2, Sparkles, AlertTriangle, CheckCircle2, Zap, Eye, Clock, Bot, Settings2, Power, Shield, FileEdit, Search, ChevronDown, ChevronRight } from "lucide-react";
+import { Brain, X, Loader2, Sparkles, AlertTriangle, CheckCircle2, Zap, Eye, Clock, Bot, Settings2, Power, Shield, FileEdit, Search, ChevronDown, ChevronRight, Activity } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { TabId } from "./types";
 
 const CATEGORY_LABELS: Record<string, { label: string; color: string }> = {
   crm: { label: "CRM", color: "text-blue-400" },
@@ -29,7 +30,7 @@ function ApprovalBadge({ required }: { required: boolean }) {
   return <span className="text-[7px] px-1 py-px rounded bg-violet-500/15 text-violet-400 border border-violet-500/20 font-semibold" data-testid="badge-approval"><Shield size={6} className="inline mr-0.5" />approval</span>;
 }
 
-export function AgentTab({ subAccountId }: { subAccountId: number }) {
+export function AgentTab({ subAccountId, onTabChange }: { subAccountId: number; onTabChange?: (tab: TabId) => void }) {
   const queryClient = useQueryClient();
   const [showConfig, setShowConfig] = useState(false);
   const [showToolkit, setShowToolkit] = useState(false);
@@ -440,6 +441,19 @@ export function AgentTab({ subAccountId }: { subAccountId: number }) {
           </div>
         )}
       </div>
+
+      {onTabChange && (
+        <div className="px-3 py-2 border-t border-white/[0.04]">
+          <button
+            onClick={() => onTabChange("apex")}
+            className="text-[10px] text-slate-600 hover:text-violet-400 transition-colors flex items-center gap-1"
+            data-testid="link-apex-brain"
+          >
+            <Activity size={10} />
+            View cross-agent patterns in Apex Brain
+          </button>
+        </div>
+      )}
     </div>
   );
 }
