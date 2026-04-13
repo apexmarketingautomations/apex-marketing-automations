@@ -15,8 +15,8 @@ import { requireActiveSubscription, checkPlanLimitMiddleware } from "../subscrip
 const subscriptionGuard = requireActiveSubscription();
 const aiRequestsGuard = checkPlanLimitMiddleware("ai_requests");
 
-const CONFIRM_PATTERNS = /^(yes|ok|okay|confirm|do it|go ahead|proceed|sounds good|yep|yea|yeah|sure|go for it|approved|let's do it|make it|create it|build it|draft it|y)$/i;
-const REJECT_PATTERNS = /^(no|cancel|don't|dont|stop|never mind|nvm|nah|nope|reject|skip|forget it|don't do that|cancel that)$/i;
+const CONFIRM_PATTERNS = /^(yes|ok|okay|confirm|do it|go ahead|proceed|sounds good|yep|yea|yeah|sure|go for it|approved|let's do it|make it|create it|build it|draft it|y|bet|aight|absolutely|definitely|for sure|that works|perfect|please|lets go|let's go|send it|ship it|run it|execute|do that|yeah do it|yes do it|yes please|go|good|cool|alright|right|fine|yup|ight)$/i;
+const REJECT_PATTERNS = /^(no|cancel|don't|dont|stop|never mind|nvm|nah|nope|reject|skip|forget it|don't do that|cancel that|no thanks|not now|hold on|wait|hold off|not yet|later|pass|no way|scratch that|undo|back up|nevermind|no no|naw)$/i;
 const PENDING_ACTION_TTL_MS = 15 * 60 * 1000;
 
 export function registerBotRoutes(app: Express) {
@@ -390,7 +390,7 @@ export function registerBotRoutes(app: Express) {
           initSSE(res);
           sendSSEData(res, { type: "session", sessionId });
 
-          sendSSEData(res, { type: "step", stepId: pendingAction.toolName, status: "running", label: `Executing: ${pendingAction.summary}` });
+          sendSSEData(res, { type: "step", stepId: pendingAction.toolName, status: "running", label: `On it — ${pendingAction.summary}...` });
 
           const operatorContext: OperatorContext = {
             subAccountId,
@@ -412,8 +412,8 @@ export function registerBotRoutes(app: Express) {
           sendSSEData(res, { type: "result", toolName: pendingAction.toolName, result });
 
           const successMsg = result?.success
-            ? `Done — ${pendingAction.summary}. ${result.data?.name ? `Created: "${result.data.name}"` : ""} ${result.data?.id ? `(ID: ${result.data.id})` : ""}`.trim()
-            : `Action failed: ${result?.error || "Unknown error"}. ${pendingAction.summary} was not completed.`;
+            ? `Done — ${pendingAction.summary}.${result.data?.name ? ` "${result.data.name}" is ready to go.` : " All set."}`
+            : `That didn't go through — ${result?.error || "something went wrong"}. Let me know if you want to try again or take a different approach.`;
 
           sendSSEData(res, { content: successMsg });
 
@@ -432,7 +432,7 @@ export function registerBotRoutes(app: Express) {
           initSSE(res);
           sendSSEData(res, { type: "session", sessionId });
 
-          const cancelMsg = `Canceled — "${pendingAction.summary}" will not be executed.`;
+          const cancelMsg = `No problem, skipping that. What would you like to do instead?`;
           sendSSEData(res, { content: cancelMsg });
 
           try {
@@ -635,7 +635,23 @@ export function registerBotRoutes(app: Express) {
             }
           }
 
-          sendSSEData(res, { type: "step", stepId: toolCall.name, status: "running", label: `Executing ${tool.name}...` });
+          const friendlyLabels: Record<string, string> = {
+            detectMissingSetup: "Scanning your account...",
+            checkIntegrationHealth: "Checking your connections...",
+            getAccountSummary: "Pulling up your account...",
+            generateAccountSetupPlan: "Building your setup plan...",
+            diagnoseWorkflow: "Diagnosing workflow...",
+            searchContacts: "Searching contacts...",
+            searchWorkflows: "Searching workflows...",
+            createWorkflow: "Creating workflow...",
+            generateAutoResponseWorkflow: "Setting up auto-responses...",
+            generateReactivationWorkflow: "Building reactivation campaign...",
+            createPipeline: "Setting up your sales funnel...",
+            createPipelineStage: "Adding funnel stage...",
+            restoreBrokenIntegrationDraft: "Fixing integration...",
+            navigateUser: "Taking you there...",
+          };
+          sendSSEData(res, { type: "step", stepId: toolCall.name, status: "running", label: friendlyLabels[toolCall.name] || `Working on it...` });
 
           const execContext = tool.requiresApproval
             ? { ...operatorContext, autonomyLevel: "execute" as const }
@@ -648,7 +664,18 @@ export function registerBotRoutes(app: Express) {
             result = { success: false, error: toolError.message || "Tool execution failed" };
           }
 
-          sendSSEData(res, { type: "step", stepId: toolCall.name, status: "complete", label: `${tool.name} complete` });
+          const doneLabels: Record<string, string> = {
+            detectMissingSetup: "Scan complete",
+            checkIntegrationHealth: "Health check done",
+            getAccountSummary: "Summary ready",
+            generateAccountSetupPlan: "Plan ready",
+            createWorkflow: "Workflow created",
+            generateAutoResponseWorkflow: "Auto-responses ready",
+            generateReactivationWorkflow: "Reactivation campaign ready",
+            createPipeline: "Sales funnel created",
+            createPipelineStage: "Stage added",
+          };
+          sendSSEData(res, { type: "step", stepId: toolCall.name, status: "complete", label: doneLabels[toolCall.name] || "Done" });
           sendSSEData(res, { type: "result", toolName: toolCall.name, result });
 
           const resultJson = JSON.stringify(result);
