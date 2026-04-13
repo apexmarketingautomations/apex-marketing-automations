@@ -7,6 +7,10 @@ import { universalEvents, integrationHealthState, entityIdentityMap } from "@sha
 import { runAllScoresForAccount } from "../intelligence/scoringEngine";
 import { runAllRecommendationsForAccount } from "../intelligence/recommendationEngine";
 import { getNetworkIntelligence, getAccountIntelligenceSummary } from "../intelligence/networkIntelligence";
+import { runFakeCompletionDetection } from "../intelligence/fakeCompletionDetector";
+import { getPriorityActions, getOperatorActionSummary, dismissAction, snoozeAction } from "../intelligence/priorityActionQueue";
+import { getCrossPlatformPatterns, getPlaybookRecommendationsForAccount } from "../intelligence/crossPlatformPatterns";
+import { getSystemHealthReport } from "../intelligence/systemHealthOrchestrator";
 
 function asyncHandler(fn: (req: any, res: any, next: any) => Promise<any>) {
   return (req: any, res: any, next: any) => fn(req, res, next).catch(next);
@@ -388,4 +392,168 @@ export function registerApexIntelligenceRoutes(app: Express) {
 
     res.json(enriched);
   }));
+
+  // ---- T001: Fake Completion Detection ----
+  app.get("/api/apex/fake-completion/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const report = await runFakeCompletionDetection(subAccountId);
+    res.json(report);
+  }));
+
+  app.get("/api/operator/fake-completion/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    const opUser = (req as any).user;
+    if (!opUser) return res.status(401).json({ error: "Not authenticated" });
+    const opUserId = opUser?.claims?.sub || opUser?.id || opUser?.userId;
+    const isAdmin = process.env.ADMIN_USER_ID && opUserId === process.env.ADMIN_USER_ID;
+    if (!isAdmin && !(await isApexParentUser(opUserId))) return res.status(403).json({ error: "Operator access required" });
+    const report = await runFakeCompletionDetection(subAccountId);
+    res.json(report);
+  }));
+
+  // ---- T002: Priority Action Queue ----
+  app.get("/api/apex/priority-actions/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : 30;
+    const actions = await getPriorityActions(subAccountId, { limit });
+    res.json(actions);
+  }));
+
+  app.get("/api/apex/priority-actions/:subAccountId/summary", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const summary = await getOperatorActionSummary(subAccountId);
+    res.json(summary);
+  }));
+
+  app.post("/api/apex/priority-actions/:subAccountId/dismiss", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const { actionId } = req.body;
+    if (!actionId) return res.status(400).json({ error: "actionId required" });
+    dismissAction(subAccountId, actionId);
+    res.json({ success: true });
+  }));
+
+  app.post("/api/apex/priority-actions/:subAccountId/snooze", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const { actionId, hours = 24 } = req.body;
+    if (!actionId) return res.status(400).json({ error: "actionId required" });
+    const snoozeUntil = new Date(Date.now() + hours * 60 * 60 * 1000);
+    snoozeAction(subAccountId, actionId, snoozeUntil);
+    res.json({ success: true, snoozedUntil: snoozeUntil.toISOString() });
+  }));
+
+  // ---- T003: Publish/Deploy Validation ----
+  app.post("/api/apex/validate-publish", asyncHandler(async (req, res) => {
+    const { type, entityId, subAccountId } = req.body;
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    if (!type || !entityId) return res.status(400).json({ error: "type and entityId required" });
+
+    const result = await validatePublishReadiness(type, entityId, subAccountId);
+    res.json(result);
+  }));
+
+  // ---- T006: Cross-Platform Patterns / Playbooks ----
+  app.get("/api/apex/playbooks/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const recs = await getPlaybookRecommendationsForAccount(subAccountId);
+    res.json(recs);
+  }));
+
+  app.get("/api/operator/cross-platform-patterns", asyncHandler(async (req, res) => {
+    const opUser = (req as any).user;
+    if (!opUser) return res.status(401).json({ error: "Not authenticated" });
+    const opUserId = opUser?.claims?.sub || opUser?.id || opUser?.userId;
+    const isAdmin = process.env.ADMIN_USER_ID && opUserId === process.env.ADMIN_USER_ID;
+    if (!isAdmin && !(await isApexParentUser(opUserId))) return res.status(403).json({ error: "Operator access required" });
+    const patterns = await getCrossPlatformPatterns();
+    res.json(patterns);
+  }));
+
+  // ---- T007: System Health Orchestration ----
+  app.get("/api/operator/system-health", asyncHandler(async (req, res) => {
+    const opUser = (req as any).user;
+    if (!opUser) return res.status(401).json({ error: "Not authenticated" });
+    const opUserId = opUser?.claims?.sub || opUser?.id || opUser?.userId;
+    const isAdmin = process.env.ADMIN_USER_ID && opUserId === process.env.ADMIN_USER_ID;
+    if (!isAdmin && !(await isApexParentUser(opUserId))) return res.status(403).json({ error: "Operator access required" });
+    const health = await getSystemHealthReport();
+    res.json(health);
+  }));
+
+  app.get("/api/apex/system-health", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    const health = await getSystemHealthReport();
+    res.json(health);
+  }));
+
+  // ---- T004: Inline Intelligence — Entity Scores by Type ----
+  app.get("/api/apex/entity-score/:subAccountId/:entityType/:entityId", asyncHandler(async (req, res) => {
+    const subAccountId = parseInt(req.params.subAccountId);
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const { entityType, entityId } = req.params;
+    const scores = await storage.getIntelligenceScores(subAccountId, entityType, entityId);
+    const recs = await storage.getRecommendations(subAccountId, { status: "pending", limit: 5 });
+    const entityRecs = recs.filter((r: any) => r.entityType === entityType && r.entityId === entityId);
+    res.json({ scores, recommendations: entityRecs });
+  }));
+}
+
+async function validatePublishReadiness(type: string, entityId: number, subAccountId: number): Promise<{
+  ready: boolean;
+  blockers: Array<{ field: string; issue: string; severity: "error" | "warning" }>;
+  warnings: string[];
+  score: number;
+}> {
+  const blockers: Array<{ field: string; issue: string; severity: "error" | "warning" }> = [];
+  const warnings: string[] = [];
+
+  if (type === "site") {
+    const site = await storage.getSavedSite(entityId);
+    if (!site) return { ready: false, blockers: [{ field: "site", issue: "Site not found", severity: "error" }], warnings: [], score: 0 };
+
+    const sections = Array.isArray(site.siteData?.sections) ? site.siteData.sections : [];
+    if (sections.length === 0) blockers.push({ field: "content", issue: "Site has no sections or content blocks", severity: "error" });
+
+    const hasHero = sections.some((s: any) => s.type === "hero" || s.component?.includes("hero"));
+    if (!hasHero) warnings.push("Consider adding a hero/banner section for better conversion");
+
+    if (!site.name || site.name.length < 3) blockers.push({ field: "name", issue: "Site needs a meaningful name", severity: "error" });
+
+    const seo = site.siteData?.seo || {};
+    if (!seo.title) warnings.push("Missing SEO title — set a meta title for better search visibility");
+    if (!seo.description) warnings.push("Missing SEO description — add a meta description");
+  } else if (type === "workflow") {
+    const wf = await storage.getWorkflow(entityId);
+    if (!wf) return { ready: false, blockers: [{ field: "workflow", issue: "Workflow not found", severity: "error" }], warnings: [], score: 0 };
+
+    const steps = Array.isArray(wf.steps) ? wf.steps : [];
+    if (steps.length === 0) blockers.push({ field: "steps", issue: "Workflow has no action steps", severity: "error" });
+    if (!wf.trigger || wf.trigger === "") blockers.push({ field: "trigger", issue: "Workflow has no trigger configured", severity: "error" });
+
+    const hasContactAction = steps.some((s: any) => s.action_type?.includes("SMS") || s.action_type?.includes("Email") || s.action_type?.includes("Call"));
+    if (!hasContactAction) warnings.push("Workflow has no outbound communication steps (SMS/Email/Call)");
+  } else if (type === "campaign") {
+    const campaign = await storage.getEmailCampaignById(entityId);
+    if (!campaign) return { ready: false, blockers: [{ field: "campaign", issue: "Campaign not found", severity: "error" }], warnings: [], score: 0 };
+
+    if (!campaign.subject || campaign.subject.length < 3) blockers.push({ field: "subject", issue: "Campaign needs a subject line", severity: "error" });
+    if (!campaign.body || campaign.body.length < 50) blockers.push({ field: "content", issue: "Campaign body is too short or empty", severity: "error" });
+    if ((campaign.recipientCount || 0) === 0) blockers.push({ field: "audience", issue: "No recipients configured for this campaign", severity: "error" });
+
+    const subjectLen = campaign.subject?.length || 0;
+    if (subjectLen > 60) warnings.push("Subject line is over 60 characters — shorter subjects have better open rates");
+    if (subjectLen < 20) warnings.push("Subject line is very short — consider adding more context");
+  }
+
+  const score = Math.max(0, 100 - blockers.length * 30 - warnings.length * 5);
+  const ready = blockers.filter(b => b.severity === "error").length === 0;
+
+  return { ready, blockers, warnings, score };
 }

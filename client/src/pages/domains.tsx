@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Globe, Search, ShoppingCart, Shield, Lock, CheckCircle2, XCircle, Loader2, Link2, BookOpen, RefreshCw, AlertTriangle } from "lucide-react";
+import { Globe, Search, ShoppingCart, Shield, Lock, CheckCircle2, XCircle, Loader2, Link2, BookOpen, RefreshCw, AlertTriangle, Activity, Zap } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,30 @@ type SavedSite = {
   id: number;
   name: string;
 };
+
+function getDomainIntelligence(domain: Domain, hasSite: boolean) {
+  const issues: string[] = [];
+  let score = 0;
+
+  if (domain.dnsConfigured) score += 30;
+  else issues.push("DNS not configured — site won't resolve");
+
+  if (domain.sslActive) score += 25;
+  else issues.push("SSL inactive — traffic not encrypted");
+
+  if (domain.verifiedAt) score += 20;
+  else issues.push("Domain not verified — affects deliverability");
+
+  if (hasSite) score += 25;
+  else issues.push("No site linked — domain is idle");
+
+  const label = score >= 80 ? "Fully Live" : score >= 50 ? "Partial" : "Not Ready";
+  const color = score >= 80 ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
+    : score >= 50 ? "text-amber-400 bg-amber-500/10 border-amber-500/20"
+    : "text-red-400 bg-red-500/10 border-red-500/20";
+
+  return { score, label, issues, color };
+}
 
 export default function Domains() {
   const { toast } = useToast();
@@ -449,6 +473,8 @@ export default function Domains() {
                   const needsVerification = !domain.verifiedAt && domain.status !== "verified";
                   const hasToken = !!domain.verificationToken;
 
+                  const intel = getDomainIntelligence(domain, !!linkedSite);
+
                   return (
                     <div
                       key={domain.id}
@@ -466,6 +492,13 @@ export default function Domains() {
                             >
                               {statusBadge.label}
                             </Badge>
+                            <span
+                              className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded border ${intel.color}`}
+                              data-testid={`domain-intel-score-${domain.id}`}
+                            >
+                              <Activity size={8} />
+                              {intel.score}/100 · {intel.label}
+                            </span>
                           </div>
                           <div className="flex items-center gap-4 text-xs text-slate-500">
                             <span className="flex items-center gap-1" data-testid={`domain-dns-${domain.id}`}>
@@ -483,6 +516,16 @@ export default function Domains() {
                               </span>
                             )}
                           </div>
+                          {intel.issues.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1.5" data-testid={`domain-intel-issues-${domain.id}`}>
+                              {intel.issues.map((issue, i) => (
+                                <span key={i} className="inline-flex items-center gap-1 text-[9px] text-amber-400/80 bg-amber-500/5 border border-amber-500/10 px-1.5 py-0.5 rounded">
+                                  <Zap size={7} />
+                                  {issue}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center gap-2">
                           <Select

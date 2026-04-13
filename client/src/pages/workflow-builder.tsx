@@ -1389,6 +1389,123 @@ function TemplatesGalleryPanel({ onUseTemplate }: { onUseTemplate: (template: Wo
   );
 }
 
+function WorkflowIntelligencePanel({ workflow, steps }: { workflow: any; steps: any[] }) {
+  const stepTypes = steps.map((s: any) => s.action_type || "");
+  const hasAI = stepTypes.some((t) => ["AIGenerate", "AIQualify", "VapiCall"].includes(t));
+  const hasDelay = stepTypes.some((t) => ["WAIT", "Wait"].includes(t));
+  const hasMultiChannel = new Set(stepTypes.filter((t) => ["SMS", "SendTwilioSMS", "SendEmail", "SendWhatsApp", "SendFacebookDM", "ElevenLabsTTS", "VapiCall"].includes(t))).size > 1;
+  const hasConversion = stepTypes.some((t) => ["UpdateDeal", "DeployMetaAd", "AIQualify"].includes(t));
+
+  const scoreFactors = [
+    { label: "Has Steps", value: steps.length > 0, points: 20 },
+    { label: "Multi-Channel", value: hasMultiChannel, points: 20 },
+    { label: "AI-Powered", value: hasAI, points: 25 },
+    { label: "Smart Timing", value: hasDelay, points: 15 },
+    { label: "Conversion Action", value: hasConversion, points: 20 },
+  ];
+  const totalScore = scoreFactors.reduce((acc, f) => acc + (f.value ? f.points : 0), 0);
+  const scoreColor = totalScore >= 75 ? "text-emerald-400" : totalScore >= 50 ? "text-amber-400" : "text-red-400";
+  const scoreBg = totalScore >= 75 ? "bg-emerald-500/10 border-emerald-500/20" : totalScore >= 50 ? "bg-amber-500/10 border-amber-500/20" : "bg-red-500/10 border-red-500/20";
+  const scoreLabel = totalScore >= 75 ? "High Performance" : totalScore >= 50 ? "Needs Improvement" : "Low Effectiveness";
+
+  const channelCount = stepTypes.filter((t) => ["SMS", "SendTwilioSMS", "SendEmail", "SendWhatsApp", "SendFacebookDM"].includes(t)).length;
+  const conversionRate = hasConversion ? (hasAI ? "28–42%" : "15–25%") : "<10%";
+
+  return (
+    <div className="h-full flex flex-col gap-4 text-sm">
+      {!workflow ? (
+        <div className="h-full flex flex-col items-center justify-center text-center text-muted-foreground space-y-4">
+          <div className="h-16 w-16 rounded-full bg-secondary/50 flex items-center justify-center">
+            <GitFork className="h-8 w-8 opacity-20" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-foreground">No Workflow Selected</h3>
+            <p className="text-xs mt-1">Create or select a workflow to begin.</p>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className={`rounded-lg border p-3 ${scoreBg}`} data-testid="panel-workflow-intelligence">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1.5">
+                <Activity className="h-3.5 w-3.5 text-violet-400" />
+                <span className="text-xs font-semibold text-foreground">Apex Intelligence Score</span>
+              </div>
+              <div className={`text-xl font-bold ${scoreColor}`} data-testid="text-intelligence-score">{totalScore}</div>
+            </div>
+            <div className="h-1.5 rounded-full bg-white/5 mb-2 overflow-hidden">
+              <div className={`h-full rounded-full transition-all duration-500 ${totalScore >= 75 ? "bg-emerald-500" : totalScore >= 50 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${totalScore}%` }} />
+            </div>
+            <p className={`text-xs font-medium ${scoreColor}`}>{scoreLabel}</p>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Score Factors</p>
+            {scoreFactors.map((f) => (
+              <div key={f.label} className="flex items-center justify-between" data-testid={`factor-${f.label.toLowerCase().replace(/\s+/g, "-")}`}>
+                <div className="flex items-center gap-1.5">
+                  <div className={`h-1.5 w-1.5 rounded-full ${f.value ? "bg-emerald-400" : "bg-white/20"}`} />
+                  <span className={`text-xs ${f.value ? "text-foreground" : "text-muted-foreground"}`}>{f.label}</span>
+                </div>
+                <span className={`text-xs font-medium ${f.value ? "text-emerald-400" : "text-muted-foreground"}`}>+{f.points}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="border-t border-border/50 pt-3 space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Predictions</p>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Est. Conversion Rate</span>
+              <span className="text-xs font-semibold text-indigo-400" data-testid="text-conversion-prediction">{conversionRate}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Touch Points</span>
+              <span className="text-xs font-semibold text-foreground" data-testid="text-touchpoints">{channelCount}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">AI Steps</span>
+              <span className="text-xs font-semibold text-violet-400" data-testid="text-ai-steps">{stepTypes.filter((t) => ["AIGenerate", "AIQualify", "VapiCall"].includes(t)).length}</span>
+            </div>
+          </div>
+
+          {totalScore < 75 && (
+            <div className="border-t border-border/50 pt-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Apex Recommendations</p>
+              <div className="space-y-1.5">
+                {!hasMultiChannel && (
+                  <div className="flex items-start gap-1.5 p-2 rounded bg-blue-500/10 border border-blue-500/20">
+                    <Sparkles className="h-3 w-3 text-blue-400 mt-0.5 flex-shrink-0" />
+                    <p className="text-[10px] text-blue-300">Add a second channel (Email or WhatsApp) to increase reach by 2–3x</p>
+                  </div>
+                )}
+                {!hasAI && (
+                  <div className="flex items-start gap-1.5 p-2 rounded bg-violet-500/10 border border-violet-500/20">
+                    <Sparkles className="h-3 w-3 text-violet-400 mt-0.5 flex-shrink-0" />
+                    <p className="text-[10px] text-violet-300">Add an AI Qualify or AI Call step to boost lead conversion by 40%</p>
+                  </div>
+                )}
+                {!hasConversion && steps.length > 0 && (
+                  <div className="flex items-start gap-1.5 p-2 rounded bg-amber-500/10 border border-amber-500/20">
+                    <Sparkles className="h-3 w-3 text-amber-400 mt-0.5 flex-shrink-0" />
+                    <p className="text-[10px] text-amber-300">Include an UpdateDeal step to track pipeline revenue from this flow</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="mt-auto">
+            <div className="flex items-center gap-1.5 p-2 rounded bg-white/5 border border-white/10">
+              <Brain className="h-3 w-3 text-violet-400 flex-shrink-0" />
+              <p className="text-[10px] text-muted-foreground">Click a step to configure. Intelligence updates live as you build.</p>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function WorkflowBuilderInner() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -1481,8 +1598,26 @@ function WorkflowBuilderInner() {
     }
   };
 
-  const handlePublish = () => {
+  const [publishValidation, setPublishValidation] = useState<{ ready: boolean; issues: string[]; warnings: string[] } | null>(null);
+  const [showValidationDialog, setShowValidationDialog] = useState(false);
+
+  const handlePublish = async () => {
     if (!currentWorkflow) return;
+    try {
+      const res = await fetch("/api/apex/validate-publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "workflow", id: currentWorkflow.id }),
+      });
+      if (res.ok) {
+        const validation = await res.json();
+        if (!validation.ready && validation.issues?.length > 0) {
+          setPublishValidation(validation);
+          setShowValidationDialog(true);
+          return;
+        }
+      }
+    } catch (_) {}
     updateMutation.mutate({
       id: currentWorkflow.id,
       data: {
@@ -1492,6 +1627,20 @@ function WorkflowBuilderInner() {
       },
     });
     toast({ title: "Workflow saved", description: "Your workflow has been published." });
+  };
+
+  const handleForcePublish = () => {
+    if (!currentWorkflow) return;
+    setShowValidationDialog(false);
+    updateMutation.mutate({
+      id: currentWorkflow.id,
+      data: {
+        name: currentWorkflow.name,
+        trigger: currentWorkflow.trigger,
+        steps: currentWorkflow.steps,
+      },
+    });
+    toast({ title: "Workflow saved", description: "Saved despite validation warnings." });
   };
 
   const handleDiscard = () => {
@@ -1792,6 +1941,42 @@ function WorkflowBuilderInner() {
                     <p>No steps yet. Use AI generation or add manually.</p>
                   </div>
                 )}
+
+                {steps.length > 0 && (() => {
+                  const st = steps.map((s: any) => s.action_type || "");
+                  const nextSuggestions: { type: string; label: string; reason: string }[] = [];
+                  const hasAI = st.some((t) => ["AIGenerate", "AIQualify", "VapiCall"].includes(t));
+                  const hasDelay = st.some((t) => ["WAIT", "Wait"].includes(t));
+                  const hasConversion = st.some((t) => ["UpdateDeal", "AIQualify"].includes(t));
+                  const channelTypes = st.filter((t) => ["SMS", "SendTwilioSMS", "SendEmail", "SendWhatsApp"].includes(t));
+                  if (!hasDelay && st.length > 0) nextSuggestions.push({ type: "WAIT", label: "Add Wait Step", reason: "Timing delays improve open rates by up to 30%" });
+                  if (!hasAI && st.length >= 2) nextSuggestions.push({ type: "AIQualify", label: "Add AI Qualify", reason: "AI qualification increases conversions by 40%" });
+                  if (channelTypes.length < 2 && st.length >= 1) nextSuggestions.push({ type: "SendEmail", label: "Add Email Step", reason: "Multi-channel follow-up captures 3x more leads" });
+                  if (!hasConversion && st.length >= 3) nextSuggestions.push({ type: "UpdateDeal", label: "Add Deal Tracker", reason: "Track pipeline value from this workflow" });
+                  if (nextSuggestions.length === 0) return null;
+                  return (
+                    <div className="mt-3 p-3 rounded-lg bg-violet-500/5 border border-violet-500/20" data-testid="apex-step-suggestions">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <Cpu className="h-3 w-3 text-violet-400" />
+                        <span className="text-xs font-semibold text-violet-300">Apex Suggests</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {nextSuggestions.slice(0, 2).map((s) => (
+                          <button
+                            key={s.type}
+                            onClick={() => handleAddStep(s.type)}
+                            title={s.reason}
+                            data-testid={`apex-suggest-${s.type.toLowerCase()}`}
+                            className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-1 rounded-full bg-violet-500/15 border border-violet-500/30 text-violet-300 hover:bg-violet-500/25 transition-colors"
+                          >
+                            <Sparkles className="h-2.5 w-2.5" />
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div className="flex justify-center pt-4">
                   <div className="flex flex-wrap gap-2 justify-center">
@@ -2142,15 +2327,7 @@ function WorkflowBuilderInner() {
                       </div>
                     </div>
                   ) : (
-                    <div className="h-full flex flex-col items-center justify-center text-center text-muted-foreground space-y-4">
-                      <div className="h-16 w-16 rounded-full bg-secondary/50 flex items-center justify-center">
-                        <GitFork className="h-8 w-8 opacity-20" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-foreground">No Step Selected</h3>
-                        <p className="text-sm mt-1">Click on a step to edit its properties.</p>
-                      </div>
-                    </div>
+                    <WorkflowIntelligencePanel workflow={currentWorkflow} steps={steps} />
                   )}
                 </CardContent>
               </Card>
@@ -2212,6 +2389,50 @@ function WorkflowBuilderInner() {
       </Tabs>
 
       {showTutorial && <TutorialOverlay steps={WORKFLOW_STEPS} storageKey="apex_tutorial_workflows" onClose={closeTutorial} accentColor="indigo" />}
+
+      <Dialog open={showValidationDialog} onOpenChange={setShowValidationDialog}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-400">
+              <AlertTriangle className="h-5 w-5" />
+              Apex Validation Issues
+            </DialogTitle>
+            <DialogDescription>
+              Apex Intelligence detected issues with this workflow before publishing.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-3 space-y-3">
+            {publishValidation?.issues && publishValidation.issues.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold text-red-400 uppercase tracking-wide">Blocking Issues</p>
+                {publishValidation.issues.map((issue, i) => (
+                  <div key={i} className="flex items-start gap-2 p-2 rounded bg-red-500/10 border border-red-500/20">
+                    <AlertTriangle className="h-3 w-3 text-red-400 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-red-300">{issue}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            {publishValidation?.warnings && publishValidation.warnings.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold text-amber-400 uppercase tracking-wide">Warnings</p>
+                {publishValidation.warnings.map((w, i) => (
+                  <div key={i} className="flex items-start gap-2 p-2 rounded bg-amber-500/10 border border-amber-500/20">
+                    <Sparkles className="h-3 w-3 text-amber-400 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-amber-300">{w}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setShowValidationDialog(false)}>Fix Issues</Button>
+            <Button variant="outline" size="sm" className="text-amber-400 border-amber-500/30" onClick={handleForcePublish} data-testid="button-force-publish">
+              Save Anyway
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

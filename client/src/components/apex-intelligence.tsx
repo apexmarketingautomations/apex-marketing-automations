@@ -5,12 +5,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useAccount } from "@/hooks/use-account";
 import { useDraggable } from "@/hooks/use-draggable";
 import { useResizable } from "@/hooks/use-resizable";
-import { CommandTab, InsightsTab, NudgesTab, IndustryTab, TrendsTab, ChatTab, AgentTab, MemoryTab, ApexBrainTab } from "./intelligence";
+import { CommandTab, InsightsTab, NudgesTab, IndustryTab, TrendsTab, ChatTab, AgentTab, MemoryTab, ApexBrainTab, PriorityActionsTab, SystemHealthTab, PlaybookTab, FakeCompletionPanel } from "./intelligence";
 import type { TabId, HealthScore } from "./intelligence";
 
 const TABS: { id: TabId; label: string; icon: typeof Brain }[] = [
   { id: "command", label: "Command", icon: Terminal },
   { id: "insights", label: "Strategy", icon: Crosshair },
+  { id: "actions", label: "Actions", icon: Bell },
   { id: "nudges", label: "Nudges", icon: Bell },
   { id: "industry", label: "Industry", icon: Factory },
   { id: "trends", label: "Trends", icon: TrendingUp },
@@ -18,6 +19,9 @@ const TABS: { id: TabId; label: string; icon: typeof Brain }[] = [
   { id: "agent", label: "Agent", icon: Bot },
   { id: "memory", label: "Memory", icon: BookOpen },
   { id: "apex", label: "Apex Brain", icon: Activity },
+  { id: "playbooks", label: "Playbooks", icon: BookOpen },
+  { id: "health", label: "Health", icon: Activity },
+  { id: "integrity", label: "Integrity", icon: Shield },
 ];
 
 export interface ApexIntelligenceProps {
@@ -222,6 +226,7 @@ export function ApexIntelligence({
                 <>
                   {activeTab === "command" && <CommandTab subAccountId={subAccountId} />}
                   {activeTab === "insights" && <InsightsTab subAccountId={subAccountId} />}
+                  {activeTab === "actions" && <PriorityActionsTab subAccountId={subAccountId} />}
                   {activeTab === "nudges" && <NudgesTab subAccountId={subAccountId} />}
                   {activeTab === "industry" && <IndustryTab subAccountId={subAccountId} />}
                   {activeTab === "trends" && <TrendsTab subAccountId={subAccountId} />}
@@ -229,6 +234,9 @@ export function ApexIntelligence({
                   {activeTab === "agent" && <AgentTab subAccountId={subAccountId} onTabChange={setActiveTab} />}
                   {activeTab === "memory" && <MemoryTab subAccountId={subAccountId} />}
                   {activeTab === "apex" && <ApexBrainTab subAccountId={subAccountId} />}
+                  {activeTab === "playbooks" && <PlaybookTab subAccountId={subAccountId} />}
+                  {activeTab === "health" && <SystemHealthTab />}
+                  {activeTab === "integrity" && <FakeCompletionPanel subAccountId={subAccountId} />}
                 </>
               )}
             </div>

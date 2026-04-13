@@ -145,6 +145,38 @@ Apex Marketing Automations is a multi-tenant SaaS platform that centralizes busi
 - **Industry Benchmarks**: Cross-account metrics aggregation (hourly).
 - **Apex Intelligence (Level 2)**: Full ecosystem intelligence, scoring, and recommendations — see below.
 
+### Apex Intelligence — Level 3: Full Platform Orchestration Brain (Task #118)
+Full operating brain layer: fake completion detection, operator priority actions, publish validation, inline intelligence in UIs, domain intelligence, cross-platform playbook patterns, system health orchestration.
+
+**Backend Intelligence Modules** (`server/intelligence/`):
+- `fakeCompletionDetector.ts` — Detects false-completion states: empty workflows marked active, domains without SSL/DNS, campaigns with 0 recipients, integrations with silent auth failures
+- `priorityActionQueue.ts` — Aggregates all recommendations + scores into a unified priority queue with dismiss/snooze (in-memory per session)
+- `crossPlatformPatterns.ts` — Derives playbook patterns from cross-account module usage (workflows, campaigns, sites, cards)
+- `systemHealthOrchestrator.ts` — Monitors DB response times, AI latency, integration connectivity, workflow execution timing
+
+**New API Routes** (`server/routes/apex-intelligence.ts`):
+- `GET /api/apex/fake-completion/:id` — Fake completion scan for an account
+- `GET /api/apex/priority-actions/:id` — Priority action queue with scores
+- `POST /api/apex/priority-actions/:id/dismiss`, `/snooze` — In-memory action suppression
+- `POST /api/apex/validate-publish` — Pre-publish validation for workflows/sites/campaigns
+- `GET /api/apex/playbooks/:id` — Cross-platform playbook patterns
+- `GET /api/apex/entity-score/:type/:id` — Per-entity intelligence score
+- `GET /api/operator/cross-platform-patterns` — All accounts pattern analysis
+- `GET /api/operator/system-health` — Full system health orchestration
+
+**Frontend Intelligence Tabs** (`client/src/components/intelligence/`):
+- `PriorityActionsTab.tsx` — Priority action queue with dismiss/snooze
+- `SystemHealthTab.tsx` — Real-time system health dashboard
+- `PlaybookTab.tsx` — Cross-platform playbook recommendations
+- `FakeCompletionPanel.tsx` — Fake completion integrity scanner
+- All 4 added to Apex Intelligence widget as tabs: actions, playbooks, health, integrity
+
+**Inline Intelligence in Module UIs**:
+- `WorkflowIntelligencePanel` (workflow-builder.tsx) — Live effectiveness score, score factors, conversion predictions, AI step count shown in right sidebar when no step selected
+- "Apex Suggests" banner appears above step library with intelligent next-step recommendations (AIQualify, Wait, Email, UpdateDeal) based on current workflow composition
+- Publish validation dialog (workflow-builder.tsx) — Calls `/api/apex/validate-publish` before save; shows blocking issues and warnings with "Save Anyway" override
+- Domain Intelligence badges (domains.tsx) — Per-domain 0–100 score + "Fully Live/Partial/Not Ready" label + actionable issues inline on every domain row
+
 ### Apex Intelligence — Level 2 (Task #117)
 Full platform intelligence layer that interprets all platform data and delivers actionable insights.
 

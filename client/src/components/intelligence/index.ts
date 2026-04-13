@@ -7,4 +7,8 @@ export { ChatTab } from "./ChatTab";
 export { AgentTab } from "./AgentTab";
 export { MemoryTab } from "./MemoryTab";
 export { ApexBrainTab } from "./ApexBrainTab";
+export { PriorityActionsTab } from "./PriorityActionsTab";
+export { SystemHealthTab } from "./SystemHealthTab";
+export { PlaybookTab } from "./PlaybookTab";
+export { FakeCompletionPanel } from "./FakeCompletionPanel";
 export type { TabId, HealthScore } from "./types";
