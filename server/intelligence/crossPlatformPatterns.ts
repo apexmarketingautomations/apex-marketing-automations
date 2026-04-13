@@ -252,6 +252,12 @@ export async function getCrossPlatformPatterns(): Promise<CrossPlatformPatternRe
     const patterns = derivePatterns(profiles);
     const accountPatterns = matchAccountsToPatterns(profiles, patterns);
 
+    import("./apexLearningFeed").then(({ emitPlaybookPatternsDerived }) => {
+      for (const ap of accountPatterns) {
+        emitPlaybookPatternsDerived(ap.accountId, ap.matchedPatterns.length, patterns.length);
+      }
+    }).catch(() => {});
+
     return {
       patterns,
       accountPatterns,

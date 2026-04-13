@@ -9,6 +9,7 @@ import { eq, and, sql } from "drizzle-orm";
 import fs from "fs";
 import path from "path";
 import { z } from "zod";
+import { emitWorkerJobResult } from "./intelligence/apexLearningFeed";
 
 const execAsync = promisify(exec);
 
@@ -199,6 +200,7 @@ async function executeJobInner(job: AgentWorkerJob) {
     const result = { stdout: stdout?.substring(0, 10000), stderr: stderr?.substring(0, 5000) };
     await db.update(agentWorkerJobs).set({ status: "completed", result, completedAt: new Date() }).where(eq(agentWorkerJobs.id, job.id));
     await writeJobLog(job.id, "info", `Job completed successfully`, result);
+    emitWorkerJobResult(job.id, job.jobType, "completed", subAccountId);
     console.log(`[AGENT-WORKER] Job #${job.id} (${job.jobType}) completed`);
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message.substring(0, 2000) : String(err);
@@ -207,10 +209,12 @@ async function executeJobInner(job: AgentWorkerJob) {
     if (currentAttempts < job.maxAttempts) {
       await db.update(agentWorkerJobs).set({ status: "pending", error: errMsg }).where(eq(agentWorkerJobs.id, job.id));
       await writeJobLog(job.id, "warn", `Attempt ${currentAttempts}/${job.maxAttempts} failed, will retry`, { error: errMsg });
+      emitWorkerJobResult(job.id, job.jobType, "retry", subAccountId, { attempt: currentAttempts, maxAttempts: job.maxAttempts });
       console.log(`[AGENT-WORKER] Job #${job.id} failed attempt ${currentAttempts}/${job.maxAttempts}: ${errMsg.substring(0, 200)}`);
     } else {
       await db.update(agentWorkerJobs).set({ status: "failed", error: errMsg, completedAt: new Date() }).where(eq(agentWorkerJobs.id, job.id));
       await writeJobLog(job.id, "error", `Job failed after ${currentAttempts} attempts`, { error: errMsg });
+      emitWorkerJobResult(job.id, job.jobType, "failed", subAccountId, { error: errMsg.substring(0, 300) });
       console.error(`[AGENT-WORKER] Job #${job.id} (${job.jobType}) failed permanently: ${errMsg.substring(0, 200)}`);
     }
   }

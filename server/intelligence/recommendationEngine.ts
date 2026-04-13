@@ -625,6 +625,11 @@ export async function runAllRecommendationsForAccount(accountId: number): Promis
     }
 
     console.log(`[APEX-INTEL] Generated ${total} new recommendations for account ${accountId}`);
+    if (total > 0) {
+      import("./apexLearningFeed").then(({ emitRecommendationsBatchGenerated }) =>
+        emitRecommendationsBatchGenerated(accountId, total)
+      ).catch(() => {});
+    }
   } catch (err) {
     console.error(`[APEX-INTEL] Recommendation generation failed for account ${accountId}:`, (err as Error).message);
   }

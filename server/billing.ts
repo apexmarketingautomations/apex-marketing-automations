@@ -3,6 +3,11 @@ import { db } from "./db";
 import { messageBilling, messages } from "@shared/schema";
 import type { MessageBilling } from "@shared/schema";
 import { eq, and, sql, isNull } from "drizzle-orm";
+import {
+  emitBillingRecord,
+  emitWalletDeducted,
+  emitPlatformProfit,
+} from "./intelligence/apexLearningFeed";
 
 export const CHANNEL_PRICING: Record<string, { providerCostEstimate: number; flatRate: number }> = {
   sms: { providerCostEstimate: 0.0079, flatRate: 0.02 },
@@ -151,6 +156,8 @@ export async function recordOutboundBilling(params: RecordBillingParams): Promis
     throw insertErr;
   }
 
+  emitBillingRecord(subAccountId, record.id, channel, provider, billedAmount, margin, direction);
+
   console.log(JSON.stringify({
     event: "[BILLING] record_created",
     billingId: record.id,
@@ -190,7 +197,10 @@ export async function recordOutboundBilling(params: RecordBillingParams): Promis
           subAccountId,
           description: `${channel} message markup: $${providerCost.toFixed(4)} base → $${billedAmount.toFixed(4)} charged`,
         });
+        emitPlatformProfit(subAccountId, margin, `${channel}_markup`);
       }
+
+      emitWalletDeducted(subAccountId, billedAmount, walletRemaining, channel);
 
       console.log(JSON.stringify({
         event: "[BILLING] wallet_deducted",

@@ -8,6 +8,11 @@ import { eq, sql, and, or, desc, ilike } from "drizzle-orm";
 import crypto from "crypto";
 import { asyncHandler } from "./helpers";
 import { emitUniversalEvent, emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
+import {
+  emitStandaloneOrderCreated,
+  emitStandaloneReferralCreated,
+  emitStandalonePageView,
+} from "../intelligence/apexLearningFeed";
 
 const CARD_PRICE_CENTS = 4900;
 const PROMO_PRICE_CENTS = 2450;
@@ -125,6 +130,8 @@ export async function handleStandaloneCardWebhook(session: any) {
     fulfillmentStatus: "fulfilled",
   }).returning();
 
+  emitStandaloneOrderCreated(order.id, session.amount_total || CARD_PRICE_CENTS, 0);
+
   const [existingRefCode] = await db.select().from(standaloneReferralCodes)
     .where(eq(standaloneReferralCodes.userId, existingUser.id)).limit(1);
   if (!existingRefCode) {
@@ -163,13 +170,16 @@ export async function handleStandaloneCardWebhook(session: any) {
           .where(eq(standaloneReferrals.referredOrderId, order.id)).limit(1);
 
         if (!existingReferral) {
-          await db.insert(standaloneReferrals).values({
+          const [newReferral] = await db.insert(standaloneReferrals).values({
             referrerUserId: refCodeRecord.userId,
             referredUserId: existingUser.id,
             referredOrderId: order.id,
             commissionAmount: COMMISSION_CENTS,
             status: "pending",
-          });
+          }).returning();
+          if (newReferral) {
+            emitStandaloneReferralCreated(newReferral.id, refCodeRecord.userId, order.id);
+          }
         }
       }
     }
@@ -730,6 +740,7 @@ export function registerStandaloneCardsRoutes(app: Express) {
       ipHash,
       sessionId: sessionId || null,
     });
+    emitStandalonePageView(page.slice(0, 100), req.body.cardSlug, referralCode);
     res.json({ ok: true });
   }));
 

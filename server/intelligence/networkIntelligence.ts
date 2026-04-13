@@ -67,6 +67,10 @@ export async function getNetworkBenchmarks(): Promise<NetworkBenchmark[]> {
       });
     }
 
+    import("./apexLearningFeed").then(({ emitNetworkBenchmarksComputed }) =>
+      emitNetworkBenchmarksComputed(benchmarks.length, 0)
+    ).catch(() => {});
+
     return benchmarks;
   } catch {
     return [];

@@ -287,8 +287,16 @@ export const EVENT_TYPES = {
   // ---- Agent Brain ----
   AGENT_TASK_COMPLETED: "agent_task_completed",
   AGENT_TASK_FAILED: "agent_task_failed",
+  AGENT_TASK_CREATED: "agent_task_created",
+  AGENT_TASK_RUNNING: "agent_task_running",
+  AGENT_TASK_RETRY: "agent_task_retry",
   AGENT_BRIEFING_GENERATED: "agent_briefing_generated",
   AGENT_BRAIN_CYCLE: "agent_brain_cycle",
+
+  // ---- Agent Worker ----
+  WORKER_JOB_COMPLETED: "worker_job_completed",
+  WORKER_JOB_FAILED: "worker_job_failed",
+  WORKER_JOB_RETRY: "worker_job_retry",
 
   // ---- Call Intelligence ----
   CALL_ANALYZED: "call_analyzed",
@@ -298,6 +306,35 @@ export const EVENT_TYPES = {
   AUTONOMY_GAP_DETECTED: "autonomy_gap_detected",
   AUTONOMY_ACTION_COMPLETED: "autonomy_action_completed",
   AUTONOMY_ACTION_FAILED: "autonomy_action_failed",
+
+  // ---- Crash / Sentinel Ingest ----
+  CRASH_INGESTED: "crash_ingested",
+  CRASH_LEAD_CREATED: "crash_lead_created",
+  CRASH_LEAD_RECOVERED: "crash_lead_recovered",
+
+  // ---- Billing ----
+  BILLING_RECORD_CREATED: "billing_record_created",
+  WALLET_DEDUCTED: "wallet_deducted",
+  PLATFORM_PROFIT_RECORDED: "platform_profit_recorded",
+
+  // ---- Property / Skip Trace ----
+  PROPERTY_LEAD_CREATED: "property_lead_created",
+  PROPERTY_LEAD_UPDATED: "property_lead_updated",
+  SKIP_TRACE_COMPLETED: "skip_trace_completed",
+
+  // ---- Standalone Cards ----
+  STANDALONE_ORDER_CREATED: "standalone_order_created",
+  STANDALONE_REFERRAL_CREATED: "standalone_referral_created",
+  STANDALONE_PAGE_VIEW: "standalone_page_view",
+
+  // ---- Cognitive Loop (Level 3) ----
+  EPISODIC_MEMORY_CREATED: "episodic_memory_created",
+  COGNITIVE_MEMORY_STORED: "cognitive_memory_stored",
+  RECOMMENDATION_CREATED: "recommendation_created",
+  RECOMMENDATIONS_BATCH_GENERATED: "recommendations_batch_generated",
+  STRATEGIC_INSIGHT_GENERATED: "strategic_insight_generated",
+  NETWORK_BENCHMARKS_COMPUTED: "network_benchmarks_computed",
+  PLAYBOOK_PATTERNS_DERIVED: "playbook_patterns_derived",
 } as const;
 
 export type EventType = typeof EVENT_TYPES[keyof typeof EVENT_TYPES];

@@ -3,6 +3,7 @@ import { operatorMemories } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import type { MemoryEntry, MemoryType, WorkspaceProfile, UserBehaviorProfile, PerformanceSnapshot, PatternInsight } from "./cognitiveTypes";
 import { storage } from "../storage";
+import { emitCognitiveMemoryStored } from "../intelligence/apexLearningFeed";
 
 const DECAY_DAYS = 90;
 
@@ -15,7 +16,8 @@ export async function storeMemory(entry: Omit<MemoryEntry, "id" | "createdAt" | 
     ))
     .limit(1).execute().catch(() => []);
 
-  if (existing.length > 0) {
+  const isUpdate = existing.length > 0;
+  if (isUpdate) {
     await db.update(operatorMemories)
       .set({
         value: entry.value,
@@ -39,6 +41,7 @@ export async function storeMemory(entry: Omit<MemoryEntry, "id" | "createdAt" | 
       expiresAt: entry.expiresAt ? new Date(entry.expiresAt) : null,
     }).execute().catch(e => console.error("[MEMORY-ENGINE] DB operation failed:", e instanceof Error ? e.message : e));
   }
+  emitCognitiveMemoryStored(entry.subAccountId, entry.memoryType, entry.key, isUpdate);
 }
 
 export async function recallMemory(subAccountId: number, memoryType: MemoryType, key?: string): Promise<MemoryEntry[]> {

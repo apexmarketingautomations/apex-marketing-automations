@@ -11,6 +11,11 @@ import { dispatchAlert, generateDeepLink } from "../pushAlertService";
 import { isAIConfigured } from "../aiGateway";
 import { advanceGoalsForAccount } from "./goalEngine";
 import type { ContextPacket } from "./cognitiveTypes";
+import {
+  emitAgentTaskCreated,
+  emitAgentTaskRunning,
+  emitAgentTaskRetry,
+} from "../intelligence/apexLearningFeed";
 
 const SCAN_INTERVAL_MS = 3_600_000;
 const DEFAULT_MAX_TASKS_PER_DAY = 10;
@@ -185,6 +190,7 @@ async function createTask(subAccountId: number, def: TaskDefinition): Promise<nu
     maxAttempts: 3,
   }).returning().execute();
 
+  emitAgentTaskCreated(subAccountId, task.id, def.taskType, def.title, def.priority, def.urgent || false);
   console.log(`[TASK-AGENT] Created task: ${def.title} (${def.taskType}) for account #${subAccountId}`);
 
   if (def.urgent) {
@@ -212,6 +218,7 @@ async function executeTask(taskId: number): Promise<void> {
     .where(eq(agentTasks.id, taskId))
     .execute();
 
+  emitAgentTaskRunning(task.subAccountId, taskId, task.taskType, task.title);
   console.log(`[TASK-AGENT] Executing: ${task.title} (#${taskId})`);
 
   try {
@@ -286,7 +293,9 @@ async function executeTask(taskId: number): Promise<void> {
       .where(eq(agentTasks.id, taskId))
       .execute();
 
-    if (!shouldRetry) {
+    if (shouldRetry) {
+      emitAgentTaskRetry(task.subAccountId, taskId, task.taskType, (task.attempts || 0) + 1, task.maxAttempts || 3, errorMsg);
+    } else {
       recordTaskOutcomeAsMemory(task.subAccountId, {
         taskType: task.taskType,
         title: task.title,

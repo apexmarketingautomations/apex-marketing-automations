@@ -2,6 +2,7 @@ import { db } from "../db";
 import { agentMemories } from "@shared/schema";
 import { eq, and, desc, sql, gte } from "drizzle-orm";
 import type { EpisodicMemory, EpisodicMemoryType } from "./cognitiveTypes";
+import { emitEpisodicMemoryCreated } from "../intelligence/apexLearningFeed";
 
 const MAX_MEMORIES_PER_ACCOUNT = 500;
 
@@ -43,6 +44,9 @@ export async function recordEpisodicMemory(
     }).returning({ id: agentMemories.id }).execute();
     
     await pruneOldMemories(entry.subAccountId);
+    if (inserted?.id) {
+      emitEpisodicMemoryCreated(entry.subAccountId, entry.memoryType, entry.category || null, entry.sourceEvent || null);
+    }
     return inserted?.id || null;
   } catch (err) {
     console.error(`[EPISODIC-MEMORY] Failed to record memory: ${err instanceof Error ? err.message : String(err)}`);

@@ -8,6 +8,11 @@ import { aiChat, isAIConfigured } from "../aiGateway";
 import { processLiveSentinelFeed, deployGeofenceAd } from "../sentinel";
 import { publishEventAsync, EVENT_TYPES } from "../eventBus";
 import { emitUniversalEvent, EVENT_TYPES as INTEL_EVENT_TYPES } from "../intelligence/eventEmitter";
+import {
+  emitPropertyLeadCreated,
+  emitPropertyLeadUpdated,
+  emitSkipTraceCompleted,
+} from "../intelligence/apexLearningFeed";
 import { scanDistressedProperties, calculateDealMetrics } from "../property-radar";
 import { skipTraceLookup, getCurrentMonthYear } from "../skip-trace";
 import crypto from "crypto";
@@ -122,6 +127,7 @@ export function registerPropertyRoutes(app: Express) {
           lat: leadLat,
           lng: leadLng,
         });
+        emitPropertyLeadCreated(parsed.data.subAccountId, record.id, record.address || "unknown");
         created.push({
           ...record,
           dealMetrics: calculateDealMetrics(record.estimatedValue || 0, record.estimatedEquity || 0),
@@ -153,6 +159,7 @@ export function registerPropertyRoutes(app: Express) {
     if (!parsed.success) return res.status(400).json({ error: "Invalid lead data", details: parsed.error.flatten() });
     const lead = await storage.updatePropertyLead(id, parsed.data);
     if (!lead) return res.status(404).json({ error: "Lead not found" });
+    emitPropertyLeadUpdated(lead.subAccountId, id, Object.keys(parsed.data).join(","));
     res.json({ ...lead, dealMetrics: calculateDealMetrics(lead.estimatedValue || 0, lead.estimatedEquity || 0) });
   }));
 
@@ -310,6 +317,9 @@ export function registerPropertyRoutes(app: Express) {
         ownerEmail: result.ownerEmail || lead.ownerEmail,
       });
     }
+
+    const phonesFound = [result.ownerPhone, ...(result.additionalPhones || [])].filter(Boolean).length;
+    emitSkipTraceCompleted(subAccountId, propertyLeadId, saved.id, phonesFound);
 
     await storage.incrementSkipTraceUsage(subAccountId, getCurrentMonthYear());
 

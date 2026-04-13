@@ -214,6 +214,10 @@ export async function calculateHealthScore(context: ContextPacket): Promise<Heal
   else if (overall >= 40) summary = `Several areas need attention. Start with ${weakest[0].name} and ${weakest[1].name} for the fastest improvement.`;
   else summary = `Your systems are in early setup. Focus on ${weakest[0].name} first — it's the foundation everything else builds on.`;
 
+  import("../intelligence/apexLearningFeed").then(({ emitStrategicInsightGenerated }) =>
+    emitStrategicInsightGenerated(performance.subAccountId, 0, grade, overall)
+  ).catch(() => {});
+
   return {
     overall,
     categories: {

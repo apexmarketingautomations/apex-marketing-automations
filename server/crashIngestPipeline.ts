@@ -1,3 +1,9 @@
+import {
+  emitCrashIngested,
+  emitCrashLeadCreated,
+  emitCrashLeadRecovered,
+} from "./intelligence/apexLearningFeed";
+
 /**
  * Crash Ingest Pipeline
  *
@@ -250,6 +256,7 @@ async function runIngestCycle(
       }
 
       inserted++;
+      emitCrashIngested(defaultSubAccountId, newReport.id, incident.severity || "unknown", incident.location || "unknown", qualifies);
 
       if (qualifies) {
         const leadCreated = await createLeadFromCrash(newReport, {
@@ -266,6 +273,7 @@ async function runIngestCycle(
         }, defaultSubAccountId);
         if (leadCreated) {
           leads++;
+          emitCrashLeadCreated(defaultSubAccountId, newReport.id, incident.severity || "unknown", incident.location || "unknown");
           import("./operator/apexIntelligence").then(({ reportOutcome }) =>
             reportOutcome({
               agentName:    "crash-ingest",
@@ -352,6 +360,7 @@ async function runLeadRecoveryPass(defaultSubAccountId: number): Promise<number>
       if (leadCreated) {
         recovered++;
         stats.totalLeadsCreated++;
+        emitCrashLeadRecovered(defaultSubAccountId, report.id);
         console.log(`[CRASH-INGEST] Lead recovery: successfully created lead for report ${report.id}`);
       } else {
         await storage.updateCrashReport(report.id, { retryCount: retryCount + 1 });
