@@ -95,11 +95,8 @@ export async function registerRoutes(
   registerMetaMessagingProductRoutes(app);
   registerMediaRoutes(app);
   registerChaturbateRoutes(app);
-<<<<<<< HEAD
-  registerApexIntelligenceRoutes(app);
-=======
   registerSiteTrackingRoutes(app);
->>>>>>> 7211cf4 (feat: Apex Intelligence Level 1 — Sitewide Data Capture & Brain Foundation)
+  registerApexIntelligenceRoutes(app);
 
   return httpServer;
 }
