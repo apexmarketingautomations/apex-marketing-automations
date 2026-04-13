@@ -20,14 +20,14 @@ const CATEGORY_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 function AutonomyBadge({ level }: { level: string }) {
-  if (level === "observe") return <span className="text-[7px] px-1 py-px rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 font-semibold" data-testid="badge-observe"><Search size={6} className="inline mr-0.5" />observe</span>;
-  if (level === "draft") return <span className="text-[7px] px-1 py-px rounded bg-amber-500/15 text-amber-400 border border-amber-500/20 font-semibold" data-testid="badge-draft"><FileEdit size={6} className="inline mr-0.5" />draft</span>;
-  return <span className="text-[7px] px-1 py-px rounded bg-red-500/15 text-red-400 border border-red-500/20 font-semibold" data-testid="badge-execute"><Zap size={6} className="inline mr-0.5" />execute</span>;
+  if (level === "observe") return <span className="text-xs px-1 py-px rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 font-semibold" data-testid="badge-observe"><Search size={10} className="inline mr-0.5" />observe</span>;
+  if (level === "draft") return <span className="text-xs px-1 py-px rounded bg-amber-500/15 text-amber-400 border border-amber-500/20 font-semibold" data-testid="badge-draft"><FileEdit size={10} className="inline mr-0.5" />draft</span>;
+  return <span className="text-xs px-1 py-px rounded bg-red-500/15 text-red-400 border border-red-500/20 font-semibold" data-testid="badge-execute"><Zap size={10} className="inline mr-0.5" />execute</span>;
 }
 
 function ApprovalBadge({ required }: { required: boolean }) {
   if (!required) return null;
-  return <span className="text-[7px] px-1 py-px rounded bg-violet-500/15 text-violet-400 border border-violet-500/20 font-semibold" data-testid="badge-approval"><Shield size={6} className="inline mr-0.5" />approval</span>;
+  return <span className="text-xs px-1 py-px rounded bg-violet-500/15 text-violet-400 border border-violet-500/20 font-semibold" data-testid="badge-approval"><Shield size={10} className="inline mr-0.5" />approval</span>;
 }
 
 export function AgentTab({ subAccountId, onTabChange }: { subAccountId: number; onTabChange?: (tab: TabId) => void }) {
@@ -165,11 +165,11 @@ export function AgentTab({ subAccountId, onTabChange }: { subAccountId: number; 
             animate={isEnabled ? { scale: [1, 1.3, 1], opacity: [1, 0.7, 1] } : {}}
             transition={{ duration: 2, repeat: Infinity }}
           />
-          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
             {isEnabled ? "AI Active" : "Paused"}
           </span>
           {stats && (
-            <span className="text-[9px] text-slate-600">
+            <span className="text-xs text-slate-400">
               {stats.todayCount}/{stats.config?.maxTasksPerDay || 10} today
             </span>
           )}
@@ -177,7 +177,7 @@ export function AgentTab({ subAccountId, onTabChange }: { subAccountId: number; 
         <div className="flex items-center gap-1">
           <button
             onClick={() => toggleMutation.mutate(!isEnabled)}
-            className={`p-1 rounded transition-colors ${isEnabled ? "text-emerald-400 hover:bg-emerald-400/10" : "text-slate-600 hover:bg-white/5"}`}
+            className={`p-1 rounded transition-colors ${isEnabled ? "text-emerald-400 hover:bg-emerald-400/10" : "text-slate-400 hover:bg-white/5"}`}
             title={isEnabled ? "Pause Agent" : "Enable Agent"}
             data-testid="button-agent-toggle"
           >
@@ -193,7 +193,7 @@ export function AgentTab({ subAccountId, onTabChange }: { subAccountId: number; 
           <button
             onClick={() => scanMutation.mutate()}
             disabled={scanMutation.isPending}
-            className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-gradient-to-r from-violet-500/20 to-cyan-500/20 text-violet-400 border border-violet-500/20 hover:from-violet-500/30 hover:to-cyan-500/30 transition-all disabled:opacity-50"
+            className="flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-gradient-to-r from-violet-500/20 to-cyan-500/20 text-violet-400 border border-violet-500/20 hover:from-violet-500/30 hover:to-cyan-500/30 transition-all disabled:opacity-50"
             data-testid="button-agent-scan"
           >
             {scanMutation.isPending ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
@@ -216,16 +216,16 @@ export function AgentTab({ subAccountId, onTabChange }: { subAccountId: number; 
                   <div className="flex-1">
                     <div className="flex items-center gap-1.5 mb-1">
                       <Eye size={10} className="text-cyan-400" />
-                      <span className="text-[9px] font-bold text-cyan-400 uppercase tracking-wider">While you were away</span>
-                      <span className="text-[8px] text-slate-600">
+                      <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider">While you were away</span>
+                      <span className="text-sm text-slate-400">
                         {b.tasksCompleted} done {b.tasksFailed > 0 ? `· ${b.tasksFailed} failed` : ""}
                       </span>
                     </div>
-                    <p className="text-[10px] text-slate-300 leading-relaxed">{b.summary}</p>
+                    <p className="text-xs text-slate-300 leading-relaxed">{b.summary}</p>
                   </div>
                   <button
                     onClick={() => dismissBriefing.mutate(b.id)}
-                    className="p-0.5 rounded text-slate-600 hover:text-slate-400 transition-colors shrink-0"
+                    className="p-0.5 rounded text-slate-400 hover:text-slate-400 transition-colors shrink-0"
                     data-testid="button-dismiss-briefing"
                   >
                     <X size={10} />
@@ -249,20 +249,20 @@ export function AgentTab({ subAccountId, onTabChange }: { subAccountId: number; 
               {stats?.config && (
                 <>
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-slate-500">Autonomy</span>
-                    <span className="text-[10px] text-violet-400 font-medium capitalize">{stats.config.autonomyLevel}</span>
+                    <span className="text-xs text-slate-500">Autonomy</span>
+                    <span className="text-xs text-violet-400 font-medium capitalize">{stats.config.autonomyLevel}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-slate-500">Scan Interval</span>
-                    <span className="text-[10px] text-slate-400">{stats.config.scanIntervalMinutes}min</span>
+                    <span className="text-xs text-slate-500">Scan Interval</span>
+                    <span className="text-xs text-slate-400">{stats.config.scanIntervalMinutes}min</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-slate-500">Max Tasks/Day</span>
-                    <span className="text-[10px] text-slate-400">{stats.config.maxTasksPerDay}</span>
+                    <span className="text-xs text-slate-500">Max Tasks/Day</span>
+                    <span className="text-xs text-slate-400">{stats.config.maxTasksPerDay}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-slate-500">Last Scan</span>
-                    <span className="text-[10px] text-slate-400">{stats.config.lastScanAt ? new Date(stats.config.lastScanAt).toLocaleTimeString() : "Never"}</span>
+                    <span className="text-xs text-slate-500">Last Scan</span>
+                    <span className="text-xs text-slate-400">{stats.config.lastScanAt ? new Date(stats.config.lastScanAt).toLocaleTimeString() : "Never"}</span>
                   </div>
                 </>
               )}
@@ -271,20 +271,20 @@ export function AgentTab({ subAccountId, onTabChange }: { subAccountId: number; 
                   <div className="h-px bg-white/[0.04] my-1" />
                   <div className="flex items-center gap-1.5 mb-1">
                     <Brain size={9} className="text-violet-400" />
-                    <span className="text-[9px] font-bold text-violet-400 uppercase tracking-wider">Learning Stats</span>
+                    <span className="text-xs font-bold text-violet-400 uppercase tracking-wider">Learning Stats</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-slate-500">Success Rate</span>
-                    <span className={`text-[10px] font-medium ${outcomes.successRate >= 80 ? "text-emerald-400" : outcomes.successRate >= 50 ? "text-amber-400" : "text-red-400"}`}>{outcomes.successRate}%</span>
+                    <span className="text-xs text-slate-500">Success Rate</span>
+                    <span className={`text-xs font-medium ${outcomes.successRate >= 80 ? "text-emerald-400" : outcomes.successRate >= 50 ? "text-amber-400" : "text-red-400"}`}>{outcomes.successRate}%</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-slate-500">Best Streak</span>
-                    <span className="text-[10px] text-slate-400">{outcomes.streaks?.longestSuccess || 0} tasks</span>
+                    <span className="text-xs text-slate-500">Best Streak</span>
+                    <span className="text-xs text-slate-400">{outcomes.streaks?.longestSuccess || 0} tasks</span>
                   </div>
                   {outcomes.topSuccessTypes?.slice(0, 2).map((t: { type: string; count: number }) => (
                     <div key={t.type} className="flex items-center justify-between">
-                      <span className="text-[10px] text-slate-500 truncate">{t.type}</span>
-                      <span className="text-[10px] text-emerald-400/70">{t.count}x</span>
+                      <span className="text-xs text-slate-500 truncate">{t.type}</span>
+                      <span className="text-xs text-emerald-400/70">{t.count}x</span>
                     </div>
                   ))}
                 </>
@@ -304,7 +304,7 @@ export function AgentTab({ subAccountId, onTabChange }: { subAccountId: number; 
           ].map((s) => (
             <div key={s.label} className="text-center">
               <p className={`text-sm font-bold ${s.color}`}>{s.value}</p>
-              <p className="text-[8px] text-slate-600 uppercase tracking-wider">{s.label}</p>
+              <p className="text-sm text-slate-400 uppercase tracking-wider">{s.label}</p>
             </div>
           ))}
         </div>
@@ -319,10 +319,10 @@ export function AgentTab({ subAccountId, onTabChange }: { subAccountId: number; 
           >
             <div className="flex items-center gap-1.5">
               <Zap size={10} className="text-violet-400" />
-              <span className="text-[9px] font-bold text-violet-400 uppercase tracking-wider">Toolkit</span>
-              <span className="text-[8px] text-slate-600">{toolsData.totalTools} tools</span>
+              <span className="text-xs font-bold text-violet-400 uppercase tracking-wider">Toolkit</span>
+              <span className="text-sm text-slate-400">{toolsData.totalTools} tools</span>
             </div>
-            {showToolkit ? <ChevronDown size={10} className="text-slate-600" /> : <ChevronRight size={10} className="text-slate-600" />}
+            {showToolkit ? <ChevronDown size={10} className="text-slate-400" /> : <ChevronRight size={10} className="text-slate-400" />}
           </button>
           <AnimatePresence>
             {showToolkit && (
@@ -344,10 +344,10 @@ export function AgentTab({ subAccountId, onTabChange }: { subAccountId: number; 
                           data-testid={`category-${cat.category}`}
                         >
                           <div className="flex items-center gap-1.5">
-                            <span className={`text-[9px] font-semibold ${catInfo.color}`}>{catInfo.label}</span>
-                            <span className="text-[8px] text-slate-700">{cat.count}</span>
+                            <span className={`text-xs font-semibold ${catInfo.color}`}>{catInfo.label}</span>
+                            <span className="text-sm text-slate-500">{cat.count}</span>
                           </div>
-                          {isExpanded ? <ChevronDown size={8} className="text-slate-600" /> : <ChevronRight size={8} className="text-slate-600" />}
+                          {isExpanded ? <ChevronDown size={11} className="text-slate-400" /> : <ChevronRight size={11} className="text-slate-400" />}
                         </button>
                         <AnimatePresence>
                           {isExpanded && (
@@ -362,7 +362,7 @@ export function AgentTab({ subAccountId, onTabChange }: { subAccountId: number; 
                                   .filter((t: any) => t.category === cat.category)
                                   .map((tool: any) => (
                                     <div key={tool.name} className="flex items-center justify-between py-0.5" data-testid={`tool-${tool.name}`}>
-                                      <span className="text-[9px] text-slate-400 truncate max-w-[140px]">{tool.name}</span>
+                                      <span className="text-xs text-slate-400 truncate max-w-[140px]">{tool.name}</span>
                                       <div className="flex items-center gap-1 shrink-0">
                                         <AutonomyBadge level={tool.autonomyRequired} />
                                         <ApprovalBadge required={tool.requiresApproval} />
@@ -387,9 +387,9 @@ export function AgentTab({ subAccountId, onTabChange }: { subAccountId: number; 
         {tasks.length === 0 ? (
           <div className="flex-1 flex items-center justify-center p-8 text-center">
             <div className="space-y-2">
-              <Bot size={28} className="mx-auto text-slate-700" />
-              <p className="text-[11px] text-slate-600">No tasks yet</p>
-              <p className="text-[9px] text-slate-700">Click "AI Scan" to let the agent analyze your account</p>
+              <Bot size={28} className="mx-auto text-slate-500" />
+              <p className="text-sm text-slate-400">No tasks yet</p>
+              <p className="text-xs text-slate-500">Click "AI Scan" to let the agent analyze your account</p>
             </div>
           </div>
         ) : (
@@ -407,31 +407,31 @@ export function AgentTab({ subAccountId, onTabChange }: { subAccountId: number; 
                   <div className="mt-0.5">{statusIcon(task.status)}</div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <p className="text-[11px] text-white font-medium truncate">{task.title}</p>
-                      <span className={`text-[8px] font-bold ${priorityColor(task.priority)}`}>P{task.priority}</span>
+                      <p className="text-sm text-white font-medium truncate">{task.title}</p>
+                      <span className={`text-sm font-bold ${priorityColor(task.priority)}`}>P{task.priority}</span>
                       {hasAIReasoning(task.description) && (
-                        <span className="text-[7px] px-1 py-px rounded bg-violet-500/15 text-violet-400 border border-violet-500/20 font-semibold">AI</span>
+                        <span className="text-xs px-1 py-px rounded bg-violet-500/15 text-violet-400 border border-violet-500/20 font-semibold">AI</span>
                       )}
                     </div>
                     {task.description && (
-                      <p className={`text-[9px] text-slate-500 mt-0.5 ${expandedTask === task.id ? "" : "line-clamp-2"}`}>
+                      <p className={`text-xs text-slate-500 mt-0.5 ${expandedTask === task.id ? "" : "line-clamp-2"}`}>
                         {task.description}
                       </p>
                     )}
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[8px] text-slate-700">{new Date(task.createdAt).toLocaleTimeString()}</span>
+                      <span className="text-sm text-slate-500">{new Date(task.createdAt).toLocaleTimeString()}</span>
                       {task.toolUsed && (
-                        <span className="text-[8px] text-violet-500/60 flex items-center gap-0.5">
-                          <Zap size={7} /> {task.toolUsed}
+                        <span className="text-sm text-violet-500/60 flex items-center gap-0.5">
+                          <Zap size={10} /> {task.toolUsed}
                         </span>
                       )}
                       {task.triggeredBy === "autonomous-agent" && (
-                        <span className="text-[8px] text-cyan-500/40 flex items-center gap-0.5">
-                          <Bot size={7} /> auto
+                        <span className="text-sm text-cyan-500/40 flex items-center gap-0.5">
+                          <Bot size={10} /> auto
                         </span>
                       )}
                       {task.status === "failed" && task.error && (
-                        <span className="text-[8px] text-red-400/60 truncate max-w-[150px]">{task.error}</span>
+                        <span className="text-sm text-red-400/60 truncate max-w-[150px]">{task.error}</span>
                       )}
                     </div>
                   </div>
@@ -446,7 +446,7 @@ export function AgentTab({ subAccountId, onTabChange }: { subAccountId: number; 
         <div className="px-3 py-2 border-t border-white/[0.04]">
           <button
             onClick={() => onTabChange("apex")}
-            className="text-[10px] text-slate-600 hover:text-violet-400 transition-colors flex items-center gap-1"
+            className="text-xs text-slate-400 hover:text-violet-400 transition-colors flex items-center gap-1"
             data-testid="link-apex-brain"
           >
             <Activity size={10} />

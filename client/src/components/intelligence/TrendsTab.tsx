@@ -41,7 +41,7 @@ export function TrendsTab({ subAccountId }: { subAccountId: number }) {
           </div>
           <p className="text-sm font-semibold text-white">Building Your Baseline</p>
           <p className="text-xs text-slate-500 max-w-[220px]">I need more data to detect patterns. Keep using the platform and I'll surface trends as they emerge.</p>
-          <button onClick={() => refetch()} className="text-[10px] text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1 mx-auto" data-testid="button-scan-trends">
+          <button onClick={() => refetch()} className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1 mx-auto" data-testid="button-scan-trends">
             <RefreshCw size={10} />
             Scan now
           </button>
@@ -53,7 +53,7 @@ export function TrendsTab({ subAccountId }: { subAccountId: number }) {
   return (
     <div className="flex-1 overflow-y-auto p-3 space-y-2" data-testid="trends-list">
       <div className="flex items-center justify-between px-1 mb-1">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{trends.length} Detected Pattern{trends.length !== 1 ? "s" : ""}</p>
+        <p className="text-xs font-bold uppercase tracking-widest text-slate-500">{trends.length} Detected Pattern{trends.length !== 1 ? "s" : ""}</p>
         <button onClick={() => refetch()} className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-slate-300 transition-colors" data-testid="button-refresh-trends">
           <RefreshCw size={12} />
         </button>
@@ -75,14 +75,14 @@ export function TrendsTab({ subAccountId }: { subAccountId: number }) {
                 <TrendIcon size={13} className={isPositive ? "text-emerald-400" : "text-amber-400"} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[11px] text-slate-300 leading-relaxed">{trend.pattern}</p>
+                <p className="text-sm text-slate-300 leading-relaxed">{trend.pattern}</p>
                 <div className="flex items-center gap-3 mt-2">
-                  <span className="text-[9px] text-slate-600 flex items-center gap-1">
-                    <Target size={8} />
+                  <span className="text-xs text-slate-400 flex items-center gap-1">
+                    <Target size={11} />
                     {Math.round(trend.confidence * 100)}% confidence
                   </span>
-                  <span className="text-[9px] text-slate-600 flex items-center gap-1">
-                    <BarChart3 size={8} />
+                  <span className="text-xs text-slate-400 flex items-center gap-1">
+                    <BarChart3 size={11} />
                     {trend.dataPoints} data points
                   </span>
                 </div>

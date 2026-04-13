@@ -57,7 +57,7 @@ export function InsightsTab({ subAccountId }: { subAccountId: number }) {
           </div>
           <p className="text-sm font-semibold text-white">Systems Optimized</p>
           <p className="text-xs text-slate-500 max-w-[220px]">No critical insights right now. Your setup is performing well.</p>
-          <button onClick={() => refetch()} className="text-[10px] text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1 mx-auto mt-2" data-testid="button-refresh-insights">
+          <button onClick={() => refetch()} className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1 mx-auto mt-2" data-testid="button-refresh-insights">
             <RefreshCw size={10} />
             Scan again
           </button>
@@ -69,7 +69,7 @@ export function InsightsTab({ subAccountId }: { subAccountId: number }) {
   return (
     <div className="flex-1 overflow-y-auto p-3 space-y-2" data-testid="insights-list">
       <div className="flex items-center justify-between px-1 mb-1">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{insights.length} Strategic Insight{insights.length !== 1 ? "s" : ""}</p>
+        <p className="text-xs font-bold uppercase tracking-widest text-slate-500">{insights.length} Strategic Insight{insights.length !== 1 ? "s" : ""}</p>
         <button onClick={() => refetch()} className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-slate-300 transition-colors" data-testid="button-refresh-insights">
           <RefreshCw size={12} />
         </button>
@@ -97,12 +97,12 @@ export function InsightsTab({ subAccountId }: { subAccountId: number }) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-[9px] font-bold uppercase tracking-wider ${impact.color}`}>{insight.impact} impact</span>
-                    <span className="text-[9px] text-slate-600">•</span>
-                    <span className="text-[9px] text-slate-600 capitalize">{insight.effort?.replace("-", " ")}</span>
+                    <span className={`text-xs font-bold uppercase tracking-wider ${impact.color}`}>{insight.impact} impact</span>
+                    <span className="text-xs text-slate-400">•</span>
+                    <span className="text-xs text-slate-400 capitalize">{insight.effort?.replace("-", " ")}</span>
                   </div>
-                  <p className="text-[11px] text-white font-medium leading-relaxed">{insight.observation}</p>
-                  <ChevronDown size={10} className={`text-slate-600 mt-1 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                  <p className="text-sm text-white font-medium leading-relaxed">{insight.observation}</p>
+                  <ChevronDown size={10} className={`text-slate-400 mt-1 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                 </div>
               </div>
             </div>
@@ -118,17 +118,17 @@ export function InsightsTab({ subAccountId }: { subAccountId: number }) {
                 >
                   <div className="px-3 pb-3 space-y-2 border-t border-white/[0.04] pt-2">
                     <div>
-                      <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mb-1">Why This Matters</p>
-                      <p className="text-[10px] text-slate-400 leading-relaxed">{insight.insight}</p>
+                      <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-1">Why This Matters</p>
+                      <p className="text-xs text-slate-400 leading-relaxed">{insight.insight}</p>
                     </div>
                     <div>
-                      <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mb-1">Recommendation</p>
-                      <p className="text-[10px] text-slate-300 leading-relaxed">{insight.suggestion}</p>
+                      <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-1">Recommendation</p>
+                      <p className="text-xs text-slate-300 leading-relaxed">{insight.suggestion}</p>
                     </div>
                     {insight.action && (
                       <button
                         onClick={(e) => { e.stopPropagation(); if (insight.action?.link) setLocation(insight.action.link); }}
-                        className="w-full mt-1 px-3 py-2 rounded-lg bg-gradient-to-r from-violet-500/15 to-cyan-500/15 border border-violet-500/20 text-[10px] font-semibold text-white hover:from-violet-500/25 hover:to-cyan-500/25 transition-all flex items-center justify-center gap-1.5"
+                        className="w-full mt-1 px-3 py-2 rounded-lg bg-gradient-to-r from-violet-500/15 to-cyan-500/15 border border-violet-500/20 text-xs font-semibold text-white hover:from-violet-500/25 hover:to-cyan-500/25 transition-all flex items-center justify-center gap-1.5"
                         data-testid={`button-insight-action-${i}`}
                       >
                         {insight.action.label}

@@ -67,7 +67,7 @@ export function IndustryTab({ subAccountId }: { subAccountId: number }) {
           <Factory size={14} className="text-violet-400" />
           <p className="text-xs font-semibold text-white">{industryData.industry} Intelligence</p>
         </div>
-        <p className="text-[10px] text-slate-400 leading-relaxed">
+        <p className="text-xs text-slate-400 leading-relaxed">
           Response time benchmark: <span className="text-white font-medium">{industryData.avgResponseTimeBenchmark}s</span>
         </p>
       </div>
@@ -84,7 +84,7 @@ export function IndustryTab({ subAccountId }: { subAccountId: number }) {
               {readiness.phase === "not_setup" ? "Setup in progress" : "Agent not active yet"}
             </p>
           </div>
-          <p className="text-[10px] text-slate-400 leading-relaxed mb-3" data-testid="readiness-body">
+          <p className="text-xs text-slate-400 leading-relaxed mb-3" data-testid="readiness-body">
             {readiness.phase === "not_setup"
               ? "Connect a channel and enable your AI agent to start tracking response performance."
               : "Your agent is enabled but hasn't sent enough replies yet. Benchmarks will appear after at least 5 successful replies over 72 hours."}
@@ -92,7 +92,7 @@ export function IndustryTab({ subAccountId }: { subAccountId: number }) {
           {readiness.cta && (
             <button
               onClick={() => navigate(readiness.cta!.link)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[10px] font-medium transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-medium transition-colors"
               data-testid="readiness-cta"
             >
               {readiness.cta.label}
@@ -104,14 +104,14 @@ export function IndustryTab({ subAccountId }: { subAccountId: number }) {
 
       {isReady && Object.keys(benchmarks).length > 0 && (
         <div className="space-y-1.5">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 px-1">Your Performance vs Benchmarks</p>
+          <p className="text-xs font-bold uppercase tracking-widest text-slate-500 px-1">Your Performance vs Benchmarks</p>
           {Object.entries(benchmarks).map(([key, bm]) => (
             <div key={key} className="flex items-center justify-between p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.04]">
-              <span className="text-[10px] text-slate-400 capitalize">{key.replace(/_/g, " ")}</span>
+              <span className="text-xs text-slate-400 capitalize">{key.replace(/_/g, " ")}</span>
               <div className="flex items-center gap-3">
-                <span className="text-[10px] text-white font-medium">{String(bm.yours)}</span>
-                <span className="text-[9px] text-slate-600">vs</span>
-                <span className="text-[10px] text-slate-400">{String(bm.benchmark)}</span>
+                <span className="text-xs text-white font-medium">{String(bm.yours)}</span>
+                <span className="text-xs text-slate-400">vs</span>
+                <span className="text-xs text-slate-400">{String(bm.benchmark)}</span>
                 <span className={`w-2 h-2 rounded-full ${bm.status === "above" ? "bg-emerald-400" : bm.status === "at" ? "bg-amber-400" : "bg-red-400"}`} />
               </div>
             </div>
@@ -120,40 +120,40 @@ export function IndustryTab({ subAccountId }: { subAccountId: number }) {
       )}
 
       <div className="space-y-1.5">
-        <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 px-1">Top Channels</p>
+        <p className="text-xs font-bold uppercase tracking-widest text-slate-500 px-1">Top Channels</p>
         <div className="flex flex-wrap gap-1.5 px-1">
           {industryData.bestChannels.map((ch) => (
-            <span key={ch} className="px-2 py-1 rounded-md bg-cyan-500/10 border border-cyan-500/15 text-[10px] text-cyan-400 font-medium">{ch}</span>
+            <span key={ch} className="px-2 py-1 rounded-md bg-cyan-500/10 border border-cyan-500/15 text-xs text-cyan-400 font-medium">{ch}</span>
           ))}
         </div>
       </div>
 
       <div className="space-y-1.5">
-        <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 px-1">Lead Strategies</p>
+        <p className="text-xs font-bold uppercase tracking-widest text-slate-500 px-1">Lead Strategies</p>
         {industryData.leadStrategies.map((strategy, i) => (
           <div key={i} className="flex items-start gap-2 px-1">
             <div className="w-1 h-1 rounded-full bg-violet-400 mt-1.5 shrink-0" />
-            <p className="text-[10px] text-slate-400 leading-relaxed">{strategy}</p>
+            <p className="text-xs text-slate-400 leading-relaxed">{strategy}</p>
           </div>
         ))}
       </div>
 
       <div className="space-y-1.5">
-        <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 px-1">Recommended Workflows</p>
+        <p className="text-xs font-bold uppercase tracking-widest text-slate-500 px-1">Recommended Workflows</p>
         {industryData.commonWorkflows.map((wf, i) => (
           <div key={i} className="flex items-center gap-2 px-1">
             <Zap size={10} className="text-amber-400 shrink-0" />
-            <p className="text-[10px] text-slate-400">{wf}</p>
+            <p className="text-xs text-slate-400">{wf}</p>
           </div>
         ))}
       </div>
 
       {industryData.tips.length > 0 && (
         <div className="space-y-1.5">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 px-1">Pro Tips</p>
+          <p className="text-xs font-bold uppercase tracking-widest text-slate-500 px-1">Pro Tips</p>
           {industryData.tips.map((tip, i) => (
             <div key={i} className="p-2.5 rounded-lg bg-emerald-500/[0.04] border border-emerald-500/10">
-              <p className="text-[10px] text-slate-300 leading-relaxed">{tip}</p>
+              <p className="text-xs text-slate-300 leading-relaxed">{tip}</p>
             </div>
           ))}
         </div>

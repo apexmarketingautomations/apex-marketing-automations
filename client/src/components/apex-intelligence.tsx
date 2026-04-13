@@ -48,8 +48,8 @@ export function ApexIntelligence({
   accountId,
   showToggle = true,
   className = "",
-  panelWidth = 420,
-  panelHeight = 620,
+  panelWidth = 480,
+  panelHeight = 680,
 }: ApexIntelligenceProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [activeTab, setActiveTab] = useState<TabId>("command");
@@ -162,8 +162,8 @@ export function ApexIntelligence({
                     />
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-white tracking-tight leading-none">Apex Intelligence</p>
-                    <p className="text-[10px] text-violet-400/60 mt-0.5 font-medium tracking-widest uppercase">Autonomous Operator</p>
+                    <p className="text-base font-bold text-white tracking-tight leading-none">Apex Intelligence</p>
+                    <p className="text-xs text-violet-300/80 mt-1 font-semibold tracking-widest uppercase">Autonomous Operator</p>
                   </div>
                 </div>
                 {showToggle && (
@@ -187,8 +187,8 @@ export function ApexIntelligence({
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
-                      className={`relative flex-1 min-w-0 flex items-center justify-center gap-0.5 py-1.5 px-1 rounded-md text-[8px] font-semibold tracking-wide transition-all whitespace-nowrap ${
-                        isActive ? "text-white" : "text-slate-600 hover:text-slate-400"
+                      className={`relative flex-1 min-w-0 flex items-center justify-center gap-1 py-2 px-1.5 rounded-md text-[11px] font-semibold tracking-wide transition-all whitespace-nowrap ${
+                        isActive ? "text-white" : "text-slate-400 hover:text-slate-200"
                       }`}
                       data-testid={`tab-intel-${tab.id}`}
                     >
@@ -199,11 +199,11 @@ export function ApexIntelligence({
                           transition={{ type: "spring", bounce: 0.15, duration: 0.4 }}
                         />
                       )}
-                      <span className="relative flex items-center gap-0.5">
-                        <TabIcon size={10} className="shrink-0" />
+                      <span className="relative flex items-center gap-1">
+                        <TabIcon size={13} className="shrink-0" />
                         {tab.label}
                         {tab.id === "nudges" && nudgeCount > 0 && (
-                          <span className="w-3.5 h-3.5 rounded-full bg-violet-500 text-white text-[7px] font-bold flex items-center justify-center shrink-0">{nudgeCount}</span>
+                          <span className="w-4 h-4 rounded-full bg-violet-500 text-white text-[9px] font-bold flex items-center justify-center shrink-0">{nudgeCount}</span>
                         )}
                       </span>
                     </button>
@@ -249,9 +249,9 @@ export function ApexIntelligence({
                   animate={{ opacity: [1, 0.4, 1] }}
                   transition={{ duration: 2, repeat: Infinity }}
                 />
-                <span className="text-[9px] text-slate-600 font-medium">Apex Intelligence — Autonomous Operator</span>
+                <span className="text-[11px] text-slate-400 font-medium">Apex Intelligence — Autonomous Operator</span>
               </div>
-              <span className="text-[9px] text-slate-700">{subAccountId ? `Account #${subAccountId}` : ""}</span>
+              <span className="text-[11px] text-slate-500">{subAccountId ? `Account #${subAccountId}` : ""}</span>
             </div>
 
             {!isInline && (
@@ -308,7 +308,7 @@ export function ApexIntelligence({
               >
                 <Brain size={40} className="text-violet-400 group-hover:text-violet-300 transition-colors" />
                 {healthScore !== undefined && healthScore !== null && (
-                  <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded text-[8px] font-black bg-black/80 border border-violet-500/30 text-violet-300" data-testid="text-btn-health-score">
+                  <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded text-[11px] font-black bg-black/80 border border-violet-500/30 text-violet-300" data-testid="text-btn-health-score">
                     {healthScore}
                   </span>
                 )}

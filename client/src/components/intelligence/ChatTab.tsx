@@ -230,7 +230,7 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
         {messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
             <div
-              className={`max-w-[88%] p-3 text-[11px] rounded-xl whitespace-pre-wrap leading-relaxed ${
+              className={`max-w-[88%] p-3 text-sm rounded-xl whitespace-pre-wrap leading-relaxed ${
                 m.role === "user"
                   ? "bg-gradient-to-br from-violet-500/20 to-cyan-500/15 text-white rounded-br-sm border border-violet-500/20"
                   : "bg-white/[0.03] text-slate-300 rounded-bl-sm border border-white/[0.06]"
@@ -245,7 +245,7 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
         {isStreaming && streamingText && (
           <div className="flex justify-start">
             <div
-              className="max-w-[88%] p-3 text-[11px] rounded-xl whitespace-pre-wrap leading-relaxed bg-white/[0.03] text-slate-300 rounded-bl-sm border border-white/[0.06]"
+              className="max-w-[88%] p-3 text-sm rounded-xl whitespace-pre-wrap leading-relaxed bg-white/[0.03] text-slate-300 rounded-bl-sm border border-white/[0.06]"
               data-testid="intel-message-streaming"
             >
               {parseLinks(streamingText, setLocation)}
@@ -256,7 +256,7 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
 
         {isStreaming && !streamingText && activitySteps.length === 0 && (
           <div className="flex justify-start">
-            <div className="bg-white/[0.03] border border-white/[0.06] text-slate-500 rounded-xl rounded-bl-sm p-3 text-[11px] flex items-center gap-2">
+            <div className="bg-white/[0.03] border border-white/[0.06] text-slate-500 rounded-xl rounded-bl-sm p-3 text-sm flex items-center gap-2">
               <div className="flex gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "0ms" }} />
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-bounce" style={{ animationDelay: "150ms" }} />
@@ -269,13 +269,13 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
 
         {activitySteps.length > 0 && (
           <div className="flex justify-start">
-            <div className="bg-white/[0.03] border border-white/[0.06] text-slate-400 rounded-xl rounded-bl-sm p-3 text-[11px] space-y-2">
+            <div className="bg-white/[0.03] border border-white/[0.06] text-slate-400 rounded-xl rounded-bl-sm p-3 text-sm space-y-2">
               {activitySteps.map((step) => (
                 <div key={step.id} className="flex items-center gap-2">
                   {step.status === "running" ? (
                     <div className="w-3 h-3 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
                   ) : (
-                    <div className="w-3 h-3 rounded-full bg-green-500/30 flex items-center justify-center text-green-400 text-[8px]">✓</div>
+                    <div className="w-3 h-3 rounded-full bg-green-500/30 flex items-center justify-center text-green-400 text-sm">✓</div>
                   )}
                   <span className={step.status === "complete" ? "text-slate-500" : "text-slate-300"}>{step.label}</span>
                 </div>
@@ -286,7 +286,7 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
 
         {toolResults.length > 0 && (
           <div className="flex justify-start">
-            <div className="bg-white/[0.03] border border-white/[0.06] text-slate-400 rounded-xl rounded-bl-sm p-2.5 text-[10px] max-w-[85%]">
+            <div className="bg-white/[0.03] border border-white/[0.06] text-slate-400 rounded-xl rounded-bl-sm p-2.5 text-xs max-w-[85%]">
               {toolResults.map((tr, i) => (
                 <div key={i} className="mb-2 last:mb-0">
                   <div className="text-violet-400 font-medium mb-1">✓ {tr.tool}</div>
@@ -326,7 +326,7 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
                         }
                         return (
                           <div key={key} className="truncate">
-                            <span className="text-slate-600">{key}:</span> {display || "—"}
+                            <span className="text-slate-400">{key}:</span> {display || "—"}
                           </div>
                         );
                       })}
@@ -343,7 +343,7 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
 
         {groundingSources.length > 0 && (
           <div className="flex justify-start">
-            <div className="bg-white/[0.03] border border-white/[0.06] text-slate-400 rounded-xl rounded-bl-sm p-2.5 text-[10px]">
+            <div className="bg-white/[0.03] border border-white/[0.06] text-slate-400 rounded-xl rounded-bl-sm p-2.5 text-xs">
               <div className="text-slate-500 font-medium mb-1.5">Web Sources:</div>
               <div className="space-y-1">
                 {groundingSources.slice(0, 5).map((source, i) => (
@@ -368,10 +368,10 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
               <button
                 key={label}
                 onClick={() => sendMessage(label)}
-                className="w-full text-left p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.06] text-[11px] text-slate-400 hover:bg-gradient-to-r hover:from-violet-500/10 hover:to-cyan-500/10 hover:border-violet-500/20 hover:text-white transition-all flex items-center gap-2.5 group"
+                className="w-full text-left p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.06] text-sm text-slate-400 hover:bg-gradient-to-r hover:from-violet-500/10 hover:to-cyan-500/10 hover:border-violet-500/20 hover:text-white transition-all flex items-center gap-2.5 group"
                 data-testid={`button-quick-${label.replace(/\s+/g, "-").toLowerCase()}`}
               >
-                <QIcon size={13} className="text-slate-600 group-hover:text-violet-400 transition-colors shrink-0" />
+                <QIcon size={13} className="text-slate-400 group-hover:text-violet-400 transition-colors shrink-0" />
                 {label}
                 <ArrowRight size={10} className="ml-auto opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" />
               </button>
@@ -389,7 +389,7 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); } }}
           placeholder="Tell me what to do..."
-          className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-2 text-[11px] text-white placeholder:text-slate-600 focus:outline-none focus:border-violet-500/40 transition-colors"
+          className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-400 focus:outline-none focus:border-violet-500/40 transition-colors"
           disabled={isStreaming}
           data-testid="input-intel-message"
         />

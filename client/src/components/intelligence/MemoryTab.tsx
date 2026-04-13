@@ -83,7 +83,7 @@ export function MemoryTab({ subAccountId }: { subAccountId: number }) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             <BookOpen size={11} className="text-violet-400" />
-            <p className="text-[9px] font-bold uppercase tracking-widest text-violet-400">{total} Memor{total !== 1 ? "ies" : "y"}</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-violet-400">{total} Memor{total !== 1 ? "ies" : "y"}</p>
           </div>
           <button onClick={() => refetch()} className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-slate-300 transition-colors" data-testid="button-refresh-memories">
             <RefreshCw size={12} />
@@ -94,7 +94,7 @@ export function MemoryTab({ subAccountId }: { subAccountId: number }) {
             <button
               key={t}
               onClick={() => setTypeFilter(t)}
-              className={`px-2 py-0.5 rounded-md text-[9px] font-medium transition-colors ${
+              className={`px-2 py-0.5 rounded-md text-xs font-medium transition-colors ${
                 typeFilter === t
                   ? "bg-violet-500/20 text-violet-400 border border-violet-500/30"
                   : "bg-white/[0.03] text-slate-500 border border-white/[0.06] hover:text-slate-300"
@@ -111,9 +111,9 @@ export function MemoryTab({ subAccountId }: { subAccountId: number }) {
         {memories.length === 0 ? (
           <div className="flex-1 flex items-center justify-center p-8 text-center">
             <div className="space-y-2">
-              <BookOpen size={28} className="mx-auto text-slate-700" />
-              <p className="text-[11px] text-slate-600">No memories yet</p>
-              <p className="text-[9px] text-slate-700">The agent will learn from decisions, outcomes, and your interactions</p>
+              <BookOpen size={28} className="mx-auto text-slate-500" />
+              <p className="text-sm text-slate-400">No memories yet</p>
+              <p className="text-xs text-slate-500">The agent will learn from decisions, outcomes, and your interactions</p>
             </div>
           </div>
         ) : (
@@ -137,13 +137,13 @@ export function MemoryTab({ subAccountId }: { subAccountId: number }) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 mb-1">
-                      <span className={`text-[8px] font-bold uppercase tracking-wider ${colors.text}`}>{memory.memoryType}</span>
+                      <span className={`text-sm font-bold uppercase tracking-wider ${colors.text}`}>{memory.memoryType}</span>
                       {memory.outcome && (
-                        <span className={`text-[8px] px-1 py-px rounded ${memory.outcome === "success" ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"}`}>
+                        <span className={`text-sm px-1 py-px rounded ${memory.outcome === "success" ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"}`}>
                           {memory.outcome}
                         </span>
                       )}
-                      <span className="text-[8px] text-slate-600 ml-auto">
+                      <span className="text-sm text-slate-400 ml-auto">
                         {Math.round(memory.relevanceScore * 100)}% relevant
                       </span>
                     </div>
@@ -152,7 +152,7 @@ export function MemoryTab({ subAccountId }: { subAccountId: number }) {
                         <textarea
                           value={editContent}
                           onChange={e => setEditContent(e.target.value)}
-                          className="w-full bg-white/[0.05] border border-white/[0.1] rounded-md px-2 py-1.5 text-[10px] text-white focus:outline-none focus:border-violet-500/40 resize-none"
+                          className="w-full bg-white/[0.05] border border-white/[0.1] rounded-md px-2 py-1.5 text-xs text-white focus:outline-none focus:border-violet-500/40 resize-none"
                           rows={3}
                           data-testid={`input-edit-memory-${memory.id}`}
                         />
@@ -160,14 +160,14 @@ export function MemoryTab({ subAccountId }: { subAccountId: number }) {
                           <button
                             onClick={() => updateMutation.mutate({ memoryId: memory.id, content: editContent })}
                             disabled={updateMutation.isPending}
-                            className="px-2 py-0.5 rounded text-[9px] font-medium bg-violet-500/20 text-violet-400 border border-violet-500/30 hover:bg-violet-500/30 transition-colors disabled:opacity-50"
+                            className="px-2 py-0.5 rounded text-xs font-medium bg-violet-500/20 text-violet-400 border border-violet-500/30 hover:bg-violet-500/30 transition-colors disabled:opacity-50"
                             data-testid={`button-save-memory-${memory.id}`}
                           >
                             Save
                           </button>
                           <button
                             onClick={() => { setEditingId(null); setEditContent(""); }}
-                            className="px-2 py-0.5 rounded text-[9px] text-slate-500 hover:text-slate-300 transition-colors"
+                            className="px-2 py-0.5 rounded text-xs text-slate-500 hover:text-slate-300 transition-colors"
                             data-testid={`button-cancel-edit-${memory.id}`}
                           >
                             Cancel
@@ -175,21 +175,21 @@ export function MemoryTab({ subAccountId }: { subAccountId: number }) {
                         </div>
                       </div>
                     ) : (
-                      <p className="text-[10px] text-slate-300 leading-relaxed">{memory.content}</p>
+                      <p className="text-xs text-slate-300 leading-relaxed">{memory.content}</p>
                     )}
                     <div className="flex items-center gap-2 mt-1.5">
                       {memory.sourceEvent && (
-                        <span className="text-[8px] text-slate-600">{memory.sourceEvent}</span>
+                        <span className="text-sm text-slate-400">{memory.sourceEvent}</span>
                       )}
                       {memory.createdAt && (
-                        <span className="text-[8px] text-slate-700">
+                        <span className="text-sm text-slate-500">
                           {new Date(memory.createdAt).toLocaleDateString()}
                         </span>
                       )}
                       <div className="flex items-center gap-1 ml-auto">
                         <button
                           onClick={(e) => { e.stopPropagation(); setEditingId(memory.id); setEditContent(memory.content); }}
-                          className="p-0.5 rounded text-slate-600 hover:text-slate-400 transition-colors"
+                          className="p-0.5 rounded text-slate-400 hover:text-slate-400 transition-colors"
                           title="Edit memory"
                           data-testid={`button-edit-memory-${memory.id}`}
                         >
@@ -198,7 +198,7 @@ export function MemoryTab({ subAccountId }: { subAccountId: number }) {
                         <button
                           onClick={(e) => { e.stopPropagation(); if (window.confirm("Delete this memory? This cannot be undone.")) deleteMutation.mutate(memory.id); }}
                           disabled={deleteMutation.isPending}
-                          className="p-0.5 rounded text-slate-600 hover:text-red-400 transition-colors disabled:opacity-50"
+                          className="p-0.5 rounded text-slate-400 hover:text-red-400 transition-colors disabled:opacity-50"
                           title="Delete memory"
                           data-testid={`button-delete-memory-${memory.id}`}
                         >

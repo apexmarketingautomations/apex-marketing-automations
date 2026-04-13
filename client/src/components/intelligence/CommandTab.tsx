@@ -72,7 +72,7 @@ export function CommandTab({ subAccountId }: { subAccountId: number }) {
           >
             <Brain className="w-6 h-6 text-violet-400" />
           </motion.div>
-          <p className="text-xs text-slate-500">{streamProgress.message || "Analyzing your business..."}</p>
+          <p className="text-sm text-slate-300">{streamProgress.message || "Analyzing your business..."}</p>
           {streamProgress.percent > 0 && (
             <div className="w-48 mx-auto h-1 bg-slate-800 rounded-full overflow-hidden">
               <motion.div
@@ -83,7 +83,7 @@ export function CommandTab({ subAccountId }: { subAccountId: number }) {
               />
             </div>
           )}
-          <p className="text-[10px] text-slate-600">Running health checks, detecting patterns, building insights</p>
+          <p className="text-xs text-slate-400">Running health checks, detecting patterns, building insights</p>
         </div>
       </div>
     );
@@ -119,19 +119,19 @@ export function CommandTab({ subAccountId }: { subAccountId: number }) {
           {health && <HealthRing score={health.overall} size={100} strokeWidth={7} />}
           <div className="flex-1 min-w-0 pt-1">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-violet-400">
+              <span className="text-xs font-bold uppercase tracking-widest text-violet-400">
                 {growthStage} Stage
               </span>
               {health && (
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-white/[0.05] text-white border border-white/[0.08]">
+                <span className="px-2 py-0.5 rounded text-xs font-black bg-white/[0.05] text-white border border-white/[0.08]">
                   {health.grade}
                 </span>
               )}
             </div>
             {workspace && (
-              <p className="text-[11px] text-white font-medium mb-0.5">{workspace.businessName || "Your Business"}</p>
+              <p className="text-sm text-white font-semibold mb-1">{workspace.businessName || "Your Business"}</p>
             )}
-            <p className="text-[10px] text-slate-500 leading-relaxed">
+            <p className="text-xs text-slate-300 leading-relaxed">
               {health?.summary || "Loading health analysis..."}
             </p>
           </div>
@@ -139,7 +139,7 @@ export function CommandTab({ subAccountId }: { subAccountId: number }) {
 
         {health && (
           <div className="space-y-2 p-3 rounded-xl bg-white/[0.02] border border-white/[0.04]">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mb-2">System Health Breakdown</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">System Health Breakdown</p>
             {Object.entries(health.categories).map(([key, cat]) => (
               <CategoryBar key={key} label={categoryLabels[key] || key} score={cat.score} icon={categoryIcons[key] || Gauge} />
             ))}
@@ -154,9 +154,9 @@ export function CommandTab({ subAccountId }: { subAccountId: number }) {
               { label: "Integrations", value: workspace.integrationCount || 0, icon: Layers },
             ].map((m) => (
               <div key={m.label} className="p-2 rounded-lg bg-white/[0.02] border border-white/[0.04] text-center">
-                <m.icon size={12} className="mx-auto text-slate-500 mb-1" />
+                <m.icon size={14} className="mx-auto text-slate-400 mb-1" />
                 <p className="text-sm font-bold text-white" data-testid={`metric-${m.label.toLowerCase()}`}>{m.value}</p>
-                <p className="text-[9px] text-slate-600">{m.label}</p>
+                <p className="text-xs text-slate-400">{m.label}</p>
               </div>
             ))}
           </div>
@@ -165,8 +165,8 @@ export function CommandTab({ subAccountId }: { subAccountId: number }) {
         {quickWins.length > 0 && (
           <div className="space-y-2">
             <div className="flex items-center gap-1.5">
-              <Zap size={11} className="text-amber-400" />
-              <p className="text-[9px] font-bold uppercase tracking-widest text-amber-400">Quick Wins</p>
+              <Zap size={14} className="text-amber-400" />
+              <p className="text-xs font-bold uppercase tracking-widest text-amber-400">Quick Wins</p>
             </div>
             {quickWins.slice(0, 3).map((win, i) => (
               <motion.div
@@ -178,12 +178,12 @@ export function CommandTab({ subAccountId }: { subAccountId: number }) {
                 onClick={() => win.action?.link && setLocation(win.action.link)}
                 data-testid={`quick-win-${i}`}
               >
-                <p className="text-[11px] text-white font-medium mb-0.5">{win.observation}</p>
-                <p className="text-[10px] text-slate-500 leading-relaxed">{win.suggestion}</p>
+                <p className="text-sm text-white font-medium mb-0.5">{win.observation}</p>
+                <p className="text-xs text-slate-300 leading-relaxed">{win.suggestion}</p>
                 {win.action && (
-                  <div className="flex items-center gap-1 mt-2 text-[9px] text-amber-400 font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-1 mt-2 text-xs text-amber-400 font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
                     {win.action.label}
-                    <ArrowUpRight size={9} />
+                    <ArrowUpRight size={12} />
                   </div>
                 )}
               </motion.div>

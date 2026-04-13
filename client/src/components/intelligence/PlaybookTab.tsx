@@ -77,7 +77,7 @@ export function PlaybookTab({ subAccountId: propSubAccountId }: { subAccountId?:
       <div className="px-3 py-2 flex items-center justify-between border-b border-white/[0.04]">
         <div className="flex items-center gap-2">
           <BookOpen size={10} className="text-violet-400" />
-          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Playbooks</span>
+          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Playbooks</span>
         </div>
         <button
           onClick={() => refetch()}
@@ -93,14 +93,14 @@ export function PlaybookTab({ subAccountId: propSubAccountId }: { subAccountId?:
           <div className="p-3 rounded-xl bg-violet-500/[0.07] border border-violet-500/15">
             <div className="flex items-start gap-2">
               <Layers size={11} className="text-violet-400 mt-0.5 shrink-0" />
-              <p className="text-[10px] text-slate-300 leading-relaxed">{topRec}</p>
+              <p className="text-xs text-slate-300 leading-relaxed">{topRec}</p>
             </div>
           </div>
         )}
 
         {missingModules.length > 0 && (
           <div className="space-y-1">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Unlock More Power</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Unlock More Power</p>
             <div className="flex flex-wrap gap-1">
               {missingModules.map(module => (
                 <button
@@ -109,12 +109,12 @@ export function PlaybookTab({ subAccountId: propSubAccountId }: { subAccountId?:
                     const link = MODULE_LINKS[module];
                     if (link) setLocation(link);
                   }}
-                  className="flex items-center gap-1 text-[8px] px-2 py-1 rounded border border-violet-500/20 text-violet-400 bg-violet-500/10 hover:bg-violet-500/20 transition-colors"
+                  className="flex items-center gap-1 text-sm px-2 py-1 rounded border border-violet-500/20 text-violet-400 bg-violet-500/10 hover:bg-violet-500/20 transition-colors"
                   data-testid={`module-unlock-${module.replace(/\s+/g, "-")}`}
                 >
-                  <Zap size={7} />
+                  <Zap size={10} />
                   {module}
-                  <ArrowUpRight size={7} />
+                  <ArrowUpRight size={10} />
                 </button>
               ))}
             </div>
@@ -123,13 +123,13 @@ export function PlaybookTab({ subAccountId: propSubAccountId }: { subAccountId?:
 
         {patterns.length === 0 ? (
           <div className="text-center py-8 space-y-2">
-            <BookOpen size={28} className="mx-auto text-slate-700" />
-            <p className="text-[11px] text-slate-600">All high-value playbooks active</p>
-            <p className="text-[9px] text-slate-700">Your account is using the optimal module combinations</p>
+            <BookOpen size={28} className="mx-auto text-slate-500" />
+            <p className="text-sm text-slate-400">All high-value playbooks active</p>
+            <p className="text-xs text-slate-500">Your account is using the optimal module combinations</p>
           </div>
         ) : (
           <div className="space-y-2">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Recommended Playbooks</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Recommended Playbooks</p>
             {patterns.map((pattern, i) => {
               const catCfg = CATEGORY_CONFIG[pattern.category] || CATEGORY_CONFIG.conversion;
               const PatternIcon = catCfg.icon;
@@ -149,18 +149,18 @@ export function PlaybookTab({ subAccountId: propSubAccountId }: { subAccountId?:
                     <PatternIcon size={12} className={catCfg.color} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 mb-1">
-                        <p className="text-[11px] text-white font-semibold">{pattern.title}</p>
-                        <span className={`text-[8px] font-bold px-1 py-px rounded ${catCfg.color} bg-white/5`}>
+                        <p className="text-sm text-white font-semibold">{pattern.title}</p>
+                        <span className={`text-sm font-bold px-1 py-px rounded ${catCfg.color} bg-white/5`}>
                           {multDisplay}
                         </span>
                       </div>
-                      <p className="text-[9px] text-slate-400 leading-relaxed mb-2">{pattern.description}</p>
+                      <p className="text-xs text-slate-400 leading-relaxed mb-2">{pattern.description}</p>
 
                       <div className="flex flex-wrap gap-1 mb-2">
                         {pattern.modulesCombination.map(mod => (
                           <span
                             key={mod}
-                            className="text-[7px] px-1.5 py-px rounded bg-white/5 text-slate-500 border border-white/[0.06]"
+                            className="text-xs px-1.5 py-px rounded bg-white/5 text-slate-500 border border-white/[0.06]"
                           >
                             {mod.replace(/_/g, " ")}
                           </span>
@@ -174,8 +174,8 @@ export function PlaybookTab({ subAccountId: propSubAccountId }: { subAccountId?:
                             style={{ width: `${Math.round(pattern.confidence * 100)}%` }}
                           />
                         </div>
-                        <span className="text-[7px] text-slate-600">{Math.round(pattern.confidence * 100)}% confidence</span>
-                        <span className="text-[7px] text-slate-700">{pattern.accountCount} accounts</span>
+                        <span className="text-xs text-slate-400">{Math.round(pattern.confidence * 100)}% confidence</span>
+                        <span className="text-xs text-slate-500">{pattern.accountCount} accounts</span>
                       </div>
 
                       <div className="flex flex-wrap gap-1 mt-2">
@@ -186,10 +186,10 @@ export function PlaybookTab({ subAccountId: propSubAccountId }: { subAccountId?:
                             <button
                               key={mod}
                               onClick={() => setLocation(link)}
-                              className="flex items-center gap-0.5 text-[7px] text-slate-500 hover:text-violet-400 transition-colors"
+                              className="flex items-center gap-0.5 text-xs text-slate-500 hover:text-violet-400 transition-colors"
                               data-testid={`playbook-nav-${mod}`}
                             >
-                              Go to {mod.replace(/_/g, " ")} <ChevronRight size={7} />
+                              Go to {mod.replace(/_/g, " ")} <ChevronRight size={10} />
                             </button>
                           );
                         })}

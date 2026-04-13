@@ -72,7 +72,7 @@ export function NudgesTab({ subAccountId }: { subAccountId: number }) {
           <div className="flex items-center justify-between px-1">
             <div className="flex items-center gap-1.5">
               <Bell size={11} className="text-violet-400" />
-              <p className="text-[9px] font-bold uppercase tracking-widest text-violet-400">{nudges.length} Active Nudge{nudges.length !== 1 ? "s" : ""}</p>
+              <p className="text-xs font-bold uppercase tracking-widest text-violet-400">{nudges.length} Active Nudge{nudges.length !== 1 ? "s" : ""}</p>
             </div>
             <button onClick={() => refetch()} className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-slate-300 transition-colors" data-testid="button-refresh-nudges">
               <RefreshCw size={12} />
@@ -92,13 +92,13 @@ export function NudgesTab({ subAccountId }: { subAccountId: number }) {
                   <Lightbulb size={13} className="text-violet-400" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[11px] font-medium text-white">{nudge.title}</p>
-                  <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">{nudge.message}</p>
+                  <p className="text-sm font-medium text-white">{nudge.title}</p>
+                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">{nudge.message}</p>
                   <div className="flex items-center gap-2 mt-2.5">
                     <button
                       onClick={() => actMutation.mutate(nudge.id)}
                       disabled={actMutation.isPending}
-                      className="px-2.5 py-1 rounded-md bg-cyan-500/15 border border-cyan-500/30 text-[10px] font-semibold text-cyan-400 hover:bg-cyan-500/25 transition-colors disabled:opacity-50"
+                      className="px-2.5 py-1 rounded-md bg-cyan-500/15 border border-cyan-500/30 text-xs font-semibold text-cyan-400 hover:bg-cyan-500/25 transition-colors disabled:opacity-50"
                       data-testid={`button-nudge-act-${nudge.id}`}
                     >
                       Take Action
@@ -106,7 +106,7 @@ export function NudgesTab({ subAccountId }: { subAccountId: number }) {
                     <button
                       onClick={() => dismissMutation.mutate(nudge.id)}
                       disabled={dismissMutation.isPending}
-                      className="px-2.5 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] text-slate-500 hover:text-slate-300 hover:bg-white/10 transition-colors disabled:opacity-50"
+                      className="px-2.5 py-1 rounded-md bg-white/5 border border-white/10 text-xs text-slate-500 hover:text-slate-300 hover:bg-white/10 transition-colors disabled:opacity-50"
                       data-testid={`button-nudge-dismiss-${nudge.id}`}
                     >
                       Dismiss
@@ -123,7 +123,7 @@ export function NudgesTab({ subAccountId }: { subAccountId: number }) {
         <div className="space-y-2">
           <div className="flex items-center gap-1.5 px-1">
             <Eye size={11} className="text-amber-400" />
-            <p className="text-[9px] font-bold uppercase tracking-widest text-amber-400">Missed Opportunities</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-amber-400">Missed Opportunities</p>
           </div>
           {opportunities.map((opp, i) => (
             <motion.div
@@ -134,9 +134,9 @@ export function NudgesTab({ subAccountId }: { subAccountId: number }) {
               className="p-3 rounded-xl bg-amber-500/[0.04] border border-amber-500/10 hover:border-amber-500/20 transition-all"
               data-testid={`opportunity-card-${i}`}
             >
-              <p className="text-[11px] text-white font-medium">{opp.observation}</p>
-              <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">{opp.insight}</p>
-              <p className="text-[10px] text-slate-400 mt-1.5 leading-relaxed">{opp.suggestion}</p>
+              <p className="text-sm text-white font-medium">{opp.observation}</p>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">{opp.insight}</p>
+              <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">{opp.suggestion}</p>
             </motion.div>
           ))}
         </div>
@@ -150,7 +150,7 @@ export function NudgesTab({ subAccountId }: { subAccountId: number }) {
             </div>
             <p className="text-sm font-semibold text-white">All Clear</p>
             <p className="text-xs text-slate-500">No active nudges or missed opportunities detected.</p>
-            <button onClick={() => refetch()} className="text-[10px] text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1 mx-auto" data-testid="button-generate-nudges">
+            <button onClick={() => refetch()} className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1 mx-auto" data-testid="button-generate-nudges">
               <RefreshCw size={10} />
               Check again
             </button>

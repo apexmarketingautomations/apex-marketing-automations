@@ -233,7 +233,7 @@ export function HealthRing({ score, size = 120, strokeWidth = 8 }: { score: numb
         >
           {score}
         </motion.span>
-        <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mt-0.5">Health</span>
+        <span className="text-xs font-bold uppercase tracking-widest text-slate-500 mt-0.5">Health</span>
       </div>
     </div>
   );
@@ -245,13 +245,13 @@ export function CategoryBar({ label, score, icon: Icon }: { label: string; score
 
   return (
     <div className="flex items-center gap-2">
-      <Icon size={11} className="text-slate-500 shrink-0" />
+      <Icon size={14} className="text-slate-400 shrink-0" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-1">
-          <span className="text-[10px] text-slate-400 truncate">{label}</span>
-          <span className={`text-[10px] font-bold ${textColor}`}>{score}%</span>
+          <span className="text-xs text-slate-300 truncate">{label}</span>
+          <span className={`text-xs font-bold ${textColor}`}>{score}%</span>
         </div>
-        <div className="h-1 rounded-full bg-white/[0.04] overflow-hidden">
+        <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
           <motion.div
             className={`h-full rounded-full ${color}`}
             initial={{ width: 0 }}

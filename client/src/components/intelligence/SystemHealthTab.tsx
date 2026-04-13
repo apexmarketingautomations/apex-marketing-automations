@@ -84,8 +84,8 @@ export function SystemHealthTab() {
     return (
       <div className="flex-1 flex items-center justify-center p-6 text-center">
         <div className="space-y-2">
-          <Activity size={24} className="mx-auto text-slate-700" />
-          <p className="text-[11px] text-slate-600">System health unavailable</p>
+          <Activity size={24} className="mx-auto text-slate-500" />
+          <p className="text-sm text-slate-400">System health unavailable</p>
         </div>
       </div>
     );
@@ -99,7 +99,7 @@ export function SystemHealthTab() {
       <div className="px-3 py-2 flex items-center justify-between border-b border-white/[0.04]">
         <div className="flex items-center gap-2">
           <Activity size={10} className="text-cyan-400" />
-          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">System Health</span>
+          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">System Health</span>
         </div>
         <button
           onClick={() => refetch()}
@@ -115,7 +115,7 @@ export function SystemHealthTab() {
           <OverallIcon size={18} className={overallCfg.color} />
           <div>
             <p className={`text-sm font-bold ${overallCfg.color}`}>{overallCfg.label}</p>
-            <p className="text-[9px] text-slate-500">Platform health score: {data.overallScore}/100</p>
+            <p className="text-xs text-slate-500">Platform health score: {data.overallScore}/100</p>
           </div>
           <div className="ml-auto text-right">
             <div className="w-10 h-10 rounded-full border-2 border-white/[0.08] flex items-center justify-center">
@@ -125,7 +125,7 @@ export function SystemHealthTab() {
         </div>
 
         <div className="space-y-1.5">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Services</p>
+          <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Services</p>
           {data.serviceHealth.map((service) => {
             const cfg = STATUS_CONFIG[service.status] || STATUS_CONFIG.unknown;
             const StatusIcon = cfg.icon;
@@ -139,13 +139,13 @@ export function SystemHealthTab() {
                 data-testid={`service-${service.component.toLowerCase().replace(/\s+/g, "-")}`}
               >
                 <CompIcon size={10} className="text-slate-500 shrink-0" />
-                <span className="text-[10px] text-slate-300 flex-1">{service.component}</span>
+                <span className="text-xs text-slate-300 flex-1">{service.component}</span>
                 {service.avgLatencyMs && (
-                  <span className="text-[8px] text-slate-600 font-mono">{service.avgLatencyMs}ms</span>
+                  <span className="text-sm text-slate-400 font-mono">{service.avgLatencyMs}ms</span>
                 )}
                 <div className="flex items-center gap-1">
                   <StatusIcon size={9} className={cfg.color} />
-                  <span className={`text-[8px] font-medium ${cfg.color}`}>{cfg.label}</span>
+                  <span className={`text-sm font-medium ${cfg.color}`}>{cfg.label}</span>
                 </div>
               </motion.div>
             );
@@ -161,14 +161,14 @@ export function SystemHealthTab() {
             <div key={m.label} className="p-2 rounded-lg bg-white/[0.02] border border-white/[0.04] text-center">
               <m.icon size={10} className="mx-auto text-slate-500 mb-1" />
               <p className="text-sm font-bold text-white">{m.value}</p>
-              <p className="text-[8px] text-slate-600">{m.label}</p>
+              <p className="text-sm text-slate-400">{m.label}</p>
             </div>
           ))}
         </div>
 
         {data.executionInsights.length > 0 && (
           <div className="space-y-1.5">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Execution Timing</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Execution Timing</p>
             {data.executionInsights.slice(0, 5).map((insight) => {
               const statusColor = EXECUTION_STATUS_COLORS[insight.status] || "text-slate-400";
               return (
@@ -177,10 +177,10 @@ export function SystemHealthTab() {
                   className="flex items-center gap-2 p-1.5 rounded bg-white/[0.02] border border-white/[0.03]"
                   data-testid={`exec-step-${insight.step}`}
                 >
-                  <span className="text-[8px] text-slate-400 flex-1 truncate">{insight.step}</span>
-                  <span className="text-[7px] text-slate-600 font-mono">{insight.count} runs</span>
-                  <span className={`text-[8px] font-medium ${statusColor}`}>{insight.avgLatencyMs}ms</span>
-                  <span className={`text-[7px] ${statusColor} uppercase`}>{insight.status}</span>
+                  <span className="text-sm text-slate-400 flex-1 truncate">{insight.step}</span>
+                  <span className="text-xs text-slate-400 font-mono">{insight.count} runs</span>
+                  <span className={`text-sm font-medium ${statusColor}`}>{insight.avgLatencyMs}ms</span>
+                  <span className={`text-xs ${statusColor} uppercase`}>{insight.status}</span>
                 </div>
               );
             })}
@@ -189,18 +189,18 @@ export function SystemHealthTab() {
 
         {data.recommendations.length > 0 && (
           <div className="space-y-1.5">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-amber-500">Recommendations</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-amber-500">Recommendations</p>
             {data.recommendations.map((rec, i) => (
               <div key={i} className="flex items-start gap-1.5 p-2 rounded bg-amber-500/[0.05] border border-amber-500/10">
                 <AlertTriangle size={9} className="text-amber-400 mt-0.5 shrink-0" />
-                <p className="text-[9px] text-slate-400">{rec}</p>
+                <p className="text-xs text-slate-400">{rec}</p>
               </div>
             ))}
           </div>
         )}
 
         {dataUpdatedAt && (
-          <p className="text-[7px] text-slate-700 text-center">
+          <p className="text-xs text-slate-500 text-center">
             Last checked: {new Date(dataUpdatedAt).toLocaleTimeString()}
           </p>
         )}

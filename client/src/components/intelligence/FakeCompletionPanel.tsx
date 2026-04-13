@@ -64,7 +64,7 @@ export function FakeCompletionPanel({ subAccountId: propSubAccountId }: { subAcc
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center space-y-2">
           <Loader2 size={20} className="animate-spin text-violet-400 mx-auto" />
-          <p className="text-[10px] text-slate-500">Running platform integrity checks...</p>
+          <p className="text-xs text-slate-500">Running platform integrity checks...</p>
         </div>
       </div>
     );
@@ -80,9 +80,9 @@ export function FakeCompletionPanel({ subAccountId: propSubAccountId }: { subAcc
       <div className="px-3 py-2 flex items-center justify-between border-b border-white/[0.04]">
         <div className="flex items-center gap-2">
           <ShieldCheck size={10} className="text-cyan-400" />
-          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Platform Integrity</span>
+          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Platform Integrity</span>
           {criticalCount > 0 && (
-            <span className="px-1 py-px text-[7px] bg-red-500/20 text-red-400 rounded font-bold border border-red-500/20">
+            <span className="px-1 py-px text-xs bg-red-500/20 text-red-400 rounded font-bold border border-red-500/20">
               {criticalCount} critical
             </span>
           )}
@@ -100,15 +100,15 @@ export function FakeCompletionPanel({ subAccountId: propSubAccountId }: { subAcc
       <div className="px-3 py-2 grid grid-cols-3 gap-1.5 border-b border-white/[0.04]">
         <div className="text-center">
           <p className={`text-sm font-bold ${totalAlerts === 0 ? "text-emerald-400" : "text-white"}`}>{totalAlerts}</p>
-          <p className="text-[8px] text-slate-600 uppercase tracking-wider">Total</p>
+          <p className="text-sm text-slate-400 uppercase tracking-wider">Total</p>
         </div>
         <div className="text-center">
           <p className={`text-sm font-bold ${criticalCount > 0 ? "text-red-400" : "text-slate-500"}`}>{criticalCount}</p>
-          <p className="text-[8px] text-slate-600 uppercase tracking-wider">Critical</p>
+          <p className="text-sm text-slate-400 uppercase tracking-wider">Critical</p>
         </div>
         <div className="text-center">
           <p className={`text-sm font-bold ${warningCount > 0 ? "text-amber-400" : "text-slate-500"}`}>{warningCount}</p>
-          <p className="text-[8px] text-slate-600 uppercase tracking-wider">Warnings</p>
+          <p className="text-sm text-slate-400 uppercase tracking-wider">Warnings</p>
         </div>
       </div>
 
@@ -116,10 +116,10 @@ export function FakeCompletionPanel({ subAccountId: propSubAccountId }: { subAcc
         {totalAlerts === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center py-8 text-center space-y-2">
             <CheckCircle size={28} className="text-emerald-500 mx-auto" />
-            <p className="text-[11px] text-slate-400 font-medium">All systems verified</p>
-            <p className="text-[9px] text-slate-600">No false completion states detected</p>
+            <p className="text-sm text-slate-400 font-medium">All systems verified</p>
+            <p className="text-xs text-slate-400">No false completion states detected</p>
             {data?.checkedAt && (
-              <p className="text-[8px] text-slate-700">
+              <p className="text-sm text-slate-500">
                 Checked {new Date(data.checkedAt).toLocaleTimeString()}
               </p>
             )}
@@ -142,21 +142,21 @@ export function FakeCompletionPanel({ subAccountId: propSubAccountId }: { subAcc
                     <AlertIcon size={11} className={`${cfg.color} mt-0.5 shrink-0`} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 mb-0.5">
-                        <span className={`text-[8px] font-semibold uppercase ${cfg.color}`}>{alert.severity}</span>
-                        <span className="text-[7px] text-slate-600 border border-white/[0.06] px-1 rounded">
+                        <span className={`text-sm font-semibold uppercase ${cfg.color}`}>{alert.severity}</span>
+                        <span className="text-xs text-slate-400 border border-white/[0.06] px-1 rounded">
                           {CATEGORY_LABELS[alert.category] || alert.category}
                         </span>
                       </div>
-                      <p className="text-[10px] text-white font-medium mb-0.5">{alert.entityName}</p>
-                      <p className="text-[9px] text-slate-400 mb-1">{alert.issue}</p>
-                      <p className="text-[8px] text-slate-500 leading-relaxed">{alert.detail}</p>
+                      <p className="text-xs text-white font-medium mb-0.5">{alert.entityName}</p>
+                      <p className="text-xs text-slate-400 mb-1">{alert.issue}</p>
+                      <p className="text-sm text-slate-500 leading-relaxed">{alert.detail}</p>
                       <div className="flex items-center gap-2 mt-1.5">
-                        <span className="text-[7px] text-slate-600 line-through">{alert.claimedState}</span>
-                        <span className="text-[7px] text-slate-600">→</span>
-                        <span className={`text-[7px] font-medium ${cfg.color}`}>{alert.actualState}</span>
+                        <span className="text-xs text-slate-400 line-through">{alert.claimedState}</span>
+                        <span className="text-xs text-slate-400">→</span>
+                        <span className={`text-xs font-medium ${cfg.color}`}>{alert.actualState}</span>
                       </div>
                       {alert.suggestedFix && (
-                        <p className="text-[8px] text-violet-400 mt-1">✦ {alert.suggestedFix}</p>
+                        <p className="text-sm text-violet-400 mt-1">✦ {alert.suggestedFix}</p>
                       )}
                     </div>
                   </div>

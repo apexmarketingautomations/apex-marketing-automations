@@ -51,7 +51,7 @@ function ConfidenceBar({ value }: { value: number }) {
           transition={{ duration: 0.6 }}
         />
       </div>
-      <span className="text-[8px] text-slate-500 tabular-nums">{pct}%</span>
+      <span className="text-sm text-slate-500 tabular-nums">{pct}%</span>
     </div>
   );
 }
@@ -93,7 +93,7 @@ export function ApexBrainTab({ subAccountId: propSubAccountId }: { subAccountId?
       <div className="px-3 py-2 flex items-center justify-between border-b border-white/[0.04]">
         <div className="flex items-center gap-2">
           <Activity size={10} className="text-violet-400" />
-          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Cross-Agent Outcomes</span>
+          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Cross-Agent Outcomes</span>
         </div>
         <button
           onClick={() => refetch()}
@@ -107,24 +107,24 @@ export function ApexBrainTab({ subAccountId: propSubAccountId }: { subAccountId?
       <div className="px-3 py-2 grid grid-cols-3 gap-1 border-b border-white/[0.04]">
         <div className="text-center">
           <p className="text-sm font-bold text-white" data-testid="text-brain-total">{summary.total}</p>
-          <p className="text-[8px] text-slate-600 uppercase tracking-wider">Total</p>
+          <p className="text-sm text-slate-400 uppercase tracking-wider">Total</p>
         </div>
         <div className="text-center">
           <p className="text-sm font-bold text-cyan-400" data-testid="text-brain-today">{summary.todayCount}</p>
-          <p className="text-[8px] text-slate-600 uppercase tracking-wider">Today</p>
+          <p className="text-sm text-slate-400 uppercase tracking-wider">Today</p>
         </div>
         <div className="text-center">
           <p className="text-sm font-bold text-violet-400" data-testid="text-brain-confidence">{Math.round(summary.avgConfidence * 100)}%</p>
-          <p className="text-[8px] text-slate-600 uppercase tracking-wider">Avg Conf</p>
+          <p className="text-sm text-slate-400 uppercase tracking-wider">Avg Conf</p>
         </div>
       </div>
 
       {agents.length > 0 && (
         <div className="px-3 py-1.5 flex items-center gap-1 border-b border-white/[0.04] overflow-x-auto scrollbar-none">
-          <Filter size={8} className="text-slate-600 shrink-0" />
+          <Filter size={11} className="text-slate-400 shrink-0" />
           <button
             onClick={() => setAgentFilter(null)}
-            className={`text-[8px] px-1.5 py-0.5 rounded font-medium transition-colors ${!agentFilter ? "bg-violet-500/20 text-violet-400 border border-violet-500/20" : "text-slate-600 hover:text-slate-400"}`}
+            className={`text-sm px-1.5 py-0.5 rounded font-medium transition-colors ${!agentFilter ? "bg-violet-500/20 text-violet-400 border border-violet-500/20" : "text-slate-400 hover:text-slate-400"}`}
             data-testid="button-filter-all"
           >
             All
@@ -133,7 +133,7 @@ export function ApexBrainTab({ subAccountId: propSubAccountId }: { subAccountId?
             <button
               key={agent}
               onClick={() => setAgentFilter(agentFilter === agent ? null : agent)}
-              className={`text-[8px] px-1.5 py-0.5 rounded font-medium transition-colors whitespace-nowrap ${agentFilter === agent ? "bg-violet-500/20 text-violet-400 border border-violet-500/20" : "text-slate-600 hover:text-slate-400"}`}
+              className={`text-sm px-1.5 py-0.5 rounded font-medium transition-colors whitespace-nowrap ${agentFilter === agent ? "bg-violet-500/20 text-violet-400 border border-violet-500/20" : "text-slate-400 hover:text-slate-400"}`}
               data-testid={`button-filter-${agent}`}
             >
               {AGENT_LABELS[agent] || agent} ({summary.byAgent[agent]})
@@ -146,9 +146,9 @@ export function ApexBrainTab({ subAccountId: propSubAccountId }: { subAccountId?
         {outcomes.length === 0 ? (
           <div className="flex-1 flex items-center justify-center p-8 text-center">
             <div className="space-y-2">
-              <Brain size={28} className="mx-auto text-slate-700" />
-              <p className="text-[11px] text-slate-600">No outcomes recorded yet</p>
-              <p className="text-[9px] text-slate-700">Outcomes appear as agents detect incidents, ingest crashes, and handle conversations</p>
+              <Brain size={28} className="mx-auto text-slate-500" />
+              <p className="text-sm text-slate-400">No outcomes recorded yet</p>
+              <p className="text-xs text-slate-500">Outcomes appear as agents detect incidents, ingest crashes, and handle conversations</p>
             </div>
           </div>
         ) : (
@@ -164,20 +164,20 @@ export function ApexBrainTab({ subAccountId: propSubAccountId }: { subAccountId?
                   data-testid={`outcome-${o.id}`}
                 >
                   <div className="flex items-start gap-2">
-                    <span className={`text-[7px] px-1 py-px rounded border font-semibold mt-0.5 shrink-0 ${colorClass}`}>
+                    <span className={`text-xs px-1 py-px rounded border font-semibold mt-0.5 shrink-0 ${colorClass}`}>
                       {AGENT_LABELS[o.agentName] || o.agentName}
                     </span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-[10px] text-white font-medium truncate">{o.subject}</p>
-                      <p className="text-[9px] text-slate-400 truncate mt-0.5">{o.result}</p>
+                      <p className="text-xs text-white font-medium truncate">{o.subject}</p>
+                      <p className="text-xs text-slate-400 truncate mt-0.5">{o.result}</p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[8px] text-slate-600">{o.action}</span>
+                        <span className="text-sm text-slate-400">{o.action}</span>
                         {o.niche && (
-                          <span className="text-[7px] text-slate-700">{o.niche}</span>
+                          <span className="text-xs text-slate-500">{o.niche}</span>
                         )}
                         <ConfidenceBar value={o.confidence} />
                       </div>
-                      <span className="text-[8px] text-slate-700 mt-0.5 block">
+                      <span className="text-sm text-slate-500 mt-0.5 block">
                         {new Date(o.timestamp).toLocaleString()}
                       </span>
                     </div>
