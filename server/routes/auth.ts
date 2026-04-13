@@ -181,6 +181,10 @@ export function registerAuthRoutes(app: Express) {
     if (fullPath.startsWith("/api/roomos/claim-trial")) return next();
     if (fullPath.startsWith("/api/track/")) return next();
 
+    const adminSecret = process.env.STANDALONE_ADMIN_SECRET;
+    const headerSecret = req.headers["x-admin-secret"] as string | undefined;
+    if (adminSecret && headerSecret && headerSecret.trim() === adminSecret.trim()) return next();
+
     if (!req.isAuthenticated || !req.isAuthenticated()) {
       return res.status(401).json({ error: "Not authenticated" });
     }

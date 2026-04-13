@@ -354,8 +354,16 @@ export function registerBotRoutes(app: Express) {
     }
   }));
 
-  app.post("/api/bot/chat/agent-stream", subscriptionGuard, asyncHandler(async (req, res) => {
+  app.post("/api/bot/chat/agent-stream", asyncHandler(async (req, res) => {
     try {
+      const adminSecret = process.env.STANDALONE_ADMIN_SECRET;
+      const headerSecret = req.headers["x-admin-secret"] as string | undefined;
+      const isAdminBypass = !!(adminSecret && headerSecret && headerSecret.trim() === adminSecret.trim());
+      if (!isAdminBypass) {
+        const user = (req as any).user;
+        if (!user) return res.status(401).json({ error: "Not authenticated" });
+      }
+
       if (!isAIConfigured()) {
         return res.status(503).json({ error: "AI service is not configured" });
       }

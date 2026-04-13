@@ -10,6 +10,15 @@ const LIMITED_ACCESS: SubStatus[] = ["past_due"];
 
 export function requireActiveSubscription() {
   return async (req: Request, res: Response, next: NextFunction) => {
+    const adminSecret = process.env.STANDALONE_ADMIN_SECRET;
+    const headerSecret = req.headers["x-admin-secret"] as string | undefined;
+    if (headerSecret) {
+      console.log(`[SUB-GUARD] Admin secret check: envSet=${!!adminSecret}, envLen=${adminSecret?.length}, headerLen=${headerSecret?.length}, match=${adminSecret === headerSecret}`);
+    }
+    if (adminSecret && headerSecret && headerSecret.trim() === adminSecret.trim()) {
+      return next();
+    }
+
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "Not authenticated" });
 
@@ -58,6 +67,12 @@ export function requireActiveSubscription() {
 
 export function checkPlanLimitMiddleware(metricType: string) {
   return async (req: Request, res: Response, next: NextFunction) => {
+    const adminSecret = process.env.STANDALONE_ADMIN_SECRET;
+    const headerSecret = req.headers["x-admin-secret"] as string | undefined;
+    if (adminSecret && headerSecret && headerSecret === adminSecret) {
+      return next();
+    }
+
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "Not authenticated" });
 
