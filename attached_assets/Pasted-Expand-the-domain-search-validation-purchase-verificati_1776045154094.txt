@@ -1,0 +1,247 @@
+Expand the domain search / validation / purchase / verification logic so it supports **the full practical range of commonly used and provider-supported TLDs**, not just a short “basic” list.
+
+Do **not** fix this by adding a few more extensions manually.  
+Do **not** give me a bigger but still incomplete hardcoded array.  
+I want the system to support **all TLDs the configured provider can actually handle**, including broad real-world commercial usage.
+
+## This must include support for domains such as:
+
+### Core legacy TLDs
+- `.com`
+- `.net`
+- `.org`
+- `.biz`
+- `.info`
+
+### Modern startup / SaaS / tech TLDs
+- `.io`
+- `.ai`
+- `.app`
+- `.dev`
+- `.tech`
+- `.cloud`
+- `.software`
+- `.systems`
+- `.digital`
+- `.tools`
+- `.solutions`
+- `.online`
+- `.website`
+- `.site`
+
+### Business / marketing / agency TLDs
+- `.co`
+- `.agency`
+- `.marketing`
+- `.media`
+- `.services`
+- `.company`
+- `.business`
+- `.consulting`
+- `.group`
+- `.partners`
+- `.studio`
+- `.design`
+- `.works`
+
+### Commerce / brand / retail TLDs
+- `.store`
+- `.shop`
+- `.sale`
+- `.deals`
+- `.boutique`
+- `.market`
+
+### Content / creator / brandable TLDs
+- `.live`
+- `.tv`
+- `.fm`
+- `.world`
+- `.today`
+- `.news`
+- `.show`
+- `.zone`
+- `.space`
+- `.life`
+- `.plus`
+- `.pro`
+- `.expert`
+- `.network`
+- `.social`
+- `.events`
+
+### Real estate / local service / niche commercial examples
+- `.homes`
+- `.house`
+- `.properties`
+- `.construction`
+- `.contractors`
+- `.repair`
+- `.services`
+- `.care`
+- `.center`
+
+### Popular alternative / brandable TLDs
+- `.xyz`
+- `.club`
+- `.vip`
+- `.one`
+- `.me`
+- `.cc`
+- `.ws`
+
+### Country-code TLDs where provider-supported
+- `.us`
+- `.ca`
+- `.uk`
+- `.au`
+- `.de`
+- `.fr`
+- `.es`
+- `.it`
+- `.nl`
+- `.in`
+- `.co.uk`
+- other ccTLDs / second-level ccTLD patterns where provider-supported
+
+### Premium / restricted / less common TLDs
+These must not be falsely rejected just because they are less common.
+If supported by the provider, they must return truthful results:
+- available
+- unavailable
+- premium
+- restricted
+- unsupported
+
+## Goal
+Make the domain system capable of:
+- checking exact domains like `roof2roots.live`
+- checking exact domains like `roof2roots.marketing`
+- checking exact domains like `roof2roots.services`
+- checking exact domains like `roof2roots.co.uk`
+- checking exact domains like `roof2roots.ai`
+- suggesting names across many TLDs
+- validating arbitrary supported TLDs correctly
+- handling multi-part public suffixes where applicable
+- keeping search / purchase / verification / storage behavior aligned
+
+## Investigate first
+Return the exact current limitation, including:
+- where TLDs are hardcoded
+- where validation blocks valid TLDs
+- where regex is too narrow
+- where UI restricts endings
+- where backend search is artificially filtered
+- whether provider API already supports broader coverage but the app restricts it
+- whether purchase / verification / storage still assume only a narrow set
+- whether multi-part endings like `.co.uk` break parsing
+- whether premium or restricted domains are being misclassified as invalid
+
+## Required implementation direction
+
+### 1. Remove narrow hardcoded TLD assumptions
+Eliminate logic such as:
+- tiny hardcoded arrays
+- regex that only allows a few endings
+- validation assuming single-part TLDs only
+- UI dropdowns limited to a few endings
+- backend search filters restricted to basic TLDs
+- purchase flow assumptions that only `.com/.net/.org` are valid
+
+### 2. Make TLD support provider-driven
+Use the actual provider capability / supported inventory as the source of truth wherever possible.
+
+That means:
+- availability checks must work for all provider-supported TLDs
+- uncommon endings must not be rejected prematurely
+- ccTLDs and multi-part suffixes must be handled correctly if provider-supported
+- premium/restricted TLDs must return truthful results, not false invalidation
+
+### 3. Support exact arbitrary full-domain input
+The user must be able to enter exact domains like:
+- `roof2roots.live`
+- `roof2roots.ai`
+- `roof2roots.services`
+- `roof2roots.marketing`
+- `roof2roots.tech`
+- `roof2roots.co.uk`
+
+and receive a truthful result:
+- available
+- unavailable
+- premium
+- restricted
+- unsupported
+- invalid syntax
+
+### 4. Handle parsing correctly
+The system must correctly distinguish:
+- valid domain syntax
+- unsupported but valid TLDs
+- multi-level suffixes like `.co.uk`
+- invalid hostnames
+- unsupported IDN / internationalized cases if not provider-supported
+
+Do not confuse:
+- “unsupported”
+- “invalid”
+- “unavailable”
+
+### 5. Align the entire domain flow
+Make sure all of these share the same TLD support model:
+- search
+- exact-input availability checks
+- validation
+- purchase
+- verification
+- display
+- storage
+- reconnect / management UI
+
+No partial fix.
+
+### 6. UI requirements
+The UI must:
+- allow exact full-domain input
+- allow broad provider-backed suggestions
+- not imply only basic endings exist
+- not reject `.live`, `.agency`, `.marketing`, `.co.uk`, etc. if supported
+- show accurate states for:
+  - available
+  - unavailable
+  - premium
+  - restricted
+  - unsupported
+  - invalid
+
+### 7. Multi-part and edge-case handling
+Specifically verify:
+- `.co.uk`
+- `.com.au`
+- `.co.nz`
+- other multi-part public suffix cases if provider-supported
+
+If these are not supported, return that clearly and accurately.
+
+### 8. No fake universal claim
+Do **not** claim support for literally every TLD on earth unless the provider truly supports it.
+
+The correct target is:
+**all TLDs supported by the configured provider, with truthful handling for unsupported or restricted cases.**
+
+## Constraints
+- do not redesign the whole domain system
+- do not break current working domain flows
+- do not fix this by hardcoding a larger but still incomplete list
+- do not mark complete unless exact-input checks, validation, purchase, and verification are aligned
+- do not silently collapse premium/restricted/unsupported into one fake “not available” state
+
+## Return only
+- current TLD limitation found
+- exact files restricting TLD coverage
+- exact fix applied
+- whether support is now dynamic/provider-driven
+- whether exact domains like `.live`, `.agency`, `.marketing`, `.tech`, and `.co.uk` work
+- what TLD coverage is now supported in practice
+- what edge cases still remain
+- any remaining provider/API limitations

@@ -60,6 +60,7 @@ Apex Marketing Automations is a multi-tenant SaaS platform that centralizes busi
 | `server/crashReportWorker.ts` | Crash report processing worker |
 | `server/agentWorker.ts` | Autonomous task agent (background AI worker) |
 | `server/middleware/protectedAccount.ts` | Account protection middleware |
+| `server/middleware/customDomain.ts` | Custom domain → site routing middleware |
 | `server/services/laylaAccountResolver.ts` | Resolves Layla account ID and protected accounts |
 | `server/startupPatches.ts` | Idempotent DB patches on every startup |
 | `server/seed.ts` | Database seeding |

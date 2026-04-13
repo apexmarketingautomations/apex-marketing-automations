@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Globe, Search, ShoppingCart, Shield, Lock, CheckCircle2, XCircle, Loader2, Link2, BookOpen } from "lucide-react";
+import { Globe, Search, ShoppingCart, Shield, Lock, CheckCircle2, XCircle, Loader2, Link2, BookOpen, RefreshCw, AlertTriangle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,8 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { DOMAINS_STEPS } from "@/components/tutorial-steps";
-
-const SUB_ACCOUNT_ID = 1;
+import { useAccount } from "@/hooks/use-account";
 
 const TLDS = [".com", ".io", ".ai", ".co", ".app", ".dev", ".net", ".org"];
 
@@ -35,6 +34,8 @@ type Domain = {
   sslActive: boolean;
   registrar: string | null;
   siteId: number | null;
+  verificationToken: string | null;
+  verifiedAt: string | null;
   createdAt: string;
 };
 
@@ -47,16 +48,19 @@ export default function Domains() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_domains");
+  const { activeAccountId } = useAccount();
+  const subAccountId = activeAccountId || 13;
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTld, setSelectedTld] = useState(".com");
   const [checkResult, setCheckResult] = useState<DomainCheckResult | null>(null);
   const [searchResults, setSearchResults] = useState<DomainCheckResult[]>([]);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [verifyingDomainId, setVerifyingDomainId] = useState<number | null>(null);
 
   const { data: domainsData = [], isLoading: domainsLoading } = useQuery<Domain[]>({
-    queryKey: ["/api/domains", SUB_ACCOUNT_ID],
+    queryKey: ["/api/domains", subAccountId],
     queryFn: async () => {
-      const res = await fetch(`/api/domains/${SUB_ACCOUNT_ID}`);
+      const res = await fetch(`/api/domains/${subAccountId}`);
       if (!res.ok) throw new Error("Failed to fetch domains");
       return res.json();
     },
@@ -102,7 +106,7 @@ export default function Domains() {
       const res = await fetch("/api/domains/purchase", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subAccountId: SUB_ACCOUNT_ID, domain }),
+        body: JSON.stringify({ subAccountId, domain }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -112,7 +116,7 @@ export default function Domains() {
     },
     onSuccess: (data: any) => {
       toast({ title: "Domain Claimed!", description: data.notice || "Domain saved. Register it at your preferred registrar (Namecheap, GoDaddy, Cloudflare) to make it live." });
-      queryClient.invalidateQueries({ queryKey: ["/api/domains", SUB_ACCOUNT_ID] });
+      queryClient.invalidateQueries({ queryKey: ["/api/domains", subAccountId] });
       setShowConfetti(true);
       setTimeout(() => setShowConfetti(false), 3000);
       setCheckResult(null);
@@ -135,7 +139,50 @@ export default function Domains() {
     },
     onSuccess: () => {
       toast({ title: "Domain Updated", description: "Site linked successfully." });
-      queryClient.invalidateQueries({ queryKey: ["/api/domains", SUB_ACCOUNT_ID] });
+      queryClient.invalidateQueries({ queryKey: ["/api/domains", subAccountId] });
+    },
+  });
+
+  const startVerifyMutation = useMutation({
+    mutationFn: async (domainId: number) => {
+      const res = await fetch(`/api/domains/${domainId}/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) throw new Error("Failed to start verification");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: "Verification Started",
+        description: `Add a TXT record: Host = _apex-verify, Value = ${data.verificationToken}`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/domains", subAccountId] });
+    },
+  });
+
+  const checkVerifyMutation = useMutation({
+    mutationFn: async (domainId: number) => {
+      setVerifyingDomainId(domainId);
+      const res = await fetch(`/api/domains/${domainId}/check-verification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) throw new Error("Verification check failed");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      setVerifyingDomainId(null);
+      if (data.verified) {
+        toast({ title: "Domain Verified!", description: "DNS ownership confirmed. Your domain is now active." });
+      } else {
+        toast({ title: "Not Yet Verified", description: data.message || "DNS record not found. Wait a few minutes and try again.", variant: "destructive" });
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/domains", subAccountId] });
+    },
+    onError: (err: any) => {
+      setVerifyingDomainId(null);
+      toast({ title: "Verification Failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -146,7 +193,20 @@ export default function Domains() {
     searchMutation.mutate(searchQuery.trim());
   };
 
-  const activeDomains = domainsData.filter((d) => d.status === "active");
+  const getStatusBadge = (domain: Domain) => {
+    if (domain.verifiedAt || domain.status === "verified") {
+      return { label: "verified", className: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" };
+    }
+    if (domain.verificationToken && !domain.verifiedAt) {
+      return { label: "pending verification", className: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" };
+    }
+    if (domain.status === "pending_registration") {
+      return { label: "needs registration", className: "bg-orange-500/20 text-orange-400 border-orange-500/30" };
+    }
+    return { label: domain.status, className: "bg-slate-500/20 text-slate-400 border-slate-500/30" };
+  };
+
+  const activeDomains = domainsData.filter((d) => d.verifiedAt || d.status === "verified");
   const totalSpent = domainsData.reduce((sum, d) => sum + d.salePrice, 0);
 
   return (
@@ -186,7 +246,6 @@ export default function Domains() {
                 transition={{ duration: 0.5 }}
                 className="text-6xl"
               >
-                🎉
               </motion.div>
             </motion.div>
           )}
@@ -208,7 +267,7 @@ export default function Domains() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8" data-testid="stats-row">
           {[
             { label: "Total Domains", value: domainsData.length, icon: Globe, color: "text-indigo-400" },
-            { label: "Active", value: activeDomains.length, icon: CheckCircle2, color: "text-emerald-400" },
+            { label: "Verified", value: activeDomains.length, icon: CheckCircle2, color: "text-emerald-400" },
             { label: "Total Spent", value: `$${totalSpent.toFixed(2)}`, icon: ShoppingCart, color: "text-cyan-400" },
           ].map((stat, i) => (
             <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
@@ -365,67 +424,107 @@ export default function Domains() {
               <div className="space-y-3">
                 {domainsData.map((domain) => {
                   const linkedSite = sites.find((s) => s.id === domain.siteId);
+                  const statusBadge = getStatusBadge(domain);
+                  const needsVerification = !domain.verifiedAt && domain.status !== "verified";
+                  const hasToken = !!domain.verificationToken;
+
                   return (
                     <div
                       key={domain.id}
-                      className="flex flex-col md:flex-row md:items-center gap-3 p-4 rounded-lg bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] transition-colors"
+                      className="flex flex-col gap-3 p-4 rounded-lg bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] transition-colors"
                       data-testid={`domain-row-${domain.id}`}
                     >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Globe size={14} className="text-indigo-400 shrink-0" />
-                          <span className="font-mono font-bold text-white truncate" data-testid={`domain-name-${domain.id}`}>{domain.domainName}</span>
-                          <Badge
-                            className={`text-[10px] ${
-                              domain.status === "active"
-                                ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                                : domain.status === "pending"
-                                ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
-                                : "bg-red-500/20 text-red-400 border-red-500/30"
-                            }`}
-                            data-testid={`domain-status-${domain.id}`}
-                          >
-                            {domain.status}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center gap-4 text-xs text-slate-500">
-                          <span className="flex items-center gap-1" data-testid={`domain-dns-${domain.id}`}>
-                            <Shield size={10} className={domain.dnsConfigured ? "text-emerald-400" : "text-red-400"} />
-                            DNS {domain.dnsConfigured ? "✓" : "✗"}
-                          </span>
-                          <span className="flex items-center gap-1" data-testid={`domain-ssl-${domain.id}`}>
-                            <Lock size={10} className={domain.sslActive ? "text-emerald-400" : "text-red-400"} />
-                            SSL {domain.sslActive ? "✓" : "✗"}
-                          </span>
-                          <span data-testid={`domain-price-${domain.id}`}>${domain.salePrice.toFixed(2)}/yr</span>
-                          {linkedSite && (
-                            <span className="text-indigo-400" data-testid={`domain-linked-site-${domain.id}`}>
-                              → {linkedSite.name}
+                      <div className="flex flex-col md:flex-row md:items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Globe size={14} className="text-indigo-400 shrink-0" />
+                            <span className="font-mono font-bold text-white truncate" data-testid={`domain-name-${domain.id}`}>{domain.domainName}</span>
+                            <Badge
+                              className={`text-[10px] ${statusBadge.className}`}
+                              data-testid={`domain-status-${domain.id}`}
+                            >
+                              {statusBadge.label}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-4 text-xs text-slate-500">
+                            <span className="flex items-center gap-1" data-testid={`domain-dns-${domain.id}`}>
+                              <Shield size={10} className={domain.dnsConfigured ? "text-emerald-400" : "text-red-400"} />
+                              DNS {domain.dnsConfigured ? "Configured" : "Pending"}
                             </span>
+                            <span className="flex items-center gap-1" data-testid={`domain-ssl-${domain.id}`}>
+                              <Lock size={10} className={domain.sslActive ? "text-emerald-400" : "text-slate-600"} />
+                              SSL {domain.sslActive ? "Active" : "Via Cloudflare"}
+                            </span>
+                            <span data-testid={`domain-price-${domain.id}`}>${domain.salePrice.toFixed(2)}/yr</span>
+                            {linkedSite && (
+                              <span className="text-indigo-400" data-testid={`domain-linked-site-${domain.id}`}>
+                                Linked: {linkedSite.name}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Select
+                            value={domain.siteId?.toString() || "none"}
+                            onValueChange={(val) =>
+                              linkSiteMutation.mutate({
+                                domainId: domain.id,
+                                siteId: val === "none" ? null : parseInt(val),
+                              })
+                            }
+                          >
+                            <SelectTrigger className="w-40 bg-white/5 border-white/10 text-white text-xs h-8" data-testid={`select-link-site-${domain.id}`}>
+                              <SelectValue placeholder="Link to site" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">No site</SelectItem>
+                              {sites.map((site) => (
+                                <SelectItem key={site.id} value={site.id.toString()}>{site.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      {needsVerification && (
+                        <div className="flex items-center gap-2 pt-1 border-t border-white/5">
+                          {!hasToken ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => startVerifyMutation.mutate(domain.id)}
+                              disabled={startVerifyMutation.isPending}
+                              className="text-xs h-7 border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10"
+                              data-testid={`button-start-verify-${domain.id}`}
+                            >
+                              <Shield size={12} className="mr-1" />
+                              Start Verification
+                            </Button>
+                          ) : (
+                            <>
+                              <div className="flex-1 text-xs text-slate-500 flex items-center gap-1">
+                                <AlertTriangle size={12} className="text-yellow-400" />
+                                <span>Add TXT record: Host = <code className="text-yellow-300">_apex-verify</code>, Value = <code className="text-yellow-300">{domain.verificationToken}</code></span>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => checkVerifyMutation.mutate(domain.id)}
+                                disabled={verifyingDomainId === domain.id}
+                                className="text-xs h-7 border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10"
+                                data-testid={`button-check-verify-${domain.id}`}
+                              >
+                                {verifyingDomainId === domain.id ? (
+                                  <Loader2 size={12} className="animate-spin mr-1" />
+                                ) : (
+                                  <RefreshCw size={12} className="mr-1" />
+                                )}
+                                Check DNS
+                              </Button>
+                            </>
                           )}
                         </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Select
-                          value={domain.siteId?.toString() || "none"}
-                          onValueChange={(val) =>
-                            linkSiteMutation.mutate({
-                              domainId: domain.id,
-                              siteId: val === "none" ? null : parseInt(val),
-                            })
-                          }
-                        >
-                          <SelectTrigger className="w-40 bg-white/5 border-white/10 text-white text-xs h-8" data-testid={`select-link-site-${domain.id}`}>
-                            <SelectValue placeholder="Link to site" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">No site</SelectItem>
-                            {sites.map((site) => (
-                              <SelectItem key={site.id} value={site.id.toString()}>{site.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+                      )}
                     </div>
                   );
                 })}

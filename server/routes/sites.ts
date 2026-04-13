@@ -6,130 +6,137 @@ import { aiChat, isAIConfigured } from "../aiGateway";
 import express from "express";
 import { asyncHandler, parseIntParam, logUsageInternal } from "./helpers";
 
+function renderSiteSection(section: any, theme: any): string {
+  const p = section.props || {};
+  switch (section.type) {
+    case "hero":
+      return `<section style="min-height:80vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:80px 24px;position:relative;overflow:hidden;background:${theme.bg}">
+        <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center,${theme.primary}15 0%,transparent 70%)"></div>
+        ${p.badge ? `<div style="display:inline-flex;padding:6px 16px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid ${theme.primary}40;color:${theme.primary};background:${theme.primary}10;margin-bottom:16px">${p.badge}</div>` : ''}
+        <div style="position:relative;z-index:1;max-width:800px">
+          <h1 style="font-size:clamp(2rem,5vw,4rem);font-weight:900;line-height:1.1;margin-bottom:24px;font-family:${theme.font}">${p.title || 'Welcome'}</h1>
+          ${p.subtitle ? `<p style="font-size:18px;opacity:0.8;margin-bottom:32px;line-height:1.6">${p.subtitle}</p>` : ''}
+          ${p.cta ? `<a href="#contact" style="display:inline-block;padding:14px 32px;background:${theme.primary};color:${theme.bg};border-radius:12px;font-weight:600;text-decoration:none;font-size:16px">${p.cta}</a>` : ''}
+        </div>
+      </section>`;
+    case "features":
+      const features = Array.isArray(p.features) ? p.features : [];
+      return `<section style="padding:80px 24px;background:${theme.primary}05">
+        <div style="max-width:1000px;margin:0 auto;text-align:center">
+          <h2 style="font-size:2rem;font-weight:800;margin-bottom:48px;font-family:${theme.font}">${p.title || 'Features'}</h2>
+          ${p.subtitle ? `<p style="opacity:0.7;margin-bottom:48px">${p.subtitle}</p>` : ''}
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:24px">
+            ${features.map((f: any) => `<div style="padding:32px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:16px;text-align:left">
+              <div style="width:48px;height:48px;background:${theme.primary}15;color:${theme.primary};border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:16px;font-size:24px">${f.icon || '✦'}</div>
+              <h3 style="font-size:18px;font-weight:700;margin-bottom:8px">${f.title || ''}</h3>
+              <p style="opacity:0.7;font-size:14px;line-height:1.6">${f.desc || ''}</p>
+            </div>`).join('')}
+          </div>
+        </div>
+      </section>`;
+    case "booking":
+      return `<section id="contact" style="padding:80px 24px;background:${theme.bg}">
+        <div style="max-width:480px;margin:0 auto;text-align:center">
+          <h2 style="font-size:2rem;font-weight:800;margin-bottom:32px;font-family:${theme.font}">${p.title || 'Get in Touch'}</h2>
+          <form style="display:flex;flex-direction:column;gap:12px" onsubmit="event.preventDefault();alert('Thank you! We will be in touch.')">
+            <input type="text" placeholder="Your Name" required style="padding:12px 16px;border:1px solid rgba(255,255,255,0.15);border-radius:8px;background:rgba(255,255,255,0.05);color:${theme.text};font-size:14px" />
+            <input type="email" placeholder="Your Email" required style="padding:12px 16px;border:1px solid rgba(255,255,255,0.15);border-radius:8px;background:rgba(255,255,255,0.05);color:${theme.text};font-size:14px" />
+            <input type="tel" placeholder="Phone Number" style="padding:12px 16px;border:1px solid rgba(255,255,255,0.15);border-radius:8px;background:rgba(255,255,255,0.05);color:${theme.text};font-size:14px" />
+            <button type="submit" style="padding:14px;background:${theme.primary};color:${theme.bg};border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer">Submit</button>
+          </form>
+        </div>
+      </section>`;
+    case "paywall":
+    case "pricing":
+      const tiers = Array.isArray(p.tiers) ? p.tiers : [];
+      return `<section style="padding:80px 24px;background:${theme.bg}">
+        <div style="max-width:1000px;margin:0 auto;text-align:center">
+          <h2 style="font-size:2rem;font-weight:800;margin-bottom:48px;font-family:${theme.font}">${p.title || 'Pricing'}</h2>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:24px">
+            ${tiers.map((t: any) => `<div style="padding:32px;border:1px solid ${t.popular ? theme.primary : 'rgba(255,255,255,0.1)'};border-radius:16px;background:${t.popular ? theme.primary + '08' : 'rgba(255,255,255,0.03)'}">
+              <h3 style="font-size:20px;font-weight:700;margin-bottom:4px">${t.name || ''}</h3>
+              <div style="margin:16px 0"><span style="font-size:2rem;font-weight:900;color:${theme.primary}">${t.price || ''}</span>${t.period ? `<span style="opacity:0.5">/${t.period}</span>` : ''}</div>
+              <ul style="list-style:none;padding:0;text-align:left;margin-bottom:24px">${(t.features || []).map((f: string) => `<li style="padding:6px 0;font-size:14px"><span style="color:${theme.primary};margin-right:8px">&#10003;</span>${f}</li>`).join('')}</ul>
+              <a href="#contact" style="display:block;padding:12px;background:${t.popular ? theme.primary : 'transparent'};color:${t.popular ? theme.bg : theme.text};border:1px solid ${theme.primary};border-radius:8px;text-decoration:none;font-weight:600;text-align:center">${t.cta || 'Get Started'}</a>
+            </div>`).join('')}
+          </div>
+        </div>
+      </section>`;
+    case "testimonials":
+      const testimonials = Array.isArray(p.testimonials) ? p.testimonials : [];
+      return `<section style="padding:80px 24px;background:${theme.primary}05">
+        <div style="max-width:1000px;margin:0 auto;text-align:center">
+          <h2 style="font-size:2rem;font-weight:800;margin-bottom:48px;font-family:${theme.font}">${p.title || 'Testimonials'}</h2>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px">
+            ${testimonials.map((t: any) => `<div style="padding:24px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:16px;text-align:left">
+              <p style="opacity:0.8;font-size:14px;line-height:1.6;margin-bottom:16px">"${t.quote || ''}"</p>
+              <p style="font-weight:600;font-size:13px">${t.name || ''}${t.role ? ` — ${t.role}` : ''}</p>
+            </div>`).join('')}
+          </div>
+        </div>
+      </section>`;
+    case "footer":
+      return `<footer style="padding:40px 24px;text-align:center;border-top:1px solid rgba(255,255,255,0.08);background:${theme.bg}">
+        <p style="opacity:0.5;font-size:13px">${p.text || `© ${new Date().getFullYear()} All rights reserved.`}</p>
+      </footer>`;
+    default:
+      return `<section style="padding:60px 24px;text-align:center;background:${theme.bg}">
+        <h2 style="font-size:1.5rem;font-weight:700;font-family:${theme.font}">${p.title || section.type}</h2>
+        ${p.subtitle ? `<p style="opacity:0.7;margin-top:12px">${p.subtitle}</p>` : ''}
+      </section>`;
+  }
+}
+
+export async function renderSiteHtml(siteId: number, res: Response): Promise<void> {
+  const site = await storage.getSavedSite(siteId);
+  if (!site) {
+    res.status(404).send("<html><body style='background:#0f172a;color:white;display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui'><h1>Site not found</h1></body></html>");
+    return;
+  }
+
+  const data = site.siteData as any;
+  if (!data?.theme || !Array.isArray(data?.sections)) {
+    res.status(400).send("<html><body style='background:#0f172a;color:white;display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui'><h1>Invalid site data</h1></body></html>");
+    return;
+  }
+
+  const theme = data.theme;
+  const sections = data.sections;
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>${site.name || 'Apex Site'}</title>
+<meta name="description" content="${site.prompt || ''}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(theme.font || 'Inter')}:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: '${theme.font || 'Inter'}', system-ui, sans-serif; background: ${theme.bg}; color: ${theme.text}; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; }
+  img { max-width: 100%; }
+</style>
+</head>
+<body>
+${sections.map((s: any) => renderSiteSection(s, theme)).join('\n')}
+</body>
+</html>`;
+
+  if (!site.publishedUrl) {
+    const publishedUrl = `/live/${siteId}`;
+    await storage.updateSavedSite(siteId, { publishedUrl });
+  }
+
+  res.setHeader("Content-Type", "text/html");
+  res.send(html);
+}
+
 export function registerSitesRoutes(app: Express) {
-  // ---- Public Site Preview (no auth required) ----
   app.get("/live/:siteId", asyncHandler(async (req, res) => {
     const siteId = parseInt(req.params.siteId as string);
-    const site = await storage.getSavedSite(siteId);
-    if (!site) return res.status(404).send("<html><body style='background:#0f172a;color:white;display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui'><h1>Site not found</h1></body></html>");
-
-    const data = site.siteData as any;
-    if (!data?.theme || !Array.isArray(data?.sections)) {
-      return res.status(400).send("<html><body style='background:#0f172a;color:white;display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui'><h1>Invalid site data</h1></body></html>");
-    }
-
-    const theme = data.theme;
-    const sections = data.sections;
-
-    const renderSection = (section: any) => {
-      const p = section.props || {};
-      switch (section.type) {
-        case "hero":
-          return `<section style="min-height:80vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:80px 24px;position:relative;overflow:hidden;background:${theme.bg}">
-            <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center,${theme.primary}15 0%,transparent 70%)"></div>
-            ${p.badge ? `<div style="display:inline-flex;padding:6px 16px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid ${theme.primary}40;color:${theme.primary};background:${theme.primary}10;margin-bottom:16px">${p.badge}</div>` : ''}
-            <div style="position:relative;z-index:1;max-width:800px">
-              <h1 style="font-size:clamp(2rem,5vw,4rem);font-weight:900;line-height:1.1;margin-bottom:24px;font-family:${theme.font}">${p.title || 'Welcome'}</h1>
-              ${p.subtitle ? `<p style="font-size:18px;opacity:0.8;margin-bottom:32px;line-height:1.6">${p.subtitle}</p>` : ''}
-              ${p.cta ? `<a href="#contact" style="display:inline-block;padding:14px 32px;background:${theme.primary};color:${theme.bg};border-radius:12px;font-weight:600;text-decoration:none;font-size:16px">${p.cta}</a>` : ''}
-            </div>
-          </section>`;
-        case "features":
-          const features = Array.isArray(p.features) ? p.features : [];
-          return `<section style="padding:80px 24px;background:${theme.primary}05">
-            <div style="max-width:1000px;margin:0 auto;text-align:center">
-              <h2 style="font-size:2rem;font-weight:800;margin-bottom:48px;font-family:${theme.font}">${p.title || 'Features'}</h2>
-              ${p.subtitle ? `<p style="opacity:0.7;margin-bottom:48px">${p.subtitle}</p>` : ''}
-              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:24px">
-                ${features.map((f: any) => `<div style="padding:32px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:16px;text-align:left">
-                  <div style="width:48px;height:48px;background:${theme.primary}15;color:${theme.primary};border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:16px;font-size:24px">${f.icon || '✦'}</div>
-                  <h3 style="font-size:18px;font-weight:700;margin-bottom:8px">${f.title || ''}</h3>
-                  <p style="opacity:0.7;font-size:14px;line-height:1.6">${f.desc || ''}</p>
-                </div>`).join('')}
-              </div>
-            </div>
-          </section>`;
-        case "booking":
-          return `<section id="contact" style="padding:80px 24px;background:${theme.bg}">
-            <div style="max-width:480px;margin:0 auto;text-align:center">
-              <h2 style="font-size:2rem;font-weight:800;margin-bottom:32px;font-family:${theme.font}">${p.title || 'Get in Touch'}</h2>
-              <form style="display:flex;flex-direction:column;gap:12px" onsubmit="event.preventDefault();alert('Thank you! We will be in touch.')">
-                <input type="text" placeholder="Your Name" required style="padding:12px 16px;border:1px solid rgba(255,255,255,0.15);border-radius:8px;background:rgba(255,255,255,0.05);color:${theme.text};font-size:14px" />
-                <input type="email" placeholder="Your Email" required style="padding:12px 16px;border:1px solid rgba(255,255,255,0.15);border-radius:8px;background:rgba(255,255,255,0.05);color:${theme.text};font-size:14px" />
-                <input type="tel" placeholder="Phone Number" style="padding:12px 16px;border:1px solid rgba(255,255,255,0.15);border-radius:8px;background:rgba(255,255,255,0.05);color:${theme.text};font-size:14px" />
-                <button type="submit" style="padding:14px;background:${theme.primary};color:${theme.bg};border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer">Submit</button>
-              </form>
-            </div>
-          </section>`;
-        case "paywall":
-        case "pricing":
-          const tiers = Array.isArray(p.tiers) ? p.tiers : [];
-          return `<section style="padding:80px 24px;background:${theme.bg}">
-            <div style="max-width:1000px;margin:0 auto;text-align:center">
-              <h2 style="font-size:2rem;font-weight:800;margin-bottom:48px;font-family:${theme.font}">${p.title || 'Pricing'}</h2>
-              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:24px">
-                ${tiers.map((t: any) => `<div style="padding:32px;border:1px solid ${t.popular ? theme.primary : 'rgba(255,255,255,0.1)'};border-radius:16px;background:${t.popular ? theme.primary + '08' : 'rgba(255,255,255,0.03)'}">
-                  <h3 style="font-size:20px;font-weight:700;margin-bottom:4px">${t.name || ''}</h3>
-                  <div style="margin:16px 0"><span style="font-size:2rem;font-weight:900;color:${theme.primary}">${t.price || ''}</span>${t.period ? `<span style="opacity:0.5">/${t.period}</span>` : ''}</div>
-                  <ul style="list-style:none;padding:0;text-align:left;margin-bottom:24px">${(t.features || []).map((f: string) => `<li style="padding:6px 0;font-size:14px"><span style="color:${theme.primary};margin-right:8px">&#10003;</span>${f}</li>`).join('')}</ul>
-                  <a href="#contact" style="display:block;padding:12px;background:${t.popular ? theme.primary : 'transparent'};color:${t.popular ? theme.bg : theme.text};border:1px solid ${theme.primary};border-radius:8px;text-decoration:none;font-weight:600;text-align:center">${t.cta || 'Get Started'}</a>
-                </div>`).join('')}
-              </div>
-            </div>
-          </section>`;
-        case "testimonials":
-          const testimonials = Array.isArray(p.testimonials) ? p.testimonials : [];
-          return `<section style="padding:80px 24px;background:${theme.primary}05">
-            <div style="max-width:1000px;margin:0 auto;text-align:center">
-              <h2 style="font-size:2rem;font-weight:800;margin-bottom:48px;font-family:${theme.font}">${p.title || 'Testimonials'}</h2>
-              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px">
-                ${testimonials.map((t: any) => `<div style="padding:24px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:16px;text-align:left">
-                  <p style="opacity:0.8;font-size:14px;line-height:1.6;margin-bottom:16px">"${t.quote || ''}"</p>
-                  <p style="font-weight:600;font-size:13px">${t.name || ''}${t.role ? ` — ${t.role}` : ''}</p>
-                </div>`).join('')}
-              </div>
-            </div>
-          </section>`;
-        case "footer":
-          return `<footer style="padding:40px 24px;text-align:center;border-top:1px solid rgba(255,255,255,0.08);background:${theme.bg}">
-            <p style="opacity:0.5;font-size:13px">${p.text || `© ${new Date().getFullYear()} All rights reserved.`}</p>
-          </footer>`;
-        default:
-          return `<section style="padding:60px 24px;text-align:center;background:${theme.bg}">
-            <h2 style="font-size:1.5rem;font-weight:700;font-family:${theme.font}">${p.title || section.type}</h2>
-            ${p.subtitle ? `<p style="opacity:0.7;margin-top:12px">${p.subtitle}</p>` : ''}
-          </section>`;
-      }
-    };
-
-    const html = `<!DOCTYPE html>
-  <html lang="en">
-  <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1.0">
-  <title>${site.name || 'Apex Site'}</title>
-  <meta name="description" content="${site.prompt || ''}">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(theme.font || 'Inter')}:wght@400;600;700;900&display=swap" rel="stylesheet">
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: '${theme.font || 'Inter'}', system-ui, sans-serif; background: ${theme.bg}; color: ${theme.text}; -webkit-font-smoothing: antialiased; }
-    a { color: inherit; }
-    img { max-width: 100%; }
-  </style>
-  </head>
-  <body>
-  ${sections.map(renderSection).join('\n')}
-  </body>
-  </html>`;
-
-    if (!site.publishedUrl) {
-      const publishedUrl = `/live/${siteId}`;
-      await storage.updateSavedSite(siteId, { publishedUrl });
-    }
-
-    res.setHeader("Content-Type", "text/html");
-    res.send(html);
+    await renderSiteHtml(siteId, res);
   }));
 
   // ---- Publish Site Endpoint ----

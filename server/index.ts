@@ -1623,6 +1623,10 @@ RULES:
   registerAuthRoutes(app);
   await registerRoutes(httpServer, app);
 
+  const { customDomainMiddleware } = await import("./middleware/customDomain");
+  const { renderSiteHtml } = await import("./routes/sites");
+  app.use(customDomainMiddleware(renderSiteHtml));
+
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";

@@ -1,0 +1,169 @@
+Investigate, test, and verify the **full domain setup logic** for a site created through the **Site Builder**.
+
+This is a **live production verification task**.  
+I do **not** want assumptions, code-only confidence, or “should work” answers.  
+I want proof that the domain flow works **end-to-end** from a site built in the Site Builder through actual domain connection behavior.
+
+## Mission
+Prove whether domain logic is fully working for Site Builder-created sites, and fix anything required so the domain flow is truly operational.
+
+## What must be tested end-to-end
+Take a site created through the **Site Builder** and verify the entire domain lifecycle:
+
+1. Site is created in Site Builder
+2. Site is publishable/deployable
+3. Domain can be attached to that site
+4. Domain records / routing / mapping logic resolve correctly
+5. App stores the domain connection correctly
+6. Published site actually serves on the connected domain
+7. Dashboard / domain UI reflects the true state correctly
+8. Reconnect / update / error states work correctly
+9. Failure states are truthful and actionable
+10. Nothing is fake, stale, or manually patched behind the scenes
+
+## Required investigation areas
+
+### 1. Site Builder → Domain linkage
+Verify exactly how a Site Builder site becomes eligible for domain connection.
+
+Confirm:
+- which entity/table/model stores the built site
+- which entity/table/model stores the domain
+- how a domain is linked to a built site
+- whether the site builder output is actually compatible with the domain system
+- whether there is any mismatch between builder-created sites and domain attach logic
+
+### 2. Domain assignment flow
+Trace the full domain assignment path:
+
+- frontend domain UI
+- API route
+- backend service logic
+- persistence/storage layer
+- publish/deploy layer
+- final served domain behavior
+
+For each step, verify the actual code path and whether it fires correctly.
+
+### 3. Publish/deploy integration
+Verify that a site created through the Site Builder can actually be:
+- published
+- mapped
+- served via domain
+- updated after changes
+
+Confirm whether domain logic breaks when:
+- the site is rebuilt
+- the site is republished
+- the published version changes
+- there are multiple site versions
+- there are multiple domains
+- there is a staging/main version mismatch
+
+### 4. Domain status truthfulness
+Verify the UI and backend status logic for states like:
+- connected
+- pending
+- verifying
+- active
+- failed
+- misconfigured
+
+I need to know whether those states are:
+- real
+- stale
+- optimistic
+- broken
+- misleading
+
+### 5. DNS / provider logic
+Verify how the system handles:
+- custom domains
+- subdomains
+- root domains
+- verification flow
+- required DNS records
+- propagation handling
+- failure handling
+
+Do not just inspect code. Verify whether the logic is truly usable for a Site Builder-generated site.
+
+### 6. Cross-service dependencies
+Audit every dependent part of the system that affects this flow, including:
+- site builder persistence
+- domains logic
+- deployment/publish logic
+- routing/serving layer
+- account/sub-account scoping
+- production vs dev differences
+- environment-specific domain behavior
+
+### 7. Tenant/account scoping
+Verify that domain assignment is correctly scoped:
+- the right account/sub-account owns the site
+- the right account/sub-account owns the domain
+- no cross-account leakage or assignment errors occur
+- parent/master visibility does not break tenant ownership rules
+
+## Required test scenarios
+Run and verify at least these scenarios:
+
+### Scenario A — Fresh Site Builder site
+- create or identify a site built from Site Builder
+- attach a domain
+- verify it publishes and serves correctly
+
+### Scenario B — Existing built site update
+- update the site
+- republish
+- verify the connected domain still serves correctly
+
+### Scenario C — Failure/misconfiguration
+- verify what happens when domain setup is incomplete or invalid
+- confirm the UI and backend report the real problem
+
+### Scenario D — Account scoping
+- verify the domain is visible and assignable only where it should be
+- confirm no wrong-account mapping occurs
+
+## Output format
+Return only:
+
+### A. Exact code path
+List the exact frontend → API → backend → storage → publish/serve path for Site Builder domain setup
+
+### B. What is actually working
+List what is verified working right now
+
+### C. What is broken
+List every real break in the flow
+
+### D. What is misleading
+List every fake/stale/misreported status or UI state
+
+### E. Exact fixes required
+List the minimum safe production fixes required to make Site Builder domain setup truly work
+
+### F. Exact files that must change
+Only list files that are truly necessary
+
+### G. Final verification result
+State one of:
+- fully working
+- partially working
+- broken
+- working only in dev
+- working only with manual intervention
+
+## Constraints
+- do not redesign the whole domain system
+- do not give theoretical confidence
+- do not say “should work”
+- do not mark complete without actual end-to-end verification
+- do not hide manual workaround dependence
+- do not broaden into unrelated site builder work
+
+## Final instruction
+Treat this as a **truth audit + repair task** for Site Builder domain setup.
+
+I need proof of whether a Site Builder-built site can really have a domain set up through the system and work correctly in production.

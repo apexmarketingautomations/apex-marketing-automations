@@ -788,6 +788,7 @@ export function registerReviewsRoutes(app: Express) {
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
     const { subAccountId, domain: rawDomain, siteId } = parsed.data;
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const domain = rawDomain.toLowerCase().trim();
     const tld = extractTld(domain);
     const pricing = TLD_PRICING[tld];
@@ -825,15 +826,22 @@ export function registerReviewsRoutes(app: Express) {
       await storage.updateSavedSite(siteId, { customDomain: domain });
     }
 
+    const platformHost = process.env.REPLIT_DOMAINS
+      ? JSON.parse(process.env.REPLIT_DOMAINS)[0]
+      : process.env.REPL_SLUG
+        ? `${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
+        : "apexmarketingautomations.com";
+
     res.status(201).json({
       success: true,
       domain: domainRecord,
       status: "pending_registration",
       nextSteps: [
         `1. Register "${domain}" at your preferred registrar (Namecheap, GoDaddy, Cloudflare, etc.)`,
-        "2. In your registrar's DNS settings, add a CNAME record pointing to your Apex site URL",
-        "3. Come back here and click 'Verify Domain' to confirm ownership",
-        "4. Once verified, SSL will need to be configured at your hosting provider"
+        `2. In your registrar's DNS settings, add a CNAME record pointing to: ${platformHost}`,
+        "3. Come back here and click 'Start Verification' to get your DNS TXT record",
+        "4. Add the TXT record at your registrar, then click 'Check DNS' to confirm ownership",
+        "5. For SSL, use Cloudflare (free) with Full SSL mode, or your registrar's SSL option",
       ],
       notice: "This domain has been reserved in Apex but is NOT yet registered. You must purchase it from a domain registrar to make it live.",
     });
@@ -859,6 +867,7 @@ export function registerReviewsRoutes(app: Express) {
 
     const existing = await storage.getDomain(id);
     if (!existing) return res.status(404).json({ error: "Domain not found" });
+    if (!(await verifyAccountOwnership(req, res, existing.subAccountId))) return;
 
     const updates: any = {};
     if (parsed.data.siteId !== undefined) updates.siteId = parsed.data.siteId;
@@ -871,6 +880,11 @@ export function registerReviewsRoutes(app: Express) {
       await storage.updateSavedSite(parsed.data.siteId, { customDomain: existing.domainName });
     }
 
+    try {
+      const { clearDomainCache } = await import("../middleware/customDomain");
+      clearDomainCache(existing.domainName);
+    } catch {}
+
     res.json(updated);
   }));
 
@@ -878,6 +892,7 @@ export function registerReviewsRoutes(app: Express) {
     const id = parseIntParam(req.params.id, "id");
     const domain = await storage.getDomain(id);
     if (!domain) return res.status(404).json({ error: "Domain not found" });
+    if (!(await verifyAccountOwnership(req, res, domain.subAccountId))) return;
 
     const token = "apex-verify-" + crypto.randomUUID().substring(0, 8);
     await storage.updateDomain(id, { verificationToken: token });
@@ -905,6 +920,7 @@ export function registerReviewsRoutes(app: Express) {
     const id = parseIntParam(req.params.id, "id");
     const domain = await storage.getDomain(id);
     if (!domain) return res.status(404).json({ error: "Domain not found" });
+    if (!(await verifyAccountOwnership(req, res, domain.subAccountId))) return;
 
     if (!domain.verificationToken) {
       return res.status(400).json({ error: "No verification token found. Please start verification first." });
@@ -921,6 +937,10 @@ export function registerReviewsRoutes(app: Express) {
           status: "verified",
           dnsConfigured: true,
         });
+        try {
+          const { clearDomainCache } = await import("../middleware/customDomain");
+          clearDomainCache(domain.domainName);
+        } catch {}
         return res.json({ verified: true, domain: updated });
       }
 
@@ -934,6 +954,7 @@ export function registerReviewsRoutes(app: Express) {
     const id = parseIntParam(req.params.id, "id");
     const domain = await storage.getDomain(id);
     if (!domain) return res.status(404).json({ error: "Domain not found" });
+    if (!(await verifyAccountOwnership(req, res, domain.subAccountId))) return;
 
     if (!domain.verifiedAt) {
       return res.status(400).json({ error: "Domain must be verified before configuring SSL" });
@@ -956,6 +977,7 @@ export function registerReviewsRoutes(app: Express) {
     const id = parseIntParam(req.params.id, "id");
     const domain = await storage.getDomain(id);
     if (!domain) return res.status(404).json({ error: "Domain not found" });
+    if (!(await verifyAccountOwnership(req, res, domain.subAccountId))) return;
 
     res.json({
       ...domain,
