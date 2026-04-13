@@ -274,7 +274,8 @@ async function executeTask(taskId: number): Promise<void> {
 
   } catch (err: any) {
     const errorMsg = err?.message || String(err);
-    const shouldRetry = (task.attempts || 0) + 1 < (task.maxAttempts || 3);
+    const isParamError = errorMsg.includes("Parameter validation failed") || errorMsg.includes("Missing required parameter");
+    const shouldRetry = !isParamError && (task.attempts || 0) + 1 < (task.maxAttempts || 3);
 
     await db.update(agentTasks)
       .set({

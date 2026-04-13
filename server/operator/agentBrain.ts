@@ -139,7 +139,18 @@ export async function generateAITaskPlan(
     const healthScore = await calculateHealthScore(context);
     const promptContext = buildPromptContext(context);
     const tools = getToolManifest();
-    const toolNames = tools.map(t => `${t.name}: ${t.description}`).join("\n");
+    const toolDescriptions = tools.map(t => {
+      const requiredParams = t.parameters
+        .filter((p: any) => p.required)
+        .map((p: any) => `${p.name} (${p.type}): ${p.description}`);
+      const optionalParams = t.parameters
+        .filter((p: any) => !p.required)
+        .map((p: any) => `${p.name}? (${p.type}): ${p.description}`);
+      const paramStr = requiredParams.length > 0
+        ? `\n    Required: ${requiredParams.join(", ")}${optionalParams.length > 0 ? `\n    Optional: ${optionalParams.join(", ")}` : ""}`
+        : optionalParams.length > 0 ? `\n    Params: ${optionalParams.join(", ")}` : "";
+      return `${t.name}: ${t.description}${paramStr}`;
+    }).join("\n");
 
     const userPrompt = `ACCOUNT STATE:
 ${promptContext}
@@ -154,7 +165,9 @@ ${outcomeHistory.length === 0 ? "No recent tasks" : outcomeHistory.map(t =>
 Success rate: ${successRate}%
 
 AVAILABLE TOOLS:
-${toolNames}
+${toolDescriptions}
+
+CRITICAL: When suggesting a tool, you MUST populate "toolParams" with ALL required parameters. Never leave toolParams empty if the tool has required params. Use real values from the account data above.
 
 Based on this data, what tasks should the autonomous agent execute? Return a JSON array of task suggestions. If the account is in good shape, return [].`;
 
@@ -163,7 +176,7 @@ Based on this data, what tasks should the autonomous agent execute? Return a JSO
       { role: "user", content: userPrompt },
     ], {
       temperature: 0.3,
-      maxTokens: 2048,
+      maxTokens: 3000,
       jsonMode: true,
       route: "agent-brain-task-plan",
       timeoutMs: 30_000,
