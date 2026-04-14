@@ -413,7 +413,7 @@ CORE IDENTITY:
     }
   }
 
-  if (context.brandVoice) {
+  if (!isFullPersonaOverride && context.brandVoice) {
     prompt += `\n\nBRAND VOICE:\n${context.brandVoice}`;
   }
 
@@ -421,22 +421,28 @@ CORE IDENTITY:
     prompt += `\n\nBUSINESS KNOWLEDGE BASE (use this as your primary source of truth):\n${context.knowledgeBase}`;
   }
 
-  if (context.serviceOfferings && context.serviceOfferings.length > 0) {
-    prompt += `\n\nSERVICES OFFERED:\n${context.serviceOfferings.map((s) => `- ${s}`).join("\n")}`;
-    prompt += `\n\nSERVICE GUARDRAIL (CRITICAL):
+  if (!isFullPersonaOverride) {
+    if (context.serviceOfferings && context.serviceOfferings.length > 0) {
+      prompt += `\n\nSERVICES OFFERED:\n${context.serviceOfferings.map((s) => `- ${s}`).join("\n")}`;
+      prompt += `\n\nSERVICE GUARDRAIL (CRITICAL):
 - ONLY mention services that appear in the SERVICES OFFERED list above.
 - Never mention, suggest, or invent services not on that list.
 - If asked about a service not on the list, say something like "That's not something we handle, but let me tell you what we can help with" and redirect to listed services.`;
-  } else {
-    prompt += `\n\nSERVICE GUARDRAIL (CRITICAL):
+    } else {
+      prompt += `\n\nSERVICE GUARDRAIL (CRITICAL):
 - No specific services have been configured for this business yet.
 - Do NOT guess, invent, or assume what services the business offers.
 - Never mention specific service names or categories.
 - Instead, ask the customer what they're looking for so a team member can follow up with the right info.
 - Example: "What are you looking to get help with? I'll make sure the right person gets back to you."`;
+    }
   }
 
-  prompt += `\n\nLINKS & ACTIONS:`;
+  const hasLinks = context.bookingLink || (context.formLinks && context.formLinks.length > 0) || (context.offerUrls && context.offerUrls.length > 0) || (context.servicePageUrls && context.servicePageUrls.length > 0);
+
+  if (hasLinks) {
+    prompt += `\n\nLINKS & ACTIONS:`;
+  }
 
   if (context.bookingLink) {
     prompt += `\nBooking link: ${context.bookingLink}`;
@@ -463,7 +469,7 @@ CORE IDENTITY:
     }
   }
 
-  if (context.bookingLink || context.formLinks || context.offerUrls || context.servicePageUrls) {
+  if (!isFullPersonaOverride && (context.bookingLink || context.formLinks || context.offerUrls || context.servicePageUrls)) {
     prompt += `\nLink sharing guidelines:
 - Don't dump links immediately — introduce them naturally
 - Match the link to the user's intent
@@ -583,11 +589,13 @@ When escalating:
     }
   }
 
-  prompt += `\n\nPRIMARY GOAL:
+  if (!isFullPersonaOverride) {
+    prompt += `\n\nPRIMARY GOAL:
 Every conversation should move toward one of: Booking, Form submission, or Qualified lead progression.
-Be helpful first — but always guide toward action.
+Be helpful first — but always guide toward action.`;
+  }
 
-Reply with only the message that should be sent to the customer. Respond via ${channel}.`;
+  prompt += `\n\nReply with only the message that should be sent to the customer. Respond via ${channel}.`;
 
   return prompt;
 }
