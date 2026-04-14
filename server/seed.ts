@@ -496,6 +496,26 @@ async function ensureLaylaAccount(
       console.log(`[SYNC] Created ${laylaIntegrations.length} integration connections for Officer Layla #${laylaId}`);
     }
 
+    const [currentAiCfg] = await db.select({ aiPromptConfig: subAccounts.aiPromptConfig })
+      .from(subAccounts).where(eq(subAccounts.id, laylaId));
+    const existingAiCfg = (currentAiCfg?.aiPromptConfig as any) || {};
+    if (!existingAiCfg.systemPrompt) {
+      const { LAYLA_SYSTEM_PROMPT } = await import("./services/personas/laylaSystemPrompt");
+      await db.update(subAccounts)
+        .set({
+          aiPromptConfig: {
+            ...existingAiCfg,
+            systemPrompt: LAYLA_SYSTEM_PROMPT,
+            autoReplyEnabled: true,
+            temperature: 0.75,
+            maxTokens: 400,
+            replyDelayMs: 45000,
+          },
+        })
+        .where(eq(subAccounts.id, laylaId));
+      console.log(`[SYNC] Seeded ai_prompt_config.systemPrompt for Officer Layla #${laylaId}`);
+    }
+
     const [currentConfig] = await db.select({ config: subAccounts.config })
       .from(subAccounts).where(eq(subAccounts.id, laylaId));
     if (!currentConfig?.config) {
