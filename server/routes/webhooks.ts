@@ -1415,6 +1415,11 @@ export function registerWebhooksRoutes(app: Express) {
           console.log(`[META WEBHOOK] Processing entry — pageId=${entryPageId}, time=${entryTime}, messaging_events=${entry.messaging?.length ?? 0}, changes=${entry.changes?.length ?? 0}`);
 
           for (const event of entry.messaging || []) {
+            if (event.message?.is_echo) {
+              console.log(`[META DM] Skipping echo message — mid=${event.message?.mid}, sender=${event.sender?.id}`);
+              continue;
+            }
+
             const senderId = event.sender?.id;
             let message = event.message?.text;
             const mid = event.message?.mid as string | undefined;
@@ -1978,6 +1983,14 @@ export function registerWebhooksRoutes(app: Express) {
               const lastSeenTs = metaSenderLastSeen.get(batchKey) || 0;
               if (Date.now() - lastSeenTs < BATCH_WAIT_MS - 500) {
                 console.log(`[META DM][BATCH] Newer message arrived for ${batchKey} — skipping this one (will be handled by newer pipeline)`);
+                if (mid) {
+                  try {
+                    const existing = await storage.getEventLogByExternalId("meta", mid);
+                    if (existing) {
+                      await storage.updateEventLogStatus(existing.id, "completed", { processedAt: new Date(), batchSkipped: true });
+                    }
+                  } catch {}
+                }
                 continue;
               }
 

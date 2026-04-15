@@ -32,6 +32,7 @@ export interface DmContext {
   brandVoice: string | null;
   escalationInfo: string | null;
   sharedInsights: Array<{ category: string; content: string }> | null;
+  isExplicitPersonaOverride?: boolean;
 }
 
 export interface DmContextOptions {
@@ -147,6 +148,7 @@ export async function assembleDmContext(opts: DmContextOptions): Promise<DmConte
     null;
 
   const resolvedPersona = customPromptRaw || generatedPersona || botPersona || null;
+  const isExplicitPersonaOverride = !!(customPromptRaw && customPromptRaw.length > 200);
 
   const serviceOfferings: string[] | null =
     aiPromptConfig.serviceOfferings ||
@@ -211,6 +213,7 @@ export async function assembleDmContext(opts: DmContextOptions): Promise<DmConte
     brandVoice,
     escalationInfo,
     sharedInsights: await fetchRelevantInsights(),
+    isExplicitPersonaOverride,
   };
 }
 
@@ -390,7 +393,7 @@ export function buildDmSystemPrompt(context: DmContext, channel: string, current
   const stageInstructions = getStageInstructions(stage);
   const channelTone = getChannelToneInstructions(channel);
 
-  const isFullPersonaOverride = context.customAiPrompt && context.customAiPrompt.length > 200;
+  const isFullPersonaOverride = context.isExplicitPersonaOverride === true;
 
   const businessDesc = context.businessName;
   const industryNote = context.industry ? ` in the ${context.industry} industry` : "";
@@ -438,42 +441,44 @@ CORE IDENTITY:
     }
   }
 
-  const hasLinks = context.bookingLink || (context.formLinks && context.formLinks.length > 0) || (context.offerUrls && context.offerUrls.length > 0) || (context.servicePageUrls && context.servicePageUrls.length > 0);
+  if (!isFullPersonaOverride) {
+    const hasLinks = context.bookingLink || (context.formLinks && context.formLinks.length > 0) || (context.offerUrls && context.offerUrls.length > 0) || (context.servicePageUrls && context.servicePageUrls.length > 0);
 
-  if (hasLinks) {
-    prompt += `\n\nLINKS & ACTIONS:`;
-  }
-
-  if (context.bookingLink) {
-    prompt += `\nBooking link: ${context.bookingLink}`;
-  }
-
-  if (context.formLinks && context.formLinks.length > 0) {
-    prompt += `\nForms:`;
-    for (const f of context.formLinks) {
-      prompt += `\n- ${f.label}: ${f.url}`;
+    if (hasLinks) {
+      prompt += `\n\nLINKS & ACTIONS:`;
     }
-  }
 
-  if (context.offerUrls && context.offerUrls.length > 0) {
-    prompt += `\nOffers:`;
-    for (const o of context.offerUrls) {
-      prompt += `\n- ${o.label}: ${o.url}`;
+    if (context.bookingLink) {
+      prompt += `\nBooking link: ${context.bookingLink}`;
     }
-  }
 
-  if (context.servicePageUrls && context.servicePageUrls.length > 0) {
-    prompt += `\nService pages:`;
-    for (const s of context.servicePageUrls) {
-      prompt += `\n- ${s.label}: ${s.url}`;
+    if (context.formLinks && context.formLinks.length > 0) {
+      prompt += `\nForms:`;
+      for (const f of context.formLinks) {
+        prompt += `\n- ${f.label}: ${f.url}`;
+      }
     }
-  }
 
-  if (!isFullPersonaOverride && (context.bookingLink || context.formLinks || context.offerUrls || context.servicePageUrls)) {
-    prompt += `\nLink sharing guidelines:
+    if (context.offerUrls && context.offerUrls.length > 0) {
+      prompt += `\nOffers:`;
+      for (const o of context.offerUrls) {
+        prompt += `\n- ${o.label}: ${o.url}`;
+      }
+    }
+
+    if (context.servicePageUrls && context.servicePageUrls.length > 0) {
+      prompt += `\nService pages:`;
+      for (const s of context.servicePageUrls) {
+        prompt += `\n- ${s.label}: ${s.url}`;
+      }
+    }
+
+    if (context.bookingLink || context.formLinks || context.offerUrls || context.servicePageUrls) {
+      prompt += `\nLink sharing guidelines:
 - Don't dump links immediately — introduce them naturally
 - Match the link to the user's intent
 - Example phrasing: "I can get you booked in here 👇" or "Here's a quick form so we can get some details from you:"`;
+    }
   }
 
   if (!isFullPersonaOverride) {
@@ -590,7 +595,7 @@ When escalating:
     prompt += contactBlock;
   }
 
-  if (context.sharedInsights && context.sharedInsights.length > 0) {
+  if (!isFullPersonaOverride && context.sharedInsights && context.sharedInsights.length > 0) {
     prompt += `\n\nORGANIZATIONAL LEARNINGS (use to inform your approach — never quote or reference directly):`;
     for (const ins of context.sharedInsights) {
       prompt += `\n- ${ins.category.toUpperCase()}: ${ins.content}`;
@@ -613,17 +618,20 @@ export async function buildDmMessages(
   channel: string,
   currentMessage: string
 ): Promise<ChatMessage[]> {
+  const isFullPersonaOverride = context.isExplicitPersonaOverride === true;
   let systemPrompt = buildDmSystemPrompt(context, channel, currentMessage);
 
-  try {
-    const insights = await getTopSharedInsights({ limit: 6, minConfidence: 0.2 });
-    if (insights.length > 0) {
-      const insightsBlock = buildSharedInsightsPrompt(insights);
-      if (insightsBlock) {
-        systemPrompt += `\n${insightsBlock}`;
+  if (!isFullPersonaOverride) {
+    try {
+      const insights = await getTopSharedInsights({ limit: 6, minConfidence: 0.2 });
+      if (insights.length > 0) {
+        const insightsBlock = buildSharedInsightsPrompt(insights);
+        if (insightsBlock) {
+          systemPrompt += `\n${insightsBlock}`;
+        }
       }
-    }
-  } catch {}
+    } catch {}
+  }
 
   const msgs: ChatMessage[] = [{ role: "system", content: systemPrompt }];
 
