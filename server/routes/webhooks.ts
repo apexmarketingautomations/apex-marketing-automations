@@ -21,6 +21,8 @@ import { emitUniversalEvent, EVENT_TYPES } from "../intelligence/eventEmitter";
 
 const recentMetaMids = new Set<string>();
 
+const metaSenderLastSeen = new Map<string, number>();
+
 export function registerWebhooksRoutes(app: Express) {
   if (!process.env.TELEGRAM_WEBHOOK_SECRET_SALT && !process.env.SESSION_SECRET) {
     console.error("[STARTUP] WARNING: Neither TELEGRAM_WEBHOOK_SECRET_SALT nor SESSION_SECRET is set. Telegram webhook setup and verification will fail at runtime.");
@@ -1962,6 +1964,23 @@ export function registerWebhooksRoutes(app: Express) {
             }
 
             if (!keywordMatched && isAIConfigured() && accountAutoReplyEnabled) {
+              const batchKey = `${subAccountId}::${senderId}::${channel}`;
+              metaSenderLastSeen.set(batchKey, Date.now());
+              if (metaSenderLastSeen.size > 500) {
+                const oldest = metaSenderLastSeen.keys().next().value;
+                if (oldest) metaSenderLastSeen.delete(oldest);
+              }
+
+              const BATCH_WAIT_MS = 6000;
+              console.log(`[META DM][BATCH] Message received from ${batchKey} — waiting ${BATCH_WAIT_MS}ms for more messages before AI reply`);
+              await new Promise(resolve => setTimeout(resolve, BATCH_WAIT_MS));
+
+              const lastSeenTs = metaSenderLastSeen.get(batchKey) || 0;
+              if (Date.now() - lastSeenTs < BATCH_WAIT_MS - 500) {
+                console.log(`[META DM][BATCH] Newer message arrived for ${batchKey} — skipping this one (will be handled by newer pipeline)`);
+                continue;
+              }
+
               const metaAiStart = Date.now();
               console.log(`[LAYLA-PIPELINE] Step 3: Agent triggered — channel=${channel}, sender=${senderId}, subAccountId=${subAccountId}`);
               try {
