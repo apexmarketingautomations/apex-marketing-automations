@@ -499,8 +499,9 @@ async function ensureLaylaAccount(
     const [currentAiCfg] = await db.select({ aiPromptConfig: subAccounts.aiPromptConfig })
       .from(subAccounts).where(eq(subAccounts.id, laylaId));
     const existingAiCfg = (currentAiCfg?.aiPromptConfig as any) || {};
-    if (!existingAiCfg.systemPrompt) {
-      const { LAYLA_SYSTEM_PROMPT } = await import("./services/personas/laylaSystemPrompt");
+    const { LAYLA_SYSTEM_PROMPT } = await import("./services/personas/laylaSystemPrompt");
+    const currentPrompt = existingAiCfg.systemPrompt || "";
+    if (currentPrompt !== LAYLA_SYSTEM_PROMPT) {
       await db.update(subAccounts)
         .set({
           aiPromptConfig: {
@@ -513,7 +514,9 @@ async function ensureLaylaAccount(
           },
         })
         .where(eq(subAccounts.id, laylaId));
-      console.log(`[SYNC] Seeded ai_prompt_config.systemPrompt for Officer Layla #${laylaId}`);
+      console.log(`[SYNC] Updated ai_prompt_config.systemPrompt for Officer Layla #${laylaId} (${currentPrompt.length} → ${LAYLA_SYSTEM_PROMPT.length} chars)`);
+    } else {
+      console.log(`[SYNC] Officer Layla #${laylaId} systemPrompt already current (${LAYLA_SYSTEM_PROMPT.length} chars)`);
     }
 
     const [currentConfig] = await db.select({ config: subAccounts.config })
