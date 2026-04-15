@@ -19,6 +19,8 @@ import { withIdempotency, markEventCompleted, markEventFailed } from "../idempot
 import { extractAndStoreInsights } from "../services/insightExtractor";
 import { emitUniversalEvent, EVENT_TYPES } from "../intelligence/eventEmitter";
 
+const recentMetaMids = new Set<string>();
+
 export function registerWebhooksRoutes(app: Express) {
   if (!process.env.TELEGRAM_WEBHOOK_SECRET_SALT && !process.env.SESSION_SECRET) {
     console.error("[STARTUP] WARNING: Neither TELEGRAM_WEBHOOK_SECRET_SALT nor SESSION_SECRET is set. Telegram webhook setup and verification will fail at runtime.");
@@ -1415,6 +1417,18 @@ export function registerWebhooksRoutes(app: Express) {
             let message = event.message?.text;
             const mid = event.message?.mid as string | undefined;
             const pipelineStart = Date.now();
+
+            if (mid && recentMetaMids.has(mid)) {
+              console.log(`[META DM] DEDUP — mid=${mid} already processed, skipping`);
+              continue;
+            }
+            if (mid) {
+              recentMetaMids.add(mid);
+              if (recentMetaMids.size > 500) {
+                const firstKey = recentMetaMids.values().next().value;
+                if (firstKey) recentMetaMids.delete(firstKey);
+              }
+            }
 
             if (!message && event.message?.attachments) {
               const audioAttachment = (event.message.attachments as any[]).find(
