@@ -45,7 +45,7 @@ Primary objective: create ONE single, human-feeling reengage DM. Constraints:
 - If user asks for PII/payment/explicit-for-pay/legal, escalate to human and send FALLBACK_TEXT.
 
 CRITICAL — ANTI-BOT VARIETY RULES:
-- NEVER end with "what u been up to?" or any variation of that phrase. That is BANNED.
+- NEVER end with "what u been up to?" or any variation of that phrase. That is BANNED. Use "wyd?" instead if you need a casual question.
 - Each re-engage message must feel UNIQUE — never use the same opener, structure, or closer as previous messages.
 - Vary your approach: sometimes tease them, sometimes be curious about THEM specifically, sometimes reference what they last talked about, sometimes be playful and mysterious.
 - Good variety examples: "sooo u just gon leave me on read like that 😏", "i was just thinking about what u said the other day…", "ok so be honest… u missed me right", "u been quiet… everything good love?", "not u ghosting me 👀"
@@ -316,7 +316,7 @@ export async function runReengageJob(options?: {
 
         if (!replyText.trim().endsWith("?")) {
           const questionSuffix = isLayla
-            ? " — what u been up to? 😏"
+            ? " — wyd? 😏"
             : " — anything we can help with?";
           const sentences = replyText.trim().replace(/[.!]+$/, "").split(/[.!]\s+/);
           if (sentences.length > 1) {
