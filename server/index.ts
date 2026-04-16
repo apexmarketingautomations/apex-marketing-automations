@@ -43,6 +43,9 @@ import { csrfProtection } from "./csrfProtection";
 
 const app = express();
 
+app.set("trust proxy", 1);
+app.disable("x-powered-by");
+
 app.use(
   helmet({
     frameguard: false,
@@ -1635,11 +1638,11 @@ RULES:
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+    const rawMessage = err.message || "Internal Server Error";
 
     console.error("Internal Server Error:", err);
     if (status >= 500) {
-      logSystemError("server", message, {
+      logSystemError("server", rawMessage, {
         path: _req.path,
         method: _req.method,
         stack: err.stack?.substring(0, 500),
@@ -1650,7 +1653,10 @@ RULES:
       return next(err);
     }
 
-    return res.status(status).json({ message });
+    const isProd = process.env.NODE_ENV === "production";
+    const clientMessage =
+      status >= 500 && isProd ? "Internal Server Error" : rawMessage;
+    return res.status(status).json({ message: clientMessage });
   });
 
   app.get("/roomos-landing", (_req, res) => {

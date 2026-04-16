@@ -6,7 +6,6 @@ export const apiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests. Please try again in a minute." },
-  validate: { xForwardedForHeader: false },
 });
 
 export const authLimiter = rateLimit({
@@ -15,7 +14,6 @@ export const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many login attempts. Please try again in 15 minutes." },
-  validate: { xForwardedForHeader: false },
 });
 
 export const webhookLimiter = rateLimit({
@@ -24,7 +22,6 @@ export const webhookLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Webhook rate limit exceeded." },
-  validate: { xForwardedForHeader: false },
 });
 
 export const messagingLimiter = rateLimit({
@@ -33,7 +30,6 @@ export const messagingLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Message sending rate limit exceeded. Please slow down." },
-  validate: { xForwardedForHeader: false },
 });
 
 export const creditTopupLimiter = rateLimit({
@@ -42,7 +38,6 @@ export const creditTopupLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many top-up requests. Please try again later." },
-  validate: { xForwardedForHeader: false },
 });
 
 export const uploadLimiter = rateLimit({
@@ -51,5 +46,4 @@ export const uploadLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many upload requests. Please slow down." },
-  validate: { xForwardedForHeader: false },
 });
