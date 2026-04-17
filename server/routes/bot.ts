@@ -35,7 +35,7 @@ export function registerBotRoutes(app: Express) {
     conversationHistory: z.array(z.object({
       role: z.string(),
       content: z.string(),
-    })).max(20).optional(),
+    })).max(200).optional().transform((arr) => (arr ? arr.slice(-40) : arr)),
     currentPath: z.string().max(200).optional(),
   });
 
