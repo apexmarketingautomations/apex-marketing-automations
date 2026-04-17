@@ -438,10 +438,10 @@ function BotTrainerInner() {
                       animate={{ opacity: 1, y: 0 }}
                       className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
-                      <div className={`max-w-[80%] rounded-2xl px-5 py-3 shadow-sm ${
+                      <div className={`max-w-[80%] rounded-2xl px-5 py-3 shadow-sm whitespace-pre-wrap break-words ${
                         msg.role === 'user' 
                           ? 'bg-indigo-600 text-white rounded-br-none' 
-                          : 'bg-white dark:bg-slate-800 border border-border rounded-bl-none'
+                          : 'bg-white text-slate-900 dark:bg-slate-800 dark:text-slate-100 border border-border rounded-bl-none'
                       }`}>
                         {msg.content}
                       </div>
