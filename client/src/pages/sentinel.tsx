@@ -186,8 +186,9 @@ export default function Sentinel() {
     onSuccess: (data: any) => {
       if (data.metaAdsStatus === "SIMULATION_MODE") {
         toast({
-          title: "Geofence Simulated",
-          description: "Connect your Meta Ads credentials in the Integrations Hub to deploy live ads.",
+          variant: "destructive",
+          title: "NOT deployed — Meta Ads not connected",
+          description: "Geofence was simulated only. No live ad was created. Connect Meta Ads in Integrations Hub to actually deploy.",
         });
       } else {
         toast({ title: "Geofence Deployed!", description: data.message });

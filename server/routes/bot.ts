@@ -57,13 +57,15 @@ export function registerBotRoutes(app: Express) {
     if (parsed.data.trainingJobId) {
       try {
         const job = await storage.getTrainingJob(parsed.data.trainingJobId);
-        if (job) {
-          if (job.generatedPersona) {
+        if (job && job.state === "completed") {
+          if (job.generatedPersona && job.generatedPersona.length > 40) {
             basePrompt = job.generatedPersona;
           }
-          if (job.scrapedContent && job.scrapedContent.length > 50) {
-            knowledgeContext = `\n\nYou have the following knowledge base from the business website (${job.url}). Use this information to answer questions accurately:\n\n${job.scrapedContent.substring(0, 12000)}`;
+          if (job.scrapedContent && job.scrapedContent.length >= 200) {
+            knowledgeContext = `\n\nYou have the following knowledge base from the business website (${job.url}). Use this information to answer questions accurately. If the user asks something not covered here, say you don't have that information rather than guessing:\n\n${job.scrapedContent.substring(0, 12000)}`;
           }
+        } else if (job && job.state !== "completed") {
+          knowledgeContext = `\n\nNOTE: A training job exists for ${job.url} but it is in state "${job.state}" and has no usable knowledge base. Do NOT pretend to know specifics about the business — say the bot hasn't been successfully trained yet.`;
         }
       } catch (e) {
         console.log("[BOT_CHAT] Could not load training job:", (e as any).message);

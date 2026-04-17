@@ -1654,6 +1654,7 @@ RULES:
       };
       (req as any).user = synthesized;
       (req as any).isAuthenticated = () => true;
+      (req as any)._apexAdminBypass = true;
     }
     next();
   });
@@ -1663,6 +1664,12 @@ RULES:
     Promise.resolve(tenantMiddleware(req as any, res as any, next)).catch(next);
   });
   app.use("/api", csrfProtection);
+
+  // Universal Apex reporter: every mutating /api request reports its outcome
+  // (action, status, duration, errorPreview) to Apex Intelligence so the brain
+  // sees every single thing that happens on the platform.
+  const { apexReporter } = await import("./middleware/apexReporter");
+  app.use("/api", apexReporter);
   registerAuthRoutes(app);
   await registerRoutes(httpServer, app);
 

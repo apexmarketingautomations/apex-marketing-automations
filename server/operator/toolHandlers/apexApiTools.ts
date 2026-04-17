@@ -290,6 +290,22 @@ export const apexApiTools: OperatorTool[] = [
             };
           }
         }
+        // Honesty check: even on HTTP 200, some endpoints return
+        // { success: false, error: "…" } in the body. Don't lie.
+        const bodyClaimsFailure =
+          safeData && typeof safeData === "object" && !Array.isArray(safeData) &&
+          (safeData.success === false || safeData.ok === false ||
+           (typeof safeData.error === "string" && safeData.error.length > 0));
+
+        if (bodyClaimsFailure) {
+          const reason = safeData.error || safeData.message || "Endpoint returned success=false in the body";
+          return {
+            success: false,
+            error: `API ${method} ${path} returned HTTP ${status} but the response body indicates failure: ${String(reason).slice(0, 240)}`,
+            data: safeData,
+          };
+        }
+
         return {
           success: true,
           data: safeData,

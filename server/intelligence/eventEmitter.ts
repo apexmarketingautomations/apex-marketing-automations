@@ -128,6 +128,10 @@ export function emitWithTimeline(
 }
 
 export const EVENT_TYPES = {
+  // ---- HTTP API (universal hook) ----
+  API_REQUEST_COMPLETED: "api_request_completed",
+  API_REQUEST_FAILED: "api_request_failed",
+
   // ---- Forms ----
   PAGE_VIEW: "page_view",
   BUTTON_CLICK: "button_click",

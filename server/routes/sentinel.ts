@@ -269,11 +269,13 @@ export function registerSentinelRoutes(app: Express) {
       const deliveryRules = homeSvcConfig.deliveryRules  ?? [];
 
       let signals: HomeSvcSignal[] = [];
+      let scrapeError: string | null = null;
       try {
         signals = await fetchHomeSvcSignals(targetStates);
       } catch (err: any) {
         console.error('[SENTINEL HOME SVC] fetchHomeSvcSignals threw unexpectedly:', err?.message);
         signals = [];
+        scrapeError = err?.message || 'Unknown scrape error';
       }
 
       let recentIncidents: any[] = [];
@@ -414,6 +416,14 @@ export function registerSentinelRoutes(app: Express) {
         found:     created.length,
         incidents: created,
         niche:     "home_services",
+        signalsScanned: signals.length,
+        scrapeError,
+        scrapeStatus: scrapeError ? "error" : (signals.length === 0 ? "no_signals" : "ok"),
+        message: scrapeError
+          ? `Scrape failed: ${scrapeError}. No new incidents — this is NOT the same as "all clear".`
+          : signals.length === 0
+            ? `Scrape ran successfully but found 0 weather signals in the configured states.`
+            : `Scrape found ${signals.length} signal(s); ${created.length} new incident(s) created.`,
       });
     }
 
