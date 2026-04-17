@@ -262,31 +262,49 @@ export function registerBotRoutes(app: Express) {
               }
             }
 
-            const assistantToolCallIds = new Set<string>();
             const toolResponseIds = new Set<string>();
             for (const msg of rawHistory) {
-              if (msg.role === "assistant" && msg.tool_calls) {
-                for (const tc of Array.isArray(msg.tool_calls) ? msg.tool_calls : []) {
-                  const tcId = tc.id || tc.tool_call_id;
-                  if (tcId) assistantToolCallIds.add(tcId);
-                }
-              }
               if (msg.role === "tool" && msg.tool_call_id) {
                 toolResponseIds.add(msg.tool_call_id);
               }
             }
-            const history = rawHistory.filter(msg => {
-              if (msg.role === "tool") {
-                return msg.tool_call_id && assistantToolCallIds.has(msg.tool_call_id);
-              }
+            // Determine which assistant tool_call ids are FULLY satisfied
+            // (every declared tool_call has a matching tool response).
+            const validAssistantToolCallIds = new Set<string>();
+            for (const msg of rawHistory) {
               if (msg.role === "assistant" && msg.tool_calls) {
                 const tcs = Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
-                const hasAnyResponse = tcs.some((tc: any) => {
+                if (tcs.length === 0) continue;
+                const allResolved = tcs.every((tc: any) => {
                   const tcId = tc.id || tc.tool_call_id;
                   return tcId && toolResponseIds.has(tcId);
                 });
-                if (!hasAnyResponse) {
-                  return msg.content ? (delete (msg as any).tool_calls, true) : false;
+                if (allResolved) {
+                  for (const tc of tcs) {
+                    const tcId = tc.id || tc.tool_call_id;
+                    if (tcId) validAssistantToolCallIds.add(tcId);
+                  }
+                }
+              }
+            }
+            const history = rawHistory.filter(msg => {
+              // Drop orphan tool messages whose assistant call wasn't fully resolved.
+              if (msg.role === "tool") {
+                return !!(msg.tool_call_id && validAssistantToolCallIds.has(msg.tool_call_id));
+              }
+              if (msg.role === "assistant" && msg.tool_calls) {
+                const tcs = Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
+                const allResolved = tcs.length > 0 && tcs.every((tc: any) => {
+                  const tcId = tc.id || tc.tool_call_id;
+                  return tcId && validAssistantToolCallIds.has(tcId);
+                });
+                if (!allResolved) {
+                  // Strip the unresolved tool_calls. Keep the message only if it has text.
+                  if (msg.content && typeof msg.content === "string" && msg.content.trim()) {
+                    delete (msg as any).tool_calls;
+                    return true;
+                  }
+                  return false;
                 }
               }
               return true;
@@ -490,12 +508,50 @@ export function registerBotRoutes(app: Express) {
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
         if (closed) break;
 
-        const aiResponse = await aiChatWithToolCalls(chatMessages, OPENAI_TOOL_SCHEMAS, {
+        let aiResponse = await aiChatWithToolCalls(chatMessages, OPENAI_TOOL_SCHEMAS, {
           temperature: 0.7,
           maxTokens: 16384,
           route: "bot-agent-stream",
           timeoutMs: 30000,
         });
+
+        // Auto-repair: if OpenAI rejects history due to dangling assistant tool_calls,
+        // strip every prior assistant tool_calls + tool messages from chatMessages and retry once.
+        if (
+          aiResponse.text &&
+          aiResponse.text.startsWith("[AI Error:") &&
+          /tool_calls.*must be followed by tool messages/i.test(aiResponse.text)
+        ) {
+          console.warn("[AGENT] Detected dangling tool_calls in history — repairing and retrying");
+          for (let i = chatMessages.length - 1; i >= 0; i--) {
+            const m = chatMessages[i] as any;
+            if (m.role === "tool") {
+              chatMessages.splice(i, 1);
+            } else if (m.role === "assistant" && m.tool_calls) {
+              if (m.content && typeof m.content === "string" && m.content.trim()) {
+                delete m.tool_calls;
+              } else {
+                chatMessages.splice(i, 1);
+              }
+            }
+          }
+          aiResponse = await aiChatWithToolCalls(chatMessages, OPENAI_TOOL_SCHEMAS, {
+            temperature: 0.7,
+            maxTokens: 16384,
+            route: "bot-agent-stream-repair",
+            timeoutMs: 30000,
+          });
+        }
+
+        // If we still got an [AI Error: ...] response, surface a friendly message
+        // instead of leaking the raw error and DO NOT persist it to history.
+        if (aiResponse.text && aiResponse.text.startsWith("[AI Error:")) {
+          console.error(`[AGENT] AI gateway returned error: ${aiResponse.text}`);
+          const friendly = "Sorry — I had trouble responding just now. Please try sending that again.";
+          if (!closed) sendSSEData(res, { content: friendly });
+          fullAssistantText += friendly;
+          break;
+        }
 
         if (aiResponse.text && !closed) {
           fullAssistantText += aiResponse.text;
