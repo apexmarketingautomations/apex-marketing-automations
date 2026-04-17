@@ -7,7 +7,10 @@ import {
   DollarSign, Link2, Rocket, TrendingUp, Palette, Sparkles, ArrowRight,
   Zap, Users, CircleDollarSign, Shield, CheckCircle2, ChevronDown, ChevronUp,
   BarChart3, Globe, Instagram, Target, Mail, Kanban, CalendarDays, Webhook,
-  FileBarChart, Building2, Satellite
+  FileBarChart, Building2, Satellite, Brain, MapPin, FormInput, Layers,
+  GitBranch, Workflow, Eye, Activity, Lock, Send, MessageCircle, FileText,
+  Heart, Briefcase, Home, Stethoscope, Scale, Dumbbell, Camera, Car,
+  Utensils, Scissors, GraduationCap, Wrench, ShoppingBag
 } from "lucide-react";
 
 const fadeUp = {
@@ -18,25 +21,106 @@ const fadeUp = {
   }),
 };
 
-const tools = [
-  { icon: MessageSquare, title: "Unified Inbox", desc: "SMS, Instagram, WhatsApp & email — one place, AI-scored.", color: "cyan" },
-  { icon: Phone, title: "AI Voice Agent", desc: "Deploy AI receptionists that handle calls 24/7 with custom personas.", color: "blue" },
-  { icon: LayoutTemplate, title: "AI Site Builder", desc: "Generate stunning landing pages from a single prompt. 22 section types.", color: "orange" },
-  { icon: Bot, title: "Neural Trainer", desc: "Scrape websites, build RAG knowledge bases, deploy AI chatbots.", color: "green" },
-  { icon: GitFork, title: "Workflow Builder", desc: "Visual automation engine with triggers, delays, conditions, and actions.", color: "purple" },
-  { icon: Megaphone, title: "Growth Engine", desc: "AI-powered ad campaigns with generated copy and visuals.", color: "pink" },
-  { icon: Rocket, title: "God Mode", desc: "Launch an entire business in 60 seconds — phone, agent, site, workflows.", color: "red" },
-  { icon: Star, title: "Reputation Manager", desc: "Smart review routing — happy to Google, unhappy to private feedback.", color: "yellow" },
-  { icon: Kanban, title: "CRM Pipeline", desc: "Drag-and-drop deal pipeline with contact management and tracking.", color: "indigo" },
-  { icon: CalendarDays, title: "Calendar & Booking", desc: "Appointment scheduling with contact linking and status management.", color: "emerald" },
-  { icon: Mail, title: "Email Campaigns", desc: "Campaign builder with templates, scheduling, and open/click tracking.", color: "rose" },
-  { icon: Instagram, title: "Instagram DM Inbox", desc: "Manage Instagram conversations with real-time messaging.", color: "fuchsia" },
-  { icon: Target, title: "Meta Ad Manager", desc: "Facebook/Instagram ad campaigns with audience targeting and analytics.", color: "sky" },
-  { icon: Satellite, title: "Apex Sentinel", desc: "Real-time incident scanning for personal injury lead generation.", color: "amber" },
-  { icon: Globe, title: "Website Integration", desc: "Connect client websites, train AI chatbots, generate embed widgets.", color: "teal" },
-  { icon: Palette, title: "White-Label", desc: "Your brand, your domain, your colors. Full agency customization.", color: "violet" },
-  { icon: BarChart3, title: "Analytics Dashboard", desc: "Real-time charts for messages, AI usage, conversions, pipeline.", color: "lime" },
-  { icon: Webhook, title: "Webhooks & APIs", desc: "Connect to Zapier, Make.com, and any external tool.", color: "slate" },
+const toolGroups = [
+  {
+    category: "Apex Intelligence",
+    tagline: "An autonomous AI operator that runs the entire platform for you.",
+    tools: [
+      { icon: Brain, title: "Apex Intelligence", desc: "Autonomous AI operator — gives commands across the entire platform. Create contacts, launch campaigns, send messages, train bots. Just ask.", color: "violet" },
+      { icon: Eye, title: "Real-Time Action Feed", desc: "Watch every action your AI takes in real time. Full audit trail across CRM, messaging, ads, and workflows.", color: "cyan" },
+      { icon: Activity, title: "System Health Monitor", desc: "Live integrity scoring, fake-completion detection, and automatic learning from every outcome.", color: "emerald" },
+      { icon: Bot, title: "Custom AI Bots", desc: "Train chatbots on any website with multi-page crawling. Deploy across SMS, IG, WhatsApp, FB, Telegram, and your site.", color: "green" },
+    ],
+  },
+  {
+    category: "Unified Communications",
+    tagline: "Every conversation, every channel, in one inbox.",
+    tools: [
+      { icon: MessageSquare, title: "Unified Inbox", desc: "SMS, Instagram, WhatsApp, Facebook Messenger, Telegram & email — all in one AI-scored thread view.", color: "cyan" },
+      { icon: Phone, title: "AI Voice Agent", desc: "24/7 AI receptionists with custom personas. Books appointments, answers questions, qualifies leads.", color: "blue" },
+      { icon: Instagram, title: "Instagram DM Manager", desc: "Real-time IG conversations, comment-to-DM bots, story replies, automated qualification.", color: "fuchsia" },
+      { icon: MessageCircle, title: "Meta Messaging Suite", desc: "Next-gen WhatsApp, Messenger & Instagram with template approvals, broadcast lists, and automation.", color: "sky" },
+      { icon: Mail, title: "Email Campaigns", desc: "Drag-and-drop builder, templates, scheduling, segmentation, open/click tracking & A/B testing.", color: "rose" },
+      { icon: Send, title: "SMS & MMS Marketing", desc: "Twilio-powered bulk messaging with opt-out compliance, link tracking, and AI-generated copy.", color: "pink" },
+    ],
+  },
+  {
+    category: "Marketing & Growth",
+    tagline: "AI-powered ads, content, and lead generation.",
+    tools: [
+      { icon: Target, title: "Meta Ad Manager", desc: "Facebook & Instagram campaigns with AI copy, creative generation, audience targeting, and live analytics.", color: "sky" },
+      { icon: Megaphone, title: "AI Ad Studio", desc: "Generate ads, headlines, and creative from one prompt. Powered by GPT-4o and Gemini.", color: "pink" },
+      { icon: Satellite, title: "Apex Sentinel", desc: "Real-time incident scanning for personal injury, accident, and high-intent lead generation.", color: "amber" },
+      { icon: MapPin, title: "Geofencing", desc: "Trigger ads, SMS, and workflows when prospects enter target locations. Hyper-local targeting.", color: "orange" },
+      { icon: GitBranch, title: "A/B Testing", desc: "Split-test landing pages, ads, subject lines, and bot personas. Auto-promote winners.", color: "indigo" },
+      { icon: FileText, title: "Content Planner", desc: "Generate, schedule, and publish posts across Instagram, Facebook, and LinkedIn from one calendar.", color: "rose" },
+    ],
+  },
+  {
+    category: "CRM, Pipeline & Booking",
+    tagline: "Manage every lead, deal, and appointment in one place.",
+    tools: [
+      { icon: Kanban, title: "Visual CRM Pipeline", desc: "Drag-and-drop deal stages, conversion tracking, automated stage triggers, and revenue forecasting.", color: "indigo" },
+      { icon: Users, title: "Contact Database", desc: "Tags, segments, geocoded addresses, opt-out tracking, custom fields, and bulk import.", color: "cyan" },
+      { icon: CalendarDays, title: "Calendar & Booking", desc: "Multi-calendar scheduling, Google Calendar sync, automated reminders, and round-robin assignment.", color: "emerald" },
+      { icon: FormInput, title: "Form Builder", desc: "Drag-and-drop lead capture forms with conditional logic, hidden fields, and webhook triggers.", color: "lime" },
+      { icon: Star, title: "Reputation Manager", desc: "Smart review routing — happy clients to Google, unhappy ones to private feedback for recovery.", color: "yellow" },
+    ],
+  },
+  {
+    category: "Workflows & Automation",
+    tagline: "Visual builders that run your business while you sleep.",
+    tools: [
+      { icon: Workflow, title: "Workflow Builder", desc: "Visual automation engine with triggers, delays, conditions, branching, and 50+ action blocks.", color: "purple" },
+      { icon: Rocket, title: "God Mode", desc: "Launch an entire business in 60 seconds — phone number, AI agent, site, workflows, and pipeline.", color: "red" },
+      { icon: Layers, title: "Funnel Builder", desc: "Multi-step lead funnels with upsells, downsells, and automated follow-up sequences.", color: "violet" },
+      { icon: LayoutTemplate, title: "AI Site Builder", desc: "Generate full landing pages from a single prompt. 22 section types, mobile-optimized, hosted free.", color: "orange" },
+      { icon: GitFork, title: "Snapshot Cloning", desc: "Save entire account setups (workflows, bots, sites, pipelines) as snapshots and deploy in one click.", color: "teal" },
+    ],
+  },
+  {
+    category: "Agency & White-Label",
+    tagline: "Built for operators who run multiple businesses or clients.",
+    tools: [
+      { icon: Building2, title: "Multi-Tenant Sub-Accounts", desc: "Unlimited isolated workspaces — one for each client. Full data separation, role-based access.", color: "indigo" },
+      { icon: Palette, title: "Full White-Label", desc: "Your brand, your domain, your colors, your login page. Clients never see Apex anywhere.", color: "violet" },
+      { icon: Briefcase, title: "Agency Command Center", desc: "Manage every client account from one dashboard. Bulk actions, cross-account analytics, billing.", color: "blue" },
+      { icon: ShoppingBag, title: "Snapshot Marketplace", desc: "Sell your snapshots to other agencies. Earn revenue on templates, workflows, and AI bots.", color: "emerald" },
+      { icon: Heart, title: "Affiliate Program", desc: "Built-in referral tracking, payout dashboard, and tiered commissions. Grow with partners.", color: "rose" },
+    ],
+  },
+  {
+    category: "Platform & Integrations",
+    tagline: "Real-time analytics, full APIs, and rock-solid foundations.",
+    tools: [
+      { icon: BarChart3, title: "Real-Time Analytics", desc: "Live dashboards for messages, AI usage, conversions, revenue, pipeline velocity, and ROI.", color: "lime" },
+      { icon: Webhook, title: "Webhooks & Public API", desc: "Connect to Zapier, Make.com, n8n, or anything custom. Full REST API with API key auth.", color: "slate" },
+      { icon: Globe, title: "Website Integration", desc: "Embed AI chatbots, lead forms, and tracking pixels on any site. WordPress, Shopify, custom — all supported.", color: "teal" },
+      { icon: CircleDollarSign, title: "Stripe Billing & Credits", desc: "Built-in subscription billing, AI credits ledger, usage-based markup on every SMS/call/AI call.", color: "amber" },
+      { icon: Lock, title: "Enterprise Security", desc: "Multi-factor auth, role-based permissions, full audit logs, encrypted secrets, and CSRF protection.", color: "cyan" },
+    ],
+  },
+];
+
+const tools = toolGroups.flatMap(g => g.tools);
+
+const industries = [
+  { icon: Stethoscope, name: "Med Spas & Aesthetic", path: "/medspa" },
+  { icon: Scale, name: "Personal Injury Lawyers", path: "/lawyers" },
+  { icon: Home, name: "Real Estate", path: "/realtors" },
+  { icon: Wrench, name: "Home Services", path: "/home-services" },
+  { icon: Dumbbell, name: "Gyms & Fitness", path: "/gym" },
+  { icon: Heart, name: "Chiropractors", path: "/chiropractors" },
+  { icon: Camera, name: "Photographers", path: "/photography" },
+  { icon: Car, name: "Auto Dealerships", path: "/auto-dealers" },
+  { icon: Briefcase, name: "Coaches & Consultants", path: "/coaches" },
+  { icon: Utensils, name: "Restaurants", path: "/restaurants" },
+  { icon: Stethoscope, name: "Dental Practices", path: "/dentists" },
+  { icon: ShoppingBag, name: "E-Commerce Brands", path: "/ecommerce" },
+  { icon: Shield, name: "Insurance Agencies", path: "/insurance" },
+  { icon: Heart, name: "Pet Services", path: "/pet-services" },
+  { icon: Star, name: "Wedding Vendors", path: "/wedding" },
+  { icon: Megaphone, name: "Marketing Agencies", path: "/marketers" },
 ];
 
 const colorMap: Record<string, { bg: string; text: string; border: string }> = {
@@ -94,13 +178,6 @@ const tiers = [
   },
 ];
 
-const testimonials = [
-  { name: "Marcus T.", role: "Agency Owner", quote: "Replaced 4 different tools within a week. The AI voice agent alone pays for the entire subscription.", avatar: "M" },
-  { name: "Sarah K.", role: "Personal Injury Firm", quote: "Sentinel catches accident leads before our competitors even know they happened. Game changer.", avatar: "S" },
-  { name: "David R.", role: "Real Estate Investor", quote: "God Mode spun up 12 sub-accounts in an afternoon. Each one generating leads on autopilot.", avatar: "D" },
-  { name: "Lisa M.", role: "Marketing Director", quote: "The white-label option lets us resell this as our own platform. Our clients have no idea.", avatar: "L" },
-];
-
 const faqs = [
   { q: "Is there a free trial?", a: "Yes! Every plan comes with a 60-day free trial. You get full access to all features in your tier with no credit card required to start." },
   { q: "What happens after the Blitz pricing ends?", a: "If you sign up during the 30-day Blitz window, your price is locked forever. As long as your subscription stays active, you'll never pay more than your launch price." },
@@ -111,10 +188,10 @@ const faqs = [
 ];
 
 const stats = [
-  { label: "AI-Powered Tools", value: "18+" },
-  { label: "Avg. Setup Time", value: "60s" },
-  { label: "Cost Savings", value: "73%" },
-  { label: "Revenue Channels", value: "6" },
+  { label: "Built-In Tools", value: "35+" },
+  { label: "Industries Supported", value: "16" },
+  { label: "Communication Channels", value: "8" },
+  { label: "Average Tools Replaced", value: "12" },
 ];
 
 export default function LandingPage() {
@@ -145,8 +222,9 @@ export default function LandingPage() {
           </div>
           <div className="hidden md:flex items-center gap-8 text-sm text-slate-400">
             <a href="#features" className="hover:text-white transition-colors">Features</a>
+            <a href="#apex-intelligence" className="hover:text-white transition-colors">Intelligence</a>
+            <a href="#industries" className="hover:text-white transition-colors">Industries</a>
             <a href="#pricing" className="hover:text-white transition-colors">Pricing</a>
-            <a href="#testimonials" className="hover:text-white transition-colors">Testimonials</a>
             <a href="#faq" className="hover:text-white transition-colors">FAQ</a>
             <Link href="/demo" className="hover:text-white transition-colors">Live Demo</Link>
           </div>
@@ -276,45 +354,113 @@ export default function LandingPage() {
           <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }} className="text-center mb-16">
             <motion.div variants={fadeUp} custom={0}>
               <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold border border-white/10 bg-white/5 text-slate-400 mb-4">
-                18 POWERFUL MODULES
+                The Full Platform — 35+ Tools
               </div>
             </motion.div>
             <motion.h2 variants={fadeUp} custom={1} className="text-3xl md:text-5xl font-black tracking-tight" data-testid="text-features-title">
-              Everything You Need to <span className="bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">Dominate</span>
+              The entire stack. <span className="bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">Already built.</span>
             </motion.h2>
-            <motion.p variants={fadeUp} custom={2} className="text-slate-400 mt-4 max-w-2xl mx-auto">
-              One platform replaces your CRM, dialer, site builder, ad manager, inbox, and chatbot tools. Save thousands per month.
+            <motion.p variants={fadeUp} custom={2} className="text-slate-300 mt-4 max-w-2xl mx-auto text-base md:text-lg">
+              35+ tools across 7 categories — replacing GoHighLevel, HubSpot, Twilio Flex, Vapi, Manychat, Calendly, Mailchimp, Zapier and a dozen others. All under one login, one bill, one AI brain.
             </motion.p>
           </motion.div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {tools.map((tool, i) => {
-              const c = colorMap[tool.color] || colorMap.cyan;
-              return (
-                <motion.div
-                  key={tool.title}
-                  initial="hidden"
-                  whileInView="visible"
-                  viewport={{ once: true, margin: "-30px" }}
-                  variants={fadeUp}
-                  custom={i}
-                  data-testid={`card-feature-${tool.title.toLowerCase().replace(/\s+/g, "-")}`}
-                >
-                  <div className={`group h-full bg-white/[0.03] border ${c.border} rounded-2xl p-5 hover:bg-white/[0.06] transition-all duration-300`}>
-                    <div className="flex items-start gap-4">
-                      <div className={`w-10 h-10 rounded-xl ${c.bg} flex items-center justify-center shrink-0`}>
-                        <tool.icon size={20} className={c.text} />
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-bold text-white mb-1">{tool.title}</h3>
-                        <p className="text-xs text-slate-400 leading-relaxed">{tool.desc}</p>
-                      </div>
+          <div className="space-y-14">
+            {toolGroups.map((group, gi) => (
+              <motion.div
+                key={group.category}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true, margin: "-50px" }}
+                data-testid={`group-${group.category.toLowerCase().replace(/\s+/g, "-")}`}
+              >
+                <motion.div variants={fadeUp} custom={0} className="mb-6 flex items-end justify-between flex-wrap gap-2">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-400 mb-2">
+                      {String(gi + 1).padStart(2, "0")} / {String(toolGroups.length).padStart(2, "0")}
                     </div>
+                    <h3 className="text-2xl md:text-3xl font-black text-white tracking-tight">{group.category}</h3>
                   </div>
+                  <p className="text-sm text-slate-400 max-w-md text-right">{group.tagline}</p>
                 </motion.div>
-              );
-            })}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {group.tools.map((tool, i) => {
+                    const c = colorMap[tool.color] || colorMap.cyan;
+                    return (
+                      <motion.div
+                        key={tool.title}
+                        variants={fadeUp}
+                        custom={i + 1}
+                        data-testid={`card-feature-${tool.title.toLowerCase().replace(/\s+/g, "-")}`}
+                      >
+                        <div className={`group h-full bg-white/[0.03] border ${c.border} rounded-2xl p-5 hover:bg-white/[0.06] hover:border-white/20 transition-all duration-300`}>
+                          <div className="flex items-start gap-4">
+                            <div className={`w-11 h-11 rounded-xl ${c.bg} flex items-center justify-center shrink-0`}>
+                              <tool.icon size={22} className={c.text} />
+                            </div>
+                            <div>
+                              <h4 className="text-base font-bold text-white mb-1.5">{tool.title}</h4>
+                              <p className="text-xs text-slate-400 leading-relaxed">{tool.desc}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            ))}
           </div>
+        </div>
+      </section>
+
+      {/* Industries */}
+      <section id="industries" className="relative z-10 py-20 md:py-28 px-6 bg-gradient-to-b from-transparent via-cyan-600/5 to-transparent">
+        <div className="max-w-6xl mx-auto">
+          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} className="text-center mb-12">
+            <motion.div variants={fadeUp} custom={0}>
+              <div className="inline-block px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-[0.3em] text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 mb-4">
+                Pre-Built Templates Included
+              </div>
+            </motion.div>
+            <motion.h2 variants={fadeUp} custom={1} className="text-3xl md:text-5xl font-black tracking-tight" data-testid="text-industries-title">
+              Built for <span className="bg-gradient-to-r from-cyan-400 to-indigo-400 bg-clip-text text-transparent">your industry</span>
+            </motion.h2>
+            <motion.p variants={fadeUp} custom={2} className="text-slate-400 mt-4 max-w-2xl mx-auto">
+              16 ready-to-deploy industry templates with pre-built funnels, AI bot personas, follow-up sequences, and ad creative. Pick yours and launch in minutes.
+            </motion.p>
+          </motion.div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            {industries.map((ind, i) => (
+              <motion.a
+                key={ind.name}
+                href={ind.path}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true, margin: "-30px" }}
+                variants={fadeUp}
+                custom={i}
+                className="group flex items-center gap-3 p-4 bg-white/[0.03] border border-white/10 hover:border-cyan-500/40 hover:bg-white/[0.06] rounded-xl transition-all"
+                data-testid={`link-industry-${ind.name.toLowerCase().replace(/\s+/g, "-").replace(/&/g, "and")}`}
+              >
+                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500/20 to-cyan-500/20 border border-indigo-500/20 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                  <ind.icon size={16} className="text-indigo-400" />
+                </div>
+                <span className="text-sm font-semibold text-slate-200 group-hover:text-white transition-colors leading-tight">{ind.name}</span>
+              </motion.a>
+            ))}
+          </div>
+
+          <motion.p
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            className="text-center text-xs text-slate-500 mt-8"
+          >
+            Don't see your industry? Apex works for any business — and the AI Site Builder generates a custom funnel from a single prompt.
+          </motion.p>
         </div>
       </section>
 
@@ -450,45 +596,67 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Testimonials */}
-      <section id="testimonials" className="relative z-10 py-20 px-6 bg-gradient-to-b from-transparent via-purple-600/5 to-transparent">
+      {/* Apex Intelligence Spotlight */}
+      <section id="apex-intelligence" className="relative z-10 py-20 md:py-28 px-6 bg-gradient-to-b from-transparent via-violet-600/10 to-transparent">
         <div className="max-w-6xl mx-auto">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} className="text-center mb-16">
-            <motion.h2 variants={fadeUp} custom={0} className="text-3xl md:text-5xl font-black tracking-tight" data-testid="text-testimonials-title">
-              Trusted by <span className="bg-gradient-to-r from-cyan-400 to-indigo-400 bg-clip-text text-transparent">Growth Leaders</span>
+          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} className="text-center mb-12">
+            <motion.div variants={fadeUp} custom={0}>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-[0.3em] text-violet-300 bg-violet-500/10 border border-violet-500/30 mb-4">
+                <Brain size={12} /> The Brain Behind It All
+              </div>
+            </motion.div>
+            <motion.h2 variants={fadeUp} custom={1} className="text-3xl md:text-5xl font-black tracking-tight mb-4" data-testid="text-intelligence-title">
+              Meet <span className="bg-gradient-to-r from-violet-400 via-fuchsia-400 to-cyan-400 bg-clip-text text-transparent">Apex Intelligence</span>
             </motion.h2>
+            <motion.p variants={fadeUp} custom={2} className="text-slate-300 text-lg max-w-3xl mx-auto leading-relaxed">
+              An autonomous AI operator that runs your entire platform. Tell it what you want — it executes across CRM, ads, messaging, workflows, calendar, and reviews. Every action is logged, scored, and verifiable.
+            </motion.p>
           </motion.div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {testimonials.map((t, i) => (
+            {[
+              { icon: MessageCircle, title: "Just talk to it", desc: '"Send a follow-up to every lead from yesterday who didn\'t book." It does it. Then shows you the receipts.' },
+              { icon: Workflow, title: "Cross-platform execution", desc: "One command can fire ads, create contacts, build workflows, and send messages — across every connected channel." },
+              { icon: Eye, title: "Full transparency", desc: "Every API call, every error, every outcome is captured. No hidden actions. No black-box behavior." },
+              { icon: Activity, title: "Self-correcting", desc: "Detects fake completions, missing dependencies, and broken integrations. Tells you what to fix and how." },
+            ].map((item, i) => (
               <motion.div
-                key={t.name}
+                key={item.title}
                 initial="hidden"
                 whileInView="visible"
                 viewport={{ once: true }}
                 variants={fadeUp}
                 custom={i}
+                data-testid={`card-intelligence-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
               >
-                <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-6 h-full hover:border-white/20 transition-colors">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-sm">
-                      {t.avatar}
+                <div className="h-full p-6 rounded-2xl bg-gradient-to-br from-violet-500/10 to-fuchsia-500/5 border border-violet-500/20 hover:border-violet-500/40 transition-colors">
+                  <div className="flex items-start gap-4">
+                    <div className="w-11 h-11 rounded-xl bg-violet-500/20 flex items-center justify-center shrink-0">
+                      <item.icon size={22} className="text-violet-300" />
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-white">{t.name}</p>
-                      <p className="text-xs text-slate-500">{t.role}</p>
-                    </div>
-                    <div className="ml-auto flex gap-0.5">
-                      {[...Array(5)].map((_, si) => (
-                        <Star key={si} size={12} className="text-yellow-400 fill-yellow-400" />
-                      ))}
+                      <h3 className="text-base font-bold text-white mb-2">{item.title}</h3>
+                      <p className="text-sm text-slate-400 leading-relaxed">{item.desc}</p>
                     </div>
                   </div>
-                  <p className="text-sm text-slate-300 leading-relaxed italic">"{t.quote}"</p>
                 </div>
               </motion.div>
             ))}
           </div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="mt-12 text-center"
+          >
+            <div className="inline-flex flex-wrap items-center justify-center gap-2 text-xs text-slate-400">
+              <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10">9 tool families</span>
+              <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10">76 policy rules</span>
+              <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10">105 module events tracked</span>
+              <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10">Universal audit trail</span>
+            </div>
+          </motion.div>
         </div>
       </section>
 
@@ -595,12 +763,13 @@ export default function LandingPage() {
               </div>
             </div>
             <div>
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-3">Use Cases</h4>
+              <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-3">Industries</h4>
               <div className="space-y-2 text-xs text-slate-500">
-                <span className="block">Marketing Agencies</span>
-                <span className="block">Personal Injury Firms</span>
-                <span className="block">Real Estate</span>
-                <span className="block">Local Businesses</span>
+                <a href="/medspa" className="block hover:text-white transition-colors">Med Spas</a>
+                <a href="/lawyers" className="block hover:text-white transition-colors">Personal Injury</a>
+                <a href="/realtors" className="block hover:text-white transition-colors">Real Estate</a>
+                <a href="/marketers" className="block hover:text-white transition-colors">Marketing Agencies</a>
+                <a href="#industries" className="block hover:text-white transition-colors">View all 16 →</a>
               </div>
             </div>
             <div>
