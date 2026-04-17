@@ -635,16 +635,32 @@ export const intelligenceTools: OperatorTool[] = [
   },
   {
     name: "searchWorkflows",
-    description: "Search workflows by name or trigger type. Returns matching workflows with IDs.",
+    description: "List or search workflows. Pass an empty string \"\" or \"*\" to list ALL workflows for this account. Pass a name fragment or trigger type to filter.",
     category: "intelligence",
     autonomyRequired: "observe",
     requiresApproval: false,
     parameters: [
-      { name: "query", type: "string", required: true, description: "Search term — workflow name or trigger type" },
+      { name: "query", type: "string", required: true, description: "Search term — workflow name or trigger type. Use \"\" or \"*\" to list all." },
     ],
     validate: noopValidate,
     execute: async (params, ctx) => {
-      const results = await storage.searchWorkflows(ctx.subAccountId, params.query);
+      const q = String(params.query || "").trim();
+      let results: any[];
+      if (q === "" || q === "*") {
+        const allWorkflows = await storage.getWorkflows();
+        const liveAutos = await storage.searchWorkflows(ctx.subAccountId, "");
+        const wfForSub = allWorkflows.filter((w: any) => w.subAccountId === ctx.subAccountId);
+        results = [...wfForSub, ...liveAutos];
+      } else {
+        const liveResults = await storage.searchWorkflows(ctx.subAccountId, q);
+        const allWorkflows = await storage.getWorkflows();
+        const lowerQ = q.toLowerCase();
+        const wfMatches = allWorkflows.filter((w: any) =>
+          w.subAccountId === ctx.subAccountId &&
+          (w.name?.toLowerCase().includes(lowerQ) || w.trigger?.toLowerCase().includes(lowerQ))
+        );
+        results = [...wfMatches, ...liveResults];
+      }
       return {
         success: true,
         data: {

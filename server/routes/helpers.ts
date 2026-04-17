@@ -136,11 +136,22 @@ export async function logUsageInternal(subAccountId: number | null, type: string
     console.log(`[USAGE] Type '${type}' is not a supported non-messaging usage type. Skipping.`);
     return;
   }
+  if (subAccountId == null) {
+    return;
+  }
+  try {
+    const account = await storage.getSubAccount(subAccountId);
+    if (!account) {
+      return;
+    }
+  } catch {
+    return;
+  }
   const rate = AI_USAGE_COSTS[type];
   const cost = (type === "AI_IMAGE_GEN" || type === "AI_CHAT" || type === "AI_STREAM") ? rate : amount * rate;
   try {
     await storage.createUsageLog({
-      subAccountId: subAccountId ?? 1,
+      subAccountId,
       type,
       amount,
       cost,

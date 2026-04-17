@@ -13,7 +13,20 @@ export function registerWorkflowsRoutes(app: Express) {
   // ---- Workflows ----
   app.get("/api/workflows", subscriptionGuard, asyncHandler(async (req, res) => {
     const user = (req as any).user;
-    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    const adminSecret = process.env.STANDALONE_ADMIN_SECRET;
+    const adminSecretHeader = (req.headers["x-admin-secret"] as string | undefined)?.trim();
+    const isAdminBypass = !!(adminSecret && adminSecretHeader && adminSecretHeader === adminSecret.trim());
+    const tenantSubId = (req as any).tenant?.subAccountId as number | undefined;
+
+    if (!user && !isAdminBypass) return res.status(401).json({ error: "Not authenticated" });
+
+    const wfs = await storage.getWorkflows();
+
+    if (isAdminBypass) {
+      const filtered = tenantSubId ? wfs.filter((w: any) => w.subAccountId === tenantSubId) : wfs;
+      return res.json(filtered);
+    }
+
     const userId = getUserId(user);
     const adminUserId = process.env.ADMIN_USER_ID;
     const isAdmin = adminUserId && userId === adminUserId;
@@ -21,7 +34,6 @@ export function registerWorkflowsRoutes(app: Express) {
     const userAccountIds = isAdmin
       ? allAccounts.map((a: any) => a.id)
       : allAccounts.filter((a: any) => a.ownerUserId === userId).map((a: any) => a.id);
-    const wfs = await storage.getWorkflows();
     const filtered = isAdmin ? wfs : wfs.filter((w: any) => w.subAccountId && userAccountIds.includes(w.subAccountId));
     res.json(filtered);
   }));
