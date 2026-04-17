@@ -1,6 +1,6 @@
 import type { OperatorTool, ValidationResult, ToolResult, OperatorContext, ToolExecutionResult, PlannerToolMeta, ToolCategory } from "./types";
 import { allSchemas } from "./toolSchemas";
-import { crmTools, messagingTools, workflowTools, appointmentTools, campaignTools, creativeTools, reviewTools, intelligenceTools } from "./toolHandlers";
+import { crmTools, messagingTools, workflowTools, appointmentTools, campaignTools, creativeTools, reviewTools, intelligenceTools, apexApiTools } from "./toolHandlers";
 import { storage } from "../storage";
 import { publishEventAsync, EVENT_TYPES } from "../eventBus";
 import { startTrace, recordStepValue } from "../traceRecorder";
@@ -285,6 +285,7 @@ function registerAllTools(): void {
   for (const tool of creativeTools) registerTool(tool);
   for (const tool of reviewTools) registerTool(tool);
   for (const tool of intelligenceTools) registerTool(tool);
+  for (const tool of apexApiTools) registerTool(tool);
   registerTool(connectIntegrationTool);
 }
 

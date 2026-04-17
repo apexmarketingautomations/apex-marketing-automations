@@ -199,6 +199,8 @@ export function registerBotRoutes(app: Express) {
     "createPipelineStage",
     "restoreBrokenIntegrationDraft",
     "proposeAction",
+    "apexApi",
+    "apexApiDirectory",
   ]);
 
   function buildOpenAIFunctionSchemas(): ToolDefinition[] {
@@ -219,7 +221,9 @@ export function registerBotRoutes(app: Express) {
       createPipelineStage: { description: "Add an individual pipeline stage", parameters: { type: "object", properties: { name: { type: "string", description: "Stage name" }, color: { type: "string", description: "Stage color" }, position: { type: "number", description: "Stage position" } }, required: ["name"] } },
       restoreBrokenIntegrationDraft: { description: "Generate a recovery plan for a broken integration (requires user approval before execution)", parameters: { type: "object", properties: { provider: { type: "string", description: "Integration provider name (e.g. twilio, google, meta)" } }, required: ["provider"] } },
       navigateUser: { description: "Navigate the user to a specific page or entity view in the platform", parameters: { type: "object", properties: { route: { type: "string", description: "Route path to navigate to (e.g. /contacts, /workflows, /contacts/123)" }, entityId: { type: "number", description: "Optional entity ID to view" } }, required: ["route"] } },
-      proposeAction: { description: "Register a pending action that awaits user confirmation. Use this EVERY TIME you propose an action and ask the user to confirm. The action will be stored so that when the user replies 'ok' or 'confirm', the system executes it automatically without re-asking.", parameters: { type: "object", properties: { toolName: { type: "string", description: "The tool to execute when confirmed (e.g. createWorkflow, generateAutoResponseWorkflow)" }, toolArgs: { type: "object", description: "The exact arguments to pass to the tool when confirmed" }, summary: { type: "string", description: "Short human-readable summary of what this action will do (shown to user on confirmation)" } }, required: ["toolName", "toolArgs", "summary"] } },
+      proposeAction: { description: "ONLY use for irreversible bulk operations (mass-messaging 50+ contacts, deleting accounts/large data, ad spend > $500, anything destructive). For normal create/edit/schedule/publish actions, just do them directly — don't propose first.", parameters: { type: "object", properties: { toolName: { type: "string", description: "The tool to execute when confirmed" }, toolArgs: { type: "object", description: "The exact arguments to pass to the tool when confirmed" }, summary: { type: "string", description: "Short human-readable summary of what this action will do" } }, required: ["toolName", "toolArgs", "summary"] } },
+      apexApiDirectory: { description: "List every Apex platform endpoint you can call. Returns a catalog of API paths grouped by feature area (content planner, cards, sites, sentinel, inbox, reviews, billing, domains, integrations, account, workflows, crm). Call this FIRST whenever you need to do something not covered by the dedicated tools.", parameters: { type: "object", properties: {}, required: [] } },
+      apexApi: { description: "Call ANY internal Apex API endpoint on behalf of the current user. Use for anything not covered by other tools — publishing posts, editing cards, managing sites, sentinel config, inbox queries, review settings, billing info, domain management, contact CRUD, etc. Tenant scoping is automatic. Call apexApiDirectory first if you don't know the path.", parameters: { type: "object", properties: { method: { type: "string", enum: ["GET", "POST", "PATCH", "PUT", "DELETE"], description: "HTTP method" }, path: { type: "string", description: "API path starting with /api/" }, body: { type: "object", description: "JSON body for POST/PATCH/PUT" }, query: { type: "object", description: "Query string parameters as key/value object" } }, required: ["method", "path"] } },
     };
 
     for (const [name, schema] of Object.entries(schemaMap)) {
@@ -233,7 +237,7 @@ export function registerBotRoutes(app: Express) {
 
   const OPENAI_TOOL_SCHEMAS = buildOpenAIFunctionSchemas();
   const SESSION_EXPIRY_MS = 24 * 60 * 60 * 1000;
-  const MAX_TOOL_ROUNDS = 10;
+  const MAX_TOOL_ROUNDS = 25;
 
   const pendingApprovals = new Map<string, { resolve: (approved: boolean) => void }>();
   const pendingNavAcks = new Map<string, { resolve: (acked: boolean) => void }>();
@@ -500,7 +504,11 @@ export function registerBotRoutes(app: Express) {
       let fullAssistantText = "";
       const operatorContext: OperatorContext = {
         subAccountId,
-        autonomyLevel: "draft",
+        // Full execute authority — the user IS the account owner using their own dashboard.
+        // When they ask the chatbot to do something, that IS the confirmation.
+        // Tools that need a deliberate second-step (bulk messaging, ad spend, deletions) still
+        // route through proposeAction explicitly per the system prompt.
+        autonomyLevel: "execute",
         sessionId: `agent-${sessionId}`,
         correlationId: `agent-${Date.now()}`,
       };
@@ -514,6 +522,7 @@ export function registerBotRoutes(app: Express) {
           route: "bot-agent-stream",
           timeoutMs: 30000,
         });
+        console.log(`[AGENT] round=${round} text_len=${(aiResponse.text || "").length} toolCalls=${aiResponse.toolCalls?.length || 0}${aiResponse.toolCalls?.length ? " names=" + aiResponse.toolCalls.map(tc => tc.name).join(",") : ""}`);
 
         // Auto-repair: if OpenAI rejects history due to dangling assistant tool_calls,
         // strip every prior assistant tool_calls + tool messages from chatMessages and retry once.

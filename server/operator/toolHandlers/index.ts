@@ -6,3 +6,4 @@ export { campaignTools } from "./campaignTools";
 export { creativeTools } from "./creativeTools";
 export { reviewTools } from "./reviewTools";
 export { intelligenceTools } from "./intelligenceTools";
+export { apexApiTools } from "./apexApiTools";
