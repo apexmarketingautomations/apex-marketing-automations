@@ -15,7 +15,8 @@ import {
   Globe, ArrowRight, Zap, Wand2, Rocket, Loader2, Activity,
   RotateCcw, Ban, RefreshCw, ListChecks
 } from "lucide-react";
-import MediaUpload from "../components/MediaUpload";
+import MediaUpload, { type UploadedMediaItem } from "../components/MediaUpload";
+import PostPreview, { mediaItemsFromUploaded } from "../components/PostPreview";
 
 interface ContentPost {
   id: number;
@@ -85,26 +86,37 @@ function PostComposer({
   onSave,
   onCancel,
   saving,
+  form,
+  setForm,
 }: {
   initial?: ContentPost;
   onSave: (data: any) => void;
   onCancel: () => void;
   saving: boolean;
+  form: {
+    title: string;
+    caption: string;
+    hashtags: string;
+    callToAction: string;
+    firstComment: string;
+    contentType: string;
+    scheduledAt: string;
+    platforms: string[];
+  };
+  setForm: React.Dispatch<React.SetStateAction<{
+    title: string;
+    caption: string;
+    hashtags: string;
+    callToAction: string;
+    firstComment: string;
+    contentType: string;
+    scheduledAt: string;
+    platforms: string[];
+  }>>;
 }) {
-  const [form, setForm] = useState({
-    title: initial?.title || "",
-    caption: initial?.caption || "",
-    hashtags: initial?.hashtags || "",
-    callToAction: initial?.callToAction || "",
-    firstComment: initial?.firstComment || "",
-    contentType: initial?.contentType || "post",
-    scheduledAt: initial?.scheduledAt && !isNaN(new Date(initial.scheduledAt).getTime()) ? new Date(initial.scheduledAt).toISOString().slice(0, 16) : "",
-    platforms: initial?.platforms?.map((p) => p.platform) || [],
-  });
-
   const [aiGenerating, setAiGenerating] = useState(false);
 
-  const set = (k: string, v: any) => setForm((p) => ({ ...p, [k]: v }));
+  const set = (k: keyof typeof form, v: any) => setForm((p) => ({ ...p, [k]: v }));
   const togglePlatform = (p: string) => {
     set("platforms", form.platforms.includes(p) ? form.platforms.filter((x) => x !== p) : [...form.platforms, p]);
   };
@@ -714,6 +726,49 @@ export default function ContentPlannerPage() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [editing, setEditing] = useState<ContentPost | null>(null);
   const [detailPost, setDetailPost] = useState<ContentPost | null>(null);
+  const [composerMedia, setComposerMedia] = useState<UploadedMediaItem[]>([]);
+  const [composerForm, setComposerForm] = useState({
+    title: "",
+    caption: "",
+    hashtags: "",
+    callToAction: "",
+    firstComment: "",
+    contentType: "post",
+    scheduledAt: "",
+    platforms: [] as string[],
+  });
+
+  const resetComposer = (p?: ContentPost | null) => {
+    setComposerForm({
+      title: p?.title || "",
+      caption: p?.caption || "",
+      hashtags: p?.hashtags || "",
+      callToAction: p?.callToAction || "",
+      firstComment: p?.firstComment || "",
+      contentType: p?.contentType || "post",
+      scheduledAt: p?.scheduledAt && !isNaN(new Date(p.scheduledAt).getTime())
+        ? new Date(p.scheduledAt).toISOString().slice(0, 16)
+        : "",
+      platforms: p?.platforms?.map(x => x.platform) || [],
+    });
+    setComposerMedia(
+      (p?.media || []).map(m => ({
+        originalName: m.fileUrl.split("/").pop() || "media",
+        filename: m.fileUrl.split("/").pop() || "media",
+        fileUrl: m.fileUrl,
+        fileType: m.fileType,
+        size: 0,
+        mime: m.fileType?.startsWith("video") ? "video/mp4" : "image/jpeg",
+        mediaId: m.id,
+      }))
+    );
+  };
+
+  const closeComposer = () => {
+    setComposerOpen(false);
+    setEditing(null);
+    setComposerMedia([]);
+  };
 
   const { data: posts = [], isLoading } = useQuery<ContentPost[]>({
     queryKey: ["/api/content-planner/posts", subAccountId],
@@ -865,6 +920,13 @@ export default function ContentPlannerPage() {
 
   const openEdit = (p: ContentPost) => {
     setEditing(p);
+    resetComposer(p);
+    setComposerOpen(true);
+  };
+
+  const openCreate = () => {
+    setEditing(null);
+    resetComposer(null);
     setComposerOpen(true);
   };
 
@@ -912,7 +974,7 @@ export default function ContentPlannerPage() {
           </div>
           <Button
             data-testid="button-create-post"
-            onClick={() => { setEditing(null); setComposerOpen(true); }}
+            onClick={openCreate}
             className="text-white border-0 shadow-lg glow-box"
             style={{ background: `linear-gradient(to right, var(--vibe-glow, #6366f1), var(--vibe-accent, #818cf8))` }}
           >
@@ -944,31 +1006,49 @@ export default function ContentPlannerPage() {
       <AnimatePresence>
         {composerOpen && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="glass border border-white/10 rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <div className="sticky top-0 glass border-b border-white/5 px-6 py-4 flex items-center justify-between z-10">
+            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="glass border border-white/10 rounded-2xl w-full max-w-5xl max-h-[92vh] overflow-hidden shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+              <div className="sticky top-0 glass border-b border-white/5 px-6 py-4 flex items-center justify-between z-10 flex-shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `linear-gradient(to bottom right, var(--vibe-glow, #6366f1) 0%, transparent 100%)`, opacity: 0.4 }}>
                     <Sparkles className="w-4 h-4" style={{ color: "var(--vibe-glow, #6366f1)" }} />
                   </div>
                   <h3 className="text-lg font-bold text-white">{editing ? "Edit Post" : "New Post"}</h3>
                 </div>
-                <button onClick={() => { setComposerOpen(false); setEditing(null); }} className="text-white/30 hover:text-white transition-colors">
+                <button onClick={closeComposer} className="text-white/30 hover:text-white transition-colors">
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="p-6 space-y-5">
-                <MediaUpload
-                  subAccountId={subAccountId || undefined}
-                  onUploaded={(items) => {
-                    toast({ title: `${items.length} file${items.length > 1 ? "s" : ""} uploaded` });
-                  }}
-                />
-                <PostComposer
-                  initial={editing || undefined}
-                  onSave={handleSave}
-                  onCancel={() => { setComposerOpen(false); setEditing(null); }}
-                  saving={createMut.isPending || updateMut.isPending}
-                />
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 overflow-y-auto">
+                <div className="space-y-5 min-w-0">
+                  <MediaUpload
+                    subAccountId={subAccountId || undefined}
+                    value={composerMedia}
+                    onChange={setComposerMedia}
+                    onUploaded={(items) => {
+                      toast({ title: `${items.length} file${items.length > 1 ? "s" : ""} uploaded` });
+                    }}
+                  />
+                  <PostComposer
+                    initial={editing || undefined}
+                    form={composerForm}
+                    setForm={setComposerForm}
+                    onSave={(data) => handleSave({
+                      ...data,
+                      mediaIds: composerMedia.map(m => m.mediaId).filter((x): x is number => typeof x === "number"),
+                    })}
+                    onCancel={closeComposer}
+                    saving={createMut.isPending || updateMut.isPending}
+                  />
+                </div>
+                <div className="lg:sticky lg:top-0 self-start min-w-0">
+                  <PostPreview
+                    caption={composerForm.caption}
+                    hashtags={composerForm.hashtags}
+                    callToAction={composerForm.callToAction}
+                    media={mediaItemsFromUploaded(composerMedia)}
+                    platforms={composerForm.platforms}
+                  />
+                </div>
               </div>
             </motion.div>
           </motion.div>
@@ -1053,7 +1133,7 @@ export default function ContentPlannerPage() {
                   </p>
                   <Button
                     data-testid="button-create-first-post"
-                    onClick={() => { setEditing(null); setComposerOpen(true); }}
+                    onClick={openCreate}
                     className="text-white border-0 shadow-lg px-8 py-3 text-base"
                     style={{ background: `linear-gradient(to right, var(--vibe-glow, #6366f1), var(--vibe-accent, #818cf8))` }}
                   >

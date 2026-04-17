@@ -1,0 +1,107 @@
+Fix the **Content Planner composer UX** in Apex so it feels production-grade and clearly better than GHL.
+
+## Objective
+Upgrade the **New Post** flow so users can:
+1. **See uploaded image previews immediately**
+2. **See an accurate post preview before publishing**
+3. Create posts with a polished, trustworthy publishing experience that matches the real output as closely as possible
+
+## Current issues observed
+- Uploaded files appear only as filename rows, not visible image thumbnails
+- User cannot visually confirm the media they selected
+- There is no true **post preview**
+- The composer feels unfinished and low-trust because the user cannot see what will actually publish
+
+## Required fixes
+
+### 1) Real media preview in uploader
+Replace the current file-list-only behavior with actual previews.
+
+Requirements:
+- For **images**: show thumbnail previews immediately after selection/upload
+- For **videos**: show a video thumbnail or playable preview card
+- Preserve filename, size, remove action, and upload state
+- Support multiple files cleanly
+- Handle loading, upload progress, success, and failed states clearly
+- Revoke object URLs / clean memory properly
+- Do not wait until publish to render previews — preview should appear as soon as files are selected
+
+### 2) Accurate post preview panel
+Add a live **post preview** inside the Content Planner modal/page.
+
+Requirements:
+- Preview updates in real time as user edits:
+  - caption
+  - media
+  - title/internal label if relevant
+  - platform selection if applicable
+- Preview should visually resemble the actual published social post as closely as possible
+- For image carousels / multiple media, show correct order and layout
+- For video posts, show correct preview treatment
+- For text-only posts, show text-only preview
+- Empty-state preview should still look polished, not broken
+
+### 3) Platform-aware preview architecture
+Do this properly, not as a fake static box.
+
+Requirements:
+- Build preview architecture so it can support:
+  - Facebook page post preview
+  - Instagram-style preview
+  - future platform-specific previews
+- If the current publish target is Facebook, the preview should reflect Facebook post structure first
+- Keep it modular so more channels can be added without rewriting the composer
+
+### 4) Publishing confidence UX
+The composer needs to feel trustworthy.
+
+Requirements:
+- Clear selected-media state
+- Clear publish target/account state
+- Clear post status before publish
+- No ambiguity about what is being posted
+- If media upload succeeds but preview rendering fails, surface an explicit UI error
+- If media is unsupported/corrupt, fail gracefully with useful messaging
+
+## Engineering standard
+- Inspect first, then change
+- Trace current upload flow end-to-end:
+  - file picker / drag-drop
+  - client state
+  - preview generation
+  - upload request
+  - saved media response
+  - publish payload
+- Find why previews are missing now
+- Apply the minimum clean architecture changes needed
+- No fake preview disconnected from actual composer state
+- No hacks that break production or create memory leaks
+- Preserve current auth, tenant scoping, and publishing flow
+
+## Must verify
+1. User selects 1 image → thumbnail appears immediately
+2. User selects multiple images → all previews render in correct order
+3. User removes an image → preview updates instantly
+4. Caption changes → post preview updates live
+5. Preview remains accurate after upload completes
+6. Publish flow still works after preview changes
+7. Works in both local and production
+8. Mobile/responsive behavior is acceptable
+9. Dark UI styling stays premium and polished
+
+## Deliverable
+Do not stop at diagnosis.
+
+Return only after:
+- image preview is working
+- live post preview is working
+- the UI is visibly more polished
+- you tested the full flow manually
+- you provide:
+  - root cause
+  - files changed
+  - what was improved
+  - what was tested
+  - any remaining non-blocking gaps
+
+Target standard: **cleaner, more premium, and more confidence-inducing than GHL**, not just “functional.”

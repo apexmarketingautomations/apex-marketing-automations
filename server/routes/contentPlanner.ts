@@ -50,6 +50,7 @@ const createPostSchema = z.object({
   firstComment: z.string().optional(),
   contentType: z.string().optional(),
   scheduledAt: z.string().optional(),
+  mediaIds: z.array(z.number().int().positive()).optional(),
   platforms: z
     .array(
       z.object({
@@ -318,7 +319,7 @@ export function registerContentPlannerRoutes(app: Express) {
       if (!parsed.success) {
         return res.status(400).json({ error: parsed.error.flatten() });
       }
-      const { platforms, ...postData } = parsed.data;
+      const { platforms, mediaIds, ...postData } = parsed.data;
       const scheduledDate = postData.scheduledAt ? new Date(postData.scheduledAt) : null;
       const autoStatus = scheduledDate && scheduledDate > new Date() ? "scheduled" : "draft";
       const [post] = await db
@@ -342,6 +343,15 @@ export function registerContentPlannerRoutes(app: Express) {
           }))
         );
       }
+      if (mediaIds && mediaIds.length > 0) {
+        await db
+          .update(contentMedia)
+          .set({ postId: post.id })
+          .where(and(
+            inArray(contentMedia.id, mediaIds),
+            eq(contentMedia.subAccountId, subAccountId),
+          ));
+      }
       res.status(201).json(post);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -357,7 +367,7 @@ export function registerContentPlannerRoutes(app: Express) {
       if (!parsed.success) {
         return res.status(400).json({ error: parsed.error.flatten() });
       }
-      const { platforms: _platforms, ...postData } = parsed.data as any;
+      const { platforms: _platforms, mediaIds, ...postData } = parsed.data as any;
       const updates: any = { ...postData, updatedAt: new Date() };
       if (postData.scheduledAt) {
         const scheduledDate = new Date(postData.scheduledAt);
@@ -380,6 +390,24 @@ export function registerContentPlannerRoutes(app: Express) {
         )
         .returning();
       if (!updated) return res.status(404).json({ error: "Post not found" });
+      if (Array.isArray(mediaIds)) {
+        await db
+          .update(contentMedia)
+          .set({ postId: null })
+          .where(and(
+            eq(contentMedia.postId, id),
+            eq(contentMedia.subAccountId, subAccountId),
+          ));
+        if (mediaIds.length > 0) {
+          await db
+            .update(contentMedia)
+            .set({ postId: id })
+            .where(and(
+              inArray(contentMedia.id, mediaIds),
+              eq(contentMedia.subAccountId, subAccountId),
+            ));
+        }
+      }
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
