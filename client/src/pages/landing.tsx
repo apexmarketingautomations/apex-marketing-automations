@@ -176,12 +176,12 @@ export default function LandingPage() {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15 }}
-            className="text-5xl md:text-7xl lg:text-8xl font-black tracking-tight leading-[0.9] mb-6"
+            className="text-4xl md:text-6xl lg:text-7xl font-black tracking-tight leading-[1.05] mb-6"
             data-testid="text-hero-title"
           >
-            <span className="block">THE AI COMMAND</span>
+            <span className="block">AI marketing that</span>
             <span className="block bg-gradient-to-r from-indigo-400 via-purple-400 to-cyan-400 bg-clip-text text-transparent">
-              CENTER FOR GROWTH
+              actually gets the work done.
             </span>
           </motion.h1>
 
@@ -189,15 +189,39 @@ export default function LandingPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="text-lg md:text-xl text-slate-400 max-w-2xl mx-auto mb-10"
+            className="text-lg md:text-xl text-slate-300 max-w-2xl mx-auto mb-8"
+            data-testid="text-hero-subtitle"
           >
-            18 AI-powered tools in one platform. Manage messaging, deploy voice agents, build websites, run ad campaigns, and automate everything — with zero code.
+            Apex helps you capture leads, follow up automatically, book more appointments, and run your marketing from one place — without juggling five different tools.
           </motion.p>
+
+          <motion.ul
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="max-w-xl mx-auto mb-10 space-y-2 text-left"
+            data-testid="list-hero-bullets"
+          >
+            {[
+              "Automate follow-ups, campaigns, and lead management",
+              "Keep every conversation, contact, and task in one system",
+              "Built for real businesses that want results, not more software",
+            ].map((bullet, idx) => (
+              <li
+                key={idx}
+                className="flex items-start gap-3 text-slate-300 text-base md:text-lg"
+                data-testid={`text-hero-bullet-${idx}`}
+              >
+                <CheckCircle2 size={20} className="text-cyan-400 shrink-0 mt-0.5" />
+                <span>{bullet}</span>
+              </li>
+            ))}
+          </motion.ul>
 
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.45 }}
+            transition={{ delay: 0.5 }}
             className="flex flex-col sm:flex-row items-center justify-center gap-4"
           >
             <a
