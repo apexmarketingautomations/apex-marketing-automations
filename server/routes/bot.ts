@@ -907,51 +907,176 @@ export async function runRealTraining(jobId: number) {
 
     await updateJob("Starting web scraper...", 10);
 
-    let scrapedText = "";
-    try {
-      const cheerio = await import("cheerio");
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
+    const cheerio = await import("cheerio");
 
-      const response = await fetch(job.url, {
-        signal: controller.signal,
-        headers: {
-          "User-Agent": "Mozilla/5.0 (compatible; ApexBot/1.0)",
-          "Accept": "text/html,application/xhtml+xml",
-        },
-      });
-      clearTimeout(timeout);
+    const BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status} ${response.statusText}`);
-      }
+    const fetchPage = async (pageUrl: string, timeoutMs = 15000): Promise<string | null> => {
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), timeoutMs);
+        const r = await fetch(pageUrl, {
+          signal: ctrl.signal,
+          headers: { "User-Agent": BROWSER_UA, "Accept": "text/html,application/xhtml+xml,*/*" },
+          redirect: "follow",
+        });
+        clearTimeout(t);
+        if (!r.ok) return null;
+        return await r.text();
+      } catch { return null; }
+    };
 
-      const html = await response.text();
-      await updateJob(`Fetched page (${html.length.toLocaleString()} bytes)`, 25);
-
+    const extractFromHtml = (html: string): { text: string; links: string[] } => {
       const $ = cheerio.load(html);
-      $("script, style, noscript, iframe, nav, footer, header").remove();
+      $("script:not([type='application/ld+json']), style, noscript, iframe, svg").remove();
 
-      const textParts: string[] = [];
-      const title = $("title").text().trim();
-      if (title) textParts.push(`Page Title: ${title}`);
+      const parts: string[] = [];
+      const title = $("title").first().text().trim();
+      if (title) parts.push(`PAGE TITLE: ${title}`);
 
-      const metaDesc = $('meta[name="description"]').attr("content")?.trim();
-      if (metaDesc) textParts.push(`Description: ${metaDesc}`);
+      const metaDesc = $('meta[name="description"]').attr("content")?.trim()
+        || $('meta[property="og:description"]').attr("content")?.trim();
+      if (metaDesc) parts.push(`DESCRIPTION: ${metaDesc}`);
 
-      $("h1, h2, h3, h4, p, li, td, th, blockquote, span, div, a").each((_: any, el: any) => {
-        const t = $(el).clone().children().remove().end().text().trim();
-        if (t && t.length > 10 && t.length < 5000) {
-          textParts.push(t);
-        }
+      const ogTitle = $('meta[property="og:title"]').attr("content")?.trim();
+      if (ogTitle && ogTitle !== title) parts.push(`OG TITLE: ${ogTitle}`);
+
+      $('script[type="application/ld+json"]').each((_: any, el: any) => {
+        try {
+          const data = JSON.parse($(el).text());
+          const flat = JSON.stringify(data).replace(/[{}\[\]"]/g, " ").replace(/\s+/g, " ").trim();
+          if (flat.length > 20 && flat.length < 8000) parts.push(`STRUCTURED DATA: ${flat}`);
+        } catch { /* ignore */ }
       });
 
-      scrapedText = Array.from(new Set(textParts)).join("\n").substring(0, 50000);
+      $("h1, h2, h3, h4, h5, p, li, td, th, blockquote, dt, dd, figcaption").each((_: any, el: any) => {
+        const t = $(el).clone().children().remove().end().text().trim().replace(/\s+/g, " ");
+        if (t && t.length > 8 && t.length < 4000) parts.push(t);
+      });
 
-      await updateJob(`Extracted ${scrapedText.length.toLocaleString()} characters of text content`, 40);
-    } catch (scrapeErr: any) {
-      await updateJob(`Scrape warning: ${scrapeErr.message}. Continuing with persona only.`, 35);
-      scrapedText = `[Could not scrape ${job.url}: ${scrapeErr.message}]`;
+      $("img[alt]").each((_: any, el: any) => {
+        const alt = ($(el).attr("alt") || "").trim();
+        if (alt.length > 8 && alt.length < 300) parts.push(`IMAGE: ${alt}`);
+      });
+
+      const text = Array.from(new Set(parts)).join("\n");
+
+      const links: string[] = [];
+      $("a[href]").each((_: any, el: any) => {
+        const href = $(el).attr("href");
+        if (href) links.push(href);
+      });
+
+      return { text, links };
+    };
+
+    const baseUrl = (() => { try { return new URL(job.url); } catch { return null; } })();
+    if (!baseUrl) {
+      await storage.updateTrainingJob(jobId, { logs: [...allLogs, `Invalid URL: ${job.url}`], state: "failed", progress: 0 });
+      return;
+    }
+
+    let scrapedText = "";
+    const visited = new Set<string>();
+    const homepageHtml = await fetchPage(job.url);
+    if (!homepageHtml) {
+      await storage.updateTrainingJob(jobId, {
+        logs: [...allLogs, `Could not fetch ${job.url}. The site may be down, blocking bots, or behind authentication.`],
+        state: "failed",
+        progress: 0,
+      });
+      return;
+    }
+    await updateJob(`Fetched homepage (${homepageHtml.length.toLocaleString()} bytes)`, 20);
+    visited.add(job.url);
+
+    const home = extractFromHtml(homepageHtml);
+    scrapedText = home.text;
+    await updateJob(`Homepage extracted: ${home.text.length.toLocaleString()} chars`, 30);
+
+    const sameOriginCandidates = new Set<string>();
+    for (const href of home.links) {
+      try {
+        const u = new URL(href, baseUrl);
+        if (u.origin !== baseUrl.origin) continue;
+        if (u.pathname === "/" || u.pathname === baseUrl.pathname) continue;
+        if (/\.(png|jpe?g|gif|webp|svg|pdf|zip|mp4|mp3|css|js|ico|woff2?)(\?|$)/i.test(u.pathname)) continue;
+        u.hash = "";
+        sameOriginCandidates.add(u.toString());
+      } catch { /* ignore */ }
+    }
+
+    const sitemapHtml = await fetchPage(new URL("/sitemap.xml", baseUrl).toString(), 8000);
+    if (sitemapHtml) {
+      const matches = sitemapHtml.match(/<loc>([^<]+)<\/loc>/g) || [];
+      for (const m of matches.slice(0, 30)) {
+        const u = m.replace(/<\/?loc>/g, "").trim();
+        if (u.startsWith(baseUrl.origin)) sameOriginCandidates.add(u);
+      }
+    }
+
+    const PRIORITY = /\/(about|services|pricing|menu|products|contact|faq|book|booking|membership|plans|team|locations?)\b/i;
+    const ranked = Array.from(sameOriginCandidates)
+      .sort((a, b) => (PRIORITY.test(b) ? 1 : 0) - (PRIORITY.test(a) ? 1 : 0))
+      .slice(0, 6);
+
+    let pageProgress = 35;
+    const progressStep = 25 / Math.max(1, ranked.length);
+    for (const link of ranked) {
+      if (visited.has(link)) continue;
+      visited.add(link);
+      const html = await fetchPage(link, 10000);
+      if (!html) continue;
+      const { text } = extractFromHtml(html);
+      if (text.length > 50) {
+        scrapedText += `\n\n=== PAGE: ${link} ===\n${text}`;
+        pageProgress += progressStep;
+        await updateJob(`Crawled ${link} (+${text.length.toLocaleString()} chars)`, Math.round(pageProgress));
+      }
+    }
+
+    if (scrapedText.length < 200) {
+      await updateJob(`Static scrape thin (${scrapedText.length} chars). Trying headless browser...`, 50);
+      try {
+        const puppeteer = (await import("puppeteer")).default;
+        const browser = await puppeteer.launch({
+          headless: true,
+          args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+        });
+        try {
+          const page = await browser.newPage();
+          await page.setUserAgent(BROWSER_UA);
+          await page.goto(job.url, { waitUntil: "networkidle2", timeout: 25000 });
+          const renderedHtml = await page.content();
+          const { text } = extractFromHtml(renderedHtml);
+          if (text.length > scrapedText.length) {
+            scrapedText = text;
+            await updateJob(`Headless render extracted ${text.length.toLocaleString()} chars`, 60);
+          }
+        } finally {
+          await browser.close().catch(() => {});
+        }
+      } catch (puppErr: any) {
+        await updateJob(`Headless browser unavailable (${puppErr.message?.slice(0, 80) || "unknown"}). Continuing with static content only.`, 55);
+      }
+    }
+
+    scrapedText = scrapedText.substring(0, 50000);
+    await updateJob(`Final knowledge base: ${scrapedText.length.toLocaleString()} characters from ${visited.size} page(s)`, 65);
+
+    if (scrapedText.length < 100) {
+      await storage.updateTrainingJob(jobId, {
+        logs: [
+          ...allLogs,
+          `TRAINING FAILED: Only ${scrapedText.length} characters of readable content found across ${visited.size} page(s).`,
+          `This usually means: (a) the site renders entirely with JavaScript and the headless browser couldn't be used here, (b) the site blocks bots, or (c) the homepage has no real text content.`,
+          `Suggestion: Try a deeper URL like ${baseUrl.origin}/about or paste your knowledge directly into the persona below.`,
+        ],
+        state: "failed",
+        progress: 0,
+        scrapedContent: scrapedText,
+      });
+      return;
     }
 
     const chunkSize = 1000;
@@ -960,10 +1085,10 @@ export async function runRealTraining(jobId: number) {
     for (let i = 0; i < scrapedText.length; i += chunkSize - overlap) {
       chunks.push(scrapedText.substring(i, i + chunkSize));
     }
-    await updateJob(`Split into ${chunks.length} knowledge chunks (${chunkSize} chars, ${overlap} overlap)`, 55);
+    await updateJob(`Split into ${chunks.length} knowledge chunks (${chunkSize} chars, ${overlap} overlap)`, 70);
 
     let generatedPersona: string | null = null;
-    if (isAIConfigured() && scrapedText.length > 50) {
+    if (isAIConfigured() && scrapedText.length > 100) {
       try {
         await updateJob("Generating AI persona from scraped content...", 70);
         const personaPrompt = `Based on the following website content, generate a concise AI assistant persona/system prompt. The persona should:
