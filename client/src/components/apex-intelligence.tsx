@@ -15,7 +15,7 @@ const TABS: { id: TabId; label: string; icon: typeof Brain }[] = [
   { id: "nudges", label: "Nudges", icon: Bell },
   { id: "industry", label: "Industry", icon: Factory },
   { id: "trends", label: "Trends", icon: TrendingUp },
-  { id: "chat", label: "Operator", icon: Brain },
+  { id: "chat", label: "Chat", icon: Brain },
   { id: "agent", label: "Agent", icon: Bot },
   { id: "memory", label: "Memory", icon: BookOpen },
   { id: "apex", label: "Apex Brain", icon: Activity },
@@ -52,7 +52,7 @@ export function ApexIntelligence({
   panelHeight = 680,
 }: ApexIntelligenceProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
-  const [activeTab, setActiveTab] = useState<TabId>("command");
+  const [activeTab, setActiveTab] = useState<TabId>("chat");
   const { activeAccountId } = useAccount();
   const subAccountId = accountId ?? activeAccountId;
   const { offset, onPointerDown, resetOffset, wasDragged } = useDraggable();
@@ -97,7 +97,7 @@ export function ApexIntelligence({
     <>
       {isOpen && !isInline && (
         <div
-          className="fixed inset-0 z-40 bg-black/30 md:bg-transparent"
+          className="fixed inset-0 z-40 bg-black/30 md:bg-transparent md:pointer-events-none"
           onClick={handleToggle}
           data-testid="intel-backdrop"
         />

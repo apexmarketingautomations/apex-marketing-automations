@@ -8,6 +8,7 @@ import type { Express, RequestHandler } from "express";
 import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { authStorage } from "./storage";
+import { storage } from "../../storage";
 
 const getOidcConfig = memoize(
   async () => {
@@ -53,13 +54,33 @@ function updateUserSession(
 }
 
 async function upsertUser(claims: any) {
+  const userId = claims["sub"];
   await authStorage.upsertUser({
-    id: claims["sub"],
+    id: userId,
     email: claims["email"],
     firstName: claims["first_name"],
     lastName: claims["last_name"],
     profileImageUrl: claims["profile_image_url"],
   });
+  try {
+    const existing = await storage.getSubAccountsByUser(userId);
+    if (!existing || existing.length === 0) {
+      const displayName =
+        [claims["first_name"], claims["last_name"]].filter(Boolean).join(" ").trim() ||
+        (claims["email"] ? String(claims["email"]).split("@")[0] : "") ||
+        "My Workspace";
+      const created = await storage.createSubAccount({
+        name: `${displayName}'s Workspace`,
+        twilioNumber: "",
+        ownerUserId: userId,
+        plan: "starter",
+        language: "en",
+      } as any);
+      console.log(`[AUTH] Auto-created default sub-account ${created.id} for new user ${userId}`);
+    }
+  } catch (e) {
+    console.error("[AUTH] Default sub-account auto-create failed:", e instanceof Error ? e.message : e);
+  }
 }
 
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes of inactivity
