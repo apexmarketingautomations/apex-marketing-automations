@@ -100,16 +100,63 @@ function detectColumnMap($: cheerio.CheerioAPI): ColumnMap {
     }
   }
 
+  // Inspect the first data row to know how many <td> the parser will see at runtime.
+  // The DevExpress header row often contains extra empty <td> separators (sort icons,
+  // resize handles, etc.) that do NOT exist in data rows. If we map column indices
+  // off the raw header row, the data-row indices will be wrong and every row gets
+  // skipped silently. Build the index map against the data row's column count.
+  const firstDataRow = $('.dxgvDataRow').first();
+  const dataRowTdCount = firstDataRow.length > 0 ? firstDataRow.find('td').length : 0;
+
   if (headerCells && headerCells.length > 0) {
-    headerCells.each((i, el) => {
-      const text = $(el).text().trim().toUpperCase();
-      detectedHeaders.push(text);
-      for (const [col, patterns] of Object.entries(HEADER_PATTERNS)) {
-        if (patterns.some(p => text.includes(p))) {
-          detected[col as keyof typeof FALLBACK_COLS] = i;
-        }
-      }
+    // Capture raw header text for diagnostics (preserves original layout/empties)
+    const rawHeaders: string[] = [];
+    headerCells.each((_i, el) => {
+      rawHeaders.push($(el).text().trim().toUpperCase());
     });
+
+    // Decide which indexing strategy to use:
+    //   - If header td count matches data row td count → headers and data are aligned 1:1
+    //   - If counts differ → header has separator cells; build a "dense" view that only
+    //     keeps headers that have actual text and use that index instead.
+    const headerCount = headerCells.length;
+    const useDenseMapping =
+      dataRowTdCount > 0 && headerCount !== dataRowTdCount;
+
+    if (useDenseMapping) {
+      const denseHeaders = rawHeaders
+        .map((text, origIdx) => ({ text, origIdx }))
+        .filter(h => h.text.length > 0);
+
+      denseHeaders.forEach((h, denseIdx) => {
+        detectedHeaders.push(h.text);
+        for (const [col, patterns] of Object.entries(HEADER_PATTERNS)) {
+          if (patterns.some(p => h.text.includes(p))) {
+            detected[col as keyof typeof FALLBACK_COLS] = denseIdx;
+          }
+        }
+      });
+
+      // Sanity check: the dense header count should match the data row td count.
+      // If it doesn't, log it so ops sees the page structure has drifted.
+      if (denseHeaders.length !== dataRowTdCount) {
+        console.warn(
+          `[SENTINEL SCRAPER] Header alignment mismatch: ` +
+          `${headerCount} raw header cells, ${denseHeaders.length} non-empty headers, ` +
+          `${dataRowTdCount} data row cells. Mapping may be off — verify FHP page structure.`
+        );
+      }
+    } else {
+      // Header and data cell counts already match — use raw indices.
+      rawHeaders.forEach((text, i) => {
+        detectedHeaders.push(text);
+        for (const [col, patterns] of Object.entries(HEADER_PATTERNS)) {
+          if (patterns.some(p => text.includes(p))) {
+            detected[col as keyof typeof FALLBACK_COLS] = i;
+          }
+        }
+      });
+    }
   }
 
   const allDetected = Object.keys(FALLBACK_COLS).every(
