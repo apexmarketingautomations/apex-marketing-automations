@@ -308,7 +308,7 @@ export const intelligenceSchemas = {
     query: z.string().min(1).describe("Search term — name, email, phone, or tag to search for"),
   }),
   searchWorkflows: z.object({
-    query: z.string().min(1).describe("Search term — workflow name or trigger type to search for"),
+    query: z.string().optional().default("").describe("Optional search term — workflow name or trigger type. Omit or pass empty string to list ALL workflows."),
   }),
 };
 

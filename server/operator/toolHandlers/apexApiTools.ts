@@ -157,7 +157,7 @@ const APEX_API_DIRECTORY = {
     description: "Contacts, deals, pipeline, appointments — full CRUD",
     endpoints: [
       { method: "GET", path: "/api/contacts/:subAccountId", purpose: "List contacts. Query: search, tag, limit" },
-      { method: "POST", path: "/api/contacts", purpose: "Create a contact. Body: { subAccountId, name, email?, phone?, tags?[] }" },
+      { method: "POST", path: "/api/contacts", purpose: "Create a contact. Body: { subAccountId, firstName, lastName?, email?, phone?, company?, tags?: string[], notes? }. NOTE: use firstName + lastName, NOT a single 'name' field." },
       { method: "PATCH", path: "/api/contacts/:id", purpose: "Update a contact" },
       { method: "DELETE", path: "/api/contacts/:id", purpose: "Delete a contact" },
       { method: "GET", path: "/api/appointments/:subAccountId", purpose: "List appointments. Query: from, to, status" },
@@ -263,12 +263,36 @@ export const apexApiTools: OperatorTool[] = [
         }
 
         const serialized = JSON.stringify(data);
-        const truncated = serialized.length > 8000;
+        const tooBig = serialized.length > 8000;
+        let safeData: any = data;
+        if (tooBig) {
+          if (Array.isArray(data)) {
+            // Return a digestible slice. Start with 10 and shrink until we fit
+            // under the budget so even fat-row endpoints (messages, contacts)
+            // produce a usable answer instead of "response too large".
+            const BUDGET = 6000;
+            let take = 10;
+            let sample = data.slice(0, take);
+            while (take > 1 && JSON.stringify(sample).length > BUDGET) {
+              take = Math.max(1, Math.floor(take / 2));
+              sample = data.slice(0, take);
+            }
+            safeData = {
+              totalCount: data.length,
+              returnedCount: sample.length,
+              items: sample,
+              note: `Showing the first ${sample.length} of ${data.length} items — this is enough to answer most questions. Use this data; do NOT re-call expecting more unless the user asked for a specific item beyond index ${sample.length - 1}.`,
+            };
+          } else {
+            safeData = {
+              note: `Response was large (${serialized.length} bytes) and has been truncated. Re-call with narrower filters or pagination to see the rest.`,
+              preview: serialized.slice(0, 6000),
+            };
+          }
+        }
         return {
           success: true,
-          data: truncated
-            ? { note: "response truncated — call with narrower filters or pagination if you need detail", preview: serialized.slice(0, 8000) }
-            : data,
+          data: safeData,
           sideEffects: [`${method} ${path}`],
         };
       } catch (err: any) {

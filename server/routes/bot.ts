@@ -213,7 +213,7 @@ export function registerBotRoutes(app: Express) {
       generateAccountSetupPlan: { description: "Generate a step-by-step account setup plan", parameters: { type: "object", properties: { industry: { type: "string", description: "Industry vertical" } }, required: [] } },
       diagnoseWorkflow: { description: "Analyze a specific workflow for issues and suggest improvements", parameters: { type: "object", properties: { workflowId: { type: "number", description: "ID of the workflow to diagnose" } }, required: ["workflowId"] } },
       searchContacts: { description: "Search contacts by name, email, phone, or tags. Returns matching contacts with IDs.", parameters: { type: "object", properties: { query: { type: "string", description: "Search term — name, email, phone, or tag" } }, required: ["query"] } },
-      searchWorkflows: { description: "Search workflows by name or trigger type. Returns matching workflows with IDs.", parameters: { type: "object", properties: { query: { type: "string", description: "Workflow name or trigger type to search for" } }, required: ["query"] } },
+      searchWorkflows: { description: "List or search workflows. Omit query (or pass empty string) to list ALL workflows. Pass a name fragment or trigger type to filter.", parameters: { type: "object", properties: { query: { type: "string", description: "Optional workflow name or trigger type. Empty/omitted = list all." } }, required: [] } },
       createWorkflow: { description: "Create a new automation workflow from a manifest (status: compiled/draft)", parameters: { type: "object", properties: { name: { type: "string", description: "Workflow name" }, trigger: { type: "string", description: "Trigger event" }, steps: { type: "array", items: { type: "object", properties: { action: { type: "string" }, message: { type: "string" }, duration: { type: "number" }, condition: { type: "string" } }, required: ["action"] }, description: "Workflow steps" } }, required: ["name", "trigger", "steps"] } },
       generateAutoResponseWorkflow: { description: "Generate an auto-response workflow template (status: compiled/draft)", parameters: { type: "object", properties: { trigger: { type: "string", description: "Trigger event" }, responseMessage: { type: "string", description: "Auto-response message body" }, channel: { type: "string", enum: ["sms", "email", "whatsapp"], description: "Communication channel" } }, required: ["trigger", "responseMessage"] } },
       generateReactivationWorkflow: { description: "Generate a reactivation workflow for inactive contacts (status: compiled/draft)", parameters: { type: "object", properties: { inactiveDays: { type: "number", description: "Days of inactivity before triggering" }, message: { type: "string", description: "Reactivation message" }, channel: { type: "string", enum: ["sms", "email"], description: "Communication channel" } }, required: [] } },
@@ -513,6 +513,10 @@ export function registerBotRoutes(app: Express) {
         correlationId: `agent-${Date.now()}`,
       };
 
+      const toolCallSignatures: string[] = [];
+      const toolCallNames: string[] = [];
+      const REPEAT_THRESHOLD = 3;
+      const NAME_REPEAT_THRESHOLD = 4;
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
         if (closed) break;
 
@@ -572,6 +576,28 @@ export function registerBotRoutes(app: Express) {
           try {
             await storage.createAgentMessage({ sessionId, role: "assistant", content: aiResponse.text || "" });
           } catch {}
+          break;
+        }
+
+        // Detect tool-call loops: break if the same (name+args) repeats
+        // REPEAT_THRESHOLD times in a row, OR the same tool NAME repeats
+        // NAME_REPEAT_THRESHOLD times in a row (catches the "model keeps
+        // calling createWorkflow with slightly different args" failure mode).
+        for (const tc of aiResponse.toolCalls) {
+          toolCallSignatures.push(`${tc.name}:${tc.arguments}`);
+          toolCallNames.push(tc.name);
+        }
+        const sigTail = toolCallSignatures.slice(-REPEAT_THRESHOLD);
+        const exactLoop = sigTail.length === REPEAT_THRESHOLD && sigTail.every(s => s === sigTail[0]);
+        const nameTail = toolCallNames.slice(-NAME_REPEAT_THRESHOLD);
+        const nameLoop = nameTail.length === NAME_REPEAT_THRESHOLD && nameTail.every(n => n === nameTail[0]);
+        if (exactLoop || nameLoop) {
+          const offender = exactLoop ? sigTail[0].slice(0, 80) : `${nameTail[0]} (×${NAME_REPEAT_THRESHOLD})`;
+          console.warn(`[AGENT] Tool-call loop detected — ${offender} — breaking out`);
+          const stuck = "I went in circles trying to handle that. Could you rephrase what you'd like me to do, or give me one more detail so I can take a different approach?";
+          if (!closed) sendSSEData(res, { content: stuck });
+          fullAssistantText += stuck;
+          try { await storage.createAgentMessage({ sessionId, role: "assistant", content: stuck }); } catch {}
           break;
         }
 

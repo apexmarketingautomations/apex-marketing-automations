@@ -1,4 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
+import crypto from "crypto";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
@@ -1626,6 +1627,37 @@ RULES:
   registerAgentWorkerRoutes(app);
 
   await setupAuth(app);
+
+  // Admin-secret bypass: when an internal/trusted caller (e.g. the Apex
+  // Intelligence chatbot's apexApi tool) presents the STANDALONE_ADMIN_SECRET
+  // header, synthesize an authenticated admin user so legacy routes that
+  // gate on req.user / req.isAuthenticated() pass cleanly. Tenancy is still
+  // scoped via x-sub-account-id by the tenantMiddleware below.
+  app.use("/api", (req, _res, next) => {
+    const adminSecret = process.env.STANDALONE_ADMIN_SECRET?.trim();
+    const headerVal = (req.headers["x-admin-secret"] as string | undefined)?.trim();
+    let secretMatches = false;
+    if (adminSecret && headerVal) {
+      const a = Buffer.from(adminSecret);
+      const b = Buffer.from(headerVal);
+      if (a.length === b.length) {
+        try { secretMatches = crypto.timingSafeEqual(a, b); } catch { secretMatches = false; }
+      }
+    }
+    if (secretMatches) {
+      const adminUserId = process.env.ADMIN_USER_ID || "admin";
+      const synthesized = {
+        id: adminUserId,
+        claims: { sub: adminUserId, email: "bot@apex.internal" },
+        email: "bot@apex.internal",
+        isAdminBypass: true,
+      };
+      (req as any).user = synthesized;
+      (req as any).isAuthenticated = () => true;
+    }
+    next();
+  });
+
   const { tenantMiddleware } = await import("./middleware/tenant");
   app.use("/api", (req, res, next) => {
     Promise.resolve(tenantMiddleware(req as any, res as any, next)).catch(next);

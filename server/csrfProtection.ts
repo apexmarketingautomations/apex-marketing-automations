@@ -92,6 +92,13 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction) 
     return next();
   }
 
+  // Internal admin-secret callers (e.g. the Apex Intelligence chatbot's
+  // apexApi tool) authenticate via shared secret and don't carry browser
+  // cookies, so CSRF doesn't apply to them.
+  if ((req as any).user?.isAdminBypass) {
+    return next();
+  }
+
   const cookieToken = req.cookies?.[CSRF_COOKIE_NAME];
   const headerToken = req.headers[CSRF_HEADER_NAME] as string | undefined;
 
