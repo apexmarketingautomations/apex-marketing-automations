@@ -2,8 +2,9 @@ import { db } from "../../db";
 import { eq, and } from "drizzle-orm";
 import {
   contentPosts, contentPostPlatforms, contentPublishingJobs,
-  socialAccounts, subAccounts,
+  socialAccounts, subAccounts, contentMedia,
 } from "@shared/schema";
+import { asc } from "drizzle-orm";
 import { getAdapter } from "./adapters";
 import type { PublishInput, PublishResult, PlatformCredentials } from "./adapters";
 import { decryptToken } from "../contentEncryption";
@@ -166,6 +167,12 @@ export async function publishPost(opts: PublishPostOptions): Promise<{
 
     const credentials = await resolveCredentials(subAccountId, platform, socialAccountId);
 
+    const mediaRows = await db.select({ id: contentMedia.id })
+      .from(contentMedia)
+      .where(and(eq(contentMedia.postId, postId), eq(contentMedia.subAccountId, subAccountId)))
+      .orderBy(asc(contentMedia.sortOrder));
+    const mediaIds = mediaRows.length > 0 ? mediaRows.map(m => m.id) : null;
+
     const input: PublishInput = {
       postId,
       subAccountId,
@@ -173,7 +180,7 @@ export async function publishPost(opts: PublishPostOptions): Promise<{
       platform,
       title: post.title,
       body: post.caption || post.title,
-      mediaIds: null,
+      mediaIds,
       credentials,
     };
 
