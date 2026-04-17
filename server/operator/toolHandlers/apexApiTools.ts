@@ -145,6 +145,27 @@ const APEX_API_DIRECTORY = {
       { method: "GET", path: "/api/wallet/:subAccountId", purpose: "Get wallet balance and credit info" },
     ],
   },
+  integrations: {
+    description: "Third-party integrations (Google Calendar, Meta, Stripe, Twilio, etc). OAuth-gated providers REQUIRE the user to click through a consent screen — you cannot complete the connection yourself. For those, navigate the user to /integrations and tell them which button to click.",
+    endpoints: [
+      { method: "GET", path: "/api/integrations/:subAccountId", purpose: "Get connection status of all integrations (which are connected, which are not)" },
+      { method: "POST", path: "/api/integrations/:subAccountId/disconnect", purpose: "Disconnect an integration. Body: { provider }" },
+      { method: "GET", path: "/api/oauth/google/authorize/:subAccountId", purpose: "OAuth INITIATION URL for Google (Calendar, Gmail, Business). User-only — do NOT call this from a tool; instead navigate the user to /integrations so they can click the Connect button." },
+    ],
+  },
+  crm: {
+    description: "Contacts, deals, pipeline, appointments — full CRUD",
+    endpoints: [
+      { method: "GET", path: "/api/contacts/:subAccountId", purpose: "List contacts. Query: search, tag, limit" },
+      { method: "POST", path: "/api/contacts", purpose: "Create a contact. Body: { subAccountId, name, email?, phone?, tags?[] }" },
+      { method: "PATCH", path: "/api/contacts/:id", purpose: "Update a contact" },
+      { method: "DELETE", path: "/api/contacts/:id", purpose: "Delete a contact" },
+      { method: "GET", path: "/api/appointments/:subAccountId", purpose: "List appointments. Query: from, to, status" },
+      { method: "POST", path: "/api/appointments", purpose: "Create an appointment. Body: { subAccountId, contactId, startsAt, endsAt, title, notes? }" },
+      { method: "PATCH", path: "/api/appointments/:id", purpose: "Reschedule or update an appointment" },
+      { method: "DELETE", path: "/api/appointments/:id", purpose: "Cancel an appointment" },
+    ],
+  },
 };
 
 export const apexApiTools: OperatorTool[] = [
