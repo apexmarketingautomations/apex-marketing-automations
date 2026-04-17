@@ -1627,7 +1627,9 @@ RULES:
 
   await setupAuth(app);
   const { tenantMiddleware } = await import("./middleware/tenant");
-  app.use("/api", tenantMiddleware);
+  app.use("/api", (req, res, next) => {
+    Promise.resolve(tenantMiddleware(req as any, res as any, next)).catch(next);
+  });
   app.use("/api", csrfProtection);
   registerAuthRoutes(app);
   await registerRoutes(httpServer, app);

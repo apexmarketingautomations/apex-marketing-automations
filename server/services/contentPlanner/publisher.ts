@@ -13,6 +13,7 @@ interface PublishPostOptions {
   subAccountId: number;
   trigger: "manual" | "scheduled";
   platforms?: string[];
+  recordJob?: boolean;
 }
 
 async function resolveCredentials(
@@ -105,6 +106,7 @@ export async function publishPost(opts: PublishPostOptions): Promise<{
   results: PublishResult[];
 }> {
   const { postId, subAccountId, trigger } = opts;
+  const recordJob = opts.recordJob !== false;
 
   const [post] = await db.select().from(contentPosts)
     .where(and(eq(contentPosts.id, postId), eq(contentPosts.subAccountId, subAccountId)));
@@ -145,18 +147,20 @@ export async function publishPost(opts: PublishPostOptions): Promise<{
       results.push(failResult);
       allSucceeded = false;
 
-      const [job] = await db.insert(contentPublishingJobs).values({
-        subAccountId,
-        postId,
-        platform,
-        socialAccountId,
-        trigger,
-        status: "failed",
-        errorMessage: failResult.errorMessage,
-        startedAt: new Date(),
-        completedAt: new Date(),
-      }).returning();
-      jobIds.push(job.id);
+      if (recordJob) {
+        const [job] = await db.insert(contentPublishingJobs).values({
+          subAccountId,
+          postId,
+          platform,
+          socialAccountId,
+          trigger,
+          status: "failed",
+          errorMessage: failResult.errorMessage,
+          startedAt: new Date(),
+          completedAt: new Date(),
+        }).returning();
+        jobIds.push(job.id);
+      }
       continue;
     }
 
@@ -184,18 +188,20 @@ export async function publishPost(opts: PublishPostOptions): Promise<{
       results.push(failResult);
       allSucceeded = false;
 
-      const [job] = await db.insert(contentPublishingJobs).values({
-        subAccountId,
-        postId,
-        platform,
-        socialAccountId,
-        trigger,
-        status: "failed",
-        errorMessage: failResult.errorMessage,
-        startedAt: new Date(),
-        completedAt: new Date(),
-      }).returning();
-      jobIds.push(job.id);
+      if (recordJob) {
+        const [job] = await db.insert(contentPublishingJobs).values({
+          subAccountId,
+          postId,
+          platform,
+          socialAccountId,
+          trigger,
+          status: "failed",
+          errorMessage: failResult.errorMessage,
+          startedAt: new Date(),
+          completedAt: new Date(),
+        }).returning();
+        jobIds.push(job.id);
+      }
       continue;
     }
 
@@ -204,19 +210,21 @@ export async function publishPost(opts: PublishPostOptions): Promise<{
       results.push(publishResult);
       if (!publishResult.success) allSucceeded = false;
 
-      const [job] = await db.insert(contentPublishingJobs).values({
-        subAccountId,
-        postId,
-        platform,
-        socialAccountId,
-        trigger,
-        status: publishResult.success ? "published" : "failed",
-        externalPostId: publishResult.externalPostId,
-        errorMessage: publishResult.errorMessage,
-        startedAt: new Date(),
-        completedAt: new Date(),
-      }).returning();
-      jobIds.push(job.id);
+      if (recordJob) {
+        const [job] = await db.insert(contentPublishingJobs).values({
+          subAccountId,
+          postId,
+          platform,
+          socialAccountId,
+          trigger,
+          status: publishResult.success ? "published" : "failed",
+          externalPostId: publishResult.externalPostId,
+          errorMessage: publishResult.errorMessage,
+          startedAt: new Date(),
+          completedAt: new Date(),
+        }).returning();
+        jobIds.push(job.id);
+      }
 
       if (publishResult.success) {
         await db.update(contentPostPlatforms).set({
@@ -246,18 +254,20 @@ export async function publishPost(opts: PublishPostOptions): Promise<{
       results.push(failResult);
       allSucceeded = false;
 
-      const [job] = await db.insert(contentPublishingJobs).values({
-        subAccountId,
-        postId,
-        platform,
-        socialAccountId,
-        trigger,
-        status: "failed",
-        errorMessage: failResult.errorMessage,
-        startedAt: new Date(),
-        completedAt: new Date(),
-      }).returning();
-      jobIds.push(job.id);
+      if (recordJob) {
+        const [job] = await db.insert(contentPublishingJobs).values({
+          subAccountId,
+          postId,
+          platform,
+          socialAccountId,
+          trigger,
+          status: "failed",
+          errorMessage: failResult.errorMessage,
+          startedAt: new Date(),
+          completedAt: new Date(),
+        }).returning();
+        jobIds.push(job.id);
+      }
     }
   }
 

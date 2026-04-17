@@ -192,6 +192,7 @@ async function processJob(job: any): Promise<void> {
         subAccountId: job.sub_account_id,
         trigger: job.trigger || "scheduled",
         platforms: [job.platform],
+        recordJob: false,
       });
 
       const platformResult = result.results.find((r: any) => r.platform === job.platform);
