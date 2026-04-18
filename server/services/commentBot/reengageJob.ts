@@ -1,6 +1,6 @@
 import { db } from "../../db";
 import { messages, subAccounts } from "@shared/schema";
-import { emitAiFailed, emitMessageFailed } from "../../observability/messagingEvents";
+import { emitAiFailed, emitMessageFailed, markErrorEmitted, isErrorEmitted } from "../../observability/messagingEvents";
 import { eq, and, gte, desc, sql, inArray } from "drizzle-orm";
 import { aiChat } from "../../aiGateway";
 import { postProcessAndGuard, maskPiiForLogs } from "../personas/laylaPostProcessor";
@@ -318,6 +318,16 @@ export async function runReengageJob(options?: {
         let replyText = llmResult.text.trim();
         if (!replyText) {
           console.warn(`[REENGAGE] aiChat returned empty text for thread=${convo.threadId}. Skipping.`);
+          emitAiFailed({
+            subAccountId,
+            channel: convo.threadId.includes("instagram") ? "instagram" : "facebook",
+            path: "reengage",
+            threadId: convo.threadId,
+            userId: convo.senderId,
+            persona: isLayla ? "layla" : "business",
+            reason: "empty_llm_text",
+            metadata: { route: isLayla ? "reengage-layla" : "reengage-business" },
+          });
           continue;
         }
 
@@ -388,16 +398,18 @@ export async function runReengageJob(options?: {
 
       } catch (err: any) {
         console.error(`[REENGAGE] Error processing thread=${convo.threadId}:`, err.message);
-        emitMessageFailed({
-          subAccountId,
-          channel: convo.threadId.includes("instagram") ? "instagram" : "facebook",
-          path: "reengage",
-          threadId: convo.threadId,
-          userId: convo.senderId,
-          persona: isLayla ? "layla" : "business",
-          reason: "reengage_pipeline_throw",
-          errorMessage: err?.message,
-        });
+        if (!isErrorEmitted(err)) {
+          emitMessageFailed({
+            subAccountId,
+            channel: convo.threadId.includes("instagram") ? "instagram" : "facebook",
+            path: "reengage",
+            threadId: convo.threadId,
+            userId: convo.senderId,
+            persona: isLayla ? "layla" : "business",
+            reason: "reengage_pipeline_throw",
+            errorMessage: err?.message,
+          });
+        }
         result.errors++;
         result.details.push({ threadId: convo.threadId, senderId: convo.senderId, action: "error" });
       }
@@ -460,6 +472,7 @@ async function sendMetaDM(
       errorMessage: transportErr?.message,
       metadata: { pageId },
     });
+    markErrorEmitted(transportErr);
     throw transportErr;
   }
 
@@ -471,20 +484,37 @@ async function sendMetaDM(
     ? undefined
     : `meta_api_${res.status}: ${(data?.error?.message || JSON.stringify(data)).toString().substring(0, 300)}`;
 
-  await db.insert(messages).values({
-    subAccountId,
-    channel,
-    direction: "outbound",
-    contactPhone: recipientId,
-    body: text,
-    status,
-    messageSid: data?.message_id,
-    traceId,
-    threadId,
-    pageId,
-    senderId: pageId,
-    errorMessage,
-  });
+  try {
+    await db.insert(messages).values({
+      subAccountId,
+      channel,
+      direction: "outbound",
+      contactPhone: recipientId,
+      body: text,
+      status,
+      messageSid: data?.message_id,
+      traceId,
+      threadId,
+      pageId,
+      senderId: pageId,
+      errorMessage,
+    });
+  } catch (postSendInsertErr: any) {
+    // Isolated: a CRM-write failure must not mask the actual send result.
+    // We emit a separate observability event and continue so the !sendOk
+    // branch below still runs (or we log the successful send on success).
+    console.error(`[REENGAGE] Post-send CRM insert failed (send status=${status}): ${postSendInsertErr?.message}`);
+    emitMessageFailed({
+      subAccountId,
+      channel,
+      path: "reengage",
+      threadId,
+      userId: recipientId,
+      reason: "crm_write_post_send_failed",
+      errorMessage: postSendInsertErr?.message,
+      metadata: { pageId, sendStatus: status },
+    });
+  }
 
   if (!sendOk) {
     emitMessageFailed({
@@ -497,10 +527,12 @@ async function sendMetaDM(
       errorMessage,
       metadata: { pageId, fbErrorCode: data?.error?.code },
     });
-    throw new Error(`Meta DM send failed: ${data.error?.message || JSON.stringify(data)}`);
+    const sendErr = new Error(`Meta DM send failed: ${data.error?.message || JSON.stringify(data)}`);
+    markErrorEmitted(sendErr);
+    throw sendErr;
   }
 
-  console.log(`[REENGAGE] ${status} to ${recipientId}: "${maskPiiForLogs(outboundText.substring(0, 60))}..."`);
+  console.log(`[REENGAGE] ${status} to ${recipientId}: "${maskPiiForLogs(text.substring(0, 60))}..."`);
 }
 
 const REENGAGE_INTERVAL_MS = 6 * 60 * 60 * 1000;

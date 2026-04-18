@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { contacts, messages, subAccounts, integrationConnections } from "@shared/schema";
-import { emitAiFailed, emitMessageFailed, emitMessageSuppressedJustReplied } from "../observability/messagingEvents";
+import { emitAiFailed, emitMessageFailed, emitMessageSuppressedJustReplied, markErrorEmitted, isErrorEmitted } from "../observability/messagingEvents";
 import { sql, eq, and, or, gte, desc } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -1241,18 +1241,16 @@ export function registerWebhooksRoutes(app: Express) {
 
           const aiResult = await aiChat(aiMessages, { temperature: 0.7, maxTokens: 1024, route: "dm-catchup-reply" });
           if (!aiResult.ok || !aiResult.text) {
-            if (!aiResult.ok) {
-              emitAiFailed({
-                subAccountId,
-                channel,
-                path: "catchup",
-                threadId: `${subAccountId}::${senderId}::${channel}`,
-                userId: senderId,
-                reason: "ai_chat_returned_ok_false",
-                errorMessage: aiResult.errorMessage,
-                metadata: { route: "dm-catchup-reply" },
-              });
-            }
+            emitAiFailed({
+              subAccountId,
+              channel,
+              path: "catchup",
+              threadId: `${subAccountId}::${senderId}::${channel}`,
+              userId: senderId,
+              reason: aiResult.ok ? "empty_ai_reply" : "ai_chat_returned_ok_false",
+              errorMessage: aiResult.errorMessage,
+              metadata: { route: "dm-catchup-reply" },
+            });
             results.push({ senderId, channel, status: "skip", reason: aiResult.ok ? "empty_ai_reply" : `ai_error:${aiResult.errorMessage ?? "unknown"}` });
             continue;
           }
@@ -1292,20 +1290,36 @@ export function registerWebhooksRoutes(app: Express) {
             });
           }
 
-          await db.insert(messages).values({
-            subAccountId,
-            channel,
-            direction: "outbound",
-            contactPhone: senderId,
-            body: aiReply,
-            status,
-            messageSid: sendResult?.message_id,
-            threadId,
-            pageId,
-            senderId: pageId,
-            traceId: `catchup-${Date.now()}`,
-            errorMessage,
-          });
+          try {
+            await db.insert(messages).values({
+              subAccountId,
+              channel,
+              direction: "outbound",
+              contactPhone: senderId,
+              body: aiReply,
+              status,
+              messageSid: sendResult?.message_id,
+              threadId,
+              pageId,
+              senderId: pageId,
+              traceId: `catchup-${Date.now()}`,
+              errorMessage,
+            });
+          } catch (postSendInsertErr: any) {
+            // Isolated: CRM-write failure must not be classified as
+            // catchup_pipeline_throw by the outer catch.
+            console.error(`[DM-CATCHUP] Post-send CRM insert failed (send status=${status}): ${postSendInsertErr?.message}`);
+            emitMessageFailed({
+              subAccountId,
+              channel,
+              path: "catchup",
+              threadId,
+              userId: senderId,
+              reason: "crm_write_post_send_failed",
+              errorMessage: postSendInsertErr?.message,
+              metadata: { pageId, sendStatus: status },
+            });
+          }
 
           if (sendOk) {
             broadcastNewMessage(subAccountId, {
@@ -1325,15 +1339,18 @@ export function registerWebhooksRoutes(app: Express) {
           await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 5000));
         } catch (err: any) {
           console.error(`[DM-CATCHUP] Error for ${senderId}:`, err.message);
-          emitMessageFailed({
-            subAccountId,
-            channel,
-            path: "catchup",
-            threadId: `${subAccountId}::${senderId}::${channel}`,
-            userId: senderId,
-            reason: "catchup_pipeline_throw",
-            errorMessage: err?.message,
-          });
+          if (!isErrorEmitted(err)) {
+            emitMessageFailed({
+              subAccountId,
+              channel,
+              path: "catchup",
+              threadId: `${subAccountId}::${senderId}::${channel}`,
+              userId: senderId,
+              reason: "catchup_pipeline_throw",
+              errorMessage: err?.message,
+            });
+            markErrorEmitted(err);
+          }
           results.push({ senderId, channel, status: "error", reason: err.message });
         }
       }
@@ -1628,6 +1645,10 @@ export function registerWebhooksRoutes(app: Express) {
 
             const metaTrace = { traceId: metaTraceId, subAccountId, contactPhone: senderId };
             const metaRecvStart = Date.now();
+            // Stable thread id for ALL emits in this handler (suppression,
+            // ai.failed, message.failed, post-send insert, outer catch). Must
+            // be declared before the just-replied check and the AI try block.
+            const metaDmThreadId = `${subAccountId}::${senderId}::${channel}`;
             recordStepValue(metaTrace, "message_received", "success", Date.now() - metaRecvStart, {
               provider: "meta",
               metadata: { channel, mid: mid || null, bodyLength: message.length },
@@ -1646,6 +1667,15 @@ export function registerWebhooksRoutes(app: Express) {
                 status: "failed",
                 pageId: entryPageId,
                 senderId,
+              });
+              emitMessageFailed({
+                subAccountId,
+                channel,
+                path: "inbound",
+                threadId: metaDmThreadId,
+                userId: senderId,
+                reason: "missing_meta_credentials",
+                metadata: { pageId: entryPageId, mid, hasAccessToken: !!accessToken, hasPageId: !!pageId },
               });
               continue;
             }
@@ -1689,6 +1719,16 @@ export function registerWebhooksRoutes(app: Express) {
               recordStepValue(metaTrace, "crm_write", "error", Date.now() - metaCrmStart, {
                 error: crmWriteErr.message,
                 disambiguator: mid ? `${mid}-crm-err` : `meta-crm-err-${senderId}`,
+              });
+              emitMessageFailed({
+                subAccountId,
+                channel,
+                path: "inbound",
+                threadId: metaInboundThreadId,
+                userId: senderId,
+                reason: "crm_write_failed",
+                errorMessage: crmWriteErr?.message,
+                metadata: { pageId: entryPageId, mid },
               });
             }
 
@@ -1869,8 +1909,17 @@ export function registerWebhooksRoutes(app: Express) {
                 if (!sendRes.ok) {
                   const errData = await sendRes.clone().json().catch(() => ({})) as any;
                   console.error(`[META DM] Hot-lead reply FAILED to ${senderId} — HTTP ${sendRes.status}, error=${JSON.stringify(errData).substring(0, 500)}`);
+                  emitMessageFailed({
+                    subAccountId: subAccountId!,
+                    channel,
+                    path: "hot-lead",
+                    threadId: metaDmThreadId,
+                    userId: senderId,
+                    reason: `meta_api_${sendRes.status}`,
+                    errorMessage: `meta_api_${sendRes.status}: ${(errData?.error?.message || JSON.stringify(errData)).toString().substring(0, 400)}`,
+                    metadata: { pageId: entryPageId, mid, fbErrorCode: errData?.error?.code },
+                  });
                 }
-                const metaDmThreadId = `${subAccountId}::${senderId}::${channel}`;
                 await db.insert(messages).values({
                   subAccountId,
                   channel,
@@ -1954,6 +2003,15 @@ export function registerWebhooksRoutes(app: Express) {
                   pageId: entryPageId,
                   senderId,
                 });
+                emitMessageFailed({
+                  subAccountId: subAccountId!,
+                  channel,
+                  path: "keyword",
+                  threadId: metaDmThreadId,
+                  userId: senderId,
+                  reason: "missing_meta_credentials",
+                  metadata: { pageId: entryPageId, mid, keywordId: kw.id, hasAccessToken: !!accessToken, hasPageId: !!pageId },
+                });
               } else if (kw.responseText && accessToken && pageId) {
                 const kwDelayMs = Math.floor(45000 + Math.random() * 15000);
                 console.log(`[META DM] Natural delay applied: ${Math.floor(kwDelayMs / 1000)}s before keyword reply to ${senderId}`);
@@ -1976,6 +2034,16 @@ export function registerWebhooksRoutes(app: Express) {
                 const kwSendStatus = kwSendRes.ok ? "sent" : "failed";
                 if (!kwSendRes.ok) {
                   console.error(`[META DM] Keyword reply FAILED to ${senderId} — HTTP ${kwSendRes.status}, pageId=${pageId}, error=${JSON.stringify(kwSendData).substring(0, 500)}`);
+                  emitMessageFailed({
+                    subAccountId: subAccountId!,
+                    channel,
+                    path: "keyword",
+                    threadId: metaDmThreadId,
+                    userId: senderId,
+                    reason: `meta_api_${kwSendRes.status}`,
+                    errorMessage: `meta_api_${kwSendRes.status}: ${(kwSendData?.error?.message || JSON.stringify(kwSendData)).toString().substring(0, 400)}`,
+                    metadata: { pageId: entryPageId, mid, keywordId: kw.id, fbErrorCode: kwSendData?.error?.code },
+                  });
                 }
 
                 await db.insert(messages).values({
@@ -2195,7 +2263,9 @@ export function registerWebhooksRoutes(app: Express) {
                 await new Promise(resolve => setTimeout(resolve, naturalDelayMs));
 
                 const metaSendStart = Date.now();
-                const metaDmThreadId = `${subAccountId}::${senderId}::${channel}`;
+                // metaDmThreadId is declared in the outer per-event scope so
+                // it's available to suppression/ai.failed emits before this
+                // block and to outer-catch emits afterward.
 
                 let sentAsVoice = false;
                 const voicePersonaCfg = subAccountId ? (await storage.getSubAccount(subAccountId))?.aiPromptConfig as any : null;
@@ -2249,11 +2319,31 @@ export function registerWebhooksRoutes(app: Express) {
                           });
                         } else {
                           console.error(`[LAYLA-VOICE] Voice send FAILED — HTTP ${voiceSendRes.status}: ${JSON.stringify(voiceSendData).substring(0, 300)}`);
+                          emitMessageFailed({
+                            subAccountId: subAccountId!,
+                            channel,
+                            path: "auto-reply-voice",
+                            threadId: metaDmThreadId,
+                            userId: senderId,
+                            reason: `meta_api_${voiceSendRes.status}`,
+                            errorMessage: `voice_send_failed meta_api_${voiceSendRes.status}: ${(voiceSendData?.error?.message || JSON.stringify(voiceSendData)).toString().substring(0, 300)}`,
+                            metadata: { pageId: entryPageId, mid, fbErrorCode: voiceSendData?.error?.code },
+                          });
                         }
                       }
                     }
                   } catch (voiceGenErr: any) {
                     console.error(`[LAYLA-VOICE] Voice generation/send error: ${voiceGenErr.message}`);
+                    emitMessageFailed({
+                      subAccountId: subAccountId!,
+                      channel,
+                      path: "auto-reply-voice",
+                      threadId: metaDmThreadId,
+                      userId: senderId,
+                      reason: "voice_pipeline_throw",
+                      errorMessage: voiceGenErr?.message,
+                      metadata: { pageId: entryPageId, mid },
+                    });
                   }
                 }
 
@@ -2278,6 +2368,15 @@ export function registerWebhooksRoutes(app: Express) {
                     error: "META_ACCESS_TOKEN or META_PAGE_ID not configured",
                     metadata: { channel },
                     disambiguator: mid ? `${mid}-send-err` : `meta-send-err-${senderId}`,
+                  });
+                  emitMessageFailed({
+                    subAccountId: subAccountId!,
+                    channel,
+                    path: "auto-reply",
+                    threadId: metaDmThreadId,
+                    userId: senderId,
+                    reason: "missing_meta_credentials",
+                    metadata: { pageId: entryPageId, mid, hasAccessToken: !!accessToken, hasPageId: !!pageId },
                   });
                 } else if (aiReply && accessToken && pageId) {
                   const aiEndpoint = channel === "instagram" ? "me" : pageId;
@@ -2327,20 +2426,37 @@ export function registerWebhooksRoutes(app: Express) {
                     });
                   }
 
-                  await db.insert(messages).values({
-                    subAccountId,
-                    channel,
-                    direction: "outbound",
-                    contactPhone: senderId,
-                    body: aiReply,
-                    status: aiSendStatus,
-                    messageSid: metaMsgId,
-                    traceId: metaTraceId,
-                    threadId: metaDmThreadId,
-                    pageId: entryPageId,
-                    senderId,
-                    errorMessage: aiSendErrorMsg,
-                  });
+                  try {
+                    await db.insert(messages).values({
+                      subAccountId,
+                      channel,
+                      direction: "outbound",
+                      contactPhone: senderId,
+                      body: aiReply,
+                      status: aiSendStatus,
+                      messageSid: metaMsgId,
+                      traceId: metaTraceId,
+                      threadId: metaDmThreadId,
+                      pageId: entryPageId,
+                      senderId,
+                      errorMessage: aiSendErrorMsg,
+                    });
+                  } catch (postSendInsertErr: any) {
+                    // Isolated so a CRM-write failure after a successful send
+                    // (or after a logged send-fail) does NOT bubble to the outer
+                    // AI catch and get misclassified as ai_pipeline_throw.
+                    console.error(`[META DM] Post-send CRM insert failed (send status=${aiSendStatus}): ${postSendInsertErr?.message}`);
+                    emitMessageFailed({
+                      subAccountId: subAccountId!,
+                      channel,
+                      path: "auto-reply",
+                      threadId: metaDmThreadId,
+                      userId: senderId,
+                      reason: "crm_write_post_send_failed",
+                      errorMessage: postSendInsertErr?.message,
+                      metadata: { pageId: entryPageId, mid, sendStatus: aiSendStatus, metaMsgId },
+                    });
+                  }
                   console.log(`[LAYLA-PIPELINE] Step 6: Response logged — direction=outbound, status=${aiSendStatus}, sender=${senderId}, subAccountId=${subAccountId}${aiSendErrorMsg ? `, error_persisted=true` : ""}`);
                   broadcastNewMessage(subAccountId, {
                     subAccountId, channel, direction: "outbound", contactPhone: senderId,
@@ -2358,16 +2474,22 @@ export function registerWebhooksRoutes(app: Express) {
                   metadata: { channel },
                   disambiguator: mid ? `${mid}-ai-err` : `meta-ai-err-${senderId}`,
                 });
-                emitAiFailed({
-                  subAccountId: subAccountId!,
-                  channel,
-                  path: "auto-reply",
-                  threadId: metaDmThreadId,
-                  userId: senderId,
-                  reason: "ai_pipeline_throw",
-                  errorMessage: aiErr?.message,
-                  metadata: { mid },
-                });
+                // Defense-in-depth: only emit if no inner block already emitted
+                // for this same error. Inner emits (send fail, voice fail,
+                // post-send insert fail) attach a sentinel before any rethrow.
+                if (!isErrorEmitted(aiErr)) {
+                  emitAiFailed({
+                    subAccountId: subAccountId!,
+                    channel,
+                    path: "auto-reply",
+                    threadId: metaDmThreadId,
+                    userId: senderId,
+                    reason: "ai_pipeline_throw",
+                    errorMessage: aiErr?.message,
+                    metadata: { mid },
+                  });
+                  markErrorEmitted(aiErr);
+                }
                 // No fabricated fallback message. If the AI pipeline throws, we
                 // do NOT manufacture a "be right back" reply — that would be a
                 // dishonest message attributed to the persona. Persist the
@@ -2491,6 +2613,19 @@ export function registerWebhooksRoutes(app: Express) {
 
     } catch (err: any) {
       console.error("[META WEBHOOK] Error processing event:", err.message);
+      // Top-level fatal catch — emit so this isn't observability-silent.
+      // subAccountId may be unknown at this scope (the failure could be
+      // pre-routing); 0 is the documented sentinel for "unattributed".
+      try {
+        emitMessageFailed({
+          subAccountId: 0,
+          channel: "facebook",
+          path: "inbound",
+          reason: "meta_webhook_top_level_throw",
+          errorMessage: err?.message,
+          metadata: { stage: "top_level_catch" },
+        });
+      } catch {}
     }
   });
 
