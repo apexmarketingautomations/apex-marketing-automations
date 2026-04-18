@@ -9,6 +9,8 @@ interface BackfillOptions {
   maxPosts?: number;
   maxCommentsPerPost?: number;
   dryRun?: boolean;
+  maxAgeDays?: number;
+  maxRepliesPerRun?: number;
 }
 
 interface BackfillResult {
@@ -17,17 +19,27 @@ interface BackfillResult {
   commentsQueued: number;
   commentsSkipped: number;
   errors: string[];
+  capReached: boolean;
   details: Array<{
     postId: string;
     commentId: string;
     commenterName: string | null;
     text: string;
-    action: "queued" | "skipped_already_processed" | "skipped_own_comment" | "skipped_empty" | "skipped_dry_run";
+    action: "queued" | "skipped_already_processed" | "skipped_own_comment" | "skipped_empty" | "skipped_dry_run" | "skipped_too_old" | "skipped_cap_reached";
   }>;
 }
 
 export async function backfillComments(opts: BackfillOptions): Promise<BackfillResult> {
-  const { subAccountId, maxPosts = 10, maxCommentsPerPost = 50, dryRun = false } = opts;
+  const {
+    subAccountId,
+    maxPosts = 10,
+    maxCommentsPerPost = 50,
+    dryRun = false,
+    maxAgeDays = 0,
+    maxRepliesPerRun = 0,
+  } = opts;
+  const ageCutoff = maxAgeDays > 0 ? Date.now() - maxAgeDays * 24 * 60 * 60 * 1000 : 0;
+  const replyCap = maxRepliesPerRun > 0 ? maxRepliesPerRun : Infinity;
 
   const result: BackfillResult = {
     postsScanned: 0,
@@ -35,6 +47,7 @@ export async function backfillComments(opts: BackfillOptions): Promise<BackfillR
     commentsQueued: 0,
     commentsSkipped: 0,
     errors: [],
+    capReached: false,
     details: [],
   };
 
@@ -103,6 +116,34 @@ export async function backfillComments(opts: BackfillOptions): Promise<BackfillR
           commenterName: comment.commenterName,
           text: comment.text.substring(0, 60),
           action: "skipped_already_processed",
+        });
+        continue;
+      }
+
+      if (ageCutoff > 0 && comment.createdTime) {
+        const ts = Date.parse(comment.createdTime);
+        if (!isNaN(ts) && ts < ageCutoff) {
+          result.commentsSkipped++;
+          result.details.push({
+            postId: post.postId,
+            commentId: comment.commentId,
+            commenterName: comment.commenterName,
+            text: comment.text.substring(0, 60),
+            action: "skipped_too_old",
+          });
+          continue;
+        }
+      }
+
+      if (result.commentsQueued >= replyCap) {
+        result.commentsSkipped++;
+        result.capReached = true;
+        result.details.push({
+          postId: post.postId,
+          commentId: comment.commentId,
+          commenterName: comment.commenterName,
+          text: comment.text.substring(0, 60),
+          action: "skipped_cap_reached",
         });
         continue;
       }

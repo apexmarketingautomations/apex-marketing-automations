@@ -460,10 +460,17 @@ export function registerMetaOpsRoutes(app: Express) {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
     if (!subAccountId) return res.status(400).json({ error: "Invalid subAccountId" });
     const dryRun = req.body.dryRun === true;
-    const maxPosts = parseInt(req.body.maxPosts) || 5;
+    const clampInt = (v: any, def: number, min: number, max: number) => {
+      const n = parseInt(v);
+      if (!Number.isFinite(n)) return def;
+      return Math.max(min, Math.min(max, n));
+    };
+    const maxPosts = clampInt(req.body.maxPosts, 5, 1, 100);
+    const maxAgeDays = clampInt(req.body.maxAgeDays, 0, 0, 365);
+    const maxRepliesPerRun = clampInt(req.body.maxRepliesPerRun, 0, 0, 1000);
 
     const { backfillComments } = await import("../services/commentBot/commentBackfill");
-    const result = await backfillComments({ subAccountId, maxPosts, dryRun });
+    const result = await backfillComments({ subAccountId, maxPosts, dryRun, maxAgeDays, maxRepliesPerRun });
     res.json(result);
   }));
 

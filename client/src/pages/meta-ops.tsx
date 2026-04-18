@@ -603,10 +603,18 @@ function ControlsTab({ subAccountId, health, onRefresh }: { subAccountId: number
   });
 
   const [showBackfillDetails, setShowBackfillDetails] = useState(false);
+  const [backfillMaxPosts, setBackfillMaxPosts] = useState(50);
+  const [backfillMaxAgeDays, setBackfillMaxAgeDays] = useState(30);
+  const [backfillMaxRepliesPerRun, setBackfillMaxRepliesPerRun] = useState(100);
   const backfillMutation = useMutation({
     mutationFn: (dryRun: boolean) => {
       setShowBackfillDetails(false);
-      return apiRequest("POST", `/api/meta-ops/backfill/${subAccountId}`, { dryRun, maxPosts: 50 }).then(r => r.json());
+      return apiRequest("POST", `/api/meta-ops/backfill/${subAccountId}`, {
+        dryRun,
+        maxPosts: backfillMaxPosts,
+        maxAgeDays: backfillMaxAgeDays,
+        maxRepliesPerRun: backfillMaxRepliesPerRun,
+      }).then(r => r.json());
     },
     onSuccess: (data, dryRun) => {
       const queued = data.commentsQueued || 0;
@@ -652,6 +660,46 @@ function ControlsTab({ subAccountId, health, onRefresh }: { subAccountId: number
         <CardContent className="p-5">
           <h3 className="text-sm font-semibold text-white mb-4">Comment Backfill</h3>
           <div className="text-xs text-zinc-400 mb-4">Fetch and process recent comments from your FB/IG posts that may have been missed by webhooks.</div>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div>
+              <label className="text-[10px] uppercase tracking-wide text-zinc-500 block mb-1">Posts to scan</label>
+              <Input
+                type="number"
+                min={1}
+                max={100}
+                value={backfillMaxPosts}
+                onChange={(e) => setBackfillMaxPosts(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
+                className="h-8 text-xs bg-white/5 border-white/10"
+                data-testid="input-backfill-max-posts"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wide text-zinc-500 block mb-1">Skip older than (days)</label>
+              <Input
+                type="number"
+                min={0}
+                max={365}
+                value={backfillMaxAgeDays}
+                onChange={(e) => setBackfillMaxAgeDays(Math.max(0, Math.min(365, parseInt(e.target.value) || 0)))}
+                className="h-8 text-xs bg-white/5 border-white/10"
+                data-testid="input-backfill-max-age"
+              />
+              <div className="text-[10px] text-zinc-600 mt-0.5">0 = no limit</div>
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wide text-zinc-500 block mb-1">Max replies / run</label>
+              <Input
+                type="number"
+                min={0}
+                max={1000}
+                value={backfillMaxRepliesPerRun}
+                onChange={(e) => setBackfillMaxRepliesPerRun(Math.max(0, Math.min(1000, parseInt(e.target.value) || 0)))}
+                className="h-8 text-xs bg-white/5 border-white/10"
+                data-testid="input-backfill-max-replies"
+              />
+              <div className="text-[10px] text-zinc-600 mt-0.5">0 = no cap</div>
+            </div>
+          </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => backfillMutation.mutate(true)} disabled={backfillMutation.isPending} className="border-zinc-500/30" data-testid="button-backfill-preview">
               <Eye size={14} className="mr-1" />Preview
@@ -667,11 +715,13 @@ function ControlsTab({ subAccountId, health, onRefresh }: { subAccountId: number
               commentsQueued: number;
               commentsSkipped: number;
               errors: string[];
+              capReached?: boolean;
               details: Array<{ postId: string; commentId: string; commenterName: string | null; text: string; action: string }>;
             };
             const isPreview = lastBackfillWasPreview;
             const hasErrors = d.errors && d.errors.length > 0;
-            const headlineColor = hasErrors ? "text-amber-300" : "text-emerald-300";
+            const capReached = !!d.capReached;
+            const headlineColor = hasErrors ? "text-amber-300" : capReached ? "text-cyan-300" : "text-emerald-300";
             const headlineIcon = hasErrors ? AlertTriangle : CheckCircle2;
             const HeadlineIcon = headlineIcon;
             const skippedBreakdown: Record<string, number> = {};
@@ -685,11 +735,15 @@ function ControlsTab({ subAccountId, health, onRefresh }: { subAccountId: number
                 case "skipped_own_comment": return "Your own comment";
                 case "skipped_empty": return "No text";
                 case "skipped_dry_run": return "Preview only";
+                case "skipped_too_old": return "Too old";
+                case "skipped_cap_reached": return "Hit reply cap";
                 default: return a;
               }
             };
             const actionColor = (a: string) => {
               if (a === "queued") return "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
+              if (a === "skipped_cap_reached") return "bg-cyan-500/20 text-cyan-300 border-cyan-500/30";
+              if (a === "skipped_too_old") return "bg-purple-500/20 text-purple-300 border-purple-500/30";
               if (a === "skipped_already_processed") return "bg-zinc-500/20 text-zinc-300 border-zinc-500/30";
               return "bg-zinc-600/20 text-zinc-400 border-zinc-600/30";
             };
