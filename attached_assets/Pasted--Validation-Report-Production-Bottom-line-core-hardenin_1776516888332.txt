@@ -1,0 +1,104 @@
+**Validation Report — Production**
+
+**Bottom line:** core hardening work is materially improved and the reporting is now more honest, but the highest-risk live issue is **Twilio failing with 401 in production**. That must be validated through the real runtime SMS path next.
+
+### 1) Integration Health — **Confirmed**
+**Production logs confirm the scheduled cycle is running:**
+- `Running health check across 20 sub-account(s)`
+- `Cycle complete — 120 adapter runs, 0 adapter errors`
+
+**Production DB confirms state is being written to `integration_health_state`:**
+- `meta`: 2 healthy, 18 disconnected
+- `openai`: 20 healthy
+- `stripe`: 2 healthy
+- `twilio`: 20 error
+
+**Important finding:** Twilio is returning **401 Unauthorized** for every sub-account.  
+This is not a reporting bug — it is an honest surfaced failure that was previously being masked.
+
+**What is proven:**
+- jobs are running on schedule
+- health-state rows are being written
+- the system is surfacing real adapter failures instead of faking healthy state
+
+**What is not yet proven:**
+- what the live outbound SMS runtime does when it hits the same Twilio 401
+
+---
+
+### 2) Calendar — **Mostly Confirmed**
+**Code audit supports that hardcoded account logic has been removed from runtime paths.**  
+The remaining `"13"` fallback appears limited to a seed/bootstrap path, not live runtime routing.
+
+**Current production data is consistent with honest badge behavior:**
+- no sub-accounts currently have `googleCalendarSync` configured
+- no persisted calendar-linked appointments were found
+
+**What is proven:**
+- badge state is now driven by real config/status paths, not the previous hardcoded runtime behavior
+- no evidence of remaining runtime hardcoded account gating
+
+**What is not yet proven:**
+- production write-path behavior for new opt-ins via the live UI
+- concurrent prod config writes through the atomic merge path
+
+---
+
+### 3) Apex Intelligence / Events — **Partially Proven**
+`universal_events` is being populated in production.
+
+**Proven event channel:**
+- `agent.outcome` rows exist
+- sample rows were found in production
+- events persist across restart, which supports durable storage behavior
+
+**Unproven event channels:**
+- `ai.failed`
+- `message.failed`
+- suppressed / discard-related message events
+
+These paths are **wired in code**, but there is currently **no live production evidence** because no qualifying events were observed in the validation window.
+
+**Honest conclusion:**  
+The pipeline appears connected, but those failure channels remain **unvalidated in live conditions**.
+
+---
+
+### 4) Silent Path Audit — **Mixed**
+Within the validated systems, key non-blocking telemetry paths now appear to fail honestly with logging rather than silently disappearing.
+
+However, there are still legacy fire-and-forget areas outside the directly validated path that could hide downstream failures, especially in:
+- webhook insight extraction
+- sentinel-triggered automations
+- crash-ingest side effects
+
+These are not proven regressions from this hardening pass, but they remain the next class of silent-risk behavior in the broader system.
+
+---
+
+### Evidence Limits / Assumptions
+A small portion of per-row production verification could not be performed directly because row-level production reads were blocked by the DB tool.  
+Where that happened, conclusions were based on:
+- production aggregates
+- dev row-shape checks
+- code-path verification
+
+Those conclusions are reasonable, but they should still be treated as **inferred**, not direct row-level proof.
+
+---
+
+### Highest-Risk Gap
+**Twilio 401 in production, specifically the real runtime SMS path.**
+
+That is the most important next validation because the health system already proved the credentials are failing; what still matters is whether live sends:
+- fail loudly,
+- retry,
+- surface correctly,
+- or silently drop.
+
+### Recommended next step
+Do **one targeted production validation only**: trace a real outbound SMS attempt end-to-end against the current Twilio credentials and capture:
+- logs
+- code path
+- final user-visible behavior
+- whether failure is surfaced or silently discarded
