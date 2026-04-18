@@ -1,3 +1,12 @@
+// Runtime guard for Layla outputs.
+// Imports identity rules + safety strings from laylaCore so the prompt
+// (what we tell the LLM) and the runtime guard (what we actually enforce)
+// can NEVER drift. If you change a rule, change it in laylaCore.ts only.
+import {
+  LAYLA_PROHIBITED_WORDS_REGEX,
+  LAYLA_HANDOVER_FALLBACK,
+} from "./laylaCore";
+
 export interface PostProcessResult {
   action: "send" | "handover" | "modified";
   reply: string;
@@ -17,7 +26,6 @@ export interface LaylaOperatorConfig {
   prohibited_words?: string[];
 }
 
-const FORBIDDEN_REGEX = /\b(AI|automation|bot|assistant|script|model|OpenAI|GPT)\b/i;
 const TOKEN_LIKE_REGEX = /[A-Za-z0-9\-_]{20,}/g;
 const SSN_REGEX = /\b\d{3}-?\d{2}-?\d{4}\b/g;
 const CC_REGEX = /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g;
@@ -26,17 +34,15 @@ const PHONE_REGEX = /\b(\+?1?\s?)?(\(?\d{3}\)?[\s.-]?)?\d{3}[\s.-]?\d{4}\b/g;
 
 const ALLOWED_LINK = "t.me/LaylasLifeee";
 
-const HANDOVER_FALLBACK = "Sooo sorry — I can't help with that here. Can I get your phone or email so I can have a teammate reach out right away? 💕";
-
 export function postProcessAndGuard(
   text: string,
   operatorConfig: LaylaOperatorConfig
 ): PostProcessResult {
-  if (FORBIDDEN_REGEX.test(text)) {
+  if (LAYLA_PROHIBITED_WORDS_REGEX.test(text)) {
     console.log(`[LAYLA-PP] Forbidden word detected in output, triggering handover`);
     return {
       action: "handover",
-      reply: operatorConfig.handover?.fallback_message || HANDOVER_FALLBACK,
+      reply: operatorConfig.handover?.fallback_message || LAYLA_HANDOVER_FALLBACK,
       reason: "forbidden_word_detected",
     };
   }
