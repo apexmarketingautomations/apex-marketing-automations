@@ -19,6 +19,8 @@ import { withIdempotency, markEventCompleted, markEventFailed } from "../idempot
 import { extractAndStoreInsights } from "../services/insightExtractor";
 import { emitUniversalEvent, EVENT_TYPES } from "../intelligence/eventEmitter";
 
+const META_DM_AI_FALLBACK_TEXT = "give me a sec — be right back 💭";
+
 const recentMetaMids = new Set<string>();
 
 const metaSenderLastSeen = new Map<string, number>();
@@ -2151,23 +2153,54 @@ export function registerWebhooksRoutes(app: Express) {
                   if (isAiErrorLeak) {
                     console.error(`[META DM] BLOCKED AI-error leak from being sent to ${senderId} — body=${aiReply.substring(0, 200)}`);
                     console.error(`[LAYLA-PIPELINE] Step 5 BLOCKED: Refused to send AI-error text as reply — sender=${senderId}, subAccountId=${subAccountId}`);
+                    const fallbackText = META_DM_AI_FALLBACK_TEXT;
+                    const fbEndpoint = channel === "instagram" ? "me" : pageId;
+                    const fbUrl = `https://graph.facebook.com/v21.0/${fbEndpoint}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
+                    let fbStatus: "fallback_sent" | "failed" = "failed";
+                    let fbMsgId: string | undefined;
+                    let fbSendErr: string | undefined;
+                    try {
+                      const fbRes = await fetch(fbUrl, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          recipient: { id: senderId },
+                          messaging_type: "RESPONSE",
+                          message: { text: fallbackText },
+                          access_token: accessToken,
+                        }),
+                      });
+                      const fbData = await fbRes.json() as any;
+                      fbMsgId = fbData?.message_id;
+                      if (fbRes.ok) {
+                        fbStatus = "fallback_sent";
+                        console.log(`[META DM] Safe fallback sent to ${senderId}: messageId=${fbMsgId}`);
+                      } else {
+                        fbSendErr = `meta_api_${fbRes.status}: ${(fbData?.error?.message || JSON.stringify(fbData)).toString().substring(0, 300)}`;
+                        console.error(`[META DM] Fallback send FAILED to ${senderId} — ${fbSendErr}`);
+                      }
+                    } catch (fbErr: any) {
+                      fbSendErr = `fallback_throw: ${fbErr?.message ?? "unknown"}`;
+                      console.error(`[META DM] Fallback send threw: ${fbSendErr}`);
+                    }
                     await db.insert(messages).values({
                       subAccountId,
                       channel,
                       direction: "outbound",
                       contactPhone: senderId,
-                      body: "",
-                      status: "failed",
+                      body: fbStatus === "fallback_sent" ? fallbackText : "",
+                      status: fbStatus,
+                      messageSid: fbMsgId,
                       traceId: metaTraceId,
                       threadId: metaDmThreadId,
                       pageId: entryPageId,
                       senderId,
-                      errorMessage: `ai_error_leak_blocked: ${aiReply.substring(0, 500)}`,
+                      errorMessage: `ai_error_leak_blocked: ${aiReply.substring(0, 400)}${fbSendErr ? ` | fallback_err: ${fbSendErr}` : ""}`,
                     });
-                    recordStepValue(metaTrace, "outbound_send", "error", Date.now() - metaSendStart, {
+                    recordStepValue(metaTrace, "outbound_send", fbStatus === "fallback_sent" ? "success" : "error", Date.now() - metaSendStart, {
                       provider: "meta",
-                      error: "ai_error_leak_blocked",
-                      metadata: { channel, leak: aiReply.substring(0, 200) },
+                      error: fbStatus === "fallback_sent" ? undefined : "ai_error_leak_blocked_fallback_failed",
+                      metadata: { channel, leak: aiReply.substring(0, 200), fallback: fbStatus },
                       disambiguator: mid ? `${mid}-leak-blk` : `meta-leak-blk-${senderId}`,
                     });
                   } else {
@@ -2240,19 +2273,53 @@ export function registerWebhooksRoutes(app: Express) {
                   metadata: { channel },
                   disambiguator: mid ? `${mid}-ai-err` : `meta-ai-err-${senderId}`,
                 });
+                let fbMsgId: string | undefined;
+                let fbStatus: "fallback_sent" | "failed" = "failed";
+                let fbSendErr: string | undefined;
+                if (accessToken && pageId && senderId) {
+                  try {
+                    const fbEndpoint = channel === "instagram" ? "me" : pageId;
+                    const fbUrl = `https://graph.facebook.com/v21.0/${fbEndpoint}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
+                    const fbRes = await fetch(fbUrl, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        recipient: { id: senderId },
+                        messaging_type: "RESPONSE",
+                        message: { text: META_DM_AI_FALLBACK_TEXT },
+                        access_token: accessToken,
+                      }),
+                    });
+                    const fbData = await fbRes.json() as any;
+                    fbMsgId = fbData?.message_id;
+                    if (fbRes.ok) {
+                      fbStatus = "fallback_sent";
+                      console.log(`[META DM] Safe fallback sent (after AI throw) to ${senderId}: messageId=${fbMsgId}`);
+                    } else {
+                      fbSendErr = `meta_api_${fbRes.status}: ${(fbData?.error?.message || JSON.stringify(fbData)).toString().substring(0, 300)}`;
+                      console.error(`[META DM] Fallback send FAILED (after AI throw) to ${senderId} — ${fbSendErr}`);
+                    }
+                  } catch (fbErr: any) {
+                    fbSendErr = `fallback_throw: ${fbErr?.message ?? "unknown"}`;
+                    console.error(`[META DM] Fallback send threw: ${fbSendErr}`);
+                  }
+                } else {
+                  fbSendErr = "fallback_skipped: missing accessToken/pageId/senderId";
+                }
                 try {
                   await db.insert(messages).values({
                     subAccountId: subAccountId!,
                     channel,
                     direction: "outbound",
                     contactPhone: senderId,
-                    body: "",
-                    status: "failed",
+                    body: fbStatus === "fallback_sent" ? META_DM_AI_FALLBACK_TEXT : "",
+                    status: fbStatus,
+                    messageSid: fbMsgId,
                     traceId: metaTraceId,
                     threadId: metaDmThreadId,
                     pageId: entryPageId,
                     senderId,
-                    errorMessage: `ai_pipeline_throw: ${(aiErr?.message ?? "unknown").toString().substring(0, 500)}`,
+                    errorMessage: `ai_pipeline_throw: ${(aiErr?.message ?? "unknown").toString().substring(0, 400)}${fbSendErr ? ` | fallback_err: ${fbSendErr}` : ""}`,
                   });
                 } catch (persistErr: any) {
                   console.error(`[META DM] Failed to persist AI-error row: ${persistErr.message}`);
