@@ -602,11 +602,25 @@ function ControlsTab({ subAccountId, health, onRefresh }: { subAccountId: number
     onSuccess: (data) => { toast({ title: `Auto-reply ${data.autoReplyEnabled ? "enabled" : "disabled"}` }); onRefresh(); },
   });
 
+  const [showBackfillDetails, setShowBackfillDetails] = useState(false);
   const backfillMutation = useMutation({
-    mutationFn: (dryRun: boolean) => apiRequest("POST", `/api/meta-ops/backfill/${subAccountId}`, { dryRun, maxPosts: 5 }).then(r => r.json()),
-    onSuccess: (data) => { toast({ title: `Backfill ${data.dryRun ? "preview" : "complete"}`, description: `${data.commentsProcessed || 0} comments processed` }); },
+    mutationFn: (dryRun: boolean) => {
+      setShowBackfillDetails(false);
+      return apiRequest("POST", `/api/meta-ops/backfill/${subAccountId}`, { dryRun, maxPosts: 5 }).then(r => r.json());
+    },
+    onSuccess: (data, dryRun) => {
+      const queued = data.commentsQueued || 0;
+      const found = data.commentsFound || 0;
+      toast({
+        title: dryRun ? "Preview complete" : "Backfill complete",
+        description: dryRun
+          ? `Found ${found} comments. ${queued} would be replied to.`
+          : `Replied to ${queued} new comment${queued === 1 ? "" : "s"} out of ${found} found.`,
+      });
+    },
     onError: (e: any) => { toast({ title: "Backfill failed", description: e.message, variant: "destructive" }); },
   });
+  const lastBackfillWasPreview = backfillMutation.variables === true;
 
   return (
     <div className="space-y-6">
@@ -646,11 +660,112 @@ function ControlsTab({ subAccountId, health, onRefresh }: { subAccountId: number
               <Zap size={14} className="mr-1" />Run Backfill
             </Button>
           </div>
-          {backfillMutation.data && (
-            <div className="mt-3 p-3 bg-white/5 rounded-lg text-xs">
-              <pre className="text-zinc-300 whitespace-pre-wrap max-h-40 overflow-y-auto">{JSON.stringify(backfillMutation.data, null, 2)}</pre>
-            </div>
-          )}
+          {backfillMutation.data && (() => {
+            const d = backfillMutation.data as {
+              postsScanned: number;
+              commentsFound: number;
+              commentsQueued: number;
+              commentsSkipped: number;
+              errors: string[];
+              details: Array<{ postId: string; commentId: string; commenterName: string | null; text: string; action: string }>;
+            };
+            const isPreview = lastBackfillWasPreview;
+            const hasErrors = d.errors && d.errors.length > 0;
+            const headlineColor = hasErrors ? "text-amber-300" : "text-emerald-300";
+            const headlineIcon = hasErrors ? AlertTriangle : CheckCircle2;
+            const HeadlineIcon = headlineIcon;
+            const skippedBreakdown: Record<string, number> = {};
+            for (const det of d.details || []) {
+              skippedBreakdown[det.action] = (skippedBreakdown[det.action] || 0) + 1;
+            }
+            const actionLabel = (a: string) => {
+              switch (a) {
+                case "queued": return isPreview ? "Would reply" : "Replied";
+                case "skipped_already_processed": return "Already handled";
+                case "skipped_own_comment": return "Your own comment";
+                case "skipped_empty": return "No text";
+                case "skipped_dry_run": return "Preview only";
+                default: return a;
+              }
+            };
+            const actionColor = (a: string) => {
+              if (a === "queued") return "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
+              if (a === "skipped_already_processed") return "bg-zinc-500/20 text-zinc-300 border-zinc-500/30";
+              return "bg-zinc-600/20 text-zinc-400 border-zinc-600/30";
+            };
+            return (
+              <div className="mt-4 space-y-3">
+                <div className="p-4 bg-white/5 rounded-lg border border-white/10">
+                  <div className={`flex items-center gap-2 text-sm font-medium ${headlineColor} mb-3`} data-testid="text-backfill-headline">
+                    <HeadlineIcon size={16} />
+                    {isPreview ? "Preview complete" : "Backfill complete"}
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="p-2 rounded-md bg-white/5">
+                      <div className="text-[10px] uppercase tracking-wide text-zinc-500">Posts scanned</div>
+                      <div className="text-lg font-semibold text-white" data-testid="text-backfill-posts">{d.postsScanned}</div>
+                    </div>
+                    <div className="p-2 rounded-md bg-white/5">
+                      <div className="text-[10px] uppercase tracking-wide text-zinc-500">Comments found</div>
+                      <div className="text-lg font-semibold text-white" data-testid="text-backfill-found">{d.commentsFound}</div>
+                    </div>
+                    <div className="p-2 rounded-md bg-emerald-500/10 border border-emerald-500/20">
+                      <div className="text-[10px] uppercase tracking-wide text-emerald-400">{isPreview ? "Would reply" : "New replies"}</div>
+                      <div className="text-lg font-semibold text-emerald-300" data-testid="text-backfill-queued">{d.commentsQueued}</div>
+                    </div>
+                    <div className="p-2 rounded-md bg-white/5">
+                      <div className="text-[10px] uppercase tracking-wide text-zinc-500">Skipped</div>
+                      <div className="text-lg font-semibold text-zinc-300" data-testid="text-backfill-skipped">{d.commentsSkipped}</div>
+                    </div>
+                  </div>
+                  {Object.keys(skippedBreakdown).length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {Object.entries(skippedBreakdown).map(([action, count]) => (
+                        <Badge key={action} variant="outline" className={`text-[10px] ${actionColor(action)}`}>
+                          {actionLabel(action)}: {count}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                  {hasErrors && (
+                    <div className="mt-3 p-2 rounded-md bg-amber-500/10 border border-amber-500/20">
+                      <div className="text-xs font-medium text-amber-300 mb-1 flex items-center gap-1">
+                        <AlertTriangle size={12} /> {d.errors.length} error{d.errors.length === 1 ? "" : "s"}
+                      </div>
+                      <ul className="text-xs text-amber-200/80 space-y-0.5 list-disc list-inside">
+                        {d.errors.slice(0, 3).map((err, i) => <li key={i}>{err}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {d.details && d.details.length > 0 && (
+                    <button
+                      onClick={() => setShowBackfillDetails(v => !v)}
+                      className="mt-3 text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+                      data-testid="button-toggle-backfill-details"
+                    >
+                      {showBackfillDetails ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                      {showBackfillDetails ? "Hide" : "Show"} per-comment details ({d.details.length})
+                    </button>
+                  )}
+                </div>
+                {showBackfillDetails && d.details && d.details.length > 0 && (
+                  <div className="p-3 bg-white/5 rounded-lg border border-white/10 max-h-64 overflow-y-auto space-y-2">
+                    {d.details.map((det, i) => (
+                      <div key={i} className="text-xs border-b border-white/5 last:border-0 pb-2 last:pb-0" data-testid={`row-backfill-detail-${i}`}>
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <div className="text-zinc-300 font-medium truncate">{det.commenterName || "Unknown"}</div>
+                          <Badge variant="outline" className={`text-[10px] shrink-0 ${actionColor(det.action)}`}>
+                            {actionLabel(det.action)}
+                          </Badge>
+                        </div>
+                        {det.text && <div className="text-zinc-400 italic">"{det.text.slice(0, 140)}{det.text.length > 140 ? "…" : ""}"</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </CardContent>
       </Card>
 
