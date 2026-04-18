@@ -90,7 +90,14 @@ export function registerBotRoutes(app: Express) {
     messages.push({ role: "user", content: parsed.data.message });
 
     const botChatResult = await aiChat(messages, { temperature: 0.7, maxTokens: 1024, route: "bot-chat" });
-    const reply = botChatResult.text || "I'm here to help! Could you tell me more?";
+    let reply = botChatResult.text;
+    if (!reply) {
+      const { pickRecoveryLine, classifyAiFailure } = await import("../messaging/aiRecovery");
+      const reason = botChatResult.ok ? "ai_failed" : classifyAiFailure(botChatResult.errorMessage);
+      const rec = pickRecoveryLine({ reason, threadKey: `bot:${(req.ip || "anon")}`, channel: "web" });
+      reply = rec.text;
+      console.warn(`[BOT-CHAT][AI-RECOVERY] reason=${rec.reason} variant=${rec.variantIndex} aiOk=${botChatResult.ok} aiErr=${botChatResult.errorMessage}`);
+    }
 
     await logUsageInternal(null, "AI_CHAT", 1, "Bot trainer chat");
 

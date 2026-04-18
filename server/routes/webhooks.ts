@@ -219,9 +219,16 @@ export function registerWebhooksRoutes(app: Express) {
         });
       }
 
-      let aiReply = "Thanks for your message! We'll get back to you shortly.";
+      const { pickRecoveryLine, classifyAiFailure } = await import("../messaging/aiRecovery");
+      const recoveryThreadKey = `${channel}:${matchedAccountId}:${senderClean}`;
+      let aiReply: string | null = null;
+      let aiRecoveryUsed: { reason: string; persona: string } | null = null;
 
-      if (isAIConfigured()) {
+      if (!isAIConfigured()) {
+        const rec = pickRecoveryLine({ reason: "ai_failed", threadKey: recoveryThreadKey, channel });
+        aiReply = rec.text;
+        aiRecoveryUsed = { reason: rec.reason, persona: rec.persona };
+      } else {
         const aiStart = Date.now();
         try {
           const dmCtx = await assembleDmContext({
@@ -237,26 +244,35 @@ export function registerWebhooksRoutes(app: Express) {
           const smsAiResult = await aiChat(aiMessages, { temperature: 0.7, maxTokens: 1024, route: "webhook-sms-reply" });
           if (smsAiResult.ok && smsAiResult.text) {
             aiReply = smsAiResult.text;
-          } else if (!smsAiResult.ok) {
-            console.warn(`[${channel.toUpperCase()}][AI-REPLY] aiChat returned ok=false: ${smsAiResult.errorMessage}. Using static fallback text.`);
+          } else {
+            const reason = classifyAiFailure(smsAiResult.errorMessage);
+            const rec = pickRecoveryLine({ reason, threadKey: recoveryThreadKey, channel });
+            aiReply = rec.text;
+            aiRecoveryUsed = { reason: rec.reason, persona: rec.persona };
+            console.warn(`[${channel.toUpperCase()}][AI-RECOVERY] reason=${reason} persona=${rec.persona} variant=${rec.variantIndex} aiErr=${smsAiResult.errorMessage}`);
           }
-          console.log(`[${channel.toUpperCase()}][AI-REPLY] Generated — provider=${smsAiResult.provider}, replyLength=${aiReply.length}, elapsed=${Date.now() - aiStart}ms`);
+          console.log(`[${channel.toUpperCase()}][AI-REPLY] Generated — provider=${smsAiResult.provider}, replyLength=${aiReply.length}, elapsed=${Date.now() - aiStart}ms, recovery=${aiRecoveryUsed?.reason || "none"}`);
 
           extractInsightsFromConversation(
             dmCtx.threadHistory.map(h => ({ role: h.role, content: h.content })),
             matchedAccountId,
             incomingMsg
           ).catch(err => console.error(`[SHARED-INTEL] Background extraction failed:`, err instanceof Error ? err.message : err));
-          recordStepValue(trace, "ai_response_generated", "success", Date.now() - aiStart, {
+          recordStepValue(trace, "ai_response_generated", aiRecoveryUsed ? "error" : "success", Date.now() - aiStart, {
             provider: "ai",
-            metadata: { replyLength: aiReply.length },
+            metadata: { replyLength: aiReply.length, recovery: aiRecoveryUsed || undefined },
             disambiguator: inboundSid || `ai-${senderClean}`,
           });
         } catch (aiErr: any) {
-          console.error(`[${channel.toUpperCase()}][AI-REPLY] Error — sender=${senderClean}, subAccountId=${matchedAccountId}, error=${aiErr.message}`);
+          const reason = classifyAiFailure(aiErr?.message);
+          const rec = pickRecoveryLine({ reason, threadKey: recoveryThreadKey, channel });
+          aiReply = rec.text;
+          aiRecoveryUsed = { reason: rec.reason, persona: rec.persona };
+          console.error(`[${channel.toUpperCase()}][AI-RECOVERY] thrown reason=${reason} persona=${rec.persona} variant=${rec.variantIndex} err=${aiErr?.message}`);
           recordStepValue(trace, "ai_response_generated", "error", Date.now() - aiStart, {
             provider: "ai",
             error: aiErr.message,
+            metadata: { recovery: aiRecoveryUsed },
             disambiguator: inboundSid ? `${inboundSid}-ai-err` : `ai-err-${senderClean}`,
           });
         }
@@ -790,6 +806,10 @@ export function registerWebhooksRoutes(app: Express) {
         console.log(`[TWILIO-INBOUND][${traceId}] No vapiAssistantId for subAccount ${subAccountId} — using context-aware AI fallback`);
       }
 
+      const { pickRecoveryLine: pickRecTwIn, classifyAiFailure: classifyTwIn } = await import("../messaging/aiRecovery");
+      const twInRecoveryThreadKey = `sms:${subAccountId}:${senderClean}`;
+      let twInRecoveryReason: string | null = vapiError ? classifyTwIn(vapiError) : null;
+
       if (!aiReply && isAIConfigured()) {
         try {
           const dmCtx = await assembleDmContext({
@@ -805,20 +825,28 @@ export function registerWebhooksRoutes(app: Express) {
           const fallbackAiResult = await aiChat(aiMsgs, { temperature: 0.7, maxTokens: 512, route: "twilio-inbound-fallback" });
           if (fallbackAiResult.ok && fallbackAiResult.text) {
             aiReply = fallbackAiResult.text;
+            twInRecoveryReason = null;
             console.log(`[TWILIO-INBOUND][${traceId}] Context-aware AI reply (${Date.now() - tAiStart}ms): ${aiReply.slice(0, 80)}`);
-          } else if (!fallbackAiResult.ok) {
-            console.warn(`[TWILIO-INBOUND][${traceId}] AI fallback returned error: ${fallbackAiResult.errorMessage}`);
+          } else {
+            twInRecoveryReason = classifyTwIn(fallbackAiResult.errorMessage);
+            console.warn(`[TWILIO-INBOUND][${traceId}] AI fallback returned error reason=${twInRecoveryReason}: ${fallbackAiResult.errorMessage}`);
           }
         } catch (aiErr: any) {
-          console.error(`[TWILIO-INBOUND][${traceId}] Context-aware AI fallback error:`, aiErr.message);
+          twInRecoveryReason = classifyTwIn(aiErr?.message);
+          console.error(`[TWILIO-INBOUND][${traceId}] Context-aware AI fallback error reason=${twInRecoveryReason}:`, aiErr.message);
         }
+      } else if (!aiReply && !isAIConfigured()) {
+        twInRecoveryReason = "ai_failed";
       }
-
-      const fallbackReply = "Thanks for your message! We'll get back to you shortly.";
 
       // 10. Reply handling
       if (toRaw) {
-        const replyBody = aiReply || fallbackReply;
+        let replyBody = aiReply;
+        if (!replyBody) {
+          const rec = pickRecTwIn({ reason: (twInRecoveryReason as any) || "ai_failed", threadKey: twInRecoveryThreadKey, channel: "sms" });
+          replyBody = rec.text;
+          console.warn(`[TWILIO-INBOUND][${traceId}][AI-RECOVERY] reason=${rec.reason} persona=${rec.persona} variant=${rec.variantIndex}`);
+        }
         const tSendStart = Date.now();
         const { sendSms: sendSmsTwInAi } = await import("../messaging/sendSms");
         const aiR = await sendSmsTwInAi({
@@ -997,7 +1025,10 @@ export function registerWebhooksRoutes(app: Express) {
         return;
       }
 
+      const { pickRecoveryLine: pickRecScoped, classifyAiFailure: classifyScoped } = await import("../messaging/aiRecovery");
+      const scopedRecoveryThreadKey = `sms:${subAccountIdParam}:${senderClean}`;
       let aiReply: string | null = null;
+      let scopedRecoveryReason: string | null = null;
       if (isAIConfigured()) {
         try {
           const dmCtx = await assembleDmContext({ subAccountId: subAccountIdParam, contactPhone: senderClean, channel: "sms" });
@@ -1009,15 +1040,26 @@ export function registerWebhooksRoutes(app: Express) {
           const aiResult = await aiChat(aiMsgs, { temperature: 0.7, maxTokens: 512, route: "webhook-scoped-sms" });
           if (aiResult.ok && aiResult.text) {
             aiReply = aiResult.text;
-          } else if (!aiResult.ok) {
-            console.warn(`[WEBHOOK-SCOPED][${traceId}] aiChat returned ok=false: ${aiResult.errorMessage}. Using static fallback.`);
+          } else {
+            scopedRecoveryReason = classifyScoped(aiResult.errorMessage);
+            console.warn(`[WEBHOOK-SCOPED][${traceId}] aiChat returned ok=false reason=${scopedRecoveryReason}: ${aiResult.errorMessage}`);
           }
         } catch (aiErr: any) {
-          console.error(`[WEBHOOK-SCOPED][${traceId}] AI error:`, aiErr.message);
+          scopedRecoveryReason = classifyScoped(aiErr?.message);
+          console.error(`[WEBHOOK-SCOPED][${traceId}] AI error reason=${scopedRecoveryReason}:`, aiErr.message);
         }
+      } else {
+        scopedRecoveryReason = "ai_failed";
       }
 
-      const replyBody = aiReply || "Thanks for your message! We'll get back to you shortly.";
+      let replyBody: string;
+      if (aiReply) {
+        replyBody = aiReply;
+      } else {
+        const rec = pickRecScoped({ reason: (scopedRecoveryReason as any) || "ai_failed", threadKey: scopedRecoveryThreadKey, channel: "sms" });
+        replyBody = rec.text;
+        console.warn(`[WEBHOOK-SCOPED][${traceId}][AI-RECOVERY] reason=${rec.reason} persona=${rec.persona} variant=${rec.variantIndex}`);
+      }
       if (toRaw) {
         const { sendSms: sendSmsScopedAi } = await import("../messaging/sendSms");
         const r = await sendSmsScopedAi({

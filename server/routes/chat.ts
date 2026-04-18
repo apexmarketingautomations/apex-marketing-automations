@@ -66,7 +66,9 @@ export function registerChatRoutes(app: Express) {
     }
 
     if (!isAIConfigured()) {
-      return res.json({ reply: "Thanks for your interest! Visit our pricing page at /pricing to see our plans, or reach out to us directly." });
+      const { pickRecoveryLine } = await import("../messaging/aiRecovery");
+      const rec = pickRecoveryLine({ reason: "ai_failed", threadKey: `sales:${ip}`, channel: "web" });
+      return res.json({ reply: rec.text });
     }
 
     const { message, niche, conversationHistory } = req.body;
@@ -102,14 +104,23 @@ export function registerChatRoutes(app: Express) {
     chatMessages.push({ role: "user", content: message });
 
     const result = await aiChat(chatMessages, { temperature: 0.8, maxTokens: 1024, route: "sales-chat" });
-    const reply = result.text || "Great question! Check out our plans at /pricing to see everything Apex can do for your business.";
+    let reply = result.text;
+    if (!reply) {
+      const { pickRecoveryLine, classifyAiFailure } = await import("../messaging/aiRecovery");
+      const reason = result.ok ? "ai_failed" : classifyAiFailure(result.errorMessage);
+      const rec = pickRecoveryLine({ reason, threadKey: `sales:${ip}`, channel: "web" });
+      reply = rec.text;
+      console.warn(`[SALES-CHAT][AI-RECOVERY] reason=${rec.reason} variant=${rec.variantIndex} aiOk=${result.ok} aiErr=${result.errorMessage}`);
+    }
     await logUsageInternal(null, "AI_CHAT", 1, "Sales chatbot response");
     res.json({ reply });
   }));
 
   app.post("/api/chat", asyncHandler(async (req, res) => {
     if (!isAIConfigured()) {
-      return res.status(503).json({ reply: "Chat service is currently offline. Please try again later." });
+      const { pickRecoveryLine } = await import("../messaging/aiRecovery");
+      const rec = pickRecoveryLine({ reason: "ai_failed", threadKey: `chat:${(req.ip || "anon")}`, channel: "web" });
+      return res.status(503).json({ reply: rec.text });
     }
 
     const parsed = chatBodySchema.safeParse(req.body);
@@ -139,25 +150,40 @@ export function registerChatRoutes(app: Express) {
     chatMessages.push({ role: "user", content: parsed.data.message });
 
     const aiStart = Date.now();
-    let reply = "I'm here to help! Could you tell me more about what you're looking for?";
+    const { pickRecoveryLine: pickRecChat, classifyAiFailure: classifyChat } = await import("../messaging/aiRecovery");
+    const chatThreadKey = `chat:${subAccountId || "anon"}:${(req.ip || "anon")}`;
+    let reply: string;
+    let chatRecoveryUsed: { reason: string; persona: string } | null = null;
     try {
       const result = await aiChat(chatMessages, { temperature: 0.7, maxTokens: 1024, route: "chat-widget" });
-      reply = result.text || reply;
+      if (result.ok && result.text) {
+        reply = result.text;
+      } else {
+        const reason = classifyChat(result.errorMessage);
+        const rec = pickRecChat({ reason, threadKey: chatThreadKey, channel: "web" });
+        reply = rec.text;
+        chatRecoveryUsed = { reason: rec.reason, persona: rec.persona };
+        console.warn(`[CHAT-WIDGET][AI-RECOVERY] reason=${rec.reason} variant=${rec.variantIndex} aiOk=${result.ok} aiErr=${result.errorMessage}`);
+      }
       if (trace) {
-        recordStepValue(trace, "ai_chat", "success", Date.now() - aiStart, {
+        recordStepValue(trace, "ai_chat", chatRecoveryUsed ? "error" : "success", Date.now() - aiStart, {
           provider: "ai",
-          metadata: { route: "chat-widget", replyLength: reply.length },
+          metadata: { route: "chat-widget", replyLength: reply.length, recovery: chatRecoveryUsed || undefined },
         });
       }
     } catch (aiErr: any) {
+      const reason = classifyChat(aiErr?.message);
+      const rec = pickRecChat({ reason, threadKey: chatThreadKey, channel: "web" });
+      reply = rec.text;
+      chatRecoveryUsed = { reason: rec.reason, persona: rec.persona };
+      console.error(`[CHAT-WIDGET][AI-RECOVERY] thrown reason=${rec.reason} variant=${rec.variantIndex} err=${aiErr?.message}`);
       if (trace) {
         recordStepValue(trace, "ai_chat", "error", Date.now() - aiStart, {
           provider: "ai",
           error: aiErr.message,
-          metadata: { route: "chat-widget" },
+          metadata: { route: "chat-widget", recovery: chatRecoveryUsed },
         });
       }
-      throw aiErr;
     }
 
     await logUsageInternal(null, "AI_CHAT", 1, "Chat widget AI response");
