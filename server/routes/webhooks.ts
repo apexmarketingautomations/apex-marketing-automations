@@ -1235,46 +1235,66 @@ export function registerWebhooksRoutes(app: Express) {
 
           const endpoint = channel === "instagram" ? "me" : pageId;
           const sendUrl = `https://graph.facebook.com/v21.0/${endpoint}/messages${appsecretProof ? `?appsecret_proof=${appsecretProof}` : ""}`;
+          const threadId = `${subAccountId}::${senderId}::${channel}`;
+
+          const isAiErrorLeak = typeof aiReply === "string" && aiReply.startsWith("[AI Error:");
+          const outboundText = isAiErrorLeak ? META_DM_AI_FALLBACK_TEXT : aiReply;
+
           const sendResp = await fetch(sendUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               recipient: { id: senderId },
               messaging_type: "RESPONSE",
-              message: { text: aiReply },
+              message: { text: outboundText },
               access_token: accessToken,
             }),
           });
           const sendResult = await sendResp.json() as any;
-          const status = sendResp.ok ? "sent" : "failed";
-          const threadId = `${subAccountId}::${senderId}::${channel}`;
+          const sendOk = sendResp.ok;
+          const status = isAiErrorLeak
+            ? (sendOk ? "fallback_sent" : "failed")
+            : (sendOk ? "sent" : "failed");
+          const sendErrMsg = sendOk
+            ? undefined
+            : `meta_api_${sendResp.status}: ${(sendResult?.error?.message || JSON.stringify(sendResult)).toString().substring(0, 300)}`;
+          const errorMessage = isAiErrorLeak
+            ? `ai_error_leak_blocked: ${aiReply.substring(0, 400)}${sendErrMsg ? ` | fallback_err: ${sendErrMsg}` : ""}`
+            : sendErrMsg;
+
+          if (isAiErrorLeak) {
+            console.error(`[DM-CATCHUP] BLOCKED AI-error leak to ${senderId} (${channel}) — body=${aiReply.substring(0, 200)}`);
+          }
 
           await db.insert(messages).values({
             subAccountId,
             channel,
             direction: "outbound",
             contactPhone: senderId,
-            body: aiReply,
+            body: outboundText,
             status,
+            messageSid: sendResult?.message_id,
             threadId,
             pageId,
             senderId: pageId,
             traceId: `catchup-${Date.now()}`,
+            errorMessage,
           });
 
-          if (sendResp.ok) {
+          if (sendOk) {
             broadcastNewMessage(subAccountId, {
               subAccountId, channel, direction: "outbound", contactPhone: senderId,
-              body: aiReply, status, threadId, createdAt: new Date().toISOString(),
+              body: outboundText, status, threadId, createdAt: new Date().toISOString(),
             });
           }
 
-          console.log(`[DM-CATCHUP] ${status} reply to ${senderId} (${channel}): ${aiReply.substring(0, 80)}`);
+          console.log(`[DM-CATCHUP] ${status} reply to ${senderId} (${channel}): ${outboundText.substring(0, 80)}`);
           results.push({
             senderId, channel, status,
-            reply: aiReply.substring(0, 100),
+            reply: outboundText.substring(0, 100),
             metaMessageId: sendResult.message_id || null,
             error: sendResult.error?.message || null,
+            aiErrorBlocked: isAiErrorLeak || undefined,
           });
 
           await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 5000));
