@@ -606,7 +606,7 @@ function ControlsTab({ subAccountId, health, onRefresh }: { subAccountId: number
   const backfillMutation = useMutation({
     mutationFn: (dryRun: boolean) => {
       setShowBackfillDetails(false);
-      return apiRequest("POST", `/api/meta-ops/backfill/${subAccountId}`, { dryRun, maxPosts: 5 }).then(r => r.json());
+      return apiRequest("POST", `/api/meta-ops/backfill/${subAccountId}`, { dryRun, maxPosts: 50 }).then(r => r.json());
     },
     onSuccess: (data, dryRun) => {
       const queued = data.commentsQueued || 0;
