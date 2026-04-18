@@ -1,0 +1,107 @@
+Yes — now I want to move Apex toward the real end-state vision:
+
+## End-state vision
+Apex must become **one operator system**.
+
+Not:
+- separate DM brain
+- separate comment brain
+- separate reporting bot
+
+I want:
+
+**Apex Intelligence = orchestrator / decision-making layer**
+- understands channel + context
+- decides objective
+- decides response mode
+- selects the correct execution path
+- logs action, result, and reasoning summary
+
+Then the channel-specific generators become execution workers under that.
+
+## Important constraints
+Do **not** do a reckless full rewrite.
+Do **not** break current working DM or comment behavior.
+Do **not** collapse everything into one generic prompt.
+
+I want a **safe architectural step** toward orchestration.
+
+## What I want implemented now
+Design and implement the smallest clean version of an orchestration layer.
+
+### Target structure
+Create something like:
+
+- `Apex Intelligence / Orchestrator`
+  - receives context
+  - identifies channel (`dm`, `comment`, later `sms`, `email`, `voice`)
+  - assigns objective (`qualify`, `engage`, `convert`, `handoff`, etc.)
+  - builds the right execution request
+  - routes to the correct generator
+  - writes a clean audit event
+
+- `Execution Workers`
+  - DM generator
+  - Comment generator
+  - keep their current context-specific prompt behavior
+
+### What this means in practice
+Instead of the app directly calling:
+- DM prompt
+- Comment prompt
+
+I want it to go through an orchestration step first.
+
+That orchestration step does **not** need to be “AI deciding everything” yet.
+A deterministic routing layer is fine for now.
+
+Example:
+- if channel = DM → objective = qualify or convert → use DM execution path
+- if channel = comment → objective = engage / lightweight reply → use comment execution path
+
+## Deliverables
+1. Add an orchestration layer/module
+2. Route DM + comment generation through it
+3. Preserve the shared persona core
+4. Preserve current best-performing DM/comment prompt behavior
+5. Add audit logging that clearly shows:
+   - channel
+   - objective
+   - chosen execution path
+   - result status
+6. Add brief comments explaining architecture
+7. Test the flows so nothing regresses
+
+## Guardrails
+- No huge rewrite
+- No fake abstraction
+- No dead code
+- No “future-ready” bloat that isn’t actually used
+- Keep it clean, minimal, and real
+
+## Honesty requirements
+I want full honesty when done:
+- what changed
+- what is actually orchestrated now
+- what is still hard-coded / deterministic
+- what is still fragmented
+- what would be required for Apex Intelligence to become a true autonomous decision-maker later
+
+## What I care about most
+I care less about perfect elegance and more about:
+- moving toward **one operator architecture**
+- avoiding fragmentation
+- keeping behavior stable
+- making the system easier to evolve later
+
+## Final output format
+When you’re done, give me:
+
+1. architecture before
+2. architecture now
+3. files added / changed
+4. what is genuinely better now
+5. what is still not my end-state vision
+6. next smallest step toward true orchestration
+
+Implement carefully, test it, and do not bullshit me.

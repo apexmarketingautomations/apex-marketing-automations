@@ -1,0 +1,83 @@
+I want you to implement this toward my actual product vision, not the safe/convenient architecture.
+
+## Core vision
+Apex must feel like **one operator**, not multiple disconnected prompt pipelines.
+I do **not** want “DM bot here, comment bot there, audit bot over here” as the long-term architecture.
+I want **Apex Intelligence to become the decision-making brain / orchestrator**, with channel-specific execution underneath it.
+
+## What I want now
+Do **not** do a huge rewrite.
+Do the **minimum clean step now** that moves us toward that architecture without breaking anything.
+
+### Phase 1 — implement now
+Create a shared **persona core** file for Layla that becomes the single source of truth for:
+- identity
+- tone
+- voice
+- anti-bot behavior
+- escalation / handoff rules
+- safety boundaries
+- output cleanup style
+
+Then refactor both:
+- DM prompt
+- Comment prompt
+
+so they **extend / compose from that persona core**, while keeping their context-specific behavior different.
+
+So:
+- DMs stay multi-turn, qualifying, conversion-focused
+- Comments stay short, public-facing, lightweight, human
+
+But both must inherit the same Layla identity from one place.
+
+## Important architectural direction
+I want the code structured so this can evolve into:
+
+**Apex Intelligence / Orchestrator**
+- decides channel context
+- decides objective
+- decides response mode
+- selects the correct execution path
+- logs actions / outcomes
+
+**Execution layer**
+- DM generation
+- Comment generation
+- future voice / SMS / email / etc.
+
+Do **not** fully build the orchestrator right now unless it is tiny and low-risk.
+But structure this refactor so we are clearly moving toward that model.
+
+## Deliverables
+1. Add the shared persona core file
+2. Refactor DM + comment prompts to use it
+3. Keep current behavior working
+4. Do not break existing flows
+5. Update imports / composition cleanly
+6. Add brief code comments explaining the architecture
+7. Tell me exactly what changed and why
+
+## Guardrails
+- Do not overengineer
+- Do not rewrite unrelated systems
+- Do not change working business logic unless required
+- Do not make the prompts worse just to “unify” them
+- Preserve the current best-performing behavior for each channel
+
+## Honesty mode requirements
+I want full honesty:
+- tell me what this does
+- tell me what it does NOT do
+- tell me what still remains fragmented afterward
+- tell me what the next step would be to make Apex Intelligence the real orchestrator
+
+## Final output format
+When done, give me:
+1. what you changed
+2. files touched
+3. why this is better
+4. what is still not aligned with my end-state vision
+5. the next smallest step toward true orchestration
+
+Implement it now carefully, test it, and do not bullshit me.
