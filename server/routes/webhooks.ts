@@ -2147,60 +2147,89 @@ export function registerWebhooksRoutes(app: Express) {
                     disambiguator: mid ? `${mid}-send-err` : `meta-send-err-${senderId}`,
                   });
                 } else if (aiReply && accessToken && pageId) {
-                  const aiEndpoint = channel === "instagram" ? "me" : pageId;
-                  const aiUrl = `https://graph.facebook.com/v21.0/${aiEndpoint}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
-                  console.log(`[META DM] Sending AI reply to ${senderId} via endpoint=${aiEndpoint}, pageId=${pageId}, channel=${channel}, token_set=${!!accessToken}, appsecret_proof=${!!appsecretProof}`);
-                  const sendRes = await fetch(aiUrl, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      recipient: { id: senderId },
-                      messaging_type: "RESPONSE",
-                      message: { text: aiReply },
-                      access_token: accessToken,
-                    }),
-                  });
-                  const sendData = await sendRes.json() as any;
-                  const metaMsgId = sendData?.message_id as string | undefined;
-                  const aiSendStatus = sendRes.ok ? "sent" : "failed";
-                  if (!sendRes.ok) {
-                    console.error(`[META DM] AI reply FAILED to ${senderId} — HTTP ${sendRes.status}, pageId=${pageId}, error=${JSON.stringify(sendData).substring(0, 500)}`);
-                    console.error(`[LAYLA-PIPELINE] Step 5 FAILED: Response send failed — HTTP ${sendRes.status}, sender=${senderId}, subAccountId=${subAccountId}`);
+                  const isAiErrorLeak = typeof aiReply === "string" && aiReply.startsWith("[AI Error:");
+                  if (isAiErrorLeak) {
+                    console.error(`[META DM] BLOCKED AI-error leak from being sent to ${senderId} — body=${aiReply.substring(0, 200)}`);
+                    console.error(`[LAYLA-PIPELINE] Step 5 BLOCKED: Refused to send AI-error text as reply — sender=${senderId}, subAccountId=${subAccountId}`);
+                    await db.insert(messages).values({
+                      subAccountId,
+                      channel,
+                      direction: "outbound",
+                      contactPhone: senderId,
+                      body: "",
+                      status: "failed",
+                      traceId: metaTraceId,
+                      threadId: metaDmThreadId,
+                      pageId: entryPageId,
+                      senderId,
+                      errorMessage: `ai_error_leak_blocked: ${aiReply.substring(0, 500)}`,
+                    });
                     recordStepValue(metaTrace, "outbound_send", "error", Date.now() - metaSendStart, {
                       provider: "meta",
-                      error: JSON.stringify(sendData).substring(0, 200),
-                      metadata: { channel },
-                      disambiguator: mid ? `${mid}-send-err` : `meta-send-err-${senderId}`,
+                      error: "ai_error_leak_blocked",
+                      metadata: { channel, leak: aiReply.substring(0, 200) },
+                      disambiguator: mid ? `${mid}-leak-blk` : `meta-leak-blk-${senderId}`,
                     });
                   } else {
-                    console.log(`[META DM] AI reply sent to ${senderId}: OK, messageId=${sendData?.message_id}`);
-                    console.log(`[LAYLA-PIPELINE] Step 5: Response successfully sent — sender=${senderId}, messageId=${sendData?.message_id}`);
-                    recordStepValue(metaTrace, "outbound_send", "success", Date.now() - metaSendStart, {
-                      provider: "meta",
-                      metadata: { channel, to: senderId, metaMsgId },
-                      disambiguator: metaMsgId || mid || `meta-send-${senderId}`,
+                    const aiEndpoint = channel === "instagram" ? "me" : pageId;
+                    const aiUrl = `https://graph.facebook.com/v21.0/${aiEndpoint}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
+                    console.log(`[META DM] Sending AI reply to ${senderId} via endpoint=${aiEndpoint}, pageId=${pageId}, channel=${channel}, token_set=${!!accessToken}, appsecret_proof=${!!appsecretProof}`);
+                    const sendRes = await fetch(aiUrl, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        recipient: { id: senderId },
+                        messaging_type: "RESPONSE",
+                        message: { text: aiReply },
+                        access_token: accessToken,
+                      }),
                     });
+                    const sendData = await sendRes.json() as any;
+                    const metaMsgId = sendData?.message_id as string | undefined;
+                    const aiSendStatus = sendRes.ok ? "sent" : "failed";
+                    let aiSendErrorMsg: string | undefined;
+                    if (!sendRes.ok) {
+                      aiSendErrorMsg = `meta_api_${sendRes.status}: ${(sendData?.error?.message || JSON.stringify(sendData)).toString().substring(0, 500)}`;
+                      console.error(`[META DM] AI reply FAILED to ${senderId} — HTTP ${sendRes.status}, pageId=${pageId}, error=${JSON.stringify(sendData).substring(0, 500)}`);
+                      console.error(`[LAYLA-PIPELINE] Step 5 FAILED: Response send failed — HTTP ${sendRes.status}, sender=${senderId}, subAccountId=${subAccountId}`);
+                      recordStepValue(metaTrace, "outbound_send", "error", Date.now() - metaSendStart, {
+                        provider: "meta",
+                        error: JSON.stringify(sendData).substring(0, 200),
+                        metadata: { channel },
+                        disambiguator: mid ? `${mid}-send-err` : `meta-send-err-${senderId}`,
+                      });
+                    } else {
+                      console.log(`[META DM] AI reply sent to ${senderId}: OK, messageId=${sendData?.message_id}`);
+                      console.log(`[LAYLA-PIPELINE] Step 5: Response successfully sent — sender=${senderId}, messageId=${sendData?.message_id}`);
+                      recordStepValue(metaTrace, "outbound_send", "success", Date.now() - metaSendStart, {
+                        provider: "meta",
+                        metadata: { channel, to: senderId, metaMsgId },
+                        disambiguator: metaMsgId || mid || `meta-send-${senderId}`,
+                      });
+                    }
+
+                    await db.insert(messages).values({
+                      subAccountId,
+                      channel,
+                      direction: "outbound",
+                      contactPhone: senderId,
+                      body: aiReply,
+                      status: aiSendStatus,
+                      messageSid: metaMsgId,
+                      traceId: metaTraceId,
+                      threadId: metaDmThreadId,
+                      pageId: entryPageId,
+                      senderId,
+                      errorMessage: aiSendErrorMsg,
+                    });
+                    console.log(`[LAYLA-PIPELINE] Step 6: Response logged — direction=outbound, status=${aiSendStatus}, sender=${senderId}, subAccountId=${subAccountId}${aiSendErrorMsg ? `, error_persisted=true` : ""}`);
+                    broadcastNewMessage(subAccountId, {
+                      subAccountId, channel, direction: "outbound", contactPhone: senderId,
+                      body: aiReply, status: aiSendStatus, threadId: metaDmThreadId, createdAt: new Date().toISOString(),
+                    });
+
+                    extractAndStoreInsights(subAccountId!, senderId, channel).catch(() => {});
                   }
-
-                  await db.insert(messages).values({
-                    subAccountId,
-                    channel,
-                    direction: "outbound",
-                    contactPhone: senderId,
-                    body: aiReply,
-                    status: aiSendStatus,
-                    traceId: metaTraceId,
-                    threadId: metaDmThreadId,
-                    pageId: entryPageId,
-                    senderId,
-                  });
-                  console.log(`[LAYLA-PIPELINE] Step 6: Response logged — direction=outbound, status=${aiSendStatus}, sender=${senderId}, subAccountId=${subAccountId}`);
-                  broadcastNewMessage(subAccountId, {
-                    subAccountId, channel, direction: "outbound", contactPhone: senderId,
-                    body: aiReply, status: aiSendStatus, threadId: metaDmThreadId, createdAt: new Date().toISOString(),
-                  });
-
-                  extractAndStoreInsights(subAccountId!, senderId, channel).catch(() => {});
                 }
               } catch (aiErr: any) {
                 console.error("[META DM] AI reply error:", aiErr.message);
@@ -2211,6 +2240,23 @@ export function registerWebhooksRoutes(app: Express) {
                   metadata: { channel },
                   disambiguator: mid ? `${mid}-ai-err` : `meta-ai-err-${senderId}`,
                 });
+                try {
+                  await db.insert(messages).values({
+                    subAccountId: subAccountId!,
+                    channel,
+                    direction: "outbound",
+                    contactPhone: senderId,
+                    body: "",
+                    status: "failed",
+                    traceId: metaTraceId,
+                    threadId: metaDmThreadId,
+                    pageId: entryPageId,
+                    senderId,
+                    errorMessage: `ai_pipeline_throw: ${(aiErr?.message ?? "unknown").toString().substring(0, 500)}`,
+                  });
+                } catch (persistErr: any) {
+                  console.error(`[META DM] Failed to persist AI-error row: ${persistErr.message}`);
+                }
               }
             }
 

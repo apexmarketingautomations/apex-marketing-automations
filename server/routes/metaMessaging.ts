@@ -415,10 +415,13 @@ export function registerMetaMessagingRoutes(app: Express) {
 
       const sendData = await sendRes.json() as any;
       const status = sendRes.ok ? "sent" : "failed";
+      const errorMessage = sendRes.ok ? undefined : `meta_api_${sendRes.status}: ${(sendData?.error?.message || JSON.stringify(sendData)).toString().substring(0, 500)}`;
 
       await db.insert(messages).values({
         subAccountId, channel, direction: "outbound", contactPhone: senderId,
         body: text, status, senderId,
+        messageSid: sendData?.message_id,
+        errorMessage,
       });
 
       await logAudit("meta_messaging.manual_reply", userId, { senderId, channel, status, length: text.length });

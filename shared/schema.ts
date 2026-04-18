@@ -100,6 +100,7 @@ export const messages = pgTable("messages", {
   traceId: text("trace_id"),
   pageId: text("page_id"),
   senderId: text("sender_id"),
+  errorMessage: text("error_message"),
 });
 
 export const insertMessageSchema = createInsertSchema(messages).omit({ id: true, createdAt: true });
