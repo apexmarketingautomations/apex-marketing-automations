@@ -21,6 +21,12 @@ export interface SendSmsArgs {
   threadId?: string;
   traceId?: string;
   metadata?: Record<string, unknown>;
+  /**
+   * Channel label persisted on the messages row. Defaults to "sms".
+   * Use "vapi-sms" for the Vapi orchestration paths so the rows segregate
+   * cleanly from operator-initiated SMS in the conversations view.
+   */
+  channel?: string;
 }
 
 export interface SendSmsResult {
@@ -46,6 +52,7 @@ async function persistRow(opts: {
   threadId?: string | null;
   traceId: string;
   errorMessage?: string | null;
+  channel: string;
 }): Promise<number | undefined> {
   try {
     const row = await storage.createMessage({
@@ -53,7 +60,7 @@ async function persistRow(opts: {
       contactPhone: opts.to,
       body: opts.body,
       direction: "outbound",
-      channel: "sms",
+      channel: opts.channel,
       status: opts.status,
       messageSid: opts.messageSid ?? null,
       threadId: opts.threadId ?? null,
@@ -87,6 +94,7 @@ async function persistRow(opts: {
  */
 export async function sendSms(args: SendSmsArgs): Promise<SendSmsResult> {
   const { subAccountId, to, body, source, path, threadId } = args;
+  const channel = args.channel || "sms";
   const traceId = args.traceId || randomUUID();
 
   // 1. Provider guard — throws SmsProviderViolationError if non-Twilio.
@@ -95,11 +103,11 @@ export async function sendSms(args: SendSmsArgs): Promise<SendSmsResult> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const rowId = await persistRow({
-      subAccountId, to, body, status: "failed", threadId, traceId,
+      subAccountId, to, body, channel, status: "failed", threadId, traceId,
       errorMessage: `guard_violation: ${msg}`,
     });
     emitMessageFailed({
-      subAccountId, channel: "sms", path, threadId,
+      subAccountId, channel, path, threadId,
       reason: "sms_guard_violation",
       errorMessage: msg,
       metadata: { source, ...(args.metadata || {}) },
@@ -112,11 +120,11 @@ export async function sendSms(args: SendSmsArgs): Promise<SendSmsResult> {
   if (!clientResult) {
     const reason = "twilio_not_configured";
     const rowId = await persistRow({
-      subAccountId, to, body, status: "failed", threadId, traceId,
+      subAccountId, to, body, channel, status: "failed", threadId, traceId,
       errorMessage: reason,
     });
     emitMessageFailed({
-      subAccountId, channel: "sms", path, threadId,
+      subAccountId, channel, path, threadId,
       reason,
       metadata: { source, ...(args.metadata || {}) },
     });
@@ -127,11 +135,11 @@ export async function sendSms(args: SendSmsArgs): Promise<SendSmsResult> {
   if (!fromNumber) {
     const reason = "no_from_number";
     const rowId = await persistRow({
-      subAccountId, to, body, status: "failed", threadId, traceId,
+      subAccountId, to, body, channel, status: "failed", threadId, traceId,
       errorMessage: reason,
     });
     emitMessageFailed({
-      subAccountId, channel: "sms", path, threadId,
+      subAccountId, channel, path, threadId,
       reason,
       metadata: { source, ...(args.metadata || {}) },
     });
@@ -142,7 +150,7 @@ export async function sendSms(args: SendSmsArgs): Promise<SendSmsResult> {
   try {
     const msg = await clientResult.client.messages.create({ to, from: fromNumber, body });
     const rowId = await persistRow({
-      subAccountId, to, body, status: "sent",
+      subAccountId, to, body, channel, status: "sent",
       messageSid: msg.sid, threadId, traceId,
     });
     return { ok: true, messageRowId: rowId, twilioSid: msg.sid };
@@ -152,11 +160,11 @@ export async function sendSms(args: SendSmsArgs): Promise<SendSmsResult> {
     const errorStatus: number | undefined = typeof err?.status === "number" ? err.status : undefined;
     const persistedErr = `twilio:${errorStatus ?? "?"}:${errorCode ?? "?"}: ${errorMessage}`;
     const rowId = await persistRow({
-      subAccountId, to, body, status: "failed", threadId, traceId,
+      subAccountId, to, body, channel, status: "failed", threadId, traceId,
       errorMessage: persistedErr,
     });
     emitMessageFailed({
-      subAccountId, channel: "sms", path, threadId,
+      subAccountId, channel, path, threadId,
       reason: errorStatus ? `twilio_${errorStatus}` : "twilio_error",
       errorMessage,
       metadata: {

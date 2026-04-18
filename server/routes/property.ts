@@ -17,12 +17,11 @@ import { scanDistressedProperties, calculateDealMetrics } from "../property-rada
 import { skipTraceLookup, getCurrentMonthYear } from "../skip-trace";
 import crypto from "crypto";
 import { dispatchAlert, generateDeepLink } from "../pushAlertService";
-import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, logUsageInternal, getTwilioClient } from "./helpers";
+import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, logUsageInternal } from "./helpers";
 import { recordOutboundBilling } from "../billing";
 import { requireActiveSubscription } from "../subscriptionGuard";
 
 const subscriptionGuard = requireActiveSubscription();
-import { enforceSmsProvider } from "../smsGatewayGuard";
 
 export function registerPropertyRoutes(app: Express) {
   // ---- Property Radar (Wholesaler) Routes ----
@@ -665,29 +664,27 @@ export function registerPropertyRoutes(app: Express) {
     const severity = customData.severity || "unknown";
     const mapsLink = customData.google_maps_link || "";
 
-    try {
-      const { getTwilioClientForAccount } = await import("../twilioClientFactory");
+    {
       const sentinelConf = await storage.getSentinelConfig(1);
       const alertPhone = sentinelConf?.smsAlertPhone;
-
       if (alertPhone) {
-        const clientResult = await getTwilioClientForAccount(1);
-        if (clientResult) {
-          const account = await storage.getSubAccount(1);
-          const fromNumber = account?.twilioNumber;
-          if (fromNumber) {
-            await enforceSmsProvider("sms", "twilio", { subAccountId: 1, phone: alertPhone, source: "sentinel-crash-alert" });
-            await clientResult.client.messages.create({
-              body: `SENTINEL ALERT: Crash #${crashId} detected ${distanceMiles} mi from HQ. Severity: ${severity}. Map: ${mapsLink}`,
-              from: fromNumber,
-              to: alertPhone,
-            });
-            console.log(`SENTINEL: SMS alert sent to ${alertPhone}`);
-          }
+        const { sendSms: sendSmsSentinel } = await import("../messaging/sendSms");
+        const account = await storage.getSubAccount(1);
+        const sentinelResult = await sendSmsSentinel({
+          subAccountId: 1,
+          to: alertPhone,
+          body: `SENTINEL ALERT: Crash #${crashId} detected ${distanceMiles} mi from HQ. Severity: ${severity}. Map: ${mapsLink}`,
+          from: account?.twilioNumber || undefined,
+          source: "sentinel-crash-alert",
+          path: "hot-lead",
+          metadata: { crashId, severity, distanceMiles },
+        });
+        if (sentinelResult.ok) {
+          console.log(`SENTINEL: SMS alert sent to ${alertPhone} sid=${sentinelResult.twilioSid}`);
+        } else {
+          console.error(`SENTINEL: SMS alert failed reason=${sentinelResult.reason} err=${sentinelResult.errorMessage}`);
         }
       }
-    } catch (smsErr: any) {
-      console.error("SENTINEL: SMS alert failed:", smsErr.message);
     }
 
     res.status(200).json({ message: "Apex received the crash data" });
@@ -759,28 +756,27 @@ export function registerPropertyRoutes(app: Express) {
       }
     }
 
-    try {
-      const { getTwilioClientForAccount } = await import("../twilioClientFactory");
+    {
       const sentinelConf = await storage.getSentinelConfig(subAccountId);
       const alertPhone = sentinelConf?.smsAlertPhone;
       if (alertPhone) {
-        const clientResult = await getTwilioClientForAccount(subAccountId);
-        if (clientResult) {
-          const acctForPhone = await storage.getSubAccount(subAccountId);
-          const fromNumber = acctForPhone?.twilioNumber;
-          if (fromNumber) {
-            await enforceSmsProvider("sms", "twilio", { subAccountId, phone: alertPhone, source: "sentinel-crash-alert" });
-            await clientResult.client.messages.create({
-              body: `SENTINEL ALERT: Crash #${crashId} detected ${distanceMiles} mi from HQ. Severity: ${severity}. Map: ${mapsLink}`,
-              from: fromNumber,
-              to: alertPhone,
-            });
-            console.log(`SENTINEL: SMS alert sent to ${alertPhone}`);
-          }
+        const { sendSms: sendSmsSentinelV1 } = await import("../messaging/sendSms");
+        const acctForPhone = await storage.getSubAccount(subAccountId);
+        const sentinelV1Result = await sendSmsSentinelV1({
+          subAccountId,
+          to: alertPhone,
+          body: `SENTINEL ALERT: Crash #${crashId} detected ${distanceMiles} mi from HQ. Severity: ${severity}. Map: ${mapsLink}`,
+          from: acctForPhone?.twilioNumber || undefined,
+          source: "sentinel-crash-alert",
+          path: "hot-lead",
+          metadata: { crashId, severity, distanceMiles },
+        });
+        if (sentinelV1Result.ok) {
+          console.log(`SENTINEL: SMS alert sent to ${alertPhone} sid=${sentinelV1Result.twilioSid}`);
+        } else {
+          console.error(`SENTINEL: SMS alert failed reason=${sentinelV1Result.reason} err=${sentinelV1Result.errorMessage}`);
         }
       }
-    } catch (smsErr: any) {
-      console.error("SENTINEL: SMS alert failed:", smsErr.message);
     }
 
     res.status(200).send("Message Received");
@@ -1929,23 +1925,30 @@ export function registerPropertyRoutes(app: Express) {
     if (!alertPhone || !(account as any).twilioNumber) {
       return res.status(400).json({ error: "SMS not configured — set alert phone in Sentinel config" });
     }
-    try {
-      const { getTwilioClientForAccount: getTwilioClientSentinel } = await import("../twilioClientFactory");
-      const sentinelResult = await getTwilioClientSentinel(incident.subAccountId);
-      if (sentinelResult) {
-        await enforceSmsProvider("sms", "twilio", { subAccountId: incident.subAccountId, phone: alertPhone, source: "sentinel-renotify-sms" });
-        await sentinelResult.client.messages.create({
-          body: `SENTINEL ALERT: ${incident.title} — ${incident.location || "Unknown location"} (${incident.severity})`,
-          from: (account as any).twilioNumber,
-          to: alertPhone,
-        });
+    {
+      const { sendSms: sendSmsRenotify } = await import("../messaging/sendSms");
+      const renotifyResult = await sendSmsRenotify({
+        subAccountId: incident.subAccountId,
+        to: alertPhone,
+        body: `SENTINEL ALERT: ${incident.title} — ${incident.location || "Unknown location"} (${incident.severity})`,
+        from: (account as any).twilioNumber,
+        source: "sentinel-renotify-sms",
+        path: "hot-lead",
+        metadata: { incidentId: incident.id, severity: incident.severity },
+      });
+      if (renotifyResult.ok) {
         await storage.updateSentinelIncident(incident.id, { smsSent: true });
-        res.json({ success: true, message: "SMS sent" });
+        res.json({ success: true, message: "SMS sent", twilioSid: renotifyResult.twilioSid });
       } else {
-        res.status(500).json({ error: "Twilio not configured" });
+        const httpStatus = renotifyResult.reason === "no_client" || renotifyResult.reason === "no_from_number" ? 503 : 502;
+        res.status(httpStatus).json({
+          error: "SMS send failed",
+          reason: renotifyResult.reason,
+          detail: renotifyResult.errorMessage,
+          twilio_status: renotifyResult.errorStatus ?? null,
+          twilio_code: renotifyResult.errorCode ?? null,
+        });
       }
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
     }
   }));
 

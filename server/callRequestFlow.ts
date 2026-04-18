@@ -3,8 +3,6 @@ import { db } from "./db";
 import { deals, messages, vapiCallLogs, notifications } from "@shared/schema";
 import { eq, and, desc, gt, sql } from "drizzle-orm";
 import { dispatchAlert, generateDeepLink } from "./pushAlertService";
-import { enforceSmsProvider } from "./smsGatewayGuard";
-import Twilio from "twilio";
 
 interface SubAccountConfig {
   bookingLink?: string;
@@ -485,23 +483,22 @@ async function sendFollowUpMessage(
   body: string
 ): Promise<boolean> {
   if (ctx.type === "sms") {
-    const sid = process.env.TWILIO_ACCOUNT_SID;
-    const token = process.env.TWILIO_AUTH_TOKEN;
-    if (!sid || !token) throw new Error("Twilio credentials not configured");
     if (!ctx.fromNumber || !ctx.toNumber) throw new Error("SMS follow-up missing fromNumber or toNumber");
-    await enforceSmsProvider("sms", "twilio", { subAccountId, phone: ctx.toNumber, source: "call-request-flow-followup" });
-    const client = Twilio(sid, token);
-    await client.messages.create({ body, from: ctx.fromNumber, to: ctx.toNumber });
-    await storage.createMessage({
+    const { sendSms: sendSmsFollowup } = await import("./messaging/sendSms");
+    const followupResult = await sendSmsFollowup({
       subAccountId,
-      contactPhone,
+      to: ctx.toNumber,
       body,
-      direction: "outbound",
-      channel: "sms",
-      status: "sent",
-      threadId: ctx.threadId || null,
-      traceId: ctx.traceId || null,
+      from: ctx.fromNumber,
+      source: "call-request-flow-followup",
+      path: "auto-reply",
+      threadId: ctx.threadId || undefined,
+      traceId: ctx.traceId || undefined,
     });
+    if (!followupResult.ok) {
+      console.error(`[CALL-REQUEST-FOLLOWUP] send failed reason=${followupResult.reason} err=${followupResult.errorMessage}`);
+      return false;
+    }
     return true;
   } else if (ctx.type === "meta") {
     if (!ctx.senderId) throw new Error("Meta follow-up missing senderId");

@@ -612,7 +612,6 @@ async function validateMetaCredentials() {
 
   const { contacts } = await import("@shared/schema");
   const { like: vapiLike, and: vapiAnd } = await import("drizzle-orm");
-  const { getTwilioClient } = await import("./routes/helpers");
   const { storage: vapiStorage } = await import("./storage");
   const { aiChat: vapiAiChat, isAIConfigured: vapiIsAIConfigured } = await import("./aiGateway");
 
@@ -802,17 +801,19 @@ async function validateMetaCredentials() {
     if (isOpt(smsBody)) {
       await optOut(senderClean, subAccountId);
       console.log(`[VAPI SMS OPT-OUT] ${senderClean} opted out`);
-      await enforceSmsProvider("sms", "twilio", { subAccountId, phone: senderClean, source: "vapi-sms-opt-out" });
-      const twilioClientForOptOut = await getTwilioClient();
-      if (twilioClientForOptOut) {
-        const fromNumber = account.twilioNumber || process.env.TWILIO_PHONE_NUMBER;
-        if (fromNumber) {
-          await twilioClientForOptOut.messages.create({
-            body: "You have been unsubscribed and will no longer receive messages from us. Reply START to re-subscribe.",
-            from: fromNumber,
-            to: senderClean,
-          }).catch((e: any) => console.error("[VAPI SMS OPT-OUT] Twilio send failed:", e?.message));
-        }
+      const { sendSms: sendSmsOptOut } = await import("./messaging/sendSms");
+      const fromNumber = account.twilioNumber || process.env.TWILIO_PHONE_NUMBER;
+      const optOutResult = await sendSmsOptOut({
+        subAccountId,
+        to: senderClean,
+        body: "You have been unsubscribed and will no longer receive messages from us. Reply START to re-subscribe.",
+        from: fromNumber || undefined,
+        source: "vapi-sms-opt-out",
+        path: "auto-reply",
+        channel: "vapi-sms",
+      });
+      if (!optOutResult.ok) {
+        console.error(`[VAPI SMS OPT-OUT] confirmation send failed reason=${optOutResult.reason} err=${optOutResult.errorMessage}`);
       }
       return;
     }
@@ -820,17 +821,19 @@ async function validateMetaCredentials() {
     if (isIn(smsBody)) {
       await optIn(senderClean, subAccountId);
       console.log(`[VAPI SMS OPT-IN] ${senderClean} opted in`);
-      await enforceSmsProvider("sms", "twilio", { subAccountId, phone: senderClean, source: "vapi-sms-opt-in" });
-      const twilioClientForOptIn = await getTwilioClient();
-      if (twilioClientForOptIn) {
-        const fromNumber = account.twilioNumber || process.env.TWILIO_PHONE_NUMBER;
-        if (fromNumber) {
-          await twilioClientForOptIn.messages.create({
-            body: "You have been re-subscribed and will receive messages from us again.",
-            from: fromNumber,
-            to: senderClean,
-          }).catch((e: any) => console.error("[VAPI SMS OPT-IN] Twilio send failed:", e?.message));
-        }
+      const { sendSms: sendSmsOptIn } = await import("./messaging/sendSms");
+      const fromNumber = account.twilioNumber || process.env.TWILIO_PHONE_NUMBER;
+      const optInResult = await sendSmsOptIn({
+        subAccountId,
+        to: senderClean,
+        body: "You have been re-subscribed and will receive messages from us again.",
+        from: fromNumber || undefined,
+        source: "vapi-sms-opt-in",
+        path: "auto-reply",
+        channel: "vapi-sms",
+      });
+      if (!optInResult.ok) {
+        console.error(`[VAPI SMS OPT-IN] confirmation send failed reason=${optInResult.reason} err=${optInResult.errorMessage}`);
       }
       return;
     }
@@ -886,49 +889,22 @@ async function validateMetaCredentials() {
     const aiReply = await generateVapiAiReply(smsBody);
 
     const fromNumber = account.twilioNumber || process.env.TWILIO_PHONE_NUMBER;
-    if (fromNumber) {
-      const twilioClient = await getTwilioClient();
-      if (twilioClient) {
-        try {
-          await enforceSmsProvider("sms", "twilio", { subAccountId, phone: senderClean, source: "vapi-sms-ai-reply" });
-          await twilioClient.messages.create({
-            body: aiReply,
-            from: fromNumber,
-            to: senderClean,
-          });
-          console.log(`[VAPI SMS] AI reply sent to ${senderClean} via Twilio`);
-          await vapiStorage.createMessage({
-            subAccountId,
-            contactPhone: senderClean,
-            body: aiReply,
-            direction: "outbound",
-            channel: "vapi-sms",
-            status: "sent",
-          });
-        } catch (sendErr: any) {
-          console.error("[VAPI SMS] Twilio send failed:", sendErr?.message);
-          await vapiStorage.createMessage({
-            subAccountId,
-            contactPhone: senderClean,
-            body: aiReply,
-            direction: "outbound",
-            channel: "vapi-sms",
-            status: "failed",
-          }).catch(() => {});
-        }
+    {
+      const { sendSms: sendSmsAiReply } = await import("./messaging/sendSms");
+      const aiReplyResult = await sendSmsAiReply({
+        subAccountId,
+        to: senderClean,
+        body: aiReply,
+        from: fromNumber || undefined,
+        source: "vapi-sms-ai-reply",
+        path: "auto-reply",
+        channel: "vapi-sms",
+      });
+      if (aiReplyResult.ok) {
+        console.log(`[VAPI SMS] AI reply sent to ${senderClean} via Twilio sid=${aiReplyResult.twilioSid}`);
       } else {
-        console.warn("[VAPI SMS] Twilio not configured — AI reply generated but not sent");
-        await vapiStorage.createMessage({
-          subAccountId,
-          contactPhone: senderClean,
-          body: aiReply,
-          direction: "outbound",
-          channel: "vapi-sms",
-          status: "failed",
-        }).catch(() => {});
+        console.error(`[VAPI SMS] AI reply send failed reason=${aiReplyResult.reason} err=${aiReplyResult.errorMessage}`);
       }
-    } else {
-      console.warn(`[VAPI SMS] No outbound phone number configured for account ${subAccountId}`);
     }
 
     try {
@@ -997,15 +973,23 @@ async function validateMetaCredentials() {
               }
               stepPayload.subAccountId = subAccountId;
 
-              const twilioClientStep = await getTwilioClient();
-              if ((action === "send_sms" || action === "SMS") && twilioClientStep && stepPayload.to && stepPayload.body) {
-                await enforceSmsProvider("sms", "twilio", { subAccountId, phone: stepPayload.to, source: "vapi-sms-automation-step" });
-                await twilioClientStep.messages.create({
-                  body: stepPayload.body,
+              if ((action === "send_sms" || action === "SMS") && stepPayload.to && stepPayload.body) {
+                const { sendSms: sendSmsStep } = await import("./messaging/sendSms");
+                const stepResult = await sendSmsStep({
+                  subAccountId,
                   to: stepPayload.to,
-                  from: stepPayload.from || account.twilioNumber || process.env.TWILIO_PHONE_NUMBER,
+                  body: stepPayload.body,
+                  from: stepPayload.from || account.twilioNumber || process.env.TWILIO_PHONE_NUMBER || undefined,
+                  source: "vapi-sms-automation-step",
+                  path: "automation",
+                  channel: "vapi-sms",
+                  metadata: { automationId: automation.id, action },
                 });
-                console.log(`[VAPI SMS] Automation step sent SMS to ${stepPayload.to}`);
+                if (stepResult.ok) {
+                  console.log(`[VAPI SMS] Automation step sent SMS to ${stepPayload.to} sid=${stepResult.twilioSid}`);
+                } else {
+                  console.error(`[VAPI SMS] Automation step send failed to=${stepPayload.to} reason=${stepResult.reason} err=${stepResult.errorMessage}`);
+                }
               } else if (action !== "send_sms" && action !== "SMS") {
                 console.log(`[VAPI SMS] Automation step action "${action}" not handled inline; skipping`);
               }
@@ -1180,22 +1164,21 @@ async function validateMetaCredentials() {
           if (tc.function?.name === "sendBookingLink") {
             const phoneNumber = tc.function.arguments?.phoneNumber || req.body.message.call?.customer?.number;
             if (phoneNumber) {
-              try {
-                const client = await getTwilioClient();
-                if (client) {
-                  await enforceSmsProvider("sms", "twilio", { subAccountId: 0, phone: phoneNumber, source: "vapi-tool-booking-link" });
-                  await client.messages.create({
-                    body: "Here's your booking link to schedule a call with Apex: https://calendar.app.google/Fwdtvy7Sy3P8Z1CV6",
-                    to: phoneNumber,
-                    from: "+18777030325",
-                  });
-                  console.log(`[VAPI TOOL] Sent booking link SMS to ${phoneNumber}`);
-                  results.push({ toolCallId: tc.id, result: "Booking link sent successfully via text." });
-                } else {
-                  results.push({ toolCallId: tc.id, result: "Could not send text right now. Ask them to visit apexmarketingautomations.com instead." });
-                }
-              } catch (smsErr: any) {
-                console.error(`[VAPI TOOL] SMS failed:`, smsErr?.message);
+              const { sendSms: sendSmsBooking } = await import("./messaging/sendSms");
+              const bookingResult = await sendSmsBooking({
+                subAccountId: 0,
+                to: phoneNumber,
+                body: "Here's your booking link to schedule a call with Apex: https://calendar.app.google/Fwdtvy7Sy3P8Z1CV6",
+                from: "+18777030325",
+                source: "vapi-tool-booking-link",
+                path: "auto-reply",
+                channel: "vapi-sms",
+              });
+              if (bookingResult.ok) {
+                console.log(`[VAPI TOOL] Sent booking link SMS to ${phoneNumber} sid=${bookingResult.twilioSid}`);
+                results.push({ toolCallId: tc.id, result: "Booking link sent successfully via text." });
+              } else {
+                console.error(`[VAPI TOOL] Booking link SMS failed reason=${bookingResult.reason} err=${bookingResult.errorMessage}`);
                 results.push({ toolCallId: tc.id, result: "Text failed to send. Ask them to visit apexmarketingautomations.com instead." });
               }
             } else {
