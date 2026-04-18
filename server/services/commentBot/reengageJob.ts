@@ -367,6 +367,8 @@ function sampleReengageDelay(): number {
   return 60_000 + Math.random() * 60_000;
 }
 
+const META_DM_AI_FALLBACK_TEXT = "give me a sec — be right back 💭";
+
 async function sendMetaDM(
   subAccountId: number,
   recipientId: string,
@@ -379,12 +381,18 @@ async function sendMetaDM(
   const url = `https://graph.facebook.com/v21.0/${pageId}/messages` +
     (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
 
+  const isAiErrorLeak = typeof text === "string" && text.startsWith("[AI Error:");
+  const outboundText = isAiErrorLeak ? META_DM_AI_FALLBACK_TEXT : text;
+  if (isAiErrorLeak) {
+    console.error(`[REENGAGE] BLOCKED AI-error leak to ${recipientId} (thread=${threadId}) — original=${text.substring(0, 200)}`);
+  }
+
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       recipient: { id: recipientId },
-      message: { text },
+      message: { text: outboundText },
       access_token: accessToken,
     }),
     signal: AbortSignal.timeout(15000),
@@ -395,24 +403,37 @@ async function sendMetaDM(
   const traceId = `reengage-${Date.now()}`;
   const channel = threadId.includes("instagram") ? "instagram" : "facebook";
 
+  const sendOk = res.ok;
+  const status = isAiErrorLeak
+    ? (sendOk ? "fallback_sent" : "failed")
+    : (sendOk ? "sent" : "failed");
+  const sendErrMsg = sendOk
+    ? undefined
+    : `meta_api_${res.status}: ${(data?.error?.message || JSON.stringify(data)).toString().substring(0, 300)}`;
+  const errorMessage = isAiErrorLeak
+    ? `ai_error_leak_blocked: ${text.substring(0, 400)}${sendErrMsg ? ` | fallback_err: ${sendErrMsg}` : ""}`
+    : sendErrMsg;
+
   await db.insert(messages).values({
     subAccountId,
     channel,
     direction: "outbound",
     contactPhone: recipientId,
-    body: text,
-    status: res.ok ? "sent" : "failed",
+    body: outboundText,
+    status,
+    messageSid: data?.message_id,
     traceId,
     threadId,
     pageId,
     senderId: pageId,
+    errorMessage,
   });
 
-  if (!res.ok) {
+  if (!sendOk) {
     throw new Error(`Meta DM send failed: ${data.error?.message || JSON.stringify(data)}`);
   }
 
-  console.log(`[REENGAGE] DM sent to ${recipientId}: "${maskPiiForLogs(text.substring(0, 60))}..."`);
+  console.log(`[REENGAGE] ${status} to ${recipientId}: "${maskPiiForLogs(outboundText.substring(0, 60))}..."`);
 }
 
 const REENGAGE_INTERVAL_MS = 6 * 60 * 60 * 1000;
