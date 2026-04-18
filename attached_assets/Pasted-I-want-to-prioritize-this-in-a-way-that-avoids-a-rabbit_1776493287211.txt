@@ -1,0 +1,130 @@
+I want to prioritize this in a way that avoids a rabbit hole.
+
+We are **not** doing general cleanup.  
+We are fixing the smallest set of things that restores:
+1. customer-facing execution
+2. visibility into failures
+3. honest product behavior
+4. then architecture progression
+
+## Prioritization framework
+Work in this exact order:
+
+### Phase 1 — Meta DM root cause
+Run the live diagnostic first:
+`GET /api/meta-ops/dm-diagnostics/22`
+
+Goal:
+- determine whether the 7-day DM failure is caused by token expiry, missing scopes, permissions, or something else
+
+Deliverable:
+- exact root cause
+- exact fix needed
+- confidence level
+
+Do not do unrelated cleanup in this phase.
+
+---
+
+### Phase 2 — Restore Meta DM sending
+Once root cause is known, fix the DM sending path and verify one real successful send end to end.
+
+Goal:
+- restore core customer-facing execution
+
+Deliverable:
+- what was broken
+- what was changed
+- proof of successful send
+- anything still uncertain
+
+Do not start architecture work here.
+
+---
+
+### Phase 3 — Integration health populator
+After DM is restored, wire the integration health system.
+
+Goal:
+- populate `integration_health_state`
+- add daily health checks for Meta, Google, Twilio, and other critical integrations
+- write `healthy / degraded / failed`
+- make silent failures visible
+
+Deliverable:
+- files changed
+- which integrations are covered
+- what checks run
+- what is still uncovered
+
+Do not turn this into a giant monitoring platform.
+
+---
+
+### Phase 4 — Calendar honesty + hardcoding
+Then handle Calendar in two parts:
+
+1. fix dishonest UI / landing page claims immediately
+2. remove the hardcoded `[13,14]` restriction and replace it with real behavior
+
+Goal:
+- eliminate trust mismatch
+- eliminate account-specific fake support
+
+Deliverable:
+- copy changed
+- code changed
+- actual supported behavior after fix
+- what still does NOT exist
+
+---
+
+### Phase 5 — Highest-value observability gaps
+After that, patch only the most important missing truth signals:
+- `message.failed` emitted into universal events
+- Sentinel degraded / fallback states logged
+- eventBus silent drops surfaced
+- comment received vs skipped visibility improved
+
+Goal:
+- Apex can distinguish failure, degradation, and silence
+
+Deliverable:
+- exact gaps patched
+- exact gaps still remaining
+
+Do not try to wire every module in this phase.
+
+---
+
+### Phase 6 — LaylaPolicy
+Only after the above:
+- add typed/shared LaylaPolicy
+- remove remaining persona drift risks
+
+Goal:
+- structured persona policy, no split-brain rules
+
+---
+
+### Phase 7 — Orchestration
+Only after all previous phases are complete and stable:
+- move decision-making upward into Apex Intelligence
+- keep channel-specific execution underneath
+
+## Guardrails
+- one main objective per phase
+- every phase must have a stop condition
+- no “while we’re here” rewrites
+- no fake future-proof abstraction
+- prioritize truth-revealing fixes over elegance
+
+## Output format
+Before coding, I want you to respond with:
+1. confirmation of this execution order
+2. what you think should be changed in the order, if anything
+3. estimated risk and effort per phase
+4. which phase you recommend starting right now
+
+Then execute strictly phase by phase.
+Do not bullshit me and do not let this drift into a rabbit hole.
