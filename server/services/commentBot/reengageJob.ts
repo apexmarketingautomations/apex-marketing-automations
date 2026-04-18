@@ -1,5 +1,6 @@
 import { db } from "../../db";
 import { messages, subAccounts } from "@shared/schema";
+import { emitAiFailed, emitMessageFailed } from "../../observability/messagingEvents";
 import { eq, and, gte, desc, sql, inArray } from "drizzle-orm";
 import { aiChat } from "../../aiGateway";
 import { postProcessAndGuard, maskPiiForLogs } from "../personas/laylaPostProcessor";
@@ -298,6 +299,17 @@ export async function runReengageJob(options?: {
 
         if (!llmResult.ok) {
           console.warn(`[REENGAGE] aiChat failed for thread=${convo.threadId}: ${llmResult.errorMessage}. Skipping send (no fallback leak).`);
+          emitAiFailed({
+            subAccountId,
+            channel: convo.threadId.includes("instagram") ? "instagram" : "facebook",
+            path: "reengage",
+            threadId: convo.threadId,
+            userId: convo.senderId,
+            persona: isLayla ? "layla" : "business",
+            reason: "ai_chat_returned_ok_false",
+            errorMessage: llmResult.errorMessage,
+            metadata: { route: isLayla ? "reengage-layla" : "reengage-business" },
+          });
           result.handovers++;
           result.details.push({ threadId: convo.threadId, senderId: convo.senderId, action: `skip_ai_error:${llmResult.errorMessage ?? "unknown"}` });
           continue;
@@ -376,6 +388,16 @@ export async function runReengageJob(options?: {
 
       } catch (err: any) {
         console.error(`[REENGAGE] Error processing thread=${convo.threadId}:`, err.message);
+        emitMessageFailed({
+          subAccountId,
+          channel: convo.threadId.includes("instagram") ? "instagram" : "facebook",
+          path: "reengage",
+          threadId: convo.threadId,
+          userId: convo.senderId,
+          persona: isLayla ? "layla" : "business",
+          reason: "reengage_pipeline_throw",
+          errorMessage: err?.message,
+        });
         result.errors++;
         result.details.push({ threadId: convo.threadId, senderId: convo.senderId, action: "error" });
       }
@@ -411,21 +433,37 @@ async function sendMetaDM(
   const url = `https://graph.facebook.com/v21.0/${pageId}/messages` +
     (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      recipient: { id: recipientId },
-      message: { text },
-      access_token: accessToken,
-    }),
-    signal: AbortSignal.timeout(15000),
-  });
+  const channel = threadId.includes("instagram") ? "instagram" : "facebook";
 
-  const data = await res.json() as any;
+  let res: Response;
+  let data: any;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recipient: { id: recipientId },
+        message: { text },
+        access_token: accessToken,
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+    data = await res.json() as any;
+  } catch (transportErr: any) {
+    emitMessageFailed({
+      subAccountId,
+      channel,
+      path: "reengage",
+      threadId,
+      userId: recipientId,
+      reason: "meta_send_transport_throw",
+      errorMessage: transportErr?.message,
+      metadata: { pageId },
+    });
+    throw transportErr;
+  }
 
   const traceId = `reengage-${Date.now()}`;
-  const channel = threadId.includes("instagram") ? "instagram" : "facebook";
 
   const sendOk = res.ok;
   const status = sendOk ? "sent" : "failed";
@@ -449,6 +487,16 @@ async function sendMetaDM(
   });
 
   if (!sendOk) {
+    emitMessageFailed({
+      subAccountId,
+      channel,
+      path: "reengage",
+      threadId,
+      userId: recipientId,
+      reason: `meta_api_${res.status}`,
+      errorMessage,
+      metadata: { pageId, fbErrorCode: data?.error?.code },
+    });
     throw new Error(`Meta DM send failed: ${data.error?.message || JSON.stringify(data)}`);
   }
 

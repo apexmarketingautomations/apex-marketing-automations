@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { contacts, messages, subAccounts, integrationConnections } from "@shared/schema";
+import { emitAiFailed, emitMessageFailed, emitMessageSuppressedJustReplied } from "../observability/messagingEvents";
 import { sql, eq, and, or, gte, desc } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -1240,6 +1241,18 @@ export function registerWebhooksRoutes(app: Express) {
 
           const aiResult = await aiChat(aiMessages, { temperature: 0.7, maxTokens: 1024, route: "dm-catchup-reply" });
           if (!aiResult.ok || !aiResult.text) {
+            if (!aiResult.ok) {
+              emitAiFailed({
+                subAccountId,
+                channel,
+                path: "catchup",
+                threadId: `${subAccountId}::${senderId}::${channel}`,
+                userId: senderId,
+                reason: "ai_chat_returned_ok_false",
+                errorMessage: aiResult.errorMessage,
+                metadata: { route: "dm-catchup-reply" },
+              });
+            }
             results.push({ senderId, channel, status: "skip", reason: aiResult.ok ? "empty_ai_reply" : `ai_error:${aiResult.errorMessage ?? "unknown"}` });
             continue;
           }
@@ -1265,6 +1278,19 @@ export function registerWebhooksRoutes(app: Express) {
           const errorMessage = sendOk
             ? undefined
             : `meta_api_${sendResp.status}: ${(sendResult?.error?.message || JSON.stringify(sendResult)).toString().substring(0, 300)}`;
+
+          if (!sendOk) {
+            emitMessageFailed({
+              subAccountId,
+              channel,
+              path: "catchup",
+              threadId,
+              userId: senderId,
+              reason: `meta_api_${sendResp.status}`,
+              errorMessage,
+              metadata: { pageId, fbErrorCode: sendResult?.error?.code },
+            });
+          }
 
           await db.insert(messages).values({
             subAccountId,
@@ -1299,6 +1325,15 @@ export function registerWebhooksRoutes(app: Express) {
           await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 5000));
         } catch (err: any) {
           console.error(`[DM-CATCHUP] Error for ${senderId}:`, err.message);
+          emitMessageFailed({
+            subAccountId,
+            channel,
+            path: "catchup",
+            threadId: `${subAccountId}::${senderId}::${channel}`,
+            userId: senderId,
+            reason: "catchup_pipeline_throw",
+            errorMessage: err?.message,
+          });
           results.push({ senderId, channel, status: "error", reason: err.message });
         }
       }
@@ -2050,6 +2085,20 @@ export function registerWebhooksRoutes(app: Express) {
                   } catch (persistErr: any) {
                     console.error(`[META DM][SUPPRESS] Failed to persist suppression row: ${persistErr.message}`);
                   }
+                  emitMessageSuppressedJustReplied({
+                    subAccountId: subAccountId!,
+                    channel,
+                    path: "auto-reply",
+                    threadId: metaDmThreadId,
+                    userId: senderId,
+                    reason: "just_replied_window",
+                    metadata: {
+                      priorOutboundId: recentOutbound[0].id,
+                      ageMs,
+                      windowMs: JUST_REPLIED_WINDOW_MS,
+                      mid,
+                    },
+                  });
                   if (mid) {
                     try {
                       const existing = await storage.getEventLogByExternalId("meta", mid);
@@ -2084,6 +2133,16 @@ export function registerWebhooksRoutes(app: Express) {
                 const metaDmAiResult = await aiChat(aiMessages, { temperature: 0.7, maxTokens: 1024, route: "webhook-meta-dm-reply" });
                 if (!metaDmAiResult.ok) {
                   console.error(`[LAYLA-PIPELINE] Step 4 FAILED: aiChat returned ok=false — sender=${senderId}, errorMessage=${metaDmAiResult.errorMessage}. Skipping send (no fallback text leaked).`);
+                  emitAiFailed({
+                    subAccountId: subAccountId!,
+                    channel,
+                    path: "auto-reply",
+                    threadId: metaDmThreadId,
+                    userId: senderId,
+                    reason: "ai_chat_returned_ok_false",
+                    errorMessage: metaDmAiResult.errorMessage,
+                    metadata: { mid, route: "webhook-meta-dm-reply" },
+                  });
                 }
                 // INVARIANT: text === "" when ok === false. Empty string skips both downstream send branches naturally.
                 const aiReply = metaDmAiResult.text;
@@ -2248,6 +2307,16 @@ export function registerWebhooksRoutes(app: Express) {
                       metadata: { channel },
                       disambiguator: mid ? `${mid}-send-err` : `meta-send-err-${senderId}`,
                     });
+                    emitMessageFailed({
+                      subAccountId: subAccountId!,
+                      channel,
+                      path: "auto-reply",
+                      threadId: metaDmThreadId,
+                      userId: senderId,
+                      reason: `meta_api_${sendRes.status}`,
+                      errorMessage: aiSendErrorMsg,
+                      metadata: { pageId: entryPageId, mid, fbErrorCode: sendData?.error?.code },
+                    });
                   } else {
                     console.log(`[META DM] AI reply sent to ${senderId}: OK, messageId=${sendData?.message_id}`);
                     console.log(`[LAYLA-PIPELINE] Step 5: Response successfully sent — sender=${senderId}, messageId=${sendData?.message_id}`);
@@ -2288,6 +2357,16 @@ export function registerWebhooksRoutes(app: Express) {
                   error: aiErr.message,
                   metadata: { channel },
                   disambiguator: mid ? `${mid}-ai-err` : `meta-ai-err-${senderId}`,
+                });
+                emitAiFailed({
+                  subAccountId: subAccountId!,
+                  channel,
+                  path: "auto-reply",
+                  threadId: metaDmThreadId,
+                  userId: senderId,
+                  reason: "ai_pipeline_throw",
+                  errorMessage: aiErr?.message,
+                  metadata: { mid },
                 });
                 // No fabricated fallback message. If the AI pipeline throws, we
                 // do NOT manufacture a "be right back" reply — that would be a
