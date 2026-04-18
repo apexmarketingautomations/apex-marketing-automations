@@ -16,7 +16,6 @@ import {
 } from "../sentinel-home-svc";
 import type { HomeSvcSignal, HomeSvcConfigShape } from "../sentinel-home-svc";
 import { asyncHandler, parseIntParam, verifyAccountOwnership, requirePlanFeature } from "./helpers";
-import { enforceSmsProvider } from "../smsGatewayGuard";
 import { emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
 
 // --- Zod schema for CAD ingestion payload ---
@@ -711,22 +710,27 @@ export function registerSentinelRoutes(app: Express) {
       return res.status(400).json({ error: "No Twilio phone number assigned to this account. Add one in account settings." });
     }
 
-    try {
-      const { getTwilioClientForAccount } = await import("../twilioClientFactory");
-      const clientResult = await getTwilioClientForAccount(incident.subAccountId);
-      if (!clientResult) {
-        return res.status(503).json({ error: "Twilio is not configured for this account." });
-      }
-      await enforceSmsProvider("sms", "twilio", { subAccountId: incident.subAccountId, phone: account.ownerPhone, source: "sentinel-incident-sms" });
-      await clientResult.client.messages.create({
+    {
+      const { sendSms: sendSmsIncident } = await import("../messaging/sendSms");
+      const incidentResult = await sendSmsIncident({
+        subAccountId: incident.subAccountId,
+        to: account.ownerPhone,
         body: alertMsg,
         from: account.twilioNumber,
-        to: account.ownerPhone,
+        source: "sentinel-incident-sms",
+        path: "hot-lead",
+        metadata: { incidentId: id, severity: incident.severity, isHomeSvc: isHomeSvcIncident },
       });
-    } catch (e) {
-      const errMsg = (e as any).message || "Unknown Twilio error";
-      console.error("[SENTINEL] SMS send failed:", errMsg);
-      return res.status(502).json({ error: `SMS delivery failed: ${errMsg}` });
+      if (!incidentResult.ok) {
+        const httpStatus = incidentResult.reason === "no_client" || incidentResult.reason === "no_from_number" ? 503 : 502;
+        return res.status(httpStatus).json({
+          error: "SMS delivery failed",
+          reason: incidentResult.reason,
+          detail: incidentResult.errorMessage,
+          twilio_status: incidentResult.errorStatus ?? null,
+          twilio_code: incidentResult.errorCode ?? null,
+        });
+      }
     }
 
     await storage.updateSentinelIncident(id, {

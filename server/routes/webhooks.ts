@@ -10,7 +10,6 @@ import { ProgressStream } from "../streaming";
 import crypto from "crypto";
 import { asyncHandler, getUserId, requireAdmin, getIndustryContext, getLanguageInstruction, getTwilioClient, vapiConfig, verifyAccountOwnership } from "./helpers";
 import { broadcastNewMessage } from "../sse";
-import { enforceSmsProvider } from "../smsGatewayGuard";
 import { assembleDmContext, buildDmMessages } from "../dmContextAssembler";
 import { extractInsightsFromConversation } from "../sharedIntelligence";
 import { startTrace, recordStepValue } from "../traceRecorder";
@@ -113,18 +112,25 @@ export function registerWebhooksRoutes(app: Express) {
       });
 
       const { isOptOutMessage, isOptInMessage, handleSmsOptOut, handleSmsOptIn } = await import("../optOutGuard");
+      const { sendSms: sendSmsWebhook } = await import("../messaging/sendSms");
+
       if (isOptOutMessage(incomingMsg)) {
         await handleSmsOptOut(senderClean, matchedAccountId);
         console.log(`[OPT-OUT] ${senderClean} opted out of SMS`);
 
-        const twilioClient = await getTwilioClient(matchedAccountId);
-        if (twilioClient && toRaw) {
-          await enforceSmsProvider(channel, "twilio", { subAccountId: matchedAccountId, phone: senderRaw, source: "webhook-opt-out" });
-          await twilioClient.messages.create({
+        if (toRaw) {
+          const optOutWebhookResult = await sendSmsWebhook({
+            subAccountId: matchedAccountId,
+            to: senderRaw,
             body: "You have been unsubscribed and will no longer receive messages from us. Reply START to re-subscribe.",
             from: toRaw,
-            to: senderRaw,
+            source: "webhook-opt-out",
+            path: "auto-reply",
+            channel,
           });
+          if (!optOutWebhookResult.ok) {
+            console.error(`[OPT-OUT] confirmation send failed reason=${optOutWebhookResult.reason} err=${optOutWebhookResult.errorMessage}`);
+          }
         }
 
         await markEventCompleted(req);
@@ -136,14 +142,19 @@ export function registerWebhooksRoutes(app: Express) {
         await handleSmsOptIn(senderClean, matchedAccountId);
         console.log(`[OPT-IN] ${senderClean} opted back in to SMS`);
 
-        const twilioClient = await getTwilioClient(matchedAccountId);
-        if (twilioClient && toRaw) {
-          await enforceSmsProvider(channel, "twilio", { subAccountId: matchedAccountId, phone: senderRaw, source: "webhook-opt-in" });
-          await twilioClient.messages.create({
+        if (toRaw) {
+          const optInWebhookResult = await sendSmsWebhook({
+            subAccountId: matchedAccountId,
+            to: senderRaw,
             body: "You have been re-subscribed and will receive messages from us again.",
             from: toRaw,
-            to: senderRaw,
+            source: "webhook-opt-in",
+            path: "auto-reply",
+            channel,
           });
+          if (!optInWebhookResult.ok) {
+            console.error(`[OPT-IN] confirmation send failed reason=${optInWebhookResult.reason} err=${optInWebhookResult.errorMessage}`);
+          }
         }
 
         await markEventCompleted(req);
@@ -252,8 +263,7 @@ export function registerWebhooksRoutes(app: Express) {
       }
 
       const sendStart = Date.now();
-      const twilioClient = await getTwilioClient(matchedAccountId);
-      if (twilioClient && toRaw) {
+      if (toRaw) {
         const replyFrom = channel === "whatsapp" ? `whatsapp:${stripChannelPrefix(toRaw)}`
           : channel === "messenger" ? `messenger:${stripChannelPrefix(toRaw)}`
           : toRaw;
@@ -262,58 +272,48 @@ export function registerWebhooksRoutes(app: Express) {
           console.log(`[WHATSAPP] Sending AI reply via Twilio — from=${replyFrom} to=${senderRaw} account=${matchedAccountId}`);
         }
 
-        let outboundSid: string | null = null;
-        let outboundStatus = "sent";
-        try {
-          await enforceSmsProvider(channel, "twilio", { subAccountId: matchedAccountId, phone: senderRaw, source: "webhook-ai-reply" });
-          const sentReply = await twilioClient.messages.create({
-            body: aiReply,
-            from: replyFrom,
-            to: senderRaw,
-          });
-          outboundSid = sentReply.sid;
+        const aiReplyResult = await sendSmsWebhook({
+          subAccountId: matchedAccountId,
+          to: senderRaw,
+          body: aiReply,
+          from: replyFrom,
+          source: "webhook-ai-reply",
+          path: "auto-reply",
+          channel,
+          traceId: trace.traceId,
+          metadata: { channel },
+        });
+
+        if (aiReplyResult.ok) {
           if (channel === "whatsapp") {
-            console.log(`[WHATSAPP] Reply sent successfully — sid=${sentReply.sid} to=${senderClean}`);
+            console.log(`[WHATSAPP] Reply sent successfully — sid=${aiReplyResult.twilioSid} to=${senderClean}`);
           }
           recordStepValue(trace, "outbound_send", "success", Date.now() - sendStart, {
             provider: "twilio",
-            metadata: { channel, to: senderClean, messageSid: sentReply.sid },
-            disambiguator: sentReply.sid || `reply-${senderClean}`,
+            metadata: { channel, to: senderClean, messageSid: aiReplyResult.twilioSid },
+            disambiguator: aiReplyResult.twilioSid || `reply-${senderClean}`,
           });
-        } catch (sendErr: any) {
-          outboundStatus = "failed";
-          console.error(`[${channel.toUpperCase()}] Outbound send failed for account ${matchedAccountId}:`, sendErr.message);
+        } else {
+          console.error(`[${channel.toUpperCase()}] Outbound send failed for account ${matchedAccountId}: ${aiReplyResult.errorMessage} (reason=${aiReplyResult.reason})`);
           recordStepValue(trace, "outbound_send", "error", Date.now() - sendStart, {
             provider: "twilio",
-            error: sendErr.message,
-            metadata: { channel, to: senderClean },
+            error: aiReplyResult.errorMessage || aiReplyResult.reason || "send_failed",
+            metadata: { channel, to: senderClean, reason: aiReplyResult.reason },
             disambiguator: `reply-err-${senderClean}`,
           });
         }
 
-        try {
-          const outMsg = await storage.createMessage({
-            subAccountId: matchedAccountId,
-            contactPhone: senderClean,
-            body: aiReply,
-            direction: "outbound",
-            channel,
-            status: outboundStatus,
-            messageSid: outboundSid || null,
-            traceId: trace.traceId,
-          });
+        if (aiReplyResult.messageRowId) {
           broadcastNewMessage(matchedAccountId, {
-            id: outMsg.id,
+            id: aiReplyResult.messageRowId,
             subAccountId: matchedAccountId,
             contactPhone: senderClean,
             body: aiReply,
             direction: "outbound",
             channel,
-            status: outboundStatus,
+            status: aiReplyResult.ok ? "sent" : "failed",
             createdAt: new Date().toISOString(),
           });
-        } catch (logErr: any) {
-          console.error("[WEBHOOKS] Failed to log outbound reply:", logErr.message);
         }
       }
 
@@ -545,14 +545,13 @@ export function registerWebhooksRoutes(app: Express) {
           traceId,
         });
 
-        const twilioClient = await getTwilioClient(subAccountId);
-        if (twilioClient && toRaw) {
-          await enforceSmsProvider("sms", "twilio", { subAccountId, phone: senderRaw, source: "twilio-inbound-opt-out" });
-          await twilioClient.messages.create({
-            body: "You have been unsubscribed and will no longer receive messages from us. Reply START to re-subscribe.",
-            from: toRaw,
-            to: senderRaw,
+        if (toRaw) {
+          const { sendSms: sendSmsTwIn1 } = await import("../messaging/sendSms");
+          const r = await sendSmsTwIn1({
+            subAccountId, to: senderRaw, body: "You have been unsubscribed and will no longer receive messages from us. Reply START to re-subscribe.",
+            from: toRaw, source: "twilio-inbound-opt-out", path: "auto-reply", traceId,
           });
+          if (!r.ok) console.error(`[TWILIO-INBOUND][${traceId}] opt-out confirm failed reason=${r.reason} err=${r.errorMessage}`);
         }
         await markEventCompleted(req);
         res.type("text/xml").send("<Response></Response>");
@@ -576,14 +575,13 @@ export function registerWebhooksRoutes(app: Express) {
           traceId,
         });
 
-        const twilioClient = await getTwilioClient(subAccountId);
-        if (twilioClient && toRaw) {
-          await enforceSmsProvider("sms", "twilio", { subAccountId, phone: senderRaw, source: "twilio-inbound-opt-in" });
-          await twilioClient.messages.create({
-            body: "You have been re-subscribed and will receive messages from us again.",
-            from: toRaw,
-            to: senderRaw,
+        if (toRaw) {
+          const { sendSms: sendSmsTwIn2 } = await import("../messaging/sendSms");
+          const r = await sendSmsTwIn2({
+            subAccountId, to: senderRaw, body: "You have been re-subscribed and will receive messages from us again.",
+            from: toRaw, source: "twilio-inbound-opt-in", path: "auto-reply", traceId,
           });
+          if (!r.ok) console.error(`[TWILIO-INBOUND][${traceId}] opt-in confirm failed reason=${r.reason} err=${r.errorMessage}`);
         }
         await markEventCompleted(req);
         res.type("text/xml").send("<Response></Response>");
@@ -607,14 +605,13 @@ export function registerWebhooksRoutes(app: Express) {
           traceId,
         });
 
-        const twilioClient = await getTwilioClient(subAccountId);
-        if (twilioClient && toRaw) {
-          await enforceSmsProvider("sms", "twilio", { subAccountId, phone: senderRaw, source: "twilio-inbound-help" });
-          await twilioClient.messages.create({
-            body: "For help, reply STOP to unsubscribe or START to re-subscribe. Message and data rates may apply.",
-            from: toRaw,
-            to: senderRaw,
+        if (toRaw) {
+          const { sendSms: sendSmsTwIn3 } = await import("../messaging/sendSms");
+          const r = await sendSmsTwIn3({
+            subAccountId, to: senderRaw, body: "For help, reply STOP to unsubscribe or START to re-subscribe. Message and data rates may apply.",
+            from: toRaw, source: "twilio-inbound-help", path: "auto-reply", traceId,
           });
+          if (!r.ok) console.error(`[TWILIO-INBOUND][${traceId}] help confirm failed reason=${r.reason} err=${r.errorMessage}`);
         }
         await markEventCompleted(req);
         res.type("text/xml").send("<Response></Response>");
@@ -704,20 +701,15 @@ export function registerWebhooksRoutes(app: Express) {
         };
 
         const smsSendReply = async (body: string) => {
-          const twilioClientForReply = await getTwilioClient();
-          if (twilioClientForReply && toRaw) {
-            await enforceSmsProvider("sms", "twilio", { subAccountId, phone: senderRaw, source: "twilio-inbound-sms-reply" });
-            await twilioClientForReply.messages.create({ body, from: toRaw, to: senderRaw });
-            await storage.createMessage({
-              subAccountId,
-              contactPhone: senderClean,
-              body,
-              direction: "outbound",
-              channel: "sms",
-              status: "sent",
-              threadId,
-              traceId,
-            });
+          if (!toRaw) return;
+          const { sendSms: sendSmsHotLead } = await import("../messaging/sendSms");
+          const r = await sendSmsHotLead({
+            subAccountId, to: senderRaw, body, from: toRaw,
+            source: "twilio-inbound-sms-reply", path: "hot-lead", traceId,
+            metadata: { intentType: smsIntent.intentType, contactId },
+          });
+          if (!r.ok) {
+            console.error(`[TWILIO-INBOUND][${traceId}] hot-lead reply failed reason=${r.reason} err=${r.errorMessage}`);
           }
         };
 
@@ -825,42 +817,20 @@ export function registerWebhooksRoutes(app: Express) {
       const fallbackReply = "Thanks for your message! We'll get back to you shortly.";
 
       // 10. Reply handling
-      const twilioClient = await getTwilioClient(subAccountId);
-      if (twilioClient && toRaw) {
+      if (toRaw) {
         const replyBody = aiReply || fallbackReply;
-        let outboundSid: string | null = null;
-        let outboundStatus = "sent";
-
-        try {
-          const tSendStart = Date.now();
-          await enforceSmsProvider("sms", "twilio", { subAccountId, phone: senderRaw, source: "twilio-inbound-ai-reply" });
-          const sentMsg = await twilioClient.messages.create({
-            body: replyBody,
-            from: toRaw,
-            to: senderRaw,
-          });
-          outboundSid = sentMsg.sid;
+        const tSendStart = Date.now();
+        const { sendSms: sendSmsTwInAi } = await import("../messaging/sendSms");
+        const aiR = await sendSmsTwInAi({
+          subAccountId, to: senderRaw, body: replyBody, from: toRaw,
+          source: "twilio-inbound-ai-reply", path: "auto-reply", traceId,
+          metadata: { threadId, contactId, fallback: !aiReply },
+        });
+        const outboundSid: string | null = aiR.twilioSid || null;
+        if (aiR.ok) {
           console.log(`[TWILIO-INBOUND][${traceId}] Outbound reply sent sid=${outboundSid} (${Date.now() - tSendStart}ms)`);
-        } catch (sendErr: any) {
-          outboundStatus = "failed";
-          console.error(`[TWILIO-INBOUND][${traceId}] Outbound SMS send failed:`, sendErr.message);
-        }
-
-        // Log outbound message
-        try {
-          await storage.createMessage({
-            subAccountId,
-            contactPhone: senderClean,
-            body: replyBody,
-            direction: "outbound",
-            channel: "sms",
-            status: outboundStatus,
-            messageSid: outboundSid || null,
-            threadId,
-            traceId,
-          });
-        } catch (logErr: any) {
-          console.error(`[TWILIO-INBOUND][${traceId}] Failed to log outbound message:`, logErr.message);
+        } else {
+          console.error(`[TWILIO-INBOUND][${traceId}] Outbound SMS send failed reason=${aiR.reason} err=${aiR.errorMessage}`);
         }
 
         // Fire outbound automation trigger (non-blocking)
@@ -981,14 +951,14 @@ export function registerWebhooksRoutes(app: Express) {
 
       if (isOptOutMessage(incomingMsg)) {
         await handleSmsOptOut(senderClean, subAccountIdParam);
-        const twilioClient = await getTwilioClient(subAccountIdParam);
-        if (twilioClient && toRaw) {
-          await enforceSmsProvider("sms", "twilio", { subAccountId: subAccountIdParam, phone: senderRaw, source: "twilio-fallback-opt-out" });
-          await twilioClient.messages.create({
+        if (toRaw) {
+          const { sendSms: sendSmsScopedOut } = await import("../messaging/sendSms");
+          const r = await sendSmsScopedOut({
+            subAccountId: subAccountIdParam, to: senderRaw,
             body: "You have been unsubscribed and will no longer receive messages from us. Reply START to re-subscribe.",
-            from: toRaw,
-            to: senderRaw,
+            from: toRaw, source: "twilio-fallback-opt-out", path: "auto-reply", traceId,
           });
+          if (!r.ok) console.error(`[WEBHOOK-SCOPED][${traceId}] opt-out confirm failed reason=${r.reason} err=${r.errorMessage}`);
         }
         res.type("text/xml").send("<Response></Response>");
         return;
@@ -996,14 +966,14 @@ export function registerWebhooksRoutes(app: Express) {
 
       if (isOptInMessage(incomingMsg)) {
         await handleSmsOptIn(senderClean, subAccountIdParam);
-        const twilioClient = await getTwilioClient(subAccountIdParam);
-        if (twilioClient && toRaw) {
-          await enforceSmsProvider("sms", "twilio", { subAccountId: subAccountIdParam, phone: senderRaw, source: "twilio-fallback-opt-in" });
-          await twilioClient.messages.create({
+        if (toRaw) {
+          const { sendSms: sendSmsScopedIn } = await import("../messaging/sendSms");
+          const r = await sendSmsScopedIn({
+            subAccountId: subAccountIdParam, to: senderRaw,
             body: "You have been re-subscribed and will receive messages from us again.",
-            from: toRaw,
-            to: senderRaw,
+            from: toRaw, source: "twilio-fallback-opt-in", path: "auto-reply", traceId,
           });
+          if (!r.ok) console.error(`[WEBHOOK-SCOPED][${traceId}] opt-in confirm failed reason=${r.reason} err=${r.errorMessage}`);
         }
         res.type("text/xml").send("<Response></Response>");
         return;
@@ -1048,37 +1018,24 @@ export function registerWebhooksRoutes(app: Express) {
       }
 
       const replyBody = aiReply || "Thanks for your message! We'll get back to you shortly.";
-      const twilioClient = await getTwilioClient(subAccountIdParam);
-      if (twilioClient && toRaw) {
-        try {
-          await enforceSmsProvider("sms", "twilio", { subAccountId: subAccountIdParam, phone: senderRaw, source: "twilio-fallback-reply" });
-          const sentMsg = await twilioClient.messages.create({
-            body: replyBody,
-            from: toRaw,
-            to: senderRaw,
-          });
+      if (toRaw) {
+        const { sendSms: sendSmsScopedAi } = await import("../messaging/sendSms");
+        const r = await sendSmsScopedAi({
+          subAccountId: subAccountIdParam, to: senderRaw, body: replyBody, from: toRaw,
+          source: "twilio-fallback-reply", path: "auto-reply", traceId,
+          metadata: { threadId, fallback: !aiReply },
+        });
+        if (r.ok) {
           console.log(JSON.stringify({
             event: "outbound_message_sent",
             sub_account_id: subAccountIdParam,
             phone_number: toClean,
             twilio_sid: account.twilioSubaccountSid || "master",
-            message_sid: sentMsg.sid,
+            message_sid: r.twilioSid,
             timestamp: new Date().toISOString(),
           }));
-
-          await storage.createMessage({
-            subAccountId: subAccountIdParam,
-            contactPhone: senderClean,
-            body: replyBody,
-            direction: "outbound",
-            channel: "sms",
-            status: "sent",
-            messageSid: sentMsg.sid,
-            threadId,
-            traceId,
-          });
-        } catch (sendErr: any) {
-          console.error(`[WEBHOOK-SCOPED][${traceId}] Outbound send failed:`, sendErr.message);
+        } else {
+          console.error(`[WEBHOOK-SCOPED][${traceId}] Outbound send failed reason=${r.reason} err=${r.errorMessage}`);
         }
       }
 

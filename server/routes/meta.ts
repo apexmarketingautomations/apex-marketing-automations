@@ -7,7 +7,6 @@ import { storage } from "../storage";
 import crypto from "crypto";
 import { dispatchAlert, generateDeepLink } from "../pushAlertService";
 import { asyncHandler, verifyAccountOwnership, getUserId } from "./helpers";
-import { enforceSmsProvider } from "../smsGatewayGuard";
 import { getMetaConfig, validateMetaConfigForAccount } from "../metaConfig";
 import { requireActiveSubscription } from "../subscriptionGuard";
 import { emitUniversalEvent, emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
@@ -221,26 +220,18 @@ export function registerMetaRoutes(app: Express) {
 
               const account = await storage.getSubAccount(subAccountId);
               if (account?.twilioNumber && getName("phone_number")) {
-                try {
-                  const { getTwilioClientForAccount: getTwilioClientMeta } = await import("../twilioClientFactory");
-                  const metaClientResult = await getTwilioClientMeta(subAccountId);
-                  if (!metaClientResult) throw new Error("Twilio not configured for account");
-                  await enforceSmsProvider("sms", "twilio", { subAccountId, phone: getName("phone_number"), source: "meta-lead-auto-reply" });
-                  await metaClientResult.client.messages.create({
-                    body: `Hi ${name.split(" ")[0] || "there"}! Thanks for your interest. We received your inquiry and will follow up shortly. - ${account.name}`,
-                    from: account.twilioNumber,
-                    to: getName("phone_number"),
-                  });
-                  await storage.createMessage({
-                    subAccountId,
-                    direction: "outbound",
-                    body: `[Auto-reply] Hi ${name.split(" ")[0] || "there"}! Thanks for your interest. We received your inquiry and will follow up shortly.`,
-                    status: "sent",
-                    contactPhone: getName("phone_number"),
-                    channel: "sms",
-                  });
-                } catch (smsErr: any) {
-                  console.log("Auto-reply SMS failed (non-blocking):", smsErr.message);
+                const { sendSms: sendSmsMetaLead } = await import("../messaging/sendSms");
+                const metaLeadResult = await sendSmsMetaLead({
+                  subAccountId,
+                  to: getName("phone_number"),
+                  body: `Hi ${name.split(" ")[0] || "there"}! Thanks for your interest. We received your inquiry and will follow up shortly. - ${account.name}`,
+                  from: account.twilioNumber,
+                  source: "meta-lead-auto-reply",
+                  path: "auto-reply",
+                  metadata: { leadName: name, leadEmail: email || null },
+                });
+                if (!metaLeadResult.ok) {
+                  console.log(`[META] Auto-reply SMS failed (non-blocking) reason=${metaLeadResult.reason} err=${metaLeadResult.errorMessage}`);
                 }
               }
             }

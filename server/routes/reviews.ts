@@ -10,7 +10,6 @@ import dns from "dns";
 import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, isUserAdmin } from "./helpers";
 import { emitUniversalEvent, emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
 import { recordOutboundBilling } from "../billing";
-import { enforceSmsProvider } from "../smsGatewayGuard";
 
 export function registerReviewsRoutes(app: Express) {
   // ---- Reviews / Reputation Management ----
@@ -64,17 +63,18 @@ export function registerReviewsRoutes(app: Express) {
         const accountId = parseInt(subAccountId);
         const account = await storage.getSubAccount(accountId);
         if (account?.ownerPhone) {
-          const { getTwilioClientForAccount } = await import("../twilioClientFactory");
-          const clientResult = await getTwilioClientForAccount(accountId);
-          if (clientResult) {
-            await enforceSmsProvider("sms", "twilio", { subAccountId: accountId, phone: account.ownerPhone, source: "review-alert" });
-            await clientResult.client.messages.create({
-              body: `🚨 APEX ALERT: ${customerName} just left a ${rating}-star rating. "${comment?.substring(0, 100)}". Check your Reputation Dashboard now!`,
-              from: account.twilioNumber,
-              to: account.ownerPhone,
-            });
-            console.log(`[ALERT] SMS sent to ${account.ownerPhone}`);
-
+          const { sendSms: sendSmsReview } = await import("../messaging/sendSms");
+          const reviewResult = await sendSmsReview({
+            subAccountId: accountId,
+            to: account.ownerPhone,
+            body: `🚨 APEX ALERT: ${customerName} just left a ${rating}-star rating. "${comment?.substring(0, 100)}". Check your Reputation Dashboard now!`,
+            from: account.twilioNumber || undefined,
+            source: "review-alert",
+            path: "hot-lead",
+            metadata: { customerName, rating },
+          });
+          if (reviewResult.ok) {
+            console.log(`[ALERT] SMS sent to ${account.ownerPhone} sid=${reviewResult.twilioSid}`);
             try {
               await recordOutboundBilling({
                 subAccountId: parseInt(subAccountId),
@@ -89,6 +89,8 @@ export function registerReviewsRoutes(app: Express) {
               const errMsg = billingErr instanceof Error ? billingErr.message : String(billingErr);
               console.error(`[BILLING CRITICAL] Review alert billing failed: ${errMsg}`);
             }
+          } else {
+            console.error(`[ALERT] Review alert SMS failed reason=${reviewResult.reason} err=${reviewResult.errorMessage}`);
           }
         }
       } catch (e) {

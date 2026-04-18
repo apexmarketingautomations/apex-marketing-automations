@@ -307,37 +307,35 @@ export function registerMessagingRoutes(app: Express) {
         }
       }
     } else if (channel === "sms" || !channel) {
-      const twilioClient = await getTwilioClient(subAccountId);
-      if (!twilioClient) {
+      const account = await storage.getSubAccount(subAccountId);
+      const fromNumber = account?.twilioNumber;
+      if (!fromNumber) {
         twilioStatus = "failed";
-        twilioError = "Twilio is not configured for this account.";
+        twilioError = "No phone number assigned to this account. Purchase a Twilio number first.";
       } else {
-        const account = await storage.getSubAccount(subAccountId);
-        const fromNumber = account?.twilioNumber;
-        if (!fromNumber) {
+        const { validateOutboundMessage } = await import("../twilioClientFactory");
+        const validation = await validateOutboundMessage(subAccountId, fromNumber);
+        if (!validation.valid) {
           twilioStatus = "failed";
-          twilioError = "No phone number assigned to this account. Purchase a Twilio number first.";
+          twilioError = validation.error || "Outbound validation failed";
         } else {
-          const { validateOutboundMessage } = await import("../twilioClientFactory");
-          const validation = await validateOutboundMessage(subAccountId, fromNumber);
-          if (!validation.valid) {
-            twilioStatus = "failed";
-            twilioError = validation.error || "Outbound validation failed";
+          const { sendSms: sendSmsUi } = await import("../messaging/sendSms");
+          const uiResult = await sendSmsUi({
+            subAccountId,
+            to: contactPhone,
+            body,
+            from: fromNumber,
+            source: "messaging-ui-send",
+            path: "sms",
+            metadata: { ui_initiated: true },
+          });
+          if (uiResult.ok) {
+            twilioStatus = "sent";
+            twilioSid = uiResult.twilioSid || null;
+            recordSuccess("twilio");
           } else {
-            try {
-              const twilioMsg = await twilioClient.messages.create({
-                body: body,
-                to: contactPhone,
-                from: fromNumber,
-              });
-              twilioStatus = twilioMsg.status || "sent";
-              twilioSid = twilioMsg.sid;
-              recordSuccess("twilio");
-            } catch (twilioErr: any) {
-              console.error("[SMS] Twilio send error:", twilioErr.message);
-              twilioStatus = "failed";
-              twilioError = twilioErr.message || "Twilio send failed";
-            }
+            twilioStatus = "failed";
+            twilioError = uiResult.errorMessage || `SMS send failed (${uiResult.reason})`;
           }
         }
       }
