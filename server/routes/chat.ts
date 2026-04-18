@@ -150,8 +150,9 @@ export function registerChatRoutes(app: Express) {
     chatMessages.push({ role: "user", content: parsed.data.message });
 
     const aiStart = Date.now();
-    const { pickRecoveryLine: pickRecChat, classifyAiFailure: classifyChat } = await import("../messaging/aiRecovery");
+    const { pickRecoveryLine: pickRecChat, classifyAiFailure: classifyChat, resolvePersonaForSubAccount: resolvePersonaChat } = await import("../messaging/aiRecovery");
     const chatThreadKey = `chat:${subAccountId || "anon"}:${(req.ip || "anon")}`;
+    const chatPersona = resolvePersonaChat(subAccountId ?? null);
     let reply: string;
     let chatRecoveryUsed: { reason: string; persona: string } | null = null;
     try {
@@ -160,10 +161,10 @@ export function registerChatRoutes(app: Express) {
         reply = result.text;
       } else {
         const reason = classifyChat(result.errorMessage);
-        const rec = pickRecChat({ reason, threadKey: chatThreadKey, channel: "web" });
+        const rec = pickRecChat({ reason, persona: chatPersona, threadKey: chatThreadKey, channel: "web" });
         reply = rec.text;
         chatRecoveryUsed = { reason: rec.reason, persona: rec.persona };
-        console.warn(`[CHAT-WIDGET][AI-RECOVERY] reason=${rec.reason} variant=${rec.variantIndex} aiOk=${result.ok} aiErr=${result.errorMessage}`);
+        console.warn(`[CHAT-WIDGET][AI-RECOVERY] reason=${rec.reason} persona=${rec.persona} variant=${rec.variantIndex} aiOk=${result.ok} aiErr=${result.errorMessage}`);
       }
       if (trace) {
         recordStepValue(trace, "ai_chat", chatRecoveryUsed ? "error" : "success", Date.now() - aiStart, {

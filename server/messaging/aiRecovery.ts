@@ -129,3 +129,48 @@ export function classifyAiFailure(errorMessage: string | undefined | null): Reco
 export function _resetRecoveryTrackerForTests(): void {
   lastIndexByKey.clear();
 }
+
+let cachedOverrides: { raw: string; map: Map<number, RecoveryPersona> } | null = null;
+
+function loadPersonaOverrides(): Map<number, RecoveryPersona> {
+  const raw = process.env.RECOVERY_PERSONA_OVERRIDES || "";
+  if (cachedOverrides && cachedOverrides.raw === raw) return cachedOverrides.map;
+  const map = new Map<number, RecoveryPersona>();
+  if (raw.trim()) {
+    try {
+      if (raw.trim().startsWith("{")) {
+        const parsed = JSON.parse(raw);
+        for (const [k, v] of Object.entries(parsed)) {
+          const id = parseInt(k, 10);
+          const persona = String(v).toLowerCase();
+          if (Number.isFinite(id) && (persona === "layla" || persona === "donte" || persona === "default")) {
+            map.set(id, persona as RecoveryPersona);
+          }
+        }
+      } else {
+        for (const pair of raw.split(",")) {
+          const [idStr, personaStr] = pair.split(":").map(s => s.trim());
+          const id = parseInt(idStr, 10);
+          const persona = (personaStr || "").toLowerCase();
+          if (Number.isFinite(id) && (persona === "layla" || persona === "donte" || persona === "default")) {
+            map.set(id, persona as RecoveryPersona);
+          }
+        }
+      }
+    } catch (e: any) {
+      console.warn(`[AI-RECOVERY] Failed to parse RECOVERY_PERSONA_OVERRIDES: ${e?.message}`);
+    }
+  }
+  cachedOverrides = { raw, map };
+  return map;
+}
+
+export function resolvePersonaForSubAccount(subAccountId: number | null | undefined): RecoveryPersona {
+  if (subAccountId === null || subAccountId === undefined) return "default";
+  const overrides = loadPersonaOverrides();
+  return overrides.get(subAccountId) || "default";
+}
+
+export function _clearPersonaOverrideCache(): void {
+  cachedOverrides = null;
+}

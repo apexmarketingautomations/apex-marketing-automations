@@ -219,13 +219,14 @@ export function registerWebhooksRoutes(app: Express) {
         });
       }
 
-      const { pickRecoveryLine, classifyAiFailure } = await import("../messaging/aiRecovery");
+      const { pickRecoveryLine, classifyAiFailure, resolvePersonaForSubAccount } = await import("../messaging/aiRecovery");
       const recoveryThreadKey = `${channel}:${matchedAccountId}:${senderClean}`;
+      const recoveryPersona = resolvePersonaForSubAccount(matchedAccountId);
       let aiReply: string | null = null;
       let aiRecoveryUsed: { reason: string; persona: string } | null = null;
 
       if (!isAIConfigured()) {
-        const rec = pickRecoveryLine({ reason: "ai_failed", threadKey: recoveryThreadKey, channel });
+        const rec = pickRecoveryLine({ reason: "ai_failed", persona: recoveryPersona, threadKey: recoveryThreadKey, channel });
         aiReply = rec.text;
         aiRecoveryUsed = { reason: rec.reason, persona: rec.persona };
       } else {
@@ -806,8 +807,9 @@ export function registerWebhooksRoutes(app: Express) {
         console.log(`[TWILIO-INBOUND][${traceId}] No vapiAssistantId for subAccount ${subAccountId} — using context-aware AI fallback`);
       }
 
-      const { pickRecoveryLine: pickRecTwIn, classifyAiFailure: classifyTwIn } = await import("../messaging/aiRecovery");
+      const { pickRecoveryLine: pickRecTwIn, classifyAiFailure: classifyTwIn, resolvePersonaForSubAccount: resolvePersonaTwIn } = await import("../messaging/aiRecovery");
       const twInRecoveryThreadKey = `sms:${subAccountId}:${senderClean}`;
+      const twInRecoveryPersona = resolvePersonaTwIn(subAccountId);
       let twInRecoveryReason: string | null = vapiError ? classifyTwIn(vapiError) : null;
 
       if (!aiReply && isAIConfigured()) {
@@ -843,7 +845,7 @@ export function registerWebhooksRoutes(app: Express) {
       if (toRaw) {
         let replyBody = aiReply;
         if (!replyBody) {
-          const rec = pickRecTwIn({ reason: (twInRecoveryReason as any) || "ai_failed", threadKey: twInRecoveryThreadKey, channel: "sms" });
+          const rec = pickRecTwIn({ reason: (twInRecoveryReason as any) || "ai_failed", persona: twInRecoveryPersona, threadKey: twInRecoveryThreadKey, channel: "sms" });
           replyBody = rec.text;
           console.warn(`[TWILIO-INBOUND][${traceId}][AI-RECOVERY] reason=${rec.reason} persona=${rec.persona} variant=${rec.variantIndex}`);
         }
@@ -1025,8 +1027,9 @@ export function registerWebhooksRoutes(app: Express) {
         return;
       }
 
-      const { pickRecoveryLine: pickRecScoped, classifyAiFailure: classifyScoped } = await import("../messaging/aiRecovery");
+      const { pickRecoveryLine: pickRecScoped, classifyAiFailure: classifyScoped, resolvePersonaForSubAccount: resolvePersonaScoped } = await import("../messaging/aiRecovery");
       const scopedRecoveryThreadKey = `sms:${subAccountIdParam}:${senderClean}`;
+      const scopedRecoveryPersona = resolvePersonaScoped(subAccountIdParam);
       let aiReply: string | null = null;
       let scopedRecoveryReason: string | null = null;
       if (isAIConfigured()) {
@@ -1056,7 +1059,7 @@ export function registerWebhooksRoutes(app: Express) {
       if (aiReply) {
         replyBody = aiReply;
       } else {
-        const rec = pickRecScoped({ reason: (scopedRecoveryReason as any) || "ai_failed", threadKey: scopedRecoveryThreadKey, channel: "sms" });
+        const rec = pickRecScoped({ reason: (scopedRecoveryReason as any) || "ai_failed", persona: scopedRecoveryPersona, threadKey: scopedRecoveryThreadKey, channel: "sms" });
         replyBody = rec.text;
         console.warn(`[WEBHOOK-SCOPED][${traceId}][AI-RECOVERY] reason=${rec.reason} persona=${rec.persona} variant=${rec.variantIndex}`);
       }
