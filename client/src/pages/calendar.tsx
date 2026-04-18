@@ -24,6 +24,66 @@ import {
 } from "date-fns";
 import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, Trash2, Edit2, CalendarIcon, Loader2, RefreshCw } from "lucide-react";
 
+interface SyncStatus {
+  enabled: boolean;
+  calendarId: string;
+  lastSyncAt: string | null;
+  lastSyncResult: { created: number; updated: number; skipped: number } | null;
+  lastSyncError: string | null;
+}
+
+function SyncStatusBadge({ subAccountId }: { subAccountId: number | null }) {
+  const { data: status } = useQuery<SyncStatus>({
+    queryKey: ["/api/calendar/sync-status", subAccountId],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/calendar/sync-status/${subAccountId}`);
+      return res.json();
+    },
+    enabled: !!subAccountId,
+    refetchInterval: 60_000,
+  });
+
+  if (!status) {
+    return (
+      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-500/10 border border-slate-500/20" data-testid="status-auto-sync-loading">
+        <span className="text-xs text-slate-400 font-medium">Checking sync…</span>
+      </div>
+    );
+  }
+
+  if (!status.enabled) {
+    return (
+      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-500/10 border border-slate-500/20" data-testid="status-auto-sync-off">
+        <span className="relative flex h-2 w-2">
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-slate-500"></span>
+        </span>
+        <span className="text-xs text-slate-400 font-medium">Auto-sync off</span>
+      </div>
+    );
+  }
+
+  if (status.lastSyncError) {
+    return (
+      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-500/10 border border-red-500/20" data-testid="status-auto-sync-error" title={status.lastSyncError}>
+        <span className="relative flex h-2 w-2">
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+        </span>
+        <span className="text-xs text-red-400 font-medium">Auto-sync error</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20" data-testid="status-auto-sync-active" title={status.lastSyncAt ? `Last sync: ${new Date(status.lastSyncAt).toLocaleString()}` : undefined}>
+      <span className="relative flex h-2 w-2">
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+      </span>
+      <span className="text-xs text-emerald-400 font-medium">Auto-sync active</span>
+    </div>
+  );
+}
+
 const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string }> = {
   scheduled: { bg: "bg-cyan-500/20 border-cyan-500/30", text: "text-cyan-400", dot: "bg-cyan-400" },
   completed: { bg: "bg-emerald-500/20 border-emerald-500/30", text: "text-emerald-400", dot: "bg-emerald-400" },
@@ -281,13 +341,7 @@ export default function CalendarPage() {
                 </Button>
               </div>
               <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20" data-testid="status-auto-sync">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                  </span>
-                  <span className="text-xs text-emerald-400 font-medium">Auto-sync active</span>
-                </div>
+                <SyncStatusBadge subAccountId={subAccountId} />
                 <Button
                   onClick={() => syncMutation.mutate()}
                   disabled={syncMutation.isPending}

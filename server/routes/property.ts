@@ -2674,6 +2674,27 @@ export function registerPropertyRoutes(app: Express) {
     }
   }));
 
+  // HARDENED: Honest sync status — reflects actual config + last attempt outcome.
+  app.get("/api/calendar/sync-status/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const { getCalendarSyncStatus } = await import("../googleCalendarSync");
+    const status = await getCalendarSyncStatus(subAccountId);
+    res.json(status);
+  }));
+
+  app.post("/api/calendar/sync-config/:subAccountId", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+    const { enabled, calendarId } = req.body || {};
+    if (typeof enabled !== "boolean") {
+      return res.status(400).json({ error: "`enabled` (boolean) is required" });
+    }
+    const { setCalendarSyncEnabled } = await import("../googleCalendarSync");
+    const status = await setCalendarSyncEnabled(subAccountId, enabled, typeof calendarId === "string" ? calendarId : undefined);
+    res.json(status);
+  }));
+
   app.get("/api/email-campaigns/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;

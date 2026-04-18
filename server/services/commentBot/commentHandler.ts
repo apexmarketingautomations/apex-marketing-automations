@@ -238,10 +238,11 @@ export async function handleCommentEvent(event: CommentWebhookEvent): Promise<vo
         return;
       }
 
-      const laylaOpConfig = {
+      const { parseLaylaPolicy } = await import("@shared/laylaPolicy");
+      const laylaOpConfig = parseLaylaPolicy({
         telegram: { link: "t.me/LaylasLifeee", allowed: true },
         handover: { fallback_message: HANDOVER_FALLBACK, escalate_keywords: ESCALATION_KEYWORDS },
-      };
+      });
       const ppResult = postProcessAndGuard(replyText, laylaOpConfig);
       if (ppResult.action === "handover") {
         console.log(`[COMMENT-BOT] Post-processor triggered handover for comment ${commentId}: ${ppResult.reason}`);

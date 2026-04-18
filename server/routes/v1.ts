@@ -1068,7 +1068,11 @@ export function registerV1Routes(app: Express) {
           } else {
             try {
               const { getMetaConfig } = await import("../metaConfig");
-              const subId = payload.subAccountId || 13;
+              if (!payload.subAccountId || typeof payload.subAccountId !== "number") {
+                result = { status: "Error", message: "Missing required subAccountId — refusing to fall back to a hardcoded production account." };
+                break;
+              }
+              const subId = payload.subAccountId;
               const metaCfg = await getMetaConfig(subId);
               let proof = "";
               if (metaCfg.accessToken && metaCfg.appSecret) {

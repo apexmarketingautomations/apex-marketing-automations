@@ -26,6 +26,50 @@ const outcomeBuffer: StoredOutcome[] = [];
 let lastOutcomeKey = "";
 let lastOutcomeTs = 0;
 
+/**
+ * HONEST REPORTING: log every discarded payload so silent drops are visible
+ * in observability. The buffer remains the fast in-memory cache; we mirror
+ * accepted outcomes into `universal_events` (eventType="agent.outcome") for
+ * durability across restarts.
+ */
+function logDiscard(reason: string, payload: any): void {
+  try {
+    const safe = {
+      reason,
+      agent: typeof payload?.agentName === "string" ? payload.agentName.slice(0, 50) : null,
+      action: typeof payload?.action === "string" ? payload.action.slice(0, 50) : null,
+      subAccountId: typeof payload?.subAccountId === "number" ? payload.subAccountId : null,
+    };
+    console.warn(`[APEX-OUTCOME] discarded: ${JSON.stringify(safe)}`);
+  } catch {}
+}
+
+async function persistOutcomeDurably(entry: StoredOutcome): Promise<void> {
+  try {
+    const { db } = await import("../db");
+    const { universalEvents } = await import("@shared/schema");
+    await db.insert(universalEvents).values({
+      eventType: "agent.outcome",
+      sourceModule: "apex-intelligence",
+      sourceTable: "agent_outcomes_buffer",
+      sourceRecordId: String(entry.id),
+      subAccountId: entry.subAccountId,
+      metadata: {
+        agentName: entry.agentName,
+        action: entry.action,
+        subject: entry.subject,
+        result: entry.result,
+        confidence: entry.confidence,
+        niche: entry.niche,
+        ...(entry.metadata || {}),
+      },
+      occurredAt: new Date(entry.timestamp),
+    });
+  } catch (err: any) {
+    console.warn(`[APEX-OUTCOME] durable persist failed (memory buffer still has it): ${err?.message?.substring(0, 200)}`);
+  }
+}
+
 function truncStr(s: string, max = MAX_STRING_LEN): string {
   return typeof s === "string" ? s.slice(0, max) : "";
 }
@@ -43,19 +87,36 @@ function sanitizeMetadata(meta: Record<string, any> | undefined): Record<string,
 }
 
 export function reportOutcome(payload: AgentOutcome): void {
-  if (
-    !payload ||
-    typeof payload.agentName !== "string" || !payload.agentName ||
-    typeof payload.action !== "string" || !payload.action ||
-    typeof payload.subject !== "string" || !payload.subject ||
-    typeof payload.result !== "string" || !payload.result ||
-    typeof payload.confidence !== "number" || isNaN(payload.confidence) ||
-    typeof payload.subAccountId !== "number" || !Number.isInteger(payload.subAccountId) || payload.subAccountId <= 0
-  ) {
+  if (!payload) {
+    logDiscard("null_payload", payload);
     return;
   }
-
+  if (typeof payload.agentName !== "string" || !payload.agentName) {
+    logDiscard("invalid_agentName", payload);
+    return;
+  }
+  if (typeof payload.action !== "string" || !payload.action) {
+    logDiscard("invalid_action", payload);
+    return;
+  }
+  if (typeof payload.subject !== "string" || !payload.subject) {
+    logDiscard("invalid_subject", payload);
+    return;
+  }
+  if (typeof payload.result !== "string" || !payload.result) {
+    logDiscard("invalid_result", payload);
+    return;
+  }
+  if (typeof payload.confidence !== "number" || isNaN(payload.confidence)) {
+    logDiscard("invalid_confidence", payload);
+    return;
+  }
+  if (typeof payload.subAccountId !== "number" || !Number.isInteger(payload.subAccountId) || payload.subAccountId <= 0) {
+    logDiscard("invalid_subAccountId", payload);
+    return;
+  }
   if (!ALLOWED_AGENTS.has(payload.agentName)) {
+    logDiscard(`unauthorized_agent:${payload.agentName}`, payload);
     return;
   }
 
@@ -63,7 +124,7 @@ export function reportOutcome(payload: AgentOutcome): void {
   const dedupKey = `${payload.agentName}:${payload.action}:${payload.subject}:${payload.subAccountId}:${entityId}`;
   const now = Date.now();
   if (dedupKey === lastOutcomeKey && now - lastOutcomeTs < DEDUP_WINDOW_MS) {
-    return;
+    return; // intentional dedupe — not a discard
   }
   lastOutcomeKey = dedupKey;
   lastOutcomeTs = now;
@@ -86,6 +147,9 @@ export function reportOutcome(payload: AgentOutcome): void {
   if (outcomeBuffer.length > MAX_BUFFER) {
     outcomeBuffer.splice(0, outcomeBuffer.length - MAX_BUFFER);
   }
+
+  // Mirror to durable storage (fire-and-forget — DB failure does not block reporting).
+  persistOutcomeDurably(entry).catch(() => {});
 }
 
 export function getOutcomes(opts: {

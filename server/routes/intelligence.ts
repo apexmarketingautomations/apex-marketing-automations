@@ -44,7 +44,10 @@ export function registerIntelligenceRoutes(app: Express) {
     if (!requireAdmin(req, res)) return;
 
     try {
-      const { subAccountId = 13, limitConversations = 20 } = req.body || {};
+      const { subAccountId, limitConversations = 20 } = req.body || {};
+      if (subAccountId === undefined || subAccountId === null) {
+        return res.status(400).json({ error: "subAccountId is required (no hardcoded fallback)" });
+      }
 
       const accountIds = Array.isArray(subAccountId) ? subAccountId : [subAccountId];
       let totalExtracted = 0;

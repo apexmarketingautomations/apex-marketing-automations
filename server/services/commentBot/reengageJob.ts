@@ -341,15 +341,13 @@ export async function runReengageJob(options?: {
           continue;
         }
 
+        const { parseLaylaPolicy, buildBusinessFallbackPolicy } = await import("@shared/laylaPolicy");
         const ppConfig = isLayla
-          ? {
+          ? parseLaylaPolicy({
               telegram: { link: "t.me/LaylasLifeee", allowed: false },
               handover: { fallback_message: FALLBACK_TEXT, escalate_keywords: ESCALATION_KEYWORDS },
-            }
-          : {
-              telegram: { link: "", allowed: false },
-              handover: { fallback_message: BUSINESS_FALLBACK_TEXT, escalate_keywords: [] },
-            };
+            })
+          : buildBusinessFallbackPolicy({ fallback_message: BUSINESS_FALLBACK_TEXT });
         const ppResult = postProcessAndGuard(replyText, ppConfig);
 
         if (ppResult.action === "handover") {

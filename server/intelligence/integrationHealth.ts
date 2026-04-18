@@ -57,6 +57,12 @@ export async function trackIntegrationDisconnected(
   });
 }
 
+/**
+ * Real implementation lives in integrationHealthChecker.ts.
+ * This wrapper preserves the original signature for any legacy caller.
+ */
 export async function runHealthCheckForAccount(accountId: number): Promise<void> {
-  console.log(`[APEX-INTEL] Running integration health check for account ${accountId}`);
+  const { runHealthCheckForAccountReal } = await import("./integrationHealthChecker");
+  const result = await runHealthCheckForAccountReal(accountId);
+  console.log(`[APEX-INTEL] Health check ran for account ${accountId} — ${result.checked.length} adapter(s), ${result.errors.length} error(s)`);
 }

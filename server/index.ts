@@ -1774,6 +1774,13 @@ RULES:
         console.error("[GCAL-AUTO] Failed to start:", err?.message);
       }
       try {
+        const { startIntegrationHealthChecker } = await import("./intelligence/integrationHealthChecker");
+        startIntegrationHealthChecker();
+        console.log("[STARTUP] ✅ Integration health populator started");
+      } catch (err: any) {
+        console.error("[INTEG-HEALTH] Failed to start:", err?.message);
+      }
+      try {
         const { registerMetaCampaignSyncJob, startMetaCampaignSyncScheduler } = await import("./metaCampaignSync");
         registerMetaCampaignSyncJob();
         startMetaCampaignSyncScheduler();

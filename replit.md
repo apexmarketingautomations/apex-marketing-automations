@@ -56,3 +56,12 @@ The project's core purpose is to provide an AI-powered business operating system
 - **Vapi**: Voice AI agent deployment.
 - **Firebase**: Push notifications (FCM) and Google Authentication.
 - **Google Maps/Places**: For location-based services (via `GOOGLE_API_KEY`).
+
+## Honesty & Hardening Pass (April 2026)
+
+A four-phase hardening pass was completed to eliminate silent failures and dishonest reporting:
+
+- **Phase A — Calendar honesty**: Removed hardcoded `[13, 14]` account IDs from `googleCalendarSync.ts`; auto-sync now reads `config.googleCalendarSync.enabled` per sub-account, with a one-time backfill that flags any account with prior `googleCalendarEventId` history. JSONB writes use atomic `jsonb_set` to avoid read-modify-write races between admin toggles and the background populator. Added `/api/calendar/sync-status/:id` and `/api/calendar/sync-config/:id` endpoints; the calendar UI badge now shows real status (active / off / error). Removed the unverified "round-robin" claim from the landing page.
+- **Phase B — Integration health real populator**: New `server/intelligence/integrationHealthChecker.ts` runs every 30 min for all sub-accounts and performs cheap read-only API checks against Meta Graph (Authorization header, never query string), Twilio, OpenAI, Telegram, Google Calendar (via Replit connector), and Stripe (per `integration_connections` row). Results write to `integration_health_state` via the existing `trackIntegrationSuccess` / `trackIntegrationFailure` helpers. Adapter failures are isolated — one bad provider does not abort the cycle.
+- **Phase C — Typed Layla policy**: New `shared/laylaPolicy.ts` defines a single Zod schema (`LaylaPolicy`) with `parseLaylaPolicy()` (safe parse with defaults) and `buildBusinessFallbackPolicy()` (for non-Layla business accounts). Replaced four ad-hoc inline interfaces in `laylaPostProcessor.ts`, `laylaPipeline.ts`, `commentHandler.ts`, and `reengageJob.ts`.
+- **Phase D — Apex Intelligence outcome reporting**: `reportOutcome()` in `server/operator/apexIntelligence.ts` now logs every silent-discard path with a structured `[APEX-OUTCOME] discarded` warning (one per validation reason), and accepted outcomes are mirrored fire-and-forget into `universal_events` with `eventType="agent.outcome"` so they survive process restarts. The in-memory buffer remains as the fast-read cache.

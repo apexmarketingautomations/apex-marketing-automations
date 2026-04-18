@@ -62,7 +62,7 @@ const toolGroups = [
     tools: [
       { icon: Kanban, title: "Visual CRM Pipeline", desc: "Drag-and-drop deal stages, conversion tracking, automated stage triggers, and revenue forecasting.", color: "indigo" },
       { icon: Users, title: "Contact Database", desc: "Tags, segments, geocoded addresses, opt-out tracking, custom fields, and bulk import.", color: "cyan" },
-      { icon: CalendarDays, title: "Calendar & Booking", desc: "Multi-calendar scheduling, Google Calendar sync, automated reminders, and round-robin assignment.", color: "emerald" },
+      { icon: CalendarDays, title: "Calendar & Booking", desc: "Appointment scheduling with optional Google Calendar two-way sync.", color: "emerald" },
       { icon: FormInput, title: "Form Builder", desc: "Drag-and-drop lead capture forms with conditional logic, hidden fields, and webhook triggers.", color: "lime" },
       { icon: Star, title: "Reputation Manager", desc: "Smart review routing — happy clients to Google, unhappy ones to private feedback for recovery.", color: "yellow" },
     ],

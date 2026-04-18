@@ -1,7 +1,7 @@
 import { google } from "googleapis";
 import { db } from "./db";
-import { appointments, contacts } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { appointments, contacts, subAccounts } from "@shared/schema";
+import { eq, and, sql } from "drizzle-orm";
 
 // --- Replit Google Calendar Integration (handles token refresh automatically) ---
 let connectionSettings: any;
@@ -144,28 +144,173 @@ export async function syncGoogleCalendar(
 }
 
 // --- Auto-sync background loop ---
+//
+// HARDENED: Auto-sync runs ONLY for sub-accounts whose `config.googleCalendarSync.enabled`
+// is `true`. No hardcoded account IDs. To enable/disable for a sub-account, set the
+// config flag (POST /api/calendar/sync-config/:subAccountId).
 
 const SYNC_INTERVAL_MS = 3_600_000;
-const TARGET_ACCOUNTS = [13, 14];
 let autoSyncTimer: ReturnType<typeof setInterval> | null = null;
 
+export interface CalendarSyncStatus {
+  enabled: boolean;
+  calendarId: string;
+  lastSyncAt: string | null;
+  lastSyncResult: { created: number; updated: number; skipped: number } | null;
+  lastSyncError: string | null;
+}
+
+export async function getCalendarSyncStatus(subAccountId: number): Promise<CalendarSyncStatus> {
+  const [row] = await db.select({ config: subAccounts.config })
+    .from(subAccounts).where(eq(subAccounts.id, subAccountId)).limit(1);
+  const cfg = ((row?.config as any)?.googleCalendarSync) || {};
+  return {
+    enabled: cfg.enabled === true,
+    calendarId: typeof cfg.calendarId === "string" && cfg.calendarId ? cfg.calendarId : "primary",
+    lastSyncAt: cfg.lastSyncAt || null,
+    lastSyncResult: cfg.lastSyncResult || null,
+    lastSyncError: cfg.lastSyncError || null,
+  };
+}
+
+export async function setCalendarSyncEnabled(
+  subAccountId: number,
+  enabled: boolean,
+  calendarId?: string,
+): Promise<CalendarSyncStatus> {
+  // Atomic JSONB deep-merge — avoids the read-modify-write race where two
+  // concurrent updaters (e.g. health checker + admin toggle) overwrite each
+  // other's changes. We only need the existing calendarId when no override
+  // is provided, so we read it once but the WRITE itself is a single
+  // jsonb_set targeting only the googleCalendarSync subtree.
+  const patch: Record<string, any> = { enabled };
+  if (calendarId) {
+    patch.calendarId = calendarId;
+  } else {
+    const [row] = await db.select({ config: subAccounts.config })
+      .from(subAccounts).where(eq(subAccounts.id, subAccountId)).limit(1);
+    const prevCalId = (row?.config as any)?.googleCalendarSync?.calendarId;
+    patch.calendarId = prevCalId || "primary";
+  }
+  const patchJson = JSON.stringify(patch);
+  await db.execute(sql`
+    UPDATE sub_accounts
+    SET config = jsonb_set(
+      COALESCE(config, '{}'::jsonb),
+      '{googleCalendarSync}',
+      COALESCE(config->'googleCalendarSync', '{}'::jsonb) || ${patchJson}::jsonb,
+      true
+    )
+    WHERE id = ${subAccountId}
+  `);
+  return getCalendarSyncStatus(subAccountId);
+}
+
+async function persistSyncResult(
+  subAccountId: number,
+  result: { created: number; updated: number; skipped: number } | null,
+  error: string | null,
+): Promise<void> {
+  try {
+    // Atomic JSONB merge — only touches the googleCalendarSync subtree, so
+    // an admin toggling enabled / calendarId at the same instant cannot
+    // clobber our sync timestamps and vice-versa.
+    const patch = {
+      lastSyncAt: new Date().toISOString(),
+      lastSyncResult: result,
+      lastSyncError: error,
+    };
+    const patchJson = JSON.stringify(patch);
+    await db.execute(sql`
+      UPDATE sub_accounts
+      SET config = jsonb_set(
+        COALESCE(config, '{}'::jsonb),
+        '{googleCalendarSync}',
+        COALESCE(config->'googleCalendarSync', '{}'::jsonb) || ${patchJson}::jsonb,
+        true
+      )
+      WHERE id = ${subAccountId}
+    `);
+  } catch (e: any) {
+    console.warn(`[GCAL-AUTO] Failed to persist sync result for ${subAccountId}: ${e.message}`);
+  }
+}
+
+async function getSyncEnabledAccounts(): Promise<Array<{ id: number; calendarId: string }>> {
+  // jsonb path query: config->'googleCalendarSync'->>'enabled' = 'true'
+  const rows = await db.execute<{ id: number; calendar_id: string | null }>(sql`
+    SELECT id, COALESCE(config->'googleCalendarSync'->>'calendarId', 'primary') AS calendar_id
+    FROM sub_accounts
+    WHERE config->'googleCalendarSync'->>'enabled' = 'true'
+  `);
+  return (rows.rows || []).map(r => ({ id: r.id, calendarId: r.calendar_id || "primary" }));
+}
+
 async function runAutoSync(): Promise<void> {
-  for (const subAccountId of TARGET_ACCOUNTS) {
+  let enabledAccounts: Array<{ id: number; calendarId: string }> = [];
+  try {
+    enabledAccounts = await getSyncEnabledAccounts();
+  } catch (err: any) {
+    console.warn(`[GCAL-AUTO] Failed to fetch sync-enabled accounts: ${err.message}`);
+    return;
+  }
+  if (enabledAccounts.length === 0) return;
+  console.log(`[GCAL-AUTO] Polling ${enabledAccounts.length} sync-enabled account(s)`);
+  for (const { id: subAccountId, calendarId } of enabledAccounts) {
     try {
-      const result = await syncGoogleCalendar(subAccountId, "primary");
+      const result = await syncGoogleCalendar(subAccountId, calendarId);
+      await persistSyncResult(subAccountId, result, null);
       if (result.created > 0 || result.updated > 0) {
         console.log(`[GCAL-AUTO] Account ${subAccountId}: +${result.created} new, ~${result.updated} updated`);
       }
     } catch (err) {
-      console.warn(`[GCAL-AUTO] Sync failed for account ${subAccountId}:`, (err as any).message);
+      const msg = (err as any).message || String(err);
+      console.warn(`[GCAL-AUTO] Sync failed for account ${subAccountId}: ${msg}`);
+      await persistSyncResult(subAccountId, null, msg);
     }
+  }
+}
+
+/**
+ * One-time backfill: any sub-account that already has at least one appointment
+ * synced from Google Calendar (googleCalendarEventId IS NOT NULL) has been
+ * relying on the previously-hardcoded [13,14] auto-sync. Mark them as
+ * sync-enabled so we preserve their behaviour without re-introducing the
+ * hardcoded list. Idempotent — runs at startup, no-op once flagged.
+ */
+async function backfillSyncEnabledFromHistory(): Promise<void> {
+  try {
+    const rows = await db.execute<{ sub_account_id: number }>(sql`
+      SELECT DISTINCT a.sub_account_id
+      FROM appointments a
+      JOIN sub_accounts s ON s.id = a.sub_account_id
+      WHERE a.google_calendar_event_id IS NOT NULL
+        AND (s.config->'googleCalendarSync'->>'enabled') IS NULL
+    `);
+    const ids = (rows.rows || []).map(r => r.sub_account_id);
+    if (ids.length === 0) {
+      console.log("[GCAL-AUTO] Backfill: no accounts with prior gcal history needing flag");
+      return;
+    }
+    console.log(`[GCAL-AUTO] Backfill: enabling sync for ${ids.length} account(s) with prior gcal history: ${ids.join(", ")}`);
+    for (const id of ids) {
+      try {
+        await setCalendarSyncEnabled(id, true);
+      } catch (e: any) {
+        console.warn(`[GCAL-AUTO] Backfill failed for account ${id}: ${e.message}`);
+      }
+    }
+  } catch (e: any) {
+    console.warn(`[GCAL-AUTO] Backfill query failed: ${e.message}`);
   }
 }
 
 export function startAutoSync(): void {
   if (autoSyncTimer) return;
-  console.log(`[GCAL-AUTO] Background sync started — polling every ${SYNC_INTERVAL_MS / 1000}s`);
-  runAutoSync().catch(() => {});
+  console.log(`[GCAL-AUTO] Background sync started — polling every ${SYNC_INTERVAL_MS / 1000}s (config-gated, no hardcoded accounts)`);
+  backfillSyncEnabledFromHistory()
+    .then(() => runAutoSync())
+    .catch(() => {});
   autoSyncTimer = setInterval(() => { runAutoSync().catch(() => {}); }, SYNC_INTERVAL_MS);
 }
 

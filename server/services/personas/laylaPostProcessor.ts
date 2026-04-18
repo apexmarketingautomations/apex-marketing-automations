@@ -6,6 +6,7 @@ import {
   LAYLA_PROHIBITED_WORDS_REGEX,
   LAYLA_HANDOVER_FALLBACK,
 } from "./laylaCore";
+import type { LaylaPolicy } from "@shared/laylaPolicy";
 
 export interface PostProcessResult {
   action: "send" | "handover" | "modified";
@@ -14,17 +15,12 @@ export interface PostProcessResult {
   modified?: boolean;
 }
 
-export interface LaylaOperatorConfig {
-  telegram?: {
-    link: string;
-    allowed: boolean;
-  };
-  handover?: {
-    fallback_message: string;
-    escalate_keywords: string[];
-  };
-  prohibited_words?: string[];
-}
+/**
+ * Backwards-compatible alias. New code should import `LaylaPolicy` directly
+ * from `@shared/laylaPolicy`. The post-processor only reads a subset of the
+ * full policy (telegram.allowed, handover.fallback_message).
+ */
+export type LaylaOperatorConfig = LaylaPolicy;
 
 const TOKEN_LIKE_REGEX = /[A-Za-z0-9\-_]{20,}/g;
 const SSN_REGEX = /\b\d{3}-?\d{2}-?\d{4}\b/g;
@@ -55,7 +51,7 @@ export function postProcessAndGuard(
       console.log(`[LAYLA-PP] Unauthorized telegram link attempt`);
       return {
         action: "handover",
-        reply: operatorConfig.handover?.fallback_message || HANDOVER_FALLBACK,
+        reply: operatorConfig.handover?.fallback_message || LAYLA_HANDOVER_FALLBACK,
         reason: "unauthorized_link_attempt",
       };
     }

@@ -1,5 +1,6 @@
 import { postProcessAndGuard, checkEscalationKeywords, maskPiiForLogs } from "./laylaPostProcessor";
 import { shouldSendVoiceMessage } from "./laylaVoice";
+import type { LaylaPolicy } from "@shared/laylaPolicy";
 
 export interface ConversationMessage {
   role: "user" | "layla";
@@ -37,32 +38,11 @@ export interface TelegramAuditEntry {
   timestamp: number;
 }
 
-interface OperatorConfig {
-  telegram: {
-    link: string;
-    allowed: boolean;
-    explicit_ask_phrases: string[];
-    threshold_rules: {
-      interest_score_needed: number;
-      score_rules: Record<string, number>;
-    };
-    templates: {
-      telegram_send: string;
-      clarify_ambiguous: string;
-    };
-    safety: {
-      block_on_payment_requests: boolean;
-      block_on_explicit_for_pay: boolean;
-      escalate_on_underage: boolean;
-    };
-  };
-  handover: {
-    escalate_keywords: string[];
-    fallback_message: string;
-    bot_denial: string;
-    refuse_personal: string;
-  };
-}
+/**
+ * Local alias to the canonical typed Layla policy.
+ * Source of truth: `shared/laylaPolicy.ts` (single Zod schema).
+ */
+type OperatorConfig = LaylaPolicy;
 
 const EXPLICIT_ASK_OVERRIDES = ["t.me/", "telegram"];
 
