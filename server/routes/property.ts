@@ -179,22 +179,24 @@ export function registerPropertyRoutes(app: Express) {
       return res.status(422).json({ error: "No Twilio phone number assigned to this account. Purchase a number first." });
     }
 
-    try {
-      const { getTwilioClientForAccount } = await import("../twilioClientFactory");
-      const clientResult = await getTwilioClientForAccount(lead.subAccountId);
-      if (!clientResult) {
-        return res.status(503).json({ error: "Twilio is not configured for this account." });
-      }
-      await enforceSmsProvider("sms", "twilio", { subAccountId: lead.subAccountId, phone: lead.ownerPhone, source: "property-radar-sms" });
-      await clientResult.client.messages.create({
-        body: smsBody,
-        from: account.twilioNumber,
-        to: lead.ownerPhone,
-      });
-    } catch (err: any) {
-      console.error("Property Radar SMS error:", err?.message);
+    const { sendSms } = await import("../messaging/sendSms");
+    const sendResult = await sendSms({
+      subAccountId: lead.subAccountId,
+      to: lead.ownerPhone,
+      body: smsBody,
+      from: account.twilioNumber,
+      source: "property-radar-sms",
+      path: "sms",
+      metadata: { property_lead_id: id },
+    });
+    if (!sendResult.ok) {
       await storage.updatePropertyLead(id, { smsSent: false, lastContactedAt: new Date() });
-      return res.status(422).json({ error: `SMS failed: ${err.message}` });
+      const httpStatus = sendResult.reason === "no_client" ? 503 : 422;
+      return res.status(httpStatus).json({
+        error: `SMS failed (${sendResult.reason}): ${sendResult.errorMessage}`,
+        twilio_status: sendResult.errorStatus,
+        twilio_code: sendResult.errorCode,
+      });
     }
 
     await storage.updatePropertyLead(id, { smsSent: true, lastContactedAt: new Date() });
@@ -1482,40 +1484,39 @@ export function registerPropertyRoutes(app: Express) {
             const location = payload.location || "Unknown location";
 
             if (twilioNumber && ownerPhone) {
-              const { getTwilioClientForAccount: getTwilioClientCrash } = await import("../twilioClientFactory");
-              const crashClientResult = await getTwilioClientCrash(targetAccountId);
-              if (crashClientResult) {
-                const client = crashClientResult.client;
-                const alertMsg = event === "crash.detected"
-                  ? `[Apex Alert] Crash detected at ${location}. Severity: ${payload.severity || "unknown"}. Lead: ${leadName}${leadPhone ? ` (${leadPhone})` : ""}. Check your dashboard for details.`
-                  : `[Apex Alert] New ${event.replace(".", " ")} — ${leadName}${leadPhone ? ` (${leadPhone})` : ""}. Source: Crash Connect.`;
+              const alertMsg = event === "crash.detected"
+                ? `[Apex Alert] Crash detected at ${location}. Severity: ${payload.severity || "unknown"}. Lead: ${leadName}${leadPhone ? ` (${leadPhone})` : ""}. Check your dashboard for details.`
+                : `[Apex Alert] New ${event.replace(".", " ")} — ${leadName}${leadPhone ? ` (${leadPhone})` : ""}. Source: Crash Connect.`;
 
+              const { sendSms: sendSmsCrash } = await import("../messaging/sendSms");
+              const crashSendResult = await sendSmsCrash({
+                subAccountId: targetAccountId,
+                to: ownerPhone,
+                body: alertMsg,
+                from: twilioNumber,
+                source: "crash-connect-alert",
+                path: "hot-lead",
+                metadata: { event, severity: payload.severity ?? null },
+              });
+
+              if (crashSendResult.ok) {
+                console.log(`[CRASH CONNECT] SMS alert sent to ${ownerPhone} sid=${crashSendResult.twilioSid}`);
                 try {
-                  await enforceSmsProvider("sms", "twilio", { subAccountId: targetAccountId, phone: ownerPhone, source: "crash-connect-alert" });
-                  await client.messages.create({
-                    to: ownerPhone,
-                    from: twilioNumber,
-                    body: alertMsg,
+                  await recordOutboundBilling({
+                    subAccountId: targetAccountId,
+                    channel: "sms",
+                    provider: "twilio",
+                    providerCost: 0.0079,
+                    direction: "outbound",
+                    messageType: "system",
+                    metadata: { source: "crash_connect", event },
                   });
-                  console.log(`[CRASH CONNECT] SMS alert sent to ${ownerPhone}`);
-
-                  try {
-                    await recordOutboundBilling({
-                      subAccountId: targetAccountId,
-                      channel: "sms",
-                      provider: "twilio",
-                      providerCost: 0.0079,
-                      direction: "outbound",
-                      messageType: "system",
-                      metadata: { source: "crash_connect", event },
-                    });
-                  } catch (billingErr: unknown) {
-                    const errMsg = billingErr instanceof Error ? billingErr.message : String(billingErr);
-                    console.error(`[BILLING CRITICAL] Crash Connect alert billing failed: ${errMsg}`);
-                  }
-                } catch (smsErr: any) {
-                  console.error(`[CRASH CONNECT] SMS alert failed: ${smsErr.message}`);
+                } catch (billingErr: unknown) {
+                  const errMsg = billingErr instanceof Error ? billingErr.message : String(billingErr);
+                  console.error(`[BILLING CRITICAL] Crash Connect alert billing failed: ${errMsg}`);
                 }
+              } else {
+                console.error(`[CRASH CONNECT] SMS alert failed account=${targetAccountId} reason=${crashSendResult.reason} err=${crashSendResult.errorMessage}`);
               }
             }
 
@@ -1527,16 +1528,22 @@ export function registerPropertyRoutes(app: Express) {
                     { role: "user", content: `Generate an SMS to send to ${leadName} who was in a crash at ${location}. The business provides ${account.industry || "automotive"} services.` },
                   ], { temperature: 0.7, maxTokens: 200, route: "property-crash-sms" });
 
-                  const { getTwilioClientForAccount: getTwilioClientAi } = await import("../twilioClientFactory");
-                  const aiClientResult = await getTwilioClientAi(targetAccountId);
-                  if (aiClientResult && crashAiResult.text) {
-                    await enforceSmsProvider("sms", "twilio", { subAccountId: targetAccountId, phone: leadPhone, source: "crash-connect-ai-followup" });
-                    await aiClientResult.client.messages.create({
+                  if (crashAiResult.text) {
+                    const { sendSms: sendSmsAi } = await import("../messaging/sendSms");
+                    const aiSendResult = await sendSmsAi({
+                      subAccountId: targetAccountId,
                       to: leadPhone,
-                      from: twilioNumber,
                       body: crashAiResult.text.trim(),
+                      from: twilioNumber,
+                      source: "crash-connect-ai-followup",
+                      path: "auto-reply",
+                      metadata: { event, ai_route: "property-crash-sms" },
                     });
-                    console.log(`[CRASH CONNECT] AI follow-up sent to lead ${leadPhone}`);
+                    if (!aiSendResult.ok) {
+                      console.error(`[CRASH CONNECT] AI follow-up failed account=${targetAccountId} reason=${aiSendResult.reason} err=${aiSendResult.errorMessage}`);
+                      throw new Error(`AI follow-up SMS failed: ${aiSendResult.reason}: ${aiSendResult.errorMessage}`);
+                    }
+                    console.log(`[CRASH CONNECT] AI follow-up sent to lead ${leadPhone} sid=${aiSendResult.twilioSid}`);
                     await logUsageInternal(targetAccountId, "AI_CHAT", 1, `Crash Connect AI message generation`);
 
                     try {

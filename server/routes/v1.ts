@@ -1005,27 +1005,27 @@ export function registerV1Routes(app: Express) {
 
             if (isOptedOut) {
               result = { status: "Blocked", message: "Recipient has opted out of SMS" };
+            } else if (!smsSubAccountId) {
+              result = { status: "Error", message: "subAccountId required for send_sms" };
             } else {
-              try {
-                const { getTwilioClientForAccount } = await import("../twilioClientFactory");
-                const clientResult = smsSubAccountId
-                  ? await getTwilioClientForAccount(smsSubAccountId)
-                  : null;
-                if (!clientResult) {
-                  result = { status: "Error", message: "Twilio not configured for this account" };
-                } else {
-                  const account = await storage.getSubAccount(smsSubAccountId);
-                  const fromNumber = payload.from || account?.twilioNumber || "";
-                  await enforceSmsProvider("sms", "twilio", { subAccountId: smsSubAccountId, phone: payload.to, source: "v1-automation-send-sms" });
-                  const msg = await clientResult.client.messages.create({
-                    to: payload.to,
-                    from: fromNumber,
-                    body: payload.body,
-                  });
-                  result = { status: "Success", message: "SMS Sent", sid: msg.sid };
-                }
-              } catch (err: any) {
-                result = { status: "Error", message: `SMS failed: ${err.message}` };
+              const { sendSms } = await import("../messaging/sendSms");
+              const sendResult = await sendSms({
+                subAccountId: smsSubAccountId,
+                to: payload.to,
+                body: payload.body,
+                from: payload.from,
+                source: "v1-automation-send-sms",
+                path: "sms",
+              });
+              if (sendResult.ok) {
+                result = { status: "Success", message: "SMS Sent", sid: sendResult.twilioSid };
+              } else {
+                result = {
+                  status: "Error",
+                  message: `SMS failed (${sendResult.reason}): ${sendResult.errorMessage}`,
+                  twilio_status: sendResult.errorStatus,
+                  twilio_code: sendResult.errorCode,
+                };
               }
             }
           }

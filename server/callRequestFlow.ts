@@ -258,27 +258,25 @@ async function hasOutboundActivityAfter(contactPhone: string, subAccountId: numb
 }
 
 async function forceHotLeadSms(subAccountId: number, alertBody: string, deepLink: string): Promise<void> {
-  try {
-    const sid = process.env.TWILIO_ACCOUNT_SID;
-    const token = process.env.TWILIO_AUTH_TOKEN;
-    if (!sid || !token) return;
-
-    const account = await storage.getSubAccount(subAccountId);
-    const fromNumber = account?.twilioNumber;
-    const ownerPhone = account?.ownerPhone;
-    if (!fromNumber || !ownerPhone) return;
-
-    const client = Twilio(sid, token);
-    const smsBody = `[Apex Alert] 🔥 HOT LEAD\n${alertBody}\nView: ${deepLink}`;
-    await enforceSmsProvider("sms", "twilio", { subAccountId, phone: ownerPhone, source: "call-request-flow-alert" });
-    await client.messages.create({
-      body: smsBody.substring(0, 1600),
-      from: fromNumber,
-      to: ownerPhone,
-    });
-    console.log(`[CALL-REQUEST-FLOW] Forced SMS alert to owner ${ownerPhone} for account ${subAccountId}`);
-  } catch (err) {
-    console.error(`[CALL-REQUEST-FLOW] Force SMS alert failed: ${err instanceof Error ? err.message : String(err)}`);
+  const account = await storage.getSubAccount(subAccountId);
+  const ownerPhone = account?.ownerPhone;
+  if (!ownerPhone) {
+    console.log(`[CALL-REQUEST-FLOW] Skipping hot-lead SMS: no ownerPhone for account ${subAccountId}`);
+    return;
+  }
+  const { sendSms } = await import("./messaging/sendSms");
+  const smsBody = `[Apex Alert] 🔥 HOT LEAD\n${alertBody}\nView: ${deepLink}`;
+  const result = await sendSms({
+    subAccountId,
+    to: ownerPhone,
+    body: smsBody.substring(0, 1600),
+    source: "call-request-flow-alert",
+    path: "hot-lead",
+  });
+  if (result.ok) {
+    console.log(`[CALL-REQUEST-FLOW] Forced SMS alert to owner ${ownerPhone} for account ${subAccountId} sid=${result.twilioSid}`);
+  } else {
+    console.error(`[CALL-REQUEST-FLOW] Force SMS alert failed account=${subAccountId} reason=${result.reason} err=${result.errorMessage}`);
   }
 }
 

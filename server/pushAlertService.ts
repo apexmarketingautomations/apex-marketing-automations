@@ -1,7 +1,6 @@
 import webpush from "web-push";
 
 import { storage } from "./storage";
-import { enforceSmsProvider } from "./smsGatewayGuard";
 import type { NotificationPreference } from "@shared/schema";
 
 const VAPID_SUBJECT = "mailto:alerts@apexmarketingautomations.com";
@@ -181,34 +180,22 @@ async function sendBrowserPush(subAccountId: number, payload: AlertPayload): Pro
 }
 
 async function sendSmsAlert(subAccountId: number, phone: string, payload: AlertPayload): Promise<boolean> {
-  await enforceSmsProvider("sms", "twilio", {
-    subAccountId,
-    phone,
-    source: "push-alert-service",
-  });
-
-  const client = await getTwilioClientForSub(subAccountId);
-  if (!client) return false;
-
-  const account = await storage.getSubAccount(subAccountId);
-  const fromNumber = account?.twilioNumber;
-  if (!fromNumber) return false;
-
+  const { sendSms } = await import("./messaging/sendSms");
   const smsBody = `[Apex Alert] ${payload.title}\n${payload.body}${payload.link ? `\nView: ${payload.link}` : ""}`;
-
-  try {
-    await client.messages.create({
-      body: smsBody.substring(0, 1600),
-      from: fromNumber,
-      to: phone,
-    });
-    console.log(`[PUSH-ALERT] SMS sent to ${phone} for account ${subAccountId}`);
+  const result = await sendSms({
+    subAccountId,
+    to: phone,
+    body: smsBody.substring(0, 1600),
+    source: "push-alert-service",
+    path: "sms",
+    metadata: { alert_title: payload.title },
+  });
+  if (result.ok) {
+    console.log(`[PUSH-ALERT] SMS sent to ${phone} for account ${subAccountId} sid=${result.twilioSid}`);
     return true;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[PUSH-ALERT] SMS failed for account ${subAccountId}:`, msg);
-    return false;
   }
+  console.error(`[PUSH-ALERT] SMS failed for account ${subAccountId} reason=${result.reason} err=${result.errorMessage}`);
+  return false;
 }
 
 async function getOwnerPhone(subAccountId: number): Promise<string | null> {
