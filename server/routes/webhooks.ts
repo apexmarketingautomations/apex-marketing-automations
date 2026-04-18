@@ -19,7 +19,6 @@ import { withIdempotency, markEventCompleted, markEventFailed } from "../idempot
 import { extractAndStoreInsights } from "../services/insightExtractor";
 import { emitUniversalEvent, EVENT_TYPES } from "../intelligence/eventEmitter";
 
-const META_DM_AI_FALLBACK_TEXT = "give me a sec — be right back 💭";
 
 const recentMetaMids = new Set<string>();
 
@@ -1240,21 +1239,15 @@ export function registerWebhooksRoutes(app: Express) {
           }
 
           const aiResult = await aiChat(aiMessages, { temperature: 0.7, maxTokens: 1024, route: "dm-catchup-reply" });
-          const aiReply = aiResult.text;
-          if (!aiResult.ok || !aiReply) {
-            // aiGateway guarantees text === "" when ok === false; never an "[AI Error: ...]" string.
+          if (!aiResult.ok || !aiResult.text) {
             results.push({ senderId, channel, status: "skip", reason: aiResult.ok ? "empty_ai_reply" : `ai_error:${aiResult.errorMessage ?? "unknown"}` });
             continue;
           }
+          const aiReply = aiResult.text;
 
           const endpoint = channel === "instagram" ? "me" : pageId;
           const sendUrl = `https://graph.facebook.com/v21.0/${endpoint}/messages${appsecretProof ? `?appsecret_proof=${appsecretProof}` : ""}`;
           const threadId = `${subAccountId}::${senderId}::${channel}`;
-
-          // Defensive: source-level fix means aiReply is real model output here.
-          // Keep the legacy leak check as belt-and-suspenders during the rollout.
-          const isAiErrorLeak = typeof aiReply === "string" && aiReply.startsWith("[AI Error:");
-          const outboundText = isAiErrorLeak ? META_DM_AI_FALLBACK_TEXT : aiReply;
 
           const sendResp = await fetch(sendUrl, {
             method: "POST",
@@ -1262,32 +1255,23 @@ export function registerWebhooksRoutes(app: Express) {
             body: JSON.stringify({
               recipient: { id: senderId },
               messaging_type: "RESPONSE",
-              message: { text: outboundText },
+              message: { text: aiReply },
               access_token: accessToken,
             }),
           });
           const sendResult = await sendResp.json() as any;
           const sendOk = sendResp.ok;
-          const status = isAiErrorLeak
-            ? (sendOk ? "fallback_sent" : "failed")
-            : (sendOk ? "sent" : "failed");
-          const sendErrMsg = sendOk
+          const status = sendOk ? "sent" : "failed";
+          const errorMessage = sendOk
             ? undefined
             : `meta_api_${sendResp.status}: ${(sendResult?.error?.message || JSON.stringify(sendResult)).toString().substring(0, 300)}`;
-          const errorMessage = isAiErrorLeak
-            ? `ai_error_leak_blocked: ${aiReply.substring(0, 400)}${sendErrMsg ? ` | fallback_err: ${sendErrMsg}` : ""}`
-            : sendErrMsg;
-
-          if (isAiErrorLeak) {
-            console.error(`[DM-CATCHUP] BLOCKED AI-error leak to ${senderId} (${channel}) — body=${aiReply.substring(0, 200)}`);
-          }
 
           await db.insert(messages).values({
             subAccountId,
             channel,
             direction: "outbound",
             contactPhone: senderId,
-            body: outboundText,
+            body: aiReply,
             status,
             messageSid: sendResult?.message_id,
             threadId,
@@ -1300,17 +1284,16 @@ export function registerWebhooksRoutes(app: Express) {
           if (sendOk) {
             broadcastNewMessage(subAccountId, {
               subAccountId, channel, direction: "outbound", contactPhone: senderId,
-              body: outboundText, status, threadId, createdAt: new Date().toISOString(),
+              body: aiReply, status, threadId, createdAt: new Date().toISOString(),
             });
           }
 
-          console.log(`[DM-CATCHUP] ${status} reply to ${senderId} (${channel}): ${outboundText.substring(0, 80)}`);
+          console.log(`[DM-CATCHUP] ${status} reply to ${senderId} (${channel}): ${aiReply.substring(0, 80)}`);
           results.push({
             senderId, channel, status,
-            reply: outboundText.substring(0, 100),
+            reply: aiReply.substring(0, 100),
             metaMessageId: sendResult.message_id || null,
             error: sendResult.error?.message || null,
-            aiErrorBlocked: isAiErrorLeak || undefined,
           });
 
           await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 5000));
@@ -2238,120 +2221,64 @@ export function registerWebhooksRoutes(app: Express) {
                     disambiguator: mid ? `${mid}-send-err` : `meta-send-err-${senderId}`,
                   });
                 } else if (aiReply && accessToken && pageId) {
-                  const isAiErrorLeak = typeof aiReply === "string" && aiReply.startsWith("[AI Error:");
-                  if (isAiErrorLeak) {
-                    console.error(`[META DM] BLOCKED AI-error leak from being sent to ${senderId} — body=${aiReply.substring(0, 200)}`);
-                    console.error(`[LAYLA-PIPELINE] Step 5 BLOCKED: Refused to send AI-error text as reply — sender=${senderId}, subAccountId=${subAccountId}`);
-                    const fallbackText = META_DM_AI_FALLBACK_TEXT;
-                    const fbEndpoint = channel === "instagram" ? "me" : pageId;
-                    const fbUrl = `https://graph.facebook.com/v21.0/${fbEndpoint}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
-                    let fbStatus: "fallback_sent" | "failed" = "failed";
-                    let fbMsgId: string | undefined;
-                    let fbSendErr: string | undefined;
-                    try {
-                      const fbRes = await fetch(fbUrl, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          recipient: { id: senderId },
-                          messaging_type: "RESPONSE",
-                          message: { text: fallbackText },
-                          access_token: accessToken,
-                        }),
-                      });
-                      const fbData = await fbRes.json() as any;
-                      fbMsgId = fbData?.message_id;
-                      if (fbRes.ok) {
-                        fbStatus = "fallback_sent";
-                        console.log(`[META DM] Safe fallback sent to ${senderId}: messageId=${fbMsgId}`);
-                      } else {
-                        fbSendErr = `meta_api_${fbRes.status}: ${(fbData?.error?.message || JSON.stringify(fbData)).toString().substring(0, 300)}`;
-                        console.error(`[META DM] Fallback send FAILED to ${senderId} — ${fbSendErr}`);
-                      }
-                    } catch (fbErr: any) {
-                      fbSendErr = `fallback_throw: ${fbErr?.message ?? "unknown"}`;
-                      console.error(`[META DM] Fallback send threw: ${fbSendErr}`);
-                    }
-                    await db.insert(messages).values({
-                      subAccountId,
-                      channel,
-                      direction: "outbound",
-                      contactPhone: senderId,
-                      body: fbStatus === "fallback_sent" ? fallbackText : "",
-                      status: fbStatus,
-                      messageSid: fbMsgId,
-                      traceId: metaTraceId,
-                      threadId: metaDmThreadId,
-                      pageId: entryPageId,
-                      senderId,
-                      errorMessage: `ai_error_leak_blocked: ${aiReply.substring(0, 400)}${fbSendErr ? ` | fallback_err: ${fbSendErr}` : ""}`,
-                    });
-                    recordStepValue(metaTrace, "outbound_send", fbStatus === "fallback_sent" ? "success" : "error", Date.now() - metaSendStart, {
+                  const aiEndpoint = channel === "instagram" ? "me" : pageId;
+                  const aiUrl = `https://graph.facebook.com/v21.0/${aiEndpoint}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
+                  console.log(`[META DM] Sending AI reply to ${senderId} via endpoint=${aiEndpoint}, pageId=${pageId}, channel=${channel}, token_set=${!!accessToken}, appsecret_proof=${!!appsecretProof}`);
+                  const sendRes = await fetch(aiUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      recipient: { id: senderId },
+                      messaging_type: "RESPONSE",
+                      message: { text: aiReply },
+                      access_token: accessToken,
+                    }),
+                  });
+                  const sendData = await sendRes.json() as any;
+                  const metaMsgId = sendData?.message_id as string | undefined;
+                  const aiSendStatus = sendRes.ok ? "sent" : "failed";
+                  let aiSendErrorMsg: string | undefined;
+                  if (!sendRes.ok) {
+                    aiSendErrorMsg = `meta_api_${sendRes.status}: ${(sendData?.error?.message || JSON.stringify(sendData)).toString().substring(0, 500)}`;
+                    console.error(`[META DM] AI reply FAILED to ${senderId} — HTTP ${sendRes.status}, pageId=${pageId}, error=${JSON.stringify(sendData).substring(0, 500)}`);
+                    console.error(`[LAYLA-PIPELINE] Step 5 FAILED: Response send failed — HTTP ${sendRes.status}, sender=${senderId}, subAccountId=${subAccountId}`);
+                    recordStepValue(metaTrace, "outbound_send", "error", Date.now() - metaSendStart, {
                       provider: "meta",
-                      error: fbStatus === "fallback_sent" ? undefined : "ai_error_leak_blocked_fallback_failed",
-                      metadata: { channel, leak: aiReply.substring(0, 200), fallback: fbStatus },
-                      disambiguator: mid ? `${mid}-leak-blk` : `meta-leak-blk-${senderId}`,
+                      error: JSON.stringify(sendData).substring(0, 200),
+                      metadata: { channel },
+                      disambiguator: mid ? `${mid}-send-err` : `meta-send-err-${senderId}`,
                     });
                   } else {
-                    const aiEndpoint = channel === "instagram" ? "me" : pageId;
-                    const aiUrl = `https://graph.facebook.com/v21.0/${aiEndpoint}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
-                    console.log(`[META DM] Sending AI reply to ${senderId} via endpoint=${aiEndpoint}, pageId=${pageId}, channel=${channel}, token_set=${!!accessToken}, appsecret_proof=${!!appsecretProof}`);
-                    const sendRes = await fetch(aiUrl, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        recipient: { id: senderId },
-                        messaging_type: "RESPONSE",
-                        message: { text: aiReply },
-                        access_token: accessToken,
-                      }),
+                    console.log(`[META DM] AI reply sent to ${senderId}: OK, messageId=${sendData?.message_id}`);
+                    console.log(`[LAYLA-PIPELINE] Step 5: Response successfully sent — sender=${senderId}, messageId=${sendData?.message_id}`);
+                    recordStepValue(metaTrace, "outbound_send", "success", Date.now() - metaSendStart, {
+                      provider: "meta",
+                      metadata: { channel, to: senderId, metaMsgId },
+                      disambiguator: metaMsgId || mid || `meta-send-${senderId}`,
                     });
-                    const sendData = await sendRes.json() as any;
-                    const metaMsgId = sendData?.message_id as string | undefined;
-                    const aiSendStatus = sendRes.ok ? "sent" : "failed";
-                    let aiSendErrorMsg: string | undefined;
-                    if (!sendRes.ok) {
-                      aiSendErrorMsg = `meta_api_${sendRes.status}: ${(sendData?.error?.message || JSON.stringify(sendData)).toString().substring(0, 500)}`;
-                      console.error(`[META DM] AI reply FAILED to ${senderId} — HTTP ${sendRes.status}, pageId=${pageId}, error=${JSON.stringify(sendData).substring(0, 500)}`);
-                      console.error(`[LAYLA-PIPELINE] Step 5 FAILED: Response send failed — HTTP ${sendRes.status}, sender=${senderId}, subAccountId=${subAccountId}`);
-                      recordStepValue(metaTrace, "outbound_send", "error", Date.now() - metaSendStart, {
-                        provider: "meta",
-                        error: JSON.stringify(sendData).substring(0, 200),
-                        metadata: { channel },
-                        disambiguator: mid ? `${mid}-send-err` : `meta-send-err-${senderId}`,
-                      });
-                    } else {
-                      console.log(`[META DM] AI reply sent to ${senderId}: OK, messageId=${sendData?.message_id}`);
-                      console.log(`[LAYLA-PIPELINE] Step 5: Response successfully sent — sender=${senderId}, messageId=${sendData?.message_id}`);
-                      recordStepValue(metaTrace, "outbound_send", "success", Date.now() - metaSendStart, {
-                        provider: "meta",
-                        metadata: { channel, to: senderId, metaMsgId },
-                        disambiguator: metaMsgId || mid || `meta-send-${senderId}`,
-                      });
-                    }
-
-                    await db.insert(messages).values({
-                      subAccountId,
-                      channel,
-                      direction: "outbound",
-                      contactPhone: senderId,
-                      body: aiReply,
-                      status: aiSendStatus,
-                      messageSid: metaMsgId,
-                      traceId: metaTraceId,
-                      threadId: metaDmThreadId,
-                      pageId: entryPageId,
-                      senderId,
-                      errorMessage: aiSendErrorMsg,
-                    });
-                    console.log(`[LAYLA-PIPELINE] Step 6: Response logged — direction=outbound, status=${aiSendStatus}, sender=${senderId}, subAccountId=${subAccountId}${aiSendErrorMsg ? `, error_persisted=true` : ""}`);
-                    broadcastNewMessage(subAccountId, {
-                      subAccountId, channel, direction: "outbound", contactPhone: senderId,
-                      body: aiReply, status: aiSendStatus, threadId: metaDmThreadId, createdAt: new Date().toISOString(),
-                    });
-
-                    extractAndStoreInsights(subAccountId!, senderId, channel).catch(() => {});
                   }
+
+                  await db.insert(messages).values({
+                    subAccountId,
+                    channel,
+                    direction: "outbound",
+                    contactPhone: senderId,
+                    body: aiReply,
+                    status: aiSendStatus,
+                    messageSid: metaMsgId,
+                    traceId: metaTraceId,
+                    threadId: metaDmThreadId,
+                    pageId: entryPageId,
+                    senderId,
+                    errorMessage: aiSendErrorMsg,
+                  });
+                  console.log(`[LAYLA-PIPELINE] Step 6: Response logged — direction=outbound, status=${aiSendStatus}, sender=${senderId}, subAccountId=${subAccountId}${aiSendErrorMsg ? `, error_persisted=true` : ""}`);
+                  broadcastNewMessage(subAccountId, {
+                    subAccountId, channel, direction: "outbound", contactPhone: senderId,
+                    body: aiReply, status: aiSendStatus, threadId: metaDmThreadId, createdAt: new Date().toISOString(),
+                  });
+
+                  extractAndStoreInsights(subAccountId!, senderId, channel).catch(() => {});
                 }
               } catch (aiErr: any) {
                 console.error("[META DM] AI reply error:", aiErr.message);
@@ -2362,53 +2289,23 @@ export function registerWebhooksRoutes(app: Express) {
                   metadata: { channel },
                   disambiguator: mid ? `${mid}-ai-err` : `meta-ai-err-${senderId}`,
                 });
-                let fbMsgId: string | undefined;
-                let fbStatus: "fallback_sent" | "failed" = "failed";
-                let fbSendErr: string | undefined;
-                if (accessToken && pageId && senderId) {
-                  try {
-                    const fbEndpoint = channel === "instagram" ? "me" : pageId;
-                    const fbUrl = `https://graph.facebook.com/v21.0/${fbEndpoint}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
-                    const fbRes = await fetch(fbUrl, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        recipient: { id: senderId },
-                        messaging_type: "RESPONSE",
-                        message: { text: META_DM_AI_FALLBACK_TEXT },
-                        access_token: accessToken,
-                      }),
-                    });
-                    const fbData = await fbRes.json() as any;
-                    fbMsgId = fbData?.message_id;
-                    if (fbRes.ok) {
-                      fbStatus = "fallback_sent";
-                      console.log(`[META DM] Safe fallback sent (after AI throw) to ${senderId}: messageId=${fbMsgId}`);
-                    } else {
-                      fbSendErr = `meta_api_${fbRes.status}: ${(fbData?.error?.message || JSON.stringify(fbData)).toString().substring(0, 300)}`;
-                      console.error(`[META DM] Fallback send FAILED (after AI throw) to ${senderId} — ${fbSendErr}`);
-                    }
-                  } catch (fbErr: any) {
-                    fbSendErr = `fallback_throw: ${fbErr?.message ?? "unknown"}`;
-                    console.error(`[META DM] Fallback send threw: ${fbSendErr}`);
-                  }
-                } else {
-                  fbSendErr = "fallback_skipped: missing accessToken/pageId/senderId";
-                }
+                // No fabricated fallback message. If the AI pipeline throws, we
+                // do NOT manufacture a "be right back" reply — that would be a
+                // dishonest message attributed to the persona. Persist the
+                // failure for visibility and let the conversation stay quiet.
                 try {
                   await db.insert(messages).values({
                     subAccountId: subAccountId!,
                     channel,
                     direction: "outbound",
                     contactPhone: senderId,
-                    body: fbStatus === "fallback_sent" ? META_DM_AI_FALLBACK_TEXT : "",
-                    status: fbStatus,
-                    messageSid: fbMsgId,
+                    body: "",
+                    status: "failed",
                     traceId: metaTraceId,
                     threadId: metaDmThreadId,
                     pageId: entryPageId,
                     senderId,
-                    errorMessage: `ai_pipeline_throw: ${(aiErr?.message ?? "unknown").toString().substring(0, 400)}${fbSendErr ? ` | fallback_err: ${fbSendErr}` : ""}`,
+                    errorMessage: `ai_pipeline_throw: ${(aiErr?.message ?? "unknown").toString().substring(0, 400)}`,
                   });
                 } catch (persistErr: any) {
                   console.error(`[META DM] Failed to persist AI-error row: ${persistErr.message}`);

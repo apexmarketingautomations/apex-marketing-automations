@@ -398,7 +398,6 @@ function sampleReengageDelay(): number {
   return 60_000 + Math.random() * 60_000;
 }
 
-const META_DM_AI_FALLBACK_TEXT = "give me a sec — be right back 💭";
 
 async function sendMetaDM(
   subAccountId: number,
@@ -412,18 +411,12 @@ async function sendMetaDM(
   const url = `https://graph.facebook.com/v21.0/${pageId}/messages` +
     (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
 
-  const isAiErrorLeak = typeof text === "string" && text.startsWith("[AI Error:");
-  const outboundText = isAiErrorLeak ? META_DM_AI_FALLBACK_TEXT : text;
-  if (isAiErrorLeak) {
-    console.error(`[REENGAGE] BLOCKED AI-error leak to ${recipientId} (thread=${threadId}) — original=${text.substring(0, 200)}`);
-  }
-
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       recipient: { id: recipientId },
-      message: { text: outboundText },
+      message: { text },
       access_token: accessToken,
     }),
     signal: AbortSignal.timeout(15000),
@@ -435,22 +428,17 @@ async function sendMetaDM(
   const channel = threadId.includes("instagram") ? "instagram" : "facebook";
 
   const sendOk = res.ok;
-  const status = isAiErrorLeak
-    ? (sendOk ? "fallback_sent" : "failed")
-    : (sendOk ? "sent" : "failed");
-  const sendErrMsg = sendOk
+  const status = sendOk ? "sent" : "failed";
+  const errorMessage = sendOk
     ? undefined
     : `meta_api_${res.status}: ${(data?.error?.message || JSON.stringify(data)).toString().substring(0, 300)}`;
-  const errorMessage = isAiErrorLeak
-    ? `ai_error_leak_blocked: ${text.substring(0, 400)}${sendErrMsg ? ` | fallback_err: ${sendErrMsg}` : ""}`
-    : sendErrMsg;
 
   await db.insert(messages).values({
     subAccountId,
     channel,
     direction: "outbound",
     contactPhone: recipientId,
-    body: outboundText,
+    body: text,
     status,
     messageSid: data?.message_id,
     traceId,
