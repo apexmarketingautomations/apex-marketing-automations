@@ -224,7 +224,11 @@ export function registerWebhooksRoutes(app: Express) {
             aiMessages[0].content += langInstr;
           }
           const smsAiResult = await aiChat(aiMessages, { temperature: 0.7, maxTokens: 1024, route: "webhook-sms-reply" });
-          aiReply = smsAiResult.text || aiReply;
+          if (smsAiResult.ok && smsAiResult.text) {
+            aiReply = smsAiResult.text;
+          } else if (!smsAiResult.ok) {
+            console.warn(`[${channel.toUpperCase()}][AI-REPLY] aiChat returned ok=false: ${smsAiResult.errorMessage}. Using static fallback text.`);
+          }
           console.log(`[${channel.toUpperCase()}][AI-REPLY] Generated — provider=${smsAiResult.provider}, replyLength=${aiReply.length}, elapsed=${Date.now() - aiStart}ms`);
 
           extractInsightsFromConversation(
@@ -807,9 +811,11 @@ export function registerWebhooksRoutes(app: Express) {
             aiMsgs[0].content += langInstr;
           }
           const fallbackAiResult = await aiChat(aiMsgs, { temperature: 0.7, maxTokens: 512, route: "twilio-inbound-fallback" });
-          if (fallbackAiResult.text && !fallbackAiResult.text.startsWith("[AI Error")) {
+          if (fallbackAiResult.ok && fallbackAiResult.text) {
             aiReply = fallbackAiResult.text;
             console.log(`[TWILIO-INBOUND][${traceId}] Context-aware AI reply (${Date.now() - tAiStart}ms): ${aiReply.slice(0, 80)}`);
+          } else if (!fallbackAiResult.ok) {
+            console.warn(`[TWILIO-INBOUND][${traceId}] AI fallback returned error: ${fallbackAiResult.errorMessage}`);
           }
         } catch (aiErr: any) {
           console.error(`[TWILIO-INBOUND][${traceId}] Context-aware AI fallback error:`, aiErr.message);
@@ -1031,7 +1037,11 @@ export function registerWebhooksRoutes(app: Express) {
             aiMsgs[0].content += langInstr;
           }
           const aiResult = await aiChat(aiMsgs, { temperature: 0.7, maxTokens: 512, route: "webhook-scoped-sms" });
-          if (aiResult.text) aiReply = aiResult.text;
+          if (aiResult.ok && aiResult.text) {
+            aiReply = aiResult.text;
+          } else if (!aiResult.ok) {
+            console.warn(`[WEBHOOK-SCOPED][${traceId}] aiChat returned ok=false: ${aiResult.errorMessage}. Using static fallback.`);
+          }
         } catch (aiErr: any) {
           console.error(`[WEBHOOK-SCOPED][${traceId}] AI error:`, aiErr.message);
         }
@@ -1231,12 +1241,18 @@ export function registerWebhooksRoutes(app: Express) {
 
           const aiResult = await aiChat(aiMessages, { temperature: 0.7, maxTokens: 1024, route: "dm-catchup-reply" });
           const aiReply = aiResult.text;
-          if (!aiReply) { results.push({ senderId, channel, status: "skip", reason: "empty_ai_reply" }); continue; }
+          if (!aiResult.ok || !aiReply) {
+            // aiGateway guarantees text === "" when ok === false; never an "[AI Error: ...]" string.
+            results.push({ senderId, channel, status: "skip", reason: aiResult.ok ? "empty_ai_reply" : `ai_error:${aiResult.errorMessage ?? "unknown"}` });
+            continue;
+          }
 
           const endpoint = channel === "instagram" ? "me" : pageId;
           const sendUrl = `https://graph.facebook.com/v21.0/${endpoint}/messages${appsecretProof ? `?appsecret_proof=${appsecretProof}` : ""}`;
           const threadId = `${subAccountId}::${senderId}::${channel}`;
 
+          // Defensive: source-level fix means aiReply is real model output here.
+          // Keep the legacy leak check as belt-and-suspenders during the rollout.
           const isAiErrorLeak = typeof aiReply === "string" && aiReply.startsWith("[AI Error:");
           const outboundText = isAiErrorLeak ? META_DM_AI_FALLBACK_TEXT : aiReply;
 
@@ -2083,6 +2099,10 @@ export function registerWebhooksRoutes(app: Express) {
 
                 const aiCallStart = Date.now();
                 const metaDmAiResult = await aiChat(aiMessages, { temperature: 0.7, maxTokens: 1024, route: "webhook-meta-dm-reply" });
+                if (!metaDmAiResult.ok) {
+                  console.error(`[LAYLA-PIPELINE] Step 4 FAILED: aiChat returned ok=false — sender=${senderId}, errorMessage=${metaDmAiResult.errorMessage}. Skipping send (no fallback text leaked).`);
+                }
+                // INVARIANT: text === "" when ok === false. Empty string skips both downstream send branches naturally.
                 const aiReply = metaDmAiResult.text;
                 const aiMs = Date.now() - aiCallStart;
 
@@ -3095,7 +3115,11 @@ export function registerWebhooksRoutes(app: Express) {
             aiMessages[0].content += langInstr;
           }
           const aiResult = await aiChat(aiMessages, { temperature: 0.7, maxTokens: 1024, route: "webhook-telegram-reply" });
-          aiReply = aiResult.text || aiReply;
+          if (aiResult.ok && aiResult.text) {
+            aiReply = aiResult.text;
+          } else if (!aiResult.ok) {
+            console.warn(`[TELEGRAM] aiChat returned ok=false: ${aiResult.errorMessage}. Using static fallback.`);
+          }
         } catch (aiErr: any) {
           console.error("[TELEGRAM] AI reply error:", aiErr.message);
         }

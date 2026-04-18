@@ -296,7 +296,18 @@ export async function runReengageJob(options?: {
           { maxTokens: 200, temperature: isLayla ? 0.75 : 0.7, route: isLayla ? "reengage-layla" : "reengage-business" },
         );
 
+        if (!llmResult.ok) {
+          console.warn(`[REENGAGE] aiChat failed for thread=${convo.threadId}: ${llmResult.errorMessage}. Skipping send (no fallback leak).`);
+          result.handovers++;
+          result.details.push({ threadId: convo.threadId, senderId: convo.senderId, action: `skip_ai_error:${llmResult.errorMessage ?? "unknown"}` });
+          continue;
+        }
+
         let replyText = llmResult.text.trim();
+        if (!replyText) {
+          console.warn(`[REENGAGE] aiChat returned empty text for thread=${convo.threadId}. Skipping.`);
+          continue;
+        }
 
         if (isLayla && FORBIDDEN_REGEX.test(replyText)) {
           console.log(`[REENGAGE] Forbidden word in LLM output for thread=${convo.threadId}, sending fallback`);

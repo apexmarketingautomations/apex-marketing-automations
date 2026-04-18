@@ -533,9 +533,9 @@ export function registerBotRoutes(app: Express) {
         // Auto-repair: if OpenAI rejects history due to dangling assistant tool_calls,
         // strip every prior assistant tool_calls + tool messages from chatMessages and retry once.
         if (
-          aiResponse.text &&
-          aiResponse.text.startsWith("[AI Error:") &&
-          /tool_calls.*must be followed by tool messages/i.test(aiResponse.text)
+          !aiResponse.ok &&
+          typeof aiResponse.errorMessage === "string" &&
+          /tool_calls.*must be followed by tool messages/i.test(aiResponse.errorMessage)
         ) {
           console.warn("[AGENT] Detected dangling tool_calls in history — repairing and retrying");
           for (let i = chatMessages.length - 1; i >= 0; i--) {
@@ -558,10 +558,10 @@ export function registerBotRoutes(app: Express) {
           });
         }
 
-        // If we still got an [AI Error: ...] response, surface a friendly message
+        // If the AI gateway returned an error (ok=false), surface a friendly message
         // instead of leaking the raw error and DO NOT persist it to history.
-        if (aiResponse.text && aiResponse.text.startsWith("[AI Error:")) {
-          console.error(`[AGENT] AI gateway returned error: ${aiResponse.text}`);
+        if (!aiResponse.ok) {
+          console.error(`[AGENT] AI gateway returned error: ${aiResponse.errorMessage}`);
           const friendly = "Sorry — I had trouble responding just now. Please try sending that again.";
           if (!closed) sendSSEData(res, { content: friendly });
           fullAssistantText += friendly;

@@ -286,8 +286,8 @@ export function registerSitesRoutes(app: Express) {
           { role: "user", content: attempt === 0 ? userMessage : userMessage + "\n\nIMPORTANT: Return ONLY valid JSON. No markdown, no explanation, no text before or after the JSON object." },
         ], { temperature: attempt === 0 ? 0.7 : 0.3, maxTokens: 4096, jsonMode: true, route: "generate-site", timeoutMs: 60_000 });
 
-        if (siteAiResult.text.startsWith("[AI Error:")) {
-          throw new Error(siteAiResult.text);
+        if (!siteAiResult.ok) {
+          throw new Error(siteAiResult.errorMessage ?? "AI generation failed");
         }
 
         siteData = extractJson(siteAiResult.text);

@@ -35,7 +35,17 @@ export interface AIOptions {
 }
 
 export interface AIResponse {
+  /**
+   * The model's reply text. INVARIANT: if `ok === false`, this is always "" (empty string).
+   * It will NEVER contain a "[AI Error: ...]" prefix or any error description.
+   * This guarantees no caller can accidentally leak a raw AI gateway error to a customer
+   * via patterns like `aiReply = result.text || fallback` (empty is falsy → fallback wins).
+   */
   text: string;
+  /** True when the AI call succeeded and `text` is real model output. False on any error. */
+  ok: boolean;
+  /** Original error message — populated only when `ok === false`. For logs/audit, never customer-facing. */
+  errorMessage?: string;
   provider: "openai" | "gemini";
   model?: string;
   usage?: {
@@ -212,6 +222,7 @@ async function callOpenAI(
   const text = response.choices[0]?.message?.content ?? "";
   return {
     text,
+    ok: true,
     provider: "openai",
     model: OPENAI_MODEL,
     usage: {
@@ -250,6 +261,7 @@ async function callOpenAIWithTools(
 
   return {
     text,
+    ok: true,
     provider: "openai",
     model: OPENAI_MODEL,
     usage: {
@@ -271,6 +283,7 @@ async function callGemini(
   );
   return {
     text,
+    ok: true,
     provider: "gemini",
     model: GEMINI_FALLBACK_MODEL,
   };
@@ -316,7 +329,7 @@ export async function aiChat(
 
     if (!isGeminiAvailable()) {
       logObservability({ requestId, traceId, subAccountId, route, provider: "gemini", model: GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: false, error: "No AI provider available" });
-      return { text: "[AI Error: No AI provider available]", provider: "gemini", model: GEMINI_FALLBACK_MODEL };
+      return { text: "", ok: false, errorMessage: "No AI provider available", provider: "gemini", model: GEMINI_FALLBACK_MODEL };
     }
 
     const result = await callGemini(messages, options);
@@ -330,8 +343,9 @@ export async function aiChat(
     });
     return result;
   } catch (err: any) {
-    logObservability({ requestId, traceId, subAccountId, route, provider, model: provider === "openai" ? OPENAI_MODEL : GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: false, error: err?.message });
-    return { text: `[AI Error: ${err?.message ?? "unknown"}]`, provider, model: provider === "openai" ? OPENAI_MODEL : GEMINI_FALLBACK_MODEL };
+    const errorMessage = err?.message ?? "unknown";
+    logObservability({ requestId, traceId, subAccountId, route, provider, model: provider === "openai" ? OPENAI_MODEL : GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: false, error: errorMessage });
+    return { text: "", ok: false, errorMessage, provider, model: provider === "openai" ? OPENAI_MODEL : GEMINI_FALLBACK_MODEL };
   }
 }
 
@@ -444,10 +458,10 @@ export async function* aiChatStream(
       fallbackTriggered: false,
       error: err?.message,
     });
-    if (chunksYielded > 0) {
-      throw err;
-    }
-    yield `[AI Error: ${err?.message ?? "stream failed"}]`;
+    // Whether mid-stream or pre-stream, throw the error so callers can handle it
+    // explicitly via try/catch. We never yield a "[AI Error: ...]" string — that
+    // would be indistinguishable from real model output and could leak to UI.
+    throw err;
   }
 }
 
@@ -458,7 +472,10 @@ export interface ToolCallResult {
 }
 
 export interface AIToolCallResponse {
+  /** Same INVARIANT as AIResponse.text — never contains "[AI Error: ...]". Empty when ok=false. */
   text: string;
+  ok: boolean;
+  errorMessage?: string;
   toolCalls: ToolCallResult[];
   provider: "openai" | "gemini";
   model?: string;
@@ -471,7 +488,13 @@ export async function aiChatWithTools(
   options: AIOptions = {}
 ): Promise<AIResponse> {
   const result = await aiChatWithToolCalls(messages, tools, options);
-  return { text: result.text, provider: result.provider, model: result.model };
+  return {
+    text: result.text,
+    ok: result.ok,
+    errorMessage: result.errorMessage,
+    provider: result.provider,
+    model: result.model,
+  };
 }
 
 export async function aiChatWithToolCalls(
@@ -526,6 +549,7 @@ export async function aiChatWithToolCalls(
 
           return {
             text: message?.content ?? "",
+            ok: true,
             toolCalls,
             provider: "openai",
             model: OPENAI_MODEL,
@@ -544,19 +568,23 @@ export async function aiChatWithToolCalls(
 
     if (!isGeminiAvailable()) {
       logObservability({ requestId, traceId, subAccountId, route, provider: "gemini", model: GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: false, error: "No AI provider available" });
-      return { text: "[AI Error: No AI provider available. This action could not be completed.]", toolCalls: [], provider: "gemini", model: GEMINI_FALLBACK_MODEL };
+      return { text: "", ok: false, errorMessage: "No AI provider available. This action could not be completed.", toolCalls: [], provider: "gemini", model: GEMINI_FALLBACK_MODEL };
     }
 
     logObservability({ requestId, traceId, subAccountId, route, provider: "gemini", model: GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: true, error: "Gemini fallback does not support multi-turn tool calling" });
+    // INVARIANT: text === "" when ok === false. Caller decides on user-facing wording.
     return {
-      text: "I'm sorry, but this action could not be completed through the current AI provider. The tool-calling capability required for this request is only available with the primary provider, which is currently unavailable. Please try again in a moment.",
+      text: "",
+      ok: false,
+      errorMessage: "Gemini fallback does not support multi-turn tool calling. Primary AI provider currently unavailable.",
       toolCalls: [],
       provider: "gemini",
       model: GEMINI_FALLBACK_MODEL,
     };
   } catch (err: any) {
-    logObservability({ requestId, traceId, subAccountId, route, provider, model: provider === "openai" ? OPENAI_MODEL : GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: false, error: err?.message });
-    return { text: `[AI Error: ${err?.message ?? "unknown"}]`, toolCalls: [], provider, model: provider === "openai" ? OPENAI_MODEL : GEMINI_FALLBACK_MODEL };
+    const errorMessage = err?.message ?? "unknown";
+    logObservability({ requestId, traceId, subAccountId, route, provider, model: provider === "openai" ? OPENAI_MODEL : GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: false, error: errorMessage });
+    return { text: "", ok: false, errorMessage, toolCalls: [], provider, model: provider === "openai" ? OPENAI_MODEL : GEMINI_FALLBACK_MODEL };
   }
 }
 
@@ -606,10 +634,8 @@ export async function* aiChatWithToolsStream(
       fallbackTriggered: false,
       error: `aiChatWithToolsStream error after ${chunksYielded} chunks: ${err?.message}`,
     });
-    if (chunksYielded > 0) {
-      throw err;
-    }
-    yield `[AI Error: ${err?.message ?? "stream failed"}]`;
+    // Always throw — never yield an "[AI Error: ...]" string that could leak as model output.
+    throw err;
   }
 }
 
