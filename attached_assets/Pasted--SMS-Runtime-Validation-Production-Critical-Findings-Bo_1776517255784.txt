@@ -1,0 +1,111 @@
+**SMS Runtime Validation — Production (Critical Findings)**
+
+**Bottom line:** Twilio is fully failing in production (401), and the majority of outbound SMS paths silently drop messages without logging, persistence, or event emission. This is a system integrity issue, not just a credential issue.
+
+---
+
+### 1) Twilio Status — **Confirmed Broken**
+All tested credentials (master + sub-account) return:
+
+- `401 Unauthorized`
+- `Error 20003 (Authenticate)`
+
+**Impact:**
+- 100% of outbound SMS attempts fail
+
+---
+
+### 2) Runtime Behavior — **Inconsistent and Unsafe**
+
+6 outbound SMS call sites audited:
+
+- 2 → surface failure to caller
+- 4 → **silent failure (console.error only)**
+
+**Silent paths include:**
+- Crash alerts to owners
+- Hot lead notifications
+- Push fallback SMS
+
+These are high-priority business-critical messages.
+
+---
+
+### 3) Observability Gap — **Severe**
+
+Across all SMS flows:
+
+- ❌ No retry logic
+- ❌ No `message.failed` event emission
+- ❌ No integration health updates per failure
+- ❌ No consistent user-visible failure surface
+
+---
+
+### 4) Database Integrity — **Broken**
+
+- `messages.error_message` = NULL for all rows
+- Failed sends often do not create a row at all
+
+**Result:**
+- No audit trail
+- No failure analytics
+- No post-incident debugging capability
+
+---
+
+### 5) System Mismatch
+
+- Integration Health → **accurately reports Twilio failure**
+- Runtime Messaging → **silently drops messages**
+
+This creates a false sense of operational reliability.
+
+---
+
+### Root Issue
+
+Outbound messaging lacks an enforced failure contract.  
+Each call site handles failure differently, resulting in inconsistent and often silent behavior.
+
+---
+
+### Required Actions (in order)
+
+1. **Fix Twilio credentials**
+   - Update `TWILIO_AUTH_TOKEN`
+   - Verify via integration health turning green
+
+2. **Implement centralized SMS send wrapper**
+   - Enforce:
+     - message row write (success + failure)
+     - `error_message` population
+     - `message.failed` event emission
+   - Remove per-route handling differences
+
+3. **Eliminate silent failure paths**
+   - Replace all `console.error`-only catches
+   - No SMS failure should be unobserved
+
+---
+
+### Risk Summary
+
+If credentials were rotated without updating production:
+
+- All owner alerts, lead notifications, and fallback SMS have been failing
+- A significant portion were silently dropped
+- There is currently no reliable way to quantify impact
+
+---
+
+### Unverified
+
+- Origin of existing `failed` message row (id=207)
+- Whether `enforceSmsProvider()` introduces additional silent short-circuiting
+
+---
+
+**Conclusion:**  
+Phase B successfully exposed the failure.  
+The messaging layer must now be upgraded to match that level of honesty and observability.
