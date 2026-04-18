@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { contacts, messages, subAccounts, integrationConnections } from "@shared/schema";
-import { sql, eq, and, or } from "drizzle-orm";
+import { sql, eq, and, or, gte, desc } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { z } from "zod";
@@ -2014,6 +2014,55 @@ export function registerWebhooksRoutes(app: Express) {
                   } catch {}
                 }
                 continue;
+              }
+
+              const JUST_REPLIED_WINDOW_MS = 20000;
+              try {
+                const recentOutbound = await db
+                  .select({ id: messages.id, createdAt: messages.createdAt, body: messages.body })
+                  .from(messages)
+                  .where(and(
+                    eq(messages.subAccountId, subAccountId!),
+                    eq(messages.channel, channel),
+                    eq(messages.contactPhone, senderId),
+                    eq(messages.direction, "outbound"),
+                    gte(messages.createdAt, new Date(Date.now() - JUST_REPLIED_WINDOW_MS)),
+                  ))
+                  .orderBy(desc(messages.createdAt))
+                  .limit(1);
+
+                if (recentOutbound.length > 0) {
+                  const ageMs = Date.now() - new Date(recentOutbound[0].createdAt).getTime();
+                  console.log(`[META DM][SUPPRESS] Just-replied suppression — outbound row ${recentOutbound[0].id} sent ${ageMs}ms ago to ${batchKey}, skipping AI reply (folded into context for next inbound)`);
+                  try {
+                    await db.insert(messages).values({
+                      subAccountId: subAccountId!,
+                      channel,
+                      direction: "outbound",
+                      contactPhone: senderId,
+                      body: "",
+                      status: "suppressed_just_replied",
+                      traceId: metaTraceId,
+                      threadId: metaDmThreadId,
+                      pageId: entryPageId,
+                      senderId,
+                      errorMessage: `just_replied_suppression: prior_outbound_id=${recentOutbound[0].id} age_ms=${ageMs} window_ms=${JUST_REPLIED_WINDOW_MS}`,
+                    });
+                  } catch (persistErr: any) {
+                    console.error(`[META DM][SUPPRESS] Failed to persist suppression row: ${persistErr.message}`);
+                  }
+                  if (mid) {
+                    try {
+                      const existing = await storage.getEventLogByExternalId("meta", mid);
+                      if (existing) {
+                        await storage.updateEventLogStatus(existing.id, "completed", { processedAt: new Date(), justRepliedSuppressed: true, priorOutboundId: recentOutbound[0].id, ageMs });
+                      }
+                    } catch {}
+                  }
+                  continue;
+                }
+              } catch (suppressErr: any) {
+                console.error(`[META DM][SUPPRESS] Just-replied check failed (proceeding with reply): ${suppressErr.message}`);
               }
 
               const metaAiStart = Date.now();
