@@ -6,7 +6,7 @@ import {
   HeroSection, PrimaryActions, SaveShareBar, QRPanel,
   AboutSection, ServicesSection, TestimonialSection, LinksSection,
   SocialLinksSection, StickyActionBar, ShareModal, CardFooter, BackgroundGlow,
-  HighIntentCta, LiveNowPill,
+  HighIntentCta, LiveNowPill, BookingAutoExpand, RealtimeChannelStrip, FollowUpAcknowledgement,
   adaptPlatformCard, getCardTheme,
 } from "@/components/card-core";
 import type { SharedCardData, CardRenderConfig } from "@/components/card-core";
@@ -101,7 +101,10 @@ export default function DigitalCard() {
           data-adaptation-variant={adaptation.variant}
         >
           <LiveNowPill adaptation={adaptation} theme={theme} />
+          <FollowUpAcknowledgement adaptation={adaptation} theme={theme} />
           <HighIntentCta card={card} theme={theme} adaptation={adaptation} trackEvent={trackEvent} />
+          <BookingAutoExpand card={card} theme={theme} adaptation={adaptation} trackEvent={trackEvent} />
+          <RealtimeChannelStrip card={card} theme={theme} adaptation={adaptation} trackEvent={trackEvent} />
           <PrimaryActions card={card} theme={theme} trackEvent={trackEvent} />
           <SaveShareBar card={card} theme={theme} config={config}
             onShare={() => { setShowShare(true); trackEvent("share"); }}

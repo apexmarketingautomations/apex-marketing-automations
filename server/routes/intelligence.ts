@@ -10,6 +10,7 @@ import { asyncHandler, verifyAccountOwnership } from "./helpers";
 import { getCardSnapshot } from "../services/trackingSnapshots";
 import { generateInsights } from "../services/trackingInsights";
 import { computeCardAdaptation } from "../services/cardAdaptation";
+import { computeCardActionDirectives, readFollowUpFlagged } from "../services/cardActions";
 
 // ---------------------------------------------------------------------------
 // Apex Intelligence — client-facing dashboard API.
@@ -346,8 +347,11 @@ export function registerIntelligenceRoutes(app: Express): void {
           : false;
       if (!accessible) return res.status(403).json({ error: "card not available" });
 
-      // Visit-scoped intent check (best effort, optional).
+      // Visit-scoped intent check (best effort, optional). We resolve the
+      // visit row once here and reuse it below so we never trust a visit
+      // param that points at a *different* card's visit.
       let visitIsHighIntent = false;
+      let visitOwnsThisCard = false;
       const visitParam = typeof req.query.visit === "string" ? req.query.visit : null;
       if (visitParam) {
         const [visit] = await db
@@ -358,8 +362,9 @@ export function registerIntelligenceRoutes(app: Express): void {
           .from(trackingVisits)
           .where(eq(trackingVisits.visitId, visitParam))
           .limit(1);
-        if (visit && visit.cardId === card.id && visit.isHighIntent) {
-          visitIsHighIntent = true;
+        if (visit && visit.cardId === card.id) {
+          visitOwnsThisCard = true;
+          if (visit.isHighIntent) visitIsHighIntent = true;
         }
       }
 
@@ -408,11 +413,38 @@ export function registerIntelligenceRoutes(app: Express): void {
         insightCodes,
       });
 
+      // Phase-5 action directives. These describe what the card SHOULD DO
+      // (auto-expand booking, amplify CTA, reduce capture friction, prefer
+      // realtime channels). The followUpFlagged flag is read separately
+      // from the contact's metadata so the UI can confirm "we'll follow up"
+      // honestly — it only reads true when the high-intent path actually
+      // ran flagForFollowUp().
+      let followUpAlreadyFlagged = false;
+      const repeatEngagementSignal =
+        insightCodes.has("repeat_engagement") || repeatRate > 0.25;
+
+      // Only read follow-up status when the visit param actually points at
+      // this card — same guard as visitIsHighIntent — so unrelated visit
+      // UUIDs can't be used to probe the followup_queued event log.
+      if (visitParam && visitOwnsThisCard) {
+        followUpAlreadyFlagged = await readFollowUpFlagged(visitParam);
+      }
+
+      const actions = computeCardActionDirectives({
+        visitIsHighIntent,
+        hasBookingUrl: Boolean(card.bookingUrl || card.calendarUrl),
+        hasPhone: Boolean(card.phone),
+        hasEmail: Boolean(card.email),
+        repeatEngagementSignal,
+        inPeakHour: behavior.peakHours.includes(currentHour),
+        followUpAlreadyFlagged,
+      });
+
       // Cache directives briefly at the edge — they don't need to be
       // millisecond-fresh and we want to absorb refresh storms on viral
       // cards. Same cache TTL as the snapshot under the hood.
       res.set("Cache-Control", "private, max-age=30");
-      return res.json(adaptation);
+      return res.json({ ...adaptation, actions });
     }),
   );
 }

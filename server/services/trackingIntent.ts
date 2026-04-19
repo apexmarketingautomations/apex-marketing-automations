@@ -2,6 +2,7 @@ import { and, eq, gte, sql, desc, ne } from "drizzle-orm";
 import { db } from "../db";
 import { trackingVisits, trackingEvents, contacts } from "@shared/schema";
 import { emitUniversalEvent } from "../intelligence/eventEmitter";
+import { flagForFollowUp } from "./cardActions";
 
 // ---------------------------------------------------------------------------
 // Live intent detection.
@@ -217,6 +218,21 @@ export async function sendIntentAlert(input: SendIntentAlertInput): Promise<Inte
     console.log(
       `[trackingIntent] HIGH INTENT visit=${input.visitId} contact=${input.contactId ?? "-"} card=${input.cardId ?? "-"} reason=${input.reason}`,
     );
+
+    // Phase-5 hand-off to the action layer. Fire-and-forget so the
+    // intelligence pipeline never depends on follow-up flagging succeeding,
+    // and so the existing single-emit guarantee for high_intent stays the
+    // sole concern of this file.
+    flagForFollowUp({
+      visitId: input.visitId,
+      contactId: input.contactId,
+      cardId: input.cardId,
+      subAccountId: input.subAccountId,
+      reason: input.reason,
+      triggerEventType: input.eventType,
+    }).catch((e) => {
+      console.warn("[trackingIntent] action-layer follow-up failed", input.visitId, e);
+    });
   }
 
   return {

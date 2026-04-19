@@ -7,6 +7,16 @@ import { useEffect, useState } from "react";
 // and degrades to "no adaptation" on any failure so the card always renders.
 // ---------------------------------------------------------------------------
 
+export interface CardActionDirectives {
+  autoExpandBooking: boolean;
+  amplifyCta: boolean;
+  reduceCaptureFriction: boolean;
+  biasDirectAction: boolean;
+  realtimePreference: boolean;
+  followUpFlagged: boolean;
+  reasons: string[];
+}
+
 export interface CardAdaptation {
   surfaceCta: "book" | "call" | "email" | "website" | null;
   hideAbout: boolean;
@@ -15,7 +25,18 @@ export interface CardAdaptation {
   showLiveSignal: boolean;
   reasons: string[];
   variant: string;
+  actions: CardActionDirectives;
 }
+
+export const NO_ACTIONS: CardActionDirectives = {
+  autoExpandBooking: false,
+  amplifyCta: false,
+  reduceCaptureFriction: false,
+  biasDirectAction: false,
+  realtimePreference: false,
+  followUpFlagged: false,
+  reasons: [],
+};
 
 export const NO_ADAPTATION: CardAdaptation = {
   surfaceCta: null,
@@ -25,6 +46,7 @@ export const NO_ADAPTATION: CardAdaptation = {
   showLiveSignal: false,
   reasons: [],
   variant: "baseline",
+  actions: NO_ACTIONS,
 };
 
 function readVisitId(): string | null {
