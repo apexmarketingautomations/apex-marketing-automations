@@ -1,0 +1,267 @@
+You are working inside the Apex Marketing Automations codebase.
+
+I need you to design and implement a complete **event-distribution acquisition flow** for Apex using **physical NFC cards** as the lead magnet, and I need this done in a way that is **production-safe, conversion-focused, upsell-aware, and easy for me to use live at a marketing event**.
+
+## Core business model
+I will personally hand out and program NFC cards on the spot at a marketing event.
+
+Offer:
+- Prospect gets a **free physical NFC card**
+- Prospect gets **30 days free** on Apex
+- They must complete signup with:
+  - name
+  - email
+  - shipping address
+  - valid card on file
+- After 30 days, they automatically continue on the **lowest paid plan** unless they cancel
+- They keep the card even if they cancel
+- Stripe must be used to ensure the card on file is valid
+- I only want to do this for the **first 50 people**
+- Goal is to use the free card as the hook, then convert people into paid users and upsell some into higher tiers
+
+## What I need from you
+Do **not** just give strategy. I need a full implementation plan + copy + UX structure + pricing/plan architecture + operator instructions.
+
+Deliver this in two phases:
+
+# PHASE 1 — STRATEGY + STRUCTURE
+Create a complete launch plan covering the following:
+
+## 1. Offer architecture
+Define the exact front-end offer structure for the event campaign:
+- main headline
+- supporting subheadline
+- bullet value props
+- scarcity language
+- trust / risk-reversal copy
+- trial language
+- post-trial billing language
+- shipping language
+- cancellation language
+- card-on-file validation explanation
+- FTC-safe / clear consumer wording
+
+Make the offer persuasive but clean. No shady language.
+
+## 2. Plan structure
+I need all Apex plans properly structured and positioned so:
+- entry plan feels easy to say yes to
+- mid-tier and top-tier plans are clear upgrades
+- upsells feel natural, not random
+- pricing logic is coherent
+- feature ladders are properly separated
+- the main page reflects the real current plan structure
+
+Do this by:
+- proposing a clean pricing architecture for all plans
+- defining what each plan includes
+- defining what should be limited or unlocked at each tier
+- defining which plan the free trial rolls into by default
+- defining the upsell path from low plan -> mid plan -> high plan
+- defining which features are strongest upsell triggers
+
+For each plan provide:
+- plan name
+- target user
+- monthly price positioning
+- core included features
+- upgrade reason
+- best-fit messaging
+
+Keep this commercially smart and simple enough for event selling.
+
+## 3. Upsell system
+Design upsell prompts and upgrade logic across the funnel.
+
+I need upsells in:
+- signup flow
+- onboarding
+- dashboard
+- usage milestones
+- post-trial conversion
+- card programming / activation moment if relevant
+
+For each upsell:
+- trigger condition
+- exact prompt copy
+- CTA text
+- what plan it pushes
+- why it appears at that moment
+
+Do not make this spammy.
+It should feel like:
+- “you’re getting value, here’s the next logical upgrade”
+
+## 4. Event-sales operator process
+I need **full real-world instructions** for how I should run this at the event so I don’t look unprepared.
+
+Create a step-by-step field playbook for me:
+- what I say when approaching someone
+- my short pitch
+- my longer pitch if they show interest
+- objection handling
+- what I show on the phone
+- when I ask them to sign up
+- when I explain card on file
+- when I program the card
+- how I confirm activation worked
+- how I frame the 30-day trial
+- how I close the interaction cleanly
+
+Include:
+- 10-second pitch
+- 30-second pitch
+- 60-second pitch
+- answers for likely objections:
+  - “I don’t want to put my card in”
+  - “I already have business cards”
+  - “I’m too busy”
+  - “What happens after 30 days?”
+  - “Is this a contract?”
+  - “Why do you need my shipping info?”
+- a live demo script
+- a fallback script for people who are interested but not ready
+
+Make this practical and polished.
+
+## 5. Event-day operational process
+Create a real operator checklist for me:
+- before event
+- during event
+- after each signup
+- end of day
+- post-event follow-up
+
+Include:
+- what device/screens I should keep ready
+- what order to do each step in
+- how to track inventory of the 50 cards
+- how to avoid giving cards to unqualified people
+- how to avoid awkwardness while programming the NFC card live
+- what to do if payment method fails
+- what to do if signup stalls
+- what to do if someone wants the card later
+- how to note hot leads
+
+## 6. Page and funnel updates
+Audit the current main page and primary marketing surface and specify:
+- what must be updated
+- what copy must change
+- what pricing presentation must change
+- what CTA flow must change
+- what sections are missing
+- what needs to be up to date on the main page so this event campaign does not conflict with the public product positioning
+
+I need consistency between:
+- main page
+- pricing
+- signup flow
+- event offer
+- trial terms
+- upgrade prompts
+
+# PHASE 2 — EXECUTION PLAN
+After the strategy, produce an implementation-ready build plan for this codebase.
+
+I want:
+- route/page changes needed
+- components needed
+- schema/data changes needed
+- Stripe integration requirements
+- trial + subscription lifecycle logic
+- card-on-file validation flow
+- shipping info capture flow
+- upsell prompt placement
+- analytics/events to track
+- admin/internal tools needed for event use
+- copy locations to update
+- QA checklist
+- launch checklist
+
+## Required product behaviors
+Design the system so it supports this exact operational flow:
+
+### Signup flow
+- clean landing page for the event offer
+- form captures name, email, shipping address
+- payment method added and validated via Stripe
+- user starts 30-day free trial
+- user is assigned correct trial/default plan
+- event inventory count reduces when a valid signup is completed
+- user is tagged as event-acquired lead
+- system records that they are eligible for free NFC card fulfillment
+- make sure legal/billing copy is clear
+
+### Plan handling
+- all plans must be properly defined in code and on the main page
+- lowest plan is the default post-trial conversion plan
+- higher tiers have clear upsell moments
+- no mismatched pricing/feature language anywhere
+
+### Upsells
+Implement or spec prompts for:
+- feature gating
+- milestone-based upgrade nudges
+- post-trial upgrade before billing starts
+- dashboard upgrade cards
+- onboarding recommendations
+
+### Event operator support
+I also need internal/admin support for me at the event:
+- view remaining free-card inventory
+- quick way to mark cards as assigned / programmed
+- see signup completion status
+- see payment method validated
+- see trial start date
+- see hot leads / priority follow-up
+- optional quick event-mode admin view if appropriate
+
+## Constraints
+- Do not invent vague fluff
+- Do not give generic startup advice
+- Do not rebuild unrelated systems
+- Keep everything additive and modular
+- Reuse existing pricing/billing patterns if they already exist
+- If the current plan model is messy, propose a clean migration path
+- If current main page pricing is stale, identify exact changes
+- If current funnel language is misleading or weak, rewrite it
+- Be explicit about risks and edge cases
+
+## Risks to think through
+I want you to actively flag:
+- where this could create trust friction
+- where conversion might drop
+- where plan structure could confuse users
+- where billing language needs to be extra clear
+- where event execution could feel awkward
+- where inventory logic could fail
+- where shipping cost could break unit economics
+- where upsells could become too aggressive
+
+## Output format
+Return the result in this exact structure:
+
+1. Executive summary  
+2. Offer architecture  
+3. Recommended pricing + plan structure  
+4. Upsell system  
+5. Event pitch scripts  
+6. Event operator playbook  
+7. Event-day checklist  
+8. Main page / funnel audit  
+9. Implementation plan for this codebase  
+10. Data model / billing / Stripe requirements  
+11. Analytics / events to track  
+12. QA checklist  
+13. Launch checklist  
+14. Risks / edge cases  
+15. Final recommended rollout order
+
+Important:
+- Be concrete
+- Use direct language
+- Assume I am going to actually execute this at a real event
+- Assume I need to sound confident, smooth, and credible
+- Assume the main page, plans, and upgrade logic all need to be fully aligned
+- Do not start coding yet unless you first clearly identify what should be built
+- If you find stale pricing, stale plan copy, or missing plan structure, call it out directly and propose corrected copy
