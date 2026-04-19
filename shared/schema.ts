@@ -2862,6 +2862,11 @@ export const trackingVisits = pgTable("tracking_visits", {
   phoneHash: text("phone_hash"),
   identifiedAt: timestamp("identified_at"),
   isRepeat: boolean("is_repeat").notNull().default(false),
+  // Phase 3 — high-intent flag set by trackingIntent.detectIntent /
+  // sendIntentAlert when behavioral signals indicate active evaluation.
+  isHighIntent: boolean("is_high_intent").notNull().default(false),
+  highIntentAt: timestamp("high_intent_at"),
+  highIntentReason: text("high_intent_reason"),
   isTest: boolean("is_test").notNull().default(false),
   trafficClass: text("traffic_class").notNull().default("valid"),
   metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),

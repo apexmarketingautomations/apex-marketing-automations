@@ -76,6 +76,7 @@ const ContentPlannerPage = lazy(() => import("@/pages/content-planner"));
 const RoomOSPage = lazy(() => import("@/pages/roomos"));
 const RoomOSDashboardPage = lazy(() => import("@/pages/roomos-dashboard"));
 const IntelligenceDashboardPage = lazy(() => import("@/pages/intelligence-dashboard"));
+const CardIntelligencePage = lazy(() => import("@/pages/card-intelligence"));
 const ApexIntelligencePage = lazy(() => import("@/pages/apex-intelligence"));
 const ApexCommandCenterPage = lazy(() => import("@/pages/apex-command-center"));
 const ApexTrackingSettingsPage = lazy(() => import("@/pages/apex-tracking-settings"));
@@ -329,6 +330,7 @@ function Router() {
                   <Route path="/roomos" component={RoomOSPage} />
                   <Route path="/roomos-dashboard" component={RoomOSDashboardPage} />
                   <Route path="/intelligence" component={IntelligenceDashboardPage} />
+                  <Route path="/intelligence/cards/:id" component={CardIntelligencePage} />
                   <Route path="/apex-command-center" component={ApexCommandCenterPage} />
                   <Route path="/apex-tracking-settings" component={ApexTrackingSettingsPage} />
                   <Route component={NotFound} />

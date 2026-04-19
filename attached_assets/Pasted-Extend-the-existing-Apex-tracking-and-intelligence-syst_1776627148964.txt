@@ -1,0 +1,234 @@
+Extend the existing Apex tracking and intelligence system into a client-facing Apex Intelligence Dashboard.
+
+DO NOT modify or break existing capture, attribution, identity stitching, or universal_events integration.
+
+This phase is focused on:
+- exposing intelligence to clients
+- generating insights
+- enabling real-time action
+- maintaining Apex architectural integrity
+
+SYSTEM CONTEXT:
+- tracking_visits, tracking_events, card_intelligence_snapshots already exist
+- identity stitching is implemented
+- universal_events is the intelligence pipeline
+- test traffic is already isolated
+- attribution integrity is enforced
+
+-------------------------------------
+
+OBJECTIVE:
+Turn internal tracking data into a visible, monetizable feature inside Apex.
+
+-------------------------------------
+
+PHASE 3 REQUIREMENTS:
+
+1) ANALYTICS API EXTENSION
+
+Create endpoint:
+GET /api/intelligence/cards/:id
+
+Return:
+
+{
+  cardId,
+  metrics: {
+    taps,
+    qrScans,
+    uniqueVisitors,
+    repeatVisitors,
+    identifiedVisitors,
+    leads,
+    bookedCalls,
+    qualifiedLeads,
+    conversionRate,
+    repeatRate
+  },
+  behavior: {
+    avgTimeToConvert,
+    peakHours,
+    topCTA,
+    sessionDepth
+  },
+  attribution: {
+    confidenceScore,
+    stitchedJourneys,
+    repeatClusters
+  },
+  recentActivity: [
+    { type, timestamp, label }
+  ],
+  insights: []
+}
+
+Must:
+- exclude test traffic
+- use snapshot when available
+- fallback to live aggregation if needed
+- cache for 5 minutes (TTL)
+- support ?refresh=1 to force recompute
+
+-------------------------------------
+
+2) INSIGHT ENGINE
+
+Create service:
+trackingInsights.ts
+
+This must generate human-readable insights from metrics.
+
+RULES (initial logic):
+
+- if repeatRate > 0.25:
+  "Repeat visitors are highly engaged and more likely to convert."
+
+- if conversionRate < 0.1:
+  "Your conversion rate is low. Consider optimizing your CTA or offer."
+
+- if taps > 30 AND leads === 0:
+  "Your card is getting attention but not converting. Review your landing page."
+
+- if peakHours identified:
+  "Most engagement happens around {peakHours}. Prioritize availability during this time."
+
+- if identifiedVisitors increasing:
+  "More visitors are being identified. Your follow-up system is working."
+
+- if sessionDepth > threshold:
+  "Visitors are exploring multiple sections. Interest level is high."
+
+Return array:
+[
+  { type: "positive" | "warning" | "opportunity", message }
+]
+
+-------------------------------------
+
+3) LIVE INTENT DETECTION
+
+Add service:
+trackingIntent.ts
+
+Trigger conditions:
+
+HIGH INTENT if:
+- repeat visit within 24h
+- AND (cta_click OR form_start)
+- OR multiple sessions
+
+When triggered:
+- emit universal event:
+  tracking.high_intent
+
+- optional:
+  call notification handler
+
+-------------------------------------
+
+4) ALERT SYSTEM (INTERNAL FIRST)
+
+Create:
+sendIntentAlert()
+
+For now:
+- log event
+- flag visit
+- attach to contact record if exists
+
+Future:
+- SMS / push / CRM trigger
+
+-------------------------------------
+
+5) FRONTEND COMPONENT
+
+Create:
+
+<CardIntelligencePanel />
+
+DATA SOURCE:
+GET /api/intelligence/cards/:id
+
+DISPLAY SECTIONS:
+
+A) PERFORMANCE
+- taps
+- visitors
+- repeat
+- leads
+- booked calls
+- conversion rate
+
+B) BEHAVIOR
+- peak hours
+- avg conversion time
+- repeat rate
+- top CTA
+
+C) INSIGHTS
+- render insight messages
+- color coded (green/yellow/red)
+
+D) RECENT ACTIVITY
+- last 5 meaningful events
+
+-------------------------------------
+
+6) UI STATE HANDLING
+
+Handle:
+- loading
+- empty state (no data)
+- low data (less than 5 visits)
+- error
+
+-------------------------------------
+
+7) SECURITY
+
+- enforce tenant ownership
+- require auth for dashboard access
+- adminGuard for advanced queries
+- never expose raw hashes or internal IDs
+
+-------------------------------------
+
+8) PERFORMANCE
+
+- use snapshot table when possible
+- avoid heavy joins in real-time
+- batch expensive calculations
+- index by card_id and timestamp
+
+-------------------------------------
+
+9) FUTURE HOOKS (DO NOT IMPLEMENT FULLY)
+
+Add placeholders for:
+- AI recommendations
+- cross-client benchmarks
+- adaptive routing
+- CTA optimization
+- campaign comparison
+
+-------------------------------------
+
+10) OUTPUT
+
+Generate:
+- route handler
+- controller
+- service layer
+- insight engine
+- intent detection
+- React component
+- types/interfaces
+- example responses
+
+-------------------------------------
+
+FINAL RULE:
+This must feel like a premium Apex feature, not a generic analytics page.
+
+Focus on clarity, usefulness, and real-world value.

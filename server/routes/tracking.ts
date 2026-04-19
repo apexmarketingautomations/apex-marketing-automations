@@ -15,6 +15,7 @@ import {
 } from "@shared/schema";
 import { asyncHandler } from "./helpers";
 import { emitUniversalEvent } from "../intelligence/eventEmitter";
+import { detectIntent, INTENT_BEARING_EVENT_TYPES } from "../services/trackingIntent";
 import { upgradeVisit } from "../services/trackingIdentity";
 import { getCardSnapshot } from "../services/trackingSnapshots";
 
@@ -371,6 +372,17 @@ async function recordEvent(args: RecordEventArgs) {
         ...args.payload,
       },
     });
+  }
+
+  // Live intent detection. Fires only for engagement-grade event types and
+  // for production traffic. Awaited but isolated so a detection failure can
+  // never poison the event-recording response.
+  if (!isTest && visit?.visitId && INTENT_BEARING_EVENT_TYPES.has(args.eventType)) {
+    try {
+      await detectIntent({ visitId: visit.visitId, eventType: args.eventType, eventId });
+    } catch (e) {
+      console.warn("[tracking] intent detection failed for event", eventId, e);
+    }
   }
 
   return { event, visit, deduped: false };
