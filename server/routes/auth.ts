@@ -157,6 +157,10 @@ export function registerAuthRoutes(app: Express) {
     if (fullPath.startsWith("/api/portal/")) return next();
     if (fullPath.startsWith("/api/oauth/") && fullPath.includes("/callback")) return next();
     if (fullPath.startsWith("/api/standalone/")) return next();
+    if (fullPath === "/api/event/config") return next();
+    if (fullPath === "/api/event/inventory") return next();
+    if (fullPath === "/api/event/signup") return next();
+    if (fullPath === "/api/event/finalize") return next();
     if (fullPath.startsWith("/api/card/edit/")) return next();
     if (fullPath.startsWith("/api/card/checkout")) return next();
     if (fullPath.startsWith("/api/card/session/")) return next();

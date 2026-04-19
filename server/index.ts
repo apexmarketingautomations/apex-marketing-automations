@@ -56,7 +56,8 @@ app.use(
         scriptSrc: ["'self'", "'unsafe-inline'", "https:"],
         styleSrc: ["'self'", "'unsafe-inline'", "https:"],
         imgSrc: ["'self'", "data:", "https:"],
-        connectSrc: ["'self'", "https:"],
+        connectSrc: ["'self'", "https:", "wss:"],
+        frameSrc: ["'self'", "https://js.stripe.com", "https://hooks.stripe.com"],
         frameAncestors: [
           "'self'",
           "https://*.replit.dev",
@@ -1620,6 +1621,8 @@ RULES:
   app.use("/api/auth/email-login", authLimiter);
   app.use("/api/auth/firebase-login", authLimiter);
   app.use("/api/auth/google", authLimiter);
+  app.use("/api/event/signup", authLimiter);
+  app.use("/api/event/finalize", authLimiter);
   app.use("/api/subscription/checkout", creditTopupLimiter);
   app.use("/api/upload-ad-image", uploadLimiter);
   app.use("/api", apiLimiter);

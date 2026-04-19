@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
-import { and, desc, eq, sql as sqlOp } from "drizzle-orm";
+import { and, desc, eq, sql as sqlOp, gt } from "drizzle-orm";
 import { db } from "../db";
 import { asyncHandler, isUserAdmin } from "./helpers";
 import { getStripeSync } from "../stripeClient";
@@ -353,19 +353,36 @@ export async function validateAndProvision(setupIntentId: string): Promise<{
   const customerId = setupIntent.customer as string;
   if (!paymentMethodId || !customerId) return { ok: false, error: "Missing payment method or customer" };
 
-  // Atomic inventory decrement — never oversells.
-  const decResult = await db.execute(sqlOp`
-    UPDATE event_campaigns
-    SET remaining_inventory = remaining_inventory - 1
-    WHERE id = ${fulfillment.campaignId}
-      AND remaining_inventory > 0
-      AND is_active = true
-    RETURNING remaining_inventory
-  `);
-  const decremented = (decResult as any).rows?.length > 0 || (decResult as any).length > 0;
-  if (!decremented) {
+  // Atomic claim: only the first concurrent caller transitions the row from
+  // false -> true. The losers see 0 rows and short-circuit with alreadyProcessed.
+  // This prevents the webhook + finalize endpoint from both decrementing inventory.
+  const claim = await db.update(eventCardFulfillment)
+    .set({ paymentMethodValidated: true, updatedAt: new Date() })
+    .where(and(
+      eq(eventCardFulfillment.id, fulfillment.id),
+      eq(eventCardFulfillment.paymentMethodValidated, false),
+    ))
+    .returning({ id: eventCardFulfillment.id });
+  if (claim.length === 0) {
+    const refreshed = (await db.select().from(eventCardFulfillment).where(eq(eventCardFulfillment.id, fulfillment.id)).limit(1))[0];
+    return { ok: true, alreadyProcessed: true, fulfillmentId: fulfillment.id, trialEndsAt: refreshed?.trialEndsAt?.toISOString() };
+  }
+
+  // Atomic inventory decrement — never oversells. Uses Drizzle's typed update
+  // with returning() so the row count is reliable across drivers.
+  const decremented = await db.update(eventCampaigns)
+    .set({ remainingInventory: sqlOp`${eventCampaigns.remainingInventory} - 1` })
+    .where(and(
+      eq(eventCampaigns.id, fulfillment.campaignId),
+      eq(eventCampaigns.isActive, true),
+      gt(eventCampaigns.remainingInventory, 0),
+    ))
+    .returning({ remaining: eventCampaigns.remainingInventory });
+
+  if (decremented.length === 0) {
+    // Roll back our claim so the operator can see the row is broken.
     await db.update(eventCardFulfillment)
-      .set({ status: "cancelled", notes: "Inventory exhausted before validation", updatedAt: new Date() })
+      .set({ paymentMethodValidated: false, status: "cancelled", notes: "Inventory exhausted at validation time", updatedAt: new Date() })
       .where(eq(eventCardFulfillment.id, fulfillment.id));
     return { ok: false, error: "Inventory exhausted" };
   }
