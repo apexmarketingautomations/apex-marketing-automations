@@ -17,7 +17,7 @@ async function seedProducts() {
     {
       name: "Agency Pro",
       description: "Build an empire with unlimited sub-accounts.",
-      metadata: { tier: "agency_pro", category: "subscription" },
+      metadata: { tier: "pro", category: "subscription" },
       prices: [
         { nickname: "Agency Pro Monthly", amount: 29700, interval: "month" as const },
         { nickname: "Agency Pro Yearly", amount: 23700, interval: "year" as const },
@@ -27,7 +27,7 @@ async function seedProducts() {
     {
       name: "God Mode",
       description: "Total White-Label dominance. Zero limits.",
-      metadata: { tier: "god_mode", category: "subscription" },
+      metadata: { tier: "enterprise", category: "subscription" },
       prices: [
         { nickname: "God Mode Monthly", amount: 49700, interval: "month" as const },
         { nickname: "God Mode Yearly", amount: 39700, interval: "year" as const },

@@ -3,6 +3,7 @@ import { storage } from "../storage";
 import { z } from "zod";
 import { asyncHandler, getUserId } from "./helpers";
 import { provisionRoomOSAccount } from "../services/roomOS/provisioning";
+import { TRIAL_DAYS_DEFAULT } from "@shared/schema";
 
 export function registerSubscriptionsRoutes(app: Express) {
   // ---- Subscription Management ----
@@ -53,7 +54,7 @@ export function registerSubscriptionsRoutes(app: Express) {
     if (!user) return res.status(401).json({ error: "Not authenticated" });
 
     const parsed = z.object({
-      tier: z.enum(["starter", "agency_pro", "god_mode"]),
+      tier: z.enum(["starter", "pro", "enterprise"]),
       interval: z.enum(["monthly", "yearly"]).default("monthly"),
       isBlitz: z.boolean().default(false),
     }).safeParse(req.body);
@@ -61,26 +62,26 @@ export function registerSubscriptionsRoutes(app: Express) {
 
     const monthlyPrices: Record<string, number> = {
       starter: 9700,
-      agency_pro: 29700,
-      god_mode: 49700,
+      pro: 29700,
+      enterprise: 49700,
     };
 
     const yearlyPrices: Record<string, number> = {
       starter: 7700,
-      agency_pro: 23700,
-      god_mode: 39700,
+      pro: 23700,
+      enterprise: 39700,
     };
 
     const blitzPrices: Record<string, number> = {
       starter: 4800,
-      agency_pro: 14800,
-      god_mode: 24800,
+      pro: 14800,
+      enterprise: 24800,
     };
 
     const tierNames: Record<string, string> = {
       starter: "Starter AI",
-      agency_pro: "Agency Pro",
-      god_mode: "God Mode (Founder)",
+      pro: "Pro",
+      enterprise: "Enterprise",
     };
 
     const isBlitz = parsed.data.isBlitz;
@@ -124,7 +125,7 @@ export function registerSubscriptionsRoutes(app: Express) {
           billingInterval: parsed.data.interval,
         },
         subscription_data: {
-          trial_period_days: isBlitz ? 0 : 60,
+          trial_period_days: isBlitz ? 0 : TRIAL_DAYS_DEFAULT,
           metadata: {
             userId: user.id,
             tierName: parsed.data.tier,

@@ -4,10 +4,19 @@ import { z } from "zod";
 
 export * from "./models/auth";
 
+// Canonical plan tiers. Three levels only:
+//   starter      → solo operator, default post-trial conversion plan
+//   pro          → small team / agency
+//   enterprise   → multi-location / white-label / advanced
+//
+// Legacy identifiers `agency_pro` and `god_mode` are no longer canonical
+// system identifiers. They are accepted at runtime via normalizePlanTier()
+// so any historical rows in `sub_accounts.plan` keep working until a
+// background migration converts them.
 export const PLAN_TIERS = {
   starter: {
     name: 'Starter',
-    features: ['inbox', 'contacts', 'deals', 'appointments', 'reviews', 'site_builder'],
+    features: ['inbox', 'contacts', 'deals', 'appointments', 'reviews', 'site_builder', 'digital_card'],
   },
   pro: {
     name: 'Pro',
@@ -15,21 +24,35 @@ export const PLAN_TIERS = {
   },
   enterprise: {
     name: 'Enterprise',
-    features: ['inbox', 'contacts', 'deals', 'appointments', 'reviews', 'site_builder', 'workflows', 'ai_bots', 'sentinel', 'voice_agents', 'email_campaigns', 'white_label', 'webhooks', 'multi_location', 'priority_support', 'digital_card'],
-  },
-  god_mode: {
-    name: 'God Mode',
     features: ['inbox', 'contacts', 'deals', 'appointments', 'reviews', 'site_builder', 'workflows', 'ai_bots', 'sentinel', 'voice_agents', 'email_campaigns', 'white_label', 'webhooks', 'multi_location', 'priority_support', 'digital_card', 'api_access', 'custom_integrations', 'advanced_analytics'],
   },
 } as const;
 
 export type PlanTier = keyof typeof PLAN_TIERS;
 
-export function hasFeature(plan: string, feature: string): boolean {
-  const tier = PLAN_TIERS[plan as PlanTier];
-  if (!tier) return false;
-  return (tier.features as readonly string[]).includes(feature);
+// Legacy → canonical map. Always pipe untrusted plan strings through this
+// before reading PLAN_TIERS so we never silently treat a legacy value as
+// "free / no features".
+const LEGACY_PLAN_ALIASES: Record<string, PlanTier> = {
+  agency_pro: 'pro',
+  god_mode: 'enterprise',
+};
+
+export function normalizePlanTier(plan: string | null | undefined): PlanTier | null {
+  if (!plan) return null;
+  if (plan in PLAN_TIERS) return plan as PlanTier;
+  return LEGACY_PLAN_ALIASES[plan] ?? null;
 }
+
+export function hasFeature(plan: string, feature: string): boolean {
+  const canonical = normalizePlanTier(plan);
+  if (!canonical) return false;
+  return (PLAN_TIERS[canonical].features as readonly string[]).includes(feature);
+}
+
+// Single source of truth for trial duration. Anything that grants a trial
+// (signup, event campaign, Stripe subscription) MUST use this constant.
+export const TRIAL_DAYS_DEFAULT = 30;
 
 export const subAccounts = pgTable("sub_accounts", {
   id: serial("id").primaryKey(),

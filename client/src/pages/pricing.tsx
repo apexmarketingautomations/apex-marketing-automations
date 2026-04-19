@@ -27,15 +27,15 @@ const tiers = [
       "Bot Trainer (1 bot)",
       "$10 AI Credits/mo",
     ],
-    cta: "Start 60-Day Trial",
+    cta: "Start 30-Day Trial",
     blitzCta: "Claim Legacy Rate",
     glow: "border-white/10",
     gradientBorder: "from-gray-500 to-white",
   },
   {
-    id: "agency_pro",
-    name: "Agency Pro",
-    legacyName: "Agency Pro Legacy",
+    id: "pro",
+    name: "Pro",
+    legacyName: "Pro Legacy",
     monthly: 297,
     yearly: 237,
     blitzPrice: 148,
@@ -50,16 +50,16 @@ const tiers = [
       "$25 AI Credits/mo",
       "Affiliate Dashboard",
     ],
-    cta: "Go Pro (60 Days Free)",
+    cta: "Go Pro (30 Days Free)",
     blitzCta: "Secure Grandfather Status",
     glow: "border-cyan-500/50 shadow-[0_0_20px_rgba(6,182,212,0.2)]",
     gradientBorder: "from-cyan-500 to-blue-600",
     popular: true,
   },
   {
-    id: "god_mode",
-    name: "God Mode",
-    legacyName: "God Mode Legacy",
+    id: "enterprise",
+    name: "Enterprise",
+    legacyName: "Enterprise Legacy",
     monthly: 497,
     yearly: 397,
     blitzPrice: 248,
@@ -166,7 +166,7 @@ export default function Pricing() {
         <p className="text-gray-400 text-lg max-w-2xl mx-auto mb-8">
           {BLITZ_ACTIVE
             ? <>The 30-day window is open. Secure <span className="text-white font-bold">50% off all tiers</span> forever. If you stay active, your price never changes. Ever.</>
-            : "Lock in our 60-Day Founder's Deal. Two months of God Mode for the price of one."}
+            : "Lock in our 30-Day Founder's Deal. Full access to every tier with no risk."}
         </p>
 
         {!BLITZ_ACTIVE && (

@@ -41,7 +41,7 @@ async function provision() {
     vibeTheme: "cyber-glass",
     ownerUserId: userId,
     language: "en",
-    plan: "god_mode",
+    plan: "enterprise",
     planFeatures: ["ai_coaching", "whale_tracker", "voice_agent", "ad_launcher", "site_builder", "meta_ads", "email_campaigns", "crm", "pipeline", "automations", "reports", "analytics", "integrations", "white_label"],
     webhookToken,
     isInternal: false,

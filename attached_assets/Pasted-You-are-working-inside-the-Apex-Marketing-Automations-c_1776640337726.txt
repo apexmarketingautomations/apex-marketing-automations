@@ -1,0 +1,74 @@
+You are working inside the Apex Marketing Automations codebase.
+
+I need you to design and implement a **real-world event acquisition system using NFC cards**.
+
+This is NOT theory. This must be:
+- production-safe
+- simple to operate live
+- aligned with existing system architecture
+- consistent across pricing, plans, and billing
+
+## CONTEXT
+
+At a marketing event:
+- I give out NFC cards (max 50 total)
+- User gets:
+  - free NFC card
+  - 30-day free trial
+- They MUST:
+  - enter name, email, shipping address
+  - add valid card (Stripe verification)
+- After 30 days → auto-convert to Starter plan ($97/mo) unless canceled
+- They keep the card no matter what
+
+## CRITICAL FIXES FIRST (DO NOT SKIP)
+
+Before designing anything, fix inconsistencies:
+
+1. Standardize plans:
+   - starter ($97)
+   - pro ($297)
+   - enterprise ($497)
+   - remove agency_pro and god_mode as system identifiers
+
+2. Standardize trial:
+   - 30 days everywhere (landing, pricing, backend, Stripe)
+
+3. Ensure pricing page, landing page, and billing logic ALL match
+
+## OUTPUT STRUCTURE (STRICT)
+
+Return ONLY this structure:
+
+1. Final offer copy (headline, bullets, disclosures)
+2. Clean pricing + plan structure (aligned with code)
+3. Upsell system (ONLY practical triggers + copy)
+4. Event operator flow (step-by-step, real-world usable)
+5. Event checklist (before / during / after)
+6. Required code changes (files, routes, components)
+7. Stripe implementation (setup_intent + subscription flow)
+8. Data model additions (event tracking + inventory)
+9. Admin/event mode tool (for live use)
+10. Risks and failure points (real ones only)
+11. Build order (exact sequence)
+
+## CONSTRAINTS
+
+- No fluff
+- No generic startup advice
+- No over-engineering
+- Must integrate with existing intelligence + event system
+- Must be usable by one person in a live event setting
+- Must avoid breaking current system
+
+## GOAL
+
+This system should let me:
+- confidently pitch in person
+- onboard users in under 3 minutes
+- validate payment without friction
+- track inventory of cards
+- convert trial users into paid plans
+- upsell naturally over time
+
+If something is unclear or conflicting in the current codebase, call it out directly and fix it in your plan.

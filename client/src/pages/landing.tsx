@@ -156,8 +156,8 @@ const tiers = [
     gradient: "from-gray-500 to-white",
   },
   {
-    id: "agency_pro",
-    name: "Agency Pro",
+    id: "pro",
+    name: "Pro",
     price: 148,
     originalPrice: 297,
     description: "Build an empire with unlimited sub-accounts.",
@@ -167,8 +167,8 @@ const tiers = [
     popular: true,
   },
   {
-    id: "god_mode",
-    name: "God Mode",
+    id: "enterprise",
+    name: "Enterprise",
     price: 248,
     originalPrice: 497,
     description: "Total White-Label dominance. Zero limits.",
@@ -179,10 +179,10 @@ const tiers = [
 ];
 
 const faqs = [
-  { q: "Is there a free trial?", a: "Yes! Every plan comes with a 60-day free trial. You get full access to all features in your tier with no credit card required to start." },
+  { q: "Is there a free trial?", a: "Yes. Every plan comes with a 30-day free trial. We collect a payment method on file via Stripe so your account is ready when the trial ends — your card is not charged until day 31, and you can cancel anytime in two clicks from the dashboard." },
   { q: "What happens after the Blitz pricing ends?", a: "If you sign up during the 30-day Blitz window, your price is locked forever. As long as your subscription stays active, you'll never pay more than your launch price." },
   { q: "Can I switch plans later?", a: "Absolutely. You can upgrade or downgrade at any time. If you upgrade, you'll get prorated credit for your current billing cycle." },
-  { q: "What is a sub-account?", a: "A sub-account is a separate workspace for a client or business. Each has its own inbox, contacts, workflows, and AI bots. Agency Pro and God Mode include unlimited sub-accounts." },
+  { q: "What is a sub-account?", a: "A sub-account is a separate workspace for a client or business. Each has its own inbox, contacts, workflows, and AI bots. Pro and Enterprise include unlimited sub-accounts." },
   { q: "Do I need coding skills?", a: "Not at all. Everything is drag-and-drop or AI-generated. From websites to workflows to chatbots — no code required." },
   { q: "How does usage billing work?", a: "Your plan includes AI credits. SMS, voice minutes, and AI generations are billed at transparent rates with your margin built in. You profit on every interaction your clients make." },
 ];
@@ -307,7 +307,7 @@ export default function LandingPage() {
               className="px-10 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-indigo-500/25 text-lg flex items-center gap-2 hover:scale-105 active:scale-95"
               data-testid="button-hero-cta"
             >
-              Start Free 60-Day Trial <ArrowRight size={20} />
+              Start Free 30-Day Trial <ArrowRight size={20} />
             </a>
             <Link
               href="/demo"
@@ -566,7 +566,7 @@ export default function LandingPage() {
                       Start Free Trial
                     </a>
                     <p className="text-[9px] text-center text-gray-600 mt-4 uppercase tracking-widest">
-                      60-day free trial included
+                      30-day free trial included
                     </p>
                   </div>
                 </div>
@@ -721,7 +721,7 @@ export default function LandingPage() {
                   Ready to Build Your <span className="bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">Empire?</span>
                 </h2>
                 <p className="text-slate-400 text-lg mb-8 max-w-xl mx-auto">
-                  Join founders who are automating their growth with AI. Start your 60-day free trial today.
+                  Join founders who are automating their growth with AI. Start your 30-day free trial today.
                 </p>
                 <a
                   href="/login"
@@ -731,8 +731,8 @@ export default function LandingPage() {
                   Get Started Free <ArrowRight size={20} />
                 </a>
                 <div className="flex items-center justify-center gap-6 mt-6 text-xs text-slate-500">
-                  <span className="flex items-center gap-1"><Shield size={12} /> No credit card</span>
-                  <span className="flex items-center gap-1"><CheckCircle2 size={12} /> 60-day trial</span>
+                  <span className="flex items-center gap-1"><Shield size={12} /> Cancel anytime</span>
+                  <span className="flex items-center gap-1"><CheckCircle2 size={12} /> 30-day trial</span>
                   <span className="flex items-center gap-1"><Zap size={12} /> Cancel anytime</span>
                 </div>
               </div>

@@ -564,7 +564,7 @@ async function ensureRoof2RootsAccount(
         ownerUserId: `apex_roof2roots_${Date.now()}`,
         parentAccountId: apexId,
         isInternal: false,
-        plan: "god_mode",
+        plan: "enterprise",
         billingExempt: true,
         isDeletable: false,
         isProtected: false,
@@ -582,7 +582,7 @@ async function ensureRoof2RootsAccount(
         .set({
           ownerUserId: `apex_roof2roots_${Date.now()}`,
           parentAccountId: apexId,
-          plan: "god_mode",
+          plan: "enterprise",
           billingExempt: true,
           isDeletable: false,
         })

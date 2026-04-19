@@ -55,12 +55,12 @@ export function registerAccountRoutes(app: Express) {
     const allowedPlans: string[] = ['starter', 'pro', 'enterprise'];
 
     if (isAdmin || isParent) {
-      allowedPlans.push('god_mode');
+      allowedPlans.push('enterprise');
     } else if (account.ownerUserId === userId) {
       const ownerAccounts = await db.select().from(subAccounts).where(sql`${subAccounts.ownerUserId} = ${userId}`);
-      const ownerPrimaryAccount = ownerAccounts.find(a => a.plan === 'god_mode');
+      const ownerPrimaryAccount = ownerAccounts.find(a => a.plan === 'enterprise' || a.plan === 'god_mode');
       if (ownerPrimaryAccount && id !== ownerPrimaryAccount.id) {
-        allowedPlans.push('god_mode');
+        allowedPlans.push('enterprise');
       }
     }
 
