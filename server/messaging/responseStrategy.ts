@@ -181,6 +181,81 @@ export function decideResponseStrategy(input: StrategyInput): ResponseStrategy {
   };
 }
 
+// Curated, in-character lead-in lines used when voice carries the substance.
+// Kept casual + short so the text feels like a natural "hold on" before audio.
+const VOICE_LEADINS_PLAYFUL = [
+  "hold on lemme voice this real quick",
+  "ok wait lemme explain",
+  "easier if i just say it lol",
+  "one sec — voicing this",
+  "lemme send a quick voice",
+];
+const VOICE_LEADINS_NEUTRAL = [
+  "quick voice on this",
+  "easier to explain — sending a voice",
+  "one sec, voicing this",
+  "lemme record a quick one",
+];
+const VOICE_LEADINS_DEEP = [
+  "ok this one needs a voice",
+  "lemme actually voice this so it lands right",
+  "sending a quick voice — easier",
+];
+
+function pickFrom<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+export interface VoiceCompositionInput {
+  fullReply: string;
+  tone: ResponseTone;
+  stage: ConversationStage;
+  channel: string;
+}
+
+export interface VoiceComposition {
+  /** Short text to send BEFORE the voice memo. Empty string => send no text alongside voice. */
+  leadInText: string;
+  /** What ends up spoken in the voice memo (full reply; condenser still applies downstream). */
+  voiceText: string;
+  /** Why we chose this composition (for logs). */
+  reason: string;
+}
+
+/**
+ * Compose the text + voice pair so they feel like one response, not two.
+ * - Never duplicates the full reply across both channels.
+ * - For very short replies, returns leadInText="" (voice alone is enough).
+ * - Otherwise returns a short in-character lead-in matched to tone/stage.
+ */
+export function composeVoiceAndText(input: VoiceCompositionInput): VoiceComposition {
+  const reply = (input.fullReply || "").trim();
+  const replyLen = reply.length;
+  const voiceText = reply;
+
+  if (replyLen === 0) {
+    return { leadInText: "", voiceText: "", reason: "empty_reply" };
+  }
+  if (replyLen <= 60) {
+    return { leadInText: "", voiceText, reason: "reply_short_enough_voice_only" };
+  }
+  // Question-shaped replies: voice carries it, no lead-in (would feel redundant).
+  if (/\?\s*$/.test(reply) && replyLen <= 120) {
+    return { leadInText: "", voiceText, reason: "short_question_reply_voice_only" };
+  }
+
+  let pool: string[];
+  if (input.stage === "deep") pool = VOICE_LEADINS_DEEP;
+  else if (input.tone === "playful") pool = VOICE_LEADINS_PLAYFUL;
+  else pool = VOICE_LEADINS_NEUTRAL;
+
+  return {
+    leadInText: pickFrom(pool),
+    voiceText,
+    reason: `leadin_${input.tone}_${input.stage}`,
+  };
+}
+
 export function summarizeStrategy(s: ResponseStrategy): string {
   return `type=${s.type} timing=${s.timing} delay=${s.delayMs}ms tone=${s.tone} stage=${s.stage} voice=${s.voiceMemo.recommendation}(score=${s.voiceMemo.score},${s.voiceMemo.reason}) reasons=[${s.reasons.join(",")}]`;
 }

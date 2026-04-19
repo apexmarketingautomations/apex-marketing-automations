@@ -2336,6 +2336,54 @@ export function registerWebhooksRoutes(app: Express) {
                       const memo = condenseForVoice(aiReply);
                       if (memo) {
                         console.log(`[LAYLA-VOICE] Voice approved — probabilityRoll=true strategyScore=${voiceStrategy.voiceMemo.score} stage=${voiceStrategy.stage} — generating memo for ${senderId}: "${memo}"`);
+
+                        // ---- Compose text + voice as a single coordinated response ----
+                        const { composeVoiceAndText } = await import("../messaging/responseStrategy");
+                        const composition = composeVoiceAndText({
+                          fullReply: aiReply,
+                          tone: voiceStrategy.tone,
+                          stage: voiceStrategy.stage,
+                          channel,
+                        });
+                        console.log(`[LAYLA-VOICE][COMPOSE] leadIn="${composition.leadInText}" reason=${composition.reason}`);
+
+                        if (composition.leadInText) {
+                          try {
+                            const leadEndpoint = channel === "instagram" ? "me" : pageId;
+                            const leadUrl = `https://graph.facebook.com/v21.0/${leadEndpoint}/messages` + (appsecretProof ? `?appsecret_proof=${appsecretProof}` : "");
+                            const leadRes = await fetch(leadUrl, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                recipient: { id: senderId },
+                                messaging_type: "RESPONSE",
+                                message: { text: composition.leadInText },
+                                access_token: accessToken,
+                              }),
+                            });
+                            const leadData = await leadRes.json() as any;
+                            if (leadRes.ok) {
+                              console.log(`[LAYLA-VOICE] Lead-in text sent to ${senderId}: "${composition.leadInText}" msgId=${leadData?.message_id}`);
+                              await db.insert(messages).values({
+                                subAccountId,
+                                channel,
+                                direction: "outbound",
+                                contactPhone: senderId,
+                                body: composition.leadInText,
+                                status: "sent",
+                                traceId: metaTraceId,
+                                threadId: metaDmThreadId,
+                                pageId: entryPageId,
+                                senderId,
+                              });
+                            } else {
+                              console.warn(`[LAYLA-VOICE] Lead-in text send failed (non-blocking) HTTP ${leadRes.status}: ${JSON.stringify(leadData).substring(0, 200)}`);
+                            }
+                          } catch (leadErr: any) {
+                            console.warn(`[LAYLA-VOICE] Lead-in text error (non-blocking): ${leadErr?.message}`);
+                          }
+                        }
+
                         const voiceResult = await generateLaylaVoiceMessage(aiReply);
                         const FormData = (await import("form-data")).default;
                         const form = new FormData();
