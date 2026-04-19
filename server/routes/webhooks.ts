@@ -2312,10 +2312,30 @@ export function registerWebhooksRoutes(app: Express) {
                     const { shouldSendVoiceMessage, generateLaylaVoiceMessage, condenseForVoice } = await import("../services/personas/laylaVoice");
                     const threadMsgCount = (dmCtx.threadHistory?.length || 0);
                     const priorVoiceCount = (dmCtx.threadHistory || []).filter((h: any) => h.content?.startsWith?.("[voice memo]")).length;
-                    if (shouldSendVoiceMessage(threadMsgCount, priorVoiceCount, aiReply)) {
+
+                    const { decideResponseStrategy: decideVoiceStrat } = await import("../messaging/responseStrategy");
+                    const voiceStrategy = decideVoiceStrat({
+                      channel,
+                      incomingMessage: incomingMsg,
+                      threadHistory: (dmCtx.threadHistory || []).map((h: any) => ({ role: h.role, content: h.content })),
+                      replyText: aiReply,
+                      voiceMemoEligible: true,
+                      priorVoiceCount,
+                    });
+                    console.log(`[LAYLA-VOICE][STRATEGY] stage=${voiceStrategy.stage} rec=${voiceStrategy.voiceMemo.recommendation} score=${voiceStrategy.voiceMemo.score} reason=${voiceStrategy.voiceMemo.reason} factors=[${voiceStrategy.voiceMemo.factors.join(",")}]`);
+
+                    const probabilityRoll = shouldSendVoiceMessage(threadMsgCount, priorVoiceCount, aiReply);
+                    const strategyApproves = voiceStrategy.voiceMemo.recommendation === "send";
+                    const voiceGo = probabilityRoll && strategyApproves;
+
+                    if (!voiceGo) {
+                      console.log(`[LAYLA-VOICE] Voice skipped — probabilityRoll=${probabilityRoll} strategyApproves=${strategyApproves} (rec=${voiceStrategy.voiceMemo.recommendation})`);
+                    }
+
+                    if (voiceGo) {
                       const memo = condenseForVoice(aiReply);
                       if (memo) {
-                        console.log(`[LAYLA-VOICE] Voice roll HIT — generating memo for ${senderId}: "${memo}"`);
+                        console.log(`[LAYLA-VOICE] Voice approved — probabilityRoll=true strategyScore=${voiceStrategy.voiceMemo.score} stage=${voiceStrategy.stage} — generating memo for ${senderId}: "${memo}"`);
                         const voiceResult = await generateLaylaVoiceMessage(aiReply);
                         const FormData = (await import("form-data")).default;
                         const form = new FormData();

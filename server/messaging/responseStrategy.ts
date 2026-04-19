@@ -8,16 +8,24 @@ export interface StrategyInput {
   threadHistory: Array<{ role: "user" | "assistant"; content: string }>;
   replyText?: string | null;
   voiceMemoEligible?: boolean;
+  priorVoiceCount?: number;
 }
+
+export type VoiceRecommendation = "send" | "hold" | "skip";
+export type ConversationStage = "cold_open" | "warming" | "engaged" | "deep" | "stalled";
 
 export interface ResponseStrategy {
   type: ResponseType;
   timing: ResponseTiming;
   delayMs: number;
   tone: ResponseTone;
+  stage: ConversationStage;
   voiceMemo: {
     consider: boolean;
+    recommendation: VoiceRecommendation;
+    score: number;
     reason: string;
+    factors: string[];
   };
   reasons: string[];
 }
@@ -44,18 +52,37 @@ function clamp(n: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, n));
 }
 
+function detectStage(threadCount: number, userMsgs: number, assistantMsgs: number): ConversationStage {
+  if (threadCount === 0 || userMsgs <= 1) return "cold_open";
+  if (assistantMsgs >= 1 && userMsgs <= 2) return "warming";
+  if (userMsgs >= 5 && assistantMsgs >= 4) return "deep";
+  if (userMsgs >= 3) return "engaged";
+  return "warming";
+}
+
+function recentlyVoiced(history: Array<{ role: "user" | "assistant"; content: string }>, lookback: number): boolean {
+  const tail = history.slice(-lookback);
+  return tail.some(h => h.role === "assistant" && /^\s*\[voice memo\]/i.test(h.content || ""));
+}
+
 export function decideResponseStrategy(input: StrategyInput): ResponseStrategy {
   const reasons: string[] = [];
   const msg = (input.incomingMessage || "").trim();
   const len = msg.length;
-  const threadCount = input.threadHistory?.length || 0;
-  const userMsgs = (input.threadHistory || []).filter(m => m.role === "user").length;
-  const lastAssistant = [...(input.threadHistory || [])].reverse().find(m => m.role === "assistant")?.content || "";
+  const history = input.threadHistory || [];
+  const threadCount = history.length;
+  const userMsgs = history.filter(m => m.role === "user").length;
+  const assistantMsgs = history.filter(m => m.role === "assistant").length;
+  const lastAssistant = [...history].reverse().find(m => m.role === "assistant")?.content || "";
   const lastAssistantLen = lastAssistant.length;
   const hasQuestion = QUESTION.test(msg);
   const isPureAck = isPureAckMessage(msg);
   const playful = PLAYFUL_HINTS.test(msg);
   const direct = DIRECT_HINTS.test(msg);
+  const priorVoiceCount = input.priorVoiceCount ?? history.filter(h => h.role === "assistant" && /^\s*\[voice memo\]/i.test(h.content || "")).length;
+  const stage = detectStage(threadCount, userMsgs, assistantMsgs);
+  const replyLen = (input.replyText || "").length;
+  const replyHasUrl = /https?:\/\//i.test(input.replyText || "");
 
   let type: ResponseType = "text";
   if (isPureAck && lastAssistantLen > 0 && !hasQuestion && userMsgs >= 2) {
@@ -91,32 +118,69 @@ export function decideResponseStrategy(input: StrategyInput): ResponseStrategy {
   }
   delayMs = clamp(delayMs, 0, 4000);
 
-  let voiceConsider = false;
+  // ---- Voice decision (additive layer; never relaxes existing probability gating) ----
+  const factors: string[] = [];
+  let score = 0;
   let voiceReason = "not_eligible";
-  if (input.voiceMemoEligible && type !== "none") {
-    const replyLen = (input.replyText || "").length;
-    if (threadCount >= 3 && replyLen > 0 && replyLen <= 280 && !direct) {
-      voiceConsider = true;
-      voiceReason = "midthread_short_reply";
-    } else if (replyLen > 280) {
-      voiceReason = "reply_too_long";
-    } else if (threadCount < 3) {
-      voiceReason = "thread_too_early";
-    } else if (direct) {
-      voiceReason = "direct_request_text_only";
-    }
+  let recommendation: VoiceRecommendation = "skip";
+
+  const hardBlockers: string[] = [];
+  if (!input.voiceMemoEligible) hardBlockers.push("channel_not_eligible");
+  if (type === "none") hardBlockers.push("reply_suppressed");
+  if (replyLen === 0) hardBlockers.push("empty_reply");
+  if (replyLen > 280) hardBlockers.push("reply_too_long");
+  if (replyHasUrl) hardBlockers.push("reply_contains_url");
+  if (direct) hardBlockers.push("direct_request_text_only");
+  if (priorVoiceCount >= 2) hardBlockers.push("voice_cap_reached");
+
+  if (hardBlockers.length === 0) {
+    // Stage scoring — voice fits mid-conversation, not openers
+    if (stage === "cold_open") { score -= 3; factors.push("stage:cold_open(-3)"); }
+    else if (stage === "warming") { score -= 1; factors.push("stage:warming(-1)"); }
+    else if (stage === "engaged") { score += 2; factors.push("stage:engaged(+2)"); }
+    else if (stage === "deep") { score += 3; factors.push("stage:deep(+3)"); }
+    else if (stage === "stalled") { score += 1; factors.push("stage:stalled(+1)"); }
+
+    // Engagement signal — playful tone & casual incoming → voice fits
+    if (playful) { score += 2; factors.push("playful(+2)"); }
+    if (len > 0 && len <= 40) { score += 1; factors.push("short_incoming(+1)"); }
+    if (len > 200) { score -= 1; factors.push("long_incoming(-1)"); }
+
+    // Reply shape — short condensable replies favor voice
+    if (replyLen > 0 && replyLen <= 120) { score += 2; factors.push("short_reply(+2)"); }
+    else if (replyLen > 120 && replyLen <= 280) { score += 1; factors.push("medium_reply(+1)"); }
+
+    // Question handling — let users with real questions get text they can re-read
+    if (hasQuestion) { score -= 1; factors.push("user_question(-1)"); }
+
+    // Repetition guard — if last 3 assistant turns already had voice, prefer text now
+    if (recentlyVoiced(history, 3)) { score -= 2; factors.push("recent_voice(-2)"); }
+    if (priorVoiceCount === 1) { score -= 1; factors.push("one_prior_voice(-1)"); }
+
+    // Engagement depth — sustained back-and-forth is prime voice territory
+    if (userMsgs >= 4 && assistantMsgs >= 3) { score += 1; factors.push("sustained_engagement(+1)"); }
+
+    if (score >= 4) { recommendation = "send"; voiceReason = `score=${score}_send_threshold`; }
+    else if (score >= 2) { recommendation = "hold"; voiceReason = `score=${score}_borderline`; }
+    else { recommendation = "skip"; voiceReason = `score=${score}_below_threshold`; }
+  } else {
+    voiceReason = hardBlockers[0];
+    factors.push(...hardBlockers.map(b => `block:${b}`));
   }
+
+  const voiceConsider = recommendation !== "skip";
 
   return {
     type,
     timing,
     delayMs,
     tone,
-    voiceMemo: { consider: voiceConsider, reason: voiceReason },
+    stage,
+    voiceMemo: { consider: voiceConsider, recommendation, score, reason: voiceReason, factors },
     reasons,
   };
 }
 
 export function summarizeStrategy(s: ResponseStrategy): string {
-  return `type=${s.type} timing=${s.timing} delay=${s.delayMs}ms tone=${s.tone} voice=${s.voiceMemo.consider}(${s.voiceMemo.reason}) reasons=[${s.reasons.join(",")}]`;
+  return `type=${s.type} timing=${s.timing} delay=${s.delayMs}ms tone=${s.tone} stage=${s.stage} voice=${s.voiceMemo.recommendation}(score=${s.voiceMemo.score},${s.voiceMemo.reason}) reasons=[${s.reasons.join(",")}]`;
 }
