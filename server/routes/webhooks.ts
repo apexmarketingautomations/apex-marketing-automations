@@ -224,6 +224,7 @@ export function registerWebhooksRoutes(app: Express) {
       const recoveryPersona = resolvePersonaForSubAccount(matchedAccountId);
       let aiReply: string | null = null;
       let aiRecoveryUsed: { reason: string; persona: string } | null = null;
+      let strategyThreadHistory: Array<{ role: "user" | "assistant"; content: string }> = [];
 
       if (!isAIConfigured()) {
         const rec = pickRecoveryLine({ reason: "ai_failed", persona: recoveryPersona, threadKey: recoveryThreadKey, channel });
@@ -237,6 +238,7 @@ export function registerWebhooksRoutes(app: Express) {
             contactPhone: senderClean,
             channel,
           });
+          strategyThreadHistory = (dmCtx.threadHistory || []).map(h => ({ role: h.role, content: h.content }));
           const aiMessages = await buildDmMessages(dmCtx, channel, incomingMsg);
           const langInstr = getLanguageInstruction(dmCtx.language);
           if (langInstr && aiMessages.length > 0 && aiMessages[0].role === "system") {
@@ -277,6 +279,39 @@ export function registerWebhooksRoutes(app: Express) {
             disambiguator: inboundSid ? `${inboundSid}-ai-err` : `ai-err-${senderClean}`,
           });
         }
+      }
+
+      const { decideResponseStrategy, summarizeStrategy } = await import("../messaging/responseStrategy");
+      const replyStrategy = decideResponseStrategy({
+        channel,
+        incomingMessage: incomingMsg,
+        threadHistory: strategyThreadHistory,
+        replyText: aiReply,
+        voiceMemoEligible: channel === "messenger" || channel === "instagram",
+      });
+      console.log(`[${channel.toUpperCase()}][STRATEGY] ${summarizeStrategy(replyStrategy)}`);
+      recordStepValue(trace, "response_strategy_decided", "success", 0, {
+        provider: "internal",
+        metadata: {
+          type: replyStrategy.type,
+          timing: replyStrategy.timing,
+          delayMs: replyStrategy.delayMs,
+          tone: replyStrategy.tone,
+          voiceConsider: replyStrategy.voiceMemo.consider,
+          reasons: replyStrategy.reasons,
+        },
+        disambiguator: `strategy-${senderClean}`,
+      });
+
+      if (replyStrategy.type === "none") {
+        console.log(`[${channel.toUpperCase()}][STRATEGY] Suppressing reply — reason=${replyStrategy.reasons.join(",")}`);
+        await markEventCompleted(req);
+        res.type("text/xml").send("<Response></Response>");
+        return;
+      }
+
+      if (replyStrategy.delayMs > 0) {
+        await new Promise(resolve => setTimeout(resolve, replyStrategy.delayMs));
       }
 
       const sendStart = Date.now();
