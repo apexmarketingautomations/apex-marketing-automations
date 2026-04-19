@@ -33,6 +33,7 @@ import { registerEventLogRoutes } from "./routes/eventLog";
 import { registerMailchimpRoutes } from "./routes/mailchimp";
 import { registerPublicPlatformRoutes } from "./routes/public-platform";
 import { registerStandaloneCardsRoutes } from "./routes/standalone-cards";
+import { registerEventRoutes } from "./routes/event";
 import { registerExternalApiRoutes } from "./routes/external-api";
 import { registerContentPlannerRoutes } from "./routes/contentPlanner";
 import { registerCommentBotRoutes } from "./routes/commentBot";
@@ -99,6 +100,7 @@ export async function registerRoutes(
   registerMailchimpRoutes(app);
   registerPublicPlatformRoutes(app);
   registerStandaloneCardsRoutes(app);
+  registerEventRoutes(app);
   registerExternalApiRoutes(app);
   registerContentPlannerRoutes(app);
   registerCommentBotRoutes(app);

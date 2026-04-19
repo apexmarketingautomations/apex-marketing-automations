@@ -59,6 +59,8 @@ const MetaMessagingPage = lazy(() => import("@/pages/meta-messaging"));
 const MetaMessaging2027Page = lazy(() => import("@/pages/meta-messaging-2027"));
 const NexusDemo = lazy(() => import("@/pages/nexus-demo"));
 const AdminConsolePage = lazy(() => import("@/pages/admin-console"));
+const EventSignup = lazy(() => import("@/pages/event-signup"));
+const AdminEventMode = lazy(() => import("@/pages/admin-event-mode"));
 const LaunchReadinessPage = lazy(() => import("@/pages/launch-readiness"));
 const AccountSettingsPage = lazy(() => import("@/pages/account-settings"));
 const ClientPortal = lazy(() => import("@/pages/client-portal"));
@@ -191,6 +193,8 @@ function Router() {
         <Route path="/data-deletion" component={DataDeletionPage} />
         <Route path="/demo" component={NexusDemo} />
         <Route path="/pricing" component={Pricing} />
+        <Route path="/event" component={EventSignup} />
+        <Route path="/admin/event-mode" component={AdminEventMode} />
         <Route path="/gym" component={GymLanding} />
         <Route path="/luxe" component={LuxeLanding} />
         <Route path="/marketers" component={MarketersLanding} />

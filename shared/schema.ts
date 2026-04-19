@@ -2987,3 +2987,62 @@ export const cardIntelligenceSnapshots = pgTable("card_intelligence_snapshots", 
 export const insertCardIntelligenceSnapshotSchema = createInsertSchema(cardIntelligenceSnapshots).omit({ id: true, computedAt: true });
 export type InsertCardIntelligenceSnapshot = z.infer<typeof insertCardIntelligenceSnapshotSchema>;
 export type CardIntelligenceSnapshot = typeof cardIntelligenceSnapshots.$inferSelect;
+
+// ============================================================================
+// EVENT CAMPAIGNS — physical NFC card giveaway at marketing events.
+// One campaign row per event (e.g. "Miami Mixer Apr 2026"). Inventory is
+// tracked atomically; signups consume stock only after Stripe validates
+// the payment method.
+// ============================================================================
+export const eventCampaigns = pgTable("event_campaigns", {
+  id: serial("id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  totalInventory: integer("total_inventory").notNull(),
+  remainingInventory: integer("remaining_inventory").notNull(),
+  trialDays: integer("trial_days").notNull().default(30),
+  defaultPlan: text("default_plan").notNull().default("starter"),
+  postTrialAmountCents: integer("post_trial_amount_cents").notNull().default(9700),
+  isActive: boolean("is_active").notNull().default(true),
+  startsAt: timestamp("starts_at").defaultNow().notNull(),
+  endsAt: timestamp("ends_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertEventCampaignSchema = createInsertSchema(eventCampaigns).omit({ id: true, createdAt: true });
+export type InsertEventCampaign = z.infer<typeof insertEventCampaignSchema>;
+export type EventCampaign = typeof eventCampaigns.$inferSelect;
+
+// One row per signup. Holds shipping address, Stripe linkage, programming
+// status. Operator console mutates `status` and `isHotLead`.
+export const eventCardFulfillment = pgTable("event_card_fulfillment", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").notNull(),
+  email: text("email").notNull(),
+  fullName: text("full_name").notNull(),
+  shippingStreet: text("shipping_street").notNull(),
+  shippingCity: text("shipping_city").notNull(),
+  shippingState: text("shipping_state").notNull(),
+  shippingZip: text("shipping_zip").notNull(),
+  shippingCountry: text("shipping_country").notNull().default("US"),
+  status: text("status").notNull().default("pending"),
+  paymentMethodValidated: boolean("payment_method_validated").notNull().default(false),
+  isHotLead: boolean("is_hot_lead").notNull().default(false),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSetupIntentId: text("stripe_setup_intent_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  digitalCardId: integer("digital_card_id"),
+  digitalCardSlug: text("digital_card_slug"),
+  programmedAt: timestamp("programmed_at"),
+  trialEndsAt: timestamp("trial_ends_at"),
+  acquisitionTag: text("acquisition_tag").notNull().default("event"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  campaignIdx: index("event_fulfill_campaign_idx").on(table.campaignId),
+  emailIdx: index("event_fulfill_email_idx").on(table.email),
+  setupIntentIdx: index("event_fulfill_setup_intent_idx").on(table.stripeSetupIntentId),
+}));
+export const insertEventCardFulfillmentSchema = createInsertSchema(eventCardFulfillment).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertEventCardFulfillment = z.infer<typeof insertEventCardFulfillmentSchema>;
+export type EventCardFulfillment = typeof eventCardFulfillment.$inferSelect;

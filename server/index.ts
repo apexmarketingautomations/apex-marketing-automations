@@ -324,6 +324,24 @@ app.post(
         }
       }
 
+      if (event?.type === "setup_intent.succeeded") {
+        try {
+          const setupIntent = event.data?.object;
+          if (setupIntent?.metadata?.source === "event" && setupIntent.id) {
+            const { validateAndProvision } = await import("./routes/event");
+            const result = await validateAndProvision(setupIntent.id);
+            console.log(`[EVENT-WEBHOOK] setup_intent.succeeded ${setupIntent.id} ->`, result);
+          }
+        } catch (e: any) {
+          console.error("[EVENT-WEBHOOK] setup_intent handler error:", e?.message);
+        }
+      }
+
+      if (event?.type === "customer.subscription.trial_will_end") {
+        const subscription = event.data?.object;
+        console.log(`[STRIPE] Trial will end for subscription ${subscription?.id} on ${new Date((subscription?.trial_end || 0) * 1000).toISOString()}`);
+      }
+
       if (event?.type === "invoice.payment_failed") {
         const invoice = event.data?.object;
         const subId = invoice?.subscription;

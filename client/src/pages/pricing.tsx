@@ -7,7 +7,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
 
-const BLITZ_ACTIVE = true;
+// Paused for the live event window. Restore to true to resume Blitz pricing.
+const BLITZ_ACTIVE = false;
 
 const tiers = [
   {
