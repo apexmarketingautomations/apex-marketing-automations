@@ -1,0 +1,407 @@
+Build a production-grade tracking and intelligence service for Apex Marketing Automations in Replit.
+
+This system must not be a disconnected tracker. It must function as an event collection, attribution, and learning layer that feeds the Apex Intelligence Database so Apex can improve over time across clients, cards, campaigns, funnels, and lead behavior.
+
+PRIMARY OBJECTIVE:
+Track NFC business card taps, QR scans, page views, CTA clicks, form starts, lead submissions, bookings, and downstream outcomes, then normalize and send that data into the Apex Intelligence Database so the platform can learn patterns, score intent, improve routing, and power future automation decisions.
+
+TECH STACK:
+- Node.js + TypeScript
+- Express
+- PostgreSQL
+- Prisma ORM
+- Zod validation
+- Redis if needed for caching, rate limits, replay protection, and queues
+- Background job support for async processing
+- Secure environment-based configuration
+- Clean modular architecture
+
+CORE SYSTEM PRINCIPLES:
+1. Fast event capture
+2. Durable attribution across the full funnel
+3. Clean normalization into Apex Intelligence Database
+4. Extensible intelligence layer for learning and optimization
+5. Production hardening and security
+6. No broken attribution chains
+7. Multi-tenant design for multiple Apex clients
+
+ARCHITECTURAL LEVELS:
+
+LEVEL 1: CAPTURE LAYER
+Purpose:
+Receive traffic from NFC cards, QR codes, digital business cards, landing pages, and forms without losing attribution.
+
+Requirements:
+- Create short tracking routes like /t/:slug
+- Each slug maps to a specific card, campaign, client, and destination
+- On each request:
+  - validate slug
+  - create visit record
+  - generate visit_id
+  - generate signed attribution token
+  - store source metadata
+  - redirect quickly to destination
+- Support both NFC and QR as first-class entry methods
+- Preserve attribution parameters across redirects and page navigation
+- Capture events:
+  - tap
+  - qr_scan
+  - page_view
+  - cta_click
+  - form_start
+  - lead_submit
+  - booked_call
+  - qualified_lead
+  - closed_sale if later sent from Apex CRM
+- All public capture endpoints must be extremely fast and resilient
+
+LEVEL 2: ATTRIBUTION LAYER
+Purpose:
+Connect every interaction to the correct client, campaign, card, lead, and conversion path.
+
+Requirements:
+- Maintain a durable attribution chain from first tap/scan to final lead outcome
+- Every visit must link to:
+  - client_id
+  - campaign_id
+  - card_id
+  - destination_id
+  - visit_id
+- Every tracked event must link back to the original visit when possible
+- Support identity stitching across:
+  - repeated visits
+  - same device
+  - form submissions
+  - CRM lead creation
+  - booked calls
+- Add signed attribution tokens so query params cannot be easily spoofed
+- Support idempotency for conversion events
+- Support server-to-server events from Apex forms, workflows, and CRM automation
+- Allow manual reconciliation when attribution is incomplete
+
+LEVEL 3: INTELLIGENCE LAYER
+Purpose:
+Feed structured, normalized event data into the Apex Intelligence Database so Apex can learn and improve over time.
+
+This is critical:
+The system must write normalized event, attribution, lead, and performance data into a dedicated Apex Intelligence data model that can later be used for:
+- lead intent scoring
+- campaign optimization
+- best-performing card analysis
+- best-performing CTA analysis
+- industry pattern recognition
+- time-to-conversion analysis
+- client benchmarking
+- routing optimization
+- follow-up optimization
+- sales pattern detection
+- A/B learning
+- future AI-driven recommendations inside Apex
+
+INTELLIGENCE DATABASE REQUIREMENTS:
+Design the schema so raw tracking data is not the only output.
+Create both:
+1. Raw event tables
+2. Normalized intelligence tables
+
+RAW DATA TABLES:
+- clients
+- users
+- campaigns
+- cards
+- destinations
+- visits
+- events
+- leads
+- bookings
+- webhook_deliveries
+- audit_logs
+
+INTELLIGENCE TABLES:
+- intelligence_profiles
+- lead_journeys
+- campaign_performance_snapshots
+- card_performance_snapshots
+- cta_performance_snapshots
+- client_benchmarks
+- intent_scores
+- anomaly_flags
+- optimization_recommendations
+- attribution_confidence_scores
+- routing_decisions
+- experiment_variants
+- experiment_results
+
+SYSTEM BEHAVIOR:
+The app must do more than log activity.
+It must:
+- ingest events
+- normalize events
+- enrich events
+- compute aggregates
+- update intelligence tables
+- expose data to Apex for future learning and automation decisions
+
+DATA TO CAPTURE PER VISIT:
+- visit_id
+- card_id
+- client_id
+- campaign_id
+- destination_id
+- source_type (nfc, qr, direct, sms, email, web)
+- timestamp
+- landing_url
+- final_url
+- referrer
+- user_agent
+- device_type
+- browser
+- os
+- ip_hash
+- country
+- region
+- city
+- utm_source
+- utm_medium
+- utm_campaign
+- utm_content
+- utm_term
+- session_id
+- attribution_token
+- attribution_confidence
+
+DATA TO CAPTURE PER EVENT:
+- event_id
+- visit_id
+- client_id
+- campaign_id
+- card_id
+- lead_id if known
+- event_type
+- event_timestamp
+- page_url
+- button_id or cta_id if applicable
+- form_id if applicable
+- payload metadata JSON
+- source_channel
+- event_value if applicable
+- idempotency_key if applicable
+
+DATA TO CAPTURE PER LEAD:
+- lead_id
+- client_id
+- campaign_id
+- card_id
+- visit_id
+- first_touch_timestamp
+- latest_touch_timestamp
+- lead_status
+- booked_call boolean
+- qualified boolean
+- closed_sale boolean
+- estimated_value
+- actual_value if later synced
+- source_confidence
+- stitched_identity_keys
+
+INTELLIGENCE LOGIC REQUIREMENTS:
+Include first-pass service logic for:
+- intent scoring based on behavior depth
+- repeat visitor detection
+- multi-touch lead journey reconstruction
+- attribution confidence scoring
+- card-level conversion ranking
+- CTA-level conversion ranking
+- campaign-level performance ranking
+- low-performing asset detection
+- anomaly detection for suspicious traffic
+- recommendation generation placeholders
+
+Examples:
+- identify cards with high tap volume but low conversion
+- identify clients whose digital card is underperforming benchmark
+- identify CTAs with strong clickthrough but weak lead conversion
+- identify repeat visitors likely to be high intent
+- identify highest-converting source paths by industry
+
+EVENT INGESTION API:
+Create secure endpoints for:
+- POST /api/events/page-view
+- POST /api/events/click
+- POST /api/events/form-start
+- POST /api/events/lead-submit
+- POST /api/events/booked-call
+- POST /api/events/qualified-lead
+- POST /api/events/closed-sale
+- POST /api/events/webhook/apex-crm
+
+Requirements:
+- validate with Zod
+- require visit_id or recover from attribution token
+- reject malformed traffic
+- support idempotency
+- support replay protection
+- return normalized JSON
+- write raw event records first
+- then queue or process intelligence updates safely
+
+APEX INTELLIGENCE DATABASE INTEGRATION:
+This is mandatory.
+
+Create a clear service boundary for the Apex Intelligence Database so this tracker can:
+- write raw events
+- write normalized attribution data
+- write lead journey updates
+- write performance summaries
+- write intent scores
+- write recommendation placeholders
+- expose query APIs for Apex dashboards and future AI modules
+
+Implement this as a dedicated module/service layer such as:
+- IntelligenceIngestionService
+- AttributionEngine
+- JourneyBuilder
+- IntentScoringService
+- RecommendationEngine
+- SnapshotRollupService
+
+The code should make it easy for the Apex platform to later plug in:
+- AI recommendations
+- predictive scoring
+- best next action logic
+- smart routing
+- adaptive CTA logic
+- automated optimization workflows
+
+ANALYTICS + INTELLIGENCE API:
+Create endpoints for:
+- GET /api/analytics/overview
+- GET /api/analytics/cards/:id
+- GET /api/analytics/campaigns/:id
+- GET /api/analytics/clients/:id
+- GET /api/analytics/funnel
+- GET /api/intelligence/leads/:id/journey
+- GET /api/intelligence/cards/:id/score
+- GET /api/intelligence/campaigns/:id/recommendations
+- GET /api/intelligence/clients/:id/benchmark
+- GET /api/intelligence/overview
+
+Metrics should include:
+- taps
+- qr scans
+- unique visitors
+- repeat visitors
+- clicks
+- CTR
+- form starts
+- leads
+- booked calls
+- qualified leads
+- closed sales
+- conversion rates
+- top cards
+- top campaigns
+- top CTAs
+- intent score distribution
+- attribution confidence distribution
+- best time-to-conversion windows
+- performance by industry/client segment if possible
+
+ADMIN + CONTROL TOOLS:
+Create internal admin endpoints or simple admin views to:
+- create card slugs
+- assign destination URLs
+- assign client and campaign ownership
+- activate/deactivate cards
+- view attribution chains
+- inspect lead journeys
+- export CSV
+- manually reconcile a lead to a visit
+- flag internal/test traffic
+- exclude traffic from benchmarks
+- rebuild snapshots if needed
+
+SECURITY + HARDENING:
+- Use helmet
+- Use rate limiting
+- Use strict input validation
+- Use Prisma parameterized queries
+- Use environment variables for secrets
+- Never expose secrets in logs
+- Hash IP before analytics storage
+- Add structured audit logs
+- Add anti-bot heuristics
+- Add replay protection
+- Add request size limits
+- Add centralized error handling
+- Add /health endpoint
+- Add /ready endpoint
+- Add tenant-aware authorization on internal APIs
+
+MODERN / FUTURISTIC IMPROVEMENTS:
+Include architecture support or placeholders for:
+- adaptive destination routing based on card, time, campaign, or visitor behavior
+- QR + NFC unified attribution
+- dynamic CTA testing
+- event streaming into future AI systems
+- lead scoring that evolves over time
+- recommendations generated from historical Apex performance data
+- anomaly alerts
+- intelligent follow-up triggers
+- cross-client pattern learning with tenant-safe isolation
+- vector-ready recommendation metadata for future semantic search or AI copilots
+
+IMPORTANT BUSINESS LOGIC:
+- Internal test traffic must be taggable and removable from production analytics
+- Support a clear distinction between:
+  - raw traffic
+  - valid traffic
+  - test traffic
+  - suspicious traffic
+- Do not let test runs pollute intelligence benchmarks
+- Preserve schema integrity and modularity
+- Do not build a monolithic mess
+- Keep the system easy to extend
+
+FOLDER STRUCTURE:
+Use a layered, maintainable structure:
+
+/src/routes
+/src/controllers
+/src/services
+/src/services/intelligence
+/src/services/attribution
+/src/services/tracking
+/src/repositories
+/src/middleware
+/src/lib
+/src/types
+/src/validators
+/src/jobs
+/src/scripts
+
+OUTPUT REQUIREMENTS:
+Generate:
+- full project structure
+- package.json
+- tsconfig
+- Prisma schema
+- Express app
+- middleware
+- tracking routes
+- event ingestion routes
+- intelligence services
+- attribution services
+- analytics queries
+- snapshot rollup logic
+- frontend tracking snippet
+- .env.example
+- seed script
+- README with Replit deployment instructions
+- sample curl requests
+- sample seeded records
+- comments only where helpful
+
+FINAL GOAL:
+This should feel like the first real tracking and intelligence backbone for Apex Marketing Automations, not a toy analytics project.
+It must be stable, modular, production-oriented, and designed so Apex can learn from every business card interaction and turn those learnings into smarter automation, smarter routing, and better client outcomes over time.
