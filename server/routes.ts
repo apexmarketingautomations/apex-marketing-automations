@@ -46,6 +46,7 @@ import { registerMediaRoutes } from "./routes/media";
 import { registerChaturbateRoutes } from "./routes/chaturbate";
 import { registerApexIntelligenceRoutes } from "./routes/apex-intelligence";
 import { registerSiteTrackingRoutes } from "./routes/siteTracking";
+import { registerTrackingRoutes } from "./routes/tracking";
 export { registerAgentWorkerRoutes } from "./routes/agentWorker";
 
 export async function registerRoutes(
@@ -111,6 +112,7 @@ export async function registerRoutes(
   registerChaturbateRoutes(app);
   registerApexIntelligenceRoutes(app);
   registerSiteTrackingRoutes(app);
+  registerTrackingRoutes(app);
 
   return httpServer;
 }

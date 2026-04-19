@@ -2761,3 +2761,152 @@ export const autonomyPolicyRules = pgTable("autonomy_policy_rules", {
 export const insertAutonomyPolicyRuleSchema = createInsertSchema(autonomyPolicyRules).omit({ id: true, createdAt: true });
 export type InsertAutonomyPolicyRule = z.infer<typeof insertAutonomyPolicyRuleSchema>;
 export type AutonomyPolicyRule = typeof autonomyPolicyRules.$inferSelect;
+
+// ============================================================================
+// APEX TRACKING & ATTRIBUTION (Level 1 Capture + Attribution scaffold)
+// ----------------------------------------------------------------------------
+// Schema for NFC/QR taps, page views, CTA clicks, form events, and lead/booking
+// events. Designed so future intelligence rollups (intent scoring, journey
+// reconstruction, CTA ranking, etc.) can be layered on top without migration.
+// ============================================================================
+
+export const TRACKING_SOURCE_TYPES = ["nfc", "qr", "sms", "email", "web", "direct", "social", "referral"] as const;
+export type TrackingSourceType = typeof TRACKING_SOURCE_TYPES[number];
+
+export const TRACKING_TRAFFIC_CLASSES = ["valid", "test", "internal", "suspicious", "bot"] as const;
+export type TrackingTrafficClass = typeof TRACKING_TRAFFIC_CLASSES[number];
+
+export const TRACKING_EVENT_TYPES = [
+  "tap",
+  "qr_scan",
+  "page_view",
+  "cta_click",
+  "form_start",
+  "form_submit",
+  "lead_submit",
+  "booked_call",
+  "qualified_lead",
+  "closed_sale",
+] as const;
+export type TrackingEventType = typeof TRACKING_EVENT_TYPES[number];
+
+// A tracking link is the slug-addressable entry point (printed on an NFC card,
+// embedded in a QR code, dropped into an SMS, etc.). Hitting /t/:slug performs
+// the redirect to `destinationUrl` and creates a `trackingVisits` row.
+export const trackingLinks = pgTable("tracking_links", {
+  id: serial("id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }),
+  cardId: integer("card_id").references(() => digitalCards.id, { onDelete: "set null" }),
+  campaignId: text("campaign_id"),
+  destinationUrl: text("destination_url").notNull(),
+  sourceType: text("source_type").notNull().default("nfc"),
+  label: text("label"),
+  isActive: boolean("is_active").notNull().default(true),
+  isTest: boolean("is_test").notNull().default(false),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+  tapCount: integer("tap_count").notNull().default(0),
+  lastTapAt: timestamp("last_tap_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  subAccountIdx: index("tl_sub_account_idx").on(table.subAccountId),
+  cardIdx: index("tl_card_idx").on(table.cardId),
+  campaignIdx: index("tl_campaign_idx").on(table.campaignId),
+  activeIdx: index("tl_active_idx").on(table.isActive),
+}));
+
+export const insertTrackingLinkSchema = createInsertSchema(trackingLinks).omit({
+  id: true, createdAt: true, updatedAt: true, tapCount: true, lastTapAt: true,
+});
+export type InsertTrackingLink = z.infer<typeof insertTrackingLinkSchema>;
+export type TrackingLink = typeof trackingLinks.$inferSelect;
+
+// A visit is one resolved hit against /t/:slug (or a direct page view with
+// recoverable attribution). visitId is the durable correlation handle that
+// downstream events carry to preserve the attribution chain.
+export const trackingVisits = pgTable("tracking_visits", {
+  id: serial("id").primaryKey(),
+  visitId: text("visit_id").notNull().unique(),
+  linkId: integer("link_id").references(() => trackingLinks.id, { onDelete: "set null" }),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }),
+  cardId: integer("card_id").references(() => digitalCards.id, { onDelete: "set null" }),
+  campaignId: text("campaign_id"),
+  destinationId: integer("destination_id"),
+  sessionId: text("session_id"),
+  sourceType: text("source_type").notNull().default("direct"),
+  landingUrl: text("landing_url"),
+  finalUrl: text("final_url"),
+  referrer: text("referrer"),
+  userAgent: text("user_agent"),
+  deviceType: text("device_type"),
+  browser: text("browser"),
+  os: text("os"),
+  ipHash: text("ip_hash"),
+  country: text("country"),
+  region: text("region"),
+  city: text("city"),
+  utmSource: text("utm_source"),
+  utmMedium: text("utm_medium"),
+  utmCampaign: text("utm_campaign"),
+  utmContent: text("utm_content"),
+  utmTerm: text("utm_term"),
+  attributionToken: text("attribution_token"),
+  attributionConfidence: real("attribution_confidence").notNull().default(1),
+  isTest: boolean("is_test").notNull().default(false),
+  trafficClass: text("traffic_class").notNull().default("valid"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  visitLookup: uniqueIndex("tv_visit_id_idx").on(table.visitId),
+  subAccountIdx: index("tv_sub_account_idx").on(table.subAccountId),
+  linkIdx: index("tv_link_idx").on(table.linkId),
+  cardIdx: index("tv_card_idx").on(table.cardId),
+  campaignIdx: index("tv_campaign_idx").on(table.campaignId),
+  sessionIdx: index("tv_session_idx").on(table.sessionId),
+  createdAtIdx: index("tv_created_at_idx").on(table.createdAt),
+}));
+
+export const insertTrackingVisitSchema = createInsertSchema(trackingVisits).omit({ id: true, createdAt: true });
+export type InsertTrackingVisit = z.infer<typeof insertTrackingVisitSchema>;
+export type TrackingVisit = typeof trackingVisits.$inferSelect;
+
+// Every downstream interaction (page view on landing page, CTA click, form
+// start, lead submit, booked call, etc.) is recorded here. visitId stitches
+// the event back to the originating tap/scan when possible. contactId is the
+// existing CRM contacts.id once the visitor identifies themselves.
+export const trackingEvents = pgTable("tracking_events", {
+  id: serial("id").primaryKey(),
+  eventId: text("event_id").notNull().unique(),
+  visitId: text("visit_id"),
+  linkId: integer("link_id").references(() => trackingLinks.id, { onDelete: "set null" }),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }),
+  cardId: integer("card_id").references(() => digitalCards.id, { onDelete: "set null" }),
+  campaignId: text("campaign_id"),
+  contactId: integer("contact_id").references(() => contacts.id, { onDelete: "set null" }),
+  eventType: text("event_type").notNull(),
+  eventValue: real("event_value"),
+  pageUrl: text("page_url"),
+  ctaId: text("cta_id"),
+  formId: text("form_id"),
+  sourceChannel: text("source_channel"),
+  idempotencyKey: text("idempotency_key").unique(),
+  payload: jsonb("payload").$type<Record<string, unknown>>().default({}),
+  isTest: boolean("is_test").notNull().default(false),
+  trafficClass: text("traffic_class").notNull().default("valid"),
+  attributionConfidence: real("attribution_confidence").notNull().default(1),
+  occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  visitIdx: index("te_visit_idx").on(table.visitId),
+  subAccountIdx: index("te_sub_account_idx").on(table.subAccountId),
+  cardIdx: index("te_card_idx").on(table.cardId),
+  campaignIdx: index("te_campaign_idx").on(table.campaignId),
+  contactIdx: index("te_contact_idx").on(table.contactId),
+  eventTypeIdx: index("te_event_type_idx").on(table.eventType),
+  occurredAtIdx: index("te_occurred_at_idx").on(table.occurredAt),
+}));
+
+export const insertTrackingEventSchema = createInsertSchema(trackingEvents).omit({ id: true, createdAt: true });
+export type InsertTrackingEvent = z.infer<typeof insertTrackingEventSchema>;
+export type TrackingEvent = typeof trackingEvents.$inferSelect;
