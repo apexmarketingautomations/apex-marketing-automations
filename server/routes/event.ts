@@ -334,11 +334,16 @@ export async function validateAndProvision(setupIntentId: string): Promise<{
   trialEndsAt?: string;
   error?: string;
 }> {
+  console.log(`[EVENT-PROVISION] start setupIntent=${setupIntentId}`);
   const fulfillment = (await db.select().from(eventCardFulfillment)
     .where(eq(eventCardFulfillment.stripeSetupIntentId, setupIntentId))
     .limit(1))[0];
-  if (!fulfillment) return { ok: false, error: "Fulfillment not found" };
+  if (!fulfillment) {
+    console.warn(`[EVENT-PROVISION] no fulfillment row for ${setupIntentId}`);
+    return { ok: false, error: "Fulfillment not found" };
+  }
   if (fulfillment.paymentMethodValidated && fulfillment.stripeSubscriptionId) {
+    console.log(`[EVENT-PROVISION] fulfillment #${fulfillment.id} already provisioned (sub=${fulfillment.stripeSubscriptionId}) — short circuit`);
     return { ok: true, alreadyProcessed: true, fulfillmentId: fulfillment.id, trialEndsAt: fulfillment.trialEndsAt?.toISOString() };
   }
 
@@ -346,6 +351,7 @@ export async function validateAndProvision(setupIntentId: string): Promise<{
   const stripe = (stripeSync as any).stripe;
 
   const setupIntent = await stripe.setupIntents.retrieve(setupIntentId);
+  console.log(`[EVENT-PROVISION] retrieved setup_intent status=${setupIntent.status} pm=${setupIntent.payment_method} cust=${setupIntent.customer}`);
   if (setupIntent.status !== "succeeded") {
     return { ok: false, error: `setup_intent status is ${setupIntent.status}` };
   }
@@ -364,9 +370,11 @@ export async function validateAndProvision(setupIntentId: string): Promise<{
     ))
     .returning({ id: eventCardFulfillment.id });
   if (claim.length === 0) {
+    console.log(`[EVENT-PROVISION] fulfillment #${fulfillment.id} already claimed by concurrent caller — short circuit`);
     const refreshed = (await db.select().from(eventCardFulfillment).where(eq(eventCardFulfillment.id, fulfillment.id)).limit(1))[0];
     return { ok: true, alreadyProcessed: true, fulfillmentId: fulfillment.id, trialEndsAt: refreshed?.trialEndsAt?.toISOString() };
   }
+  console.log(`[EVENT-PROVISION] claimed fulfillment #${fulfillment.id} — decrementing inventory`);
 
   // Atomic inventory decrement — never oversells. Uses Drizzle's typed update
   // with returning() so the row count is reliable across drivers.
@@ -380,12 +388,13 @@ export async function validateAndProvision(setupIntentId: string): Promise<{
     .returning({ remaining: eventCampaigns.remainingInventory });
 
   if (decremented.length === 0) {
-    // Roll back our claim so the operator can see the row is broken.
+    console.warn(`[EVENT-PROVISION] inventory exhausted for campaign #${fulfillment.campaignId} — rolling back claim`);
     await db.update(eventCardFulfillment)
       .set({ paymentMethodValidated: false, status: "cancelled", notes: "Inventory exhausted at validation time", updatedAt: new Date() })
       .where(eq(eventCardFulfillment.id, fulfillment.id));
     return { ok: false, error: "Inventory exhausted" };
   }
+  console.log(`[EVENT-PROVISION] decrement OK — remaining=${decremented[0].remaining}; creating subscription`);
 
   // Set as default payment method on customer
   await stripe.customers.update(customerId, {
@@ -436,6 +445,6 @@ export async function validateAndProvision(setupIntentId: string): Promise<{
     payload: { campaignId: fulfillment.campaignId, email: fulfillment.email, trialEndsAt: trialEndsAt.toISOString() },
   });
 
-  console.log(`[EVENT] Provisioned fulfillment #${fulfillment.id} — sub=${subscription.id}, trial ends ${trialEndsAt.toISOString()}`);
+  console.log(`[EVENT-PROVISION] ✅ DONE fulfillment #${fulfillment.id} sub=${subscription.id} trialEndsAt=${trialEndsAt.toISOString()}`);
   return { ok: true, fulfillmentId: fulfillment.id, trialEndsAt: trialEndsAt.toISOString() };
 }
