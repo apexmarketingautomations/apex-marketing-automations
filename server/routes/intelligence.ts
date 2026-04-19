@@ -9,6 +9,7 @@ import {
 import { asyncHandler, verifyAccountOwnership } from "./helpers";
 import { getCardSnapshot } from "../services/trackingSnapshots";
 import { generateInsights } from "../services/trackingInsights";
+import { computeCardAdaptation } from "../services/cardAdaptation";
 
 // ---------------------------------------------------------------------------
 // Apex Intelligence — client-facing dashboard API.
@@ -290,6 +291,128 @@ export function registerIntelligenceRoutes(app: Express): void {
       };
 
       return res.json(payload);
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Public adaptation endpoint.
+  //
+  // The card page itself is public, so this endpoint must be too — but it
+  // returns ONLY render directives (booleans + the chosen CTA name). No
+  // metrics, no PII, no benchmark data ever leaves through here.
+  //
+  // ?visit=<uuid> is optional. If supplied AND the visit belongs to this
+  // card AND the visit is flagged is_high_intent, we let the directive set
+  // include the high-intent adaptations. Worst case of spoofing: a visitor
+  // forces *their own* card to surface its strongest CTA — there is no
+  // cross-tenant or PII leak path, so a soft check is sufficient.
+  //
+  // ?hour=<0-23> lets the client pass its local hour for peak-hour matching
+  // so we don't need to store TZ per visitor.
+  // -------------------------------------------------------------------------
+  app.get(
+    "/api/intelligence/cards/by-slug/:slug/adaptation",
+    asyncHandler(async (req: Request, res: Response) => {
+      const slug = String(req.params.slug || "").toLowerCase();
+      if (!slug) return res.status(400).json({ error: "invalid slug" });
+
+      const [card] = await db
+        .select({
+          id: digitalCards.id,
+          phone: digitalCards.phone,
+          email: digitalCards.email,
+          website: digitalCards.website,
+          bookingUrl: digitalCards.bookingUrl,
+          subAccountId: digitalCards.subAccountId,
+          purchaseId: digitalCards.purchaseId,
+          isActive: digitalCards.isActive,
+          isPublic: digitalCards.isPublic,
+          status: digitalCards.status,
+          paymentStatus: digitalCards.paymentStatus,
+          calendarUrl: digitalCards.calendarUrl,
+        })
+        .from(digitalCards)
+        .where(eq(digitalCards.slug, slug))
+        .limit(1);
+      if (!card) return res.status(404).json({ error: "card not found" });
+
+      // Mirror the public card route's accessibility gate so adaptation
+      // directives never leak for unpublished/disabled/unpaid cards. Same
+      // contract as /api/public-card/:slug.
+      const accessible = card.subAccountId
+        ? !!(card.isActive && card.isPublic && card.status === "published")
+        : card.purchaseId
+          ? card.paymentStatus === "paid"
+          : false;
+      if (!accessible) return res.status(403).json({ error: "card not available" });
+
+      // Visit-scoped intent check (best effort, optional).
+      let visitIsHighIntent = false;
+      const visitParam = typeof req.query.visit === "string" ? req.query.visit : null;
+      if (visitParam) {
+        const [visit] = await db
+          .select({
+            isHighIntent: trackingVisits.isHighIntent,
+            cardId: trackingVisits.cardId,
+          })
+          .from(trackingVisits)
+          .where(eq(trackingVisits.visitId, visitParam))
+          .limit(1);
+        if (visit && visit.cardId === card.id && visit.isHighIntent) {
+          visitIsHighIntent = true;
+        }
+      }
+
+      // Reuse the snapshot + behavior aggregates the dashboard already
+      // computes — same cache, no extra DB cost on warm hits.
+      const snapshot = await getCardSnapshot(card.id);
+      const behavior = await loadBehavior(card.id);
+
+      const repeatRate =
+        snapshot.uniqueVisitors > 0
+          ? snapshot.repeatVisitors / snapshot.uniqueVisitors
+          : 0;
+
+      const insights = generateInsights({
+        taps: snapshot.taps,
+        qrScans: snapshot.qrScans,
+        uniqueVisitors: snapshot.uniqueVisitors,
+        repeatVisitors: snapshot.repeatVisitors,
+        identifiedVisitors: snapshot.identifiedVisitors,
+        leads: snapshot.leadSubmits,
+        bookedCalls: snapshot.bookedCalls,
+        conversionRate: snapshot.tapToLeadRate,
+        repeatRate: Number(repeatRate.toFixed(4)),
+        peakHours: behavior.peakHours,
+        sessionDepth: behavior.sessionDepth,
+      });
+      const insightCodes = new Set(insights.map((i) => i.code));
+
+      const hourParam = Number(req.query.hour);
+      const currentHour =
+        Number.isFinite(hourParam) && hourParam >= 0 && hourParam <= 23
+          ? Math.floor(hourParam)
+          : new Date().getUTCHours();
+
+      const adaptation = computeCardAdaptation({
+        taps: snapshot.taps,
+        uniqueVisitors: snapshot.uniqueVisitors,
+        repeatVisitors: snapshot.repeatVisitors,
+        bookingUrl: card.bookingUrl,
+        phone: card.phone,
+        email: card.email,
+        website: card.website,
+        visitIsHighIntent,
+        peakHours: behavior.peakHours,
+        currentHour,
+        insightCodes,
+      });
+
+      // Cache directives briefly at the edge — they don't need to be
+      // millisecond-fresh and we want to absorb refresh storms on viral
+      // cards. Same cache TTL as the snapshot under the hood.
+      res.set("Cache-Control", "private, max-age=30");
+      return res.json(adaptation);
     }),
   );
 }

@@ -6,9 +6,11 @@ import {
   HeroSection, PrimaryActions, SaveShareBar, QRPanel,
   AboutSection, ServicesSection, TestimonialSection, LinksSection,
   SocialLinksSection, StickyActionBar, ShareModal, CardFooter, BackgroundGlow,
+  HighIntentCta, LiveNowPill,
   adaptPlatformCard, getCardTheme,
 } from "@/components/card-core";
 import type { SharedCardData, CardRenderConfig } from "@/components/card-core";
+import { useCardAdaptation } from "@/hooks/useCardAdaptation";
 
 type FetchState = "loading" | "success" | "not-found" | "unavailable" | "error";
 
@@ -70,6 +72,7 @@ export default function DigitalCard() {
   }, [slug]);
 
   const trackEvent = useCardAnalytics(slug || "", state === "success");
+  const adaptation = useCardAdaptation(slug, state === "success");
   const theme = getCardTheme(card?.theme);
 
   if (state === "loading") return <CardLoading />;
@@ -93,15 +96,20 @@ export default function DigitalCard() {
       <div className="relative z-10">
         <HeroSection card={card} theme={theme} />
 
-        <div className="px-5 max-w-[480px] mx-auto -mt-2 pb-28">
+        <div
+          className={`px-5 max-w-[480px] mx-auto -mt-2 ${adaptation.compactMode ? "pb-20" : "pb-28"}`}
+          data-adaptation-variant={adaptation.variant}
+        >
+          <LiveNowPill adaptation={adaptation} theme={theme} />
+          <HighIntentCta card={card} theme={theme} adaptation={adaptation} trackEvent={trackEvent} />
           <PrimaryActions card={card} theme={theme} trackEvent={trackEvent} />
           <SaveShareBar card={card} theme={theme} config={config}
             onShare={() => { setShowShare(true); trackEvent("share"); }}
             onQR={() => { setShowQR(!showQR); trackEvent("qr_scan"); }} />
           <QRPanel cardUrl={cardUrl} theme={theme} visible={showQR} brandColor={card.brandColor} />
-          <AboutSection card={card} theme={theme} />
+          {!adaptation.hideAbout && <AboutSection card={card} theme={theme} />}
           <ServicesSection card={card} theme={theme} />
-          <TestimonialSection card={card} theme={theme} />
+          {!adaptation.hideTestimonials && <TestimonialSection card={card} theme={theme} />}
           <LinksSection card={card} theme={theme} trackEvent={trackEvent} />
           <SocialLinksSection card={card} theme={theme} trackEvent={trackEvent} />
           <CardFooter config={config} theme={theme} />
