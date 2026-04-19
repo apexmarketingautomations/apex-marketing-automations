@@ -15,6 +15,8 @@ import {
 } from "@shared/schema";
 import { asyncHandler } from "./helpers";
 import { emitUniversalEvent } from "../intelligence/eventEmitter";
+import { upgradeVisit } from "../services/trackingIdentity";
+import { getCardSnapshot } from "../services/trackingSnapshots";
 
 // ---------------------------------------------------------------------------
 // Attribution token signing
@@ -666,6 +668,104 @@ export function registerTrackingRoutes(app: Express): void {
       .from(trackingEvents)
       .where(eq(trackingEvents.visitId, req.params.visitId));
     return res.json({ visit, events });
+  }));
+
+  // -----------------------------------------------------------------------
+  // IDENTITY: visit upgrade (anonymous -> identified) + cross-visit stitching
+  // -----------------------------------------------------------------------
+  // Public callers (e.g. a form on the landing page) may call this with the
+  // visitor's email/phone right after a successful lead capture. To prevent
+  // abuse, EITHER a valid attribution token OR the trusted server channel
+  // (apex-crm webhook style with admin secret) must accompany the request —
+  // otherwise anyone could attach contact identities to arbitrary visits.
+  const identifySchema = z.object({
+    visitId: z.string().min(1).optional(),
+    sessionId: z.string().min(1).optional(),
+    attributionToken: z.string().min(1).optional(),
+    email: z.string().trim().email().max(320).optional(),
+    phone: z.string().min(7).max(40).optional(),
+    contactId: z.number().int().positive().optional(),
+  }).refine(
+    (v) => Boolean(v.visitId || v.sessionId || v.attributionToken),
+    { message: "visitId, sessionId, or attributionToken is required" },
+  ).refine(
+    (v) => Boolean(v.email || v.phone || v.contactId),
+    { message: "at least one of email, phone, or contactId is required" },
+  );
+
+  app.post("/api/track/identify", asyncHandler(async (req: Request, res: Response) => {
+    const parsed = identifySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "invalid payload", details: parsed.error.flatten() });
+    }
+
+    const adminSecret = process.env.TRACKING_ADMIN_SECRET || process.env.STANDALONE_ADMIN_SECRET || "";
+    const trusted = Boolean(adminSecret) && req.headers["x-admin-secret"] === adminSecret;
+
+    // Resolve target visitId. If a token was supplied, validate it and use it
+    // as the source of truth so callers cannot identify someone else's visit.
+    let resolvedVisitId = parsed.data.visitId;
+    if (parsed.data.attributionToken) {
+      const decoded = verifyAttributionToken(parsed.data.attributionToken);
+      if (!decoded?.valid) {
+        return res.status(401).json({ error: "invalid or expired attribution token" });
+      }
+      if (resolvedVisitId && resolvedVisitId !== decoded.visitId) {
+        return res.status(400).json({ error: "visitId / attribution token mismatch" });
+      }
+      resolvedVisitId = decoded.visitId;
+    }
+
+    // No token AND not trusted? We cannot accept identity claims from the
+    // public; bail out with an explicit error so callers know to attach
+    // their attribution token.
+    if (!resolvedVisitId && !parsed.data.sessionId) {
+      return res.status(400).json({ error: "visitId required (sessionId fallback only allowed when no other identifier present)" });
+    }
+    if (!parsed.data.attributionToken && !trusted) {
+      return res.status(403).json({ error: "identify requires a valid attributionToken or trusted channel" });
+    }
+
+    const result = await upgradeVisit({
+      visitId: resolvedVisitId,
+      sessionId: parsed.data.sessionId,
+      email: parsed.data.email ?? null,
+      phone: parsed.data.phone ?? null,
+      contactId: parsed.data.contactId ?? null,
+    });
+
+    if (!result.upgraded) {
+      return res.status(404).json({ error: "visit not found or no identifying fields supplied" });
+    }
+
+    return res.status(200).json({
+      ok: true,
+      visitId: result.visit?.visitId,
+      contactId: result.visit?.contactId,
+      isRepeat: result.isRepeat,
+      stitchedVisitCount: result.stitchedVisitCount,
+      attributionConfidence: result.visit?.attributionConfidence,
+      identifiedAt: result.visit?.identifiedAt,
+    });
+  }));
+
+  // -----------------------------------------------------------------------
+  // ANALYTICS: card-level intelligence snapshot
+  // -----------------------------------------------------------------------
+  // Returns the pre-aggregated snapshot row for a card (taps, scans, clicks,
+  // leads, repeat/identified visitor counts, conversion rates, revenue). The
+  // snapshot is recomputed on-demand if it's stale (>5 min) or if
+  // ?refresh=1 is supplied. Test traffic is excluded by the snapshot service
+  // so production benchmarks remain clean.
+  app.get("/api/track/analytics/cards/:id", asyncHandler(async (req: Request, res: Response) => {
+    if (!adminGuard(req, res)) return;
+    const cardId = Number(req.params.id);
+    if (!Number.isFinite(cardId) || cardId <= 0) {
+      return res.status(400).json({ error: "invalid card id" });
+    }
+    const forceRefresh = req.query.refresh === "1";
+    const snapshot = await getCardSnapshot(cardId, { forceRefresh });
+    return res.json({ snapshot });
   }));
 
   // Health probe for the tracking subsystem itself.

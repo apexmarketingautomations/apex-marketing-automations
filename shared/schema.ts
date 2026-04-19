@@ -2853,6 +2853,15 @@ export const trackingVisits = pgTable("tracking_visits", {
   utmTerm: text("utm_term"),
   attributionToken: text("attribution_token"),
   attributionConfidence: real("attribution_confidence").notNull().default(1),
+  // Identity stitching — set when a visit is "upgraded" from anonymous to
+  // identified (lead submit, calendar booking, manual reconciliation, etc.).
+  // Hashes are SHA-256 of normalized identity values + signing secret so we
+  // can match across visits without storing PII.
+  contactId: integer("contact_id").references(() => contacts.id, { onDelete: "set null" }),
+  emailHash: text("email_hash"),
+  phoneHash: text("phone_hash"),
+  identifiedAt: timestamp("identified_at"),
+  isRepeat: boolean("is_repeat").notNull().default(false),
   isTest: boolean("is_test").notNull().default(false),
   trafficClass: text("traffic_class").notNull().default("valid"),
   metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
@@ -2864,6 +2873,9 @@ export const trackingVisits = pgTable("tracking_visits", {
   cardIdx: index("tv_card_idx").on(table.cardId),
   campaignIdx: index("tv_campaign_idx").on(table.campaignId),
   sessionIdx: index("tv_session_idx").on(table.sessionId),
+  contactIdx: index("tv_contact_idx").on(table.contactId),
+  emailHashIdx: index("tv_email_hash_idx").on(table.emailHash),
+  phoneHashIdx: index("tv_phone_hash_idx").on(table.phoneHash),
   createdAtIdx: index("tv_created_at_idx").on(table.createdAt),
 }));
 
@@ -2910,3 +2922,40 @@ export const trackingEvents = pgTable("tracking_events", {
 export const insertTrackingEventSchema = createInsertSchema(trackingEvents).omit({ id: true, createdAt: true });
 export type InsertTrackingEvent = z.infer<typeof insertTrackingEventSchema>;
 export type TrackingEvent = typeof trackingEvents.$inferSelect;
+
+// Card-level intelligence snapshot — pre-aggregated metrics so the analytics
+// API can return fast without re-scanning the events table on every request.
+// Snapshots are computed on-demand (with a TTL) and on background rollup ticks
+// the deferred intelligence layer will own.
+export const cardIntelligenceSnapshots = pgTable("card_intelligence_snapshots", {
+  id: serial("id").primaryKey(),
+  cardId: integer("card_id").references(() => digitalCards.id, { onDelete: "cascade" }).notNull().unique(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }),
+  taps: integer("taps").notNull().default(0),
+  qrScans: integer("qr_scans").notNull().default(0),
+  pageViews: integer("page_views").notNull().default(0),
+  ctaClicks: integer("cta_clicks").notNull().default(0),
+  formStarts: integer("form_starts").notNull().default(0),
+  leadSubmits: integer("lead_submits").notNull().default(0),
+  bookedCalls: integer("booked_calls").notNull().default(0),
+  qualifiedLeads: integer("qualified_leads").notNull().default(0),
+  closedSales: integer("closed_sales").notNull().default(0),
+  uniqueVisitors: integer("unique_visitors").notNull().default(0),
+  repeatVisitors: integer("repeat_visitors").notNull().default(0),
+  identifiedVisitors: integer("identified_visitors").notNull().default(0),
+  tapToLeadRate: real("tap_to_lead_rate").notNull().default(0),
+  clickToLeadRate: real("click_to_lead_rate").notNull().default(0),
+  leadToSaleRate: real("lead_to_sale_rate").notNull().default(0),
+  totalRevenue: real("total_revenue").notNull().default(0),
+  avgAttributionConfidence: real("avg_attribution_confidence").notNull().default(0),
+  firstEventAt: timestamp("first_event_at"),
+  lastEventAt: timestamp("last_event_at"),
+  computedAt: timestamp("computed_at").defaultNow().notNull(),
+}, (table) => ({
+  cardIdx: index("cis_card_idx").on(table.cardId),
+  subAccountIdx: index("cis_sub_account_idx").on(table.subAccountId),
+}));
+
+export const insertCardIntelligenceSnapshotSchema = createInsertSchema(cardIntelligenceSnapshots).omit({ id: true, computedAt: true });
+export type InsertCardIntelligenceSnapshot = z.infer<typeof insertCardIntelligenceSnapshotSchema>;
+export type CardIntelligenceSnapshot = typeof cardIntelligenceSnapshots.$inferSelect;
