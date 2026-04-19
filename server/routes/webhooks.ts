@@ -2337,12 +2337,22 @@ export function registerWebhooksRoutes(app: Express) {
                         if (voiceSendRes.ok) {
                           console.log(`[LAYLA-VOICE] Voice memo sent to ${senderId}: OK, messageId=${voiceSendData?.message_id}`);
                           sentAsVoice = true;
+                          let voiceUrlTag = "";
+                          try {
+                            const { persistVoiceFile } = await import("../messaging/voiceStore");
+                            const persisted = await persistVoiceFile(voiceResult.audioBuffer, {
+                              subAccountId, channel, textUsed: voiceResult.textUsed,
+                            });
+                            if (persisted) voiceUrlTag = ` (audio:${persisted.url})`;
+                          } catch (persistErr: any) {
+                            console.warn(`[LAYLA-VOICE] Persistence failed (non-blocking): ${persistErr?.message || persistErr}`);
+                          }
                           await db.insert(messages).values({
                             subAccountId,
                             channel,
                             direction: "outbound",
                             contactPhone: senderId,
-                            body: `[voice memo] ${voiceResult.textUsed}`,
+                            body: `[voice memo]${voiceUrlTag} ${voiceResult.textUsed}`,
                             status: "sent",
                             traceId: metaTraceId,
                             threadId: metaDmThreadId,

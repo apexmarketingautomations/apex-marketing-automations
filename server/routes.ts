@@ -64,6 +64,20 @@ export async function registerRoutes(
   registerAdsRoutes(app);
   registerChatRoutes(app);
   registerVoiceRoutes(app);
+
+  app.get("/voice/:id.mp3", async (req, res) => {
+    try {
+      const { resolveVoiceFilePath } = await import("./messaging/voiceStore");
+      const filePath = await resolveVoiceFilePath(req.params.id);
+      if (!filePath) return res.status(404).send("voice not found");
+      res.setHeader("Content-Type", "audio/mpeg");
+      res.setHeader("Cache-Control", "private, max-age=3600");
+      res.sendFile(filePath);
+    } catch (e: any) {
+      console.warn(`[VOICE-STORE] serve error: ${e?.message || e}`);
+      res.status(500).send("voice serve error");
+    }
+  });
   registerWebhooksRoutes(app);
   registerReviewsRoutes(app);
   registerSubscriptionsRoutes(app);
