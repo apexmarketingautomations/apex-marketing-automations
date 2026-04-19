@@ -10,7 +10,7 @@
 //       cardAdaptation pattern. Returns client-consumable action flags.
 //   (b) flagForFollowUp — server-side side-effect that queues a high-intent
 //       visit/contact for the follow-up system. No new table; we reuse the
-//       existing contacts.metadata jsonb (Phase 3 already writes here) and
+//       universal_events log (the schema-of-record for Phase 5) and
 //       the universal_events stream so downstream consumers can subscribe.
 //
 // Nothing in this file mutates the existing intelligence pipeline. The

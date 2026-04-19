@@ -15,9 +15,10 @@ import {
 } from "@shared/schema";
 import { asyncHandler } from "./helpers";
 import { emitUniversalEvent } from "../intelligence/eventEmitter";
-import { detectIntent, INTENT_BEARING_EVENT_TYPES } from "../services/trackingIntent";
 import { upgradeVisit } from "../services/trackingIdentity";
 import { getCardSnapshot } from "../services/trackingSnapshots";
+import { detectIntent, INTENT_BEARING_EVENT_TYPES } from "../services/trackingIntent";
+import { recordOutcome, isOutcomeEvent } from "../services/outcomeTracker";
 
 // ---------------------------------------------------------------------------
 // Attribution token signing
@@ -383,6 +384,36 @@ async function recordEvent(args: RecordEventArgs) {
     } catch (e) {
       console.warn("[tracking] intent detection failed for event", eventId, e);
     }
+  }
+
+  // Phase 6 — outcome feedback loop. Fire-and-forget; runs AFTER intent
+  // detection so the high_intent flag set by THIS event (if any) is
+  // visible when we attribute signals. Same isTest gate as the universal
+  // events mirror — keeps test traffic out of conversion analytics.
+  if (!isTest && visit?.visitId && isOutcomeEvent(args.eventType)) {
+    // Re-read the visit row so we see the freshly-flipped is_high_intent
+    // when this event was the one that triggered detection above.
+    let isHighIntentNow: boolean | null = visit.isHighIntent ?? null;
+    try {
+      const [refreshed] = await db
+        .select({ isHighIntent: trackingVisits.isHighIntent })
+        .from(trackingVisits)
+        .where(eq(trackingVisits.visitId, visit.visitId))
+        .limit(1);
+      if (refreshed) isHighIntentNow = refreshed.isHighIntent;
+    } catch {
+      /* fall back to the stale flag */
+    }
+    recordOutcome({
+      eventId,
+      eventType: args.eventType,
+      visitId: visit.visitId,
+      contactId: contactId ?? null,
+      cardId: cardId ?? null,
+      subAccountId: subAccountId ?? null,
+      sessionId: visit.sessionId ?? null,
+      visitIsHighIntent: isHighIntentNow,
+    }).catch((e) => console.warn("[tracking] outcome record failed", eventId, e));
   }
 
   return { event, visit, deduped: false };
