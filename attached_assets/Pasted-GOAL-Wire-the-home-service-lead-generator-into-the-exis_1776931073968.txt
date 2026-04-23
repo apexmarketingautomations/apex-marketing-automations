@@ -1,0 +1,44 @@
+GOAL: Wire the home service lead generator into the existing Apex platform. Do not rebuild anything that already exists. Do not touch the crash report pipeline, the CRM, or any existing routes unless specifically told to.
+
+Here is exactly what needs to happen:
+
+1. ADD TWO NEW DB TABLES to shared/schema.ts:
+   - homeServiceSignals (columns: id, sourceHash, signalType, county, address, lat, lng, propertyValue, ownerName, squareFootage, yearBuilt, serviceCategories jsonb, urgency, description, rawData jsonb, detectedAt, status, score, scoreBreakdown, leadId, createdAt, updatedAt)
+   - homeServiceLeads (columns: id, signalId, county, address, lat, lng, propertyValue, ownerName, ownerPhone, ownerEmail, squareFootage, yearBuilt, signalType, serviceCategories jsonb, urgency, score, scoreTier, scoreBreakdown, estimatedJobMin, estimatedJobMax, description, status, deliveryMethod, deliveredAt, expiresAt, subAccountId, createdAt, updatedAt)
+   - homeServiceContractors (columns: id, subAccountId, businessName, ownerName, phone, email, serviceCategories jsonb, counties jsonb, tier, active, score, createdAt, updatedAt)
+   - homeServiceLeadClaims (columns: id, leadId, contractorId, token, tier, status, pricePaid, expiresAt, claimedAt, createdAt)
+
+2. RUN the drizzle migration to create those tables.
+
+3. ADD THREE NEW SERVER FILES (do not modify existing files):
+   - server/homeServiceSignalPipeline.ts (I will provide this)
+   - server/homeServiceLeadScorer.ts (I will provide this)
+   - server/homeServiceLeadDelivery.ts (I will provide this)
+
+4. ADD ONE NEW ROUTE FILE:
+   - server/routes/homeService.ts
+   - Register it in server/index.ts alongside the other route registrations
+   - Routes needed:
+     GET  /api/home-service/leads/:subAccountId
+     GET  /api/home-service/stats
+     POST /api/home-service/claim/:token
+     GET  /api/home-service/contractors/:subAccountId
+     POST /api/home-service/contractors (create contractor)
+     POST /api/home-service/pipeline/start
+     POST /api/home-service/pipeline/stop
+
+5. START the pipeline on server boot by calling startHomeServicePipeline(subAccountId) inside server/index.ts after the other pipeline starts (crash ingest, sentinel, etc.)
+
+6. The pipeline imports from ./operator/apexIntelligence using the exact same fire-and-forget dynamic import pattern already used in server/crashIngestPipeline.ts. Do not change apexIntelligence.ts.
+
+RULES:
+- Do not touch server/crashIngestPipeline.ts
+- Do not touch server/crashReportWorker.ts
+- Do not touch server/sentinel.ts
+- Do not touch server/property-radar.ts
+- Do not touch any existing routes
+- Do not redesign the intelligence dashboard
+- Do not install new npm packages — use what is already installed (drizzle-orm, axios, crypto, existing Twilio setup)
+- If a file I tell you not to touch needs a one-line import added, ask me first before making any change to it
+
+The three pipeline files will be provided separately. Wait for them before writing any pipeline logic.
