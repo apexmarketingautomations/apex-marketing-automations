@@ -605,6 +605,16 @@ async function validateMetaCredentials() {
   }
   }
 
+  if (!DISABLE_BACKGROUND_WORKERS) {
+  try {
+    const { startHomeServicePipeline } = await import("./homeServiceSignalPipeline");
+    startHomeServicePipeline(13);
+    console.log("[STARTUP] ✅ Home service signal pipeline started (subAccount=13)");
+  } catch (hsErr) {
+    console.error("[STARTUP] Home service pipeline failed (non-fatal):", hsErr);
+  }
+  }
+
   try {
     const { storage } = await import("./storage");
     initEventSubscribers(storage);

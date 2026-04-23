@@ -3046,3 +3046,125 @@ export const eventCardFulfillment = pgTable("event_card_fulfillment", {
 export const insertEventCardFulfillmentSchema = createInsertSchema(eventCardFulfillment).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertEventCardFulfillment = z.infer<typeof insertEventCardFulfillmentSchema>;
 export type EventCardFulfillment = typeof eventCardFulfillment.$inferSelect;
+
+// ──────────────────────────────────────────────────────────────────────────────
+// HOME SERVICE LEAD GENERATOR
+// Public-data signal ingest → scoring → contractor delivery + claim cascade.
+// ──────────────────────────────────────────────────────────────────────────────
+
+export const homeServiceSignals = pgTable("home_service_signals", {
+  id: serial("id").primaryKey(),
+  sourceHash: text("source_hash").notNull(),
+  signalType: text("signal_type").notNull(),
+  county: text("county").notNull(),
+  address: text("address"),
+  lat: real("lat"),
+  lng: real("lng"),
+  propertyValue: integer("property_value"),
+  ownerName: text("owner_name"),
+  squareFootage: integer("square_footage"),
+  yearBuilt: integer("year_built"),
+  serviceCategories: jsonb("service_categories").default([]).notNull(),
+  urgency: text("urgency"),
+  description: text("description"),
+  rawData: jsonb("raw_data").default({}).notNull(),
+  detectedAt: timestamp("detected_at").notNull(),
+  status: text("status").default("raw").notNull(),
+  score: integer("score"),
+  scoreBreakdown: text("score_breakdown"),
+  leadId: integer("lead_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  hashIdx: uniqueIndex("hs_signals_hash_uniq").on(table.sourceHash),
+  countyIdx: index("hs_signals_county_idx").on(table.county),
+  statusIdx: index("hs_signals_status_idx").on(table.status),
+}));
+
+export const insertHomeServiceSignalSchema = createInsertSchema(homeServiceSignals).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertHomeServiceSignal = z.infer<typeof insertHomeServiceSignalSchema>;
+export type HomeServiceSignal = typeof homeServiceSignals.$inferSelect;
+
+export const homeServiceLeads = pgTable("home_service_leads", {
+  id: serial("id").primaryKey(),
+  signalId: integer("signal_id"),
+  county: text("county"),
+  address: text("address"),
+  lat: real("lat"),
+  lng: real("lng"),
+  propertyValue: integer("property_value"),
+  ownerName: text("owner_name"),
+  ownerPhone: text("owner_phone"),
+  ownerEmail: text("owner_email"),
+  squareFootage: integer("square_footage"),
+  yearBuilt: integer("year_built"),
+  signalType: text("signal_type"),
+  serviceCategories: jsonb("service_categories").default([]).notNull(),
+  urgency: text("urgency"),
+  score: integer("score"),
+  scoreTier: text("score_tier"),
+  scoreBreakdown: text("score_breakdown"),
+  estimatedJobMin: integer("estimated_job_min"),
+  estimatedJobMax: integer("estimated_job_max"),
+  description: text("description"),
+  status: text("status").default("available").notNull(),
+  deliveryMethod: text("delivery_method"),
+  deliveredAt: timestamp("delivered_at"),
+  expiresAt: timestamp("expires_at"),
+  subAccountId: integer("sub_account_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  countyIdx: index("hs_leads_county_idx").on(table.county),
+  statusIdx: index("hs_leads_status_idx").on(table.status),
+  subIdx: index("hs_leads_sub_account_idx").on(table.subAccountId),
+}));
+
+export const insertHomeServiceLeadSchema = createInsertSchema(homeServiceLeads).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertHomeServiceLead = z.infer<typeof insertHomeServiceLeadSchema>;
+export type HomeServiceLead = typeof homeServiceLeads.$inferSelect;
+
+export const homeServiceContractors = pgTable("home_service_contractors", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id"),
+  businessName: text("business_name").notNull(),
+  ownerName: text("owner_name"),
+  phone: text("phone").notNull(),
+  email: text("email"),
+  serviceCategories: jsonb("service_categories").default([]).notNull(),
+  counties: jsonb("counties").default([]).notNull(),
+  tier: text("tier").default("pay_per_lead").notNull(),
+  active: boolean("active").default(true).notNull(),
+  score: integer("score").default(50).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  subIdx: index("hs_contractors_sub_account_idx").on(table.subAccountId),
+  tierIdx: index("hs_contractors_tier_idx").on(table.tier),
+}));
+
+export const insertHomeServiceContractorSchema = createInsertSchema(homeServiceContractors).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertHomeServiceContractor = z.infer<typeof insertHomeServiceContractorSchema>;
+export type HomeServiceContractor = typeof homeServiceContractors.$inferSelect;
+
+export const homeServiceLeadClaims = pgTable("home_service_lead_claims", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id").notNull(),
+  contractorId: integer("contractor_id").notNull(),
+  token: text("token").notNull(),
+  tier: text("tier"),
+  status: text("status").default("pending").notNull(),
+  pricePaid: integer("price_paid"),
+  expiresAt: timestamp("expires_at").notNull(),
+  claimedAt: timestamp("claimed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  tokenIdx: uniqueIndex("hs_claims_token_uniq").on(table.token),
+  leadIdx: index("hs_claims_lead_idx").on(table.leadId),
+  contractorIdx: index("hs_claims_contractor_idx").on(table.contractorId),
+  statusIdx: index("hs_claims_status_idx").on(table.status),
+}));
+
+export const insertHomeServiceLeadClaimSchema = createInsertSchema(homeServiceLeadClaims).omit({ id: true, createdAt: true });
+export type InsertHomeServiceLeadClaim = z.infer<typeof insertHomeServiceLeadClaimSchema>;
+export type HomeServiceLeadClaim = typeof homeServiceLeadClaims.$inferSelect;
