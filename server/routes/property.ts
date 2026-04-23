@@ -2405,7 +2405,26 @@ export function registerPropertyRoutes(app: Express) {
   }));
 
   app.post("/api/contacts", asyncHandler(async (req, res) => {
-    const parsed = insertContactSchema.safeParse(req.body);
+    const rawBody: Record<string, unknown> =
+      req.body && typeof req.body === "object" && !Array.isArray(req.body)
+        ? (req.body as Record<string, unknown>)
+        : {};
+    const headerRaw = req.headers["x-sub-account-id"];
+    const headerProvided = headerRaw !== undefined && String(headerRaw).trim() !== "";
+    const bodyHasSubAccountId = Object.prototype.hasOwnProperty.call(rawBody, "subAccountId");
+
+    if (!headerProvided && !bodyHasSubAccountId) {
+      return res.status(400).json({
+        error: "subAccountId is required: provide it via the 'x-sub-account-id' request header or the 'subAccountId' field in the request body.",
+      });
+    }
+
+    const bodyForValidation: Record<string, unknown> = { ...rawBody };
+    if (headerProvided && typeof req.tenant?.subAccountId === "number") {
+      bodyForValidation.subAccountId = req.tenant.subAccountId;
+    }
+
+    const parsed = insertContactSchema.safeParse(bodyForValidation);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
     let contactData = { ...parsed.data };
