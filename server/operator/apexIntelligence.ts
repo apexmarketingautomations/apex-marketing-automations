@@ -16,7 +16,7 @@ interface StoredOutcome extends AgentOutcome {
   timestamp: string;
 }
 
-const ALLOWED_AGENTS = new Set(["sentinel", "crash-ingest", "layla", "task-agent", "operator", "http-api", "background-worker"]);
+const ALLOWED_AGENTS = new Set(["sentinel", "crash-ingest", "layla", "task-agent", "operator", "http-api", "background-worker", "home-service-pipeline"]);
 const MAX_BUFFER = 2000;
 const MAX_METADATA_KEYS = 10;
 const MAX_STRING_LEN = 500;
