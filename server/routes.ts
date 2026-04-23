@@ -89,6 +89,8 @@ export async function registerRoutes(
   registerPropertyRoutes(app);
   const { registerHomeServiceRoutes } = await import("./routes/homeService");
   registerHomeServiceRoutes(app);
+  const { registerStudioWebhook } = await import("./routes/studioWebhook");
+  registerStudioWebhook(app);
   registerMetaRoutes(app);
   registerNotificationsRoutes(app);
   registerDashboardRoutes(app);
