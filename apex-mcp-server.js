@@ -715,7 +715,7 @@ export function mountApexMcp(app, { ssePath = "/mcp/sse", messagesPath = "/mcp/m
     if (!transport) {
       return res.status(404).json({ error: "Unknown sessionId" });
     }
-    await transport.handlePostMessage(req, res);
+    await transport.handlePostMessage(req, res, req.body);
   });
 
   const publicHost =
