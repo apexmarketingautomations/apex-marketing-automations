@@ -7,6 +7,7 @@ import { registerAuthRoutes } from "./routes/auth";
 import { registerAdminRoutes } from "./routes/admin";
 import { registerAccountRoutes } from "./routes/accounts";
 import { registerMessagingRoutes } from "./routes/messaging";
+import { registerMessagingEmailRoutes } from "./routes/messagingEmail";
 import { registerWorkflowsRoutes } from "./routes/workflows";
 import { registerBotRoutes } from "./routes/bot";
 import { registerBlueprintsRoutes } from "./routes/blueprints";
@@ -60,6 +61,7 @@ export async function registerRoutes(
   registerAdminRoutes(app);
   registerAccountRoutes(app);
   registerMessagingRoutes(app);
+  registerMessagingEmailRoutes(app);
   registerWorkflowsRoutes(app);
   registerBotRoutes(app);
   registerBlueprintsRoutes(app);
