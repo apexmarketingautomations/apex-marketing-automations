@@ -24,19 +24,29 @@ export interface SendEmailResult {
   reason?: SendEmailFailureReason;
 }
 
+function resolveSendgridApiKey(): string | undefined {
+  return (
+    process.env.SENDGRID_API_KEY ||
+    process.env.sendgrid_api ||
+    process.env.SENDGRID_API ||
+    process.env.SendGrid_API_Key
+  );
+}
+
 let sgInitialized = false;
 function ensureSendgrid(): { ok: true } | { ok: false; reason: SendEmailFailureReason; error: string } {
-  const apiKey = process.env.SENDGRID_API_KEY;
+  const apiKey = resolveSendgridApiKey();
   if (!apiKey) {
     return {
       ok: false,
       reason: "not_configured",
-      error: "SENDGRID_API_KEY is not set. Add it as a Replit secret to enable the email channel.",
+      error: "SendGrid API key is not set. Add SENDGRID_API_KEY (or sendgrid_api) as a Replit secret to enable the email channel.",
     };
   }
   if (!sgInitialized) {
     sgMail.setApiKey(apiKey);
     sgInitialized = true;
+    console.log("[SENDGRID] Email channel initialized");
   }
   return { ok: true };
 }
