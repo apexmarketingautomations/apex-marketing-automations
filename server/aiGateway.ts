@@ -4,9 +4,35 @@ import crypto from "crypto";
 
 let _openaiClient: OpenAI | null = null;
 
+function resolveOpenAICreds(): { apiKey: string | undefined; baseURL: string | undefined; source: string } {
+  const primary = process.env.OPENAI_APEX_INT_KEY;
+  const isValidOpenAIKey = (k: string | undefined) =>
+    !!k && k.startsWith("sk-") && !k.startsWith("sk-ant-");
+
+  if (isValidOpenAIKey(primary)) {
+    return { apiKey: primary, baseURL: undefined, source: "OPENAI_APEX_INT_KEY" };
+  }
+
+  const fallbackKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+  const fallbackBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+  if (fallbackKey) {
+    if (primary && !isValidOpenAIKey(primary)) {
+      console.warn(
+        "[AI-GATEWAY] OPENAI_APEX_INT_KEY does not look like an OpenAI key " +
+        "(prefix not 'sk-' or starts with 'sk-ant-'). Falling back to Replit-managed AI_INTEGRATIONS_OPENAI_API_KEY.",
+      );
+    }
+    return { apiKey: fallbackKey, baseURL: fallbackBase, source: "AI_INTEGRATIONS_OPENAI_API_KEY" };
+  }
+
+  return { apiKey: primary, baseURL: undefined, source: primary ? "OPENAI_APEX_INT_KEY (invalid)" : "none" };
+}
+
 function getOpenAIClient(): OpenAI {
   if (!_openaiClient) {
-    _openaiClient = new OpenAI({ apiKey: process.env.OPENAI_APEX_INT_KEY });
+    const { apiKey, baseURL, source } = resolveOpenAICreds();
+    console.log(`[AI-GATEWAY] OpenAI client initialized (key source: ${source})`);
+    _openaiClient = new OpenAI({ apiKey, ...(baseURL ? { baseURL } : {}) });
   }
   return _openaiClient;
 }
