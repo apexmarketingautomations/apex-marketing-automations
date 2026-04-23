@@ -47,7 +47,12 @@ export function registerWorkflowsRoutes(app: Express) {
   }));
 
   app.post("/api/workflows", asyncHandler(async (req, res) => {
-    const parsed = insertWorkflowSchema.safeParse(req.body);
+    const rawBody = (req.body && typeof req.body === "object" && !Array.isArray(req.body)) ? req.body : {};
+    const normalizedBody: Record<string, any> = { ...rawBody };
+    if (normalizedBody.trigger === undefined && normalizedBody.triggerType !== undefined) {
+      normalizedBody.trigger = normalizedBody.triggerType;
+    }
+    const parsed = insertWorkflowSchema.safeParse(normalizedBody);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     if (parsed.data.subAccountId && !(await verifyAccountOwnership(req, res, parsed.data.subAccountId))) return;
     const wf = await storage.createWorkflow(parsed.data);
