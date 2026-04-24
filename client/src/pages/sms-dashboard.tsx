@@ -5,7 +5,7 @@ import {
   MessageCircle, Bot, Facebook, RefreshCw, Search, ArrowLeft,
   CheckCheck, Filter, BarChart3, ThumbsUp, ThumbsDown, Minus,
   HelpCircle, ShieldAlert, Clock, CheckCircle2, Heart, Smile,
-  Frown, Angry, Check, X, MoreHorizontal, ChevronDown, Settings
+  Frown, Angry, Check, X, MoreHorizontal, ChevronDown, Settings, Mail, Plus
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -22,7 +22,7 @@ import {
 import { api } from "@/lib/api";
 import type { SubAccount, Message, CommentAutoReply } from "@shared/schema";
 
-type ChannelFilter = "all" | "sms" | "facebook" | "instagram" | "whatsapp" | "telegram";
+type ChannelFilter = "all" | "sms" | "facebook" | "instagram" | "whatsapp" | "telegram" | "email";
 
 const CHANNELS: { key: ChannelFilter; label: string; icon: typeof Phone; color: string; bg: string }[] = [
   { key: "all", label: "All", icon: MessageSquare, color: "text-slate-300", bg: "bg-white/10" },
@@ -31,6 +31,7 @@ const CHANNELS: { key: ChannelFilter; label: string; icon: typeof Phone; color: 
   { key: "whatsapp", label: "WhatsApp", icon: MessageCircle, color: "text-green-400", bg: "bg-green-600" },
   { key: "sms", label: "SMS", icon: Phone, color: "text-emerald-400", bg: "bg-emerald-600" },
   { key: "telegram", label: "Telegram", icon: Send, color: "text-sky-400", bg: "bg-sky-600" },
+  { key: "email", label: "Email", icon: Mail, color: "text-amber-400", bg: "bg-amber-600" },
 ];
 
 function formatTime(date: Date) {
@@ -51,6 +52,7 @@ function displayName(phone: string, ch: string, first?: string, last?: string) {
   if (ch === "instagram") return `IG ...${phone.slice(-4)}`;
   if (ch === "telegram") return `TG ...${phone.slice(-4)}`;
   if (ch === "whatsapp") return phone;
+  if (ch === "email") return phone;
   return phone;
 }
 
@@ -60,6 +62,7 @@ function avatarInitial(phone: string, ch: string, first?: string) {
   if (ch === "instagram") return "I";
   if (ch === "telegram") return "T";
   if (ch === "whatsapp") return "W";
+  if (ch === "email") return (phone.charAt(0) || "@").toUpperCase();
   return phone.charAt(phone.length - 1) || "?";
 }
 
@@ -67,6 +70,7 @@ function channelBg(ch: string) {
   const m: Record<string, string> = {
     facebook: "bg-blue-600", instagram: "bg-gradient-to-tr from-purple-600 to-pink-500",
     whatsapp: "bg-green-600", sms: "bg-emerald-600", "vapi-sms": "bg-purple-600", telegram: "bg-sky-600",
+    email: "bg-amber-600",
   };
   return m[ch] || "bg-slate-600";
 }
@@ -519,6 +523,7 @@ export default function SmsDashboard() {
   const currentAccount = accounts.find(a => a.id === activeAccountId);
 
   const [messageBody, setMessageBody] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
   const [sendChannel, setSendChannel] = useState<string>("facebook");
 
   useEffect(() => {
@@ -622,7 +627,19 @@ export default function SmsDashboard() {
     setSelectedConv(conv);
     setMobileShowThread(true);
     setSendChannel(conv.channel);
+    setEmailSubject("");
   }, []);
+
+  const handleNewEmail = useCallback(() => {
+    const recipient = window.prompt("Recipient email address:");
+    if (!recipient) return;
+    const trimmed = recipient.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      toast({ variant: "destructive", title: "Invalid email", description: "Please enter a valid email address." });
+      return;
+    }
+    selectConv({ contactPhone: trimmed.toLowerCase(), channel: "email" });
+  }, [selectConv, toast]);
 
   useEffect(() => {
     if (!selectedConv && conversations.length > 0) {
@@ -673,22 +690,64 @@ export default function SmsDashboard() {
 
   async function handleSend() {
     if (!activeAccountId || !selectedConv || !messageBody.trim()) return;
+    if (sendChannel === "email" && !emailSubject.trim()) {
+      toast({ variant: "destructive", title: "Subject required", description: "Please enter a subject for your email." });
+      return;
+    }
     setIsSending(true);
+    const optimisticBody = messageBody;
+    const optimisticSubject = emailSubject;
+    const optimisticRow: Message = {
+      id: -Date.now(),
+      subAccountId: activeAccountId,
+      direction: "outbound",
+      body: sendChannel === "email" ? `${optimisticSubject}\n\n${optimisticBody}` : optimisticBody,
+      status: "sending",
+      createdAt: new Date().toISOString() as any,
+      contactPhone: selectedConv.contactPhone,
+      channel: sendChannel,
+      messageSid: null,
+      threadId: null,
+      traceId: null,
+      pageId: null,
+      senderId: null,
+      errorMessage: null,
+    } as unknown as Message;
+    setLiveMessages(prev => [...prev, optimisticRow]);
     try {
-      const res = await fetch("/api/messages/send", {
-        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
-        body: JSON.stringify({
-          subAccountId: activeAccountId, contactPhone: selectedConv.contactPhone,
-          body: messageBody, channel: sendChannel, direction: "outbound", status: "sent",
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Send failed");
+      let res: Response;
+      if (sendChannel === "email") {
+        res = await fetch("/api/messages/email", {
+          method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+          body: JSON.stringify({
+            subAccountId: activeAccountId,
+            toEmail: selectedConv.contactPhone,
+            subject: optimisticSubject,
+            body: optimisticBody,
+          }),
+        });
+      } else {
+        res = await fetch("/api/messages/send", {
+          method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+          body: JSON.stringify({
+            subAccountId: activeAccountId, contactPhone: selectedConv.contactPhone,
+            body: optimisticBody, channel: sendChannel, direction: "outbound", status: "sent",
+          }),
+        });
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || data.reason || "Send failed");
       queryClient.invalidateQueries({ queryKey: ["/api/messages", numericAccountId] });
       setMessageBody("");
+      setEmailSubject("");
       toast({ title: "Sent" });
     } catch (err: any) {
-      toast({ variant: "destructive", title: "Send failed", description: err.message });
+      setLiveMessages(prev => prev.filter(m => m.id !== optimisticRow.id));
+      const msg = typeof err?.message === "string" ? err.message : "Send failed";
+      const friendly = msg === "not_configured"
+        ? "Email is not configured for this account. Add a SendGrid API key in Integrations."
+        : msg;
+      toast({ variant: "destructive", title: "Send failed", description: friendly });
     } finally { setIsSending(false); }
   }
 
@@ -697,7 +756,7 @@ export default function SmsDashboard() {
   const selInitial = selectedConv ? avatarInitial(selectedConv.contactPhone, selectedConv.channel, selNames?.firstName) : "";
 
   const channelCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: 0, facebook: 0, instagram: 0, sms: 0, whatsapp: 0, telegram: 0 };
+    const counts: Record<string, number> = { all: 0, facebook: 0, instagram: 0, sms: 0, whatsapp: 0, telegram: 0, email: 0 };
     const seen = new Set<string>();
     for (const msg of allMessages) {
       const ch = msg.channel || "sms";
@@ -721,6 +780,10 @@ export default function SmsDashboard() {
               <TabsTrigger value="comments" className="text-[11px] h-6 px-2.5 data-[state=active]:bg-white/10 data-[state=active]:text-white" data-testid="tab-comments">Comments</TabsTrigger>
             </TabsList>
             <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-slate-400 hover:text-white"
+              onClick={handleNewEmail} data-testid="button-new-email" title="New email">
+              <Mail className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-slate-400 hover:text-white"
               onClick={() => syncMut.mutate()} disabled={syncMut.isPending} data-testid="button-sync-dms" title="Sync DMs from Meta/Instagram">
               <RefreshCw className={`h-3.5 w-3.5 ${syncMut.isPending ? "animate-spin" : ""}`} />
             </Button>
@@ -740,7 +803,7 @@ export default function SmsDashboard() {
                     className="h-7 pl-8 text-xs bg-white/5 border-white/10 placeholder:text-slate-600 text-slate-200" data-testid="input-search" />
                 </div>
                 <div className="flex gap-1 overflow-x-auto pb-0.5">
-                  {CHANNELS.filter(ch => ch.key === "all" || ["facebook","instagram","whatsapp","telegram","sms"].includes(ch.key)).map(ch => {
+                  {CHANNELS.filter(ch => ch.key === "all" || ["facebook","instagram","whatsapp","telegram","sms","email"].includes(ch.key)).map(ch => {
                     const Icon = ch.icon;
                     const active = channelFilter === ch.key;
                     const cnt = channelCounts[ch.key] || 0;
@@ -854,22 +917,38 @@ export default function SmsDashboard() {
                   </div>
 
                   <div className="px-3 py-2.5 border-t border-white/5 bg-[#0d0d1a] flex-shrink-0">
+                    {sendChannel === "email" && (
+                      <div className="mb-2">
+                        <Input value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)}
+                          placeholder="Subject"
+                          className="h-8 text-sm bg-white/5 border-white/10 text-slate-200 placeholder:text-slate-600 rounded-lg"
+                          data-testid="input-email-subject" />
+                      </div>
+                    )}
                     <div className="flex items-end gap-2">
                       <div className="flex-1">
                         <Textarea value={messageBody} onChange={(e) => setMessageBody(e.target.value)}
-                          placeholder={`Message via ${CHANNELS.find(c=>c.key===sendChannel)?.label || sendChannel}...`}
-                          className="min-h-[40px] max-h-[100px] resize-none text-sm bg-white/5 border-white/10 text-slate-200 placeholder:text-slate-600 rounded-xl"
-                          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                          placeholder={sendChannel === "email" ? "Write your email…" : `Message via ${CHANNELS.find(c=>c.key===sendChannel)?.label || sendChannel}...`}
+                          className={`${sendChannel === "email" ? "min-h-[120px] max-h-[260px]" : "min-h-[40px] max-h-[100px]"} resize-none text-sm bg-white/5 border-white/10 text-slate-200 placeholder:text-slate-600 rounded-xl`}
+                          onKeyDown={(e) => {
+                            if (sendChannel === "email") return;
+                            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
+                          }}
                           data-testid="input-message" />
                       </div>
-                      <Button size="icon" onClick={handleSend} disabled={isSending || !messageBody.trim()}
+                      <Button size="icon" onClick={handleSend}
+                        disabled={isSending || !messageBody.trim() || (sendChannel === "email" && !emailSubject.trim())}
                         className={`h-10 w-10 rounded-xl ${channelBg(sendChannel)} hover:opacity-90`} data-testid="button-send">
                         {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                       </Button>
                     </div>
                     <div className="flex items-center justify-between mt-1 px-0.5">
-                      <span className="text-[9px] text-slate-600">Enter to send</span>
-                      <span className="text-[9px] text-slate-600">{messageBody.length}/1600</span>
+                      <span className="text-[9px] text-slate-600">
+                        {sendChannel === "email" ? "Subject + body required" : "Enter to send"}
+                      </span>
+                      <span className="text-[9px] text-slate-600">
+                        {sendChannel === "email" ? `${messageBody.length} chars` : `${messageBody.length}/1600`}
+                      </span>
                     </div>
                   </div>
                 </>
