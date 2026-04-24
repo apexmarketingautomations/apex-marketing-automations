@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, json, jsonb, timestamp, boolean, real, numeric, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, bigserial, integer, json, jsonb, timestamp, boolean, real, numeric, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -1291,7 +1291,7 @@ export const cardAnalyticsEvents = pgTable("card_analytics_events", {
 
 export const cardAnalyticsSessions = pgTable("card_analytics_sessions", {
   id: serial("id").primaryKey(),
-  sessionId: text("session_id").notNull().unique(),
+  sessionId: text("session_id").notNull().unique("card_analytics_sessions_session_id_key"),
   cardId: integer("card_id").references(() => digitalCards.id).notNull(),
   visitorId: text("visitor_id"),
   referrer: text("referrer"),
@@ -2425,7 +2425,7 @@ export const contentLibrary = pgTable("content_library", {
 export type ContentLibraryItem = typeof contentLibrary.$inferSelect;
 
 export const styleEmbeddings = pgTable("style_embeddings", {
-  id: serial("id").primaryKey(),
+  id: bigserial("id", { mode: "number" }).primaryKey(),
   subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }).notNull(),
   messageId: integer("message_id"),
   contextText: text("context_text").notNull(),
@@ -2864,7 +2864,7 @@ export type TrackingEventType = typeof TRACKING_EVENT_TYPES[number];
 // the redirect to `destinationUrl` and creates a `trackingVisits` row.
 export const trackingLinks = pgTable("tracking_links", {
   id: serial("id").primaryKey(),
-  slug: text("slug").notNull().unique(),
+  slug: text("slug").notNull().unique("tracking_links_slug_key"),
   subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }),
   cardId: integer("card_id").references(() => digitalCards.id, { onDelete: "set null" }),
   campaignId: text("campaign_id"),
@@ -2896,7 +2896,7 @@ export type TrackingLink = typeof trackingLinks.$inferSelect;
 // downstream events carry to preserve the attribution chain.
 export const trackingVisits = pgTable("tracking_visits", {
   id: serial("id").primaryKey(),
-  visitId: text("visit_id").notNull().unique(),
+  visitId: text("visit_id").notNull().unique("tracking_visits_visit_id_key"),
   linkId: integer("link_id").references(() => trackingLinks.id, { onDelete: "set null" }),
   subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }),
   cardId: integer("card_id").references(() => digitalCards.id, { onDelete: "set null" }),
@@ -2963,7 +2963,7 @@ export type TrackingVisit = typeof trackingVisits.$inferSelect;
 // existing CRM contacts.id once the visitor identifies themselves.
 export const trackingEvents = pgTable("tracking_events", {
   id: serial("id").primaryKey(),
-  eventId: text("event_id").notNull().unique(),
+  eventId: text("event_id").notNull().unique("tracking_events_event_id_key"),
   visitId: text("visit_id"),
   linkId: integer("link_id").references(() => trackingLinks.id, { onDelete: "set null" }),
   subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }),
@@ -2976,7 +2976,7 @@ export const trackingEvents = pgTable("tracking_events", {
   ctaId: text("cta_id"),
   formId: text("form_id"),
   sourceChannel: text("source_channel"),
-  idempotencyKey: text("idempotency_key").unique(),
+  idempotencyKey: text("idempotency_key").unique("tracking_events_idempotency_key_key"),
   payload: jsonb("payload").$type<Record<string, unknown>>().default({}),
   isTest: boolean("is_test").notNull().default(false),
   trafficClass: text("traffic_class").notNull().default("valid"),
@@ -3003,7 +3003,7 @@ export type TrackingEvent = typeof trackingEvents.$inferSelect;
 // the deferred intelligence layer will own.
 export const cardIntelligenceSnapshots = pgTable("card_intelligence_snapshots", {
   id: serial("id").primaryKey(),
-  cardId: integer("card_id").references(() => digitalCards.id, { onDelete: "cascade" }).notNull().unique(),
+  cardId: integer("card_id").references(() => digitalCards.id, { onDelete: "cascade" }).notNull().unique("card_intelligence_snapshots_card_id_key"),
   subAccountId: integer("sub_account_id").references(() => subAccounts.id, { onDelete: "cascade" }),
   taps: integer("taps").notNull().default(0),
   qrScans: integer("qr_scans").notNull().default(0),
@@ -3042,7 +3042,7 @@ export type CardIntelligenceSnapshot = typeof cardIntelligenceSnapshots.$inferSe
 // ============================================================================
 export const eventCampaigns = pgTable("event_campaigns", {
   id: serial("id").primaryKey(),
-  slug: text("slug").notNull().unique(),
+  slug: text("slug").notNull().unique("event_campaigns_slug_key"),
   name: text("name").notNull(),
   totalInventory: integer("total_inventory").notNull(),
   remainingInventory: integer("remaining_inventory").notNull(),
