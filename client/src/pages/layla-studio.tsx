@@ -212,21 +212,40 @@ type Asset = {
 
 type FaceRef = { url: string; preview: string } | null;
 
-async function muapiPost(endpoint: string, body: any, apiKey: string): Promise<any> {
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+type JsonObject = { [key: string]: JsonValue };
+
+type MuapiResult = {
+  status?: string;
+  error?: string;
+  prediction_id?: string;
+  output?: JsonValue;
+  url?: string;
+  urls?: { get?: string };
+  [key: string]: JsonValue | undefined;
+};
+
+function errorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === "string") return e;
+  return "Unknown error";
+}
+
+async function muapiPost(endpoint: string, body: JsonObject, apiKey: string): Promise<MuapiResult> {
   const res = await fetch(`${MUAPI_BASE}/${endpoint}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": apiKey },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`muapi ${endpoint}: ${res.status} — ${await res.text()}`);
-  return res.json();
+  return res.json() as Promise<MuapiResult>;
 }
 
-async function pollResult(predictionId: string, apiKey: string, onProgress?: (n: number) => void, maxAttempts = 150): Promise<any> {
+async function pollResult(predictionId: string, apiKey: string, onProgress?: (n: number) => void, maxAttempts = 150): Promise<MuapiResult> {
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(r => setTimeout(r, 3000));
     const res = await fetch(`${MUAPI_BASE}/predictions/${predictionId}/result`, { headers: { "x-api-key": apiKey } });
-    const data = await res.json();
+    const data = (await res.json()) as MuapiResult;
     if (data.status === "succeeded") return data;
     if (data.status === "failed") throw new Error(data.error || "Generation failed");
     onProgress?.(Math.min(88, (i / maxAttempts) * 100));
@@ -243,9 +262,19 @@ async function uploadFile(file: File, apiKey: string): Promise<string> {
   return data.url || data.file_url;
 }
 
-function extractUrl(result: any): string | null {
-  return result?.output?.url || result?.output?.[0]?.url || result?.output ||
-    result?.urls?.get || result?.url || null;
+function extractUrl(result: MuapiResult | null | undefined): string | null {
+  if (!result) return null;
+  const output = result.output;
+  if (output && typeof output === "object" && !Array.isArray(output) && typeof (output as JsonObject).url === "string") {
+    return (output as JsonObject).url as string;
+  }
+  if (Array.isArray(output) && output[0] && typeof output[0] === "object" && typeof (output[0] as JsonObject).url === "string") {
+    return (output[0] as JsonObject).url as string;
+  }
+  if (typeof output === "string") return output;
+  if (result.urls?.get) return result.urls.get;
+  if (typeof result.url === "string") return result.url;
+  return null;
 }
 
 async function claudeCaption(prompt: string, platform: string): Promise<string> {
@@ -274,7 +303,7 @@ async function claudePrompt(scene: string, extras: string): Promise<string> {
   return data.content?.[0]?.text || "";
 }
 
-async function sendToApex(payload: any): Promise<any> {
+async function sendToApex(payload: JsonObject): Promise<JsonObject> {
   const res = await fetch(APEX_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-webhook-secret": APEX_SECRET },
@@ -354,7 +383,7 @@ function ApexModal({ asset, onClose, onSuccess }: { asset: Asset; onClose: () =>
   async function genCaption() {
     setLoading(true);
     try { setCaption(await claudeCaption(asset.prompt || "", platform)); }
-    catch (e: any) { setError(e.message); }
+    catch (e: unknown) { setError(errorMessage(e)); }
     setLoading(false);
   }
 
@@ -370,7 +399,7 @@ function ApexModal({ asset, onClose, onSuccess }: { asset: Asset; onClose: () =>
       });
       onSuccess?.();
       onClose();
-    } catch (e: any) { setError(e.message); }
+    } catch (e: unknown) { setError(errorMessage(e)); }
     setSending(false);
   }
 
@@ -524,7 +553,7 @@ function TabImages({ laylaFace, laylaPrompt, apiKey, addToLibrary }: { laylaFace
       setResults(r => [asset, ...r]);
       addToLibrary(asset);
       setStatus("Done ✓"); setProgress(100);
-    } catch (e: any) { setError(e.message); setStatus(""); }
+    } catch (e: unknown) { setError(errorMessage(e)); setStatus(""); }
     setGenerating(false);
   }
 
@@ -617,7 +646,7 @@ function TabVideo({ laylaFace, laylaPrompt, apiKey, library, addToLibrary }: { l
       setResults(r => [asset, ...r]);
       addToLibrary(asset);
       setStatus("Done ✓"); setProgress(100);
-    } catch (e: any) { setError(e.message); setStatus(""); }
+    } catch (e: unknown) { setError(errorMessage(e)); setStatus(""); }
     setGenerating(false);
   }
 
@@ -706,19 +735,19 @@ function TabCinema({ apiKey, library, addToLibrary }: { apiKey: string; library:
     const effect = mode === "motion" ? motion : vfx;
     try {
       setStatus(`Applying ${effect}...`);
-      let gen: any;
+      let gen: MuapiResult;
       if (mode === "motion") {
         gen = await muapiPost(motionModel, { image_url: sourceAsset.url, motion_type: motion, prompt }, apiKey);
       } else {
         gen = await muapiPost("generate_wan_ai_effects", { image_url: sourceAsset.url, effect, prompt }, apiKey);
       }
-      const result = await pollResult(gen.id, apiKey, setProgress);
+      const result = await pollResult(String(gen.prediction_id ?? gen.id ?? ""), apiKey, setProgress);
       const url = extractUrl(result);
       const asset: Asset = { type: "video", url: url || "", prompt: `${effect} — ${prompt}`, faceSwapped: false, model: effect };
       setResults(r => [asset, ...r]);
       addToLibrary(asset);
       setStatus("Done ✓"); setProgress(100);
-    } catch (e: any) { setError(e.message); setStatus(""); }
+    } catch (e: unknown) { setError(errorMessage(e)); setStatus(""); }
     setProcessing(false);
   }
 
@@ -802,14 +831,14 @@ function TabLipsync({ apiKey, library, addToLibrary }: { apiKey: string; library
       const gen = await muapiPost("mmaudio-v2/text-to-audio", { prompt: audioPrompt, duration: 10 }, apiKey);
       const result = await pollResult(gen.id, apiKey, setProgress);
       setAudioUrl(extractUrl(result) || ""); setStatus("Audio ready ✓");
-    } catch (e: any) { setError(e.message); }
+    } catch (e: unknown) { setError(errorMessage(e)); }
     setProcessing(false);
   }
 
   async function uploadAudio(file: File) {
     setProcessing(true); setStatus("Uploading...");
     try { setAudioUrl(await uploadFile(file, apiKey)); setStatus("Audio ready ✓"); }
-    catch (e: any) { setError(e.message); }
+    catch (e: unknown) { setError(errorMessage(e)); }
     setProcessing(false);
   }
 
@@ -824,7 +853,7 @@ function TabLipsync({ apiKey, library, addToLibrary }: { apiKey: string; library
       setResults(r => [asset, ...r]);
       addToLibrary(asset);
       setStatus("Done ✓"); setProgress(100);
-    } catch (e: any) { setError(e.message); setStatus(""); }
+    } catch (e: unknown) { setError(errorMessage(e)); setStatus(""); }
     setProcessing(false);
   }
 
@@ -909,16 +938,16 @@ function TabPostFX({ apiKey, library, addToLibrary }: { apiKey: string; library:
     if (!sourceAsset) { setError("Select an image"); return; }
     setProcessing(true); setError(""); setProgress(0); setStatus(`Applying ${currentFX.label}...`);
     try {
-      const body: any = { image_url: sourceAsset.url };
+      const body: JsonObject = { image_url: sourceAsset.url };
       if (fx === "dress") body.prompt = dressPrompt;
       const gen = await muapiPost(currentFX.endpoint, body, apiKey);
-      const result = await pollResult(gen.id, apiKey, setProgress);
+      const result = await pollResult(String(gen.prediction_id ?? gen.id ?? ""), apiKey, setProgress);
       const url = extractUrl(result);
       const asset: Asset = { type: "image", url: url || "", prompt: `${currentFX.label}: ${sourceAsset.prompt}`, faceSwapped: sourceAsset.faceSwapped, model: currentFX.label };
       setResults(r => [asset, ...r]);
       addToLibrary(asset);
       setStatus("Done ✓"); setProgress(100);
-    } catch (e: any) { setError(e.message); setStatus(""); }
+    } catch (e: unknown) { setError(errorMessage(e)); setStatus(""); }
     setProcessing(false);
   }
 
