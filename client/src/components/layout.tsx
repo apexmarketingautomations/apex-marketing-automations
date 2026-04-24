@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Link, useLocation } from "wouter";
-import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2, History, Satellite, Building, BarChart3, Kanban, CalendarDays, Mail, Palette, Webhook, FileBarChart, Instagram, Target, Lock, Plug, Activity, Menu, X, ContactRound, MapPin, BellRing, FlaskConical, Home, Brain, PenTool, Zap } from "lucide-react";
+import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2, History, Satellite, Building, BarChart3, Kanban, CalendarDays, Mail, Palette, Webhook, FileBarChart, Instagram, Target, Lock, Plug, Activity, Menu, X, ContactRound, MapPin, BellRing, FlaskConical, Home, Brain, PenTool, Zap, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { CommandMenu } from "@/components/command-menu";
@@ -45,6 +45,7 @@ const navSections = [
       { href: "/content-planner", icon: PenTool, label: "Content Planner" },
       { href: "/whatsapp-templates", icon: MessageSquare, label: "WA Templates" },
       { href: "/digital-card-builder", icon: ContactRound, label: "Digital Card", requiredFeature: "digital_card" },
+      { href: "/dashboard/layla-studio", icon: Sparkles, label: "Content Studio", accountIdOnly: 21 },
     ],
   },
   {
@@ -351,7 +352,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       <div className={`flex-1 space-y-1 ${collapsed ? 'pr-0' : 'pr-4'} overflow-y-auto`} onClick={onNavClick}>
         {navSections.map((section) => {
-          const visibleItems = section.items.filter((item: any) => !item.adminOnly || isUserAdmin);
+          const visibleItems = section.items.filter((item: any) => {
+            if (item.adminOnly && !isUserAdmin) return false;
+            if (item.accountIdOnly !== undefined && activeAccountId !== item.accountIdOnly) return false;
+            return true;
+          });
           if (visibleItems.length === 0) return null;
           return (
             <div key={section.label}>
