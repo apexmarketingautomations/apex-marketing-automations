@@ -527,7 +527,14 @@ export function registerCardsRoutes(app: Express) {
     }
 
     if (payload.sessionId) {
-      const [session] = await db.select().from(cardAnalyticsSessions).where(eq(cardAnalyticsSessions.sessionId, payload.sessionId)).limit(1);
+      // Scope updates to sessionId + cardId so a forged or recycled sessionId
+      // cannot mutate aggregates belonging to a different card.
+      const [session] = await db.select().from(cardAnalyticsSessions)
+        .where(and(
+          eq(cardAnalyticsSessions.sessionId, payload.sessionId),
+          eq(cardAnalyticsSessions.cardId, card.id),
+        ))
+        .limit(1);
       if (session) {
         const newClickCount = CLICKY_TYPES.has(payload.eventType) ? session.clickCount + 1 : session.clickCount;
         const newScroll = typeof payload.scrollDepth === "number"
@@ -549,7 +556,10 @@ export function registerCardsRoutes(app: Express) {
           totalTimeMs: newTime,
           intentScore,
           leadTier,
-        }).where(eq(cardAnalyticsSessions.sessionId, payload.sessionId));
+        }).where(and(
+          eq(cardAnalyticsSessions.sessionId, payload.sessionId),
+          eq(cardAnalyticsSessions.cardId, card.id),
+        ));
       }
     }
 

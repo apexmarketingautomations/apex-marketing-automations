@@ -365,9 +365,14 @@ function ImagePicker({ value, onChange, label, accept = "image/*", testId }: {
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const { toast } = useToast();
 
   const handleFile = async (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Unsupported file", description: "Please choose an image.", variant: "destructive" });
+      return;
+    }
     setUploading(true);
     try {
       const fd = new FormData();
@@ -389,30 +394,63 @@ function ImagePicker({ value, onChange, label, accept = "image/*", testId }: {
     }
   };
 
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) void handleFile(file);
+  };
+
   return (
     <div className="space-y-2">
-      <div className="flex gap-2">
-        <Input
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          placeholder="https://… or upload"
-          className="bg-white/5 border-white/10 text-white flex-1"
-          data-testid={testId}
+      <div
+        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={onDrop}
+        onClick={() => !uploading && inputRef.current?.click()}
+        className={`flex items-center gap-3 rounded-xl border-2 border-dashed p-3 cursor-pointer transition ${
+          dragOver
+            ? "border-indigo-400/60 bg-indigo-500/10"
+            : "border-white/10 hover:border-white/20 bg-white/[0.02]"
+        }`}
+        data-testid={`${testId}-dropzone`}
+        role="button"
+        aria-label={`Upload ${label}`}
+      >
+        {value ? (
+          <img
+            src={value}
+            alt={`${label} preview`}
+            className="w-14 h-14 rounded-lg object-cover border border-white/10 flex-shrink-0"
+            data-testid={`${testId}-preview`}
+          />
+        ) : (
+          <div className="w-14 h-14 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-slate-500 text-[10px] flex-shrink-0">
+            No image
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-slate-300 font-medium">{label}</p>
+          <p className="text-[10px] text-slate-500">
+            {uploading ? "Uploading…" : "Drag & drop or click to upload"}
+          </p>
+        </div>
+        <input
+          ref={inputRef}
+          type="file"
+          accept={accept}
+          className="hidden"
+          onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])}
+          data-testid={`${testId}-file`}
         />
-        <Button type="button" size="sm" variant="outline"
-          className="border-white/10 text-slate-300 hover:bg-white/10"
-          onClick={() => inputRef.current?.click()}
-          disabled={uploading}
-          data-testid={`${testId}-upload`}
-        >
-          {uploading ? "Uploading…" : "Upload"}
-        </Button>
-        <input ref={inputRef} type="file" accept={accept} className="hidden"
-          onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])} />
       </div>
-      {value && (
-        <img src={value} alt="Preview" className="w-16 h-16 rounded-xl object-cover border border-white/10" data-testid={`${testId}-preview`} />
-      )}
+      <Input
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder="…or paste an image URL"
+        className="bg-white/5 border-white/10 text-white"
+        data-testid={testId}
+      />
     </div>
   );
 }
