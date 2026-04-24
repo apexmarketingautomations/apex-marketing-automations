@@ -1,0 +1,148 @@
+STOP ALL FEATURE WORK — ENTER STABILIZATION MODE
+
+You are now in FINAL STABILIZATION MODE ONLY.
+
+Do NOT add new features. Do NOT redesign systems. Do NOT introduce new abstractions.
+
+Your only job is to stabilize, simplify, and harden what already exists.
+
+🧱 1. FREEZE CORE SYSTEMS
+
+Lock and stop modifying:
+
+event tracking system
+session tracking system
+intent scoring formula
+lead classification (hot / warm / cold)
+analytics aggregation logic
+
+❗ These must NOT change again unless fixing a bug.
+
+🧠 2. SINGLE SOURCE OF TRUTH RULE
+
+Enforce strictly:
+
+Views = ONLY from /api/track/session
+Events = ONLY from /api/track/event
+Sessions = ONLY one sessionId per card view
+No frontend-derived analytics updates allowed
+
+Remove any duplicate counters or secondary tracking logic.
+
+⚠️ 3. REMOVE SYSTEM COMPLEXITY
+
+Clean up:
+
+duplicate tracking functions
+overlapping event handlers
+redundant scoring logic
+multiple session update paths
+any “experimental” tracking code
+
+Keep ONE clean pipeline only:
+
+session → events → aggregate → dashboard
+
+📊 4. FINALIZE INTENT SCORING (DO NOT TOUCH AFTER THIS)
+
+Use ONLY this formula:
+
++40 if time on page > 20s
++30 if scroll depth > 75%
++20 if contact click occurs
++10 if return visit
+cap at 100
+
+Rules:
+
+contact clicks ONLY include email/phone/website actions
+share/QR DO NOT affect score
+share only logs events, not intent
+🧾 5. SESSION MODEL MUST BE FINALIZED
+
+Each session must include:
+
+sessionId
+cardId
+timestamps (firstSeen, lastSeen)
+timeOnPage
+maxScrollDepth
+event breakdown
+intentScore
+leadStatus (cold/warm/hot)
+topAction
+
+No additional fields unless critical bug fix.
+
+📊 6. DASHBOARD SIMPLIFICATION
+
+Ensure analytics UI only shows:
+
+Total Views
+Unique Visitors
+Avg Time on Page
+Conversion Events
+Lead Table (sorted by intentScore DESC)
+
+Lead Table columns ONLY:
+
+Visitor ID
+Score
+Status
+Top Action
+Time on Page
+
+Remove any overly complex or redundant analytics views.
+
+🖼️ 7. IMAGE UPLOAD SYSTEM
+
+Finalize image uploads:
+
+profile photo upload
+cover upload
+logo upload
+must use ONE upload pipeline only
+must return secure URL
+must NOT keep legacy URL inputs as primary system
+
+Remove duplicate upload implementations.
+
+🌐 8. PUBLIC CARD MUST MATCH BUILDER EXACTLY
+
+Hard requirement:
+
+same layout
+same theme system
+same data source
+same SEO meta injection
+same tracking hooks
+
+No static fallback rendering.
+
+🧼 9. CODE HYGIENE RULES
+Remove all any types where possible
+Remove duplicate event listeners
+Remove experimental tracking variants
+Remove dead or legacy analytics code
+Ensure consistent naming across backend/frontend
+🚫 10. STRICT PROHIBITIONS
+
+DO NOT:
+
+add new features
+add new analytics types
+change scoring formula
+introduce new event categories
+split systems into micro abstractions
+
+ONLY:
+
+fix bugs
+clean code
+stabilize behavior
+improve consistency
+🎯 FINAL GOAL
+
+The system must be:
+
+a stable, production-ready lead intelligence engine for digital cards

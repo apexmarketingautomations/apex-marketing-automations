@@ -113,3 +113,32 @@ Per-visitor session tracking and intent scoring for platform digital cards (`/ca
 - **Top Action**: `GET /api/cards/:id/sessions` enriches each session with `topAction` — the highest-priority click event observed in the session (priority order: save_contact, booking, phone, email, review, website, link, social, share, qr_scan, scroll, view).
 - **LeadTable** is now mounted in the builder (`client/src/pages/digital-card-builder.tsx`) directly under the analytics summary tiles. Columns: Visitor, Status, Score, Top Action, Last Seen, Time, Scroll, Clicks, Device, Source. Sorted by intent score descending. Auto-refreshes every 30 s.
 - **Removed leaked attached assets**: `attached_assets/LaylaStudio_*.jsx` (legacy prototype files containing a hardcoded `STUDIO_WEBHOOK_SECRET` value) deleted from the repo. The Studio webhook secret is also printed at server startup; rotating it is recommended.
+
+#### Stabilization freeze (Task #146 follow-up — final)
+
+The lead-intelligence pipeline is now frozen. Do **not** add new event
+types, change the scoring formula, split the pipeline into more
+abstractions, or duplicate analytics counters anywhere else.
+
+- **Single source of truth**: `/api/track/session` is the *only* place
+  that increments `digital_cards.viewCount`. `/api/track/event` is the
+  *only* event ingestion path; `/api/public-card/:slug/event` remains
+  as a thin backward-compat alias forwarding to `persistTrackEvent`.
+  No frontend code is allowed to derive analytics locally.
+- **Frozen intent formula** (`computeIntent` in `server/routes/cards.ts`):
+  +40 if `totalTimeMs > 20s`, +30 if `maxScrollDepth > 75%`, +20 if any
+  contact click occurred, +10 if `returnVisit`. Cap 100. Tier hot ≥ 71,
+  warm 31–70, else cold.
+- **Frozen contact-click set**: `CLICKY_TYPES = { click_phone,
+  click_email, click_website }`. These are the only events that
+  increment `click_count` and trigger the +20 bonus. `click_booking`,
+  `click_social`, `click_link`, `click_review`, `save_contact`,
+  `share`, `qr_scan` are still recorded as events and may surface as
+  the session's `topAction`, but they never affect the intent score.
+- **Frozen dashboard tiles**: Total Views, Unique Visitors,
+  Avg Time on Page, Conversion Events.
+- **Frozen Lead Table columns**: Visitor ID, Score, Status, Top Action,
+  Time on Page (sorted by intent score descending).
+- **Frozen image upload**: profile / cover / logo each use the
+  `ImagePicker` dropzone, which posts to `/api/media/upload` and stores
+  the returned `fileUrl`. No URL paste fallback (removed per spec).

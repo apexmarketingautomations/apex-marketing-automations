@@ -60,7 +60,7 @@ function useCardTracking(slug: string, active: boolean) {
   }
   if (slug) slugRef.current = slug;
 
-  const sendEvent = useCallback((eventType: string, extras: Record<string, any> = {}) => {
+  const sendEvent = useCallback((eventType: string, extras: Record<string, string | number> = {}) => {
     if (!active || !slug) return;
     const body = JSON.stringify({
       slug,

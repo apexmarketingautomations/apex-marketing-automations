@@ -476,12 +476,14 @@ export function registerCardsRoutes(app: Express) {
     "click_social", "click_link", "click_review", "save_contact",
     "share", "qr_scan", "form_submit", "copy", "exit",
   ]);
-  // Contact-intent clicks only — counted toward the session "clicks" aggregate
-  // and the +20 intent bonus. share/qr_scan are still recorded as events
-  // (and bump digital_cards.shareCount) but are not contact-intent signals.
+  // FROZEN per stabilization spec: contact clicks include ONLY direct
+  // email / phone / website actions. These are the only events that
+  // trigger the +20 intent bonus and increment the session click_count
+  // (which the dashboard surfaces as "Conversion Events"). Booking,
+  // social, link, review, save, share and QR are recorded as events
+  // and shown as a "Top Action" but DO NOT affect intent.
   const CLICKY_TYPES = new Set([
-    "click_phone", "click_email", "click_website", "click_booking",
-    "click_social", "click_link", "click_review", "save_contact",
+    "click_phone", "click_email", "click_website",
   ]);
 
   async function persistTrackEvent(payload: {

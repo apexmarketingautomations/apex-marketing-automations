@@ -206,9 +206,9 @@ function AnalyticsSummary({ card }: { card: CardConfig }) {
   const avgTimeSec = sessions.length
     ? Math.round(sessions.reduce((a, s) => a + s.totalTimeMs, 0) / sessions.length / 1000)
     : 0;
-  const totalClicks = sessions.reduce((a, s) => a + s.clickCount, 0);
-  const hot = sessions.filter(s => s.leadTier === "hot").length;
-  const warm = sessions.filter(s => s.leadTier === "warm").length;
+  // Conversion Events = the contact clicks defined by the FROZEN
+  // CLICKY_TYPES set on the server (phone / email / website).
+  const conversionEvents = sessions.reduce((a, s) => a + s.clickCount, 0);
 
   return (
     <Card className="bg-gradient-to-br from-indigo-500/10 to-purple-500/10 border-indigo-500/20" data-testid="analytics-summary">
@@ -217,20 +217,12 @@ function AnalyticsSummary({ card }: { card: CardConfig }) {
           <BarChart3 size={16} className="text-indigo-400" />
           <h3 className="text-sm font-bold text-white">Card Analytics</h3>
         </div>
-        <div className="grid grid-cols-3 gap-2">
-          <Stat label="Views" value={card.viewCount || 0} testId="stat-views" />
-          <Stat label="Visitors" value={uniqueVisitors} testId="stat-visitors" />
-          <Stat label="Avg Time" value={`${avgTimeSec}s`} testId="stat-avgtime" />
-          <Stat label="Clicks" value={totalClicks} testId="stat-clicks" />
-          <Stat label="Saves" value={card.saveContactCount || 0} testId="stat-saves" />
-          <Stat label="Shares" value={card.shareCount || 0} testId="stat-shares" />
+        <div className="grid grid-cols-2 gap-2">
+          <Stat label="Total Views" value={card.viewCount || 0} testId="stat-views" />
+          <Stat label="Unique Visitors" value={uniqueVisitors} testId="stat-visitors" />
+          <Stat label="Avg Time on Page" value={`${avgTimeSec}s`} testId="stat-avgtime" />
+          <Stat label="Conversion Events" value={conversionEvents} testId="stat-conversions" />
         </div>
-        {(hot + warm) > 0 && (
-          <div className="mt-3 flex gap-2 text-[11px]">
-            <span className="px-2 py-0.5 rounded-full bg-red-500/15 text-red-300 font-bold" data-testid="badge-hot">{hot} Hot</span>
-            <span className="px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-300 font-bold" data-testid="badge-warm">{warm} Warm</span>
-          </div>
-        )}
       </CardContent>
     </Card>
   );
@@ -316,16 +308,11 @@ function LeadTable({ cardId }: { cardId?: number }) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-[11px] uppercase tracking-wider text-slate-500 border-b border-white/5">
-                  <th className="px-2 py-2">Visitor</th>
-                  <th className="px-2 py-2">Status</th>
+                  <th className="px-2 py-2">Visitor ID</th>
                   <th className="px-2 py-2">Score</th>
+                  <th className="px-2 py-2">Status</th>
                   <th className="px-2 py-2">Top Action</th>
-                  <th className="px-2 py-2">Last Seen</th>
-                  <th className="px-2 py-2">Time</th>
-                  <th className="px-2 py-2">Scroll</th>
-                  <th className="px-2 py-2">Clicks</th>
-                  <th className="px-2 py-2">Device</th>
-                  <th className="px-2 py-2">Source</th>
+                  <th className="px-2 py-2">Time on Page</th>
                 </tr>
               </thead>
               <tbody className="text-slate-200">
@@ -334,21 +321,14 @@ function LeadTable({ cardId }: { cardId?: number }) {
                     <td className="px-2 py-2 font-mono text-[11px] text-slate-300" data-testid={`text-visitor-${s.id}`}>
                       {(s.visitorId || s.sessionId).slice(0, 8)}{s.returnVisit && <span className="ml-1 text-cyan-400" title="Return visit">↻</span>}
                     </td>
+                    <td className="px-2 py-2 font-mono text-white" data-testid={`text-score-${s.id}`}>{s.intentScore}</td>
                     <td className="px-2 py-2">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${tierBadge(s.leadTier)}`} data-testid={`badge-tier-${s.id}`}>
                         {s.leadTier}
                       </span>
                     </td>
-                    <td className="px-2 py-2 font-mono text-white" data-testid={`text-score-${s.id}`}>{s.intentScore}</td>
                     <td className="px-2 py-2 text-slate-300" data-testid={`text-topaction-${s.id}`}>{TOP_ACTION_LABEL[s.topAction] || s.topAction}</td>
-                    <td className="px-2 py-2 text-slate-400">{fmtRelative(s.lastSeenAt)}</td>
-                    <td className="px-2 py-2">{fmtDuration(s.totalTimeMs)}</td>
-                    <td className="px-2 py-2">{s.maxScrollDepth}%</td>
-                    <td className="px-2 py-2">{s.clickCount}</td>
-                    <td className="px-2 py-2 text-slate-400 capitalize">{s.deviceType || "—"}{s.browser ? ` · ${s.browser}` : ""}</td>
-                    <td className="px-2 py-2 text-slate-400 truncate max-w-[160px]" title={s.referrer || ""}>
-                      {referrerHost(s.referrer)}
-                    </td>
+                    <td className="px-2 py-2" data-testid={`text-time-${s.id}`}>{fmtDuration(s.totalTimeMs)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -444,13 +424,16 @@ function ImagePicker({ value, onChange, label, accept = "image/*", testId }: {
           data-testid={`${testId}-file`}
         />
       </div>
-      <Input
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder="…or paste an image URL"
-        className="bg-white/5 border-white/10 text-white"
-        data-testid={testId}
-      />
+      {value && (
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          className="text-[10px] text-slate-500 hover:text-red-400 transition"
+          data-testid={`${testId}-clear`}
+        >
+          Remove image
+        </button>
+      )}
     </div>
   );
 }
