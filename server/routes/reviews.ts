@@ -697,13 +697,22 @@ export function registerReviewsRoutes(app: Express) {
       }
     }
     if (Object.keys(updates).length === 0) return res.status(400).json({ error: "No valid fields to update" });
+
+    // Only call SendGrid when fromEmail actually changed value — the
+    // settings form posts the full payload on every save, so without
+    // this gate we'd hit SendGrid on every unrelated field edit.
+    const fromEmailChanged =
+      "fromEmail" in updates &&
+      typeof updates.fromEmail === "string" &&
+      updates.fromEmail.length > 0 &&
+      updates.fromEmail !== (account.fromEmail || "");
+
     const updated = await storage.updateSubAccount(id, updates);
     if (!updated) return res.status(404).json({ error: "Account not found" });
 
-    let fromEmailVerification: Awaited<ReturnType<typeof getSenderVerificationStatus>> | undefined;
-    if ("fromEmail" in updates && typeof updates.fromEmail === "string" && updates.fromEmail) {
-      fromEmailVerification = await getSenderVerificationStatus(updates.fromEmail);
-    }
+    const fromEmailVerification = fromEmailChanged
+      ? await getSenderVerificationStatus(updates.fromEmail as string)
+      : undefined;
 
     res.json(fromEmailVerification ? { ...updated, fromEmailVerification } : updated);
   }));

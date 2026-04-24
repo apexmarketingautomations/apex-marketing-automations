@@ -121,6 +121,11 @@ interface VerifiedSenderRow {
  * whether it has actually been verified. Returns "unknown" when SendGrid
  * itself is unreachable or unconfigured so the UI can show a soft warning
  * instead of a confident green check.
+ *
+ * Pagination: SendGrid's verified_senders endpoint supports cursor-based
+ * paging via `last_seen_id`. We page through results (cap of ~5 pages /
+ * 1000 senders) so accounts with very large sender lists do not get a
+ * false "not_found" — those return "unknown" with a paging note instead.
  */
 export async function getSenderVerificationStatus(email: string): Promise<SenderVerificationStatus> {
   const apiKey = resolveSendgridApiKey();
@@ -128,19 +133,30 @@ export async function getSenderVerificationStatus(email: string): Promise<Sender
   const target = email.trim().toLowerCase();
   if (!target) return { state: "not_found" };
   try {
-    const res = await fetch("https://api.sendgrid.com/v3/verified_senders?limit=500", {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      return { state: "unknown", reason: `SendGrid returned ${res.status}${body ? `: ${body.slice(0, 120)}` : ""}` };
+    const PAGE_SIZE = 200;
+    const MAX_PAGES = 5;
+    let lastSeenId: number | undefined;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const url = new URL("https://api.sendgrid.com/v3/verified_senders");
+      url.searchParams.set("limit", String(PAGE_SIZE));
+      if (lastSeenId !== undefined) url.searchParams.set("last_seen_id", String(lastSeenId));
+      const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${apiKey}` } });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        return { state: "unknown", reason: `SendGrid returned ${res.status}${body ? `: ${body.slice(0, 120)}` : ""}` };
+      }
+      const data = await res.json() as { results?: VerifiedSenderRow[] };
+      const results = data.results || [];
+      const match = results.find(r => (r.from_email || "").trim().toLowerCase() === target);
+      if (match) {
+        return match.verified
+          ? { state: "verified", senderId: match.id }
+          : { state: "pending", senderId: match.id };
+      }
+      if (results.length < PAGE_SIZE) return { state: "not_found" };
+      lastSeenId = results[results.length - 1].id;
     }
-    const data = await res.json() as { results?: VerifiedSenderRow[] };
-    const match = (data.results || []).find(r => (r.from_email || "").trim().toLowerCase() === target);
-    if (!match) return { state: "not_found" };
-    return match.verified
-      ? { state: "verified", senderId: match.id }
-      : { state: "pending", senderId: match.id };
+    return { state: "unknown", reason: "SendGrid sender list exceeds 1000 entries; could not exhaustively search." };
   } catch (err) {
     return { state: "unknown", reason: err instanceof Error ? err.message : String(err) };
   }
