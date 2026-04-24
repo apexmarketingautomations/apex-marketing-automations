@@ -3,7 +3,7 @@ import { digitalCards, cardAnalyticsEvents, cardAnalyticsSessions } from "@share
 import { db } from "../db";
 import { storage } from "../storage";
 import { eq, sql, and, desc, gte } from "drizzle-orm";
-import { createHash } from "node:crypto";
+import crypto, { createHash } from "node:crypto";
 import { asyncHandler, parseIntParam, verifyAccountOwnership } from "./helpers";
 import { emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
 
