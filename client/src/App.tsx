@@ -59,6 +59,7 @@ const MetaMessagingPage = lazy(() => import("@/pages/meta-messaging"));
 const MetaMessaging2027Page = lazy(() => import("@/pages/meta-messaging-2027"));
 const NexusDemo = lazy(() => import("@/pages/nexus-demo"));
 const AdminConsolePage = lazy(() => import("@/pages/admin-console"));
+const AdminOnboardingDefaultsPage = lazy(() => import("@/pages/admin/onboarding-defaults"));
 const EventSignup = lazy(() => import("@/pages/event-signup"));
 const AdminEventMode = lazy(() => import("@/pages/admin-event-mode"));
 const LaunchReadinessPage = lazy(() => import("@/pages/launch-readiness"));
@@ -295,6 +296,7 @@ function Router() {
                   <Route path="/domains" component={Domains} />
                   <Route path="/god-mode" component={GodMode} />
                   <Route path="/admin-console" component={AdminConsolePage} />
+                  <Route path="/admin/onboarding-defaults" component={AdminOnboardingDefaultsPage} />
                   <Route path="/launch-readiness" component={LaunchReadinessPage} />
                   <Route path="/marketplace" component={MarketplacePage} />
                   <Route path="/affiliate" component={AffiliateDashboard} />

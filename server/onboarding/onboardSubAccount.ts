@@ -2,10 +2,8 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { subAccounts, pipelineStages, workflows } from "@shared/schema";
 import {
-  DEFAULT_PIPELINE_STAGES,
-  DEFAULT_WORKFLOWS,
   DEFAULT_AI_PROMPT_CONFIG,
-  DEFAULT_WELCOME_SMS_BODY,
+  getEffectiveOnboardingDefaults,
 } from "./defaults";
 
 function structuredLog(event: string, data: Record<string, any>) {
@@ -39,6 +37,8 @@ async function seedDefaults(subAccountId: number) {
   let workflowsSeeded = 0;
   let aiPromptSeeded = false;
 
+  const effective = await getEffectiveOnboardingDefaults();
+
   await db.transaction(async (tx) => {
     // Race-safe seeding (Task #143): we still pre-filter against the
     // current rows for an accurate "stagesSeeded" count, but the real
@@ -52,7 +52,7 @@ async function seedDefaults(subAccountId: number) {
       .from(pipelineStages)
       .where(eq(pipelineStages.subAccountId, subAccountId));
     const existingStageNames = new Set(existingStages.map((s) => s.name.toLowerCase()));
-    const stagesToInsert = DEFAULT_PIPELINE_STAGES
+    const stagesToInsert = effective.pipelineStages
       .filter((s) => !existingStageNames.has(s.name.toLowerCase()))
       .map((s) => ({ subAccountId, name: s.name, position: s.position }));
     if (stagesToInsert.length > 0) {
@@ -69,7 +69,7 @@ async function seedDefaults(subAccountId: number) {
       .from(workflows)
       .where(eq(workflows.subAccountId, subAccountId));
     const existingWorkflowNames = new Set(existingWorkflows.map((w) => w.name.toLowerCase()));
-    const workflowsToInsert = DEFAULT_WORKFLOWS
+    const workflowsToInsert = effective.workflows
       .filter((w) => !existingWorkflowNames.has(w.name.toLowerCase()))
       .map((w) => ({
         subAccountId,
@@ -93,7 +93,7 @@ async function seedDefaults(subAccountId: number) {
       .where(eq(subAccounts.id, subAccountId));
     const existingCfg = (acct?.aiPromptConfig as any) || {};
     if (!existingCfg.systemPrompt) {
-      const merged = { ...DEFAULT_AI_PROMPT_CONFIG, ...existingCfg, systemPrompt: DEFAULT_AI_PROMPT_CONFIG.systemPrompt };
+      const merged = { ...DEFAULT_AI_PROMPT_CONFIG, ...existingCfg, systemPrompt: effective.brandVoiceSystemPrompt };
       await tx
         .update(subAccounts)
         .set({ aiPromptConfig: merged })
@@ -114,11 +114,12 @@ async function sendWelcomeSms(subAccountId: number): Promise<OnboardingResult["w
   if (!phone) return "skipped_no_phone";
 
   try {
+    const effective = await getEffectiveOnboardingDefaults();
     const { sendSms } = await import("../messaging/sendSms");
     const result = await sendSms({
       subAccountId,
       to: phone,
-      body: DEFAULT_WELCOME_SMS_BODY,
+      body: effective.welcomeSmsBody,
       source: "onboarding_welcome",
       path: "onboarding.welcome_sms",
     });

@@ -3214,3 +3214,37 @@ export const homeServiceLeadClaims = pgTable("home_service_lead_claims", {
 export const insertHomeServiceLeadClaimSchema = createInsertSchema(homeServiceLeadClaims).omit({ id: true, createdAt: true });
 export type InsertHomeServiceLeadClaim = z.infer<typeof insertHomeServiceLeadClaimSchema>;
 export type HomeServiceLeadClaim = typeof homeServiceLeadClaims.$inferSelect;
+
+// Onboarding defaults — operator-editable templates seeded into every new sub-account.
+// Single-row table (id = 1). Falls back to in-code defaults when missing.
+export const onboardingDefaults = pgTable("onboarding_defaults", {
+  id: integer("id").primaryKey().default(1),
+  pipelineStages: jsonb("pipeline_stages"),
+  workflows: jsonb("workflows"),
+  brandVoiceSystemPrompt: text("brand_voice_system_prompt"),
+  welcomeSmsBody: text("welcome_sms_body"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedByUserId: text("updated_by_user_id"),
+});
+
+export const onboardingDefaultsStageSchema = z.object({
+  name: z.string().min(1).max(100),
+  position: z.number().int().min(0),
+});
+
+export const onboardingDefaultsWorkflowSchema = z.object({
+  name: z.string().min(1).max(200),
+  trigger: z.string().min(1).max(100),
+  enabled: z.boolean(),
+  smsBody: z.string().min(1).max(1600),
+});
+
+export const onboardingDefaultsPayloadSchema = z.object({
+  pipelineStages: z.array(onboardingDefaultsStageSchema).min(1).max(50),
+  workflows: z.array(onboardingDefaultsWorkflowSchema).min(0).max(20),
+  brandVoiceSystemPrompt: z.string().min(1).max(4000),
+  welcomeSmsBody: z.string().min(1).max(1600),
+});
+
+export type OnboardingDefaultsPayload = z.infer<typeof onboardingDefaultsPayloadSchema>;
+export type OnboardingDefaultsRow = typeof onboardingDefaults.$inferSelect;

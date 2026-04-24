@@ -3,10 +3,11 @@ import { z } from "zod";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
-import { insertSubAccountSchema, PLAN_TIERS, subAccounts } from "@shared/schema";
+import { insertSubAccountSchema, PLAN_TIERS, subAccounts, onboardingDefaults, onboardingDefaultsPayloadSchema } from "@shared/schema";
 import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, isApexParentUser, isUserAdmin, SUPPORTED_LANGUAGES } from "./helpers";
 import { emitUniversalEvent, EVENT_TYPES } from "../intelligence/eventEmitter";
 import { onboardNewSubAccount, backfillExistingSubAccounts } from "../onboarding/onboardSubAccount";
+import { getEffectiveOnboardingDefaults, getInCodeDefaults } from "../onboarding/defaults";
 
 export function registerAccountRoutes(app: Express) {
   app.get("/api/accounts", asyncHandler(async (req, res) => {
@@ -190,5 +191,96 @@ export function registerAccountRoutes(app: Express) {
       escalationInfo: updatedConfig.escalationInfo,
       bookingLink: updatedConfig.bookingLink,
     });
+  }));
+
+  // Admin-only: edit the default templates seeded into newly created sub-accounts.
+  // Accepts either the canonical ADMIN_USER_ID env match or the user.isAdmin DB flag,
+  // which matches the client-side admin check used elsewhere in the app.
+  function isOnboardingDefaultsAdmin(user: unknown): boolean {
+    if (!user || typeof user !== "object") return false;
+    if (isUserAdmin(user)) return true;
+    const u = user as { isAdmin?: unknown; role?: unknown };
+    if (u.isAdmin === "true" || u.isAdmin === true) return true;
+    if (u.role === "DEV_ADMIN") return true;
+    return false;
+  }
+
+  app.get("/api/admin/onboarding-defaults", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    if (!isOnboardingDefaultsAdmin(user)) return res.status(403).json({ error: "Admin access required" });
+    const effective = await getEffectiveOnboardingDefaults();
+    const inCode = getInCodeDefaults();
+    const [row] = await db
+      .select()
+      .from(onboardingDefaults)
+      .where(sql`${onboardingDefaults.id} = 1`);
+    res.json({
+      effective: {
+        pipelineStages: effective.pipelineStages,
+        workflows: effective.workflows.map((w) => ({
+          name: w.name,
+          trigger: w.trigger,
+          enabled: w.enabled,
+          smsBody: w.steps?.[0]?.params?.body ?? "",
+        })),
+        brandVoiceSystemPrompt: effective.brandVoiceSystemPrompt,
+        welcomeSmsBody: effective.welcomeSmsBody,
+      },
+      inCodeDefaults: {
+        pipelineStages: inCode.pipelineStages,
+        workflows: inCode.workflows.map((w) => ({
+          name: w.name,
+          trigger: w.trigger,
+          enabled: w.enabled,
+          smsBody: w.steps?.[0]?.params?.body ?? "",
+        })),
+        brandVoiceSystemPrompt: inCode.brandVoiceSystemPrompt,
+        welcomeSmsBody: inCode.welcomeSmsBody,
+      },
+      hasOverride: !!row,
+      updatedAt: row?.updatedAt ?? null,
+      updatedByUserId: row?.updatedByUserId ?? null,
+    });
+  }));
+
+  app.put("/api/admin/onboarding-defaults", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    if (!isOnboardingDefaultsAdmin(user)) return res.status(403).json({ error: "Admin access required" });
+    const parsed = onboardingDefaultsPayloadSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const userId = getUserId(user);
+    await db
+      .insert(onboardingDefaults)
+      .values({
+        id: 1,
+        pipelineStages: parsed.data.pipelineStages,
+        workflows: parsed.data.workflows,
+        brandVoiceSystemPrompt: parsed.data.brandVoiceSystemPrompt,
+        welcomeSmsBody: parsed.data.welcomeSmsBody,
+        updatedAt: new Date(),
+        updatedByUserId: userId,
+      })
+      .onConflictDoUpdate({
+        target: onboardingDefaults.id,
+        set: {
+          pipelineStages: parsed.data.pipelineStages,
+          workflows: parsed.data.workflows,
+          brandVoiceSystemPrompt: parsed.data.brandVoiceSystemPrompt,
+          welcomeSmsBody: parsed.data.welcomeSmsBody,
+          updatedAt: new Date(),
+          updatedByUserId: userId,
+        },
+      });
+    res.json({ ok: true });
+  }));
+
+  app.delete("/api/admin/onboarding-defaults", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    if (!isOnboardingDefaultsAdmin(user)) return res.status(403).json({ error: "Admin access required" });
+    await db.delete(onboardingDefaults).where(sql`${onboardingDefaults.id} = 1`);
+    res.json({ ok: true });
   }));
 }

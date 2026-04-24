@@ -58,3 +58,75 @@ export const DEFAULT_WORKFLOWS: DefaultWorkflow[] = [
 
 export const DEFAULT_WELCOME_SMS_BODY =
   "Welcome to your new account! Your pipeline, default workflows, and AI assistant are ready to go. Reply HELP anytime or sign in to start customizing.";
+
+export interface EffectiveOnboardingDefaults {
+  pipelineStages: { name: string; position: number }[];
+  workflows: DefaultWorkflow[];
+  brandVoiceSystemPrompt: string;
+  welcomeSmsBody: string;
+}
+
+export function getInCodeDefaults(): EffectiveOnboardingDefaults {
+  return {
+    pipelineStages: DEFAULT_PIPELINE_STAGES,
+    workflows: DEFAULT_WORKFLOWS,
+    brandVoiceSystemPrompt: DEFAULT_BRAND_VOICE_SYSTEM_PROMPT,
+    welcomeSmsBody: DEFAULT_WELCOME_SMS_BODY,
+  };
+}
+
+// Reads the operator-editable overrides from the DB and merges with in-code defaults.
+// Any missing field in the DB row falls back to the in-code value.
+export async function getEffectiveOnboardingDefaults(): Promise<EffectiveOnboardingDefaults> {
+  const fallback = getInCodeDefaults();
+  try {
+    const { db } = await import("../db");
+    const {
+      onboardingDefaults,
+      onboardingDefaultsStageSchema,
+      onboardingDefaultsWorkflowSchema,
+    } = await import("@shared/schema");
+    const { eq } = await import("drizzle-orm");
+    const { z } = await import("zod");
+
+    const [row] = await db
+      .select()
+      .from(onboardingDefaults)
+      .where(eq(onboardingDefaults.id, 1));
+    if (!row) return fallback;
+
+    const stagesParsed = z
+      .array(onboardingDefaultsStageSchema)
+      .safeParse(row.pipelineStages);
+    const stages = stagesParsed.success && stagesParsed.data.length > 0
+      ? stagesParsed.data
+      : fallback.pipelineStages;
+
+    const workflowsParsed = z
+      .array(onboardingDefaultsWorkflowSchema)
+      .safeParse(row.workflows);
+    const workflows: DefaultWorkflow[] = workflowsParsed.success && workflowsParsed.data.length > 0
+      ? workflowsParsed.data.map((w) => ({
+          name: w.name,
+          trigger: w.trigger,
+          enabled: w.enabled,
+          steps: [{ action_type: "SMS", params: { body: w.smsBody } }],
+        }))
+      : fallback.workflows;
+
+    return {
+      pipelineStages: stages,
+      workflows,
+      brandVoiceSystemPrompt: row.brandVoiceSystemPrompt?.trim() || fallback.brandVoiceSystemPrompt,
+      welcomeSmsBody: row.welcomeSmsBody?.trim() || fallback.welcomeSmsBody,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(JSON.stringify({
+      event: "onboarding_defaults_load_failed",
+      timestamp: new Date().toISOString(),
+      error: message,
+    }));
+    return fallback;
+  }
+}
