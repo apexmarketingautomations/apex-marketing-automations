@@ -14,33 +14,154 @@ import { useCardAdaptation } from "@/hooks/useCardAdaptation";
 
 type FetchState = "loading" | "success" | "not-found" | "unavailable" | "error";
 
-function useCardAnalytics(slug: string, active: boolean) {
-  const tracked = useRef(false);
+function getOrCreateVisitorId(): string {
+  try {
+    let v = localStorage.getItem("card_visitor_id");
+    if (!v) {
+      v = (crypto as any).randomUUID ? crypto.randomUUID() : `v_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      localStorage.setItem("card_visitor_id", v);
+    }
+    return v;
+  } catch {
+    return `v_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  }
+}
+
+function newSessionId(): string {
+  return (crypto as any).randomUUID ? crypto.randomUUID() : `s_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
+
+function useCardTracking(slug: string, active: boolean) {
+  const sessionIdRef = useRef<string>("");
+  const visitorIdRef = useRef<string>("");
+  const startedAtRef = useRef<number>(Date.now());
+  const maxScrollRef = useRef<number>(0);
+  const milestonesRef = useRef<Set<number>>(new Set());
+  const sessionStartedRef = useRef(false);
+
+  if (!sessionIdRef.current) sessionIdRef.current = newSessionId();
+  if (!visitorIdRef.current) visitorIdRef.current = getOrCreateVisitorId();
+
+  const sendEvent = useCallback((eventType: string, extras: Record<string, any> = {}) => {
+    if (!active || !slug) return;
+    const body = JSON.stringify({
+      slug,
+      sessionId: sessionIdRef.current,
+      visitorId: visitorIdRef.current,
+      eventType,
+      referrer: document.referrer,
+      ...extras,
+    });
+    try {
+      if (eventType === "exit" && (navigator as any).sendBeacon) {
+        const blob = new Blob([body], { type: "application/json" });
+        (navigator as any).sendBeacon("/api/track/event", blob);
+        return;
+      }
+    } catch {}
+    fetch("/api/track/event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      keepalive: true,
+    }).catch(() => {});
+  }, [active, slug]);
+
   const trackEvent = useCallback((eventType: string, eventTarget?: string) => {
-    if (!active) return;
-    const visitorId = localStorage.getItem("card_visitor_id") || crypto.randomUUID();
-    localStorage.setItem("card_visitor_id", visitorId);
-    fetch(`/api/public-card/${slug}/event`, {
+    sendEvent(eventType, eventTarget ? { eventTarget } : {});
+  }, [sendEvent]);
+
+  useEffect(() => {
+    if (!slug || !active || sessionStartedRef.current) return;
+    sessionStartedRef.current = true;
+    startedAtRef.current = Date.now();
+    fetch("/api/track/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        eventType,
-        eventTarget,
-        visitorId,
-        userAgent: navigator.userAgent,
+        slug,
+        sessionId: sessionIdRef.current,
+        visitorId: visitorIdRef.current,
         referrer: document.referrer,
       }),
+      keepalive: true,
     }).catch(() => {});
-  }, [slug, active]);
+    sendEvent("view");
+  }, [slug, active, sendEvent]);
 
   useEffect(() => {
-    if (!tracked.current && slug && active) {
-      trackEvent("view");
-      tracked.current = true;
-    }
-  }, [slug, active, trackEvent]);
+    if (!slug || !active) return;
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = window.requestAnimationFrame(() => {
+        raf = 0;
+        const h = document.documentElement;
+        const total = Math.max(1, h.scrollHeight - h.clientHeight);
+        const pct = Math.min(100, Math.max(0, Math.round((window.scrollY / total) * 100)));
+        if (pct > maxScrollRef.current) maxScrollRef.current = pct;
+        for (const m of [25, 50, 75, 100]) {
+          if (pct >= m && !milestonesRef.current.has(m)) {
+            milestonesRef.current.add(m);
+            sendEvent("scroll", { scrollDepth: m });
+          }
+        }
+      });
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+
+    const onLeave = () => {
+      const elapsed = Date.now() - startedAtRef.current;
+      sendEvent("exit", { timeOnPage: elapsed, scrollDepth: maxScrollRef.current });
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") onLeave();
+    };
+    window.addEventListener("pagehide", onLeave);
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("pagehide", onLeave);
+      document.removeEventListener("visibilitychange", onVisibility);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [slug, active, sendEvent]);
 
   return trackEvent;
+}
+
+function applySeoMeta(card: SharedCardData) {
+  const fallbackTitle = `${card.name || "Digital Card"}${card.title ? ` — ${card.title}` : ""}`;
+  const title = card.seoTitle || fallbackTitle;
+  const description = card.seoDescription || card.bio || card.tagline || `Connect with ${card.name || "us"}`;
+  const image = card.ogImageUrl || card.coverImageUrl || card.photoUrl || "";
+  const url = `${window.location.origin}/card/${card.slug}`;
+
+  document.title = title;
+  setMeta("description", description, false);
+  setMeta("og:title", title, true);
+  setMeta("og:description", description, true);
+  setMeta("og:type", "profile", true);
+  setMeta("og:url", url, true);
+  if (image) setMeta("og:image", image, true);
+  setMeta("twitter:card", image ? "summary_large_image" : "summary", false);
+  setMeta("twitter:title", title, false);
+  setMeta("twitter:description", description, false);
+  if (image) setMeta("twitter:image", image, false);
+}
+
+function setMeta(key: string, value: string, isProperty: boolean) {
+  if (!value) return;
+  const attr = isProperty ? "property" : "name";
+  let el = document.head.querySelector(`meta[${attr}="${key}"]`) as HTMLMetaElement | null;
+  if (!el) {
+    el = document.createElement("meta");
+    el.setAttribute(attr, key);
+    document.head.appendChild(el);
+  }
+  el.setAttribute("content", value);
 }
 
 export default function DigitalCard() {
@@ -64,14 +185,16 @@ export default function DigitalCard() {
         if (r.status === 403) { setState("unavailable"); return; }
         if (!r.ok) throw new Error("Request failed");
         return r.json().then(data => {
-          setCard(adaptPlatformCard(data));
+          const adapted = adaptPlatformCard(data);
+          setCard(adapted);
           setState("success");
+          applySeoMeta(adapted);
         });
       })
       .catch(() => setState("error"));
   }, [slug]);
 
-  const trackEvent = useCardAnalytics(slug || "", state === "success");
+  const trackEvent = useCardTracking(slug || "", state === "success");
   const adaptation = useCardAdaptation(slug, state === "success");
   const theme = getCardTheme(card?.theme);
 

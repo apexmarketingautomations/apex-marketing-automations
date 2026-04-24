@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { digitalCards, cardAnalyticsEvents } from "@shared/schema";
+import { digitalCards, cardAnalyticsEvents, cardAnalyticsSessions } from "@shared/schema";
 import { db } from "../db";
 import { storage } from "../storage";
 import { eq, sql, and, desc, gte } from "drizzle-orm";
@@ -308,7 +308,8 @@ export function registerCardsRoutes(app: Express) {
     if (!card) return res.status(404).json({ error: "Card not found" });
     if (!isCardAccessible(card)) return res.status(403).json({ error: "Not available" });
 
-    await db.update(digitalCards).set({ viewCount: sql`${digitalCards.viewCount} + 1` }).where(eq(digitalCards.id, card.id));
+    // Note: viewCount is incremented in /api/track/session (per-visit) to avoid
+    // double-counting. Bot/preview fetches that don't run the tracker won't inflate counts.
 
     res.json(card);
   }));
@@ -374,6 +375,245 @@ export function registerCardsRoutes(app: Express) {
     }
 
     res.json({ ok: true });
+  }));
+
+  // -------------------------------------------------------------------------
+  // Session-aware tracking (Task #146): visitor sessions, scroll/time/click
+  // events, and a server-computed intent score (0–100) → Cold/Warm/Hot tier.
+  // -------------------------------------------------------------------------
+
+  function parseUaForSession(ua: string): { deviceType: string; browser: string } {
+    const u = ua.toLowerCase();
+    let deviceType = "desktop";
+    if (/ipad|tablet/.test(u)) deviceType = "tablet";
+    else if (/mobile|android|iphone|ipod/.test(u)) deviceType = "mobile";
+    let browser = "other";
+    if (/edg\//.test(u)) browser = "Edge";
+    else if (/chrome\//.test(u) && !/edg\//.test(u)) browser = "Chrome";
+    else if (/safari\//.test(u) && !/chrome\//.test(u)) browser = "Safari";
+    else if (/firefox\//.test(u)) browser = "Firefox";
+    else if (/opera|opr\//.test(u)) browser = "Opera";
+    return { deviceType, browser };
+  }
+
+  function computeIntent(opts: {
+    totalTimeMs: number;
+    maxScrollDepth: number;
+    clickCount: number;
+    returnVisit: boolean;
+  }): { intentScore: number; leadTier: "cold" | "warm" | "hot" } {
+    // Time score: full credit at 90s.
+    const timeScore = Math.min(40, Math.round((opts.totalTimeMs / 90000) * 40));
+    // Scroll score: full credit at 100%.
+    const scrollScore = Math.min(20, Math.round((opts.maxScrollDepth / 100) * 20));
+    // Click score: full credit at 5 clicks.
+    const clickScore = Math.min(30, opts.clickCount * 6);
+    const returnScore = opts.returnVisit ? 10 : 0;
+    const intentScore = Math.max(0, Math.min(100, timeScore + scrollScore + clickScore + returnScore));
+    const leadTier = intentScore >= 71 ? "hot" : intentScore >= 31 ? "warm" : "cold";
+    return { intentScore, leadTier };
+  }
+
+  async function loadAccessibleCardBySlug(slug: string) {
+    const [card] = await db.select().from(digitalCards).where(eq(digitalCards.slug, slug)).limit(1);
+    if (!card) return { error: "not_found" as const };
+    if (!isCardAccessible(card)) return { error: "unavailable" as const };
+    return { card };
+  }
+
+  app.post("/api/track/session", asyncHandler(async (req, res) => {
+    const { slug, sessionId, visitorId, referrer } = req.body || {};
+    if (typeof slug !== "string" || typeof sessionId !== "string") {
+      return res.status(400).json({ error: "slug and sessionId required" });
+    }
+    if (sessionId.length > 200 || (visitorId && String(visitorId).length > 200)) {
+      return res.status(400).json({ error: "id too long" });
+    }
+    const result = await loadAccessibleCardBySlug(slug.toLowerCase());
+    if ("error" in result) {
+      return res.status(result.error === "not_found" ? 404 : 403).json({ error: result.error });
+    }
+    const card = result.card;
+
+    const ua = (req.headers["user-agent"] as string) || "";
+    const { deviceType, browser } = parseUaForSession(ua);
+    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "";
+    const ipHash = ip ? crypto.createHash("sha256").update(ip).digest("hex").slice(0, 16) : null;
+    const country = (req.headers["x-vercel-ip-country"] as string) || (req.headers["cf-ipcountry"] as string) || null;
+    const region = (req.headers["x-vercel-ip-country-region"] as string) || (req.headers["cf-region"] as string) || null;
+
+    let returnVisit = false;
+    if (visitorId) {
+      const [prior] = await db.select({ id: cardAnalyticsSessions.id })
+        .from(cardAnalyticsSessions)
+        .where(and(eq(cardAnalyticsSessions.cardId, card.id), eq(cardAnalyticsSessions.visitorId, String(visitorId))))
+        .limit(1);
+      if (prior) returnVisit = true;
+    }
+
+    const [existing] = await db.select().from(cardAnalyticsSessions).where(eq(cardAnalyticsSessions.sessionId, sessionId)).limit(1);
+    if (existing) {
+      const [updated] = await db.update(cardAnalyticsSessions)
+        .set({ lastSeenAt: new Date() })
+        .where(eq(cardAnalyticsSessions.sessionId, sessionId))
+        .returning();
+      return res.json({ ok: true, session: updated });
+    }
+
+    const [created] = await db.insert(cardAnalyticsSessions).values({
+      sessionId,
+      cardId: card.id,
+      visitorId: visitorId ? String(visitorId) : null,
+      referrer: typeof referrer === "string" ? referrer.slice(0, 500) : null,
+      userAgent: ua.slice(0, 500),
+      deviceType,
+      browser,
+      country,
+      region,
+      ipHash,
+      returnVisit,
+    }).returning();
+
+    await db.update(digitalCards).set({ viewCount: sql`${digitalCards.viewCount} + 1` }).where(eq(digitalCards.id, card.id));
+    return res.json({ ok: true, session: created });
+  }));
+
+  const TRACKED_EVENT_TYPES = new Set([
+    "view", "scroll", "section_view",
+    "click_phone", "click_email", "click_website", "click_booking",
+    "click_social", "click_link", "click_review", "save_contact",
+    "share", "qr_scan", "form_submit", "copy", "exit",
+  ]);
+  const CLICKY_TYPES = new Set([
+    "click_phone", "click_email", "click_website", "click_booking",
+    "click_social", "click_link", "click_review", "save_contact", "share", "qr_scan",
+  ]);
+
+  async function persistTrackEvent(payload: {
+    slug: string;
+    sessionId?: string | null;
+    visitorId?: string | null;
+    eventType: string;
+    eventTarget?: string | null;
+    scrollDepth?: number | null;
+    timeOnPage?: number | null;
+    referrer?: string | null;
+    userAgent: string;
+    ip: string;
+  }) {
+    const lookup = await loadAccessibleCardBySlug(payload.slug.toLowerCase());
+    if ("error" in lookup) return { error: lookup.error };
+    const card = lookup.card;
+    if (!TRACKED_EVENT_TYPES.has(payload.eventType)) return { error: "invalid_type" };
+
+    const ua = payload.userAgent || "";
+    const { deviceType } = parseUaForSession(ua);
+    const ipHash = payload.ip ? crypto.createHash("sha256").update(payload.ip).digest("hex").slice(0, 16) : null;
+
+    await db.insert(cardAnalyticsEvents).values({
+      cardId: card.id,
+      sessionId: payload.sessionId || null,
+      eventType: payload.eventType,
+      eventTarget: payload.eventTarget ? String(payload.eventTarget).slice(0, 500) : null,
+      visitorId: payload.visitorId || null,
+      userAgent: ua.slice(0, 500) || null,
+      referrer: payload.referrer ? String(payload.referrer).slice(0, 500) : null,
+      ipHash,
+      deviceType,
+      scrollDepth: typeof payload.scrollDepth === "number" ? Math.max(0, Math.min(100, Math.round(payload.scrollDepth))) : null,
+      timeOnPage: typeof payload.timeOnPage === "number" ? Math.max(0, Math.round(payload.timeOnPage)) : null,
+    });
+
+    if (payload.eventType === "share") {
+      await db.update(digitalCards).set({ shareCount: sql`${digitalCards.shareCount} + 1` }).where(eq(digitalCards.id, card.id));
+    }
+    if (payload.eventType === "save_contact") {
+      await db.update(digitalCards).set({ saveContactCount: sql`${digitalCards.saveContactCount} + 1` }).where(eq(digitalCards.id, card.id));
+    }
+
+    if (payload.sessionId) {
+      const [session] = await db.select().from(cardAnalyticsSessions).where(eq(cardAnalyticsSessions.sessionId, payload.sessionId)).limit(1);
+      if (session) {
+        const newClickCount = CLICKY_TYPES.has(payload.eventType) ? session.clickCount + 1 : session.clickCount;
+        const newScroll = typeof payload.scrollDepth === "number"
+          ? Math.max(session.maxScrollDepth, Math.min(100, Math.round(payload.scrollDepth)))
+          : session.maxScrollDepth;
+        const newTime = typeof payload.timeOnPage === "number"
+          ? Math.max(session.totalTimeMs, Math.round(payload.timeOnPage))
+          : session.totalTimeMs;
+        const { intentScore, leadTier } = computeIntent({
+          totalTimeMs: newTime,
+          maxScrollDepth: newScroll,
+          clickCount: newClickCount,
+          returnVisit: session.returnVisit,
+        });
+        await db.update(cardAnalyticsSessions).set({
+          lastSeenAt: new Date(),
+          clickCount: newClickCount,
+          maxScrollDepth: newScroll,
+          totalTimeMs: newTime,
+          intentScore,
+          leadTier,
+        }).where(eq(cardAnalyticsSessions.sessionId, payload.sessionId));
+      }
+    }
+
+    const evMap: Record<string, string> = { view: EVENT_TYPES.CARD_OPENED, qr_scan: EVENT_TYPES.CARD_SCANNED };
+    const mappedType = evMap[payload.eventType];
+    if (mappedType && card.subAccountId) {
+      emitWithTimeline({
+        eventType: mappedType,
+        sourceModule: "cards",
+        sourceTable: "card_analytics_events",
+        sourceRecordId: String(card.id),
+        subAccountId: card.subAccountId,
+        metadata: { eventType: payload.eventType, eventTarget: payload.eventTarget, deviceType },
+      });
+    }
+    return { ok: true };
+  }
+
+  app.post("/api/track/event", asyncHandler(async (req, res) => {
+    const { slug, sessionId, visitorId, eventType, eventTarget, scrollDepth, timeOnPage, referrer } = req.body || {};
+    if (typeof slug !== "string" || typeof eventType !== "string") {
+      return res.status(400).json({ error: "slug and eventType required" });
+    }
+    if ((sessionId && String(sessionId).length > 200) || (visitorId && String(visitorId).length > 200)) {
+      return res.status(400).json({ error: "id too long" });
+    }
+    if (eventType.length > 64 || (eventTarget && String(eventTarget).length > 1000)) {
+      return res.status(400).json({ error: "payload too large" });
+    }
+    const r = await persistTrackEvent({
+      slug, sessionId: sessionId ? String(sessionId) : null,
+      visitorId: visitorId ? String(visitorId) : null,
+      eventType, eventTarget: eventTarget ?? null,
+      scrollDepth: typeof scrollDepth === "number" ? scrollDepth : null,
+      timeOnPage: typeof timeOnPage === "number" ? timeOnPage : null,
+      referrer: referrer ?? (req.headers.referer as string | undefined) ?? null,
+      userAgent: (req.headers["user-agent"] as string) || "",
+      ip: (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "",
+    });
+    if ("error" in r) {
+      const code = r.error === "not_found" ? 404 : r.error === "unavailable" ? 403 : 400;
+      return res.status(code).json({ error: r.error });
+    }
+    res.json({ ok: true });
+  }));
+
+  app.get("/api/cards/:id/sessions", asyncHandler(async (req, res) => {
+    const cardId = parseIntParam(req.params.id, "id");
+    const [card] = await db.select({ id: digitalCards.id, subAccountId: digitalCards.subAccountId }).from(digitalCards).where(eq(digitalCards.id, cardId)).limit(1);
+    if (!card) return res.status(404).json({ error: "Card not found" });
+    if (!card.subAccountId) return res.status(403).json({ error: "Not a platform card" });
+    if (!(await verifyAccountOwnership(req, res, card.subAccountId))) return;
+
+    const limit = Math.min(500, Math.max(1, parseInt((req.query.limit as string) || "100")));
+    const sessions = await db.select().from(cardAnalyticsSessions)
+      .where(eq(cardAnalyticsSessions.cardId, cardId))
+      .orderBy(desc(cardAnalyticsSessions.lastSeenAt))
+      .limit(limit);
+    res.json({ sessions });
   }));
 
   app.get("/api/digital-card/:subAccountId/analytics", asyncHandler(async (req, res) => {

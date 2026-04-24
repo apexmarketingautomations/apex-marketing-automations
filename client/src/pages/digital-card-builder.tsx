@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useActiveSubAccountId } from "@/components/account-required";
@@ -32,6 +32,7 @@ interface TestimonialData {
 }
 
 interface CardConfig {
+  id?: number;
   name: string;
   preferredName: string;
   title: string;
@@ -158,30 +159,246 @@ function SlugEditor({ slug, subAccountId, onChange }: { slug: string; subAccount
   );
 }
 
+interface SessionRow {
+  id: number;
+  sessionId: string;
+  visitorId: string | null;
+  referrer: string | null;
+  deviceType: string | null;
+  browser: string | null;
+  country: string | null;
+  region: string | null;
+  startedAt: string;
+  lastSeenAt: string;
+  totalTimeMs: number;
+  maxScrollDepth: number;
+  clickCount: number;
+  returnVisit: boolean;
+  intentScore: number;
+  leadTier: "cold" | "warm" | "hot" | string;
+}
+
+function useCardSessions(cardId?: number) {
+  return useQuery<{ sessions: SessionRow[] }>({
+    queryKey: ["/api/cards", cardId, "sessions"],
+    queryFn: async () => {
+      const r = await fetch(`/api/cards/${cardId}/sessions?limit=200`);
+      if (!r.ok) return { sessions: [] };
+      return r.json();
+    },
+    enabled: !!cardId,
+    refetchInterval: 30_000,
+  });
+}
+
 function AnalyticsSummary({ card }: { card: CardConfig }) {
+  const { data } = useCardSessions(card.id);
+  const sessions = data?.sessions || [];
+  const uniqueVisitors = new Set(sessions.map(s => s.visitorId).filter(Boolean)).size;
+  const avgTimeSec = sessions.length
+    ? Math.round(sessions.reduce((a, s) => a + s.totalTimeMs, 0) / sessions.length / 1000)
+    : 0;
+  const totalClicks = sessions.reduce((a, s) => a + s.clickCount, 0);
+  const hot = sessions.filter(s => s.leadTier === "hot").length;
+  const warm = sessions.filter(s => s.leadTier === "warm").length;
+
   return (
-    <Card className="bg-gradient-to-br from-indigo-500/10 to-purple-500/10 border-indigo-500/20">
+    <Card className="bg-gradient-to-br from-indigo-500/10 to-purple-500/10 border-indigo-500/20" data-testid="analytics-summary">
       <CardContent className="p-4">
         <div className="flex items-center gap-2 mb-3">
           <BarChart3 size={16} className="text-indigo-400" />
           <h3 className="text-sm font-bold text-white">Card Analytics</h3>
         </div>
-        <div className="grid grid-cols-3 gap-3">
-          <div className="text-center p-2 rounded-xl bg-white/5">
-            <p className="text-lg font-bold text-white">{card.viewCount || 0}</p>
-            <p className="text-[10px] text-slate-500 uppercase font-bold">Views</p>
-          </div>
-          <div className="text-center p-2 rounded-xl bg-white/5">
-            <p className="text-lg font-bold text-white">{card.saveContactCount || 0}</p>
-            <p className="text-[10px] text-slate-500 uppercase font-bold">Saves</p>
-          </div>
-          <div className="text-center p-2 rounded-xl bg-white/5">
-            <p className="text-lg font-bold text-white">{card.shareCount || 0}</p>
-            <p className="text-[10px] text-slate-500 uppercase font-bold">Shares</p>
-          </div>
+        <div className="grid grid-cols-3 gap-2">
+          <Stat label="Views" value={card.viewCount || 0} testId="stat-views" />
+          <Stat label="Visitors" value={uniqueVisitors} testId="stat-visitors" />
+          <Stat label="Avg Time" value={`${avgTimeSec}s`} testId="stat-avgtime" />
+          <Stat label="Clicks" value={totalClicks} testId="stat-clicks" />
+          <Stat label="Saves" value={card.saveContactCount || 0} testId="stat-saves" />
+          <Stat label="Shares" value={card.shareCount || 0} testId="stat-shares" />
         </div>
+        {(hot + warm) > 0 && (
+          <div className="mt-3 flex gap-2 text-[11px]">
+            <span className="px-2 py-0.5 rounded-full bg-red-500/15 text-red-300 font-bold" data-testid="badge-hot">{hot} Hot</span>
+            <span className="px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-300 font-bold" data-testid="badge-warm">{warm} Warm</span>
+          </div>
+        )}
       </CardContent>
     </Card>
+  );
+}
+
+function Stat({ label, value, testId }: { label: string; value: any; testId: string }) {
+  return (
+    <div className="text-center p-2 rounded-xl bg-white/5" data-testid={testId}>
+      <p className="text-lg font-bold text-white">{value}</p>
+      <p className="text-[10px] text-slate-500 uppercase font-bold">{label}</p>
+    </div>
+  );
+}
+
+function tierBadge(tier: string) {
+  const map: Record<string, string> = {
+    hot: "bg-red-500/15 text-red-300 border-red-500/30",
+    warm: "bg-orange-500/15 text-orange-300 border-orange-500/30",
+    cold: "bg-slate-500/15 text-slate-400 border-slate-500/30",
+  };
+  return map[tier] || map.cold;
+}
+
+function fmtDuration(ms: number) {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}m ${r}s`;
+}
+
+function referrerHost(ref: string | null): string {
+  if (!ref) return "Direct";
+  try {
+    const u = new URL(ref.startsWith("http") ? ref : `https://${ref}`);
+    return u.hostname || "Direct";
+  } catch {
+    return ref.slice(0, 40);
+  }
+}
+
+function fmtRelative(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+function LeadTable({ cardId }: { cardId?: number }) {
+  const { data, isLoading } = useCardSessions(cardId);
+  const sessions = (data?.sessions || []).slice().sort((a, b) => b.intentScore - a.intentScore);
+
+  if (!cardId) {
+    return (
+      <Card className="bg-black/40 border-white/10">
+        <CardContent className="p-6 text-sm text-slate-400">Save your card first to start collecting visitor leads.</CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="bg-black/40 border-white/10">
+      <CardContent className="p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-white">Visitor Leads</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Per-visitor sessions with intent scoring (0–100). Hot ≥ 71, Warm 31–70.</p>
+          </div>
+          <span className="text-xs text-slate-500" data-testid="text-leads-count">{sessions.length} sessions</span>
+        </div>
+
+        {isLoading ? (
+          <div className="text-sm text-slate-400 py-8 text-center">Loading sessions…</div>
+        ) : sessions.length === 0 ? (
+          <div className="text-sm text-slate-500 py-8 text-center" data-testid="empty-leads">
+            No visitor sessions yet. Share your card to start collecting leads.
+          </div>
+        ) : (
+          <div className="overflow-x-auto -mx-2">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-wider text-slate-500 border-b border-white/5">
+                  <th className="px-2 py-2">Tier</th>
+                  <th className="px-2 py-2">Score</th>
+                  <th className="px-2 py-2">Last Seen</th>
+                  <th className="px-2 py-2">Time</th>
+                  <th className="px-2 py-2">Scroll</th>
+                  <th className="px-2 py-2">Clicks</th>
+                  <th className="px-2 py-2">Device</th>
+                  <th className="px-2 py-2">Source</th>
+                </tr>
+              </thead>
+              <tbody className="text-slate-200">
+                {sessions.map(s => (
+                  <tr key={s.id} className="border-b border-white/5 hover:bg-white/[0.03]" data-testid={`row-lead-${s.id}`}>
+                    <td className="px-2 py-2">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${tierBadge(s.leadTier)}`}>
+                        {s.leadTier}{s.returnVisit ? " · ↻" : ""}
+                      </span>
+                    </td>
+                    <td className="px-2 py-2 font-mono text-white" data-testid={`text-score-${s.id}`}>{s.intentScore}</td>
+                    <td className="px-2 py-2 text-slate-400">{fmtRelative(s.lastSeenAt)}</td>
+                    <td className="px-2 py-2">{fmtDuration(s.totalTimeMs)}</td>
+                    <td className="px-2 py-2">{s.maxScrollDepth}%</td>
+                    <td className="px-2 py-2">{s.clickCount}</td>
+                    <td className="px-2 py-2 text-slate-400 capitalize">{s.deviceType || "—"}{s.browser ? ` · ${s.browser}` : ""}</td>
+                    <td className="px-2 py-2 text-slate-400 truncate max-w-[180px]" title={s.referrer || ""}>
+                      {referrerHost(s.referrer)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ImagePicker({ value, onChange, label, accept = "image/*", testId }: {
+  value: string; onChange: (url: string) => void; label: string; accept?: string; testId: string;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const { toast } = useToast();
+
+  const handleFile = async (file: File) => {
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("files", file);
+      const res = await fetch("/api/media/upload", { method: "POST", body: fd });
+      if (!res.ok) throw new Error("Upload failed");
+      const json = await res.json();
+      const first = json.uploaded?.[0];
+      const url = first?.fileUrl || first?.url;
+      if (!url) throw new Error("No URL returned");
+      onChange(url);
+      toast({ title: "Uploaded", description: `${label} updated.` });
+    } catch (e: any) {
+      toast({ title: "Upload failed", description: e.message, variant: "destructive" });
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <Input
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder="https://… or upload"
+          className="bg-white/5 border-white/10 text-white flex-1"
+          data-testid={testId}
+        />
+        <Button type="button" size="sm" variant="outline"
+          className="border-white/10 text-slate-300 hover:bg-white/10"
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          data-testid={`${testId}-upload`}
+        >
+          {uploading ? "Uploading…" : "Upload"}
+        </Button>
+        <input ref={inputRef} type="file" accept={accept} className="hidden"
+          onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])} />
+      </div>
+      {value && (
+        <img src={value} alt="Preview" className="w-16 h-16 rounded-xl object-cover border border-white/10" data-testid={`${testId}-preview`} />
+      )}
+    </div>
   );
 }
 
@@ -412,17 +629,16 @@ function DigitalCardBuilderInner() {
               <CardContent className="p-6 space-y-4">
                 <h2 className="text-lg font-bold text-white">Photos & Branding</h2>
                 <div>
-                  <Label className="text-slate-300">Profile Photo URL</Label>
-                  <Input value={config.photoUrl} onChange={e => update("photoUrl", e.target.value)} placeholder="https://example.com/photo.jpg" className="bg-white/5 border-white/10 text-white" data-testid="input-photo" />
-                  {config.photoUrl && <img src={config.photoUrl} alt="Preview" className="w-16 h-16 rounded-full object-cover mt-2 border border-white/10" />}
+                  <Label className="text-slate-300">Profile Photo</Label>
+                  <ImagePicker value={config.photoUrl} onChange={v => update("photoUrl", v)} label="Profile photo" testId="input-photo" />
                 </div>
                 <div>
-                  <Label className="text-slate-300">Cover Image URL</Label>
-                  <Input value={config.coverImageUrl} onChange={e => update("coverImageUrl", e.target.value)} placeholder="https://example.com/cover.jpg" className="bg-white/5 border-white/10 text-white" data-testid="input-cover" />
+                  <Label className="text-slate-300">Cover Image</Label>
+                  <ImagePicker value={config.coverImageUrl} onChange={v => update("coverImageUrl", v)} label="Cover image" testId="input-cover" />
                 </div>
                 <div>
-                  <Label className="text-slate-300">Logo URL</Label>
-                  <Input value={config.logoImageUrl} onChange={e => update("logoImageUrl", e.target.value)} placeholder="https://example.com/logo.png" className="bg-white/5 border-white/10 text-white" data-testid="input-logo" />
+                  <Label className="text-slate-300">Logo</Label>
+                  <ImagePicker value={config.logoImageUrl} onChange={v => update("logoImageUrl", v)} label="Logo" testId="input-logo" />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>

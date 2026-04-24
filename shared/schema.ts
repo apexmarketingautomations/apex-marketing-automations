@@ -1258,6 +1258,7 @@ export const digitalCards = pgTable("digital_cards", {
 export const cardAnalyticsEvents = pgTable("card_analytics_events", {
   id: serial("id").primaryKey(),
   cardId: integer("card_id").references(() => digitalCards.id).notNull(),
+  sessionId: text("session_id"),
   eventType: text("event_type").notNull(),
   eventTarget: text("event_target"),
   visitorId: text("visitor_id"),
@@ -1267,8 +1268,36 @@ export const cardAnalyticsEvents = pgTable("card_analytics_events", {
   country: text("country"),
   city: text("city"),
   deviceType: text("device_type"),
+  scrollDepth: integer("scroll_depth"),
+  timeOnPage: integer("time_on_page"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const cardAnalyticsSessions = pgTable("card_analytics_sessions", {
+  id: serial("id").primaryKey(),
+  sessionId: text("session_id").notNull().unique(),
+  cardId: integer("card_id").references(() => digitalCards.id).notNull(),
+  visitorId: text("visitor_id"),
+  referrer: text("referrer"),
+  userAgent: text("user_agent"),
+  deviceType: text("device_type"),
+  browser: text("browser"),
+  country: text("country"),
+  region: text("region"),
+  ipHash: text("ip_hash"),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+  totalTimeMs: integer("total_time_ms").default(0).notNull(),
+  maxScrollDepth: integer("max_scroll_depth").default(0).notNull(),
+  clickCount: integer("click_count").default(0).notNull(),
+  returnVisit: boolean("return_visit").default(false).notNull(),
+  intentScore: integer("intent_score").default(0).notNull(),
+  leadTier: text("lead_tier").default("cold").notNull(),
+});
+
+export const insertCardAnalyticsSessionSchema = createInsertSchema(cardAnalyticsSessions).omit({ id: true, startedAt: true, lastSeenAt: true });
+export type InsertCardAnalyticsSession = z.infer<typeof insertCardAnalyticsSessionSchema>;
+export type CardAnalyticsSession = typeof cardAnalyticsSessions.$inferSelect;
 
 export const insertDigitalCardSchema = createInsertSchema(digitalCards).omit({ id: true, createdAt: true, updatedAt: true }).extend({
   socialLinks: z.array(z.object({
