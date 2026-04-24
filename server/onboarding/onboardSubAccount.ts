@@ -20,6 +20,20 @@ export interface OnboardingResult {
   welcomeSmsStatus: "sent" | "skipped_no_phone" | "failed" | "not_attempted";
 }
 
+export interface OnboardingOptions {
+  skipWelcomeSms?: boolean;
+}
+
+export interface BackfillResult {
+  totalAccounts: number;
+  processed: number;
+  failed: number;
+  totalStagesSeeded: number;
+  totalWorkflowsSeeded: number;
+  totalAiPromptsSeeded: number;
+  perAccount: Array<OnboardingResult | { subAccountId: number; error: string }>;
+}
+
 async function seedDefaults(subAccountId: number) {
   let stagesSeeded = 0;
   let workflowsSeeded = 0;
@@ -109,7 +123,10 @@ async function sendWelcomeSms(subAccountId: number): Promise<OnboardingResult["w
   }
 }
 
-export async function onboardNewSubAccount(subAccountId: number): Promise<OnboardingResult> {
+export async function onboardNewSubAccount(
+  subAccountId: number,
+  options: OnboardingOptions = {},
+): Promise<OnboardingResult> {
   let seedResult: { stagesSeeded: number; workflowsSeeded: number; aiPromptSeeded: boolean };
   try {
     seedResult = await seedDefaults(subAccountId);
@@ -121,7 +138,9 @@ export async function onboardNewSubAccount(subAccountId: number): Promise<Onboar
     throw err;
   }
 
-  const welcomeSmsStatus = await sendWelcomeSms(subAccountId);
+  const welcomeSmsStatus: OnboardingResult["welcomeSmsStatus"] = options.skipWelcomeSms
+    ? "not_attempted"
+    : await sendWelcomeSms(subAccountId);
 
   const result: OnboardingResult = {
     subAccountId,
@@ -137,6 +156,56 @@ export async function onboardNewSubAccount(subAccountId: number): Promise<Onboar
     workflows_seeded: result.workflowsSeeded,
     ai_prompt_seeded: result.aiPromptSeeded,
     welcome_sms_status: result.welcomeSmsStatus,
+  });
+
+  return result;
+}
+
+export async function backfillExistingSubAccounts(): Promise<BackfillResult> {
+  const { storage } = await import("../storage");
+  const allAccounts = await storage.getSubAccounts();
+  const targets = allAccounts.filter((a: any) => a.ownerUserId !== "_archived");
+
+  structuredLog("onboarding_backfill_started", {
+    total_accounts: targets.length,
+  });
+
+  const result: BackfillResult = {
+    totalAccounts: targets.length,
+    processed: 0,
+    failed: 0,
+    totalStagesSeeded: 0,
+    totalWorkflowsSeeded: 0,
+    totalAiPromptsSeeded: 0,
+    perAccount: [],
+  };
+
+  for (const acct of targets) {
+    try {
+      const r = await onboardNewSubAccount(acct.id, { skipWelcomeSms: true });
+      result.processed++;
+      result.totalStagesSeeded += r.stagesSeeded;
+      result.totalWorkflowsSeeded += r.workflowsSeeded;
+      if (r.aiPromptSeeded) result.totalAiPromptsSeeded++;
+      result.perAccount.push(r);
+    } catch (err: any) {
+      result.failed++;
+      const errMsg = err?.message || String(err);
+      result.perAccount.push({ subAccountId: acct.id, error: errMsg });
+      structuredLog("onboarding_backfill_account_failed", {
+        sub_account_id: acct.id,
+        error: errMsg,
+      });
+    }
+  }
+
+  structuredLog("onboarding_backfill_completed", {
+    total_accounts: result.totalAccounts,
+    processed: result.processed,
+    failed: result.failed,
+    total_stages_seeded: result.totalStagesSeeded,
+    total_workflows_seeded: result.totalWorkflowsSeeded,
+    total_ai_prompts_seeded: result.totalAiPromptsSeeded,
   });
 
   return result;

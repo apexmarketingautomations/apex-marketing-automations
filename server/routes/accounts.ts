@@ -6,7 +6,7 @@ import { storage } from "../storage";
 import { insertSubAccountSchema, PLAN_TIERS, subAccounts } from "@shared/schema";
 import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, isApexParentUser, isUserAdmin, SUPPORTED_LANGUAGES } from "./helpers";
 import { emitUniversalEvent, EVENT_TYPES } from "../intelligence/eventEmitter";
-import { onboardNewSubAccount } from "../onboarding/onboardSubAccount";
+import { onboardNewSubAccount, backfillExistingSubAccounts } from "../onboarding/onboardSubAccount";
 
 export function registerAccountRoutes(app: Express) {
   app.get("/api/accounts", asyncHandler(async (req, res) => {
@@ -45,6 +45,35 @@ export function registerAccountRoutes(app: Express) {
   app.get("/api/plan-tiers", (_req, res) => {
     res.json(PLAN_TIERS);
   });
+
+  let backfillRunning = false;
+  app.post("/api/admin/onboarding/backfill", asyncHandler(async (req, res) => {
+    const adminSecret = process.env.STANDALONE_ADMIN_SECRET?.trim();
+    const headerVal = (req.headers["x-admin-secret"] as string | undefined)?.trim();
+    let authorized = false;
+    if (adminSecret && headerVal && headerVal === adminSecret) {
+      authorized = true;
+    } else {
+      const user = (req as any).user;
+      if (user) {
+        const userId = getUserId(user);
+        const adminUserId = process.env.ADMIN_USER_ID;
+        if (adminUserId && userId === adminUserId) authorized = true;
+        else if (await isUserAdmin(user)) authorized = true;
+      }
+    }
+    if (!authorized) return res.status(403).json({ error: "Forbidden" });
+    if (backfillRunning) {
+      return res.status(409).json({ error: "Backfill already in progress" });
+    }
+    backfillRunning = true;
+    try {
+      const result = await backfillExistingSubAccounts();
+      res.json(result);
+    } finally {
+      backfillRunning = false;
+    }
+  }));
 
   app.patch("/api/accounts/:id/plan", asyncHandler(async (req, res) => {
     const user = (req as any).user;
