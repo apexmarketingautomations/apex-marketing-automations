@@ -155,6 +155,7 @@ export const workflows = pgTable("workflows", {
   trigger: text("trigger").notNull(),
   steps: json("steps").notNull(),
   subAccountId: integer("sub_account_id").references(() => subAccounts.id),
+  enabled: boolean("enabled").default(true).notNull(),
 });
 
 export const insertWorkflowSchema = createInsertSchema(workflows).omit({ id: true });

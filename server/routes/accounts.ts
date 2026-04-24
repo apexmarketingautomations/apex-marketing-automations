@@ -6,6 +6,7 @@ import { storage } from "../storage";
 import { insertSubAccountSchema, PLAN_TIERS, subAccounts } from "@shared/schema";
 import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, isApexParentUser, isUserAdmin, SUPPORTED_LANGUAGES } from "./helpers";
 import { emitUniversalEvent, EVENT_TYPES } from "../intelligence/eventEmitter";
+import { onboardNewSubAccount } from "../onboarding/onboardSubAccount";
 
 export function registerAccountRoutes(app: Express) {
   app.get("/api/accounts", asyncHandler(async (req, res) => {
@@ -33,6 +34,11 @@ export function registerAccountRoutes(app: Express) {
       ownerUserId: getUserId(user),
     });
     emitUniversalEvent({ eventType: EVENT_TYPES.ACCOUNT_CREATED, sourceModule: "accounts", subAccountId: account.id, metadata: { name: account.name, industry: account.industry, plan: account.plan } });
+    try {
+      await onboardNewSubAccount(account.id);
+    } catch (err: any) {
+      console.error(JSON.stringify({ event: "onboarding_failed", timestamp: new Date().toISOString(), sub_account_id: account.id, error: err?.message || String(err) }));
+    }
     res.status(201).json(account);
   }));
 
