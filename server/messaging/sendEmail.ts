@@ -82,13 +82,25 @@ async function persistRow(opts: {
 }
 
 /**
- * Resolve the sender address. Currently uses the platform-level
- * SENDGRID_FROM_EMAIL env var. The sub_accounts table has no dedicated
- * email field, so per-account sender addresses are out of scope for
- * this task; document SENDGRID_FROM_EMAIL as the required platform sender.
+ * Resolve the sender address with this precedence:
+ *   1. Explicit per-call override.
+ *   2. The sub-account's own configured fromEmail (set in account settings).
+ *      This MUST be a sender that has been verified inside SendGrid for the
+ *      account, otherwise SendGrid will reject the send.
+ *   3. The platform-level SENDGRID_FROM_EMAIL fallback.
  */
 async function resolveFromAddress(subAccountId: number, override?: string): Promise<string | null> {
   if (override) return override;
+  try {
+    const account = await storage.getSubAccount(subAccountId);
+    const accountFrom = account?.fromEmail?.trim();
+    if (accountFrom) return accountFrom;
+  } catch (err) {
+    console.warn(
+      "[SEND-EMAIL] failed to load sub-account for from-address resolution; falling back to platform sender:",
+      err instanceof Error ? err.message : err,
+    );
+  }
   return process.env.SENDGRID_FROM_EMAIL || null;
 }
 

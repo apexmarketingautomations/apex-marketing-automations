@@ -103,6 +103,7 @@ export const subAccounts = pgTable("sub_accounts", {
   cbProMode: boolean("cb_pro_mode").default(false),
   cbPersonaPrompt: text("cb_persona_prompt"),
   cbWebhookToken: text("cb_webhook_token"),
+  fromEmail: text("from_email"),
 });
 
 export const insertSubAccountSchema = createInsertSchema(subAccounts).omit({ id: true });

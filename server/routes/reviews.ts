@@ -667,9 +667,10 @@ export function registerReviewsRoutes(app: Express) {
     const account = await storage.getSubAccount(id);
     if (!account) return res.status(404).json({ error: "Account not found" });
 
-    const allowedFields = ["name", "ownerPhone", "googleReviewLink", "trustpilotLink", "industry", "vibeTheme", "language", "twilioNumber"] as const;
+    const allowedFields = ["name", "ownerPhone", "googleReviewLink", "trustpilotLink", "industry", "vibeTheme", "language", "twilioNumber", "fromEmail"] as const;
     const validThemes = ["cyber-glass", "midnight-pro", "sunset-warm", "forest-green", "royal-purple"];
     const validLanguages = ["en", "es", "fr", "pt", "de", "zh"];
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     const updates: Record<string, any> = {};
     for (const field of allowedFields) {
@@ -679,6 +680,18 @@ export function registerReviewsRoutes(app: Express) {
         if (field === "vibeTheme" && !validThemes.includes(val)) continue;
         if (field === "language" && !validLanguages.includes(val)) continue;
         if (field === "name" && val.trim().length === 0) continue;
+        if (field === "fromEmail") {
+          const trimmed = val.trim();
+          if (trimmed.length === 0) {
+            updates.fromEmail = null;
+            continue;
+          }
+          if (!emailRe.test(trimmed)) {
+            return res.status(400).json({ error: "fromEmail must be a valid email address" });
+          }
+          updates.fromEmail = trimmed;
+          continue;
+        }
         updates[field] = val.trim();
       }
     }

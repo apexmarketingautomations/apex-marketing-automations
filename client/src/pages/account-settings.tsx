@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Settings, Save, Building2, Phone, Globe, Star, Palette, Languages, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Settings, Save, Building2, Phone, Globe, Star, Palette, Languages, Loader2, CheckCircle2, AlertTriangle, Mail } from "lucide-react";
 import type { SubAccount } from "@shared/schema";
 
 const INDUSTRIES = [
@@ -66,6 +66,7 @@ export default function AccountSettings() {
     industry: "",
     vibeTheme: "cyber-glass",
     language: "en",
+    fromEmail: "",
   });
 
   const { data: accounts = [], isLoading } = useQuery<SubAccount[]>({
@@ -84,6 +85,7 @@ export default function AccountSettings() {
         industry: account.industry || "",
         vibeTheme: account.vibeTheme || "cyber-glass",
         language: account.language || "en",
+        fromEmail: account.fromEmail || "",
       });
     }
   }, [account]);
@@ -110,7 +112,8 @@ export default function AccountSettings() {
     form.googleReviewLink !== (account.googleReviewLink || "") ||
     form.industry !== (account.industry || "") ||
     form.vibeTheme !== (account.vibeTheme || "cyber-glass") ||
-    form.language !== (account.language || "en")
+    form.language !== (account.language || "en") ||
+    form.fromEmail !== (account.fromEmail || "")
   );
 
   if (isLoading) {
@@ -232,6 +235,34 @@ export default function AccountSettings() {
               />
               <p className="text-xs text-slate-500">The phone number used for SMS messaging</p>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-black/40 border-white/10">
+        <CardHeader>
+          <CardTitle className="text-white flex items-center gap-2">
+            <Mail size={18} className="text-sky-400" />
+            Email Sender
+          </CardTitle>
+          <CardDescription className="text-slate-400">
+            The "from" address used when this account sends email
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label className="text-slate-300">From Email Address</Label>
+            <Input
+              type="email"
+              value={form.fromEmail}
+              onChange={e => setForm(f => ({ ...f, fromEmail: e.target.value }))}
+              placeholder="hello@yourbusiness.com"
+              className="bg-neutral-900/50 border-white/10 text-white"
+              data-testid="input-from-email"
+            />
+            <p className="text-xs text-amber-400/80">
+              This address must be verified in SendGrid (Sender Authentication) before sends will succeed. Leave blank to use the platform default sender.
+            </p>
           </div>
         </CardContent>
       </Card>
