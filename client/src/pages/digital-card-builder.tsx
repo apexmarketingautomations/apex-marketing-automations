@@ -176,7 +176,15 @@ interface SessionRow {
   returnVisit: boolean;
   intentScore: number;
   leadTier: "cold" | "warm" | "hot" | string;
+  topAction: string;
 }
+
+const TOP_ACTION_LABEL: Record<string, string> = {
+  save_contact: "Saved Contact", click_booking: "Booking", click_phone: "Called",
+  click_email: "Emailed", click_review: "Review", click_website: "Website",
+  click_link: "Link", click_social: "Social", share: "Shared",
+  qr_scan: "QR Scan", scroll: "Scrolled", view: "Viewed",
+};
 
 function useCardSessions(cardId?: number) {
   return useQuery<{ sessions: SessionRow[] }>({
@@ -308,8 +316,10 @@ function LeadTable({ cardId }: { cardId?: number }) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-[11px] uppercase tracking-wider text-slate-500 border-b border-white/5">
-                  <th className="px-2 py-2">Tier</th>
+                  <th className="px-2 py-2">Visitor</th>
+                  <th className="px-2 py-2">Status</th>
                   <th className="px-2 py-2">Score</th>
+                  <th className="px-2 py-2">Top Action</th>
                   <th className="px-2 py-2">Last Seen</th>
                   <th className="px-2 py-2">Time</th>
                   <th className="px-2 py-2">Scroll</th>
@@ -321,18 +331,22 @@ function LeadTable({ cardId }: { cardId?: number }) {
               <tbody className="text-slate-200">
                 {sessions.map(s => (
                   <tr key={s.id} className="border-b border-white/5 hover:bg-white/[0.03]" data-testid={`row-lead-${s.id}`}>
+                    <td className="px-2 py-2 font-mono text-[11px] text-slate-300" data-testid={`text-visitor-${s.id}`}>
+                      {(s.visitorId || s.sessionId).slice(0, 8)}{s.returnVisit && <span className="ml-1 text-cyan-400" title="Return visit">↻</span>}
+                    </td>
                     <td className="px-2 py-2">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${tierBadge(s.leadTier)}`}>
-                        {s.leadTier}{s.returnVisit ? " · ↻" : ""}
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${tierBadge(s.leadTier)}`} data-testid={`badge-tier-${s.id}`}>
+                        {s.leadTier}
                       </span>
                     </td>
                     <td className="px-2 py-2 font-mono text-white" data-testid={`text-score-${s.id}`}>{s.intentScore}</td>
+                    <td className="px-2 py-2 text-slate-300" data-testid={`text-topaction-${s.id}`}>{TOP_ACTION_LABEL[s.topAction] || s.topAction}</td>
                     <td className="px-2 py-2 text-slate-400">{fmtRelative(s.lastSeenAt)}</td>
                     <td className="px-2 py-2">{fmtDuration(s.totalTimeMs)}</td>
                     <td className="px-2 py-2">{s.maxScrollDepth}%</td>
                     <td className="px-2 py-2">{s.clickCount}</td>
                     <td className="px-2 py-2 text-slate-400 capitalize">{s.deviceType || "—"}{s.browser ? ` · ${s.browser}` : ""}</td>
-                    <td className="px-2 py-2 text-slate-400 truncate max-w-[180px]" title={s.referrer || ""}>
+                    <td className="px-2 py-2 text-slate-400 truncate max-w-[160px]" title={s.referrer || ""}>
                       {referrerHost(s.referrer)}
                     </td>
                   </tr>
@@ -528,6 +542,8 @@ function DigitalCardBuilderInner() {
       )}
 
       <AnalyticsSummary card={config} />
+
+      <LeadTable cardId={config.id} />
 
       <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
         {sections.map(s => (

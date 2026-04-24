@@ -331,49 +331,37 @@ export function registerCardsRoutes(app: Express) {
     res.send(vcard);
   }));
 
+  // Legacy endpoint — thin alias forwarding to the unified session-aware
+  // tracking pipeline (Task #146 stabilization). Accepts the new fields
+  // (sessionId, scrollDepth, timeOnPage) when callers send them.
   app.post("/api/public-card/:slug/event", asyncHandler(async (req, res) => {
-    const slug = req.params.slug.toLowerCase();
-    const [card] = await db.select({ id: digitalCards.id, subAccountId: digitalCards.subAccountId, purchaseId: digitalCards.purchaseId, isActive: digitalCards.isActive, isPublic: digitalCards.isPublic, status: digitalCards.status, paymentStatus: digitalCards.paymentStatus }).from(digitalCards).where(eq(digitalCards.slug, slug)).limit(1);
-    if (!card) return res.status(404).json({ error: "Card not found" });
-    if (!isCardAccessible(card)) return res.status(403).json({ error: "Not available" });
-
-    const { eventType, eventTarget, visitorId } = req.body;
-    if (typeof eventTarget === "string" && eventTarget.length > 500) return res.status(400).json({ error: "eventTarget too long" });
-    if (typeof visitorId === "string" && visitorId.length > 200) return res.status(400).json({ error: "visitorId too long" });
-    const allowed = ["view", "click_phone", "click_email", "click_website", "click_booking",
-      "click_social", "click_link", "click_review", "save_contact", "share", "qr_scan", "form_submit"];
-    if (!allowed.includes(eventType)) return res.status(400).json({ error: "Invalid event type" });
-
-    const ua = req.headers["user-agent"] || "";
-    let deviceType = "desktop";
-    if (/mobile|android|iphone|ipad|ipod/i.test(ua)) deviceType = "mobile";
-    else if (/tablet|ipad/i.test(ua)) deviceType = "tablet";
-
-    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "";
-    const { createHash } = await import("crypto");
-    const ipHash = ip ? createHash("sha256").update(ip).digest("hex").slice(0, 16) : null;
-
-    await db.insert(cardAnalyticsEvents).values({
-      cardId: card.id,
+    const slug = req.params.slug;
+    const { eventType, eventTarget, visitorId, sessionId, scrollDepth, timeOnPage, referrer } = req.body || {};
+    if (typeof slug !== "string" || typeof eventType !== "string") {
+      return res.status(400).json({ error: "slug and eventType required" });
+    }
+    if ((sessionId && String(sessionId).length > 200) || (visitorId && String(visitorId).length > 200)) {
+      return res.status(400).json({ error: "id too long" });
+    }
+    if (typeof eventTarget === "string" && eventTarget.length > 1000) {
+      return res.status(400).json({ error: "eventTarget too long" });
+    }
+    const r = await persistTrackEvent({
+      slug,
+      sessionId: sessionId ? String(sessionId) : null,
+      visitorId: visitorId ? String(visitorId) : null,
       eventType,
-      eventTarget: eventTarget || null,
-      visitorId: visitorId || null,
-      userAgent: ua || null,
-      referrer: req.body.referrer || req.headers.referer || null,
-      ipHash,
-      deviceType,
+      eventTarget: eventTarget ?? null,
+      scrollDepth: typeof scrollDepth === "number" ? scrollDepth : null,
+      timeOnPage: typeof timeOnPage === "number" ? timeOnPage : null,
+      referrer: referrer ?? (req.headers.referer as string | undefined) ?? null,
+      userAgent: (req.headers["user-agent"] as string) || "",
+      ip: (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "",
     });
-
-    if (eventType === "share") {
-      await db.update(digitalCards).set({ shareCount: sql`${digitalCards.shareCount} + 1` }).where(eq(digitalCards.id, card.id));
+    if ("error" in r) {
+      const code = r.error === "not_found" ? 404 : r.error === "unavailable" ? 403 : 400;
+      return res.status(code).json({ error: r.error });
     }
-
-    const evMap: Record<string, string> = { view: EVENT_TYPES.CARD_OPENED, qr_scan: EVENT_TYPES.CARD_SCANNED };
-    const mappedType = evMap[eventType] || EVENT_TYPES.CARD_OPENED;
-    if (card.subAccountId) {
-      emitWithTimeline({ eventType: mappedType, sourceModule: "cards", sourceTable: "card_analytics_events", sourceRecordId: String(card.id), subAccountId: card.subAccountId, metadata: { eventType, eventTarget, deviceType } });
-    }
-
     res.json({ ok: true });
   }));
 
@@ -396,20 +384,24 @@ export function registerCardsRoutes(app: Express) {
     return { deviceType, browser };
   }
 
+  // Deterministic intent score (Task #146 stabilization).
+  //   +40 if totalTime > 20s
+  //   +30 if maxScrollDepth > 75%
+  //   +20 if any contact click (CLICKY_TYPES)
+  //   +10 if returnVisit
+  // Tier: hot ≥ 71, warm 31–70, else cold.
   function computeIntent(opts: {
     totalTimeMs: number;
     maxScrollDepth: number;
     clickCount: number;
     returnVisit: boolean;
   }): { intentScore: number; leadTier: "cold" | "warm" | "hot" } {
-    // Time score: full credit at 90s.
-    const timeScore = Math.min(40, Math.round((opts.totalTimeMs / 90000) * 40));
-    // Scroll score: full credit at 100%.
-    const scrollScore = Math.min(20, Math.round((opts.maxScrollDepth / 100) * 20));
-    // Click score: full credit at 5 clicks.
-    const clickScore = Math.min(30, opts.clickCount * 6);
-    const returnScore = opts.returnVisit ? 10 : 0;
-    const intentScore = Math.max(0, Math.min(100, timeScore + scrollScore + clickScore + returnScore));
+    let s = 0;
+    if (opts.totalTimeMs > 20_000) s += 40;
+    if (opts.maxScrollDepth > 75) s += 30;
+    if (opts.clickCount > 0) s += 20;
+    if (opts.returnVisit) s += 10;
+    const intentScore = Math.min(100, s);
     const leadTier = intentScore >= 71 ? "hot" : intentScore >= 31 ? "warm" : "cold";
     return { intentScore, leadTier };
   }
@@ -484,9 +476,12 @@ export function registerCardsRoutes(app: Express) {
     "click_social", "click_link", "click_review", "save_contact",
     "share", "qr_scan", "form_submit", "copy", "exit",
   ]);
+  // Contact-intent clicks only — counted toward the session "clicks" aggregate
+  // and the +20 intent bonus. share/qr_scan are still recorded as events
+  // (and bump digital_cards.shareCount) but are not contact-intent signals.
   const CLICKY_TYPES = new Set([
     "click_phone", "click_email", "click_website", "click_booking",
-    "click_social", "click_link", "click_review", "save_contact", "share", "qr_scan",
+    "click_social", "click_link", "click_review", "save_contact",
   ]);
 
   async function persistTrackEvent(payload: {
@@ -613,7 +608,30 @@ export function registerCardsRoutes(app: Express) {
       .where(eq(cardAnalyticsSessions.cardId, cardId))
       .orderBy(desc(cardAnalyticsSessions.lastSeenAt))
       .limit(limit);
-    res.json({ sessions });
+
+    // Compute "top action" per session from its events: highest-priority click,
+    // else "scroll" if any scroll milestone, else "view".
+    const sessionIds = sessions.map(s => s.sessionId).filter(Boolean) as string[];
+    const topActionBySession = new Map<string, string>();
+    if (sessionIds.length > 0) {
+      const events = await db.select({ sessionId: cardAnalyticsEvents.sessionId, eventType: cardAnalyticsEvents.eventType })
+        .from(cardAnalyticsEvents)
+        .where(sql`${cardAnalyticsEvents.sessionId} = ANY(${sessionIds})`);
+      const priority: Record<string, number> = {
+        save_contact: 100, click_booking: 90, click_phone: 80, click_email: 70,
+        click_review: 60, click_website: 50, click_link: 40, click_social: 30,
+        share: 25, qr_scan: 20, scroll: 10, view: 1,
+      };
+      for (const ev of events) {
+        const sid = ev.sessionId; if (!sid) continue;
+        const cur = topActionBySession.get(sid);
+        const newRank = priority[ev.eventType] || 0;
+        const curRank = cur ? (priority[cur] || 0) : -1;
+        if (newRank > curRank) topActionBySession.set(sid, ev.eventType);
+      }
+    }
+    const enriched = sessions.map(s => ({ ...s, topAction: topActionBySession.get(s.sessionId) || "view" }));
+    res.json({ sessions: enriched });
   }));
 
   app.get("/api/digital-card/:subAccountId/analytics", asyncHandler(async (req, res) => {
