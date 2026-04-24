@@ -703,7 +703,7 @@ export default function SmsDashboard() {
       direction: "outbound",
       body: sendChannel === "email" ? `${optimisticSubject}\n\n${optimisticBody}` : optimisticBody,
       status: "sending",
-      createdAt: new Date().toISOString() as any,
+      createdAt: new Date(),
       contactPhone: selectedConv.contactPhone,
       channel: sendChannel,
       messageSid: null,
@@ -712,7 +712,7 @@ export default function SmsDashboard() {
       pageId: null,
       senderId: null,
       errorMessage: null,
-    } as unknown as Message;
+    };
     setLiveMessages(prev => [...prev, optimisticRow]);
     try {
       let res: Response;
