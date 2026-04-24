@@ -46,8 +46,19 @@ function useCardTracking(slug: string, active: boolean) {
   const milestonesRef = useRef<Set<number>>(new Set());
   const sessionStartedRef = useRef(false);
 
+  const slugRef = useRef<string>("");
   if (!sessionIdRef.current) sessionIdRef.current = newSessionId();
   if (!visitorIdRef.current) visitorIdRef.current = getOrCreateVisitorId();
+  // If the slug changes mid-mount (e.g. client-side navigation between cards),
+  // rotate the session so we don't reuse a sessionId across cards.
+  if (slug && slugRef.current && slugRef.current !== slug) {
+    sessionIdRef.current = newSessionId();
+    sessionStartedRef.current = false;
+    startedAtRef.current = Date.now();
+    maxScrollRef.current = 0;
+    milestonesRef.current = new Set();
+  }
+  if (slug) slugRef.current = slug;
 
   const sendEvent = useCallback((eventType: string, extras: Record<string, any> = {}) => {
     if (!active || !slug) return;
