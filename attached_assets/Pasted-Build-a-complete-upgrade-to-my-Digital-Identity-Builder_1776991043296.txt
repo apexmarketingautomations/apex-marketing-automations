@@ -1,0 +1,175 @@
+Build a complete upgrade to my “Digital Identity Builder” into a production-grade lead intelligence platform.
+
+1. CORE SYSTEM STRUCTURE
+
+Refactor the app so all card data is stored in a single unified state object and persisted in a backend database.
+
+Card model must include:
+
+fullName
+preferredName
+title
+company
+bio
+location
+profilePhoto
+coverImage
+logo
+brandColor
+accentColor
+theme
+slug
+seoTitle
+seoDescription
+ogImage
+status (draft/published/archived)
+
+Ensure all edits in the builder update live preview immediately and persist correctly on Save.
+
+2. REAL IMAGE UPLOAD SYSTEM
+
+Replace all image URL inputs with file upload functionality.
+
+Users must be able to upload:
+profile photo
+cover image
+logo
+Store images using Cloudinary or Supabase Storage
+Return secure URL and automatically assign it to card state
+Include preview thumbnails after upload
+Add drag & drop support if possible
+3. CARD LAYOUT ENGINE (IMPORTANT)
+
+Build a structured visual card layout system that is used both in preview and public card page (/card/:slug).
+
+Card layout must be:
+
+Header:
+
+Cover image (full width background)
+Profile photo (centered overlapping cover)
+Name + title + location
+
+Body:
+
+Bio section
+Services / info sections (optional toggles)
+
+Footer:
+
+Contact buttons (email, phone, website, social links)
+Branding (logo + brand color accents)
+
+Ensure consistent rendering between builder preview and live public page.
+
+4. THEME SYSTEM
+
+Fix theme selector so it is fully functional:
+
+Clicking a theme updates state.theme
+Selected theme is visually highlighted
+Theme persists in database
+Theme dynamically changes card styling using CSS classes
+
+Themes:
+
+executive
+luxury
+clean
+agency
+gradient
+neutral
+5. SEO SYSTEM
+
+Ensure SEO fields are functional:
+
+seoTitle
+seoDescription
+ogImage
+
+These must:
+
+save to backend
+load on page refresh
+be injected into /card/:slug page meta tags
+correctly appear in Open Graph previews (iMessage, LinkedIn, Twitter)
+6. LEAD INTELLIGENCE ANALYTICS SYSTEM (MAJOR FEATURE)
+
+When someone visits a card page (/card/:slug), create a full analytics tracking system.
+
+Track:
+
+A. SESSION DATA
+
+sessionId (unique per visit)
+cardSlug
+timestamp
+referrer
+device type
+browser
+location (if available)
+
+B. BEHAVIOR EVENTS
+
+page view
+scroll depth (25%, 50%, 75%, 100%)
+time on page
+section views (bio, contact, links)
+button clicks (email, phone, website, social links)
+copy events (if possible)
+
+C. LEAD SCORING SYSTEM
+Create an intent score (0–100):
+
+time on page
+scroll depth
+number of clicks
+return visits
+
+Classify leads:
+
+0–30 = Cold
+31–70 = Warm
+71–100 = Hot Lead
+7. ANALYTICS DASHBOARD
+
+Add analytics UI in builder:
+
+Show:
+
+total views
+unique visitors
+average time on page
+total clicks
+shares
+saves
+
+Add “Lead Table”:
+
+session/visitor
+intent score
+engagement summary
+hot/warm/cold label
+8. REAL-TIME EVENT TRACKING API
+
+Create backend endpoints:
+
+POST /api/track/view
+POST /api/track/event
+POST /api/track/session
+
+Ensure frontend sends events on:
+
+page load
+scroll
+button clicks
+exit
+9. PERFORMANCE + CONSISTENCY
+Ensure builder state, preview, and public card page all use same data source
+Prevent data loss on refresh
+Ensure database is single source of truth
+FINAL GOAL
+
+Turn this from a simple “digital card builder” into a full:
+
+👉 lead capture + analytics + identity + conversion tracking system
