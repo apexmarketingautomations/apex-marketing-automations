@@ -10,6 +10,7 @@ import dns from "dns";
 import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, isUserAdmin } from "./helpers";
 import { emitUniversalEvent, emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
 import { recordOutboundBilling } from "../billing";
+import { getSenderVerificationStatus, requestSenderVerification } from "../messaging/sendEmail";
 
 export function registerReviewsRoutes(app: Express) {
   // ---- Reviews / Reputation Management ----
@@ -698,7 +699,49 @@ export function registerReviewsRoutes(app: Express) {
     if (Object.keys(updates).length === 0) return res.status(400).json({ error: "No valid fields to update" });
     const updated = await storage.updateSubAccount(id, updates);
     if (!updated) return res.status(404).json({ error: "Account not found" });
-    res.json(updated);
+
+    let fromEmailVerification: Awaited<ReturnType<typeof getSenderVerificationStatus>> | undefined;
+    if ("fromEmail" in updates && typeof updates.fromEmail === "string" && updates.fromEmail) {
+      fromEmailVerification = await getSenderVerificationStatus(updates.fromEmail);
+    }
+
+    res.json(fromEmailVerification ? { ...updated, fromEmailVerification } : updated);
+  }));
+
+  // Read-only check the current sub-account from-email's SendGrid status,
+  // used by the UI to refresh the badge without re-saving the form.
+  app.get("/api/accounts/:id/from-email-status", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    const id = parseIntParam(req.params.id, "id");
+    if (!(await verifyAccountOwnership(req, res, id))) return;
+    const account = await storage.getSubAccount(id);
+    if (!account) return res.status(404).json({ error: "Account not found" });
+    const fromEmail = account.fromEmail?.trim() || null;
+    if (!fromEmail) return res.json({ fromEmail: null, verification: null });
+    const verification = await getSenderVerificationStatus(fromEmail);
+    res.json({ fromEmail, verification });
+  }));
+
+  // Kick off SendGrid Single Sender Verification for the configured from email.
+  app.post("/api/accounts/:id/from-email-verify", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    const id = parseIntParam(req.params.id, "id");
+    if (!(await verifyAccountOwnership(req, res, id))) return;
+    const account = await storage.getSubAccount(id);
+    if (!account) return res.status(404).json({ error: "Account not found" });
+    const fromEmail = account.fromEmail?.trim();
+    if (!fromEmail) return res.status(400).json({ error: "No from email is configured for this account." });
+
+    const result = await requestSenderVerification({
+      email: fromEmail,
+      fromName: account.name || undefined,
+      nickname: account.name ? `${account.name} sender` : undefined,
+    });
+    if (!result.ok) return res.status(502).json({ error: result.error });
+    const verification = await getSenderVerificationStatus(fromEmail);
+    res.json({ ok: true, fromEmail, verification });
   }));
 
   // ── Domain Manager ──────────────────────────────────────────

@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Settings, Save, Building2, Phone, Globe, Star, Palette, Languages, Loader2, CheckCircle2, AlertTriangle, Mail } from "lucide-react";
+import { Settings, Save, Building2, Phone, Globe, Star, Palette, Languages, Loader2, CheckCircle2, AlertTriangle, Mail, ShieldCheck, ShieldAlert, ShieldQuestion, MailCheck } from "lucide-react";
 import type { SubAccount } from "@shared/schema";
 
 const INDUSTRIES = [
@@ -90,18 +90,75 @@ export default function AccountSettings() {
     }
   }, [account]);
 
+  type FromEmailVerification =
+    | { state: "verified"; senderId: number }
+    | { state: "pending"; senderId: number }
+    | { state: "not_found" }
+    | { state: "unknown"; reason: string };
+
+  const [fromEmailVerification, setFromEmailVerification] = useState<FromEmailVerification | null>(null);
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!activeAccountId) throw new Error("No account selected");
       const res = await apiRequest("PATCH", `/api/accounts/${activeAccountId}`, form);
-      return res.json();
+      return res.json() as Promise<SubAccount & { fromEmailVerification?: FromEmailVerification }>;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast({ title: "Settings Saved", description: "Your account has been updated." });
       queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
+      // Only update the badge when the save actually carried a fromEmail
+      // change; otherwise leave the existing status (or the auto-load
+      // query) in place so unrelated saves don't blank the badge.
+      if (data.fromEmailVerification) {
+        setFromEmailVerification(data.fromEmailVerification);
+      } else if (!data.fromEmail) {
+        setFromEmailVerification(null);
+      }
     },
     onError: (err: any) => {
       toast({ title: "Save Failed", description: err.message || "Could not save settings.", variant: "destructive" });
+    },
+  });
+
+  // Refresh the verification badge whenever the active account (or its
+  // saved fromEmail) changes — so the operator sees the current SendGrid
+  // status on page load, not just right after save.
+  const savedFromEmail = account?.fromEmail || "";
+  const fromEmailStatusQuery = useQuery<{ fromEmail: string | null; verification: FromEmailVerification | null }>({
+    queryKey: [`/api/accounts/${activeAccountId}/from-email-status`, savedFromEmail],
+    queryFn: async () => {
+      const res = await fetch(`/api/accounts/${activeAccountId}/from-email-status`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`from-email-status returned ${res.status}`);
+      return res.json();
+    },
+    enabled: !!activeAccountId && !!savedFromEmail,
+  });
+  useEffect(() => {
+    if (fromEmailStatusQuery.data?.verification) {
+      setFromEmailVerification(fromEmailStatusQuery.data.verification);
+    } else if (fromEmailStatusQuery.data && !fromEmailStatusQuery.data.fromEmail) {
+      setFromEmailVerification(null);
+    }
+  }, [fromEmailStatusQuery.data]);
+
+  const verifyMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeAccountId) throw new Error("No account selected");
+      const res = await apiRequest("POST", `/api/accounts/${activeAccountId}/from-email-verify`, {});
+      return res.json() as Promise<{ ok: true; verification: FromEmailVerification }>;
+    },
+    onSuccess: (data) => {
+      setFromEmailVerification(data.verification);
+      toast({
+        title: "Verification email sent",
+        description: "Check your inbox at the from-email address and click the SendGrid link to verify.",
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Could not start verification", description: err.message || "SendGrid rejected the request.", variant: "destructive" });
     },
   });
 
@@ -260,9 +317,63 @@ export default function AccountSettings() {
               className="bg-neutral-900/50 border-white/10 text-white"
               data-testid="input-from-email"
             />
-            <p className="text-xs text-amber-400/80">
-              This address must be verified in SendGrid (Sender Authentication) before sends will succeed. Leave blank to use the platform default sender.
+            <p className="text-xs text-slate-500">
+              Leave blank to use the platform default sender. Otherwise this address must be verified in SendGrid before sends will succeed.
             </p>
+
+            {savedFromEmail && (
+              <div className="pt-2" data-testid="from-email-verification-block">
+                {fromEmailStatusQuery.isFetching && !fromEmailVerification && (
+                  <div className="flex items-center gap-2 text-xs text-slate-400" data-testid="status-from-email-checking">
+                    <Loader2 size={14} className="animate-spin" />
+                    Checking SendGrid for verification status…
+                  </div>
+                )}
+
+                {fromEmailVerification?.state === "verified" && (
+                  <div className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300" data-testid="status-from-email-verified">
+                    <ShieldCheck size={16} />
+                    <span>Verified in SendGrid — outbound email from <span className="font-mono">{savedFromEmail}</span> will be delivered.</span>
+                  </div>
+                )}
+
+                {fromEmailVerification?.state === "pending" && (
+                  <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300" data-testid="status-from-email-pending">
+                    <div className="flex items-center gap-2">
+                      <ShieldAlert size={16} />
+                      <span>Verification email sent. Click the link SendGrid emailed to <span className="font-mono">{savedFromEmail}</span> to finish verifying.</span>
+                    </div>
+                  </div>
+                )}
+
+                {fromEmailVerification?.state === "not_found" && (
+                  <div className="space-y-2 rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200" data-testid="status-from-email-not-verified">
+                    <div className="flex items-center gap-2">
+                      <ShieldAlert size={16} />
+                      <span>This address is not verified in SendGrid yet. Sends will fail with a SendGrid 403 until you verify it.</span>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => verifyMutation.mutate()}
+                      disabled={verifyMutation.isPending}
+                      className="bg-rose-600 hover:bg-rose-700 text-white"
+                      data-testid="button-send-verification"
+                    >
+                      {verifyMutation.isPending ? <Loader2 size={14} className="mr-2 animate-spin" /> : <MailCheck size={14} className="mr-2" />}
+                      Send verification email
+                    </Button>
+                  </div>
+                )}
+
+                {fromEmailVerification?.state === "unknown" && (
+                  <div className="flex items-center gap-2 rounded-md border border-slate-500/30 bg-slate-500/10 px-3 py-2 text-xs text-slate-300" data-testid="status-from-email-unknown">
+                    <ShieldQuestion size={14} />
+                    <span>Could not check SendGrid right now: {fromEmailVerification.reason}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
