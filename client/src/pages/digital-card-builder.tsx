@@ -236,7 +236,7 @@ function AnalyticsSummary({ card }: { card: CardConfig }) {
   );
 }
 
-function Stat({ label, value, testId }: { label: string; value: any; testId: string }) {
+function Stat({ label, value, testId }: { label: string; value: string | number; testId: string }) {
   return (
     <div className="text-center p-2 rounded-xl bg-white/5" data-testid={testId}>
       <p className="text-lg font-bold text-white">{value}</p>
@@ -380,8 +380,9 @@ function ImagePicker({ value, onChange, label, accept = "image/*", testId }: {
       if (!url) throw new Error("No URL returned");
       onChange(url);
       toast({ title: "Uploaded", description: `${label} updated.` });
-    } catch (e: any) {
-      toast({ title: "Upload failed", description: e.message, variant: "destructive" });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Upload failed";
+      toast({ title: "Upload failed", description: message, variant: "destructive" });
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = "";

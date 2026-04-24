@@ -538,6 +538,7 @@ export function ShareModal({ card, theme, config, onClose }: {
   const copyLink = () => {
     navigator.clipboard.writeText(cardUrl);
     setCopied(true);
+    config.trackEvent?.("copy", "card_url");
     setTimeout(() => setCopied(false), 2000);
   };
 

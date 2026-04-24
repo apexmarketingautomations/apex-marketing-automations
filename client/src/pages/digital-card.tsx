@@ -14,21 +14,28 @@ import { useCardAdaptation } from "@/hooks/useCardAdaptation";
 
 type FetchState = "loading" | "success" | "not-found" | "unavailable" | "error";
 
+function makeUuid(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `id_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
+
 function getOrCreateVisitorId(): string {
   try {
     let v = localStorage.getItem("card_visitor_id");
     if (!v) {
-      v = (crypto as any).randomUUID ? crypto.randomUUID() : `v_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      v = makeUuid();
       localStorage.setItem("card_visitor_id", v);
     }
     return v;
   } catch {
-    return `v_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    return makeUuid();
   }
 }
 
 function newSessionId(): string {
-  return (crypto as any).randomUUID ? crypto.randomUUID() : `s_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  return makeUuid();
 }
 
 function useCardTracking(slug: string, active: boolean) {
@@ -53,9 +60,9 @@ function useCardTracking(slug: string, active: boolean) {
       ...extras,
     });
     try {
-      if (eventType === "exit" && (navigator as any).sendBeacon) {
+      if (eventType === "exit" && typeof navigator.sendBeacon === "function") {
         const blob = new Blob([body], { type: "application/json" });
-        (navigator as any).sendBeacon("/api/track/event", blob);
+        navigator.sendBeacon("/api/track/event", blob);
         return;
       }
     } catch {}
@@ -130,6 +137,31 @@ function useCardTracking(slug: string, active: boolean) {
   }, [slug, active, sendEvent]);
 
   return trackEvent;
+}
+
+function TrackedSection({
+  name, trackEvent, children,
+}: { name: string; trackEvent: (eventType: string, eventTarget?: string) => void; children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const seenRef = useRef(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || seenRef.current) return;
+    if (typeof IntersectionObserver === "undefined") return;
+    const obs = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting && !seenRef.current) {
+          seenRef.current = true;
+          trackEvent("section_view", name);
+          obs.disconnect();
+          break;
+        }
+      }
+    }, { threshold: 0.5 });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [name, trackEvent]);
+  return <div ref={ref}>{children}</div>;
 }
 
 function applySeoMeta(card: SharedCardData) {
@@ -233,11 +265,25 @@ export default function DigitalCard() {
             onShare={() => { setShowShare(true); trackEvent("share"); }}
             onQR={() => { setShowQR(!showQR); trackEvent("qr_scan"); }} />
           <QRPanel cardUrl={cardUrl} theme={theme} visible={showQR} brandColor={card.brandColor} />
-          {!adaptation.hideAbout && <AboutSection card={card} theme={theme} />}
-          <ServicesSection card={card} theme={theme} />
-          {!adaptation.hideTestimonials && <TestimonialSection card={card} theme={theme} />}
-          <LinksSection card={card} theme={theme} trackEvent={trackEvent} />
-          <SocialLinksSection card={card} theme={theme} trackEvent={trackEvent} />
+          {!adaptation.hideAbout && (
+            <TrackedSection name="about" trackEvent={trackEvent}>
+              <AboutSection card={card} theme={theme} />
+            </TrackedSection>
+          )}
+          <TrackedSection name="services" trackEvent={trackEvent}>
+            <ServicesSection card={card} theme={theme} />
+          </TrackedSection>
+          {!adaptation.hideTestimonials && (
+            <TrackedSection name="testimonials" trackEvent={trackEvent}>
+              <TestimonialSection card={card} theme={theme} />
+            </TrackedSection>
+          )}
+          <TrackedSection name="links" trackEvent={trackEvent}>
+            <LinksSection card={card} theme={theme} trackEvent={trackEvent} />
+          </TrackedSection>
+          <TrackedSection name="social" trackEvent={trackEvent}>
+            <SocialLinksSection card={card} theme={theme} trackEvent={trackEvent} />
+          </TrackedSection>
           <CardFooter config={config} theme={theme} />
         </div>
       </div>
