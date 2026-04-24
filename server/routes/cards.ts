@@ -3,7 +3,7 @@ import { digitalCards, cardAnalyticsEvents, cardAnalyticsSessions } from "@share
 import { db } from "../db";
 import { storage } from "../storage";
 import { eq, sql, and, desc, gte } from "drizzle-orm";
-import crypto from "crypto";
+import { createHash } from "node:crypto";
 import { asyncHandler, parseIntParam, verifyAccountOwnership } from "./helpers";
 import { emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
 
@@ -430,7 +430,7 @@ export function registerCardsRoutes(app: Express) {
     const ua = (req.headers["user-agent"] as string) || "";
     const { deviceType, browser } = parseUaForSession(ua);
     const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "";
-    const ipHash = ip ? crypto.createHash("sha256").update(ip).digest("hex").slice(0, 16) : null;
+    const ipHash = ip ? createHash("sha256").update(ip).digest("hex").slice(0, 16) : null;
     const country = (req.headers["x-vercel-ip-country"] as string) || (req.headers["cf-ipcountry"] as string) || null;
     const region = (req.headers["x-vercel-ip-country-region"] as string) || (req.headers["cf-region"] as string) || null;
 
@@ -505,7 +505,7 @@ export function registerCardsRoutes(app: Express) {
 
     const ua = payload.userAgent || "";
     const { deviceType } = parseUaForSession(ua);
-    const ipHash = payload.ip ? crypto.createHash("sha256").update(payload.ip).digest("hex").slice(0, 16) : null;
+    const ipHash = payload.ip ? createHash("sha256").update(payload.ip).digest("hex").slice(0, 16) : null;
 
     await db.insert(cardAnalyticsEvents).values({
       cardId: card.id,
