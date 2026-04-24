@@ -1692,8 +1692,23 @@ RULES:
   app.use(customDomainMiddleware(renderSiteHtml));
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const rawMessage = err.message || "Internal Server Error";
+    let status = err.status || err.statusCode || 500;
+    let rawMessage = err.message || "Internal Server Error";
+
+    // Translate Postgres unique-violation (Task #143) on the new
+    // (sub_account_id, lower(name)) indexes for pipeline_stages and
+    // workflows into a deterministic 409 with a friendly message,
+    // instead of a generic 500. Other unique-violation paths fall
+    // through to the existing 500 handling.
+    if (err?.code === "23505" && typeof err?.constraint === "string") {
+      if (err.constraint === "pipeline_stages_sub_account_name_uniq") {
+        status = 409;
+        rawMessage = "A pipeline stage with this name already exists for this account.";
+      } else if (err.constraint === "workflows_sub_account_name_uniq") {
+        status = 409;
+        rawMessage = "A workflow with this name already exists for this account.";
+      }
+    }
 
     console.error("Internal Server Error:", err);
     if (status >= 500) {

@@ -1,4 +1,5 @@
 import { pgTable, text, serial, integer, json, jsonb, timestamp, boolean, real, numeric, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -157,7 +158,14 @@ export const workflows = pgTable("workflows", {
   steps: json("steps").notNull(),
   subAccountId: integer("sub_account_id").references(() => subAccounts.id),
   enabled: boolean("enabled").default(true).notNull(),
-});
+}, (table) => ({
+  // Race-safe default seeding (Task #143): two parallel onboarding
+  // callers cannot both insert the same default workflow for the same
+  // sub-account. Case-insensitive to match the seeder's lowercase
+  // dedup semantics.
+  subAccountNameUniq: uniqueIndex("workflows_sub_account_name_uniq")
+    .on(table.subAccountId, sql`lower(${table.name})`),
+}));
 
 export const insertWorkflowSchema = createInsertSchema(workflows).omit({ id: true });
 export type InsertWorkflow = z.infer<typeof insertWorkflowSchema>;
@@ -679,7 +687,14 @@ export const pipelineStages = pgTable("pipeline_stages", {
   name: text("name").notNull(),
   color: text("color").default("#6366f1"),
   position: integer("position").notNull().default(0),
-});
+}, (table) => ({
+  // Race-safe default seeding (Task #143): two parallel onboarding
+  // callers cannot both insert the same default stage for the same
+  // sub-account. Case-insensitive to match the seeder's lowercase
+  // dedup semantics.
+  subAccountNameUniq: uniqueIndex("pipeline_stages_sub_account_name_uniq")
+    .on(table.subAccountId, sql`lower(${table.name})`),
+}));
 
 export const insertPipelineStageSchema = createInsertSchema(pipelineStages).omit({ id: true });
 export type InsertPipelineStage = z.infer<typeof insertPipelineStageSchema>;

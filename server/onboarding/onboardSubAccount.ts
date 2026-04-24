@@ -40,6 +40,13 @@ async function seedDefaults(subAccountId: number) {
   let aiPromptSeeded = false;
 
   await db.transaction(async (tx) => {
+    // Race-safe seeding (Task #143): we still pre-filter against the
+    // current rows for an accurate "stagesSeeded" count, but the real
+    // protection against duplicates is the unique index on
+    // (sub_account_id, lower(name)) — see migration 0014. The
+    // .onConflictDoNothing() clause means a parallel onboarding caller
+    // racing on the same row is silently dropped instead of producing
+    // a duplicate or throwing.
     const existingStages = await tx
       .select({ name: pipelineStages.name })
       .from(pipelineStages)
@@ -49,8 +56,12 @@ async function seedDefaults(subAccountId: number) {
       .filter((s) => !existingStageNames.has(s.name.toLowerCase()))
       .map((s) => ({ subAccountId, name: s.name, position: s.position }));
     if (stagesToInsert.length > 0) {
-      await tx.insert(pipelineStages).values(stagesToInsert);
-      stagesSeeded = stagesToInsert.length;
+      const inserted = await tx
+        .insert(pipelineStages)
+        .values(stagesToInsert)
+        .onConflictDoNothing()
+        .returning({ id: pipelineStages.id });
+      stagesSeeded = inserted.length;
     }
 
     const existingWorkflows = await tx
@@ -68,8 +79,12 @@ async function seedDefaults(subAccountId: number) {
         steps: w.steps,
       }));
     if (workflowsToInsert.length > 0) {
-      await tx.insert(workflows).values(workflowsToInsert);
-      workflowsSeeded = workflowsToInsert.length;
+      const inserted = await tx
+        .insert(workflows)
+        .values(workflowsToInsert)
+        .onConflictDoNothing()
+        .returning({ id: workflows.id });
+      workflowsSeeded = inserted.length;
     }
 
     const [acct] = await tx
