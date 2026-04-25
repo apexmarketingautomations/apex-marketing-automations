@@ -7,7 +7,7 @@ const LAYLA_ACCOUNT_ID = 21;
 
 const APEX_URL = "https://apexmarketingautomations.com/webhook/studio";
 const APEX_SECRET = "7b5e26c8b3460661fd93259674c95107d6951d0e13eb03a29cdb1a44096bd848";
-const MUAPI_BASE = "https://api.muapi.ai/api/v1";
+const MUAPI_BASE = "/api/studio/muapi";
 const CLAUDE_MODEL = "claude-sonnet-4-20250514";
 
 const LAYLA_TRAITS = `Layla is a stunning AI influencer. Mixed Black and White heritage. Warm caramel skin tone. Hazel eyes with golden flecks. Natural curls, sometimes styled or loose. Long lash extensions. Soft glam makeup — never harsh. Approachable yet aspirational. Fashion-forward lifestyle content.`;
@@ -234,7 +234,7 @@ function errorMessage(e: unknown): string {
 async function muapiPost(endpoint: string, body: JsonObject, apiKey: string): Promise<MuapiResult> {
   const res = await fetch(`${MUAPI_BASE}/${endpoint}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-api-key": apiKey },
+    headers: { "Content-Type": "application/json", "x-muapi-key": apiKey },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`muapi ${endpoint}: ${res.status} — ${await res.text()}`);
@@ -244,7 +244,7 @@ async function muapiPost(endpoint: string, body: JsonObject, apiKey: string): Pr
 async function pollResult(predictionId: string, apiKey: string, onProgress?: (n: number) => void, maxAttempts = 150): Promise<MuapiResult> {
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(r => setTimeout(r, 3000));
-    const res = await fetch(`${MUAPI_BASE}/predictions/${predictionId}/result`, { headers: { "x-api-key": apiKey } });
+    const res = await fetch(`${MUAPI_BASE}/predictions/${predictionId}/result`, { headers: { "x-muapi-key": apiKey } });
     const data = (await res.json()) as MuapiResult;
     if (data.status === "succeeded") return data;
     if (data.status === "failed") throw new Error(data.error || "Generation failed");
@@ -256,7 +256,7 @@ async function pollResult(predictionId: string, apiKey: string, onProgress?: (n:
 async function uploadFile(file: File, apiKey: string): Promise<string> {
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch(`${MUAPI_BASE}/upload_file`, { method: "POST", headers: { "x-api-key": apiKey }, body: form });
+  const res = await fetch(`${MUAPI_BASE}/upload_file`, { method: "POST", headers: { "x-muapi-key": apiKey }, body: form });
   if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
   const data = await res.json();
   return data.url || data.file_url;
