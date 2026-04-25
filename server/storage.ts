@@ -385,6 +385,13 @@ export interface IStorage {
   getCrashReports(subAccountId?: number): Promise<CrashReport[]>;
   getUnprocessedLeadCrashReports(subAccountId?: number): Promise<CrashReport[]>;
   markCrashReportAsLead(id: number): Promise<CrashReport | undefined>;
+  getCrashDeliveryStats(subAccountId?: number): Promise<{
+    totalIngested: number;
+    deliveredWithFlhsmv: number;
+    pendingFollowUp: number;
+    awaiting: number;
+    deliveryRatio: number;
+  }>;
 
   getShopifyEvents(subAccountId: number): Promise<ShopifyEvent[]>;
   createShopifyEvent(data: InsertShopifyEvent): Promise<ShopifyEvent>;
@@ -1830,6 +1837,54 @@ export class DatabaseStorage implements IStorage {
       .where(eq(crashReports.id, id))
       .returning();
     return row;
+  }
+
+  /**
+   * Delivery-health snapshot for the crash-report pipeline.
+   *
+   * `deliveredWithFlhsmv` counts rows that actually carry the official FLHSMV
+   * detail payload — either a direct fetch (`data.detail`) OR a sentinel parent
+   * that has been enriched by a follow-up worker (`data.officialFlhsmv.detail`).
+   * That is what lawyers actually need to see populated in the UI.
+   *
+   * If `subAccountId` is provided, all counts are scoped to that sub-account.
+   */
+  async getCrashDeliveryStats(subAccountId?: number) {
+    const scope = subAccountId
+      ? sql`WHERE sub_account_id = ${subAccountId}`
+      : sql``;
+
+    const result = await db.execute(sql`
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (
+          WHERE (data -> 'detail')                IS NOT NULL
+             OR (data -> 'officialFlhsmv' -> 'detail') IS NOT NULL
+        )::int AS delivered,
+        COUNT(*) FILTER (
+          WHERE source = 'sentinel_followup' AND status = 'PENDING'
+        )::int AS pending_followup,
+        COUNT(*) FILTER (WHERE status = 'AWAITING')::int AS awaiting
+      FROM crash_reports
+      ${scope}
+    `);
+
+    const row = result.rows?.[0] as
+      | { total?: number; delivered?: number; pending_followup?: number; awaiting?: number }
+      | undefined;
+
+    const total = Number(row?.total ?? 0);
+    const delivered = Number(row?.delivered ?? 0);
+    const pendingFollowUp = Number(row?.pending_followup ?? 0);
+    const awaiting = Number(row?.awaiting ?? 0);
+
+    return {
+      totalIngested: total,
+      deliveredWithFlhsmv: delivered,
+      pendingFollowUp,
+      awaiting,
+      deliveryRatio: total > 0 ? delivered / total : 0,
+    };
   }
   async getShopifyEvents(subAccountId: number) {
     return db.select().from(shopifyEvents)

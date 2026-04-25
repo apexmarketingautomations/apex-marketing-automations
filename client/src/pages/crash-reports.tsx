@@ -76,6 +76,14 @@ interface CrashReportStoredData {
   detail?: CrashReportData;
   fetchedAt?: string;
   source?: string;
+  // Sentinel parents merge follow-up FLHSMV data here via mergeCrashReportData()
+  officialFlhsmv?: {
+    reportNumber?: string | null;
+    searchResult?: any;
+    detail?: CrashReportData;
+    fetchedAt?: string;
+    followUpReportId?: number;
+  };
 }
 
 interface CrashReportDetail {
@@ -92,13 +100,24 @@ interface CrashReportDetail {
 
 function extractReportData(raw: CrashReportStoredData | CrashReportData | null): CrashReportData | null {
   if (!raw) return null;
+  // 1. Direct FLHSMV fetch path: data.detail
   if ('detail' in raw && raw.detail) return raw.detail as CrashReportData;
+  // 2. Sentinel parent merged with follow-up payload: data.officialFlhsmv.detail
+  if ('officialFlhsmv' in raw && raw.officialFlhsmv && raw.officialFlhsmv.detail) {
+    return raw.officialFlhsmv.detail as CrashReportData;
+  }
+  // 3. Manual submission shorthand: top-level looks like FLHSMV detail
   if ('ReportNumber' in raw) return raw as CrashReportData;
   return null;
 }
 
 function getDataSource(raw: CrashReportStoredData | CrashReportData | null): string {
   if (!raw) return "none";
+  // Sentinel parents that have been enriched via the follow-up worker
+  // should advertise the FLHSMV badge, not their original CAD source.
+  if ('officialFlhsmv' in raw && raw.officialFlhsmv && raw.officialFlhsmv.detail) {
+    return "FLHSMV";
+  }
   if ('source' in raw && raw.source) return raw.source as string;
   return "unknown";
 }
@@ -505,6 +524,42 @@ function ReportDetailView({ reportId, onBack }: { reportId: number; onBack: () =
               </p>
             </div>
           )}
+
+          {d.DiagramUrl && (
+            <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6">
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <FileText size={14} className="text-cyan-400" /> Crash Diagram
+              </h3>
+              <a
+                href={d.DiagramUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 text-cyan-400 hover:text-cyan-300 text-sm font-medium underline underline-offset-2"
+                data-testid="link-crash-diagram"
+              >
+                <ExternalLink size={14} /> Open official FLHSMV diagram
+              </a>
+            </div>
+          )}
+
+          {report.status === "COMPLETED" && (
+            <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6">
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <FileText size={14} className="text-orange-400" /> Full Report Export
+              </h3>
+              <p className="text-slate-400 text-xs mb-3">
+                Download every field FLHSMV returned (including diagram URL and
+                fields not rendered above) as a JSON file.
+              </p>
+              <a
+                href={`/api/crash-reports/${reportId}/download`}
+                className="inline-flex items-center gap-2 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors"
+                data-testid="button-download-full-report"
+              >
+                <Upload size={14} className="rotate-180" /> Download full report (JSON)
+              </a>
+            </div>
+          )}
         </div>
       ) : report.status === "COMPLETED" && !d && (
         <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6 text-center">
@@ -571,6 +626,64 @@ interface FLHSMVHealth {
   totalRequests: number;
   totalSuccesses: number;
   blockedCount: number;
+}
+
+interface DeliveryStats {
+  totalIngested: number;
+  deliveredWithFlhsmv: number;
+  pendingFollowUp: number;
+  awaiting: number;
+  deliveryRatio: number;
+  healthy: boolean;
+  floor: number;
+  scope: "global" | "sub_account";
+  scopedSubAccountId: number | null;
+}
+
+interface CrashHealthResponse {
+  flhsmv: FLHSMVHealth;
+  delivery?: DeliveryStats;
+}
+
+function DeliveryHealthCard({ delivery }: { delivery: DeliveryStats }) {
+  const ratioPct = Math.round(delivery.deliveryRatio * 100);
+  const tone = delivery.healthy
+    ? { bg: "bg-emerald-500/10", border: "border-emerald-500/30", text: "text-emerald-400", label: "Healthy" }
+    : { bg: "bg-amber-500/10", border: "border-amber-500/30", text: "text-amber-400", label: "Below floor" };
+
+  return (
+    <div
+      className={`${tone.bg} border ${tone.border} rounded-2xl p-4 md:p-5 mb-6 md:mb-8`}
+      data-testid="card-delivery-health"
+    >
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <p className="text-xs uppercase tracking-widest text-slate-400 font-bold">
+            Lawyer-Ready Delivery Rate
+          </p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            % of ingested crashes that carry the official FLHSMV detail payload
+          </p>
+        </div>
+        <span
+          className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded ${tone.bg} ${tone.text} border ${tone.border}`}
+          data-testid="badge-delivery-status"
+        >
+          {tone.label}
+        </span>
+      </div>
+      <div className="flex items-end gap-3 flex-wrap">
+        <span className={`text-3xl md:text-4xl font-extrabold ${tone.text}`} data-testid="text-delivery-ratio">
+          {ratioPct}%
+        </span>
+        <span className="text-xs text-slate-500 pb-1.5" data-testid="text-delivery-counts">
+          {delivery.deliveredWithFlhsmv.toLocaleString()} of {delivery.totalIngested.toLocaleString()} ingested ·{" "}
+          {delivery.pendingFollowUp.toLocaleString()} pending follow-ups · floor{" "}
+          {Math.round(delivery.floor * 100)}%
+        </span>
+      </div>
+    </div>
+  );
 }
 
 const SEVERITY_COLORS: Record<string, { bg: string; text: string; border: string; label: string }> = {
@@ -813,7 +926,7 @@ export default function CrashReports() {
     refetchInterval: 3_600_000,
   });
 
-  const { data: health } = useQuery<FLHSMVHealth>({
+  const { data: healthResponse } = useQuery<CrashHealthResponse>({
     queryKey: ["/api/crash-reports/health"],
     queryFn: async () => {
       const res = await fetch("/api/crash-reports/health");
@@ -859,7 +972,8 @@ export default function CrashReports() {
 
   return (
     <div className="p-4 md:p-6 lg:p-10 max-w-6xl mx-auto">
-      {health && <FLHSMVHealthBanner health={health} />}
+      {healthResponse?.flhsmv && <FLHSMVHealthBanner health={healthResponse.flhsmv} />}
+      {healthResponse?.delivery && <DeliveryHealthCard delivery={healthResponse.delivery} />}
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-6 md:mb-8">
         <div className="flex items-center gap-3 mb-2">

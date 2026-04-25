@@ -221,9 +221,15 @@ async function runIngestCycle(
 
       const qualifies = isQualifyingCrash(incident);
 
+      // Sentinel parents start as AWAITING with only the raw CAD ping. They are
+      // ONLY promoted to COMPLETED inside crashReportWorker.processReport when
+      // the matching sentinel_followup job successfully attaches the official
+      // FLHSMV detail (driver, insurance, narrative, diagram) via the atomic
+      // mergeCrashReportData() write. Stamping COMPLETED here would block the
+      // follow-up worker from ever reaching this row — see Task #184.
       const newReport = await storage.createCrashReport({
         reportNumber,
-        status: "COMPLETED",
+        status: "AWAITING",
         source: "sentinel_auto",
         subAccountId: defaultSubAccountId,
         ingestTraceId: traceId,

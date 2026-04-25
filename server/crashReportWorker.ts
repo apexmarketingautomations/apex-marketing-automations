@@ -920,6 +920,11 @@ let workerRunning = false;
 let workerInterval: ReturnType<typeof setInterval> | null = null;
 let tickInProgress = false;
 
+// Run the backlog diagnostic every Nth tick — the worker tick runs frequently
+// and we don't want to spam the logs with the same histogram on every cycle.
+const BACKLOG_LOG_EVERY_N_TICKS = 12;
+let backlogLogTickCounter = 0;
+
 async function probeFlhsmvConnectivity(): Promise<void> {
   try {
     const controller = new AbortController();
@@ -1019,6 +1024,38 @@ export function startCrashReportWorker(): void {
         // Quiet heartbeat so operators can confirm the worker is ticking even
         // when the queue is empty — useful for backlog observability.
         console.log(`[CRASH-WORKER] Tick idle — ${drainResult.stoppedReason}`);
+      }
+
+      // Periodic backlog diagnostic. Without this, operators stare at the
+      // misleading `retry_count = 0` column and conclude the worker isn't
+      // running — when in fact FLHSMV upstream errors increment
+      // `service_failure_count` (NOT retry_count). Logging the failure
+      // histogram makes that distinction obvious in the live logs.
+      backlogLogTickCounter++;
+      if (backlogLogTickCounter % BACKLOG_LOG_EVERY_N_TICKS === 0) {
+        try {
+          const histo = await db.execute(sql`
+            SELECT
+              COUNT(*) FILTER (WHERE source = 'sentinel_followup' AND status = 'PENDING')::int AS pending_followups,
+              COUNT(*) FILTER (WHERE source = 'sentinel_followup' AND status = 'PENDING' AND retry_count = 0 AND COALESCE(service_failure_count, 0) > 0)::int AS pending_with_upstream_failures,
+              COALESCE(MAX(service_failure_count), 0)::int AS max_service_failures,
+              COALESCE(MAX(retry_count), 0)::int AS max_retries
+            FROM crash_reports
+            WHERE source = 'sentinel_followup' AND status = 'PENDING'
+          `);
+          const row = histo.rows?.[0] as
+            | { pending_followups?: number; pending_with_upstream_failures?: number; max_service_failures?: number; max_retries?: number }
+            | undefined;
+          if (row && (row.pending_followups ?? 0) > 0) {
+            console.log(
+              `[CRASH-WORKER] Backlog diag: ${row.pending_followups ?? 0} pending follow-ups, ` +
+              `${row.pending_with_upstream_failures ?? 0} blocked by FLHSMV 5xx (retry_count=0 is expected — upstream errors bump service_failure_count instead). ` +
+              `max(service_failure_count)=${row.max_service_failures ?? 0}, max(retry_count)=${row.max_retries ?? 0}.`
+            );
+          }
+        } catch (diagErr: any) {
+          console.warn("[CRASH-WORKER] Backlog diag query failed:", diagErr?.message);
+        }
       }
     } catch (err: any) {
       console.error("[CRASH-WORKER] Tick error:", err.message);

@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, contacts, deals, appointments, webhooks, messages, subAccounts, sentinelIncidents, sentinelConfig } from "@shared/schema";
+import { insertContactSchema, insertPipelineStageSchema, insertDealSchema, insertAppointmentSchema, insertEmailCampaignSchema, insertWebhookSchema, insertWhiteLabelSettingsSchema, contacts, deals, appointments, webhooks, messages, subAccounts, sentinelIncidents, sentinelConfig, hasFeature } from "@shared/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -1017,11 +1017,35 @@ export function registerPropertyRoutes(app: Express) {
   }));
 
   // ─── FLHSMV Health Check (extended with ingest pipeline stats) ─
-  app.get("/api/crash-reports/health", asyncHandler(async (_req, res) => {
+  // Also returns delivery-health metrics so silent regressions in the
+  // sentinel→FLHSMV→follow-up pipeline are visible the same day.
+  app.get("/api/crash-reports/health", asyncHandler(async (req, res) => {
     const { getFLHSMVHealth } = await import("../crashReportWorker");
     const { getIngestStats } = await import("../crashIngestPipeline");
     const health = getFLHSMVHealth();
     const ingest = getIngestStats();
+
+    // Optional sub-account scoping. If provided, the caller must own the
+    // sub-account — the same rule the rest of the crash routes use.
+    const rawScope = req.query.subAccountId;
+    let scopedSubAccountId: number | undefined;
+    if (typeof rawScope === "string" && rawScope.length > 0) {
+      const id = Number(rawScope);
+      if (!Number.isFinite(id) || id <= 0) {
+        return res.status(400).json({ error: "Invalid subAccountId" });
+      }
+      if (!(await verifyAccountOwnership(req, res, id))) return;
+      scopedSubAccountId = id;
+    }
+
+    const delivery = await storage.getCrashDeliveryStats(scopedSubAccountId);
+    // Flag drops in delivery rate so the next regression is caught fast.
+    const HEALTHY_RATIO_FLOOR = 0.5;
+    const deliveryHealthy =
+      delivery.totalIngested === 0
+        ? true
+        : delivery.deliveryRatio >= HEALTHY_RATIO_FLOOR;
+
     res.json({
       flhsmv: health,
       ingestPipeline: {
@@ -1035,6 +1059,13 @@ export function registerPropertyRoutes(app: Express) {
         consecutiveFailures: ingest.consecutiveFailures,
         totalPolls: ingest.totalPolls,
         recentCycles: ingest.recentCycles,
+      },
+      delivery: {
+        ...delivery,
+        healthy: deliveryHealthy,
+        floor: HEALTHY_RATIO_FLOOR,
+        scope: scopedSubAccountId ? "sub_account" : "global",
+        scopedSubAccountId: scopedSubAccountId ?? null,
       },
     });
   }));
@@ -1204,6 +1235,82 @@ export function registerPropertyRoutes(app: Express) {
       : report.data;
 
     res.json({ ...report, data });
+  }));
+
+  // ─── Download full crash report JSON ─────────────────────────────
+  // Returns the complete `data` payload (including diagram URL and any
+  // field the report-detail UI does not render). Reuses the same access
+  // controls as the report-detail GET — sub-account ownership + sentinel
+  // plan-tier requirement. No admin bypass; no unscoped JSONB queries.
+  app.get("/api/crash-reports/:id/download", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid report id" });
+    }
+
+    const report = await storage.getCrashReport(id);
+    if (!report) return res.status(404).json({ error: "Report not found" });
+
+    // Fail closed: rows without a sub-account are platform-internal (system
+    // ingest, harness, legacy backfill) and must NOT be downloadable through
+    // the tenant-facing endpoint. Without this, any authenticated user could
+    // pull `rawPayload` from cross-tenant or system rows.
+    if (!report.subAccountId) {
+      return res.status(403).json({
+        error: "This report is not downloadable through the tenant API",
+      });
+    }
+
+    if (!(await verifyAccountOwnership(req, res, report.subAccountId))) return;
+
+    // Plan-tier gate: crash-report data is the same feature class as
+    // sentinel — only accounts on a plan that includes sentinel can
+    // download the full payload.
+    const account = await storage.getSubAccount(report.subAccountId);
+    if (!account) return res.status(404).json({ error: "Sub-account not found" });
+    if (!hasFeature(account.plan, "sentinel")) {
+      return res.status(403).json({
+        error: "Full report downloads require a plan with FLHSMV / Sentinel access",
+      });
+    }
+
+    if (report.status !== "COMPLETED") {
+      return res.status(409).json({
+        error: `Report is ${report.status}; full download is only available for COMPLETED reports`,
+      });
+    }
+
+    const data = report.data && typeof report.data === "string"
+      ? JSON.parse(report.data as string)
+      : report.data;
+
+    const safeNumber = String(report.reportNumber ?? `report-${report.id}`)
+      .replace(/[^A-Z0-9._-]/gi, "_");
+    const filename = `crash-report-${safeNumber}.json`;
+
+    const payload = {
+      reportNumber: report.reportNumber,
+      status: report.status,
+      source: report.source,
+      subAccountId: report.subAccountId,
+      requesterRole: report.requesterRole,
+      reason: report.reason,
+      retryCount: report.retryCount,
+      serviceFailureCount: report.serviceFailureCount,
+      createdAt: report.createdAt,
+      updatedAt: report.updatedAt,
+      ingestTraceId: report.ingestTraceId,
+      data,
+      rawPayload: report.rawPayload ?? null,
+    };
+
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.send(JSON.stringify(payload, null, 2));
   }));
 
   app.post("/api/crash-reports/:id/data", asyncHandler(async (req, res) => {
