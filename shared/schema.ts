@@ -2723,7 +2723,10 @@ export const apexModuleCoverage = pgTable("apex_module_coverage", {
   metadata: jsonb("metadata"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
-  coverageLookup: uniqueIndex("amc_lookup").on(table.accountId, table.moduleGroup),
+  // amc_lookup unique index on (account_id, module_group) is created
+  // out-of-band by server/dataMigrations.ts after a dedup pass, because
+  // production has historical duplicate rows that block CREATE UNIQUE INDEX.
+  // Once dedupe has run in every environment, this can be re-added here.
   accountIdx: index("amc_account_idx").on(table.accountId),
 }));
 
