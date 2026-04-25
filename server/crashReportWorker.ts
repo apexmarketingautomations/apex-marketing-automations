@@ -926,6 +926,10 @@ export function startCrashReportWorker(): void {
       const drainResult = await drainQueue();
       if (drainResult.processed > 0) {
         console.log(`[CRASH-WORKER] Tick drained ${drainResult.processed} report(s) across ${drainResult.batches} batch(es) — stopped: ${drainResult.stoppedReason}`);
+      } else {
+        // Quiet heartbeat so operators can confirm the worker is ticking even
+        // when the queue is empty — useful for backlog observability.
+        console.log(`[CRASH-WORKER] Tick idle — ${drainResult.stoppedReason}`);
       }
     } catch (err: any) {
       console.error("[CRASH-WORKER] Tick error:", err.message);

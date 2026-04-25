@@ -1,0 +1,125 @@
+🚨 FIX THEME SYSTEM + COLOR BINDING + CARD LAYOUT (CRITICAL BUG FIX)
+
+The Digital Identity Builder has critical UI issues:
+
+Theme buttons do not change appearance at all
+All color selections render the same visually
+Card layout is misaligned and inconsistent
+Builder preview does not match actual card rendering
+
+This is a state-to-UI binding failure + style override issue.
+
+🧠 1. FIX THEME STATE CONNECTION
+
+Ensure:
+
+card.theme exists in state
+clicking a theme button updates it:
+onClick={() => setCard({ ...card, theme: "executive" })}
+selected theme is visually highlighted
+🎨 2. FORCE THEMES TO ACTUALLY CHANGE UI
+
+Create a STRICT theme map:
+
+const themeStyles = {
+  executive: { bg: "#0f172a", text: "#ffffff" },
+  luxury: { bg: "#1a1a1a", text: "#d4af37" },
+  clean: { bg: "#ffffff", text: "#000000" },
+  agency: { bg: "#06b6d4", text: "#000000" },
+  gradient: { bg: "linear-gradient(to right, purple, pink)", text: "#ffffff" },
+  neutral: { bg: "#f5f5f5", text: "#111111" }
+};
+
+Apply it in card:
+
+const theme = themeStyles[card.theme];
+
+Then:
+
+<div style={{ background: theme.bg, color: theme.text }}>
+⚠️ 3. REMOVE ALL HARDCODED COLORS
+
+Search and REMOVE:
+
+bg-white
+text-black
+bg-gray-*
+any fixed colors
+
+These are overriding your theme.
+
+🧱 4. FIX CARD LAYOUT STRUCTURE
+
+Rebuild layout EXACTLY like this:
+
+<div className="card">
+
+  <div className="cover" />
+
+  <div className="profile-wrapper">
+    <img className="profile" />
+  </div>
+
+  <div className="info">
+    <h1>Name</h1>
+    <p>Title</p>
+    <p>Location</p>
+  </div>
+
+  <div className="bio" />
+
+  <div className="actions" />
+
+</div>
+🎯 5. FIX PROFILE IMAGE POSITION (IMPORTANT)
+
+Use:
+
+.profile-wrapper {
+  position: relative;
+  margin-top: -50px;
+  display: flex;
+  justify-content: center;
+}
+
+.profile {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  border: 4px solid white;
+}
+🔁 6. FORCE BUILDER + PUBLIC CARD TO USE SAME COMPONENT
+
+DO NOT duplicate layout.
+
+Create ONE CardView component
+Use it in:
+builder preview
+/card/:slug
+🧼 7. REMOVE STYLE CONFLICTS
+
+Delete:
+
+duplicate theme logic
+multiple style layers
+conflicting Tailwind + inline styles
+unused CSS
+🧪 8. VERIFY FIX
+
+After fix:
+
+clicking themes visibly changes card immediately
+each theme looks completely different
+color pickers update UI live
+layout is centered and clean
+preview matches live card EXACTLY
+🚫 DO NOT
+do NOT add features
+do NOT touch analytics
+do NOT redesign UI
+
+ONLY fix:
+
+theme logic
+color binding
+layout rendering
