@@ -12,7 +12,7 @@ import { getPriorityActions, getOperatorActionSummary, dismissAction, snoozeActi
 import { getCrossPlatformPatterns, getPlaybookRecommendationsForAccount } from "../intelligence/crossPlatformPatterns";
 import { getSystemHealthReport } from "../intelligence/systemHealthOrchestrator";
 import { approveAction, rollbackAction, markFailed, resumeAction, getActionAuditTrail } from "../autonomy/decisionEngine";
-import { verifyIntelligenceTables, runProductionSeed } from "../intelligence/productionSeed";
+import { verifyIntelligenceTables, runProductionSeed, getLastSeedSnapshot, getLastVerification } from "../intelligence/productionSeed";
 
 function asyncHandler(fn: (req: any, res: any, next: any) => Promise<any>) {
   return (req: any, res: any, next: any) => fn(req, res, next).catch(next);
@@ -596,19 +596,68 @@ export function registerApexIntelligenceRoutes(app: Express) {
   }));
 
   app.get("/api/intelligence/readiness", asyncHandler(async (req, res) => {
-    if (!(await isApexParentUser(req))) {
+    const opUser = (req as any).user;
+    if (!opUser) return res.status(401).json({ error: "Not authenticated" });
+    const opUserId = opUser?.claims?.sub || opUser?.id || opUser?.userId;
+    const isAdmin = process.env.ADMIN_USER_ID && opUserId === process.env.ADMIN_USER_ID;
+    if (!isAdmin && !(await isApexParentUser(opUserId))) {
       return res.status(403).json({ error: "Apex parent access required" });
     }
+
+    const refresh = req.query.refresh === "1" || req.query.refresh === "true";
+    const cachedSnapshot = getLastSeedSnapshot();
+    const cachedVerification = getLastVerification();
+
+    if (!refresh && cachedSnapshot) {
+      return res.json({
+        source: "boot_seed",
+        ranAt: cachedSnapshot.ranAt,
+        verifiedAt: cachedVerification?.ranAt ?? cachedSnapshot.ranAt,
+        ready: cachedSnapshot.ready,
+        results: cachedSnapshot.results,
+        ...cachedSnapshot.verification,
+      });
+    }
+
+    if (!refresh && cachedVerification) {
+      return res.json({
+        source: "cached_verification",
+        verifiedAt: cachedVerification.ranAt,
+        ranAt: null,
+        ready: cachedVerification.result.passed,
+        results: [],
+        ...cachedVerification.result,
+      });
+    }
+
     const verification = await verifyIntelligenceTables();
-    res.json(verification);
+    const fresh = getLastVerification();
+    const snapshot = getLastSeedSnapshot();
+    res.json({
+      source: snapshot ? "boot_seed_revalidated" : "fresh_verification",
+      ranAt: snapshot?.ranAt ?? null,
+      verifiedAt: fresh?.ranAt ?? new Date().toISOString(),
+      ready: snapshot?.ready ?? verification.passed,
+      results: snapshot?.results ?? [],
+      ...verification,
+    });
   }));
 
   app.post("/api/intelligence/production-seed", asyncHandler(async (req, res) => {
-    if (!(await isApexParentUser(req))) {
+    const opUser = (req as any).user;
+    if (!opUser) return res.status(401).json({ error: "Not authenticated" });
+    const opUserId = opUser?.claims?.sub || opUser?.id || opUser?.userId;
+    const isAdmin = process.env.ADMIN_USER_ID && opUserId === process.env.ADMIN_USER_ID;
+    if (!isAdmin && !(await isApexParentUser(opUserId))) {
       return res.status(403).json({ error: "Apex parent access required" });
     }
     const result = await runProductionSeed();
-    res.json(result);
+    const snapshot = getLastSeedSnapshot();
+    res.json({
+      ...result,
+      ranAt: snapshot?.ranAt ?? new Date().toISOString(),
+      verifiedAt: snapshot?.ranAt ?? new Date().toISOString(),
+    });
   }));
 }
 

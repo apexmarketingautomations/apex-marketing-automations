@@ -90,6 +90,34 @@ type OperatorEvent = {
   metadata: Record<string, unknown> | null;
 };
 
+type ReadinessSeedStep = {
+  table: string;
+  status: "exists" | "seeded" | "skipped" | "error";
+  count?: number;
+  message?: string;
+};
+
+type ReadinessTable = {
+  name: string;
+  exists: boolean;
+  rowCount: number;
+};
+
+type ReadinessPayload = {
+  source?: string;
+  ranAt?: string | null;
+  verifiedAt?: string;
+  ready?: boolean;
+  passed?: boolean;
+  results?: ReadinessSeedStep[];
+  tables?: ReadinessTable[];
+  registryStatus?: { moduleGroups: number; eventTypes: number; complete: boolean };
+  policyRulesStatus?: { count: number; hasBlocked: boolean; hasAutoExec: boolean; hasRequireReview: boolean };
+  coverageStatus?: { accountsWithCoverage: number };
+  warnings?: string[];
+  errors?: string[];
+};
+
 type ModuleHealthData = {
   moduleActivity: Record<string, { events24h: number; lastSeen: string | null }>;
   integrationHealth: Record<string, { healthy: number; degraded: number; error: number; disconnected: number }>;
@@ -457,7 +485,7 @@ export default function ApexIntelligenceDashboard() {
     enabled: !!selectedActionId && activeTab === "autonomy",
   });
 
-  const { data: readinessData, isLoading: readinessLoading, refetch: refetchReadiness } = useQuery({
+  const { data: readinessData, isLoading: readinessLoading, isFetching: readinessFetching, refetch: refetchReadiness } = useQuery<ReadinessPayload>({
     queryKey: ["/api/intelligence/readiness"],
     queryFn: async () => {
       const res = await fetch("/api/intelligence/readiness");
@@ -465,6 +493,36 @@ export default function ApexIntelligenceDashboard() {
       return res.json();
     },
     enabled: activeTab === "readiness",
+  });
+
+  const reverifyMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/intelligence/readiness?refresh=1");
+      if (!res.ok) throw new Error("Failed to re-verify");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(["/api/intelligence/readiness"], data);
+      toast({ title: "Re-verified", description: data.ready ? "All checks passed." : `${data.errors?.length || 0} errors, ${data.warnings?.length || 0} warnings.` });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Re-verify failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const reseedMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/intelligence/production-seed", { method: "POST" });
+      if (!res.ok) throw new Error("Failed to re-run seed");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Production seed completed", description: "Reloading verification results." });
+      refetchReadiness();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Re-seed failed", description: err.message, variant: "destructive" });
+    },
   });
 
   const autonomyMutation = useMutation({
@@ -1737,15 +1795,38 @@ export default function ApexIntelligenceDashboard() {
                   <Shield size={16} className="text-indigo-400" />
                   Production Readiness
                 </h3>
-                <Button
-                  data-testid="button-refresh-readiness"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => refetchReadiness()}
-                  className="h-7 text-[10px] border-white/10 bg-white/5 text-slate-300"
-                >
-                  <RefreshCw className="w-3 h-3 mr-1" /> Refresh
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    data-testid="button-refresh-readiness"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => reverifyMutation.mutate()}
+                    disabled={reverifyMutation.isPending || readinessFetching}
+                    className="h-7 text-[10px] border-white/10 bg-white/5 text-slate-300"
+                  >
+                    {(reverifyMutation.isPending || readinessFetching) ? (
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-3 h-3 mr-1" />
+                    )}
+                    Re-verify
+                  </Button>
+                  <Button
+                    data-testid="button-rerun-seed"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => reseedMutation.mutate()}
+                    disabled={reseedMutation.isPending}
+                    className="h-7 text-[10px] border-indigo-500/20 bg-indigo-500/10 text-indigo-200 hover:bg-indigo-500/20"
+                  >
+                    {reseedMutation.isPending ? (
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    ) : (
+                      <Play className="w-3 h-3 mr-1" />
+                    )}
+                    Re-run Seed
+                  </Button>
+                </div>
               </div>
 
               {readinessLoading ? (
@@ -1754,33 +1835,99 @@ export default function ApexIntelligenceDashboard() {
                 </div>
               ) : readinessData ? (
                 <div className="space-y-4">
-                  <Card className={`p-4 border ${readinessData.passed ? "bg-emerald-500/5 border-emerald-500/20" : "bg-red-500/5 border-red-500/20"}`} data-testid="readiness-status-card">
-                    <div className="flex items-center gap-3">
-                      {readinessData.passed ? (
-                        <CheckCircle2 className="w-8 h-8 text-emerald-400" />
-                      ) : (
-                        <AlertTriangle className="w-8 h-8 text-red-400" />
-                      )}
-                      <div>
-                        <p className="text-lg font-bold text-white">
-                          {readinessData.passed ? "System Ready" : "Issues Detected"}
-                        </p>
-                        <p className="text-xs text-slate-400">
-                          {readinessData.passed
-                            ? "All required tables, registries, and policies are verified."
-                            : `${readinessData.errors?.length || 0} errors, ${readinessData.warnings?.length || 0} warnings found.`}
-                        </p>
+                  <Card className={`p-4 border ${(readinessData.ready ?? readinessData.passed) ? "bg-emerald-500/5 border-emerald-500/20" : "bg-red-500/5 border-red-500/20"}`} data-testid="readiness-status-card">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        {(readinessData.ready ?? readinessData.passed) ? (
+                          <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+                        ) : (
+                          <AlertTriangle className="w-8 h-8 text-red-400" />
+                        )}
+                        <div>
+                          <p className="text-lg font-bold text-white" data-testid="text-readiness-headline">
+                            {(readinessData.ready ?? readinessData.passed) ? "System Ready" : "Issues Detected"}
+                          </p>
+                          <p className="text-xs text-slate-400">
+                            {(readinessData.ready ?? readinessData.passed)
+                              ? "All required tables, registries, and policies are verified."
+                              : `${readinessData.errors?.length || 0} errors, ${readinessData.warnings?.length || 0} warnings found.`}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right text-[10px] text-slate-500 space-y-0.5 shrink-0">
+                        {readinessData.ranAt && (
+                          <div data-testid="text-readiness-seed-time">
+                            <span className="text-slate-600">Last seed:</span>{" "}
+                            <span className="text-slate-300 font-mono">{new Date(readinessData.ranAt).toLocaleString()}</span>
+                          </div>
+                        )}
+                        {readinessData.verifiedAt && (
+                          <div data-testid="text-readiness-verified-time">
+                            <span className="text-slate-600">Last verified:</span>{" "}
+                            <span className="text-slate-300 font-mono">{new Date(readinessData.verifiedAt).toLocaleString()}</span>
+                          </div>
+                        )}
+                        {readinessData.source && (
+                          <div>
+                            <Badge variant="secondary" className="text-[9px] h-4">{String(readinessData.source).replace(/_/g, " ")}</Badge>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </Card>
 
+                  {Array.isArray(readinessData.results) && readinessData.results.length > 0 && (
+                    <Card className="bg-white/[0.03] border-white/5 p-4" data-testid="readiness-seed-steps">
+                      <h4 className="text-xs font-bold text-white mb-3 flex items-center gap-2">
+                        <GitBranch size={12} className="text-indigo-400" />
+                        Seed Steps ({readinessData.results.filter((r) => r.status !== "error").length}/{readinessData.results.length})
+                      </h4>
+                      <div className="space-y-1.5">
+                        {readinessData.results.map((step: ReadinessSeedStep, i: number) => {
+                          const isError = step.status === "error";
+                          const isSeeded = step.status === "seeded";
+                          const tone = isError
+                            ? "bg-red-500/5 border-red-500/20 text-red-300"
+                            : isSeeded
+                            ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-200"
+                            : "bg-white/[0.02] border-white/5 text-slate-300";
+                          const Icon = isError ? XCircle : isSeeded ? CheckCircle2 : Info;
+                          const iconColor = isError ? "text-red-400" : isSeeded ? "text-emerald-400" : "text-slate-500";
+                          return (
+                            <div
+                              key={`step-${i}`}
+                              className={`flex items-start gap-2 px-2.5 py-2 rounded border ${tone}`}
+                              data-testid={`seed-step-${step.table}`}
+                            >
+                              <Icon size={12} className={`mt-0.5 shrink-0 ${iconColor}`} />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[11px] font-mono text-white truncate">{step.table}</span>
+                                  <Badge variant={isError ? "destructive" : "secondary"} className="text-[9px] h-4 capitalize shrink-0">
+                                    {step.status}
+                                    {typeof step.count === "number" ? ` · ${step.count}` : ""}
+                                  </Badge>
+                                </div>
+                                {step.message && (
+                                  <p className="text-[10px] text-slate-400 mt-0.5 break-words" data-testid={`seed-step-message-${step.table}`}>
+                                    {step.message}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </Card>
+                  )}
+
                   <Card className="bg-white/[0.03] border-white/5 p-4" data-testid="readiness-tables">
                     <h4 className="text-xs font-bold text-white mb-3 flex items-center gap-2">
                       <Server size={12} className="text-cyan-400" />
-                      Required Tables ({readinessData.tables?.filter((t: any) => t.exists).length}/{readinessData.tables?.length})
+                      Required Tables ({readinessData.tables?.filter((t) => t.exists).length}/{readinessData.tables?.length})
                     </h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                      {readinessData.tables?.map((t: any) => (
+                      {readinessData.tables?.map((t: ReadinessTable) => (
                         <div key={t.name} className="flex items-center justify-between py-1.5 px-2 rounded bg-white/[0.02]" data-testid={`table-status-${t.name}`}>
                           <div className="flex items-center gap-2">
                             {t.exists ? <CheckCircle2 size={12} className="text-emerald-400" /> : <XCircle size={12} className="text-red-400" />}

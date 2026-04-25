@@ -26,6 +26,24 @@ interface VerificationResult {
   errors: string[];
 }
 
+interface SeedSnapshot {
+  ranAt: string;
+  ready: boolean;
+  results: SeedResult[];
+  verification: VerificationResult;
+}
+
+let lastSeedSnapshot: SeedSnapshot | null = null;
+let lastVerification: { ranAt: string; result: VerificationResult } | null = null;
+
+export function getLastSeedSnapshot(): SeedSnapshot | null {
+  return lastSeedSnapshot;
+}
+
+export function getLastVerification(): { ranAt: string; result: VerificationResult } | null {
+  return lastVerification;
+}
+
 const REQUIRED_TABLES = [
   "universal_events",
   "entity_identity_map",
@@ -166,6 +184,15 @@ export async function verifyIntelligenceTables(): Promise<VerificationResult> {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[APEX-SEED] Failed to verify module coverage data:", err);
     result.warnings.push(`Could not verify module coverage data: ${message}`);
+  }
+
+  lastVerification = { ranAt: new Date().toISOString(), result };
+  if (lastSeedSnapshot) {
+    lastSeedSnapshot = {
+      ...lastSeedSnapshot,
+      verification: result,
+      ready: result.passed && !lastSeedSnapshot.results.some(r => r.status === "error"),
+    };
   }
 
   return result;
@@ -337,6 +364,8 @@ export async function runProductionSeed(): Promise<{
   console.log(`[APEX-SEED] Registry: ${verification.registryStatus.moduleGroups} groups, ${verification.registryStatus.eventTypes} events`);
   console.log(`[APEX-SEED] Policy rules: ${verification.policyRulesStatus.count} rules`);
   console.log(`[APEX-SEED] Coverage: ${verification.coverageStatus.accountsWithCoverage} accounts`);
+
+  lastSeedSnapshot = { ranAt: new Date().toISOString(), ready, results, verification };
 
   return { results, verification, ready };
 }
