@@ -1762,6 +1762,16 @@ RULES:
       log(`serving on port ${port}`);
 
       try {
+        const { runDataMigrations } = await import("./dataMigrations");
+        await runDataMigrations();
+      } catch (dataMigrationErr) {
+        console.error(
+          "[STARTUP] Data migrations failed (continuing — productionSeed may also fail):",
+          dataMigrationErr instanceof Error ? dataMigrationErr.message : dataMigrationErr,
+        );
+      }
+
+      try {
         const { runProductionSeed } = await import("./intelligence/productionSeed");
         const seedResult = await runProductionSeed();
         if (!seedResult.ready) {
