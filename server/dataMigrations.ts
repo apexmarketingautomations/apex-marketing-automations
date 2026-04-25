@@ -54,6 +54,16 @@ export async function runDataMigrations(): Promise<void> {
     return;
   }
 
+  // Only auto-apply in production. In dev, the schema is the source of
+  // truth and these out-of-band fixes are not needed (run them manually
+  // via scripts/run-data-migrations.ts if you really want them on dev).
+  if (process.env.NODE_ENV !== "production") {
+    console.log(
+      `[DATA-MIGRATIONS] skipping in NODE_ENV=${process.env.NODE_ENV ?? "<unset>"} — runs only in production`,
+    );
+    return;
+  }
+
   try {
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS _data_migrations (
