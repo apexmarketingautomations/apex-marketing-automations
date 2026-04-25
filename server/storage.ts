@@ -1793,10 +1793,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async recoverFailedCrashReports(maxRetries: number) {
+    // Bug #2 root-cause fix: previously this method reset
+    // serviceFailureCount=0 but did NOT increment retryCount, so a job that
+    // hit MAX_SERVICE_FAILURES would cycle FAILED → PENDING → FAILED forever
+    // with retry_count permanently stuck at 0. That made operators conclude
+    // the worker wasn't running ("retry_count=0 means it never tried") when
+    // in fact it had tried hundreds of times against an upstream that was
+    // returning 5xx. Bumping retryCount on each recovery makes the
+    // `retryCount < maxRetries` guard actually terminate the loop and makes
+    // the column meaningful in operator dashboards.
     const result = await db.update(crashReports)
       .set({
         status: "PENDING",
         serviceFailureCount: 0,
+        retryCount: sql`${crashReports.retryCount} + 1`,
         errorLog: null,
         lockedAt: null,
         lockedBy: null,
@@ -1842,41 +1852,67 @@ export class DatabaseStorage implements IStorage {
   /**
    * Delivery-health snapshot for the crash-report pipeline.
    *
-   * `deliveredWithFlhsmv` counts rows that actually carry the official FLHSMV
-   * detail payload — either a direct fetch (`data.detail`) OR a sentinel parent
-   * that has been enriched by a follow-up worker (`data.officialFlhsmv.detail`).
-   * That is what lawyers actually need to see populated in the UI.
+   * Numerator/denominator semantics — what lawyers actually need:
+   *   - DENOMINATOR (`totalIngested`): sentinel-ingested PARENT rows
+   *     (`source = 'sentinel_auto'`). Follow-up child jobs and harness/
+   *     manual rows are excluded so the ratio reflects "real crashes
+   *     ingested" not pipeline bookkeeping.
+   *   - NUMERATOR  (`deliveredWithFlhsmv`): the same sentinel parents that
+   *     have been enriched with the official FLHSMV detail payload via a
+   *     successful follow-up merge (`data->'officialFlhsmv'->'detail'`).
+   *
+   * `pendingFollowUp` is the live backlog of follow-up child jobs the
+   * worker still needs to drain — separate from the parent ratio.
+   * `awaiting` is the count of sentinel parents still waiting for any
+   * FLHSMV detail at all (covers the "stamped AWAITING by ingest" bucket).
    *
    * If `subAccountId` is provided, all counts are scoped to that sub-account.
    */
   async getCrashDeliveryStats(subAccountId?: number) {
     const scope = subAccountId
-      ? sql`WHERE sub_account_id = ${subAccountId}`
+      ? sql`AND sub_account_id = ${subAccountId}`
+      : sql``;
+    const followUpScope = subAccountId
+      ? sql`AND sub_account_id = ${subAccountId}`
       : sql``;
 
     const result = await db.execute(sql`
       SELECT
-        COUNT(*)::int AS total,
+        -- Sentinel-parent denominator: only true ingested crashes.
         COUNT(*) FILTER (
-          WHERE (data -> 'detail')                IS NOT NULL
-             OR (data -> 'officialFlhsmv' -> 'detail') IS NOT NULL
-        )::int AS delivered,
+          WHERE source = 'sentinel_auto'
+        )::int AS total_parents,
+        -- Sentinel parents that carry the official FLHSMV payload.
+        COUNT(*) FILTER (
+          WHERE source = 'sentinel_auto'
+            AND (data -> 'officialFlhsmv' -> 'detail') IS NOT NULL
+        )::int AS delivered_parents,
+        -- Sentinel parents still waiting for FLHSMV detail.
+        COUNT(*) FILTER (
+          WHERE source = 'sentinel_auto'
+            AND status = 'AWAITING'
+        )::int AS awaiting_parents,
+        -- Live follow-up backlog (child jobs).
         COUNT(*) FILTER (
           WHERE source = 'sentinel_followup' AND status = 'PENDING'
-        )::int AS pending_followup,
-        COUNT(*) FILTER (WHERE status = 'AWAITING')::int AS awaiting
+        )::int AS pending_followup
       FROM crash_reports
-      ${scope}
+      WHERE 1 = 1 ${scope}
     `);
 
     const row = result.rows?.[0] as
-      | { total?: number; delivered?: number; pending_followup?: number; awaiting?: number }
+      | { total_parents?: number; delivered_parents?: number; awaiting_parents?: number; pending_followup?: number }
       | undefined;
 
-    const total = Number(row?.total ?? 0);
-    const delivered = Number(row?.delivered ?? 0);
+    // followUpScope is only used in the inline COUNT FILTER above; declared
+    // separately so future variants of this query can scope follow-ups
+    // independently from parents without rewriting the WHERE clause.
+    void followUpScope;
+
+    const total = Number(row?.total_parents ?? 0);
+    const delivered = Number(row?.delivered_parents ?? 0);
+    const awaiting = Number(row?.awaiting_parents ?? 0);
     const pendingFollowUp = Number(row?.pending_followup ?? 0);
-    const awaiting = Number(row?.awaiting ?? 0);
 
     return {
       totalIngested: total,
