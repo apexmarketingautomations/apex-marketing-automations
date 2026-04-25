@@ -52,6 +52,19 @@ Apex Marketing Automations is a multi-tenant SaaS platform designed to centraliz
   builds fail if violations exist). For local pre-commit enforcement,
   enable the bundled hook: `git config core.hooksPath .githooks`.
 
+- **Accidental secret-print checker** (`scripts/check-secret-logs.mjs`):
+  Scans `server/` and fails when a `console.log/info/warn/error/debug`
+  call would print the literal value of an env var whose name contains
+  `SECRET`, `TOKEN`, `API_KEY`, `PASSWORD`, or `PIN`. Tracks taint through
+  simple variable assignments and through wrapper functions that return
+  `process.env.<MATCH>`. Allows boolean coercions (`!!SECRET`), length
+  checks (`SECRET?.length`), comparisons (`x === SECRET`), masked
+  substrings (`TOKEN.substring(0, 8)`), and any line/block carrying an
+  inline `// allow-secret-log: <reason>` justification. Runs as the
+  second step of `script/build.ts`, in the bundled pre-commit hook, and
+  exists as the `secret-logs` validation command. Added in Task #175 as
+  a permanent guard for the regression fixed in Task #172.
+
 ## Data Migrations
 
 For one-off SQL fixes that must run BEFORE drizzle's schema sync (e.g. a

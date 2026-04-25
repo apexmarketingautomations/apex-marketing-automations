@@ -48,8 +48,24 @@ function checkSilentCatches() {
   }
 }
 
+function checkSecretLogs() {
+  console.log("checking for accidental secret prints in server/ logs...");
+  const result = spawnSync("node", ["scripts/check-secret-logs.mjs"], {
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    console.error(
+      "build aborted: env-secret values appear in console output (see above). " +
+        "Print only a masked form / boolean / length, or add an explicit " +
+        "`// allow-secret-log: <reason>` comment on the offending line.",
+    );
+    process.exit(result.status ?? 1);
+  }
+}
+
 async function buildAll() {
   checkSilentCatches();
+  checkSecretLogs();
 
   await rm("dist", { recursive: true, force: true });
 

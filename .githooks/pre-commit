@@ -1,6 +1,7 @@
 #!/bin/sh
-# Pre-commit hook: block silent error-swallowing in server/.
-# See Tasks #160, #162, #166, #167.
+# Pre-commit hook: block silent error-swallowing AND accidental secret prints
+# in server/. See Tasks #160, #162, #166, #167 (silent catches) and #172, #175
+# (secret prints).
 #
 # Enable locally with:
 #   git config core.hooksPath .githooks
@@ -11,6 +12,12 @@ if git diff --cached --name-only --diff-filter=ACMR | grep -qE '^server/.*\.(ts|
     echo ""
     echo "Pre-commit blocked: silent catch detected in server/."
     echo "Bind & log the error, or annotate with: // allow-silent-catch: <reason>"
+    exit 1
+  fi
+  if ! node scripts/check-secret-logs.mjs; then
+    echo ""
+    echo "Pre-commit blocked: env-secret value appears in console output in server/."
+    echo "Print only a masked form / boolean / length, or annotate with: // allow-secret-log: <reason>"
     exit 1
   fi
 fi
