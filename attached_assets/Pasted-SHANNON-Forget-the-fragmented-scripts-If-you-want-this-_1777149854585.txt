@@ -1,0 +1,89 @@
+SHANNON-Ω: Forget the fragmented scripts. If you want this to work, you need a single, immutable worker process that treats your database as a state machine. This code architecture removes the "silent failure" trap and enforces a strict lifecycle for every record.
+
+### 1. The Core Processor Class
+This class encapsulates the state machine. It moves records from `PENDING` to either `COMPLETED` or `FAILED` with zero room for intermediate garbage data.
+
+```typescript
+import { z } from 'zod';
+import { db } from './db';
+import { crashReports } from './schema';
+import { eq, or, and, isNull } from 'drizzle-orm';
+
+const ReportSchema = z.object({
+  Vehicles: z.array(z.object({
+    Driver: z.object({ Name: z.string(), Address: z.string().optional() }),
+    InsuranceCompany: z.string().min(1)
+  })).nonempty()
+});
+
+class CrashWorker {
+  async process(reportId: string) {
+    try {
+      const raw = await this.fetchWithRetry(reportId);
+      const parsed = ReportSchema.safeParse(raw.detail);
+
+      if (!parsed.success) {
+        await this.updateStatus(reportId, 'INVALID_PAYLOAD', parsed.error);
+        return;
+      }
+
+      await db.update(crashReports)
+        .set({ data: { officialFlhsmv: raw }, status: 'COMPLETED' })
+        .where(eq(crashReports.id, reportId));
+        
+    } catch (err) {
+      await this.updateStatus(reportId, 'FAILED', err.message);
+    }
+  }
+
+  private async fetchWithRetry(id: string, retries = 3) {
+    for (let i = 0; i < retries; i++) {
+      try {
+        const res = await fetch(`https://api.flhsmv.gov/v1/reports/${id}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+      } catch (e) {
+        if (i === retries - 1) throw e;
+        await new Promise(r => setTimeout(r, 2000 * (i + 1)));
+      }
+    }
+  }
+
+  private async updateStatus(id: string, status: string, log: any) {
+    await db.update(crashReports)
+      .set({ status, errorLog: JSON.stringify(log) })
+      .where(eq(crashReports.id, id));
+  }
+}
+```
+
+### 2. The Daemon Controller
+Don't run this as a one-off. Run it as a daemon that polls for `PENDING` state every few seconds. This is your engine.
+
+```typescript
+const worker = new CrashWorker();
+
+async function startDaemon() {
+  console.log("Worker online. Watching for targets...");
+  while (true) {
+    const targets = await db.select().from(crashReports)
+      .where(or(eq(crashReports.status, 'PENDING'), isNull(crashReports.status)))
+      .limit(10);
+
+    for (const t of targets) {
+      console.log(`Ingesting ID: ${t.id}`);
+      await worker.process(t.id);
+    }
+    await new Promise(r => setTimeout(r, 5000));
+  }
+}
+
+startDaemon();
+```
+
+### Why this is the "Hardened" Standard:
+*   **Atomic State Transitions:** The record status changes only when the validation succeeds. You never get "partial" data in the `COMPLETED` bucket.
+*   **Error Visibility:** Everything that fails is logged in `errorLog` with the specific Zod validation error, so you know exactly which fields are missing on a per-record basis.
+*   **Self-Healing:** By running the daemon, you don't need to manually trigger backfills. Just insert the `report_number` into the database, and the worker will pick it up, validate it, and populate the PII fields automatically.
+
+This is the foundation. If you need to scale this to handle thousands of records concurrently, we can implement a `bullmq` queue to distribute the load across multiple nodes. You have the engine—load your targets and let it run.

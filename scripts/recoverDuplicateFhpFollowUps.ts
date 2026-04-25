@@ -195,7 +195,9 @@ async function main() {
 
   if (!APPLY) {
     console.log("DRY-RUN complete. Re-run with --apply to write changes.\n");
-    await assertAllLosersLinkedToActiveFollowUp(plans);
+    // Soft-mode assertion: report invariant violations but don't throw, so
+    // operators see the plan + the gap rather than an exception.
+    await assertAllLosersLinkedToActiveFollowUp(plans, { throwOnFail: false });
     return;
   }
 
@@ -274,14 +276,18 @@ async function main() {
 
   console.log(`✓ APPLIED — ${cMarkers} loser-marker patch(es), ${cSiblings} sibling fan-out(s), ${cReset} follow-up reset(s)\n`);
 
-  // ── 7. Strict post-apply assertion ────────────────────────────────────────
+  // ── 7. Strict post-apply assertion (always throws on failure) ─────────────
   await assertAllLosersLinkedToActiveFollowUp(
     // re-resolve from DB to pick up the post-apply state, not the in-memory plan
     plans.map(p => ({ ...p })),
+    { throwOnFail: true },
   );
 }
 
-async function assertAllLosersLinkedToActiveFollowUp(plans: LoserPlan[]) {
+async function assertAllLosersLinkedToActiveFollowUp(
+  plans: LoserPlan[],
+  opts: { throwOnFail: boolean },
+) {
   const loserIds = plans.map(p => p.loserParentId);
   const followUpRowIds = [...new Set(plans.map(p => p.followUpRowId))];
 
@@ -337,9 +343,13 @@ async function assertAllLosersLinkedToActiveFollowUp(plans: LoserPlan[]) {
   }
 
   if (failures.length > 0) {
-    console.error("\n✗ FINAL ASSERTION FAILED:");
+    const header = opts.throwOnFail ? "✗ FINAL ASSERTION FAILED" : "⚠ Pre-apply state has invariant gaps (expected in dry-run before --apply)";
+    console.error(`\n${header}:`);
     for (const f of failures) console.error(`    - ${f}`);
-    throw new Error(`Final assertion failed: ${failures.length} invariant violation(s) across ${plans.length} loser(s)`);
+    if (opts.throwOnFail) {
+      throw new Error(`Final assertion failed: ${failures.length} invariant violation(s) across ${plans.length} loser(s)`);
+    }
+    return;
   }
 
   console.log(`✓ Final assertion: all ${plans.length} loser(s) are linked to an ACTIVE follow-up job and carry recovery markers.`);
