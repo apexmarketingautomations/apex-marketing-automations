@@ -5,13 +5,20 @@ const FLHSMV_BASE = "https://services.flhsmv.gov";
 const FLHSMV_HOME = `${FLHSMV_BASE}/crashreportrequest/`;
 const FLHSMV_SEARCH_URL = `${FLHSMV_BASE}/CRRService/api/CrashReport/SearchReport`;
 const FLHSMV_DETAIL_URL = `${FLHSMV_BASE}/CRRService/api/CrashReport/GetReport`;
-const WORKER_INTERVAL_MS = 3_600_000;
+const WORKER_INTERVAL_MS = 5 * 60 * 1000;
 const MAX_RETRIES = 5;
 const MAX_SERVICE_FAILURES = 20;
 // FLHSMV official reports can take up to 10 days to appear after a crash
 const MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 const COOLDOWN_DURATION_MS = 2 * 60 * 1000;
-const MAX_CONCURRENT = 2;
+const MAX_CONCURRENT = 5;
+// Within a single tick, keep pulling fresh batches until either the queue is
+// drained, FLHSMV health degrades, or we hit this cap (defence-in-depth so a
+// runaway tick can't run forever and overlap with the next interval fire).
+// 50 batches × MAX_CONCURRENT (5) = up to 250 jobs per tick.
+const MAX_BATCHES_PER_TICK = 50;
+// Small pause between batches so we are not hammering FLHSMV back-to-back.
+const INTER_BATCH_DELAY_MS = 500;
 const SESSION_TTL_MS = 5 * 60 * 1000;
 const STUCK_JOB_TIMEOUT_MINUTES = 15;
 const WORKER_ID = crypto.randomUUID().slice(0, 8);
@@ -769,6 +776,46 @@ async function processBatch(): Promise<number> {
   return locked.length;
 }
 
+/**
+ * Pull batches back-to-back within a single tick until the queue is drained,
+ * FLHSMV health degrades to "blocked"/"down", or we hit MAX_BATCHES_PER_TICK.
+ *
+ * This is what lets the worker chew through a multi-thousand-row PENDING
+ * backlog in a reasonable time. Each batch is bounded by MAX_CONCURRENT,
+ * health is re-checked between batches, and a partial batch (queue exhausted)
+ * exits the loop early — so a healthy idle worker still does at most one
+ * cheap DB lookup per tick.
+ */
+async function drainQueue(): Promise<{ processed: number; batches: number; stoppedReason: string }> {
+  let processed = 0;
+  let batches = 0;
+  for (let i = 0; i < MAX_BATCHES_PER_TICK; i++) {
+    const status = healthStatus.status;
+    if (status === "blocked" || status === "down") {
+      cooldownUntil = Date.now() + COOLDOWN_DURATION_MS;
+      return { processed, batches, stoppedReason: `FLHSMV health degraded to ${status} mid-drain` };
+    }
+
+    const count = await processBatch();
+    if (count === 0) {
+      return { processed, batches, stoppedReason: "queue empty" };
+    }
+    processed += count;
+    batches += 1;
+
+    // A short batch means getAndLockPendingReports could not fill MAX_CONCURRENT
+    // — the queue is exhausted, no point spinning the loop again.
+    if (count < MAX_CONCURRENT) {
+      return { processed, batches, stoppedReason: "queue exhausted" };
+    }
+
+    if (i < MAX_BATCHES_PER_TICK - 1) {
+      await new Promise((resolve) => setTimeout(resolve, INTER_BATCH_DELAY_MS));
+    }
+  }
+  return { processed, batches, stoppedReason: `max batches per tick reached (${MAX_BATCHES_PER_TICK})` };
+}
+
 async function runRecoverySweep(): Promise<void> {
   try {
     const recovered = await storage.recoverFailedCrashReports(MAX_RETRIES);
@@ -782,6 +829,7 @@ async function runRecoverySweep(): Promise<void> {
 
 let workerRunning = false;
 let workerInterval: ReturnType<typeof setInterval> | null = null;
+let tickInProgress = false;
 
 async function probeFlhsmvConnectivity(): Promise<void> {
   try {
@@ -815,6 +863,14 @@ export function startCrashReportWorker(): void {
   probeFlhsmvConnectivity().catch((err) => console.warn("[CRASHREPORTWORKER] promise rejected:", err instanceof Error ? err.message : err));
 
   const tick = async () => {
+    // Re-entrance guard: with the shorter tick interval and per-tick drain
+    // loop, a slow FLHSMV pass could otherwise overlap with the next interval
+    // fire and double-process from a stale lock view.
+    if (tickInProgress) {
+      console.log("[CRASH-WORKER] Tick skipped — previous tick still running");
+      return;
+    }
+    tickInProgress = true;
     try {
       const currentStatus = healthStatus.status;
       const wasUnhealthy = previousHealthStatus !== "ok";
@@ -830,8 +886,23 @@ export function startCrashReportWorker(): void {
       }
 
       if (currentStatus === "down" || currentStatus === "blocked") {
-        cooldownUntil = Date.now() + COOLDOWN_DURATION_MS;
-        console.log(`[CRASH-WORKER] FLHSMV is ${currentStatus}, cooldown until ${new Date(cooldownUntil).toISOString()}`);
+        // Liveness fix: only re-arm cooldown if it has already expired. Otherwise
+        // a steady stream of "down" ticks would keep pushing cooldownUntil into
+        // the future and the worker would never get a chance to probe again.
+        if (Date.now() >= cooldownUntil) {
+          cooldownUntil = Date.now() + COOLDOWN_DURATION_MS;
+          // Demote to "degraded" so the *next* tick is allowed to actually run a
+          // batch (the bail-out below only triggers on "down"/"blocked"). If FLHSMV
+          // is still angry, the next failed call inside processReport() will call
+          // recordFailure() and bump status back to "down"/"blocked" — and the
+          // drain loop's mid-drain bailout will reset cooldownUntil again. That
+          // gives us a self-healing one-probe-per-cooldown cycle instead of the
+          // permanent stall we'd otherwise get after a single transient outage.
+          healthStatus.status = "degraded";
+          console.log(`[CRASH-WORKER] FLHSMV was ${currentStatus}, cooldown until ${new Date(cooldownUntil).toISOString()} — demoted to degraded so next tick can probe`);
+        } else {
+          console.log(`[CRASH-WORKER] FLHSMV is ${currentStatus}, cooldown until ${new Date(cooldownUntil).toISOString()}`);
+        }
         previousHealthStatus = currentStatus;
         return;
       }
@@ -852,9 +923,14 @@ export function startCrashReportWorker(): void {
       if (reset > 0) {
         console.log(`[CRASH-WORKER] Reset ${reset} stuck job(s) older than ${STUCK_JOB_TIMEOUT_MINUTES}m`);
       }
-      await processBatch();
+      const drainResult = await drainQueue();
+      if (drainResult.processed > 0) {
+        console.log(`[CRASH-WORKER] Tick drained ${drainResult.processed} report(s) across ${drainResult.batches} batch(es) — stopped: ${drainResult.stoppedReason}`);
+      }
     } catch (err: any) {
       console.error("[CRASH-WORKER] Tick error:", err.message);
+    } finally {
+      tickInProgress = false;
     }
   };
 
