@@ -2723,16 +2723,30 @@ export const apexModuleCoverage = pgTable("apex_module_coverage", {
   metadata: jsonb("metadata"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
-  // amc_lookup unique index on (account_id, module_group) is created
-  // out-of-band by server/dataMigrations.ts after a dedup pass, because
-  // production has historical duplicate rows that block CREATE UNIQUE INDEX.
-  // Once dedupe has run in every environment, this can be re-added here.
+  // amc_lookup unique index is created in production by
+  // server/dataMigrations.ts after a one-time dedup pass. It is also
+  // declared here so drizzle-kit recognises it as part of the schema
+  // and does not generate a destructive DROP INDEX during deployments.
+  // On environments where the index does not yet exist, drizzle will
+  // create it (safe — production has been deduped, dev is duplicate-free).
   accountIdx: index("amc_account_idx").on(table.accountId),
+  accountModuleUnique: uniqueIndex("amc_lookup").on(table.accountId, table.moduleGroup),
 }));
 
 export const insertApexModuleCoverageSchema = createInsertSchema(apexModuleCoverage).omit({ id: true, updatedAt: true });
 export type InsertApexModuleCoverage = z.infer<typeof insertApexModuleCoverageSchema>;
 export type ApexModuleCoverage = typeof apexModuleCoverage.$inferSelect;
+
+// Tracking table for one-shot server-side data migrations executed by
+// server/dataMigrations.ts on production boot. Declared here so that
+// drizzle-kit recognises it as part of the schema and does not generate
+// a destructive DROP TABLE during deployments. Created at runtime via
+// CREATE TABLE IF NOT EXISTS in dataMigrations.ts; this declaration just
+// keeps the schema diff clean.
+export const dataMigrationsTracking = pgTable("_data_migrations", {
+  name: text("name").primaryKey(),
+  appliedAt: timestamp("applied_at", { withTimezone: true }).defaultNow().notNull(),
+});
 
 export const integrationHealthState = pgTable("integration_health_state", {
   id: serial("id").primaryKey(),
