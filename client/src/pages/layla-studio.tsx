@@ -195,7 +195,21 @@ type Asset = {
   model?: string;
 };
 
-type FaceRef = { url: string; preview: string } | null;
+type FaceRef = { file: File; preview: string } | null;
+
+const faceUploadCache = new WeakMap<File, Promise<string>>();
+
+async function ensureFaceUploaded(face: { file: File }): Promise<string> {
+  let pending = faceUploadCache.get(face.file);
+  if (!pending) {
+    pending = uploadFile(face.file).catch(err => {
+      faceUploadCache.delete(face.file);
+      throw err;
+    });
+    faceUploadCache.set(face.file, pending);
+  }
+  return pending;
+}
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 type JsonObject = { [key: string]: JsonValue };
@@ -424,7 +438,6 @@ function TabLayla({ laylaFace, setLaylaFace, laylaPrompt, setLaylaPrompt }: { la
   const [scene, setScene] = useState("");
   const [extras, setExtras] = useState("");
   const [building, setBuilding] = useState(false);
-  const [uploading, setUploading] = useState(false);
 
   async function buildPrompt() {
     setBuilding(true);
@@ -433,13 +446,8 @@ function TabLayla({ laylaFace, setLaylaFace, laylaPrompt, setLaylaPrompt }: { la
     setBuilding(false);
   }
 
-  async function uploadFace(file: File) {
-    setUploading(true);
-    try {
-      const url = await uploadFile(file);
-      setLaylaFace({ url, preview: URL.createObjectURL(file) });
-    } catch (e) { console.error(e); }
-    setUploading(false);
+  function uploadFace(file: File) {
+    setLaylaFace({ file, preview: URL.createObjectURL(file) });
   }
 
   return (
@@ -450,7 +458,7 @@ function TabLayla({ laylaFace, setLaylaFace, laylaPrompt, setLaylaPrompt }: { la
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             {laylaFace ? <img className="face-thumb" src={laylaFace.preview} alt="Layla" /> : <div className="face-placeholder">✦</div>}
             <div style={{ flex: 1 }}>
-              <UploadZone onFile={uploadFace} accept="image/*" label={uploading ? "Uploading..." : laylaFace ? "Replace face reference" : "Upload Layla's best front-facing photo"} />
+              <UploadZone onFile={uploadFace} accept="image/*" label={laylaFace ? "Replace face reference" : "Upload Layla's best front-facing photo"} />
             </div>
           </div>
           {laylaFace && <div className="success-box" style={{ marginTop: 12 }}>✓ Face locked — auto-applies to all generations</div>}
@@ -532,10 +540,11 @@ function TabImages({ laylaFace, laylaPrompt, addToLibrary }: { laylaFace: FaceRe
       let imageUrl = extractUrl(result);
       const modelLabel = IMAGE_MODELS.find(m => m.id === model)?.label || model;
 
-      if (laylaFace?.url && imageUrl) {
+      if (laylaFace && imageUrl) {
         setStatus("Locking face...");
         setProgress(65);
-        const swap = await muapiPost("ai-image-face-swap", { target_image: imageUrl, source_image: laylaFace.url });
+        const sourceImage = await ensureFaceUploaded(laylaFace);
+        const swap = await muapiPost("ai-image-face-swap", { target_image: imageUrl, source_image: sourceImage });
         const swapResult = await pollResult(swap.id, p => setProgress(65 + p * 0.35));
         imageUrl = extractUrl(swapResult) || imageUrl;
       }
@@ -626,9 +635,10 @@ function TabVideo({ laylaFace, laylaPrompt, library, addToLibrary }: { laylaFace
         videoUrl = extractUrl(result);
       }
 
-      if (laylaFace?.url && videoUrl) {
+      if (laylaFace && videoUrl) {
         setStatus("Locking face..."); setProgress(78);
-        const swap = await muapiPost("ai-video-face-swap", { target_video: videoUrl, source_image: laylaFace.url });
+        const sourceImage = await ensureFaceUploaded(laylaFace);
+        const swap = await muapiPost("ai-video-face-swap", { target_video: videoUrl, source_image: sourceImage });
         const swapResult = await pollResult(swap.id, p => setProgress(78 + p * 0.22));
         videoUrl = extractUrl(swapResult) || videoUrl;
       }
@@ -694,6 +704,12 @@ function TabVideo({ laylaFace, laylaPrompt, library, addToLibrary }: { laylaFace
             </select>
           </div>
         </div>
+        {laylaFace && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <img src={laylaFace.preview} style={{ width: 22, height: 22, borderRadius: "50%", border: "1px solid var(--gold)", objectFit: "cover" }} />
+            <span style={{ color: "var(--gold)", fontSize: 10 }}>Face reference will auto-apply</span>
+          </div>
+        )}
         <button className="btn btn-gold btn-full" onClick={generate} disabled={generating || !prompt} data-testid="button-generate-video">{generating ? "Generating..." : "✦ Generate Video"}</button>
         {generating && <GeneratingStatus status={status} progress={progress} />}
         {error && <div className="error-box" style={{ marginTop: 10 }}>{error}</div>}
