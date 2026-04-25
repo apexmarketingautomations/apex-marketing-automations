@@ -1,4 +1,3 @@
-// TODO: Move Anthropic/MuAPI calls behind a server proxy in a follow-up task.
 import { useState, useRef, useCallback, useEffect, type ChangeEvent, type DragEvent, type KeyboardEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { useActiveSubAccountId } from "@/components/account-required";
@@ -7,7 +6,7 @@ const LAYLA_ACCOUNT_ID = 21;
 
 const APEX_PROXY_URL = "/api/studio/apex";
 const MUAPI_BASE = "/api/studio/muapi";
-const CLAUDE_MODEL = "claude-sonnet-4-20250514";
+const CLAUDE_PROXY_URL = "/api/studio/claude/messages";
 
 const LAYLA_TRAITS = `Layla is a stunning AI influencer. Mixed Black and White heritage. Warm caramel skin tone. Hazel eyes with golden flecks. Natural curls, sometimes styled or loose. Long lash extensions. Soft glam makeup — never harsh. Approachable yet aspirational. Fashion-forward lifestyle content.`;
 
@@ -276,30 +275,36 @@ function extractUrl(result: MuapiResult | null | undefined): string | null {
   return null;
 }
 
-async function claudeCaption(prompt: string, platform: string): Promise<string> {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+async function claudeMessages(maxTokens: number, content: string): Promise<string> {
+  const res = await fetch(CLAUDE_PROXY_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: CLAUDE_MODEL, max_tokens: 1000,
-      messages: [{ role: "user", content: `Write an engaging ${platform} caption for AI influencer Layla's post. Content: "${prompt}". Write a captivating caption with relevant emojis, a soft CTA mentioning her Telegram (t.me/LaylasLifeee), and 10–15 relevant hashtags. Warm, aspirational, on-brand. Return ONLY the caption text.` }]
-    })
+      max_tokens: maxTokens,
+      messages: [{ role: "user", content }],
+    }),
   });
+  if (!res.ok) {
+    let detail = "";
+    try { detail = (await res.json())?.error || ""; } catch { detail = await res.text(); }
+    throw new Error(`Claude proxy ${res.status}${detail ? `: ${detail}` : ""}`);
+  }
   const data = await res.json();
   return data.content?.[0]?.text || "";
 }
 
+async function claudeCaption(prompt: string, platform: string): Promise<string> {
+  return claudeMessages(
+    1000,
+    `Write an engaging ${platform} caption for AI influencer Layla's post. Content: "${prompt}". Write a captivating caption with relevant emojis, a soft CTA mentioning her Telegram (t.me/LaylasLifeee), and 10–15 relevant hashtags. Warm, aspirational, on-brand. Return ONLY the caption text.`,
+  );
+}
+
 async function claudePrompt(scene: string, extras: string): Promise<string> {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: CLAUDE_MODEL, max_tokens: 400,
-      messages: [{ role: "user", content: `Write a vivid, detailed image generation prompt for Layla, an AI influencer. Character: ${LAYLA_TRAITS}. Scene: "${scene}". ${extras ? `Details: ${extras}` : ""}. Focus on lighting, mood, outfit, setting. Return ONLY the prompt.` }]
-    })
-  });
-  const data = await res.json();
-  return data.content?.[0]?.text || "";
+  return claudeMessages(
+    400,
+    `Write a vivid, detailed image generation prompt for Layla, an AI influencer. Character: ${LAYLA_TRAITS}. Scene: "${scene}". ${extras ? `Details: ${extras}` : ""}. Focus on lighting, mood, outfit, setting. Return ONLY the prompt.`,
+  );
 }
 
 async function sendToApex(payload: JsonObject): Promise<JsonObject> {
