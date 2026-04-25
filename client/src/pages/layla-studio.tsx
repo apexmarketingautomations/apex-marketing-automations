@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, type ChangeEvent, type DragEvent, type KeyboardEvent } from "react";
+import { useState, useRef, useCallback, useEffect, type ChangeEvent, type DragEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { useActiveSubAccountId } from "@/components/account-required";
 
@@ -75,23 +75,10 @@ const css = `
     display: flex; flex-direction: column; height: 100vh; overflow: hidden;
   }
 
-  .studio-root .login-wrap { display: flex; align-items: center; justify-content: center; height: 100vh; }
-  .studio-root .login-card { width: 420px; padding: 48px; border: 1px solid var(--border2); border-radius: var(--radius2); background: var(--surface); }
-  .studio-root .login-logo { font-family: 'Cormorant Garamond', serif; font-size: 44px; font-weight: 300; color: var(--gold); letter-spacing: 5px; text-align: center; margin-bottom: 6px; }
-  .studio-root .login-sub { text-align: center; color: var(--text3); font-size: 11px; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 40px; }
-  .studio-root .login-label { display: block; color: var(--text2); font-size: 10px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
-  .studio-root .login-input { width: 100%; background: var(--surface2); border: 1px solid var(--border2); color: var(--text); font-family: 'DM Mono', monospace; font-size: 12px; padding: 12px 14px; border-radius: var(--radius); outline: none; margin-bottom: 20px; }
-  .studio-root .login-input:focus { border-color: var(--gold); }
-  .studio-root .login-btn { width: 100%; background: var(--gold); color: #000; font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 500; letter-spacing: 2px; text-transform: uppercase; padding: 14px; border: none; border-radius: var(--radius); cursor: pointer; transition: opacity 0.2s; }
-  .studio-root .login-btn:hover { opacity: 0.85; }
-  .studio-root .login-hint { text-align: center; color: var(--text3); font-size: 10px; margin-top: 16px; }
-  .studio-root .login-hint a { color: var(--gold); text-decoration: none; }
-
   .studio-root .header { display: flex; align-items: center; justify-content: space-between; padding: 0 24px; height: 52px; border-bottom: 1px solid var(--border); flex-shrink: 0; background: var(--surface); }
   .studio-root .header-logo { font-family: 'Cormorant Garamond', serif; font-size: 22px; font-weight: 400; color: var(--gold); letter-spacing: 3px; }
   .studio-root .header-badge { background: var(--gold-dim); border: 1px solid var(--gold); color: var(--gold); font-size: 9px; letter-spacing: 2px; text-transform: uppercase; padding: 3px 8px; border-radius: 100px; }
   .studio-root .header-right { display: flex; align-items: center; gap: 16px; }
-  .studio-root .header-key { color: var(--text3); font-size: 10px; }
   .studio-root .signout-btn { background: none; border: 1px solid var(--border2); color: var(--text3); font-family: 'DM Mono', monospace; font-size: 10px; padding: 5px 10px; border-radius: var(--radius); cursor: pointer; }
   .studio-root .signout-btn:hover { color: var(--text); border-color: var(--text3); }
 
@@ -229,20 +216,20 @@ function errorMessage(e: unknown): string {
   return "Unknown error";
 }
 
-async function muapiPost(endpoint: string, body: JsonObject, apiKey: string): Promise<MuapiResult> {
+async function muapiPost(endpoint: string, body: JsonObject): Promise<MuapiResult> {
   const res = await fetch(`${MUAPI_BASE}/${endpoint}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-muapi-key": apiKey },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`muapi ${endpoint}: ${res.status} — ${await res.text()}`);
   return res.json() as Promise<MuapiResult>;
 }
 
-async function pollResult(predictionId: string, apiKey: string, onProgress?: (n: number) => void, maxAttempts = 150): Promise<MuapiResult> {
+async function pollResult(predictionId: string, onProgress?: (n: number) => void, maxAttempts = 150): Promise<MuapiResult> {
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(r => setTimeout(r, 3000));
-    const res = await fetch(`${MUAPI_BASE}/predictions/${predictionId}/result`, { headers: { "x-muapi-key": apiKey } });
+    const res = await fetch(`${MUAPI_BASE}/predictions/${predictionId}/result`);
     const data = (await res.json()) as MuapiResult;
     if (data.status === "succeeded") return data;
     if (data.status === "failed") throw new Error(data.error || "Generation failed");
@@ -251,10 +238,10 @@ async function pollResult(predictionId: string, apiKey: string, onProgress?: (n:
   throw new Error("Timed out waiting for result");
 }
 
-async function uploadFile(file: File, apiKey: string): Promise<string> {
+async function uploadFile(file: File): Promise<string> {
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch(`${MUAPI_BASE}/upload_file`, { method: "POST", headers: { "x-muapi-key": apiKey }, body: form });
+  const res = await fetch(`${MUAPI_BASE}/upload_file`, { method: "POST", body: form });
   if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
   const data = await res.json();
   return data.url || data.file_url;
@@ -433,7 +420,7 @@ function ApexModal({ asset, onClose, onSuccess }: { asset: Asset; onClose: () =>
   );
 }
 
-function TabLayla({ laylaFace, setLaylaFace, laylaPrompt, setLaylaPrompt, apiKey }: { laylaFace: FaceRef; setLaylaFace: (f: FaceRef) => void; laylaPrompt: string; setLaylaPrompt: (s: string) => void; apiKey: string }) {
+function TabLayla({ laylaFace, setLaylaFace, laylaPrompt, setLaylaPrompt }: { laylaFace: FaceRef; setLaylaFace: (f: FaceRef) => void; laylaPrompt: string; setLaylaPrompt: (s: string) => void }) {
   const [scene, setScene] = useState("");
   const [extras, setExtras] = useState("");
   const [building, setBuilding] = useState(false);
@@ -449,7 +436,7 @@ function TabLayla({ laylaFace, setLaylaFace, laylaPrompt, setLaylaPrompt, apiKey
   async function uploadFace(file: File) {
     setUploading(true);
     try {
-      const url = await uploadFile(file, apiKey);
+      const url = await uploadFile(file);
       setLaylaFace({ url, preview: URL.createObjectURL(file) });
     } catch (e) { console.error(e); }
     setUploading(false);
@@ -521,7 +508,7 @@ function TabLayla({ laylaFace, setLaylaFace, laylaPrompt, setLaylaPrompt, apiKey
   );
 }
 
-function TabImages({ laylaFace, laylaPrompt, apiKey, addToLibrary }: { laylaFace: FaceRef; laylaPrompt: string; apiKey: string; addToLibrary: (a: Asset) => void }) {
+function TabImages({ laylaFace, laylaPrompt, addToLibrary }: { laylaFace: FaceRef; laylaPrompt: string; addToLibrary: (a: Asset) => void }) {
   const [prompt, setPrompt] = useState("");
   const [model, setModel] = useState("flux-dev-image");
   const [shotType, setShotType] = useState("Portrait");
@@ -539,17 +526,17 @@ function TabImages({ laylaFace, laylaPrompt, apiKey, addToLibrary }: { laylaFace
     setGenerating(true); setError(""); setProgress(0);
     try {
       setStatus("Generating image...");
-      const gen = await muapiPost(model, { prompt: `${prompt}, ${shotType.toLowerCase()} shot`, aspect_ratio: aspectRatio }, apiKey);
+      const gen = await muapiPost(model, { prompt: `${prompt}, ${shotType.toLowerCase()} shot`, aspect_ratio: aspectRatio });
       setProgress(30);
-      const result = await pollResult(gen.id, apiKey, setProgress);
+      const result = await pollResult(gen.id, setProgress);
       let imageUrl = extractUrl(result);
       const modelLabel = IMAGE_MODELS.find(m => m.id === model)?.label || model;
 
       if (laylaFace?.url && imageUrl) {
         setStatus("Locking face...");
         setProgress(65);
-        const swap = await muapiPost("ai-image-face-swap", { target_image: imageUrl, source_image: laylaFace.url }, apiKey);
-        const swapResult = await pollResult(swap.id, apiKey, p => setProgress(65 + p * 0.35));
+        const swap = await muapiPost("ai-image-face-swap", { target_image: imageUrl, source_image: laylaFace.url });
+        const swapResult = await pollResult(swap.id, p => setProgress(65 + p * 0.35));
         imageUrl = extractUrl(swapResult) || imageUrl;
       }
 
@@ -601,7 +588,7 @@ function TabImages({ laylaFace, laylaPrompt, apiKey, addToLibrary }: { laylaFace
   );
 }
 
-function TabVideo({ laylaFace, laylaPrompt, apiKey, library, addToLibrary }: { laylaFace: FaceRef; laylaPrompt: string; apiKey: string; library: Asset[]; addToLibrary: (a: Asset) => void }) {
+function TabVideo({ laylaFace, laylaPrompt, library, addToLibrary }: { laylaFace: FaceRef; laylaPrompt: string; library: Asset[]; addToLibrary: (a: Asset) => void }) {
   const [mode, setMode] = useState<"t2v" | "i2v">("t2v");
   const [prompt, setPrompt] = useState("");
   const [sourceAsset, setSourceAsset] = useState<Asset | null>(null);
@@ -628,21 +615,21 @@ function TabVideo({ laylaFace, laylaPrompt, apiKey, library, addToLibrary }: { l
 
       if (mode === "t2v") {
         setStatus("Generating video...");
-        const gen = await muapiPost(selectedModel, { prompt, aspect_ratio: aspectRatio, duration }, apiKey);
-        const result = await pollResult(gen.id, apiKey, p => setProgress(p * 0.75));
+        const gen = await muapiPost(selectedModel, { prompt, aspect_ratio: aspectRatio, duration });
+        const result = await pollResult(gen.id, p => setProgress(p * 0.75));
         videoUrl = extractUrl(result);
       } else {
         if (!sourceAsset) { setError("Select a source image first"); setGenerating(false); return; }
         setStatus("Animating image...");
-        const gen = await muapiPost(selectedModel, { prompt, image_url: sourceAsset.url, aspect_ratio: aspectRatio, duration }, apiKey);
-        const result = await pollResult(gen.id, apiKey, p => setProgress(p * 0.75));
+        const gen = await muapiPost(selectedModel, { prompt, image_url: sourceAsset.url, aspect_ratio: aspectRatio, duration });
+        const result = await pollResult(gen.id, p => setProgress(p * 0.75));
         videoUrl = extractUrl(result);
       }
 
       if (laylaFace?.url && videoUrl) {
         setStatus("Locking face..."); setProgress(78);
-        const swap = await muapiPost("ai-video-face-swap", { target_video: videoUrl, source_image: laylaFace.url }, apiKey);
-        const swapResult = await pollResult(swap.id, apiKey, p => setProgress(78 + p * 0.22));
+        const swap = await muapiPost("ai-video-face-swap", { target_video: videoUrl, source_image: laylaFace.url });
+        const swapResult = await pollResult(swap.id, p => setProgress(78 + p * 0.22));
         videoUrl = extractUrl(swapResult) || videoUrl;
       }
 
@@ -717,7 +704,7 @@ function TabVideo({ laylaFace, laylaPrompt, apiKey, library, addToLibrary }: { l
   );
 }
 
-function TabCinema({ apiKey, library, addToLibrary }: { apiKey: string; library: Asset[]; addToLibrary: (a: Asset) => void }) {
+function TabCinema({ library, addToLibrary }: { library: Asset[]; addToLibrary: (a: Asset) => void }) {
   const [mode, setMode] = useState<"motion" | "vfx">("motion");
   const [sourceAsset, setSourceAsset] = useState<Asset | null>(null);
   const [motionModel, setMotionModel] = useState("kling-v2.6-pro-motion-control");
@@ -741,11 +728,11 @@ function TabCinema({ apiKey, library, addToLibrary }: { apiKey: string; library:
       setStatus(`Applying ${effect}...`);
       let gen: MuapiResult;
       if (mode === "motion") {
-        gen = await muapiPost(motionModel, { image_url: sourceAsset.url, motion_type: motion, prompt }, apiKey);
+        gen = await muapiPost(motionModel, { image_url: sourceAsset.url, motion_type: motion, prompt });
       } else {
-        gen = await muapiPost("generate_wan_ai_effects", { image_url: sourceAsset.url, effect, prompt }, apiKey);
+        gen = await muapiPost("generate_wan_ai_effects", { image_url: sourceAsset.url, effect, prompt });
       }
-      const result = await pollResult(String(gen.prediction_id ?? gen.id ?? ""), apiKey, setProgress);
+      const result = await pollResult(String(gen.prediction_id ?? gen.id ?? ""), setProgress);
       const url = extractUrl(result);
       const asset: Asset = { type: "video", url: url || "", prompt: `${effect} — ${prompt}`, faceSwapped: false, model: effect };
       setResults(r => [asset, ...r]);
@@ -814,7 +801,7 @@ function TabCinema({ apiKey, library, addToLibrary }: { apiKey: string; library:
   );
 }
 
-function TabLipsync({ apiKey, library, addToLibrary }: { apiKey: string; library: Asset[]; addToLibrary: (a: Asset) => void }) {
+function TabLipsync({ library, addToLibrary }: { library: Asset[]; addToLibrary: (a: Asset) => void }) {
   const [videoAsset, setVideoAsset] = useState<Asset | null>(null);
   const [audioMode, setAudioMode] = useState<"generate" | "upload">("generate");
   const [audioPrompt, setAudioPrompt] = useState("");
@@ -832,8 +819,8 @@ function TabLipsync({ apiKey, library, addToLibrary }: { apiKey: string; library
   async function generateAudio() {
     setProcessing(true); setError(""); setStatus("Generating audio...");
     try {
-      const gen = await muapiPost("mmaudio-v2/text-to-audio", { prompt: audioPrompt, duration: 10 }, apiKey);
-      const result = await pollResult(gen.id, apiKey, setProgress);
+      const gen = await muapiPost("mmaudio-v2/text-to-audio", { prompt: audioPrompt, duration: 10 });
+      const result = await pollResult(gen.id, setProgress);
       setAudioUrl(extractUrl(result) || ""); setStatus("Audio ready ✓");
     } catch (e: unknown) { setError(errorMessage(e)); }
     setProcessing(false);
@@ -841,7 +828,7 @@ function TabLipsync({ apiKey, library, addToLibrary }: { apiKey: string; library
 
   async function uploadAudio(file: File) {
     setProcessing(true); setStatus("Uploading...");
-    try { setAudioUrl(await uploadFile(file, apiKey)); setStatus("Audio ready ✓"); }
+    try { setAudioUrl(await uploadFile(file)); setStatus("Audio ready ✓"); }
     catch (e: unknown) { setError(errorMessage(e)); }
     setProcessing(false);
   }
@@ -850,8 +837,8 @@ function TabLipsync({ apiKey, library, addToLibrary }: { apiKey: string; library
     if (!videoAsset || !audioUrl) { setError("Need video and audio"); return; }
     setProcessing(true); setError(""); setProgress(0); setStatus("Applying lipsync...");
     try {
-      const gen = await muapiPost(provider, { video_url: videoAsset.url, audio_url: audioUrl }, apiKey);
-      const result = await pollResult(gen.id, apiKey, setProgress);
+      const gen = await muapiPost(provider, { video_url: videoAsset.url, audio_url: audioUrl });
+      const result = await pollResult(gen.id, setProgress);
       const url = extractUrl(result);
       const asset: Asset = { type: "video", url: url || "", prompt: audioPrompt || "Lipsync", faceSwapped: videoAsset.faceSwapped, model: provider };
       setResults(r => [asset, ...r]);
@@ -915,7 +902,7 @@ function TabLipsync({ apiKey, library, addToLibrary }: { apiKey: string; library
   );
 }
 
-function TabPostFX({ apiKey, library, addToLibrary }: { apiKey: string; library: Asset[]; addToLibrary: (a: Asset) => void }) {
+function TabPostFX({ library, addToLibrary }: { library: Asset[]; addToLibrary: (a: Asset) => void }) {
   const [sourceAsset, setSourceAsset] = useState<Asset | null>(null);
   const [fx, setFx] = useState("upscale");
   const [dressPrompt, setDressPrompt] = useState("");
@@ -944,8 +931,8 @@ function TabPostFX({ apiKey, library, addToLibrary }: { apiKey: string; library:
     try {
       const body: JsonObject = { image_url: sourceAsset.url };
       if (fx === "dress") body.prompt = dressPrompt;
-      const gen = await muapiPost(currentFX.endpoint, body, apiKey);
-      const result = await pollResult(String(gen.prediction_id ?? gen.id ?? ""), apiKey, setProgress);
+      const gen = await muapiPost(currentFX.endpoint, body);
+      const result = await pollResult(String(gen.prediction_id ?? gen.id ?? ""), setProgress);
       const url = extractUrl(result);
       const asset: Asset = { type: "image", url: url || "", prompt: `${currentFX.label}: ${sourceAsset.prompt}`, faceSwapped: sourceAsset.faceSwapped, model: currentFX.label };
       setResults(r => [asset, ...r]);
@@ -1012,8 +999,7 @@ function LibrarySidebar({ library }: { library: Asset[] }) {
 }
 
 function LaylaStudio() {
-  const [apiKey, setApiKey] = useState("");
-  const [keyInput, setKeyInput] = useState("");
+  const [, setLocation] = useLocation();
   const [tab, setTab] = useState("layla");
   const [laylaFace, setLaylaFace] = useState<FaceRef>(null);
   const [laylaPrompt, setLaylaPrompt] = useState("");
@@ -1030,25 +1016,6 @@ function LaylaStudio() {
     { id: "postfx", label: "Post-FX" },
   ];
 
-  if (!apiKey) return (
-    <>
-      <style>{css}</style>
-      <div className="studio-root">
-        <div className="login-wrap">
-          <div className="login-card">
-            <div className="login-logo">LAYLA</div>
-            <div className="login-sub">AI Content Studio</div>
-            <label className="login-label">muapi.ai API Key</label>
-            <input type="text" className="login-input" value={keyInput} onChange={e => setKeyInput(e.target.value)}
-              placeholder="Enter your muapi.ai key..." onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter" && keyInput) setApiKey(keyInput); }} data-testid="input-api-key" />
-            <button className="login-btn" onClick={() => setApiKey(keyInput)} disabled={!keyInput} data-testid="button-enter-studio">Enter Studio →</button>
-            <div className="login-hint">Get your key at <a href="https://muapi.ai/dashboard" target="_blank" rel="noreferrer">muapi.ai/dashboard</a></div>
-          </div>
-        </div>
-      </div>
-    </>
-  );
-
   return (
     <>
       <style>{css}</style>
@@ -1057,8 +1024,7 @@ function LaylaStudio() {
           <div className="header-logo">LAYLA</div>
           <div className="header-badge">Content Studio</div>
           <div className="header-right">
-            <span className="header-key">{apiKey.slice(0, 8)}…</span>
-            <button className="signout-btn" onClick={() => setApiKey("")} data-testid="button-sign-out-studio">Sign Out</button>
+            <button className="signout-btn" onClick={() => setLocation("/dashboard")} data-testid="button-exit-studio">Exit Studio</button>
           </div>
         </div>
         <div className="tabs-row">
@@ -1068,12 +1034,12 @@ function LaylaStudio() {
         </div>
         <div className="main">
           <div className="panel">
-            {tab === "layla" && <TabLayla laylaFace={laylaFace} setLaylaFace={setLaylaFace} laylaPrompt={laylaPrompt} setLaylaPrompt={setLaylaPrompt} apiKey={apiKey} />}
-            {tab === "images" && <TabImages laylaFace={laylaFace} laylaPrompt={laylaPrompt} apiKey={apiKey} addToLibrary={addToLibrary} />}
-            {tab === "video" && <TabVideo laylaFace={laylaFace} laylaPrompt={laylaPrompt} apiKey={apiKey} library={library} addToLibrary={addToLibrary} />}
-            {tab === "cinema" && <TabCinema apiKey={apiKey} library={library} addToLibrary={addToLibrary} />}
-            {tab === "lipsync" && <TabLipsync apiKey={apiKey} library={library} addToLibrary={addToLibrary} />}
-            {tab === "postfx" && <TabPostFX apiKey={apiKey} library={library} addToLibrary={addToLibrary} />}
+            {tab === "layla" && <TabLayla laylaFace={laylaFace} setLaylaFace={setLaylaFace} laylaPrompt={laylaPrompt} setLaylaPrompt={setLaylaPrompt} />}
+            {tab === "images" && <TabImages laylaFace={laylaFace} laylaPrompt={laylaPrompt} addToLibrary={addToLibrary} />}
+            {tab === "video" && <TabVideo laylaFace={laylaFace} laylaPrompt={laylaPrompt} library={library} addToLibrary={addToLibrary} />}
+            {tab === "cinema" && <TabCinema library={library} addToLibrary={addToLibrary} />}
+            {tab === "lipsync" && <TabLipsync library={library} addToLibrary={addToLibrary} />}
+            {tab === "postfx" && <TabPostFX library={library} addToLibrary={addToLibrary} />}
           </div>
           <LibrarySidebar library={library} />
         </div>
