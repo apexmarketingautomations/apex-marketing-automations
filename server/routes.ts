@@ -95,6 +95,8 @@ export async function registerRoutes(
   registerStudioWebhook(app);
   const { registerStudioMuapiProxy } = await import("./routes/studioMuapiProxy");
   registerStudioMuapiProxy(app);
+  const { registerStudioApexProxy } = await import("./routes/studioApexProxy");
+  registerStudioApexProxy(app);
   const { mountApexMcp } = await import("../apex-mcp-server.js");
   mountApexMcp(app);
   registerMetaRoutes(app);

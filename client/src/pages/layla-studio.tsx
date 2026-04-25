@@ -1,12 +1,11 @@
-// TODO: Move APEX_SECRET and Anthropic/MuAPI calls behind a server proxy in a follow-up task.
+// TODO: Move Anthropic/MuAPI calls behind a server proxy in a follow-up task.
 import { useState, useRef, useCallback, useEffect, type ChangeEvent, type DragEvent, type KeyboardEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { useActiveSubAccountId } from "@/components/account-required";
 
 const LAYLA_ACCOUNT_ID = 21;
 
-const APEX_URL = "https://apexmarketingautomations.com/webhook/studio";
-const APEX_SECRET = "7b5e26c8b3460661fd93259674c95107d6951d0e13eb03a29cdb1a44096bd848";
+const APEX_PROXY_URL = "/api/studio/apex";
 const MUAPI_BASE = "/api/studio/muapi";
 const CLAUDE_MODEL = "claude-sonnet-4-20250514";
 
@@ -304,9 +303,9 @@ async function claudePrompt(scene: string, extras: string): Promise<string> {
 }
 
 async function sendToApex(payload: JsonObject): Promise<JsonObject> {
-  const res = await fetch(APEX_URL, {
+  const res = await fetch(APEX_PROXY_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-webhook-secret": APEX_SECRET },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(`Apex: ${res.status}`);
