@@ -1728,13 +1728,13 @@ export class DatabaseStorage implements IStorage {
         lockedRow.data && typeof lockedRow.data === "object" && !Array.isArray(lockedRow.data)
           ? (lockedRow.data as Record<string, unknown>)
           : {};
-      const merged = { ...existing, ...patch };
+      const merged: Record<string, unknown> = { ...existing, ...patch };
       const setPayload: Partial<InsertCrashReport> & {
         updatedAt: Date;
         lockedAt?: null;
         lockedBy?: null;
       } = {
-        data: merged as any,
+        data: merged,
         updatedAt: new Date(),
       };
       if (options.setStatus) {
