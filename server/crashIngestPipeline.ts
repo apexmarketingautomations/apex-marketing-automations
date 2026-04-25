@@ -49,6 +49,7 @@ interface PollCycleSummary {
   countParsed: number;
   countInserted: number;
   countSkipped: number;
+  countSkippedDuplicateFhpId: number;
   countConvertedToLeads: number;
   countFailed: number;
   pollEnd: string;
@@ -181,9 +182,10 @@ async function runIngestCycle(
   incidents: SentinelIncidentRaw[],
   traceId: string,
   defaultSubAccountId: number,
-): Promise<{ inserted: number; skipped: number; leads: number; failed: number }> {
+): Promise<{ inserted: number; skipped: number; skippedDuplicateFhpId: number; leads: number; failed: number }> {
   let inserted = 0;
   let skipped = 0;
+  let skippedDuplicateFhpId = 0;
   let leads = 0;
   let failed = 0;
 
@@ -200,6 +202,31 @@ async function runIngestCycle(
       if (existing) {
         skipped++;
         continue;
+      }
+
+      // Secondary dedup keyed on the FHP incident id (raw_payload->>'id'). The
+      // FHP HSMV feed legitimately resends the same incident with mutated
+      // fields (e.g. updated `received` timestamp, lightly edited `location`
+      // string), which produces a different reportNumber hash and slips past
+      // the primary dedup above. That is the root cause of the duplicate
+      // sentinel_auto rows recovered in Task #176 — every such duplicate
+      // orphans one parent's FLHSMV follow-up job because the canonical
+      // FLHSMV-FOLLOWUP-<id> report_number can only be created once.
+      //
+      // Drop silently (the resend carries no new ground truth we trust over
+      // what's already in the row) and account for it in cycle stats so the
+      // behavior is observable.
+      if (incident.id) {
+        const existingByFhpId = await storage.getSentinelAutoCrashReportByFhpIncidentId(incident.id);
+        if (existingByFhpId) {
+          skippedDuplicateFhpId++;
+          console.log(
+            `[CRASH-INGEST] Skipping resend of FHP incident id=${incident.id} — ` +
+            `already recorded as sentinel_auto report ${existingByFhpId.id} (${existingByFhpId.reportNumber}); ` +
+            `traceId=${traceId}`,
+          );
+          continue;
+        }
       }
 
       const rawPayloadValue: Record<string, unknown> = {
@@ -316,7 +343,7 @@ async function runIngestCycle(
     }
   }
 
-  return { inserted, skipped, leads, failed };
+  return { inserted, skipped, skippedDuplicateFhpId, leads, failed };
 }
 
 async function runLeadRecoveryPass(defaultSubAccountId: number): Promise<number> {
@@ -448,7 +475,7 @@ async function pollCycle(): Promise<void> {
       responseStatus: "error",
       httpStatus: feedResult.httpStatus,
       countReturned: 0, countParsed: 0, countInserted: 0,
-      countSkipped: 0, countConvertedToLeads: 0, countFailed: 1,
+      countSkipped: 0, countSkippedDuplicateFhpId: 0, countConvertedToLeads: 0, countFailed: 1,
       pollEnd: new Date().toISOString(),
       durationMs: Date.now() - startMs,
       error: feedResult.error,
@@ -468,7 +495,7 @@ async function pollCycle(): Promise<void> {
       traceId, pollStart, pollStartET, requestSent,
       responseStatus: "empty",
       countReturned: 0, countParsed: 0, countInserted: 0,
-      countSkipped: 0, countConvertedToLeads: 0, countFailed: 0,
+      countSkipped: 0, countSkippedDuplicateFhpId: 0, countConvertedToLeads: 0, countFailed: 0,
       pollEnd: new Date().toISOString(),
       durationMs: Date.now() - startMs,
       lastPollCursorMs: prevCursorMs ?? undefined,
@@ -479,7 +506,7 @@ async function pollCycle(): Promise<void> {
   }
 
   const defaultSubAccountId = await getDefaultSubAccountId();
-  const { inserted, skipped, leads, failed } = await runIngestCycle(
+  const { inserted, skipped, skippedDuplicateFhpId, leads, failed } = await runIngestCycle(
     feedResult.incidents,
     traceId,
     defaultSubAccountId,
@@ -502,6 +529,7 @@ async function pollCycle(): Promise<void> {
     countParsed: countReturned,
     countInserted: inserted,
     countSkipped: skipped,
+    countSkippedDuplicateFhpId: skippedDuplicateFhpId,
     countConvertedToLeads: leads,
     countFailed: failed,
     pollEnd,
@@ -520,6 +548,7 @@ async function pollCycle(): Promise<void> {
     ` countParsed=${countReturned}` +
     ` countInserted=${inserted}` +
     ` countSkipped=${skipped}` +
+    ` countSkippedDuplicateFhpId=${skippedDuplicateFhpId}` +
     ` countConvertedToLeads=${leads}` +
     ` countFailed=${failed}` +
     ` pollEnd=${pollEnd}` +
@@ -656,6 +685,7 @@ export async function runTestHarness(
       traceId, pollStart, pollStartET, requestSent: new Date().toISOString(),
       responseStatus: "empty",
       countReturned: 0, countParsed: 0, countInserted: 0, countSkipped: 0,
+      countSkippedDuplicateFhpId: 0,
       countConvertedToLeads: 0, countFailed: 0,
       pollEnd: new Date().toISOString(), durationMs: Date.now() - startMs,
     };
@@ -679,7 +709,7 @@ export async function runTestHarness(
       traceId, pollStart, pollStartET, requestSent: new Date().toISOString(),
       responseStatus: "error",
       countReturned: malformedIncidents.length, countParsed: 0, countInserted: 0,
-      countSkipped: 0, countConvertedToLeads: 0, countFailed: failed,
+      countSkipped: 0, countSkippedDuplicateFhpId: 0, countConvertedToLeads: 0, countFailed: failed,
       pollEnd: new Date().toISOString(), durationMs: Date.now() - startMs,
       error: "Malformed payload test — all incidents rejected at validation stage",
     };
@@ -698,7 +728,7 @@ export async function runTestHarness(
       traceId, pollStart, pollStartET, requestSent: new Date().toISOString(),
       responseStatus: "error",
       countReturned: 0, countParsed: 0, countInserted: 0,
-      countSkipped: 0, countConvertedToLeads: 0, countFailed: MAX_RETRIES,
+      countSkipped: 0, countSkippedDuplicateFhpId: 0, countConvertedToLeads: 0, countFailed: MAX_RETRIES,
       pollEnd: new Date().toISOString(), durationMs: Date.now() - startMs,
       error: `Simulated transient HTTP failure after ${MAX_RETRIES} attempts with exponential backoff`,
     };
@@ -712,7 +742,7 @@ export async function runTestHarness(
 
   const defaultSubAccountId = await getDefaultSubAccountId();
 
-  const { inserted, skipped, leads, failed } = await runIngestCycle(
+  const { inserted, skipped, skippedDuplicateFhpId, leads, failed } = await runIngestCycle(
     incidentsToProcess,
     traceId,
     defaultSubAccountId,
@@ -731,6 +761,7 @@ export async function runTestHarness(
     countParsed: incidentsToProcess.length,
     countInserted: inserted,
     countSkipped: skipped,
+    countSkippedDuplicateFhpId: skippedDuplicateFhpId,
     countConvertedToLeads: leads,
     countFailed: failed,
     pollEnd,
@@ -745,7 +776,7 @@ export async function runTestHarness(
 
   console.log(
     `[CRASH-INGEST] TEST-HARNESS scenario=${scenario} traceId=${traceId}` +
-    ` inserted=${inserted} skipped=${skipped} leads=${leads} failed=${failed}`,
+    ` inserted=${inserted} skipped=${skipped} skippedDuplicateFhpId=${skippedDuplicateFhpId} leads=${leads} failed=${failed}`,
   );
 
   return { scenario, traceId, inserted, skipped, leads, failed, details, cycleSummary: cycle };

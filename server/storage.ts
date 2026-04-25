@@ -369,6 +369,7 @@ export interface IStorage {
   createCrashReport(data: InsertCrashReport): Promise<CrashReport>;
   getCrashReport(id: number): Promise<CrashReport | undefined>;
   getCrashReportByNumber(reportNumber: string): Promise<CrashReport | undefined>;
+  getSentinelAutoCrashReportByFhpIncidentId(fhpIncidentId: string): Promise<CrashReport | undefined>;
   updateCrashReport(id: number, data: Partial<InsertCrashReport>): Promise<CrashReport | undefined>;
   mergeCrashReportData(
     id: number,
@@ -1684,6 +1685,21 @@ export class DatabaseStorage implements IStorage {
 
   async getCrashReportByNumber(reportNumber: string) {
     const [row] = await db.select().from(crashReports).where(eq(crashReports.reportNumber, reportNumber));
+    return row;
+  }
+
+  async getSentinelAutoCrashReportByFhpIncidentId(fhpIncidentId: string) {
+    const [row] = await db
+      .select()
+      .from(crashReports)
+      .where(
+        and(
+          eq(crashReports.source, "sentinel_auto"),
+          sql`${crashReports.rawPayload}->>'id' = ${fhpIncidentId}`,
+        ),
+      )
+      .orderBy(crashReports.id)
+      .limit(1);
     return row;
   }
 
