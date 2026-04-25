@@ -1,4 +1,6 @@
 import { storage } from "./storage";
+import { db } from "./db";
+import { sql } from "drizzle-orm";
 import crypto from "crypto";
 
 const FLHSMV_BASE = "https://services.flhsmv.gov";
@@ -733,6 +735,93 @@ async function processReport(reportId: number, reportNumber: string): Promise<vo
               console.warn(`[CRASH-WORKER] Follow-up ${reportId} atomic merge rejected by guards`);
             } else {
               console.log(`[CRASH-WORKER] Linked official FLHSMV report ${officialReportNumber} back to sentinel parent ${sentinelReportId} (atomic)`);
+
+              // ── Sibling fan-out (Task #176) ────────────────────────────────
+              // The sentinel ingest pipeline can record the SAME FHP incident
+              // twice as two distinct sentinel_auto rows. The follow-up unique
+              // key (`FLHSMV-FOLLOWUP-<FHP_ID>`) only attaches to one of those
+              // "twin" parents (the winner). Loser twins are tracked here in
+              // `meta.siblingSentinelReportIds[]` so the same officialFlhsmv
+              // payload also lands on every twin parent — preventing data
+              // dropouts in the lawyer-facing UI.
+              const rawSiblings: unknown = meta?.siblingSentinelReportIds;
+              const siblingIds: number[] = Array.isArray(rawSiblings)
+                ? rawSiblings.filter((x): x is number => typeof x === "number" && x > 0 && x !== sentinelReportId)
+                : [];
+              if (siblingIds.length > 0) {
+                let stampedSiblings = 0;
+                let rejectedSiblings = 0;
+                for (const sibId of siblingIds) {
+                  try {
+                    const sib = await storage.getCrashReport(sibId);
+                    if (!sib) {
+                      console.warn(`[CRASH-WORKER] Follow-up ${reportId} sibling ${sibId} not found — skipping`);
+                      rejectedSiblings++;
+                      continue;
+                    }
+                    if (sib.source !== "sentinel_auto") {
+                      console.warn(`[CRASH-WORKER] Follow-up ${reportId} sibling ${sibId} has source=${sib.source} — refusing to fan out`);
+                      rejectedSiblings++;
+                      continue;
+                    }
+                    // Fail-closed sub-account guard: refuse the fan-out unless
+                    // BOTH sides carry the same explicit sub-account id. A null
+                    // on either side could allow cross-tenant data leakage via
+                    // a poisoned siblingSentinelReportIds entry.
+                    if (report.subAccountId == null
+                        || sib.subAccountId == null
+                        || sib.subAccountId !== report.subAccountId) {
+                      console.warn(`[CRASH-WORKER] Follow-up ${reportId} sibling ${sibId} sub-account guard failed (followup=${report.subAccountId} sibling=${sib.subAccountId}) — refusing to fan out`);
+                      rejectedSiblings++;
+                      continue;
+                    }
+                    const sibMerged = await storage.mergeCrashReportData(
+                      sibId,
+                      {
+                        officialFlhsmv: {
+                          reportNumber: officialReportNumber,
+                          searchResult: searchResult.data,
+                          detail: detail.data,
+                          fetchedAt: new Date().toISOString(),
+                          followUpReportId: reportId,
+                          fanOutFromSentinelReportId: sentinelReportId,
+                        },
+                      },
+                      {
+                        expectSource: "sentinel_auto",
+                        ...(report.subAccountId != null ? { expectSubAccountId: report.subAccountId } : {}),
+                        setStatus: "COMPLETED",
+                      }
+                    );
+                    if (sibMerged) {
+                      stampedSiblings++;
+                      // Atomically replace the DUPLICATE_FHP_INCIDENT close-out
+                      // errorLog with a positive confirmation. Single conditional
+                      // UPDATE — only matches when the current log STILL starts
+                      // with that marker, so concurrent diagnostics written
+                      // between the merge and this update are not clobbered.
+                      try {
+                        const newErrLog = `FLHSMV data fanned out from sibling parent ${sentinelReportId} via follow-up ${reportId} at ${new Date().toISOString()}`;
+                        await db.execute(sql`
+                          UPDATE crash_reports
+                          SET error_log = ${newErrLog}, updated_at = NOW()
+                          WHERE id = ${sibId}
+                            AND error_log LIKE 'DUPLICATE_FHP_INCIDENT:%'
+                        `);
+                      } catch (err) {
+                        console.warn(`[CRASH-WORKER] Sibling ${sibId} stamped but errorLog refresh failed: ${err instanceof Error ? err.message : err}`);
+                      }
+                    } else {
+                      rejectedSiblings++;
+                      console.warn(`[CRASH-WORKER] Follow-up ${reportId} sibling ${sibId} atomic merge rejected by guards`);
+                    }
+                  } catch (sibErr: any) {
+                    rejectedSiblings++;
+                    console.warn(`[CRASH-WORKER] Follow-up ${reportId} sibling ${sibId} fan-out error: ${sibErr.message}`);
+                  }
+                }
+                console.log(`[CRASH-WORKER] Sibling fan-out for follow-up ${reportId}: ${stampedSiblings}/${siblingIds.length} stamped, ${rejectedSiblings} rejected`);
+              }
             }
           }
         } catch (linkErr: any) {

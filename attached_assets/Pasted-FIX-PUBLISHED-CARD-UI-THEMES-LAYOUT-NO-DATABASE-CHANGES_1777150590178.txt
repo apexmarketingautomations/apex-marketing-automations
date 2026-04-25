@@ -1,0 +1,105 @@
+FIX PUBLISHED CARD UI (THEMES + LAYOUT) — NO DATABASE CHANGES
+
+The published card page (/card/:slug) is not correctly applying themes or matching the builder preview.
+
+DO NOT modify database, migrations, or deployment settings. This is strictly a frontend/UI fix.
+
+🎯 GOAL
+
+Make the published card:
+
+EXACTLY match builder preview layout
+correctly apply selected theme
+properly use brandColor + accentColor
+remove all hardcoded styling overrides
+🧱 1. FORCE SINGLE SHARED COMPONENT
+
+Create or enforce a single reusable component:
+
+CardView
+
+Use it in BOTH:
+
+builder preview
+/card/:slug (public page)
+
+❌ Do NOT duplicate layout logic anywhere.
+
+🎨 2. FIX THEME APPLICATION (CRITICAL)
+
+Ensure the card uses database-driven theme:
+
+const theme = themes[card.theme];
+
+Apply it to the ROOT container ONLY:
+
+<div className={theme.container}>
+
+OR fallback:
+
+<div style={{
+  background: card.brandColor,
+  color: card.accentColor
+}}>
+⚠️ 3. REMOVE ALL HARDCODED STYLES
+
+Search and DELETE any of the following in published card:
+
+bg-white
+text-black
+bg-gray-*
+hardcoded Tailwind color classes
+inline static colors overriding theme
+
+These are breaking theme rendering.
+
+🧱 4. FIX CARD LAYOUT STRUCTURE
+
+Ensure consistent structure:
+
+Cover image (full width)
+Profile image (centered overlap)
+Name
+Title
+Location
+Bio
+Action buttons (email, phone, links)
+
+Fix spacing, alignment, and stacking order so it matches builder preview exactly.
+
+🔁 5. ENSURE DATA CONSISTENCY
+
+Verify /card/:slug is receiving:
+
+theme
+brandColor
+accentColor
+profilePhoto
+coverImage
+all layout fields
+
+No fallback values should override saved data.
+
+🚫 STRICT RULES
+
+DO NOT:
+
+modify database schema
+add migrations
+change analytics system
+introduce new features
+change backend logic
+
+ONLY:
+
+fix frontend rendering
+fix theme application
+fix layout consistency
+🧪 FINAL RESULT
+
+After fix:
+
+builder preview = identical to published card
+theme changes are visible immediately on live page
+layout is clean, centered, and structured
+no hardcoded colors remain

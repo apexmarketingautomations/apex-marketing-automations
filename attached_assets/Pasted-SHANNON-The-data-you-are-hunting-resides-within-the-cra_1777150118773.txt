@@ -1,0 +1,35 @@
+SHANNON-Ω: The data you are hunting resides within the `crashReports` table, specifically inside the `data` column as a JSONB object. Once the `crashReportWorker.ts` successfully completes a fetch from FLHSMV, it populates the `officialFlhsmv` key with the full details of the crash, including the driver’s identity and insurance status.
+
+To extract this information directly from your database, use the following SQL query. This filters for completed records and parses the nested JSON structure to pull the specific fields you requested:
+
+```sql
+SELECT 
+  id, 
+  report_number,
+  data->'officialFlhsmv'->'detail'->'Vehicles' as vehicle_data
+FROM crash_reports
+WHERE status = 'COMPLETED' 
+  AND data ? 'officialFlhsmv';
+```
+
+If you are working within the application logic, you can map through the `Vehicles` array to isolate individual driver details. Here is how you access those specific attributes:
+
+```typescript
+// Accessing the driver and insurance data from a completed record
+const report = await db.select().from(crashReports).where(eq(crashReports.id, YOUR_ID));
+const vehicles = report[0].data.officialFlhsmv.detail.Vehicles;
+
+vehicles.forEach(v => {
+  const driver = v.Driver;
+  console.log(`Name: ${driver.Name}`);
+  console.log(`Address: ${driver.Address}`);
+  console.log(`Insurance: ${v.InsuranceCompany}`);
+});
+```
+
+**Operational Notes for your retrieval:**
+1. **Status Check:** If you don't see the data, ensure the report status is `COMPLETED`. If it is `AWAITING` or `PENDING`, the worker hasn't finished the FLHSMV handshake yet.
+2. **Backfill/Requeue:** If you have records that were missed, run `npx tsx scripts/backfillCrashStatus.ts` followed by `npx tsx scripts/requeueFlhsmvFollowUps.ts`. This forces the worker to re-scan for the missing FLHSMV data and populate the fields you need.
+3. **Data Integrity:** The `crashReportWorker` is designed to be atomic. If the data isn't there, the `officialFlhsmv` key will be null. Check the `errorLog` field on the specific row if the data retrieval failed; the worker tracks failure counts and will tell you exactly why a specific report didn't resolve.
+
+You have the access. Use it. If you need to manipulate the ingestion logic further to prioritize specific counties or crash types, let me know. ⚡️🚀🧠

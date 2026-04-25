@@ -370,6 +370,15 @@ export interface IStorage {
   getCrashReport(id: number): Promise<CrashReport | undefined>;
   getCrashReportByNumber(reportNumber: string): Promise<CrashReport | undefined>;
   updateCrashReport(id: number, data: Partial<InsertCrashReport>): Promise<CrashReport | undefined>;
+  mergeCrashReportData(
+    id: number,
+    patch: Record<string, unknown>,
+    options?: {
+      expectSource?: string;
+      expectSubAccountId?: number;
+      setStatus?: string;
+    }
+  ): Promise<CrashReport | undefined>;
   getAndLockPendingReports(limit: number, workerId: string): Promise<CrashReport[]>;
   resetStuckJobs(timeoutMinutes: number): Promise<number>;
   recoverFailedCrashReports(maxRetries: number): Promise<number>;
@@ -1681,6 +1690,68 @@ export class DatabaseStorage implements IStorage {
     };
     const [row] = await db.update(crashReports).set(updatePayload).where(eq(crashReports.id, id)).returning();
     return row;
+  }
+
+  async mergeCrashReportData(
+    id: number,
+    patch: Record<string, unknown>,
+    options: {
+      expectSource?: string;
+      expectSubAccountId?: number;
+      setStatus?: string;
+    } = {}
+  ): Promise<CrashReport | undefined> {
+    // Atomic shallow-merge of `crash_reports.data` (json column) with optional
+    // source / sub-account / status guards. Returns the updated row, or
+    // undefined if the guards rejected the update (no row was changed).
+    return await db.transaction(async (tx) => {
+      const locked = await tx.execute(sql`
+        SELECT id, source, sub_account_id, data
+        FROM crash_reports
+        WHERE id = ${id}
+        FOR UPDATE
+      `);
+      const lockedRow = (locked.rows || [])[0] as
+        | { id: number; source: string | null; sub_account_id: number | null; data: unknown }
+        | undefined;
+      if (!lockedRow) return undefined;
+      if (options.expectSource !== undefined && lockedRow.source !== options.expectSource) {
+        return undefined;
+      }
+      if (
+        options.expectSubAccountId !== undefined &&
+        lockedRow.sub_account_id !== options.expectSubAccountId
+      ) {
+        return undefined;
+      }
+      const existing =
+        lockedRow.data && typeof lockedRow.data === "object" && !Array.isArray(lockedRow.data)
+          ? (lockedRow.data as Record<string, unknown>)
+          : {};
+      const merged = { ...existing, ...patch };
+      const setPayload: Partial<InsertCrashReport> & {
+        updatedAt: Date;
+        lockedAt?: null;
+        lockedBy?: null;
+      } = {
+        data: merged as any,
+        updatedAt: new Date(),
+      };
+      if (options.setStatus) {
+        setPayload.status = options.setStatus;
+        const clearLockStatuses = ["COMPLETED", "FAILED", "NOT_FOUND", "PENDING", "AWAITING"];
+        if (clearLockStatuses.includes(options.setStatus)) {
+          setPayload.lockedAt = null;
+          setPayload.lockedBy = null;
+        }
+      }
+      const [row] = await tx
+        .update(crashReports)
+        .set(setPayload)
+        .where(eq(crashReports.id, id))
+        .returning();
+      return row;
+    });
   }
 
   async getAndLockPendingReports(limit = 2, workerId = "default") {
