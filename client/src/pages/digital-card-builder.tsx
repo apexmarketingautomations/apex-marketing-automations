@@ -17,6 +17,7 @@ import {
   Sparkles, Briefcase, Image
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import { BuilderPreview } from "@/components/card-core";
 
 interface ServiceItem {
   label: string;
@@ -892,22 +893,12 @@ function DigitalCardBuilderInner() {
             </div>
             <Card className="bg-black/40 border-white/10 overflow-hidden">
               <CardContent className="p-0">
-                <div className={`${previewMode === "mobile" ? "max-w-[375px] mx-auto" : ""}`}>
-                  {config.slug ? (
-                    <iframe
-                      src={`/card/${config.slug}`}
-                      className="w-full border-0 rounded-lg"
-                      style={{ height: previewMode === "mobile" ? "700px" : "800px" }}
-                      title="Card Preview"
-                    />
-                  ) : (
-                    <div className="flex items-center justify-center h-[500px] text-slate-500">
-                      <div className="text-center">
-                        <QrCode size={48} className="mx-auto mb-4 opacity-30" />
-                        <p className="text-sm">Set a slug to preview your card</p>
-                      </div>
-                    </div>
-                  )}
+                <div
+                  className="overflow-y-auto"
+                  style={{ maxHeight: previewMode === "mobile" ? "700px" : "800px" }}
+                  data-testid="builder-preview-scroll"
+                >
+                  <BuilderPreview config={config} previewMode={previewMode} />
                 </div>
               </CardContent>
             </Card>
