@@ -516,7 +516,7 @@ export function registerTrackingRoutes(app: Express): void {
     db.update(trackingLinks)
       .set({ tapCount: sql`${trackingLinks.tapCount} + 1`, lastTapAt: new Date() })
       .where(eq(trackingLinks.id, link.id))
-      .catch(() => {});
+      .catch((err) => console.warn("[TRACKING] promise rejected:", err instanceof Error ? err.message : err));
 
     const finalUrl = appendQueryParam(link.destinationUrl, "_av", attributionToken);
     res.setHeader("Cache-Control", "no-store");

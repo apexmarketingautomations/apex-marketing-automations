@@ -63,24 +63,24 @@ function subscribeToModuleGroups(): void {
         if (event.payload.contactId && event.event_type === EVENT_TYPES.FORM_SUBMITTED) {
           const { linkSessionToContact } = await import("./identityEngine");
           if (event.payload.sessionId) {
-            await linkSessionToContact(accountId, event.payload.sessionId, event.payload.contactId).catch(() => {});
+            await linkSessionToContact(accountId, event.payload.sessionId, event.payload.contactId).catch((err) => console.warn("[WORKER] promise rejected:", err instanceof Error ? err.message : err));
           }
         }
 
         if (event.event_type === EVENT_TYPES.INTEGRATION_CONNECTED || event.event_type === EVENT_TYPES.INTEGRATION_ERROR || event.event_type === EVENT_TYPES.INTEGRATION_DISCONNECTED) {
           const { trackIntegrationSuccess, trackIntegrationFailure, trackIntegrationDisconnected } = await import("./integrationHealth");
           if (event.event_type === EVENT_TYPES.INTEGRATION_CONNECTED) {
-            await trackIntegrationSuccess(accountId, event.payload.provider || "unknown", event.payload.integrationKey || event.payload.provider || "unknown").catch(() => {});
+            await trackIntegrationSuccess(accountId, event.payload.provider || "unknown", event.payload.integrationKey || event.payload.provider || "unknown").catch((err) => console.warn("[WORKER] promise rejected:", err instanceof Error ? err.message : err));
           } else if (event.event_type === EVENT_TYPES.INTEGRATION_ERROR) {
-            await trackIntegrationFailure(accountId, event.payload.provider || "unknown", event.payload.integrationKey || event.payload.provider || "unknown", event.payload.error || "Unknown error").catch(() => {});
+            await trackIntegrationFailure(accountId, event.payload.provider || "unknown", event.payload.integrationKey || event.payload.provider || "unknown", event.payload.error || "Unknown error").catch((err) => console.warn("[WORKER] promise rejected:", err instanceof Error ? err.message : err));
           } else if (event.event_type === EVENT_TYPES.INTEGRATION_DISCONNECTED) {
-            await trackIntegrationDisconnected(accountId, event.payload.provider || "unknown", event.payload.integrationKey || event.payload.provider || "unknown", event.payload.reason).catch(() => {});
+            await trackIntegrationDisconnected(accountId, event.payload.provider || "unknown", event.payload.integrationKey || event.payload.provider || "unknown", event.payload.reason).catch((err) => console.warn("[WORKER] promise rejected:", err instanceof Error ? err.message : err));
           }
         }
 
         if (event.event_type === EVENT_TYPES.CARD_SCANNED && event.payload.contactId && event.payload.cardId) {
           const { linkCardScanToContact } = await import("./identityEngine");
-          await linkCardScanToContact(accountId, event.payload.cardId, event.payload.contactId, event.payload.sessionId).catch(() => {});
+          await linkCardScanToContact(accountId, event.payload.cardId, event.payload.contactId, event.payload.sessionId).catch((err) => console.warn("[WORKER] promise rejected:", err instanceof Error ? err.message : err));
         }
       }, 0);
     }

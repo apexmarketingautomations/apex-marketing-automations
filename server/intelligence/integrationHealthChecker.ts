@@ -272,9 +272,9 @@ export function startIntegrationHealthChecker(): void {
   if (healthCheckTimer) return;
   console.log(`[INTEG-HEALTH] Background populator started — every ${HEALTH_CHECK_INTERVAL_MS / 60000} min`);
   // Stagger first run so it doesn't pile on top of startup work.
-  setTimeout(() => { runHealthCheckForAllAccounts().catch(() => {}); }, 60_000);
+  setTimeout(() => { runHealthCheckForAllAccounts().catch((err) => console.warn("[INTEGRATIONHEALTHCHECKER] promise rejected:", err instanceof Error ? err.message : err)); }, 60_000);
   healthCheckTimer = setInterval(() => {
-    runHealthCheckForAllAccounts().catch(() => {});
+    runHealthCheckForAllAccounts().catch((err) => console.warn("[INTEGRATIONHEALTHCHECKER] promise rejected:", err instanceof Error ? err.message : err));
   }, HEALTH_CHECK_INTERVAL_MS);
 }
 

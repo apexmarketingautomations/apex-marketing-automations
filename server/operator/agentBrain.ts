@@ -207,8 +207,9 @@ Based on this data, what tasks should the autonomous agent execute? Return a JSO
           try {
             parsed = JSON.parse(truncated);
             console.warn("[AGENT-BRAIN] Recovered truncated JSON response");
-          } catch {
+          } catch (err) {
             console.error("[AGENT-BRAIN] Failed to parse AI response (truncated recovery failed)", {
+              error: err instanceof Error ? err.message : String(err),
               responseSnippet: cleaned.slice(0, 300),
             });
             return [];

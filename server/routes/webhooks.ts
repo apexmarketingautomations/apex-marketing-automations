@@ -374,7 +374,7 @@ export function registerWebhooksRoutes(app: Express) {
       res.type("text/xml").send("<Response></Response>");
     } catch (err: any) {
       console.error(`[UNIFIED-WEBHOOK][ERROR] Unhandled pipeline error — from=${req.body?.From}, to=${req.body?.To}, error=${err.message}`, err.stack?.substring(0, 500));
-      await markEventFailed(req, err.message).catch(() => {});
+      await markEventFailed(req, err.message).catch((err) => console.warn("[WEBHOOKS] promise rejected:", err instanceof Error ? err.message : err));
       res.type("text/xml").send("<Response></Response>");
     }
   });
@@ -524,7 +524,7 @@ export function registerWebhooksRoutes(app: Express) {
       const isValid = await validateTwilioSignature(req);
       if (!isValid) {
         console.warn(`[TWILIO-INBOUND][${traceId}] Invalid Twilio signature — rejected`);
-        await markEventFailed(req, "Invalid Twilio signature").catch(() => {});
+        await markEventFailed(req, "Invalid Twilio signature").catch((err) => console.warn("[WEBHOOKS] promise rejected:", err instanceof Error ? err.message : err));
         res.status(403).type("text/xml").send("<Response></Response>");
         return;
       }
@@ -947,7 +947,7 @@ export function registerWebhooksRoutes(app: Express) {
       res.type("text/xml").send("<Response></Response>");
     } catch (err: any) {
       console.error(`[TWILIO-INBOUND][${traceId}] Unhandled pipeline error:`, err.message || err);
-      await markEventFailed(req, err.message || "Unhandled pipeline error").catch(() => {});
+      await markEventFailed(req, err.message || "Unhandled pipeline error").catch((err) => console.warn("[WEBHOOKS] promise rejected:", err instanceof Error ? err.message : err));
       res.type("text/xml").send("<Response></Response>");
     }
   });
@@ -2108,7 +2108,7 @@ export function registerWebhooksRoutes(app: Express) {
                       keyword: kw.keyword,
                       message,
                     })
-                  ).catch(() => {});
+                  ).catch((err) => console.warn("[WEBHOOKS] promise rejected:", err instanceof Error ? err.message : err));
                 }
               }
               break;
@@ -2578,7 +2578,7 @@ export function registerWebhooksRoutes(app: Express) {
                     body: aiReply, status: aiSendStatus, threadId: metaDmThreadId, createdAt: new Date().toISOString(),
                   });
 
-                  extractAndStoreInsights(subAccountId!, senderId, channel).catch(() => {});
+                  extractAndStoreInsights(subAccountId!, senderId, channel).catch((err) => console.warn("[WEBHOOKS] promise rejected:", err instanceof Error ? err.message : err));
                 }
               } catch (aiErr: any) {
                 console.error("[META DM] AI reply error:", aiErr.message);
@@ -2677,8 +2677,8 @@ export function registerWebhooksRoutes(app: Express) {
             try {
               const { resolveSubAccountByPageId } = await import("../metaConfig");
               commentSubAccountId = await resolveSubAccountByPageId(String(entryPageId));
-            } catch {
-              console.warn(`[COMMENT-BOT] Could not resolve sub-account for page ${entryPageId}`);
+            } catch (err) {
+              console.warn(`[COMMENT-BOT] Could not resolve sub-account for page ${entryPageId}:`, err instanceof Error ? err.message : err);
               continue;
             }
 

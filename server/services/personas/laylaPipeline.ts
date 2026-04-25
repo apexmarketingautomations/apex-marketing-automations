@@ -136,7 +136,7 @@ export function runLaylaPipeline(
         subAccountId: hookContext.subAccountId!,
         metadata:     { actionType: action.type, reason: action.reason, contactId: hookContext.contactId ?? null, conversationId: state.conversationId },
       })
-    ).catch(() => {});
+    ).catch((err) => console.warn("[LAYLAPIPELINE] promise rejected:", err instanceof Error ? err.message : err));
   }
 
   return action;

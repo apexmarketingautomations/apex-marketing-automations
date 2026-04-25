@@ -49,7 +49,7 @@ function apexReport(params: {
         metadata:     params.metadata,
       }),
     )
-    .catch(() => {});
+    .catch((err) => console.warn("[HOMESERVICELEADDELIVERY] promise rejected:", err instanceof Error ? err.message : err));
 }
 
 // ── SMS ───────────────────────────────────────────────────────────────────────

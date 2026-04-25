@@ -62,7 +62,7 @@ export function withIdempotency(opts: IdempotencyOptions) {
 
 export async function markEventCompleted(req: Request): Promise<void> {
   if (req.eventLogId) {
-    await storage.updateEventLogStatus(req.eventLogId, EVENT_LOG_STATUS.COMPLETED, { processedAt: new Date() }).catch(() => {});
+    await storage.updateEventLogStatus(req.eventLogId, EVENT_LOG_STATUS.COMPLETED, { processedAt: new Date() }).catch((err) => console.warn("[IDEMPOTENCY] promise rejected:", err instanceof Error ? err.message : err));
   }
 }
 
@@ -71,7 +71,7 @@ export async function markEventFailed(req: Request, errorMessage: string): Promi
     await storage.updateEventLogStatus(req.eventLogId, EVENT_LOG_STATUS.FAILED, {
       failedAt: new Date(),
       errorMessage,
-    }).catch(() => {});
+    }).catch((err) => console.warn("[IDEMPOTENCY] promise rejected:", err instanceof Error ? err.message : err));
   }
 }
 

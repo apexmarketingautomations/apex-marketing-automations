@@ -812,7 +812,7 @@ export function startCrashReportWorker(): void {
   workerRunning = true;
   console.log(`[CRASH-WORKER] Started (id=${WORKER_ID}) — polling every ${WORKER_INTERVAL_MS / 1000}s, max ${MAX_CONCURRENT} concurrent, max retries ${MAX_RETRIES}, max service failures ${MAX_SERVICE_FAILURES}`);
 
-  probeFlhsmvConnectivity().catch(() => {});
+  probeFlhsmvConnectivity().catch((err) => console.warn("[CRASHREPORTWORKER] promise rejected:", err instanceof Error ? err.message : err));
 
   const tick = async () => {
     try {

@@ -216,7 +216,7 @@ export async function calculateHealthScore(context: ContextPacket): Promise<Heal
 
   import("../intelligence/apexLearningFeed").then(({ emitStrategicInsightGenerated }) =>
     emitStrategicInsightGenerated(performance.subAccountId, 0, grade, overall)
-  ).catch(() => {});
+  ).catch((err) => console.warn("[STRATEGICADVISOR] promise rejected:", err instanceof Error ? err.message : err));
 
   return {
     overall,

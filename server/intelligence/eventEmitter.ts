@@ -47,7 +47,7 @@ async function flushQueue() {
   for (const evt of batch) {
     try {
       await storage.createUniversalEvent(evt as InsertUniversalEvent);
-      trackModuleCoverage(evt).catch(() => {});
+      trackModuleCoverage(evt).catch((err) => console.warn("[EVENTEMITTER] promise rejected:", err instanceof Error ? err.message : err));
     } catch (err) {
       console.error(`[APEX-INTEL] Failed to persist event ${evt.eventType}:`, (err as Error).message);
     }
@@ -84,7 +84,7 @@ export async function emitUniversalEventSync(input: UniversalEventInput) {
       ...input,
       occurredAt: input.occurredAt || new Date(),
     } as InsertUniversalEvent);
-    trackModuleCoverage(input).catch(() => {});
+    trackModuleCoverage(input).catch((err) => console.warn("[EVENTEMITTER] promise rejected:", err instanceof Error ? err.message : err));
     return result;
   } catch (err) {
     console.error(`[APEX-INTEL] Failed to persist event ${input.eventType}:`, (err as Error).message);

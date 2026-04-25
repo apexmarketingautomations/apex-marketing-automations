@@ -310,8 +310,8 @@ export function startAutoSync(): void {
   console.log(`[GCAL-AUTO] Background sync started — polling every ${SYNC_INTERVAL_MS / 1000}s (config-gated, no hardcoded accounts)`);
   backfillSyncEnabledFromHistory()
     .then(() => runAutoSync())
-    .catch(() => {});
-  autoSyncTimer = setInterval(() => { runAutoSync().catch(() => {}); }, SYNC_INTERVAL_MS);
+    .catch((err) => console.warn("[GOOGLECALENDARSYNC] promise rejected:", err instanceof Error ? err.message : err));
+  autoSyncTimer = setInterval(() => { runAutoSync().catch((err) => console.warn("[GOOGLECALENDARSYNC] promise rejected:", err instanceof Error ? err.message : err)); }, SYNC_INTERVAL_MS);
 }
 
 export function stopAutoSync(): void {

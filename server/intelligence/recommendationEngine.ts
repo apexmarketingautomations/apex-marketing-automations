@@ -628,7 +628,7 @@ export async function runAllRecommendationsForAccount(accountId: number): Promis
     if (total > 0) {
       import("./apexLearningFeed").then(({ emitRecommendationsBatchGenerated }) =>
         emitRecommendationsBatchGenerated(accountId, total)
-      ).catch(() => {});
+      ).catch((err) => console.warn("[RECOMMENDATIONENGINE] promise rejected:", err instanceof Error ? err.message : err));
     }
   } catch (err) {
     console.error(`[APEX-INTEL] Recommendation generation failed for account ${accountId}:`, (err as Error).message);

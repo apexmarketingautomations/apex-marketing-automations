@@ -257,7 +257,7 @@ export async function getCrossPlatformPatterns(): Promise<CrossPlatformPatternRe
       for (const ap of accountPatterns) {
         emitPlaybookPatternsDerived(ap.accountId, ap.matchedPatterns.length, patterns.length);
       }
-    }).catch(() => {});
+    }).catch((err) => console.warn("[CROSSPLATFORMPATTERNS] promise rejected:", err instanceof Error ? err.message : err));
 
     return {
       patterns,

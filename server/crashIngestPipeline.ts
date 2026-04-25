@@ -285,7 +285,7 @@ async function runIngestCycle(
               niche:        "accident",
               metadata:     { reportId: newReport.id, severity: incident.severity, location: incident.location },
             })
-          ).catch(() => {});
+          ).catch((err) => console.warn("[CRASHINGESTPIPELINE] promise rejected:", err instanceof Error ? err.message : err));
         } else {
           console.warn(`[CRASH-INGEST] Lead creation failed for new report ${newReport.id} (qualifying) — will retry in recovery pass`);
         }
@@ -301,7 +301,7 @@ async function runIngestCycle(
             niche:        "accident",
             metadata:     { reportId: newReport.id, type: incident.type },
           })
-        ).catch(() => {});
+        ).catch((err) => console.warn("[CRASHINGESTPIPELINE] promise rejected:", err instanceof Error ? err.message : err));
         console.log(`[CRASH-INGEST] Non-qualifying crash ${newReport.id} (type=${incident.type}) — processedToLead=true, no lead created`);
       }
     } catch (err: any) {

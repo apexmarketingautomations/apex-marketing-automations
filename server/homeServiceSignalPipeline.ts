@@ -121,7 +121,7 @@ function apexReport(params: {
         metadata:     params.metadata,
       }),
     )
-    .catch(() => {});
+    .catch((err) => console.warn("[HOMESERVICESIGNALPIPELINE] promise rejected:", err instanceof Error ? err.message : err));
 }
 
 // ── Dedup ─────────────────────────────────────────────────────────────────────

@@ -38,9 +38,9 @@ export function registerFunnelRoutes(app: Express) {
             leadEmail: contactEmail,
             source: "form_submit",
           };
-          fireAutomationTriggerGlobal("new_lead", accountId, ctx).catch(() => {});
-          fireAutomationTriggerGlobal("OnNewLead", accountId, ctx).catch(() => {});
-          fireAutomationTriggerGlobal("facebook_form_submit", accountId, ctx).catch(() => {});
+          fireAutomationTriggerGlobal("new_lead", accountId, ctx).catch((err) => console.warn("[FUNNEL] promise rejected:", err instanceof Error ? err.message : err));
+          fireAutomationTriggerGlobal("OnNewLead", accountId, ctx).catch((err) => console.warn("[FUNNEL] promise rejected:", err instanceof Error ? err.message : err));
+          fireAutomationTriggerGlobal("facebook_form_submit", accountId, ctx).catch((err) => console.warn("[FUNNEL] promise rejected:", err instanceof Error ? err.message : err));
         }).catch(e => console.error("[FUNNEL] trigger failed:", e instanceof Error ? e.message : e));
       } catch (e) {
         console.log("[FORM] Contact creation skipped (may already exist):", (e as any).message);

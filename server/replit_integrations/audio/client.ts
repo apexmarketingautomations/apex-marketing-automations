@@ -84,8 +84,8 @@ export async function convertToWav(audioBuffer: Buffer): Promise<Buffer> {
     return await readFile(outputPath);
   } finally {
     // Clean up temp files
-    await unlink(inputPath).catch(() => {});
-    await unlink(outputPath).catch(() => {});
+    await unlink(inputPath).catch((err) => console.warn("[CLIENT] promise rejected:", err instanceof Error ? err.message : err));
+    await unlink(outputPath).catch((err) => console.warn("[CLIENT] promise rejected:", err instanceof Error ? err.message : err));
   }
 }
 

@@ -33,7 +33,7 @@ export function asyncHandler<Req extends Request = Request, Res extends Response
               mod.handleStripeError(err);
             }
             if (typeof mod.recover === 'function') {
-              Promise.resolve(mod.recover()).catch(() => {});
+              Promise.resolve(mod.recover()).catch((err) => console.warn("[HELPERS] promise rejected:", err instanceof Error ? err.message : err));
             }
           })
           .catch((e) =>

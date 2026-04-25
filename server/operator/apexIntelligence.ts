@@ -149,7 +149,7 @@ export function reportOutcome(payload: AgentOutcome): void {
   }
 
   // Mirror to durable storage (fire-and-forget — DB failure does not block reporting).
-  persistOutcomeDurably(entry).catch(() => {});
+  persistOutcomeDurably(entry).catch((err) => console.warn("[APEXINTELLIGENCE] promise rejected:", err instanceof Error ? err.message : err));
 }
 
 export function getOutcomes(opts: {

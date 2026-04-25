@@ -94,10 +94,11 @@ export async function extractInsightsFromConversation(
       } else if (parsed.insights && Array.isArray(parsed.insights)) {
         insights = parsed.insights;
       }
-    } catch {
+    } catch (err) {
+      console.warn("[SHAREDINTELLIGENCE] direct JSON parse failed, falling back to bracket extraction:", err instanceof Error ? err.message : err);
       const jsonMatch = result.text.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
-        try { insights = JSON.parse(jsonMatch[0]); } catch (err) { console.warn("[SHAREDINTELLIGENCE] caught:", err instanceof Error ? err.message : err); }
+        try { insights = JSON.parse(jsonMatch[0]); } catch (err2) { console.warn("[SHAREDINTELLIGENCE] bracket-extracted JSON parse also failed:", err2 instanceof Error ? err2.message : err2); }
       }
     }
 

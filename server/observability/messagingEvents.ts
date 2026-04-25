@@ -63,8 +63,9 @@ async function getLaylaIds(): Promise<Set<number>> {
     if (_laylaIds.size === 0) {
       try { _laylaIds.add(await getLaylaAccountId()); } catch (err) { console.warn("[MESSAGINGEVENTS] caught:", err instanceof Error ? err.message : err); }
     }
-  } catch {
-    try { _laylaIds = new Set([await getLaylaAccountId()]); } catch (err) { console.warn("[MESSAGINGEVENTS] caught:", err instanceof Error ? err.message : err); _laylaIds = new Set(); }
+  } catch (err) {
+    console.warn("[MESSAGINGEVENTS] primary getLaylaAccountIds() failed, falling back to single id:", err instanceof Error ? err.message : err);
+    try { _laylaIds = new Set([await getLaylaAccountId()]); } catch (err2) { console.warn("[MESSAGINGEVENTS] fallback getLaylaAccountId() also failed:", err2 instanceof Error ? err2.message : err2); _laylaIds = new Set(); }
   }
   return _laylaIds;
 }

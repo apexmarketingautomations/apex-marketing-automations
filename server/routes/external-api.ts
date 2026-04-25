@@ -111,8 +111,8 @@ export function registerExternalApiRoutes(app: Express) {
         source: source || "external-api",
         message: message || "",
       };
-      fireAutomationTriggerGlobal("new_lead", account.id, ctx).catch(() => {});
-      fireAutomationTriggerGlobal("OnNewLead", account.id, ctx).catch(() => {});
+      fireAutomationTriggerGlobal("new_lead", account.id, ctx).catch((err) => console.warn("[EXTERNAL-API] promise rejected:", err instanceof Error ? err.message : err));
+      fireAutomationTriggerGlobal("OnNewLead", account.id, ctx).catch((err) => console.warn("[EXTERNAL-API] promise rejected:", err instanceof Error ? err.message : err));
     }).catch(e => console.error("[EXTERNAL-API] trigger error:", e instanceof Error ? e.message : e));
 
     publishEventAsync(EVENT_TYPES.CONTACT_CREATED, "external-api", {
@@ -197,9 +197,9 @@ export function registerExternalApiRoutes(app: Express) {
         preferredTime: preferredTime || "",
         type: "consultation",
       };
-      fireAutomationTriggerGlobal("new_lead", account.id, ctx).catch(() => {});
-      fireAutomationTriggerGlobal("OnNewLead", account.id, ctx).catch(() => {});
-      fireAutomationTriggerGlobal("consultation_request", account.id, ctx).catch(() => {});
+      fireAutomationTriggerGlobal("new_lead", account.id, ctx).catch((err) => console.warn("[EXTERNAL-API] promise rejected:", err instanceof Error ? err.message : err));
+      fireAutomationTriggerGlobal("OnNewLead", account.id, ctx).catch((err) => console.warn("[EXTERNAL-API] promise rejected:", err instanceof Error ? err.message : err));
+      fireAutomationTriggerGlobal("consultation_request", account.id, ctx).catch((err) => console.warn("[EXTERNAL-API] promise rejected:", err instanceof Error ? err.message : err));
     }).catch(e => console.error("[EXTERNAL-API] trigger error:", e instanceof Error ? e.message : e));
 
     publishEventAsync(EVENT_TYPES.CONTACT_CREATED, "external-api", {
@@ -245,8 +245,8 @@ export function registerExternalApiRoutes(app: Express) {
         pageUrl: pageUrl || "",
         contactPhone: contactPhone || "",
         contactEmail: contactEmail || "",
-      }).catch(() => {});
-    }).catch(() => {});
+      }).catch((err) => console.warn("[EXTERNAL-API] promise rejected:", err instanceof Error ? err.message : err));
+    }).catch((err) => console.warn("[EXTERNAL-API] promise rejected:", err instanceof Error ? err.message : err));
 
     console.log(`[EXTERNAL-API] Event: ${event} (account=${account.id})`);
     res.json({ success: true, event });

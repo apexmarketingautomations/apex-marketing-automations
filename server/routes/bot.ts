@@ -1096,7 +1096,7 @@ export async function runRealTraining(jobId: number) {
             await updateJob(`Headless render extracted ${text.length.toLocaleString()} chars`, 60);
           }
         } finally {
-          await browser.close().catch(() => {});
+          await browser.close().catch((err) => console.warn("[BOT] promise rejected:", err instanceof Error ? err.message : err));
         }
       } catch (puppErr: any) {
         await updateJob(`Headless browser unavailable (${puppErr.message?.slice(0, 80) || "unknown"}). Continuing with static content only.`, 55);

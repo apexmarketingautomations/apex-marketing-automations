@@ -34,16 +34,16 @@ export async function processFailedEvents(): Promise<void> {
         console.log(`[RETRY-PROCESSOR] No retry handler for source "${event.source}", marking dead_letter`);
         await storage.updateEventLogStatus(event.id, EVENT_LOG_STATUS.DEAD_LETTER, {
           errorMessage: `No retry handler registered for source: ${event.source}`,
-        }).catch(() => {});
+        }).catch((err) => console.warn("[EVENTRETRYPROCESSOR] promise rejected:", err instanceof Error ? err.message : err));
         continue;
       }
 
       const newRetryCount = event.retryCount + 1;
-      await storage.updateEventLogStatus(event.id, EVENT_LOG_STATUS.PROCESSING, { retryCount: newRetryCount }).catch(() => {});
+      await storage.updateEventLogStatus(event.id, EVENT_LOG_STATUS.PROCESSING, { retryCount: newRetryCount }).catch((err) => console.warn("[EVENTRETRYPROCESSOR] promise rejected:", err instanceof Error ? err.message : err));
 
       try {
         await handler(event.payload as Record<string, any>, event.traceId);
-        await storage.updateEventLogStatus(event.id, EVENT_LOG_STATUS.COMPLETED, { processedAt: new Date() }).catch(() => {});
+        await storage.updateEventLogStatus(event.id, EVENT_LOG_STATUS.COMPLETED, { processedAt: new Date() }).catch((err) => console.warn("[EVENTRETRYPROCESSOR] promise rejected:", err instanceof Error ? err.message : err));
         console.log(`[RETRY-PROCESSOR] Event ${event.id} (${event.type}) retry #${newRetryCount} succeeded`);
       } catch (err: any) {
         console.error(`[RETRY-PROCESSOR] Event ${event.id} (${event.type}) retry #${newRetryCount} failed: ${err.message}`);
@@ -53,14 +53,14 @@ export async function processFailedEvents(): Promise<void> {
             failedAt: new Date(),
             errorMessage: `Max retries (${event.maxRetries}) exceeded. Last error: ${err.message}`,
             retryCount: newRetryCount,
-          }).catch(() => {});
+          }).catch((err) => console.warn("[EVENTRETRYPROCESSOR] promise rejected:", err instanceof Error ? err.message : err));
           console.warn(`[RETRY-PROCESSOR] Event ${event.id} moved to dead_letter after ${newRetryCount} retries`);
         } else {
           await storage.updateEventLogStatus(event.id, EVENT_LOG_STATUS.FAILED, {
             failedAt: new Date(),
             errorMessage: err.message,
             retryCount: newRetryCount,
-          }).catch(() => {});
+          }).catch((err) => console.warn("[EVENTRETRYPROCESSOR] promise rejected:", err instanceof Error ? err.message : err));
         }
       }
     }

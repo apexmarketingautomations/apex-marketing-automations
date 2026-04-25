@@ -392,7 +392,7 @@ export function registerSentinelRoutes(app: Express) {
             niche:        "home_services",
             metadata:     { incidentId: record.id, severity: sig.severity, location: sig.areaDesc },
           })
-        ).catch(() => {});
+        ).catch((err) => console.warn("[SENTINEL] promise rejected:", err instanceof Error ? err.message : err));
       }
 
       await storage.createAuditLog({
@@ -493,7 +493,7 @@ export function registerSentinelRoutes(app: Express) {
             niche:        "accident",
             metadata:     { incidentId: record.id, severity: inc.severity, location: inc.location },
           })
-        ).catch(() => {});
+        ).catch((err) => console.warn("[SENTINEL] promise rejected:", err instanceof Error ? err.message : err));
 
       } else {
         const mergeResult = buildCrashMergeUpdate({
@@ -565,7 +565,7 @@ export function registerSentinelRoutes(app: Express) {
         subAccountId: parsed.data.subAccountId,
         metadata:     { incidentId: incident.id },
       })
-    ).catch(() => {});
+    ).catch((err) => console.warn("[SENTINEL] promise rejected:", err instanceof Error ? err.message : err));
 
     emitWithTimeline({ eventType: EVENT_TYPES.SENTINEL_ALERT, sourceModule: "sentinel", sourceTable: "sentinel_incidents", sourceRecordId: String(incident.id), subAccountId: parsed.data.subAccountId, metadata: { title: incident.title, severity: incident.severity } });
 
@@ -923,7 +923,7 @@ export function registerSentinelRoutes(app: Express) {
         niche:        "accident",
         metadata:     { incidentId: newIncident.id, cadSource: normalizedSource, location: payload.location?.address },
       })
-    ).catch(() => {});
+    ).catch((err) => console.warn("[SENTINEL] promise rejected:", err instanceof Error ? err.message : err));
 
     emitWithTimeline(
       { eventType: EVENT_TYPES.SENTINEL_ALERT, sourceModule: "sentinel", sourceTable: "sentinel_incidents", sourceRecordId: String(newIncident.id), subAccountId: payload.subAccountId, metadata: { incidentId: newIncident.id, cadSource: normalizedSource, externalId: normalizedExternalId, location: payload.location?.address, severity: newIncident.severity, action: "cad_created" } },

@@ -47,7 +47,7 @@ function apexReport(params: {
         metadata:     params.metadata,
       }),
     )
-    .catch(() => {});
+    .catch((err) => console.warn("[HOMESERVICELEADSCORER] promise rejected:", err instanceof Error ? err.message : err));
 }
 
 // ── Scorer ────────────────────────────────────────────────────────────────────
