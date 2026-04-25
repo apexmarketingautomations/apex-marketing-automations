@@ -52,6 +52,23 @@ Apex Marketing Automations is a multi-tenant SaaS platform designed to centraliz
   builds fail if violations exist). For local pre-commit enforcement,
   enable the bundled hook: `git config core.hooksPath .githooks`.
 
+## Data Migrations
+
+For one-off SQL fixes that must run BEFORE drizzle's schema sync (e.g. a
+new uniqueness constraint on a table that already has duplicates), drop a
+date-prefixed `.sql` file into `scripts/migrations/`.
+
+- The runner (`scripts/run-data-migrations.ts`) executes each file in
+  lexical order, inside its own transaction, and records it in the
+  `_data_migrations` table so it never re-runs.
+- A pg advisory lock prevents two runners from racing on the same migration.
+- Dev: runs automatically inside `scripts/post-merge.sh` before `db:push`.
+- Production: run as a one-shot operator step BEFORE deploy/`db:push`:
+  ```
+  DATABASE_URL=<prod-url> npx tsx scripts/run-data-migrations.ts
+  ```
+  Then verify with: `SELECT name, applied_at FROM _data_migrations;`
+
 ## External Dependencies
 
 - **OpenAI**: Primary AI model (`gpt-4o-mini`) for general AI tasks.
