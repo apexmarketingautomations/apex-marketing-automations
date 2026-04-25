@@ -12,17 +12,24 @@
  * pass; the second one ("loser") collided and was left with no follow-up.
  *
  * Recovery action — for each loser:
- *   • Patch the loser sentinel_auto row's `data` JSONB so it explicitly points
- *     at the winner and at the active follow-up job that will fetch FLHSMV
- *     data on the loser's behalf.
- *   • Set the loser's `error_log` to a "DUPLICATE_FHP_INCIDENT" message so the
- *     loser is explicitly closed-out with a reason recorded.
- *   • Patch the winner's follow-up `data.siblingSentinelReportIds[]` so a
- *     future worker enhancement can opportunistically stamp officialFlhsmv
- *     onto every sibling parent (not just `sentinelReportId`).
+ *   1. Patch the loser sentinel_auto row's `data` so it explicitly points at
+ *      the winner and at the active follow-up job that will fetch FLHSMV data
+ *      on the loser's behalf, AND set the loser's `error_log` to a
+ *      "DUPLICATE_FHP_INCIDENT" message (explicit close-out with reason).
+ *   2. Patch the winner's follow-up `data.siblingSentinelReportIds[]` so a
+ *      future worker enhancement can opportunistically stamp officialFlhsmv
+ *      onto every sibling parent (not just `sentinelReportId`). Tracked as
+ *      project follow-up task #182.
+ *   3. Guarantee the canonical follow-up is in an ACTIVE state (PENDING /
+ *      PROCESSING / COMPLETED). If it has slipped to FAILED / NOT_FOUND /
+ *      anything else, reset it to PENDING with refreshed metadata (mirrors
+ *      requeueFlhsmvFollowUps.ts lines 162-178).
  *
- * Idempotent: safe to re-run. Skips losers whose data already carries the
- * recovery markers and dedupes follow-up sibling arrays before writing.
+ * Strict post-apply assertion: every loser must end up linked to a follow-up
+ * row in an ACTIVE state. The script throws if any loser ends up otherwise.
+ *
+ * Idempotent: safe to re-run. It re-checks every loser's follow-up status on
+ * each run and re-resets any that have drifted out of an ACTIVE state.
  *
  * Usage:
  *   npx tsx scripts/recoverDuplicateFhpFollowUps.ts          # dry-run (default)
@@ -41,6 +48,9 @@ const LOSER_PARENT_IDS = [
   8463, 8481, 8483, 8529, 8533,
 ] as const;
 
+// Statuses that mean a follow-up job is alive — won't be drained off the queue
+const ACTIVE_STATUSES = new Set(["PENDING", "PROCESSING", "COMPLETED"]);
+
 function buildFollowUpNumber(incidentId: string): string {
   return `FLHSMV-FOLLOWUP-${incidentId.replace(/[^A-Z0-9]/gi, "-").toUpperCase()}`;
 }
@@ -48,12 +58,16 @@ function buildFollowUpNumber(incidentId: string): string {
 interface LoserPlan {
   loserParentId: number;
   loserParentNumber: string;
-  loserSubAccountId: number | null;
   fhpIncidentId: string;
   followUpNumber: string;
   followUpRowId: number;
+  followUpStatus: string;
   winnerParentId: number;
   winnerParentNumber: string;
+  // Actions to take on apply
+  needsRecoveryMarkers: boolean;     // patch loser's data + error_log
+  needsSiblingFanOut: boolean;       // add loser id to followup data.siblingSentinelReportIds
+  needsFollowUpReset: boolean;       // reset followup status to PENDING
 }
 
 async function main() {
@@ -63,7 +77,7 @@ async function main() {
   console.log(`  Started: ${new Date().toISOString()}`);
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 
-  // ── 1. Load all 27 losers ──────────────────────────────────────────────────
+  // ── 1. Load all losers ────────────────────────────────────────────────────
   const losers = await db
     .select()
     .from(crashReports)
@@ -74,93 +88,124 @@ async function main() {
     const missing = LOSER_PARENT_IDS.filter(id => !found.has(id));
     throw new Error(`Expected ${LOSER_PARENT_IDS.length} loser rows but found ${losers.length}. Missing: ${missing.join(",")}`);
   }
+  const loserById = new Map(losers.map(l => [l.id, l]));
 
-  // ── 2. Map each loser to its expected follow-up number ─────────────────────
-  const plans: LoserPlan[] = [];
-  const skippedAlreadyRecovered: number[] = [];
-
+  // ── 2. Resolve every loser to its follow-up number ────────────────────────
+  // Prefer activeFollowUpReportNumber if a previous recovery has already run;
+  // otherwise rebuild it from rawPayload.id.
+  const followUpNumberByLoserId = new Map<number, { followUpNumber: string; fhpIncidentId: string }>();
   for (const loser of losers) {
-    const raw = (loser.rawPayload as Record<string, any>) ?? {};
     const data = (loser.data as Record<string, any>) ?? {};
+    const raw = (loser.rawPayload as Record<string, any>) ?? {};
     const incidentId: string | undefined = raw?.id;
     if (!incidentId) {
       throw new Error(`Loser id=${loser.id} (${loser.reportNumber}) has no rawPayload.id — cannot map to follow-up`);
     }
-    if (data.duplicateOfSentinelReportId && data.activeFollowUpReportNumber) {
-      skippedAlreadyRecovered.push(loser.id);
-      continue;
+    const fromRecovery = typeof data.activeFollowUpReportNumber === "string" ? data.activeFollowUpReportNumber : null;
+    const computed = buildFollowUpNumber(incidentId);
+    if (fromRecovery && fromRecovery !== computed) {
+      throw new Error(`Loser id=${loser.id}: stored activeFollowUpReportNumber=${fromRecovery} disagrees with computed=${computed} — refusing to touch`);
     }
-
-    const followUpNumber = buildFollowUpNumber(incidentId);
-    plans.push({
-      loserParentId: loser.id,
-      loserParentNumber: loser.reportNumber,
-      loserSubAccountId: loser.subAccountId,
-      fhpIncidentId: incidentId,
-      followUpNumber,
-      followUpRowId: -1,
-      winnerParentId: -1,
-      winnerParentNumber: "",
-    });
+    followUpNumberByLoserId.set(loser.id, { followUpNumber: computed, fhpIncidentId: incidentId });
   }
 
-  if (skippedAlreadyRecovered.length > 0) {
-    console.log(`Skipping ${skippedAlreadyRecovered.length} loser(s) already recovered: ${skippedAlreadyRecovered.join(",")}\n`);
-  }
-  if (plans.length === 0) {
-    console.log("✓ Nothing to recover — all 27 losers already carry recovery markers.\n");
-    return;
-  }
-
-  // ── 3. Resolve each plan to its existing follow-up row + winner parent ─────
-  const followUpNumbers = plans.map(p => p.followUpNumber);
+  // ── 3. Load all referenced follow-up rows ─────────────────────────────────
+  const allFollowUpNumbers = [...new Set([...followUpNumberByLoserId.values()].map(v => v.followUpNumber))];
   const followUps = await db
     .select()
     .from(crashReports)
-    .where(inArray(crashReports.reportNumber, followUpNumbers));
-
+    .where(inArray(crashReports.reportNumber, allFollowUpNumbers));
   const followUpByNumber = new Map(followUps.map(f => [f.reportNumber, f]));
 
-  for (const plan of plans) {
-    const fu = followUpByNumber.get(plan.followUpNumber);
+  // ── 4. Build a per-loser plan ─────────────────────────────────────────────
+  const plans: LoserPlan[] = [];
+
+  for (const loser of losers) {
+    const { followUpNumber, fhpIncidentId } = followUpNumberByLoserId.get(loser.id)!;
+    const fu = followUpByNumber.get(followUpNumber);
     if (!fu) {
-      throw new Error(`No existing follow-up row found for ${plan.followUpNumber} (loser id=${plan.loserParentId}) — cannot recover`);
+      throw new Error(`No existing follow-up row found for ${followUpNumber} (loser id=${loser.id}) — cannot recover`);
     }
-    const fuData = (fu.data as Record<string, any>) ?? {};
     if (fu.source !== "sentinel_followup") {
       throw new Error(`Follow-up row id=${fu.id} (${fu.reportNumber}) has source=${fu.source}, expected sentinel_followup — refusing to touch`);
     }
+    const fuData = (fu.data as Record<string, any>) ?? {};
     const winnerId = fuData.sentinelReportId;
     const winnerNumber = fuData.sentinelReportNumber;
-    if (typeof winnerId !== "number" || winnerId === plan.loserParentId) {
-      throw new Error(`Follow-up row id=${fu.id} has invalid sentinelReportId=${winnerId} (loser=${plan.loserParentId}) — refusing to touch`);
+    if (typeof winnerId !== "number" || winnerId === loser.id) {
+      throw new Error(`Follow-up row id=${fu.id} has invalid sentinelReportId=${winnerId} (loser=${loser.id}) — refusing to touch`);
     }
-    plan.followUpRowId = fu.id;
-    plan.winnerParentId = winnerId;
-    plan.winnerParentNumber = typeof winnerNumber === "string" ? winnerNumber : "";
+
+    const loserData = (loser.data as Record<string, any>) ?? {};
+    const existingSiblings: number[] = Array.isArray(fuData.siblingSentinelReportIds)
+      ? fuData.siblingSentinelReportIds.filter((x: unknown): x is number => typeof x === "number")
+      : [];
+
+    const needsRecoveryMarkers =
+      loserData.duplicateOfSentinelReportId !== winnerId ||
+      loserData.activeFollowUpReportNumber !== followUpNumber ||
+      loserData.activeFollowUpReportId !== fu.id ||
+      !(typeof loser.errorLog === "string" && loser.errorLog.startsWith("DUPLICATE_FHP_INCIDENT:"));
+
+    const needsSiblingFanOut = !existingSiblings.includes(loser.id);
+    const needsFollowUpReset = !ACTIVE_STATUSES.has(fu.status ?? "");
+
+    plans.push({
+      loserParentId: loser.id,
+      loserParentNumber: loser.reportNumber,
+      fhpIncidentId,
+      followUpNumber,
+      followUpRowId: fu.id,
+      followUpStatus: fu.status ?? "",
+      winnerParentId: winnerId,
+      winnerParentNumber: typeof winnerNumber === "string" ? winnerNumber : "",
+      needsRecoveryMarkers,
+      needsSiblingFanOut,
+      needsFollowUpReset,
+    });
   }
 
-  // ── 4. Print the plan ──────────────────────────────────────────────────────
-  console.log("Recovery plan:");
-  console.log("  loser_id  | winner_id | follow-up #");
-  console.log("  ──────────┼───────────┼───────────────────────────────────────────");
+  // ── 5. Print plan ─────────────────────────────────────────────────────────
+  const cMarkers = plans.filter(p => p.needsRecoveryMarkers).length;
+  const cSiblings = plans.filter(p => p.needsSiblingFanOut).length;
+  const cReset = plans.filter(p => p.needsFollowUpReset).length;
+
+  console.log("Per-loser action summary:");
+  console.log(`  • Need recovery markers (loser data/error_log) : ${cMarkers}`);
+  console.log(`  • Need sibling fan-out (followup data array)   : ${cSiblings}`);
+  console.log(`  • Need follow-up status reset → PENDING        : ${cReset}\n`);
+
+  console.log("Detail (loser → winner / follow-up — current followup status):");
   for (const p of plans) {
-    console.log(`  ${String(p.loserParentId).padEnd(9)}| ${String(p.winnerParentId).padEnd(10)}| ${p.followUpNumber}`);
+    const flags = [
+      p.needsRecoveryMarkers ? "MARK" : "----",
+      p.needsSiblingFanOut ? "SIB" : "---",
+      p.needsFollowUpReset ? "RST" : "---",
+    ].join(" ");
+    console.log(
+      `  ${String(p.loserParentId).padStart(5)} → ${String(p.winnerParentId).padStart(5)}  ` +
+      `[${flags}]  ${p.followUpNumber.padEnd(40)}  status=${p.followUpStatus}`,
+    );
   }
-  console.log(`\nTotal: ${plans.length} loser(s) → ${new Set(plans.map(p => p.followUpRowId)).size} follow-up row(s)\n`);
+  console.log();
+
+  if (cMarkers === 0 && cSiblings === 0 && cReset === 0) {
+    console.log("✓ Nothing to do — every loser already linked to an active follow-up. Running final assertion only.\n");
+  }
 
   if (!APPLY) {
     console.log("DRY-RUN complete. Re-run with --apply to write changes.\n");
+    await assertAllLosersLinkedToActiveFollowUp(plans);
     return;
   }
 
-  // ── 5. Apply changes inside a transaction ──────────────────────────────────
+  // ── 6. Apply changes inside a transaction ─────────────────────────────────
   const recoveredAt = new Date().toISOString();
 
   await db.transaction(async (tx) => {
-    // Patch each loser sentinel_auto row (json column → merge in JS)
-    const loserById = new Map(losers.map(l => [l.id, l]));
+    // 6a. Loser recovery markers
     for (const p of plans) {
+      if (!p.needsRecoveryMarkers) continue;
       const loser = loserById.get(p.loserParentId)!;
       const existingData = (loser.data as Record<string, any>) ?? {};
       const newData = {
@@ -183,88 +228,126 @@ async function main() {
         .where(eq(crashReports.id, p.loserParentId));
     }
 
-    // Patch each follow-up row's siblingSentinelReportIds (dedupe per follow-up)
-    const losersByFollowUp = new Map<number, number[]>();
-    for (const p of plans) {
-      const arr = losersByFollowUp.get(p.followUpRowId) ?? [];
-      arr.push(p.loserParentId);
-      losersByFollowUp.set(p.followUpRowId, arr);
-    }
+    // 6b. Follow-up sibling fan-out + status reset, atomically per follow-up row
+    const followUpRowIds = [...new Set(plans.map(p => p.followUpRowId))];
+    for (const fuRowId of followUpRowIds) {
+      const myPlans = plans.filter(p => p.followUpRowId === fuRowId);
+      const needsAny = myPlans.some(p => p.needsSiblingFanOut || p.needsFollowUpReset);
+      if (!needsAny) continue;
 
-    for (const [followUpRowId, loserIds] of losersByFollowUp) {
-      const fuRow = await tx
-        .select({ data: crashReports.data })
+      const [fuRow] = await tx
+        .select()
         .from(crashReports)
-        .where(eq(crashReports.id, followUpRowId))
+        .where(eq(crashReports.id, fuRowId))
         .for("update");
-      const fuData = (fuRow[0]?.data as Record<string, any>) ?? {};
+      if (!fuRow) {
+        throw new Error(`Follow-up row id=${fuRowId} disappeared mid-transaction`);
+      }
+      const fuData = (fuRow.data as Record<string, any>) ?? {};
       const existingSiblings: number[] = Array.isArray(fuData.siblingSentinelReportIds)
         ? fuData.siblingSentinelReportIds.filter((x: unknown): x is number => typeof x === "number")
         : [];
-      const merged = [...new Set([...existingSiblings, ...loserIds])].sort((a, b) => a - b);
-      const newData = { ...fuData, siblingSentinelReportIds: merged };
+      const losersForThisFu = myPlans.map(p => p.loserParentId);
+      const mergedSiblings = [...new Set([...existingSiblings, ...losersForThisFu])].sort((a, b) => a - b);
+      const newFuData = { ...fuData, siblingSentinelReportIds: mergedSiblings };
 
-      await tx
-        .update(crashReports)
-        .set({
-          data: newData,
-          updatedAt: new Date(),
-        })
-        .where(eq(crashReports.id, followUpRowId));
+      const followUpReset = !ACTIVE_STATUSES.has(fuRow.status ?? "");
+
+      const setObj: Record<string, any> = {
+        data: newFuData,
+        updatedAt: new Date(),
+      };
+      if (followUpReset) {
+        // Mirrors requeueFlhsmvFollowUps.ts lines 162-178: reset to PENDING with
+        // refreshed metadata so the worker will pick it back up cleanly.
+        setObj.status = "PENDING";
+        setObj.retryCount = 0;
+        setObj.serviceFailureCount = 0;
+        setObj.errorLog = null;
+        setObj.lockedAt = null;
+        setObj.lockedBy = null;
+      }
+
+      await tx.update(crashReports).set(setObj).where(eq(crashReports.id, fuRowId));
     }
   });
 
-  console.log(`✓ APPLIED — patched ${plans.length} loser(s) and ${new Set(plans.map(p => p.followUpRowId)).size} follow-up row(s)\n`);
+  console.log(`✓ APPLIED — ${cMarkers} loser-marker patch(es), ${cSiblings} sibling fan-out(s), ${cReset} follow-up reset(s)\n`);
 
-  // ── 6. Verification pass ───────────────────────────────────────────────────
-  const verifyLosers = await db
-    .select({
-      id: crashReports.id,
-      reportNumber: crashReports.reportNumber,
-      errorLog: crashReports.errorLog,
-      data: crashReports.data,
-    })
-    .from(crashReports)
-    .where(inArray(crashReports.id, plans.map(p => p.loserParentId)));
+  // ── 7. Strict post-apply assertion ────────────────────────────────────────
+  await assertAllLosersLinkedToActiveFollowUp(
+    // re-resolve from DB to pick up the post-apply state, not the in-memory plan
+    plans.map(p => ({ ...p })),
+  );
+}
 
-  let badLoser = 0;
-  for (const v of verifyLosers) {
-    const d = (v.data as Record<string, any>) ?? {};
-    if (!d.duplicateOfSentinelReportId || !d.activeFollowUpReportNumber || !v.errorLog?.startsWith("DUPLICATE_FHP_INCIDENT")) {
-      console.error(`  ✗ Loser id=${v.id} (${v.reportNumber}) failed verification`);
-      badLoser++;
+async function assertAllLosersLinkedToActiveFollowUp(plans: LoserPlan[]) {
+  const loserIds = plans.map(p => p.loserParentId);
+  const followUpRowIds = [...new Set(plans.map(p => p.followUpRowId))];
+
+  const [reLosers, reFollowUps] = await Promise.all([
+    db
+      .select({
+        id: crashReports.id,
+        reportNumber: crashReports.reportNumber,
+        errorLog: crashReports.errorLog,
+        data: crashReports.data,
+      })
+      .from(crashReports)
+      .where(inArray(crashReports.id, loserIds)),
+    db
+      .select({
+        id: crashReports.id,
+        reportNumber: crashReports.reportNumber,
+        status: crashReports.status,
+        data: crashReports.data,
+      })
+      .from(crashReports)
+      .where(inArray(crashReports.id, followUpRowIds)),
+  ]);
+
+  const fuById = new Map(reFollowUps.map(f => [f.id, f]));
+  const failures: string[] = [];
+
+  for (const p of plans) {
+    const loser = reLosers.find(l => l.id === p.loserParentId);
+    const fu = fuById.get(p.followUpRowId);
+    if (!loser) { failures.push(`loser ${p.loserParentId}: row missing`); continue; }
+    if (!fu)    { failures.push(`loser ${p.loserParentId}: follow-up ${p.followUpRowId} missing`); continue; }
+
+    const loserData = (loser.data as Record<string, any>) ?? {};
+    const fuData = (fu.data as Record<string, any>) ?? {};
+
+    if (loserData.activeFollowUpReportId !== p.followUpRowId) {
+      failures.push(`loser ${p.loserParentId}: data.activeFollowUpReportId=${loserData.activeFollowUpReportId}, expected ${p.followUpRowId}`);
+    }
+    if (loserData.duplicateOfSentinelReportId !== p.winnerParentId) {
+      failures.push(`loser ${p.loserParentId}: data.duplicateOfSentinelReportId=${loserData.duplicateOfSentinelReportId}, expected ${p.winnerParentId}`);
+    }
+    if (!loser.errorLog?.startsWith("DUPLICATE_FHP_INCIDENT:")) {
+      failures.push(`loser ${p.loserParentId}: error_log does not start with DUPLICATE_FHP_INCIDENT:`);
+    }
+    if (!ACTIVE_STATUSES.has(fu.status ?? "")) {
+      failures.push(`loser ${p.loserParentId}: follow-up ${fu.reportNumber} status=${fu.status}, must be one of ${[...ACTIVE_STATUSES].join("/")}`);
+    }
+    const sibs: unknown = fuData.siblingSentinelReportIds;
+    if (!Array.isArray(sibs) || !sibs.includes(p.loserParentId)) {
+      failures.push(`loser ${p.loserParentId}: not present in follow-up.data.siblingSentinelReportIds (${JSON.stringify(sibs)})`);
     }
   }
-  console.log(`Verification: ${verifyLosers.length - badLoser}/${verifyLosers.length} loser rows OK${badLoser > 0 ? ` — ${badLoser} BAD` : ""}`);
 
-  const verifyFollowUps = await db
-    .select({
-      id: crashReports.id,
-      reportNumber: crashReports.reportNumber,
-      data: crashReports.data,
-    })
-    .from(crashReports)
-    .where(inArray(crashReports.id, [...new Set(plans.map(p => p.followUpRowId))]));
-
-  let badFu = 0;
-  for (const v of verifyFollowUps) {
-    const d = (v.data as Record<string, any>) ?? {};
-    const sibs = d.siblingSentinelReportIds;
-    if (!Array.isArray(sibs) || sibs.length === 0) {
-      console.error(`  ✗ Follow-up id=${v.id} (${v.reportNumber}) has no siblingSentinelReportIds`);
-      badFu++;
-    }
+  if (failures.length > 0) {
+    console.error("\n✗ FINAL ASSERTION FAILED:");
+    for (const f of failures) console.error(`    - ${f}`);
+    throw new Error(`Final assertion failed: ${failures.length} invariant violation(s) across ${plans.length} loser(s)`);
   }
-  console.log(`Verification: ${verifyFollowUps.length - badFu}/${verifyFollowUps.length} follow-up rows OK${badFu > 0 ? ` — ${badFu} BAD` : ""}\n`);
 
-  if (badLoser > 0 || badFu > 0) {
-    process.exitCode = 1;
-  }
+  console.log(`✓ Final assertion: all ${plans.length} loser(s) are linked to an ACTIVE follow-up job and carry recovery markers.`);
 }
 
 main()
-  .then(() => process.exit(process.exitCode ?? 0))
+  .then(() => process.exit(0))
   .catch((err) => {
-    console.error("\n[RECOVERY] Fatal error:", err);
+    console.error("\n[RECOVERY] Fatal error:", err.message ?? err);
     process.exit(1);
   });
