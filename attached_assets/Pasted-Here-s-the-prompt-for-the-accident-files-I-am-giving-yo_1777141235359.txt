@@ -1,0 +1,83 @@
+Here's the prompt for the accident files:
+
+---
+
+```
+I am giving you three files for the crash report / FLHSMV pipeline 
+that have been written and reviewed externally. Place them exactly 
+as given. Do not rewrite them. Do not improve them.
+
+─────────────────────────────────────────────────────────────
+FILE 1: server/crashReportWorker.ts  (FULL REPLACEMENT)
+─────────────────────────────────────────────────────────────
+→ Replace your existing server/crashReportWorker.ts entirely.
+→ What changed: searchReportByCountyDate() now scores every 
+  FLHSMV candidate across 5 signals (highway number, mile marker, 
+  street-word overlap, GPS distance, crash time) instead of blindly 
+  falling back to results[0]. It refuses to link if confidence is 
+  below threshold — returns not_found and retries rather than 
+  stamping wrong data onto a client's case.
+→ The call site now passes lat, lng, and received timestamp into 
+  the search so all 5 signals can fire.
+→ Full replacement. Do not merge with existing file.
+
+─────────────────────────────────────────────────────────────
+FILE 2: scripts/backfillCrashStatus.ts  (NEW FILE)
+─────────────────────────────────────────────────────────────
+→ Place in the scripts/ folder.
+→ This is a one-time correction script. It finds every 
+  sentinel_auto row falsely marked COMPLETED (no FLHSMV data, 
+  no officialFlhsmv, no detail) and resets them to AWAITING.
+→ DO NOT RUN IT YET. Just place the file.
+→ Do not modify it.
+
+─────────────────────────────────────────────────────────────
+FILE 3: scripts/requeueFlhsmvFollowUps.ts  (NEW FILE)
+─────────────────────────────────────────────────────────────
+→ Place in the scripts/ folder.
+→ This queues a sentinel_followup PENDING job for every 
+  sentinel_auto row that has no real FLHSMV data yet, so the 
+  worker can go fetch the full report — driver name, insurance, 
+  vehicle info, narrative — and stamp it back onto the parent row.
+→ DO NOT RUN IT YET. Just place the file.
+→ Do not modify it.
+
+─────────────────────────────────────────────────────────────
+AFTER PLACING ALL THREE FILES — RUN IN THIS ORDER
+─────────────────────────────────────────────────────────────
+
+STEP 1: npx tsx scripts/backfillCrashStatus.ts
+  → Watch the console output. It will tell you how many rows 
+    it corrected. If it says 0, the data is already clean.
+
+STEP 2: npx tsx scripts/requeueFlhsmvFollowUps.ts
+  → Watch the console output. It will tell you how many 
+    follow-up jobs were queued.
+
+STEP 3: Restart the server.
+  → This triggers an immediate worker tick so the queued 
+    follow-up jobs get processed now instead of waiting 
+    up to 1 hour for the scheduled tick.
+
+─────────────────────────────────────────────────────────────
+RULES
+─────────────────────────────────────────────────────────────
+
+DO NOT touch:
+  - server/crashIngestPipeline.ts
+  - server/sentinel.ts
+  - server/storage.ts
+  - shared/schema.ts
+  - Any routes
+  - Any frontend files
+
+DO NOT run the scripts before the worker file is in place.
+
+DO NOT rewrite the files. Place them exactly as given.
+
+When the scripts finish and the server restarts, the crash 
+reports that were showing fake COMPLETED status will flip to 
+AWAITING, the worker will fetch the real FLHSMV data, and 
+lawyers will see full driver names, insurance companies, 
+vehicle info, and the official narrative on every case.
+```
