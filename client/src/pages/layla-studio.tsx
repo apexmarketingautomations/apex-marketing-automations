@@ -1,6 +1,8 @@
 import { useState, useRef, useCallback, useEffect, type ChangeEvent, type DragEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { useActiveSubAccountId } from "@/components/account-required";
+import { useAuth } from "@/hooks/use-auth";
+import { getStoredFace, putStoredFace, clearStoredFace } from "@/lib/face-store";
 
 const LAYLA_ACCOUNT_ID = 21;
 
@@ -456,12 +458,25 @@ function TabLayla({ laylaFace, setLaylaFace, laylaPrompt, setLaylaPrompt }: { la
         <div className="card">
           <div className="card-title">✦ Face Reference</div>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            {laylaFace ? <img className="face-thumb" src={laylaFace.preview} alt="Layla" /> : <div className="face-placeholder">✦</div>}
+            {laylaFace ? <img className="face-thumb" src={laylaFace.preview} alt="Layla" data-testid="img-face-preview" /> : <div className="face-placeholder">✦</div>}
             <div style={{ flex: 1 }}>
               <UploadZone onFile={uploadFace} accept="image/*" label={laylaFace ? "Replace face reference" : "Upload Layla's best front-facing photo"} />
             </div>
           </div>
-          {laylaFace && <div className="success-box" style={{ marginTop: 12 }}>✓ Face locked — auto-applies to all generations</div>}
+          {laylaFace && (
+            <>
+              <div className="success-box" style={{ marginTop: 12 }}>✓ Face locked — auto-applies to all generations</div>
+              <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setLaylaFace(null)}
+                  data-testid="button-clear-face"
+                >
+                  ✕ Clear face
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="card">
@@ -1014,12 +1029,61 @@ function LibrarySidebar({ library }: { library: Asset[] }) {
   );
 }
 
-function LaylaStudio() {
+function LaylaStudio({ operatorKey }: { operatorKey: string }) {
   const [, setLocation] = useLocation();
   const [tab, setTab] = useState("layla");
-  const [laylaFace, setLaylaFace] = useState<FaceRef>(null);
+  const [laylaFace, setLaylaFaceState] = useState<FaceRef>(null);
   const [laylaPrompt, setLaylaPrompt] = useState("");
   const [library, setLibrary] = useState<Asset[]>([]);
+
+  const previewUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const file = await getStoredFace(operatorKey);
+      if (cancelled) return;
+      // Always reset state for the new operator before hydrating, so an
+      // in-app operator switch never leaks the previous operator's face.
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current);
+        previewUrlRef.current = null;
+      }
+      if (!file) {
+        setLaylaFaceState(null);
+        return;
+      }
+      const preview = URL.createObjectURL(file);
+      previewUrlRef.current = preview;
+      setLaylaFaceState({ file, preview });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [operatorKey]);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current);
+        previewUrlRef.current = null;
+      }
+    };
+  }, []);
+
+  const setLaylaFace = useCallback((next: FaceRef) => {
+    if (previewUrlRef.current && (!next || next.preview !== previewUrlRef.current)) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
+    if (next) {
+      previewUrlRef.current = next.preview;
+      void putStoredFace(operatorKey, next.file);
+    } else {
+      void clearStoredFace(operatorKey);
+    }
+    setLaylaFaceState(next);
+  }, [operatorKey]);
 
   const addToLibrary = useCallback((asset: Asset) => setLibrary(l => [asset, ...l]), []);
 
@@ -1066,6 +1130,7 @@ function LaylaStudio() {
 
 export default function LaylaStudioPage() {
   const subAccountId = useActiveSubAccountId();
+  const { user, isLoading: isAuthLoading } = useAuth();
   const [, setLocation] = useLocation();
   const wasOnLaylaRef = useRef(false);
 
@@ -1096,5 +1161,13 @@ export default function LaylaStudioPage() {
     );
   }
 
-  return <LaylaStudio />;
+  if (isAuthLoading || !user?.id) {
+    return (
+      <div style={{ padding: 48, textAlign: "center", color: "rgb(148 163 184)" }} data-testid="status-layla-loading">
+        Loading studio…
+      </div>
+    );
+  }
+
+  return <LaylaStudio operatorKey={`face:${user.id}`} />;
 }
