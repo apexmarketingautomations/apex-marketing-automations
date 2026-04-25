@@ -1,0 +1,147 @@
+FIX SENTINEL CRASH REPORT PIPELINE (PRODUCTION RECOVERY)
+DO NOT MODIFY BUSINESS LOGIC OUTSIDE THIS TASK
+
+This is a production incident fix for crash report ingestion + follow-up processing + UI rendering mismatch.
+
+🎯 GOAL
+
+Restore full crash report delivery so that:
+
+FLHSMV data is correctly attached
+workers process backlog correctly
+UI renders full crash report data
+no data loss occurs
+no duplicate jobs are created
+🧱 1. DIAGNOSE BEFORE CHANGING ANYTHING
+
+Run read-only queries:
+
+count all sentinel_auto by status
+count all sentinel_followup by retry_count
+identify rows stuck in:
+AWAITING
+PENDING with retry_count = 0
+confirm whether worker query is filtering them out
+
+Log results before proceeding.
+
+🧠 2. FIX INGEST STATE MACHINE (CRITICAL)
+
+Update CAD ingest pipeline:
+
+NEW sentinel_auto rows MUST start as:
+status = "AWAITING"
+REMOVE ANY PATH that sets:
+status = "COMPLETED" on ingest
+ONLY worker is allowed to set:
+status = "COMPLETED"
+and ONLY after officialFlhsmv.detail is attached
+🔁 3. RECOVER MISLABELED COMPLETED ROWS
+
+Find all sentinel_auto rows where:
+
+status = "COMPLETED"
+AND data.officialFlhsmv.detail IS NULL or missing
+
+For these rows:
+
+safely update status → "AWAITING"
+preserve all existing data
+DO NOT delete or overwrite payloads
+🚀 4. UNBLOCK FOLLOW-UP QUEUE
+
+Fix sentinel_followup backlog:
+
+identify all PENDING rows with retry_count = 0
+confirm why worker is not selecting them
+fix query filter / lock / scope issue
+
+Then:
+
+requeue ONLY missing jobs
+ensure no duplicates in queue
+🔄 5. RUN EXISTING RECOVERY SCRIPTS (SAFE ORDER)
+
+Execute:
+
+npx tsx scripts/backfillCrashStatus.ts
+must be idempotent
+use dry-run first
+confirm output counts
+npx tsx scripts/requeueFlhsmvFollowUps.ts
+dedupe against existing jobs
+only enqueue missing rows
+🧾 6. FIX UI DATA EXTRACTION
+
+Update extractReportData to read in priority order:
+
+data.detail
+data.officialFlhsmv.detail
+fallback data if ReportNumber exists
+
+Ensure UI always displays:
+
+FLHSMV driver data
+insurance data
+injury data
+narrative
+diagram URL (if present)
+🔗 7. ADD DIAGRAM VISIBILITY
+
+If diagram URL exists in payload:
+
+render clickable link in report UI
+⬇️ 8. ADD FULL REPORT DOWNLOAD
+
+Add endpoint + UI action:
+
+"Download full report"
+returns FULL JSON payload
+includes diagram URL + all hidden fields
+
+Must enforce:
+
+verifyAccountOwnership
+existing plan-tier restrictions
+
+NO admin bypass routes.
+
+📊 9. ADD HEALTH MONITORING
+
+Add metrics to admin or crash reports page:
+
+total crash reports ingested
+reports with FLHSMV detail completed
+completion ratio (%)
+
+Flag if:
+
+completion rate drops unexpectedly
+🧪 10. VALIDATION CHECK
+
+After deployment confirm:
+
+no new sentinel_auto rows enter COMPLETED without officialFlhsmv.detail
+worker is processing backlog (retry_count increases)
+at least 1 full report completes end-to-end
+UI displays full FLHSMV data correctly
+diagram link is visible when present
+🚫 STRICT RULES
+
+DO NOT:
+
+delete production data
+reset tables
+drop schema
+change FLHSMV scraper (Task #180 is separate)
+introduce new architecture
+create duplicate worker systems
+🎯 RESULT
+
+Crash reports must:
+
+ingest correctly
+process fully through worker
+attach FLHSMV data reliably
+render correctly in UI
+be downloadable as full JSON
