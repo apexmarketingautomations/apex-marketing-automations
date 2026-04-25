@@ -156,10 +156,12 @@ export async function verifyIntelligenceTables(): Promise<VerificationResult> {
   }
 
   try {
-    const [covCount] = await db.select({ count: sql<number>`count(distinct sub_account_id)::int` }).from(apexModuleCoverage);
+    const [covCount] = await db.select({ count: sql<number>`count(distinct ${apexModuleCoverage.accountId})::int` }).from(apexModuleCoverage);
     result.coverageStatus.accountsWithCoverage = covCount?.count ?? 0;
-  } catch {
-    result.warnings.push("Could not verify module coverage data");
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[APEX-SEED] Failed to verify module coverage data:", err);
+    result.warnings.push(`Could not verify module coverage data: ${message}`);
   }
 
   return result;
