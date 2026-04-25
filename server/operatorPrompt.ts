@@ -80,11 +80,11 @@ INTEGRATIONS:
   let metricsContext = "";
   try {
     const [contacts, automations, messages, deals, stages] = await Promise.all([
-      storage.getContacts(subAccountId).catch(() => []),
-      storage.getLiveAutomations(subAccountId).catch(() => []),
-      storage.getMessages(subAccountId).catch(() => []),
-      storage.getDeals(subAccountId).catch(() => []),
-      storage.getPipelineStages(subAccountId).catch(() => []),
+      storage.getContacts(subAccountId).catch((err) => { console.warn("[OPERATORPROMPT] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; }),
+      storage.getLiveAutomations(subAccountId).catch((err) => { console.warn("[OPERATORPROMPT] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; }),
+      storage.getMessages(subAccountId).catch((err) => { console.warn("[OPERATORPROMPT] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; }),
+      storage.getDeals(subAccountId).catch((err) => { console.warn("[OPERATORPROMPT] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; }),
+      storage.getPipelineStages(subAccountId).catch((err) => { console.warn("[OPERATORPROMPT] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; }),
     ]);
 
     const totalMessages = messages?.length || 0;

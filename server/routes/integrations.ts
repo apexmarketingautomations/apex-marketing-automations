@@ -1348,7 +1348,7 @@ export function registerIntegrationsRoutes(app: Express) {
         if (webhookRes.ok) {
           results.push({ topic, status: "registered" });
         } else {
-          const errData = await webhookRes.json().catch(() => ({})) as any;
+          const errData = await webhookRes.json().catch((err) => { console.warn("[INTEGRATIONS] promise rejected, using object default:", err instanceof Error ? err.message : err); return ({}); }) as any;
           const errMsg = errData?.errors ? JSON.stringify(errData.errors) : `HTTP ${webhookRes.status}`;
           results.push({ topic, status: "failed", error: errMsg });
         }

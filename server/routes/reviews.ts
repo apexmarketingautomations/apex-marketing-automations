@@ -511,7 +511,7 @@ export function registerReviewsRoutes(app: Express) {
       if (stripeKey) stripeConnected = true;
     }
     if (!stripeConnected) billingChecks.push("Stripe not connected");
-    const walletCount = await db.execute(sql`SELECT COUNT(*) as cnt FROM credit_wallets`).then(r => Number((r as any).rows?.[0]?.cnt ?? 0)).catch(() => -1);
+    const walletCount = await db.execute(sql`SELECT COUNT(*) as cnt FROM credit_wallets`).then(r => Number((r as any).rows?.[0]?.cnt ?? 0)).catch((err) => { console.warn("[REVIEWS] credit_wallets count query failed, returning -1:", err instanceof Error ? err.message : err); return -1; });
     if (walletCount === -1) billingChecks.push("Wallet table inaccessible");
     checks.push({
       name: "Billing",

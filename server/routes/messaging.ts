@@ -257,7 +257,7 @@ export function registerMessagingRoutes(app: Express) {
           ))
           .limit(1)
           .execute()
-          .catch(() => []);
+          .catch((err) => { console.warn("[MESSAGING] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; });
         
         let waNumber = account?.twilioNumber;
         if (waConnections.length > 0) {
@@ -349,7 +349,7 @@ export function registerMessagingRoutes(app: Express) {
         ))
         .limit(1)
         .execute()
-        .catch(() => []);
+        .catch((err) => { console.warn("[MESSAGING] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; });
 
       const fbConfig = fbConnections.length > 0 ? fbConnections[0].config as any : null;
       let metaToken = fbConfig?.accessToken || fbConfig?.META_ACCESS_TOKEN || null;
@@ -437,7 +437,7 @@ export function registerMessagingRoutes(app: Express) {
         ))
         .limit(1)
         .execute()
-        .catch(() => []);
+        .catch((err) => { console.warn("[MESSAGING] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; });
 
       const igConfig = igConnections.length > 0 ? igConnections[0].config as any : null;
       let metaToken = igConfig?.accessToken || igConfig?.META_ACCESS_TOKEN || null;

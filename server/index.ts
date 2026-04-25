@@ -909,7 +909,7 @@ async function validateMetaCredentials() {
       console.error("[VAPI SMS] CRM contact error:", crmErr?.message);
     }
 
-    const isOptedOut = await checkPhoneOptOut(senderClean, subAccountId).catch(() => false);
+    const isOptedOut = await checkPhoneOptOut(senderClean, subAccountId).catch((err) => { console.warn("[INDEX] promise rejected, using default false:", err instanceof Error ? err.message : err); return false; });
     if (isOptedOut) {
       console.log(`[VAPI SMS] ${senderClean} is opted out — skipping AI reply`);
       return;

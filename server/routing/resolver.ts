@@ -49,7 +49,7 @@ export async function resolveSubAccount(options: ResolveOptions): Promise<Resolv
   // Priority 1: Phone number match against sub-account Twilio numbers
   if (phone) {
     const phoneVariants = normalizePhone(phone);
-    const allAccounts = await db.select().from(subAccounts).execute().catch(() => []);
+    const allAccounts = await db.select().from(subAccounts).execute().catch((err) => { console.warn("[RESOLVER] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; });
     for (const account of allAccounts) {
       if (account.twilioNumber && phoneVariants.includes(account.twilioNumber)) {
         return { subAccountId: account.id, method: "phone_match" };
@@ -63,7 +63,7 @@ export async function resolveSubAccount(options: ResolveOptions): Promise<Resolv
       .where(eq(subAccounts.id, explicitSubAccountId))
       .limit(1)
       .execute()
-      .catch(() => []);
+      .catch((err) => { console.warn("[RESOLVER] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; });
     if (account.length > 0) {
       return { subAccountId: explicitSubAccountId, method: "explicit_assignment" };
     }
@@ -84,7 +84,7 @@ export async function resolveSubAccount(options: ResolveOptions): Promise<Resolv
       .where(or(...conditions))
       .limit(1)
       .execute()
-      .catch(() => []);
+      .catch((err) => { console.warn("[RESOLVER] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; });
     if (matchedContacts.length > 0) {
       return { subAccountId: matchedContacts[0].subAccountId, method: "contact_ownership" };
     }
@@ -92,7 +92,7 @@ export async function resolveSubAccount(options: ResolveOptions): Promise<Resolv
 
   // Priority 4: Campaign/source mapping
   if (source) {
-    const allAccounts = await db.select().from(subAccounts).execute().catch(() => []);
+    const allAccounts = await db.select().from(subAccounts).execute().catch((err) => { console.warn("[RESOLVER] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; });
     // Attempt to match source tag pattern like "source:accountId" or check name match
     const sourceParts = source.split(":");
     if (sourceParts.length === 2 && !isNaN(parseInt(sourceParts[1]))) {

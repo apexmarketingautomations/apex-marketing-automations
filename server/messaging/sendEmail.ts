@@ -142,7 +142,7 @@ export async function getSenderVerificationStatus(email: string): Promise<Sender
       if (lastSeenId !== undefined) url.searchParams.set("last_seen_id", String(lastSeenId));
       const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${apiKey}` } });
       if (!res.ok) {
-        const body = await res.text().catch(() => "");
+        const body = await res.text().catch((err) => { console.warn("[SENDEMAIL] verifiedSender body fetch failed, using empty string:", err instanceof Error ? err.message : err); return ""; });
         return { state: "unknown", reason: `SendGrid returned ${res.status}${body ? `: ${body.slice(0, 120)}` : ""}` };
       }
       const data = await res.json() as { results?: VerifiedSenderRow[] };
@@ -206,7 +206,7 @@ export async function requestSenderVerification(opts: {
         country: "United States",
       }),
     });
-    const body = await res.json().catch(() => null) as { id?: number; errors?: Array<{ message?: string }> } | null;
+    const body = await res.json().catch((err) => { console.warn("[SENDEMAIL] promise rejected, using default null:", err instanceof Error ? err.message : err); return null; }) as { id?: number; errors?: Array<{ message?: string }> } | null;
     if (!res.ok) {
       const message = body?.errors?.[0]?.message || `SendGrid returned ${res.status}`;
       return { ok: false, error: message };

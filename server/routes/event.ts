@@ -22,7 +22,7 @@ async function ensureStarterPriceId(stripe: any): Promise<string> {
   const search = await stripe.products.search({
     query: "metadata['tier']:'starter' AND active:'true'",
     limit: 5,
-  }).catch(() => ({ data: [] as any[] }));
+  }).catch((err) => { console.warn("[EVENT] promise rejected, using object default:", err instanceof Error ? err.message : err); return ({ data: [] as any[] }); });
   let product = search.data?.[0];
   if (!product) {
     product = await stripe.products.create({

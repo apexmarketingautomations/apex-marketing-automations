@@ -35,7 +35,7 @@ async function advanceSingleGoal(goal: OperatorGoal): Promise<{ stepsExecuted: n
     .then(r => r[0]);
 
   if (!activePlan) {
-    const memories = await getRelevantMemories(goal.accountId, `goal: ${goal.goalType}`, 5).catch(() => []);
+    const memories = await getRelevantMemories(goal.accountId, `goal: ${goal.goalType}`, 5).catch((err) => { console.warn("[GOALENGINE] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; });
     const pastExp = memories.map((m: any) => `- ${m.content}`).join("\n");
     const planId = await generatePlan(goal, pastExp);
     if (planId) {
@@ -103,7 +103,7 @@ export async function createGoal(data: InsertOperatorGoal): Promise<OperatorGoal
   const goalDef = GOAL_TYPES[data.goalType];
   if (!goalDef) throw new Error(`Unknown goal type: ${data.goalType}`);
 
-  const progress = await import("./goalTracker").then(m => m.measureGoalProgress).catch(() => null);
+  const progress = await import("./goalTracker").then(m => m.measureGoalProgress).catch((err) => { console.warn("[GOALENGINE] promise rejected, using default null:", err instanceof Error ? err.message : err); return null; });
 
   const [goal] = await db.insert(operatorGoals).values({
     ...data,
@@ -135,7 +135,7 @@ export async function activateGoal(goalId: number): Promise<void> {
     updatedAt: new Date(),
   }).where(eq(operatorGoals.id, goalId));
 
-  const memories = await getRelevantMemories(goal.accountId, `goal: ${goal.goalType}`, 5).catch(() => []);
+  const memories = await getRelevantMemories(goal.accountId, `goal: ${goal.goalType}`, 5).catch((err) => { console.warn("[GOALENGINE] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; });
   const pastExp = memories.map((m: any) => `- ${m.content}`).join("\n");
   await generatePlan(goal, pastExp);
 
@@ -167,7 +167,7 @@ export async function forceReplan(goalId: number): Promise<number | null> {
     .then(r => r[0]);
 
   if (!activePlan) {
-    const memories = await getRelevantMemories(goal.accountId, `goal: ${goal.goalType}`, 5).catch(() => []);
+    const memories = await getRelevantMemories(goal.accountId, `goal: ${goal.goalType}`, 5).catch((err) => { console.warn("[GOALENGINE] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; });
     const pastExp = memories.map((m: any) => `- ${m.content}`).join("\n");
     return generatePlan(goal, pastExp);
   }

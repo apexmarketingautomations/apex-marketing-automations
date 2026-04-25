@@ -1618,7 +1618,7 @@ export function registerWebhooksRoutes(app: Express) {
                   )
                 )
                 .execute()
-                .catch(() => [] as typeof integrationConnections.$inferSelect[]);
+                .catch((err) => { console.warn("[WEBHOOKS] promise rejected, using default []:", err instanceof Error ? err.message : err); return [] as typeof integrationConnections.$inferSelect[]; });
 
               for (const conn of integrationRows) {
                 const cfg = conn.config as any;
@@ -1944,7 +1944,7 @@ export function registerWebhooksRoutes(app: Express) {
                   }),
                 });
                 if (!sendRes.ok) {
-                  const errData = await sendRes.clone().json().catch(() => ({})) as any;
+                  const errData = await sendRes.clone().json().catch((err) => { console.warn("[WEBHOOKS] promise rejected, using object default:", err instanceof Error ? err.message : err); return ({}); }) as any;
                   console.error(`[META DM] Hot-lead reply FAILED to ${senderId} — HTTP ${sendRes.status}, error=${JSON.stringify(errData).substring(0, 500)}`);
                   emitMessageFailed({
                     subAccountId: subAccountId!,

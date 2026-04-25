@@ -53,10 +53,10 @@ async function checkMeta(accountId: number, account: { metaPageId: string | null
       headers: { Authorization: `Bearer ${account.metaAccessToken}` },
     });
     if (res.ok) {
-      const data: any = await res.json().catch(() => ({}));
+      const data: any = await res.json().catch((err) => { console.warn("[INTEGRATIONHEALTHCHECKER] promise rejected, using object default:", err instanceof Error ? err.message : err); return ({}); });
       await trackIntegrationSuccess(accountId, integrationType, integrationKey, { name: data?.name, id: data?.id });
     } else {
-      const body = await res.text().catch(() => "");
+      const body = await res.text().catch((err) => { console.warn("[INTEGRATIONHEALTHCHECKER] promise rejected, using empty string default:", err instanceof Error ? err.message : err); return ""; });
       await trackIntegrationFailure(accountId, integrationType, integrationKey, `meta_graph_${res.status}`, {
         status: res.status,
         snippet: body.substring(0, 200),
@@ -82,7 +82,7 @@ async function checkTwilio(accountId: number, account: { twilioSubaccountSid: st
       headers: { Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString("base64")}` },
     });
     if (res.ok) {
-      const data: any = await res.json().catch(() => ({}));
+      const data: any = await res.json().catch((err) => { console.warn("[INTEGRATIONHEALTHCHECKER] promise rejected, using object default:", err instanceof Error ? err.message : err); return ({}); });
       await trackIntegrationSuccess(accountId, integrationType, integrationKey, { status: data?.status, friendly_name: data?.friendly_name });
     } else {
       await trackIntegrationFailure(accountId, integrationType, integrationKey, `twilio_${res.status}`, { status: res.status });
@@ -127,7 +127,7 @@ async function checkTelegram(accountId: number, account: { telegramBotToken: str
   try {
     const res = await fetchWithTimeout(`https://api.telegram.org/bot${account.telegramBotToken}/getMe`);
     if (res.ok) {
-      const data: any = await res.json().catch(() => ({}));
+      const data: any = await res.json().catch((err) => { console.warn("[INTEGRATIONHEALTHCHECKER] promise rejected, using object default:", err instanceof Error ? err.message : err); return ({}); });
       if (data?.ok === true) {
         await trackIntegrationSuccess(accountId, integrationType, integrationKey, { username: data.result?.username });
       } else {

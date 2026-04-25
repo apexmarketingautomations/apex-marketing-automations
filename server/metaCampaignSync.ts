@@ -25,7 +25,7 @@ async function syncCampaignInsights(campaignId: number): Promise<{ synced: boole
     );
 
     if (!fbRes.ok) {
-      const errBody = await fbRes.text().catch(() => "");
+      const errBody = await fbRes.text().catch((err) => { console.warn("[METACAMPAIGNSYNC] promise rejected, using empty string default:", err instanceof Error ? err.message : err); return ""; });
       return { synced: false, error: `Facebook API error ${fbRes.status}: ${errBody.slice(0, 200)}` };
     }
 

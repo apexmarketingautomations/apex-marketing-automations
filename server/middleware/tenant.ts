@@ -40,7 +40,7 @@ function getUserId(user: any): string | null {
 async function isApexParent(userId: string): Promise<boolean> {
   const cached = getCached(parentOwnerCache, userId);
   if (cached) return cached.ok;
-  const parent = await storage.getSubAccount(APEX_PARENT_ACCOUNT_ID).catch(() => null);
+  const parent = await storage.getSubAccount(APEX_PARENT_ACCOUNT_ID).catch((err) => { console.warn("[TENANT] promise rejected, using default null:", err instanceof Error ? err.message : err); return null; });
   const ok = !!(parent && parent.ownerUserId === userId);
   parentOwnerCache.set(userId, { ok, ts: Date.now() });
   return ok;
@@ -139,7 +139,7 @@ export async function tenantMiddleware(req: Request, _res: Response, next: NextF
         }
       } catch (err) {
         console.warn("[TENANT] caught:", err instanceof Error ? err.message : err);
-        const fallback = await getUserFirstAccountId(userId).catch(() => null);
+        const fallback = await getUserFirstAccountId(userId).catch((err) => { console.warn("[TENANT] promise rejected, using default null:", err instanceof Error ? err.message : err); return null; });
         if (fallback) subAccountId = fallback;
       }
     } else {

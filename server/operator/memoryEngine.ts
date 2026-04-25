@@ -14,7 +14,7 @@ export async function storeMemory(entry: Omit<MemoryEntry, "id" | "createdAt" | 
       eq(operatorMemories.memoryType, entry.memoryType),
       eq(operatorMemories.key, entry.key),
     ))
-    .limit(1).execute().catch(() => []);
+    .limit(1).execute().catch((err) => { console.warn("[MEMORYENGINE] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; });
 
   const isUpdate = existing.length > 0;
   if (isUpdate) {
@@ -54,7 +54,7 @@ export async function recallMemory(subAccountId: number, memoryType: MemoryType,
     .orderBy(desc(operatorMemories.updatedAt))
     .limit(100);
 
-  const rows = await query.execute().catch(() => []);
+  const rows = await query.execute().catch((err) => { console.warn("[MEMORYENGINE] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; });
 
   return rows.filter(r => {
     if (r.expiresAt && new Date(r.expiresAt) < new Date()) return false;

@@ -715,7 +715,12 @@ export function registerV1Routes(app: Express) {
           ], { temperature: 0.7, maxTokens: 4096, jsonMode: true, route: "v1-generate-landing-page" });
           const cleaned = lpResult.text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
           let siteData;
-          try { siteData = JSON.parse(cleaned); } catch { siteData = { raw: cleaned }; }
+          try {
+            siteData = JSON.parse(cleaned);
+          } catch (err) {
+            console.warn("[V1] generate-landing-page: AI returned non-JSON, falling back to raw text:", err instanceof Error ? err.message : err);
+            siteData = { raw: cleaned };
+          }
           result = { generated: true, siteData };
           break;
         }
@@ -1196,7 +1201,12 @@ export function registerV1Routes(app: Express) {
           ], { temperature: 0.7, maxTokens: 4096, jsonMode: true, route: "v1-orchestrate-generate-site" });
           const cleaned = genSiteResult.text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
           let siteData;
-          try { siteData = JSON.parse(cleaned); } catch { siteData = { raw: cleaned }; }
+          try {
+            siteData = JSON.parse(cleaned);
+          } catch (err) {
+            console.warn("[V1] orchestrate-generate-site: AI returned non-JSON, falling back to raw text:", err instanceof Error ? err.message : err);
+            siteData = { raw: cleaned };
+          }
           result = { status: "Success", message: "Site Generated", siteData };
           break;
         }

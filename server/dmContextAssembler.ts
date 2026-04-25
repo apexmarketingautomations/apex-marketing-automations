@@ -49,7 +49,7 @@ export async function assembleDmContext(opts: DmContextOptions): Promise<DmConte
   if (!contactPhone) throw new Error("[DM-CONTEXT] Missing contactPhone");
 
   const [account, threadMessages, contactRecord, websiteRows] = await Promise.all([
-    storage.getSubAccount(subAccountId).catch(() => null),
+    storage.getSubAccount(subAccountId).catch((err) => { console.warn("[DMCONTEXTASSEMBLER] promise rejected, using default null:", err instanceof Error ? err.message : err); return null; }),
     db
       .select()
       .from(messages)
@@ -61,7 +61,7 @@ export async function assembleDmContext(opts: DmContextOptions): Promise<DmConte
       )
       .orderBy(desc(messages.id))
       .limit(historyLimit)
-      .catch(() => []),
+      .catch((err) => { console.warn("[DMCONTEXTASSEMBLER] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; }),
     db
       .select()
       .from(contacts)
@@ -72,13 +72,13 @@ export async function assembleDmContext(opts: DmContextOptions): Promise<DmConte
         )
       )
       .limit(1)
-      .catch(() => []),
+      .catch((err) => { console.warn("[DMCONTEXTASSEMBLER] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; }),
     db
       .select()
       .from(clientWebsites)
       .where(eq(clientWebsites.subAccountId, subAccountId))
       .limit(1)
-      .catch(() => []),
+      .catch((err) => { console.warn("[DMCONTEXTASSEMBLER] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; }),
   ]);
 
   const contactRow = contactRecord.length > 0 ? contactRecord[0] : null;
