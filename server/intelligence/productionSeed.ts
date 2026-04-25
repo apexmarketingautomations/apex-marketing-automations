@@ -228,15 +228,18 @@ export async function seedBaselineCoverageForAccounts(): Promise<SeedResult> {
       try {
         const existing = await storage.getModuleCoverage(account.id, moduleGroup);
         if (existing && existing.length > 0) continue;
+        const eventTypes = MODULE_GROUP_EVENT_MAP[moduleGroup] ?? [];
         await storage.upsertModuleCoverage({
-          subAccountId: account.id,
+          accountId: account.id,
           moduleGroup,
-          totalEvents: 0,
-          observedEventTypes: [],
+          totalEventTypes: eventTypes.length || 1,
+          observedEventTypes: 0,
+          eventCount: 0,
           coverageScore: 0,
         });
         seeded++;
-      } catch {
+      } catch (err) {
+        console.warn(`[APEX-SEED] Coverage baseline for account ${account.id} / ${moduleGroup} failed:`, (err as Error).message);
       }
     }
   }

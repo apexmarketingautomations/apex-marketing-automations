@@ -2498,34 +2498,27 @@ export class DatabaseStorage implements IStorage {
   }
 
   async incrementModuleCoverageCount(accountId: number, moduleGroup: string, eventType: string): Promise<void> {
-    const existing = await db.select().from(apexModuleCoverage)
-      .where(and(
-        eq(apexModuleCoverage.accountId, accountId),
-        eq(apexModuleCoverage.moduleGroup, moduleGroup),
-      )).limit(1);
-
-    if (existing.length > 0) {
-      const current = existing[0];
-      await db.update(apexModuleCoverage)
-        .set({
-          eventCount: (current.eventCount ?? 0) + 1,
-          lastEventAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(apexModuleCoverage.id, current.id));
-    } else {
-      const registryRows = await this.getModuleEventRegistry(moduleGroup);
-      const totalEventTypes = registryRows.length || 1;
-      await db.insert(apexModuleCoverage).values({
+    const registryRows = await this.getModuleEventRegistry(moduleGroup);
+    const totalEventTypes = registryRows.length || 1;
+    const now = new Date();
+    await db.insert(apexModuleCoverage)
+      .values({
         accountId,
         moduleGroup,
         totalEventTypes,
         observedEventTypes: 1,
-        lastEventAt: new Date(),
+        lastEventAt: now,
         eventCount: 1,
         coverageScore: Math.round((1 / totalEventTypes) * 100),
+      })
+      .onConflictDoUpdate({
+        target: [apexModuleCoverage.accountId, apexModuleCoverage.moduleGroup],
+        set: {
+          eventCount: sql`${apexModuleCoverage.eventCount} + 1`,
+          lastEventAt: now,
+          updatedAt: now,
+        },
       });
-    }
   }
 
   async createAutonomyAction(data: InsertAutonomyAction): Promise<AutonomyAction> {
