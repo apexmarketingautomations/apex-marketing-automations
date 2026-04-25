@@ -1,0 +1,18 @@
+#!/bin/sh
+# Pre-commit hook: block silent error-swallowing in server/.
+# See Tasks #160, #162, #166, #167.
+#
+# Enable locally with:
+#   git config core.hooksPath .githooks
+
+# Only run if any staged file lives under server/.
+if git diff --cached --name-only --diff-filter=ACMR | grep -qE '^server/.*\.(ts|tsx)$'; then
+  if ! node scripts/check-silent-catches.mjs; then
+    echo ""
+    echo "Pre-commit blocked: silent catch detected in server/."
+    echo "Bind & log the error, or annotate with: // allow-silent-catch: <reason>"
+    exit 1
+  fi
+fi
+
+exit 0

@@ -1,6 +1,7 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
 import { rm, readFile } from "fs/promises";
+import { spawnSync } from "child_process";
 
 // server deps to bundle to reduce openat(2) syscalls
 // which helps cold start times
@@ -33,7 +34,23 @@ const allowlist = [
   "zod-validation-error",
 ];
 
+function checkSilentCatches() {
+  console.log("checking for silent error-swallowing in server/...");
+  const result = spawnSync("node", ["scripts/check-silent-catches.mjs"], {
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    console.error(
+      "build aborted: silent catch blocks detected (see above). " +
+        "Bind & log the error or add an explicit `// allow-silent-catch: <reason>` comment.",
+    );
+    process.exit(result.status ?? 1);
+  }
+}
+
 async function buildAll() {
+  checkSilentCatches();
+
   await rm("dist", { recursive: true, force: true });
 
   console.log("building client...");

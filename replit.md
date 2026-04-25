@@ -42,6 +42,16 @@ Apex Marketing Automations is a multi-tenant SaaS platform designed to centraliz
 - **Schema**: `shared/schema.ts` with `drizzle-zod` for validation
 - **Migrations**: Schema-first approach using `npm run db:push` for changes.
 
+## Code Quality Guardrails
+
+- **Silent error-swallowing checker** (`scripts/check-silent-catches.mjs`):
+  Scans `server/` for `} catch {}`, `} catch (_) {}`, and `.catch(() => …)`
+  patterns that hide real failures. Each catch must either bind & log the
+  error, or carry an inline `// allow-silent-catch: <reason>` justification.
+  Runs automatically as the first step of `script/build.ts` (production
+  builds fail if violations exist). For local pre-commit enforcement,
+  enable the bundled hook: `git config core.hooksPath .githooks`.
+
 ## External Dependencies
 
 - **OpenAI**: Primary AI model (`gpt-4o-mini`) for general AI tasks.
