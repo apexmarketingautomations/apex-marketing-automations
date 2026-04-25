@@ -1696,15 +1696,14 @@ RULES:
     let rawMessage = err.message || "Internal Server Error";
 
     // Translate Postgres unique-violation (Task #143) on the
-    // (sub_account_id, name) indexes for pipeline_stages and
-    // workflows into a deterministic 409 with a friendly message,
-    // instead of a generic 500. Other unique-violation paths fall
-    // through to the existing 500 handling.
+    // (sub_account_id, name) index for workflows into a deterministic
+    // 409 with a friendly message, instead of a generic 500. The
+    // matching pipeline_stages_sub_account_name_uniq index was dropped
+    // because production data already had duplicates that blocked the
+    // CREATE UNIQUE INDEX during deploy validation. Other
+    // unique-violation paths fall through to the existing 500 handling.
     if (err?.code === "23505" && typeof err?.constraint === "string") {
-      if (err.constraint === "pipeline_stages_sub_account_name_uniq") {
-        status = 409;
-        rawMessage = "A pipeline stage with this name already exists for this account.";
-      } else if (err.constraint === "workflows_sub_account_name_uniq") {
+      if (err.constraint === "workflows_sub_account_name_uniq") {
         status = 409;
         rawMessage = "A workflow with this name already exists for this account.";
       }

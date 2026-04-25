@@ -690,17 +690,16 @@ export const pipelineStages = pgTable("pipeline_stages", {
   name: text("name").notNull(),
   color: text("color").default("#6366f1"),
   position: integer("position").notNull().default(0),
-}, (table) => ({
-  // Race-safe default seeding (Task #143): two parallel onboarding
-  // callers cannot both insert the same default stage for the same
-  // sub-account. Seeders insert canonical names from a fixed defaults
-  // list, so a (sub_account_id, name) index is sufficient for
-  // race-safety. (Previously this used lower(name), but drizzle-kit
-  // emits an invalid `int4_ops` op-class for SQL expressions, breaking
-  // deploy migration validation.)
-  subAccountNameUniq: uniqueIndex("pipeline_stages_sub_account_name_uniq")
-    .on(table.subAccountId, table.name),
-}));
+});
+// NOTE: The unique index on (sub_account_id, name) added in Task #143
+// was removed because production data already contained duplicate
+// (sub_account_id, name) rows from before the index was enforced,
+// which caused deploy migration validation to fail with
+// "could not create unique index". Race-safety for default seeding
+// is now enforced solely at the application layer via the
+// .toLowerCase() pre-filter in server/onboarding/onboardSubAccount.ts.
+// To restore DB-level race-safety, first dedupe production via a
+// dedicated cleanup script, then re-add the unique index.
 
 export const insertPipelineStageSchema = createInsertSchema(pipelineStages).omit({ id: true });
 export type InsertPipelineStage = z.infer<typeof insertPipelineStageSchema>;
