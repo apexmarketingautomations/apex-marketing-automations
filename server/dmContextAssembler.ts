@@ -106,7 +106,8 @@ export async function assembleDmContext(opts: DmContextOptions): Promise<DmConte
           .limit(1);
         if (stageRow) dealStage = stageRow.name;
       }
-    } catch {
+    } catch (err) {
+      console.error("[DM-CONTEXT] failed to resolve deal stage for contact:", err);
     }
   }
 
@@ -129,7 +130,8 @@ export async function assembleDmContext(opts: DmContextOptions): Promise<DmConte
           generatedPersona = job.generatedPersona;
         }
       }
-    } catch {
+    } catch (err) {
+      console.error("[DM-CONTEXT] failed to load training job for persona:", err);
     }
   }
 
@@ -226,7 +228,8 @@ async function fetchRelevantInsights(): Promise<Array<{ category: string; conten
       .orderBy(sql`confidence_score * occurrence_count * EXP(-decay_rate * EXTRACT(EPOCH FROM (NOW() - last_seen_at)) / 86400) DESC`)
       .limit(8);
     return rows.length > 0 ? rows : null;
-  } catch {
+  } catch (err) {
+    console.error("[DM-CONTEXT] fetchRelevantInsights failed:", err);
     return null;
   }
 }
@@ -631,7 +634,9 @@ export async function buildDmMessages(
           systemPrompt += `\n${insightsBlock}`;
         }
       }
-    } catch {}
+    } catch (err) {
+      console.error("[DM-CONTEXT] failed to inject shared insights into prompt:", err);
+    }
   }
 
   const msgs: ChatMessage[] = [{ role: "system", content: systemPrompt }];

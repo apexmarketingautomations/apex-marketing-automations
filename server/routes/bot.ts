@@ -422,7 +422,11 @@ export function registerBotRoutes(app: Express) {
           await storage.resolvePendingAction(pendingAction.id, "approved");
           emitOperatorActionApproval(subAccountId, pendingAction.toolName, pendingAction.summary, true);
 
-          try { await storage.createAgentMessage({ sessionId, role: "user", content: userMsg }); } catch {}
+          try {
+            await storage.createAgentMessage({ sessionId, role: "user", content: userMsg });
+          } catch (err) {
+            console.error("[BOT] failed to persist approval user message:", err);
+          }
 
           initSSE(res);
           sendSSEData(res, { type: "session", sessionId });
@@ -456,7 +460,9 @@ export function registerBotRoutes(app: Express) {
 
           try {
             await storage.createAgentMessage({ sessionId, role: "assistant", content: successMsg });
-          } catch {}
+          } catch (err) {
+            console.error("[BOT] failed to persist post-approval assistant message:", err);
+          }
 
           sendSSEData(res, { done: true, fullText: successMsg, sessionId });
           res.end();
@@ -465,7 +471,11 @@ export function registerBotRoutes(app: Express) {
           await storage.resolvePendingAction(pendingAction.id, "rejected");
           emitOperatorActionApproval(subAccountId, pendingAction.toolName, pendingAction.summary, false);
 
-          try { await storage.createAgentMessage({ sessionId, role: "user", content: userMsg }); } catch {}
+          try {
+            await storage.createAgentMessage({ sessionId, role: "user", content: userMsg });
+          } catch (err) {
+            console.error("[BOT] failed to persist rejection user message:", err);
+          }
 
           initSSE(res);
           sendSSEData(res, { type: "session", sessionId });
@@ -475,7 +485,9 @@ export function registerBotRoutes(app: Express) {
 
           try {
             await storage.createAgentMessage({ sessionId, role: "assistant", content: cancelMsg });
-          } catch {}
+          } catch (err) {
+            console.error("[BOT] failed to persist cancellation assistant message:", err);
+          }
 
           sendSSEData(res, { done: true, fullText: cancelMsg, sessionId });
           res.end();
@@ -495,12 +507,15 @@ export function registerBotRoutes(app: Express) {
 
       try {
         await storage.createAgentMessage({ sessionId, role: "user", content: userMsg });
-      } catch {}
+      } catch (err) {
+        console.error("[BOT] failed to persist inbound user message:", err);
+      }
 
       initSSE(res);
       sendSSEData(res, { type: "session", sessionId });
 
       const keepalive = setInterval(() => {
+        // Best-effort SSE keepalive; if the stream is closed the write will throw and we deliberately ignore
         try { res.write(`:keepalive\n\n`); } catch {}
       }, 15000);
 
@@ -584,7 +599,9 @@ export function registerBotRoutes(app: Express) {
           chatMessages.push({ role: "assistant", content: aiResponse.text || "" });
           try {
             await storage.createAgentMessage({ sessionId, role: "assistant", content: aiResponse.text || "" });
-          } catch {}
+          } catch (err) {
+            console.error("[BOT] failed to persist assistant chat message:", err);
+          }
           break;
         }
 
@@ -606,7 +623,11 @@ export function registerBotRoutes(app: Express) {
           const stuck = "I went in circles trying to handle that. Could you rephrase what you'd like me to do, or give me one more detail so I can take a different approach?";
           if (!closed) sendSSEData(res, { content: stuck });
           fullAssistantText += stuck;
-          try { await storage.createAgentMessage({ sessionId, role: "assistant", content: stuck }); } catch {}
+          try {
+            await storage.createAgentMessage({ sessionId, role: "assistant", content: stuck });
+          } catch (err) {
+            console.error("[BOT] failed to persist tool-loop break message:", err);
+          }
           break;
         }
 
@@ -629,7 +650,9 @@ export function registerBotRoutes(app: Express) {
             content: aiResponse.text || null,
             toolCalls: toolCallsPayload,
           });
-        } catch {}
+        } catch (err) {
+          console.error("[BOT] failed to persist assistant tool-call message:", err);
+        }
 
         for (const toolCall of aiResponse.toolCalls) {
           if (closed) break;
@@ -638,6 +661,7 @@ export function registerBotRoutes(app: Express) {
           try {
             params = JSON.parse(toolCall.arguments);
           } catch {
+            // Intentional: model returned malformed JSON args; we surface the failure as a tool result so the model can self-correct
             const errorResult = JSON.stringify({ success: false, error: "Invalid tool call arguments" });
             chatMessages.push({ role: "tool", content: errorResult, tool_call_id: toolCall.id, name: toolCall.name });
             continue;
@@ -675,7 +699,9 @@ export function registerBotRoutes(app: Express) {
 
             try {
               await storage.createAgentMessage({ sessionId, role: "tool", content: navResult, toolResults: { tool_call_id: toolCall.id, name: toolCall.name } });
-            } catch {}
+            } catch (err) {
+              console.error("[BOT] failed to persist navigation tool result:", err);
+            }
             continue;
           }
 
@@ -802,7 +828,9 @@ export function registerBotRoutes(app: Express) {
               content: resultJson,
               toolResults: { tool_call_id: toolCall.id, name: toolCall.name },
             });
-          } catch {}
+          } catch (err) {
+            console.error("[BOT] failed to persist tool result message:", err);
+          }
         }
       }
 
@@ -932,7 +960,10 @@ export async function runRealTraining(jobId: number) {
         clearTimeout(t);
         if (!r.ok) return null;
         return await r.text();
-      } catch { return null; }
+      } catch {
+        // Best-effort fetch for the web scraper; timeouts/network errors return null so the crawl can continue
+        return null;
+      }
     };
 
     const extractFromHtml = (html: string): { text: string; links: string[] } => {

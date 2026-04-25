@@ -102,8 +102,9 @@ async function fixResponseRate(subAccountId: number): Promise<CommandResult> {
     };
     await storage.updateSubAccount(subAccountId, { aiPromptConfig: updatedConfig });
     actions.push({ step: "Enable auto-reply", status: "done", detail: "Auto-reply activated with instant response" });
-  } catch {
-    actions.push({ step: "Enable auto-reply", status: "failed" });
+  } catch (err) {
+    console.error("[CMD-ENGINE] Enable auto-reply failed:", err);
+    actions.push({ step: "Enable auto-reply", status: "failed", detail: err instanceof Error ? err.message : String(err) });
   }
 
   try {
@@ -125,8 +126,9 @@ async function fixResponseRate(subAccountId: number): Promise<CommandResult> {
     } else {
       actions.push({ step: "Create follow-up workflow", status: "skipped", detail: "Follow-up workflow already active" });
     }
-  } catch {
-    actions.push({ step: "Create follow-up workflow", status: "failed" });
+  } catch (err) {
+    console.error("[CMD-ENGINE] Create follow-up workflow failed:", err);
+    actions.push({ step: "Create follow-up workflow", status: "failed", detail: err instanceof Error ? err.message : String(err) });
   }
 
   return {
@@ -156,8 +158,10 @@ async function boostContent(subAccountId: number, params?: any): Promise<Command
     try {
       const parsed = JSON.parse(aiResult);
       posts = Array.isArray(parsed) ? parsed : parsed.posts || [];
-    } catch {
-      actions.push({ step: "Generate content ideas", status: "failed", detail: "AI response parse error" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[CMD-ENGINE] boost-content: AI response parse error:", message, "| raw preview:", String(aiResult || "").slice(0, 300));
+      actions.push({ step: "Generate content ideas", status: "failed", detail: `AI response parse error: ${message}` });
       return { success: false, command: "boost-content", actions, summary: "Content generation failed" };
     }
 
@@ -179,7 +183,10 @@ async function boostContent(subAccountId: number, params?: any): Promise<Command
           scheduledAt: scheduleDate,
         });
         scheduled++;
-      } catch { }
+      } catch (err) {
+        // Best-effort per-post insertion; one failure should not abort the batch, but log it for visibility
+        console.warn("[CMD-ENGINE] boost-content: failed to schedule one post:", err);
+      }
     }
 
     actions.push({
@@ -226,8 +233,9 @@ async function handleObjections(subAccountId: number, params?: any): Promise<Com
       });
       actions.push({ step: "Create response template", status: "done", detail: `Template created for: "${objection.substring(0, 40)}..."` });
     }
-  } catch {
-    actions.push({ step: "Create response template", status: "failed" });
+  } catch (err) {
+    console.error("[CMD-ENGINE] Create response template failed:", err);
+    actions.push({ step: "Create response template", status: "failed", detail: err instanceof Error ? err.message : String(err) });
   }
 
   try {
@@ -248,8 +256,9 @@ async function handleObjections(subAccountId: number, params?: any): Promise<Com
     } else {
       actions.push({ step: "Deploy objection workflow", status: "skipped", detail: "Objection handler already exists" });
     }
-  } catch {
-    actions.push({ step: "Deploy objection workflow", status: "failed" });
+  } catch (err) {
+    console.error("[CMD-ENGINE] Deploy objection workflow failed:", err);
+    actions.push({ step: "Deploy objection workflow", status: "failed", detail: err instanceof Error ? err.message : String(err) });
   }
 
   return {
@@ -276,7 +285,10 @@ async function optimizePipeline(subAccountId: number): Promise<CommandResult> {
         try {
           await storage.updateDeal(deal.id, { value: Math.round(estimatedValue) });
           updated++;
-        } catch { }
+        } catch (err) {
+          // Best-effort per-deal update; one failure should not abort the batch, but log it for visibility
+          console.warn(`[CMD-ENGINE] fix-pipeline: failed to update deal ${deal.id}:`, err);
+        }
       }
       actions.push({
         step: "Fix zero-value deals",
@@ -286,8 +298,9 @@ async function optimizePipeline(subAccountId: number): Promise<CommandResult> {
     } else {
       actions.push({ step: "Fix zero-value deals", status: "skipped", detail: "All deals have values" });
     }
-  } catch {
-    actions.push({ step: "Fix zero-value deals", status: "failed" });
+  } catch (err) {
+    console.error("[CMD-ENGINE] Fix zero-value deals failed:", err);
+    actions.push({ step: "Fix zero-value deals", status: "failed", detail: err instanceof Error ? err.message : String(err) });
   }
 
   try {
@@ -302,8 +315,9 @@ async function optimizePipeline(subAccountId: number): Promise<CommandResult> {
     } else {
       actions.push({ step: "Create pipeline stages", status: "skipped", detail: "Pipeline stages already exist" });
     }
-  } catch {
-    actions.push({ step: "Create pipeline stages", status: "failed" });
+  } catch (err) {
+    console.error("[CMD-ENGINE] Create pipeline stages failed:", err);
+    actions.push({ step: "Create pipeline stages", status: "failed", detail: err instanceof Error ? err.message : String(err) });
   }
 
   return {
@@ -338,8 +352,9 @@ async function launchLeadGen(subAccountId: number): Promise<CommandResult> {
     } else {
       actions.push({ step: "Create lead capture workflow", status: "skipped", detail: "Lead capture already active" });
     }
-  } catch {
-    actions.push({ step: "Create lead capture workflow", status: "failed" });
+  } catch (err) {
+    console.error("[CMD-ENGINE] Create lead capture workflow failed:", err);
+    actions.push({ step: "Create lead capture workflow", status: "failed", detail: err instanceof Error ? err.message : String(err) });
   }
 
   try {
@@ -353,8 +368,9 @@ async function launchLeadGen(subAccountId: number): Promise<CommandResult> {
     } else {
       actions.push({ step: "Enable auto-reply for leads", status: "skipped", detail: "Already active" });
     }
-  } catch {
-    actions.push({ step: "Enable auto-reply for leads", status: "failed" });
+  } catch (err) {
+    console.error("[CMD-ENGINE] Enable auto-reply for leads failed:", err);
+    actions.push({ step: "Enable auto-reply for leads", status: "failed", detail: err instanceof Error ? err.message : String(err) });
   }
 
   return {
@@ -382,8 +398,9 @@ async function activateNurture(subAccountId: number): Promise<CommandResult> {
       ],
     });
     actions.push({ step: "Deploy nurture sequence", status: "done", detail: "3-touch re-engagement sequence created" });
-  } catch {
-    actions.push({ step: "Deploy nurture sequence", status: "failed" });
+  } catch (err) {
+    console.error("[CMD-ENGINE] Deploy nurture sequence failed:", err);
+    actions.push({ step: "Deploy nurture sequence", status: "failed", detail: err instanceof Error ? err.message : String(err) });
   }
 
   return {

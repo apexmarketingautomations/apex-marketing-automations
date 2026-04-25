@@ -58,7 +58,9 @@ CURRENT ACCOUNT STATE:
 - Plan: ${(account as any).plan || "Unknown"}
 - Status: ${account.status || "active"}`;
     }
-  } catch {}
+  } catch (err) {
+    console.error("[OPERATOR-PROMPT] failed to load account context:", err);
+  }
 
   let integrationStatus = "";
   try {
@@ -71,7 +73,9 @@ INTEGRATIONS:
 - Connected: ${connected.length > 0 ? connected.join(", ") : "None"}
 - Disconnected/Missing: ${disconnected.length > 0 ? disconnected.join(", ") : "None"}`;
     }
-  } catch {}
+  } catch (err) {
+    console.error("[OPERATOR-PROMPT] failed to load integration status:", err);
+  }
 
   let metricsContext = "";
   try {
@@ -103,7 +107,9 @@ REAL-TIME METRICS (use these exact numbers in your responses):
       const d = new Date(m.createdAt);
       return d > new Date(Date.now() - 24 * 60 * 60 * 1000);
     })?.length || 0} messages in last 24h`;
-  } catch {}
+  } catch (err) {
+    console.error("[OPERATOR-PROMPT] failed to compute realtime metrics:", err);
+  }
 
   let sharedInsightsContext = "";
   try {
@@ -111,7 +117,9 @@ REAL-TIME METRICS (use these exact numbers in your responses):
     if (insights.length > 0) {
       sharedInsightsContext = `\n${buildSharedInsightsPrompt(insights)}`;
     }
-  } catch {}
+  } catch (err) {
+    console.error("[OPERATOR-PROMPT] failed to load shared insights:", err);
+  }
 
   const pageContext = currentPath ? getPageContext(currentPath) : "";
   let entityContext = "";

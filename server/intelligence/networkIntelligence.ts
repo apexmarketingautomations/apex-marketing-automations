@@ -67,12 +67,16 @@ export async function getNetworkBenchmarks(): Promise<NetworkBenchmark[]> {
       });
     }
 
+    // Best-effort fire-and-forget metric emit; failure here must not affect the benchmark return
     import("./apexLearningFeed").then(({ emitNetworkBenchmarksComputed }) =>
       emitNetworkBenchmarksComputed(benchmarks.length, 0)
-    ).catch(() => {});
+    ).catch((err) => {
+      console.warn("[NETWORK-INTEL] emitNetworkBenchmarksComputed failed:", err);
+    });
 
     return benchmarks;
-  } catch {
+  } catch (err) {
+    console.error("[NETWORK-INTEL] getNetworkBenchmarks failed:", err);
     return [];
   }
 }
@@ -135,7 +139,8 @@ export async function getNetworkPatterns(): Promise<NetworkPattern[]> {
     }
 
     return patterns;
-  } catch {
+  } catch (err) {
+    console.error("[NETWORK-INTEL] getNetworkPatterns failed:", err);
     return [];
   }
 }

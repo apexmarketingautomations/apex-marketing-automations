@@ -6,6 +6,23 @@ function noopValidate(): ValidationResult {
   return { valid: true, errors: [], warnings: [] };
 }
 
+function parseAiJson<T = any>(
+  raw: string,
+  context: string,
+): { ok: true; data: T } | { ok: false; error: string } {
+  try {
+    return { ok: true, data: JSON.parse(raw) as T };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const preview = (raw || "").slice(0, 300);
+    console.error(`[CREATIVE-TOOLS] ${context}: invalid JSON from AI:`, message, "| raw preview:", preview);
+    return {
+      ok: false,
+      error: `AI returned invalid JSON for ${context}: ${message}`,
+    };
+  }
+}
+
 export const creativeTools: OperatorTool[] = [
   {
     name: "generateLandingPage",
@@ -30,12 +47,11 @@ export const creativeTools: OperatorTool[] = [
         { role: "user", content: "You are a landing page designer. Return JSON only with theme and sections array.\n\n" + sitePrompt },
       ], { jsonMode: true, temperature: 0.7, route: "creative-tools" });
 
-      let siteData;
-      try {
-        siteData = JSON.parse(creativeAiResult.text);
-      } catch {
-        return { success: false, error: "AI returned invalid JSON for site generation" };
+      const siteParsed = parseAiJson(creativeAiResult.text, "generateLandingPage");
+      if (!siteParsed.ok) {
+        return { success: false, error: siteParsed.error };
       }
+      const siteData = siteParsed.data;
 
       const site = await storage.createSavedSite({
         name: `${businessName} Landing Page`,
@@ -71,12 +87,11 @@ export const creativeTools: OperatorTool[] = [
         { role: "user", content: "You are a marketing strategist. Return JSON array only.\n\n" + prompt },
       ], { jsonMode: true, temperature: 0.8, route: "creative-tools" });
 
-      let angles;
-      try {
-        angles = JSON.parse(creativeAiResult.text);
-      } catch {
-        return { success: false, error: "AI returned invalid JSON" };
+      const anglesParsed = parseAiJson(creativeAiResult.text, "generateOfferAngles");
+      if (!anglesParsed.ok) {
+        return { success: false, error: anglesParsed.error };
       }
+      const angles = anglesParsed.data;
 
       return { success: true, data: { angles, count: Array.isArray(angles) ? angles.length : 0 } };
     },
@@ -109,12 +124,11 @@ export const creativeTools: OperatorTool[] = [
         { role: "user", content: "You are an ad copywriter. Return JSON array only.\n\n" + prompt },
       ], { jsonMode: true, temperature: 0.8, route: "creative-tools" });
 
-      let variants;
-      try {
-        variants = JSON.parse(creativeAiResult.text);
-      } catch {
-        return { success: false, error: "AI returned invalid JSON" };
+      const adParsed = parseAiJson(creativeAiResult.text, "generateAdCopyVariants");
+      if (!adParsed.ok) {
+        return { success: false, error: adParsed.error };
       }
+      const variants = adParsed.data;
 
       return { success: true, data: { variants, platform, tone, count: Array.isArray(variants) ? variants.length : 0 } };
     },
@@ -146,12 +160,11 @@ export const creativeTools: OperatorTool[] = [
         { role: "user", content: "You are an SMS copywriter. Return JSON array only.\n\n" + prompt },
       ], { jsonMode: true, temperature: 0.7, route: "creative-tools" });
 
-      let variants;
-      try {
-        variants = JSON.parse(creativeAiResult.text);
-      } catch {
-        return { success: false, error: "AI returned invalid JSON" };
+      const smsParsed = parseAiJson(creativeAiResult.text, "generateSMSCopyVariants");
+      if (!smsParsed.ok) {
+        return { success: false, error: smsParsed.error };
       }
+      const variants = smsParsed.data;
 
       return { success: true, data: { variants, count: Array.isArray(variants) ? variants.length : 0 } };
     },
@@ -183,12 +196,11 @@ export const creativeTools: OperatorTool[] = [
         { role: "user", content: "You are an email marketing copywriter. Return JSON array only.\n\n" + prompt },
       ], { jsonMode: true, temperature: 0.7, route: "creative-tools" });
 
-      let variants;
-      try {
-        variants = JSON.parse(creativeAiResult.text);
-      } catch {
-        return { success: false, error: "AI returned invalid JSON" };
+      const emailParsed = parseAiJson(creativeAiResult.text, "generateEmailCopyVariants");
+      if (!emailParsed.ok) {
+        return { success: false, error: emailParsed.error };
       }
+      const variants = emailParsed.data;
 
       return { success: true, data: { variants, count: Array.isArray(variants) ? variants.length : 0 } };
     },
@@ -219,12 +231,11 @@ export const creativeTools: OperatorTool[] = [
         { role: "user", content: "You are a social media manager. Return JSON array only.\n\n" + prompt },
       ], { jsonMode: true, temperature: 0.8, route: "creative-tools" });
 
-      let posts;
-      try {
-        posts = JSON.parse(creativeAiResult.text);
-      } catch {
-        return { success: false, error: "AI returned invalid JSON" };
+      const postsParsed = parseAiJson(creativeAiResult.text, "generateSocialPostDrafts");
+      if (!postsParsed.ok) {
+        return { success: false, error: postsParsed.error };
       }
+      const posts = postsParsed.data;
 
       return { success: true, data: { posts, platform, count: Array.isArray(posts) ? posts.length : 0 } };
     },
@@ -255,12 +266,11 @@ export const creativeTools: OperatorTool[] = [
         { role: "user", content: "You are a reputation management specialist. Return JSON only.\n\n" + prompt },
       ], { jsonMode: true, temperature: 0.6, route: "creative-tools" });
 
-      let responseData;
-      try {
-        responseData = JSON.parse(creativeAiResult.text);
-      } catch {
-        return { success: false, error: "AI returned invalid JSON" };
+      const responseParsed = parseAiJson<Record<string, any>>(creativeAiResult.text, "generateReviewResponseDraft");
+      if (!responseParsed.ok) {
+        return { success: false, error: responseParsed.error };
       }
+      const responseData = responseParsed.data;
 
       return {
         success: true,
