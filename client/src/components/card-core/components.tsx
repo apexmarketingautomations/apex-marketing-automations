@@ -349,7 +349,7 @@ export function LinksSection({ card, theme, trackEvent }: {
             onClick={() => track("click_link", link.label)}
             className={`flex items-center gap-3 p-4 rounded-xl ${theme.cardBg} border ${theme.border} hover:scale-[1.01] transition-all group`}
             data-testid={`link-custom-${i}`}>
-            <div className="w-10 h-10 rounded-xl bg-white/[0.06] flex items-center justify-center group-hover:scale-110 transition-transform"
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform"
               style={{ backgroundColor: `${card.brandColor}20` }}>
               <ExternalLink size={18} style={{ color: card.brandColor }} />
             </div>
@@ -384,7 +384,7 @@ export function SocialLinksSection({ card, theme, trackEvent }: {
               return (
                 <a key={i} href={social.url} target="_blank" rel="noopener noreferrer"
                   onClick={() => track("click_social", social.label)}
-                  className={`flex items-center gap-3 px-4 py-3.5 ${theme.cardBg} border ${theme.border} hover:bg-white/[0.08] hover:border-white/[0.15] rounded-2xl text-sm transition-all active:scale-95 group`}
+                  className={`flex items-center gap-3 px-4 py-3.5 ${theme.cardBg} border ${theme.border} hover:scale-[1.02] hover:opacity-90 rounded-2xl text-sm transition-all active:scale-95 group`}
                   data-testid={`social-${(social.label || "link").toLowerCase()}`}>
                   <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${style.bg} flex items-center justify-center text-base shadow-lg`}>
                     {style.icon}
@@ -426,23 +426,23 @@ export function ReviewBookingLinks({ card, theme }: { card: SharedCardData; them
       {card.reviewLink && (
         <motion.a href={card.reviewLink} target="_blank" rel="noopener noreferrer" data-testid="button-review"
           initial={{ opacity: 0, x: -10 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}
-          className={`flex items-center gap-3 px-5 py-4 ${theme.cardBg} border ${theme.border} hover:bg-white/[0.08] hover:border-white/[0.15] rounded-2xl text-sm transition-all group`}>
+          className={`flex items-center gap-3 px-5 py-4 ${theme.cardBg} border ${theme.border} hover:scale-[1.01] hover:opacity-90 rounded-2xl text-sm transition-all group`}>
           <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${card.brandColor}20` }}>
             <Star className="w-5 h-5" style={{ color: card.brandColor }} />
           </div>
           <span className={`${theme.text} font-medium flex-1`}>Leave a Review</span>
-          <ArrowUpRight className="w-4 h-4 text-slate-500 group-hover:text-white transition-colors" />
+          <ArrowUpRight className={`w-4 h-4 ${theme.muted} opacity-60 group-hover:opacity-100 transition-opacity`} />
         </motion.a>
       )}
       {card.bookingUrl && (
         <motion.a href={card.bookingUrl} target="_blank" rel="noopener noreferrer" data-testid="button-booking"
           initial={{ opacity: 0, x: -10 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}
-          className={`flex items-center gap-3 px-5 py-4 ${theme.cardBg} border ${theme.border} hover:bg-white/[0.08] hover:border-white/[0.15] rounded-2xl text-sm transition-all group`}>
+          className={`flex items-center gap-3 px-5 py-4 ${theme.cardBg} border ${theme.border} hover:scale-[1.01] hover:opacity-90 rounded-2xl text-sm transition-all group`}>
           <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${card.brandColor}20` }}>
             <Calendar className="w-5 h-5" style={{ color: card.brandColor }} />
           </div>
           <span className={`${theme.text} font-medium flex-1`}>Book an Appointment</span>
-          <ArrowUpRight className="w-4 h-4 text-slate-500 group-hover:text-white transition-colors" />
+          <ArrowUpRight className={`w-4 h-4 ${theme.muted} opacity-60 group-hover:opacity-100 transition-opacity`} />
         </motion.a>
       )}
     </div>
@@ -605,7 +605,7 @@ export function ShareModal({ card, theme, config, onClose }: {
 export function CardFooter({ config, theme }: { config: CardRenderConfig; theme: CardTheme }) {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1 }}
-      className="mt-10 pt-8 border-t border-white/[0.06]">
+      className={`mt-10 pt-8 border-t ${theme.border}`}>
       {config.source === "standalone" && config.referralUrl && (
         <a href={config.referralUrl} data-testid="button-get-your-own"
           className="w-full flex items-center justify-center gap-2.5 px-6 py-4 bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:via-blue-500 hover:to-indigo-500 text-white font-bold rounded-2xl transition-all shadow-lg shadow-blue-600/20 hover:shadow-blue-500/30 hover:scale-[1.02] active:scale-[0.98]">
@@ -613,9 +613,9 @@ export function CardFooter({ config, theme }: { config: CardRenderConfig; theme:
         </a>
       )}
       {config.showBranding && (
-        <p className="text-center text-slate-600 text-[11px] mt-3 font-medium tracking-wide">
+        <p className={`text-center ${theme.muted} text-[11px] mt-3 font-medium tracking-wide`}>
           <a href={config.source === "standalone" ? "/standalone/card" : "/cards"}
-            className="hover:text-slate-400 transition-colors">
+            className="opacity-70 hover:opacity-100 transition-opacity">
             Powered by Apex {config.source === "standalone" ? "Digital Cards" : "Marketing Automations"}
           </a>
         </p>
