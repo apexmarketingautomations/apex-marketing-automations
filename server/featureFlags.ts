@@ -21,7 +21,8 @@ export async function isFeatureEnabled(featureName: string): Promise<boolean> {
     const enabled = flag?.enabled ?? true;
     flagCache.set(featureName, { enabled, cachedAt: Date.now() });
     return enabled;
-  } catch {
+  } catch (err) {
+    console.warn("[FEATUREFLAGS] caught:", err instanceof Error ? err.message : err);
     return true;
   }
 }

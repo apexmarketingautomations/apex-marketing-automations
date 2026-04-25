@@ -20,7 +20,8 @@ async function resolveLaylaAccountId(): Promise<number> {
       .limit(1);
     if (layla) return layla.id;
     return await getLaylaAccountId();
-  } catch {
+  } catch (err) {
+    console.warn("[REENGAGEJOB] caught:", err instanceof Error ? err.message : err);
     return await getLaylaAccountId();
   }
 }
@@ -146,7 +147,7 @@ export async function runReengageJob(options?: {
     const [acct] = await db.select({ name: subAccounts.name, industry: subAccounts.industry })
       .from(subAccounts).where(eq(subAccounts.id, subAccountId));
     if (acct) { accountName = acct.name; accountIndustry = acct.industry; }
-  } catch {}
+  } catch (err) { console.warn("[REENGAGEJOB] caught:", err instanceof Error ? err.message : err); }
 
   const result: ReengageResult = {
     totalEligible: 0, attempted: 0, sent: 0, dryRun: 0,
@@ -258,7 +259,7 @@ export async function runReengageJob(options?: {
         try {
           const jsonMatch = summaryResult.text.match(/\{[\s\S]*\}/);
           if (jsonMatch) summary = JSON.parse(jsonMatch[0]);
-        } catch {}
+        } catch (err) { console.warn("[REENGAGEJOB] caught:", err instanceof Error ? err.message : err); }
 
         const fallback = isLayla ? FALLBACK_TEXT : BUSINESS_FALLBACK_TEXT;
 

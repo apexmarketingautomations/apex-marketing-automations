@@ -100,7 +100,8 @@ export async function seedModuleEventRegistry(): Promise<void> {
           description: `${moduleGroup} module: ${eventType}`,
           isActive: true,
         });
-      } catch {
+      } catch (err) {
+        console.warn("[WORKER] caught:", err instanceof Error ? err.message : err);
       }
     }
   }

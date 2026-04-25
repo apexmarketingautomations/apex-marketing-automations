@@ -1151,7 +1151,7 @@ export function registerWebhooksRoutes(app: Express) {
       try {
         const igRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/conversations?fields=id,updated_time,participants,messages.limit(25){message,from,created_time}&limit=50&platform=instagram&access_token=${accessToken}${appsecretProof ? `&appsecret_proof=${appsecretProof}` : ""}`);
         igSyncData = await igRes.json() as any;
-      } catch {}
+      } catch (err) { console.warn("[WEBHOOKS] caught:", err instanceof Error ? err.message : err); }
 
       const allConvs = [...(syncData.data || []).map((c: any) => ({ ...c, _channel: "facebook" as const })), ...(igSyncData.data || []).map((c: any) => ({ ...c, _channel: "instagram" as const }))];
 
@@ -1912,7 +1912,7 @@ export function registerWebhooksRoutes(app: Express) {
                 skipCallRequestFlow = true;
                 console.log(`[META DM] Full persona override active for subAccountId=${subAccountId} — skipping callRequestFlow`);
               }
-            } catch {}
+            } catch (err) { console.warn("[WEBHOOKS] caught:", err instanceof Error ? err.message : err); }
 
             const { detectIntent: detectMetaIntent, handleCallRequestFlow: handleMetaCallFlow } = await import("../callRequestFlow");
             const metaIntent = detectMetaIntent(message);
@@ -2150,7 +2150,7 @@ export function registerWebhooksRoutes(app: Express) {
                     if (existing) {
                       await storage.updateEventLogStatus(existing.id, "completed", { processedAt: new Date(), batchSkipped: true });
                     }
-                  } catch {}
+                  } catch (err) { console.warn("[WEBHOOKS] caught:", err instanceof Error ? err.message : err); }
                 }
                 continue;
               }
@@ -2210,7 +2210,7 @@ export function registerWebhooksRoutes(app: Express) {
                       if (existing) {
                         await storage.updateEventLogStatus(existing.id, "completed", { processedAt: new Date(), justRepliedSuppressed: true, priorOutboundId: recentOutbound[0].id, ageMs });
                       }
-                    } catch {}
+                    } catch (err) { console.warn("[WEBHOOKS] caught:", err instanceof Error ? err.message : err); }
                   }
                   continue;
                 }
@@ -2740,7 +2740,7 @@ export function registerWebhooksRoutes(app: Express) {
           errorMessage: err?.message,
           metadata: { stage: "top_level_catch" },
         });
-      } catch {}
+      } catch (err) { console.warn("[WEBHOOKS] caught:", err instanceof Error ? err.message : err); }
     }
   });
 
@@ -2758,7 +2758,8 @@ export function registerWebhooksRoutes(app: Express) {
       const { getStripePublishableKey } = await import("../stripeClient");
       const key = await getStripePublishableKey();
       res.json({ publishableKey: key });
-    } catch {
+    } catch (err) {
+      console.warn("[WEBHOOKS] caught:", err instanceof Error ? err.message : err);
       res.json({ publishableKey: null });
     }
   }));
@@ -2979,7 +2980,7 @@ export function registerWebhooksRoutes(app: Express) {
             cleaned = cleaned.replace(/,\s*([}\]])/g, "$1");
             parsed = JSON.parse(cleaned);
             break;
-          } catch { if (attempt === 1) throw new Error("JSON parse failed"); }
+          } catch (err) { console.warn("[WEBHOOKS] caught:", err instanceof Error ? err.message : err); if (attempt === 1) throw new Error("JSON parse failed"); }
         }
         if (parsed.theme && Array.isArray(parsed.sections)) {
           parsed.sections = parsed.sections.map((s: any) => {
@@ -3167,7 +3168,7 @@ export function registerWebhooksRoutes(app: Express) {
               cleaned = cleaned.replace(/,\s*([}\]])/g, "$1");
               siteParsed = JSON.parse(cleaned);
               break;
-            } catch { if (attempt === 1) throw new Error("JSON parse failed"); }
+            } catch (err) { console.warn("[WEBHOOKS] caught:", err instanceof Error ? err.message : err); if (attempt === 1) throw new Error("JSON parse failed"); }
           }
           if (siteParsed.theme && Array.isArray(siteParsed.sections)) {
             siteParsed.sections = siteParsed.sections.map((s: any) => {

@@ -113,7 +113,7 @@ export async function renderSiteHtml(siteId: number, res: Response): Promise<voi
     if (domainRow.length > 0) {
       subAccountId = domainRow[0].subAccountId;
     }
-  } catch {}
+  } catch (err) { console.warn("[SITES] caught:", err instanceof Error ? err.message : err); }
 
   const trackingSnippet = `
 <script>
@@ -687,7 +687,8 @@ export function registerSitesRoutes(app: Express) {
     let siteData: any;
     try {
       siteData = JSON.parse(cleaned);
-    } catch {
+    } catch (err) {
+      console.warn("[SITES] caught:", err instanceof Error ? err.message : err);
       return res.status(500).json({ error: "AI returned invalid JSON" });
     }
 
@@ -726,7 +727,8 @@ export function registerSitesRoutes(app: Express) {
       } else {
         res.json({ contact: null });
       }
-    } catch {
+    } catch (err) {
+      console.warn("[SITES] caught:", err instanceof Error ? err.message : err);
       res.json({ contact: null });
     }
   }));

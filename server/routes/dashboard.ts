@@ -92,7 +92,8 @@ export function registerDashboardRoutes(app: Express) {
         });
       });
       res.json({ valid: mxRecords.length > 0, reason: mxRecords.length > 0 ? "Valid MX records" : "No MX records" });
-    } catch {
+    } catch (err) {
+      console.warn("[DASHBOARD] caught:", err instanceof Error ? err.message : err);
       res.json({ valid: false, reason: "Domain DNS lookup failed" });
     }
   }));

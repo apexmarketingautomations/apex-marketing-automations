@@ -35,7 +35,7 @@ export async function verifyNotProtectedAccount(subAccountId: number, agentId?: 
         meta: { agentId, reason: "Protected account targeted by AI agent/operator" },
       },
     });
-  } catch {}
+  } catch (err) { console.warn("[TENANTGUARD] caught:", err instanceof Error ? err.message : err); }
 
   return {
     success: false,

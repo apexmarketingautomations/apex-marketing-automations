@@ -55,13 +55,13 @@ export function calculateBillingCost(channel: string, messageCount: number, toke
 async function logAudit(action: string, performedBy: string, details: any) {
   try {
     await db.insert(auditLogs).values({ action, performedBy, details });
-  } catch {}
+  } catch (err) { console.warn("[METAMESSAGINGPRODUCT] caught:", err instanceof Error ? err.message : err); }
 }
 
 async function logSystem(severity: string, module: string, message: string, metadata?: any) {
   try {
     await db.insert(systemLogs).values({ severity, module, message, metadata });
-  } catch {}
+  } catch (err) { console.warn("[METAMESSAGINGPRODUCT] caught:", err instanceof Error ? err.message : err); }
 }
 
 function traceIdMiddleware(req: Request, res: Response, next: NextFunction) {
@@ -82,7 +82,7 @@ async function logSystemWithTrace(severity: string, module: string, message: str
       message,
       metadata: { traceId, userId, subAccountId, ...extra },
     });
-  } catch {}
+  } catch (err) { console.warn("[METAMESSAGINGPRODUCT] caught:", err instanceof Error ? err.message : err); }
 }
 
 function redactPII(text: string): string {
@@ -331,7 +331,7 @@ export function registerMetaMessagingProductRoutes(app: Express) {
             accentColor: whiteLabelConfig.accentColor || "#06b6d4",
           },
         });
-      } catch {}
+      } catch (err) { console.warn("[METAMESSAGINGPRODUCT] caught:", err instanceof Error ? err.message : err); }
     }
 
     await logAudit("meta_messaging_product.create_subaccount", userId, {
@@ -1222,7 +1222,7 @@ export function registerMetaMessagingProductRoutes(app: Express) {
             traceId: (req as any).traceId,
           }).returning();
           seededMessages.push(msg);
-        } catch {}
+        } catch (err) { console.warn("[METAMESSAGINGPRODUCT] caught:", err instanceof Error ? err.message : err); }
       }
 
       for (let i = 0; i < 5; i++) {
@@ -1237,7 +1237,7 @@ export function registerMetaMessagingProductRoutes(app: Express) {
             unitCostToken: 0.00002,
             totalCost: 0.005 + (50 + i * 10) * 0.00002,
           });
-        } catch {}
+        } catch (err) { console.warn("[METAMESSAGINGPRODUCT] caught:", err instanceof Error ? err.message : err); }
       }
 
       for (let d = 0; d < 7; d++) {
@@ -1257,7 +1257,7 @@ export function registerMetaMessagingProductRoutes(app: Express) {
               commentReplyCount: 1 + Math.floor(Math.random() * 4),
               tokenUsage: 100 + Math.floor(Math.random() * 500),
             });
-          } catch {}
+          } catch (err) { console.warn("[METAMESSAGINGPRODUCT] caught:", err instanceof Error ? err.message : err); }
         }
       }
 
@@ -1597,7 +1597,7 @@ export function registerMetaMessagingProductRoutes(app: Express) {
                 commentReplyCount: Number(cRow?.comment_reply_count || 0),
               });
               aggregated++;
-            } catch {}
+            } catch (err) { console.warn("[METAMESSAGINGPRODUCT] caught:", err instanceof Error ? err.message : err); }
           }
         }
 

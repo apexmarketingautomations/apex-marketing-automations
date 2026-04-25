@@ -29,7 +29,8 @@ export function addSSEClient(req: Request, res: Response, subAccountId: number):
   const heartbeat = setInterval(() => {
     try {
       res.write(`: heartbeat\n\n`);
-    } catch {
+    } catch (err) {
+      console.warn("[SSE] caught:", err instanceof Error ? err.message : err);
       clearInterval(heartbeat);
       clients.delete(clientId);
     }
@@ -49,7 +50,8 @@ export function broadcastToAccount(subAccountId: number, eventType: string, data
     if (client.subAccountId === subAccountId) {
       try {
         client.res.write(payload);
-      } catch {
+      } catch (err) {
+        console.warn("[SSE] caught:", err instanceof Error ? err.message : err);
         clients.delete(client.id);
       }
     }

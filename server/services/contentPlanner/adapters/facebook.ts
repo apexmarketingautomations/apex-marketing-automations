@@ -86,7 +86,8 @@ export const facebookAdapter: PlatformAdapter = {
           const filePath = mediaFileToAbsPath(m.fileUrl, m.fileKey || null);
           try {
             await fs.access(filePath);
-          } catch {
+          } catch (err) {
+            console.warn("[FACEBOOK] caught:", err instanceof Error ? err.message : err);
             return {
               success: false,
               platform: "facebook",

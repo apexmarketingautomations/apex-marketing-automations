@@ -479,7 +479,8 @@ export function registerMetaRoutes(app: Express) {
           hasAppId: !!process.env.META_APP_ID,
           metaPageId: account?.metaPageId || null,
         });
-      } catch {
+      } catch (err) {
+        console.warn("[META] caught:", err instanceof Error ? err.message : err);
         res.json({ hasAccessToken: false, hasAdAccountId: false, hasPageId: false, hasAppId: false });
       }
     } else {

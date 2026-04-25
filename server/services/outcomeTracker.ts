@@ -159,7 +159,8 @@ export async function recordOutcome(
         const repeatRate = snapshot.repeatVisitors / snapshot.uniqueVisitors;
         if (repeatRate > 0.25) signalsActive.push("repeat_engagement");
       }
-    } catch {
+    } catch (err) {
+      console.warn("[OUTCOMETRACKER] caught:", err instanceof Error ? err.message : err);
       /* snapshot miss is non-fatal */
     }
 
@@ -255,7 +256,8 @@ async function getPeakHours(cardId: number): Promise<number[]> {
       .map((r: any) => Number(r.hour));
     peakCache.set(cardId, { peakHours, expiresAt: now + PEAK_TTL_MS });
     return peakHours;
-  } catch {
+  } catch (err) {
+    console.warn("[OUTCOMETRACKER] caught:", err instanceof Error ? err.message : err);
     return [];
   }
 }

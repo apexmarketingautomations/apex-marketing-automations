@@ -81,7 +81,8 @@ export async function resolveVoiceFilePath(rawId: string): Promise<string | null
   try {
     await access(filePath, fsConstants.R_OK);
     return filePath;
-  } catch {
+  } catch (err) {
+    console.warn("[VOICESTORE] caught:", err instanceof Error ? err.message : err);
     return null;
   }
 }
@@ -103,7 +104,7 @@ export async function cleanupOldVoiceFiles(maxAgeMs: number = MAX_AGE_MS): Promi
           await unlink(fp);
           deleted++;
         }
-      } catch {}
+      } catch (err) { console.warn("[VOICESTORE] caught:", err instanceof Error ? err.message : err); }
     }
     if (scanned > 0) {
       console.log(`[VOICE-STORE][SWEEP] scanned=${scanned} deleted=${deleted} maxAgeDays=${Math.round(maxAgeMs / 86400000)}`);

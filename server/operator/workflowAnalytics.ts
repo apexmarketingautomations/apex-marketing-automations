@@ -229,7 +229,8 @@ Provide 1-3 specific, actionable optimization suggestions. Return JSON array:
     const cleaned = wfOptimizeAiResult.text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     const parsed = JSON.parse(cleaned);
     return (Array.isArray(parsed) ? parsed : parsed.suggestions || []).slice(0, 3);
-  } catch {
+  } catch (err) {
+    console.warn("[WORKFLOWANALYTICS] caught:", err instanceof Error ? err.message : err);
     return [];
   }
 }

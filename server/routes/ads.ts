@@ -63,7 +63,8 @@ export function registerAdsRoutes(app: Express) {
     let campaign: any;
     try {
       campaign = JSON.parse(cleaned);
-    } catch {
+    } catch (err) {
+      console.warn("[ADS] caught:", err instanceof Error ? err.message : err);
       return res.status(500).json({ error: "AI returned invalid JSON" });
     }
 

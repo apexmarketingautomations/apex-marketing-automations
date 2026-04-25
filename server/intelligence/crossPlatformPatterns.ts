@@ -90,7 +90,8 @@ async function buildAccountProfiles(): Promise<AccountModuleProfile[]> {
         conversionRate,
         avgDealValue,
       });
-    } catch {
+    } catch (err) {
+      console.warn("[CROSSPLATFORMPATTERNS] caught:", err instanceof Error ? err.message : err);
     }
   }));
 

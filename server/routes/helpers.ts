@@ -144,7 +144,8 @@ export async function logUsageInternal(subAccountId: number | null, type: string
     if (!account) {
       return;
     }
-  } catch {
+  } catch (err) {
+    console.warn("[HELPERS] caught:", err instanceof Error ? err.message : err);
     return;
   }
   const rate = AI_USAGE_COSTS[type];

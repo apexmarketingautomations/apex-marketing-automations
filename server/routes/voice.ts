@@ -102,7 +102,7 @@ export function registerVoiceRoutes(app: Express) {
       try {
         const parsed = JSON.parse(errData);
         detail = parsed.message || parsed.error || detail;
-      } catch {}
+      } catch (err) { console.warn("[VOICE] caught:", err instanceof Error ? err.message : err); }
       if (response.status === 403) {
         detail = "Vapi authentication failed. Check your VAPI_PRIVATE_KEY in Secrets.";
       }
@@ -217,7 +217,7 @@ export function registerVoiceRoutes(app: Express) {
       try {
         const p = JSON.parse(errData);
         detail = p.message || p.error || detail;
-      } catch {}
+      } catch (err) { console.warn("[VOICE] caught:", err instanceof Error ? err.message : err); }
       if (response.status === 403) {
         detail = "Vapi authentication failed. Check your VAPI_PRIVATE_KEY in Secrets.";
       }
@@ -326,7 +326,8 @@ export function registerVoiceRoutes(app: Express) {
           } else {
             jobData.results.push({ name: lead.name, phone: lead.phone, status: "failed", error: "API error" });
           }
-        } catch {
+        } catch (err) {
+          console.warn("[VOICE] caught:", err instanceof Error ? err.message : err);
           jobData.results.push({ name: lead.name, phone: lead.phone, status: "failed", error: "Network error" });
         }
 
@@ -436,7 +437,7 @@ export function registerVoiceRoutes(app: Express) {
       const errText = await response.text();
       console.error("Vapi start-web-call error:", response.status, errText);
       let detail = "Failed to create web call";
-      try { const p = JSON.parse(errText); detail = p.message || p.error || detail; } catch {}
+      try { const p = JSON.parse(errText); detail = p.message || p.error || detail; } catch (err) { console.warn("[VOICE] caught:", err instanceof Error ? err.message : err); }
       if (response.status === 403) {
         detail = "Vapi authentication failed. Check your VAPI_PRIVATE_KEY in Secrets.";
       }
@@ -496,7 +497,7 @@ export function registerVoiceRoutes(app: Express) {
     if (!response.ok) {
       const errText = await response.text();
       let detail = "ElevenLabs TTS failed";
-      try { const p = JSON.parse(errText); detail = p.detail?.message || p.detail || detail; } catch {}
+      try { const p = JSON.parse(errText); detail = p.detail?.message || p.detail || detail; } catch (err) { console.warn("[VOICE] caught:", err instanceof Error ? err.message : err); }
       throw new Error(detail);
     }
 
@@ -609,7 +610,8 @@ export function registerVoiceRoutes(app: Express) {
     let data: any;
     try {
       data = JSON.parse(cleaned);
-    } catch {
+    } catch (err) {
+      console.warn("[VOICE] caught:", err instanceof Error ? err.message : err);
       return res.status(500).json({ error: "AI returned invalid JSON" });
     }
 

@@ -40,7 +40,7 @@ export async function streamAIResponse(
   const keepalive = setInterval(() => {
     try {
       res.write(`:keepalive\n\n`);
-    } catch {}
+    } catch (err) { console.warn("[STREAMING] caught:", err instanceof Error ? err.message : err); }
   }, keepaliveIntervalMs);
 
   let fullText = "";
@@ -88,7 +88,7 @@ export class ProgressStream {
     this.keepalive = setInterval(() => {
       try {
         if (!this.closed) res.write(`:keepalive\n\n`);
-      } catch {}
+      } catch (err) { console.warn("[STREAMING] caught:", err instanceof Error ? err.message : err); }
     }, keepaliveIntervalMs);
 
     res.on("close", () => {

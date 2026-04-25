@@ -516,7 +516,8 @@ export function registerV1Routes(app: Express) {
     let manifestData: any;
     try {
       manifestData = JSON.parse(cleaned);
-    } catch {
+    } catch (err) {
+      console.warn("[V1] caught:", err instanceof Error ? err.message : err);
       return res.status(500).json({ error: "AI returned invalid JSON", raw: cleaned });
     }
 
@@ -598,7 +599,8 @@ export function registerV1Routes(app: Express) {
     let analysis: any;
     try {
       analysis = JSON.parse(cleaned);
-    } catch {
+    } catch (err) {
+      console.warn("[V1] caught:", err instanceof Error ? err.message : err);
       analysis = { summary: cleaned, gaps: [], recommendations: [], optimizations: [] };
     }
 
@@ -888,7 +890,8 @@ export function registerV1Routes(app: Express) {
     let plan: any;
     try {
       plan = JSON.parse(cleaned);
-    } catch {
+    } catch (err) {
+      console.warn("[V1] caught:", err instanceof Error ? err.message : err);
       return res.status(500).json({ error: "AI returned invalid plan", raw: cleaned });
     }
 
@@ -1783,7 +1786,8 @@ export function registerV1Routes(app: Express) {
     let plan: any;
     try {
       plan = JSON.parse(cleaned);
-    } catch {
+    } catch (err) {
+      console.warn("[V1] caught:", err instanceof Error ? err.message : err);
       return res.status(500).json({ error: "AI returned invalid plan", raw: cleaned });
     }
 
@@ -1912,7 +1916,8 @@ export function registerV1Routes(app: Express) {
       let plan: any;
       try {
         plan = JSON.parse(cleaned);
-      } catch {
+      } catch (err) {
+        console.warn("[V1] caught:", err instanceof Error ? err.message : err);
         stream.sendError("AI returned invalid plan");
         stream.end();
         return;

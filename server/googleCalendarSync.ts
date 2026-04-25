@@ -135,7 +135,7 @@ export async function syncGoogleCalendar(
           contactId,
           source: "google_calendar",
         });
-      } catch {}
+      } catch (err) { console.warn("[GOOGLECALENDARSYNC] caught:", err instanceof Error ? err.message : err); }
     }
   }
 

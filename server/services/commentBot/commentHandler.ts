@@ -31,7 +31,8 @@ async function getLaylaAccountIds(): Promise<Set<number>> {
       const fallbackId = await getLaylaAccountId();
       _cachedLaylaIds.add(fallbackId);
     }
-  } catch {
+  } catch (err) {
+    console.warn("[COMMENTHANDLER] caught:", err instanceof Error ? err.message : err);
     const fallbackId = await getLaylaAccountId();
     _cachedLaylaIds = new Set([fallbackId]);
   }
@@ -328,7 +329,8 @@ async function generateLaylaCommentReply(ctx: {
     } else {
       parsed = { reply: raw.trim(), sentiment: "neutral" };
     }
-  } catch {
+  } catch (err) {
+    console.warn("[COMMENTHANDLER] caught:", err instanceof Error ? err.message : err);
     parsed = { reply: raw.trim(), sentiment: "neutral" };
   }
 

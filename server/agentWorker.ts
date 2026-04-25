@@ -62,7 +62,8 @@ function verifySignature(rawBody: Buffer, signature: string | undefined): boolea
     const sigBuf = Buffer.from(signature);
     if (expectedBuf.length !== sigBuf.length) return false;
     return crypto.timingSafeEqual(expectedBuf, sigBuf);
-  } catch {
+  } catch (err) {
+    console.warn("[AGENTWORKER] caught:", err instanceof Error ? err.message : err);
     return false;
   }
 }
@@ -304,7 +305,8 @@ app.post("/api/agent/tasks", async (req, res) => {
   let registry: CommandRegistry;
   try {
     registry = loadCommandRegistry();
-  } catch {
+  } catch (err) {
+    console.warn("[AGENTWORKER] caught:", err instanceof Error ? err.message : err);
     return res.status(500).json({ error: "Failed to load command registry" });
   }
 

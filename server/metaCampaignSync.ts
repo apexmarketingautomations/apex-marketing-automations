@@ -57,7 +57,8 @@ async function syncLeadsForAccount(subAccountId: number): Promise<{ synced: numb
   let metaCfg;
   try {
     metaCfg = await getMetaConfig(subAccountId);
-  } catch {
+  } catch (err) {
+    console.warn("[METACAMPAIGNSYNC] caught:", err instanceof Error ? err.message : err);
     return { synced: 0, error: "Meta not configured" };
   }
 

@@ -121,7 +121,8 @@ export async function getActiveNudges(subAccountId: number): Promise<any[]> {
       .orderBy(desc(operatorNudges.priority))
       .limit(10)
       .execute();
-  } catch {
+  } catch (err) {
+    console.warn("[NUDGESYSTEM] caught:", err instanceof Error ? err.message : err);
     return [];
   }
 }
@@ -154,7 +155,8 @@ export async function dismissNudge(nudgeId: number, subAccountId: number): Promi
     ).catch(e => console.error("[NUDGE] Preference memory recording failed:", e instanceof Error ? e.message : e));
 
     return true;
-  } catch {
+  } catch (err) {
+    console.warn("[NUDGESYSTEM] caught:", err instanceof Error ? err.message : err);
     return false;
   }
 }
@@ -187,7 +189,8 @@ export async function actOnNudge(nudgeId: number, subAccountId: number): Promise
     ).catch(e => console.error("[NUDGE] Preference memory recording failed:", e instanceof Error ? e.message : e));
 
     return true;
-  } catch {
+  } catch (err) {
+    console.warn("[NUDGESYSTEM] caught:", err instanceof Error ? err.message : err);
     return false;
   }
 }
@@ -199,7 +202,8 @@ export async function getNudgeHistory(subAccountId: number, limit = 20): Promise
       .orderBy(desc(operatorNudges.createdAt))
       .limit(limit)
       .execute();
-  } catch {
+  } catch (err) {
+    console.warn("[NUDGESYSTEM] caught:", err instanceof Error ? err.message : err);
     return [];
   }
 }
@@ -215,7 +219,8 @@ async function getTodayNudgeCount(subAccountId: number): Promise<number> {
       ))
       .execute();
     return Number(result[0]?.count || 0);
-  } catch {
+  } catch (err) {
+    console.warn("[NUDGESYSTEM] caught:", err instanceof Error ? err.message : err);
     return 0;
   }
 }
@@ -228,7 +233,8 @@ async function getLastNudgeTime(subAccountId: number): Promise<Date | null> {
       .limit(1)
       .execute();
     return result[0]?.createdAt || null;
-  } catch {
+  } catch (err) {
+    console.warn("[NUDGESYSTEM] caught:", err instanceof Error ? err.message : err);
     return null;
   }
 }

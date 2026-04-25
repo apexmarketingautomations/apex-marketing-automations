@@ -34,7 +34,8 @@ export async function createDatabaseSnapshot(): Promise<{
           sql.raw(`SELECT COUNT(*) as count FROM "${tableName}"`)
         );
         tables[tableName] = parseInt((countResult.rows[0] as any).count, 10);
-      } catch {
+      } catch (err) {
+        console.warn("[DBBACKUP] caught:", err instanceof Error ? err.message : err);
         tables[tableName] = -1;
       }
     }
@@ -105,7 +106,8 @@ export async function getDatabaseHealth(): Promise<{
           name: tableName,
           count: parseInt((countResult.rows[0] as any).count, 10),
         });
-      } catch {
+      } catch (err) {
+        console.warn("[DBBACKUP] caught:", err instanceof Error ? err.message : err);
         tableCounts.push({ name: tableName, count: 0 });
       }
     }
@@ -118,7 +120,8 @@ export async function getDatabaseHealth(): Promise<{
       totalRecords: tableCounts.reduce((a, b) => a + b.count, 0),
       largestTables: tableCounts.slice(0, 10),
     };
-  } catch {
+  } catch (err) {
+    console.warn("[DBBACKUP] caught:", err instanceof Error ? err.message : err);
     return { connected: false, tableCount: 0, totalRecords: 0, largestTables: [] };
   }
 }

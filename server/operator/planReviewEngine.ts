@@ -71,7 +71,8 @@ export async function runScheduledReview(goalId: number): Promise<ReviewResult |
       } else {
         review = fallbackReview(progress, planStatus, daysElapsed, goal.timeHorizonDays);
       }
-    } catch {
+    } catch (err) {
+      console.warn("[PLANREVIEWENGINE] caught:", err instanceof Error ? err.message : err);
       review = fallbackReview(progress, planStatus, daysElapsed, goal.timeHorizonDays);
     }
   } else {

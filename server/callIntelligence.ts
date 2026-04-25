@@ -146,7 +146,7 @@ export async function analyzeCallTranscript(callId: number): Promise<CallAnalysi
     let analysis: CallAnalysis;
     const parseJson = (s: string): CallAnalysis => {
       s = s.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-      try { return JSON.parse(s); } catch {}
+      try { return JSON.parse(s); } catch (err) { console.warn("[CALLINTELLIGENCE] caught:", err instanceof Error ? err.message : err); }
       const m = s.match(/\{[\s\S]*\}/);
       if (!m) throw new Error("No JSON object found in response");
       let fixed = m[0]
@@ -154,7 +154,7 @@ export async function analyzeCallTranscript(callId: number): Promise<CallAnalysi
         .replace(/[\x00-\x1f]/g, " ")
         .replace(/(["\w])\s*\n\s*"/g, '$1, "')
         .replace(/"([^"]*)":\s*"([^"]*)"([^,}\]"\s])/g, '"$1": "$2"$3');
-      try { return JSON.parse(fixed); } catch {}
+      try { return JSON.parse(fixed); } catch (err) { console.warn("[CALLINTELLIGENCE] caught:", err instanceof Error ? err.message : err); }
       fixed = fixed.replace(/:\s*"([^"]*)$/gm, ': "$1"');
       if (!fixed.endsWith("}")) fixed += '"}]}';
       return JSON.parse(fixed);

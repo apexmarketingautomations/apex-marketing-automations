@@ -184,7 +184,8 @@ export async function readFollowUpFlagged(visitId: string): Promise<boolean> {
       ) AS exists
     `);
     return Boolean((rows as any).rows?.[0]?.exists);
-  } catch {
+  } catch (err) {
+    console.warn("[CARDACTIONS] caught:", err instanceof Error ? err.message : err);
     return false;
   }
 }

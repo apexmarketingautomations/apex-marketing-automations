@@ -16,7 +16,7 @@ export async function getLaylaAccountId(): Promise<number> {
       _cachedLaylaId = layla.id;
       return layla.id;
     }
-  } catch {}
+  } catch (err) { console.warn("[LAYLAACCOUNTRESOLVER] caught:", err instanceof Error ? err.message : err); }
   return _cachedLaylaId ?? 22;
 }
 
@@ -28,7 +28,7 @@ export async function getProtectedAccountIds(): Promise<number[]> {
       .where(eq(subAccounts.isProtected, true));
     _cachedProtectedIds = rows.map(r => r.id);
     return _cachedProtectedIds;
-  } catch {}
+  } catch (err) { console.warn("[LAYLAACCOUNTRESOLVER] caught:", err instanceof Error ? err.message : err); }
   return [];
 }
 

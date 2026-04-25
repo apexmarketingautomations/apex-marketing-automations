@@ -40,7 +40,8 @@ export async function generateCommentReply(ctx: CommentReplyContext): Promise<{
     } else {
       parsed = { reply: raw.trim(), sentiment: "neutral" };
     }
-  } catch {
+  } catch (err) {
+    console.warn("[COMMENTREPLYGENERATOR] caught:", err instanceof Error ? err.message : err);
     parsed = { reply: raw.trim(), sentiment: "neutral" };
   }
 

@@ -392,7 +392,7 @@ app.post(
           if (finalEvent) {
             await storage.updateEventLogStatus(finalEvent.id, "completed", { processedAt: new Date() });
           }
-        } catch {}
+        } catch (err) { console.warn("[INDEX] caught:", err instanceof Error ? err.message : err); }
       }
       res.status(200).json({ received: true });
     } catch (error: any) {
@@ -1160,7 +1160,7 @@ async function validateMetaCredentials() {
                 import("./intelligence/eventEmitter").then(({ emitUniversalEvent, EVENT_TYPES: EVT }) => {
                   emitUniversalEvent({ eventType: EVT.CALL_MISSED, sourceModule: "voice", sourceRecordId: msg?.call?.id || "unknown", subAccountId: missedSubId, metadata: { callId: msg?.call?.id, customerNumber: custNum, status: msg.status } });
                 }).catch(() => {});
-              } catch {}
+              } catch (err) { console.warn("[INDEX] caught:", err instanceof Error ? err.message : err); }
             })();
           }
         }
@@ -1526,7 +1526,7 @@ RULES:
                 import("./intelligence/eventEmitter").then(({ emitUniversalEvent, EVENT_TYPES: EVT }) => {
                   emitUniversalEvent({ eventType: EVT.CALL_COMPLETED, sourceModule: "voice", sourceRecordId: callId, subAccountId: subId, contactId: contactRows[0]?.id || undefined, metadata: { callId, customerNumber: custNum, duration, summary, endedReason: call.endedReason || null, recordingUrl } });
                 }).catch(() => {});
-              } catch {}
+              } catch (err) { console.warn("[INDEX] caught:", err instanceof Error ? err.message : err); }
             }
           }
         }
@@ -1655,7 +1655,7 @@ RULES:
       const a = Buffer.from(adminSecret);
       const b = Buffer.from(headerVal);
       if (a.length === b.length) {
-        try { secretMatches = crypto.timingSafeEqual(a, b); } catch { secretMatches = false; }
+        try { secretMatches = crypto.timingSafeEqual(a, b); } catch (err) { console.warn("[INDEX] caught:", err instanceof Error ? err.message : err); secretMatches = false; }
       }
     }
     if (secretMatches) {

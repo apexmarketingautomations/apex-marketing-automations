@@ -1167,7 +1167,8 @@ export function registerIntegrationsRoutes(app: Express) {
     let payload: any;
     try {
       payload = Buffer.isBuffer(req.body) ? JSON.parse(rawBody.toString("utf8")) : req.body;
-    } catch {
+    } catch (err) {
+      console.warn("[INTEGRATIONS] caught:", err instanceof Error ? err.message : err);
       return res.status(400).json({ error: "Invalid JSON payload" });
     }
 

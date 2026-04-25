@@ -35,13 +35,13 @@ function sanitizeError(err: any): string {
 async function logAudit(action: string, performedBy: string, details: any) {
   try {
     await db.insert(auditLogs).values({ action, performedBy, details });
-  } catch {}
+  } catch (err) { console.warn("[METAMESSAGING] caught:", err instanceof Error ? err.message : err); }
 }
 
 async function logSystem(severity: string, module: string, message: string, metadata?: any) {
   try {
     await db.insert(systemLogs).values({ severity, module, message, metadata });
-  } catch {}
+  } catch (err) { console.warn("[METAMESSAGING] caught:", err instanceof Error ? err.message : err); }
 }
 
 function generateDemoData() {
@@ -649,14 +649,14 @@ export function registerMetaMessagingRoutes(app: Express) {
         const v = await validateMetaConfigForAccount(subAccountId);
         steps.tokenValid = v.valid;
         steps.pageName = v.pageName || "";
-      } catch {}
+      } catch (err) { console.warn("[METAMESSAGING] caught:", err instanceof Error ? err.message : err); }
 
       try {
         const token = account.metaAccessToken;
         const subRes = await fetch(`https://graph.facebook.com/v21.0/${account.metaPageId}/subscribed_apps?access_token=${token}`);
         const subData = await subRes.json() as any;
         steps.webhookActive = (subData.data || []).length > 0;
-      } catch {}
+      } catch (err) { console.warn("[METAMESSAGING] caught:", err instanceof Error ? err.message : err); }
     }
 
     const completionPct = [steps.metaConnected, steps.pageSelected, steps.igConnected, steps.tokenValid, steps.webhookActive]

@@ -276,7 +276,7 @@ function getTableName(tableObj: object): string {
   try {
     const sym = Object.getOwnPropertySymbols(tableObj).find(s => s.toString().includes("drizzle:Name"));
     if (sym) return String((tableObj as Record<symbol, string>)[sym]);
-  } catch { /* fallback */ }
+  } catch (err) { console.warn("[PUBLIC-PLATFORM] caught:", err instanceof Error ? err.message : err); /* fallback */; }
   return "unknown";
 }
 
@@ -299,7 +299,7 @@ function extractForeignKeys(tableObj: object): FKRef[] {
         fks.push({ column: col, foreignTable, foreignColumn: foreignCol || "id" });
       }
     }
-  } catch { /* skip FK extraction errors */ }
+  } catch (err) { console.warn("[PUBLIC-PLATFORM] caught:", err instanceof Error ? err.message : err); /* skip FK extraction errors */; }
   return fks;
 }
 
@@ -331,7 +331,8 @@ function introspectSchema() {
       });
       const foreignKeys = extractForeignKeys(value);
       tables.push({ tableName, exportName, columns: columnList, foreignKeys });
-    } catch {
+    } catch (err) {
+      console.warn("[PUBLIC-PLATFORM] caught:", err instanceof Error ? err.message : err);
       /* not a table - skip */
     }
   }

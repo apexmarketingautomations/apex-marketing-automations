@@ -15,7 +15,8 @@ export async function isProtectedAccountId(subAccountId: number): Promise<boolea
     if (dynamicIds.includes(subAccountId)) return true;
     const [account] = await db.select({ isProtected: subAccounts.isProtected }).from(subAccounts).where(eq(subAccounts.id, subAccountId));
     return account?.isProtected === true;
-  } catch {
+  } catch (err) {
+    console.warn("[PROTECTEDACCOUNT] caught:", err instanceof Error ? err.message : err);
     return getProtectedAccountIds().includes(subAccountId);
   }
 }
@@ -54,7 +55,7 @@ async function logProtectionEvent(
       message: `${action} on sub_account ${subAccountId} by ${userId}`,
       metadata: { level, traceId, userId, subAccountId, action, meta },
     });
-  } catch {}
+  } catch (err) { console.warn("[PROTECTEDACCOUNT] caught:", err instanceof Error ? err.message : err); }
 }
 
 export function ensureNotProtectedAccount(

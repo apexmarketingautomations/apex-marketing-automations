@@ -97,7 +97,8 @@ async function resolveInstagramBusinessId(pageId: string, accessToken: string): 
       return data.instagram_business_account.id;
     }
     return null;
-  } catch {
+  } catch (err) {
+    console.warn("[PUBLISHER] caught:", err instanceof Error ? err.message : err);
     return null;
   }
 }

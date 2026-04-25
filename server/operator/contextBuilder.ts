@@ -58,7 +58,8 @@ export async function buildContext(subAccountId: number): Promise<ContextPacket>
   try {
     crossAccountBenchmarks = await getBenchmarksForIndustry(workspace.industry);
     if (Object.keys(crossAccountBenchmarks || {}).length === 0) crossAccountBenchmarks = undefined;
-  } catch {
+  } catch (err) {
+    console.warn("[CONTEXTBUILDER] caught:", err instanceof Error ? err.message : err);
     crossAccountBenchmarks = undefined;
   }
 
@@ -71,7 +72,7 @@ export async function buildContext(subAccountId: number): Promise<ContextPacket>
       .orderBy(sql`confidence_score * occurrence_count * EXP(-decay_rate * EXTRACT(EPOCH FROM (NOW() - last_seen_at)) / 86400) DESC`)
       .limit(10);
     if (rows.length > 0) sharedInsightRows = rows;
-  } catch {}
+  } catch (err) { console.warn("[CONTEXTBUILDER] caught:", err instanceof Error ? err.message : err); }
 
   return {
     workspace,

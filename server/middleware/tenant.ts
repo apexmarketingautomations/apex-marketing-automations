@@ -67,7 +67,8 @@ async function userHasAccessToAccount(userId: string, subAccountId: number): Pro
         ok = true;
       }
     }
-  } catch {
+  } catch (err) {
+    console.warn("[TENANT] caught:", err instanceof Error ? err.message : err);
     ok = false;
   }
   accessCache.set(cacheKey, { ok, ts: Date.now() });
@@ -92,7 +93,8 @@ async function getUserFirstAccountId(userId: string): Promise<number | null> {
         .limit(1);
       id = rows[0]?.id ?? null;
     }
-  } catch {
+  } catch (err) {
+    console.warn("[TENANT] caught:", err instanceof Error ? err.message : err);
     id = null;
   }
   userFirstAccountCache.set(userId, { id, ts: Date.now() });
@@ -135,7 +137,8 @@ export async function tenantMiddleware(req: Request, _res: Response, next: NextF
           const fallback = await getUserFirstAccountId(userId);
           if (fallback) subAccountId = fallback;
         }
-      } catch {
+      } catch (err) {
+        console.warn("[TENANT] caught:", err instanceof Error ? err.message : err);
         const fallback = await getUserFirstAccountId(userId).catch(() => null);
         if (fallback) subAccountId = fallback;
       }

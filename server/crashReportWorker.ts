@@ -377,7 +377,7 @@ function scoreCandidate(
         score += 5;
         signals.push(`time(Δ${Math.abs(sentinelMin - flhsmvMin)}min)+5`);
       }
-    } catch { /* non-fatal — skip signal */ }
+    } catch (err) { console.warn("[CRASHREPORTWORKER] caught:", err instanceof Error ? err.message : err); /* non-fatal — skip signal */; }
   }
 
   return { score, breakdown: signals.length > 0 ? signals.join(" | ") : "no signals matched" };
@@ -734,7 +734,7 @@ async function processReport(reportId: number, reportNumber: string): Promise<vo
             await storage.updateCrashReport(reportId, {
               errorLog: `[LINK-FAILED] ${linkErr.message}`,
             });
-          } catch { /* best-effort */ }
+          } catch (err) { console.warn("[CRASHREPORTWORKER] caught:", err instanceof Error ? err.message : err); /* best-effort */; }
           console.warn(`[CRASH-WORKER] Failed to link follow-up ${reportId} back to sentinel ${sentinelReportId}: ${linkErr.message}`);
         }
       }

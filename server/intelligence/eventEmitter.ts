@@ -36,7 +36,8 @@ async function trackModuleCoverage(input: UniversalEventInput): Promise<void> {
   if (!moduleGroup) return;
   try {
     await storage.incrementModuleCoverageCount(accountId, moduleGroup, input.eventType);
-  } catch {
+  } catch (err) {
+    console.warn("[EVENTEMITTER] caught:", err instanceof Error ? err.message : err);
   }
 }
 

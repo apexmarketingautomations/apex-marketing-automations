@@ -166,7 +166,8 @@ export async function checkPlanLimit(
       used,
       remaining,
     };
-  } catch {
+  } catch (err) {
+    console.warn("[SUBSCRIPTIONGUARD] caught:", err instanceof Error ? err.message : err);
     return { allowed: true, limit, used: 0, remaining: limit };
   }
 }

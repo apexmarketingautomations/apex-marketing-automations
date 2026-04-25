@@ -60,7 +60,8 @@ function summarizeBody(body: any): string {
   try {
     const s = typeof body === "string" ? body : JSON.stringify(body);
     return s.length > 220 ? s.slice(0, 220) + "…" : s;
-  } catch {
+  } catch (err) {
+    console.warn("[APEXREPORTER] caught:", err instanceof Error ? err.message : err);
     return "";
   }
 }

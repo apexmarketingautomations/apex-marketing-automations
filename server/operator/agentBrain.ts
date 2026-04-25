@@ -199,7 +199,8 @@ Based on this data, what tasks should the autonomous agent execute? Return a JSO
       let parsed: any;
       try {
         parsed = JSON.parse(cleaned || "[]");
-      } catch {
+      } catch (err) {
+        console.warn("[AGENTBRAIN] caught:", err instanceof Error ? err.message : err);
         const lastBrace = cleaned.lastIndexOf("}");
         if (lastBrace > 0) {
           const truncated = cleaned.slice(0, lastBrace + 1) + "]";
@@ -335,7 +336,8 @@ Do NOT use bullet points or markdown. Write flowing prose.`;
         { role: "user", content: briefingPrompt },
       ], { temperature: 0.4, maxTokens: 500, route: "agent-brain-briefing" });
       summary = briefingAiResult.text;
-    } catch {
+    } catch (err) {
+      console.warn("[AGENTBRAIN] caught:", err instanceof Error ? err.message : err);
       summary = `Your agent completed ${completed.length} task${completed.length !== 1 ? "s" : ""} and encountered ${failed.length} issue${failed.length !== 1 ? "s" : ""} while you were away.`;
     }
   } else {

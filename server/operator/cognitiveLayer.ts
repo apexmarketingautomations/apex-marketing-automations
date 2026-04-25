@@ -24,7 +24,7 @@ export async function getCognitiveInsights(subAccountId: number): Promise<Adviso
   try {
     const { checkAccountReadiness } = await import("./accountReadiness");
     readiness = await checkAccountReadiness(subAccountId);
-  } catch {}
+  } catch (err) { console.warn("[COGNITIVELAYER] caught:", err instanceof Error ? err.message : err); }
   return generateInsights(context, readiness);
 }
 

@@ -39,7 +39,7 @@ export function sanitizeError(input: string | undefined, maxLen = 200): string |
 const OBS_EMITTED = Symbol.for("observability.emitted");
 export function markErrorEmitted(err: unknown): void {
   if (err && typeof err === "object") {
-    try { (err as any)[OBS_EMITTED] = true; } catch {}
+    try { (err as any)[OBS_EMITTED] = true; } catch (err) { console.warn("[MESSAGINGEVENTS] caught:", err instanceof Error ? err.message : err); }
   }
 }
 export function isErrorEmitted(err: unknown): boolean {
@@ -61,10 +61,10 @@ async function getLaylaIds(): Promise<Set<number>> {
       ));
     _laylaIds = new Set(rows.map(r => r.id));
     if (_laylaIds.size === 0) {
-      try { _laylaIds.add(await getLaylaAccountId()); } catch {}
+      try { _laylaIds.add(await getLaylaAccountId()); } catch (err) { console.warn("[MESSAGINGEVENTS] caught:", err instanceof Error ? err.message : err); }
     }
   } catch {
-    try { _laylaIds = new Set([await getLaylaAccountId()]); } catch { _laylaIds = new Set(); }
+    try { _laylaIds = new Set([await getLaylaAccountId()]); } catch (err) { console.warn("[MESSAGINGEVENTS] caught:", err instanceof Error ? err.message : err); _laylaIds = new Set(); }
   }
   return _laylaIds;
 }
@@ -74,7 +74,8 @@ async function resolvePersona(subAccountId: number, override?: string): Promise<
   try {
     const ids = await getLaylaIds();
     return ids.has(subAccountId) ? "layla" : "business";
-  } catch {
+  } catch (err) {
+    console.warn("[MESSAGINGEVENTS] caught:", err instanceof Error ? err.message : err);
     return "unknown";
   }
 }

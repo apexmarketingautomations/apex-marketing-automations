@@ -149,7 +149,8 @@ export async function isContactOptedOut(
     if (!contact) return true;
 
     return channel === "sms" ? contact.smsOptOut : contact.emailOptOut;
-  } catch {
+  } catch (err) {
+    console.warn("[OPTOUTGUARD] caught:", err instanceof Error ? err.message : err);
     return false;
   }
 }
@@ -166,7 +167,8 @@ export async function checkPhoneOptOut(phone: string, subAccountId: number): Pro
       .limit(1);
 
     return contact?.smsOptOut ?? false;
-  } catch {
+  } catch (err) {
+    console.warn("[OPTOUTGUARD] caught:", err instanceof Error ? err.message : err);
     return false;
   }
 }

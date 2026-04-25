@@ -128,7 +128,8 @@ async function getBookingLink(subAccountId: number): Promise<string | null> {
     const config = (account.config ?? {}) as SubAccountConfig;
     const aiPromptConfig = (account.aiPromptConfig ?? {}) as AiPromptConfig;
     return aiPromptConfig.bookingLink || config.bookingLink || null;
-  } catch {
+  } catch (err) {
+    console.warn("[CALLREQUESTFLOW] caught:", err instanceof Error ? err.message : err);
     return null;
   }
 }
@@ -148,7 +149,8 @@ async function isExistingCustomer(contactId: number, subAccountId: number): Prom
       .limit(1);
 
     return contactDeals.length > 0;
-  } catch {
+  } catch (err) {
+    console.warn("[CALLREQUESTFLOW] caught:", err instanceof Error ? err.message : err);
     return false;
   }
 }
@@ -471,7 +473,8 @@ async function resolveMetaCredentials(subAccountId: number): Promise<{ accessTok
     const pageId = account.metaPageId;
     if (!accessToken || !pageId) return null;
     return { accessToken, pageId };
-  } catch {
+  } catch (err) {
+    console.warn("[CALLREQUESTFLOW] caught:", err instanceof Error ? err.message : err);
     return null;
   }
 }

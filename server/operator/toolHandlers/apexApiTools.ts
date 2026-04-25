@@ -252,7 +252,7 @@ export const apexApiTools: OperatorTool[] = [
 
         const text = await res.text();
         let data: any = text;
-        try { data = text ? JSON.parse(text) : null; } catch {}
+        try { data = text ? JSON.parse(text) : null; } catch (err) { console.warn("[APEXAPITOOLS] caught:", err instanceof Error ? err.message : err); }
 
         if (!res.ok) {
           return {

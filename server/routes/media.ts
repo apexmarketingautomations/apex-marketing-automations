@@ -24,7 +24,7 @@ const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 (async () => {
   try {
     await fs.mkdir(UPLOAD_DIR, { recursive: true });
-  } catch (_) {}
+  } catch (err) { console.warn("[MEDIA] caught:", err instanceof Error ? err.message : err); }
 })();
 
 export function registerMediaRoutes(app: Express) {

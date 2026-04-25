@@ -180,7 +180,7 @@ export async function calculateHealthScore(context: ContextPacket): Promise<Heal
   let healthReadiness: AccountReadiness | undefined;
   try {
     healthReadiness = await checkAccountReadiness(performance.subAccountId);
-  } catch {}
+  } catch (err) { console.warn("[STRATEGICADVISOR] caught:", err instanceof Error ? err.message : err); }
   const communication = calcCommunicationScore(workspace, performance, healthReadiness);
   const automation = calcAutomationScore(workspace, performance);
   const integration = calcIntegrationScore(workspace);

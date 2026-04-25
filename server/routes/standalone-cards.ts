@@ -38,7 +38,7 @@ export async function handleStandaloneCardWebhook(session: any) {
   } else {
     const socials = meta.cd_socials ? JSON.parse(meta.cd_socials) : {};
     let customLinks = null;
-    try { customLinks = meta.cd_customLinks ? JSON.parse(meta.cd_customLinks) : null; } catch {}
+    try { customLinks = meta.cd_customLinks ? JSON.parse(meta.cd_customLinks) : null; } catch (err) { console.warn("[STANDALONE-CARDS] caught:", err instanceof Error ? err.message : err); }
     cardData = {
       fullName: meta.cd_fullName || "",
       email: meta.cd_email || "",

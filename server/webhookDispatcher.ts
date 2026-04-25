@@ -31,7 +31,7 @@ export async function dispatchWebhook(
 
     const latencyMs = Date.now() - startTime;
     let responseBody = "";
-    try { responseBody = (await response.text()).substring(0, 500); } catch {}
+    try { responseBody = (await response.text()).substring(0, 500); } catch (err) { console.warn("[WEBHOOKDISPATCHER] caught:", err instanceof Error ? err.message : err); }
 
     const isSuccess = response.status >= 200 && response.status < 300;
 

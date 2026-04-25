@@ -151,7 +151,7 @@ export async function saveVoiceMessageToTemp(
 export async function cleanupVoiceFile(filepath: string): Promise<void> {
   try {
     await unlink(filepath);
-  } catch {}
+  } catch (err) { console.warn("[LAYLAVOICE] caught:", err instanceof Error ? err.message : err); }
 }
 
 export function shouldSendVoiceMessage(

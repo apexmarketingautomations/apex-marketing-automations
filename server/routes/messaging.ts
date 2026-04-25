@@ -67,7 +67,8 @@ export function registerMessagingRoutes(app: Express) {
     let metaCfg: any;
     try {
       metaCfg = await getMetaConfig(subAccountId);
-    } catch {
+    } catch (err) {
+      console.warn("[MESSAGING] caught:", err instanceof Error ? err.message : err);
       return res.status(400).json({ error: "Meta not configured for this account" });
     }
 

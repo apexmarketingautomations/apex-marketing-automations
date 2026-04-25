@@ -41,7 +41,7 @@ function logDiscard(reason: string, payload: any): void {
       subAccountId: typeof payload?.subAccountId === "number" ? payload.subAccountId : null,
     };
     console.warn(`[APEX-OUTCOME] discarded: ${JSON.stringify(safe)}`);
-  } catch {}
+  } catch (err) { console.warn("[APEXINTELLIGENCE] caught:", err instanceof Error ? err.message : err); }
 }
 
 async function persistOutcomeDurably(entry: StoredOutcome): Promise<void> {

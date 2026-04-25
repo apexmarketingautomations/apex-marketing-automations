@@ -102,7 +102,8 @@ async function getIntegrationHealth(): Promise<SystemComponent> {
       lastCheckedAt: new Date().toISOString(),
       detail: `${connected}/${total} integrations connected`,
     };
-  } catch {
+  } catch (err) {
+    console.warn("[SYSTEMHEALTHORCHESTRATOR] caught:", err instanceof Error ? err.message : err);
     return {
       name: "Integration Layer",
       status: "unknown",
@@ -131,7 +132,8 @@ async function getWorkflowEngineHealth(): Promise<SystemComponent> {
       lastCheckedAt: new Date().toISOString(),
       detail: `${total} executions, ${(errorRate * 100).toFixed(1)}% error rate (24h)`,
     };
-  } catch {
+  } catch (err) {
+    console.warn("[SYSTEMHEALTHORCHESTRATOR] caught:", err instanceof Error ? err.message : err);
     return {
       name: "Workflow Engine",
       status: "unknown",
@@ -178,7 +180,8 @@ async function getExecutionTimingInsights(): Promise<ExecutionTimingInsight[]> {
         status,
       };
     });
-  } catch {
+  } catch (err) {
+    console.warn("[SYSTEMHEALTHORCHESTRATOR] caught:", err instanceof Error ? err.message : err);
     return [];
   }
 }
@@ -208,7 +211,8 @@ async function getBusinessHealthMetrics() {
       activeWorkflows: workflowStats[0]?.withSteps || 0,
       campaignsSent: campaignStats[0]?.sent || 0,
     };
-  } catch {
+  } catch (err) {
+    console.warn("[SYSTEMHEALTHORCHESTRATOR] caught:", err instanceof Error ? err.message : err);
     return {
       activeAccounts: 0,
       accountsWithIssues: 0,

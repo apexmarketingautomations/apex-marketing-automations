@@ -69,7 +69,8 @@ export function verifyAttributionToken(token: string): DecodedAttribution | null
       issuedAt,
       valid: ok && fresh,
     };
-  } catch {
+  } catch (err) {
+    console.warn("[TRACKING] caught:", err instanceof Error ? err.message : err);
     return null;
   }
 }
@@ -126,7 +127,8 @@ function appendQueryParam(url: string, key: string, value: string): string {
     const u = new URL(url);
     u.searchParams.set(key, value);
     return u.toString();
-  } catch {
+  } catch (err) {
+    console.warn("[TRACKING] caught:", err instanceof Error ? err.message : err);
     const sep = url.includes("?") ? "&" : "?";
     return `${url}${sep}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
   }
@@ -401,7 +403,8 @@ async function recordEvent(args: RecordEventArgs) {
         .where(eq(trackingVisits.visitId, visit.visitId))
         .limit(1);
       if (refreshed) isHighIntentNow = refreshed.isHighIntent;
-    } catch {
+    } catch (err) {
+      console.warn("[TRACKING] caught:", err instanceof Error ? err.message : err);
       /* fall back to the stale flag */
     }
     recordOutcome({

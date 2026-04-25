@@ -2337,7 +2337,8 @@ export function registerPropertyRoutes(app: Express) {
     let formData: any;
     try {
       formData = JSON.parse(cleaned);
-    } catch {
+    } catch (err) {
+      console.warn("[PROPERTY] caught:", err instanceof Error ? err.message : err);
       return res.status(500).json({ error: "AI returned invalid JSON" });
     }
 
@@ -2597,7 +2598,7 @@ export function registerPropertyRoutes(app: Express) {
           leadName: deal.contactName || "Unknown",
           source: "api",
         });
-      } catch {}
+      } catch (err) { console.warn("[PROPERTY] caught:", err instanceof Error ? err.message : err); }
       emitUniversalEvent({ eventType: INTEL_EVENT_TYPES.DEAL_CREATED, sourceModule: "crm", sourceTable: "deals", sourceRecordId: String(deal.id), subAccountId: deal.subAccountId, contactId: deal.contactId || undefined, metadata: { title: deal.title, value: deal.value, stage: deal.stageId } });
     }
     res.status(201).json(deal);
@@ -2880,7 +2881,8 @@ export function registerPropertyRoutes(app: Express) {
       if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|0\.|169\.254\.)/.test(hostname)) return "Private/internal IP addresses are not allowed";
       if (hostname.endsWith(".local") || hostname.endsWith(".internal")) return "Internal hostnames are not allowed";
       return null;
-    } catch {
+    } catch (err) {
+      console.warn("[PROPERTY] caught:", err instanceof Error ? err.message : err);
       return "Invalid URL format";
     }
   }

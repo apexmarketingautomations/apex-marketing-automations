@@ -109,7 +109,8 @@ async function mcFetch(
   let data: any;
   try {
     data = await res.json();
-  } catch {
+  } catch (err) {
+    console.warn("[MAILCHIMP] caught:", err instanceof Error ? err.message : err);
     data = {};
   }
 
@@ -382,7 +383,7 @@ async function getVerifiedDomains(config: MailchimpConfig): Promise<string[]> {
       verifiedDomainsCache = { domains, fetchedAt: Date.now() };
       return domains;
     }
-  } catch {}
+  } catch (err) { console.warn("[MAILCHIMP] caught:", err instanceof Error ? err.message : err); }
   return [];
 }
 

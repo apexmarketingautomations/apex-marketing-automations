@@ -516,7 +516,7 @@ export function registerBotRoutes(app: Express) {
 
       const keepalive = setInterval(() => {
         // Best-effort SSE keepalive; if the stream is closed the write will throw and we deliberately ignore
-        try { res.write(`:keepalive\n\n`); } catch {}
+        try { res.write(`:keepalive\n\n`); } catch (err) { console.warn("[BOT] caught:", err instanceof Error ? err.message : err); }
       }, 15000);
 
       let closed = false;
@@ -660,7 +660,8 @@ export function registerBotRoutes(app: Express) {
           let params: Record<string, any>;
           try {
             params = JSON.parse(toolCall.arguments);
-          } catch {
+          } catch (err) {
+            console.warn("[BOT] caught:", err instanceof Error ? err.message : err);
             // Intentional: model returned malformed JSON args; we surface the failure as a tool result so the model can self-correct
             const errorResult = JSON.stringify({ success: false, error: "Invalid tool call arguments" });
             chatMessages.push({ role: "tool", content: errorResult, tool_call_id: toolCall.id, name: toolCall.name });
@@ -960,7 +961,8 @@ export async function runRealTraining(jobId: number) {
         clearTimeout(t);
         if (!r.ok) return null;
         return await r.text();
-      } catch {
+      } catch (err) {
+        console.warn("[BOT] caught:", err instanceof Error ? err.message : err);
         // Best-effort fetch for the web scraper; timeouts/network errors return null so the crawl can continue
         return null;
       }
@@ -986,7 +988,7 @@ export async function runRealTraining(jobId: number) {
           const data = JSON.parse($(el).text());
           const flat = JSON.stringify(data).replace(/[{}\[\]"]/g, " ").replace(/\s+/g, " ").trim();
           if (flat.length > 20 && flat.length < 8000) parts.push(`STRUCTURED DATA: ${flat}`);
-        } catch { /* ignore */ }
+        } catch (err) { console.warn("[BOT] caught:", err instanceof Error ? err.message : err); /* ignore */; }
       });
 
       $("h1, h2, h3, h4, h5, p, li, td, th, blockquote, dt, dd, figcaption").each((_: any, el: any) => {
@@ -1010,7 +1012,7 @@ export async function runRealTraining(jobId: number) {
       return { text, links };
     };
 
-    const baseUrl = (() => { try { return new URL(job.url); } catch { return null; } })();
+    const baseUrl = (() => { try { return new URL(job.url); } catch (err) { console.warn("[BOT] caught:", err instanceof Error ? err.message : err); return null; } })();
     if (!baseUrl) {
       await storage.updateTrainingJob(jobId, { logs: [...allLogs, `Invalid URL: ${job.url}`], state: "failed", progress: 0 });
       return;
@@ -1043,7 +1045,7 @@ export async function runRealTraining(jobId: number) {
         if (/\.(png|jpe?g|gif|webp|svg|pdf|zip|mp4|mp3|css|js|ico|woff2?)(\?|$)/i.test(u.pathname)) continue;
         u.hash = "";
         sameOriginCandidates.add(u.toString());
-      } catch { /* ignore */ }
+      } catch (err) { console.warn("[BOT] caught:", err instanceof Error ? err.message : err); /* ignore */; }
     }
 
     const sitemapHtml = await fetchPage(new URL("/sitemap.xml", baseUrl).toString(), 8000);

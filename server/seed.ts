@@ -91,7 +91,7 @@ async function normalizeContactPhones() {
         try {
           await db.update(contacts).set({ phone: e164 }).where(eq(contacts.id, c.id));
           normalized++;
-        } catch {}
+        } catch (err) { console.warn("[SEED] caught:", err instanceof Error ? err.message : err); }
       }
     }
     if (normalized > 0) {

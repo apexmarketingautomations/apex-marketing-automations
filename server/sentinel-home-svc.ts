@@ -434,7 +434,8 @@ export function isAlertExpired(expiresIso: string | null | undefined): boolean {
   if (!expiresIso) return false;
   try {
     return new Date(expiresIso).getTime() < Date.now();
-  } catch {
+  } catch (err) {
+    console.warn("[SENTINEL-HOME-SVC] caught:", err instanceof Error ? err.message : err);
     return false;
   }
 }
@@ -447,7 +448,8 @@ export function alertExpiryStatus(expiresIso: string | null | undefined): 'activ
     if (expiresAt < now) return 'expired';
     if (expiresAt - now < 60 * 60 * 1000) return 'expiring_soon';
     return 'active';
-  } catch {
+  } catch (err) {
+    console.warn("[SENTINEL-HOME-SVC] caught:", err instanceof Error ? err.message : err);
     return 'active';
   }
 }

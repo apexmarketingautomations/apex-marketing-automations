@@ -397,10 +397,10 @@ Return a JSON object:
 
     function extractJson(text: string): any {
       const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-      try { return JSON.parse(cleaned); } catch {}
+      try { return JSON.parse(cleaned); } catch (err) { console.warn("[WORKFLOWS] caught:", err instanceof Error ? err.message : err); }
       const braceMatch = text.match(/\{[\s\S]*\}/);
       if (braceMatch) {
-        try { return JSON.parse(braceMatch[0]); } catch {}
+        try { return JSON.parse(braceMatch[0]); } catch (err) { console.warn("[WORKFLOWS] caught:", err instanceof Error ? err.message : err); }
       }
       return null;
     }

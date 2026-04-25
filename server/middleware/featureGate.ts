@@ -16,7 +16,7 @@ export async function isFeatureEnabled(featureName: string): Promise<boolean> {
         message: `Failed to check feature flag '${featureName}': ${err?.message || "unknown error"}. Defaulting to OFF.`,
         metadata: { featureName, error: err?.message },
       });
-    } catch {}
+    } catch (err) { console.warn("[FEATUREGATE] caught:", err instanceof Error ? err.message : err); }
     return false;
   }
 }

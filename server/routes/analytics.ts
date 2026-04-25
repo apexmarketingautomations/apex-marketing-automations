@@ -250,7 +250,8 @@ export function registerAnalyticsRoutes(app: Express) {
         if (parts[0] === 169 && parts[1] === 254) return true;
       }
       return false;
-    } catch {
+    } catch (err) {
+      console.warn("[ANALYTICS] caught:", err instanceof Error ? err.message : err);
       return true;
     }
   }
@@ -542,7 +543,8 @@ export function registerAnalyticsRoutes(app: Express) {
         };
       }
       return null;
-    } catch {
+    } catch (err) {
+      console.warn("[ANALYTICS] caught:", err instanceof Error ? err.message : err);
       return null;
     }
   }
@@ -692,7 +694,8 @@ export function registerAnalyticsRoutes(app: Express) {
     try {
       await db.execute(sql`SELECT 1`);
       health.database = "ok";
-    } catch {
+    } catch (err) {
+      console.warn("[ANALYTICS] caught:", err instanceof Error ? err.message : err);
       health.database = "error";
     }
 

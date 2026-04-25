@@ -499,12 +499,14 @@ export function registerReviewsRoutes(app: Express) {
         try {
           const sk = await getStripeSecretKey();
           if (sk) stripeConnected = true;
-        } catch {
+        } catch (err) {
+          console.warn("[REVIEWS] caught:", err instanceof Error ? err.message : err);
           const stripeKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API_KEY;
           if (stripeKey) stripeConnected = true;
         }
       }
-    } catch {
+    } catch (err) {
+      console.warn("[REVIEWS] caught:", err instanceof Error ? err.message : err);
       const stripeKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API_KEY;
       if (stripeKey) stripeConnected = true;
     }
@@ -650,7 +652,8 @@ export function registerReviewsRoutes(app: Express) {
     try {
       await db.execute(sql`SELECT 1`);
       results.push("Database: connection verified");
-    } catch {
+    } catch (err) {
+      console.warn("[REVIEWS] caught:", err instanceof Error ? err.message : err);
       results.push("Database: reconnection attempted");
     }
 
@@ -997,7 +1000,8 @@ export function registerReviewsRoutes(app: Express) {
           return { available: true, domain: fullDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale };
         }
         return { available: null, domain: fullDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, error: "Could not verify" };
-      } catch {
+      } catch (err) {
+        console.warn("[REVIEWS] caught:", err instanceof Error ? err.message : err);
         return { available: null, domain: fullDomain, tld, costPrice: pricing.cost, salePrice: pricing.sale, error: "RDAP lookup failed" };
       }
     });
@@ -1134,7 +1138,7 @@ export function registerReviewsRoutes(app: Express) {
     try {
       const { clearDomainCache } = await import("../middleware/customDomain");
       clearDomainCache(existing.domainName);
-    } catch {}
+    } catch (err) { console.warn("[REVIEWS] caught:", err instanceof Error ? err.message : err); }
 
     res.json(updated);
   }));
@@ -1191,7 +1195,7 @@ export function registerReviewsRoutes(app: Express) {
         try {
           const { clearDomainCache } = await import("../middleware/customDomain");
           clearDomainCache(domain.domainName);
-        } catch {}
+        } catch (err) { console.warn("[REVIEWS] caught:", err instanceof Error ? err.message : err); }
         emitWithTimeline({
           eventType: EVENT_TYPES.DOMAIN_VERIFIED,
           sourceModule: "domains",

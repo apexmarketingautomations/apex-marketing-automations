@@ -290,7 +290,8 @@ export function registerAgentWorkerRoutes(app: Express) {
       if (expectedBuf.length !== sigBuf.length || !crypto.timingSafeEqual(expectedBuf, sigBuf)) {
         return res.status(401).json({ error: "Invalid or missing HMAC signature" });
       }
-    } catch {
+    } catch (err) {
+      console.warn("[AGENTWORKER] caught:", err instanceof Error ? err.message : err);
       return res.status(401).json({ error: "Invalid or missing HMAC signature" });
     }
 
@@ -304,7 +305,8 @@ export function registerAgentWorkerRoutes(app: Express) {
     let registry: CommandRegistry;
     try {
       registry = loadCommandRegistry();
-    } catch {
+    } catch (err) {
+      console.warn("[AGENTWORKER] caught:", err instanceof Error ? err.message : err);
       return res.status(500).json({ error: "Failed to load command registry" });
     }
 
