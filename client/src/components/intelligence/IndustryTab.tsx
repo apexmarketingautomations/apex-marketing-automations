@@ -4,6 +4,8 @@ import { useLocation } from "wouter";
 import type { IndustryKnowledge, GrowthReport } from "./types";
 
 export function IndustryTab({ subAccountId }: { subAccountId: number }) {
+  const [, navigate] = useLocation();
+
   const { data: contextData } = useQuery({
     queryKey: ["/api/operator/cognitive/context", subAccountId],
     queryFn: async () => {
@@ -55,7 +57,6 @@ export function IndustryTab({ subAccountId }: { subAccountId: number }) {
     );
   }
 
-  const [, navigate] = useLocation();
   const benchmarks = benchmarkData?.industryBenchmarks || {};
   const readiness = (benchmarkData as any)?.readiness as { phase: string; ready: boolean; reasons: string[]; cta?: { label: string; link: string } } | undefined;
   const isReady = !readiness || readiness.ready;

@@ -28,7 +28,12 @@ export function registerMessagingRoutes(app: Express) {
 
   // ---- Messages ----
   app.get("/api/messages/:subAccountId", asyncHandler(async (req, res) => {
-    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    const raw = req.params.subAccountId;
+    if (!/^\d+$/.test(raw)) {
+      console.warn(`[MESSAGES API] Rejecting GET /api/messages/${raw} — non-numeric subAccountId. UA="${req.get("user-agent") || ""}" Referer="${req.get("referer") || ""}"`);
+      return res.status(400).json({ error: `Invalid subAccountId: must be a positive integer (received "${raw}")` });
+    }
+    const subAccountId = parseIntParam(raw, "subAccountId");
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const msgs = await storage.getMessages(subAccountId);
     if (msgs.length === 0) {
