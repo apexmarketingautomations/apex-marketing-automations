@@ -43,10 +43,11 @@ async function seedDefaults(subAccountId: number) {
     // Race-safe seeding (Task #143): we still pre-filter against the
     // current rows for an accurate "stagesSeeded" count, but the real
     // protection against duplicates is the unique index on
-    // (sub_account_id, lower(name)) — see migration 0014. The
-    // .onConflictDoNothing() clause means a parallel onboarding caller
-    // racing on the same row is silently dropped instead of producing
-    // a duplicate or throwing.
+    // (sub_account_id, name). The .onConflictDoNothing() clause means
+    // a parallel onboarding caller racing on the same row is silently
+    // dropped instead of producing a duplicate or throwing. Note:
+    // case-insensitive dedup is enforced at the application layer
+    // (lowercase comparison above) since the DB index is case-sensitive.
     const existingStages = await tx
       .select({ name: pipelineStages.name })
       .from(pipelineStages)

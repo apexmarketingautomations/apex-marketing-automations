@@ -161,10 +161,13 @@ export const workflows = pgTable("workflows", {
 }, (table) => ({
   // Race-safe default seeding (Task #143): two parallel onboarding
   // callers cannot both insert the same default workflow for the same
-  // sub-account. Case-insensitive to match the seeder's lowercase
-  // dedup semantics.
+  // sub-account. Seeders insert canonical names from a fixed defaults
+  // list, so a (sub_account_id, name) index is sufficient for
+  // race-safety. (Previously this used lower(name), but drizzle-kit
+  // emits an invalid `int4_ops` op-class for SQL expressions, breaking
+  // deploy migration validation.)
   subAccountNameUniq: uniqueIndex("workflows_sub_account_name_uniq")
-    .on(table.subAccountId, sql`lower(${table.name})`),
+    .on(table.subAccountId, table.name),
 }));
 
 export const insertWorkflowSchema = createInsertSchema(workflows).omit({ id: true });
@@ -690,10 +693,13 @@ export const pipelineStages = pgTable("pipeline_stages", {
 }, (table) => ({
   // Race-safe default seeding (Task #143): two parallel onboarding
   // callers cannot both insert the same default stage for the same
-  // sub-account. Case-insensitive to match the seeder's lowercase
-  // dedup semantics.
+  // sub-account. Seeders insert canonical names from a fixed defaults
+  // list, so a (sub_account_id, name) index is sufficient for
+  // race-safety. (Previously this used lower(name), but drizzle-kit
+  // emits an invalid `int4_ops` op-class for SQL expressions, breaking
+  // deploy migration validation.)
   subAccountNameUniq: uniqueIndex("pipeline_stages_sub_account_name_uniq")
-    .on(table.subAccountId, sql`lower(${table.name})`),
+    .on(table.subAccountId, table.name),
 }));
 
 export const insertPipelineStageSchema = createInsertSchema(pipelineStages).omit({ id: true });

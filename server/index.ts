@@ -1695,8 +1695,8 @@ RULES:
     let status = err.status || err.statusCode || 500;
     let rawMessage = err.message || "Internal Server Error";
 
-    // Translate Postgres unique-violation (Task #143) on the new
-    // (sub_account_id, lower(name)) indexes for pipeline_stages and
+    // Translate Postgres unique-violation (Task #143) on the
+    // (sub_account_id, name) indexes for pipeline_stages and
     // workflows into a deterministic 409 with a friendly message,
     // instead of a generic 500. Other unique-violation paths fall
     // through to the existing 500 handling.
