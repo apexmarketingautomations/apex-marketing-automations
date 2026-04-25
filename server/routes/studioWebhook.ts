@@ -4,8 +4,14 @@ import crypto from "crypto";
 import { db } from "../db";
 import { contentPosts, contentMedia } from "@shared/schema";
 
+const STUDIO_WEBHOOK_SECRET_FROM_ENV = process.env.STUDIO_WEBHOOK_SECRET;
+if (!STUDIO_WEBHOOK_SECRET_FROM_ENV && process.env.NODE_ENV === "production") {
+  throw new Error(
+    "[STUDIO-WEBHOOK] STUDIO_WEBHOOK_SECRET must be set in production. Refusing to auto-generate a secret.",
+  );
+}
 const STUDIO_WEBHOOK_SECRET =
-  process.env.STUDIO_WEBHOOK_SECRET || crypto.randomBytes(32).toString("hex");
+  STUDIO_WEBHOOK_SECRET_FROM_ENV || crypto.randomBytes(32).toString("hex");
 
 const CHARACTER_TO_SUBACCOUNT: Record<string, number> = {
   Layla: 22,
@@ -15,10 +21,15 @@ const DEFAULT_SUBACCOUNT_ID = 13;
 export function registerStudioWebhook(app: Express): void {
   console.log("════════════════════════════════════════════════════════════════");
   console.log("[STUDIO-WEBHOOK] POST /webhook/studio is live");
-  console.log(`[STUDIO-WEBHOOK] Secret (send as x-webhook-secret header):`);
-  console.log(`[STUDIO-WEBHOOK]   ${STUDIO_WEBHOOK_SECRET}`);
-  if (!process.env.STUDIO_WEBHOOK_SECRET) {
-    console.log("[STUDIO-WEBHOOK] (auto-generated; set STUDIO_WEBHOOK_SECRET env var to make permanent)");
+  if (!STUDIO_WEBHOOK_SECRET_FROM_ENV) {
+    console.log(
+      "[STUDIO-WEBHOOK] WARNING: STUDIO_WEBHOOK_SECRET is not set; using an auto-generated secret for this process only.",
+    );
+    console.log(
+      "[STUDIO-WEBHOOK] Set the STUDIO_WEBHOOK_SECRET env var to make it permanent. The value is intentionally not logged.",
+    );
+  } else {
+    console.log("[STUDIO-WEBHOOK] Using STUDIO_WEBHOOK_SECRET from environment (value not logged).");
   }
   console.log("════════════════════════════════════════════════════════════════");
 
