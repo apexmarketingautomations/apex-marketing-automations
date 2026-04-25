@@ -128,8 +128,10 @@ export async function verifyIntelligenceTables(): Promise<VerificationResult> {
     if (!result.registryStatus.complete) {
       result.warnings.push(`Module event registry incomplete: ${result.registryStatus.moduleGroups}/${expectedGroups} groups, ${result.registryStatus.eventTypes}/${expectedEvents} events`);
     }
-  } catch {
-    result.warnings.push("Could not verify module event registry");
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[APEX-SEED] Failed to verify module event registry:", err);
+    result.warnings.push(`Could not verify module event registry: ${message}`);
   }
 
   try {
@@ -151,8 +153,10 @@ export async function verifyIntelligenceTables(): Promise<VerificationResult> {
       result.errors.push("CRITICAL: No blocked policy rules found — destructive actions may be permitted");
       result.passed = false;
     }
-  } catch {
-    result.warnings.push("Could not verify autonomy policy rules");
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[APEX-SEED] Failed to verify autonomy policy rules:", err);
+    result.warnings.push(`Could not verify autonomy policy rules: ${message}`);
   }
 
   try {
@@ -171,6 +175,7 @@ export async function seedModuleEventRegistryProduction(): Promise<SeedResult> {
   const { storage } = await import("../storage");
   let seeded = 0;
   let skipped = 0;
+  let firstEventRegistrationError: string | null = null;
 
   for (const [moduleGroup, eventTypes] of Object.entries(MODULE_GROUP_EVENT_MAP)) {
     for (const eventType of eventTypes) {
@@ -187,17 +192,29 @@ export async function seedModuleEventRegistryProduction(): Promise<SeedResult> {
           isActive: true,
         });
         seeded++;
-      } catch {
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`[APEX-SEED] Failed to register module event ${moduleGroup}/${eventType}:`, err);
         skipped++;
+        if (!firstEventRegistrationError) {
+          firstEventRegistrationError = `${moduleGroup}/${eventType}: ${message}`;
+        }
       }
     }
   }
 
+  if (firstEventRegistrationError) {
+    console.warn(`[APEX-SEED] Module event registry encountered errors during seeding (first: ${firstEventRegistrationError})`);
+  }
+
+  const baseMessage = `${seeded} new events registered, ${skipped} already present`;
   return {
     table: "apex_module_event_registry",
     status: seeded > 0 ? "seeded" : "exists",
     count: seeded,
-    message: `${seeded} new events registered, ${skipped} already present`,
+    message: firstEventRegistrationError
+      ? `${baseMessage} (errors occurred — first: ${firstEventRegistrationError})`
+      : baseMessage,
   };
 }
 
