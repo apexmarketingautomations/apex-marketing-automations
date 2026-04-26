@@ -72,12 +72,12 @@ interface CardConfig {
 }
 
 const THEMES = [
-  { id: "executive-dark", label: "Executive", desc: "Premium dark", preview: "bg-gradient-to-br from-gray-900 to-indigo-950" },
-  { id: "luxury-dark", label: "Luxury", desc: "Gold & amber", preview: "bg-gradient-to-br from-gray-900 to-amber-950" },
-  { id: "clean-light", label: "Clean", desc: "Light & minimal", preview: "bg-gradient-to-br from-gray-50 to-blue-50" },
-  { id: "bold-agency", label: "Agency", desc: "Cyan & bold", preview: "bg-gradient-to-br from-slate-900 to-cyan-950" },
-  { id: "modern-gradient", label: "Gradient", desc: "Violet blend", preview: "bg-gradient-to-br from-indigo-950 to-purple-950" },
-  { id: "minimal-neutral", label: "Neutral", desc: "Stone & warm", preview: "bg-gradient-to-br from-stone-100 to-stone-200" },
+  { id: "executive-dark", label: "Onyx", desc: "Black & cobalt — finance, law, consulting", preview: "bg-[#050507]", swatch: "from-blue-500 via-blue-600 to-indigo-700", lightText: false },
+  { id: "luxury-dark", label: "Champagne", desc: "Charcoal & gold — real estate, jewelry", preview: "bg-[#0f0f10]", swatch: "from-amber-400 via-yellow-500 to-amber-600", lightText: false },
+  { id: "clean-light", label: "Porcelain", desc: "Cream & black — designers, photographers", preview: "bg-[#fdfcf8]", swatch: "from-stone-900 via-stone-800 to-stone-900", lightText: true },
+  { id: "bold-agency", label: "Neon Pulse", desc: "Navy & hot pink — creators, gyms, music", preview: "bg-[#0a0820]", swatch: "from-pink-500 via-fuchsia-500 to-cyan-400", lightText: false },
+  { id: "modern-gradient", label: "Coastal", desc: "Sunset peach — Florida, hospitality", preview: "bg-gradient-to-br from-[#fff1e6] via-[#ffd6a5] to-[#fdb6a3]", swatch: "from-[#1a2540] via-[#2d3a5f] to-[#fdb6a3]", lightText: true },
+  { id: "minimal-neutral", label: "Botanical", desc: "Forest & cream — wellness, spa, organic", preview: "bg-[#f4f1ea]", swatch: "from-[#2d5a3d] via-[#3d6a4d] to-[#5a7848]", lightText: true },
 ];
 
 const SERVICE_ICONS = [
@@ -847,11 +847,12 @@ function DigitalCardBuilderInner() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {THEMES.map(t => (
                     <button key={t.id} onClick={() => update("theme", t.id)}
-                      className={`p-4 rounded-2xl ${t.preview} border-2 transition-all text-left ${config.theme === t.id ? "border-cyan-400 scale-105 shadow-lg shadow-cyan-500/20" : "border-white/10 hover:border-white/20"}`}
+                      className={`relative p-4 rounded-2xl ${t.preview} border-2 transition-all text-left overflow-hidden ${config.theme === t.id ? "border-cyan-400 scale-105 shadow-lg shadow-cyan-500/30" : "border-white/10 hover:border-white/20"}`}
                       data-testid={`button-theme-${t.id}`}
                     >
-                      <span className="text-white text-sm font-bold block">{t.label}</span>
-                      <span className="text-white/50 text-[10px]">{t.desc}</span>
+                      <div className={`h-1.5 w-full rounded-full bg-gradient-to-r ${t.swatch} mb-2.5`} />
+                      <span className={`text-sm font-bold block ${t.lightText ? "text-stone-900" : "text-white"}`}>{t.label}</span>
+                      <span className={`text-[10px] leading-tight block mt-0.5 ${t.lightText ? "text-stone-700" : "text-white/60"}`}>{t.desc}</span>
                     </button>
                   ))}
                 </div>

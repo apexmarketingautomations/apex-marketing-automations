@@ -4,7 +4,7 @@ import {
   ArrowLeft, Save, Loader2, Check, Eye, User, Phone,
   Globe, Image, Palette, Star, AlertTriangle
 } from "lucide-react";
-import { CARD_THEMES, getAvailableThemes, getAvailableLayouts, canRemoveBranding } from "@/components/card-core";
+import { CARD_THEMES, getAvailableThemes, getAvailableLayouts, canRemoveBranding, getThemeDisplayName } from "@/components/card-core";
 
 function Field({ label, value, onChange, testId, type = "text", placeholder = "" }: any) {
   return (
@@ -211,7 +211,7 @@ export default function StandaloneCardEdit() {
                             : "border-white/[0.08] bg-white/[0.03] hover:border-white/[0.15]"
                         }`}>
                         <div className={`w-full h-6 rounded-lg mb-2 ${t.bg}`} />
-                        <p className="text-xs text-white font-medium capitalize">{themeKey.replace(/-/g, " ")}</p>
+                        <p className="text-xs text-white font-medium">{getThemeDisplayName(themeKey)}</p>
                       </button>
                     );
                   })}

@@ -180,12 +180,12 @@ export default function CardEdit() {
               <select value={card.theme || "executive-dark"} onChange={(e) => update("theme", e.target.value)}
                 className="w-full px-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white text-sm focus:border-indigo-500/50 focus:outline-none"
                 data-testid="select-theme">
-                <option value="executive-dark">Executive Dark</option>
-                <option value="luxury-dark">Luxury Dark</option>
-                <option value="clean-light">Clean Light</option>
-                <option value="bold-agency">Bold Agency</option>
-                <option value="modern-gradient">Modern Gradient</option>
-                <option value="minimal-neutral">Minimal Neutral</option>
+                <option value="executive-dark">Onyx — Black & cobalt</option>
+                <option value="luxury-dark">Champagne — Charcoal & gold</option>
+                <option value="clean-light">Porcelain — Cream & black</option>
+                <option value="bold-agency">Neon Pulse — Navy & hot pink</option>
+                <option value="modern-gradient">Coastal — Sunset peach</option>
+                <option value="minimal-neutral">Botanical — Forest & cream</option>
               </select>
             </div>
           </Section>
