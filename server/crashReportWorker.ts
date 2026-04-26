@@ -7,6 +7,67 @@ const FLHSMV_BASE = "https://services.flhsmv.gov";
 const FLHSMV_HOME = `${FLHSMV_BASE}/crashreportrequest/`;
 const FLHSMV_SEARCH_URL = `${FLHSMV_BASE}/CRRService/api/CrashReport/SearchReport`;
 const FLHSMV_DETAIL_URL = `${FLHSMV_BASE}/CRRService/api/CrashReport/GetReport`;
+
+// ScrapingBee proxy configuration. FLHSMV's Akamai edge has been returning a
+// cached HTTP 503 to our server's egress IP range for months. When
+// SCRAPINGBEE_API_KEY is set, all FLHSMV requests are routed through
+// ScrapingBee's US residential proxy pool to bypass the IP block.
+//
+// Mode selection (configurable via SCRAPINGBEE_MODE):
+//   "premium"  — premium_proxy=true,  ~10 credits per no-JS request. Default;
+//                cheapest tier that beats most Akamai blocks.
+//   "stealth"  — stealth_proxy=true,  75 credits per request. Use only if
+//                premium starts failing (full Akamai + Cloudflare bypass).
+const SCRAPINGBEE_API_KEY = process.env.SCRAPINGBEE_API_KEY;
+const SCRAPINGBEE_BASE = "https://app.scrapingbee.com/api/v1/";
+const SCRAPINGBEE_MODE = (process.env.SCRAPINGBEE_MODE ?? "premium").toLowerCase();
+
+function buildScrapingBeeUrl(targetUrl: string): string {
+  const params = new URLSearchParams({
+    api_key: SCRAPINGBEE_API_KEY!,
+    url: targetUrl,
+    render_js: "false",
+    country_code: "us",
+    forward_headers: "true",
+  });
+  if (SCRAPINGBEE_MODE === "stealth") {
+    params.set("stealth_proxy", "true");
+  } else {
+    params.set("premium_proxy", "true");
+  }
+  return `${SCRAPINGBEE_BASE}?${params.toString()}`;
+}
+
+let proxyModeLogged = false;
+async function flhsmvFetch(targetUrl: string, init: RequestInit = {}): Promise<Response> {
+  if (!SCRAPINGBEE_API_KEY) {
+    if (!proxyModeLogged) {
+      console.warn(
+        "[CRASH-WORKER] ⚠️  SCRAPINGBEE_API_KEY not set — using direct fetch. " +
+        "FLHSMV is currently blocking our IP range; expect HTTP 503 until the key is provided."
+      );
+      proxyModeLogged = true;
+    }
+    return fetch(targetUrl, init);
+  }
+  if (!proxyModeLogged) {
+    console.log(`[CRASH-WORKER] ✅ Routing FLHSMV requests through ScrapingBee (mode=${SCRAPINGBEE_MODE})`);
+    proxyModeLogged = true;
+  }
+  const proxyUrl = buildScrapingBeeUrl(targetUrl);
+  // forward_headers=true makes ScrapingBee strip the "Spb-" prefix and pass the
+  // remaining header through to the target. This lets us preserve our
+  // User-Agent / Accept / Origin / Referer / Cookie / Content-Type setup.
+  const originalHeaders = (init.headers as Record<string, string> | undefined) ?? {};
+  const spbHeaders: Record<string, string> = {};
+  for (const [k, v] of Object.entries(originalHeaders)) {
+    spbHeaders[`Spb-${k}`] = v;
+  }
+  return fetch(proxyUrl, {
+    ...init,
+    headers: spbHeaders,
+  });
+}
 const WORKER_INTERVAL_MS = 5 * 60 * 1000;
 const MAX_RETRIES = 5;
 const MAX_SERVICE_FAILURES = 20;
@@ -178,7 +239,7 @@ async function refreshSession(): Promise<void> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15_000);
 
-    const response = await fetch(FLHSMV_HOME, {
+    const response = await flhsmvFetch(FLHSMV_HOME, {
       method: "GET",
       headers: {
         "User-Agent": getNextUserAgent(),
@@ -235,7 +296,7 @@ async function fetchWithRetry(url: string, options: RequestInit, retries = 2): P
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 30_000);
-      const response = await fetch(url, { ...options, signal: controller.signal });
+      const response = await flhsmvFetch(url, { ...options, signal: controller.signal });
       clearTimeout(timeout);
 
       if (response.status === 401 || response.status === 403) {
@@ -929,7 +990,7 @@ async function probeFlhsmvConnectivity(): Promise<void> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
-    const res = await fetch(FLHSMV_HOME, {
+    const res = await flhsmvFetch(FLHSMV_HOME, {
       method: "HEAD",
       headers: { "User-Agent": getNextUserAgent() },
       signal: controller.signal,
