@@ -952,9 +952,99 @@ const ARRAY_FIELD_CONFIGS: Record<string, { key: string; addLabel: string; defau
   rows: { key: "rows", addLabel: "Add Row", defaultItem: { cells: ["Feature", "✓", "✗"] }, fields: [{ key: "cells", label: "Cells", type: "string-array" }] },
 };
 
+function FullscreenCodeEditor({ initialCode, sectionType, onSave, onClose }: { initialCode: string; sectionType: string; onSave: (code: string) => void; onClose: () => void }) {
+  const [code, setCode] = useState(initialCode);
+  const [showPreview, setShowPreview] = useState(true);
+  const srcDoc = `<!DOCTYPE html><html><head><style>body{margin:0;font-family:system-ui,sans-serif;}</style></head><body>${code || ""}</body></html>`;
+  const sizeBytes = new Blob([code]).size;
+  const tooBig = sizeBytes > 200_000;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[80] flex flex-col bg-[#0a0a1a]"
+      data-testid="dialog-fullscreen-code-editor"
+    >
+      <div className="h-14 border-b border-white/10 flex items-center justify-between px-5 bg-black/40">
+        <div className="flex items-center gap-3">
+          <Code2 className="text-emerald-400" size={20} />
+          <div>
+            <h2 className="text-sm font-bold text-white">Code Editor</h2>
+            <p className="text-[10px] text-slate-400 font-mono">SANDBOXED // {sectionType}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`text-[10px] font-mono ${tooBig ? "text-red-400" : "text-slate-400"}`}>
+            {(sizeBytes / 1024).toFixed(1)} KB / 200 KB
+          </span>
+          <Button size="sm" variant="outline" className="border-white/10 text-xs h-8" onClick={() => setShowPreview(p => !p)} data-testid="button-toggle-preview">
+            {showPreview ? "Hide Preview" : "Show Preview"}
+          </Button>
+          <Button size="sm" variant="outline" className="border-white/10 text-xs h-8" onClick={onClose} data-testid="button-cancel-fullscreen-code">
+            Cancel
+          </Button>
+          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-500 text-xs h-8" onClick={() => onSave(code)} disabled={tooBig} data-testid="button-save-fullscreen-code">
+            Save & Apply
+          </Button>
+        </div>
+      </div>
+      <div className="flex-1 grid overflow-hidden" style={{ gridTemplateColumns: showPreview ? "1fr 1fr" : "1fr" }}>
+        <div className="flex flex-col border-r border-white/10">
+          <div className="px-4 py-2 bg-white/5 border-b border-white/10 text-[10px] font-mono text-slate-300 flex items-center justify-between">
+            <span>HTML · CSS · JAVASCRIPT</span>
+            <span className="text-slate-500">Tab inserts 2 spaces</span>
+          </div>
+          <textarea
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Tab") {
+                e.preventDefault();
+                const target = e.currentTarget;
+                const start = target.selectionStart;
+                const end = target.selectionEnd;
+                const next = code.slice(0, start) + "  " + code.slice(end);
+                setCode(next);
+                requestAnimationFrame(() => {
+                  target.selectionStart = target.selectionEnd = start + 2;
+                });
+              }
+            }}
+            spellCheck={false}
+            className="flex-1 w-full bg-black/60 text-emerald-300 font-mono text-sm p-4 resize-none focus:outline-none"
+            placeholder={sectionType === "BOT_EMBED" ? "Paste chatbot embed code..." : "<!-- Write HTML, CSS in <style>, and JS in <script> -->"}
+            data-testid="textarea-fullscreen-code"
+          />
+          {tooBig && (
+            <div className="px-4 py-2 bg-red-950/40 border-t border-red-500/30 text-[11px] text-red-300">
+              Code is over the 200 KB limit. Trim it before saving.
+            </div>
+          )}
+        </div>
+        {showPreview && (
+          <div className="flex flex-col bg-white/5">
+            <div className="px-4 py-2 bg-white/5 border-b border-white/10 text-[10px] font-mono text-slate-300">
+              LIVE PREVIEW
+            </div>
+            <iframe
+              srcDoc={srcDoc}
+              sandbox="allow-scripts"
+              className="flex-1 w-full bg-white border-0"
+              data-testid="iframe-fullscreen-preview"
+            />
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
 function SectionEditor({ section, index, onUpdate, onClose }: { section: any; index: number; onUpdate: (idx: number, props: any) => void; onClose: () => void }) {
   const [editProps, setEditProps] = useState<Record<string, any>>(JSON.parse(JSON.stringify(section.props)));
   const [activeTab, setActiveTab] = useState<"fields" | "arrays">("fields");
+  const [showFullscreenCode, setShowFullscreenCode] = useState(false);
 
   const handleChange = (key: string, value: any) => {
     setEditProps((prev: Record<string, any>) => ({ ...prev, [key]: value }));
@@ -994,12 +1084,36 @@ function SectionEditor({ section, index, onUpdate, onClose }: { section: any; in
             <label className="text-xs text-slate-200 block mb-1 flex items-center gap-1">
               {section.type === "BOT_EMBED" ? <><Bot size={12} /> Bot Embed Code</> : <><Code2 size={12} /> HTML / CSS / JavaScript</>}
             </label>
-            <textarea value={editProps.code || ""} onChange={(e) => handleChange("code", e.target.value)} className="w-full h-64 bg-black/50 border border-white/10 rounded-lg p-3 text-xs font-mono text-green-400 resize-y focus:outline-none focus:border-indigo-500" placeholder={section.type === "BOT_EMBED" ? "Paste chatbot embed code..." : "Paste HTML, CSS, or JavaScript..."} spellCheck={false} data-testid={`input-edit-code-${index}`} />
+            <textarea value={editProps.code || ""} onChange={(e) => handleChange("code", e.target.value)} className="w-full h-48 bg-black/50 border border-white/10 rounded-lg p-3 text-xs font-mono text-green-400 resize-y focus:outline-none focus:border-indigo-500" placeholder={section.type === "BOT_EMBED" ? "Paste chatbot embed code..." : "Paste HTML, CSS, or JavaScript..."} spellCheck={false} data-testid={`input-edit-code-${index}`} />
+            <button
+              onClick={() => setShowFullscreenCode(true)}
+              className="mt-2 w-full flex items-center justify-center gap-2 text-xs text-emerald-400 hover:text-emerald-300 py-2 rounded-lg border border-dashed border-emerald-500/30 hover:border-emerald-500/60 transition-colors"
+              data-testid={`button-open-fullscreen-code-${index}`}
+            >
+              <Code2 size={14} />
+              Open fullscreen editor with live preview
+            </button>
+            <p className="text-[10px] text-slate-400 mt-2">
+              Runs in a sandbox: scripts can't read cookies or navigate the parent page. Crypto miners and obfuscated payloads are blocked on save.
+            </p>
           </div>
           <div className="flex gap-2 justify-end">
             <Button size="sm" variant="outline" className="border-white/10 text-xs" onClick={onClose}>Cancel</Button>
             <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500 text-xs" onClick={handleSave} data-testid={`button-save-section-${index}`}>Apply</Button>
           </div>
+          <AnimatePresence>
+            {showFullscreenCode && (
+              <FullscreenCodeEditor
+                initialCode={editProps.code || ""}
+                sectionType={section.type}
+                onSave={(newCode) => {
+                  handleChange("code", newCode);
+                  setShowFullscreenCode(false);
+                }}
+                onClose={() => setShowFullscreenCode(false)}
+              />
+            )}
+          </AnimatePresence>
         </div>
       )}
 
@@ -2026,6 +2140,42 @@ export default function SiteBuilder() {
     toast({ title: "Template Loaded", description: `"${template.name}" is ready to customize.` });
   };
 
+  const CODE_STARTER = `<!-- Write any HTML, <style>, and <script>. The preview is sandboxed: scripts cannot read your cookies or navigate the parent page. -->
+<style>
+  body { margin: 0; font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; }
+  .hero { min-height: 80vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 48px 24px; background: radial-gradient(ellipse at top, #6366f140, transparent 60%); }
+  h1 { font-size: clamp(2.5rem, 6vw, 4.5rem); margin: 0 0 16px; }
+  p { font-size: 1.125rem; opacity: 0.75; max-width: 560px; margin: 0 auto 32px; line-height: 1.6; }
+  button { background: #6366f1; color: white; border: 0; padding: 14px 28px; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; }
+  button:hover { background: #818cf8; }
+</style>
+
+<section class="hero">
+  <h1>Built by hand.</h1>
+  <p>Edit this code to make it yours. HTML, CSS, and JavaScript all work right here.</p>
+  <button onclick="document.querySelector('h1').textContent = 'It works!'">Click me</button>
+</section>
+`;
+
+  const handleStartWithCode = () => {
+    const codeSiteData = {
+      theme: { bg: "#0f172a", primary: "#6366f1", text: "#f8fafc", font: "Inter" },
+      sections: [
+        { type: "CODE", props: { title: "", code: CODE_STARTER } },
+      ],
+    };
+    const migrated = migrateSiteData(codeSiteData);
+    setSiteData(migrated);
+    setActivePageId(migrated.pages[0]?.id || "");
+    setLastPrompt("Custom code site");
+    setHistory((prev) => [...prev, "Started a code-based site"]);
+    setCurrentSiteId(null);
+    setEditMode(true);
+    markMilestoneComplete("generate");
+    markMilestoneComplete("preview");
+    toast({ title: "Code editor ready", description: "Click the section to open the full code editor." });
+  };
+
   const COMPONENT_MAP: Record<string, React.ComponentType<any>> = {
     HERO: HeroSection,
     FEATURES: FeatureSection,
@@ -2111,7 +2261,7 @@ export default function SiteBuilder() {
                   </button>
                 </li>
               </ul>
-              <div className="mt-4 pt-3 border-t border-white/10">
+              <div className="mt-4 pt-3 border-t border-white/10 space-y-2">
                 <button
                   onClick={() => setShowTemplates(true)}
                   className="flex items-center gap-2 mx-auto text-indigo-400 hover:text-indigo-300 transition-colors"
@@ -2119,6 +2269,14 @@ export default function SiteBuilder() {
                 >
                   <Palette size={16} />
                   Or browse Template Gallery
+                </button>
+                <button
+                  onClick={handleStartWithCode}
+                  className="flex items-center gap-2 mx-auto text-emerald-400 hover:text-emerald-300 transition-colors"
+                  data-testid="button-start-with-code-empty"
+                >
+                  <Code2 size={16} />
+                  Or build it from scratch with code
                 </button>
               </div>
             </div>
@@ -2184,14 +2342,24 @@ export default function SiteBuilder() {
               <Send size={18} />
             </Button>
           </div>
-          <button
-            onClick={() => setShowTemplates(true)}
-            className="w-full flex items-center justify-center gap-2 text-xs text-slate-200 hover:text-indigo-400 transition-colors py-1.5 rounded-lg border border-dashed border-white/10 hover:border-indigo-500/30"
-            data-testid="button-open-templates"
-          >
-            <Palette size={14} />
-            Browse Template Gallery
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => setShowTemplates(true)}
+              className="flex items-center justify-center gap-2 text-xs text-slate-200 hover:text-indigo-400 transition-colors py-1.5 rounded-lg border border-dashed border-white/10 hover:border-indigo-500/30"
+              data-testid="button-open-templates"
+            >
+              <Palette size={14} />
+              Templates
+            </button>
+            <button
+              onClick={handleStartWithCode}
+              className="flex items-center justify-center gap-2 text-xs text-slate-200 hover:text-emerald-400 transition-colors py-1.5 rounded-lg border border-dashed border-white/10 hover:border-emerald-500/30"
+              data-testid="button-start-with-code"
+            >
+              <Code2 size={14} />
+              Build with Code
+            </button>
+          </div>
         </div>
       </div>
 

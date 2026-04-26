@@ -7,6 +7,46 @@ import express from "express";
 import { asyncHandler, parseIntParam, logUsageInternal } from "./helpers";
 import { emitUniversalEvent, emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
 
+const MAX_CODE_BYTES_PER_SECTION = 200_000;
+const MALICIOUS_CODE_PATTERNS: { pattern: RegExp; label: string }[] = [
+  { pattern: /coinhive|cryptonight|webminerpool|minexmr|deepminer|coin-hive|cryptoloot|jsecoin/i, label: "cryptocurrency mining script" },
+  { pattern: /eval\s*\(\s*atob\s*\(/i, label: "obfuscated eval(atob(...)) payload" },
+  { pattern: /eval\s*\(\s*String\.fromCharCode/i, label: "obfuscated eval(String.fromCharCode(...)) payload" },
+  { pattern: /document\.write\s*\(\s*unescape/i, label: "document.write(unescape(...)) injection" },
+  { pattern: /new\s+Function\s*\(\s*atob/i, label: "new Function(atob(...)) payload" },
+  { pattern: /<script[^>]+src\s*=\s*["'][^"']*\.(ru|cn|tk|ml|ga|cf|gq|xyz)\/[^"']*\.js/i, label: "external script from a high-risk TLD" },
+];
+
+function scanCodeBlob(code: string): { ok: true } | { ok: false; reason: string } {
+  if (typeof code !== "string") return { ok: true };
+  if (code.length > MAX_CODE_BYTES_PER_SECTION) {
+    return { ok: false, reason: `Custom code is too large (max ${Math.floor(MAX_CODE_BYTES_PER_SECTION / 1000)}KB per section).` };
+  }
+  for (const { pattern, label } of MALICIOUS_CODE_PATTERNS) {
+    if (pattern.test(code)) {
+      return { ok: false, reason: `Custom code blocked: detected ${label}. Remove it and try again.` };
+    }
+  }
+  return { ok: true };
+}
+
+function scanSiteForMaliciousCode(siteData: any): { ok: true } | { ok: false; reason: string } {
+  if (!siteData || typeof siteData !== "object") return { ok: true };
+  const sections: any[] = Array.isArray(siteData.sections)
+    ? siteData.sections
+    : Array.isArray(siteData.pages)
+      ? siteData.pages.flatMap((p: any) => (Array.isArray(p?.sections) ? p.sections : []))
+      : [];
+  for (const section of sections) {
+    if (!section || typeof section !== "object") continue;
+    if (section.type === "CODE" || section.type === "BOT_EMBED") {
+      const result = scanCodeBlob(section.props?.code || "");
+      if (!result.ok) return result;
+    }
+  }
+  return { ok: true };
+}
+
 function renderSiteSection(section: any, theme: any): string {
   const p = section.props || {};
   switch (section.type) {
@@ -345,6 +385,9 @@ export function registerSitesRoutes(app: Express) {
     const siteCheck = siteDataValidator.safeParse(parsed.data.siteData);
     if (!siteCheck.success) return res.status(400).json({ error: "Invalid site data: must contain theme and sections" });
 
+    const codeScan = scanSiteForMaliciousCode(parsed.data.siteData);
+    if (!codeScan.ok) return res.status(400).json({ error: codeScan.reason });
+
     const site = await storage.createSavedSite(parsed.data);
     emitWithTimeline({
       eventType: EVENT_TYPES.SITE_CREATED,
@@ -368,6 +411,8 @@ export function registerSitesRoutes(app: Express) {
     if (req.body.siteData) {
       const siteCheck = siteDataValidator.safeParse(req.body.siteData);
       if (!siteCheck.success) return res.status(400).json({ error: "Invalid site data" });
+      const codeScan = scanSiteForMaliciousCode(req.body.siteData);
+      if (!codeScan.ok) return res.status(400).json({ error: codeScan.reason });
       updates.siteData = req.body.siteData;
     }
     if (req.body.customDomain !== undefined) updates.customDomain = req.body.customDomain;
