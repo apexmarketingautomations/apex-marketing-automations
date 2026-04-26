@@ -8,13 +8,14 @@ import { asyncHandler, parseIntParam, logUsageInternal } from "./helpers";
 import { emitUniversalEvent, emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
 
 const MAX_CODE_BYTES_PER_SECTION = 200_000;
+const MAX_CODE_BYTES_PER_SITE = 1_000_000;
 const MALICIOUS_CODE_PATTERNS: { pattern: RegExp; label: string }[] = [
   { pattern: /coinhive|cryptonight|webminerpool|minexmr|deepminer|coin-hive|cryptoloot|jsecoin/i, label: "cryptocurrency mining script" },
   { pattern: /eval\s*\(\s*atob\s*\(/i, label: "obfuscated eval(atob(...)) payload" },
   { pattern: /eval\s*\(\s*String\.fromCharCode/i, label: "obfuscated eval(String.fromCharCode(...)) payload" },
   { pattern: /document\.write\s*\(\s*unescape/i, label: "document.write(unescape(...)) injection" },
   { pattern: /new\s+Function\s*\(\s*atob/i, label: "new Function(atob(...)) payload" },
-  { pattern: /<script[^>]+src\s*=\s*["'][^"']*\.(ru|cn|tk|ml|ga|cf|gq|xyz)\/[^"']*\.js/i, label: "external script from a high-risk TLD" },
+  { pattern: /<script[^>]+src\s*=\s*["'][^"']*\.(ru|cn|tk|ml|ga|cf|gq)\/[^"']*\.js/i, label: "external script from a high-risk TLD" },
 ];
 
 function scanCodeBlob(code: string): { ok: true } | { ok: false; reason: string } {
@@ -32,17 +33,23 @@ function scanCodeBlob(code: string): { ok: true } | { ok: false; reason: string 
 
 function scanSiteForMaliciousCode(siteData: any): { ok: true } | { ok: false; reason: string } {
   if (!siteData || typeof siteData !== "object") return { ok: true };
-  const sections: any[] = Array.isArray(siteData.sections)
-    ? siteData.sections
-    : Array.isArray(siteData.pages)
-      ? siteData.pages.flatMap((p: any) => (Array.isArray(p?.sections) ? p.sections : []))
-      : [];
+  const directSections: any[] = Array.isArray(siteData.sections) ? siteData.sections : [];
+  const pageSections: any[] = Array.isArray(siteData.pages)
+    ? siteData.pages.flatMap((p: any) => (Array.isArray(p?.sections) ? p.sections : []))
+    : [];
+  const sections = [...directSections, ...pageSections];
+  let totalBytes = 0;
   for (const section of sections) {
     if (!section || typeof section !== "object") continue;
     if (section.type === "CODE" || section.type === "BOT_EMBED") {
-      const result = scanCodeBlob(section.props?.code || "");
+      const code = section.props?.code || "";
+      const result = scanCodeBlob(code);
       if (!result.ok) return result;
+      totalBytes += typeof code === "string" ? code.length : 0;
     }
+  }
+  if (totalBytes > MAX_CODE_BYTES_PER_SITE) {
+    return { ok: false, reason: `Total custom code across all sections exceeds the ${Math.floor(MAX_CODE_BYTES_PER_SITE / 1000)}KB site limit.` };
   }
   return { ok: true };
 }
@@ -120,6 +127,15 @@ function renderSiteSection(section: any, theme: any): string {
       return `<footer style="padding:40px 24px;text-align:center;border-top:1px solid rgba(255,255,255,0.08);background:${theme.bg}">
         <p style="opacity:0.5;font-size:13px">${p.text || `© ${new Date().getFullYear()} All rights reserved.`}</p>
       </footer>`;
+    case "CODE":
+    case "BOT_EMBED": {
+      const userCode = String(p.code || "");
+      const escapedSrcDoc = `<!DOCTYPE html><html><head><style>body{margin:0;font-family:system-ui,sans-serif;}</style></head><body>${userCode}</body></html>`
+        .replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+      return `<section style="padding:0;background:${theme.bg}">
+        <iframe srcdoc="${escapedSrcDoc}" sandbox="allow-scripts" style="border:0;width:100%;min-height:80vh;display:block;background:white" loading="lazy"></iframe>
+      </section>`;
+    }
     default:
       return `<section style="padding:60px 24px;text-align:center;background:${theme.bg}">
         <h2 style="font-size:1.5rem;font-weight:700;font-family:${theme.font}">${p.title || section.type}</h2>
