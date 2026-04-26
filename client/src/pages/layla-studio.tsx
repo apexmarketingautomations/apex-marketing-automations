@@ -3,8 +3,23 @@ import { Link, useLocation } from "wouter";
 import { useActiveSubAccountId } from "@/components/account-required";
 import { useAuth } from "@/hooks/use-auth";
 import { getStoredFace, putStoredFace, clearStoredFace } from "@/lib/face-store";
+import { getOperatorString, setOperatorString } from "@/lib/operator-store";
 
 const LAYLA_ACCOUNT_ID = 21;
+
+const STUDIO_TABS = [
+  { id: "layla", label: "✦ Layla" },
+  { id: "images", label: "Images" },
+  { id: "video", label: "Video" },
+  { id: "cinema", label: "Cinema" },
+  { id: "lipsync", label: "Lipsync" },
+  { id: "postfx", label: "Post-FX" },
+];
+const STUDIO_TAB_IDS = new Set(STUDIO_TABS.map(t => t.id));
+const DEFAULT_TAB = "layla";
+
+const STUDIO_SCOPE_TAB = "tab";
+const STUDIO_SCOPE_PROMPT = "prompt";
 
 const APEX_PROXY_URL = "/api/studio/apex";
 const MUAPI_BASE = "/api/studio/muapi";
@@ -1053,19 +1068,51 @@ function LibrarySidebar({ library }: { library: Asset[] }) {
   );
 }
 
-function LaylaStudio({ operatorKey }: { operatorKey: string }) {
+function LaylaStudio({ userId }: { userId: string }) {
   const [, setLocation] = useLocation();
-  const [tab, setTab] = useState("layla");
+  const faceKey = `face:${userId}`;
+  const [tab, setTab] = useState<string>(() => {
+    const stored = getOperatorString(STUDIO_SCOPE_TAB, userId);
+    return stored && STUDIO_TAB_IDS.has(stored) ? stored : DEFAULT_TAB;
+  });
   const [laylaFace, setLaylaFaceState] = useState<FaceRef>(null);
-  const [laylaPrompt, setLaylaPrompt] = useState("");
+  const [laylaPrompt, setLaylaPrompt] = useState<string>(() => getOperatorString(STUDIO_SCOPE_PROMPT, userId) ?? "");
   const [library, setLibrary] = useState<Asset[]>([]);
 
   const previewUrlRef = useRef<string | null>(null);
+  // Tracks which operator id the studio state is currently hydrated for. The
+  // persistence effects below skip writes whenever this doesn't match the
+  // current `userId` so a mid-session operator swap never leaks the previous
+  // operator's tab/prompt into the new operator's storage keys.
+  const hydratedForRef = useRef<string>(userId);
+
+  // Persistence effects MUST be declared before the hydration effect: when
+  // `userId` changes, all userId-dependent effects re-run in declaration
+  // order. Persisting first lets us short-circuit using `hydratedForRef`
+  // (which still holds the previous operator), and the hydration effect
+  // updates the ref + state immediately after.
+  useEffect(() => {
+    if (hydratedForRef.current !== userId) return;
+    setOperatorString(STUDIO_SCOPE_TAB, userId, tab);
+  }, [tab, userId]);
+
+  useEffect(() => {
+    if (hydratedForRef.current !== userId) return;
+    setOperatorString(STUDIO_SCOPE_PROMPT, userId, laylaPrompt);
+  }, [laylaPrompt, userId]);
+
+  useEffect(() => {
+    if (hydratedForRef.current === userId) return;
+    const storedTab = getOperatorString(STUDIO_SCOPE_TAB, userId);
+    setTab(storedTab && STUDIO_TAB_IDS.has(storedTab) ? storedTab : DEFAULT_TAB);
+    setLaylaPrompt(getOperatorString(STUDIO_SCOPE_PROMPT, userId) ?? "");
+    hydratedForRef.current = userId;
+  }, [userId]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const file = await getStoredFace(operatorKey);
+      const file = await getStoredFace(faceKey);
       if (cancelled) return;
       // Always reset state for the new operator before hydrating, so an
       // in-app operator switch never leaks the previous operator's face.
@@ -1084,7 +1131,7 @@ function LaylaStudio({ operatorKey }: { operatorKey: string }) {
     return () => {
       cancelled = true;
     };
-  }, [operatorKey]);
+  }, [faceKey]);
 
   useEffect(() => {
     return () => {
@@ -1102,23 +1149,14 @@ function LaylaStudio({ operatorKey }: { operatorKey: string }) {
     }
     if (next) {
       previewUrlRef.current = next.preview;
-      void putStoredFace(operatorKey, next.file);
+      void putStoredFace(faceKey, next.file);
     } else {
-      void clearStoredFace(operatorKey);
+      void clearStoredFace(faceKey);
     }
     setLaylaFaceState(next);
-  }, [operatorKey]);
+  }, [faceKey]);
 
   const addToLibrary = useCallback((asset: Asset) => setLibrary(l => [asset, ...l]), []);
-
-  const TABS = [
-    { id: "layla", label: "✦ Layla" },
-    { id: "images", label: "Images" },
-    { id: "video", label: "Video" },
-    { id: "cinema", label: "Cinema" },
-    { id: "lipsync", label: "Lipsync" },
-    { id: "postfx", label: "Post-FX" },
-  ];
 
   return (
     <>
@@ -1132,7 +1170,7 @@ function LaylaStudio({ operatorKey }: { operatorKey: string }) {
           </div>
         </div>
         <div className="tabs-row">
-          {TABS.map(t => (
+          {STUDIO_TABS.map(t => (
             <button key={t.id} className={`tab-btn${tab === t.id ? " active" : ""}`} onClick={() => setTab(t.id)} data-testid={`tab-${t.id}`}>{t.label}</button>
           ))}
         </div>
@@ -1193,5 +1231,5 @@ export default function LaylaStudioPage() {
     );
   }
 
-  return <LaylaStudio operatorKey={`face:${user.id}`} />;
+  return <LaylaStudio userId={String(user.id)} />;
 }
