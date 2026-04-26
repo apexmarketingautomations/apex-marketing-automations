@@ -201,16 +201,34 @@ type FaceRef = { file: File; preview: string } | null;
 
 const faceUploadCache = new WeakMap<File, Promise<string>>();
 
-async function ensureFaceUploaded(face: { file: File }): Promise<string> {
+class FaceUploadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "FaceUploadError";
+  }
+}
+
+async function ensureFaceUploaded(
+  face: { file: File },
+  onUploadStart?: () => void,
+): Promise<string> {
   let pending = faceUploadCache.get(face.file);
   if (!pending) {
+    onUploadStart?.();
     pending = uploadFile(face.file).catch(err => {
       faceUploadCache.delete(face.file);
-      throw err;
+      throw new FaceUploadError(errorMessage(err));
     });
     faceUploadCache.set(face.file, pending);
   }
   return pending;
+}
+
+function generationErrorMessage(e: unknown): string {
+  if (e instanceof FaceUploadError) {
+    return `Face upload failed — try a smaller photo (${e.message})`;
+  }
+  return errorMessage(e);
 }
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
@@ -556,9 +574,12 @@ function TabImages({ laylaFace, laylaPrompt, addToLibrary }: { laylaFace: FaceRe
       const modelLabel = IMAGE_MODELS.find(m => m.id === model)?.label || model;
 
       if (laylaFace && imageUrl) {
+        setProgress(60);
+        const sourceImage = await ensureFaceUploaded(laylaFace, () => {
+          setStatus("Uploading face reference...");
+        });
         setStatus("Locking face...");
         setProgress(65);
-        const sourceImage = await ensureFaceUploaded(laylaFace);
         const swap = await muapiPost("ai-image-face-swap", { target_image: imageUrl, source_image: sourceImage });
         const swapResult = await pollResult(swap.id, p => setProgress(65 + p * 0.35));
         imageUrl = extractUrl(swapResult) || imageUrl;
@@ -568,7 +589,7 @@ function TabImages({ laylaFace, laylaPrompt, addToLibrary }: { laylaFace: FaceRe
       setResults(r => [asset, ...r]);
       addToLibrary(asset);
       setStatus("Done ✓"); setProgress(100);
-    } catch (e: unknown) { setError(errorMessage(e)); setStatus(""); }
+    } catch (e: unknown) { setError(generationErrorMessage(e)); setStatus(""); }
     setGenerating(false);
   }
 
@@ -651,8 +672,11 @@ function TabVideo({ laylaFace, laylaPrompt, library, addToLibrary }: { laylaFace
       }
 
       if (laylaFace && videoUrl) {
+        setProgress(76);
+        const sourceImage = await ensureFaceUploaded(laylaFace, () => {
+          setStatus("Uploading face reference...");
+        });
         setStatus("Locking face..."); setProgress(78);
-        const sourceImage = await ensureFaceUploaded(laylaFace);
         const swap = await muapiPost("ai-video-face-swap", { target_video: videoUrl, source_image: sourceImage });
         const swapResult = await pollResult(swap.id, p => setProgress(78 + p * 0.22));
         videoUrl = extractUrl(swapResult) || videoUrl;
@@ -662,7 +686,7 @@ function TabVideo({ laylaFace, laylaPrompt, library, addToLibrary }: { laylaFace
       setResults(r => [asset, ...r]);
       addToLibrary(asset);
       setStatus("Done ✓"); setProgress(100);
-    } catch (e: unknown) { setError(errorMessage(e)); setStatus(""); }
+    } catch (e: unknown) { setError(generationErrorMessage(e)); setStatus(""); }
     setGenerating(false);
   }
 
