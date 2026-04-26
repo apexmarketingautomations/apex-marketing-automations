@@ -83,7 +83,7 @@ async function upsertUser(claims: any) {
   }
 }
 
-const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes of inactivity
+const IDLE_TIMEOUT_MS = 4 * 60 * 60 * 1000; // 4 hours of inactivity
 
 export async function setupAuth(app: Express) {
   app.set("trust proxy", 1);

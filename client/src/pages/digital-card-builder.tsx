@@ -366,6 +366,9 @@ function ImagePicker({ value, onChange, label, accept = "image/*", testId, subAc
       const res = await fetch("/api/media/upload", { method: "POST", body: fd, credentials: "include" });
       const json = await res.json().catch(() => null);
       if (!res.ok) {
+        if (res.status === 401) {
+          throw new Error("Your session expired. Please refresh the page and log in again.");
+        }
         const msg = json?.error || json?.message || `Upload failed (${res.status})`;
         throw new Error(msg);
       }
