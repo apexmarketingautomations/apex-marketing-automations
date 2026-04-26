@@ -213,6 +213,7 @@ type Asset = {
 };
 
 type FaceRef = { file: File; preview: string } | null;
+type FaceUploadStatus = "idle" | "uploading" | "uploaded" | "error";
 
 const faceUploadCache = new WeakMap<File, Promise<string>>();
 
@@ -469,7 +470,7 @@ function ApexModal({ asset, onClose, onSuccess }: { asset: Asset; onClose: () =>
   );
 }
 
-function TabLayla({ laylaFace, setLaylaFace, laylaPrompt, setLaylaPrompt }: { laylaFace: FaceRef; setLaylaFace: (f: FaceRef) => void; laylaPrompt: string; setLaylaPrompt: (s: string) => void }) {
+function TabLayla({ laylaFace, setLaylaFace, faceUploadStatus, laylaPrompt, setLaylaPrompt }: { laylaFace: FaceRef; setLaylaFace: (f: FaceRef) => void; faceUploadStatus: FaceUploadStatus; laylaPrompt: string; setLaylaPrompt: (s: string) => void }) {
   const [scene, setScene] = useState("");
   const [extras, setExtras] = useState("");
   const [building, setBuilding] = useState(false);
@@ -545,9 +546,14 @@ function TabLayla({ laylaFace, setLaylaFace, laylaPrompt, setLaylaPrompt }: { la
         <div className="card">
           <div className="card-title">Pipeline Status</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <div className="status-row">
-              <div className={`dot ${laylaFace ? "dot-green" : "dot-red"}`} />
-              <span style={{ color: laylaFace ? "var(--green)" : "var(--red)" }}>Face {laylaFace ? "Locked ✓" : "Not Set"}</span>
+            <div className="status-row" data-testid="status-face">
+              {(() => {
+                if (!laylaFace) return <><div className="dot dot-red" /><span style={{ color: "var(--red)" }}>Face Not Set</span></>;
+                if (faceUploadStatus === "uploading") return <><div className="dot dot-gold" /><span style={{ color: "var(--gold)" }}>Face Uploading…</span></>;
+                if (faceUploadStatus === "uploaded") return <><div className="dot dot-green" /><span style={{ color: "var(--green)" }}>Face Locked ✓</span></>;
+                if (faceUploadStatus === "error") return <><div className="dot dot-red" /><span style={{ color: "var(--red)" }}>Face Upload Failed — re-pick photo</span></>;
+                return <><div className="dot dot-gold" /><span style={{ color: "var(--gold)" }}>Face Selected</span></>;
+              })()}
             </div>
             <div className="status-row">
               <div className={`dot ${laylaPrompt ? "dot-green" : "dot-red"}`} />
@@ -564,7 +570,7 @@ function TabLayla({ laylaFace, setLaylaFace, laylaPrompt, setLaylaPrompt }: { la
   );
 }
 
-function TabImages({ laylaFace, laylaPrompt, addToLibrary }: { laylaFace: FaceRef; laylaPrompt: string; addToLibrary: (a: Asset) => void }) {
+function TabImages({ laylaFace, laylaPrompt, addToLibrary, setFaceUploadStatus }: { laylaFace: FaceRef; laylaPrompt: string; addToLibrary: (a: Asset) => void; setFaceUploadStatus: (s: FaceUploadStatus) => void }) {
   const [prompt, setPrompt] = useState("");
   const [model, setModel] = useState("flux-dev-image");
   const [shotType, setShotType] = useState("Portrait");
@@ -590,9 +596,17 @@ function TabImages({ laylaFace, laylaPrompt, addToLibrary }: { laylaFace: FaceRe
 
       if (laylaFace && imageUrl) {
         setProgress(60);
-        const sourceImage = await ensureFaceUploaded(laylaFace, () => {
-          setStatus("Uploading face reference...");
-        });
+        let sourceImage: string;
+        try {
+          sourceImage = await ensureFaceUploaded(laylaFace, () => {
+            setStatus("Uploading face reference...");
+            setFaceUploadStatus("uploading");
+          });
+        } catch (err) {
+          setFaceUploadStatus("error");
+          throw err;
+        }
+        setFaceUploadStatus("uploaded");
         setStatus("Locking face...");
         setProgress(65);
         const swap = await muapiPost("ai-image-face-swap", { target_image: imageUrl, source_image: sourceImage });
@@ -648,7 +662,7 @@ function TabImages({ laylaFace, laylaPrompt, addToLibrary }: { laylaFace: FaceRe
   );
 }
 
-function TabVideo({ laylaFace, laylaPrompt, library, addToLibrary }: { laylaFace: FaceRef; laylaPrompt: string; library: Asset[]; addToLibrary: (a: Asset) => void }) {
+function TabVideo({ laylaFace, laylaPrompt, library, addToLibrary, setFaceUploadStatus }: { laylaFace: FaceRef; laylaPrompt: string; library: Asset[]; addToLibrary: (a: Asset) => void; setFaceUploadStatus: (s: FaceUploadStatus) => void }) {
   const [mode, setMode] = useState<"t2v" | "i2v">("t2v");
   const [prompt, setPrompt] = useState("");
   const [sourceAsset, setSourceAsset] = useState<Asset | null>(null);
@@ -688,9 +702,17 @@ function TabVideo({ laylaFace, laylaPrompt, library, addToLibrary }: { laylaFace
 
       if (laylaFace && videoUrl) {
         setProgress(76);
-        const sourceImage = await ensureFaceUploaded(laylaFace, () => {
-          setStatus("Uploading face reference...");
-        });
+        let sourceImage: string;
+        try {
+          sourceImage = await ensureFaceUploaded(laylaFace, () => {
+            setStatus("Uploading face reference...");
+            setFaceUploadStatus("uploading");
+          });
+        } catch (err) {
+          setFaceUploadStatus("error");
+          throw err;
+        }
+        setFaceUploadStatus("uploaded");
         setStatus("Locking face..."); setProgress(78);
         const swap = await muapiPost("ai-video-face-swap", { target_video: videoUrl, source_image: sourceImage });
         const swapResult = await pollResult(swap.id, p => setProgress(78 + p * 0.22));
@@ -1076,6 +1098,7 @@ function LaylaStudio({ userId }: { userId: string }) {
     return stored && STUDIO_TAB_IDS.has(stored) ? stored : DEFAULT_TAB;
   });
   const [laylaFace, setLaylaFaceState] = useState<FaceRef>(null);
+  const [faceUploadStatus, setFaceUploadStatus] = useState<FaceUploadStatus>("idle");
   const [laylaPrompt, setLaylaPrompt] = useState<string>(() => getOperatorString(STUDIO_SCOPE_PROMPT, userId) ?? "");
   const [library, setLibrary] = useState<Asset[]>([]);
 
@@ -1122,11 +1145,13 @@ function LaylaStudio({ userId }: { userId: string }) {
       }
       if (!file) {
         setLaylaFaceState(null);
+        setFaceUploadStatus("idle");
         return;
       }
       const preview = URL.createObjectURL(file);
       previewUrlRef.current = preview;
       setLaylaFaceState({ file, preview });
+      setFaceUploadStatus("idle");
     })();
     return () => {
       cancelled = true;
@@ -1154,6 +1179,7 @@ function LaylaStudio({ userId }: { userId: string }) {
       void clearStoredFace(faceKey);
     }
     setLaylaFaceState(next);
+    setFaceUploadStatus("idle");
   }, [faceKey]);
 
   const addToLibrary = useCallback((asset: Asset) => setLibrary(l => [asset, ...l]), []);
@@ -1176,9 +1202,9 @@ function LaylaStudio({ userId }: { userId: string }) {
         </div>
         <div className="main">
           <div className="panel">
-            {tab === "layla" && <TabLayla laylaFace={laylaFace} setLaylaFace={setLaylaFace} laylaPrompt={laylaPrompt} setLaylaPrompt={setLaylaPrompt} />}
-            {tab === "images" && <TabImages laylaFace={laylaFace} laylaPrompt={laylaPrompt} addToLibrary={addToLibrary} />}
-            {tab === "video" && <TabVideo laylaFace={laylaFace} laylaPrompt={laylaPrompt} library={library} addToLibrary={addToLibrary} />}
+            {tab === "layla" && <TabLayla laylaFace={laylaFace} setLaylaFace={setLaylaFace} faceUploadStatus={faceUploadStatus} laylaPrompt={laylaPrompt} setLaylaPrompt={setLaylaPrompt} />}
+            {tab === "images" && <TabImages laylaFace={laylaFace} laylaPrompt={laylaPrompt} addToLibrary={addToLibrary} setFaceUploadStatus={setFaceUploadStatus} />}
+            {tab === "video" && <TabVideo laylaFace={laylaFace} laylaPrompt={laylaPrompt} library={library} addToLibrary={addToLibrary} setFaceUploadStatus={setFaceUploadStatus} />}
             {tab === "cinema" && <TabCinema library={library} addToLibrary={addToLibrary} />}
             {tab === "lipsync" && <TabLipsync library={library} addToLibrary={addToLibrary} />}
             {tab === "postfx" && <TabPostFX library={library} addToLibrary={addToLibrary} />}
