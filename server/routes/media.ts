@@ -43,26 +43,31 @@ export function registerMediaRoutes(app: Express) {
     });
   }, async (req: Request, res: Response) => {
     try {
+      const rawUser = (req as any).user;
+      const sessionAuthed = typeof (req as any).isAuthenticated === "function" && (req as any).isAuthenticated();
+      const userId: string | null = rawUser?.claims?.sub || rawUser?.id || null;
+
       console.log(JSON.stringify({
         stage: "upload_received",
         fileCount: (req.files as Express.Multer.File[] | undefined)?.length ?? 0,
         bodyKeys: Object.keys(req.body || {}),
         hasTenant: !!req.tenant?.subAccountId,
-        hasUser: !!(req as any).user?.id,
+        hasUser: !!userId,
+        sessionAuthed,
+        userShape: rawUser ? Object.keys(rawUser) : [],
         timestamp: new Date().toISOString(),
       }));
 
-      const user = (req as any).user;
       const adminSecret = process.env.STANDALONE_ADMIN_SECRET;
       const headerSecret = req.headers["x-admin-secret"] as string | undefined;
       const isAdminBypass = !!(adminSecret && headerSecret && headerSecret.trim() === adminSecret.trim());
 
-      if (!isAdminBypass && (!user || !user.id)) {
-        console.log(JSON.stringify({ stage: "upload_rejected", reason: "not_authenticated" }));
+      if (!isAdminBypass && !userId) {
+        console.log(JSON.stringify({ stage: "upload_rejected", reason: "not_authenticated", sessionAuthed }));
         return res.status(401).json({ success: false, stage: "auth", error: "Not authenticated" });
       }
 
-      const effectiveUserId = user?.id || "admin";
+      const effectiveUserId = userId || "admin";
 
       const tenantAccountId = req.tenant?.subAccountId;
       const bodyAccountId = req.body.sub_account_id ? Number(req.body.sub_account_id) : null;
@@ -89,7 +94,7 @@ export function registerMediaRoutes(app: Express) {
           severity: "warn",
           module: "media",
           message: "upload_blocked_protected",
-          metadata: { subAccountId, userId: user.id },
+          metadata: { subAccountId, userId: effectiveUserId },
         });
         console.log(JSON.stringify({ stage: "upload_rejected", reason: "protected_account", subAccountId }));
         return res.status(403).json({ success: false, stage: "validation", error: "protected_account" });
