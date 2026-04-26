@@ -367,7 +367,16 @@ function ImagePicker({ value, onChange, label, accept = "image/*", testId, subAc
       const json = await res.json().catch(() => null);
       if (!res.ok) {
         if (res.status === 401) {
-          throw new Error("Your session expired. Please refresh the page and log in again.");
+          toast({
+            title: "You're logged out",
+            description: "Sending you to log back in… your card is saved.",
+            variant: "destructive",
+          });
+          setTimeout(() => {
+            const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
+            window.location.href = `/login?returnTo=${returnTo}`;
+          }, 1200);
+          return;
         }
         const msg = json?.error || json?.message || `Upload failed (${res.status})`;
         throw new Error(msg);

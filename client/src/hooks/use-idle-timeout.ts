@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
-const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
-const WARNING_BEFORE_MS = 2 * 60 * 1000;
-const CHECK_INTERVAL_MS = 15 * 1000;
+const IDLE_TIMEOUT_MS = 4 * 60 * 60 * 1000;
+const WARNING_BEFORE_MS = 5 * 60 * 1000;
+const CHECK_INTERVAL_MS = 30 * 1000;
 
 const ACTIVITY_EVENTS = ["mousedown", "mousemove", "keydown", "scroll", "touchstart", "click"];
 

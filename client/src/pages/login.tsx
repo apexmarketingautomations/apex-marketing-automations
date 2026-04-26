@@ -28,6 +28,8 @@ export default function Login() {
   const [error, setError] = useState("");
 
   const idleLogout = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("reason") === "idle";
+  const returnTo = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("returnTo") : null;
+  const safeReturnTo = returnTo && /^\/[a-zA-Z0-9\-_/?&=.%]*$/.test(returnTo) && !returnTo.startsWith("//") ? returnTo : "/";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -55,7 +57,7 @@ export default function Login() {
       }
 
       await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-      navigate("/");
+      navigate(safeReturnTo);
     } catch (err) {
       setError("Connection error. Please try again.");
     } finally {
@@ -85,7 +87,7 @@ export default function Login() {
         return;
       }
       await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-      navigate("/");
+      navigate(safeReturnTo);
     } catch (err: any) {
       if (err?.code === "auth/popup-closed-by-user") return;
       setError("Firebase login failed. Please try again.");
