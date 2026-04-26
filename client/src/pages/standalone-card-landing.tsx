@@ -3,9 +3,9 @@ import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowRight, Smartphone, RefreshCw, Briefcase, Star, CheckCircle,
-  CreditCard, QrCode, Share2, Zap, Send, Shield, Clock, HelpCircle,
-  ChevronDown, MessageSquare, Phone, Mail, Globe, MapPin, Download,
-  Play, DollarSign, Users, Award, X, ExternalLink, Nfc, Wifi, BarChart3
+  CreditCard, QrCode, Share2, Send, Shield, Clock, HelpCircle,
+  ChevronDown, MessageSquare, Phone, Mail, Globe, Download,
+  Play, DollarSign, Users, Award, X, Nfc, Wifi, BarChart3
 } from "lucide-react";
 import { trackEvent } from "../lib/analytics";
 
@@ -65,7 +65,7 @@ function FaqItem({ q, a }: { q: string; a: string }) {
   );
 }
 
-function DemoCard({ onCta }: { onCta: () => void }) {
+function DemoCard() {
   const tc = "#0ea5e9";
   const [showActions, setShowActions] = useState(false);
 
@@ -227,12 +227,19 @@ export default function StandaloneCardLanding() {
                 </button>
               </div>
 
-              {promo?.promoActive && (
+              {hasDiscount ? (
                 <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.45 }}
                   data-testid="text-promo-badge"
                   className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 bg-amber-500/10 border border-amber-500/30 rounded-full text-amber-400 text-sm font-medium">
                   <Star className="w-4 h-4" />
-                  Limited-time launch price — lock it in before it goes back to ${(promo.regularPrice / 100).toFixed(0)}.
+                  Limited-time launch price — lock it in before it goes back to {formatPrice(promo.regularPrice)}.
+                </motion.div>
+              ) : (
+                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.45 }}
+                  data-testid="text-promo-badge"
+                  className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 bg-cyan-500/10 border border-cyan-500/30 rounded-full text-cyan-300 text-sm font-medium">
+                  <Shield className="w-4 h-4" />
+                  Flat {price}. One time. No subscription.
                 </motion.div>
               )}
             </motion.div>
@@ -267,10 +274,10 @@ export default function StandaloneCardLanding() {
 
           <div className="grid md:grid-cols-2 gap-10 items-center">
             <div className="md:hidden block">
-              <DemoCard onCta={goCreate} />
+              <DemoCard />
             </div>
             <div className="hidden md:block">
-              <DemoCard onCta={goCreate} />
+              <DemoCard />
             </div>
             <div className="space-y-4">
               {[
@@ -515,9 +522,13 @@ export default function StandaloneCardLanding() {
             className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold rounded-xl text-lg transition shadow-lg shadow-cyan-500/25">
             Create Yours Now <ArrowRight className="w-5 h-5" />
           </button>
-          {promo?.promoActive && (
+          {hasDiscount ? (
             <p className="text-amber-400 text-xs font-medium mt-3">
-              Launch price: {price} — 50% off for a limited time
+              Launch price: {price} — saves you {formatPrice(promo.regularPrice - promo.promoPrice)}
+            </p>
+          ) : (
+            <p className="text-neutral-500 text-xs mt-3">
+              Flat {price} one-time. No subscription, ever.
             </p>
           )}
         </section>

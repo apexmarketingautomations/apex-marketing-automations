@@ -292,10 +292,10 @@ export function registerStandaloneCardsRoutes(app: Express) {
       price_data: {
         currency: "usd",
         product_data: {
-          name: "Digital Business Card",
-          description: paidCount < PROMO_LIMIT
-            ? "50% Launch Discount — Limited Time"
-            : "One-time purchase — yours forever",
+          name: "Apex Card — NFC + Digital",
+          description: PROMO_PRICE_CENTS < CARD_PRICE_CENTS && paidCount < PROMO_LIMIT
+            ? "Launch price — limited time"
+            : "Real NFC card + digital card. One-time, no subscription.",
         },
         unit_amount: priceInCents,
       },
