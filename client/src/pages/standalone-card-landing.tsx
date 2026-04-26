@@ -5,9 +5,48 @@ import {
   ArrowRight, Smartphone, RefreshCw, Briefcase, Star, CheckCircle,
   CreditCard, QrCode, Share2, Zap, Send, Shield, Clock, HelpCircle,
   ChevronDown, MessageSquare, Phone, Mail, Globe, MapPin, Download,
-  Play, DollarSign, Users, Award, X, ExternalLink
+  Play, DollarSign, Users, Award, X, ExternalLink, Nfc, Wifi, BarChart3
 } from "lucide-react";
 import { trackEvent } from "../lib/analytics";
+
+function NfcCardVisual() {
+  return (
+    <div className="relative flex justify-center">
+      <div className="absolute -inset-8 bg-gradient-to-tr from-cyan-500/20 via-indigo-500/20 to-purple-500/20 blur-3xl rounded-full" />
+      <motion.div
+        className="relative w-[280px] md:w-[340px] aspect-[1.6/1] rounded-2xl p-6 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 border border-white/10 shadow-2xl shadow-indigo-900/40"
+        animate={{ y: [0, -8, 0], rotate: [-6, -5, -6] }}
+        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+        data-testid="visual-nfc-card"
+      >
+        <div className="absolute inset-0 rounded-2xl bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.18),transparent_50%)]" />
+        <div className="relative h-full flex flex-col justify-between">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.25em] text-cyan-400/80 mb-1">Apex Card</div>
+              <div className="text-white font-bold text-lg leading-tight">Your Name</div>
+              <div className="text-slate-400 text-xs">Your Title · Your Company</div>
+            </div>
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-cyan-500/15 border border-cyan-400/30">
+              <Wifi size={11} className="text-cyan-300 rotate-90" />
+              <span className="text-[9px] font-bold text-cyan-200 uppercase tracking-wider">NFC</span>
+            </div>
+          </div>
+          <div className="flex items-end justify-between">
+            <div className="flex items-center gap-3 text-slate-400">
+              <Phone size={14} />
+              <Mail size={14} />
+              <Star size={14} />
+            </div>
+            <div className="w-10 h-10 rounded-md bg-white/90 flex items-center justify-center">
+              <QrCode size={26} className="text-slate-900" />
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
 
 function FaqItem({ q, a }: { q: string; a: string }) {
   const [open, setOpen] = useState(false);
@@ -133,9 +172,14 @@ export default function StandaloneCardLanding() {
     setTimeout(() => demoRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 100);
   };
 
+  const formatPrice = (cents: number) => {
+    const dollars = cents / 100;
+    return Number.isInteger(dollars) ? `$${dollars}` : `$${dollars.toFixed(2)}`;
+  };
   const price = promo?.promoActive
-    ? `$${(promo.promoPrice / 100).toFixed(2)}`
-    : promo ? `$${(promo.regularPrice / 100).toFixed(0)}` : "$24.50";
+    ? formatPrice(promo.promoPrice)
+    : promo ? formatPrice(promo.regularPrice) : "$30";
+  const hasDiscount = !!promo?.promoActive && promo.promoPrice < promo.regularPrice;
 
   return (
     <div className="min-h-screen bg-[#09090b] text-white">
@@ -154,18 +198,22 @@ export default function StandaloneCardLanding() {
         <section className="container mx-auto px-4 pt-12 pb-10 md:pt-20 md:pb-14 max-w-5xl">
           <div className="grid md:grid-cols-2 gap-10 items-center">
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 mb-4" data-testid="badge-nfc-included">
+                <Nfc size={14} className="text-cyan-400" />
+                <span className="text-[11px] font-bold uppercase tracking-widest text-cyan-300">Now includes a real NFC card · $30 one-time</span>
+              </div>
               <p data-testid="text-hook" className="text-sm md:text-base text-neutral-400 font-medium mb-3 tracking-wide uppercase">
                 Paper cards get lost. Yours won't.
               </p>
               <h1 data-testid="text-headline" className="text-3xl sm:text-4xl md:text-[2.75rem] font-extrabold leading-[1.15] mb-5">
-                One digital card people can{" "}
+                A real NFC card{" "}
                 <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
-                  save directly to their contacts
+                  + a digital card people save to their contacts
                 </span>
-                {" "}— so they never lose your info.
+                {" "}— for one flat $30.
               </h1>
               <p data-testid="text-subheadline" className="text-base md:text-lg text-neutral-300 mb-6 leading-relaxed">
-                Create a mobile-friendly business card people actually save. Share by text, QR code, AirDrop, or DM. Update it anytime. Pay once.
+                Tap the NFC card on any phone — your contact, links, reviews, and QR appear instantly. They save you in one tap. Update your card anytime. No app. No monthly fees.
               </p>
 
               <div className="flex flex-col sm:flex-row items-start gap-3">
@@ -191,7 +239,7 @@ export default function StandaloneCardLanding() {
 
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3, duration: 0.6 }}
               className="hidden md:block">
-              <DemoCard onCta={goCreate} />
+              <NfcCardVisual />
             </motion.div>
           </div>
         </section>
@@ -253,12 +301,12 @@ export default function StandaloneCardLanding() {
           </h2>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {[
-              { icon: Smartphone, title: "Tap to Share", desc: "Text it, AirDrop it, or let someone scan your QR. No app needed." },
-              { icon: RefreshCw, title: "Always Up to Date", desc: "Changed your number or role? Update your card anytime — it's always current." },
-              { icon: Briefcase, title: "Look Professional", desc: "Clean, modern design that works on any phone. First impressions matter." },
-              { icon: Share2, title: "Share Anywhere", desc: "Works in texts, DMs, emails, social bios, and printed QR codes." },
-              { icon: Zap, title: "Built in Minutes", desc: "Fill out a simple form. Your card goes live right after payment." },
-              { icon: Shield, title: "No Subscription", desc: "One payment. Your card stays live. No monthly fees, ever." },
+              { icon: Nfc, title: "Real NFC card mailed to you", desc: "Premium printed card with embedded NFC chip — yours to keep, no subscription." },
+              { icon: Smartphone, title: "One tap, contact saved", desc: "They tap the card on any phone — your info goes straight into their contacts." },
+              { icon: QrCode, title: "Built-in QR code too", desc: "Print it on flyers, signage, or your laptop. Anyone with a phone can scan and save you." },
+              { icon: BarChart3, title: "See who's tapping", desc: "Real-time view stats so you know which events and posts are driving leads." },
+              { icon: RefreshCw, title: "Update anytime, free", desc: "Changed your number or role? Edit from your dashboard — the card stays current forever." },
+              { icon: Shield, title: "No subscription, ever", desc: "One $30 payment. Your card stays live. No monthly fees, no surprise charges." },
             ].map((item, i) => (
               <motion.div key={i} initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, amount: 0.3 }} transition={{ delay: i * 0.07 }}
@@ -277,12 +325,14 @@ export default function StandaloneCardLanding() {
           <p className="text-neutral-400 text-center text-sm mb-8">One card. Nothing to install. No monthly fees.</p>
           <div className="space-y-3">
             {[
+              { icon: Nfc, text: "Real NFC card mailed to your door — premium printed, ready to tap" },
               { icon: CreditCard, text: "Your own digital business card with a unique shareable link" },
               { icon: Send, text: "One-tap save to contacts — your info goes straight into their phone" },
               { icon: MessageSquare, text: "Call, text, and email buttons people can use right from your card" },
               { icon: Share2, text: "Social media links — Instagram, Facebook, TikTok, LinkedIn, YouTube" },
               { icon: Star, text: "Google review and booking links to drive more business" },
-              { icon: QrCode, text: "QR code for print materials, signage, and events" },
+              { icon: QrCode, text: "QR code on the card and the digital page for print, signage, and events" },
+              { icon: BarChart3, text: "View analytics — see how many people tapped, scanned, and saved you" },
               { icon: RefreshCw, text: "Edit your card anytime from your dashboard — always free" },
             ].map((item, i) => (
               <motion.div key={i} initial={{ opacity: 0, x: -10 }} whileInView={{ opacity: 1, x: 0 }}
@@ -359,29 +409,29 @@ export default function StandaloneCardLanding() {
             {promo && (
               <div className="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-7">
                 <p className="text-neutral-400 text-xs font-medium uppercase tracking-wider text-center mb-3">One-time payment</p>
-                {promo.promoActive ? (
+                {hasDiscount ? (
                   <>
                     <div className="flex items-center justify-center gap-3 mb-1">
-                      <span className="text-neutral-500 line-through text-xl">${(promo.regularPrice / 100).toFixed(0)}</span>
-                      <span className="text-4xl font-extrabold text-white">{price}</span>
+                      <span className="text-neutral-500 line-through text-xl">{formatPrice(promo.regularPrice)}</span>
+                      <span className="text-4xl font-extrabold text-white" data-testid="text-price">{price}</span>
                     </div>
-                    <p className="text-amber-400 text-xs font-medium text-center mb-1">
-                      50% off launch price — saves you ${((promo.regularPrice - promo.promoPrice) / 100).toFixed(2)}
-                    </p>
-                    <p className="text-neutral-500 text-[11px] text-center mb-5">
-                      Price goes back to ${(promo.regularPrice / 100).toFixed(0)} after the first {promo.spotsTotal} customers.
+                    <p className="text-amber-400 text-xs font-medium text-center mb-5">
+                      Launch price — saves you {formatPrice(promo.regularPrice - promo.promoPrice)}
                     </p>
                   </>
                 ) : (
-                  <div className="text-4xl font-extrabold text-white text-center mb-5">{price}</div>
+                  <>
+                    <div className="text-5xl font-extrabold text-white text-center mb-1" data-testid="text-price">{price}</div>
+                    <p className="text-neutral-400 text-xs text-center mb-5">No subscription. No hidden fees. Ever.</p>
+                  </>
                 )}
 
                 <div className="space-y-2.5 mb-5">
                   {[
-                    "Your card stays live forever",
-                    "No monthly fees — ever",
-                    "Free updates from your dashboard",
+                    "Real NFC card mailed to you",
+                    "Digital card with shareable link",
                     "Saves directly to their phone contacts",
+                    "Free updates forever — no monthly fees",
                   ].map((item, i) => (
                     <div key={i} className="flex items-center gap-2.5">
                       <CheckCircle className="w-4 h-4 text-green-400 shrink-0" />

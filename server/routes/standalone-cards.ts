@@ -14,8 +14,8 @@ import {
   emitStandalonePageView,
 } from "../intelligence/apexLearningFeed";
 
-const CARD_PRICE_CENTS = 4900;
-const PROMO_PRICE_CENTS = 2450;
+const CARD_PRICE_CENTS = 3000;
+const PROMO_PRICE_CENTS = 3000;
 const PROMO_LIMIT = 20;
 const COMMISSION_CENTS = 1000;
 const ADMIN_SECRET = process.env.STANDALONE_ADMIN_SECRET || "";
