@@ -341,8 +341,8 @@ function LeadTable({ cardId }: { cardId?: number }) {
   );
 }
 
-function ImagePicker({ value, onChange, label, accept = "image/*", testId }: {
-  value: string; onChange: (url: string) => void; label: string; accept?: string; testId: string;
+function ImagePicker({ value, onChange, label, accept = "image/*", testId, subAccountId }: {
+  value: string; onChange: (url: string) => void; label: string; accept?: string; testId: string; subAccountId: number;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -354,13 +354,21 @@ function ImagePicker({ value, onChange, label, accept = "image/*", testId }: {
       toast({ title: "Unsupported file", description: "Please choose an image.", variant: "destructive" });
       return;
     }
+    if (!subAccountId) {
+      toast({ title: "Upload failed", description: "No active account selected.", variant: "destructive" });
+      return;
+    }
     setUploading(true);
     try {
       const fd = new FormData();
       fd.append("files", file);
-      const res = await fetch("/api/media/upload", { method: "POST", body: fd });
-      if (!res.ok) throw new Error("Upload failed");
-      const json = await res.json();
+      fd.append("sub_account_id", String(subAccountId));
+      const res = await fetch("/api/media/upload", { method: "POST", body: fd, credentials: "include" });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        const msg = json?.error || json?.message || `Upload failed (${res.status})`;
+        throw new Error(msg);
+      }
       const first = json.uploaded?.[0];
       const url = first?.fileUrl || first?.url;
       if (!url) throw new Error("No URL returned");
@@ -669,15 +677,15 @@ function DigitalCardBuilderInner() {
                 <h2 className="text-lg font-bold text-white">Photos & Branding</h2>
                 <div>
                   <Label className="text-slate-300">Profile Photo</Label>
-                  <ImagePicker value={config.photoUrl} onChange={v => update("photoUrl", v)} label="Profile photo" testId="input-photo" />
+                  <ImagePicker value={config.photoUrl} onChange={v => update("photoUrl", v)} label="Profile photo" testId="input-photo" subAccountId={subAccountId} />
                 </div>
                 <div>
                   <Label className="text-slate-300">Cover Image</Label>
-                  <ImagePicker value={config.coverImageUrl} onChange={v => update("coverImageUrl", v)} label="Cover image" testId="input-cover" />
+                  <ImagePicker value={config.coverImageUrl} onChange={v => update("coverImageUrl", v)} label="Cover image" testId="input-cover" subAccountId={subAccountId} />
                 </div>
                 <div>
                   <Label className="text-slate-300">Logo</Label>
-                  <ImagePicker value={config.logoImageUrl} onChange={v => update("logoImageUrl", v)} label="Logo" testId="input-logo" />
+                  <ImagePicker value={config.logoImageUrl} onChange={v => update("logoImageUrl", v)} label="Logo" testId="input-logo" subAccountId={subAccountId} />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
