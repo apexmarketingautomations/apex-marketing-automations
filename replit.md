@@ -75,6 +75,19 @@ Desktop config snippet, and the remote-MCP connector config live in
 [docs/MCP_FILESYSTEM.md](docs/MCP_FILESYSTEM.md). The `MCP Filesystem`
 workflow runs the HTTP mode and refuses to start without the token.
 
+The 68-test safety regression suite (`server/tests/mcp-fs-server.test.ts`,
+covering all 11 tools plus traversal/symlink/null-byte rejection, auth,
+and default ignores) is wired in two places (Task #204):
+
+- **`test` validation workflow** in `.replit` runs
+  `npx vitest run server/tests/mcp-fs-server.test.ts` automatically as
+  part of the platform's pre-merge validation. A failing assertion
+  blocks the merge.
+- **Pre-commit hook** (`.githooks/pre-commit`) re-runs the same suite
+  locally whenever a commit touches `mcp-fs-server.js`,
+  `mcp-fs-router.{js,d.ts}`, or the test file itself. Enable the hook
+  with `git config core.hooksPath .githooks`.
+
 ## Data Migrations
 
 For one-off SQL fixes that must run BEFORE drizzle's schema sync (e.g. a

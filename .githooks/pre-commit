@@ -1,13 +1,16 @@
 #!/bin/sh
 # Pre-commit hook: block silent error-swallowing AND accidental secret prints
-# in server/. See Tasks #160, #162, #166, #167 (silent catches) and #172, #175
-# (secret prints).
+# in server/, and run the file-server safety suite when the file server or its
+# tests change. See Tasks #160, #162, #166, #167 (silent catches), #172, #175
+# (secret prints), and #202/#204 (mcp-fs-server safety regression suite).
 #
 # Enable locally with:
 #   git config core.hooksPath .githooks
 
-# Only run if any staged file lives under server/.
-if git diff --cached --name-only --diff-filter=ACMR | grep -qE '^server/.*\.(ts|tsx)$'; then
+STAGED="$(git diff --cached --name-only --diff-filter=ACMR)"
+
+# Server/ TS/TSX edits → silent-catch + secret-log lint.
+if echo "$STAGED" | grep -qE '^server/.*\.(ts|tsx)$'; then
   if ! node scripts/check-silent-catches.mjs; then
     echo ""
     echo "Pre-commit blocked: silent catch detected in server/."
@@ -18,6 +21,17 @@ if git diff --cached --name-only --diff-filter=ACMR | grep -qE '^server/.*\.(ts|
     echo ""
     echo "Pre-commit blocked: env-secret value appears in console output in server/."
     echo "Print only a masked form / boolean / length, or annotate with: // allow-secret-log: <reason>"
+    exit 1
+  fi
+fi
+
+# File-server edits → run the safety regression suite locally before commit.
+# Mirrors the `test` validation workflow that runs on push/PR (Task #204).
+if echo "$STAGED" | grep -qE '^(mcp-fs-server\.js|mcp-fs-router\.(js|d\.ts)|server/tests/mcp-fs-server\.test\.ts)$'; then
+  if ! npx vitest run server/tests/mcp-fs-server.test.ts; then
+    echo ""
+    echo "Pre-commit blocked: server/tests/mcp-fs-server.test.ts failed."
+    echo "Fix the regression, or run \`npx vitest run server/tests/mcp-fs-server.test.ts\` to debug."
     exit 1
   fi
 fi
