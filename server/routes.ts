@@ -49,6 +49,7 @@ import { registerChaturbateRoutes } from "./routes/chaturbate";
 import { registerApexIntelligenceRoutes } from "./routes/apex-intelligence";
 import { registerSiteTrackingRoutes } from "./routes/siteTracking";
 import { registerTrackingRoutes } from "./routes/tracking";
+import { registerPublicFormsRoutes } from "./routes/publicForms";
 export { registerAgentWorkerRoutes } from "./routes/agentWorker";
 
 export async function registerRoutes(
@@ -131,6 +132,7 @@ export async function registerRoutes(
   registerApexIntelligenceRoutes(app);
   registerSiteTrackingRoutes(app);
   registerTrackingRoutes(app);
+  registerPublicFormsRoutes(app);
 
   return httpServer;
 }
