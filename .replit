@@ -14,6 +14,10 @@ externalPort = 3001
 localPort = 5000
 externalPort = 80
 
+[[ports]]
+localPort = 8099
+externalPort = 8099
+
 [env]
 PORT = "5000"
 
@@ -38,6 +42,10 @@ args = "Start application"
 task = "workflow.run"
 args = "secret-logs"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "MCP Filesystem"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -60,6 +68,18 @@ args = "node scripts/check-secret-logs.mjs"
 
 [workflows.workflow.metadata]
 isValidation = true
+
+[[workflows.workflow]]
+name = "MCP Filesystem"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "node mcp-fs-server.js http"
+waitForPort = 8099
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [agent]
 stack = "MOCKUP_JS"

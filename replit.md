@@ -65,6 +65,16 @@ Apex Marketing Automations is a multi-tenant SaaS platform designed to centraliz
   exists as the `secret-logs` validation command. Added in Task #175 as
   a permanent guard for the regression fixed in Task #172.
 
+## Filesystem MCP Server
+
+`mcp-fs-server.js` (sibling to `apex-mcp-server.js`) exposes the repo's
+files to MCP clients (Claude Desktop, Claude on the web). It supports a
+local `stdio` transport and a remote `http`+SSE transport on port 8099,
+gated by a bearer token in `MCP_FS_TOKEN`. Operator setup, the Claude
+Desktop config snippet, and the remote-MCP connector config live in
+[docs/MCP_FILESYSTEM.md](docs/MCP_FILESYSTEM.md). The `MCP Filesystem`
+workflow runs the HTTP mode and refuses to start without the token.
+
 ## Data Migrations
 
 For one-off SQL fixes that must run BEFORE drizzle's schema sync (e.g. a
