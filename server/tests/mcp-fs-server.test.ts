@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 const TOKEN = "test-token-vitest-only-not-a-real-secret";
 const SERVER_SCRIPT = resolve(__dirname, "..", "..", "mcp-fs-server.js");
@@ -89,17 +90,21 @@ function seedProjectRoot(root: string): void {
   writeFileSync(join(root, ".git", "HEAD"), "ref: refs/heads/main\n", "utf8");
 }
 
-function unwrapText(result: any): string {
+function unwrapText(result: CallToolResult): string {
   // MCP CallTool results carry a content array of `{type:"text", text:...}` entries.
   // For our server's JSON tools this is a JSON string.
   expect(result).toBeDefined();
   expect(Array.isArray(result.content)).toBe(true);
   expect(result.content.length).toBeGreaterThan(0);
-  expect(result.content[0].type).toBe("text");
-  return result.content[0].text as string;
+  const first = result.content[0];
+  expect(first.type).toBe("text");
+  if (first.type !== "text") {
+    throw new Error(`Expected text content, got ${first.type}`);
+  }
+  return first.text;
 }
 
-function unwrapJson<T = any>(result: any): T {
+function unwrapJson<T>(result: CallToolResult): T {
   return JSON.parse(unwrapText(result)) as T;
 }
 
@@ -146,17 +151,17 @@ beforeAll(async () => {
 
   await waitForHealth();
 
+  // EventSource (the polyfill the SDK uses) calls this fetch when opening
+  // the stream; we inject the bearer header here too.
+  const authedFetch: typeof fetch = (input, init) =>
+    fetch(input, {
+      ...init,
+      headers: { ...(init?.headers ?? {}), ...authHeaders },
+    });
+
   transport = new SSEClientTransport(new URL(`${BASE}/sse`), {
     requestInit: { headers: authHeaders },
-    eventSourceInit: {
-      // EventSource (the polyfill the SDK uses) calls this fetch when opening
-      // the stream; we inject the bearer header here too.
-      fetch: ((url: any, init: any) =>
-        fetch(url, {
-          ...init,
-          headers: { ...(init?.headers ?? {}), ...authHeaders },
-        })) as any,
-    },
+    eventSourceInit: { fetch: authedFetch },
   });
 
   client = new Client(
@@ -482,7 +487,12 @@ describe("mcp-fs-server: negative matrix across all path-bearing tools", () => {
   // absolute-outside, and null-byte payloads are all rejected. This guards
   // against a future regression where one handler forgets to call resolveSafe
   // (e.g., reads its own raw `path` arg).
-  type ToolCall = { name: string; build: (payload: string) => any };
+  type ToolArgs = Record<string, string | boolean>;
+  type ToolCall = {
+    name: string;
+    variant?: string;
+    build: (payload: string) => ToolArgs;
+  };
   const callsByPath: ToolCall[] = [
     { name: "read_file", build: (p) => ({ path: p }) },
     { name: "write_file", build: (p) => ({ path: p, content: "x" }) },
@@ -494,10 +504,16 @@ describe("mcp-fs-server: negative matrix across all path-bearing tools", () => {
     { name: "list_directory", build: (p) => ({ path: p }) },
     { name: "search_files", build: (p) => ({ pattern: "*", path: p }) },
     { name: "search_in_files", build: (p) => ({ query: "x", path: p }) },
-    // move_file: from-side
-    { name: "move_file", build: (p) => ({ from: p, to: "anywhere.txt" }) },
-    // move_file: to-side
-    { name: "move_file", build: (p) => ({ from: "README.md", to: p }) },
+    {
+      name: "move_file",
+      variant: "(from)",
+      build: (p) => ({ from: p, to: "anywhere.txt" }),
+    },
+    {
+      name: "move_file",
+      variant: "(to)",
+      build: (p) => ({ from: "README.md", to: p }),
+    },
   ];
 
   const payloads: { label: string; value: string; expect: RegExp }[] = [
@@ -512,17 +528,12 @@ describe("mcp-fs-server: negative matrix across all path-bearing tools", () => {
 
   for (const tool of callsByPath) {
     for (const payload of payloads) {
-      const variant =
-        tool.name === "move_file"
-          ? Object.keys(tool.build("X"))[0] === "from"
-            ? "(from)"
-            : "(to)"
-          : "";
-      it(`${tool.name}${variant} rejects ${payload.label}`, async () => {
-        const result = await client.callTool({
+      const label = `${tool.name}${tool.variant ?? ""} rejects ${payload.label}`;
+      it(label, async () => {
+        const result = (await client.callTool({
           name: tool.name,
           arguments: tool.build(payload.value),
-        });
+        })) as CallToolResult;
         expect(result.isError).toBe(true);
         expect(unwrapText(result)).toMatch(payload.expect);
       });
