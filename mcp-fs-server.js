@@ -42,6 +42,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PROJECT_ROOT = path.resolve(process.env.MCP_FS_ROOT || __dirname);
+let PROJECT_ROOT_REAL = PROJECT_ROOT;
+try {
+  PROJECT_ROOT_REAL = fssync.realpathSync(PROJECT_ROOT);
+} catch (_err) { /* allow-silent-catch: existence checked separately at startup */ }
+
 const DEFAULT_IGNORES = new Set([
   "node_modules",
   ".git",
@@ -53,18 +58,47 @@ const DEFAULT_IGNORES = new Set([
   ".pythonlibs",
 ]);
 
+function withinRoot(absPath) {
+  if (absPath === PROJECT_ROOT_REAL) return true;
+  const sep = PROJECT_ROOT_REAL.endsWith(path.sep) ? PROJECT_ROOT_REAL : PROJECT_ROOT_REAL + path.sep;
+  return absPath.startsWith(sep);
+}
+
 function resolveSafe(rel) {
   if (typeof rel !== "string" || rel.length === 0) {
     rel = ".";
   }
-  const abs = path.resolve(PROJECT_ROOT, rel);
-  const normalizedRoot = PROJECT_ROOT.endsWith(path.sep)
-    ? PROJECT_ROOT
-    : PROJECT_ROOT + path.sep;
-  if (abs !== PROJECT_ROOT && !abs.startsWith(normalizedRoot)) {
+  if (rel.includes("\0")) {
+    throw new Error("Path contains null byte");
+  }
+  const lexical = path.resolve(PROJECT_ROOT, rel);
+  const lexSep = PROJECT_ROOT.endsWith(path.sep) ? PROJECT_ROOT : PROJECT_ROOT + path.sep;
+  if (lexical !== PROJECT_ROOT && !lexical.startsWith(lexSep)) {
     throw new Error(`Path escapes project root: ${rel}`);
   }
-  return abs;
+  let cursor = lexical;
+  let trailing = "";
+  while (true) {
+    try {
+      const real = fssync.realpathSync(cursor);
+      const candidate = trailing ? path.join(real, trailing) : real;
+      if (!withinRoot(real) || !withinRoot(candidate)) {
+        throw new Error(`Path escapes project root via symlink: ${rel}`);
+      }
+      return candidate;
+    } catch (err) {
+      if (err && err.code === "ENOENT") {
+        const parent = path.dirname(cursor);
+        if (parent === cursor) {
+          throw new Error(`Path escapes project root: ${rel}`);
+        }
+        trailing = trailing ? path.join(path.basename(cursor), trailing) : path.basename(cursor);
+        cursor = parent;
+        continue;
+      }
+      throw err;
+    }
+  }
 }
 
 function relativize(abs) {
@@ -567,13 +601,14 @@ function runHttp({ port }) {
       (process.env.REPLIT_DOMAINS?.split(",")[0]) ||
       `localhost:${port}`;
     const isPublic = publicHost && !publicHost.startsWith("localhost");
+    const publicSuffix = process.env.REPLIT_DEPLOYMENT_DOMAIN ? "" : `:${port}`;
     console.log("════════════════════════════════════════════════════════════════");
     console.log(`[MCP-FS] HTTP transport listening on 0.0.0.0:${port}`);
     console.log(`[MCP-FS]   Project root:    ${PROJECT_ROOT}`);
     console.log(`[MCP-FS]   Tools exposed:   ${tools.length}`);
     console.log(`[MCP-FS]   SSE URL (local): http://localhost:${port}/sse`);
     if (isPublic) {
-      console.log(`[MCP-FS]   SSE URL (public): https://${publicHost}/sse`);
+      console.log(`[MCP-FS]   SSE URL (public): https://${publicHost}${publicSuffix}/sse`);
     }
     console.log(`[MCP-FS]   Auth: bearer token via MCP_FS_TOKEN (set, value not logged)`);
     console.log("════════════════════════════════════════════════════════════════");

@@ -67,24 +67,29 @@ hammer/tools menu.
 ## Claude on the web (remote HTTP+SSE)
 
 1. Set `MCP_FS_TOKEN` in Replit Secrets to a long random string (e.g.
-   `openssl rand -hex 32`).
+   `openssl rand -hex 32`). The HTTP server refuses to start without it.
 2. Start the `MCP Filesystem` workflow (or run
-   `npm run mcp:fs:http` locally for testing).
+   `node mcp-fs-server.js http` from a shell for testing).
 3. In Claude on the web, open Settings → Connectors → Add custom
-   connector and paste:
+   connector ("Custom integration via URL") and paste:
 
 ```
-URL:           https://<your-replit-deployment-domain>/sse
-Auth header:   Authorization: Bearer <your MCP_FS_TOKEN>
+SSE URL:       https://<REPLIT_DEV_DOMAIN>:8099/sse
+Auth header:   Authorization
+Auth value:    Bearer <your MCP_FS_TOKEN>
 ```
 
-(For Claude clients that ask for the SSE URL and bearer token in
-separate fields, paste them into the corresponding fields. The HTTP
-server also exposes `GET /healthz` for liveness checks.)
+`REPLIT_DEV_DOMAIN` is the hostname shown in the Replit webview, e.g.
+`<repl-id>.<cluster>.replit.dev`. Port `8099` is forwarded externally
+in `.replit` ([[ports]] block), so the SSE endpoint is available at
+`https://<that-host>:8099/sse`. The HTTP server also exposes
+`GET /healthz` (no auth) for liveness checks.
 
-If the deployment exposes the workflow on a different host (it
-currently uses port 8099, which is not the same as the main app on
-5000), substitute the appropriate hostname/port.
+For a deployed app the public URL maps differently — only the port
+mapped to `externalPort = 80` is exposed without an explicit port.
+If you publish the FS server, run it as a separate Background Worker
+deployment so it has its own public hostname, or mount it on the main
+app. By default the workflow runs in dev only.
 
 ## Tool reference
 
