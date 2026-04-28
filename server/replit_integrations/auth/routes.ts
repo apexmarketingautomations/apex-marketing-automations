@@ -3,6 +3,9 @@ import { authStorage } from "./storage";
 import { isAuthenticated } from "./replitAuth";
 import bcrypt from "bcryptjs";
 import admin from "firebase-admin";
+import { db } from "../../db";
+import { users } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 let firebaseInitialized = false;
 function initFirebaseAdmin() {
@@ -35,8 +38,11 @@ export function registerAuthRoutes(app: Express): void {
       const adminUserId = process.env.ADMIN_USER_ID;
       const isDevAdmin = adminUserId && userId === adminUserId;
 
+      // Strip server-only fields before sending the user record to the client.
+      const { passwordHash, ...safeUser } = user as any;
+
       res.json({
-        ...user,
+        ...safeUser,
         ...(isDevAdmin ? {
           role: "DEV_ADMIN",
           isPaid: true,
@@ -104,6 +110,124 @@ export function registerAuthRoutes(app: Express): void {
     }
   });
 
+  // ---------- Setup-link flow (one-time, expiring) ----------
+  // Placeholder format stored in users.password_hash:
+  //   setup:<expiresAtMs>:<token>
+  // - never matches a bcrypt hash, so /email-login bcrypt.compare cannot succeed.
+  // - expiry encoded in the value, no extra table needed.
+  // Rate limiter (in-memory, per-IP) to slow brute force / oracle abuse.
+  const setupCheckHits = new Map<string, { count: number; windowStart: number }>();
+  function setupCheckLimited(ip: string): boolean {
+    const now = Date.now();
+    const win = 60_000;
+    const max = 30;
+    const entry = setupCheckHits.get(ip);
+    if (!entry || now - entry.windowStart > win) {
+      setupCheckHits.set(ip, { count: 1, windowStart: now });
+      return false;
+    }
+    entry.count += 1;
+    return entry.count > max;
+  }
+  function findSetupPlaceholder(hash: string | null | undefined, token: string): { match: boolean; expired: boolean; placeholder: string } {
+    if (!hash || !hash.startsWith("setup:")) return { match: false, expired: false, placeholder: "" };
+    const parts = hash.split(":");
+    if (parts.length !== 3) return { match: false, expired: false, placeholder: "" };
+    const [, expiresAtStr, storedToken] = parts;
+    if (storedToken !== token) return { match: false, expired: false, placeholder: hash };
+    const expiresAt = Number(expiresAtStr);
+    if (!Number.isFinite(expiresAt)) return { match: false, expired: true, placeholder: hash };
+    const expired = Date.now() > expiresAt;
+    return { match: true, expired, placeholder: hash };
+  }
+
+  app.post("/api/auth/setup-account", async (req, res) => {
+    try {
+      const { token, password } = req.body;
+      if (!token || !password) {
+        return res.status(400).json({ message: "Setup token and password are required" });
+      }
+      if (typeof token !== "string" || token.length < 16 || !/^[a-zA-Z0-9_-]+$/.test(token)) {
+        return res.status(400).json({ message: "Invalid setup token" });
+      }
+      if (password.length < 8) {
+        return res.status(400).json({ message: "Password must be at least 8 characters" });
+      }
+      if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+        return res.status(400).json({ message: "Password must contain at least one uppercase letter, one lowercase letter, and one number" });
+      }
+
+      // Lookup by suffix-match on the placeholder. We then verify expiry and atomically consume.
+      const { sql } = await import("drizzle-orm");
+      const found = await db.execute(sql`SELECT id, email, first_name, password_hash, auth_provider FROM users WHERE password_hash LIKE ${"setup:%:" + token} LIMIT 1`);
+      const row: any = (found as any).rows?.[0];
+      if (!row) {
+        return res.status(404).json({ message: "Setup link is invalid or has already been used" });
+      }
+      const { match, expired, placeholder } = findSetupPlaceholder(row.password_hash, token);
+      if (!match) {
+        return res.status(404).json({ message: "Setup link is invalid or has already been used" });
+      }
+      if (expired) {
+        return res.status(410).json({ message: "This setup link has expired. Please request a new one." });
+      }
+
+      const newHash = await bcrypt.hash(password, 12);
+      // Atomic conditional update — only succeeds if the placeholder still matches (one-time guarantee, race-safe).
+      const consumed: any = await db.execute(sql`UPDATE users SET password_hash = ${newHash}, auth_provider = 'email', updated_at = NOW() WHERE id = ${row.id} AND password_hash = ${placeholder} RETURNING id`);
+      const rowsAffected = consumed.rowCount ?? consumed.rows?.length ?? 0;
+      if (rowsAffected !== 1) {
+        return res.status(409).json({ message: "Setup link has already been used" });
+      }
+
+      const refreshed = await authStorage.getUser(row.id);
+
+      (req as any).session.regenerate?.((regenErr: any) => {
+        if (regenErr) {
+          console.error("[AUTH] Session regenerate failed during setup:", regenErr.message);
+          return res.status(500).json({ message: "Account ready, but session error — please go log in" });
+        }
+        (req as any).login({ id: row.id, claims: { sub: row.id }, authProvider: "email" }, (err: any) => {
+          if (err) {
+            console.error("[AUTH] Login after setup failed:", err);
+            return res.status(500).json({ message: "Account ready, but login failed — please go log in" });
+          }
+          res.json({
+            success: true,
+            user: { ...refreshed, passwordHash: undefined, role: "user" },
+          });
+        });
+      });
+    } catch (error) {
+      console.error("Setup account error:", error);
+      res.status(500).json({ message: "Account setup failed" });
+    }
+  });
+
+  app.get("/api/auth/setup-account/check", async (req, res) => {
+    try {
+      const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+      if (setupCheckLimited(ip)) {
+        return res.status(429).json({ valid: false });
+      }
+      const token = String(req.query.token || "");
+      if (!token || token.length < 16 || !/^[a-zA-Z0-9_-]+$/.test(token)) {
+        return res.json({ valid: false });
+      }
+      const { sql } = await import("drizzle-orm");
+      const found = await db.execute(sql`SELECT email, first_name, password_hash FROM users WHERE password_hash LIKE ${"setup:%:" + token} LIMIT 1`);
+      const row: any = (found as any).rows?.[0];
+      if (!row) return res.json({ valid: false });
+      const { match, expired } = findSetupPlaceholder(row.password_hash, token);
+      if (!match) return res.json({ valid: false });
+      if (expired) return res.json({ valid: false, expired: true });
+      res.json({ valid: true, email: row.email, firstName: row.first_name });
+    } catch (error) {
+      console.error("Setup account check error:", error);
+      res.json({ valid: false });
+    }
+  });
+
   app.post("/api/auth/email-login", async (req, res) => {
     try {
       const { email, password } = req.body;
@@ -114,6 +238,10 @@ export function registerAuthRoutes(app: Express): void {
       const user = await authStorage.getUserByEmail(email.toLowerCase().trim());
       if (!user || !user.passwordHash) {
         return res.status(401).json({ message: "Invalid email or password" });
+      }
+
+      if (user.passwordHash.startsWith("setup:")) {
+        return res.status(403).json({ message: "This account hasn't been set up yet. Please use the setup link sent to you." });
       }
 
       const valid = await bcrypt.compare(password, user.passwordHash);

@@ -113,6 +113,7 @@ const PhotographyLanding = lazy(() => import("@/pages/photography-landing"));
 const WeddingLanding = lazy(() => import("@/pages/wedding-landing"));
 const NicheDirectory = lazy(() => import("@/pages/niche-directory"));
 const LoginPage = lazy(() => import("@/pages/login"));
+const SetupAccountPage = lazy(() => import("@/pages/setup-account"));
 const PrivacyPage = lazy(() => import("@/pages/privacy"));
 const TermsPage = lazy(() => import("@/pages/terms"));
 const DataDeletionPage = lazy(() => import("@/pages/data-deletion"));
@@ -190,6 +191,7 @@ function Router() {
         <Route path="/standalone/admin" component={StandaloneCardAdmin} />
         <Route path="/review/:subAccountId" component={ReviewBuffer} />
         <Route path="/login" component={LoginPage} />
+        <Route path="/setup-account" component={SetupAccountPage} />
         <Route path="/privacy" component={PrivacyPage} />
         <Route path="/terms" component={TermsPage} />
         <Route path="/data-deletion" component={DataDeletionPage} />

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
 
 interface Fulfillment {
   id: number;
@@ -25,13 +27,24 @@ interface Campaign {
 
 export default function AdminEventMode() {
   const qc = useQueryClient();
+  const [, navigate] = useLocation();
+  const { user, isLoading: authLoading } = useAuth();
+  const isAdmin = (user as any)?.isAdmin === "true" || (user as any)?.role === "DEV_ADMIN";
+
+  useEffect(() => {
+    if (!authLoading && !isAdmin) {
+      navigate("/");
+    }
+  }, [authLoading, isAdmin, navigate]);
+
+  useEffect(() => { document.title = "Event Mode — Apex"; }, []);
+
   const { data, isLoading } = useQuery<{ campaign: Campaign | null; signups: Fulfillment[] }>({
     queryKey: ["/api/event/admin/signups"],
     queryFn: async () => (await apiRequest("GET", "/api/event/admin/signups")).json(),
     refetchInterval: 5000,
+    enabled: isAdmin,
   });
-
-  useEffect(() => { document.title = "Event Mode — Apex"; }, []);
 
   const programMut = useMutation({
     mutationFn: async (id: number) => (await apiRequest("POST", `/api/event/admin/fulfillment/${id}/programmed`, {})).json(),
