@@ -241,8 +241,12 @@ async function makeDirectory({ path: rel }) {
 
 async function deleteDirectory({ path: rel, recursive = false }) {
   const abs = resolveSafe(rel);
-  if (abs === PROJECT_ROOT) {
+  if (abs === PROJECT_ROOT || abs === PROJECT_ROOT_REAL) {
     throw new Error("Refusing to delete project root");
+  }
+  const stat = await fs.lstat(abs);
+  if (!stat.isDirectory()) {
+    throw new Error(`Not a directory; use delete_file: ${rel}`);
   }
   await fs.rm(abs, { recursive, force: false });
   return { path: relativize(abs), deleted: true, recursive };
