@@ -93,6 +93,8 @@ export async function registerRoutes(
   registerHomeServiceRoutes(app);
   const { registerStudioWebhook } = await import("./routes/studioWebhook");
   registerStudioWebhook(app);
+  const { registerBootstrapLauren } = await import("./routes/bootstrapLauren");
+  registerBootstrapLauren(app);
   const { registerStudioMuapiProxy } = await import("./routes/studioMuapiProxy");
   registerStudioMuapiProxy(app);
   const { registerStudioClaudeProxy } = await import("./routes/studioClaudeProxy");
