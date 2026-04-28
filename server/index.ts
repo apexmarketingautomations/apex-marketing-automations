@@ -11,6 +11,11 @@ import Stripe from "stripe";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import path from "path";
 import fs from "fs";
+// Imported from the dedicated, bundle-safe router module (no `import.meta.url`,
+// no CLI side-effects), so esbuild can inline it into dist/index.cjs without
+// the ESM-only top-level constructs that live in the CLI shim mcp-fs-server.js.
+// Type surface is declared in `mcp-fs-router.d.ts` (sibling to the .js file).
+import { createMcpFsRouter } from "../mcp-fs-router.js";
 import { runStartupChecks } from "./startupChecks";
 import { logSystemError, logSystemEvent } from "./systemLogger";
 import { clearLaylaCache } from "./services/laylaAccountResolver";
@@ -402,6 +407,25 @@ app.post(
     }
   }
 );
+
+// Mount the Filesystem MCP server at /fs-mcp BEFORE the global JSON body
+// parser so it can apply its own (larger) limit and so its SSE endpoint
+// keeps the response stream open without interference from later middleware.
+// Gives Claude on the web a stable always-on URL on the published deployment:
+//   https://<deployment-host>/fs-mcp/sse  (Authorization: Bearer <MCP_FS_TOKEN>)
+// When MCP_FS_TOKEN is unset (e.g. local dev without filesystem access enabled),
+// the route is silently skipped.
+if (process.env.MCP_FS_TOKEN && process.env.MCP_FS_TOKEN.trim().length >= 8) {
+  try {
+    app.use("/fs-mcp", createMcpFsRouter({ messagesPath: "/fs-mcp/messages" }));
+    console.log("[MCP-FS] mounted on main app at /fs-mcp (SSE: /fs-mcp/sse)");
+  } catch (mcpErr: unknown) {
+    const msg = mcpErr instanceof Error ? mcpErr.message : String(mcpErr);
+    console.error("[MCP-FS] failed to mount router on main app:", msg);
+  }
+} else {
+  console.log("[MCP-FS] /fs-mcp route NOT mounted (MCP_FS_TOKEN missing or <8 chars)");
+}
 
 app.use(
   express.json({

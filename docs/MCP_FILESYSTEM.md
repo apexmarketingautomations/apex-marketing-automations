@@ -66,12 +66,44 @@ hammer/tools menu.
 
 ## Claude on the web (remote HTTP+SSE)
 
-1. Set `MCP_FS_TOKEN` in Replit Secrets to a long random string (e.g.
-   `openssl rand -hex 32`). The HTTP server refuses to start without it.
-2. Start the `MCP Filesystem` workflow (or run
-   `node mcp-fs-server.js http` from a shell for testing).
-3. In Claude on the web, open Settings → Connectors → Add custom
-   connector ("Custom integration via URL") and paste:
+The filesystem MCP exposes two URLs that both serve the same tools and
+both require the same `Authorization: Bearer <MCP_FS_TOKEN>` header.
+Pick whichever fits the situation.
+
+### Recommended for published deployments — `/fs-mcp/sse` on the main app
+
+The main Express app mounts the filesystem MCP at `/fs-mcp` whenever
+`MCP_FS_TOKEN` is set in Secrets. This URL survives workspace sleep and
+stays reachable on the published deployment, because it shares the same
+`5000 → 80` port mapping as the rest of the app.
+
+```
+SSE URL:       https://<deployment-host>/fs-mcp/sse
+Auth header:   Authorization
+Auth value:    Bearer <your MCP_FS_TOKEN>
+```
+
+Where `<deployment-host>` is whatever Replit gave you when you ran
+"Publish" (e.g. `apex-marketing-automations.replit.app`). For sanity
+checks the route also exposes `GET /fs-mcp/healthz` (no auth) which
+returns `{ ok: true, root, tools, mountedAt }`.
+
+Trade-offs:
+- Shares fate with the main app — if the main deploy is unhealthy, so
+  is the file server. If you want them to crash independently, use the
+  standalone dev URL below or run the server as its own Reserved-VM /
+  Background Worker deployment with its own hostname.
+- The `MCP_FS_TOKEN` grants full read/write/delete on the project,
+  served from a public URL. Treat it like an SSH key. Rotate it
+  immediately if it leaks.
+- Mounted before the main app's body parsers and CSRF middleware so the
+  `/fs-mcp` routes use their own 8 MB JSON limit and are not subject to
+  `/api`-scoped rate limiting.
+
+### Dev-only fallback — port 8099 (not always-on)
+
+The `MCP Filesystem` workflow also keeps a standalone HTTP server alive
+on port 8099 while the dev workspace is awake. It uses the dev domain:
 
 ```
 SSE URL:       https://<REPLIT_DEV_DOMAIN>:8099/sse
@@ -81,15 +113,21 @@ Auth value:    Bearer <your MCP_FS_TOKEN>
 
 `REPLIT_DEV_DOMAIN` is the hostname shown in the Replit webview, e.g.
 `<repl-id>.<cluster>.replit.dev`. Port `8099` is forwarded externally
-in `.replit` ([[ports]] block), so the SSE endpoint is available at
-`https://<that-host>:8099/sse`. The HTTP server also exposes
-`GET /healthz` (no auth) for liveness checks.
+in `.replit` ([[ports]] block). This URL **disappears** when the
+workspace sleeps or when the main app is published, so use it only for
+local testing.
 
-For a deployed app the public URL maps differently — only the port
-mapped to `externalPort = 80` is exposed without an explicit port.
-If you publish the FS server, run it as a separate Background Worker
-deployment so it has its own public hostname, or mount it on the main
-app. By default the workflow runs in dev only.
+### Setting up the connector
+
+1. Set `MCP_FS_TOKEN` in Replit Secrets to a long random string (e.g.
+   `openssl rand -hex 32`). Both the standalone server and the main-app
+   mount refuse to expose anything without it.
+2. (Optional) Start the `MCP Filesystem` workflow if you want the dev
+   port-8099 endpoint as well. The `/fs-mcp` mount on the main app is
+   automatic once `MCP_FS_TOKEN` is set.
+3. In Claude on the web, open Settings → Connectors → Add custom
+   connector ("Custom integration via URL") and paste the SSE URL +
+   bearer header from one of the sections above.
 
 ## Tool reference
 
