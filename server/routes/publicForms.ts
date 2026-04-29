@@ -47,15 +47,22 @@ export function registerPublicFormsRoutes(app: Express): void {
         return res.status(400).json({ error: "Missing form token" });
       }
 
-      const [account] = await db
+      const matches = await db
         .select()
         .from(subAccounts)
         .where(eq(subAccounts.webhookToken, token))
-        .limit(1);
+        .limit(2);
 
-      if (!account) {
+      if (matches.length === 0) {
         return res.status(404).json({ error: "Unknown form token" });
       }
+      if (matches.length > 1) {
+        console.error(
+          `[PUBLIC-FORM] token collision: ${matches.length}+ sub_accounts share webhook_token; refusing submission to avoid cross-tenant lead injection`,
+        );
+        return res.status(500).json({ error: "Form token is ambiguous; contact support" });
+      }
+      const account = matches[0];
 
       const body = (req.body && typeof req.body === "object") ? req.body : {};
       const formName = pickField(body, "formName", "form_name", "form");

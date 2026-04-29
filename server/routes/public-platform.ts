@@ -190,6 +190,7 @@ function getPlatformManifest(routes: RouteCatalog, schemaData: ReturnType<typeof
         "/api/crash-reports/health",
         "/api/public/platform",
         "/api/public-card/",
+        "/api/public/form/",
         "/api/portal/",
         "/api/v1/external/sentinel",
       ],
@@ -363,7 +364,7 @@ function generateDescription(method: string, path: string): string {
 }
 
 function extractRoutes(app: Express): RouteCatalog {
-  const openPrefixes = ["/api/auth/", "/api/login", "/api/logout", "/api/callback", "/api/stripe/webhook", "/api/webhooks/", "/api/snapshots/marketplace", "/api/v1/serve-native-ad", "/api/v1/ad-click/", "/api/crash-reports/health", "/api/public-card/", "/api/portal/", "/api/v1/external/sentinel"];
+  const openPrefixes = ["/api/auth/", "/api/login", "/api/logout", "/api/callback", "/api/stripe/webhook", "/api/webhooks/", "/api/snapshots/marketplace", "/api/v1/serve-native-ad", "/api/v1/ad-click/", "/api/crash-reports/health", "/api/public-card/", "/api/public/form/", "/api/portal/", "/api/v1/external/sentinel"];
   const openExact = ["/api/reviews", "/api/alert-owner", "/api/languages", "/api/log-error", "/api/sms-webhook", "/api/twilio/inbound-sms", "/api/meta-webhook", "/api/sentinel/test-trigger", "/api/sentinel/live", "/api/sentinel/incoming-crash", "/api/sentinel/cad-ingest", "/api/sentinel-incoming", "/api/v1/sentinel-receiver", "/api/v1/sentinel-ingest", "/api/v1/dispatch", "/api/webhook/crashconnect", "/api/form-submit", "/api/card-checkout", "/api/sales-chat", "/api/generate-liquid-site", "/api/liquid/contact-lookup", "/api/system/health", "/api/data-deletion", "/api/auth/facebook/deauthorize"];
 
   function isPublic(path: string): boolean {
@@ -439,7 +440,7 @@ function extractRoutes(app: Express): RouteCatalog {
     { name: "Timeline", prefix: "/api/timeline", test: p => p.startsWith("/api/timeline") },
     { name: "Event Log", prefix: "/api/event-log", test: p => p.startsWith("/api/event-log") },
     { name: "Mailchimp", prefix: "/api/mailchimp", test: p => p.startsWith("/api/mailchimp") },
-    { name: "Funnels", prefix: "/api/funnel, /api/form-submit", test: p => p.startsWith("/api/funnel") || p === "/api/form-submit" },
+    { name: "Funnels", prefix: "/api/funnel, /api/form-submit, /api/public/form", test: p => p.startsWith("/api/funnel") || p === "/api/form-submit" || p.startsWith("/api/public/form/") },
     { name: "Admin", prefix: "/api/admin", test: p => p.startsWith("/api/admin") },
     { name: "V1 Compiler & Tools", prefix: "/api/v1/compiler, /api/v1/tools, /api/v1/orchestrate", test: p => p.startsWith("/api/v1/compiler") || p.startsWith("/api/v1/tools") || p.startsWith("/api/v1/orchestrate") },
     { name: "V1 Sentinel & Dispatch", prefix: "/api/v1/sentinel, /api/v1/dispatch", test: p => p.startsWith("/api/v1/sentinel") || p === "/api/v1/dispatch" },

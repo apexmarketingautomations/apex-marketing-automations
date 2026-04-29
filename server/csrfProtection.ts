@@ -25,6 +25,7 @@ const WEBHOOK_PATH_PREFIXES = [
   "/api/v1/ad-click/",
   "/api/sentinel-incoming",
   "/api/form-submit",
+  "/api/public/form/",
   "/api/card-checkout",
   "/api/sales-chat",
   "/api/generate-liquid-site",

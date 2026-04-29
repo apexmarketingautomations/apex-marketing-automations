@@ -147,6 +147,7 @@ export function registerAuthRoutes(app: Express) {
     if (fullPath.startsWith("/api/v1/external/sentinel")) return next();
     if (fullPath === "/api/v1/dispatch") return next();
     if (fullPath === "/api/form-submit") return next();
+    if (fullPath.startsWith("/api/public/form/")) return next();
     if (fullPath === "/api/card-checkout") return next();
     if (fullPath === "/api/sales-chat") return next();
     if (fullPath === "/api/generate-liquid-site") return next();
