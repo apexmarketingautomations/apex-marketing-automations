@@ -174,7 +174,7 @@ beforeAll(async () => {
 afterAll(async () => {
   try {
     await client?.close();
-  } catch {
+  } catch { // allow-silent-catch: intentional in test — verifying failure path only
     // ignore
   }
   if (serverProc && serverProc.exitCode === null) {
@@ -187,7 +187,7 @@ afterAll(async () => {
         if (serverProc.exitCode === null) {
           try {
             serverProc.kill("SIGKILL");
-          } catch {
+          } catch { // allow-silent-catch: intentional in test — verifying failure path only
             // ignore
           }
         }
@@ -208,7 +208,7 @@ describe("mcp-fs-server: HTTP auth", () => {
     const res = await fetch(`${BASE}/sse`);
     expect(res.status).toBe(401);
     // Drain so we don't leak the connection
-    await res.text().catch(() => undefined);
+    await res.text().catch(() => undefined); // allow-silent-catch: intentional in test — verifying failure path only
   });
 
   it("rejects /sse with a wrong bearer token", async () => {
@@ -216,7 +216,7 @@ describe("mcp-fs-server: HTTP auth", () => {
       headers: { Authorization: "Bearer not-the-right-token" },
     });
     expect(res.status).toBe(401);
-    await res.text().catch(() => undefined);
+    await res.text().catch(() => undefined); // allow-silent-catch: intentional in test — verifying failure path only
   });
 
   it("rejects /messages without a bearer token", async () => {
@@ -226,7 +226,7 @@ describe("mcp-fs-server: HTTP auth", () => {
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }),
     });
     expect(res.status).toBe(401);
-    await res.text().catch(() => undefined);
+    await res.text().catch(() => undefined); // allow-silent-catch: intentional in test — verifying failure path only
   });
 
   it("rejects /messages with a wrong bearer token", async () => {
@@ -239,7 +239,7 @@ describe("mcp-fs-server: HTTP auth", () => {
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }),
     });
     expect(res.status).toBe(401);
-    await res.text().catch(() => undefined);
+    await res.text().catch(() => undefined); // allow-silent-catch: intentional in test — verifying failure path only
   });
 
   it("allows /healthz without a bearer token", async () => {
