@@ -364,7 +364,7 @@ function generateDescription(method: string, path: string): string {
 }
 
 function extractRoutes(app: Express): RouteCatalog {
-  const openPrefixes = ["/api/auth/", "/api/login", "/api/logout", "/api/callback", "/api/stripe/webhook", "/api/webhooks/", "/api/snapshots/marketplace", "/api/v1/serve-native-ad", "/api/v1/ad-click/", "/api/crash-reports/health", "/api/public-card/", "/api/public/form/", "/api/public/admin/set-webhook-token", "/api/portal/", "/api/v1/external/sentinel"];
+  const openPrefixes = ["/api/auth/", "/api/login", "/api/logout", "/api/callback", "/api/stripe/webhook", "/api/webhooks/", "/api/snapshots/marketplace", "/api/v1/serve-native-ad", "/api/v1/ad-click/", "/api/crash-reports/health", "/api/public-card/", "/api/public/form/", "/api/portal/", "/api/v1/external/sentinel"];
   const openExact = ["/api/reviews", "/api/alert-owner", "/api/languages", "/api/log-error", "/api/sms-webhook", "/api/twilio/inbound-sms", "/api/meta-webhook", "/api/sentinel/test-trigger", "/api/sentinel/live", "/api/sentinel/incoming-crash", "/api/sentinel/cad-ingest", "/api/sentinel-incoming", "/api/v1/sentinel-receiver", "/api/v1/sentinel-ingest", "/api/v1/dispatch", "/api/webhook/crashconnect", "/api/form-submit", "/api/card-checkout", "/api/sales-chat", "/api/generate-liquid-site", "/api/liquid/contact-lookup", "/api/system/health", "/api/data-deletion", "/api/auth/facebook/deauthorize"];
 
   function isPublic(path: string): boolean {

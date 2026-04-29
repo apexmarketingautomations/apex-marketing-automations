@@ -19,8 +19,25 @@ export async function seed() {
   await fixOrphanedWorkflows();
   await fixOrphanedAutomations();
   await normalizeContactPhones();
+  await seedBmbWebhookToken();
 
   console.log("Database seeded successfully");
+}
+
+async function seedBmbWebhookToken() {
+  try {
+    const TOKEN = "bmb_e9f3a2c8d7b14e56a0f1c3d9e2b7a845";
+    const result = await db
+      .update(subAccounts)
+      .set({ webhookToken: TOKEN })
+      .where(and(eq(subAccounts.name, "Big Mama Beauty"), isNull(subAccounts.webhookToken)))
+      .returning({ id: subAccounts.id });
+    if (result.length > 0) {
+      console.log(`[SEED] Set Big Mama Beauty webhook token on sub-account #${result[0].id}`);
+    }
+  } catch (e: any) {
+    console.warn("[SEED] seedBmbWebhookToken failed (non-fatal):", e.message);
+  }
 }
 
 async function fixOrphanedWorkflows() {

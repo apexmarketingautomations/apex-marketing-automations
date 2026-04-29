@@ -26,7 +26,6 @@ const WEBHOOK_PATH_PREFIXES = [
   "/api/sentinel-incoming",
   "/api/form-submit",
   "/api/public/form/",
-  "/api/public/admin/set-webhook-token",
   "/api/card-checkout",
   "/api/sales-chat",
   "/api/generate-liquid-site",
