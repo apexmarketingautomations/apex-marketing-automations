@@ -189,4 +189,23 @@ export function registerPublicFormsRoutes(app: Express): void {
       });
     }),
   );
+
+  app.post(
+    "/api/public/admin/set-webhook-token",
+    express.json(),
+    asyncHandler(async (req, res) => {
+      const agentSecret = process.env.AGENT_SECRET;
+      const provided = req.headers["x-agent-secret"];
+      if (!agentSecret || !provided || provided !== agentSecret) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      const { subAccountId, token } = req.body ?? {};
+      if (!subAccountId || !token || typeof token !== "string" || token.trim().length < 8) {
+        return res.status(400).json({ error: "subAccountId and token (min 8 chars) are required" });
+      }
+      const updated = await storage.updateSubAccount(Number(subAccountId), { webhookToken: token.trim() });
+      if (!updated) return res.status(404).json({ error: "Sub-account not found" });
+      return res.json({ ok: true, id: updated.id, name: updated.name });
+    }),
+  );
 }
