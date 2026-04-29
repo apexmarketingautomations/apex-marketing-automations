@@ -48,9 +48,12 @@ Replit Secrets are *not* in the same list as the `[userenv.shared]`
 plaintext env vars. Open the workspace and click the **🔒 Secrets** tab
 in the left sidebar (sometimes labelled **Tools → Secrets**). The list
 is searchable but case-sensitive — search the exact key `MCP_FS_TOKEN`.
-Only the key name is shown; the value is masked. Secrets are global, so
-no "shared / development / production" dropdown is involved (unlike env
-vars, which *do* have a scope picker).
+Only the key name is shown; the value is masked. In this workspace
+Secrets are stored at account/global scope, so no "shared / development
+/ production" dropdown is involved (unlike env vars, which *do* have a
+scope picker). Replit may relabel the tab over time — if "Secrets" is
+not in the sidebar, look for a 🔒 lock icon or use the workspace
+search.
 
 If `MCP_FS_TOKEN` is missing from that list, the standalone HTTP server
 will refuse to start (`MCP_FS_TOKEN must be set (min 8 chars)…`) and

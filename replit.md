@@ -82,8 +82,9 @@ connector config live in [docs/MCP_FILESYSTEM.md](docs/MCP_FILESYSTEM.md).
 not in any `.env*` file (none exist), and not inline on the `MCP
 Filesystem` workflow command. To find it in the UI, open the **🔒
 Secrets** tab in the left sidebar (Tools → Secrets) and search the
-exact key `MCP_FS_TOKEN` (case-sensitive). Secrets are global, so no
-"shared / development / production" scope picker is involved. The
+exact key `MCP_FS_TOKEN` (case-sensitive). In this workspace Secrets
+are stored at account/global scope, so no "shared / development /
+production" scope picker is involved. The
 `MCP Filesystem` workflow refuses to start without it; the main app
 silently skips mounting `/fs-mcp` and logs `[MCP-FS] /fs-mcp route NOT
 mounted (MCP_FS_TOKEN missing or <8 chars)`.
