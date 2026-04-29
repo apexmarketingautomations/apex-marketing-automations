@@ -1752,6 +1752,12 @@ RULES:
     return res.status(status).json({ message: clientMessage });
   });
 
+  app.get("/big-mama-beauty", (_req, res) => {
+    const landingPath = path.join(process.cwd(), "client", "public", "big-mama-beauty.html");
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    return res.sendFile(landingPath);
+  });
+
   app.get("/roomos-landing", (_req, res) => {
     const landingPath = path.join(process.cwd(), "client", "public", "roomos-landing.html");
     if (fs.existsSync(landingPath)) {
