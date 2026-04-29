@@ -28,8 +28,34 @@ two transports selected by a CLI flag or env var:
 > `MCP_FS_ROOT`. Treat it like an SSH key. Anyone with the token can
 > delete the whole repo.
 
-Set `MCP_FS_TOKEN` via the Replit Secrets panel (Tools → Secrets) so the
-deployed HTTP workflow can pick it up.
+### Where the token actually lives (verified Apr 2026, Task #209)
+
+`MCP_FS_TOKEN` is stored in **Replit Secrets** — *not* in any `.env`
+file, *not* in `.replit`'s `[userenv.shared]` block, and *not* inline on
+the `MCP Filesystem` workflow's `args = "node mcp-fs-server.js http"`
+command. The audit walked every possible source:
+
+| Source                                  | Holds the token? |
+| --------------------------------------- | ---------------- |
+| Replit Secrets (global, account-level)  | ✅ **yes**       |
+| `.env*` files                           | ❌ none exist    |
+| `.replit` → `[userenv.shared]`          | ❌ not present   |
+| `.replit` → workflow inline env         | ❌ no env block  |
+| Ad-hoc shell `export`                   | ❌ none          |
+
+**How to find it in the UI** — this is the gotcha that prompted #209:
+Replit Secrets are *not* in the same list as the `[userenv.shared]`
+plaintext env vars. Open the workspace and click the **🔒 Secrets** tab
+in the left sidebar (sometimes labelled **Tools → Secrets**). The list
+is searchable but case-sensitive — search the exact key `MCP_FS_TOKEN`.
+Only the key name is shown; the value is masked. Secrets are global, so
+no "shared / development / production" dropdown is involved (unlike env
+vars, which *do* have a scope picker).
+
+If `MCP_FS_TOKEN` is missing from that list, the standalone HTTP server
+will refuse to start (`MCP_FS_TOKEN must be set (min 8 chars)…`) and
+`server/index.ts` will skip mounting `/fs-mcp` with the log line
+`[MCP-FS] /fs-mcp route NOT mounted (MCP_FS_TOKEN missing or <8 chars)`.
 
 ## Run the server
 

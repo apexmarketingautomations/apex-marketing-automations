@@ -70,10 +70,23 @@ Apex Marketing Automations is a multi-tenant SaaS platform designed to centraliz
 `mcp-fs-server.js` (sibling to `apex-mcp-server.js`) exposes the repo's
 files to MCP clients (Claude Desktop, Claude on the web). It supports a
 local `stdio` transport and a remote `http`+SSE transport on port 8099,
-gated by a bearer token in `MCP_FS_TOKEN`. Operator setup, the Claude
-Desktop config snippet, and the remote-MCP connector config live in
-[docs/MCP_FILESYSTEM.md](docs/MCP_FILESYSTEM.md). The `MCP Filesystem`
-workflow runs the HTTP mode and refuses to start without the token.
+gated by a bearer token in `MCP_FS_TOKEN`. The same router is also
+mounted on the main app at `/fs-mcp` (see `server/index.ts:418`) when
+the token is present, so production traffic uses
+`https://<deployment-host>/fs-mcp/sse` while port 8099 is dev-only.
+Operator setup, the Claude Desktop config snippet, and the remote-MCP
+connector config live in [docs/MCP_FILESYSTEM.md](docs/MCP_FILESYSTEM.md).
+
+**Where `MCP_FS_TOKEN` lives** (audited Apr 2026, Task #209): in
+**Replit Secrets** only — not in `.replit`'s `[userenv.shared]` block,
+not in any `.env*` file (none exist), and not inline on the `MCP
+Filesystem` workflow command. To find it in the UI, open the **🔒
+Secrets** tab in the left sidebar (Tools → Secrets) and search the
+exact key `MCP_FS_TOKEN` (case-sensitive). Secrets are global, so no
+"shared / development / production" scope picker is involved. The
+`MCP Filesystem` workflow refuses to start without it; the main app
+silently skips mounting `/fs-mcp` and logs `[MCP-FS] /fs-mcp route NOT
+mounted (MCP_FS_TOKEN missing or <8 chars)`.
 
 The 68-test safety regression suite (`server/tests/mcp-fs-server.test.ts`,
 covering all 11 tools plus traversal/symlink/null-byte rejection, auth,
