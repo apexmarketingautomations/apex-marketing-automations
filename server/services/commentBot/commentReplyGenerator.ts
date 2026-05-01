@@ -24,37 +24,99 @@ export async function generateCommentReply(ctx: CommentReplyContext): Promise<{
       { role: "user", content: ctx.commentText },
     ],
     {
-      maxTokens: 200,
+      maxTokens: 400,
       temperature: 0.7,
       route: "comment-bot",
     },
   );
 
   const raw = result.text || "";
+  const { reply, sentiment } = extractReplyAndSentiment(raw);
 
-  let parsed: { reply: string; sentiment: string };
-  try {
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      parsed = JSON.parse(jsonMatch[0]);
-    } else {
-      parsed = { reply: raw.trim(), sentiment: "neutral" };
-    }
-  } catch (err) {
-    console.warn("[COMMENTREPLYGENERATOR] caught:", err instanceof Error ? err.message : err);
-    parsed = { reply: raw.trim(), sentiment: "neutral" };
+  let safeReply = reply;
+  if (safeReply.length > 500) safeReply = safeReply.substring(0, 497) + "...";
+
+  if (looksLikeJsonOrCodeFence(safeReply)) {
+    console.error(`[COMMENTREPLYGENERATOR] REJECTING reply that still looks like JSON/code fence after extraction: "${safeReply.substring(0, 120)}"`);
+    return { reply: "", sentiment: "spam" };
   }
 
-  const validSentiments = ["positive", "negative", "neutral", "question", "spam"];
-  const sentiment = validSentiments.includes(parsed.sentiment) ? parsed.sentiment : "neutral";
-
-  let reply = parsed.reply || "";
-  if (reply.length > 500) reply = reply.substring(0, 497) + "...";
-
   return {
-    reply,
-    sentiment: sentiment as any,
+    reply: safeReply,
+    sentiment,
   };
+}
+
+/**
+ * Robustly extract the user-visible reply and sentiment from the model output.
+ * The model is instructed to return JSON like {"reply":"...","sentiment":"..."},
+ * but in practice it often wraps the JSON in ```json...``` fences and — worse —
+ * the response gets truncated mid-string when maxTokens runs out, producing
+ * unparseable JSON like `{"reply":"Aww love...` with no closing brace.
+ *
+ * Strategy:
+ *   1. Strip ``` and ```json code fences.
+ *   2. Try a strict JSON parse on a balanced {...} block.
+ *   3. If that fails, regex-extract the value of "reply": even from truncated JSON
+ *      (find the start, then walk to a sensible close-of-string boundary).
+ *   4. If that also fails, fall back to the raw text — but ONLY if it doesn't
+ *      itself look like JSON (the caller will reject it if it does).
+ */
+export function extractReplyAndSentiment(raw: string): {
+  reply: string;
+  sentiment: "positive" | "negative" | "neutral" | "question" | "spam";
+} {
+  const validSentiments = ["positive", "negative", "neutral", "question", "spam"] as const;
+  type Sentiment = typeof validSentiments[number];
+
+  let cleaned = raw.trim();
+  cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+
+  const balancedMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (balancedMatch) {
+    try {
+      const parsed = JSON.parse(balancedMatch[0]);
+      const reply = typeof parsed?.reply === "string" ? parsed.reply.trim() : "";
+      const sentRaw = typeof parsed?.sentiment === "string" ? parsed.sentiment : "neutral";
+      const sentiment = (validSentiments as readonly string[]).includes(sentRaw) ? (sentRaw as Sentiment) : "neutral";
+      return { reply, sentiment };
+    } catch {
+      // fall through to truncated-JSON extraction
+    }
+  }
+
+  const replyKeyMatch = cleaned.match(/"reply"\s*:\s*"((?:\\.|[^"\\])*)/);
+  if (replyKeyMatch) {
+    let extracted = replyKeyMatch[1]
+      .replace(/\\"/g, '"')
+      .replace(/\\n/g, "\n")
+      .replace(/\\t/g, "\t")
+      .replace(/\\\\/g, "\\")
+      .trim();
+
+    const sentMatch = cleaned.match(/"sentiment"\s*:\s*"([a-z]+)"/i);
+    const sent = sentMatch?.[1]?.toLowerCase() || "neutral";
+    const sentiment = (validSentiments as readonly string[]).includes(sent) ? (sent as Sentiment) : "neutral";
+
+    return { reply: extracted, sentiment };
+  }
+
+  return { reply: cleaned, sentiment: "neutral" };
+}
+
+/**
+ * Final safety guard: refuse to post replies that still contain JSON syntax
+ * or code-fence syntax after extraction. Better to send nothing than to post
+ * `{"reply":"Aww thanks love!` publicly to a follower.
+ */
+export function looksLikeJsonOrCodeFence(text: string): boolean {
+  if (!text) return false;
+  const trimmed = text.trim();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) return true;
+  if (trimmed.startsWith("```")) return true;
+  if (/"reply"\s*:/.test(trimmed)) return true;
+  if (/"sentiment"\s*:/.test(trimmed)) return true;
+  return false;
 }
 
 /**
