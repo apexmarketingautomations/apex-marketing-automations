@@ -786,6 +786,13 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
+  async deleteDomain(id: number): Promise<void> {
+    const { domains } = await import("@shared/schema");
+    const { eq } = await import("drizzle-orm");
+    await db.delete(domains).where(eq(domains.id, id));
+  }
+
+  
   async getOwnerByEmail(email: string) {
     const [row] = await db.select().from(owners).where(eq(owners.email, email));
     return row;
