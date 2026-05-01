@@ -95,6 +95,8 @@ function makeSpokenVersion(writtenText: string): string {
 export async function generateLaylaVoiceMessage(
   text: string
 ): Promise<VoiceMessageResult> {
+  // Voice memos disabled
+  throw new Error("Voice memos disabled");
   const core = condenseForVoice(text);
   if (!core) {
     throw new Error("Text too short or empty after condensing for voice");
@@ -159,7 +161,7 @@ export function shouldSendVoiceMessage(
   voicesSentThisThread: number,
   lastMessageText?: string
 ): boolean {
-  return false;
+  return false; // Voice memos disabled
 }
 
 export function getLaylaVoiceConfig() {
