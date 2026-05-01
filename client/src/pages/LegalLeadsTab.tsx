@@ -1,155 +1,342 @@
-/**
- * LegalLeadsTab.tsx
- * Live legal signal feed — arrests, court filings, OSHA, recalls, DV injunctions
- */
-
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { motion, AnimatePresence } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
 import { useAccount } from "@/hooks/use-account";
-import { Scale, AlertTriangle, Clock, MapPin, User, FileText, Shield, Gavel, Car, Heart, Briefcase } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import {
+  Scale, Shield, Users, Car, AlertTriangle, ChevronRight, ChevronLeft,
+  Phone, MapPin, Clock, Send, Eye, Target, CheckCircle2, Gavel,
+  Heart, FileText, Siren, Building, RefreshCw, Filter, Search,
+  ArrowRight, Zap, TrendingUp, Info,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
-interface LegalLead {
+// ── Types ────────────────────────────────────────────────────────────────────
+
+type LegalSignalType =
+  | "dui_arrest" | "arrest_record" | "divorce_filing"
+  | "domestic_violence_injunction" | "custody_modification" | "probate_filing"
+  | "osha_incident" | "fda_recall" | "cpsc_recall"
+  | "license_suspension" | "traffic_violation"
+  | "new_business_filing" | "salon_license";
+
+type LegalCategory = "criminal" | "family" | "traffic" | "personal_injury" | "business";
+
+interface LegalSignal {
   id: number;
-  legalVertical: string;
-  signalType: string;
+  signalType: LegalSignalType;
   county: string;
-  subjectName?: string;
-  subjectAddress?: string;
-  chargeDescription?: string;
-  caseNumber?: string;
-  urgency: string;
-  score: number;
-  status: string;
-  createdAt: string;
+  address?: string;
+  ownerName?: string;
+  ownerPhone?: string;
+  description: string;
+  urgency: "critical" | "high" | "medium" | "low";
+  serviceCategories: string[];
   detectedAt: string;
+  status: string;
+  score?: number;
+  smsSent?: boolean;
+  actionStatus?: string;
 }
 
-const VERTICAL_CONFIG: Record<string, { label: string; icon: any; color: string; bg: string; border: string }> = {
-  criminal:         { label: "Criminal Defense", icon: Shield,    color: "text-red-400",    bg: "bg-red-500/10",    border: "border-red-500/20" },
-  traffic:          { label: "Traffic / DUI",    icon: Car,       color: "text-amber-400",  bg: "bg-amber-500/10",  border: "border-amber-500/20" },
-  family:           { label: "Family Law",       icon: Heart,     color: "text-pink-400",   bg: "bg-pink-500/10",   border: "border-pink-500/20" },
-  personal_injury:  { label: "Personal Injury",  icon: AlertTriangle, color: "text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/20" },
-  workers_comp:     { label: "Workers Comp",     icon: Briefcase, color: "text-blue-400",   bg: "bg-blue-500/10",   border: "border-blue-500/20" },
+interface DistributionRule {
+  id: number;
+  name: string;
+  signalTypes: string[];
+  targetAccountId: number;
+  targetAccountName: string;
+  targetPhone: string;
+  active: boolean;
+  leadsDelivered: number;
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const LEGAL_CATEGORIES: { key: LegalCategory; label: string; icon: any; color: string; desc: string; signals: LegalSignalType[] }[] = [
+  {
+    key: "criminal",
+    label: "Criminal Defense",
+    icon: Shield,
+    color: "text-red-400",
+    desc: "Arrests, DUI, felonies",
+    signals: ["dui_arrest", "arrest_record"],
+  },
+  {
+    key: "family",
+    label: "Family Law",
+    icon: Users,
+    color: "text-pink-400",
+    desc: "Divorce, custody, injunctions",
+    signals: ["divorce_filing", "domestic_violence_injunction", "custody_modification", "probate_filing"],
+  },
+  {
+    key: "traffic",
+    label: "Traffic Law",
+    icon: Car,
+    color: "text-amber-400",
+    desc: "Suspensions, DUI, violations",
+    signals: ["license_suspension", "traffic_violation"],
+  },
+  {
+    key: "personal_injury",
+    label: "Personal Injury",
+    icon: Heart,
+    color: "text-orange-400",
+    desc: "OSHA incidents, recalls, slip & fall",
+    signals: ["osha_incident", "fda_recall", "cpsc_recall"],
+  },
+  {
+    key: "business",
+    label: "Business Signals",
+    icon: Building,
+    color: "text-cyan-400",
+    desc: "New licenses, salon openings",
+    signals: ["new_business_filing", "salon_license"],
+  },
+];
+
+const URGENCY_CONFIG = {
+  critical: { bg: "bg-red-500/20", text: "text-red-400", border: "border-red-500/30", label: "CRITICAL" },
+  high:     { bg: "bg-orange-500/20", text: "text-orange-400", border: "border-orange-500/30", label: "HIGH" },
+  medium:   { bg: "bg-amber-500/20", text: "text-amber-400", border: "border-amber-500/30", label: "MEDIUM" },
+  low:      { bg: "bg-slate-500/20", text: "text-slate-400", border: "border-slate-500/30", label: "LOW" },
 };
 
-const URGENCY_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
-  critical: { label: "CRITICAL",  color: "text-red-400",    dot: "bg-red-400" },
-  high:     { label: "HIGH",      color: "text-orange-400", dot: "bg-orange-400" },
-  medium:   { label: "MEDIUM",    color: "text-amber-400",  dot: "bg-amber-400" },
-  low:      { label: "LOW",       color: "text-slate-400",  dot: "bg-slate-400" },
+const SIGNAL_LABELS: Record<string, { label: string; icon: any; color: string }> = {
+  dui_arrest:                     { label: "DUI Arrest",             icon: Car,       color: "text-red-400" },
+  arrest_record:                  { label: "Criminal Arrest",         icon: Shield,    color: "text-red-400" },
+  divorce_filing:                 { label: "Divorce Filing",          icon: Scale,     color: "text-pink-400" },
+  domestic_violence_injunction:   { label: "DV Injunction",           icon: AlertTriangle, color: "text-red-400" },
+  custody_modification:           { label: "Custody Case",            icon: Users,     color: "text-pink-400" },
+  probate_filing:                 { label: "Probate Filing",          icon: FileText,  color: "text-purple-400" },
+  osha_incident:                  { label: "OSHA Incident",           icon: AlertTriangle, color: "text-orange-400" },
+  fda_recall:                     { label: "FDA Recall",              icon: AlertTriangle, color: "text-orange-400" },
+  cpsc_recall:                    { label: "CPSC Recall",             icon: AlertTriangle, color: "text-amber-400" },
+  license_suspension:             { label: "License Suspension",      icon: Car,       color: "text-amber-400" },
+  traffic_violation:              { label: "Traffic Violation",       icon: Car,       color: "text-amber-400" },
+  new_business_filing:            { label: "New Business",            icon: Building,  color: "text-cyan-400" },
+  salon_license:                  { label: "Salon License",           icon: Building,  color: "text-cyan-400" },
 };
 
-const SIGNAL_LABELS: Record<string, string> = {
-  arrest:              "Arrest",
-  dui_arrest:          "DUI Arrest",
-  court_filing:        "Court Filing",
-  divorce_filing:      "Divorce Filing",
-  custody_filing:      "Custody Filing",
-  domestic_violence:   "DV Injunction",
-  probate_filing:      "Probate Filing",
-  osha_incident:       "OSHA Incident",
-  dhsmv_suspension:    "License Suspension",
-  fda_recall:          "FDA Recall",
-  cpsc_recall:         "CPSC Recall",
-  civil_filing:        "Civil Filing",
-  injunction:          "Injunction",
-};
+// ── LegalSignalCard ───────────────────────────────────────────────────────────
 
-interface Props { onBack: () => void; }
+function LegalSignalCard({ signal, onClick }: { signal: LegalSignal; onClick: () => void }) {
+  const urgency = URGENCY_CONFIG[signal.urgency] || URGENCY_CONFIG.medium;
+  const meta = SIGNAL_LABELS[signal.signalType] || { label: signal.signalType, icon: Scale, color: "text-slate-400" };
+  const MetaIcon = meta.icon;
+  const timeAgo = (() => {
+    const diff = Date.now() - new Date(signal.detectedAt).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return mins + "m ago";
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return hrs + "h ago";
+    return Math.floor(hrs / 24) + "d ago";
+  })();
 
-export function LegalLeadsTab({ onBack }: Props) {
-  const { currentAccount } = useAccount();
-  const [filter, setFilter] = useState<string>("all");
-  const [selected, setSelected] = useState<LegalLead | null>(null);
-
-  const { data: leads = [], isLoading } = useQuery({
-    queryKey: ["/api/legal-leads", currentAccount?.id],
-    queryFn: () => apiRequest("GET", `/api/legal-leads?subAccountId=${currentAccount?.id}&limit=100`),
-    refetchInterval: 30000,
-    enabled: !!currentAccount?.id,
-  });
-
-  const filtered = filter === "all" ? leads : leads.filter((l: LegalLead) => l.legalVertical === filter);
-  const counts = leads.reduce((acc: Record<string, number>, l: LegalLead) => {
-    acc[l.legalVertical] = (acc[l.legalVertical] ?? 0) + 1;
-    return acc;
-  }, {});
-
-  if (selected) {
-    const cfg = VERTICAL_CONFIG[selected.legalVertical] ?? VERTICAL_CONFIG.criminal;
-    const urg = URGENCY_CONFIG[selected.urgency] ?? URGENCY_CONFIG.medium;
-    const Icon = cfg.icon;
-    return (
-      <div className="p-6 md:p-10 max-w-4xl mx-auto">
-        <button onClick={() => setSelected(null)} className="flex items-center gap-2 text-slate-400 hover:text-white text-sm mb-6 transition-colors">
-          ← Back to Legal Signals
-        </button>
-        <div className={`rounded-2xl border ${cfg.border} ${cfg.bg} p-6 mb-6`}>
-          <div className="flex items-start justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className={`p-2 rounded-xl ${cfg.bg} border ${cfg.border}`}>
-                <Icon size={20} className={cfg.color} />
-              </div>
-              <div>
-                <div className={`text-xs font-bold ${cfg.color} uppercase tracking-widest`}>{cfg.label}</div>
-                <div className="text-white font-bold text-lg">{SIGNAL_LABELS[selected.signalType] ?? selected.signalType}</div>
-              </div>
-            </div>
-            <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${cfg.bg} border ${cfg.border}`}>
-              <div className={`w-2 h-2 rounded-full ${urg.dot} animate-pulse`} />
-              <span className={`text-xs font-bold ${urg.color}`}>{urg.label}</span>
-            </div>
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      onClick={onClick}
+      className={`border rounded-xl p-4 cursor-pointer hover:bg-white/[0.03] transition-all ${urgency.border} bg-white/[0.02]`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${urgency.bg}`}>
+            <MetaIcon size={14} className={meta.color} />
           </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            {selected.subjectName && (
-              <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-                <div className="text-xs text-slate-500 uppercase tracking-widest mb-1">Subject</div>
-                <div className="text-white font-bold flex items-center gap-2">
-                  <User size={14} className="text-slate-400" /> {selected.subjectName}
-                </div>
-              </div>
-            )}
-            {selected.county && (
-              <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-                <div className="text-xs text-slate-500 uppercase tracking-widest mb-1">County</div>
-                <div className="text-white font-bold flex items-center gap-2">
-                  <MapPin size={14} className="text-slate-400" /> {selected.county}
-                </div>
-              </div>
-            )}
-            {selected.caseNumber && (
-              <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-                <div className="text-xs text-slate-500 uppercase tracking-widest mb-1">Case #</div>
-                <div className="text-white font-bold flex items-center gap-2">
-                  <FileText size={14} className="text-slate-400" /> {selected.caseNumber}
-                </div>
-              </div>
-            )}
-            <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-              <div className="text-xs text-slate-500 uppercase tracking-widest mb-1">Lead Score</div>
-              <div className="text-white font-bold">{selected.score}/100</div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${urgency.bg} ${urgency.text}`}>
+                {urgency.label}
+              </span>
+              <span className={`text-[10px] font-bold ${meta.color}`}>{meta.label}</span>
             </div>
-          </div>
-
-          {selected.chargeDescription && (
-            <div className="mt-4 bg-white/5 rounded-xl p-4 border border-white/10">
-              <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Details</div>
-              <p className="text-slate-300 text-sm leading-relaxed">{selected.chargeDescription}</p>
+            <p className="text-white text-sm font-semibold truncate">{signal.description}</p>
+            <div className="flex items-center gap-3 mt-1">
+              {signal.county && (
+                <span className="flex items-center gap-1 text-[11px] text-slate-500">
+                  <MapPin size={9} /> {signal.county} County
+                </span>
+              )}
+              {signal.ownerName && (
+                <span className="flex items-center gap-1 text-[11px] text-slate-400 font-medium">
+                  {signal.ownerName}
+                </span>
+              )}
+              <span className="flex items-center gap-1 text-[11px] text-slate-600">
+                <Clock size={9} /> {timeAgo}
+              </span>
             </div>
-          )}
-
-          <div className="mt-4 flex gap-3">
-            <Button className="flex-1 bg-white/10 hover:bg-white/15 text-white border border-white/20">
-              📞 Contact Attorney
-            </Button>
-            <Button className="flex-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30">
-              ✓ Mark Claimed
-            </Button>
           </div>
         </div>
+        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+          {signal.smsSent && (
+            <span className="text-[8px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded font-bold">SMS SENT</span>
+          )}
+          {signal.ownerPhone && (
+            <span className="text-[9px] text-emerald-400 font-bold">📞 HAS PHONE</span>
+          )}
+          <ChevronRight size={14} className="text-slate-600 mt-1" />
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ── LegalSignalDetail ─────────────────────────────────────────────────────────
+
+function LegalSignalDetail({ signal, onBack }: { signal: LegalSignal; onBack: () => void }) {
+  const { activeAccountId } = useAccount();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const urgency = URGENCY_CONFIG[signal.urgency] || URGENCY_CONFIG.medium;
+  const meta = SIGNAL_LABELS[signal.signalType] || { label: signal.signalType, icon: Scale, color: "text-slate-400" };
+  const MetaIcon = meta.icon;
+
+  const smsMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/sentinel/home-service/sms", {
+        incidentId: signal.id,
+        subAccountId: activeAccountId,
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "SMS sent", description: "Alert delivered to registered attorneys" });
+      queryClient.invalidateQueries({ queryKey: ["/api/sentinel/legal-signals"] });
+    },
+    onError: () => toast({ title: "SMS failed", variant: "destructive" }),
+  });
+
+  return (
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="h-full">
+      <button onClick={onBack} className="flex items-center gap-1.5 text-slate-400 hover:text-white text-sm mb-5 transition-colors">
+        <ChevronLeft size={14} /> Back to signals
+      </button>
+
+      <div className="space-y-4">
+        {/* Header */}
+        <div className={`rounded-2xl p-5 border ${urgency.border} ${urgency.bg}`}>
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-xl bg-black/30 flex items-center justify-center">
+              <MetaIcon size={18} className={meta.color} />
+            </div>
+            <div>
+              <p className={`text-[10px] font-black tracking-widest ${urgency.text}`}>{urgency.label} PRIORITY</p>
+              <p className="text-white font-bold text-base">{meta.label}</p>
+            </div>
+          </div>
+          <p className="text-white/80 text-sm leading-relaxed">{signal.description}</p>
+        </div>
+
+        {/* Contact Info */}
+        {(signal.ownerName || signal.ownerPhone || signal.address) && (
+          <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-5">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Contact Information</h3>
+            <div className="space-y-2">
+              {signal.ownerName && (
+                <div className="flex items-center gap-2">
+                  <Users size={13} className="text-slate-500" />
+                  <span className="text-white text-sm font-medium">{signal.ownerName}</span>
+                </div>
+              )}
+              {signal.ownerPhone && (
+                <div className="flex items-center gap-2">
+                  <Phone size={13} className="text-emerald-400" />
+                  <span className="text-emerald-300 text-sm font-bold">{signal.ownerPhone}</span>
+                </div>
+              )}
+              {signal.address && (
+                <div className="flex items-center gap-2">
+                  <MapPin size={13} className="text-slate-500" />
+                  <span className="text-slate-300 text-sm">{signal.address}</span>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <Scale size={13} className="text-slate-500" />
+                <span className="text-slate-400 text-sm">{signal.county} County, FL</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Categories */}
+        <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-5">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Practice Areas</h3>
+          <div className="flex flex-wrap gap-2">
+            {signal.serviceCategories.map(cat => (
+              <span key={cat} className="px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-500/15 text-indigo-300 border border-indigo-500/20">
+                {cat.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-2">
+          <Button
+            onClick={() => smsMutation.mutate()}
+            disabled={signal.smsSent || smsMutation.isPending}
+            className="flex-1 bg-blue-600 hover:bg-blue-500 text-white"
+          >
+            <Send size={13} className="mr-1.5" />
+            {smsMutation.isPending ? "Sending..." : signal.smsSent ? "SMS Sent ✓" : "Alert Attorneys"}
+          </Button>
+        </div>
+
+        <div className="text-center text-xs text-slate-600">
+          Detected {new Date(signal.detectedAt).toLocaleString()}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ── LegalLeadsTab (main export) ───────────────────────────────────────────────
+
+export function LegalLeadsTab({ onBack }: { onBack: () => void }) {
+  const { activeAccountId } = useAccount();
+  const [activeCategory, setActiveCategory] = useState<LegalCategory | "all">("all");
+  const [selectedSignal, setSelectedSignal] = useState<LegalSignal | null>(null);
+  const [search, setSearch] = useState("");
+
+  const { data: signalsData, isLoading, refetch } = useQuery({
+    queryKey: ["/api/sentinel/legal-signals", activeAccountId, activeCategory],
+    queryFn: () => apiRequest("GET",
+      `/api/sentinel/legal-signals?subAccountId=${activeAccountId}&category=${activeCategory}&limit=50`
+    ),
+    refetchInterval: 60000,
+    enabled: !!activeAccountId,
+  });
+
+  const signals: LegalSignal[] = signalsData?.signals || signalsData || [];
+
+  const filtered = signals.filter(s => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      s.description.toLowerCase().includes(q) ||
+      s.county.toLowerCase().includes(q) ||
+      (s.ownerName || "").toLowerCase().includes(q) ||
+      s.signalType.includes(q)
+    );
+  });
+
+  const counts = {
+    all: signals.length,
+    criminal: signals.filter(s => ["dui_arrest", "arrest_record"].includes(s.signalType)).length,
+    family: signals.filter(s => ["divorce_filing", "domestic_violence_injunction", "custody_modification", "probate_filing"].includes(s.signalType)).length,
+    traffic: signals.filter(s => ["license_suspension", "traffic_violation"].includes(s.signalType)).length,
+    personal_injury: signals.filter(s => ["osha_incident", "fda_recall", "cpsc_recall"].includes(s.signalType)).length,
+    business: signals.filter(s => ["new_business_filing", "salon_license"].includes(s.signalType)).length,
+  };
+
+  if (selectedSignal) {
+    return (
+      <div className="p-6 md:p-10 max-w-2xl mx-auto">
+        <LegalSignalDetail signal={selectedSignal} onBack={() => setSelectedSignal(null)} />
       </div>
     );
   }
@@ -159,181 +346,405 @@ export function LegalLeadsTab({ onBack }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <div className="flex items-center gap-3 mb-1">
-            <Scale size={22} className="text-purple-400" />
-            <h1 className="text-2xl font-bold text-white">Legal Signal Feed</h1>
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[10px] text-emerald-400 font-bold">LIVE</span>
-            </div>
-          </div>
-          <p className="text-slate-500 text-sm">Arrests · Court filings · OSHA · Recalls · DV injunctions — 12 FL counties</p>
+          <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
+            <Scale size={22} className="text-indigo-400" /> Legal Signals
+          </h1>
+          <p className="text-slate-500 text-sm mt-0.5">
+            Real-time court filings, arrests, and legal events across Florida
+          </p>
         </div>
-        <div className="text-right">
-          <div className="text-2xl font-bold text-white">{leads.length}</div>
-          <div className="text-xs text-slate-500">Active Signals</div>
-        </div>
+        <button
+          onClick={() => refetch()}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-white text-xs font-bold transition-all"
+        >
+          <RefreshCw size={12} /> Refresh
+        </button>
       </div>
 
-      {/* Vertical filter pills */}
-      <div className="flex gap-2 mb-6 flex-wrap">
-        <button
-          onClick={() => setFilter("all")}
-          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${filter === "all" ? "bg-white/10 text-white border-white/20" : "text-slate-500 border-white/5 hover:border-white/10"}`}
-        >
-          All ({leads.length})
-        </button>
-        {Object.entries(VERTICAL_CONFIG).map(([key, cfg]) => {
-          const count = counts[key] ?? 0;
-          if (count === 0) return null;
-          const Icon = cfg.icon;
+      {/* Stats Row */}
+      <div className="grid grid-cols-5 gap-3 mb-6">
+        {LEGAL_CATEGORIES.map(cat => {
+          const CatIcon = cat.icon;
           return (
             <button
-              key={key}
-              onClick={() => setFilter(key)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
-                filter === key ? `${cfg.bg} ${cfg.color} ${cfg.border}` : "text-slate-500 border-white/5 hover:border-white/10"
+              key={cat.key}
+              onClick={() => setActiveCategory(cat.key)}
+              className={`p-3 rounded-xl border text-left transition-all ${
+                activeCategory === cat.key
+                  ? "border-indigo-500/40 bg-indigo-500/10"
+                  : "border-white/10 bg-white/[0.02] hover:bg-white/[0.04]"
               }`}
             >
-              <Icon size={12} /> {cfg.label} ({count})
+              <div className="flex items-center justify-between mb-1.5">
+                <CatIcon size={14} className={cat.color} />
+                <span className={`text-lg font-black ${activeCategory === cat.key ? "text-white" : "text-slate-400"}`}>
+                  {counts[cat.key]}
+                </span>
+              </div>
+              <p className={`text-[10px] font-bold ${activeCategory === cat.key ? "text-white" : "text-slate-500"}`}>
+                {cat.label}
+              </p>
+              <p className="text-[9px] text-slate-600 mt-0.5">{cat.desc}</p>
             </button>
           );
         })}
       </div>
 
-      {/* Lead cards */}
+      {/* Search */}
+      <div className="relative mb-4">
+        <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+        <Input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search by name, county, case type..."
+          className="pl-8 bg-white/5 border-white/10 text-white placeholder:text-slate-600 text-sm"
+        />
+      </div>
+
+      {/* All / Category toggle */}
+      <div className="flex items-center gap-2 mb-4">
+        <button
+          onClick={() => setActiveCategory("all")}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            activeCategory === "all"
+              ? "bg-white/10 text-white border border-white/20"
+              : "text-slate-500 hover:text-slate-300"
+          }`}
+        >
+          All ({counts.all})
+        </button>
+        {LEGAL_CATEGORIES.map(cat => (
+          <button
+            key={cat.key}
+            onClick={() => setActiveCategory(cat.key)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              activeCategory === cat.key
+                ? "bg-white/10 text-white border border-white/20"
+                : "text-slate-500 hover:text-slate-300"
+            }`}
+          >
+            {cat.label} ({counts[cat.key]})
+          </button>
+        ))}
+      </div>
+
+      {/* Signal List */}
       {isLoading ? (
-        <div className="flex items-center justify-center py-20 text-slate-500">
-          <div className="flex items-center gap-3">
-            <div className="w-5 h-5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
-            Scanning legal feeds...
+        <div className="flex items-center justify-center py-16">
+          <div className="flex items-center gap-3 text-slate-500">
+            <RefreshCw size={16} className="animate-spin" />
+            <span className="text-sm">Loading legal signals...</span>
           </div>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-20">
-          <Scale size={40} className="mx-auto text-slate-700 mb-3" />
-          <p className="text-slate-500 text-sm">No legal signals yet — pipeline runs every 15 minutes</p>
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <Scale size={32} className="text-slate-700 mb-3" />
+          <p className="text-slate-500 text-sm font-medium">No legal signals found</p>
+          <p className="text-slate-600 text-xs mt-1">
+            {activeCategory === "all"
+              ? "Signals are pulled from Florida public records every 30 minutes"
+              : "No signals in this category yet — check back shortly"}
+          </p>
+          <div className="mt-4 p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 max-w-sm">
+            <p className="text-indigo-300 text-xs font-bold mb-1 flex items-center gap-1">
+              <Info size={11} /> Data Sources
+            </p>
+            <p className="text-slate-400 text-xs leading-relaxed">
+              Pulling from FL county clerk APIs, FDLE arrest records, OSHA federal database, FDA enforcement, 
+              FL e-Filing portal, and DHSMV. All free public records.
+            </p>
+          </div>
         </div>
       ) : (
-        <div className="grid gap-3">
-          {filtered.map((lead: LegalLead) => {
-            const cfg = VERTICAL_CONFIG[lead.legalVertical] ?? VERTICAL_CONFIG.criminal;
-            const urg = URGENCY_CONFIG[lead.urgency] ?? URGENCY_CONFIG.medium;
-            const Icon = cfg.icon;
-            return (
-              <button
-                key={lead.id}
-                onClick={() => setSelected(lead)}
-                className={`w-full text-left p-4 rounded-xl border ${cfg.border} ${cfg.bg} hover:brightness-110 transition-all`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className={`flex-shrink-0 p-2 rounded-lg ${cfg.bg} border ${cfg.border}`}>
-                      <Icon size={16} className={cfg.color} />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <span className={`text-xs font-bold ${cfg.color} uppercase tracking-wide`}>{cfg.label}</span>
-                        <span className="text-slate-600 text-xs">·</span>
-                        <span className="text-slate-400 text-xs">{SIGNAL_LABELS[lead.signalType] ?? lead.signalType}</span>
-                      </div>
-                      {lead.subjectName && (
-                        <div className="text-white font-bold text-sm truncate">{lead.subjectName}</div>
-                      )}
-                      {lead.chargeDescription && (
-                        <div className="text-slate-500 text-xs truncate mt-0.5">{lead.chargeDescription.slice(0, 80)}</div>
-                      )}
-                      <div className="flex items-center gap-3 mt-1.5">
-                        {lead.county && (
-                          <span className="flex items-center gap-1 text-xs text-slate-500">
-                            <MapPin size={10} /> {lead.county}
-                          </span>
-                        )}
-                        <span className="flex items-center gap-1 text-xs text-slate-500">
-                          <Clock size={10} /> {new Date(lead.detectedAt).toLocaleTimeString()}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                    <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border ${cfg.border}`}>
-                      <div className={`w-1.5 h-1.5 rounded-full ${urg.dot}`} />
-                      <span className={urg.color}>{urg.label}</span>
-                    </div>
-                    <div className="text-xs text-slate-500">Score: <span className="text-white font-bold">{lead.score}</span></div>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
+        <div className="space-y-2">
+          <p className="text-xs text-slate-600 mb-3">{filtered.length} signal{filtered.length !== 1 ? "s" : ""} found</p>
+          {filtered.map(signal => (
+            <LegalSignalCard
+              key={signal.id}
+              signal={signal}
+              onClick={() => setSelectedSignal(signal)}
+            />
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-export function DistributionTab({ onBack }: { onBack: () => void }) {
+// ── DistributionTab ───────────────────────────────────────────────────────────
+
+const DISTRIBUTABLE_SIGNAL_TYPES = [
+  { value: "crash_report",                   label: "🚨 Crash/Injury Leads" },
+  { value: "dui_arrest",                     label: "🍺 DUI Arrests" },
+  { value: "arrest_record",                  label: "🚔 Criminal Arrests" },
+  { value: "divorce_filing",                 label: "💔 Divorce Filings" },
+  { value: "domestic_violence_injunction",   label: "⚠️ DV Injunctions" },
+  { value: "custody_modification",           label: "👨‍👩‍👧 Custody Cases" },
+  { value: "license_suspension",             label: "🚗 License Suspensions" },
+  { value: "osha_incident",                  label: "🏭 OSHA Incidents" },
+  { value: "fda_recall",                     label: "💊 FDA Recalls" },
+  { value: "noaa_weather_alert",             label: "🌪️ Weather Alerts" },
+  { value: "permit_filing",                  label: "🔨 Permit Filings" },
+  { value: "code_enforcement",               label: "📋 Code Enforcement" },
+  { value: "new_business_filing",            label: "🏪 New Business Licenses" },
+];
+
+function RuleCard({ rule, onToggle }: { rule: DistributionRule; onToggle: (id: number, active: boolean) => void }) {
   return (
-    <div className="p-6 md:p-10 max-w-4xl mx-auto">
-      <div className="flex items-center gap-3 mb-6">
-        <span className="text-2xl">📡</span>
-        <div>
-          <h1 className="text-2xl font-bold text-white">Lead Distribution</h1>
-          <p className="text-slate-500 text-sm">Configure which leads go to which accounts automatically</p>
-        </div>
-      </div>
-
-      <div className="grid gap-4">
-        {/* Crash Leads */}
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <span>🚨</span>
-              <span className="text-white font-bold">Crash / PI Leads</span>
-              <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full">ACTIVE</span>
-            </div>
+    <div className={`border rounded-xl p-4 transition-all ${rule.active ? "border-emerald-500/20 bg-emerald-500/5" : "border-white/10 bg-white/[0.02] opacity-60"}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <div className={`w-2 h-2 rounded-full ${rule.active ? "bg-emerald-400" : "bg-slate-600"}`} />
+            <span className="text-white font-bold text-sm">{rule.name}</span>
+            {rule.leadsDelivered > 0 && (
+              <span className="text-[9px] bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded font-bold">
+                {rule.leadsDelivered} delivered
+              </span>
+            )}
           </div>
-          <div className="text-sm text-slate-400">→ Crash Connect / Giovanni (Account #14)</div>
-          <div className="text-xs text-slate-600 mt-1">Florida statewide · 30+ counties · 5min polling · 15min rate limit</div>
-        </div>
-
-        {/* Home Service Leads */}
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <span>🏠</span>
-              <span className="text-white font-bold">Home & Property Leads</span>
-              <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full">ACTIVE</span>
-            </div>
+          <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+            {rule.signalTypes.map(t => {
+              const found = DISTRIBUTABLE_SIGNAL_TYPES.find(s => s.value === t);
+              return (
+                <span key={t} className="text-[10px] px-2 py-0.5 rounded bg-white/5 border border-white/10 text-slate-400">
+                  {found?.label || t}
+                </span>
+              );
+            })}
           </div>
-          <div className="text-sm text-slate-400">→ Roof 2 Roots — Christopher L & S.A (Account #22)</div>
-          <div className="text-xs text-slate-600 mt-1">Lee · Collier · Charlotte · Sarasota · + 11 more FL counties · 30min polling</div>
-          <div className="text-xs text-slate-600">Roofing · HVAC · Pool · Solar · Lawn · Pest · Cleaning · Hair Salons · Auto Detailing</div>
-        </div>
-
-        {/* Legal Leads */}
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <span>⚖️</span>
-              <span className="text-white font-bold">Legal Signals</span>
-              <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full">ACTIVE</span>
-            </div>
-          </div>
-          <div className="text-sm text-slate-400">→ Registered attorneys by vertical</div>
-          <div className="text-xs text-slate-600 mt-1">12 FL counties · 15min polling</div>
-          <div className="text-xs text-slate-600">Criminal · DUI/Traffic · Family Law · Personal Injury · Workers Comp</div>
-          <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-            <p className="text-amber-400 text-xs font-bold">⚡ No attorneys registered yet</p>
-            <p className="text-amber-400/70 text-xs mt-0.5">Add attorney accounts to start routing legal leads automatically</p>
+          <div className="flex items-center gap-3 text-xs text-slate-500">
+            <span className="flex items-center gap-1">
+              <ArrowRight size={10} className="text-indigo-400" />
+              {rule.targetAccountName}
+            </span>
+            {rule.targetPhone && (
+              <span className="flex items-center gap-1">
+                <Phone size={10} />
+                {rule.targetPhone}
+              </span>
+            )}
           </div>
         </div>
-
-        {/* Add new routing rule */}
-        <button className="w-full p-4 rounded-2xl border border-dashed border-white/10 text-slate-500 hover:border-white/20 hover:text-slate-400 transition-all text-sm flex items-center justify-center gap-2">
-          + Add Distribution Rule
+        <button
+          onClick={() => onToggle(rule.id, !rule.active)}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            rule.active
+              ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+              : "bg-white/5 text-slate-500 border border-white/10"
+          }`}
+        >
+          {rule.active ? "Active" : "Paused"}
         </button>
       </div>
+    </div>
+  );
+}
+
+export function DistributionTab({ onBack }: { onBack: () => void }) {
+  const { activeAccountId } = useAccount();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [showNewRule, setShowNewRule] = useState(false);
+  const [newRule, setNewRule] = useState({
+    name: "",
+    signalTypes: [] as string[],
+    targetPhone: "",
+    targetAccountName: "",
+  });
+
+  const { data: rulesData, isLoading } = useQuery({
+    queryKey: ["/api/sentinel/distribution-rules", activeAccountId],
+    queryFn: () => apiRequest("GET", `/api/sentinel/distribution-rules?subAccountId=${activeAccountId}`),
+    enabled: !!activeAccountId,
+  });
+
+  const rules: DistributionRule[] = rulesData?.rules || rulesData || [];
+
+  const toggleMutation = useMutation({
+    mutationFn: async ({ id, active }: { id: number; active: boolean }) => {
+      return apiRequest("PATCH", `/api/sentinel/distribution-rules/${id}`, { active });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sentinel/distribution-rules"] });
+      toast({ title: "Rule updated" });
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/sentinel/distribution-rules", {
+        ...newRule,
+        subAccountId: activeAccountId,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sentinel/distribution-rules"] });
+      toast({ title: "Distribution rule created", description: "Leads will now route automatically" });
+      setShowNewRule(false);
+      setNewRule({ name: "", signalTypes: [], targetPhone: "", targetAccountName: "" });
+    },
+    onError: () => toast({ title: "Failed to create rule", variant: "destructive" }),
+  });
+
+  const toggleSignalType = (type: string) => {
+    setNewRule(prev => ({
+      ...prev,
+      signalTypes: prev.signalTypes.includes(type)
+        ? prev.signalTypes.filter(t => t !== type)
+        : [...prev.signalTypes, type],
+    }));
+  };
+
+  return (
+    <div className="p-6 md:p-10 max-w-4xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
+            <Zap size={22} className="text-indigo-400" /> Lead Distribution
+          </h1>
+          <p className="text-slate-500 text-sm mt-0.5">
+            Control which signals go to which clients — automatically
+          </p>
+        </div>
+        <Button
+          onClick={() => setShowNewRule(true)}
+          className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs"
+        >
+          + New Rule
+        </Button>
+      </div>
+
+      {/* How it works */}
+      <div className="grid grid-cols-3 gap-3 mb-6">
+        {[
+          { icon: Target, label: "Signal Detected", desc: "Pipeline finds a qualifying event", color: "text-amber-400" },
+          { icon: Filter, label: "Rule Matched",    desc: "Distribution rules route the signal", color: "text-indigo-400" },
+          { icon: Send,   label: "Lead Delivered",  desc: "SMS sent to the registered client",  color: "text-emerald-400" },
+        ].map((step, i) => {
+          const StepIcon = step.icon;
+          return (
+            <div key={i} className="p-4 rounded-xl border border-white/10 bg-white/[0.02] text-center">
+              <StepIcon size={20} className={step.color + " mx-auto mb-2"} />
+              <p className="text-white text-xs font-bold mb-0.5">{step.label}</p>
+              <p className="text-slate-600 text-[10px]">{step.desc}</p>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Active Rules */}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <RefreshCw size={16} className="animate-spin text-slate-500 mr-2" />
+          <span className="text-slate-500 text-sm">Loading rules...</span>
+        </div>
+      ) : rules.length === 0 && !showNewRule ? (
+        <div className="text-center py-12">
+          <Zap size={32} className="text-slate-700 mx-auto mb-3" />
+          <p className="text-slate-500 text-sm font-medium mb-1">No distribution rules yet</p>
+          <p className="text-slate-600 text-xs mb-4">Create rules to automatically route leads to your clients</p>
+          <Button onClick={() => setShowNewRule(true)} className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs">
+            Create First Rule
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-3 mb-4">
+          {rules.map(rule => (
+            <RuleCard
+              key={rule.id}
+              rule={rule}
+              onToggle={(id, active) => toggleMutation.mutate({ id, active })}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* New Rule Form */}
+      <AnimatePresence>
+        {showNewRule && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            className="border border-indigo-500/30 rounded-2xl p-5 bg-indigo-500/5"
+          >
+            <h3 className="text-white font-bold text-sm mb-4 flex items-center gap-2">
+              <Zap size={14} className="text-indigo-400" /> New Distribution Rule
+            </h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs text-slate-400 font-bold mb-1.5 block">Rule Name</label>
+                <Input
+                  value={newRule.name}
+                  onChange={e => setNewRule(p => ({ ...p, name: e.target.value }))}
+                  placeholder="e.g. Giovanni — DUI Leads"
+                  className="bg-white/5 border-white/10 text-white placeholder:text-slate-600 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-slate-400 font-bold mb-1.5 block">Signal Types to Route</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {DISTRIBUTABLE_SIGNAL_TYPES.map(s => (
+                    <button
+                      key={s.value}
+                      onClick={() => toggleSignalType(s.value)}
+                      className={`text-left px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
+                        newRule.signalTypes.includes(s.value)
+                          ? "border-indigo-500/50 bg-indigo-500/15 text-indigo-300"
+                          : "border-white/10 bg-white/5 text-slate-500 hover:text-slate-300"
+                      }`}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-slate-400 font-bold mb-1.5 block">Client Name</label>
+                  <Input
+                    value={newRule.targetAccountName}
+                    onChange={e => setNewRule(p => ({ ...p, targetAccountName: e.target.value }))}
+                    placeholder="e.g. Giovanni — Crash Connect"
+                    className="bg-white/5 border-white/10 text-white placeholder:text-slate-600 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400 font-bold mb-1.5 block">Client Phone</label>
+                  <Input
+                    value={newRule.targetPhone}
+                    onChange={e => setNewRule(p => ({ ...p, targetPhone: e.target.value }))}
+                    placeholder="+1 (407) 000-0000"
+                    className="bg-white/5 border-white/10 text-white placeholder:text-slate-600 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <Button
+                  onClick={() => createMutation.mutate()}
+                  disabled={!newRule.name || newRule.signalTypes.length === 0 || !newRule.targetPhone || createMutation.isPending}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white"
+                >
+                  {createMutation.isPending ? "Creating..." : "Create Rule"}
+                </Button>
+                <Button
+                  onClick={() => setShowNewRule(false)}
+                  variant="outline"
+                  className="border-white/10 text-slate-400 hover:text-white"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
