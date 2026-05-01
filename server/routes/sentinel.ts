@@ -943,3 +943,27 @@ export function determineSeverity(description: string, keywords: string[]): stri
   if (upper.includes("MVA") || upper.includes("SIGNAL 4")) return "medium";
   return "low";
 }
+
+// Retroactive skip trace — enriches existing crash leads with real names + phones
+export function registerRetroSkipTraceRoute(app: any) {
+  app.post("/api/sentinel/retro-skip-trace", async (req: any, res: any) => {
+    try {
+      const isAdmin = req.headers["x-admin-secret"] === (process.env.STANDALONE_ADMIN_SECRET || "201120062017");
+      if (!isAdmin) return res.status(401).json({ error: "Unauthorized" });
+
+      const { subAccountId } = req.body;
+      const { runRetroSkipTrace, runRetroSkipTraceAllAccounts } = await import("../retroSkipTrace");
+
+      // Run async — don't block the response
+      if (subAccountId) {
+        runRetroSkipTrace(Number(subAccountId)).catch(console.error);
+        res.json({ ok: true, message: `Retroactive skip trace started for account ${subAccountId}. Check server logs for progress.` });
+      } else {
+        runRetroSkipTraceAllAccounts().catch(console.error);
+        res.json({ ok: true, message: "Retroactive skip trace started for all accounts. Check server logs for progress." });
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+}
