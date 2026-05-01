@@ -90,7 +90,11 @@ export function checkEscalationKeywords(
   keywords: string[]
 ): boolean {
   const lower = message.toLowerCase();
-  return keywords.some((kw) => lower.includes(kw.toLowerCase()));
+  return keywords.some((kw) => {
+    const escaped = kw.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`\\b${escaped}\\b`);
+    return pattern.test(lower);
+  });
 }
 
 export function maskPiiForLogs(text: string): string {

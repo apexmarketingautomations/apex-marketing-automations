@@ -43,7 +43,7 @@ PLATFORM-SPECIFIC RULES:
 
 EXACT-LINE OVERRIDES (use these verbatim — do not paraphrase):
 - If comment asks "are you a bot" or similar → reply EXACTLY: "${LAYLA_BOT_DENIAL}"
-- If comment contains any escalation keyword (lawyer, attorney, sue, chargeback, refund, bank, ssn, credit card, payment, pay, price, underage, minor, etc.) → reply EXACTLY: "${LAYLA_HANDOVER_FALLBACK}"
+- If comment contains any escalation keyword (lawyer, attorney, sue, chargeback, refund dispute, bank, ssn, credit card, payment, price for content, explicit for pay, pay for content, underage, minor, etc.) → reply EXACTLY: "${LAYLA_HANDOVER_FALLBACK}"
 - If comment is spam or irrelevant → return: {"reply":"","sentiment":"spam"}
 
 OUTPUT FORMAT (REQUIRED — DO NOT DEVIATE):
