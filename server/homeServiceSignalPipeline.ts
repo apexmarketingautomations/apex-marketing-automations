@@ -778,6 +778,64 @@ async function fetchTrafficSignals(): Promise<RawSignal[]> {
   return signals;
 }
 
+
+// ── FL DBPR New License Filings (Beauty / Barber / Salon / Spa) ───────────────
+
+const DBPR_SERVICE_MAP: Record<string, ServiceCategory[]> = {
+  "COSMETOLOGY":           ["hair_salon"],
+  "HAIR BRAIDER":          ["hair_salon", "barber"],
+  "BARBER":                ["barber"],
+  "RESTRICTED BARBER":     ["barber"],
+  "NAIL SPECIALIST":       ["nail_salon"],
+  "FACIAL SPECIALIST":     ["spa_esthetics"],
+  "MASSAGE THERAPY":       ["spa_massage"],
+  "FULL BEAUTY SALON":     ["hair_salon"],
+  "TATTOO":                ["tattoo"],
+  "BODY PIERCING":         ["tattoo"],
+};
+
+async function fetchDBPRNewLicenses(): Promise<RawSignal[]> {
+  const signals: RawSignal[] = [];
+  try {
+    // FL DBPR public license search - new cosmetology/barber licenses
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const sinceStr = since.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
+    const url = `https://www.myfloridalicense.com/wl11.asp?mode=0&search=LicenseType&LicenseType=COS&status=A&issue_date_after=${encodeURIComponent(sinceStr)}&format=json`;
+    const res = await fetch(url, {
+      headers: { "Accept": "application/json", "User-Agent": "ApexLeadEngine/2.0" },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return signals;
+    const licenses = await res.json() as any[];
+    for (const lic of licenses) {
+      const licType = (lic.license_type || "").toUpperCase();
+      let cats: ServiceCategory[] = [];
+      for (const [keyword, services] of Object.entries(DBPR_SERVICE_MAP)) {
+        if (licType.includes(keyword)) { cats = services as ServiceCategory[]; break; }
+      }
+      if (!cats.length) continue;
+      const county = (lic.county || "UNKNOWN").toUpperCase();
+      signals.push({
+        signalType: "new_license_filing",
+        sourceId: lic.license_number || crypto.randomUUID(),
+        county,
+        address: lic.address,
+        ownerName: lic.name || lic.business_name,
+        ownerPhone: lic.phone,
+        serviceCategories: cats,
+        urgency: "low",
+        description: `New ${lic.license_type} license — ${lic.name || lic.business_name}`,
+        rawData: lic,
+        detectedAt: new Date(lic.issue_date || Date.now()),
+      });
+    }
+    console.log(`[HS-PIPELINE] DBPR: ${signals.length} new license filings`);
+  } catch (err: any) {
+    console.warn("[HS-PIPELINE] DBPR licenses failed:", err.message);
+  }
+  return signals;
+}
+
 async function runPipelineCycle(subAccountId: number): Promise<void> {
   const runId   = crypto.randomUUID().slice(0, 8);
   const startMs = Date.now();
