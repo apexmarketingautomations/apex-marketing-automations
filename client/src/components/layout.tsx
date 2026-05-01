@@ -7,7 +7,7 @@ import { CommandMenu } from "@/components/command-menu";
 import { ApexIntelligence } from "@/components/apex-intelligence";
 import { VibeSwitcher } from "@/components/vibe-switcher";
 import { useAuth } from "@/hooks/use-auth";
-import { useAccount } from "@/hooks/use-account";
+import { useAccount, getAccountIdentity } from "@/hooks/use-account";
 import { useIdleTimeout } from "@/hooks/use-idle-timeout";
 import { useIsMobile, useIsTablet } from "@/hooks/use-mobile";
 import { BlitzBanner } from "@/components/blitz-banner";
@@ -168,10 +168,10 @@ function AccountSwitcher({ accounts, collapsed }: { accounts: SubAccount[]; coll
         onClick={() => setIsOpen(!isOpen)}
         className={`w-full flex items-center ${collapsed ? 'justify-center' : 'gap-3'} bg-white/5 p-2 rounded-lg hover:bg-white/10 transition-all`}
         style={{
-          borderColor: 'color-mix(in srgb, var(--vibe-glow, #6366f1) 30%, transparent)',
+          borderColor: getAccountIdentity(activeAccountId).color + '66',
           borderWidth: '1px',
           borderStyle: 'solid',
-          boxShadow: '0 0 15px color-mix(in srgb, var(--vibe-glow, #6366f1) 8%, transparent)',
+          boxShadow: `0 0 15px ${getAccountIdentity(activeAccountId).color}22`,
         }}
         data-testid="button-account-switcher"
         title={collapsed ? (current?.name || "Switch Account") : undefined}
@@ -206,7 +206,7 @@ function AccountSwitcher({ accounts, collapsed }: { accounts: SubAccount[]; coll
                   onClick={() => switchAccount(account.id)}
                   data-testid={`button-switch-account-${account.id}`}
                 >
-                  <div className="w-6 h-6 rounded bg-white/10 text-[10px] flex items-center justify-center text-white font-bold shrink-0">
+                  <div className="w-6 h-6 rounded text-[9px] flex items-center justify-center text-white font-bold shrink-0" style={{ background: getAccountIdentity(activeAccountId).color }}>
                     {account.name.substring(0, 2).toUpperCase()}
                   </div>
                   <span className="text-white text-sm truncate">{account.name}</span>
