@@ -1,5 +1,18 @@
 import type { OperatorTool, ValidationResult, ToolResult, OperatorContext } from "../types";
 import { storage } from "../../storage";
+import { db } from "../../db";
+import { contacts as contactsTable, messages as messagesTable } from "@shared/schema";
+import { eq, desc } from "drizzle-orm";
+
+async function getContactsCapped(subAccountId: number, limit = 5000) {
+  return db.select({ id: contactsTable.id }).from(contactsTable).where(eq(contactsTable.subAccountId, subAccountId)).limit(limit).catch(() => []);
+}
+
+async function getMessagesCapped(subAccountId: number, limit = 500) {
+  return db.select({ direction: messagesTable.direction, status: messagesTable.status, createdAt: messagesTable.createdAt })
+    .from(messagesTable).where(eq(messagesTable.subAccountId, subAccountId)).orderBy(desc(messagesTable.createdAt)).limit(limit)
+    .catch(() => [] as { direction: string; status: string; createdAt: Date }[]);
+}
 
 function noopValidate(): ValidationResult {
   return { valid: true, errors: [], warnings: [] };
@@ -89,7 +102,7 @@ export const intelligenceTools: OperatorTool[] = [
         configured.push(`Automations: ${automations.length} active`);
       }
 
-      const contacts = await storage.getContacts(ctx.subAccountId);
+      const contacts = await getContactsCapped(ctx.subAccountId);
       totalChecks++;
       if (!contacts || contacts.length === 0) {
         missing.push("No contacts in CRM — no lead database");
@@ -192,8 +205,8 @@ export const intelligenceTools: OperatorTool[] = [
       const account = await storage.getSubAccount(ctx.subAccountId);
       if (!account) return { success: false, error: "Account not found" };
 
-      const contacts = await storage.getContacts(ctx.subAccountId);
-      const messages = await storage.getMessages(ctx.subAccountId);
+      const contacts = await getContactsCapped(ctx.subAccountId);
+      const messages = await getMessagesCapped(ctx.subAccountId);
       const automations = await storage.getLiveAutomations(ctx.subAccountId);
       const connections = await storage.getIntegrationConnections(ctx.subAccountId);
       const stages = await storage.getPipelineStages(ctx.subAccountId);
@@ -225,10 +238,10 @@ export const intelligenceTools: OperatorTool[] = [
     parameters: [],
     validate: noopValidate,
     execute: async (_params, ctx) => {
-      const contacts = await storage.getContacts(ctx.subAccountId);
+      const contacts = await getContactsCapped(ctx.subAccountId);
       const deals = await storage.getDeals(ctx.subAccountId);
       const appointments = await storage.getAppointments(ctx.subAccountId);
-      const messages = await storage.getMessages(ctx.subAccountId);
+      const messages = await getMessagesCapped(ctx.subAccountId);
 
       const leaks: string[] = [];
       const recommendations: string[] = [];
@@ -282,7 +295,7 @@ export const intelligenceTools: OperatorTool[] = [
     parameters: [],
     validate: noopValidate,
     execute: async (_params, ctx) => {
-      const messages = await storage.getMessages(ctx.subAccountId);
+      const messages = await getMessagesCapped(ctx.subAccountId);
       if (!messages || messages.length === 0) {
         return {
           success: true,
@@ -354,7 +367,7 @@ export const intelligenceTools: OperatorTool[] = [
       const account = await storage.getSubAccount(ctx.subAccountId);
       if (!account) return { success: false, error: "Account not found" };
 
-      const contacts = await storage.getContacts(ctx.subAccountId);
+      const contacts = await getContactsCapped(ctx.subAccountId);
       const automations = await storage.getLiveAutomations(ctx.subAccountId);
       const connections = await storage.getIntegrationConnections(ctx.subAccountId);
       const stages = await storage.getPipelineStages(ctx.subAccountId);
@@ -415,7 +428,7 @@ export const intelligenceTools: OperatorTool[] = [
     parameters: [],
     validate: noopValidate,
     execute: async (_params, ctx) => {
-      const messages = await storage.getMessages(ctx.subAccountId);
+      const messages = await getMessagesCapped(ctx.subAccountId);
       const connections = await storage.getIntegrationConnections(ctx.subAccountId);
 
       const channels: Record<string, { total: number; sent: number; failed: number; pending: number }> = {};
@@ -514,7 +527,7 @@ export const intelligenceTools: OperatorTool[] = [
         { step: 6, action: "Configure review collection", tool: "sendReviewRequestDraft", completed: false },
       ];
 
-      const contacts = await storage.getContacts(ctx.subAccountId);
+      const contacts = await getContactsCapped(ctx.subAccountId);
       if (contacts && contacts.length > 0) plan[1].completed = true;
 
       const stages = await storage.getPipelineStages(ctx.subAccountId);
@@ -564,7 +577,7 @@ export const intelligenceTools: OperatorTool[] = [
       };
 
       const benchmark = benchmarks[industry] || benchmarks.general;
-      const contacts = await storage.getContacts(ctx.subAccountId);
+      const contacts = await getContactsCapped(ctx.subAccountId);
       const automations = await storage.getLiveAutomations(ctx.subAccountId);
       const reviews = await storage.getReviews(ctx.subAccountId);
       const avgRating = reviews && reviews.length > 0

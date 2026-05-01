@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { operatorMemories } from "@shared/schema";
+import { operatorMemories, contacts as contactsTable, messages as messagesTable } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import type { MemoryEntry, MemoryType, WorkspaceProfile, UserBehaviorProfile, PerformanceSnapshot, PatternInsight } from "./cognitiveTypes";
 import { storage } from "../storage";
@@ -76,7 +76,10 @@ export async function recallMemory(subAccountId: number, memoryType: MemoryType,
 
 export async function buildWorkspaceProfile(subAccountId: number): Promise<WorkspaceProfile> {
   const account = await storage.getSubAccount(subAccountId);
-  const contacts = await storage.getContacts(subAccountId);
+  // Use capped query for contacts — only need count, not full rows
+  const contactRows = await db.select({ id: contactsTable.id })
+    .from(contactsTable).where(eq(contactsTable.subAccountId, subAccountId)).limit(5000)
+    .catch(() => [] as { id: number }[]);
   const automations = await storage.getLiveAutomations(subAccountId);
   const connections = await storage.getIntegrationConnections(subAccountId);
   const stages = await storage.getPipelineStages(subAccountId);
@@ -88,7 +91,7 @@ export async function buildWorkspaceProfile(subAccountId: number): Promise<Works
     phoneConfigured: !!account?.twilioNumber,
     integrationCount: connections?.filter((c: any) => c.status === "connected").length || 0,
     automationCount: automations?.length || 0,
-    contactCount: contacts?.length || 0,
+    contactCount: contactRows.length,
     siteCount: sites?.length || 0,
   };
 
@@ -144,8 +147,13 @@ export async function buildBehaviorProfile(subAccountId: number): Promise<UserBe
 }
 
 export async function buildPerformanceSnapshot(subAccountId: number): Promise<PerformanceSnapshot> {
-  const contacts = await storage.getContacts(subAccountId);
-  const messages = await storage.getMessages(subAccountId);
+  // Use capped queries — never load full tables for metrics
+  const contacts = await db.select({ id: contactsTable.id })
+    .from(contactsTable).where(eq(contactsTable.subAccountId, subAccountId)).limit(5000)
+    .catch(() => [] as { id: number }[]);
+  const messages = await db.select({ direction: messagesTable.direction, status: messagesTable.status, createdAt: messagesTable.createdAt })
+    .from(messagesTable).where(eq(messagesTable.subAccountId, subAccountId)).orderBy(desc(messagesTable.createdAt)).limit(500)
+    .catch(() => [] as { direction: string; status: string; createdAt: Date }[]);
   const automations = await storage.getLiveAutomations(subAccountId);
 
   const inbound = messages?.filter((m: any) => m.direction === "inbound").length || 0;

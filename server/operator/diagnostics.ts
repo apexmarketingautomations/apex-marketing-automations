@@ -1,5 +1,8 @@
 import type { DiagnosticCheck } from "./types";
 import { storage } from "../storage";
+import { db } from "../db";
+import { messages as messagesTable } from "@shared/schema";
+import { eq, desc } from "drizzle-orm";
 import { eventBus, EVENT_TYPES } from "../eventBus";
 import { jobQueue } from "../jobQueue";
 
@@ -126,7 +129,9 @@ export async function runDiagnostics(subAccountId?: number): Promise<DiagnosticC
     }
 
     try {
-      const messages = await storage.getMessages(subAccountId);
+      const messages = await db.select({ status: messagesTable.status, createdAt: messagesTable.createdAt })
+        .from(messagesTable).where(eq(messagesTable.subAccountId, subAccountId))
+        .orderBy(desc(messagesTable.createdAt)).limit(500);
       if (messages) {
         const failed = messages.filter((m: any) => m.status === "failed");
         const recentFailed = failed.filter((m: any) => new Date(m.createdAt) > new Date(Date.now() - 86400000));
@@ -136,7 +141,7 @@ export async function runDiagnostics(subAccountId?: number): Promise<DiagnosticC
           category: "messaging",
           severity: recentFailed.length > 5 ? "warning" : "info",
           status: recentFailed.length > 5 ? "degraded" : "healthy",
-          message: `${messages.length} total messages, ${recentFailed.length} failed in last 24h`,
+          message: `${messages.length} recent messages (last 500), ${recentFailed.length} failed in last 24h`,
           details: { total: messages.length, failedRecent: recentFailed.length },
           suggestedFix: recentFailed.length > 5 ? "Check Twilio configuration and phone number status" : undefined,
           autoFixable: false,
