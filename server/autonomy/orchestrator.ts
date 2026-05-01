@@ -123,14 +123,16 @@ export async function runOrchestrationCycle(): Promise<OrchestrationCycleResult>
           .filter(a => a.status === "completed" && (a.resolvedAt || a.executedAt) && new Date((a.resolvedAt || a.executedAt)!).getTime() > recentCutoff)
           .map(a => a.actionType)
       );
+      // Only block truly in-flight actions — NOT "proposed" which just means evaluated
+      // "proposed" actions deadlock the system by blocking re-evaluation forever
       const pendingActionTypes = new Set(
         recentActions
-          .filter(a => ["proposed", "approved", "executing", "pending_auth"].includes(a.status))
+          .filter(a => ["approved", "executing", "pending_auth"].includes(a.status))
           .map(a => a.actionType)
       );
       const pendingActionKeys = new Set(
         recentActions
-          .filter(a => ["proposed", "approved", "executing", "pending_auth"].includes(a.status))
+          .filter(a => ["approved", "executing", "pending_auth"].includes(a.status))
           .map(a => `${a.actionType}:${a.targetEntityId || ""}`)
       );
 
