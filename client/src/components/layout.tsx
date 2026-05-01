@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Link, useLocation } from "wouter";
-import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2, History, Satellite, Building, BarChart3, Kanban, CalendarDays, Mail, Palette, Webhook, FileBarChart, Instagram, Target, Lock, Plug, Activity, Menu, X, ContactRound, MapPin, BellRing, FlaskConical, Home, Brain, PenTool, Zap, Sparkles } from "lucide-react";
+import { MessageSquare, GitFork, Scale, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2, History, Satellite, Building, BarChart3, Kanban, CalendarDays, Mail, Palette, Webhook, FileBarChart, Instagram, Target, Lock, Plug, Activity, Menu, X, ContactRound, MapPin, BellRing, FlaskConical, Home, Brain, PenTool, Zap, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CommandMenu } from "@/components/command-menu";
@@ -23,7 +23,6 @@ const navSections = [
     items: [
       { href: "/apex-intelligence", icon: Brain, label: "Apex Intelligence", adminOnly: true },
       { href: "/god-mode", icon: Rocket, label: "God Mode", adminOnly: true },
-      { href: "/sentinel", icon: Satellite, label: "Sentinel", requiredFeature: "sentinel" },
       { href: "/bot-trainer", icon: Bot, label: "AI Trainer", requiredFeature: "ai_bots" },
       { href: "/voice-agent", icon: Phone, label: "Voice Agent", requiredFeature: "voice_agents" },
     ],
@@ -32,7 +31,6 @@ const navSections = [
     label: "GROW",
     items: [
       { href: "/", icon: TrendingUp, label: "Dashboard" },
-      { href: "/sentinel", icon: Satellite, label: "Apex Sentinel", requiredFeature: "sentinel" },
       { href: "/analytics", icon: BarChart3, label: "Analytics" },
       { href: "/pipeline", icon: Kanban, label: "Pipeline & CRM" },
       { href: "/growth", icon: TrendingUp, label: "Growth Center" },
