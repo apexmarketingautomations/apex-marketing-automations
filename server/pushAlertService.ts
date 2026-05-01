@@ -108,9 +108,19 @@ export async function dispatchAlert(
 
     if (shouldSms && (!quiet || isUrgent)) {
       const phone = prefs?.smsAlertPhone || await getOwnerPhone(subAccountId);
-      if (phone) {
-        smsSent = await sendSmsAlert(subAccountId, phone, payload);
-      }
+      // Never send internal system alerts to client accounts (non-admin)
+        const APEX_ADMIN_ACCOUNTS = [13, 21];
+        const isAdminAccount = APEX_ADMIN_ACCOUNTS.includes(subAccountId);
+        const isInternalAlert = payload.title?.toLowerCase().includes('diagnose') ||
+          payload.title?.toLowerCase().includes('messaging failure') ||
+          payload.title?.toLowerCase().includes('system') ||
+          payload.body?.toLowerCase().includes('failed messages detected');
+
+        if (phone && (isAdminAccount || !isInternalAlert)) {
+          smsSent = await sendSmsAlert(subAccountId, phone, payload);
+        } else if (phone && isInternalAlert && !isAdminAccount) {
+          console.log(`[PUSH-ALERT] Blocked internal alert to client account ${subAccountId}: "${payload.title}"`);
+        }
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
