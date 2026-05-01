@@ -1783,12 +1783,22 @@ export function registerWebhooksRoutes(app: Express) {
                 const fn = existingContactRecord.firstName || "";
                 if (fn.startsWith("FB User") || fn.startsWith("IG User") || fn.startsWith("IG ")) {
                   try {
-                    const profileUrl = `https://graph.facebook.com/v21.0/${senderId}?fields=first_name,last_name` +
+                    // Try participant name via Page conversation API
+                    // Direct user profile lookup (PSID) is deprecated — use conversation participants
+                    const profileUrl = `https://graph.facebook.com/v21.0/me?fields=conversations{participants,id}&user_id=${senderId}` +
                       (appsecretProof ? `&appsecret_proof=${appsecretProof}` : "") +
                       `&access_token=${accessToken}`;
                     const profileRes = await fetch(profileUrl, { signal: AbortSignal.timeout(5000) });
                     if (profileRes.ok) {
                       const profileData = await profileRes.json() as any;
+                      // Extract name from conversations participants
+                      const participant = profileData.conversations?.data?.[0]?.participants?.data?.find(
+                        (p: any) => String(p.id) === String(senderId)
+                      );
+                      if (participant?.name) {
+                        profileData.first_name = participant.name.split(" ")[0] || participant.name;
+                        profileData.last_name = participant.name.split(" ").slice(1).join(" ") || undefined;
+                      }
                       if (profileData.first_name) {
                         await storage.updateContact(existingContactRecord.id, {
                           firstName: profileData.first_name,
@@ -1844,12 +1854,22 @@ export function registerWebhooksRoutes(app: Express) {
                   let realFirstName = `${channel === "instagram" ? "IG" : "FB"} User ${senderId.slice(-4)}`;
                   let realLastName: string | undefined;
                   try {
-                    const profileUrl = `https://graph.facebook.com/v21.0/${senderId}?fields=first_name,last_name` +
+                    // Try participant name via Page conversation API
+                    // Direct user profile lookup (PSID) is deprecated — use conversation participants
+                    const profileUrl = `https://graph.facebook.com/v21.0/me?fields=conversations{participants,id}&user_id=${senderId}` +
                       (appsecretProof ? `&appsecret_proof=${appsecretProof}` : "") +
                       `&access_token=${accessToken}`;
                     const profileRes = await fetch(profileUrl, { signal: AbortSignal.timeout(5000) });
                     if (profileRes.ok) {
                       const profileData = await profileRes.json() as any;
+                      // Extract name from conversations participants
+                      const participant = profileData.conversations?.data?.[0]?.participants?.data?.find(
+                        (p: any) => String(p.id) === String(senderId)
+                      );
+                      if (participant?.name) {
+                        profileData.first_name = participant.name.split(" ")[0] || participant.name;
+                        profileData.last_name = participant.name.split(" ").slice(1).join(" ") || undefined;
+                      }
                       if (profileData.first_name) {
                         realFirstName = profileData.first_name;
                         realLastName = profileData.last_name || undefined;
