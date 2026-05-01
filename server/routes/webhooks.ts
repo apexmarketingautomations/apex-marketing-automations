@@ -2316,7 +2316,7 @@ export function registerWebhooksRoutes(app: Express) {
                     const { decideResponseStrategy: decideVoiceStrat } = await import("../messaging/responseStrategy");
                     const voiceStrategy = decideVoiceStrat({
                       channel,
-                      incomingMessage: incomingMsg,
+                      incomingMessage: message ?? "",
                       threadHistory: (dmCtx.threadHistory || []).map((h: any) => ({ role: h.role, content: h.content })),
                       replyText: aiReply,
                       voiceMemoEligible: true,
