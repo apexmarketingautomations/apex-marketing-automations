@@ -363,7 +363,7 @@ async function sendAndRecord(opts: SendAndRecordOpts): Promise<void> {
     console.error(`[COMMENT-BOT] BLOCKED — reply text looks like JSON/code-fence garbage for comment ${commentId}: "${replyText.substring(0, 120)}"`);
     await db.update(commentAutoReplies).set({
       status: "failed",
-      sentiment: sentiment as any,
+      sentiment,
       errorMessage: `blocked: looked like JSON/code-fence ("${replyText.substring(0, 80)}")`,
     }).where(eq(commentAutoReplies.id, record.id));
     return;
