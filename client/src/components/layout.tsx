@@ -66,6 +66,7 @@ const navSections = [
     label: "BUILD",
     items: [
       { href: "/site-builder", icon: LayoutTemplate, label: "Site Builder" },
+      { href: "/liquid", icon: Globe, label: "Dynamic Pages" },
       { href: "/form-builder", icon: LayoutTemplate, label: "Form Builder" },
       { href: "/digital-card-builder", icon: ContactRound, label: "Digital Card", requiredFeature: "digital_card" },
       { href: "/domains", icon: Link2, label: "Domains" },
