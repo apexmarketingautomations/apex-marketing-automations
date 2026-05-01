@@ -967,3 +967,120 @@ export function registerRetroSkipTraceRoute(app: any) {
     }
   });
 }
+
+  // ── Legal Signals API ────────────────────────────────────────────────────────
+
+  app.get("/api/sentinel/legal-signals", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.query.subAccountId as string, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const category = (req.query.category as string) || "all";
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+
+    // Map category to signal types
+    const CATEGORY_SIGNALS: Record<string, string[]> = {
+      criminal:         ["dui_arrest", "arrest_record"],
+      family:           ["divorce_filing", "domestic_violence_injunction", "custody_modification", "probate_filing"],
+      traffic:          ["license_suspension", "traffic_violation"],
+      personal_injury:  ["osha_incident", "fda_recall", "cpsc_recall"],
+      business:         ["new_business_filing", "salon_license", "new_business_filing"],
+      all:              [],
+    };
+
+    const { db } = await import("../db");
+    const { homeServiceSignals } = await import("@shared/schema");
+    const { desc, inArray, not, eq } = await import("drizzle-orm");
+
+    let query = db.select().from(homeServiceSignals);
+
+    const signalTypes = CATEGORY_SIGNALS[category] || [];
+    const legalTypes = [
+      "dui_arrest", "arrest_record", "divorce_filing", "domestic_violence_injunction",
+      "custody_modification", "probate_filing", "osha_incident", "fda_recall", "cpsc_recall",
+      "license_suspension", "traffic_violation", "new_business_filing", "salon_license",
+    ];
+
+    if (signalTypes.length > 0) {
+      const signals = await db.select().from(homeServiceSignals)
+        .where(inArray(homeServiceSignals.signalType, signalTypes as any))
+        .orderBy(desc(homeServiceSignals.detectedAt))
+        .limit(limit);
+      return res.json({ signals, total: signals.length });
+    } else {
+      // All legal signals
+      const signals = await db.select().from(homeServiceSignals)
+        .where(inArray(homeServiceSignals.signalType, legalTypes as any))
+        .orderBy(desc(homeServiceSignals.detectedAt))
+        .limit(limit);
+      return res.json({ signals, total: signals.length });
+    }
+  }));
+
+  // ── Distribution Rules API ────────────────────────────────────────────────────
+
+  app.get("/api/sentinel/distribution-rules", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.query.subAccountId as string, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { db } = await import("../db");
+    const { homeServiceContractors, homeServiceLeads } = await import("@shared/schema");
+    const { eq, count } = await import("drizzle-orm");
+
+    // Return contractors as distribution rules
+    const contractors = await db.select().from(homeServiceContractors)
+      .where(eq(homeServiceContractors.subAccountId, subAccountId));
+
+    const rules = contractors.map(c => ({
+      id: c.id,
+      name: c.businessName + " — " + c.ownerName,
+      signalTypes: c.serviceCategories || [],
+      targetAccountId: subAccountId,
+      targetAccountName: c.businessName,
+      targetPhone: c.phone,
+      active: c.active,
+      leadsDelivered: 0,
+    }));
+
+    res.json({ rules });
+  }));
+
+  app.post("/api/sentinel/distribution-rules", asyncHandler(async (req, res) => {
+    const { subAccountId, name, signalTypes, targetPhone, targetAccountName } = req.body;
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { db } = await import("../db");
+    const { homeServiceContractors } = await import("@shared/schema");
+
+    const [created] = await db.insert(homeServiceContractors).values({
+      subAccountId,
+      businessName: targetAccountName || name,
+      ownerName: name,
+      phone: targetPhone,
+      email: null,
+      serviceCategories: signalTypes,
+      counties: ["LEE", "COLLIER", "CHARLOTTE", "SARASOTA", "MANATEE"],
+      tier: "pay_per_lead",
+      active: true,
+      score: 50,
+    }).returning();
+
+    res.json({ success: true, rule: created });
+  }));
+
+  app.patch("/api/sentinel/distribution-rules/:id", asyncHandler(async (req, res) => {
+    const id = parseIntParam(req.params.id, "id");
+    const { active } = req.body;
+
+    const { db } = await import("../db");
+    const { homeServiceContractors } = await import("@shared/schema");
+    const { eq } = await import("drizzle-orm");
+
+    const [updated] = await db.update(homeServiceContractors)
+      .set({ active })
+      .where(eq(homeServiceContractors.id, id))
+      .returning();
+
+    res.json({ success: true, rule: updated });
+  }));
+
+}
