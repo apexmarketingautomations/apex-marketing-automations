@@ -254,19 +254,43 @@ export function registerSitesRoutes(app: Express) {
 
   // ---- Site Builder (AI Generation) ----
 
-  const SITE_SYSTEM_PROMPT = `You are an expert landing-page architect who creates stunning, high-converting websites. Generate rich, visually impressive sites with many sections.
+  const SITE_SYSTEM_PROMPT = `You are an expert web designer who builds complete, professional multi-page websites for local businesses. Generate stunning, high-converting full websites.
 
   Return a JSON object with this structure:
 
   {
+  "name": "<Business Name> Website",
   "theme": {
     "primary": "<vibrant hex accent color>",
-    "bg": "<dark background hex>",
+    "bg": "<dark background hex — usually dark like #0a0a0a or #0f172a>",
     "text": "<light text hex>",
     "font": "<Google Font name>"
   },
-  "sections": [ ...array of 8-12 section objects... ]
+  "pages": [
+    {
+      "title": "Home",
+      "slug": "home",
+      "sections": [ ...8-12 sections... ]
+    },
+    {
+      "title": "About",
+      "slug": "about",
+      "sections": [ ...4-6 sections... ]
+    },
+    {
+      "title": "Services",
+      "slug": "services",
+      "sections": [ ...5-8 sections... ]
+    },
+    {
+      "title": "Contact",
+      "slug": "contact",
+      "sections": [ ...3-4 sections... ]
+    }
+  ]
   }
+
+  ALSO include a top-level "sections" array (copy of Home page sections) for backward compatibility.
 
   Available section types and their props:
 
