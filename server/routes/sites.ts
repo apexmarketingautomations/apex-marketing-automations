@@ -442,14 +442,7 @@ export function registerSitesRoutes(app: Express) {
   }));
 
   // DELETE site
-  app.delete("/api/sites/:id", asyncHandler(async (req, res) => {
-    const siteId = parseIntParam(req.params.id, "id");
-    const site = await storage.getSavedSite(siteId);
-    if (!site) return res.status(404).json({ error: "Site not found" });
-    await storage.deleteSavedSite(siteId);
-    res.json({ success: true });
-  }));
-
+  
   const siteDataValidator = z.object({
     theme: z.object({
       bg: z.string(),
