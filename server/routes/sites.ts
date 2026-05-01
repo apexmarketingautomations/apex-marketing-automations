@@ -376,9 +376,31 @@ export function registerSitesRoutes(app: Express) {
   }));
 
   // ---- Saved Sites ----
-  app.get("/api/sites", asyncHandler(async (_req, res) => {
-    const sites = await storage.getSavedSites();
+  app.get("/api/sites", asyncHandler(async (req, res) => {
+    const subAccountId = req.query.subAccountId
+      ? parseInt(req.query.subAccountId as string)
+      : (req as any).user?.subAccountId || null;
+    const sites = subAccountId
+      ? await storage.getSavedSitesByAccount(subAccountId)
+      : await storage.getSavedSites();
     res.json(sites);
+  }));
+
+  // GET single site by ID
+  app.get("/api/sites/:id", asyncHandler(async (req, res) => {
+    const siteId = parseIntParam(req.params.id, "id");
+    const site = await storage.getSavedSite(siteId);
+    if (!site) return res.status(404).json({ error: "Site not found" });
+    res.json(site);
+  }));
+
+  // DELETE site
+  app.delete("/api/sites/:id", asyncHandler(async (req, res) => {
+    const siteId = parseIntParam(req.params.id, "id");
+    const site = await storage.getSavedSite(siteId);
+    if (!site) return res.status(404).json({ error: "Site not found" });
+    await storage.deleteSavedSite(siteId);
+    res.json({ success: true });
   }));
 
   const siteDataValidator = z.object({
