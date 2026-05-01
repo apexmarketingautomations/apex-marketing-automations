@@ -637,6 +637,14 @@ async function validateMetaCredentials() {
   } catch (hsErr) {
     console.error("[STARTUP] Home service pipeline failed (non-fatal):", hsErr);
   }
+
+  try {
+    const { startLegalPipeline } = await import("./legalSignalPipeline");
+    startLegalPipeline(13);
+    console.log("[STARTUP] ✅ Legal signal pipeline started — arrests, court filings, OSHA, recalls (subAccount=13)");
+  } catch (legalErr) {
+    console.error("[STARTUP] Legal pipeline failed (non-fatal):", legalErr);
+  }
   }
 
   try {
