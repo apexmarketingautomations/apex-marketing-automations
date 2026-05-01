@@ -42,29 +42,30 @@ async function checkDomainAvailability(domain: string) {
   const pricing = TLD_PRICING[tld] || { cost: 10, sale: 19.99 };
 
   try {
-    // Use Cloudflare Registrar to check availability
-    const data = await cfFetch(
-      `/accounts/${ACCOUNT_ID}/registrar/domains/${domain}`
-    );
+    // Use public RDAP to check availability — no API key needed, always works
+    const rdapRes = await fetch(`https://rdap.org/domain/${domain}`, {
+      signal: AbortSignal.timeout(5000),
+      headers: { "Accept": "application/json" },
+    });
 
-    // If it exists in CF registrar, it's taken
-    if (data.success && data.result) {
-      return { available: false, domain, tld, ...pricing };
+    if (rdapRes.status === 404) {
+      // 404 = domain not found in registry = available
+      return { available: true, domain, tld, costPrice: pricing.cost, salePrice: pricing.sale };
     }
 
-    // Try WHOIS check via CF
-    const whois = await cfFetch(
-      `/accounts/${ACCOUNT_ID}/intel/whois?domain=${domain}`
-    );
-
-    if (whois.success && whois.result?.registrar) {
-      return { available: false, domain, tld, costPrice: pricing.cost, salePrice: pricing.sale };
+    if (rdapRes.ok) {
+      // Domain found in registry = taken
+      const rdapData = await rdapRes.json() as any;
+      const registrar = rdapData?.entities?.[0]?.vcardArray?.[1]?.find((v: any) => v[0] === "fn")?.[3]
+        || rdapData?.handle || "Registered";
+      return { available: false, domain, tld, costPrice: pricing.cost, salePrice: pricing.sale, registrar };
     }
 
+    // Fallback — assume available
     return { available: true, domain, tld, costPrice: pricing.cost, salePrice: pricing.sale };
   } catch (err: any) {
-    // If lookup fails, assume available (CF will confirm on purchase)
-    return { available: null, domain, tld, costPrice: pricing.cost, salePrice: pricing.sale, reason: "Could not verify — try purchasing to confirm" };
+    // Timeout or network error — mark as unknown
+    return { available: null, domain, tld, costPrice: pricing.cost, salePrice: pricing.sale, reason: "Could not verify — try again" };
   }
 }
 
