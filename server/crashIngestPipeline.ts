@@ -145,15 +145,50 @@ async function createLeadFromCrash(
   subAccountId: number,
 ): Promise<boolean> {
   try {
+    // Skip trace the crash location to get real name + phone
+    let firstName = "Crash Lead";
+    let lastName = `${incident.county || "FL"} — ${incident.type}`;
+    let phone: string | undefined;
+    let email: string | undefined;
+    let skipTraceNotes = "Skip trace: not attempted";
+
+    const batchDataKey = process.env.BATCHDATA_API_KEY;
+    if (batchDataKey && incident.location) {
+      try {
+        const { skipTraceLookup } = await import("./skip-trace");
+        const traceResult = await skipTraceLookup(
+          { address: incident.location, state: "FL", city: incident.county || "" },
+          batchDataKey
+        );
+        if (traceResult.ownerName) {
+          const parts = traceResult.ownerName.trim().split(" ");
+          firstName = parts[0] || "Crash";
+          lastName = parts.slice(1).join(" ") || `Lead — ${incident.county || "FL"}`;
+        }
+        if (traceResult.ownerPhone) phone = traceResult.ownerPhone;
+        if (traceResult.ownerEmail) email = traceResult.ownerEmail;
+        skipTraceNotes = traceResult.ownerPhone
+          ? `Skip trace: FOUND — ${traceResult.ownerName || "Unknown"} | ${traceResult.ownerPhone}`
+          : "Skip trace: no phone found";
+        console.log(`[CRASH-INGEST] Skip trace for ${incident.location}: ${skipTraceNotes}`);
+      } catch (stErr: any) {
+        skipTraceNotes = `Skip trace: failed — ${stErr.message}`;
+        console.warn(`[CRASH-INGEST] Skip trace failed for ${incident.location}:`, stErr.message);
+      }
+    }
+
     await storage.createContact({
       subAccountId,
-      firstName: "Crash Lead",
-      lastName: `${incident.county || "FL"} — ${incident.type}`,
+      firstName,
+      lastName,
+      phone,
+      email,
       source: "sentinel_crash",
       channel: "sentinel",
-      tags: ["crash-lead", "sentinel-auto", incident.severity || "high"],
+      tags: ["crash-lead", "sentinel-auto", incident.severity || "high", phone ? "has-phone" : "no-phone"],
       notes: [
         `Auto-generated from Sentinel crash ingest.`,
+        skipTraceNotes,
         `Type: ${incident.type}`,
         `Location: ${incident.location}`,
         `County: ${incident.county || "Unknown"}`,
