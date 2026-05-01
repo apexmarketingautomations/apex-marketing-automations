@@ -384,15 +384,38 @@ export function registerSitesRoutes(app: Express) {
       }
     }
 
-    if (!siteData.theme || !Array.isArray(siteData.sections)) {
+    // Accept multi-page format (pages array) or single-page format (sections array)
+    const hasPages = Array.isArray(siteData.pages) && siteData.pages.length > 0;
+    const hasSections = Array.isArray(siteData.sections) && siteData.sections.length > 0;
+
+    if (!siteData.theme || (!hasPages && !hasSections)) {
       return res.status(500).json({ error: "AI returned invalid site structure" });
     }
 
-    siteData.sections = siteData.sections.map((s: any) => {
-      if (s.props) return s;
-      const { type, ...props } = s;
-      return { type, props };
-    });
+    // Normalize sections if present
+    if (hasSections) {
+      siteData.sections = siteData.sections.map((s: any) => {
+        if (s.props) return s;
+        const { type, ...props } = s;
+        return { type, props };
+      });
+    }
+
+    // Normalize pages if present
+    if (hasPages) {
+      siteData.pages = siteData.pages.map((page: any) => ({
+        ...page,
+        sections: (page.sections || []).map((s: any) => {
+          if (s.props) return s;
+          const { type, ...props } = s;
+          return { type, props };
+        }),
+      }));
+      // Always provide top-level sections from home page for backward compat
+      if (!hasSections) {
+        siteData.sections = siteData.pages[0]?.sections || [];
+      }
+    }
 
     await logUsageInternal(null, "AI_CHAT", 1, "AI site generation");
 
@@ -799,15 +822,38 @@ export function registerSitesRoutes(app: Express) {
       return res.status(500).json({ error: "AI returned invalid JSON" });
     }
 
-    if (!siteData.theme || !Array.isArray(siteData.sections)) {
+    // Accept multi-page format (pages array) or single-page format (sections array)
+    const hasPages = Array.isArray(siteData.pages) && siteData.pages.length > 0;
+    const hasSections = Array.isArray(siteData.sections) && siteData.sections.length > 0;
+
+    if (!siteData.theme || (!hasPages && !hasSections)) {
       return res.status(500).json({ error: "AI returned invalid site structure" });
     }
 
-    siteData.sections = siteData.sections.map((s: any) => {
-      if (s.props) return s;
-      const { type, ...props } = s;
-      return { type, props };
-    });
+    // Normalize sections if present
+    if (hasSections) {
+      siteData.sections = siteData.sections.map((s: any) => {
+        if (s.props) return s;
+        const { type, ...props } = s;
+        return { type, props };
+      });
+    }
+
+    // Normalize pages if present
+    if (hasPages) {
+      siteData.pages = siteData.pages.map((page: any) => ({
+        ...page,
+        sections: (page.sections || []).map((s: any) => {
+          if (s.props) return s;
+          const { type, ...props } = s;
+          return { type, props };
+        }),
+      }));
+      // Always provide top-level sections from home page for backward compat
+      if (!hasSections) {
+        siteData.sections = siteData.pages[0]?.sections || [];
+      }
+    }
 
     await logUsageInternal(null, "AI_CHAT", 1, "God mode site generation");
 
