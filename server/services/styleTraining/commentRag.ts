@@ -162,7 +162,7 @@ SAFETY:
 
   const userMessage = `${contextLines.join("\n")}
 
-Reply in character. ${wordBudget} words max. Output ONLY the reply text.`;
+Reply in character. ${wordBudget} words max. Output ONLY the reply text — no JSON, no quotes, no labels. Just the words of the reply.`;
 
   const sentimentPrompt = `Classify: positive, negative, neutral, question, complaint, praise.\nComment: "${ctx.commentText.substring(0, 200)}"\nONE word:`;
 
@@ -183,6 +183,18 @@ Reply in character. ${wordBudget} words max. Output ONLY the reply text.`;
     );
 
     reply = (replyResult?.text || "").replace(/^["']|["']$/g, "").trim();
+
+    // If the AI returned JSON format instead of plain text, extract the reply field
+    const jsonMatch = reply.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed.reply && typeof parsed.reply === "string") {
+          reply = parsed.reply.trim();
+        }
+      } catch (_e) { // allow-silent-catch: malformed JSON in RAG output, use raw text
+      }
+    }
 
     const validation = validateReply(reply, profile);
     if (validation.valid) break;
