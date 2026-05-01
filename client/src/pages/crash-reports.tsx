@@ -562,20 +562,34 @@ function ReportDetailView({ reportId, onBack }: { reportId: number; onBack: () =
           )}
         </div>
       ) : report.status === "COMPLETED" && !d && (
-        <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6 text-center">
-          <FileWarning size={36} className="mx-auto text-slate-600 mb-3" />
-          <h3 className="text-white font-bold mb-1">Data Format Issue</h3>
-          <p className="text-slate-500 text-sm max-w-md mx-auto">
-            This report has data attached but it could not be parsed into the expected format.
-            You can re-submit raw data to fix this.
-          </p>
+        <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-cyan-500/10 flex items-center justify-center">
+              <Satellite size={20} className="text-cyan-400" />
+            </div>
+            <div>
+              <h3 className="text-white font-bold">Sentinel Incident Data</h3>
+              <p className="text-slate-500 text-xs">Live feed capture — awaiting full police report</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {report.rawData && typeof report.rawData === "object" && Object.entries(report.rawData as Record<string, any>)
+              .filter(([k]) => !["id","reportNumber","subAccountId","createdAt","updatedAt","data"].includes(k))
+              .map(([k, v]) => v ? (
+                <div key={k} className="bg-white/5 rounded-lg p-3">
+                  <div className="text-slate-500 text-xs uppercase tracking-wider mb-1">{k.replace(/([A-Z])/g, " $1").trim()}</div>
+                  <div className="text-white text-sm font-medium truncate">{String(v)}</div>
+                </div>
+              ) : null)
+            }
+          </div>
           <Button
             onClick={() => setShowRawDataForm(true)}
-            className="mt-4 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white"
+            className="mt-4 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white"
             data-testid="button-resubmit-raw-data"
           >
             <Upload size={16} className="mr-2" />
-            Re-submit Data
+            Attach Full Police Report
           </Button>
           {showRawDataForm && (
             <div className="mt-4 text-left">
