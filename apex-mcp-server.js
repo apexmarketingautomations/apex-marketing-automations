@@ -1,5 +1,6 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -700,7 +701,66 @@ function buildMcpServer() {
 
 const sessions = new Map();
 
-export function mountApexMcp(app, { ssePath = "/mcp/sse", messagesPath = "/mcp/messages" } = {}) {
+export function mountApexMcp(
+  app,
+  {
+    streamablePath = "/mcp",
+    ssePath = "/mcp/sse",
+    messagesPath = "/mcp/messages",
+  } = {},
+) {
+  // ─────────────────────────────────────────────────────────────────────
+  // Modern transport: Streamable HTTP (MCP spec 2025-03-26+)
+  // This is what claude.ai web/mobile connectors and Claude Desktop's
+  // remote-MCP feature use. Stateless mode: each request gets a fresh
+  // server+transport pair, handled, then torn down.
+  // ─────────────────────────────────────────────────────────────────────
+  const streamableHandler = async (req, res) => {
+    try {
+      const server = buildMcpServer();
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined, // stateless
+      });
+      res.on("close", () => {
+        transport.close().catch(() => {}); // allow-silent-catch: best-effort cleanup on connection close
+        server.close().catch(() => {});    // allow-silent-catch: best-effort cleanup on connection close
+      });
+      await server.connect(transport);
+      await transport.handleRequest(req, res, req.body);
+    } catch (err) {
+      console.error("[APEX-MCP] Streamable HTTP request failed:", err instanceof Error ? err.message : err);
+      if (!res.headersSent) {
+        res.status(500).json({
+          jsonrpc: "2.0",
+          error: { code: -32603, message: "Internal MCP server error" },
+          id: null,
+        });
+      }
+    }
+  };
+
+  // Streamable HTTP spec: clients MAY POST (request) or GET (resumable stream).
+  // Stateless mode does not support GET, so return 405 with the spec-defined message.
+  app.post(streamablePath, streamableHandler);
+  app.get(streamablePath, (_req, res) => {
+    res.status(405).set("Allow", "POST").json({
+      jsonrpc: "2.0",
+      error: { code: -32000, message: "Method not allowed (stateless server — use POST)" },
+      id: null,
+    });
+  });
+  app.delete(streamablePath, (_req, res) => {
+    res.status(405).set("Allow", "POST").json({
+      jsonrpc: "2.0",
+      error: { code: -32000, message: "Method not allowed (stateless server)" },
+      id: null,
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Legacy transport: HTTP+SSE (kept for backward compatibility with
+  // older MCP clients that haven't migrated to Streamable HTTP yet).
+  // ─────────────────────────────────────────────────────────────────────
   app.get(ssePath, async (_req, res) => {
     const transport = new SSEServerTransport(messagesPath, res);
     sessions.set(transport.sessionId, transport);
@@ -723,9 +783,9 @@ export function mountApexMcp(app, { ssePath = "/mcp/sse", messagesPath = "/mcp/m
     (process.env.REPLIT_DOMAINS?.split(",")[0]) ||
     "apexmarketingautomations.com";
   console.log("════════════════════════════════════════════════════════════════");
-  console.log(`[APEX-MCP] MCP server mounted (SSE) — v2.0 FULL ACCESS`);
-  console.log(`[APEX-MCP]   Public SSE URL:  https://${publicHost}${ssePath}`);
-  console.log(`[APEX-MCP]   Messages URL:    https://${publicHost}${messagesPath}`);
-  console.log(`[APEX-MCP]   Tools exposed:   ${tools.length}`);
+  console.log(`[APEX-MCP] MCP server mounted — v2.1 FULL ACCESS (dual transport)`);
+  console.log(`[APEX-MCP]   Streamable HTTP (modern): https://${publicHost}${streamablePath}`);
+  console.log(`[APEX-MCP]   Legacy SSE URL:           https://${publicHost}${ssePath}`);
+  console.log(`[APEX-MCP]   Tools exposed:            ${tools.length}`);
   console.log("════════════════════════════════════════════════════════════════");
 }
