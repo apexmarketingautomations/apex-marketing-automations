@@ -152,7 +152,7 @@ async function createLeadFromCrash(
     let email: string | undefined;
     let skipTraceNotes = "Skip trace: not attempted";
 
-    const batchDataKey = process.env.BATCHDATA_API_KEY;
+    const batchDataKey = process.env.BATCH_DATA;
     if (batchDataKey && incident.location) {
       try {
         const { skipTraceLookup } = await import("./skip-trace");
