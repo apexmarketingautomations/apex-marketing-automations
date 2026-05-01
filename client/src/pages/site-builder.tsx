@@ -1460,6 +1460,9 @@ export default function SiteBuilder() {
   const [prompt, setPrompt] = useState("");
   const [siteData, setSiteData] = useState<any>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [vibeMode, setVibeMode] = useState(false);
+  const [selectedVibeTheme, setSelectedVibeTheme] = useState("dark-luxury");
+  const [showThemePicker, setShowThemePicker] = useState(false);
   const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
   const [history, setHistory] = useState<string[]>([]);
   const [lastPrompt, setLastPrompt] = useState("");
@@ -1627,7 +1630,7 @@ export default function SiteBuilder() {
 
     try {
       // Check if vibe mode
-      const isVibe = (window as any).__vibeMode === true;
+      const isVibe = vibeMode;
       const endpoint = isVibe ? "/api/generate-vibe-site" : "/api/generate-site";
 
       const res = await fetch(endpoint, {
@@ -2335,13 +2338,69 @@ export default function SiteBuilder() {
         </div>
 
 
-        <div className="p-4 bg-black/40 border-t border-white/5 backdrop-blur-md space-y-2">
+        <div className="p-4 bg-black/40 border-t border-white/5 backdrop-blur-md space-y-3">
           <TutorialCenterCompact />
+
+          {/* ── Mode Toggle + Theme Picker ── */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Standard vs Vibe toggle */}
+            <div className="flex items-center bg-white/5 border border-white/10 rounded-xl p-1 gap-1">
+              <button
+                onClick={() => setVibeMode(false)}
+                className={"px-3 py-1.5 rounded-lg text-xs font-bold transition-all " + (!vibeMode ? "bg-indigo-600 text-white shadow" : "text-slate-500 hover:text-slate-300")}
+              >
+                ⚡ Standard
+              </button>
+              <button
+                onClick={() => { setVibeMode(true); setShowThemePicker(true); }}
+                className={"px-3 py-1.5 rounded-lg text-xs font-bold transition-all " + (vibeMode ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow" : "text-slate-500 hover:text-slate-300")}
+              >
+                ✨ Vibe Mode
+              </button>
+            </div>
+
+            {/* Theme picker — only when vibe mode is on */}
+            {vibeMode && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {[
+                  { id: "dark-luxury",   label: "Dark Luxury",   colors: ["#050404", "#c9a84c"] },
+                  { id: "neon-cyber",    label: "Neon Cyber",    colors: ["#0a0a1a", "#00ff88"] },
+                  { id: "deep-purple",   label: "Deep Purple",   colors: ["#0d0014", "#a855f7"] },
+                  { id: "ocean-dark",    label: "Ocean Dark",    colors: ["#020b18", "#0ea5e9"] },
+                  { id: "fire-red",      label: "Fire Red",      colors: ["#0a0000", "#ef4444"] },
+                  { id: "clean-white",   label: "Clean White",   colors: ["#ffffff", "#6366f1"] },
+                ].map(theme => (
+                  <button
+                    key={theme.id}
+                    onClick={() => setSelectedVibeTheme(theme.id)}
+                    title={theme.label}
+                    className={"flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-all " + (selectedVibeTheme === theme.id ? "border-white/40 bg-white/10 text-white scale-105" : "border-white/10 bg-white/5 text-slate-500 hover:text-slate-300")}
+                  >
+                    <span className="flex gap-0.5">
+                      <span className="w-2.5 h-2.5 rounded-full border border-white/10" style={{ background: theme.colors[0] }} />
+                      <span className="w-2.5 h-2.5 rounded-full border border-white/10" style={{ background: theme.colors[1] }} />
+                    </span>
+                    {theme.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Vibe mode badge */}
+          {vibeMode && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20">
+              <span className="text-[10px] text-purple-300 font-bold">✨ VIBE MODE ON</span>
+              <span className="text-[10px] text-slate-500">— Generates 3D animated Three.js site with {selectedVibeTheme.replace(/-/g," ")} theme</span>
+            </div>
+          )}
+
+          {/* Prompt input */}
           <div className="flex gap-2">
             <Input
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Describe the website..."
+              placeholder={vibeMode ? "Describe your business for a 3D animated vibe site..." : "Describe the website you want to build..."}
               className="bg-white/5 border-white/10 focus:border-indigo-500"
               onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
               data-testid="input-prompt"
@@ -2349,7 +2408,7 @@ export default function SiteBuilder() {
             <Button
               onClick={() => handleGenerate()}
               disabled={isGenerating || !prompt.trim()}
-              className="bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-500/20"
+              className={vibeMode ? "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 shadow-lg shadow-purple-500/20" : "bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-500/20"}
               data-testid="button-generate"
             >
               <Send size={18} />
