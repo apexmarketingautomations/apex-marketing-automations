@@ -588,21 +588,46 @@ export class DatabaseStorage implements IStorage {
             SELECT first_name, last_name
             FROM contacts
             WHERE sub_account_id = ${subAccountId}
-              AND (phone = t."contactPhone" OR phone = '+' || t."contactPhone" OR phone = LTRIM(t."contactPhone", '+'))
+              AND (
+                phone = t."contactPhone"
+                OR phone = '+' || t."contactPhone"
+                OR phone = LTRIM(t."contactPhone", '+')
+                OR external_id = t."contactPhone"
+                OR meta_sender_id = t."contactPhone"
+                OR phone LIKE '%' || RIGHT(t."contactPhone", 10)
+              )
             ORDER BY id DESC
             LIMIT 1
           ) dc ON true
           ORDER BY t."lastTime" DESC`
     ) as any;
-    return (result.rows || result).map((r: any) => ({
-      contactPhone: r.contactPhone,
-      channel: r.channel,
-      lastMessage: (r.lastMessage || "").slice(0, 80),
-      lastTime: new Date(r.lastTime),
-      unreadCount: Number(r.unreadCount) || 0,
-      contactFirstName: r.contactFirstName || undefined,
-      contactLastName: r.contactLastName || undefined,
-    }));
+    return (result.rows || result).map((r: any) => {
+      // Extract text from JSON body if stored as object string
+      let lastMsg = r.lastMessage || "";
+      if (lastMsg.startsWith("{") || lastMsg.startsWith("[")) {
+        try {
+          const parsed = JSON.parse(lastMsg);
+          lastMsg = parsed.text || parsed.body || parsed.message || parsed.content || lastMsg;
+        } catch { /* keep original */ }
+      }
+
+      // Build display name from contact or fall back to channel-specific label
+      let contactName: string | undefined;
+      if (r.contactFirstName) {
+        contactName = [r.contactFirstName, r.contactLastName].filter(Boolean).join(" ");
+      }
+
+      return {
+        contactPhone: r.contactPhone,
+        channel: r.channel,
+        lastMessage: String(lastMsg).slice(0, 120),
+        lastTime: new Date(r.lastTime),
+        unreadCount: Number(r.unreadCount) || 0,
+        contactFirstName: r.contactFirstName || undefined,
+        contactLastName: r.contactLastName || undefined,
+        contactName: contactName || undefined,
+      };
+    });
   }
 
   async createSmsRetryQueueItem(data: InsertSmsRetryQueue) {
