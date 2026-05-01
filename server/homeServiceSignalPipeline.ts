@@ -26,9 +26,21 @@ const PIPELINE_ID      = crypto.randomUUID().slice(0, 8);
 const POLL_INTERVAL_MS = 30 * 60 * 1000;
 
 const FL_COUNTIES_CORE = [
-  { name: "LEE",       zone: "FLZ043" },
-  { name: "COLLIER",   zone: "FLZ048" },
-  { name: "CHARLOTTE", zone: "FLZ042" },
+  { name: "LEE",          zone: "FLZ043" },
+  { name: "COLLIER",      zone: "FLZ048" },
+  { name: "CHARLOTTE",    zone: "FLZ042" },
+  { name: "SARASOTA",     zone: "FLZ041" },
+  { name: "MANATEE",      zone: "FLZ040" },
+  { name: "HILLSBOROUGH", zone: "FLZ039" },
+  { name: "PINELLAS",     zone: "FLZ038" },
+  { name: "PASCO",        zone: "FLZ037" },
+  { name: "ORANGE",       zone: "FLZ052" },
+  { name: "SEMINOLE",     zone: "FLZ053" },
+  { name: "BROWARD",      zone: "FLZ056" },
+  { name: "MIAMI-DADE",   zone: "FLZ068" },
+  { name: "PALM-BEACH",   zone: "FLZ055" },
+  { name: "DUVAL",        zone: "FLZ025" },
+  { name: "VOLUSIA",      zone: "FLZ046" },
 ];
 
 const HIGH_VALUE_ALERT_TYPES = new Set([
@@ -39,9 +51,52 @@ const HIGH_VALUE_ALERT_TYPES = new Set([
 ]);
 
 const HIGH_VALUE_PERMIT_TYPES = new Set([
-  "ROOFING", "ROOF", "HVAC", "AIR CONDITIONING", "MECHANICAL",
-  "POOL", "SWIMMING POOL", "SOLAR", "ELECTRICAL", "ADDITION",
-  "RENOVATION", "REMODEL", "FOUNDATION", "SEAWALL", "DOCK", "GENERATOR",
+  // Roofing & Structure
+  "ROOFING", "ROOF", "SHINGLE", "TILE ROOF", "METAL ROOF",
+  // HVAC & Mechanical
+  "HVAC", "AIR CONDITIONING", "MECHANICAL", "HEATING", "COOLING", "DUCTWORK",
+  // Pool & Water
+  "POOL", "SWIMMING POOL", "SPA", "HOT TUB", "FOUNTAIN",
+  // Solar & Power
+  "SOLAR", "PHOTOVOLTAIC", "PV SYSTEM", "GENERATOR", "BATTERY STORAGE",
+  // Electrical
+  "ELECTRICAL", "EV CHARGER", "PANEL UPGRADE",
+  // Plumbing
+  "PLUMBING", "WATER HEATER", "SEWER", "IRRIGATION",
+  // Landscaping & Lawn
+  "LANDSCAPING", "IRRIGATION SYSTEM", "SOD", "LAWN", "SPRINKLER",
+  // Painting & Exterior
+  "PAINTING", "EXTERIOR PAINT", "PRESSURE WASHING",
+  // Additions & Remodel
+  "ADDITION", "RENOVATION", "REMODEL", "FOUNDATION", "SEAWALL", "DOCK",
+  // Pest Control (structural)
+  "FUMIGATION", "TERMITE", "PEST",
+  // Cleaning & Services
+  "PRESSURE WASH",
+  // Auto
+  "GARAGE", "CARPORT", "DRIVEWAY",
+]);
+
+// Business niches for new business license signals
+const HIGH_VALUE_BUSINESS_TYPES = new Set([
+  // Beauty & Personal Care
+  "HAIR SALON", "BARBERSHOP", "BARBER", "NAIL SALON", "SPA", "BEAUTY",
+  "COSMETOLOGY", "MASSAGE", "ESTHETICS", "LASH", "BROW",
+  // Pool & Lawn
+  "POOL SERVICE", "POOL CLEANING", "POOL MAINTENANCE",
+  "LAWN CARE", "LANDSCAPING", "LAWN MAINTENANCE", "TREE SERVICE",
+  // Cleaning
+  "CLEANING SERVICE", "MAID SERVICE", "JANITORIAL", "PRESSURE WASHING",
+  // Auto
+  "AUTO DETAILING", "CAR WASH", "AUTO REPAIR", "MOBILE DETAILING",
+  // Solar
+  "SOLAR INSTALLATION", "SOLAR PANEL",
+  // Pest
+  "PEST CONTROL", "EXTERMINATOR",
+  // HVAC
+  "HVAC SERVICE", "AIR CONDITIONING SERVICE",
+  // General Home
+  "HANDYMAN", "HOME REPAIR", "HOME IMPROVEMENT",
 ]);
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -53,9 +108,12 @@ export type SignalType =
   | "flood_zone_change";
 
 export type ServiceCategory =
-  | "roofing" | "hvac"               | "water_damage" | "pool"
-  | "solar"   | "foundation"         | "general_contractor"
-  | "electrical" | "plumbing"        | "landscaping"  | "painting";
+  | "roofing" | "hvac"          | "water_damage"    | "pool"
+  | "solar"   | "foundation"   | "general_contractor"
+  | "electrical" | "plumbing"  | "landscaping"       | "painting"
+  | "lawn_care"  | "pest_control" | "pressure_washing"
+  | "auto_detailing" | "cleaning_service" | "hair_salon"
+  | "barbershop" | "nail_salon" | "pool_service";
 
 export interface RawSignal {
   signalType:        SignalType;
@@ -214,13 +272,36 @@ function isHVP(type: string): boolean {
 
 function permCats(type: string): ServiceCategory[] {
   const u = type.toUpperCase();
-  if (u.includes("ROOF"))                                        return ["roofing"];
-  if (u.includes("HVAC") || u.includes("AIR") || u.includes("MECHANICAL")) return ["hvac"];
-  if (u.includes("POOL"))                                        return ["pool"];
-  if (u.includes("SOLAR"))                                       return ["solar"];
-  if (u.includes("ELECTRIC"))                                    return ["electrical"];
-  if (u.includes("PLUMB"))                                       return ["plumbing"];
-  if (u.includes("FOUNDATION"))                                  return ["foundation"];
+  if (u.includes("ROOF") || u.includes("SHINGLE") || u.includes("TILE ROOF"))           return ["roofing"];
+  if (u.includes("HVAC") || u.includes("AIR") || u.includes("MECHANICAL") || u.includes("COOLING")) return ["hvac"];
+  if (u.includes("POOL") || u.includes("SPA") || u.includes("HOT TUB"))                 return ["pool", "pool_service"];
+  if (u.includes("SOLAR") || u.includes("PHOTOVOLTAIC") || u.includes("PV"))            return ["solar"];
+  if (u.includes("ELECTRIC") || u.includes("EV CHARGER"))                               return ["electrical"];
+  if (u.includes("PLUMB") || u.includes("WATER HEATER") || u.includes("SEWER"))        return ["plumbing"];
+  if (u.includes("FOUNDATION") || u.includes("SEAWALL"))                                return ["foundation"];
+  if (u.includes("LANDSCAP") || u.includes("IRRIGATION") || u.includes("SOD") || u.includes("LAWN")) return ["landscaping", "lawn_care"];
+  if (u.includes("PAINT") || u.includes("EXTERIOR PAINT"))                              return ["painting"];
+  if (u.includes("PRESSURE") || u.includes("WASH"))                                     return ["pressure_washing"];
+  if (u.includes("PEST") || u.includes("TERMITE") || u.includes("FUMIG"))               return ["pest_control"];
+  if (u.includes("GARAGE") || u.includes("CARPORT"))                                    return ["general_contractor"];
+  return ["general_contractor"];
+}
+
+// Business license category resolver
+function bizCats(type: string): ServiceCategory[] {
+  const u = type.toUpperCase();
+  if (u.includes("HAIR") || u.includes("SALON") || u.includes("COSMETOL"))             return ["hair_salon"];
+  if (u.includes("BARBER"))                                                             return ["barbershop"];
+  if (u.includes("NAIL"))                                                               return ["nail_salon"];
+  if (u.includes("POOL"))                                                               return ["pool_service"];
+  if (u.includes("LAWN") || u.includes("LANDSCAP") || u.includes("TREE"))              return ["lawn_care", "landscaping"];
+  if (u.includes("CLEAN") || u.includes("MAID") || u.includes("JANITORIAL"))           return ["cleaning_service"];
+  if (u.includes("PRESSURE") || u.includes("WASH"))                                    return ["pressure_washing"];
+  if (u.includes("DETAIL") || u.includes("AUTO") || u.includes("CAR WASH"))            return ["auto_detailing"];
+  if (u.includes("SOLAR"))                                                              return ["solar"];
+  if (u.includes("PEST") || u.includes("EXTERMINATOR"))                                return ["pest_control"];
+  if (u.includes("HVAC") || u.includes("AIR CONDITION"))                               return ["hvac"];
+  if (u.includes("HANDYMAN") || u.includes("HOME REPAIR"))                             return ["general_contractor"];
   return ["general_contractor"];
 }
 
@@ -334,6 +415,66 @@ function resolveCodeCategory(d: string): ServiceCategory | null {
   return null;
 }
 
+// ── Florida Business License Filings — New Business Signals ──────────────────
+// Sunbiz.org (FL Secretary of State) publishes new business registrations daily
+
+async function fetchFlBusinessLicenses(): Promise<RawSignal[]> {
+  const signals: RawSignal[] = [];
+  const since = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+
+  // Florida Division of Corporations API — free public data
+  const urls = [
+    `https://search.sunbiz.org/Inquiry/CorporationSearch/SearchResults?inquiryType=EntityName&searchTerm=&dateFrom=${since}&dateTo=${new Date().toISOString().split("T")[0]}&pageNumber=1`,
+  ];
+
+  // Also check county BTR (Business Tax Receipt) new registrations
+  const countyBtrApis = [
+    { county: "BROWARD",      url: `https://www.broward.org/Records/BusinessTax/api/new?after=${since}&limit=100` },
+    { county: "MIAMI-DADE",   url: `https://www.miamidade.gov/btr/api/new?filed_after=${since}&limit=100` },
+    { county: "PALM-BEACH",   url: `https://www.pbcgov.org/btr/api/registrations?from=${since}&limit=100` },
+    { county: "HILLSBOROUGH", url: `https://www.hillsboroughcounty.org/btr/api/new?date=${since}&limit=100` },
+    { county: "ORANGE",       url: `https://www.ocfl.net/btr/api/new?after=${since}&limit=100` },
+    { county: "PINELLAS",     url: `https://www.pinellascounty.org/btr/api/new?from=${since}&limit=100` },
+    { county: "LEE",          url: `https://www.leegov.com/btr/api/registrations?after=${since}&limit=100` },
+    { county: "COLLIER",      url: `https://www.colliercountyfl.gov/btr/api/new?from=${since}&limit=100` },
+  ];
+
+  for (const api of countyBtrApis) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10_000);
+      const res = await fetch(api.url, { signal: controller.signal, headers: { "Accept": "application/json" } });
+      clearTimeout(timeout);
+      if (!res.ok) continue;
+      const data = await res.json() as any;
+      const businesses = Array.isArray(data) ? data : (data?.businesses ?? data?.results ?? data?.data ?? []);
+      for (const biz of businesses) {
+        const bizType = biz.business_type ?? biz.type ?? biz.category ?? biz.description ?? "";
+        if (!bizType) continue;
+        const u = bizType.toUpperCase();
+        const isHighValue = [...HIGH_VALUE_BUSINESS_TYPES].some(k => u.includes(k));
+        if (!isHighValue) continue;
+        const cats = bizCats(bizType);
+        signals.push({
+          signalType: "permit_filing" as SignalType,
+          sourceId: `${api.county}-BTR-${biz.license_number ?? biz.id ?? biz.receipt_number}`,
+          county: api.county,
+          address: [biz.address, biz.city, "FL"].filter(Boolean).join(", "),
+          serviceCategories: cats,
+          urgency: "medium",
+          description: `New business: ${biz.business_name ?? bizType} (${bizType}) — ${api.county} County`,
+          rawData: biz,
+          detectedAt: new Date(biz.registration_date ?? biz.filed_date ?? Date.now()),
+        });
+      }
+    } catch (err: any) {
+      console.error(`[HS-PIPELINE] BTR ${api.county}: ${err.message}`);
+    }
+  }
+
+  return signals;
+}
+
 // ── Main pipeline cycle ───────────────────────────────────────────────────────
 
 async function runPipelineCycle(subAccountId: number): Promise<void> {
@@ -343,15 +484,17 @@ async function runPipelineCycle(subAccountId: number): Promise<void> {
   stats.totalRuns++;
   stats.lastRunAt = new Date().toISOString();
 
-  const [noaa, lee, collier, charlotte, code] = await Promise.allSettled([
+  const settled = await Promise.allSettled([
     fetchNoaaAlerts(),
     fetchLeePermits(),
     fetchCollierPermits(),
     fetchCharlottePermits(),
     fetchCodeEnforcement(),
-  ]).then(r => r.map(x => x.status === "fulfilled" ? x.value : []));
+    fetchFlBusinessLicenses(),
+  ]);
+  const [noaa, lee, collier, charlotte, code, bizLicenses] = settled.map(x => x.status === "fulfilled" ? x.value : []);
 
-  const allSignals: RawSignal[] = [...noaa, ...lee, ...collier, ...charlotte, ...code];
+  const allSignals: RawSignal[] = [...noaa, ...lee, ...collier, ...charlotte, ...code, ...bizLicenses];
   console.log(`[HS-PIPELINE] ${allSignals.length} raw signals fetched in ${Date.now() - startMs}ms`);
 
   let inserted = 0, dupes = 0, qualified = 0, delivered = 0;
