@@ -38,8 +38,17 @@ const navSections = [
       { href: "/reputation", icon: Star, label: "Reputation" },
       { href: "/reports", icon: FileBarChart, label: "Reports" },
       { href: "/ab-testing", icon: FlaskConical, label: "A/B Testing" },
-      { href: "/property-radar", icon: Building, label: "Property Radar" },
       { href: "/location-search", icon: MapPin, label: "Location Search" },
+    ],
+  },
+  {
+    label: "LEADS",
+    items: [
+      { href: "/sentinel", icon: Satellite, label: "Sentinel Hub", requiredFeature: "sentinel" },
+      { href: "/sentinel?tab=home", icon: Home, label: "Home & Property", requiredFeature: "sentinel" },
+      { href: "/sentinel?tab=legal", icon: Scale, label: "Legal Signals", requiredFeature: "sentinel" },
+      { href: "/sentinel?tab=distribution", icon: GitFork, label: "Distribution", requiredFeature: "sentinel" },
+      { href: "/property-radar", icon: Building, label: "Property Radar" },
     ],
   },
   {
@@ -93,7 +102,7 @@ const navSections = [
     label: "ADMIN",
     items: [
       { href: "/admin-console", icon: Shield, label: "Admin Console", adminOnly: true },
-      { href: "/sentinel", icon: Satellite, label: "Sentinel", requiredFeature: "sentinel" },
+
       { href: "/snapshots", icon: History, label: "Snapshots", adminOnly: true },
       { href: "/webhooks", icon: Webhook, label: "Webhooks", requiredFeature: "webhooks" },
       { href: "/execution-timeline", icon: Activity, label: "Activity Log", adminOnly: true },
