@@ -9,7 +9,7 @@ import {
   Settings, Play, Pause, Radio, Shield, Clock, ChevronRight, ChevronLeft, Send, Target, Zap, Eye, BookOpen, Lock, ArrowUpCircle, Plus, ExternalLink, Globe, MessageSquare, AlertCircle, Home
 } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
-import { LegalLeadsTab, DistributionTab } from "@/pages/LegalLeadsTab";
+import { LegalLeadsTab, DistributionTab, HomeLeadsTab } from "@/pages/LegalLeadsTab";
 import { SENTINEL_STEPS } from "@/components/tutorial-steps";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -319,7 +319,12 @@ export default function Sentinel() {
     const isHomeSvcIncident =
       (liveSelectedIncident.rawPayload as any)?.source === 'sentinel_home_svc';
 
-    // ── Show legal leads tab (simple MVP view) ──────────────────────────────
+    // ── Show home & property leads tab ─────────────────────────────────────
+  if (activeTab === "home") {
+    return <HomeLeadsTab onBack={() => setActiveTab("crash")} />;
+  }
+
+  // ── Show legal leads tab ─────────────────────────────────────────────────
   if (activeTab === "legal") {
     return <LegalLeadsTab onBack={() => setActiveTab("crash")} />;
   }
