@@ -79,7 +79,7 @@ export async function buildWorkspaceProfile(subAccountId: number): Promise<Works
   // Use capped query for contacts — only need count, not full rows
   const contactRows = await db.select({ id: contactsTable.id })
     .from(contactsTable).where(eq(contactsTable.subAccountId, subAccountId)).limit(5000)
-    .catch(() => [] as { id: number }[]);
+    .catch(() => [] as { id: number }[]); // allow-silent-catch: telemetry snapshot — empty count is acceptable if DB read fails
   const automations = await storage.getLiveAutomations(subAccountId);
   const connections = await storage.getIntegrationConnections(subAccountId);
   const stages = await storage.getPipelineStages(subAccountId);
@@ -150,10 +150,10 @@ export async function buildPerformanceSnapshot(subAccountId: number): Promise<Pe
   // Use capped queries — never load full tables for metrics
   const contacts = await db.select({ id: contactsTable.id })
     .from(contactsTable).where(eq(contactsTable.subAccountId, subAccountId)).limit(5000)
-    .catch(() => [] as { id: number }[]);
+    .catch(() => [] as { id: number }[]); // allow-silent-catch: performance snapshot — empty count is acceptable if DB read fails
   const messages = await db.select({ direction: messagesTable.direction, status: messagesTable.status, createdAt: messagesTable.createdAt })
     .from(messagesTable).where(eq(messagesTable.subAccountId, subAccountId)).orderBy(desc(messagesTable.createdAt)).limit(500)
-    .catch(() => [] as { direction: string; status: string; createdAt: Date }[]);
+    .catch(() => [] as { direction: string; status: string; createdAt: Date }[]); // allow-silent-catch: performance snapshot — empty list is acceptable if DB read fails
   const automations = await storage.getLiveAutomations(subAccountId);
 
   const inbound = messages?.filter((m: any) => m.direction === "inbound").length || 0;

@@ -5,13 +5,13 @@ import { contacts as contactsTable, messages as messagesTable } from "@shared/sc
 import { eq, desc } from "drizzle-orm";
 
 async function getContactsCapped(subAccountId: number, limit = 5000) {
-  return db.select({ id: contactsTable.id }).from(contactsTable).where(eq(contactsTable.subAccountId, subAccountId)).limit(limit).catch(() => []);
+  return db.select({ id: contactsTable.id }).from(contactsTable).where(eq(contactsTable.subAccountId, subAccountId)).limit(limit).catch(() => []); // allow-silent-catch: capped helper — empty result is the safe default if DB read fails
 }
 
 async function getMessagesCapped(subAccountId: number, limit = 500) {
   return db.select({ direction: messagesTable.direction, status: messagesTable.status, createdAt: messagesTable.createdAt })
     .from(messagesTable).where(eq(messagesTable.subAccountId, subAccountId)).orderBy(desc(messagesTable.createdAt)).limit(limit)
-    .catch(() => [] as { direction: string; status: string; createdAt: Date }[]);
+    .catch(() => [] as { direction: string; status: string; createdAt: Date }[]); // allow-silent-catch: capped helper — empty result is the safe default if DB read fails
 }
 
 function noopValidate(): ValidationResult {

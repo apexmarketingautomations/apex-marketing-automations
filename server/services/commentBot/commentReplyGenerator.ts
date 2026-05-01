@@ -80,8 +80,8 @@ export function extractReplyAndSentiment(raw: string): {
       const sentRaw = typeof parsed?.sentiment === "string" ? parsed.sentiment : "neutral";
       const sentiment = (validSentiments as readonly string[]).includes(sentRaw) ? (sentRaw as Sentiment) : "neutral";
       return { reply, sentiment };
-    } catch {
-      // fall through to truncated-JSON extraction
+    } catch (err) {
+      console.warn("[COMMENT-REPLY-GEN] balanced-JSON parse failed, falling through to truncated-JSON extraction:", err instanceof Error ? err.message : err);
     }
   }
 
