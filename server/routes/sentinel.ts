@@ -1082,5 +1082,3 @@ export function registerRetroSkipTraceRoute(app: any) {
 
     res.json({ success: true, rule: updated });
   }));
-
-}
