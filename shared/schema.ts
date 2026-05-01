@@ -3239,6 +3239,84 @@ export type HomeServiceLeadClaim = typeof homeServiceLeadClaims.$inferSelect;
 
 // Onboarding defaults — operator-editable templates seeded into every new sub-account.
 // Single-row table (id = 1). Falls back to in-code defaults when missing.
+// ── Legal Signal Pipeline ─────────────────────────────────────────────────────
+
+export const legalSignals = pgTable("legal_signals", {
+  id:               serial("id").primaryKey(),
+  sourceHash:       text("source_hash").notNull().unique(),
+  signalType:       text("signal_type").notNull(), // arrest|court_filing|osha|dhsmv|recall|dui|divorce|custody|probate|traffic
+  legalVertical:    text("legal_vertical").notNull(), // personal_injury|criminal|family|traffic|workers_comp
+  county:           text("county"),
+  state:            text("state").default("FL"),
+  subjectName:      text("subject_name"),
+  subjectPhone:     text("subject_phone"),
+  subjectAddress:   text("subject_address"),
+  subjectDob:       text("subject_dob"),
+  chargeDescription: text("charge_description"),
+  caseNumber:       text("case_number"),
+  courtName:        text("court_name"),
+  filingDate:       timestamp("filing_date"),
+  urgency:          text("urgency").default("medium"),
+  score:            integer("score"),
+  status:           text("status").default("raw"), // raw|qualified|disqualified|delivered
+  leadId:           integer("lead_id"),
+  rawData:          jsonb("raw_data"),
+  detectedAt:       timestamp("detected_at").defaultNow(),
+  createdAt:        timestamp("created_at").defaultNow(),
+});
+
+export const legalLeads = pgTable("legal_leads", {
+  id:               serial("id").primaryKey(),
+  signalId:         integer("signal_id"),
+  legalVertical:    text("legal_vertical").notNull(),
+  signalType:       text("signal_type").notNull(),
+  county:           text("county"),
+  subjectName:      text("subject_name"),
+  subjectPhone:     text("subject_phone"),
+  subjectAddress:   text("subject_address"),
+  chargeDescription: text("charge_description"),
+  caseNumber:       text("case_number"),
+  urgency:          text("urgency").default("medium"),
+  score:            integer("score"),
+  status:           text("status").default("available"), // available|claimed|expired|converted
+  claimedBy:        integer("claimed_by"),
+  claimedAt:        timestamp("claimed_at"),
+  expiresAt:        timestamp("expires_at"),
+  rawData:          jsonb("raw_data"),
+  detectedAt:       timestamp("detected_at"),
+  createdAt:        timestamp("created_at").defaultNow(),
+});
+
+export const legalAttorneys = pgTable("legal_attorneys", {
+  id:               serial("id").primaryKey(),
+  subAccountId:     integer("sub_account_id"),
+  firmName:         text("firm_name").notNull(),
+  attorneyName:     text("attorney_name"),
+  phone:            text("phone").notNull(),
+  email:            text("email"),
+  legalVerticals:   jsonb("legal_verticals").default([]).notNull(), // criminal|family|traffic|personal_injury|workers_comp
+  counties:         jsonb("counties").default([]).notNull(),
+  tier:             text("tier").default("pay_per_lead"),
+  active:           boolean("active").default(true),
+  score:            integer("score").default(50),
+  createdAt:        timestamp("created_at").defaultNow(),
+});
+
+export const legalLeadClaims = pgTable("legal_lead_claims", {
+  id:               serial("id").primaryKey(),
+  leadId:           integer("lead_id").notNull(),
+  attorneyId:       integer("attorney_id").notNull(),
+  claimedAt:        timestamp("claimed_at").defaultNow(),
+  status:           text("status").default("claimed"),
+});
+
+export type LegalSignal = typeof legalSignals.$inferSelect;
+export type LegalLead   = typeof legalLeads.$inferSelect;
+export type LegalAttorney = typeof legalAttorneys.$inferSelect;
+export type InsertLegalSignal = typeof legalSignals.$inferInsert;
+export type InsertLegalLead   = typeof legalLeads.$inferInsert;
+export type InsertLegalAttorney = typeof legalAttorneys.$inferInsert;
+
 export const onboardingDefaults = pgTable("onboarding_defaults", {
   id: integer("id").primaryKey().default(1),
   pipelineStages: jsonb("pipeline_stages"),
