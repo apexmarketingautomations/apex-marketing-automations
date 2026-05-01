@@ -1,4 +1,7 @@
 import { storage } from "./storage";
+import { db } from "./db";
+import { messages, contacts } from "@shared/schema";
+import { eq, desc } from "drizzle-orm";
 import { getTopSharedInsights, buildSharedInsightsPrompt } from "./sharedIntelligence";
 
 const PAGE_CONTEXT: Record<string, string> = {
@@ -79,33 +82,38 @@ INTEGRATIONS:
 
   let metricsContext = "";
   try {
-    const [contacts, automations, messages, deals, stages] = await Promise.all([
-      storage.getContacts(subAccountId).catch((err) => { console.warn("[OPERATORPROMPT] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; }),
+    // Use capped queries — never load unbounded sets into the prompt context
+    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const [contactRows, automations, recentMsgs, deals, stages] = await Promise.all([
+      db.select({ id: contacts.id }).from(contacts).where(eq(contacts.subAccountId, subAccountId)).limit(5000)
+        .catch((err) => { console.warn("[OPERATORPROMPT] contacts query failed:", err instanceof Error ? err.message : err); return []; }),
       storage.getLiveAutomations(subAccountId).catch((err) => { console.warn("[OPERATORPROMPT] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; }),
-      storage.getMessages(subAccountId).catch((err) => { console.warn("[OPERATORPROMPT] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; }),
+      db.select({ direction: messages.direction, status: messages.status, createdAt: messages.createdAt })
+        .from(messages).where(eq(messages.subAccountId, subAccountId)).orderBy(desc(messages.createdAt)).limit(500)
+        .catch((err) => { console.warn("[OPERATORPROMPT] messages query failed:", err instanceof Error ? err.message : err); return []; }),
       storage.getDeals(subAccountId).catch((err) => { console.warn("[OPERATORPROMPT] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; }),
       storage.getPipelineStages(subAccountId).catch((err) => { console.warn("[OPERATORPROMPT] promise rejected, using default []:", err instanceof Error ? err.message : err); return []; }),
     ]);
 
-    const totalMessages = messages?.length || 0;
-    const failedMessages = messages?.filter((m: any) => m.status === "failed")?.length || 0;
-    const inboundMessages = messages?.filter((m: any) => m.direction === "inbound")?.length || 0;
-    const outboundMessages = messages?.filter((m: any) => m.direction === "outbound")?.length || 0;
+    const totalMessages = recentMsgs?.length || 0;
+    const failedMessages = recentMsgs?.filter((m: any) => m.status === "failed")?.length || 0;
+    const inboundMessages = recentMsgs?.filter((m: any) => m.direction === "inbound")?.length || 0;
+    const outboundMessages = recentMsgs?.filter((m: any) => m.direction === "outbound")?.length || 0;
     const failRate = totalMessages > 0 ? Math.round((failedMessages / totalMessages) * 100) : 0;
 
     const totalDealValue = deals?.reduce((sum: number, d: any) => sum + (Number(d.value) || 0), 0) || 0;
 
     metricsContext = `
 REAL-TIME METRICS (use these exact numbers in your responses):
-- Total Contacts: ${contacts?.length || 0}
+- Total Contacts: ${contactRows?.length || 0}${(contactRows?.length || 0) >= 5000 ? "+" : ""}
 - Active Automations: ${automations?.length || 0}
-- Total Messages: ${totalMessages} (Inbound: ${inboundMessages}, Outbound: ${outboundMessages})
+- Recent Messages (last 500): ${totalMessages} (Inbound: ${inboundMessages}, Outbound: ${outboundMessages})
 - Failed Messages: ${failedMessages} (${failRate}% failure rate)${failRate > 10 ? " ⚠️ HIGH — investigate phone number or Twilio config" : ""}
 - Pipeline Stages: ${stages?.length || 0}
 - Active Deals: ${deals?.length || 0} (Total Value: $${totalDealValue.toLocaleString()})
-- Recent Activity: ${messages?.filter((m: any) => {
+- Recent Activity: ${recentMsgs?.filter((m: any) => {
       const d = new Date(m.createdAt);
-      return d > new Date(Date.now() - 24 * 60 * 60 * 1000);
+      return d > since24h;
     })?.length || 0} messages in last 24h`;
   } catch (err) {
     console.error("[OPERATOR-PROMPT] failed to compute realtime metrics:", err);

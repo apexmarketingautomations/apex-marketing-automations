@@ -37,16 +37,20 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
     setToolResults([]);
 
     try {
-      const [contextRes, reportRes, insightsRes] = await Promise.all([
-        fetch(`/api/operator/cognitive/context/${subAccountId}`),
-        fetch(`/api/operator/cognitive/growth-report/${subAccountId}`),
-        fetch(`/api/operator/cognitive/strategic/${subAccountId}`),
+      const prefetchTimeout = { signal: AbortSignal.timeout(5000) };
+      const [contextSettled, reportSettled, insightsSettled] = await Promise.allSettled([
+        fetch(`/api/operator/cognitive/context/${subAccountId}`, prefetchTimeout),
+        fetch(`/api/operator/cognitive/growth-report/${subAccountId}`, prefetchTimeout),
+        fetch(`/api/operator/cognitive/strategic/${subAccountId}`, prefetchTimeout),
       ]);
+      const contextRes = contextSettled.status === "fulfilled" ? contextSettled.value : null;
+      const reportRes = reportSettled.status === "fulfilled" ? reportSettled.value : null;
+      const insightsRes = insightsSettled.status === "fulfilled" ? insightsSettled.value : null;
 
       let contextPrompt = "";
       const parts: string[] = [];
 
-      if (contextRes.ok) {
+      if (contextRes?.ok) {
         const ctx = await contextRes.json();
         parts.push("=== ACCOUNT OVERVIEW ===");
         parts.push(`Business Name: ${ctx.workspace?.businessName || "Not set"}`);
@@ -88,7 +92,7 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
         }
       }
 
-      if (reportRes.ok) {
+      if (reportRes?.ok) {
         const report = await reportRes.json();
         parts.push("");
         parts.push("=== HEALTH SCORE ===");
@@ -117,7 +121,7 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
         }
       }
 
-      if (insightsRes.ok) {
+      if (insightsRes?.ok) {
         const insData = await insightsRes.json();
         if (insData.insights?.length > 0) {
           parts.push("");

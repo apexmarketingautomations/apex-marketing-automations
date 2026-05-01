@@ -12,6 +12,8 @@ import { getPriorityActions, getOperatorActionSummary, dismissAction, snoozeActi
 import { getCrossPlatformPatterns, getPlaybookRecommendationsForAccount } from "../intelligence/crossPlatformPatterns";
 import { getSystemHealthReport } from "../intelligence/systemHealthOrchestrator";
 import { approveAction, rollbackAction, markFailed, resumeAction, getActionAuditTrail } from "../autonomy/decisionEngine";
+import { executeAction } from "../autonomy/safeActionsEngine";
+import type { ActionCategory } from "../autonomy/types";
 import { verifyIntelligenceTables, runProductionSeed, getLastSeedSnapshot, getLastVerification } from "../intelligence/productionSeed";
 
 function asyncHandler(fn: (req: any, res: any, next: any) => Promise<any>) {
@@ -538,9 +540,50 @@ export function registerApexIntelligenceRoutes(app: Express) {
     const existing = await storage.getAutonomyAction(id);
     if (!existing) return res.status(404).json({ error: "Action not found" });
     if (!(await verifyAccountOwnership(req, res, existing.accountId))) return;
+
     const action = await approveAction(id);
     if (!action) return res.status(404).json({ error: "Action not found" });
-    res.json(action);
+
+    // Execute immediately after approval — do NOT leave it stuck as "approved"
+    try {
+      await storage.updateAutonomyAction(id, { status: "executing", executedAt: new Date(), updatedAt: new Date() });
+
+      const category = (existing.actionCategory || "setup") as ActionCategory;
+      const params: Record<string, any> = {};
+      if (existing.targetEntityId) params.provider = existing.targetEntityId;
+      if (existing.targetEntityType) params.entityType = existing.targetEntityType;
+      if (existing.targetModule) params.targetModule = existing.targetModule;
+      params.approvedByUser = true;
+
+      const result = await executeAction({
+        accountId: existing.accountId,
+        actionType: existing.actionType,
+        category,
+        params,
+        triggeredBy: "user_approval",
+        correlationId: `approve_${id}_${Date.now()}`,
+      });
+
+      const finalStatus = result.success ? "completed" : "failed";
+      const updated = await storage.updateAutonomyAction(id, {
+        status: finalStatus,
+        executionResult: result as unknown as Record<string, unknown>,
+        resolvedAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      console.log(`[AUTONOMY] User-approved action ${id} (${existing.actionType}): ${finalStatus}`);
+      res.json(updated ?? action);
+    } catch (execErr: any) {
+      console.error(`[AUTONOMY] Failed to execute user-approved action ${id}:`, execErr.message);
+      const failed = await storage.updateAutonomyAction(id, {
+        status: "failed",
+        executionResult: { error: execErr.message } as Record<string, unknown>,
+        resolvedAt: new Date(),
+        updatedAt: new Date(),
+      });
+      res.json(failed ?? action);
+    }
   }));
 
   app.post("/api/autonomy/actions/:id/reject", asyncHandler(async (req, res) => {
