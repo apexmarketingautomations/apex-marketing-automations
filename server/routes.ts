@@ -20,6 +20,7 @@ import { registerSubscriptionsRoutes } from "./routes/subscriptions";
 import { registerSnapshotsRoutes } from "./routes/snapshots";
 import { registerAffiliatesRoutes } from "./routes/affiliates";
 import { registerSentinelRoutes, registerRetroSkipTraceRoute } from "./routes/sentinel";
+import { registerDomainRoutes } from "./routes/domains";
 import { registerPropertyRoutes } from "./routes/property";
 import { registerMetaRoutes } from "./routes/meta";
 import { registerNotificationsRoutes } from "./routes/notifications";
@@ -107,6 +108,7 @@ export async function registerRoutes(
   registerSnapshotsRoutes(app);
   registerAffiliatesRoutes(app);
   registerSentinelRoutes(app);
+  registerDomainRoutes(app);
   registerPropertyRoutes(app);
   const { registerHomeServiceRoutes } = await import("./routes/homeService");
   registerHomeServiceRoutes(app);
