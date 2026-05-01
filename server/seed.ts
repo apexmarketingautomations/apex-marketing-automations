@@ -681,12 +681,12 @@ async function ensureRoof2RootsAccount(
           score: 80,
         },
       ]);
-      console.log(\`[SYNC] Registered 2 contractors for Roof 2 Roots #\${r2rId} — Christopher L + S.A\`);
+      console.log("[SYNC] Registered 2 contractors for Roof 2 Roots #" + r2rId + " — Christopher L + S.A");
     } else {
-      console.log(\`[SYNC] Roof 2 Roots contractors already registered (\${existingContractors.length} found)\`);
+      console.log("[SYNC] Roof 2 Roots contractors already registered (" + existingContractors.length + " found)");
     }
 
-    console.log(\`[SYNC] Roof 2 Roots account #\${r2rId} fully configured\`);
+    console.log("[SYNC] Roof 2 Roots account #" + r2rId + " fully configured");
   } catch (e: any) {
     console.warn("[SYNC] ensureRoof2RootsAccount failed (non-fatal):", e.message);
   }
