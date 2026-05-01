@@ -818,7 +818,8 @@ Color themes: personal injury=(#1a1a2e,#ffd700), roofing=(#1c1c1c,#ff6b35), medi
       try {
         const cleaned = result.text.replace(/\`\`\`json\n?/g, "").replace(/\`\`\`\n?/g, "").trim();
         vibeData = JSON.parse(cleaned);
-      } catch {
+      } catch (parseErr: any) {
+        console.warn("[VIBE-GEN] JSON parse failed:", parseErr instanceof Error ? parseErr.message : parseErr);
         throw new Error("Failed to parse vibe site response");
       }
 
