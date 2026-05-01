@@ -8,9 +8,9 @@ import { emitUniversalEvent } from "../intelligence/eventEmitter";
 import { emitAutonomyGapDetected, emitAutonomyActionResult } from "../intelligence/apexLearningFeed";
 import type { ActionCategory } from "./types";
 
-const ORCHESTRATOR_INTERVAL_MS = 10 * 60 * 1000;
-const MAX_ACTIONS_PER_ACCOUNT = 3;
-const MAX_ACCOUNTS_PER_CYCLE = 50;
+const ORCHESTRATOR_INTERVAL_MS = 3 * 60 * 1000; // Apex reacts every 3 minutes
+const MAX_ACTIONS_PER_ACCOUNT = 20; // Apex runs all needed actions per account
+const MAX_ACCOUNTS_PER_CYCLE = 200;
 
 let orchestratorTimer: NodeJS.Timeout | null = null;
 let isRunning = false;
