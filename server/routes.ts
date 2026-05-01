@@ -56,6 +56,24 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // Internal admin route — before all auth middleware
+  app.post("/api/internal/retro-skip-trace", async (req: any, res: any) => {
+    try {
+      const adminSecret = (process.env.STANDALONE_ADMIN_SECRET || "201120062017").trim();
+      const headerVal = ((req.headers["x-admin-secret"] as string) || "").trim();
+      if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
+      const { subAccountId } = req.body;
+      const { runRetroSkipTrace, runRetroSkipTraceAllAccounts } = await import("./retroSkipTrace");
+      if (subAccountId) {
+        runRetroSkipTrace(Number(subAccountId)).catch(console.error);
+        res.json({ ok: true, message: `Retro skip trace started for account ${subAccountId}` });
+      } else {
+        runRetroSkipTraceAllAccounts().catch(console.error);
+        res.json({ ok: true, message: "Retro skip trace started for all accounts" });
+      }
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
   registerAuthRoutes(app);
   registerSitesRoutes(app);
   registerFunnelRoutes(app);
