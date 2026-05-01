@@ -133,6 +133,7 @@ export interface IStorage {
   createBlueprint(data: InsertBlueprint): Promise<Blueprint>;
 
   getSavedSites(): Promise<SavedSite[]>;
+  getSavedSitesByAccount(subAccountId: number): Promise<SavedSite[]>;
   getSavedSite(id: number): Promise<SavedSite | undefined>;
   createSavedSite(data: InsertSavedSite): Promise<SavedSite>;
   updateSavedSite(id: number, data: Partial<InsertSavedSite>): Promise<SavedSite | undefined>;
@@ -672,6 +673,12 @@ export class DatabaseStorage implements IStorage {
 
   async getSavedSites() {
     return db.select().from(savedSites).orderBy(desc(savedSites.createdAt));
+  }
+
+  async getSavedSitesByAccount(subAccountId: number) {
+    return db.select().from(savedSites)
+      .where(eq(savedSites.subAccountId, subAccountId))
+      .orderBy(desc(savedSites.createdAt));
   }
 
   async getSavedSite(id: number) {
