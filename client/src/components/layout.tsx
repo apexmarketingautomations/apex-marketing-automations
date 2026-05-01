@@ -23,6 +23,7 @@ const navSections = [
     items: [
       { href: "/apex-intelligence", icon: Brain, label: "Apex Intelligence", adminOnly: true },
       { href: "/god-mode", icon: Rocket, label: "God Mode", adminOnly: true },
+      { href: "/sentinel", icon: Satellite, label: "Sentinel", requiredFeature: "sentinel" },
       { href: "/bot-trainer", icon: Bot, label: "AI Trainer", requiredFeature: "ai_bots" },
       { href: "/voice-agent", icon: Phone, label: "Voice Agent", requiredFeature: "voice_agents" },
     ],
