@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { MessageSquare, GitFork, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2, History, Satellite, Building, BarChart3, Kanban, CalendarDays, Mail, Palette, Webhook, FileBarChart, Instagram, Target, Lock, Plug, Activity, Menu, X, ContactRound, MapPin, BellRing, FlaskConical, Home, Brain, PenTool, Zap, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CommandMenu } from "@/components/command-menu";
 import { ApexIntelligence } from "@/components/apex-intelligence";
 import { VibeSwitcher } from "@/components/vibe-switcher";
@@ -149,8 +149,18 @@ function AccountSwitcher({ accounts, collapsed }: { accounts: SubAccount[]; coll
   const [isOpen, setIsOpen] = useState(false);
   const [, setLocation] = useLocation();
   const { activeAccountId, setActiveAccountId } = useAccount();
+  const queryClient = useQueryClient();
 
   const current = accounts.find(a => a.id === activeAccountId) || accounts[0];
+
+  const switchAccount = (id: number) => {
+    setActiveAccountId(id);
+    // Clear ALL cached data so every page reloads fresh for the new account
+    queryClient.clear();
+    setIsOpen(false);
+    // Navigate to dashboard so the user is clearly in a new context
+    setLocation("/");
+  };
 
   return (
     <div className={`relative ${collapsed ? 'px-1' : 'px-2 md:px-4'} mb-2`}>
@@ -193,7 +203,7 @@ function AccountSwitcher({ accounts, collapsed }: { accounts: SubAccount[]; coll
                 <button
                   key={account.id}
                   className={`w-full text-left p-3 hover:bg-cyan-500/10 flex items-center gap-3 border-b border-white/5 last:border-0 ${account.id === current?.id ? "bg-cyan-500/10" : ""}`}
-                  onClick={() => { setActiveAccountId(account.id); setIsOpen(false); }}
+                  onClick={() => switchAccount(account.id)}
                   data-testid={`button-switch-account-${account.id}`}
                 >
                   <div className="w-6 h-6 rounded bg-white/10 text-[10px] flex items-center justify-center text-white font-bold shrink-0">
