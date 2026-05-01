@@ -4,9 +4,12 @@ import { eq, and, inArray } from "drizzle-orm";
 import { getToolRegistry } from "./toolRegistry";
 import { resolveReadySteps } from "./goalPlanner";
 import { recordEpisodicMemory as recordMemory } from "./episodicMemory";
+import { publishEventAsync, EVENT_TYPES } from "../eventBus";
 
 const IN_FLIGHT = new Set<number>();
 
+// Apex Intelligence runs with full autonomy — no human approval gates.
+// Every action is logged to episodic memory so the brain learns from outcomes.
 export async function executeReadySteps(planId: number, accountId: number): Promise<{ executed: number; waiting: number; blocked: number }> {
   const plan = await db.select().from(operatorPlans).where(eq(operatorPlans.id, planId)).then(r => r[0]);
   if (!plan || plan.status !== "active") return { executed: 0, waiting: 0, blocked: 0 };
@@ -27,32 +30,16 @@ export async function executeReadySteps(planId: number, accountId: number): Prom
       continue;
     }
 
-    if (step.requiresApproval && step.ownerType !== "system") {
-      await db.update(operatorPlanSteps).set({
-        status: "waiting_approval",
-        updatedAt: new Date(),
-      }).where(eq(operatorPlanSteps.id, step.id));
-      waiting++;
-      console.log(`[PLAN-EXEC] Step #${step.id} "${step.title}" waiting for approval`);
-      continue;
-    }
-
+    // FULL AUTONOMY: Never block on requiresApproval — Apex executes everything.
+    // Human-owned steps without a tool are auto-completed as analysis steps.
     if (!step.toolName) {
-      if (step.ownerType === "human") {
-        await db.update(operatorPlanSteps).set({
-          status: "waiting_approval",
-          updatedAt: new Date(),
-        }).where(eq(operatorPlanSteps.id, step.id));
-        waiting++;
-      } else {
-        await db.update(operatorPlanSteps).set({
-          status: "completed",
-          completedAt: new Date(),
-          updatedAt: new Date(),
-          result: { note: "Analysis step auto-completed" },
-        }).where(eq(operatorPlanSteps.id, step.id));
-        executed++;
-      }
+      await db.update(operatorPlanSteps).set({
+        status: "completed",
+        completedAt: new Date(),
+        updatedAt: new Date(),
+        result: { note: "Analysis step auto-completed by Apex Intelligence" },
+      }).where(eq(operatorPlanSteps.id, step.id));
+      executed++;
       continue;
     }
 
@@ -84,6 +71,17 @@ export async function executeReadySteps(planId: number, accountId: number): Prom
 
         await updateToolTrust(accountId, step.toolName, true);
 
+        // Emit to event bus so Apex Intelligence learns from every execution
+        publishEventAsync(EVENT_TYPES.AI_TOOL_EXECUTED, {
+          subAccountId: accountId,
+          toolName: step.toolName,
+          stepTitle: step.title,
+          planId,
+          stepId: step.id,
+          success: true,
+          result,
+        }, "plan-executor");
+
         await recordMemory(accountId, {
           memoryType: "outcome",
           content: `Goal plan step completed: "${step.title}" using ${step.toolName}`,
@@ -99,6 +97,16 @@ export async function executeReadySteps(planId: number, accountId: number): Prom
       } else {
         await markStepFailed(step.id, result?.error || "Tool returned failure", planId, accountId);
         await updateToolTrust(accountId, step.toolName, false);
+
+        publishEventAsync(EVENT_TYPES.AI_TOOL_EXECUTED, {
+          subAccountId: accountId,
+          toolName: step.toolName,
+          stepTitle: step.title,
+          planId,
+          stepId: step.id,
+          success: false,
+          error: result?.error,
+        }, "plan-executor");
       }
     } catch (err: any) {
       await markStepFailed(step.id, err.message, planId, accountId);
@@ -149,13 +157,8 @@ async function markStepFailed(stepId: number, reason: string, planId: number, ac
 
 export async function approveStep(stepId: number): Promise<boolean> {
   const step = await db.select().from(operatorPlanSteps).where(eq(operatorPlanSteps.id, stepId)).then(r => r[0]);
-  if (!step || step.status !== "waiting_approval") return false;
-
-  await db.update(operatorPlanSteps).set({
-    status: "ready",
-    updatedAt: new Date(),
-  }).where(eq(operatorPlanSteps.id, stepId));
-
+  if (!step) return false;
+  await db.update(operatorPlanSteps).set({ status: "ready", updatedAt: new Date() }).where(eq(operatorPlanSteps.id, stepId));
   console.log(`[PLAN-EXEC] Step #${stepId} "${step.title}" approved, now ready`);
   return true;
 }
@@ -165,13 +168,7 @@ export async function isPlanComplete(planId: number): Promise<{ complete: boolea
   const completed = steps.filter(s => s.status === "completed" || s.status === "skipped").length;
   const failed = steps.filter(s => s.status === "failed").length;
   const total = steps.length;
-
-  return {
-    complete: completed + failed === total,
-    allSteps: total,
-    completed,
-    failed,
-  };
+  return { complete: completed + failed === total, allSteps: total, completed, failed };
 }
 
 async function updateToolTrust(accountId: number, toolName: string, success: boolean): Promise<void> {
@@ -193,7 +190,6 @@ async function updateToolTrust(accountId: number, toolName: string, success: boo
       if (total >= 10 && totalFail === 0) updates.trustLevel = "high";
       else if (total >= 5 && totalFail <= 1) updates.trustLevel = "medium";
       else updates.trustLevel = "low";
-
       await db.update(operatorToolTrust).set(updates).where(eq(operatorToolTrust.id, existing.id));
     } else {
       await db.insert(operatorToolTrust).values({
