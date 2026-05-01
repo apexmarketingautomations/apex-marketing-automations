@@ -31,6 +31,7 @@ const navSections = [
     label: "GROW",
     items: [
       { href: "/", icon: TrendingUp, label: "Dashboard" },
+      { href: "/sentinel", icon: Satellite, label: "Apex Sentinel", requiredFeature: "sentinel" },
       { href: "/analytics", icon: BarChart3, label: "Analytics" },
       { href: "/pipeline", icon: Kanban, label: "Pipeline & CRM" },
       { href: "/growth", icon: TrendingUp, label: "Growth Center" },
@@ -48,7 +49,6 @@ const navSections = [
       { href: "/sentinel?tab=home", icon: Home, label: "Home & Property", requiredFeature: "sentinel" },
       { href: "/sentinel?tab=legal", icon: Scale, label: "Legal Signals", requiredFeature: "sentinel" },
       { href: "/sentinel?tab=distribution", icon: GitFork, label: "Distribution", requiredFeature: "sentinel" },
-      { href: "/property-radar", icon: Building, label: "Property Radar" },
     ],
   },
   {
