@@ -1626,7 +1626,11 @@ export default function SiteBuilder() {
     if (!overridePrompt) setHistory((prev) => [...prev, text]);
 
     try {
-      const res = await fetch("/api/generate-site", {
+      // Check if vibe mode
+      const isVibe = (window as any).__vibeMode === true;
+      const endpoint = isVibe ? "/api/generate-vibe-site" : "/api/generate-site";
+
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: text }),
@@ -1638,10 +1642,19 @@ export default function SiteBuilder() {
       }
 
       const data = await res.json();
-      const migrated = migrateSiteData(data);
-      setSiteData(migrated);
-      setActivePageId(migrated.pages[0]?.id || "");
-      setCurrentSiteId(null);
+
+      // Handle vibe site (raw HTML) vs standard site
+      if (data.html) {
+        // Store vibe HTML in siteData for preview
+        setSiteData({ ...migrateSiteData({ sections: [], theme: data.theme || { primary: "#8b5cf6", bg: "#050505", text: "#ffffff", font: "Inter" } }), vibeHtml: data.html });
+        setCurrentSiteId(data.id || null);
+        toast({ title: "🔥 Vibe Site Generated!", description: "Your 3D animated site is ready." });
+      } else {
+        const migrated = migrateSiteData(data);
+        setSiteData(migrated);
+        setActivePageId(migrated.pages[0]?.id || "");
+        setCurrentSiteId(null);
+      }
       markMilestoneComplete("generate");
       markMilestoneComplete("preview");
     } catch (err: any) {
