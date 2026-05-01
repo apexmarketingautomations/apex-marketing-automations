@@ -68,6 +68,8 @@ export function getUserId(user: any): string {
   return user.claims?.sub || user.id;
 }
 
+// Accounts with full admin override — can access any sub-account
+const APEX_ADMIN_ACCOUNT_IDS = [13, 21]; // Apex Marketing + Officer Layla
 const APEX_PARENT_ACCOUNT_ID = 13;
 
 let _parentOwnerCache: { userId: string; ts: number } | null = null;
@@ -77,10 +79,13 @@ export async function isApexParentUser(userId: string): Promise<boolean> {
   if (_parentOwnerCache && _parentOwnerCache.userId === userId && Date.now() - _parentOwnerCache.ts < PARENT_CACHE_TTL) {
     return true;
   }
-  const parent = await storage.getSubAccount(APEX_PARENT_ACCOUNT_ID);
-  if (parent && parent.ownerUserId === userId) {
-    _parentOwnerCache = { userId, ts: Date.now() };
-    return true;
+  // Check all admin accounts (Apex Marketing + Layla)
+  for (const accountId of APEX_ADMIN_ACCOUNT_IDS) {
+    const account = await storage.getSubAccount(accountId);
+    if (account && account.ownerUserId === userId) {
+      _parentOwnerCache = { userId, ts: Date.now() };
+      return true;
+    }
   }
   return false;
 }
