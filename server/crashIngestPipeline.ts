@@ -234,13 +234,27 @@ async function createLeadFromCrash(
       const giovanni = await storage.getSubAccount(GIOVANNI_ACCOUNT_ID);
       if (giovanni?.ownerPhone && incident.severity && QUALIFYING_SEVERITIES.has(incident.severity.toLowerCase())) {
         const { publishEventAsync, EVENT_TYPES } = await import("./eventBus");
-        publishEventAsync(EVENT_TYPES.MESSAGE_SENT, {
-          subAccountId: GIOVANNI_ACCOUNT_ID,
-          to: giovanni.ownerPhone,
-          body: `🚨 APEX SENTINEL: New ${incident.severity?.toUpperCase()} injury lead — ${incident.type} in ${incident.county || "FL"}. ${incident.googleMaps || ""}. Check your CRM now.`,
-          channel: "sms",
-          source: "sentinel_alert",
-        }, "crash-ingest-pipeline");
+        // Rate limit: max 1 alert per 15 minutes to avoid spamming Giovanni
+        const RATE_LIMIT_MS = 15 * 60 * 1000;
+        const now = Date.now();
+        const lastAlertKey = `sentinel_last_alert_${GIOVANNI_ACCOUNT_ID}`;
+        if (!(globalThis as any).__sentinelAlertCache) (globalThis as any).__sentinelAlertCache = {};
+        const lastAlert = (globalThis as any).__sentinelAlertCache[lastAlertKey] || 0;
+
+        if (now - lastAlert >= RATE_LIMIT_MS) {
+          (globalThis as any).__sentinelAlertCache[lastAlertKey] = now;
+          publishEventAsync(EVENT_TYPES.MESSAGE_SENT, {
+            subAccountId: GIOVANNI_ACCOUNT_ID,
+            to: giovanni.ownerPhone,
+            body: `🚨 APEX SENTINEL: New ${incident.severity?.toUpperCase()} injury lead — ${incident.type} in ${incident.county || "FL"}. ${incident.googleMaps || ""}. Check your CRM now.`,
+            channel: "sms",
+            source: "sentinel_alert",
+          }, "crash-ingest-pipeline");
+          console.log(`[CRASH-INGEST] Giovanni alerted — ${incident.county} crash. Next alert available in 15min.`);
+        } else {
+          const waitMins = Math.ceil((RATE_LIMIT_MS - (now - lastAlert)) / 60000);
+          console.log(`[CRASH-INGEST] Giovanni alert rate-limited — ${waitMins}min until next alert.`);
+        }
       }
     } catch (notifyErr: any) {
       console.warn("[CRASH-INGEST] Giovanni notification failed:", notifyErr.message);
