@@ -139,7 +139,7 @@ async function safeFetch(url: string, timeoutMs = 12000): Promise<any> {
     clearTimeout(t);
     if (!res.ok) return null;
     return await res.json();
-  } catch {
+  } catch (fetchErr: any) { // allow-silent-catch: network timeout returns null safely
     clearTimeout(t);
     return null;
   }
