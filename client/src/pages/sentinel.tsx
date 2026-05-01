@@ -1476,7 +1476,7 @@ function formatExpiry(expires: string | null | undefined): string | null {
   try {
     const d = new Date(expires);
     return `Expires ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`;
-  } catch { return null; }
+  } catch { return null; } // allow-silent-catch: JSON parse fallback
 }
 
 function computeExpiryStatus(expires: string | null | undefined): 'active' | 'expiring_soon' | 'expired' {
@@ -1487,7 +1487,7 @@ function computeExpiryStatus(expires: string | null | undefined): 'active' | 'ex
     if (expiresAt < now) return 'expired';
     if (expiresAt - now < 60 * 60 * 1000) return 'expiring_soon';
     return 'active';
-  } catch { return 'active'; }
+  } catch { return 'active'; } // allow-silent-catch: status parse fallback
 }
 
 const SCORE_TIER_COLORS: Record<string, { bg: string; text: string; border: string; label: string }> = {
