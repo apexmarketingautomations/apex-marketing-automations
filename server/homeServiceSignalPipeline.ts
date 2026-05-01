@@ -102,18 +102,38 @@ const HIGH_VALUE_BUSINESS_TYPES = new Set([
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type SignalType =
-  | "noaa_weather_alert" | "permit_filing"    | "new_homeowner"
-  | "code_enforcement"   | "pre_foreclosure"  | "lis_pendens"
-  | "probate"            | "short_term_rental" | "sinkhole_report"
-  | "flood_zone_change";
+  // Home & Property
+  | "noaa_weather_alert" | "permit_filing"     | "new_homeowner"
+  | "code_enforcement"   | "pre_foreclosure"   | "lis_pendens"
+  | "probate"            | "short_term_rental"  | "sinkhole_report"
+  | "flood_zone_change"  | "business_license"
+  // Legal — Personal Injury
+  | "crash_report"       | "osha_incident"     | "fda_recall"
+  | "cpsc_recall"        | "slip_fall_report"
+  // Legal — Criminal Defense
+  | "arrest_record"      | "dui_arrest"        | "booking_log"
+  // Legal — Family Law
+  | "divorce_filing"     | "domestic_violence_injunction" | "custody_modification"
+  | "probate_filing"
+  // Legal — Traffic
+  | "license_suspension" | "red_light_violation" | "commercial_violation"
+  // Business Signals
+  | "new_business_filing" | "salon_license"    | "contractor_license";
 
 export type ServiceCategory =
-  | "roofing" | "hvac"          | "water_damage"    | "pool"
-  | "solar"   | "foundation"   | "general_contractor"
-  | "electrical" | "plumbing"  | "landscaping"       | "painting"
-  | "lawn_care"  | "pest_control" | "pressure_washing"
-  | "auto_detailing" | "cleaning_service" | "hair_salon"
-  | "barbershop" | "nail_salon" | "pool_service";
+  // Home Services
+  | "roofing"        | "hvac"            | "water_damage"      | "pool"
+  | "solar"          | "foundation"      | "general_contractor" | "electrical"
+  | "plumbing"       | "landscaping"     | "painting"           | "lawn_care"
+  | "pest_control"   | "pressure_washing"| "auto_detailing"     | "cleaning_service"
+  | "pool_service"   | "tree_service"    | "fence_repair"       | "drywall"
+  | "flooring"       | "windows"         | "gutters"            | "generator"
+  // Legal Services
+  | "personal_injury"| "criminal_defense"| "family_law"         | "traffic_law"
+  | "workers_comp"   | "medical_malpractice" | "dui_defense"    | "divorce_attorney"
+  // Business Services
+  | "hair_salon"     | "barbershop"      | "nail_salon"         | "spa"
+  | "restaurant"     | "retail"          | "gym"                | "daycare";
 
 export interface RawSignal {
   signalType:        SignalType;
