@@ -652,7 +652,7 @@ async function fetchRecalls(): Promise<RawSignal[]> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
     const res = await fetch(
-      "https://api.fda.gov/drug/enforcement.json?search=status:"Ongoing"&limit=20",
+      "https://api.fda.gov/drug/enforcement.json?search=status%3A%22Ongoing%22&limit=20",
       { headers: { "Accept": "application/json" }, signal: controller.signal }
     );
     clearTimeout(timeout);
