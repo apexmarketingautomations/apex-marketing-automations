@@ -748,3 +748,223 @@ export function DistributionTab({ onBack }: { onBack: () => void }) {
     </div>
   );
 }
+
+
+// ── Home & Property Leads Tab ─────────────────────────────────────────────────
+
+const NICHE_CONFIG: Record<string, { label: string; emoji: string; color: string; bg: string; border: string }> = {
+  // Home & Property
+  roofing:            { label: "Roofing",          emoji: "🏠", color: "text-orange-400",  bg: "bg-orange-500/10",  border: "border-orange-500/20" },
+  hvac:               { label: "HVAC",              emoji: "❄️", color: "text-blue-400",    bg: "bg-blue-500/10",    border: "border-blue-500/20" },
+  pool:               { label: "Pool",              emoji: "🏊", color: "text-cyan-400",    bg: "bg-cyan-500/10",    border: "border-cyan-500/20" },
+  solar:              { label: "Solar",             emoji: "☀️", color: "text-yellow-400",  bg: "bg-yellow-500/10",  border: "border-yellow-500/20" },
+  water_damage:       { label: "Water Damage",      emoji: "💧", color: "text-blue-300",    bg: "bg-blue-500/10",    border: "border-blue-500/20" },
+  general_contractor: { label: "Contractor",        emoji: "🔨", color: "text-slate-400",   bg: "bg-slate-500/10",   border: "border-slate-500/20" },
+  electrical:         { label: "Electrical",        emoji: "⚡", color: "text-yellow-300",  bg: "bg-yellow-500/10",  border: "border-yellow-500/20" },
+  plumbing:           { label: "Plumbing",          emoji: "🔧", color: "text-blue-400",    bg: "bg-blue-500/10",    border: "border-blue-500/20" },
+  painting:           { label: "Painting",          emoji: "🎨", color: "text-purple-400",  bg: "bg-purple-500/10",  border: "border-purple-500/20" },
+  lawn_care:          { label: "Lawn Care",         emoji: "🌿", color: "text-green-400",   bg: "bg-green-500/10",   border: "border-green-500/20" },
+  pest_control:       { label: "Pest Control",      emoji: "🐛", color: "text-red-400",     bg: "bg-red-500/10",     border: "border-red-500/20" },
+  pressure_washing:   { label: "Pressure Washing",  emoji: "💦", color: "text-blue-400",    bg: "bg-blue-500/10",    border: "border-blue-500/20" },
+  landscaping:        { label: "Landscaping",       emoji: "🌳", color: "text-green-400",   bg: "bg-green-500/10",   border: "border-green-500/20" },
+  fence:              { label: "Fence",             emoji: "🔒", color: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/20" },
+  // Beauty & Personal
+  hair_salon:         { label: "Hair Salon",        emoji: "💇", color: "text-pink-400",    bg: "bg-pink-500/10",    border: "border-pink-500/20" },
+  barber:             { label: "Barber",            emoji: "✂️", color: "text-indigo-400",  bg: "bg-indigo-500/10",  border: "border-indigo-500/20" },
+  nail_salon:         { label: "Nail Salon",        emoji: "💅", color: "text-rose-400",    bg: "bg-rose-500/10",    border: "border-rose-500/20" },
+  spa_massage:        { label: "Spa / Massage",     emoji: "🧖", color: "text-violet-400",  bg: "bg-violet-500/10",  border: "border-violet-500/20" },
+  spa_esthetics:      { label: "Esthetics",         emoji: "🌸", color: "text-pink-300",    bg: "bg-pink-500/10",    border: "border-pink-500/20" },
+  tattoo:             { label: "Tattoo",            emoji: "🎭", color: "text-slate-300",   bg: "bg-slate-500/10",   border: "border-slate-500/20" },
+  // Auto
+  auto_detailing:     { label: "Auto Detailing",    emoji: "🚗", color: "text-blue-400",    bg: "bg-blue-500/10",    border: "border-blue-500/20" },
+  cleaning_service:   { label: "Cleaning",          emoji: "🧹", color: "text-teal-400",    bg: "bg-teal-500/10",    border: "border-teal-500/20" },
+};
+
+const SIGNAL_TYPE_LABELS: Record<string, string> = {
+  noaa_weather_alert: "Weather Alert",
+  permit_filing:      "Permit Filing",
+  code_enforcement:   "Code Violation",
+  new_license_filing: "New License",
+  new_business:       "New Business",
+  business_signal:    "Business Signal",
+};
+
+interface HomeLead {
+  id: number;
+  signalType: string;
+  county: string;
+  address?: string;
+  ownerName?: string;
+  ownerPhone?: string;
+  serviceCategories: string[];
+  urgency: string;
+  description: string;
+  status: string;
+  score?: number;
+  createdAt: string;
+}
+
+export function HomeLeadsTab({ onBack }: { onBack: () => void }) {
+  const { currentAccount } = useAccount();
+  const [filter, setFilter] = useState<string>("all");
+  const [selected, setSelected] = useState<HomeLead | null>(null);
+
+  const { data: leads = [], isLoading } = useQuery({
+    queryKey: ["/api/home-service/leads", currentAccount?.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/home-service/leads/${currentAccount!.id}`);
+      if (!res.ok) throw new Error("Failed to fetch home service leads");
+      const data = await res.json();
+      return (data.leads || data) as HomeLead[];
+    },
+    enabled: !!currentAccount?.id,
+    refetchInterval: 60000,
+  });
+
+  const filtered = filter === "all" ? leads : leads.filter(l =>
+    (l.serviceCategories || []).includes(filter)
+  );
+
+  const allNiches = [...new Set(leads.flatMap(l => l.serviceCategories || []))];
+
+  return (
+    <div className="p-6 md:p-10 max-w-6xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center gap-4 mb-8">
+        <button onClick={onBack} className="text-slate-400 hover:text-white transition-colors">
+          ← Back
+        </button>
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-600 to-teal-500 flex items-center justify-center">
+            <span className="text-2xl">🏠</span>
+          </div>
+          <div>
+            <h1 className="text-3xl font-black text-white tracking-tight">HOME & PROPERTY LEADS</h1>
+            <p className="text-slate-400 text-sm flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+              Live signals — permits, weather alerts, business licenses, code enforcement
+            </p>
+          </div>
+        </div>
+        <div className="ml-auto text-right">
+          <div className="text-2xl font-black text-white">{leads.length}</div>
+          <div className="text-xs text-slate-500 uppercase tracking-widest">Active Leads</div>
+        </div>
+      </div>
+
+      {/* Niche Filter Pills */}
+      <div className="flex flex-wrap gap-2 mb-6">
+        <button
+          onClick={() => setFilter("all")}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+            filter === "all"
+              ? "bg-white/10 text-white border-white/20"
+              : "bg-white/5 text-slate-400 border-white/10 hover:border-white/20"
+          }`}
+        >
+          All Niches ({leads.length})
+        </button>
+        {allNiches.map(niche => {
+          const cfg = NICHE_CONFIG[niche];
+          if (!cfg) return null;
+          const count = leads.filter(l => (l.serviceCategories || []).includes(niche)).length;
+          return (
+            <button
+              key={niche}
+              onClick={() => setFilter(niche)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                filter === niche
+                  ? `${cfg.bg} ${cfg.color} ${cfg.border}`
+                  : "bg-white/5 text-slate-400 border-white/10 hover:border-white/20"
+              }`}
+            >
+              {cfg.emoji} {cfg.label} ({count})
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Lead Grid */}
+      {isLoading ? (
+        <div className="text-center py-20 text-slate-500">Loading home service leads...</div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-20">
+          <div className="text-6xl mb-4">🏠</div>
+          <div className="text-white font-bold text-xl mb-2">No leads yet</div>
+          <div className="text-slate-500 text-sm">Signals are fetched every 30 minutes from permits, NOAA, DBPR, and code enforcement</div>
+        </div>
+      ) : (
+        <div className="grid gap-3">
+          {filtered.map(lead => {
+            const primaryNiche = lead.serviceCategories?.[0];
+            const cfg = NICHE_CONFIG[primaryNiche] || { label: primaryNiche, emoji: "📌", color: "text-slate-400", bg: "bg-slate-500/10", border: "border-slate-500/20" };
+            const sigLabel = SIGNAL_TYPE_LABELS[lead.signalType] || lead.signalType;
+            const urgencyColors: Record<string, string> = {
+              critical: "text-red-400 bg-red-500/10 border-red-500/20",
+              high: "text-orange-400 bg-orange-500/10 border-orange-500/20",
+              medium: "text-amber-400 bg-amber-500/10 border-amber-500/20",
+              low: "text-slate-400 bg-slate-500/10 border-slate-500/20",
+            };
+
+            return (
+              <div
+                key={lead.id}
+                onClick={() => setSelected(selected?.id === lead.id ? null : lead)}
+                className={`rounded-2xl border p-4 cursor-pointer transition-all ${cfg.bg} ${cfg.border} hover:scale-[1.01]`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">{cfg.emoji}</span>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded border ${urgencyColors[lead.urgency] || urgencyColors.medium}`}>
+                          {(lead.urgency || "medium").toUpperCase()}
+                        </span>
+                        <span className="text-xs text-slate-500">{sigLabel}</span>
+                        <span className="text-xs text-slate-600">• {lead.county} County</span>
+                      </div>
+                      <p className="text-white font-semibold text-sm">{lead.description}</p>
+                      {lead.address && <p className="text-slate-500 text-xs mt-0.5">📍 {lead.address}</p>}
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                    {lead.ownerPhone && (
+                      <a
+                        href={`tel:${lead.ownerPhone}`}
+                        onClick={e => e.stopPropagation()}
+                        className="px-3 py-1 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400 text-xs font-bold hover:bg-green-500/20 transition-all"
+                      >
+                        📞 Call
+                      </a>
+                    )}
+                    <div className="flex gap-1 flex-wrap justify-end">
+                      {(lead.serviceCategories || []).map(cat => {
+                        const c = NICHE_CONFIG[cat];
+                        return c ? (
+                          <span key={cat} className={`text-[10px] px-2 py-0.5 rounded font-bold border ${c.bg} ${c.color} ${c.border}`}>
+                            {c.emoji} {c.label}
+                          </span>
+                        ) : null;
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {selected?.id === lead.id && (
+                  <div className="mt-4 pt-4 border-t border-white/10 grid grid-cols-2 gap-3 text-sm">
+                    {lead.ownerName && <div><span className="text-slate-500">Owner:</span> <span className="text-white">{lead.ownerName}</span></div>}
+                    {lead.ownerPhone && <div><span className="text-slate-500">Phone:</span> <span className="text-white">{lead.ownerPhone}</span></div>}
+                    <div><span className="text-slate-500">County:</span> <span className="text-white">{lead.county}</span></div>
+                    <div><span className="text-slate-500">Source:</span> <span className="text-white">{sigLabel}</span></div>
+                    <div><span className="text-slate-500">Status:</span> <span className="text-white">{lead.status}</span></div>
+                    {lead.score && <div><span className="text-slate-500">Score:</span> <span className="text-white">{lead.score}/100</span></div>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
