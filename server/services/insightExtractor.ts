@@ -55,9 +55,12 @@ export async function extractAndStoreInsights(
 
   let parsed: Array<{ category: string; content: string }>;
   try {
-    const raw = JSON.parse(result);
-    parsed = Array.isArray(raw) ? raw : [];
-  } catch (err) {
+    // Handle both string and pre-parsed object responses
+    const raw = typeof result === "string"
+      ? JSON.parse(result.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim())
+      : result;
+    parsed = Array.isArray(raw) ? raw : (raw?.insights || raw?.data || []);
+  } catch (err: any) {
     console.warn("[INSIGHT] Failed to parse LLM response as JSON:", err instanceof Error ? err.message : err);
     return;
   }
