@@ -9,6 +9,7 @@ import {
   Settings, Play, Pause, Radio, Shield, Clock, ChevronRight, ChevronLeft, Send, Target, Zap, Eye, BookOpen, Lock, ArrowUpCircle, Plus, ExternalLink, Globe, MessageSquare, AlertCircle, Home
 } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
+import { LegalLeadsTab, DistributionTab } from "@/pages/LegalLeadsTab";
 import { SENTINEL_STEPS } from "@/components/tutorial-steps";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
