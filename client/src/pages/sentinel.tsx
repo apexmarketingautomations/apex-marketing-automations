@@ -84,8 +84,13 @@ function formatDateTime(dateStr: string) {
 }
 
 export default function Sentinel() {
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_sentinel");
+
+  // ── Tab routing — ?tab=home|legal|distribution|crash ──
+  const urlParams = new URLSearchParams(location.includes("?") ? location.split("?")[1] : "");
+  const activeTab = urlParams.get("tab") ?? "crash";
+  const setActiveTab = (tab: string) => navigate(`/sentinel?tab=${tab}`);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { activeAccountId } = useAccount();
@@ -313,8 +318,42 @@ export default function Sentinel() {
     const isHomeSvcIncident =
       (liveSelectedIncident.rawPayload as any)?.source === 'sentinel_home_svc';
 
-    return (
+    // ── Show legal leads tab (simple MVP view) ──────────────────────────────
+  if (activeTab === "legal") {
+    return <LegalLeadsTab onBack={() => setActiveTab("crash")} />;
+  }
+
+  // ── Show distribution tab ────────────────────────────────────────────────
+  if (activeTab === "distribution") {
+    return <DistributionTab onBack={() => setActiveTab("crash")} />;
+  }
+
+  return (
       <div className="p-6 md:p-10 max-w-6xl mx-auto">
+        {/* ── Unified Sentinel Tab Bar ── */}
+        <div className="flex gap-1 mb-6 bg-white/5 border border-white/10 rounded-2xl p-1">
+          {[
+            { key: "crash",        label: "Crash Leads",     icon: "🚨", desc: "PI Attorneys" },
+            { key: "home",         label: "Home & Property",  icon: "🏠", desc: "Contractors" },
+            { key: "legal",        label: "Legal Signals",    icon: "⚖️", desc: "All Attorneys" },
+            { key: "distribution", label: "Distribution",     icon: "📡", desc: "Routing Rules" },
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={[
+                "flex-1 flex flex-col items-center gap-0.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all",
+                activeTab === tab.key
+                  ? "bg-white/10 text-white border border-white/20"
+                  : "text-slate-500 hover:text-slate-300 hover:bg-white/5",
+              ].join(" ")}
+            >
+              <span className="text-base">{tab.icon}</span>
+              <span>{tab.label}</span>
+              <span className={"text-[9px] font-normal " + (activeTab === tab.key ? "text-slate-400" : "text-slate-600")}>{tab.desc}</span>
+            </button>
+          ))}
+        </div>
         {isHomeSvcIncident ? (
           <HomeSvcIncidentDetailView
             incident={liveSelectedIncident}
