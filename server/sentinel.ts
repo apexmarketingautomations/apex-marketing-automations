@@ -12,8 +12,22 @@ import {
 const META_VERSION = 'v18.0';
 const FHP_HSMV_URL = "https://trafficincidents.flhsmv.gov/SmartWebClient/CADView.aspx";
 
-const DEFAULT_TARGET_COUNTIES = ['LEE', 'COLLIER', 'CHARLOTTE', 'HENDRY', 'GLADES'];
-const DEFAULT_RADIUS_METERS = 80467; // 50 miles
+// All high-value Florida counties for personal injury lead generation
+const DEFAULT_TARGET_COUNTIES = [
+  // South Florida
+  'MIAMI-DADE', 'BROWARD', 'PALM BEACH', 'MONROE',
+  // Southwest FL
+  'LEE', 'COLLIER', 'CHARLOTTE', 'HENDRY', 'GLADES', 'SARASOTA', 'MANATEE',
+  // Central FL
+  'ORANGE', 'OSCEOLA', 'SEMINOLE', 'POLK', 'HILLSBOROUGH', 'PINELLAS', 'PASCO',
+  // Northeast FL
+  'DUVAL', 'ST JOHNS', 'CLAY', 'NASSAU', 'BAKER',
+  // North Central FL
+  'ALACHUA', 'MARION', 'LAKE', 'VOLUSIA', 'BREVARD',
+  // Northwest FL
+  'ESCAMBIA', 'SANTA ROSA', 'OKALOOSA', 'BAY', 'LEON',
+];
+const DEFAULT_RADIUS_METERS = 160934; // 100 miles — statewide coverage
 
 const SWFL_TARGET_CITIES = [
   'CAPE CORAL', 'FORT MYERS', 'FT MYERS', 'FT. MYERS',
