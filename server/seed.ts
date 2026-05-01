@@ -10,6 +10,7 @@ import {
   workflows,
   liveAutomations,
   contacts,
+  homeServiceContractors,
 } from "@shared/schema";
 import { eq, isNull, sql, and, like } from "drizzle-orm";
 
@@ -648,7 +649,44 @@ async function ensureRoof2RootsAccount(
       console.log(`[SYNC] Created credit wallet for Roof 2 Roots #${r2rId}`);
     }
 
-    console.log(`[SYNC] Roof 2 Roots account #${r2rId} fully configured`);
+    // Register Christopher L and S.A as home service contractors
+    // so they receive NOAA alerts + permit lead SMS automatically
+    const existingContractors = await db
+      .select()
+      .from(homeServiceContractors)
+      .where(eq(homeServiceContractors.subAccountId, r2rId));
+
+    if (existingContractors.length === 0) {
+      await db.insert(homeServiceContractors).values([
+        {
+          subAccountId: r2rId,
+          businessName: "Roof 2 Roots",
+          ownerName: "Christopher L",
+          phone: "+12392141652",
+          serviceCategories: ["roofing", "general_contractor", "water_damage"],
+          counties: ["LEE", "COLLIER", "CHARLOTTE", "SARASOTA"],
+          tier: "enterprise",
+          active: true,
+          score: 80,
+        },
+        {
+          subAccountId: r2rId,
+          businessName: "Roof 2 Roots",
+          ownerName: "S.A",
+          phone: "+19542970185",
+          serviceCategories: ["roofing", "general_contractor", "water_damage"],
+          counties: ["LEE", "COLLIER", "CHARLOTTE", "SARASOTA"],
+          tier: "enterprise",
+          active: true,
+          score: 80,
+        },
+      ]);
+      console.log(\`[SYNC] Registered 2 contractors for Roof 2 Roots #\${r2rId} — Christopher L + S.A\`);
+    } else {
+      console.log(\`[SYNC] Roof 2 Roots contractors already registered (\${existingContractors.length} found)\`);
+    }
+
+    console.log(\`[SYNC] Roof 2 Roots account #\${r2rId} fully configured\`);
   } catch (e: any) {
     console.warn("[SYNC] ensureRoof2RootsAccount failed (non-fatal):", e.message);
   }
