@@ -764,6 +764,89 @@ export function registerSitesRoutes(app: Express) {
   const liquidSiteRateLimiter = new Map<string, { count: number; resetAt: number }>();
   setInterval(() => { const now = Date.now(); liquidSiteRateLimiter.forEach((v, k) => { if (now > v.resetAt) liquidSiteRateLimiter.delete(k); }); }, 60_000);
 
+  // ---- Vibe Site Generator (3D animated, Three.js, GSAP) ----
+  app.post("/api/generate-vibe-site", asyncHandler(async (req, res) => {
+    if (!isAIConfigured()) {
+      return res.status(503).json({ error: "AI service is not configured" });
+    }
+
+    const user = (req as any).user;
+    const userId = user?.claims?.sub || user?.id;
+
+    // Only Apex admin accounts get vibe sites (premium feature)
+    const { isApexParentUser } = await import("./helpers");
+    const isAdmin = await isApexParentUser(userId);
+    if (!isAdmin) {
+      return res.status(403).json({ error: "Vibe Sites are a premium feature. Contact Apex to upgrade." });
+    }
+
+    const { prompt, subAccountId } = req.body;
+    if (!prompt) return res.status(400).json({ error: "prompt is required" });
+
+    const VIBE_SYSTEM_PROMPT = \`You are an elite creative developer who builds jaw-dropping 3D animated websites that go viral on social media. You generate complete, self-contained HTML files with stunning visuals.
+
+Your sites use Three.js for 3D particle effects, GSAP for smooth animations, glassmorphism cards, gradient meshes, custom cursor effects, parallax scrolling, neon glows.
+
+Return a single JSON object:
+{
+  "name": "Business Name — Vibe Site",
+  "html": "<complete self-contained HTML as string — escape all quotes properly>",
+  "theme": { "primary": "#hex", "bg": "#hex", "text": "#hex", "font": "Font Name" }
+}
+
+The HTML must:
+- Be completely self-contained with all CSS/JS inline or CDN
+- Load Three.js: https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js
+- Load GSAP: https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js
+- Load ScrollTrigger: https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js
+- Include: sticky nav, hero with 3D animated background, services/features, testimonials, CTA, contact form
+- Be genuinely stunning — something people screenshot and post on Instagram
+- Write real business-specific copy, not placeholders
+- Be fully mobile responsive
+
+Color themes: personal injury=(#1a1a2e,#ffd700), roofing=(#1c1c1c,#ff6b35), medical=(#0a0a1a,#00d4ff), marketing=(#050505,#8b5cf6), fitness=(#0d0d0d,#ef4444), real estate=(#0a0a0a,#10b981), restaurant=(#111111,#f59e0b), beauty=(#1a0a1a,#f4a5b0)\`;
+
+    try {
+      const result = await aiChat([
+        { role: "system", content: VIBE_SYSTEM_PROMPT },
+        { role: "user", content: prompt },
+      ], { temperature: 0.8, maxTokens: 8000, jsonMode: true, route: "generate-vibe-site", timeoutMs: 90_000 });
+
+      if (!result.ok) throw new Error(result.errorMessage || "AI generation failed");
+
+      let vibeData: any;
+      try {
+        const cleaned = result.text.replace(/\`\`\`json\n?/g, "").replace(/\`\`\`\n?/g, "").trim();
+        vibeData = JSON.parse(cleaned);
+      } catch {
+        throw new Error("Failed to parse vibe site response");
+      }
+
+      if (!vibeData.html) return res.status(500).json({ error: "No HTML generated" });
+
+      // Save as a site
+      const saved = await storage.createSavedSite({
+        subAccountId: subAccountId ?? 13,
+        name: vibeData.name || "Vibe Site",
+        siteData: { type: "vibe", html: vibeData.html, theme: vibeData.theme, sections: [] },
+        publishedUrl: null,
+        status: "draft",
+      });
+
+      emitUniversalEvent({
+        eventType: "site.generated",
+        sourceModule: "vibe-generator",
+        subAccountId: subAccountId ?? 13,
+        metadata: { siteId: saved.id, type: "vibe" },
+      });
+
+      res.json({ ...saved, html: vibeData.html, theme: vibeData.theme });
+    } catch (err: any) {
+      console.error("[VIBE-GEN] Error:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  }));
+
   app.post("/api/generate-liquid-site", asyncHandler(async (req, res) => {
     const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
     const now = Date.now();
