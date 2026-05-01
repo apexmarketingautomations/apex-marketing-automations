@@ -608,7 +608,7 @@ export class DatabaseStorage implements IStorage {
         try {
           const parsed = JSON.parse(lastMsg);
           lastMsg = parsed.text || parsed.body || parsed.message || parsed.content || lastMsg;
-        } catch { /* keep original */ }
+        } catch (parseErr) { /* allow-silent-catch: JSON.parse on lastMessage — non-JSON strings are kept as-is */ }
       }
 
       // Build display name from contact or fall back to channel-specific label
