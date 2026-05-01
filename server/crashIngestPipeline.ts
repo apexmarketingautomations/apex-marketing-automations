@@ -35,8 +35,17 @@ const MAX_BACKOFF_MS = 5 * 60 * 1000;
 const BASE_BACKOFF_MS = 5_000;
 
 const LEAD_QUALIFYING_TYPES = [
-  "INJUR", "FATAL", "ENTRAP", "EXTRICAT", "TRAUMA", "ROADBLOCK", "HIT AND RUN", "H&R", "ROLLOVER",
+  "INJUR", "FATAL", "ENTRAP", "EXTRICAT", "TRAUMA", "ROLLOVER",
+  "HIT AND RUN", "H&R", "HIT & RUN", "PEDESTRIAN", "BICYCLE",
+  "MOTORCYCLE", "SIGNAL 4", "SIGNAL4", "CRITICAL",
 ];
+
+// Only HIGH and CRITICAL severity crashes become leads for injury attorneys
+const QUALIFYING_SEVERITIES = new Set(["critical", "high"]);
+
+// Giovanni's account gets all injury leads
+const GIOVANNI_ACCOUNT_ID = 14;
+const APEX_MAIN_ACCOUNT_ID = 13;
 
 interface PollCycleSummary {
   traceId: string;
@@ -116,7 +125,15 @@ function recordCycle(cycle: PollCycleSummary): void {
 
 function isQualifyingCrash(incident: SentinelIncidentRaw): boolean {
   const upper = incident.type.toUpperCase();
-  return LEAD_QUALIFYING_TYPES.some(kw => upper.includes(kw)) || incident.severity === "critical";
+  const typeMatch = LEAD_QUALIFYING_TYPES.some(kw => upper.includes(kw));
+  const severityMatch = QUALIFYING_SEVERITIES.has(incident.severity?.toLowerCase() || "");
+  return typeMatch && severityMatch;
+}
+
+// Determine which account this lead belongs to
+function getTargetAccountId(incident: SentinelIncidentRaw): number {
+  // Injury crashes (the ones that qualify) go to Giovanni
+  return GIOVANNI_ACCOUNT_ID;
 }
 
 function buildReportNumber(incident: SentinelIncidentRaw): string {
@@ -145,6 +162,11 @@ async function createLeadFromCrash(
   subAccountId: number,
 ): Promise<boolean> {
   try {
+    // Use Giovanni's account for all injury leads
+    const targetAccountId = getTargetAccountId(incident as any);
+    if (targetAccountId !== subAccountId) {
+      subAccountId = targetAccountId;
+    }
     // Skip trace the crash location to get real name + phone
     let firstName = "Crash Lead";
     let lastName = `${incident.county || "FL"} — ${incident.type}`;
@@ -206,6 +228,24 @@ async function createLeadFromCrash(
       lng: incident.lng ?? undefined,
     });
     await storage.markCrashReportAsLead(report.id);
+
+    // Notify Giovanni immediately when a qualifying lead comes in
+    try {
+      const giovanni = await storage.getSubAccount(GIOVANNI_ACCOUNT_ID);
+      if (giovanni?.ownerPhone && incident.severity && QUALIFYING_SEVERITIES.has(incident.severity.toLowerCase())) {
+        const { publishEventAsync, EVENT_TYPES } = await import("./eventBus");
+        publishEventAsync(EVENT_TYPES.MESSAGE_SENT, {
+          subAccountId: GIOVANNI_ACCOUNT_ID,
+          to: giovanni.ownerPhone,
+          body: `🚨 APEX SENTINEL: New ${incident.severity?.toUpperCase()} injury lead — ${incident.type} in ${incident.county || "FL"}. ${incident.googleMaps || ""}. Check your CRM now.`,
+          channel: "sms",
+          source: "sentinel_alert",
+        }, "crash-ingest-pipeline");
+      }
+    } catch (notifyErr: any) {
+      console.warn("[CRASH-INGEST] Giovanni notification failed:", notifyErr.message);
+    }
+
     return true;
   } catch (err: any) {
     console.error(`[CRASH-INGEST] Lead creation failed for report ${report.id} (${report.reportNumber}): ${err.message}`);
