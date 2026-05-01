@@ -109,6 +109,31 @@ export async function registerRoutes(
   registerAffiliatesRoutes(app);
   registerSentinelRoutes(app);
   registerDomainRoutes(app);
+
+  // ── Legal Signal Pipeline Routes ──────────────────────────────────────────
+  app.get("/api/legal-leads", asyncHandler(async (req, res) => {
+    const subAccountId = req.query.subAccountId ? Number(req.query.subAccountId) : undefined;
+    const limit        = Math.min(Number(req.query.limit ?? 100), 500);
+    const vertical     = req.query.vertical as string | undefined;
+
+    const { db } = await import("./db");
+    const { legalLeads } = await import("@shared/schema");
+    const { desc, eq, and } = await import("drizzle-orm");
+
+    let query = db.select().from(legalLeads).orderBy(desc(legalLeads.createdAt)).limit(limit);
+    const results = await query;
+    res.json(vertical ? results.filter((l: any) => l.legalVertical === vertical) : results);
+  }));
+
+  app.get("/api/legal-signals/stats", asyncHandler(async (req, res) => {
+    const { getLegalPipelineStats } = await import("./legalSignalPipeline");
+    res.json(getLegalPipelineStats());
+  }));
+
+  app.get("/api/home-service/stats", asyncHandler(async (req, res) => {
+    const { getHomeServicePipelineStats } = await import("./homeServiceSignalPipeline");
+    res.json(getHomeServicePipelineStats());
+  }));
   registerPropertyRoutes(app);
   const { registerHomeServiceRoutes } = await import("./routes/homeService");
   registerHomeServiceRoutes(app);
