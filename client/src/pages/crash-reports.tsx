@@ -123,10 +123,10 @@ function getDataSource(raw: CrashReportStoredData | CrashReportData | null): str
 }
 
 const STATUS_CONFIG: Record<string, { icon: typeof CheckCircle2; color: string; bg: string; label: string }> = {
-  COMPLETED: { icon: CheckCircle2, color: "text-green-400", bg: "bg-green-500/20 border-green-500/30", label: "Completed" },
-  PENDING: { icon: Loader2, color: "text-amber-400", bg: "bg-amber-500/20 border-amber-500/30", label: "Pending" },
-  PROCESSING: { icon: Loader2, color: "text-cyan-400", bg: "bg-cyan-500/20 border-cyan-500/30", label: "Processing" },
-  AWAITING: { icon: Clock, color: "text-orange-400", bg: "bg-orange-500/20 border-orange-500/30", label: "Awaiting Report" },
+  COMPLETED: { icon: CheckCircle2, color: "text-green-400", bg: "bg-green-500/20 border-green-500/30", label: "Lead Active" },
+  PENDING: { icon: Loader2, color: "text-amber-400", bg: "bg-amber-500/20 border-amber-500/30", label: "Pending Enrichment" },
+  PROCESSING: { icon: Loader2, color: "text-cyan-400", bg: "bg-cyan-500/20 border-cyan-500/30", label: "Enriching..." },
+  AWAITING: { icon: Clock, color: "text-orange-400", bg: "bg-orange-500/20 border-orange-500/30", label: "Awaiting Data" },
   FAILED: { icon: XCircle, color: "text-red-400", bg: "bg-red-500/20 border-red-500/30", label: "Failed" },
   NOT_FOUND: { icon: FileWarning, color: "text-slate-400", bg: "bg-slate-500/20 border-slate-500/30", label: "Not Found" },
 };
