@@ -89,7 +89,6 @@ export async function registerRoutes(
   registerSnapshotsRoutes(app);
   registerAffiliatesRoutes(app);
   registerSentinelRoutes(app);
-  registerRetroSkipTraceRoute(app);
   registerPropertyRoutes(app);
   const { registerHomeServiceRoutes } = await import("./routes/homeService");
   registerHomeServiceRoutes(app);
