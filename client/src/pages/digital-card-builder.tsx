@@ -211,29 +211,41 @@ function AnalyticsSummary({ card }: { card: CardConfig }) {
   // CLICKY_TYPES set on the server (phone / email / website).
   const conversionEvents = sessions.reduce((a, s) => a + s.clickCount, 0);
 
+  const isLoading = !data && !!card.id;
+
   return (
-    <Card className="bg-gradient-to-br from-indigo-500/10 to-purple-500/10 border-indigo-500/20" data-testid="analytics-summary">
-      <CardContent className="p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <BarChart3 size={16} className="text-indigo-400" />
-          <h3 className="text-sm font-bold text-white">Card Analytics</h3>
+    <Card className="bg-gradient-to-br from-slate-900 to-slate-800 border-white/10 shadow-xl" data-testid="analytics-summary">
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center">
+              <BarChart3 size={15} className="text-indigo-400" />
+            </div>
+            <h3 className="text-sm font-bold text-white">Card Analytics</h3>
+          </div>
+          {!card.id && (
+            <span className="text-[10px] text-slate-500 bg-slate-700/50 px-2 py-1 rounded-full">Save card to track</span>
+          )}
+          {isLoading && (
+            <span className="text-[10px] text-indigo-400 animate-pulse">Loading...</span>
+          )}
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <Stat label="Total Views" value={card.viewCount || 0} testId="stat-views" />
-          <Stat label="Unique Visitors" value={uniqueVisitors} testId="stat-visitors" />
-          <Stat label="Avg Time on Page" value={`${avgTimeSec}s`} testId="stat-avgtime" />
-          <Stat label="Conversion Events" value={conversionEvents} testId="stat-conversions" />
+        <div className="grid grid-cols-2 gap-3">
+          <Stat label="Total Views" value={card.viewCount || 0} testId="stat-views" color="#818cf8" />
+          <Stat label="Unique Visitors" value={uniqueVisitors} testId="stat-visitors" color="#34d399" />
+          <Stat label="Avg Time" value={avgTimeSec > 0 ? `${avgTimeSec}s` : "—"} testId="stat-avgtime" color="#f59e0b" />
+          <Stat label="CTA Clicks" value={conversionEvents} testId="stat-conversions" color="#f43f5e" />
         </div>
       </CardContent>
     </Card>
   );
 }
 
-function Stat({ label, value, testId }: { label: string; value: string | number; testId: string }) {
+function Stat({ label, value, testId, color }: { label: string; value: string | number; testId: string; color?: string }) {
   return (
-    <div className="text-center p-2 rounded-xl bg-white/5" data-testid={testId}>
-      <p className="text-lg font-bold text-white">{value}</p>
-      <p className="text-[10px] text-slate-500 uppercase font-bold">{label}</p>
+    <div className="text-center p-3 rounded-xl bg-white/5 border border-white/[0.06] hover:bg-white/[0.08] transition-colors" data-testid={testId}>
+      <p className="text-xl font-bold" style={color ? { color } : { color: "white" }}>{value}</p>
+      <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wide mt-0.5">{label}</p>
     </div>
   );
 }
@@ -482,11 +494,15 @@ function DigitalCardBuilderInner() {
 
   const saveMutation = useMutation({
     mutationFn: async (data: CardConfig) => {
-      await apiRequest("POST", `/api/digital-card/${subAccountId}`, data);
+      const res = await apiRequest("POST", `/api/digital-card/${subAccountId}`, data);
+      return res as CardConfig;
     },
-    onSuccess: () => {
-      toast({ title: "Saved", description: "Your digital card has been updated." });
+    onSuccess: (savedCard) => {
+      toast({ title: "Saved ✓", description: "Your digital card has been updated." });
+      // Reset local form state so config falls back to server card (with DB id)
+      setForm(null);
       queryClient.invalidateQueries({ queryKey: ["/api/digital-card", subAccountId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cards", savedCard?.id, "sessions"] });
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -584,9 +600,10 @@ function DigitalCardBuilderInner() {
         </Card>
       )}
 
-      <AnalyticsSummary card={config} />
+      {/* Always pass the server card for analytics so we have the real DB id */}
+      <AnalyticsSummary card={cardConfig ?? config} />
 
-      <LeadTable cardId={config.id} />
+      <LeadTable cardId={(cardConfig ?? config).id} />
 
       <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
         {sections.map(s => (
