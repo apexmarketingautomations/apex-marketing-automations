@@ -76,6 +76,8 @@ import { useToast } from "@/hooks/use-toast";
 import { ChatWidget } from "@/components/chat-widget";
 import { SiteBuilderTutorial, useSiteBuilderTutorial } from "@/components/site-builder-tutorial";
 import { markMilestoneComplete, TutorialCenterCompact } from "@/components/tutorial-center";
+import { VibeSitePanel } from "@/components/VibeSitePanel";
+import type { VibeDesignData } from "@/components/VibeSitePanel";
 
 const ICON_MAP: Record<string, React.ComponentType<any>> = {
   ShieldCheck,
