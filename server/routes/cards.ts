@@ -416,7 +416,7 @@ export function registerCardsRoutes(app: Express) {
       });
       // Bump save count
       await db.update(digitalCards).set({ saveContactCount: sql`${digitalCards.saveContactCount} + 1` }).where(eq(digitalCards.id, card.id));
-    } catch { // allow-silent-catch: fire-and-forget analytics/events, never block response
+    } catch (_e) { // allow-silent-catch: fire-and-forget analytics/events, never block response
     }
 
     // Emit to platform intelligence
@@ -427,7 +427,7 @@ export function registerCardsRoutes(app: Express) {
         subAccountId: card.subAccountId!,
         metadata: { contactId, cardId: card.id, slug, source: "digital_card" },
       }, `New card lead: ${cleanName}`, `${cleanName} submitted their info via ${card.name}'s digital card`, "info");
-    } catch { // allow-silent-catch: fire-and-forget analytics/events, never block response
+    } catch (_e) { // allow-silent-catch: fire-and-forget analytics/events, never block response
     }
 
     return res.status(201).json({ ok: true, contactId });
