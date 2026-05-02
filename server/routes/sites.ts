@@ -273,7 +273,7 @@ export function registerSitesRoutes(app: Express) {
         subAccountId: site.subAccountId,
         metadata: { siteId: id, publishedUrl, siteName: site.name },
       });
-    } catch { /* non-critical */ }
+    } catch { // allow-silent-catch: fire-and-forget event emit, never blocks response
     res.json({ success: true, url: publishedUrl, site: updated });
   }));
 
