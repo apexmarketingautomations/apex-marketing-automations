@@ -152,6 +152,18 @@ export async function renderSiteHtml(siteId: number, res: Response): Promise<voi
   }
 
   const data = site.siteData as any;
+
+  // ── Vibe Site: serve raw AI-generated HTML directly ──
+  if (data?.type === "vibe" && typeof data?.html === "string" && data.html.length > 0) {
+    if (!site.publishedUrl) {
+      await storage.updateSavedSite(siteId, { publishedUrl: `/live/${siteId}` });
+    }
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.send(data.html);
+    return;
+  }
+
   if (!data?.theme || !Array.isArray(data?.sections)) {
     res.status(400).send("<html><body style='background:#0f172a;color:white;display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui'><h1>Invalid site data</h1></body></html>");
     return;
@@ -773,10 +785,48 @@ export function registerSitesRoutes(app: Express) {
       return res.status(403).json({ error: "Vibe Sites are a premium feature. Contact Apex to upgrade." });
     }
 
-    const { prompt, subAccountId } = req.body;
+    const { prompt, subAccountId, vibeTheme } = req.body;
     if (!prompt) return res.status(400).json({ error: "prompt is required" });
 
-    const VIBE_SYSTEM_PROMPT = "You are an elite creative developer who builds jaw-dropping 3D animated websites that go viral on social media. You generate complete, self-contained HTML files with stunning visuals.\n\nYour sites use Three.js for 3D particle effects, GSAP for smooth animations, glassmorphism cards, gradient meshes, custom cursor effects, parallax scrolling, neon glows.\n\nReturn a single JSON object:\n{\n  \"name\": \"Business Name — Vibe Site\",\n  \"html\": \"<complete self-contained HTML as string — escape all quotes properly>\",\n  \"theme\": { \"primary\": \"#hex\", \"bg\": \"#hex\", \"text\": \"#hex\", \"font\": \"Font Name\" }\n}\n\nThe HTML must:\n- Be completely self-contained with all CSS/JS inline or CDN\n- Load Three.js: https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js\n- Load GSAP: https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js\n- Load ScrollTrigger: https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js\n- Include: sticky nav, hero with 3D animated background, services/features, testimonials, CTA, contact form\n- Be genuinely stunning — something people screenshot and post on Instagram\n- Write real business-specific copy, not placeholders\n- Be fully mobile responsive\n\nColor themes: personal injury=(#1a1a2e,#ffd700), roofing=(#1c1c1c,#ff6b35), medical=(#0a0a1a,#00d4ff), marketing=(#050505,#8b5cf6), fitness=(#0d0d0d,#ef4444), real estate=(#0a0a0a,#10b981), restaurant=(#111111,#f59e0b), beauty=(#1a0a1a,#f4a5b0)"
+    const THEME_PALETTES: Record<string, { bg: string; primary: string; text: string; font: string; desc: string }> = {
+      "dark-luxury":  { bg: "#050404", primary: "#c9a84c", text: "#f5f0e8", font: "Playfair Display", desc: "ultra-dark charcoal background with gold accent glows, luxury glassmorphism cards with velvet dark shadows, ornate serif headings" },
+      "neon-cyber":   { bg: "#0a0a1a", primary: "#00ff88", text: "#e0ffe8", font: "Space Grotesk",    desc: "deep navy void with electric green neon glows, cyberpunk scanline grid, holographic card effects, terminal-style elements" },
+      "deep-purple":  { bg: "#0d0014", primary: "#a855f7", text: "#f0e6ff", font: "Inter",            desc: "void black-purple background with violet particle nebula fields, cosmic aurora gradients, floating orb animations" },
+      "ocean-dark":   { bg: "#020b18", primary: "#0ea5e9", text: "#e0f4ff", font: "DM Sans",          desc: "abyssal ocean dark with cyan bioluminescence, wave particle systems, underwater caustic light effects, deep sea atmosphere" },
+      "fire-red":     { bg: "#0a0000", primary: "#ef4444", text: "#fff0f0", font: "Montserrat",       desc: "void black with crimson fire particles, ember trail animations, molten lava flow effects, intense red energy" },
+      "clean-white":  { bg: "#f8f8f8", primary: "#6366f1", text: "#1a1a2e", font: "DM Sans",          desc: "bright clean white minimal background with indigo accents, frosted glass cards, subtle floating geometric orbs, airy spacing" },
+    };
+    const palette = THEME_PALETTES[(vibeTheme as string) || "deep-purple"] || THEME_PALETTES["deep-purple"];
+
+    const VIBE_SYSTEM_PROMPT = `You are an elite creative developer who builds jaw-dropping 3D animated websites that go viral on social media. You generate complete, self-contained HTML files with stunning visuals.
+
+Your sites use Three.js for 3D particle effects, GSAP for smooth animations, glassmorphism cards, gradient meshes, custom cursor effects, parallax scrolling, neon glows.
+
+MANDATORY THEME — enforce these EXACT colors throughout the entire site:
+- Background: ${palette.bg}
+- Primary Accent / Glow: ${palette.primary}
+- Text: ${palette.text}
+- Font: ${palette.font}
+- Style: ${palette.desc}
+
+Return a single JSON object:
+{
+  "name": "Business Name — Vibe Site",
+  "html": "<complete self-contained HTML as string>",
+  "theme": { "primary": "${palette.primary}", "bg": "${palette.bg}", "text": "${palette.text}", "font": "${palette.font}" }
+}
+
+The HTML must:
+- Be completely self-contained with all CSS/JS inline or via CDN
+- Load Three.js: https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js
+- Load GSAP: https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js
+- Load ScrollTrigger: https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js
+- STRICTLY USE the theme colors — bg:${palette.bg}, primary:${palette.primary}, font:${palette.font}
+- Include: sticky nav with blur effect, hero with Three.js 3D animated background (particles/geometry), services/features section, social proof/testimonials, CTA, contact form with proper styling
+- Be genuinely stunning — something people screenshot and post on Instagram. Use real animations, real depth.
+- Write real business-specific copy tailored to the prompt — NO generic placeholders
+- Be fully mobile responsive with proper viewport meta tag
+- Return ONLY valid JSON — no markdown fences, no explanation\`
 
     try {
       const result = await aiChat([
@@ -942,3 +992,4 @@ export function registerSitesRoutes(app: Express) {
     }
   }));
 }
+
