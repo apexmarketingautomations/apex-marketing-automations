@@ -1462,7 +1462,7 @@ export default function SiteBuilder() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [vibeMode, setVibeMode] = useState(false);
   const [selectedVibeTheme, setSelectedVibeTheme] = useState("dark-luxury");
-  const [showThemePicker, setShowThemePicker] = useState(false);
+  const [showVibePanel, setShowVibePanel] = useState(false);
   const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
   const [history, setHistory] = useState<string[]>([]);
   const [lastPrompt, setLastPrompt] = useState("");
@@ -2387,12 +2387,25 @@ export default function SiteBuilder() {
         </div>
 
 
+        {/* Vibe Site Panel Modal */}
+        {showVibePanel && (
+          <VibeSitePanel
+            onClose={() => setShowVibePanel(false)}
+            onGenerate={(richPrompt, design) => {
+              setShowVibePanel(false);
+              handleGenerate(richPrompt);
+            }}
+            selectedTheme={selectedVibeTheme}
+            onThemeChange={setSelectedVibeTheme}
+            isGenerating={isGenerating}
+          />
+        )}
+
         <div className="p-4 bg-black/40 border-t border-white/5 backdrop-blur-md space-y-3">
           <TutorialCenterCompact />
 
-          {/* ── Mode Toggle + Theme Picker ── */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Standard vs Vibe toggle */}
+          {/* ── Mode Toggle ── */}
+          <div className="flex items-center gap-2">
             <div className="flex items-center bg-white/5 border border-white/10 rounded-xl p-1 gap-1">
               <button
                 onClick={() => setVibeMode(false)}
@@ -2401,40 +2414,29 @@ export default function SiteBuilder() {
                 ⚡ Standard
               </button>
               <button
-                onClick={() => { setVibeMode(true); setShowThemePicker(true); }}
+                onClick={() => { setVibeMode(true); setShowVibePanel(true); }}
                 className={"px-3 py-1.5 rounded-lg text-xs font-bold transition-all " + (vibeMode ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow" : "text-slate-500 hover:text-slate-300")}
               >
                 ✨ Vibe Mode
               </button>
             </div>
-
-            {/* Theme picker — only when vibe mode is on */}
             {vibeMode && (
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {[
-                  { id: "dark-luxury",   label: "Dark Luxury",   colors: ["#050404", "#c9a84c"] },
-                  { id: "neon-cyber",    label: "Neon Cyber",    colors: ["#0a0a1a", "#00ff88"] },
-                  { id: "deep-purple",   label: "Deep Purple",   colors: ["#0d0014", "#a855f7"] },
-                  { id: "ocean-dark",    label: "Ocean Dark",    colors: ["#020b18", "#0ea5e9"] },
-                  { id: "fire-red",      label: "Fire Red",      colors: ["#0a0000", "#ef4444"] },
-                  { id: "clean-white",   label: "Clean White",   colors: ["#ffffff", "#6366f1"] },
-                ].map(theme => (
-                  <button
-                    key={theme.id}
-                    onClick={() => setSelectedVibeTheme(theme.id)}
-                    title={theme.label}
-                    className={"flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-all " + (selectedVibeTheme === theme.id ? "border-white/40 bg-white/10 text-white scale-105" : "border-white/10 bg-white/5 text-slate-500 hover:text-slate-300")}
-                  >
-                    <span className="flex gap-0.5">
-                      <span className="w-2.5 h-2.5 rounded-full border border-white/10" style={{ background: theme.colors[0] }} />
-                      <span className="w-2.5 h-2.5 rounded-full border border-white/10" style={{ background: theme.colors[1] }} />
-                    </span>
-                    {theme.label}
-                  </button>
-                ))}
-              </div>
+              <button
+                onClick={() => setShowVibePanel(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-300 text-xs font-bold hover:bg-purple-500/30 transition-all"
+              >
+                ✦ Design Panel
+              </button>
             )}
           </div>
+
+          {/* Vibe mode active badge */}
+          {vibeMode && (
+            <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20">
+              <span className="text-[10px] text-purple-300 font-bold">✨ VIBE MODE — Click "Design Panel" to customize</span>
+              <span className="text-[9px] px-2 py-0.5 rounded bg-white/10 text-slate-400">{selectedVibeTheme.replace(/-/g," ")}</span>
+            </div>
+          )}
 
           {/* Vibe mode badge */}
           {vibeMode && (
