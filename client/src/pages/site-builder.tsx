@@ -1636,7 +1636,10 @@ export default function SiteBuilder() {
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: text }),
+        body: JSON.stringify({
+          prompt: text,
+          ...(isVibe ? { vibeTheme: selectedVibeTheme } : {}),
+        }),
       });
 
       if (!res.ok) {
@@ -1739,9 +1742,42 @@ export default function SiteBuilder() {
   };
 
   const handlePublish = async () => {
-    if (!currentSiteId) return;
+    let siteIdToPublish = currentSiteId;
+
+    // Auto-save if not yet saved
+    if (!siteIdToPublish) {
+      if (!siteData) {
+        toast({ title: "Nothing to Publish", description: "Generate a site first, then publish.", variant: "destructive" });
+        return;
+      }
+      try {
+        setIsSaving(true);
+        const autoName = lastPrompt
+          ? lastPrompt.slice(0, 40).trim() + (lastPrompt.length > 40 ? "…" : "")
+          : "My Site";
+        const saveRes = await fetch("/api/sites", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: autoName, prompt: lastPrompt || "", siteData }),
+        });
+        if (!saveRes.ok) {
+          const err = await saveRes.json();
+          throw new Error(err.error || "Auto-save failed");
+        }
+        const saved = await saveRes.json();
+        siteIdToPublish = saved.id;
+        setCurrentSiteId(saved.id);
+        await fetchSavedSites();
+      } catch (err: any) {
+        toast({ title: "Save Before Publish Failed", description: err.message, variant: "destructive" });
+        return;
+      } finally {
+        setIsSaving(false);
+      }
+    }
+
     try {
-      const res = await fetch(`/api/sites/${currentSiteId}/publish`, {
+      const res = await fetch(`/api/sites/${siteIdToPublish}/publish`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
@@ -1751,10 +1787,10 @@ export default function SiteBuilder() {
         return;
       }
       markMilestoneComplete("publish");
-      const liveUrl = data.url || `/live/${currentSiteId}`;
+      const liveUrl = data.url || `/live/${siteIdToPublish}`;
       toast({
-        title: "Site Published",
-        description: `Your site is live at: ${liveUrl}`,
+        title: "🚀 Site Published!",
+        description: `Live at: ${window.location.origin}${liveUrl}`,
       });
     } catch (err: any) {
       toast({ title: "Publish Failed", description: err.message || "Network error.", variant: "destructive" });
