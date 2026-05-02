@@ -1788,9 +1788,22 @@ export default function SiteBuilder() {
       }
       markMilestoneComplete("publish");
       const liveUrl = data.url || `/live/${siteIdToPublish}`;
+      const fullUrl = `${window.location.origin}${liveUrl}`;
+      // Update local site list so Published badge shows immediately
+      await fetchSavedSites();
       toast({
         title: "🚀 Site Published!",
-        description: `Live at: ${window.location.origin}${liveUrl}`,
+        description: `Live at: ${fullUrl}`,
+        action: (
+          <a
+            href={fullUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/20 transition-colors"
+          >
+            View Live ↗
+          </a>
+        ) as any,
       });
     } catch (err: any) {
       toast({ title: "Publish Failed", description: err.message || "Network error.", variant: "destructive" });

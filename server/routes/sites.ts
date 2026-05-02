@@ -259,7 +259,21 @@ export function registerSitesRoutes(app: Express) {
     const site = await storage.getSavedSite(id);
     if (!site) return res.status(404).json({ error: "Site not found" });
     const publishedUrl = `/live/${id}`;
-    const updated = await storage.updateSavedSite(id, { publishedUrl });
+    const updated = await storage.updateSavedSite(id, {
+      publishedUrl,
+      isPublished: true,
+      status: "published",
+    });
+    // Emit event for dashboard notifications
+    try {
+      const { emitUniversalEvent } = await import("../intelligence/eventEmitter");
+      emitUniversalEvent({
+        eventType: "site.published",
+        sourceModule: "site-builder",
+        subAccountId: site.subAccountId,
+        metadata: { siteId: id, publishedUrl, siteName: site.name },
+      });
+    } catch { /* non-critical */ }
     res.json({ success: true, url: publishedUrl, site: updated });
   }));
 
