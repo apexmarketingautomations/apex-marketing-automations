@@ -174,7 +174,7 @@ beforeAll(async () => {
 afterAll(async () => {
   try {
     await client?.close();
-  } catch { // allow-silent-catch: intentional in test — verifying failure path only
+  } catch (_e) { // allow-silent-catch: intentional in test — verifying failure path only
     // ignore
   }
   if (serverProc && serverProc.exitCode === null) {
@@ -187,7 +187,7 @@ afterAll(async () => {
         if (serverProc.exitCode === null) {
           try {
             serverProc.kill("SIGKILL");
-          } catch { // allow-silent-catch: intentional in test — verifying failure path only
+          } catch (_e) { // allow-silent-catch: intentional in test — verifying failure path only
             // ignore
           }
         }
