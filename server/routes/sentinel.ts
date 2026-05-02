@@ -966,7 +966,6 @@ export function registerRetroSkipTraceRoute(app: any) {
       res.status(500).json({ error: err.message });
     }
   });
-}
 
   // ── Legal Signals API ────────────────────────────────────────────────────────
 
@@ -1082,3 +1081,4 @@ export function registerRetroSkipTraceRoute(app: any) {
 
     res.json({ success: true, rule: updated });
   }));
+}
