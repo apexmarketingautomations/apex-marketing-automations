@@ -321,13 +321,97 @@ export default function Sentinel() {
 
   // ── Tab routing — always runs before incident detail check ─────────────────
   if (activeTab === "home") {
-    return <HomeLeadsTab onBack={() => setActiveTab("crash")} />;
+    return (
+      <div className="p-6 md:p-10 max-w-6xl mx-auto">
+      {/* ── Persistent Tab Bar ── */}
+      <div className="flex gap-1 mb-6 bg-white/5 border border-white/10 rounded-2xl p-1">
+        {[
+          { key: "crash",        label: "Crash Leads",    icon: "🚨", desc: "PI Attorneys" },
+          { key: "home",         label: "Home & Property", icon: "🏠", desc: "Contractors" },
+          { key: "legal",        label: "Legal Signals",   icon: "⚖️", desc: "All Attorneys" },
+          { key: "distribution", label: "Distribution",    icon: "📡", desc: "Routing Rules" },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={[
+              "flex-1 flex flex-col items-center gap-0.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all",
+              activeTab === tab.key
+                ? "bg-indigo-600/80 text-white border border-indigo-500/50 shadow-lg shadow-indigo-500/20"
+                : "text-slate-500 hover:text-slate-300 hover:bg-white/5",
+            ].join(" ")}
+          >
+            <span className="text-base">{tab.icon}</span>
+            <span>{tab.label}</span>
+            <span className={"text-[9px] font-normal " + (activeTab === tab.key ? "text-indigo-200" : "text-slate-600")}>{tab.desc}</span>
+          </button>
+        ))}
+      </div>
+        <HomeLeadsTab onBack={() => setActiveTab("crash")} />
+      </div>
+    );
   }
   if (activeTab === "legal") {
-    return <LegalLeadsTab onBack={() => setActiveTab("crash")} />;
+    return (
+      <div className="p-6 md:p-10 max-w-6xl mx-auto">
+      {/* ── Persistent Tab Bar ── */}
+      <div className="flex gap-1 mb-6 bg-white/5 border border-white/10 rounded-2xl p-1">
+        {[
+          { key: "crash",        label: "Crash Leads",    icon: "🚨", desc: "PI Attorneys" },
+          { key: "home",         label: "Home & Property", icon: "🏠", desc: "Contractors" },
+          { key: "legal",        label: "Legal Signals",   icon: "⚖️", desc: "All Attorneys" },
+          { key: "distribution", label: "Distribution",    icon: "📡", desc: "Routing Rules" },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={[
+              "flex-1 flex flex-col items-center gap-0.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all",
+              activeTab === tab.key
+                ? "bg-indigo-600/80 text-white border border-indigo-500/50 shadow-lg shadow-indigo-500/20"
+                : "text-slate-500 hover:text-slate-300 hover:bg-white/5",
+            ].join(" ")}
+          >
+            <span className="text-base">{tab.icon}</span>
+            <span>{tab.label}</span>
+            <span className={"text-[9px] font-normal " + (activeTab === tab.key ? "text-indigo-200" : "text-slate-600")}>{tab.desc}</span>
+          </button>
+        ))}
+      </div>
+        <LegalLeadsTab onBack={() => setActiveTab("crash")} />
+      </div>
+    );
   }
   if (activeTab === "distribution") {
-    return <DistributionTab onBack={() => setActiveTab("crash")} />;
+    return (
+      <div className="p-6 md:p-10 max-w-6xl mx-auto">
+      {/* ── Persistent Tab Bar ── */}
+      <div className="flex gap-1 mb-6 bg-white/5 border border-white/10 rounded-2xl p-1">
+        {[
+          { key: "crash",        label: "Crash Leads",    icon: "🚨", desc: "PI Attorneys" },
+          { key: "home",         label: "Home & Property", icon: "🏠", desc: "Contractors" },
+          { key: "legal",        label: "Legal Signals",   icon: "⚖️", desc: "All Attorneys" },
+          { key: "distribution", label: "Distribution",    icon: "📡", desc: "Routing Rules" },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={[
+              "flex-1 flex flex-col items-center gap-0.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all",
+              activeTab === tab.key
+                ? "bg-indigo-600/80 text-white border border-indigo-500/50 shadow-lg shadow-indigo-500/20"
+                : "text-slate-500 hover:text-slate-300 hover:bg-white/5",
+            ].join(" ")}
+          >
+            <span className="text-base">{tab.icon}</span>
+            <span>{tab.label}</span>
+            <span className={"text-[9px] font-normal " + (activeTab === tab.key ? "text-indigo-200" : "text-slate-600")}>{tab.desc}</span>
+          </button>
+        ))}
+      </div>
+        <DistributionTab onBack={() => setActiveTab("crash")} />
+      </div>
+    );
   }
 
   // ── Crash tab: incident detail view ─────────────────────────────────────────
