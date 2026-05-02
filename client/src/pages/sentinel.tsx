@@ -496,6 +496,31 @@ export default function Sentinel() {
         </div>
       </motion.div>
 
+      {/* ── Unified Sentinel Tab Bar — always visible ── */}
+      <div className="flex gap-1 mb-6 bg-white/5 border border-white/10 rounded-2xl p-1">
+        {[
+          { key: "crash",        label: "Crash Leads",     icon: "🚨", desc: "PI Attorneys" },
+          { key: "home",         label: "Home & Property",  icon: "🏠", desc: "Contractors" },
+          { key: "legal",        label: "Legal Signals",    icon: "⚖️", desc: "Attorneys" },
+          { key: "distribution", label: "Distribution",     icon: "📡", desc: "Routing Rules" },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={[
+              "flex-1 flex flex-col items-center gap-0.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all",
+              activeTab === tab.key
+                ? "bg-white/10 text-white border border-white/20"
+                : "text-slate-500 hover:text-slate-300 hover:bg-white/5",
+            ].join(" ")}
+          >
+            <span className="text-base">{tab.icon}</span>
+            <span>{tab.label}</span>
+            <span className={"text-[9px] font-normal " + (activeTab === tab.key ? "text-slate-400" : "text-slate-600")}>{tab.desc}</span>
+          </button>
+        ))}
+      </div>
+
       {isHomeSvc ? (
         <HomeSvcSentinelView
           incidents={filteredIncidents}
