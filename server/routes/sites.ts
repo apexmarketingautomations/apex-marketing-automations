@@ -840,7 +840,7 @@ The HTML must:
 - Be genuinely stunning — something people screenshot and post on Instagram. Use real animations, real depth.
 - Write real business-specific copy tailored to the prompt — NO generic placeholders
 - Be fully mobile responsive with proper viewport meta tag
-- Return ONLY valid JSON — no markdown fences, no explanation\`
+- Return ONLY valid JSON — no markdown fences, no explanation`;
 
     try {
       const result = await aiChat([

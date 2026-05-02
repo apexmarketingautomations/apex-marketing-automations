@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { digitalCards, cardAnalyticsEvents, cardAnalyticsSessions, contacts } from "@shared/schema";
 import { db } from "../db";
 import { storage } from "../storage";
-import { eq, sql, and, desc, gte } from "drizzle-orm";
+import { eq, sql, and, desc, gte, inArray } from "drizzle-orm";
 import crypto, { createHash } from "node:crypto";
 import { asyncHandler, parseIntParam, verifyAccountOwnership } from "./helpers";
 import { emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
@@ -728,7 +728,7 @@ export function registerCardsRoutes(app: Express) {
     if (sessionIds.length > 0) {
       const events = await db.select({ sessionId: cardAnalyticsEvents.sessionId, eventType: cardAnalyticsEvents.eventType })
         .from(cardAnalyticsEvents)
-        .where(sql`${cardAnalyticsEvents.sessionId} = ANY(${sessionIds})`);
+        .where(inArray(cardAnalyticsEvents.sessionId, sessionIds));
       const priority: Record<string, number> = {
         save_contact: 100, click_booking: 90, click_phone: 80, click_email: 70,
         click_review: 60, click_website: 50, click_link: 40, click_social: 30,
