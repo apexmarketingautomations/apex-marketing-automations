@@ -88,10 +88,14 @@ export default function Sentinel() {
   const [location, navigate] = useLocation();
   const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_sentinel");
 
-  // ── Tab routing — ?tab=home|legal|distribution|crash ──
+  // ── Tab routing — use useState for reliable re-renders ──
   const urlParams = new URLSearchParams(location.includes("?") ? location.split("?")[1] : "");
-  const activeTab = urlParams.get("tab") ?? "crash";
-  const setActiveTab = (tab: string) => navigate(`/sentinel?tab=${tab}`);
+  const initialTab = urlParams.get("tab") ?? "crash";
+  const [activeTab, setActiveTabState] = useState(initialTab);
+  const setActiveTab = (tab: string) => {
+    setActiveTabState(tab);
+    navigate(`/sentinel?tab=${tab}`, { replace: true });
+  };
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { activeAccountId } = useAccount();
