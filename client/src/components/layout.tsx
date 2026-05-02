@@ -44,10 +44,10 @@ const navSections = [
   {
     label: "LEADS",
     items: [
-      { href: "/sentinel", icon: Satellite, label: "Sentinel Hub", requiredFeature: "sentinel" },
+      { href: "/sentinel", icon: Satellite, label: "Crash Leads", requiredFeature: "sentinel" },
       { href: "/sentinel?tab=home", icon: Home, label: "Home & Property", requiredFeature: "sentinel" },
-      { href: "/sentinel?tab=legal", icon: Scale, label: "Legal Signals", requiredFeature: "sentinel" },
-      { href: "/sentinel?tab=distribution", icon: GitFork, label: "Distribution", requiredFeature: "sentinel" },
+      { href: "/sentinel?tab=legal", icon: Scale, label: "Legal Intel", requiredFeature: "sentinel" },
+      { href: "/sentinel?tab=distribution", icon: GitFork, label: "Lead Routing", requiredFeature: "sentinel" },
     ],
   },
   {
