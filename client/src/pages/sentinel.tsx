@@ -315,28 +315,24 @@ export default function Sentinel() {
     ? incidents.find(i => i.id === selectedIncident.id) || selectedIncident
     : null;
 
-  if (liveSelectedIncident) {
-    const isHomeSvcIncident =
-      (liveSelectedIncident.rawPayload as any)?.source === 'sentinel_home_svc';
-
-    // ── Show home & property leads tab ─────────────────────────────────────
+  // ── Tab routing — always runs before incident detail check ─────────────────
   if (activeTab === "home") {
     return <HomeLeadsTab onBack={() => setActiveTab("crash")} />;
   }
-
-  // ── Show legal leads tab ─────────────────────────────────────────────────
   if (activeTab === "legal") {
     return <LegalLeadsTab onBack={() => setActiveTab("crash")} />;
   }
-
-  // ── Show distribution tab ────────────────────────────────────────────────
   if (activeTab === "distribution") {
     return <DistributionTab onBack={() => setActiveTab("crash")} />;
   }
 
-  return (
+  // ── Crash tab: incident detail view ─────────────────────────────────────────
+  if (liveSelectedIncident) {
+    const isHomeSvcIncident =
+      (liveSelectedIncident.rawPayload as any)?.source === 'sentinel_home_svc';
+    return (
       <div className="p-6 md:p-10 max-w-6xl mx-auto">
-        {/* ── Unified Sentinel Tab Bar ── */}
+        {/* Tab bar always visible */}
         <div className="flex gap-1 mb-6 bg-white/5 border border-white/10 rounded-2xl p-1">
           {[
             { key: "crash",        label: "Crash Leads",     icon: "🚨", desc: "PI Attorneys" },
