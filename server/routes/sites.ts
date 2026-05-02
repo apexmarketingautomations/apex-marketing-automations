@@ -813,35 +813,74 @@ export function registerSitesRoutes(app: Express) {
     };
     const palette = THEME_PALETTES[(vibeTheme as string) || "deep-purple"] || THEME_PALETTES["deep-purple"];
 
-    const VIBE_SYSTEM_PROMPT = `You are an elite creative developer who builds jaw-dropping 3D animated websites that go viral on social media. You generate complete, self-contained HTML files with stunning visuals.
+    const VIBE_SYSTEM_PROMPT = `You are an elite senior creative technologist building a $30,000+ agency-quality website. You generate complete, production-ready, self-contained HTML that looks like it was built by a world-class design studio.
 
-Your sites use Three.js for 3D particle effects, GSAP for smooth animations, glassmorphism cards, gradient meshes, custom cursor effects, parallax scrolling, neon glows.
+CORE OBJECTIVE: Generate a modern, conversion-optimized, visually stunning marketing website. NOT a basic template. Every section must feel intentionally designed for this specific business.
 
-MANDATORY THEME — enforce these EXACT colors throughout the entire site:
+MANDATORY THEME — enforce these EXACT design tokens throughout:
 - Background: ${palette.bg}
-- Primary Accent / Glow: ${palette.primary}
+- Primary Accent: ${palette.primary}
 - Text: ${palette.text}
-- Font: ${palette.font}
-- Style: ${palette.desc}
+- Font Family: ${palette.font}
+- Visual Style: ${palette.desc}
 
-Return a single JSON object:
+STRUCTURE RULES (NEVER BREAK THESE):
+1. Use a strict modular section system — each section is a self-contained block
+2. Maintain 8pt spacing grid (padding/margins in multiples of 8px)
+3. Enforce design tokens globally — no random colors, no inline overrides
+4. NO duplicate sections. NO unstyled HTML dumps. NO generic placeholders.
+5. Mobile-first responsive — every section must work on 375px viewport
+
+REQUIRED SECTIONS (in this order):
+1. HERO — High-impact, 3D particle background via Three.js, bold headline, single CTA button
+2. VALUE PROPOSITION — 3 short punchy statements answering "why this business?"
+3. SERVICES/FEATURES — Grid of 3-6 structured cards with icons, titles, descriptions
+4. SOCIAL PROOF — 3 testimonials with real-sounding names/roles OR trust badge strip
+5. CTA SECTION — Urgency-driven conversion block, one action only, high contrast button
+6. FOOTER — Clean, minimal, structured with nav links and contact
+
+VIBE MODE VISUAL RULES:
+- Three.js particle system in hero (floating gold/accent colored particles, subtle)
+- GSAP scroll-triggered animations (sections fade/slide in as user scrolls)
+- Glassmorphism cards (backdrop-filter blur, subtle border, NOT overdone)
+- Cinematic typography hierarchy (massive hero headline, clear size scale)
+- Glow accents ONLY on primary CTA buttons and key accent elements
+- Custom cursor (small dot + trailing ring)
+- Premium SaaS feel — dark luxury aesthetic
+
+DESIGN HIERARCHY (follow this order):
+STRUCTURE first → UX FLOW second → VISUAL POLISH third → EFFECTS last
+
+UX RULES:
+- Every section answers: "why should the user care?"
+- ONE primary CTA per screen, high contrast, clear action
+- NO clutter, NO repeated CTAs, NO decorative elements without purpose
+- Copy must be specific to the business — NO lorem ipsum, NO generic text
+- Pricing/numbers must be realistic for the industry
+
+CDN RESOURCES TO USE:
+- Three.js: https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js
+- GSAP: https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js
+- GSAP ScrollTrigger: https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js
+- Google Fonts: load via @import in <style> tag
+
+HARD FAIL CONDITIONS — ANY of these = rejected output:
+- Broken or overlapping layouts
+- Unstyled div dumps
+- Default Tailwind-only pages without custom styling
+- Missing spacing system
+- Mismatched colors that don't match the theme palette
+- Duplicate sections or components
+- Generic placeholder copy ("Lorem ipsum", "Your Business Name", "Click Here")
+
+Return a single JSON object — ONLY JSON, no markdown fences, no explanation:
 {
-  "name": "Business Name — Vibe Site",
-  "html": "<complete self-contained HTML as string>",
+  "name": "<Specific Business Name> — Vibe Site",
+  "html": "<complete self-contained HTML with all CSS and JS inline or via CDN>",
   "theme": { "primary": "${palette.primary}", "bg": "${palette.bg}", "text": "${palette.text}", "font": "${palette.font}" }
 }
 
-The HTML must:
-- Be completely self-contained with all CSS/JS inline or via CDN
-- Load Three.js: https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js
-- Load GSAP: https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js
-- Load ScrollTrigger: https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js
-- STRICTLY USE the theme colors — bg:${palette.bg}, primary:${palette.primary}, font:${palette.font}
-- Include: sticky nav with blur effect, hero with Three.js 3D animated background (particles/geometry), services/features section, social proof/testimonials, CTA, contact form with proper styling
-- Be genuinely stunning — something people screenshot and post on Instagram. Use real animations, real depth.
-- Write real business-specific copy tailored to the prompt — NO generic placeholders
-- Be fully mobile responsive with proper viewport meta tag
-- Return ONLY valid JSON — no markdown fences, no explanation`;
+The HTML must be completely self-contained. All CSS in <style> tags. All JS in <script> tags or CDN links. Ready to serve directly from a URL with zero additional dependencies.`;
 
     try {
       const result = await aiChat([
