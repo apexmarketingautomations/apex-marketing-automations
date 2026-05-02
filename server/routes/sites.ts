@@ -274,6 +274,7 @@ export function registerSitesRoutes(app: Express) {
         metadata: { siteId: id, publishedUrl, siteName: site.name },
       });
     } catch { // allow-silent-catch: fire-and-forget event emit, never blocks response
+    }
     res.json({ success: true, url: publishedUrl, site: updated });
   }));
 
