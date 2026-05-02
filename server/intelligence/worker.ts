@@ -9,6 +9,9 @@ import { MODULE_GROUP_EVENT_MAP } from "./moduleRegistry";
 let scoringInterval: NodeJS.Timeout | null = null;
 
 // Every signal flows to Apex Intelligence — it learns from everything
+// Events that should trigger rescoring — deliberately excludes internal
+// intelligence events (SCORE_UPDATED, ROLLUP_COMPUTED, AI_TOOL_EXECUTED)
+// to prevent the scoring cycle from triggering itself.
 const SCORING_TRIGGER_EVENTS = new Set<string>([
   EVENT_TYPES.CONTACT_CREATED,
   EVENT_TYPES.CONTACT_UPDATED,
@@ -60,15 +63,28 @@ const SCORING_TRIGGER_EVENTS = new Set<string>([
   EVENT_TYPES.CTA_CLICKED,
   EVENT_TYPES.FUNNEL_LEAD_CAPTURED,
   EVENT_TYPES.FUNNEL_LEAD_CONVERTED,
-  EVENT_TYPES.AI_TOOL_EXECUTED,
-  EVENT_TYPES.DM_KEYWORD_TRIGGERED,
+  // NOTE: AI_TOOL_EXECUTED intentionally removed — operator tool executions
+  // happen during scoring, so including this caused an infinite loop.
+  // NOTE: DM_KEYWORD_TRIGGERED removed — messaging events already covered above.
 ]);
 
 const pendingScoringAccounts = new Set<number>();
 let scoringDebounceTimer: NodeJS.Timeout | null = null;
-const SCORING_DEBOUNCE_MS = 3000; // React to signals within 3 seconds
+const SCORING_DEBOUNCE_MS = 10_000; // 10s debounce — don't thrash on burst events
+
+// Cooldown: don't re-score the same account more than once every 5 minutes
+// via event triggers. The 30-min scheduled cycle bypasses this.
+const lastEventScoredAt = new Map<number, number>();
+const SCORING_COOLDOWN_MS = 5 * 60 * 1000;
+
+// Guard against concurrent scoring cycles
+let scoringCycleRunning = false;
 
 function scheduleScoringForAccount(accountId: number): void {
+  const now = Date.now();
+  const last = lastEventScoredAt.get(accountId) ?? 0;
+  if (now - last < SCORING_COOLDOWN_MS) return; // still in cooldown
+
   pendingScoringAccounts.add(accountId);
   if (scoringDebounceTimer) return;
   scoringDebounceTimer = setTimeout(async () => {
@@ -77,6 +93,7 @@ function scheduleScoringForAccount(accountId: number): void {
     pendingScoringAccounts.clear();
     for (const id of accounts) {
       try {
+        lastEventScoredAt.set(id, Date.now());
         await runAllScoresForAccount(id);
         await runAllRecommendationsForAccount(id);
       } catch (err) {
@@ -157,6 +174,11 @@ export function startIntelligenceWorkers(): void {
   });
 
   async function scoringCycle() {
+    if (scoringCycleRunning) {
+      console.warn("[APEX-INTEL] Scoring cycle already running — skipping this tick");
+      return;
+    }
+    scoringCycleRunning = true;
     try {
       const accounts = await db.select({ id: subAccounts.id }).from(subAccounts);
       for (const account of accounts) {
@@ -166,6 +188,8 @@ export function startIntelligenceWorkers(): void {
       console.log(`[APEX-INTEL] Scoring + recommendations cycle complete: ${accounts.length} accounts`);
     } catch (err) {
       console.error("[APEX-INTEL] Scoring cycle failed:", (err as Error).message);
+    } finally {
+      scoringCycleRunning = false;
     }
   }
 
