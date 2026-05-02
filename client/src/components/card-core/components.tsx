@@ -95,32 +95,66 @@ export function CardError() {
 
 export function HeroSection({ card, theme }: { card: SharedCardData; theme: CardTheme }) {
   const displayName = card.preferredName || card.name;
+  const brand = card.brandColor || "#6366f1";
+  const accent = card.accentColor || "#8b5cf6";
+
   return (
-    <div className="relative h-[55vh] min-h-[400px] max-h-[600px] overflow-hidden flex items-end">
+    <div className="relative h-[58vh] min-h-[420px] max-h-[620px] overflow-hidden flex items-end">
       {card.photoUrl ? (
         <div className="absolute inset-0">
           <img src={card.photoUrl} alt={displayName} className="w-full h-full object-cover object-top" loading="eager" />
           <div className={`absolute inset-0 bg-gradient-to-t ${theme.heroOverlay}`} />
-          {theme.isDark && <div className="absolute inset-0 bg-gradient-to-r from-indigo-900/20 to-purple-900/15" />}
+          <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${brand}18 0%, transparent 60%, ${accent}12 100%)` }} />
         </div>
       ) : (
-        <div className={`absolute inset-0 bg-gradient-to-br ${theme.ctaBg} opacity-20`} />
+        /* Premium animated no-photo background */
+        <div className="absolute inset-0 overflow-hidden" style={{ background: theme.isDark ? "#050508" : "#f8f7f4" }}>
+          {/* Animated mesh orbs */}
+          <div className="absolute inset-0" style={{
+            background: `
+              radial-gradient(ellipse 80% 60% at 20% 20%, ${brand}28 0%, transparent 60%),
+              radial-gradient(ellipse 60% 80% at 80% 80%, ${accent}22 0%, transparent 60%),
+              radial-gradient(ellipse 50% 50% at 50% 50%, ${brand}10 0%, transparent 70%)
+            `
+          }} />
+          {/* Animated orb 1 */}
+          <div className="absolute rounded-full blur-[80px] animate-pulse" style={{
+            width: "45%", height: "55%", top: "-10%", left: "-5%",
+            background: `radial-gradient(circle, ${brand}35 0%, transparent 70%)`,
+            animationDuration: "4s",
+          }} />
+          {/* Animated orb 2 */}
+          <div className="absolute rounded-full blur-[100px]" style={{
+            width: "55%", height: "50%", bottom: "-5%", right: "-10%",
+            background: `radial-gradient(circle, ${accent}28 0%, transparent 70%)`,
+            animation: "pulse 5s ease-in-out infinite alternate",
+          }} />
+          {/* Grid lines overlay for depth */}
+          <div className="absolute inset-0 opacity-[0.04]" style={{
+            backgroundImage: `linear-gradient(${brand} 1px, transparent 1px), linear-gradient(90deg, ${brand} 1px, transparent 1px)`,
+            backgroundSize: "40px 40px",
+          }} />
+          {/* Bottom fade to match card body */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+        </div>
       )}
 
       {card.logoUrl && (
         <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }}
           className="absolute top-5 right-5 z-10">
           <img src={card.logoUrl} alt="Logo"
-            className="w-14 h-14 rounded-2xl object-cover bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl" />
+            className="w-14 h-14 rounded-2xl object-cover bg-white/10 backdrop-blur-xl border shadow-2xl"
+            style={{ borderColor: `${brand}40` }} />
         </motion.div>
       )}
 
       <div className="relative z-10 p-8 pb-10 w-full">
         {card.tagline && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}
-            className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full ${theme.isDark ? "bg-white/10 border-white/20" : "bg-black/5 border-black/10"} backdrop-blur-md border mb-4`}>
-            <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-            <span className={`text-[11px] font-bold ${theme.isDark ? "text-white/90" : "text-gray-700"} tracking-wider uppercase line-clamp-1`}>
+            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full backdrop-blur-md border mb-4"
+            style={{ borderColor: `${brand}35`, background: `${brand}15` }}>
+            <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: brand }} />
+            <span className="text-[11px] font-bold tracking-wider uppercase line-clamp-1 text-white/90">
               {card.tagline.length > 60 ? card.tagline.slice(0, 57) + "..." : card.tagline}
             </span>
           </motion.div>
@@ -134,8 +168,8 @@ export function HeroSection({ card, theme }: { card: SharedCardData; theme: Card
         {card.title && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
             className="flex items-center gap-3 mt-3">
-            <div className="h-[2px] w-10 rounded-full" style={{ background: `linear-gradient(to right, ${card.brandColor}, ${card.accentColor})` }} />
-            <p className="text-lg font-bold" style={{ background: `linear-gradient(to right, ${card.brandColor}, ${card.accentColor})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+            <div className="h-[2px] w-10 rounded-full" style={{ background: `linear-gradient(to right, ${brand}, ${accent})` }} />
+            <p className="text-lg font-bold" style={{ background: `linear-gradient(to right, ${brand}, ${accent})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
               {card.title}
             </p>
           </motion.div>
@@ -626,12 +660,166 @@ export function CardFooter({ config, theme }: { config: CardRenderConfig; theme:
 
 export function BackgroundGlow({ card, theme }: { card: SharedCardData; theme: CardTheme }) {
   if (!theme.isDark) return null;
+  const brand = card.brandColor || "#6366f1";
+  const accent = card.accentColor || "#8b5cf6";
   return (
     <div className="absolute inset-0 pointer-events-none overflow-hidden">
-      <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] rounded-full blur-[120px] opacity-20"
-        style={{ background: card.brandColor }} />
-      <div className="absolute bottom-[20%] right-[-10%] w-[400px] h-[400px] rounded-full blur-[120px] opacity-15"
-        style={{ background: card.accentColor }} />
+      <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] rounded-full blur-[140px] opacity-15"
+        style={{ background: brand }} />
+      <div className="absolute bottom-[20%] right-[-10%] w-[400px] h-[400px] rounded-full blur-[120px] opacity-10"
+        style={{ background: accent }} />
+      <div className="absolute top-[40%] left-[30%] w-[300px] h-[300px] rounded-full blur-[100px] opacity-8"
+        style={{ background: `${brand}60` }} />
     </div>
+  );
+}
+
+// ── LEAD CAPTURE FORM ────────────────────────────────────────────────────────
+// Real form that creates actual CRM contacts — not fake analytics events.
+// Renders when card.leadCaptureEnabled === true.
+
+type LeadFormState = "idle" | "submitting" | "success" | "error";
+
+export function LeadCaptureForm({ card, theme, trackEvent }: {
+  card: SharedCardData; theme: CardTheme; trackEvent?: (t: string, e?: string) => void;
+}) {
+  const [state, setState] = useState<LeadFormState>("idle");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const track = trackEvent || noop;
+  const brand = card.brandColor || "#6366f1";
+  const accent = card.accentColor || "#8b5cf6";
+
+  if (!card.leadCaptureEnabled) return null;
+
+  const handleSubmit = async () => {
+    setError("");
+    if (!name.trim()) { setError("Please enter your name."); return; }
+    if (!email.trim() && !phone.trim()) { setError("Please enter your email or phone."); return; }
+
+    setState("submitting");
+    try {
+      const res = await fetch(`/api/public-card/${card.slug}/lead`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim() || null,
+          phone: phone.trim() || null,
+          message: message.trim() || null,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Submission failed");
+      }
+      track("save_contact", "lead_capture_form");
+      setState("success");
+    } catch (err: any) {
+      setError(err.message || "Something went wrong. Please try again.");
+      setState("error");
+    }
+  };
+
+  const inputClass = `w-full px-4 py-3 rounded-xl text-sm font-medium border outline-none transition-all focus:ring-2 ${
+    theme.isDark
+      ? "bg-white/5 border-white/10 text-white placeholder-white/30 focus:border-opacity-60 focus:ring-white/10"
+      : "bg-black/5 border-black/10 text-gray-900 placeholder-gray-400 focus:border-opacity-60 focus:ring-black/10"
+  }`;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      className="mb-6 rounded-2xl overflow-hidden"
+      style={{ border: `1px solid ${brand}30`, background: `linear-gradient(135deg, ${brand}10, ${accent}08)` }}
+    >
+      <div className="p-5">
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: `${brand}20` }}>
+            <span className="text-xl">✉️</span>
+          </div>
+          <div>
+            <p className={`text-sm font-bold ${theme.text}`}>Get in Touch</p>
+            <p className={`text-[11px] ${theme.muted}`}>Drop your info — I'll reach out personally</p>
+          </div>
+        </div>
+
+        {state === "success" ? (
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+            className="text-center py-6">
+            <div className="text-4xl mb-3">🎉</div>
+            <p className={`font-bold ${theme.text} text-base`}>Got it! I'll be in touch soon.</p>
+            <p className={`text-[12px] ${theme.muted} mt-1`}>Check your inbox or phone for a message from me.</p>
+          </motion.div>
+        ) : (
+          <div className="space-y-2.5">
+            <input
+              type="text"
+              placeholder="Full Name *"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              className={inputClass}
+              disabled={state === "submitting"}
+              data-testid="lead-name"
+            />
+            <input
+              type="email"
+              placeholder="Email Address"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              className={inputClass}
+              disabled={state === "submitting"}
+              data-testid="lead-email"
+            />
+            <input
+              type="tel"
+              placeholder="Phone Number"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              className={inputClass}
+              disabled={state === "submitting"}
+              data-testid="lead-phone"
+            />
+            <textarea
+              placeholder="Message (optional)"
+              value={message}
+              onChange={e => setMessage(e.target.value)}
+              rows={2}
+              className={`${inputClass} resize-none`}
+              disabled={state === "submitting"}
+              data-testid="lead-message"
+            />
+
+            {error && (
+              <p className="text-red-400 text-[11px] px-1">{error}</p>
+            )}
+
+            <button
+              onClick={handleSubmit}
+              disabled={state === "submitting"}
+              className="w-full py-3.5 rounded-xl font-bold text-white text-sm flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60"
+              style={{ background: `linear-gradient(135deg, ${brand}, ${accent})`, boxShadow: `0 8px 24px -6px ${brand}50` }}
+              data-testid="lead-submit"
+            >
+              {state === "submitting" ? (
+                <><span className="animate-spin">⟳</span> Sending...</>
+              ) : (
+                <>Send My Info</>
+              )}
+            </button>
+
+            <p className={`text-center text-[10px] ${theme.muted} opacity-60`}>
+              Your info is private — I'll only use it to contact you.
+            </p>
+          </div>
+        )}
+      </div>
+    </motion.div>
   );
 }

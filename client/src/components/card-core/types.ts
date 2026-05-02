@@ -46,6 +46,7 @@ export interface SharedCardData {
   bookingUrl?: string;
   calendarUrl?: string;
   reviewLink?: string;
+  leadCaptureEnabled?: boolean;
   socialLinks: SocialLink[];
   links: CustomLink[];
   services: Service[];

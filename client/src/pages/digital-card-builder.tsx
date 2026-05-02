@@ -890,6 +890,34 @@ function DigitalCardBuilderInner() {
             <Card className="bg-black/40 border-white/10">
               <CardContent className="p-6 space-y-4">
                 <h2 className="text-lg font-bold text-white">SEO & Social Sharing</h2>
+
+                {/* Lead Capture Toggle — most important conversion feature */}
+                <div className="p-4 rounded-xl border space-y-3"
+                  style={{ borderColor: config.leadCaptureEnabled ? "#22c55e40" : "rgba(255,255,255,0.08)", background: config.leadCaptureEnabled ? "#22c55e08" : "rgba(255,255,255,0.02)" }}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: config.leadCaptureEnabled ? "#22c55e20" : "rgba(255,255,255,0.05)" }}>
+                        <span className="text-base">{config.leadCaptureEnabled ? "🟢" : "📋"}</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-white">Lead Capture Form</p>
+                        <p className="text-[11px] text-slate-400">Collect visitor name, email & phone → saves to CRM</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => update("leadCaptureEnabled", !config.leadCaptureEnabled)}
+                      className={`relative w-11 h-6 rounded-full transition-all ${config.leadCaptureEnabled ? "bg-green-500" : "bg-white/10"}`}
+                      data-testid="toggle-lead-capture"
+                    >
+                      <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-md transition-all ${config.leadCaptureEnabled ? "left-[22px]" : "left-0.5"}`} />
+                    </button>
+                  </div>
+                  {config.leadCaptureEnabled && (
+                    <p className="text-[11px] text-green-400/80 font-medium">
+                      ✓ A contact form will appear on your card. Submissions create real CRM contacts automatically.
+                    </p>
+                  )}
+                </div>
                 <div>
                   <Label className="text-slate-300">SEO Title</Label>
                   <Input value={config.seoTitle} onChange={e => update("seoTitle", e.target.value)} placeholder={`${config.name} — ${config.company}`} className="bg-white/5 border-white/10 text-white" data-testid="input-seo-title" />

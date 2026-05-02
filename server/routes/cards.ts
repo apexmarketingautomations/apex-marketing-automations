@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { digitalCards, cardAnalyticsEvents, cardAnalyticsSessions } from "@shared/schema";
+import { digitalCards, cardAnalyticsEvents, cardAnalyticsSessions, contacts } from "@shared/schema";
 import { db } from "../db";
 import { storage } from "../storage";
 import { eq, sql, and, desc, gte } from "drizzle-orm";
@@ -329,6 +329,106 @@ export function registerCardsRoutes(app: Express) {
     await db.update(digitalCards).set({ saveContactCount: sql`${digitalCards.saveContactCount} + 1` }).where(eq(digitalCards.id, card.id));
 
     res.send(vcard);
+  }));
+
+  // ── LEAD CAPTURE: POST /api/public-card/:slug/lead ─────────────────────
+  // Public endpoint — no auth required. Visitor fills out name/email/phone
+  // on the digital card and we create a real CRM contact + fire a lead event.
+  // Rate limited by IP to prevent spam.
+  app.post("/api/public-card/:slug/lead", asyncHandler(async (req, res) => {
+    const slug = req.params.slug.toLowerCase();
+    const [card] = await db.select().from(digitalCards).where(eq(digitalCards.slug, slug)).limit(1);
+    if (!card) return res.status(404).json({ error: "Card not found" });
+    if (!card.leadCaptureEnabled) return res.status(403).json({ error: "Lead capture not enabled" });
+    if (!card.subAccountId) return res.status(400).json({ error: "Invalid card" });
+
+    const { name, email, phone, message, sessionId, visitorId } = req.body || {};
+
+    // Require at least name + one contact method
+    if (!name || typeof name !== "string" || name.trim().length < 2) {
+      return res.status(400).json({ error: "Name is required" });
+    }
+    if (!email && !phone) {
+      return res.status(400).json({ error: "Email or phone is required" });
+    }
+
+    const cleanName = name.trim().slice(0, 120);
+    const [firstName, ...rest] = cleanName.split(" ");
+    const lastName = rest.join(" ") || null;
+
+    // Upsert contact — match by email or phone to avoid duplicates
+    let contactId: number | null = null;
+    try {
+      if (email) {
+        const [existing] = await db.select({ id: contacts.id })
+          .from(contacts)
+          .where(and(eq(contacts.subAccountId, card.subAccountId!), eq(contacts.email, email.trim().toLowerCase())))
+          .limit(1);
+        if (existing) contactId = existing.id;
+      }
+      if (!contactId && phone) {
+        const cleanPhone = phone.replace(/\D/g, "");
+        const [existing] = await db.select({ id: contacts.id })
+          .from(contacts)
+          .where(and(eq(contacts.subAccountId, card.subAccountId!), eq(contacts.phone, cleanPhone)))
+          .limit(1);
+        if (existing) contactId = existing.id;
+      }
+
+      if (!contactId) {
+        const [created] = await db.insert(contacts).values({
+          subAccountId: card.subAccountId!,
+          firstName,
+          lastName,
+          email: email ? email.trim().toLowerCase() : null,
+          phone: phone ? phone.replace(/\D/g, "") : null,
+          source: "digital_card",
+          channel: "digital_card",
+          notes: message ? `Card lead message: ${String(message).slice(0, 500)}` : null,
+          tags: ["digital-card-lead", `card-${slug}`],
+        }).returning({ id: contacts.id });
+        contactId = created.id;
+      } else {
+        // Update existing contact with any new info
+        await db.update(contacts).set({
+          ...(email && { email: email.trim().toLowerCase() }),
+          ...(phone && { phone: phone.replace(/\D/g, "") }),
+          notes: message ? `Card lead message: ${String(message).slice(0, 500)}` : undefined,
+        }).where(eq(contacts.id, contactId));
+      }
+    } catch (err) {
+      console.error("[LEAD-CAPTURE] DB error:", (err as Error).message);
+      return res.status(500).json({ error: "Failed to save lead" });
+    }
+
+    // Fire analytics event for the lead
+    try {
+      const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "";
+      const ipHash = ip ? createHash("sha256").update(ip).digest("hex").slice(0, 16) : null;
+      await db.insert(cardAnalyticsEvents).values({
+        cardId: card.id,
+        sessionId: sessionId || null,
+        eventType: "save_contact",
+        eventTarget: "lead_capture_form",
+        visitorId: visitorId || null,
+        ipHash,
+        userAgent: (req.headers["user-agent"] as string || "").slice(0, 500),
+      });
+      // Bump save count
+      await db.update(digitalCards).set({ saveContactCount: sql`${digitalCards.saveContactCount} + 1` }).where(eq(digitalCards.id, card.id));
+    } catch { /* non-critical */ }
+
+    // Emit to platform intelligence
+    try {
+      emitWithTimeline({
+        eventType: EVENT_TYPES.CONTACT_CREATED,
+        sourceModule: "digital_card_lead",
+        subAccountId: card.subAccountId!,
+        metadata: { contactId, cardId: card.id, slug, source: "digital_card" },
+      }, `New card lead: ${cleanName}`, `${cleanName} submitted their info via ${card.name}'s digital card`, "info");
+    } catch { /* non-critical */ }
+
+    return res.status(201).json({ ok: true, contactId });
   }));
 
   // Legacy endpoint — thin alias forwarding to the unified session-aware

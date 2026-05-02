@@ -593,44 +593,8 @@ export function registerTrackingRoutes(app: Express): void {
   bindEventEndpoint("/api/track/qualified-lead", "qualified_lead");
   bindEventEndpoint("/api/track/closed-sale", "closed_sale");
 
-  // -----------------------------------------------------------------------
-  // DIGITAL CARD SESSION INIT — called by digital-card.tsx on mount.
-  // Creates a page_view event using the card slug as lookup key.
-  // Returns 200 so the card never shows a console error.
-  // -----------------------------------------------------------------------
-  app.post("/api/track/session", asyncHandler(async (req: Request, res: Response) => {
-    try {
-      const { slug, sessionId, visitorId, referrer } = req.body || {};
-      if (!slug) return res.status(400).json({ error: "slug required" });
-
-      // Look up the card to resolve subAccountId + cardId
-      const { getCardBySlug } = await import("../services/cardLookup").catch(() => ({ getCardBySlug: null }));
-      let subAccountId: number | null = null;
-      let cardId: number | null = null;
-      if (getCardBySlug) {
-        try {
-          const card = await (getCardBySlug as any)(slug);
-          if (card) { subAccountId = card.subAccountId ?? null; cardId = card.id ?? null; }
-        } catch { /* best-effort */ }
-      }
-
-      await recordEvent({
-        eventType: "page_view",
-        subAccountId,
-        cardId,
-        pageUrl: referrer || `/c/${slug}`,
-        sourceChannel: "digital-card",
-        payload: { slug, sessionId: sessionId ?? null, visitorId: visitorId ?? null },
-        req,
-      });
-
-      return res.status(200).json({ ok: true });
-    } catch (err) {
-      // Never let tracking errors surface to the card viewer
-      console.warn("[TRACK/SESSION]", (err as Error).message);
-      return res.status(200).json({ ok: true });
-    }
-  }));
+  // Note: /api/track/session is handled by cards.ts (registerCardsRoutes)
+  // and correctly writes to cardAnalyticsSessions. No duplicate needed here.
 
   // Server-to-server webhook from Apex CRM / workflow automations. TRUSTED:
   // requires admin secret and may pass tenant context (subAccountId, cardId,

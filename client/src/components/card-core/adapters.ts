@@ -72,6 +72,7 @@ export function adaptPlatformCard(raw: any): SharedCardData {
     bookingUrl: raw.bookingUrl || undefined,
     calendarUrl: raw.calendarUrl || undefined,
     reviewLink: raw.googleReviewLink || undefined,
+    leadCaptureEnabled: raw.leadCaptureEnabled === true,
     socialLinks: safeSocialLinks(raw.socialLinks),
     links: safeCustomLinks(raw.links),
     services: safeServices(raw.services),

@@ -7,6 +7,7 @@ import {
   AboutSection, ServicesSection, TestimonialSection, LinksSection,
   SocialLinksSection, StickyActionBar, ShareModal, CardFooter, BackgroundGlow,
   HighIntentCta, LiveNowPill, BookingAutoExpand, RealtimeChannelStrip, FollowUpAcknowledgement,
+  LeadCaptureForm,
   adaptPlatformCard, getCardTheme,
 } from "@/components/card-core";
 import type { SharedCardData, CardRenderConfig } from "@/components/card-core";
@@ -294,6 +295,9 @@ export default function DigitalCard() {
           </TrackedSection>
           <TrackedSection name="social" trackEvent={trackEvent}>
             <SocialLinksSection card={card} theme={theme} trackEvent={trackEvent} />
+          </TrackedSection>
+          <TrackedSection name="lead_capture" trackEvent={trackEvent}>
+            <LeadCaptureForm card={card} theme={theme} trackEvent={trackEvent} />
           </TrackedSection>
           <CardFooter config={config} theme={theme} />
         </div>
