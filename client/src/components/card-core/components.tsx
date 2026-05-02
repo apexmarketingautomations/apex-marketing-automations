@@ -97,45 +97,49 @@ export function HeroSection({ card, theme }: { card: SharedCardData; theme: Card
   const displayName = card.preferredName || card.name;
   const brand = card.brandColor || "#6366f1";
   const accent = card.accentColor || "#8b5cf6";
+  const bgImage = card.photoUrl || card.coverImageUrl || null;
 
   return (
-    <div className="relative h-[58vh] min-h-[420px] max-h-[620px] overflow-hidden flex items-end">
-      {card.photoUrl ? (
+    <div className="relative h-[52vh] min-h-[360px] max-h-[540px] overflow-hidden flex items-end">
+      {bgImage ? (
         <div className="absolute inset-0">
-          <img src={card.photoUrl} alt={displayName} className="w-full h-full object-cover object-top" loading="eager" />
+          <img src={bgImage} alt={displayName} className="w-full h-full object-cover object-top" loading="eager" />
           <div className={`absolute inset-0 bg-gradient-to-t ${theme.heroOverlay}`} />
           <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${brand}18 0%, transparent 60%, ${accent}12 100%)` }} />
         </div>
-      ) : (
-        /* Premium animated no-photo background */
-        <div className="absolute inset-0 overflow-hidden" style={{ background: theme.isDark ? "#050508" : "#f8f7f4" }}>
-          {/* Animated mesh orbs */}
+      ) : theme.isDark ? (
+        /* Dark theme: animated brand orbs */
+        <div className="absolute inset-0 overflow-hidden" style={{ background: "#050508" }}>
           <div className="absolute inset-0" style={{
-            background: `
-              radial-gradient(ellipse 80% 60% at 20% 20%, ${brand}28 0%, transparent 60%),
-              radial-gradient(ellipse 60% 80% at 80% 80%, ${accent}22 0%, transparent 60%),
-              radial-gradient(ellipse 50% 50% at 50% 50%, ${brand}10 0%, transparent 70%)
-            `
+            background: `radial-gradient(ellipse 80% 60% at 20% 20%, ${brand}28 0%, transparent 60%),
+                         radial-gradient(ellipse 60% 80% at 80% 80%, ${accent}22 0%, transparent 60%)`
           }} />
-          {/* Animated orb 1 */}
           <div className="absolute rounded-full blur-[80px] animate-pulse" style={{
             width: "45%", height: "55%", top: "-10%", left: "-5%",
             background: `radial-gradient(circle, ${brand}35 0%, transparent 70%)`,
             animationDuration: "4s",
           }} />
-          {/* Animated orb 2 */}
           <div className="absolute rounded-full blur-[100px]" style={{
             width: "55%", height: "50%", bottom: "-5%", right: "-10%",
             background: `radial-gradient(circle, ${accent}28 0%, transparent 70%)`,
             animation: "pulse 5s ease-in-out infinite alternate",
           }} />
-          {/* Grid lines overlay for depth */}
           <div className="absolute inset-0 opacity-[0.04]" style={{
             backgroundImage: `linear-gradient(${brand} 1px, transparent 1px), linear-gradient(90deg, ${brand} 1px, transparent 1px)`,
             backgroundSize: "40px 40px",
           }} />
-          {/* Bottom fade to match card body */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+        </div>
+      ) : (
+        /* Light theme: warm brand tint gradient */
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute inset-0" style={{
+            background: `linear-gradient(145deg, ${brand}22 0%, ${accent}14 50%, #f5f4f0 100%)`
+          }} />
+          <div className="absolute inset-0" style={{
+            background: `radial-gradient(ellipse 70% 60% at 15% 30%, ${brand}20 0%, transparent 65%)`
+          }} />
+          <div className="absolute inset-0 bg-gradient-to-t from-white/50 via-transparent to-transparent" />
         </div>
       )}
 
@@ -154,7 +158,7 @@ export function HeroSection({ card, theme }: { card: SharedCardData; theme: Card
             className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full backdrop-blur-md border mb-4"
             style={{ borderColor: `${brand}35`, background: `${brand}15` }}>
             <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: brand }} />
-            <span className="text-[11px] font-bold tracking-wider uppercase line-clamp-1 text-white/90">
+            <span className="text-[11px] font-bold tracking-wider uppercase line-clamp-1" style={{ color: theme.isDark ? "rgba(255,255,255,0.9)" : "rgba(0,0,0,0.75)" }}>
               {card.tagline.length > 60 ? card.tagline.slice(0, 57) + "..." : card.tagline}
             </span>
           </motion.div>

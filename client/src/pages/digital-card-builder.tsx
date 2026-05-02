@@ -14,7 +14,10 @@ import {
   ContactRound, Phone, Mail, Globe, Star, Save, Eye, Copy, QrCode,
   ExternalLink, Plus, Trash2, Monitor, Smartphone, MapPin, Calendar,
   Palette, Check, AlertCircle, BarChart3, Share2, Link2, EyeOff,
-  Sparkles, Briefcase, Image
+  Sparkles, Briefcase, Image,
+  Home, Hammer, Scale, Heart, Stethoscope, Car, Wrench, Zap,
+  ShoppingBag, UtensilsCrossed, Leaf, Shield, TrendingUp, DollarSign,
+  Camera, Music, GraduationCap, Truck, Building, Scissors
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { BuilderPreview } from "@/components/card-core";
@@ -81,29 +84,51 @@ const THEMES = [
 ];
 
 const SERVICE_ICONS = [
-  { id: "palette", label: "Design" },
-  { id: "code", label: "Code" },
-  { id: "globe", label: "Web" },
-  { id: "megaphone", label: "Marketing" },
-  { id: "bot", label: "AI" },
-  { id: "mic", label: "Voice" },
-  { id: "workflow", label: "Automation" },
-  { id: "analytics", label: "Analytics" },
-  { id: "briefcase", label: "Business" },
-  { id: "sparkles", label: "Creative" },
+  // Home & Construction
+  { id: "home", label: "Home", Icon: Home },
+  { id: "hammer", label: "Roofing", Icon: Hammer },
+  { id: "wrench", label: "Repair", Icon: Wrench },
+  { id: "zap", label: "Electric", Icon: Zap },
+  { id: "building", label: "Building", Icon: Building },
+  { id: "truck", label: "Moving", Icon: Truck },
+  // Legal & Finance
+  { id: "scale", label: "Legal", Icon: Scale },
+  { id: "shield", label: "Protection", Icon: Shield },
+  { id: "dollar", label: "Finance", Icon: DollarSign },
+  { id: "trending", label: "Growth", Icon: TrendingUp },
+  // Health & Wellness
+  { id: "heart", label: "Health", Icon: Heart },
+  { id: "stethoscope", label: "Medical", Icon: Stethoscope },
+  { id: "leaf", label: "Wellness", Icon: Leaf },
+  { id: "scissors", label: "Beauty", Icon: Scissors },
+  // Auto & Transport
+  { id: "car", label: "Auto", Icon: Car },
+  // Food & Retail
+  { id: "food", label: "Food", Icon: UtensilsCrossed },
+  { id: "shopping", label: "Retail", Icon: ShoppingBag },
+  // Creative & Education
+  { id: "camera", label: "Photo", Icon: Camera },
+  { id: "music", label: "Music", Icon: Music },
+  { id: "education", label: "Education", Icon: GraduationCap },
+  // Digital / Tech
+  { id: "palette", label: "Design", Icon: Palette },
+  { id: "globe", label: "Web", Icon: Globe },
+  { id: "analytics", label: "Analytics", Icon: BarChart3 },
+  { id: "sparkles", label: "AI", Icon: Sparkles },
+  { id: "briefcase", label: "Business", Icon: Briefcase },
 ];
 
 const SERVICE_COLORS = [
-  "from-pink-500 to-rose-500",
-  "from-indigo-500 to-blue-500",
-  "from-cyan-500 to-teal-500",
-  "from-orange-500 to-amber-500",
-  "from-purple-500 to-violet-500",
-  "from-emerald-500 to-green-500",
-  "from-blue-500 to-indigo-500",
-  "from-yellow-500 to-orange-500",
-  "from-red-500 to-pink-500",
-  "from-slate-500 to-zinc-500",
+  { gradient: "from-red-500 to-rose-600",     hex: "#ef4444", label: "Red" },
+  { gradient: "from-orange-500 to-amber-500", hex: "#f97316", label: "Orange" },
+  { gradient: "from-yellow-400 to-orange-500",hex: "#eab308", label: "Yellow" },
+  { gradient: "from-emerald-500 to-green-600",hex: "#10b981", label: "Green" },
+  { gradient: "from-cyan-500 to-teal-600",    hex: "#06b6d4", label: "Teal" },
+  { gradient: "from-blue-500 to-indigo-600",  hex: "#3b82f6", label: "Blue" },
+  { gradient: "from-violet-500 to-purple-600",hex: "#8b5cf6", label: "Purple" },
+  { gradient: "from-pink-500 to-fuchsia-600", hex: "#ec4899", label: "Pink" },
+  { gradient: "from-slate-500 to-zinc-600",   hex: "#64748b", label: "Grey" },
+  { gradient: "from-amber-700 to-yellow-600", hex: "#b45309", label: "Gold" },
 ];
 
 const DEFAULT_CARD: CardConfig = {
@@ -525,7 +550,7 @@ function DigitalCardBuilderInner() {
   const removeSocial = (idx: number) => { const s = [...(config.socialLinks || [])]; s.splice(idx, 1); setForm({ ...config, socialLinks: s }); };
   const updateSocial = (idx: number, key: string, value: string) => { const s = [...(config.socialLinks || [])]; s[idx] = { ...s[idx], [key]: value }; setForm({ ...config, socialLinks: s }); };
 
-  const addService = () => setForm({ ...config, services: [...(config.services || []), { label: "", description: "", icon: "briefcase", color: SERVICE_COLORS[0] }] });
+  const addService = () => setForm({ ...config, services: [...(config.services || []), { label: "", description: "", icon: "briefcase", color: SERVICE_COLORS[0].gradient }] });
   const removeService = (idx: number) => { const s = [...(config.services || [])]; s.splice(idx, 1); setForm({ ...config, services: s }); };
   const updateService = (idx: number, key: string, value: string) => { const s = [...(config.services || [])]; s[idx] = { ...s[idx], [key]: value }; setForm({ ...config, services: s }); };
 
@@ -764,22 +789,27 @@ function DigitalCardBuilderInner() {
                       <div className="flex gap-2 flex-wrap">
                         <div>
                           <Label className="text-slate-300 text-xs">Icon</Label>
-                          <div className="flex gap-1 flex-wrap mt-1">
-                            {SERVICE_ICONS.map(ic => (
-                              <button key={ic.id} onClick={() => updateService(idx, "icon", ic.id)}
-                                className={`px-2 py-1 rounded text-[10px] font-bold transition-all ${svc.icon === ic.id ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/40" : "bg-white/5 text-slate-500 border border-white/10"}`}>
-                                {ic.label}
-                              </button>
-                            ))}
+                          <div className="flex gap-1 flex-wrap mt-1 max-h-24 overflow-y-auto pr-1">
+                            {SERVICE_ICONS.map(ic => {
+                              const IconComp = ic.Icon;
+                              return (
+                                <button key={ic.id} onClick={() => updateService(idx, "icon", ic.id)}
+                                  title={ic.label}
+                                  className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${svc.icon === ic.id ? "bg-cyan-500/25 border border-cyan-400/60 text-cyan-400 scale-110" : "bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10"}`}>
+                                  <IconComp size={16} />
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
                       </div>
                       <div>
                         <Label className="text-slate-300 text-xs">Color</Label>
-                        <div className="flex gap-1 flex-wrap mt-1">
+                        <div className="flex gap-2 flex-wrap mt-1">
                           {SERVICE_COLORS.map(c => (
-                            <button key={c} onClick={() => updateService(idx, "color", c)}
-                              className={`w-6 h-6 rounded-full bg-gradient-to-br ${c} ${svc.color === c ? "ring-2 ring-white ring-offset-2 ring-offset-gray-900" : ""}`} />
+                            <button key={c.hex} onClick={() => updateService(idx, "color", c.gradient)}
+                              title={c.label}
+                              className={`w-8 h-8 rounded-full bg-gradient-to-br ${c.gradient} transition-all hover:scale-110 ${svc.color === c.gradient ? "ring-2 ring-white ring-offset-2 ring-offset-gray-900 scale-110" : ""}`} />
                           ))}
                         </div>
                       </div>
@@ -870,17 +900,35 @@ function DigitalCardBuilderInner() {
             <Card className="bg-black/40 border-white/10">
               <CardContent className="p-6 space-y-4">
                 <h2 className="text-lg font-bold text-white">Theme</h2>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {THEMES.map(t => (
-                    <button key={t.id} onClick={() => update("theme", t.id)}
-                      className={`relative p-4 rounded-2xl ${t.preview} border-2 transition-all text-left overflow-hidden ${config.theme === t.id ? "border-cyan-400 scale-105 shadow-lg shadow-cyan-500/30" : "border-white/10 hover:border-white/20"}`}
-                      data-testid={`button-theme-${t.id}`}
-                    >
-                      <div className={`h-1.5 w-full rounded-full bg-gradient-to-r ${t.swatch} mb-2.5`} />
-                      <span className={`text-sm font-bold block ${t.lightText ? "text-stone-900" : "text-white"}`}>{t.label}</span>
-                      <span className={`text-[10px] leading-tight block mt-0.5 ${t.lightText ? "text-stone-700" : "text-white/60"}`}>{t.desc}</span>
-                    </button>
-                  ))}
+                <p className="text-[11px] text-slate-400">Choose the look & feel of your card. Your brand colors apply on top.</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {THEMES.map(t => {
+                    const isSelected = config.theme === t.id;
+                    return (
+                      <button key={t.id} onClick={() => update("theme", t.id)}
+                        className={`relative rounded-2xl overflow-hidden transition-all text-left group ${isSelected ? "ring-2 ring-cyan-400 scale-[1.03] shadow-xl shadow-cyan-500/20" : "hover:scale-[1.02] hover:ring-1 ring-white/20"}`}
+                        data-testid={`button-theme-${t.id}`}
+                      >
+                        {/* Color preview block */}
+                        <div className={`${t.preview} h-16 w-full flex items-end px-3 pb-2`}>
+                          {/* Simulated card header inside preview */}
+                          <div className={`w-full flex items-center gap-2`}>
+                            <div className={`w-5 h-5 rounded-full bg-gradient-to-br ${t.swatch} shadow-md`} />
+                            <div className="flex-1 space-y-1">
+                              <div className={`h-1.5 w-14 rounded-full bg-gradient-to-r ${t.swatch} opacity-90`} />
+                              <div className={`h-1 w-10 rounded-full ${t.lightText ? "bg-black/20" : "bg-white/20"}`} />
+                            </div>
+                            {isSelected && <div className="w-4 h-4 rounded-full bg-cyan-400 flex items-center justify-center text-[8px] text-white font-black">✓</div>}
+                          </div>
+                        </div>
+                        {/* Label block */}
+                        <div className="bg-black/60 backdrop-blur-sm px-3 py-2 border-t border-white/5">
+                          <span className={`text-xs font-bold block text-white`}>{t.label}</span>
+                          <span className="text-[9px] leading-tight block mt-0.5 text-slate-400">{t.desc}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
