@@ -400,7 +400,11 @@ async function fetchGooglePlacesBusinesses(): Promise<RawLegalSignal[]> {
         const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${query}&key=${GOOGLE_PLACES_KEY}`;
         const data = await safeFetch(url, 10000, `Places textsearch [${search.category}/${city}]`);
 
-        if (!data?.results) continue;
+        if (!data) continue;
+        if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
+          console.warn(`[LEGAL-PIPELINE] Places textsearch status=${data.status} error="${data.error_message || 'none'}" category=${search.category} city=${city}`);
+        }
+        if (!data.results?.length) continue;
 
         for (const place of data.results.slice(0, 5)) {
           // Only include places with a phone number we can call
@@ -409,6 +413,9 @@ async function fetchGooglePlacesBusinesses(): Promise<RawLegalSignal[]> {
 
           const detailUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=name,formatted_phone_number,formatted_address,rating,user_ratings_total,business_status&key=${GOOGLE_PLACES_KEY}`;
           const detail = await safeFetch(detailUrl, 8000, `Places details [${place.place_id?.slice(0,12)}]`);
+          if (detail && detail.status !== "OK") {
+            console.warn(`[LEGAL-PIPELINE] Places details status=${detail.status} error="${detail.error_message || 'none'}" place_id=${place.place_id?.slice(0,12)}`);
+          }
           const p = detail?.result;
 
           if (!p) continue;
@@ -631,10 +638,26 @@ async function runLegalCycle(subAccountId: number): Promise<void> {
 
   let inserted = 0, dupes = 0, qualified = 0;
 
+  // Per-source counters keyed by sourceNames index
+  const srcStats: Record<string, { raw: number; inserted: number; dupes: number; qualified: number; disqualified: number }> = {};
+  for (const name of sourceNames) srcStats[name] = { raw: 0, inserted: 0, dupes: 0, qualified: 0, disqualified: 0 };
+
+  // Map each signal back to its source name via signalType
+  function signalSourceName(s: RawLegalSignal): string {
+    if (s.signalType === "arrest" || s.signalType === "dui_arrest") return "FL Arrests";
+    if (s.signalType === "osha_incident") return "OSHA";
+    if (s.signalType === "fda_recall") return "FDA Recalls";
+    if (s.signalType === "cpsc_recall") return "CPSC Recalls";
+    if (s.signalType === "business_growth_signal") return "Google Places";
+    return "FL Arrests"; // fallback
+  }
+
   for (const signal of allSignals) {
+    const srcName = signalSourceName(signal);
+    srcStats[srcName].raw++;
     try {
       const hash = buildSignalHash(signal);
-      if (await isDuplicate(hash)) { dupes++; continue; }
+      if (await isDuplicate(hash)) { dupes++; srcStats[srcName].dupes++; continue; }
 
       // Enrich: get phone number if we don't have one
       let phone = signal.subjectPhone || null;
@@ -671,16 +694,19 @@ async function runLegalCycle(subAccountId: number): Promise<void> {
       }).returning();
 
       inserted++;
+      srcStats[signalSourceName(signal)].inserted++;
       stats.byVertical[signal.legalVertical] = (stats.byVertical[signal.legalVertical] ?? 0) + 1;
 
       const { score, qualifies, expiresAt } = scoreLegalLead(enrichedSignal);
 
       if (!qualifies) {
         await db.update(legalSignals).set({ status: "disqualified", score }).where(eq(legalSignals.id, saved.id));
+        srcStats[signalSourceName(signal)].disqualified++;
         continue;
       }
 
       qualified++;
+      srcStats[signalSourceName(signal)].qualified++;
 
       const [lead] = await db.insert(legalLeads).values({
         signalId:          saved.id,
@@ -714,6 +740,14 @@ async function runLegalCycle(subAccountId: number): Promise<void> {
   }
 
   stats.totalSignals += allSignals.length;
+
+  // Per-source final breakdown
+  for (const name of sourceNames) {
+    const s = srcStats[name];
+    if (s.raw > 0 || s.inserted > 0) {
+      console.log(`[LEGAL-PIPELINE] breakdown source=${name} raw=${s.raw} inserted=${s.inserted} dupes=${s.dupes} qualified=${s.qualified} disqualified=${s.disqualified}`);
+    }
+  }
 
   console.log(
     `[LEGAL-PIPELINE] ── CYCLE END id=${runId} ──\n` +

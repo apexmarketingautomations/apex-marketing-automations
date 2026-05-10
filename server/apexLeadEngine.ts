@@ -391,12 +391,12 @@ async function fetchArrestRecords(): Promise<LeadSignal[]> {
 
   // Hillsborough County booking (public JSON feed)
   try {
-    const res = await fetch(
+    const bookings = await safeJsonFetch(
       'https://apps.hcso.net/api/bookings?limit=100&format=json',
-      { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(8000) }
+      'Hillsborough bookings',
+      8000
     );
-    if (res.ok) {
-      const bookings = await res.json() as any[];
+    if (bookings) {
       for (const b of bookings) {
         const charges = (b.charges || b.offenses || []).join(', ');
         if (!charges) continue;

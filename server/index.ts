@@ -575,7 +575,9 @@ async function validateMetaCredentials() {
   validateEnvVars();
   clearLaylaCache();
   await ensureAccountsUnprotected();
+  console.log("[STARTUP-PATCH] ══════════ SEQUENCE REPAIR START ══════════");
   await repairDriftedSequences();
+  console.log("[STARTUP-PATCH] ══════════ SEQUENCE REPAIR DONE ═══════════");
   runStartupChecks();
   try {
     await validateMetaCredentials();
