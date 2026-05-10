@@ -148,7 +148,7 @@ async function getActiveAccountIds(): Promise<number[]> {
     _activeAccountCache = active.length > 0 ? active : [GIOVANNI_ACCOUNT_ID, APEX_MAIN_ACCOUNT_ID];
     _activeAccountCacheTime = now;
     return _activeAccountCache;
-  } catch (_e) {
+  } catch (_e) { // allow-silent-catch: DB unavailable during startup, fallback to known accounts
     return [GIOVANNI_ACCOUNT_ID, APEX_MAIN_ACCOUNT_ID];
   }
 }
@@ -298,8 +298,7 @@ async function createLeadFromCrash(
               channel: "sms",
               source: "sentinel_alert",
             }, "crash-ingest-pipeline");
-          } catch (_alertErr) {
-            // non-critical
+          } catch (_alertErr) { // allow-silent-catch: SMS alert failure must not block lead creation
           }
         }
       }

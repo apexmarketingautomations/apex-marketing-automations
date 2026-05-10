@@ -158,7 +158,7 @@ async function safeFetch(url: string, timeoutMs = 12000): Promise<any> {
     clearTimeout(t);
     if (!res.ok) return null;
     return await res.json();
-  } catch (_e) {
+  } catch (_e) { // allow-silent-catch: network timeout returns null safely
     clearTimeout(t);
     return null;
   }
@@ -425,7 +425,7 @@ async function fetchGooglePlacesBusinesses(): Promise<RawLegalSignal[]> {
             detectedAt: new Date(),
           });
         }
-      } catch (_e) { /* continue next search */ }
+      } catch (_e) { // allow-silent-catch: one failed Places search should not stop others
     }
   }
 
@@ -449,7 +449,7 @@ async function skipTraceSubject(signal: RawLegalSignal): Promise<string | null> 
       stats.skipTraceHits++;
       return result.ownerPhone;
     }
-  } catch (_e) { /* skip trace failed */ }
+  } catch (_e) { // allow-silent-catch: skip trace is optional enrichment
   return null;
 }
 
@@ -466,7 +466,7 @@ async function findBusinessPhone(companyName: string, county: string): Promise<s
     const data = await safeFetch(url, 8000);
     const candidate = data?.candidates?.[0];
     return candidate?.formatted_phone_number || null;
-  } catch (_e) {
+  } catch (_e) { // allow-silent-catch: network timeout returns null safely
     return null;
   }
 }
@@ -533,7 +533,7 @@ async function createContactFromLead(lead: any, subAccountId: number): Promise<v
       address: lead.subjectAddress || undefined,
       state: "FL",
     });
-  } catch (_e) { /* contact creation is non-fatal */ }
+  } catch (_e) { // allow-silent-catch: contact creation failure should not block lead pipeline
 }
 
 async function deliverLeadToAllAccounts(lead: any): Promise<void> {
@@ -547,7 +547,7 @@ async function deliverLeadToAllAccounts(lead: any): Promise<void> {
     for (const acct of accounts) {
       try {
         await createContactFromLead(lead, acct.id);
-      } catch (_e) { /* continue to next account */ }
+      } catch (_e) { // allow-silent-catch: one account failure should not block others
     }
 
     // Also deliver SMS to any registered attorneys
@@ -574,7 +574,7 @@ async function deliverLeadToAllAccounts(lead: any): Promise<void> {
           `Score: ${lead.score}/100`,
         ].filter(Boolean).join("\n");
         await sendSms({ to: attorney.phone, body });
-      } catch (_e) { /* SMS failure non-fatal */ }
+      } catch (_e) { // allow-silent-catch: SMS alert failure is non-critical
     }
   } catch (err: any) {
     console.error("[LEGAL-PIPELINE] Delivery error:", err.message);
