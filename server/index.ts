@@ -639,8 +639,8 @@ async function validateMetaCredentials() {
   }
   try {
     const { startLegalPipeline } = await import("./legalSignalPipeline");
-    startLegalPipeline(13);
-    console.log("[STARTUP] ✅ Legal signal pipeline started — arrests, court filings, OSHA, recalls (subAccount=13)");
+    startLegalPipeline(); // runs for all accounts
+    console.log("[STARTUP] ✅ Legal signal pipeline started — FL arrests, OSHA, FDA/CPSC recalls, Google Places local businesses");
   } catch (legalErr) {
     console.error("[STARTUP] Legal pipeline failed (non-fatal):", legalErr);
   }

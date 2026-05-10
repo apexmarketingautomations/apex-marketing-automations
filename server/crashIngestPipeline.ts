@@ -130,10 +130,27 @@ function isQualifyingCrash(incident: SentinelIncidentRaw): boolean {
   return typeMatch && severityMatch;
 }
 
-// Determine which account this lead belongs to
-function getTargetAccountId(incident: SentinelIncidentRaw): number {
-  // Injury crashes (the ones that qualify) go to Giovanni
-  return GIOVANNI_ACCOUNT_ID;
+// Cache active accounts for 5 minutes to avoid DB spam
+let _activeAccountCache: number[] = [];
+let _activeAccountCacheTime = 0;
+
+async function getActiveAccountIds(): Promise<number[]> {
+  const now = Date.now();
+  if (_activeAccountCache.length > 0 && now - _activeAccountCacheTime < 5 * 60 * 1000) {
+    return _activeAccountCache;
+  }
+  try {
+    const { storage } = await import("./storage");
+    const accounts = await storage.getSubAccounts();
+    const active = accounts
+      .filter((a: any) => a.active !== false)
+      .map((a: any) => a.id);
+    _activeAccountCache = active.length > 0 ? active : [GIOVANNI_ACCOUNT_ID, APEX_MAIN_ACCOUNT_ID];
+    _activeAccountCacheTime = now;
+    return _activeAccountCache;
+  } catch (_e) {
+    return [GIOVANNI_ACCOUNT_ID, APEX_MAIN_ACCOUNT_ID];
+  }
 }
 
 function buildReportNumber(incident: SentinelIncidentRaw): string {
@@ -162,12 +179,9 @@ async function createLeadFromCrash(
   subAccountId: number,
 ): Promise<boolean> {
   try {
-    // Use Giovanni's account for all injury leads
-    const targetAccountId = getTargetAccountId(incident as any);
-    if (targetAccountId !== subAccountId) {
-      subAccountId = targetAccountId;
-    }
-    // Skip trace the crash location to get real name + phone
+    // Deliver to ALL active accounts, not just Giovanni
+    const allAccountIds = await getActiveAccountIds();
+    // Skip trace once for all accounts
     let firstName = "Crash Lead";
     let lastName = `${incident.county || "FL"} — ${incident.type}`;
     let phone: string | undefined;
@@ -218,8 +232,7 @@ async function createLeadFromCrash(
       }
     }
 
-    await storage.createContact({
-      subAccountId,
+    const contactData = {
       firstName,
       lastName,
       phone,
@@ -245,38 +258,53 @@ async function createLeadFromCrash(
       state: "FL",
       lat: incident.lat ?? undefined,
       lng: incident.lng ?? undefined,
-    });
+    };
+
+    // Create contact in ALL active accounts
+    const accountIds = await getActiveAccountIds();
+    for (const accountId of accountIds) {
+      try {
+        await storage.createContact({ subAccountId: accountId, ...contactData });
+      } catch (createErr: any) {
+        // If contact already exists in this account, that's fine
+        if (!createErr.message?.includes("unique") && !createErr.message?.includes("duplicate")) {
+          console.warn(`[CRASH-INGEST] Contact creation failed for account ${accountId}:`, createErr.message);
+        }
+      }
+    }
+
     await storage.markCrashReportAsLead(report.id);
 
-    // Notify Giovanni immediately when a qualifying lead comes in
+    // Alert all account owners with a phone number (rate limited per account)
     try {
-      const giovanni = await storage.getSubAccount(GIOVANNI_ACCOUNT_ID);
-      if (giovanni?.ownerPhone && incident.severity && QUALIFYING_SEVERITIES.has(incident.severity.toLowerCase())) {
-        const { publishEventAsync, EVENT_TYPES } = await import("./eventBus");
-        // Rate limit: max 1 alert per 15 minutes to avoid spamming Giovanni
-        const RATE_LIMIT_MS = 15 * 60 * 1000;
-        const now = Date.now();
-        const lastAlertKey = `sentinel_last_alert_${GIOVANNI_ACCOUNT_ID}`;
-        if (!(globalThis as any).__sentinelAlertCache) (globalThis as any).__sentinelAlertCache = {};
-        const lastAlert = (globalThis as any).__sentinelAlertCache[lastAlertKey] || 0;
+      const { publishEventAsync, EVENT_TYPES } = await import("./eventBus");
+      const RATE_LIMIT_MS = 15 * 60 * 1000;
+      const now = Date.now();
+      if (!(globalThis as any).__sentinelAlertCache) (globalThis as any).__sentinelAlertCache = {};
 
-        if (now - lastAlert >= RATE_LIMIT_MS) {
-          (globalThis as any).__sentinelAlertCache[lastAlertKey] = now;
-          publishEventAsync(EVENT_TYPES.MESSAGE_SENT, {
-            subAccountId: GIOVANNI_ACCOUNT_ID,
-            to: giovanni.ownerPhone,
-            body: `🚨 APEX SENTINEL: New ${incident.severity?.toUpperCase()} injury lead — ${incident.type} in ${incident.county || "FL"}. ${incident.googleMaps || ""}. Check your CRM now.`,
-            channel: "sms",
-            source: "sentinel_alert",
-          }, "crash-ingest-pipeline");
-          console.log(`[CRASH-INGEST] Giovanni alerted — ${incident.county} crash. Next alert available in 15min.`);
-        } else {
-          const waitMins = Math.ceil((RATE_LIMIT_MS - (now - lastAlert)) / 60000);
-          console.log(`[CRASH-INGEST] Giovanni alert rate-limited — ${waitMins}min until next alert.`);
+      if (incident.severity && QUALIFYING_SEVERITIES.has(incident.severity.toLowerCase())) {
+        for (const accountId of accountIds) {
+          try {
+            const account = await storage.getSubAccount(accountId);
+            if (!account?.ownerPhone) continue;
+            const lastAlertKey = `sentinel_last_alert_${accountId}`;
+            const lastAlert = (globalThis as any).__sentinelAlertCache[lastAlertKey] || 0;
+            if (now - lastAlert < RATE_LIMIT_MS) continue;
+            (globalThis as any).__sentinelAlertCache[lastAlertKey] = now;
+            publishEventAsync(EVENT_TYPES.MESSAGE_SENT, {
+              subAccountId: accountId,
+              to: account.ownerPhone,
+              body: `🚨 APEX SENTINEL: New ${incident.severity?.toUpperCase()} injury lead — ${incident.type} in ${incident.county || "FL"}. ${incident.googleMaps || ""}. Check your CRM now.`,
+              channel: "sms",
+              source: "sentinel_alert",
+            }, "crash-ingest-pipeline");
+          } catch (_alertErr) {
+            // non-critical
+          }
         }
       }
     } catch (notifyErr: any) {
-      console.warn("[CRASH-INGEST] Giovanni notification failed:", notifyErr.message);
+      console.warn("[CRASH-INGEST] Alert notification failed:", notifyErr.message);
     }
 
     return true;
