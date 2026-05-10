@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { Car, useState, useEffect, useCallback, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { MessageSquare, GitFork, Scale, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2, History, Satellite, Building, BarChart3, Kanban, CalendarDays, Mail, Palette, Webhook, FileBarChart, Instagram, Target, Lock, Plug, Activity, Menu, X, ContactRound, MapPin, BellRing, FlaskConical, Home, Brain, PenTool, Zap, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -44,7 +44,7 @@ const navSections = [
   {
     label: "LEADS",
     items: [
-      { href: "/sentinel", icon: Satellite, label: "Crash Leads", requiredFeature: "sentinel" },
+      { href: "/accident-leads", icon: Car, label: "Crash Leads", requiredFeature: "sentinel" },
       { href: "/sentinel?tab=home", icon: Home, label: "Home & Property", requiredFeature: "sentinel" },
       { href: "/sentinel?tab=legal", icon: Scale, label: "Legal Intel", requiredFeature: "sentinel" },
       { href: "/sentinel?tab=distribution", icon: GitFork, label: "Lead Routing", requiredFeature: "sentinel" },
