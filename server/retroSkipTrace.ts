@@ -11,7 +11,7 @@ import { publishEventAsync, EVENT_TYPES } from "./eventBus";
 
 const BATCH_SIZE = 10;         // contacts per batch
 const BATCH_DELAY_MS = 2000;   // 2 seconds between batches — respect rate limits
-const SUB_ACCOUNT_IDS = [13, 14]; // Apex main + Giovanni
+// Account IDs fetched dynamically from DB — see runRetroSkipTraceAllAccounts
 
 interface RetroStats {
   processed: number;
@@ -144,9 +144,32 @@ export async function runRetroSkipTrace(subAccountId: number): Promise<RetroStat
 }
 
 export async function runRetroSkipTraceAllAccounts(): Promise<void> {
-  console.log("[RETRO-SKIP-TRACE] Starting retroactive skip trace for all accounts...");
-  for (const accountId of SUB_ACCOUNT_IDS) {
+  const { db } = await import("./db");
+  const { subAccounts } = await import("@shared/schema");
+  const { ne } = await import("drizzle-orm");
+  const accounts = await db.select({ id: subAccounts.id }).from(subAccounts)
+    .where(ne(subAccounts.ownerUserId, "_archived"));
+  const ids = accounts.map(a => a.id);
+  console.log(`[RETRO-SKIP-TRACE] Starting for ${ids.length} accounts: ${ids.join(", ")}`);
+  for (const accountId of ids) {
     const stats = await runRetroSkipTrace(accountId);
-    console.log(`[RETRO-SKIP-TRACE] Account ${accountId} done:`, stats);
+    console.log(`[RETRO-SKIP-TRACE] Account ${accountId}: processed=${stats.processed} found=${stats.found} notFound=${stats.notFound}`);
   }
+}
+
+export function startRetroSkipTraceScheduler(): void {
+  // Run once on startup after 2 min, then every 6 hours
+  setTimeout(() => {
+    runRetroSkipTraceAllAccounts().catch(err =>
+      console.error("[RETRO-SKIP-TRACE] Scheduled run failed:", err?.message)
+    );
+  }, 2 * 60 * 1000);
+
+  setInterval(() => {
+    runRetroSkipTraceAllAccounts().catch(err =>
+      console.error("[RETRO-SKIP-TRACE] Scheduled run failed:", err?.message)
+    );
+  }, 6 * 60 * 60 * 1000);
+
+  console.log("[RETRO-SKIP-TRACE] Scheduler started — runs in 2min, then every 6h");
 }

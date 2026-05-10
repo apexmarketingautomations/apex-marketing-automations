@@ -653,6 +653,13 @@ async function validateMetaCredentials() {
   } catch (caseErr: any) {
     console.error("[STARTUP] Case Intelligence failed to start (non-fatal):", caseErr?.message);
   }
+
+  try {
+    const { startRetroSkipTraceScheduler } = await import("./retroSkipTrace");
+    startRetroSkipTraceScheduler();
+  } catch (retroErr: any) {
+    console.error("[STARTUP] Retro skip trace scheduler failed (non-fatal):", retroErr?.message);
+  }
   }
 
   try {
