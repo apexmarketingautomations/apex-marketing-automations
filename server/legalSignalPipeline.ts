@@ -426,6 +426,7 @@ async function fetchGooglePlacesBusinesses(): Promise<RawLegalSignal[]> {
           });
         }
       } catch (_e) { // allow-silent-catch: one failed Places search should not stop others
+      }
     }
   }
 
@@ -450,6 +451,7 @@ async function skipTraceSubject(signal: RawLegalSignal): Promise<string | null> 
       return result.ownerPhone;
     }
   } catch (_e) { // allow-silent-catch: skip trace is optional enrichment
+  }
   return null;
 }
 
