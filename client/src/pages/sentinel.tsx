@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { LegalLeadsTab, DistributionTab, HomeLeadsTab, ProviderConfigTab } from "@/pages/LegalLeadsTab";
+import { CasesTab } from "@/pages/CasesTab";
 import { SENTINEL_STEPS } from "@/components/tutorial-steps";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -331,6 +332,7 @@ export default function Sentinel() {
           { key: "legal",        label: "Legal Signals",   icon: "⚖️", desc: "All Attorneys" },
           { key: "distribution", label: "Distribution",    icon: "📡", desc: "Routing Rules" },
           { key: "providers",     label: "AI Providers",    icon: "🤖", desc: "Config & Test" },
+          { key: "cases",         label: "Case Intel",      icon: "🔍", desc: "Grouped Cases" },
         ].map(tab => (
           <button
             key={tab.key}
@@ -363,6 +365,7 @@ export default function Sentinel() {
           { key: "legal",        label: "Legal Signals",   icon: "⚖️", desc: "All Attorneys" },
           { key: "distribution", label: "Distribution",    icon: "📡", desc: "Routing Rules" },
           { key: "providers",     label: "AI Providers",    icon: "🤖", desc: "Config & Test" },
+          { key: "cases",         label: "Case Intel",      icon: "🔍", desc: "Grouped Cases" },
         ].map(tab => (
           <button
             key={tab.key}
@@ -395,6 +398,7 @@ export default function Sentinel() {
           { key: "legal",        label: "Legal Signals",   icon: "⚖️", desc: "All Attorneys" },
           { key: "distribution", label: "Distribution",    icon: "📡", desc: "Routing Rules" },
           { key: "providers",     label: "AI Providers",    icon: "🤖", desc: "Config & Test" },
+          { key: "cases",         label: "Case Intel",      icon: "🔍", desc: "Grouped Cases" },
         ].map(tab => (
           <button
             key={tab.key}
@@ -520,7 +524,7 @@ export default function Sentinel() {
   const activeNiche = config?.niche === 'home_services' ? 'home_services' : 'accident';
   const isHomeSvc = activeNiche === 'home_services';
 
-  if (activeTab === "providers") {
+  if (activeTab === "cases") {
     return (
       <div className="min-h-screen bg-[#080a0f] flex flex-col">
         <div className="flex gap-3 p-4 border-b border-white/10 overflow-x-auto">
@@ -530,6 +534,35 @@ export default function Sentinel() {
             { key: "legal",        label: "Legal Signals",    icon: "⚖️", desc: "All Attorneys" },
             { key: "distribution", label: "Distribution",     icon: "📡", desc: "Routing Rules" },
             { key: "providers",    label: "AI Providers",     icon: "🤖", desc: "Config & Test" },
+            { key: "cases",        label: "Case Intel",       icon: "🔍", desc: "Grouped Cases" },
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={"flex flex-col items-center px-4 py-2 rounded-xl border transition-all " + (activeTab === tab.key ? "bg-indigo-600/20 border-indigo-500/40 text-white" : "bg-white/5 border-white/10 text-slate-500 hover:text-slate-300")}
+            >
+              <span className="text-lg">{tab.icon}</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider">{tab.label}</span>
+              <span className={"text-[9px] font-normal " + (activeTab === tab.key ? "text-indigo-200" : "text-slate-600")}>{tab.desc}</span>
+            </button>
+          ))}
+        </div>
+        <CasesTab onBack={() => setActiveTab("crash")} />
+      </div>
+    );
+  }
+
+    if (activeTab === "providers") {
+    return (
+      <div className="min-h-screen bg-[#080a0f] flex flex-col">
+        <div className="flex gap-3 p-4 border-b border-white/10 overflow-x-auto">
+          {[
+            { key: "crash",        label: "Crash Leads",     icon: "🚨", desc: "PI Attorneys" },
+            { key: "home",         label: "Home & Property",  icon: "🏠", desc: "Contractors" },
+            { key: "legal",        label: "Legal Signals",    icon: "⚖️", desc: "All Attorneys" },
+            { key: "distribution", label: "Distribution",     icon: "📡", desc: "Routing Rules" },
+            { key: "providers",    label: "AI Providers",     icon: "🤖", desc: "Config & Test" },
+            { key: "cases",        label: "Case Intel",       icon: "🔍", desc: "Grouped Cases" },
           ].map(tab => (
             <button
               key={tab.key}

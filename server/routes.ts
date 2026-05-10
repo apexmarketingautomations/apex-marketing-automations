@@ -131,6 +131,94 @@ export async function registerRoutes(
     res.json(getLegalPipelineStats());
   }));
 
+  // ── Case Intelligence API ─────────────────────────────────────────────────
+  app.get("/api/cases", asyncHandler(async (req, res) => {
+    const { db }                  = await import("./db");
+    const { intelligenceCases, intelligenceEntities } = await import("@shared/schema");
+    const { desc, eq, gte, and } = await import("drizzle-orm");
+
+    const minScore  = Number(req.query.minScore  ?? 35);
+    const category  = req.query.category as string | undefined;
+    const status    = req.query.status   as string || "open";
+    const limit     = Math.min(Number(req.query.limit ?? 50), 200);
+
+    let conditions: any[] = [];
+    if (status !== "all")     conditions.push(eq(intelligenceCases.status, status));
+    if (category)             conditions.push(eq(intelligenceCases.category, category));
+    conditions.push(gte(intelligenceCases.compositeScore, minScore));
+
+    const cases = await db
+      .select({
+        case:   intelligenceCases,
+        entity: intelligenceEntities,
+      })
+      .from(intelligenceCases)
+      .leftJoin(intelligenceEntities, eq(intelligenceCases.entityId, intelligenceEntities.id))
+      .where(and(...conditions))
+      .orderBy(desc(intelligenceCases.compositeScore))
+      .limit(limit);
+
+    res.json({ cases, total: cases.length });
+  }));
+
+  app.get("/api/cases/:id", asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "invalid id" });
+
+    const { db }                              = await import("./db");
+    const { intelligenceCases, intelligenceEntities, caseSignals, legalSignals } = await import("@shared/schema");
+    const { eq, desc }                        = await import("drizzle-orm");
+
+    const [row] = await db
+      .select({ case: intelligenceCases, entity: intelligenceEntities })
+      .from(intelligenceCases)
+      .leftJoin(intelligenceEntities, eq(intelligenceCases.entityId, intelligenceEntities.id))
+      .where(eq(intelligenceCases.id, id))
+      .limit(1);
+
+    if (!row) return res.status(404).json({ error: "case not found" });
+
+    const signals = await db
+      .select({ cs: caseSignals, ls: legalSignals })
+      .from(caseSignals)
+      .leftJoin(legalSignals, eq(caseSignals.signalId, legalSignals.id))
+      .where(eq(caseSignals.caseId, id))
+      .orderBy(desc(caseSignals.detectedAt))
+      .limit(50);
+
+    res.json({ ...row, signals });
+  }));
+
+  app.patch("/api/cases/:id", asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "invalid id" });
+    const { db } = await import("./db");
+    const { intelligenceCases } = await import("@shared/schema");
+    const { eq } = await import("drizzle-orm");
+    const { status, operatorNotes, aiSummary, outreachAngle } = req.body as Record<string, string>;
+    const update: Record<string, any> = { updatedAt: new Date() };
+    if (status)        update.status        = status;
+    if (operatorNotes !== undefined) update.operatorNotes = operatorNotes;
+    if (aiSummary)     update.aiSummary     = aiSummary;
+    if (outreachAngle) update.outreachAngle = outreachAngle;
+    const [updated] = await db.update(intelligenceCases).set(update).where(eq(intelligenceCases.id, id)).returning();
+    if (!updated) return res.status(404).json({ error: "not found" });
+    res.json({ ok: true, case: updated });
+  }));
+
+  app.get("/api/cases/stats", asyncHandler(async (req, res) => {
+    const { getCaseIntelligenceStats } = await import("./caseIntelligence");
+    const { db } = await import("./db");
+    const { intelligenceCases } = await import("@shared/schema");
+    const { sql: rawSql } = await import("drizzle-orm");
+    const [counts] = await db.select({
+      total:      rawSql<number>`count(*)::int`,
+      actionable: rawSql<number>`count(*) filter (where actionable = true)::int`,
+      open:       rawSql<number>`count(*) filter (where status = 'open')::int`,
+    }).from(intelligenceCases);
+    res.json({ ...counts, ...getCaseIntelligenceStats() });
+  }));
+
   // ── AI Chat & Provider Routes ─────────────────────────────────────────────
   app.post("/api/ai/chat", asyncHandler(async (req, res) => {
     const { aiChat, isAIConfigured } = await import("./aiGateway");

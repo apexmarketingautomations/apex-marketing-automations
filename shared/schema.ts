@@ -3317,6 +3317,86 @@ export type InsertLegalSignal = typeof legalSignals.$inferInsert;
 export type InsertLegalLead   = typeof legalLeads.$inferInsert;
 export type InsertLegalAttorney = typeof legalAttorneys.$inferInsert;
 
+// ── Case Intelligence Engine ──────────────────────────────────────────────────
+// Sits above legalSignals/legalLeads. Groups raw signals into canonical entities
+// and actionable cases. Never replaces existing tables — augments them.
+
+export const intelligenceEntities = pgTable("intelligence_entities", {
+  id:               serial("id").primaryKey(),
+  canonicalName:    text("canonical_name").notNull(),
+  normalizedKey:    text("normalized_key").notNull().unique(), // slug for dedup
+  entityType:       text("entity_type").notNull(),  // company|person|property
+  domain:           text("domain"),
+  address:          text("address"),
+  county:           text("county"),
+  state:            text("state").default("FL"),
+  aliases:          jsonb("aliases").default([]).notNull(),  // string[]
+  profileData:      jsonb("profile_data").default({}).notNull(),
+  createdAt:        timestamp("created_at").defaultNow().notNull(),
+  updatedAt:        timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  keyIdx: uniqueIndex("ie_key_uniq").on(table.normalizedKey),
+}));
+
+export const intelligenceCases = pgTable("intelligence_cases", {
+  id:                    serial("id").primaryKey(),
+  entityId:              integer("entity_id").references(() => intelligenceEntities.id, { onDelete: "cascade" }).notNull(),
+  caseKey:               text("case_key").notNull().unique(), // entity_id:category:window
+  title:                 text("title").notNull(),
+  category:              text("category").notNull(),  // recall|osha|arrest|court|license
+  incidentWindow:        text("incident_window").notNull(), // YYYY-MM for grouping
+  signalCount:           integer("signal_count").default(0).notNull(),
+  latestSignalAt:        timestamp("latest_signal_at"),
+  // Opportunity scores (0–100)
+  opportunityScore:      integer("opportunity_score").default(0).notNull(),
+  urgencyScore:          integer("urgency_score").default(0).notNull(),
+  financialScore:        integer("financial_score").default(0).notNull(),
+  outreachViability:     integer("outreach_viability").default(0).notNull(),
+  consumerImpact:        integer("consumer_impact").default(0).notNull(),
+  legalSeverity:         integer("legal_severity").default(0).notNull(),
+  localRelevance:        integer("local_relevance").default(0).notNull(),
+  // Composite
+  compositeScore:        integer("composite_score").default(0).notNull(),
+  actionable:            boolean("actionable").default(false).notNull(),
+  // Enrichment
+  aiSummary:             text("ai_summary"),
+  outreachAngle:         text("outreach_angle"),
+  recommendedVertical:   text("recommended_vertical"),
+  // Status
+  status:                text("status").default("open").notNull(), // open|reviewing|actioned|suppressed
+  operatorNotes:         text("operator_notes"),
+  // Aggregated source data
+  sourceLinks:           jsonb("source_links").default([]).notNull(),
+  affectedProducts:      jsonb("affected_products").default([]).notNull(),
+  timeline:              jsonb("timeline").default([]).notNull(),
+  createdAt:             timestamp("created_at").defaultNow().notNull(),
+  updatedAt:             timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  caseKeyIdx:   uniqueIndex("ic_key_uniq").on(table.caseKey),
+  entityIdx:    index("ic_entity_idx").on(table.entityId),
+  scoreIdx:     index("ic_score_idx").on(table.compositeScore),
+  actionIdx:    index("ic_actionable_idx").on(table.actionable),
+}));
+
+export const caseSignals = pgTable("case_signals", {
+  id:         serial("id").primaryKey(),
+  caseId:     integer("case_id").references(() => intelligenceCases.id, { onDelete: "cascade" }).notNull(),
+  signalId:   integer("signal_id").notNull(),   // legalSignals.id or homeServiceSignals.id
+  signalTable: text("signal_table").notNull(),   // "legal_signals" | "home_service_signals"
+  signalType: text("signal_type").notNull(),
+  detectedAt: timestamp("detected_at"),
+  summary:    text("summary"),
+  sourceUrl:  text("source_url"),
+  addedAt:    timestamp("added_at").defaultNow().notNull(),
+});
+
+export type IntelligenceEntity = typeof intelligenceEntities.$inferSelect;
+export type IntelligenceCase   = typeof intelligenceCases.$inferSelect;
+export type CaseSignal         = typeof caseSignals.$inferSelect;
+export type InsertIntelligenceEntity = typeof intelligenceEntities.$inferInsert;
+export type InsertIntelligenceCase   = typeof intelligenceCases.$inferInsert;
+export type InsertCaseSignal         = typeof caseSignals.$inferInsert;
+
 export const onboardingDefaults = pgTable("onboarding_defaults", {
   id: integer("id").primaryKey().default(1),
   pipelineStages: jsonb("pipeline_stages"),

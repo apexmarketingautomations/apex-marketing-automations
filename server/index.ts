@@ -645,6 +645,14 @@ async function validateMetaCredentials() {
   } catch (legalErr) {
     console.error("[STARTUP] Legal pipeline failed (non-fatal):", legalErr);
   }
+
+  try {
+    const { startCaseIntelligence } = await import("./caseIntelligence");
+    startCaseIntelligence();
+    console.log("[STARTUP] ✅ Case Intelligence Engine started — entity resolution + case grouping");
+  } catch (caseErr: any) {
+    console.error("[STARTUP] Case Intelligence failed to start (non-fatal):", caseErr?.message);
+  }
   }
 
   try {
