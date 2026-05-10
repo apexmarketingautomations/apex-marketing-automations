@@ -64,7 +64,18 @@ export default function Terms() {
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold text-white mb-3">7. Intellectual Property</h2>
+            <h2 className="text-lg font-semibold text-white mb-3">7. SMS Notification Program</h2>
+            <p className="mb-2"><strong className="text-white">Program Name:</strong> Apex Marketing Automations SMS Alerts</p>
+            <p className="mb-2"><strong className="text-white">Program Description:</strong> Registered users of the Apex Marketing Automations platform consent to receive real-time SMS notifications including lead alerts, business signals, and platform notifications. Messages are sent to contractors, attorneys, and business owners who have created an account and provided their mobile phone number.</p>
+            <p className="mb-2"><strong className="text-white">Message Frequency:</strong> Message frequency varies based on platform activity. You may receive up to 10 messages per day depending on lead volume and account settings.</p>
+            <p className="mb-2"><strong className="text-white">Message &amp; Data Rates:</strong> Message and data rates may apply. Contact your wireless carrier for details.</p>
+            <p className="mb-2"><strong className="text-white">Opt-Out:</strong> Reply <strong className="text-white">STOP</strong> at any time to unsubscribe from SMS notifications. You will receive a confirmation and no further messages will be sent.</p>
+            <p className="mb-2"><strong className="text-white">Help:</strong> Reply <strong className="text-white">HELP</strong> for assistance or contact us at apexmarketingautomations@gmail.com.</p>
+            <p><strong className="text-white">Support:</strong> Email apexmarketingautomations@gmail.com or visit https://apexmarketingautomations.com.</p>
+          </section>
+
+          <section>
+            <h2 className="text-lg font-semibold text-white mb-3">17. Intellectual Property</h2>
             <p>The platform, including its design, features, and content, is owned by Apex Marketing Automations. You retain ownership of the data and content you upload. By using the platform, you grant us a limited license to process your data solely to provide our services.</p>
           </section>
 
