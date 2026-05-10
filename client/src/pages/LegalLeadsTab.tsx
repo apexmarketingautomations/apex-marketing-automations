@@ -753,31 +753,26 @@ export function DistributionTab({ onBack }: { onBack: () => void }) {
 // ── Home & Property Leads Tab ─────────────────────────────────────────────────
 
 const NICHE_CONFIG: Record<string, { label: string; emoji: string; color: string; bg: string; border: string }> = {
-  // Home & Property
-  roofing:            { label: "Roofing",          emoji: "🏠", color: "text-orange-400",  bg: "bg-orange-500/10",  border: "border-orange-500/20" },
-  hvac:               { label: "HVAC",              emoji: "❄️", color: "text-blue-400",    bg: "bg-blue-500/10",    border: "border-blue-500/20" },
-  pool:               { label: "Pool",              emoji: "🏊", color: "text-cyan-400",    bg: "bg-cyan-500/10",    border: "border-cyan-500/20" },
-  solar:              { label: "Solar",             emoji: "☀️", color: "text-yellow-400",  bg: "bg-yellow-500/10",  border: "border-yellow-500/20" },
-  water_damage:       { label: "Water Damage",      emoji: "💧", color: "text-blue-300",    bg: "bg-blue-500/10",    border: "border-blue-500/20" },
-  general_contractor: { label: "Contractor",        emoji: "🔨", color: "text-slate-400",   bg: "bg-slate-500/10",   border: "border-slate-500/20" },
-  electrical:         { label: "Electrical",        emoji: "⚡", color: "text-yellow-300",  bg: "bg-yellow-500/10",  border: "border-yellow-500/20" },
-  plumbing:           { label: "Plumbing",          emoji: "🔧", color: "text-blue-400",    bg: "bg-blue-500/10",    border: "border-blue-500/20" },
-  painting:           { label: "Painting",          emoji: "🎨", color: "text-purple-400",  bg: "bg-purple-500/10",  border: "border-purple-500/20" },
-  lawn_care:          { label: "Lawn Care",         emoji: "🌿", color: "text-green-400",   bg: "bg-green-500/10",   border: "border-green-500/20" },
-  pest_control:       { label: "Pest Control",      emoji: "🐛", color: "text-red-400",     bg: "bg-red-500/10",     border: "border-red-500/20" },
-  pressure_washing:   { label: "Pressure Washing",  emoji: "💦", color: "text-blue-400",    bg: "bg-blue-500/10",    border: "border-blue-500/20" },
-  landscaping:        { label: "Landscaping",       emoji: "🌳", color: "text-green-400",   bg: "bg-green-500/10",   border: "border-green-500/20" },
-  fence:              { label: "Fence",             emoji: "🔒", color: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/20" },
-  // Beauty & Personal
-  hair_salon:         { label: "Hair Salon",        emoji: "💇", color: "text-pink-400",    bg: "bg-pink-500/10",    border: "border-pink-500/20" },
-  barber:             { label: "Barber",            emoji: "✂️", color: "text-indigo-400",  bg: "bg-indigo-500/10",  border: "border-indigo-500/20" },
-  nail_salon:         { label: "Nail Salon",        emoji: "💅", color: "text-rose-400",    bg: "bg-rose-500/10",    border: "border-rose-500/20" },
-  spa_massage:        { label: "Spa / Massage",     emoji: "🧖", color: "text-violet-400",  bg: "bg-violet-500/10",  border: "border-violet-500/20" },
-  spa_esthetics:      { label: "Esthetics",         emoji: "🌸", color: "text-pink-300",    bg: "bg-pink-500/10",    border: "border-pink-500/20" },
-  tattoo:             { label: "Tattoo",            emoji: "🎭", color: "text-slate-300",   bg: "bg-slate-500/10",   border: "border-slate-500/20" },
-  // Auto
-  auto_detailing:     { label: "Auto Detailing",    emoji: "🚗", color: "text-blue-400",    bg: "bg-blue-500/10",    border: "border-blue-500/20" },
-  cleaning_service:   { label: "Cleaning",          emoji: "🧹", color: "text-teal-400",    bg: "bg-teal-500/10",    border: "border-teal-500/20" },
+  roofing:            { label: "Roofing",         emoji: "🏠", color: "text-orange-400",  bg: "bg-orange-500/10",  border: "border-orange-500/20" },
+  hvac:               { label: "HVAC",             emoji: "❄️", color: "text-blue-400",    bg: "bg-blue-500/10",    border: "border-blue-500/20" },
+  pool:               { label: "Pool",             emoji: "🏊", color: "text-cyan-400",    bg: "bg-cyan-500/10",    border: "border-cyan-500/20" },
+  solar:              { label: "Solar",            emoji: "☀️", color: "text-yellow-400",  bg: "bg-yellow-500/10",  border: "border-yellow-500/20" },
+  water_damage:       { label: "Water Damage",     emoji: "💧", color: "text-blue-300",    bg: "bg-blue-500/10",    border: "border-blue-500/20" },
+  general_contractor: { label: "Contractor",       emoji: "🔨", color: "text-slate-400",   bg: "bg-slate-500/10",   border: "border-slate-500/20" },
+  electrical:         { label: "Electrical",       emoji: "⚡", color: "text-yellow-300",  bg: "bg-yellow-500/10",  border: "border-yellow-500/20" },
+  plumbing:           { label: "Plumbing",         emoji: "🔧", color: "text-blue-400",    bg: "bg-blue-500/10",    border: "border-blue-500/20" },
+  painting:           { label: "Painting",         emoji: "🎨", color: "text-purple-400",  bg: "bg-purple-500/10",  border: "border-purple-500/20" },
+  lawn_care:          { label: "Lawn Care",        emoji: "🌿", color: "text-green-400",   bg: "bg-green-500/10",   border: "border-green-500/20" },
+  pest_control:       { label: "Pest Control",     emoji: "🐛", color: "text-red-400",     bg: "bg-red-500/10",     border: "border-red-500/20" },
+  pressure_washing:   { label: "Pressure Washing", emoji: "💦", color: "text-blue-400",    bg: "bg-blue-500/10",    border: "border-blue-500/20" },
+  landscaping:        { label: "Landscaping",      emoji: "🌳", color: "text-green-400",   bg: "bg-green-500/10",   border: "border-green-500/20" },
+  fence:              { label: "Fence",            emoji: "🔒", color: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/20" },
+  hair_salon:         { label: "Hair Salon",       emoji: "💇", color: "text-pink-400",    bg: "bg-pink-500/10",    border: "border-pink-500/20" },
+  barber:             { label: "Barber",           emoji: "✂️", color: "text-indigo-400",  bg: "bg-indigo-500/10",  border: "border-indigo-500/20" },
+  nail_salon:         { label: "Nail Salon",       emoji: "💅", color: "text-rose-400",    bg: "bg-rose-500/10",    border: "border-rose-500/20" },
+  spa_massage:        { label: "Spa / Massage",    emoji: "🧖", color: "text-violet-400",  bg: "bg-violet-500/10",  border: "border-violet-500/20" },
+  auto_detailing:     { label: "Auto Detailing",   emoji: "🚗", color: "text-blue-400",    bg: "bg-blue-500/10",    border: "border-blue-500/20" },
+  cleaning_service:   { label: "Cleaning",         emoji: "🧹", color: "text-teal-400",    bg: "bg-teal-500/10",    border: "border-teal-500/20" },
 };
 
 const SIGNAL_TYPE_LABELS: Record<string, string> = {
@@ -787,7 +782,20 @@ const SIGNAL_TYPE_LABELS: Record<string, string> = {
   new_license_filing: "New License",
   new_business:       "New Business",
   business_signal:    "Business Signal",
+  fda_recall:         "FDA Recall",
+  cpsc_recall:        "CPSC Recall",
+  osha_incident:      "OSHA Incident",
 };
+
+const PIPELINE_STAGES = [
+  { key: "new",        label: "New",       color: "text-slate-400  bg-slate-500/10  border-slate-500/30" },
+  { key: "reviewing",  label: "Reviewing", color: "text-blue-400   bg-blue-500/10   border-blue-500/30" },
+  { key: "contacted",  label: "Contacted", color: "text-violet-400 bg-violet-500/10 border-violet-500/30" },
+  { key: "qualified",  label: "Qualified", color: "text-amber-400  bg-amber-500/10  border-amber-500/30" },
+  { key: "booked",     label: "Booked",    color: "text-cyan-400   bg-cyan-500/10   border-cyan-500/30" },
+  { key: "won",        label: "Won",       color: "text-green-400  bg-green-500/10  border-green-500/30" },
+  { key: "lost",       label: "Lost",      color: "text-red-400    bg-red-500/10    border-red-500/30" },
+];
 
 interface HomeLead {
   id: number;
@@ -796,44 +804,364 @@ interface HomeLead {
   address?: string;
   ownerName?: string;
   ownerPhone?: string;
+  ownerEmail?: string;
   serviceCategories: string[];
   urgency: string;
   description: string;
   status: string;
   score?: number;
+  scoreBreakdown?: string;   // repurposed as operator notes
+  estimatedJobMin?: number;
+  estimatedJobMax?: number;
+  lat?: number;
+  lng?: number;
   createdAt: string;
+}
+
+// Safely normalise whatever the API sends to a string[]
+function safeCategories(v: unknown): string[] {
+  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string");
+  if (typeof v === "string") {
+    try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; } catch { return []; }
+  }
+  return [];
+}
+
+// ── Lead Detail Drawer ──────────────────────────────────────────────────────
+function LeadDrawer({
+  lead,
+  onClose,
+  onStageChange,
+  onNoteSave,
+}: {
+  lead: HomeLead;
+  onClose: () => void;
+  onStageChange: (id: number, stage: string) => void;
+  onNoteSave: (id: number, notes: string) => void;
+}) {
+  const { toast } = useToast();
+  const [notes, setNotes] = useState(lead.scoreBreakdown || "");
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const cats = safeCategories(lead.serviceCategories);
+  const primaryCat = cats[0];
+  const cfg = NICHE_CONFIG[primaryCat] || { label: primaryCat || "Lead", emoji: "📌", color: "text-slate-400", bg: "bg-slate-500/10", border: "border-slate-500/20" };
+  const currentStage = PIPELINE_STAGES.find(s => s.key === lead.status) || PIPELINE_STAGES[0];
+
+  async function generateAISummary() {
+    setAiLoading(true);
+    setAiSummary(null);
+    try {
+      const res = await apiRequest("POST", "/api/ai/chat", {
+        messages: [
+          { role: "system", content: "You are a concise lead analyst. Summarise this lead in 2-3 sentences and give one specific outreach angle." },
+          { role: "user", content: `Lead: ${lead.description || ""}. Signal: ${SIGNAL_TYPE_LABELS[lead.signalType] || lead.signalType}. County: ${lead.county}. Services needed: ${cats.join(", ")}. Score: ${lead.score ?? "N/A"}/100.` },
+        ],
+        maxTokens: 120,
+      });
+      setAiSummary(res.text || res.message || "AI summary unavailable.");
+    } catch {
+      setAiSummary("AI provider not configured. Add OPENAI_APEX_INT_KEY or Gemini_API_Key_saas to Railway env vars.");
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  const mapsUrl = lead.address
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lead.address)}`
+    : lead.lat && lead.lng
+    ? `https://www.google.com/maps?q=${lead.lat},${lead.lng}`
+    : null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-end">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+
+      {/* Drawer */}
+      <motion.div
+        initial={{ x: "100%" }}
+        animate={{ x: 0 }}
+        exit={{ x: "100%" }}
+        transition={{ type: "spring", damping: 28, stiffness: 280 }}
+        className="relative z-10 h-full w-full max-w-md bg-[#0d0f14] border-l border-white/10 overflow-y-auto flex flex-col"
+      >
+        {/* Header */}
+        <div className={`p-5 border-b border-white/10 ${cfg.bg}`}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">{cfg.emoji}</span>
+              <div>
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-0.5">
+                  {SIGNAL_TYPE_LABELS[lead.signalType] || lead.signalType} · {lead.county} County
+                </div>
+                <h2 className="text-white font-black text-lg leading-tight">
+                  {lead.ownerName || lead.description?.slice(0, 60) || "Unknown Lead"}
+                </h2>
+              </div>
+            </div>
+            <button onClick={onClose} className="text-slate-500 hover:text-white text-xl leading-none flex-shrink-0">✕</button>
+          </div>
+
+          {/* Score badge */}
+          {lead.score != null && (
+            <div className="mt-3 flex items-center gap-3">
+              <div className="flex-1 bg-white/10 rounded-full h-1.5">
+                <div className="h-1.5 rounded-full bg-gradient-to-r from-amber-500 to-green-400" style={{ width: `${lead.score}%` }} />
+              </div>
+              <span className="text-xs font-bold text-white">{lead.score}/100</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex-1 p-5 space-y-5">
+          {/* Pipeline Stage */}
+          <div>
+            <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Pipeline Stage</div>
+            <div className="flex flex-wrap gap-1.5">
+              {PIPELINE_STAGES.map(stage => (
+                <button
+                  key={stage.key}
+                  onClick={() => onStageChange(lead.id, stage.key)}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all ${
+                    lead.status === stage.key
+                      ? stage.color
+                      : "text-slate-500 bg-white/5 border-white/10 hover:border-white/20"
+                  }`}
+                >
+                  {stage.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Contact Info */}
+          <div>
+            <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Contact</div>
+            <div className="space-y-2">
+              {lead.ownerName && (
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-slate-500 w-16 flex-shrink-0">Name</span>
+                  <span className="text-white font-medium">{lead.ownerName}</span>
+                </div>
+              )}
+              {lead.ownerPhone && (
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-slate-500 w-16 flex-shrink-0">Phone</span>
+                  <a href={`tel:${lead.ownerPhone}`} className="text-green-400 font-mono hover:text-green-300">{lead.ownerPhone}</a>
+                </div>
+              )}
+              {lead.ownerEmail && (
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-slate-500 w-16 flex-shrink-0">Email</span>
+                  <a href={`mailto:${lead.ownerEmail}`} className="text-blue-400 hover:text-blue-300 break-all">{lead.ownerEmail}</a>
+                </div>
+              )}
+              {lead.address && (
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-slate-500 w-16 flex-shrink-0">Address</span>
+                  <span className="text-slate-300">{lead.address}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* CRM Actions */}
+          <div>
+            <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Outreach</div>
+            <div className="grid grid-cols-3 gap-2">
+              {lead.ownerPhone && (
+                <a
+                  href={`tel:${lead.ownerPhone}`}
+                  className="flex flex-col items-center gap-1 p-3 rounded-xl bg-green-500/10 border border-green-500/20 hover:bg-green-500/20 transition-all"
+                >
+                  <span className="text-lg">📞</span>
+                  <span className="text-xs font-bold text-green-400">Call</span>
+                </a>
+              )}
+              {lead.ownerPhone && (
+                <a
+                  href={`sms:${lead.ownerPhone}`}
+                  className="flex flex-col items-center gap-1 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/20 transition-all"
+                >
+                  <span className="text-lg">💬</span>
+                  <span className="text-xs font-bold text-blue-400">SMS</span>
+                </a>
+              )}
+              {lead.ownerEmail && (
+                <a
+                  href={`mailto:${lead.ownerEmail}?subject=Home%20Service%20Inquiry`}
+                  className="flex flex-col items-center gap-1 p-3 rounded-xl bg-violet-500/10 border border-violet-500/20 hover:bg-violet-500/20 transition-all"
+                >
+                  <span className="text-lg">📧</span>
+                  <span className="text-xs font-bold text-violet-400">Email</span>
+                </a>
+              )}
+              {mapsUrl && (
+                <a
+                  href={mapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex flex-col items-center gap-1 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 transition-all"
+                >
+                  <span className="text-lg">🗺️</span>
+                  <span className="text-xs font-bold text-amber-400">Maps</span>
+                </a>
+              )}
+            </div>
+          </div>
+
+          {/* Source Metadata */}
+          <div>
+            <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Source Data</div>
+            <div className="rounded-xl bg-white/5 border border-white/10 p-3 space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Signal Type</span>
+                <span className="text-slate-300 font-medium">{SIGNAL_TYPE_LABELS[lead.signalType] || lead.signalType}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">County</span>
+                <span className="text-slate-300">{lead.county}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Urgency</span>
+                <span className={`font-bold ${lead.urgency === "critical" ? "text-red-400" : lead.urgency === "high" ? "text-orange-400" : "text-amber-400"}`}>
+                  {(lead.urgency || "medium").toUpperCase()}
+                </span>
+              </div>
+              {lead.estimatedJobMin != null && lead.estimatedJobMax != null && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Est. Job Value</span>
+                  <span className="text-green-400 font-bold">${lead.estimatedJobMin.toLocaleString()}–${lead.estimatedJobMax.toLocaleString()}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-slate-500">Detected</span>
+                <span className="text-slate-400 text-xs">{new Date(lead.createdAt).toLocaleString()}</span>
+              </div>
+              <div className="flex flex-wrap gap-1 pt-1">
+                {cats.map(cat => {
+                  const c = NICHE_CONFIG[cat];
+                  return c ? (
+                    <span key={cat} className={`text-[10px] px-2 py-0.5 rounded font-bold border ${c.bg} ${c.color} ${c.border}`}>
+                      {c.emoji} {c.label}
+                    </span>
+                  ) : null;
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* AI Summary */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-xs font-bold text-slate-500 uppercase tracking-widest">AI Summary</div>
+              <button
+                onClick={generateAISummary}
+                disabled={aiLoading}
+                className="text-xs px-3 py-1 rounded-lg bg-violet-500/10 border border-violet-500/20 text-violet-400 hover:bg-violet-500/20 transition-all disabled:opacity-50"
+              >
+                {aiLoading ? "Thinking..." : "Generate ✨"}
+              </button>
+            </div>
+            {aiSummary ? (
+              <div className="rounded-xl bg-violet-500/5 border border-violet-500/20 p-3 text-sm text-slate-300 leading-relaxed">
+                {aiSummary}
+              </div>
+            ) : (
+              <div className="rounded-xl bg-white/5 border border-white/10 p-3 text-xs text-slate-600">
+                Click Generate to get an AI-written outreach angle for this lead.
+              </div>
+            )}
+          </div>
+
+          {/* Operator Notes */}
+          <div>
+            <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Notes</div>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="Add operator notes..."
+              rows={3}
+              className="w-full rounded-xl bg-white/5 border border-white/10 focus:border-violet-500/50 outline-none px-3 py-2 text-sm text-white placeholder:text-slate-600 resize-none"
+            />
+            <button
+              onClick={() => { onNoteSave(lead.id, notes); toast({ title: "Notes saved" }); }}
+              className="mt-2 w-full py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-slate-300 transition-all"
+            >
+              Save Notes
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
 }
 
 export function HomeLeadsTab({ onBack }: { onBack: () => void }) {
   const { currentAccount } = useAccount();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [filter, setFilter] = useState<string>("all");
+  const [stageFilter, setStageFilter] = useState<string>("all");
   const [selected, setSelected] = useState<HomeLead | null>(null);
 
-  const { data: leads = [], isLoading } = useQuery({
+  const { data: raw, isLoading, error } = useQuery({
     queryKey: ["/api/home-service/leads", currentAccount?.id],
     queryFn: async () => {
       const res = await fetch(`/api/home-service/leads/${currentAccount!.id}`);
-      if (!res.ok) throw new Error("Failed to fetch home service leads");
-      const data = await res.json();
-      return (data.leads || data) as HomeLead[];
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
     },
     enabled: !!currentAccount?.id,
-    refetchInterval: 60000,
+    refetchInterval: 60_000,
   });
 
-  const filtered = filter === "all" ? leads : leads.filter(l =>
-    (l.serviceCategories || []).includes(filter)
-  );
+  // Defensive normalisation: API returns { leads: [...], scope, contractorCount }
+  const leads: HomeLead[] = (() => {
+    if (!raw) return [];
+    const arr = Array.isArray(raw) ? raw : Array.isArray(raw?.leads) ? raw.leads : [];
+    return arr.map((l: any) => ({ ...l, serviceCategories: safeCategories(l.serviceCategories) }));
+  })();
 
-  const allNiches = [...new Set(leads.flatMap(l => l.serviceCategories || []))];
+  const patchLead = useMutation({
+    mutationFn: async ({ id, body }: { id: number; body: Record<string, unknown> }) => {
+      const res = await apiRequest("PATCH", `/api/home-service/leads/${id}`, body);
+      return res;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/home-service/leads", currentAccount?.id] }),
+  });
+
+  function handleStageChange(id: number, stage: string) {
+    // Optimistic update on the selected lead
+    setSelected(prev => prev && prev.id === id ? { ...prev, status: stage } : prev);
+    patchLead.mutate({ id, body: { stage } });
+    toast({ title: `Stage → ${stage}` });
+  }
+
+  function handleNoteSave(id: number, notes: string) {
+    patchLead.mutate({ id, body: { notes } });
+  }
+
+  const allNiches = [...new Set(leads.flatMap(l => l.serviceCategories))];
+
+  const filtered = leads.filter(l => {
+    const cats = l.serviceCategories;
+    const matchesNiche = filter === "all" || cats.includes(filter);
+    const matchesStage = stageFilter === "all" || l.status === stageFilter;
+    return matchesNiche && matchesStage;
+  });
+
+  const stageCounts = PIPELINE_STAGES.reduce((acc, s) => {
+    acc[s.key] = leads.filter(l => l.status === s.key).length;
+    return acc;
+  }, {} as Record<string, number>);
 
   return (
     <div className="p-6 md:p-10 max-w-6xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-4 mb-8">
-        <button onClick={onBack} className="text-slate-400 hover:text-white transition-colors">
-          ← Back
-        </button>
+        <button onClick={onBack} className="text-slate-400 hover:text-white transition-colors">← Back</button>
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-600 to-teal-500 flex items-center justify-center">
             <span className="text-2xl">🏠</span>
@@ -842,92 +1170,130 @@ export function HomeLeadsTab({ onBack }: { onBack: () => void }) {
             <h1 className="text-3xl font-black text-white tracking-tight">HOME & PROPERTY LEADS</h1>
             <p className="text-slate-400 text-sm flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-              Live signals — permits, weather alerts, business licenses, code enforcement
+              Live signals — permits, weather alerts, DBPR licenses, code enforcement
             </p>
           </div>
         </div>
         <div className="ml-auto text-right">
           <div className="text-2xl font-black text-white">{leads.length}</div>
-          <div className="text-xs text-slate-500 uppercase tracking-widest">Active Leads</div>
+          <div className="text-xs text-slate-500 uppercase tracking-widest">Total Leads</div>
         </div>
+      </div>
+
+      {/* Pipeline Stage Bar */}
+      <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+        <button
+          onClick={() => setStageFilter("all")}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold border whitespace-nowrap transition-all flex-shrink-0 ${stageFilter === "all" ? "bg-white/10 text-white border-white/20" : "bg-white/5 text-slate-400 border-white/10 hover:border-white/20"}`}
+        >
+          All Stages ({leads.length})
+        </button>
+        {PIPELINE_STAGES.map(stage => (
+          <button
+            key={stage.key}
+            onClick={() => setStageFilter(stage.key)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold border whitespace-nowrap transition-all flex-shrink-0 ${stageFilter === stage.key ? stage.color : "bg-white/5 text-slate-400 border-white/10 hover:border-white/20"}`}
+          >
+            {stage.label} ({stageCounts[stage.key] ?? 0})
+          </button>
+        ))}
       </div>
 
       {/* Niche Filter Pills */}
-      <div className="flex flex-wrap gap-2 mb-6">
-        <button
-          onClick={() => setFilter("all")}
-          className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
-            filter === "all"
-              ? "bg-white/10 text-white border-white/20"
-              : "bg-white/5 text-slate-400 border-white/10 hover:border-white/20"
-          }`}
-        >
-          All Niches ({leads.length})
-        </button>
-        {allNiches.map(niche => {
-          const cfg = NICHE_CONFIG[niche];
-          if (!cfg) return null;
-          const count = leads.filter(l => (l.serviceCategories || []).includes(niche)).length;
-          return (
-            <button
-              key={niche}
-              onClick={() => setFilter(niche)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
-                filter === niche
-                  ? `${cfg.bg} ${cfg.color} ${cfg.border}`
-                  : "bg-white/5 text-slate-400 border-white/10 hover:border-white/20"
-              }`}
-            >
-              {cfg.emoji} {cfg.label} ({count})
-            </button>
-          );
-        })}
-      </div>
+      {allNiches.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-6">
+          <button
+            onClick={() => setFilter("all")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${filter === "all" ? "bg-white/10 text-white border-white/20" : "bg-white/5 text-slate-400 border-white/10 hover:border-white/20"}`}
+          >
+            All Niches
+          </button>
+          {allNiches.map(niche => {
+            const cfg = NICHE_CONFIG[niche];
+            if (!cfg) return null;
+            const count = leads.filter(l => l.serviceCategories.includes(niche)).length;
+            return (
+              <button
+                key={niche}
+                onClick={() => setFilter(niche)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${filter === niche ? `${cfg.bg} ${cfg.color} ${cfg.border}` : "bg-white/5 text-slate-400 border-white/10 hover:border-white/20"}`}
+              >
+                {cfg.emoji} {cfg.label} ({count})
+              </button>
+            );
+          })}
+        </div>
+      )}
 
-      {/* Lead Grid */}
+      {/* States */}
       {isLoading ? (
-        <div className="text-center py-20 text-slate-500">Loading home service leads...</div>
+        <div className="text-center py-20 text-slate-500">
+          <div className="animate-spin text-4xl mb-4">⚙️</div>
+          Loading home service leads...
+        </div>
+      ) : error ? (
+        <div className="text-center py-20">
+          <div className="text-4xl mb-4">⚠️</div>
+          <div className="text-red-400 font-bold mb-2">Failed to load leads</div>
+          <div className="text-slate-500 text-sm">{String(error)}</div>
+        </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-20">
           <div className="text-6xl mb-4">🏠</div>
-          <div className="text-white font-bold text-xl mb-2">No leads yet</div>
-          <div className="text-slate-500 text-sm">Signals are fetched every 30 minutes from permits, NOAA, DBPR, and code enforcement</div>
+          <div className="text-white font-bold text-xl mb-2">
+            {leads.length === 0 ? "No leads yet" : "No leads match this filter"}
+          </div>
+          <div className="text-slate-500 text-sm">
+            {leads.length === 0
+              ? "Signals are fetched every 30 minutes from permits, NOAA, DBPR, and code enforcement"
+              : "Try a different stage or niche filter"}
+          </div>
         </div>
       ) : (
-        <div className="grid gap-3">
+        <div className="grid gap-2">
           {filtered.map(lead => {
-            const primaryNiche = lead.serviceCategories?.[0];
-            const cfg = NICHE_CONFIG[primaryNiche] || { label: primaryNiche, emoji: "📌", color: "text-slate-400", bg: "bg-slate-500/10", border: "border-slate-500/20" };
+            const cats = lead.serviceCategories;
+            const primaryNiche = cats[0];
+            const cfg = NICHE_CONFIG[primaryNiche] || { label: primaryNiche || "Lead", emoji: "📌", color: "text-slate-400", bg: "bg-slate-500/10", border: "border-slate-500/20" };
             const sigLabel = SIGNAL_TYPE_LABELS[lead.signalType] || lead.signalType;
+            const stage = PIPELINE_STAGES.find(s => s.key === lead.status) || PIPELINE_STAGES[0];
             const urgencyColors: Record<string, string> = {
               critical: "text-red-400 bg-red-500/10 border-red-500/20",
-              high: "text-orange-400 bg-orange-500/10 border-orange-500/20",
-              medium: "text-amber-400 bg-amber-500/10 border-amber-500/20",
-              low: "text-slate-400 bg-slate-500/10 border-slate-500/20",
+              high:     "text-orange-400 bg-orange-500/10 border-orange-500/20",
+              medium:   "text-amber-400 bg-amber-500/10 border-amber-500/20",
+              low:      "text-slate-400 bg-slate-500/10 border-slate-500/20",
             };
 
             return (
               <div
                 key={lead.id}
-                onClick={() => setSelected(selected?.id === lead.id ? null : lead)}
-                className={`rounded-2xl border p-4 cursor-pointer transition-all ${cfg.bg} ${cfg.border} hover:scale-[1.01]`}
+                onClick={() => setSelected(lead)}
+                className={`rounded-2xl border p-4 cursor-pointer transition-all hover:scale-[1.005] ${cfg.bg} ${cfg.border}`}
               >
                 <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl">{cfg.emoji}</span>
-                    <div>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-2xl flex-shrink-0">{cfg.emoji}</span>
+                    <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-1">
                         <span className={`text-xs font-bold px-2 py-0.5 rounded border ${urgencyColors[lead.urgency] || urgencyColors.medium}`}>
                           {(lead.urgency || "medium").toUpperCase()}
                         </span>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded border ${stage.color}`}>
+                          {stage.label}
+                        </span>
                         <span className="text-xs text-slate-500">{sigLabel}</span>
-                        <span className="text-xs text-slate-600">• {lead.county} County</span>
+                        <span className="text-xs text-slate-600">· {lead.county}</span>
                       </div>
-                      <p className="text-white font-semibold text-sm">{lead.description}</p>
-                      {lead.address && <p className="text-slate-500 text-xs mt-0.5">📍 {lead.address}</p>}
+                      <p className="text-white font-semibold text-sm truncate">
+                        {lead.ownerName ? `${lead.ownerName} — ` : ""}{lead.description}
+                      </p>
+                      {lead.address && <p className="text-slate-500 text-xs mt-0.5 truncate">📍 {lead.address}</p>}
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                    {lead.score != null && (
+                      <div className="text-xs font-black text-white bg-white/10 px-2 py-0.5 rounded">{lead.score}</div>
+                    )}
                     {lead.ownerPhone && (
                       <a
                         href={`tel:${lead.ownerPhone}`}
@@ -937,34 +1303,182 @@ export function HomeLeadsTab({ onBack }: { onBack: () => void }) {
                         📞 Call
                       </a>
                     )}
-                    <div className="flex gap-1 flex-wrap justify-end">
-                      {(lead.serviceCategories || []).map(cat => {
-                        const c = NICHE_CONFIG[cat];
-                        return c ? (
-                          <span key={cat} className={`text-[10px] px-2 py-0.5 rounded font-bold border ${c.bg} ${c.color} ${c.border}`}>
-                            {c.emoji} {c.label}
-                          </span>
-                        ) : null;
-                      })}
-                    </div>
                   </div>
                 </div>
-
-                {selected?.id === lead.id && (
-                  <div className="mt-4 pt-4 border-t border-white/10 grid grid-cols-2 gap-3 text-sm">
-                    {lead.ownerName && <div><span className="text-slate-500">Owner:</span> <span className="text-white">{lead.ownerName}</span></div>}
-                    {lead.ownerPhone && <div><span className="text-slate-500">Phone:</span> <span className="text-white">{lead.ownerPhone}</span></div>}
-                    <div><span className="text-slate-500">County:</span> <span className="text-white">{lead.county}</span></div>
-                    <div><span className="text-slate-500">Source:</span> <span className="text-white">{sigLabel}</span></div>
-                    <div><span className="text-slate-500">Status:</span> <span className="text-white">{lead.status}</span></div>
-                    {lead.score && <div><span className="text-slate-500">Score:</span> <span className="text-white">{lead.score}/100</span></div>}
-                  </div>
-                )}
               </div>
             );
           })}
         </div>
       )}
+
+      {/* Detail Drawer */}
+      <AnimatePresence>
+        {selected && (
+          <LeadDrawer
+            lead={selected}
+            onClose={() => setSelected(null)}
+            onStageChange={handleStageChange}
+            onNoteSave={handleNoteSave}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ── Provider Configuration Tab ─────────────────────────────────────────────
+export function ProviderConfigTab({ onBack }: { onBack: () => void }) {
+  const { toast } = useToast();
+  const { data: status, isLoading } = useQuery({
+    queryKey: ["/api/ai/status"],
+    queryFn: async () => {
+      const res = await fetch("/api/ai/status");
+      if (!res.ok) throw new Error("Failed to fetch AI status");
+      return res.json();
+    },
+    refetchInterval: 15_000,
+  });
+  const [testing, setTesting] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<Record<string, { ok: boolean; latency: number; error?: string }>>({});
+
+  async function testProvider(provider: string) {
+    setTesting(provider);
+    const start = Date.now();
+    try {
+      const res = await apiRequest("POST", "/api/ai/chat", {
+        messages: [{ role: "user", content: "Reply with just: OK" }],
+        maxTokens: 5,
+        route: `provider-test-${provider}`,
+      });
+      setTestResult(prev => ({ ...prev, [provider]: { ok: !!res.text, latency: Date.now() - start } }));
+    } catch (e: any) {
+      setTestResult(prev => ({ ...prev, [provider]: { ok: false, latency: Date.now() - start, error: e.message } }));
+    } finally {
+      setTesting(null);
+    }
+  }
+
+  const providers = [
+    {
+      key: "openai",
+      name: "OpenAI",
+      emoji: "🤖",
+      envVar: "OPENAI_APEX_INT_KEY",
+      models: ["gpt-4o-mini", "gpt-4o"],
+      docUrl: "https://platform.openai.com/api-keys",
+      info: status?.providers?.openai,
+    },
+    {
+      key: "gemini",
+      name: "Google Gemini",
+      emoji: "♊",
+      envVar: "Gemini_API_Key_saas",
+      models: ["gemini-2.5-flash", "gemini-2.5-pro"],
+      docUrl: "https://aistudio.google.com/app/apikey",
+      info: status?.providers?.gemini,
+    },
+  ];
+
+  return (
+    <div className="p-6 md:p-10 max-w-3xl mx-auto">
+      <div className="flex items-center gap-4 mb-8">
+        <button onClick={onBack} className="text-slate-400 hover:text-white transition-colors">← Back</button>
+        <div>
+          <h1 className="text-3xl font-black text-white tracking-tight">AI PROVIDER CONFIG</h1>
+          <p className="text-slate-400 text-sm">Diagnostics, connection tests, model selection</p>
+        </div>
+        <div className="ml-auto">
+          <div className={`px-3 py-1.5 rounded-xl border text-xs font-black ${status?.configured ? "text-green-400 bg-green-500/10 border-green-500/20" : "text-red-400 bg-red-500/10 border-red-500/20"}`}>
+            {isLoading ? "Checking..." : status?.configured ? "✅ AI ONLINE" : "❌ NO PROVIDER"}
+          </div>
+        </div>
+      </div>
+
+      {/* Warning banner */}
+      {!isLoading && !status?.configured && (
+        <div className="mb-6 rounded-2xl bg-red-500/10 border border-red-500/20 p-4">
+          <div className="font-bold text-red-400 mb-1">⚠️ No AI provider configured</div>
+          <div className="text-slate-400 text-sm">
+            AI-powered features (outreach generation, lead summaries, call analysis) are disabled.
+            Add at least one provider API key to Railway environment variables.
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {providers.map(p => {
+          const result = testResult[p.key];
+          const isConfigured = p.info?.configured;
+          return (
+            <div key={p.key} className={`rounded-2xl border p-5 ${isConfigured ? "bg-green-500/5 border-green-500/20" : "bg-white/5 border-white/10"}`}>
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl">{p.emoji}</span>
+                  <div>
+                    <div className="text-white font-bold text-lg">{p.name}</div>
+                    <div className={`text-xs font-bold ${isConfigured ? "text-green-400" : "text-red-400"}`}>
+                      {isConfigured ? "✅ Connected" : "❌ Not configured"}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => testProvider(p.key)}
+                  disabled={testing === p.key || !isConfigured}
+                  className="px-4 py-2 rounded-xl text-xs font-bold border transition-all disabled:opacity-40 bg-white/5 border-white/10 hover:bg-white/10 text-slate-300"
+                >
+                  {testing === p.key ? "Testing..." : "Test Connection"}
+                </button>
+              </div>
+
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Environment Variable</span>
+                  <code className="text-xs bg-white/10 px-2 py-0.5 rounded font-mono text-slate-300">{p.envVar}</code>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Key Present</span>
+                  <span className={p.info?.keyPresent ? "text-green-400" : "text-red-400"}>
+                    {p.info?.keyPresent ? `Yes (${p.info.keyPrefix})` : "No"}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Models</span>
+                  <span className="text-slate-400 text-xs">{p.models.join(", ")}</span>
+                </div>
+              </div>
+
+              {result && (
+                <div className={`mt-3 rounded-xl p-3 text-xs border ${result.ok ? "bg-green-500/10 border-green-500/20 text-green-400" : "bg-red-500/10 border-red-500/20 text-red-400"}`}>
+                  {result.ok ? `✅ Response OK (${result.latency}ms)` : `❌ Failed: ${result.error || "unknown error"} (${result.latency}ms)`}
+                </div>
+              )}
+
+              {!isConfigured && (
+                <a
+                  href={p.docUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 flex items-center gap-2 text-xs text-blue-400 hover:text-blue-300"
+                >
+                  Get API key → {p.docUrl.split("/")[2]}
+                </a>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Railway instructions */}
+      <div className="mt-6 rounded-2xl bg-white/5 border border-white/10 p-5">
+        <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">How to add to Railway</div>
+        <ol className="space-y-2 text-sm text-slate-400">
+          <li><span className="text-white font-bold">1.</span> Open your Railway project → service → Variables tab</li>
+          <li><span className="text-white font-bold">2.</span> Click "New Variable"</li>
+          <li><span className="text-white font-bold">3.</span> Name: <code className="bg-white/10 px-1 rounded text-xs">OPENAI_APEX_INT_KEY</code> or <code className="bg-white/10 px-1 rounded text-xs">Gemini_API_Key_saas</code></li>
+          <li><span className="text-white font-bold">4.</span> Paste your API key as the value</li>
+          <li><span className="text-white font-bold">5.</span> Click "Add" → Railway will redeploy automatically</li>
+        </ol>
+      </div>
     </div>
   );
 }

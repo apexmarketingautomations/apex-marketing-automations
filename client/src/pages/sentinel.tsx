@@ -9,7 +9,7 @@ import {
   Settings, Play, Pause, Radio, Shield, Clock, ChevronRight, ChevronLeft, Send, Target, Zap, Eye, BookOpen, Lock, ArrowUpCircle, Plus, ExternalLink, Globe, MessageSquare, AlertCircle, Home
 } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
-import { LegalLeadsTab, DistributionTab, HomeLeadsTab } from "@/pages/LegalLeadsTab";
+import { LegalLeadsTab, DistributionTab, HomeLeadsTab, ProviderConfigTab } from "@/pages/LegalLeadsTab";
 import { SENTINEL_STEPS } from "@/components/tutorial-steps";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -330,6 +330,7 @@ export default function Sentinel() {
           { key: "home",         label: "Home & Property", icon: "🏠", desc: "Contractors" },
           { key: "legal",        label: "Legal Signals",   icon: "⚖️", desc: "All Attorneys" },
           { key: "distribution", label: "Distribution",    icon: "📡", desc: "Routing Rules" },
+          { key: "providers",     label: "AI Providers",    icon: "🤖", desc: "Config & Test" },
         ].map(tab => (
           <button
             key={tab.key}
@@ -361,6 +362,7 @@ export default function Sentinel() {
           { key: "home",         label: "Home & Property", icon: "🏠", desc: "Contractors" },
           { key: "legal",        label: "Legal Signals",   icon: "⚖️", desc: "All Attorneys" },
           { key: "distribution", label: "Distribution",    icon: "📡", desc: "Routing Rules" },
+          { key: "providers",     label: "AI Providers",    icon: "🤖", desc: "Config & Test" },
         ].map(tab => (
           <button
             key={tab.key}
@@ -392,6 +394,7 @@ export default function Sentinel() {
           { key: "home",         label: "Home & Property", icon: "🏠", desc: "Contractors" },
           { key: "legal",        label: "Legal Signals",   icon: "⚖️", desc: "All Attorneys" },
           { key: "distribution", label: "Distribution",    icon: "📡", desc: "Routing Rules" },
+          { key: "providers",     label: "AI Providers",    icon: "🤖", desc: "Config & Test" },
         ].map(tab => (
           <button
             key={tab.key}
@@ -427,6 +430,7 @@ export default function Sentinel() {
             { key: "home",         label: "Home & Property",  icon: "🏠", desc: "Contractors" },
             { key: "legal",        label: "Legal Signals",    icon: "⚖️", desc: "All Attorneys" },
             { key: "distribution", label: "Distribution",     icon: "📡", desc: "Routing Rules" },
+            { key: "providers",     label: "AI Providers",     icon: "🤖", desc: "Config & Test" },
           ].map(tab => (
             <button
               key={tab.key}
@@ -515,6 +519,33 @@ export default function Sentinel() {
 
   const activeNiche = config?.niche === 'home_services' ? 'home_services' : 'accident';
   const isHomeSvc = activeNiche === 'home_services';
+
+  if (activeTab === "providers") {
+    return (
+      <div className="min-h-screen bg-[#080a0f] flex flex-col">
+        <div className="flex gap-3 p-4 border-b border-white/10 overflow-x-auto">
+          {[
+            { key: "crash",        label: "Crash Leads",     icon: "🚨", desc: "PI Attorneys" },
+            { key: "home",         label: "Home & Property",  icon: "🏠", desc: "Contractors" },
+            { key: "legal",        label: "Legal Signals",    icon: "⚖️", desc: "All Attorneys" },
+            { key: "distribution", label: "Distribution",     icon: "📡", desc: "Routing Rules" },
+            { key: "providers",    label: "AI Providers",     icon: "🤖", desc: "Config & Test" },
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={"flex flex-col items-center px-4 py-2 rounded-xl border transition-all " + (activeTab === tab.key ? "bg-indigo-600/20 border-indigo-500/40 text-white" : "bg-white/5 border-white/10 text-slate-500 hover:text-slate-300")}
+            >
+              <span className="text-lg">{tab.icon}</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider">{tab.label}</span>
+              <span className={"text-[9px] font-normal " + (activeTab === tab.key ? "text-indigo-200" : "text-slate-600")}>{tab.desc}</span>
+            </button>
+          ))}
+        </div>
+        <ProviderConfigTab onBack={() => setActiveTab("crash")} />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 md:p-10 max-w-6xl mx-auto">

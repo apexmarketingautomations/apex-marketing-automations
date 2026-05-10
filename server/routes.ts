@@ -131,6 +131,46 @@ export async function registerRoutes(
     res.json(getLegalPipelineStats());
   }));
 
+  // ── AI Chat & Provider Routes ─────────────────────────────────────────────
+  app.post("/api/ai/chat", asyncHandler(async (req, res) => {
+    const { aiChat, isAIConfigured } = await import("./aiGateway");
+    if (!isAIConfigured()) {
+      return res.status(503).json({ ok: false, error: "No AI provider configured" });
+    }
+    const { messages = [], maxTokens = 200, route = "operator-ui" } = req.body as {
+      messages: Array<{ role: string; content: string }>;
+      maxTokens?: number;
+      route?: string;
+    };
+    const result = await aiChat(messages as any, { maxTokens, route });
+    res.json(result);
+  }));
+
+  // ── AI Provider Status ────────────────────────────────────────────────────
+  app.get("/api/ai/status", asyncHandler(async (req, res) => {
+    const { isAIConfigured, isOpenAIConfigured } = await import("./aiGateway");
+    const { isGeminiConfigured } = await import("./gemini");
+    const openaiKey = process.env.OPENAI_APEX_INT_KEY;
+    const geminiKey = process.env.Gemini_API_Key_saas;
+    res.json({
+      configured: isAIConfigured(),
+      providers: {
+        openai: {
+          configured: isOpenAIConfigured(),
+          keyPresent: !!openaiKey,
+          keyPrefix: openaiKey ? openaiKey.slice(0, 7) + "..." : null,
+          envVar: "OPENAI_APEX_INT_KEY",
+        },
+        gemini: {
+          configured: isGeminiConfigured(),
+          keyPresent: !!geminiKey,
+          keyPrefix: geminiKey ? geminiKey.slice(0, 6) + "..." : null,
+          envVar: "Gemini_API_Key_saas",
+        },
+      },
+    });
+  }));
+
   app.get("/api/home-service/stats", asyncHandler(async (req, res) => {
     const { getHomeServicePipelineStats } = await import("./homeServiceSignalPipeline");
     res.json(getHomeServicePipelineStats());

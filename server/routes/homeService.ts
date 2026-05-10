@@ -102,7 +102,29 @@ export function registerHomeServiceRoutes(app: Express): void {
     }
   });
 
-  // GET /api/home-service/contractors/:subAccountId
+  // PATCH /api/home-service/leads/:id — update stage, notes, status
+  app.patch("/api/home-service/leads/:id", async (req: Request, res: Response) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ error: "invalid id" });
+      const { stage, notes, status } = req.body as { stage?: string; notes?: string; status?: string };
+      const update: Record<string, any> = { updatedAt: new Date() };
+      if (stage  !== undefined) update.status = stage;   // reuse status field as stage
+      if (notes  !== undefined) update.scoreBreakdown = notes; // reuse scoreBreakdown for operator notes
+      if (status !== undefined) update.status = status;
+      const [updated] = await db.update(homeServiceLeads)
+        .set(update)
+        .where(eq(homeServiceLeads.id, id))
+        .returning();
+      if (!updated) return res.status(404).json({ error: "lead not found" });
+      res.json({ ok: true, lead: updated });
+    } catch (err: any) {
+      console.error(`[HOME-SERVICE] patch lead error: ${err.message}`);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+    // GET /api/home-service/contractors/:subAccountId
   app.get("/api/home-service/contractors/:subAccountId", async (req: Request, res: Response) => {
     try {
       const subAccountId = Number(req.params.subAccountId);
