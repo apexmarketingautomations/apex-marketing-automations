@@ -41,6 +41,30 @@ const ENGINE_ID = crypto.randomUUID().slice(0, 8);
 const POLL_INTERVAL_MS = 30 * 60 * 1000;
 
 // Florida counties covered
+// Safe fetch: checks content-type, logs failures, never throws
+async function safeJsonFetch(url: string, label: string, timeoutMs = 10000): Promise<any[] | null> {
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: "application/json", "User-Agent": "ApexLeadEngine/2.0" },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const ct = res.headers.get("content-type") || "";
+    if (!res.ok) {
+      console.warn(`[APEX-ENGINE] ${label} HTTP ${res.status} — skipping`);
+      return null;
+    }
+    if (!ct.includes("json")) {
+      const preview = (await res.text()).slice(0, 200);
+      console.warn(`[APEX-ENGINE] ${label} non-JSON ct="${ct}" preview="${preview.replace(/\s+/g,' ')}"`);
+      return null;
+    }
+    return await res.json();
+  } catch (err: any) {
+    console.warn(`[APEX-ENGINE] ${label} fetch error: ${err.message}`);
+    return null;
+  }
+}
+
 const FL_COUNTIES = [
   { name: 'LEE',        zone: 'FLZ043', fips: '12071' },
   { name: 'COLLIER',    zone: 'FLZ048', fips: '12021' },
@@ -209,12 +233,11 @@ function parsePermitCategories(permitType: string): string[] {
 async function fetchLeePermits(): Promise<LeadSignal[]> {
   try {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const res = await fetch(
+    const permits = await safeJsonFetch(
       `https://opendata.leegov.com/resource/permits.json?$where=application_date>'${since}'&$limit=200&$order=application_date DESC`,
-      { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(10000) }
+      "Lee permits"
     );
-    if (!res.ok) return [];
-    const permits = await res.json() as any[];
+    if (!permits) return [];
     return permits.flatMap(p => {
       const cats = parsePermitCategories(p.permit_type || p.work_description || '');
       if (!cats.length) return [];
@@ -284,7 +307,13 @@ async function fetchDBPRLicenses(): Promise<LeadSignal[]> {
       new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US'),
       { headers: { 'Accept': 'application/json', 'User-Agent': 'ApexLeadEngine/2.0' }, signal: AbortSignal.timeout(10000) }
     );
-    if (!res.ok) return [];
+    if (!res.ok) { console.warn("[APEX-ENGINE] DBPR HTTP", res.status, "— skipping"); return []; }
+    const ct = res.headers.get("content-type") || "";
+    if (!ct.includes("json")) {
+      const preview = (await res.text()).slice(0, 200);
+      console.warn(`[APEX-ENGINE] DBPR returned non-JSON (ct="${ct}") — endpoint may have changed. preview="${preview}"`);
+      return [];
+    }
     const data = await res.json() as any[];
     return (data || []).flatMap((lic: any) => {
       const licType = (lic.license_type || '').toUpperCase();
@@ -565,18 +594,26 @@ export async function runApexLeadEngine(): Promise<void> {
   const startMs = Date.now();
   console.log(`[APEX-ENGINE] ── CYCLE START id=${runId} ──`);
 
+  const sourceLabels = ["NOAA","LeePerm","CollierPerm","DBPR","Arrests","Courts","OSHA","Recalls","CodeEnf"];
+  const settled = await Promise.allSettled([
+    fetchNoaaAlerts(),
+    fetchLeePermits(),
+    fetchCollierPermits(),
+    fetchDBPRLicenses(),
+    fetchArrestRecords(),
+    fetchCourtFilings(),
+    fetchOSHAIncidents(),
+    fetchProductRecalls(),
+    fetchCodeEnforcement(),
+  ]);
   const [noaa, leePerm, collierPerm, dbpr, arrests, courts, osha, recalls, code] =
-    await Promise.allSettled([
-      fetchNoaaAlerts(),
-      fetchLeePermits(),
-      fetchCollierPermits(),
-      fetchDBPRLicenses(),
-      fetchArrestRecords(),
-      fetchCourtFilings(),
-      fetchOSHAIncidents(),
-      fetchProductRecalls(),
-      fetchCodeEnforcement(),
-    ]).then(r => r.map(x => x.status === 'fulfilled' ? x.value : []));
+    settled.map(x => x.status === 'fulfilled' ? x.value : []);
+
+  settled.forEach((r, i) => {
+    const n = r.status === 'fulfilled' ? r.value.length : 0;
+    const e = r.status === 'rejected' ? ` ERR=${r.reason?.message}` : '';
+    if (n > 0 || r.status === 'rejected') console.log(`[APEX-ENGINE] source=${sourceLabels[i]} fetched=${n}${e}`);
+  });
 
   const allSignals: LeadSignal[] = [
     ...noaa, ...leePerm, ...collierPerm, ...dbpr,

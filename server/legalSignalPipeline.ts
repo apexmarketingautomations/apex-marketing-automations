@@ -147,7 +147,7 @@ async function isDuplicate(hash: string): Promise<boolean> {
   return !!row;
 }
 
-async function safeFetch(url: string, timeoutMs = 12000): Promise<any> {
+async function safeFetch(url: string, timeoutMs = 12000, label?: string): Promise<any> {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -156,10 +156,22 @@ async function safeFetch(url: string, timeoutMs = 12000): Promise<any> {
       headers: { Accept: "application/json", "User-Agent": "ApexLegalPipeline/2.0" },
     });
     clearTimeout(t);
-    if (!res.ok) return null;
+    const ct = res.headers.get("content-type") || "";
+    if (!res.ok) {
+      if (label) console.warn(`[LEGAL-PIPELINE] ${label} HTTP ${res.status} — skipping`);
+      return null;
+    }
+    if (!ct.includes("json")) {
+      if (label) {
+        const preview = (await res.text()).slice(0, 200);
+        console.warn(`[LEGAL-PIPELINE] ${label} non-JSON content-type="${ct}" preview="${preview}"`);
+      }
+      return null;
+    }
     return await res.json();
-  } catch (_e) { // allow-silent-catch: network timeout returns null safely
+  } catch (err: any) { // allow-silent-catch: network timeout returns null safely
     clearTimeout(t);
+    if (label) console.warn(`[LEGAL-PIPELINE] ${label} fetch error: ${err.message}`);
     return null;
   }
 }
@@ -356,9 +368,10 @@ async function fetchCpscRecalls(): Promise<RawLegalSignal[]> {
 
 async function fetchGooglePlacesBusinesses(): Promise<RawLegalSignal[]> {
   if (!GOOGLE_PLACES_KEY) {
-    console.log("[LEGAL-PIPELINE] No Google Places API key — skipping local business discovery");
+    console.warn("[LEGAL-PIPELINE] Google Places: GOOGLE_MAPS_API and GOOGLE_PLACES_API_KEY both unset — skipping");
     return [];
   }
+  console.log("[LEGAL-PIPELINE] Google Places: key present, starting batch search");
 
   const signals: RawLegalSignal[] = [];
 
@@ -385,7 +398,7 @@ async function fetchGooglePlacesBusinesses(): Promise<RawLegalSignal[]> {
       try {
         const query = encodeURIComponent(`${search.query} in ${city}`);
         const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${query}&key=${GOOGLE_PLACES_KEY}`;
-        const data = await safeFetch(url, 10000);
+        const data = await safeFetch(url, 10000, `Places textsearch [${search.category}/${city}]`);
 
         if (!data?.results) continue;
 
@@ -395,7 +408,7 @@ async function fetchGooglePlacesBusinesses(): Promise<RawLegalSignal[]> {
           if (!place.place_id) continue;
 
           const detailUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=name,formatted_phone_number,formatted_address,rating,user_ratings_total,business_status&key=${GOOGLE_PLACES_KEY}`;
-          const detail = await safeFetch(detailUrl, 8000);
+          const detail = await safeFetch(detailUrl, 8000, `Places details [${place.place_id?.slice(0,12)}]`);
           const p = detail?.result;
 
           if (!p) continue;
@@ -595,6 +608,7 @@ async function runLegalCycle(subAccountId: number): Promise<void> {
   stats.totalRuns++;
   stats.lastRunAt = new Date().toISOString();
 
+  const sourceNames = ["FL Arrests", "OSHA", "FDA Recalls", "CPSC Recalls", "Google Places"];
   const results = await Promise.allSettled([
     fetchFlArrests(),
     fetchOshaIncidents(),
@@ -605,6 +619,13 @@ async function runLegalCycle(subAccountId: number): Promise<void> {
 
   const allSignals: RawLegalSignal[] = results
     .flatMap(r => r.status === "fulfilled" ? r.value : []);
+
+  // Per-source breakdown
+  results.forEach((r, i) => {
+    const count = r.status === "fulfilled" ? r.value.length : 0;
+    const err   = r.status === "rejected"  ? ` ERROR: ${r.reason?.message}` : "";
+    console.log(`[LEGAL-PIPELINE] source=${sourceNames[i]} fetched=${count}${err}`);
+  });
 
   console.log(`[LEGAL-PIPELINE] ${allSignals.length} raw signals in ${Date.now() - startMs}ms`);
 

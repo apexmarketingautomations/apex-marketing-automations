@@ -19,7 +19,7 @@ import { createMcpFsRouter } from "../mcp-fs-router.js";
 import { runStartupChecks } from "./startupChecks";
 import { logSystemError, logSystemEvent } from "./systemLogger";
 import { clearLaylaCache } from "./services/laylaAccountResolver";
-import { ensureAccountsUnprotected } from "./startupPatches";
+import { ensureAccountsUnprotected, repairAgentTasksSequence } from "./startupPatches";
 
 process.on("unhandledRejection", (reason: any) => {
   console.error("[PROCESS] Unhandled promise rejection (caught, not crashing):", reason?.message || reason);
@@ -575,6 +575,7 @@ async function validateMetaCredentials() {
   validateEnvVars();
   clearLaylaCache();
   await ensureAccountsUnprotected();
+  await repairAgentTasksSequence();
   runStartupChecks();
   try {
     await validateMetaCredentials();
