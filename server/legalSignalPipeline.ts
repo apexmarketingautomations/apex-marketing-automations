@@ -534,6 +534,7 @@ async function createContactFromLead(lead: any, subAccountId: number): Promise<v
       state: "FL",
     });
   } catch (_e) { // allow-silent-catch: contact creation failure should not block lead pipeline
+  }
 }
 
 async function deliverLeadToAllAccounts(lead: any): Promise<void> {
@@ -548,6 +549,7 @@ async function deliverLeadToAllAccounts(lead: any): Promise<void> {
       try {
         await createContactFromLead(lead, acct.id);
       } catch (_e) { // allow-silent-catch: one account failure should not block others
+      }
     }
 
     // Also deliver SMS to any registered attorneys
@@ -575,6 +577,7 @@ async function deliverLeadToAllAccounts(lead: any): Promise<void> {
         ].filter(Boolean).join("\n");
         await sendSms({ to: attorney.phone, body });
       } catch (_e) { // allow-silent-catch: SMS alert failure is non-critical
+      }
     }
   } catch (err: any) {
     console.error("[LEGAL-PIPELINE] Delivery error:", err.message);
