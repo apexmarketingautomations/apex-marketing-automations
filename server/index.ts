@@ -19,7 +19,7 @@ import { createMcpFsRouter } from "../mcp-fs-router.js";
 import { runStartupChecks } from "./startupChecks";
 import { logSystemError, logSystemEvent } from "./systemLogger";
 import { clearLaylaCache } from "./services/laylaAccountResolver";
-import { ensureAccountsUnprotected, repairDriftedSequences } from "./startupPatches";
+import { ensureAccountsUnprotected } from "./startupPatches";
 
 process.on("unhandledRejection", (reason: any) => {
   console.error("[PROCESS] Unhandled promise rejection (caught, not crashing):", reason?.message || reason);
@@ -575,14 +575,7 @@ async function validateMetaCredentials() {
   validateEnvVars();
   clearLaylaCache();
   await ensureAccountsUnprotected();
-  console.log("[STARTUP] invoking repairDriftedSequences");
-  try {
-    console.log("[STARTUP-PATCH] ══════════ SEQUENCE REPAIR START ══════════");
-    await repairDriftedSequences();
-    console.log("[STARTUP-PATCH] ══════════ SEQUENCE REPAIR DONE ═══════════");
-  } catch (patchErr: any) {
-    console.error("[STARTUP-PATCH] FATAL — repairDriftedSequences threw:", patchErr?.message, patchErr?.stack);
-  }
+  // Sequence audit runs in the listen callback where Railway captures logs (see below)
   runStartupChecks();
   try {
     await validateMetaCredentials();
@@ -1806,15 +1799,13 @@ RULES:
     async () => {
       log(`serving on port ${port}`);
 
-      // Run sequence repair HERE — inside listen callback so Railway captures the logs
-      console.log("[STARTUP] BOOT ENTRY REACHED — inside listen callback");
+      // ── Generic sequence audit — discovers and repairs ALL drifted sequences ──
+      console.error("[STARTUP] BOOT ENTRY REACHED — running sequence audit");
       try {
-        console.log("[STARTUP] invoking repairDriftedSequences");
-        console.log("[STARTUP-PATCH] ══════════ SEQUENCE REPAIR START ══════════");
-        await repairDriftedSequences();
-        console.log("[STARTUP-PATCH] ══════════ SEQUENCE REPAIR DONE ═══════════");
-      } catch (patchErr: any) {
-        console.error("[STARTUP-PATCH] FATAL — repairDriftedSequences threw:", patchErr?.message, patchErr?.stack);
+        const { auditAndRepairSequences } = await import("./startup/sequenceAudit");
+        await auditAndRepairSequences();
+      } catch (auditErr: any) {
+        console.error("[SEQ-AUDIT] FATAL — audit threw:", auditErr?.message, auditErr?.stack);
       }
 
       try {
