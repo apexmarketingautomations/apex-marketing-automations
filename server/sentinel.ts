@@ -8,6 +8,7 @@ import {
   getPollSchedule,
   classifyCrashSeverity,
 } from './sentinel-accident-v2';
+import { storage } from './storage';
 
 const META_VERSION = 'v18.0';
 const FHP_HSMV_URL = "https://trafficincidents.flhsmv.gov/SmartWebClient/CADView.aspx";
@@ -256,6 +257,86 @@ export async function deployGeofenceAd(incident: {
   }
 }
 
+async function getSchedulerAccountIds(): Promise<number[]> {
+  try {
+    const { db } = await import('./db');
+    const { sentinelConfig } = await import('@shared/schema');
+    const configs = await db.select({ subAccountId: sentinelConfig.subAccountId }).from(sentinelConfig).limit(50);
+    if (configs.length > 0) return configs.map(c => c.subAccountId);
+  } catch (_e) { // allow-silent-catch: fallback to parent account if DB unavailable
+  }
+  return [Number(process.env.APEX_PARENT_ACCOUNT_ID) || 13];
+}
+
+export async function persistSentinelCrashIncidents(
+  incidents: SentinelIncidentRaw[],
+  subAccountId: number,
+): Promise<{ persisted: number; duplicates: number; failed: number }> {
+  let persisted = 0, duplicates = 0, failed = 0;
+
+  for (const inc of incidents) {
+    try {
+      const hashInput = inc.id ? `${inc.id}` : `${inc.type}-${inc.location}`;
+      const hash = Buffer.from(hashInput).toString('base64').substring(0, 64);
+
+      const existing = await storage.getSentinelIncidentByHash(subAccountId, hash);
+
+      if (!existing) {
+        await storage.createSentinelIncident({
+          subAccountId,
+          sourceHash:       hash,
+          title:            inc.type,
+          description:      `${inc.type} at ${inc.location}. ${inc.distanceMiles && inc.distanceMiles !== 'unknown' ? inc.distanceMiles + ' mi from HQ.' : ''} County: ${inc.county || 'FL'}. ${inc.remarks || ''} [${inc.source?.toUpperCase() || 'UNKNOWN'}]`,
+          location:         inc.location,
+          severity:         inc.severity || 'medium',
+          rawPayload: {
+            id:            inc.id,
+            lat:           inc.lat,
+            lng:           inc.lng,
+            type:          inc.type,
+            source:        inc.source,
+            state:         inc.state,
+            county:        inc.county,
+            remarks:       inc.remarks,
+            received:      inc.received,
+            distanceMiles: inc.distanceMiles,
+            googleMaps:    inc.googleMaps,
+          },
+          actionStatus:     'pending',
+          smsSent:          false,
+          geofenceDeployed: false,
+        });
+        persisted++;
+      } else {
+        const mergeResult = buildCrashMergeUpdate({
+          existingSeverity:     existing.severity || 'low',
+          existingActionStatus: existing.actionStatus || 'pending',
+          newSeverity:          inc.severity || 'low',
+          newDescription:       inc.remarks || null,
+          newRawPayload: {
+            ...(existing.rawPayload as object || {}),
+            remarks:  inc.remarks,
+            received: inc.received,
+          },
+        });
+        if (
+          mergeResult &&
+          (mergeResult.action === 'severity_upgraded' || mergeResult.action === 're_pended') &&
+          Object.keys(mergeResult.updates).length > 0
+        ) {
+          await storage.updateSentinelIncident(existing.id, mergeResult.updates);
+        }
+        duplicates++;
+      }
+    } catch (err: any) {
+      console.error(`[SENTINEL-SCHEDULER] Failed to persist incident: ${err.message}`);
+      failed++;
+    }
+  }
+
+  return { persisted, duplicates, failed };
+}
+
 let sentinelScanTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function startSentinelScheduler(): void {
@@ -270,8 +351,18 @@ export function startSentinelScheduler(): void {
 
   const runScan = () => {
     processLiveSentinelFeed()
-      .then(results => {
+      .then(async results => {
         const schedule = getPollSchedule(BASE_INTERVAL_MS);
+
+        // Persist to sentinel_incidents for all configured accounts
+        const accountIds = await getSchedulerAccountIds();
+        for (const accountId of accountIds) {
+          const stats = await persistSentinelCrashIncidents(results, accountId);
+          console.log(
+            `[SENTINEL-SCHEDULER] fetched=${results.length} persisted=${stats.persisted} duplicates=${stats.duplicates} failed=${stats.failed} account=${accountId}`
+          );
+        }
+
         console.log(
           `[SENTINEL] Scheduled scan complete: ${results.length} incident(s). ` +
           `Next poll in ${Math.round(schedule.intervalMs / 60000)}m (${schedule.reason})`
