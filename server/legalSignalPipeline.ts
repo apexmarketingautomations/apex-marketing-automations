@@ -366,7 +366,14 @@ async function fetchCpscRecalls(): Promise<RawLegalSignal[]> {
 // This is the ONLY source that gives you real phone numbers directly.
 // Searches for local businesses in FL cities by category.
 
-// Places API (New) — replaces legacy textsearch which is REQUEST_DENIED
+// Places API (New) — replaces legacy textsearch which was REQUEST_DENIED.
+// REQUIRED Google Cloud Console action before this will work:
+//   1. Go to console.cloud.google.com → APIs & Services → Credentials
+//   2. Find the API key used for GOOGLE_MAPS_API
+//   3. Under "Application restrictions" — set to "None" or "IP addresses"
+//      (NOT "HTTP referrers" — backend has no referrer header)
+//   4. Under "API restrictions" — ensure "Places API (New)" is enabled
+//   5. Save. Changes propagate within ~5 minutes.
 // POST https://places.googleapis.com/v1/places:searchText
 async function placesNewApiSearch(
   textQuery: string,

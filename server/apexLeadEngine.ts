@@ -190,7 +190,11 @@ async function fetchNoaaAlerts(): Promise<LeadSignal[]> {
         { headers: { 'Accept': 'application/geo+json', 'User-Agent': 'ApexLeadEngine/2.0' }, signal: ctrl.signal }
       );
       clearTimeout(timer);
-      if (!res.ok) continue;
+      if (!res.ok) { console.warn(`[APEX-ENGINE] NOAA ${county.name} HTTP ${res.status}`); continue; }
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.includes('json') && !ct.includes('geo+json')) {
+        console.warn(`[APEX-ENGINE] NOAA ${county.name} non-JSON ct="${ct}"`); continue;
+      }
       const data = await res.json() as any;
       for (const f of (data.features ?? [])) {
         const props = f?.properties ?? {};
@@ -301,19 +305,13 @@ async function fetchCollierPermits(): Promise<LeadSignal[]> {
 async function fetchDBPRLicenses(): Promise<LeadSignal[]> {
   try {
     // FL DBPR public license search — new licenses issued in last 30 days
-    const res = await fetch(
+    const _dbprFetch = await safeJsonFetch(
       'https://www.myfloridalicense.com/wl11.asp?mode=0&search=LicenseType&LicenseType=COS&County=&status=A&issue_date_after=' +
       new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US'),
-      { headers: { 'Accept': 'application/json', 'User-Agent': 'ApexLeadEngine/2.0' }, signal: AbortSignal.timeout(10000) }
+      'DBPR licenses'
     );
-    if (!res.ok) { console.warn("[APEX-ENGINE] DBPR HTTP", res.status, "— skipping"); return []; }
-    const ct = res.headers.get("content-type") || "";
-    if (!ct.includes("json")) {
-      const preview = (await res.text()).slice(0, 200);
-      console.warn(`[APEX-ENGINE] DBPR returned non-JSON (ct="${ct}") — endpoint may have changed. preview="${preview}"`);
-      return [];
-    }
-    const data = await res.json() as any[];
+    if (!_dbprFetch) return [];
+    const data = _dbprFetch as any[];
     return (data || []).flatMap((lic: any) => {
       const licType = (lic.license_type || '').toUpperCase();
       let cats: string[] = [];
@@ -516,12 +514,11 @@ async function fetchOSHAIncidents(): Promise<LeadSignal[]> {
 
 async function fetchProductRecalls(): Promise<LeadSignal[]> {
   try {
-    const res = await fetch(
+    const data = await safeJsonFetch(
       'https://api.fda.gov/food/enforcement.json?search=state:FL&limit=50&sort=report_date:desc',
-      { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(10000) }
+      'FDA recalls'
     );
-    if (!res.ok) return [];
-    const data = await res.json() as any;
+    if (!data) return [];
     return (data?.results || []).map((r: any) => ({
       id: r.recall_number || crypto.randomUUID(),
       vertical: 'legal' as const,

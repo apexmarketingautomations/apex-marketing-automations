@@ -11,11 +11,20 @@ const SEQUENCE_TABLES: Array<{ table: string; col: string }> = [
 ];
 
 export async function repairDriftedSequences() {
-  const client = await pool.connect();
+  console.log("[STARTUP-PATCH] repairDriftedSequences: acquiring DB client");
+  let client: any;
+  try {
+    client = await pool.connect();
+  } catch (connErr: any) {
+    console.error("[STARTUP-PATCH] repairDriftedSequences: pool.connect() failed:", connErr?.message);
+    return;
+  }
+  console.log("[STARTUP-PATCH] repairDriftedSequences: DB client acquired, checking", SEQUENCE_TABLES.length, "sequences");
+
   try {
     for (const { table, col } of SEQUENCE_TABLES) {
       try {
-        // 1. Resolve sequence name
+        // 1. Resolve sequence name via pg_get_serial_sequence
         const seqRes = await client.query(
           `SELECT pg_get_serial_sequence($1, $2) AS seq`,
           [table, col]
@@ -26,19 +35,16 @@ export async function repairDriftedSequences() {
           continue;
         }
 
-        // 2. MAX(id) + current sequence last_value
+        // 2. Get MAX(id) and sequence last_value together
         const infoRes = await client.query(
-          `SELECT COALESCE(MAX(id), 0) AS max_id,
-                  last_value AS seq_val
-           FROM "${table}",
-                ${seqName}`
+          `SELECT COALESCE(MAX(id), 0) AS max_id, last_value AS seq_val FROM "${table}", ${seqName}`
         );
         const maxId  = Number(infoRes.rows[0]?.max_id  ?? 0);
         const seqVal = Number(infoRes.rows[0]?.seq_val ?? 1);
         const target = maxId + 1;
 
         if (seqVal >= target) {
-          console.log(`[STARTUP-PATCH] ${table}: OK (seq=${seqVal} max_id=${maxId})`);
+          console.log(`[STARTUP-PATCH] ${table}: seq OK (seq=${seqVal} max_id=${maxId})`);
           continue;
         }
 
@@ -46,7 +52,7 @@ export async function repairDriftedSequences() {
         await client.query(`SELECT setval($1, $2, false)`, [seqName, target]);
         console.log(`[STARTUP-PATCH] ${table}: REPAIRED ${seqVal} → ${target} (max_id=${maxId})`);
       } catch (err: any) {
-        console.warn(`[STARTUP-PATCH] ${table}: repair failed (non-fatal): ${err?.message}`);
+        console.warn(`[STARTUP-PATCH] ${table}: repair failed: ${err?.message}`);
       }
     }
   } finally {

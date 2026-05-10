@@ -575,9 +575,14 @@ async function validateMetaCredentials() {
   validateEnvVars();
   clearLaylaCache();
   await ensureAccountsUnprotected();
-  console.log("[STARTUP-PATCH] ══════════ SEQUENCE REPAIR START ══════════");
-  await repairDriftedSequences();
-  console.log("[STARTUP-PATCH] ══════════ SEQUENCE REPAIR DONE ═══════════");
+  console.log("[STARTUP] invoking repairDriftedSequences");
+  try {
+    console.log("[STARTUP-PATCH] ══════════ SEQUENCE REPAIR START ══════════");
+    await repairDriftedSequences();
+    console.log("[STARTUP-PATCH] ══════════ SEQUENCE REPAIR DONE ═══════════");
+  } catch (patchErr: any) {
+    console.error("[STARTUP-PATCH] FATAL — repairDriftedSequences threw:", patchErr?.message, patchErr?.stack);
+  }
   runStartupChecks();
   try {
     await validateMetaCredentials();

@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { asyncHandler } from "./routes/helpers";
 
 import { registerSitesRoutes } from "./routes/sites";
 import { registerFunnelRoutes } from "./routes/funnel";
