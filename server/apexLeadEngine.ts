@@ -60,7 +60,20 @@ async function safeJsonFetch(url: string, label: string, timeoutMs = 10000): Pro
     }
     return await res.json();
   } catch (err: any) {
-    console.warn(`[APEX-ENGINE] ${label} fetch error: ${err.message}`);
+    // Classify network failures precisely so logs are actionable
+    let reason = err.message || "unknown error";
+    try { const host = new URL(url).hostname; reason = `host=${host} ${reason}`; } catch (_e) { /* allow-silent-catch: URL parse failure is non-fatal */ }
+    if (err.name === "TimeoutError" || err.message?.includes("timeout") || err.message?.includes("AbortError")) {
+      console.warn(`[APEX-ENGINE] ${label} TIMEOUT after ${timeoutMs}ms ${reason}`);
+    } else if (err.cause?.code === "ENOTFOUND" || err.message?.includes("ENOTFOUND")) {
+      console.warn(`[APEX-ENGINE] ${label} DNS_FAILURE ${reason}`);
+    } else if (err.cause?.code === "ECONNREFUSED" || err.message?.includes("ECONNREFUSED")) {
+      console.warn(`[APEX-ENGINE] ${label} CONNECTION_REFUSED ${reason}`);
+    } else if (err.cause?.code === "ECONNRESET" || err.message?.includes("ECONNRESET")) {
+      console.warn(`[APEX-ENGINE] ${label} CONNECTION_RESET ${reason}`);
+    } else {
+      console.warn(`[APEX-ENGINE] ${label} NETWORK_ERROR code=${err.cause?.code || err.code || "?"} ${reason}`);
+    }
     return null;
   }
 }

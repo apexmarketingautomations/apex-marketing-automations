@@ -171,7 +171,17 @@ async function safeFetch(url: string, timeoutMs = 12000, label?: string): Promis
     return await res.json();
   } catch (err: any) { // allow-silent-catch: network timeout returns null safely
     clearTimeout(t);
-    if (label) console.warn(`[LEGAL-PIPELINE] ${label} fetch error: ${err.message}`);
+    if (label) {
+      let reason = err.message || "unknown";
+      try { const host = new URL(url).hostname; reason = `host=${host} ${reason}`; } catch (_e) { /* allow-silent-catch: URL parse failure is non-fatal */ }
+      if (err.name === "TimeoutError" || err.message?.includes("timeout")) {
+        console.warn(`[LEGAL-PIPELINE] ${label} TIMEOUT ${reason}`);
+      } else if (err.cause?.code === "ENOTFOUND" || err.message?.includes("ENOTFOUND")) {
+        console.warn(`[LEGAL-PIPELINE] ${label} DNS_FAILURE ${reason}`);
+      } else {
+        console.warn(`[LEGAL-PIPELINE] ${label} NETWORK_ERROR code=${err.cause?.code || err.code || "?"} ${reason}`);
+      }
+    }
     return null;
   }
 }

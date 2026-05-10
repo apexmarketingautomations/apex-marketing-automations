@@ -1806,6 +1806,17 @@ RULES:
     async () => {
       log(`serving on port ${port}`);
 
+      // Run sequence repair HERE — inside listen callback so Railway captures the logs
+      console.log("[STARTUP] BOOT ENTRY REACHED — inside listen callback");
+      try {
+        console.log("[STARTUP] invoking repairDriftedSequences");
+        console.log("[STARTUP-PATCH] ══════════ SEQUENCE REPAIR START ══════════");
+        await repairDriftedSequences();
+        console.log("[STARTUP-PATCH] ══════════ SEQUENCE REPAIR DONE ═══════════");
+      } catch (patchErr: any) {
+        console.error("[STARTUP-PATCH] FATAL — repairDriftedSequences threw:", patchErr?.message, patchErr?.stack);
+      }
+
       try {
         const { runDataMigrations } = await import("./dataMigrations");
         await runDataMigrations();
