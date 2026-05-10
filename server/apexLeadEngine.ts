@@ -266,12 +266,11 @@ async function fetchLeePermits(): Promise<LeadSignal[]> {
 async function fetchCollierPermits(): Promise<LeadSignal[]> {
   try {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const res = await fetch(
+    const permits = await safeJsonFetch(
       `https://www.colliercountyfl.gov/api/permits?issued_after=${since}&limit=200`,
-      { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(10000) }
+      "Collier permits"
     );
-    if (!res.ok) return [];
-    const permits = await res.json() as any[];
+    if (!permits) return [];
     return permits.flatMap(p => {
       const cats = parsePermitCategories(p.permit_type || p.description || '');
       if (!cats.length) return [];
@@ -352,12 +351,12 @@ async function fetchArrestRecords(): Promise<LeadSignal[]> {
 
   // Lee County Sheriff booking log (public)
   try {
-    const res = await fetch(
+    const arrests = await safeJsonFetch(
       'https://www.sheriffleefl.org/api/arrests/recent?limit=100',
-      { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(8000) }
+      'Lee Sheriff arrests',
+      8000
     );
-    if (res.ok) {
-      const arrests = await res.json() as any[];
+    if (arrests) {
       for (const a of arrests) {
         const charges = (a.charges || []).map((c: any) => c.description || c).join(', ');
         const isDUI = charges.toLowerCase().includes('dui') || charges.toLowerCase().includes('dwi');
@@ -437,14 +436,14 @@ async function fetchCourtFilings(): Promise<LeadSignal[]> {
   
   for (const county of FL_COUNTIES.slice(0, 6)) { // Top 6 counties
     try {
-      const res = await fetch(
+      const cases = await safeJsonFetch(
         `https://myeclerk.myfloridacounty.com/api/cases?county=${county.fips}&case_type=family&filed_after=${
           new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]
         }&limit=50`,
-        { headers: { 'Accept': 'application/json', 'User-Agent': 'ApexLeadEngine/2.0' }, signal: AbortSignal.timeout(8000) }
+        `Court filings ${county.name}`,
+        8000
       );
-      if (!res.ok) continue;
-      const cases = await res.json() as any[];
+      if (!cases) continue;
       for (const c of cases) {
         const caseType = c.case_type || c.description || '';
         const isDivorce = caseType.toLowerCase().includes('dissolution') || caseType.toLowerCase().includes('divorce');
@@ -483,10 +482,11 @@ async function fetchCourtFilings(): Promise<LeadSignal[]> {
 async function fetchOSHAIncidents(): Promise<LeadSignal[]> {
   try {
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const res = await fetch(
+    const _oshaRes = await safeJsonFetch(
       `https://data.osha.gov/api/action/datastore_search?resource_id=b62ed87f-e733-4c8f-b2e0-d30c39b22b83&filters={"state_flag":"FL"}&limit=100&sort=event_date desc`,
-      { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(10000) }
+      'OSHA incidents'
     );
+    const res = { ok: !!_oshaRes, json: async () => _oshaRes };
     if (!res.ok) return [];
     const data = await res.json() as any;
     const records = data?.result?.records || [];
@@ -549,10 +549,12 @@ async function fetchCodeEnforcement(): Promise<LeadSignal[]> {
   const signals: LeadSignal[] = [];
   try {
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const res = await fetch(
+    const _ceRes = await safeJsonFetch(
       `https://opendata.leegov.com/resource/code-enforcement.json?$where=open_date>'${since}'&$limit=100`,
-      { signal: AbortSignal.timeout(8000) }
+      'Lee code enforcement',
+      8000
     );
+    const res = { ok: !!_ceRes, json: async () => _ceRes };
     if (res.ok) {
       const items = await res.json() as any[];
       for (const item of items) {

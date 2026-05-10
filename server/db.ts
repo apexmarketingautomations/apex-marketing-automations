@@ -11,3 +11,5 @@ const pool = new pg.Pool({
 });
 
 export const db = drizzle(pool, { schema });
+
+export { pool };

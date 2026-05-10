@@ -12,9 +12,14 @@ import { storage } from "../../storage";
 
 const getOidcConfig = memoize(
   async () => {
+    const replId = process.env.REPL_ID;
+    if (!replId) {
+      console.warn("[AUTH] REPL_ID is not set — Replit OIDC disabled (expected on Railway)");
+      return null;
+    }
     return await client.discovery(
       new URL(process.env.ISSUER_URL ?? "https://replit.com/oidc"),
-      process.env.REPL_ID!
+      replId
     );
   },
   { maxAge: 3600 * 1000 }
@@ -124,6 +129,11 @@ export async function setupAuth(app: Express) {
   });
 
   const config = await getOidcConfig();
+
+  if (!config) {
+    console.warn("[AUTH] Skipping Replit OIDC strategy registration — REPL_ID not set");
+    return;
+  }
 
   const verify: VerifyFunction = async (
     tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,

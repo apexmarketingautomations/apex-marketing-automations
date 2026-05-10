@@ -366,92 +366,106 @@ async function fetchCpscRecalls(): Promise<RawLegalSignal[]> {
 // This is the ONLY source that gives you real phone numbers directly.
 // Searches for local businesses in FL cities by category.
 
+// Places API (New) — replaces legacy textsearch which is REQUEST_DENIED
+// POST https://places.googleapis.com/v1/places:searchText
+async function placesNewApiSearch(
+  textQuery: string,
+  label: string,
+): Promise<any[]> {
+  try {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 10000);
+    const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": GOOGLE_PLACES_KEY!,
+        "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.businessStatus,places.rating,places.userRatingCount,places.types",
+      },
+      body: JSON.stringify({ textQuery, maxResultCount: 5 }),
+    });
+    clearTimeout(t);
+    const ct = res.headers.get("content-type") || "";
+    if (!res.ok) {
+      const preview = ct.includes("json") ? JSON.stringify(await res.json()).slice(0, 200) : (await res.text()).slice(0, 200);
+      console.warn(`[LEGAL-PIPELINE] Places (New) ${label} HTTP ${res.status}: ${preview}`);
+      return [];
+    }
+    if (!ct.includes("json")) {
+      console.warn(`[LEGAL-PIPELINE] Places (New) ${label} non-JSON ct="${ct}"`);
+      return [];
+    }
+    const data = await res.json();
+    return data.places || [];
+  } catch (err: any) { // allow-silent-catch: one search failure must not stop others
+    console.warn(`[LEGAL-PIPELINE] Places (New) ${label} error: ${err.message}`);
+    return [];
+  }
+}
+
 async function fetchGooglePlacesBusinesses(): Promise<RawLegalSignal[]> {
   if (!GOOGLE_PLACES_KEY) {
     console.warn("[LEGAL-PIPELINE] Google Places: GOOGLE_MAPS_API and GOOGLE_PLACES_API_KEY both unset — skipping");
     return [];
   }
-  console.log("[LEGAL-PIPELINE] Google Places: key present, starting batch search");
+  console.log("[LEGAL-PIPELINE] Google Places (New API): key present, starting batch search");
 
   const signals: RawLegalSignal[] = [];
 
-  // Target SW Florida cities (primary market)
   const targetCities = [
-    { city: "Cape Coral, FL",    county: "LEE" },
-    { city: "Fort Myers, FL",    county: "LEE" },
-    { city: "Naples, FL",        county: "COLLIER" },
-    { city: "Bonita Springs, FL", county: "LEE" },
-    { city: "Estero, FL",        county: "LEE" },
+    { city: "Cape Coral, FL",     county: "LEE" },
+    { city: "Fort Myers, FL",     county: "LEE" },
+    { city: "Naples, FL",         county: "COLLIER" },
     { city: "Port Charlotte, FL", county: "CHARLOTTE" },
-    { city: "Sarasota, FL",      county: "SARASOTA" },
-    { city: "Bradenton, FL",     county: "MANATEE" },
+    { city: "Sarasota, FL",       county: "SARASOTA" },
   ];
 
-  // Rotate through a few searches per cycle to stay under quota
   const searchBatch = LOCAL_BUSINESS_SEARCHES.slice(
     Math.floor(Date.now() / (30 * 60 * 1000)) % LOCAL_BUSINESS_SEARCHES.length,
-    Math.floor(Date.now() / (30 * 60 * 1000)) % LOCAL_BUSINESS_SEARCHES.length + 3
+    Math.floor(Date.now() / (30 * 60 * 1000)) % LOCAL_BUSINESS_SEARCHES.length + 3,
   );
 
   for (const search of searchBatch) {
     for (const { city, county } of targetCities.slice(0, 3)) {
-      try {
-        const query = encodeURIComponent(`${search.query} in ${city}`);
-        const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${query}&key=${GOOGLE_PLACES_KEY}`;
-        const data = await safeFetch(url, 10000, `Places textsearch [${search.category}/${city}]`);
+      const textQuery = `${search.query} in ${city}`;
+      const places = await placesNewApiSearch(textQuery, `[${search.category}/${city}]`);
 
-        if (!data) continue;
-        if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
-          console.warn(`[LEGAL-PIPELINE] Places textsearch status=${data.status} error="${data.error_message || 'none'}" category=${search.category} city=${city}`);
-        }
-        if (!data.results?.length) continue;
+      for (const p of places) {
+        if (p.businessStatus !== "OPERATIONAL") continue;
+        const phone: string | undefined = p.nationalPhoneNumber;
+        if (!phone) continue;
 
-        for (const place of data.results.slice(0, 5)) {
-          // Only include places with a phone number we can call
-          // Get details to get phone number
-          if (!place.place_id) continue;
+        const rating       = p.rating || 0;
+        const reviewCount  = p.userRatingCount || 0;
+        if (rating < 3.5 && reviewCount < 10) continue;
 
-          const detailUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=name,formatted_phone_number,formatted_address,rating,user_ratings_total,business_status&key=${GOOGLE_PLACES_KEY}`;
-          const detail = await safeFetch(detailUrl, 8000, `Places details [${place.place_id?.slice(0,12)}]`);
-          if (detail && detail.status !== "OK") {
-            console.warn(`[LEGAL-PIPELINE] Places details status=${detail.status} error="${detail.error_message || 'none'}" place_id=${place.place_id?.slice(0,12)}`);
-          }
-          const p = detail?.result;
+        const placeId  = p.id || "";
+        const name     = p.displayName?.text || p.displayName || "";
+        const address  = p.formattedAddress || "";
+        const sourceId = `GPLACES-${placeId}`;
 
-          if (!p) continue;
-          if (p.business_status !== "OPERATIONAL") continue;
-          if (!p.formatted_phone_number) continue; // must have phone
-
-          // Quality filter
-          const rating = p.rating || place.rating || 0;
-          const reviewCount = p.user_ratings_total || place.user_ratings_total || 0;
-          if (rating < 3.5 && reviewCount < 10) continue;
-
-          const sourceId = `GPLACES-${place.place_id}`;
-
-          signals.push({
-            signalType: "business_growth_signal",
-            legalVertical: search.vertical as LegalVertical,
-            county,
-            subjectName: p.name || place.name,
-            subjectPhone: p.formatted_phone_number,
-            subjectAddress: p.formatted_address || place.formatted_address,
-            chargeDescription: `${search.category.replace(/_/g, " ").toUpperCase()} — ${p.name} | Rating: ${rating}⭐ (${reviewCount} reviews) | ${city}`,
-            businessRating: rating,
-            businessCategory: search.category,
-            urgency: rating >= 4.5 ? "high" : "medium",
-            sourceId,
-            rawData: { ...place, detail: p, searchCategory: search.category },
-            detectedAt: new Date(),
-          });
-        }
-      } catch (_e) { // allow-silent-catch: one failed Places search should not stop others
+        signals.push({
+          signalType:        "business_growth_signal",
+          legalVertical:     search.vertical as LegalVertical,
+          county,
+          subjectName:       name,
+          subjectPhone:      phone,
+          subjectAddress:    address,
+          chargeDescription: `${search.category.replace(/_/g, " ").toUpperCase()} — ${name} | Rating: ${rating}⭐ (${reviewCount} reviews) | ${city}`,
+          businessRating:    rating,
+          businessCategory:  search.category,
+          urgency:           rating >= 4.5 ? "high" : "medium",
+          sourceId,
+          rawData:           { ...p, searchCategory: search.category },
+          detectedAt:        new Date(),
+        });
       }
     }
   }
 
   stats.googlePlacesRuns++;
-  console.log(`[LEGAL-PIPELINE] Google Places: ${signals.length} local business signals`);
+  console.log(`[LEGAL-PIPELINE] Google Places (New API): ${signals.length} local business signals`);
   return signals;
 }
 
