@@ -1807,6 +1807,14 @@ RULES:
     async () => {
       log(`serving on port ${port}`);
 
+      // ── Create new tables if they don't exist yet ─────────────────────────
+      try {
+        const { createCaseTables } = await import("./startup/createCaseTables");
+        await createCaseTables();
+      } catch (ctErr: any) {
+        console.error("[CASE-TABLES] createCaseTables error:", ctErr?.message);
+      }
+
       // ── Generic sequence audit — discovers and repairs ALL drifted sequences ──
       console.error("[STARTUP] BOOT ENTRY REACHED — running sequence audit");
       try {

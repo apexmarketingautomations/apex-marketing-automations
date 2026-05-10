@@ -433,25 +433,19 @@ export async function runCaseGroupingCycle(): Promise<void> {
 }
 
 export function startCaseIntelligence(): void {
-  // Stagger startup by 90 seconds to let DB settle
-  setTimeout(async () => {
+  async function safeCycle() {
     try {
       await runCaseGroupingCycle();
     } catch (err: any) {
-      console.error("[CASE-INTEL] Initial cycle error:", err.message);
+      // Never crash the server — tables may not exist yet on first deploy
+      console.error("[CASE-INTEL] Cycle error (non-fatal):", err?.message);
     }
-  }, 90_000);
+  }
 
-  // Run every 30 minutes
-  setInterval(async () => {
-    try {
-      await runCaseGroupingCycle();
-    } catch (err: any) {
-      console.error("[CASE-INTEL] Cycle error:", err.message);
-    }
-  }, 30 * 60 * 1000);
-
-  console.log("[CASE-INTEL] Started — 90s initial delay, then every 30min");
+  // Wait 3 minutes after boot so createCaseTables has definitely run
+  setTimeout(safeCycle, 3 * 60 * 1000);
+  setInterval(safeCycle, 30 * 60 * 1000);
+  console.log("[CASE-INTEL] Started — 3 min initial delay, then every 30min");
 }
 
 export function getCaseIntelligenceStats() {

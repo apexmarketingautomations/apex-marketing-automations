@@ -136,6 +136,9 @@ export async function registerRoutes(
     const { db }                  = await import("./db");
     const { intelligenceCases, intelligenceEntities } = await import("@shared/schema");
     const { desc, eq, gte, and } = await import("drizzle-orm");
+    // Guard: tables may not exist yet on first deploy
+    try { await db.execute({ sql: "SELECT 1 FROM intelligence_cases LIMIT 1", params: [] } as any); }
+    catch (_tableErr) { /* allow-silent-catch: tables not created yet on first deploy */ return res.json({ cases: [], total: 0 }); }
 
     const minScore  = Number(req.query.minScore  ?? 35);
     const category  = req.query.category as string | undefined;
