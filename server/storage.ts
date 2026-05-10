@@ -958,8 +958,11 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async getSentinelIncidents(subAccountId: number) {
-    return db.select().from(sentinelIncidents).where(eq(sentinelIncidents.subAccountId, subAccountId)).orderBy(desc(sentinelIncidents.detectedAt));
+  async getSentinelIncidents(subAccountId: number, limit = 200) {
+    return db.select().from(sentinelIncidents)
+      .where(eq(sentinelIncidents.subAccountId, subAccountId))
+      .orderBy(desc(sentinelIncidents.detectedAt))
+      .limit(limit);
   }
 
   async getSentinelIncidentsFiltered(subAccountId: number, filters: { since?: Date; status?: string; limit?: number }) {

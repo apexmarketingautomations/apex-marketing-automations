@@ -307,7 +307,16 @@ export default function Sentinel() {
 
   const pendingIncidents = filteredIncidents
     .filter(i => i.actionStatus === "pending")
-    .sort((a, b) => getPriorityScore(b) - getPriorityScore(a));
+    .sort((a, b) => {
+      // Within the last 2 hours: sort by time so fresh crashes always lead
+      const aTime = new Date(a.detectedAt as any).getTime();
+      const bTime = new Date(b.detectedAt as any).getTime();
+      const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
+      const aRecent = aTime > twoHoursAgo;
+      const bRecent = bTime > twoHoursAgo;
+      if (aRecent || bRecent) return bTime - aTime; // newest first
+      return getPriorityScore(b) - getPriorityScore(a); // older: by priority
+    });
 
   const actionedIncidents = filteredIncidents
     .filter(i => i.actionStatus !== "pending")
