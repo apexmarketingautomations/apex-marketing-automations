@@ -2,6 +2,81 @@ import OpenAI from "openai";
 import { geminiChat, geminiChatStream, geminiGenerateImage, isGeminiAvailable, isGeminiConfigured } from "./gemini";
 import crypto from "crypto";
 
+// ── Anthropic provider (raw fetch — no SDK required) ─────────────────────────
+const ANTHROPIC_URL     = "https://api.anthropic.com/v1/messages";
+const ANTHROPIC_VERSION = "2023-06-01";
+const ANTHROPIC_MODEL   = "claude-sonnet-4-20250514";
+
+export function isAnthropicConfigured(): boolean {
+  const key = (process.env.ANTHROPIC_API_KEY || "").trim();
+  return key.length > 10;
+}
+
+function getAnthropicKey(): string {
+  return (process.env.ANTHROPIC_API_KEY || "").trim();
+}
+
+async function callAnthropic(
+  messages: ChatMessage[],
+  options: AIOptions = {}
+): Promise<AIResponse> {
+  const { temperature = 0.7, maxTokens = 4096, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
+
+  // Anthropic requires system messages in a separate top-level field
+  const systemMsg = messages.find(m => m.role === "system");
+  const userMsgs  = messages
+    .filter(m => m.role !== "system")
+    .map(m => ({ role: m.role as "user" | "assistant", content: m.content }));
+
+  const body: Record<string, unknown> = {
+    model:      ANTHROPIC_MODEL,
+    max_tokens: Math.min(maxTokens, 8096),
+    messages:   userMsgs,
+  };
+  if (systemMsg) body.system = systemMsg.content;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(ANTHROPIC_URL, {
+      method:  "POST",
+      signal:  controller.signal,
+      headers: {
+        "Content-Type":      "application/json",
+        "x-api-key":         getAnthropicKey(),
+        "anthropic-version": ANTHROPIC_VERSION,
+      },
+      body: JSON.stringify(body),
+    });
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      const preview = (await res.text()).slice(0, 300);
+      throw Object.assign(
+        new Error(`Anthropic HTTP ${res.status}: ${preview}`),
+        { status: res.status }
+      );
+    }
+
+    const data = await res.json() as any;
+    const text = data?.content?.[0]?.text ?? "";
+    return {
+      text,
+      ok:       true,
+      provider: "anthropic" as any,
+      model:    ANTHROPIC_MODEL,
+      usage: {
+        promptTokens:     data?.usage?.input_tokens,
+        completionTokens: data?.usage?.output_tokens,
+        totalTokens:      (data?.usage?.input_tokens ?? 0) + (data?.usage?.output_tokens ?? 0),
+      },
+    };
+  } catch (err: any) {
+    clearTimeout(timer);
+    throw err;
+  }
+}
+
 let _openaiClient: OpenAI | null = null;
 
 function resolveOpenAICreds(): { apiKey: string | undefined; baseURL: string | undefined; source: string } {
@@ -163,29 +238,37 @@ export function getAIProviderStatus(): {
   fallback: string;
   circuitBreakerOpen: boolean;
   circuitBreakerTrippedAt: string | null;
+  anthropicConfigured: boolean;
   openaiConfigured: boolean;
   geminiConfigured: boolean;
-  activeProvider: "openai" | "gemini";
+  activeProvider: "anthropic" | "openai" | "gemini" | "none";
 } {
-  const circuitOpen = isCircuitOpen();
+  const circuitOpen      = isCircuitOpen();
+  const anthropicCfg     = isAnthropicConfigured();
   const openaiConfigured = isOpenAIConfigured();
   const geminiConfigured = isGeminiConfigured();
 
+  let activeProvider: "anthropic" | "openai" | "gemini" | "none" = "none";
+  if (anthropicCfg)                          activeProvider = "anthropic";
+  else if (openaiConfigured && !circuitOpen) activeProvider = "openai";
+  else if (geminiConfigured)                 activeProvider = "gemini";
+
   return {
-    primary: "OpenAI",
-    fallback: "Gemini",
+    primary:  anthropicCfg ? "Anthropic" : openaiConfigured ? "OpenAI" : "Gemini",
+    fallback: anthropicCfg ? "OpenAI/Gemini" : "Gemini",
     circuitBreakerOpen: circuitOpen,
     circuitBreakerTrippedAt: circuitBreaker.trippedAt
       ? new Date(circuitBreaker.trippedAt).toISOString()
       : null,
+    anthropicConfigured: anthropicCfg,
     openaiConfigured,
     geminiConfigured,
-    activeProvider: circuitOpen || !openaiConfigured ? "gemini" : "openai",
+    activeProvider,
   };
 }
 
 export function isAIConfigured(): boolean {
-  return isOpenAIConfigured() || isGeminiConfigured();
+  return isAnthropicConfigured() || isOpenAIConfigured() || isGeminiConfigured();
 }
 
 function generateRequestId(): string {
@@ -315,8 +398,10 @@ async function callGemini(
   };
 }
 
-function selectProvider(): "openai" | "gemini" {
-  return isOpenAIConfigured() && !isCircuitOpen() ? "openai" : "gemini";
+function selectProvider(): "anthropic" | "openai" | "gemini" {
+  if (isAnthropicConfigured()) return "anthropic";
+  if (isOpenAIConfigured() && !isCircuitOpen()) return "openai";
+  return "gemini";
 }
 
 export async function aiChat(
@@ -329,6 +414,42 @@ export async function aiChat(
   const provider = selectProvider();
 
   try {
+    // ── Anthropic (primary when ANTHROPIC_API_KEY is set) ──────────────────
+    if (provider === "anthropic") {
+      try {
+        const result = await callAnthropic(messages, options);
+        logObservability({
+          requestId, traceId, subAccountId, route,
+          provider: "anthropic" as any,
+          model: result.model,
+          latencyMs: Date.now() - start,
+          success: true,
+          fallbackTriggered: false,
+        });
+        return result;
+      } catch (err: any) {
+        console.warn(`[AI-GATEWAY] Anthropic failed, falling back: ${err?.message}`);
+        // Fall through to OpenAI → Gemini
+        if (isOpenAIConfigured() && !isCircuitOpen()) {
+          try {
+            const result = await callOpenAI(messages, options);
+            logObservability({ requestId, traceId, subAccountId, route, provider: "openai", model: result.model, latencyMs: Date.now() - start, success: true, fallbackTriggered: true });
+            return result;
+          } catch (openaiErr: any) {
+            recordOpenAIFailure();
+            console.warn(`[AI-GATEWAY] OpenAI fallback also failed: ${openaiErr?.message}`);
+          }
+        }
+        if (isGeminiAvailable()) {
+          const result = await callGemini(messages, options);
+          logObservability({ requestId, traceId, subAccountId, route, provider: "gemini", model: result.model, latencyMs: Date.now() - start, success: true, fallbackTriggered: true });
+          return result;
+        }
+        logObservability({ requestId, traceId, subAccountId, route, provider: "anthropic" as any, latencyMs: Date.now() - start, success: false, fallbackTriggered: false, error: "All providers failed" });
+        return { text: "", ok: false, errorMessage: "All AI providers failed", provider: "anthropic" as any };
+      }
+    }
+
     if (provider === "openai") {
       for (let attempt = 0; attempt <= MAX_OPENAI_RETRIES; attempt++) {
         try {
@@ -730,14 +851,17 @@ export async function aiGenerateImage(prompt: string): Promise<string | null> {
 }
 
 export function logProviderStartup(): void {
-  const openaiActive = isOpenAIConfigured();
-  const geminiActive = isGeminiConfigured();
+  const anthropicActive = isAnthropicConfigured();
+  const openaiActive    = isOpenAIConfigured();
+  const geminiActive    = isGeminiConfigured();
   const providers: string[] = [];
-  if (openaiActive) providers.push(`OpenAI (${OPENAI_MODEL}, key=OPENAI_APEX_INT_KEY)`);
-  if (geminiActive) providers.push(`Gemini (${GEMINI_FALLBACK_MODEL})`);
+  if (anthropicActive) providers.push(`Anthropic (${ANTHROPIC_MODEL}, key=ANTHROPIC_API_KEY) [PRIMARY]`);
+  if (openaiActive)    providers.push(`OpenAI (${OPENAI_MODEL}, key=OPENAI_APEX_INT_KEY)`);
+  if (geminiActive)    providers.push(`Gemini (${GEMINI_FALLBACK_MODEL}, key=Gemini_API_Key_saas)`);
   if (providers.length === 0) {
-    console.warn("[AI-GATEWAY] No AI providers configured. AI features will be unavailable.");
+    console.warn("[AI-GATEWAY] ⚠️  No AI providers configured. Set ANTHROPIC_API_KEY, OPENAI_APEX_INT_KEY, or Gemini_API_Key_saas.");
   } else {
-    console.log(`[AI-GATEWAY] Providers active: ${providers.join(", ")}. Timeout=${DEFAULT_TIMEOUT_MS}ms, CircuitBreaker=${CIRCUIT_BREAKER_THRESHOLD} failures/${CIRCUIT_BREAKER_WINDOW_MS / 1000}s window.`);
+    console.log(`[AI-GATEWAY] ✅ Providers active: ${providers.join(" | ")}`);
+    console.log(`[AI-GATEWAY]    Timeout=${DEFAULT_TIMEOUT_MS}ms CB=${CIRCUIT_BREAKER_THRESHOLD}/${CIRCUIT_BREAKER_WINDOW_MS / 1000}s`);
   }
 }

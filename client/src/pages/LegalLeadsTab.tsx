@@ -1329,138 +1329,197 @@ export function HomeLeadsTab({ onBack }: { onBack: () => void }) {
 // ── Provider Configuration Tab ─────────────────────────────────────────────
 export function ProviderConfigTab({ onBack }: { onBack: () => void }) {
   const { toast } = useToast();
-  const { data: status, isLoading } = useQuery({
+  const { data: status, isLoading, refetch } = useQuery({
     queryKey: ["/api/ai/status"],
     queryFn: async () => {
       const res = await fetch("/api/ai/status");
       if (!res.ok) throw new Error("Failed to fetch AI status");
       return res.json();
     },
-    refetchInterval: 15_000,
+    refetchInterval: 30_000,
   });
-  const [testing, setTesting] = useState<string | null>(null);
-  const [testResult, setTestResult] = useState<Record<string, { ok: boolean; latency: number; error?: string }>>({});
 
-  async function testProvider(provider: string) {
-    setTesting(provider);
+  const [testing, setTesting] = useState<string | null>(null);
+  const [testResults, setTestResults] = useState<Record<string, { ok: boolean; latency: number; reply?: string; error?: string }>>({});
+
+  async function runTest() {
     const start = Date.now();
+    setTesting("active");
     try {
       const res = await apiRequest("POST", "/api/ai/chat", {
-        messages: [{ role: "user", content: "Reply with just: OK" }],
-        maxTokens: 5,
-        route: `provider-test-${provider}`,
+        messages: [{ role: "user", content: "Reply with exactly: PROVIDER_OK" }],
+        maxTokens: 10,
+        route: "provider-connectivity-test",
       });
-      setTestResult(prev => ({ ...prev, [provider]: { ok: !!res.text, latency: Date.now() - start } }));
+      const ok = !!res.text;
+      setTestResults(prev => ({
+        ...prev,
+        active: { ok, latency: Date.now() - start, reply: res.text?.slice(0, 60), error: res.errorMessage },
+      }));
+      toast({ title: ok ? "✅ AI responded successfully" : "⚠️ AI call returned but empty" });
     } catch (e: any) {
-      setTestResult(prev => ({ ...prev, [provider]: { ok: false, latency: Date.now() - start, error: e.message } }));
+      setTestResults(prev => ({
+        ...prev,
+        active: { ok: false, latency: Date.now() - start, error: e.message },
+      }));
+      toast({ title: "❌ AI test failed", description: e.message, variant: "destructive" });
     } finally {
       setTesting(null);
+      refetch();
     }
   }
 
-  const providers = [
+  const PROVIDER_META = [
+    {
+      key: "anthropic",
+      name: "Anthropic Claude",
+      emoji: "🟠",
+      envVar: "ANTHROPIC_API_KEY",
+      model: "claude-sonnet-4-20250514",
+      docUrl: "https://console.anthropic.com/keys",
+      note: "PRIMARY — preferred when key is set",
+      priorityLabel: "#1 Primary",
+    },
     {
       key: "openai",
       name: "OpenAI",
       emoji: "🤖",
       envVar: "OPENAI_APEX_INT_KEY",
-      models: ["gpt-4o-mini", "gpt-4o"],
+      model: "gpt-4o-mini",
       docUrl: "https://platform.openai.com/api-keys",
-      info: status?.providers?.openai,
+      note: "Fallback if Anthropic unavailable",
+      priorityLabel: "#2 Fallback",
     },
     {
       key: "gemini",
       name: "Google Gemini",
       emoji: "♊",
       envVar: "Gemini_API_Key_saas",
-      models: ["gemini-2.5-flash", "gemini-2.5-pro"],
+      model: "gemini-2.5-flash",
       docUrl: "https://aistudio.google.com/app/apikey",
-      info: status?.providers?.gemini,
+      note: "Final fallback — limited tool support",
+      priorityLabel: "#3 Final Fallback",
     },
   ];
 
+  const activeProvider = status?.activeProvider;
+  const configured     = status?.configured;
+
   return (
     <div className="p-6 md:p-10 max-w-3xl mx-auto">
-      <div className="flex items-center gap-4 mb-8">
+      {/* Header */}
+      <div className="flex items-center gap-4 mb-6">
         <button onClick={onBack} className="text-slate-400 hover:text-white transition-colors">← Back</button>
         <div>
-          <h1 className="text-3xl font-black text-white tracking-tight">AI PROVIDER CONFIG</h1>
-          <p className="text-slate-400 text-sm">Diagnostics, connection tests, model selection</p>
+          <h1 className="text-3xl font-black text-white tracking-tight">AI PROVIDERS</h1>
+          <p className="text-slate-400 text-sm mt-0.5">Registry · diagnostics · fallback chain</p>
         </div>
-        <div className="ml-auto">
-          <div className={`px-3 py-1.5 rounded-xl border text-xs font-black ${status?.configured ? "text-green-400 bg-green-500/10 border-green-500/20" : "text-red-400 bg-red-500/10 border-red-500/20"}`}>
-            {isLoading ? "Checking..." : status?.configured ? "✅ AI ONLINE" : "❌ NO PROVIDER"}
+        <div className="ml-auto flex items-center gap-3">
+          <div className={`px-3 py-1.5 rounded-xl border text-xs font-black ${configured ? "text-green-400 bg-green-500/10 border-green-500/20" : "text-red-400 bg-red-500/10 border-red-500/20"}`}>
+            {isLoading ? "Checking..." : configured ? `✅ AI ONLINE` : "❌ NO PROVIDER"}
           </div>
         </div>
       </div>
 
-      {/* Warning banner */}
-      {!isLoading && !status?.configured && (
-        <div className="mb-6 rounded-2xl bg-red-500/10 border border-red-500/20 p-4">
-          <div className="font-bold text-red-400 mb-1">⚠️ No AI provider configured</div>
-          <div className="text-slate-400 text-sm">
-            AI-powered features (outreach generation, lead summaries, call analysis) are disabled.
-            Add at least one provider API key to Railway environment variables.
+      {/* Active provider + test */}
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-5 mb-6">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Active Provider</div>
+            <div className="text-xl font-black text-white">
+              {isLoading ? "Loading..." : activeProvider === "anthropic" ? "🟠 Anthropic Claude" : activeProvider === "openai" ? "🤖 OpenAI" : activeProvider === "gemini" ? "♊ Gemini" : "❌ None"}
+            </div>
+            {status?.fallbackChain?.length > 0 && (
+              <div className="text-xs text-slate-500 mt-1">
+                Chain: {status.fallbackChain.join(" → ")}
+              </div>
+            )}
           </div>
+          <button
+            onClick={runTest}
+            disabled={!!testing || !configured}
+            className="px-5 py-2.5 rounded-xl font-bold text-sm border transition-all disabled:opacity-40 bg-violet-500/10 border-violet-500/30 text-violet-300 hover:bg-violet-500/20"
+          >
+            {testing ? "Testing…" : "Test Active Provider"}
+          </button>
+        </div>
+
+        {testResults.active && (
+          <div className={`mt-4 rounded-xl p-3 text-xs border flex items-start gap-2 ${testResults.active.ok ? "bg-green-500/10 border-green-500/20 text-green-400" : "bg-red-500/10 border-red-500/20 text-red-400"}`}>
+            <span>{testResults.active.ok ? "✅" : "❌"}</span>
+            <div>
+              <div className="font-bold">{testResults.active.ok ? `Response OK in ${testResults.active.latency}ms` : `Failed (${testResults.active.latency}ms)`}</div>
+              {testResults.active.reply  && <div className="text-slate-400 mt-0.5">Reply: "{testResults.active.reply}"</div>}
+              {testResults.active.error  && <div className="mt-0.5">{testResults.active.error}</div>}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* No provider warning */}
+      {!isLoading && !configured && (
+        <div className="mb-6 rounded-2xl bg-red-500/10 border border-red-500/30 p-4">
+          <div className="font-bold text-red-400 mb-1">⚠️ No AI provider configured</div>
+          <p className="text-slate-400 text-sm">
+            All AI features are disabled: lead summaries, outreach generation, call analysis, task agent.
+            Add <code className="bg-white/10 px-1 rounded">ANTHROPIC_API_KEY</code> to Railway env vars to enable immediately.
+          </p>
         </div>
       )}
 
-      <div className="space-y-4">
-        {providers.map(p => {
-          const result = testResult[p.key];
-          const isConfigured = p.info?.configured;
+      {/* Provider cards */}
+      <div className="space-y-3">
+        {PROVIDER_META.map(p => {
+          const info        = status?.providers?.[p.key];
+          const isCfg       = info?.configured;
+          const isActive    = activeProvider === p.key;
+
           return (
-            <div key={p.key} className={`rounded-2xl border p-5 ${isConfigured ? "bg-green-500/5 border-green-500/20" : "bg-white/5 border-white/10"}`}>
-              <div className="flex items-start justify-between gap-4 mb-4">
+            <div
+              key={p.key}
+              className={`rounded-2xl border p-5 transition-all ${
+                isActive  ? "border-violet-500/40 bg-violet-500/5" :
+                isCfg     ? "border-green-500/20 bg-green-500/5"  :
+                            "border-white/10 bg-white/5"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3 mb-3">
                 <div className="flex items-center gap-3">
-                  <span className="text-3xl">{p.emoji}</span>
+                  <span className="text-2xl">{p.emoji}</span>
                   <div>
-                    <div className="text-white font-bold text-lg">{p.name}</div>
-                    <div className={`text-xs font-bold ${isConfigured ? "text-green-400" : "text-red-400"}`}>
-                      {isConfigured ? "✅ Connected" : "❌ Not configured"}
+                    <div className="flex items-center gap-2">
+                      <span className="text-white font-bold">{p.name}</span>
+                      {isActive && <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 border border-violet-500/30">ACTIVE</span>}
                     </div>
+                    <div className="text-xs text-slate-500 mt-0.5">{p.priorityLabel} · {p.note}</div>
                   </div>
                 </div>
-                <button
-                  onClick={() => testProvider(p.key)}
-                  disabled={testing === p.key || !isConfigured}
-                  className="px-4 py-2 rounded-xl text-xs font-bold border transition-all disabled:opacity-40 bg-white/5 border-white/10 hover:bg-white/10 text-slate-300"
-                >
-                  {testing === p.key ? "Testing..." : "Test Connection"}
-                </button>
-              </div>
-
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-500">Environment Variable</span>
-                  <code className="text-xs bg-white/10 px-2 py-0.5 rounded font-mono text-slate-300">{p.envVar}</code>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-500">Key Present</span>
-                  <span className={p.info?.keyPresent ? "text-green-400" : "text-red-400"}>
-                    {p.info?.keyPresent ? `Yes (${p.info.keyPrefix})` : "No"}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-500">Models</span>
-                  <span className="text-slate-400 text-xs">{p.models.join(", ")}</span>
+                <div className={`text-xs font-black px-2.5 py-1 rounded-lg border ${isCfg ? "text-green-400 bg-green-500/10 border-green-500/20" : "text-slate-500 bg-white/5 border-white/10"}`}>
+                  {isCfg ? "✓ Ready" : "Not set"}
                 </div>
               </div>
 
-              {result && (
-                <div className={`mt-3 rounded-xl p-3 text-xs border ${result.ok ? "bg-green-500/10 border-green-500/20 text-green-400" : "bg-red-500/10 border-red-500/20 text-red-400"}`}>
-                  {result.ok ? `✅ Response OK (${result.latency}ms)` : `❌ Failed: ${result.error || "unknown error"} (${result.latency}ms)`}
-                </div>
-              )}
+              <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+                <div className="text-slate-500">Env var</div>
+                <code className="text-xs text-slate-300 font-mono">{p.envVar}</code>
 
-              {!isConfigured && (
+                <div className="text-slate-500">Key present</div>
+                <span className={info?.keyPresent ? "text-green-400" : "text-red-400"}>
+                  {info?.keyPresent ? `Yes — ${info.keyPrefix}` : "No"}
+                </span>
+
+                <div className="text-slate-500">Model</div>
+                <span className="text-slate-400 text-xs">{p.model}</span>
+              </div>
+
+              {!isCfg && (
                 <a
                   href={p.docUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-3 flex items-center gap-2 text-xs text-blue-400 hover:text-blue-300"
+                  className="mt-3 inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
                 >
-                  Get API key → {p.docUrl.split("/")[2]}
+                  Get API key at {p.docUrl.replace("https://", "").split("/")[0]} →
                 </a>
               )}
             </div>
@@ -1468,15 +1527,15 @@ export function ProviderConfigTab({ onBack }: { onBack: () => void }) {
         })}
       </div>
 
-      {/* Railway instructions */}
+      {/* Railway setup */}
       <div className="mt-6 rounded-2xl bg-white/5 border border-white/10 p-5">
-        <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">How to add to Railway</div>
-        <ol className="space-y-2 text-sm text-slate-400">
-          <li><span className="text-white font-bold">1.</span> Open your Railway project → service → Variables tab</li>
-          <li><span className="text-white font-bold">2.</span> Click "New Variable"</li>
-          <li><span className="text-white font-bold">3.</span> Name: <code className="bg-white/10 px-1 rounded text-xs">OPENAI_APEX_INT_KEY</code> or <code className="bg-white/10 px-1 rounded text-xs">Gemini_API_Key_saas</code></li>
-          <li><span className="text-white font-bold">4.</span> Paste your API key as the value</li>
-          <li><span className="text-white font-bold">5.</span> Click "Add" → Railway will redeploy automatically</li>
+        <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Add a key to Railway</div>
+        <ol className="space-y-1.5 text-sm text-slate-400">
+          <li><span className="text-white font-bold">1.</span> Railway → your service → <strong>Variables</strong> tab</li>
+          <li><span className="text-white font-bold">2.</span> Click <strong>New Variable</strong></li>
+          <li><span className="text-white font-bold">3.</span> Name: <code className="bg-white/10 px-1 rounded text-xs text-slate-200">ANTHROPIC_API_KEY</code> · Value: your key</li>
+          <li><span className="text-white font-bold">4.</span> Click <strong>Add</strong> — Railway redeploys automatically</li>
+          <li><span className="text-white font-bold">5.</span> Return here and click <strong>Test Active Provider</strong></li>
         </ol>
       </div>
     </div>

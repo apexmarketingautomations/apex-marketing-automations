@@ -148,24 +148,44 @@ export async function registerRoutes(
 
   // ── AI Provider Status ────────────────────────────────────────────────────
   app.get("/api/ai/status", asyncHandler(async (req, res) => {
-    const { isAIConfigured, isOpenAIConfigured } = await import("./aiGateway");
+    const { isAIConfigured, isOpenAIConfigured, isAnthropicConfigured, getAIProviderStatus } = await import("./aiGateway");
     const { isGeminiConfigured } = await import("./gemini");
-    const openaiKey = process.env.OPENAI_APEX_INT_KEY;
-    const geminiKey = process.env.Gemini_API_Key_saas;
+    const anthropicKey = (process.env.ANTHROPIC_API_KEY || "").trim();
+    const openaiKey    = process.env.OPENAI_APEX_INT_KEY;
+    const geminiKey    = process.env.Gemini_API_Key_saas;
+    const status       = getAIProviderStatus();
     res.json({
-      configured: isAIConfigured(),
+      configured:     isAIConfigured(),
+      activeProvider: status.activeProvider,
+      fallbackChain:  [
+        isAnthropicConfigured() ? "anthropic" : null,
+        isOpenAIConfigured()    ? "openai"    : null,
+        isGeminiConfigured()    ? "gemini"    : null,
+      ].filter(Boolean),
       providers: {
+        anthropic: {
+          configured: isAnthropicConfigured(),
+          keyPresent: anthropicKey.length > 10,
+          keyPrefix:  anthropicKey.length > 10 ? anthropicKey.slice(0, 12) + "..." : null,
+          envVar:     "ANTHROPIC_API_KEY",
+          model:      "claude-sonnet-4-20250514",
+          priority:   1,
+        },
         openai: {
           configured: isOpenAIConfigured(),
           keyPresent: !!openaiKey,
-          keyPrefix: openaiKey ? openaiKey.slice(0, 7) + "..." : null,
-          envVar: "OPENAI_APEX_INT_KEY",
+          keyPrefix:  openaiKey ? openaiKey.slice(0, 7) + "..." : null,
+          envVar:     "OPENAI_APEX_INT_KEY",
+          model:      "gpt-4o-mini",
+          priority:   2,
         },
         gemini: {
           configured: isGeminiConfigured(),
           keyPresent: !!geminiKey,
-          keyPrefix: geminiKey ? geminiKey.slice(0, 6) + "..." : null,
-          envVar: "Gemini_API_Key_saas",
+          keyPrefix:  geminiKey ? geminiKey.slice(0, 6) + "..." : null,
+          envVar:     "Gemini_API_Key_saas",
+          model:      "gemini-2.5-flash",
+          priority:   3,
         },
       },
     });
