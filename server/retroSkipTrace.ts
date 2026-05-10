@@ -26,7 +26,7 @@ async function sleep(ms: number) {
 }
 
 export async function runRetroSkipTrace(subAccountId: number): Promise<RetroStats> {
-  const apiKey = process.env.BATCH_DATA;
+  const apiKey = process.env.BATCH_DATA || process.env.BATCHDATA_API_KEY;
   if (!apiKey) {
     console.error("[RETRO-SKIP-TRACE] BATCH_DATA env var not set");
     return { processed: 0, found: 0, notFound: 0, failed: 0, skipped: 0 };
@@ -36,11 +36,16 @@ export async function runRetroSkipTrace(subAccountId: number): Promise<RetroStat
 
   console.log(`[RETRO-SKIP-TRACE] Starting retroactive skip trace for account ${subAccountId}`);
 
-  // Get all crash leads with no phone
+  // Get all contacts needing skip trace — crash leads AND home service leads with no phone
   const allContacts = await storage.getContacts(subAccountId, { limit: 5000 });
-  const needsTrace = allContacts.filter(c =>
-    (c.tags || []).includes("crash-lead") && !c.phone && c.address
-  );
+  const needsTrace = allContacts.filter(c => {
+    const tags = c.tags || [];
+    const isLead = tags.includes("crash-lead") || tags.includes("home-service-lead") || tags.includes("sentinel-auto");
+    const noPhone = !c.phone;
+    const hasAddress = !!c.address;
+    const notAlreadyTraced = !tags.includes("skip-traced");
+    return isLead && noPhone && hasAddress && notAlreadyTraced;
+  });
 
   console.log(`[RETRO-SKIP-TRACE] Found ${needsTrace.length} contacts needing skip trace`);
 
@@ -64,8 +69,8 @@ export async function runRetroSkipTrace(subAccountId: number): Promise<RetroStat
           apiKey
         );
 
-        if (result.ownerPhone || result.ownerName) {
-          // Build real name
+        if (result.ownerPhone || result.ownerName || result.totalPersonsFound > 0) {
+          // Build real name from primary person
           let firstName = contact.firstName;
           let lastName = contact.lastName;
 
@@ -75,6 +80,23 @@ export async function runRetroSkipTrace(subAccountId: number): Promise<RetroStat
             lastName = parts.slice(1).join(" ") || lastName;
           }
 
+          // Build rich notes with ALL persons found
+          const personLines: string[] = [];
+          for (const p of result.allPersons) {
+            const pLine = [
+              p.name || "Unknown",
+              p.allPhones.length ? `Phones: ${p.allPhones.join(', ')}` : null,
+              p.allEmails.length ? `Emails: ${p.allEmails.join(', ')}` : null,
+              p.mailingAddress ? `Mail: ${p.mailingAddress}` : null,
+              p.age ? `Age: ${p.age}` : null,
+            ].filter(Boolean).join(' | ');
+            personLines.push(pLine);
+          }
+          if (result.additionalAddresses.length > 0) {
+            personLines.push(`Additional addresses: ${result.additionalAddresses.join('; ')}`);
+          }
+          const skipNotes = `Skip Trace (${new Date().toLocaleDateString()}):\n${personLines.join('\n') || 'No data found'}`;
+
           // Update contact with real data
           await storage.updateContact(contact.id, {
             firstName,
@@ -82,7 +104,7 @@ export async function runRetroSkipTrace(subAccountId: number): Promise<RetroStat
             phone: result.ownerPhone || contact.phone,
             email: result.ownerEmail || contact.email,
             tags: [...new Set([...(contact.tags || []), "skip-traced", result.ownerPhone ? "has-phone" : "no-phone"])],
-            notes: (contact.notes || "") + `\n\nSkip Trace Result: ${result.ownerName || "Unknown"} | ${result.ownerPhone || "No phone"} | ${result.ownerEmail || "No email"}`,
+            notes: (contact.notes || "") + `\n\n${skipNotes}`,
           });
 
           // Fire event so Apex Intelligence learns from this

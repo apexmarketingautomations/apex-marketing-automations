@@ -174,7 +174,7 @@ async function createLeadFromCrash(
     let email: string | undefined;
     let skipTraceNotes = "Skip trace: not attempted";
 
-    const batchDataKey = process.env.BATCH_DATA;
+    const batchDataKey = process.env.BATCH_DATA || process.env.BATCHDATA_API_KEY;
     if (batchDataKey && incident.location) {
       try {
         const { skipTraceLookup } = await import("./skip-trace");
@@ -189,10 +189,29 @@ async function createLeadFromCrash(
         }
         if (traceResult.ownerPhone) phone = traceResult.ownerPhone;
         if (traceResult.ownerEmail) email = traceResult.ownerEmail;
-        skipTraceNotes = traceResult.ownerPhone
-          ? `Skip trace: FOUND — ${traceResult.ownerName || "Unknown"} | ${traceResult.ownerPhone}`
-          : "Skip trace: no phone found";
-        console.log(`[CRASH-INGEST] Skip trace for ${incident.location}: ${skipTraceNotes}`);
+
+        // Build rich notes with ALL persons and ALL contact data found
+        const personLines: string[] = [];
+        for (const p of traceResult.allPersons) {
+          const pLine = [
+            p.name || "Unknown",
+            p.allPhones.length ? `Phones: ${p.allPhones.join(', ')}` : null,
+            p.allEmails.length ? `Emails: ${p.allEmails.join(', ')}` : null,
+            p.mailingAddress ? `Mail: ${p.mailingAddress}` : null,
+            p.age ? `Age: ${p.age}` : null,
+          ].filter(Boolean).join(' | ');
+          personLines.push(pLine);
+        }
+
+        if (traceResult.additionalAddresses.length > 0) {
+          personLines.push(`Additional addresses: ${traceResult.additionalAddresses.join('; ')}`);
+        }
+
+        skipTraceNotes = traceResult.totalPersonsFound > 0
+          ? `Skip trace: FOUND ${traceResult.totalPersonsFound} person(s)\n${personLines.join('\n')}`
+          : "Skip trace: no persons found";
+
+        console.log(`[CRASH-INGEST] Skip trace ${incident.location}: ${traceResult.totalPersonsFound} persons, ${traceResult.ownerPhone ? 'has phone' : 'no phone'}`);
       } catch (stErr: any) {
         skipTraceNotes = `Skip trace: failed — ${stErr.message}`;
         console.warn(`[CRASH-INGEST] Skip trace failed for ${incident.location}:`, stErr.message);

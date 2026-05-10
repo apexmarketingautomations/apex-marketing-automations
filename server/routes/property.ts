@@ -280,7 +280,7 @@ export function registerPropertyRoutes(app: Express) {
       return res.json({ result: existing, cached: true });
     }
 
-    let apiKey = process.env.BATCHDATA_API_KEY;
+    let apiKey = process.env.BATCHDATA_API_KEY || process.env.BATCH_DATA;
     if (!apiKey) {
       const conn = await storage.getIntegrationConnection(subAccountId, "skip-trace");
       apiKey = (conn?.config as any)?.apiKey;
@@ -342,7 +342,7 @@ export function registerPropertyRoutes(app: Express) {
     const { subAccountId, propertyLeadIds } = parsed.data;
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
 
-    let apiKey = process.env.BATCHDATA_API_KEY;
+    let apiKey = process.env.BATCHDATA_API_KEY || process.env.BATCH_DATA;
     if (!apiKey) {
       const conn = await storage.getIntegrationConnection(subAccountId, "skip-trace");
       apiKey = (conn?.config as any)?.apiKey;
