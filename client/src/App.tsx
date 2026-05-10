@@ -74,6 +74,7 @@ const LocationSearchPage = lazy(() => import("@/pages/location-search"));
 const NotificationPreferencesPage = lazy(() => import("@/pages/notification-preferences"));
 const ABTestingPage = lazy(() => import("@/pages/ab-testing"));
 const CrashReportsPage = lazy(() => import("@/pages/crash-reports"));
+const AccidentLeadsPage = lazy(() => import("@/pages/accident-leads"));
 const ExecutionTimelinePage = lazy(() => import("@/pages/execution-timeline"));
 const WhatsAppTemplatesPage = lazy(() => import("@/pages/whatsapp-templates"));
 const ContentPlannerPage = lazy(() => import("@/pages/content-planner"));
@@ -309,6 +310,7 @@ function Router() {
                   <Route path="/snapshots" component={SnapshotsPage} />
                   <Route path="/sentinel" component={SentinelPage} />
                   <Route path="/crash-reports" component={CrashReportsPage} />
+              <Route path="/accident-leads" component={AccidentLeadsPage} />
                   <Route path="/property-radar" component={PropertyRadarPage} />
                   <Route path="/website-integration" component={WebsiteIntegration} />
                   <Route path="/form-builder" component={FormBuilder} />
