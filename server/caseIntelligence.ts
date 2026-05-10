@@ -143,6 +143,86 @@ function scoreCase(signals: LegalSignal[], category: string, county: string): Sc
   };
 }
 
+// ── Narrative Generation ─────────────────────────────────────────────────────
+
+interface CaseNarrative {
+  headline:      string;   // "3 FDA recalls — potential consumer injury claims"
+  whatHappened:  string;   // One sentence: the incident in plain English
+  whyItMatters:  string;   // Why this is a business opportunity
+  whatToDo:      string;   // Specific action for the operator
+  urgencyLabel:  string;   // "Act within 72h" / "Monitor" / "High priority"
+  pitchLine:     string;   // One sentence they can say to a client
+}
+
+const CATEGORY_NARRATIVES: Record<string, (signals: LegalSignal[], name: string, n: number) => CaseNarrative> = {
+  recall: (signals, name, n) => {
+    const products = [...new Set(signals.map(s =>
+      s.chargeDescription?.split(" — ")[1] || s.chargeDescription || ""
+    ).filter(Boolean))].slice(0, 2).join(", ") || "products";
+    const cls1 = signals.some(s => (s.rawData as any)?.classification === "Class I");
+    return {
+      headline:     `${n} FDA/CPSC recall${n > 1 ? "s" : ""} — consumer injury exposure`,
+      whatHappened: `${name} issued ${n} recall${n > 1 ? "s" : ""} covering ${products}${cls1 ? " (Class I — highest severity)" : ""}.`,
+      whyItMatters: "Recalls create a defined window for personal injury and product liability claims. Affected consumers are actively searching for legal help.",
+      whatToDo:     "Connect personal injury attorneys with affected consumers before competing firms saturate the market.",
+      urgencyLabel: cls1 ? "Act within 48h" : "Act within 7 days",
+      pitchLine:    `${name} has active recall exposure — personal injury attorneys can reach affected consumers now.`,
+    };
+  },
+  osha: (signals, name, n) => ({
+    headline:     `${n} OSHA violation${n > 1 ? "s" : ""} — worker injury claims open`,
+    whatHappened: `${name} was cited by OSHA for ${n} workplace violation${n > 1 ? "s" : ""} in the past 30 days.`,
+    whyItMatters: "OSHA citations generate workers' compensation and workplace injury claims. Injured workers need legal representation quickly.",
+    whatToDo:     "Route to workers' comp attorneys and occupational injury firms for outreach to affected employees.",
+    urgencyLabel: "Act within 72h",
+    pitchLine:    `${name} has fresh OSHA violations — workers' comp attorneys have a limited window before injured parties retain counsel.`,
+  }),
+  arrest: (signals, name, n) => {
+    const hasDUI = signals.some(s => s.signalType === "dui_arrest");
+    return {
+      headline:     `${n} ${hasDUI ? "DUI " : ""}arrest${n > 1 ? "s" : ""} — immediate legal representation need`,
+      whatHappened: `${n} ${hasDUI ? "DUI " : ""}arrest record${n > 1 ? "s" : ""} associated with ${name} detected in the past 48 hours.`,
+      whyItMatters: "Arrested individuals retain criminal defense attorneys within 24–72 hours of booking. Early outreach wins the case.",
+      whatToDo:     hasDUI ? "DUI defense attorneys should reach out immediately — DUI clients move fast." : "Criminal defense attorneys: call within 24h of arrest.",
+      urgencyLabel: "Act within 24h",
+      pitchLine:    `Fresh ${hasDUI ? "DUI " : ""}arrest — criminal defense attorneys need to move today.`,
+    };
+  },
+  court: (signals, name, n) => {
+    const hasDivorce = signals.some(s => s.signalType === "divorce_filing");
+    return {
+      headline:     `${n} court filing${n > 1 ? "s" : ""} — family law opportunity`,
+      whatHappened: `${n} ${hasDivorce ? "divorce/family court" : "court"} filing${n > 1 ? "s" : ""} linked to ${name}.`,
+      whyItMatters: "Court filings signal active legal need. Parties in family proceedings need representation, often urgently.",
+      whatToDo:     "Family law attorneys should reach out — these individuals are actively in the legal system and receptive.",
+      urgencyLabel: "Act within 7 days",
+      pitchLine:    `${n} court filing${n > 1 ? "s" : ""} — family law attorneys have a clear opening.`,
+    };
+  },
+  business: (signals, name, n) => ({
+    headline:     `New business activity — marketing services opportunity`,
+    whatHappened: `${name} filed ${n} new business license${n > 1 ? "s" : ""} or business registration${n > 1 ? "s" : ""}.`,
+    whyItMatters: "New businesses need CRM, marketing automation, website, and advertising services. They have budget and urgency.",
+    whatToDo:     "Reach out with a business starter package — timing is ideal when they just filed.",
+    urgencyLabel: "Act within 14 days",
+    pitchLine:    `${name} just registered — new businesses are the best marketing clients you'll find.`,
+  }),
+};
+
+function generateNarrative(signals: LegalSignal[], category: string, entityName: string): CaseNarrative {
+  const n = signals.length;
+  const fn = CATEGORY_NARRATIVES[category];
+  if (fn) return fn(signals, entityName, n);
+  return {
+    headline:     `${n} signal${n > 1 ? "s" : ""} detected`,
+    whatHappened: `${n} signal${n > 1 ? "s" : ""} associated with ${entityName}.`,
+    whyItMatters: "Regulatory activity signals potential business or legal opportunity.",
+    whatToDo:     "Review signals and determine if outreach is appropriate.",
+    urgencyLabel: "Monitor",
+    pitchLine:    `${entityName} has active regulatory signals.`,
+  };
+}
+
 // ── Entity Resolution ───────────────────────────────────────────────────────
 
 async function resolveEntity(name: string, county: string | null): Promise<number> {
@@ -183,8 +263,9 @@ async function upsertCase(
   window: string,
   entityName: string,
 ): Promise<void> {
-  const caseKey = `${entityId}:${category}:${window}`;
-  const scores  = scoreCase(signals, category, signals[0]?.county || "");
+  const caseKey   = `${entityId}:${category}:${window}`;
+  const scores    = scoreCase(signals, category, signals[0]?.county || "");
+  const narrative = generateNarrative(signals, category, entityName);
 
   const timeline = signals.map(s => ({
     date:        s.detectedAt?.toISOString().slice(0, 10) || window,
@@ -193,7 +274,7 @@ async function upsertCase(
     caseNumber:  s.caseNumber || null,
   }));
 
-  const title = `${entityName} — ${category.charAt(0).toUpperCase() + category.slice(1)} Cluster (${window})`;
+  const title = narrative.headline;
 
   const [existing] = await db
     .select({ id: intelligenceCases.id, signalCount: intelligenceCases.signalCount })
@@ -207,6 +288,9 @@ async function upsertCase(
     await db.update(intelligenceCases).set({
       signalCount:       signals.length,
       latestSignalAt:    signals[0]?.detectedAt || new Date(),
+      title:             narrative.headline,
+      outreachAngle:     narrative.pitchLine,
+      aiSummary:         `${narrative.whatHappened} ${narrative.whyItMatters}`,
       timeline:          timeline as any,
       updatedAt:         new Date(),
       ...scores,
@@ -223,6 +307,8 @@ async function upsertCase(
       latestSignalAt:    signals[0]?.detectedAt || new Date(),
       recommendedVertical: category === "recall" || category === "osha" ? "personal_injury" :
                            category === "arrest" ? "criminal" : "business",
+      outreachAngle: narrative.pitchLine,
+      aiSummary:     `${narrative.whatHappened} ${narrative.whyItMatters}`,
       timeline:          timeline as any,
       ...scores,
     }).returning({ id: intelligenceCases.id });
