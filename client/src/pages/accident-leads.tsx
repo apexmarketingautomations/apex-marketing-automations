@@ -18,7 +18,7 @@ import type { SentinelIncident } from "@shared/schema";
 
 function parseRaw(raw: unknown): Record<string, any> {
   if (raw && typeof raw === "object") return raw as Record<string, any>;
-  try { return JSON.parse(raw as string); } catch { return {}; }
+  try { return JSON.parse(raw as string); } catch (_e) { return {}; }
 }
 
 function timeAgo(d: string) {
