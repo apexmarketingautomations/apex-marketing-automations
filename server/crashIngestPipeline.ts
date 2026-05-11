@@ -142,11 +142,27 @@ async function getActiveAccountIds(): Promise<number[]> {
   try {
     const { storage } = await import("./storage");
     const accounts = await storage.getSubAccounts();
-    const active = accounts
-      .filter((a: any) => a.active !== false)
-      .map((a: any) => a.id);
-    _activeAccountCache = active.length > 0 ? active : [GIOVANNI_ACCOUNT_ID, APEX_MAIN_ACCOUNT_ID];
+
+    // Only deliver crash leads to accounts that have Sentinel ENABLED
+    // with niche=accident. Roofing, beauty, home service accounts must
+    // never receive crash leads in their CRM.
+    const crashAccounts: number[] = [];
+    for (const account of accounts) {
+      if (account.active === false) continue;
+      try {
+        const config = await storage.getSentinelConfig(account.id);
+        if (config?.enabled && (config.niche === "accident" || config.niche === "crash")) {
+          crashAccounts.push(account.id);
+        }
+      } catch (_e) { /* allow-silent-catch: skip accounts with no config */ }
+    }
+
+    // Fallback: if no accounts configured, only use known crash accounts
+    _activeAccountCache = crashAccounts.length > 0
+      ? crashAccounts
+      : [GIOVANNI_ACCOUNT_ID, APEX_MAIN_ACCOUNT_ID];
     _activeAccountCacheTime = now;
+    console.log(`[CRASH-INGEST] Delivering to ${_activeAccountCache.length} crash-enabled account(s): ${_activeAccountCache.join(", ")}`);
     return _activeAccountCache;
   } catch (_e) { // allow-silent-catch: DB unavailable during startup, fallback to known accounts
     return [GIOVANNI_ACCOUNT_ID, APEX_MAIN_ACCOUNT_ID];
