@@ -592,11 +592,23 @@ async function createContactFromLead(lead: any, subAccountId: number): Promise<v
 
 async function deliverLeadToAllAccounts(lead: any): Promise<void> {
   try {
-    // Get all active sub-accounts
-    const accounts = await db.select({ id: subAccounts.id })
-      .from(subAccounts)
-      .where(ne(subAccounts.id, 0))
-      .limit(50);
+    // Only deliver legal leads to accounts configured for legal/attorney niche.
+    // Never send legal leads to home service, roofing, or accident-only accounts.
+    const allAccounts = await db.select({ id: subAccounts.id }).from(subAccounts).limit(100);
+    const { pool } = await import("./db");
+    const legalAccountIds: number[] = [];
+    for (const acct of allAccounts) {
+      const r = await pool.query(
+        `SELECT niche FROM sentinel_config WHERE sub_account_id=$1 LIMIT 1`,
+        [acct.id]
+      );
+      const niche = r.rows[0]?.niche;
+      // Include if legal niche, no sentinel config (generic account), or Apex main
+      if (!niche || niche === "legal" || niche === "attorney" || acct.id === 13) {
+        legalAccountIds.push(acct.id);
+      }
+    }
+    const accounts = legalAccountIds.map(id => ({ id }));
 
     for (const acct of accounts) {
       try {

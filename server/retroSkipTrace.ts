@@ -147,10 +147,25 @@ export async function runRetroSkipTraceAllAccounts(): Promise<void> {
   const { db } = await import("./db");
   const { subAccounts } = await import("@shared/schema");
   const { ne } = await import("drizzle-orm");
-  const accounts = await db.select({ id: subAccounts.id }).from(subAccounts)
+  // Only run retro skip trace on accounts that actually use crash/home-service leads
+  // Skip accounts that would never receive these lead types
+  const { pool } = await import("./db");
+  const allAccounts = await db.select({ id: subAccounts.id }).from(subAccounts)
     .where(ne(subAccounts.ownerUserId, "_archived"));
-  const ids = accounts.map(a => a.id);
-  console.log(`[RETRO-SKIP-TRACE] Starting for ${ids.length} accounts: ${ids.join(", ")}`);
+  const eligibleIds: number[] = [];
+  for (const acct of allAccounts) {
+    const r = await pool.query(
+      `SELECT niche, enabled FROM sentinel_config WHERE sub_account_id=$1 LIMIT 1`,
+      [acct.id]
+    );
+    const cfg = r.rows[0];
+    // Include: accounts with sentinel enabled, or Apex main (13)
+    if (!cfg || cfg.enabled || acct.id === 13 || acct.id === 14) {
+      eligibleIds.push(acct.id);
+    }
+  }
+  const ids = eligibleIds;
+  console.log(`[RETRO-SKIP-TRACE] Starting for ${ids.length} eligible accounts: ${ids.join(", ")}`);
   for (const accountId of ids) {
     const stats = await runRetroSkipTrace(accountId);
     console.log(`[RETRO-SKIP-TRACE] Account ${accountId}: processed=${stats.processed} found=${stats.found} notFound=${stats.notFound}`);
