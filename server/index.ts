@@ -473,7 +473,16 @@ app.use((req, res, next) => {
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
-        const responseStr = JSON.stringify(capturedJsonResponse);
+        const SENSITIVE = new Set(["apiKey","token","accessToken","refreshToken","secret","password","privateKey","clientSecret"]);
+        const redact = (o: any, d=0): any => {
+          if (d > 3 || !o || typeof o !== "object") return o;
+          const r: any = Array.isArray(o) ? [] : {};
+          for (const k of Object.keys(o)) {
+            r[k] = SENSITIVE.has(k) && typeof o[k] === "string" ? o[k].slice(0,4)+"...[redacted]" : redact(o[k], d+1);
+          }
+          return r;
+        };
+        const responseStr = JSON.stringify(redact(capturedJsonResponse));
         logLine += ` :: ${responseStr.length > 200 ? responseStr.substring(0, 200) + "...[truncated]" : responseStr}`;
       }
 
@@ -1823,24 +1832,14 @@ RULES:
       }
 
       // ── Generic sequence audit — discovers and repairs ALL drifted sequences ──
-      // Run drizzle schema push — disable triggers during migration to handle FK ordering
-  try {
-    const pg2 = await import("pg");
-    const migPool = new pg2.default.Pool({ connectionString: process.env.DATABASE_URL });
-    const migClient = await migPool.connect();
-    await migClient.query("SET session_replication_role = replica");
-    migClient.release();
-    await migPool.end();
-    console.log("[STARTUP] FK checks disabled for migration");
-  } catch (fkErr: any) {
-    console.warn("[STARTUP] Could not disable FK checks:", fkErr?.message);
-  }
+      // Push schema using drizzle-kit
   try {
     const { execSync } = await import("child_process");
     console.log("[STARTUP] Running database schema push...");
-    const out = execSync("npx drizzle-kit push --force", { 
+    execSync("npx drizzle-kit push --force", { 
       encoding: "utf8",
-      env: { ...process.env }
+      env: { ...process.env },
+      stdio: "pipe",
     });
     console.log("[STARTUP] ✅ Database schema push complete");
   } catch (migErr: any) {

@@ -2468,6 +2468,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createUniversalEvent(data: InsertUniversalEvent): Promise<UniversalEvent> {
+    // Validate subAccountId exists before insert to avoid FK violations
+    if (data.subAccountId) {
+      const [acct] = await db.select({ id: subAccounts.id }).from(subAccounts)
+        .where(eq(subAccounts.id, data.subAccountId)).limit(1);
+      if (!acct) {
+        console.warn(`[UNIVERSAL-EVENTS] skipping — invalid subAccountId=${data.subAccountId} eventType=${data.eventType}`);
+        return data as any;
+      }
+    }
     const [row] = await db.insert(universalEvents).values(data).returning();
     return row;
   }

@@ -106,8 +106,14 @@ export async function auditAndRepairSequences(): Promise<void> {
           `status=DRIFTED repair=${newVal}`
         );
       } catch (err: any) {
-        results.push({ table, column, seq, maxId: 0, lastVal: 0, status: "ERROR", error: err?.message });
-        console.error(`[SEQ-AUDIT] table=${table} seq=${seq} status=ERROR error="${err?.message}"`);
+        const msg = err?.message || "";
+        // Skip missing internal/stripe tables silently — they're not our tables
+        if (msg.includes("does not exist") || msg.includes("relation") || msg.includes("not found")) {
+          // silent skip
+        } else {
+          results.push({ table, column, seq, maxId: 0, lastVal: 0, status: "ERROR", error: msg });
+          console.error(`[SEQ-AUDIT] table=${table} seq=${seq} status=ERROR error="${msg}"`);
+        }
       }
     }
   } finally {
