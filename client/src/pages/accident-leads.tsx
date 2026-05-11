@@ -452,9 +452,9 @@ export default function AccidentLeadsPage() {
 
   // Fetch accounts to resolve fallback if activeAccountId not set
   const { data: accounts = [] } = useQuery<any[]>({
-    queryKey: ["/api/sub-accounts"],
+    queryKey: ["/api/accounts"],
     queryFn: async () => {
-      const res = await fetch("/api/sub-accounts", { credentials: "include" });
+      const res = await fetch("/api/accounts", { credentials: "include" });
       if (!res.ok) return [];
       return res.json();
     },
