@@ -228,6 +228,39 @@ export function registerAuthRoutes(app: Express): void {
     }
   });
 
+  // One-time admin account setup — only works if user doesn't exist yet
+  app.post("/api/auth/setup-admin", async (req, res) => {
+    try {
+      const { email, password, adminKey } = req.body;
+      // Must provide the ADMIN_USER_ID as the key to prevent abuse
+      const expectedKey = process.env.ADMIN_USER_ID || process.env.SESSION_SECRET;
+      if (!adminKey || adminKey !== expectedKey) {
+        return res.status(403).json({ message: "Invalid admin key" });
+      }
+      if (!email || !password) {
+        return res.status(400).json({ message: "Email and password required" });
+      }
+      const existing = await authStorage.getUserByEmail(email.toLowerCase().trim());
+      const hash = await bcrypt.hash(password, 12);
+      const adminUserId = process.env.ADMIN_USER_ID || `admin_${Date.now()}`;
+      if (existing) {
+        // Update password
+        await authStorage.upsertUser({ ...existing, passwordHash: hash });
+        return res.json({ success: true, message: "Password updated" });
+      }
+      await authStorage.upsertUser({
+        id: adminUserId,
+        email: email.toLowerCase().trim(),
+        passwordHash: hash,
+        authProvider: "email",
+        isAdmin: "true",
+      });
+      res.json({ success: true, message: "Admin account created" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/auth/email-login", async (req, res) => {
     try {
       const { email, password } = req.body;
