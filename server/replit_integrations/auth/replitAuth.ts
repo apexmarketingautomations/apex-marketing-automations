@@ -128,6 +128,10 @@ export async function setupAuth(app: Express) {
     });
   });
 
+  // Serialize/deserialize MUST run before REPL_ID guard
+  passport.serializeUser((user: Express.User, cb) => cb(null, user));
+  passport.deserializeUser((user: Express.User, cb) => cb(null, user));
+
   // Register Google OAuth BEFORE checking REPL_ID — Google works without Replit
   if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     passport.use(
