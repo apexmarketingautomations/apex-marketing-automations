@@ -20,7 +20,7 @@ async function callAnthropic(
   messages: ChatMessage[],
   options: AIOptions = {}
 ): Promise<AIResponse> {
-  const { temperature = 0.7, maxTokens = 4096, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
+  const { temperature = 0.7, maxTokens = 4096, timeoutMs = DEFAULT_TIMEOUT_MS, jsonMode = false } = options;
 
   // Anthropic requires system messages in a separate top-level field
   const systemMsg = messages.find(m => m.role === "system");
@@ -28,12 +28,18 @@ async function callAnthropic(
     .filter(m => m.role !== "system")
     .map(m => ({ role: m.role as "user" | "assistant", content: m.content }));
 
+  // Anthropic doesn't support response_format — enforce JSON via system prompt
+  const systemContent = [
+    systemMsg?.content || "",
+    jsonMode ? "\n\nIMPORTANT: You MUST respond with valid JSON only. No prose, no markdown, no explanation. Raw JSON only." : "",
+  ].filter(Boolean).join("");
+
   const body: Record<string, unknown> = {
     model:      ANTHROPIC_MODEL,
     max_tokens: Math.min(maxTokens, 8096),
     messages:   userMsgs,
   };
-  if (systemMsg) body.system = systemMsg.content;
+  if (systemContent) body.system = systemContent;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
