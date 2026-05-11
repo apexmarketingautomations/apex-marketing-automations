@@ -562,6 +562,60 @@ export default function AccidentLeadsPage() {
         </Button>
       </div>
 
+      {/* Contacts with phone numbers — the sellable leads */}
+      {stats.withContact > 0 && (() => {
+        const contactLeads = incidents.filter(i => {
+          const r = parseRaw(i.rawPayload);
+          return r.skipTrace?.ownerPhone || r.ownerPhone;
+        });
+        const exportCSV = () => {
+          const rows = [
+            ["Name","Phone","Location","County","Date"].join(","),
+            ...contactLeads.map(i => {
+              const r = parseRaw(i.rawPayload);
+              const phone = r.skipTrace?.ownerPhone || r.ownerPhone || "";
+              const name = r.skipTrace?.ownerName || i.title || "";
+              return [`"${name}"`,`"${phone}"`,`"${i.location || ""}"`,`"${r.county || ""}"`,`"${new Date(i.detectedAt as any).toLocaleDateString()}"`].join(",");
+            })
+          ];
+          const b = new Blob([rows.join(String.fromCharCode(10))], {type:"text/csv"});
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(b);
+          a.download = `crash-leads-${new Date().toISOString().slice(0,10)}.csv`;
+          a.click();
+        };
+        return (
+          <div className="mb-6 rounded-2xl border border-green-500/30 bg-green-500/5 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <div className="text-green-400 font-black text-lg">{stats.withContact} LEADS WITH PHONE NUMBERS</div>
+                <div className="text-slate-400 text-xs mt-0.5">Real names + numbers from skip trace — ready to sell</div>
+              </div>
+              <button onClick={exportCSV} className="px-4 py-2 rounded-xl bg-green-500 hover:bg-green-400 text-black font-black text-sm transition-all">
+                ⬇ Export CSV
+              </button>
+            </div>
+            <div className="space-y-2">
+              {contactLeads.slice(0,10).map(i => {
+                const r = parseRaw(i.rawPayload);
+                const phone = r.skipTrace?.ownerPhone || r.ownerPhone;
+                const name = r.skipTrace?.ownerName || "Unknown";
+                return (
+                  <div key={i.id} className="flex items-center justify-between bg-white/5 rounded-xl px-4 py-2.5">
+                    <div>
+                      <span className="text-white font-bold text-sm">{name}</span>
+                      <span className="text-slate-500 text-xs ml-2">{r.county} County · {new Date(i.detectedAt as any).toLocaleDateString()}</span>
+                    </div>
+                    <a href={`tel:${phone}`} className="text-green-400 font-mono font-bold text-sm hover:text-green-300">{phone}</a>
+                  </div>
+                );
+              })}
+              {contactLeads.length > 10 && <div className="text-slate-500 text-xs text-center pt-1">+{contactLeads.length - 10} more — export CSV to see all</div>}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
         <StatCard label="Total Incidents" value={stats.total} sub="This session" />

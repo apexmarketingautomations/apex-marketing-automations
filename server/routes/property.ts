@@ -2501,8 +2501,20 @@ export function registerPropertyRoutes(app: Express) {
   app.get("/api/contacts/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
-    const list = await storage.getContacts(subAccountId);
-    res.json(list);
+    const tag = req.query.tag as string | undefined;
+    const hasPhone = req.query.hasPhone === "true";
+    const { db } = await import("../db");
+    const { contacts } = await import("@shared/schema");
+    const { eq, isNotNull, and, sql } = await import("drizzle-orm");
+
+    let q = db.select().from(contacts).where(eq(contacts.subAccountId, subAccountId));
+    const list = await q;
+
+    let filtered = list;
+    if (tag) filtered = filtered.filter((c: any) => Array.isArray(c.tags) && c.tags.includes(tag));
+    if (hasPhone) filtered = filtered.filter((c: any) => !!c.phone);
+
+    res.json(filtered);
   }));
 
   app.get("/api/contacts/detail/:id", asyncHandler(async (req, res) => {
