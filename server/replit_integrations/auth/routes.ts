@@ -282,28 +282,24 @@ export function registerAuthRoutes(app: Express): void {
         return res.status(401).json({ message: "Invalid email or password" });
       }
 
-      req.session.regenerate?.((regenErr: any) => {
-        if (regenErr) {
-          console.error("[AUTH] Session regenerate failed:", regenErr.message);
-          return res.status(500).json({ message: "Login failed — session error" });
+      const adminUserId = process.env.ADMIN_USER_ID;
+      const isDevAdmin = adminUserId && user.id === adminUserId;
+      const sessionUser = { id: user.id, claims: { sub: user.id }, authProvider: "email" };
+
+      (req.session as any).passport = { user: sessionUser };
+
+      req.session.save((saveErr: any) => {
+        if (saveErr) {
+          console.error("[AUTH] Session save error:", saveErr?.message);
+          return res.status(500).json({ message: "Session save failed: " + saveErr?.message });
         }
-        req.login({ id: user.id, claims: { sub: user.id }, authProvider: "email" }, (err: any) => {
-          if (err) {
-            console.error("Email login failed:", err);
-            return res.status(500).json({ message: "Login failed" });
-          }
-
-          const adminUserId = process.env.ADMIN_USER_ID;
-          const isDevAdmin = adminUserId && user.id === adminUserId;
-
-          res.json({
-            success: true,
-            user: {
-              ...user,
-              passwordHash: undefined,
-              ...(isDevAdmin ? { role: "DEV_ADMIN", isPaid: true, radius: 999999, permissions: ["all"] } : { role: "user" }),
-            },
-          });
+        res.json({
+          success: true,
+          user: {
+            ...user,
+            passwordHash: undefined,
+            ...(isDevAdmin ? { role: "DEV_ADMIN", isPaid: true, radius: 999999, permissions: ["all"] } : { role: "user" }),
+          },
         });
       });
     } catch (error) {
