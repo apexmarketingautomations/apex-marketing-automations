@@ -40,7 +40,7 @@ const POLL_INTERVAL_MS = 15 * 60 * 1000;
 const APEX_PARENT_ACCOUNT_ID = Number(process.env.APEX_PARENT_ACCOUNT_ID || 13);
 
 // Google Places API — searches for local businesses with real phone numbers
-const GOOGLE_PLACES_KEY = process.env.GOOGLE_MAPS_API || process.env.GOOGLE_PLACES_API_KEY;
+const GOOGLE_PLACES_KEY = process.env.GOOGLE_MAPS_API || process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY;
 
 // BatchData for skip tracing arrest subjects
 const BATCHDATA_KEY = process.env.BATCH_DATA || process.env.BATCHDATA_API_KEY;
