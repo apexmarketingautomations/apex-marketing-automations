@@ -72,6 +72,15 @@ export async function auditAndRepairSequences(): Promise<void> {
     for (const { table_name: table, column_name: column, sequence_name: seq } of sequences) {
       try {
         // Read MAX(id) and sequence last_value in one round-trip
+        // Check table exists before querying
+        const tableCheck = await client.query(
+          `SELECT 1 FROM information_schema.tables WHERE table_name = $1 AND table_schema = 'public'`,
+          [table]
+        );
+        if (tableCheck.rowCount === 0) {
+          results.push({ table, column, seq, maxId: 0, lastVal: 0, status: "ERROR", error: `relation "${table}" does not exist` });
+          continue;
+        }
         const infoRes = await client.query<{ max_id: string; seq_val: string }>(
           `SELECT
               COALESCE(MAX("${column}"), 0)::text AS max_id,

@@ -301,8 +301,17 @@ export async function seedBaselineCoverageForAccounts(): Promise<SeedResult> {
 export async function seedSystemTimelineMarker(): Promise<SeedResult> {
   try {
     const { storage } = await import("../storage");
+    const { db } = await import("../db");
+    const { subAccounts } = await import("@shared/schema");
+    const { eq } = await import("drizzle-orm");
+    const accountId = parseInt(process.env.APEX_PARENT_ACCOUNT_ID || "13");
+    const [acct] = await db.select({ id: subAccounts.id }).from(subAccounts)
+      .where(eq(subAccounts.id, accountId)).limit(1);
+    if (!acct) {
+      return { table: "execution_timeline", status: "skipped", count: 0, message: `Timeline marker skipped: no valid account id=${accountId}` };
+    }
     const marker = {
-      accountId: parseInt(process.env.APEX_PARENT_ACCOUNT_ID || "13"),
+      accountId,
       title: "Apex Intelligence Production Seed",
       sourceModule: "apex_intelligence",
       description: `Production seed completed — ${isProduction ? "production" : "development"} environment. ${SCORE_TYPES.length} score types, ${RECOMMENDATION_TYPES.length} recommendation types, ${Object.keys(MODULE_GROUP_EVENT_MAP).length} module groups.`,

@@ -47,7 +47,17 @@ function logDiscard(reason: string, payload: any): void {
 async function persistOutcomeDurably(entry: StoredOutcome): Promise<void> {
   try {
     const { db } = await import("../db");
-    const { universalEvents } = await import("@shared/schema");
+    const { universalEvents, subAccounts } = await import("@shared/schema");
+    const { eq } = await import("drizzle-orm");
+    // Validate subAccountId before insert to avoid FK violations
+    if (entry.subAccountId) {
+      const [acct] = await db.select({ id: subAccounts.id }).from(subAccounts)
+        .where(eq(subAccounts.id, entry.subAccountId)).limit(1);
+      if (!acct) {
+        console.warn(`[APEX-OUTCOME] skipping invalid subAccountId=${entry.subAccountId}`);
+        return;
+      }
+    }
     await db.insert(universalEvents).values({
       eventType: "agent.outcome",
       sourceModule: "apex-intelligence",
