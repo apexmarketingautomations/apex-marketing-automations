@@ -66,17 +66,20 @@ export async function runLaunchReadinessChecks(): Promise<{
   });
 
   const aiStatusObj = getAIProviderStatus();
+  const { isAnthropicConfigured } = await import("./aiGateway");
+  const anthropicOk = isAnthropicConfigured();
   const aiStatusStr = [
-    `Active=${aiStatusObj.activeProvider}`,
-    `OpenAI=${aiStatusObj.openaiConfigured ? "configured" : "missing"}`,
-    `Gemini=${aiStatusObj.geminiConfigured ? "configured" : "missing"}`,
+    `Primary=Anthropic (${anthropicOk ? "active" : "missing"})`,
+    aiStatusObj.openaiConfigured ? "Fallback=OpenAI" : null,
+    aiStatusObj.geminiConfigured ? "Fallback=Gemini" : null,
+    !aiStatusObj.openaiConfigured && !aiStatusObj.geminiConfigured ? "Fallback=none" : null,
     aiStatusObj.circuitBreakerOpen ? "circuit-breaker=open" : null,
   ].filter(Boolean).join(", ");
   checks.push({
     category: "AI",
     name: "AI Provider",
     status: isAIConfigured() ? "pass" : "warn",
-    detail: isAIConfigured() ? aiStatusStr : "Missing — AI features disabled (set OPENAI_APEX_INT_KEY or Gemini_API_Key_saas)",
+    detail: isAIConfigured() ? aiStatusStr : "Missing — set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY",
   });
 
   checks.push({
