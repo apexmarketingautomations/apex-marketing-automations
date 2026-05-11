@@ -1823,7 +1823,20 @@ RULES:
       }
 
       // ── Generic sequence audit — discovers and repairs ALL drifted sequences ──
-      console.error("[STARTUP] BOOT ENTRY REACHED — running sequence audit");
+      // Run drizzle schema push on fresh database
+  try {
+    const { execSync } = await import("child_process");
+    console.log("[STARTUP] Running database schema push...");
+    execSync("npx drizzle-kit push --force", { 
+      stdio: "pipe",
+      env: { ...process.env }
+    });
+    console.log("[STARTUP] ✅ Database schema push complete");
+  } catch (migErr: any) {
+    console.error("[STARTUP] Schema push failed (non-fatal):", migErr?.message?.slice(0, 200));
+  }
+
+  console.error("[STARTUP] BOOT ENTRY REACHED — running sequence audit");
       try {
         const { auditAndRepairSequences } = await import("./startup/sequenceAudit");
         await auditAndRepairSequences();
