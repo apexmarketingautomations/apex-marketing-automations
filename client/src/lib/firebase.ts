@@ -4,7 +4,7 @@ import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChang
 import { getMessaging, getToken, onMessage, isSupported as isMessagingSupported, type Messaging } from "firebase/messaging";
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyAm8RknGMokA7ayLCObnNtm5VGwzItKReg",
   authDomain: "apex-ma.firebaseapp.com",
   projectId: "apex-ma",
   storageBucket: "apex-ma.firebasestorage.app",
