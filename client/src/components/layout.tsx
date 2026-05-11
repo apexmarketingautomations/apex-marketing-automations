@@ -44,7 +44,7 @@ const navSections = [
   {
     label: "LEADS",
     items: [
-      { href: "/accident-leads", icon: Car, label: "Crash Leads", requiredFeature: "sentinel" },
+      { href: "/accident-leads", icon: Car, label: "Crash Leads" },
       { href: "/sentinel?tab=home", icon: Home, label: "Home & Property", requiredFeature: "sentinel" },
       { href: "/sentinel?tab=legal", icon: Scale, label: "Legal Intel", requiredFeature: "sentinel" },
       { href: "/sentinel?tab=distribution", icon: GitFork, label: "Lead Routing", requiredFeature: "sentinel" },
