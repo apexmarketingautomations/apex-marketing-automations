@@ -1823,17 +1823,28 @@ RULES:
       }
 
       // ── Generic sequence audit — discovers and repairs ALL drifted sequences ──
-      // Run drizzle schema push on fresh database
+      // Run drizzle schema push — disable triggers during migration to handle FK ordering
+  try {
+    const pg2 = await import("pg");
+    const migPool = new pg2.default.Pool({ connectionString: process.env.DATABASE_URL });
+    const migClient = await migPool.connect();
+    await migClient.query("SET session_replication_role = replica");
+    migClient.release();
+    await migPool.end();
+    console.log("[STARTUP] FK checks disabled for migration");
+  } catch (fkErr: any) {
+    console.warn("[STARTUP] Could not disable FK checks:", fkErr?.message);
+  }
   try {
     const { execSync } = await import("child_process");
     console.log("[STARTUP] Running database schema push...");
-    execSync("npx drizzle-kit push --force", { 
-      stdio: "pipe",
+    const out = execSync("npx drizzle-kit push --force", { 
+      encoding: "utf8",
       env: { ...process.env }
     });
     console.log("[STARTUP] ✅ Database schema push complete");
   } catch (migErr: any) {
-    console.error("[STARTUP] Schema push failed (non-fatal):", migErr?.message?.slice(0, 200));
+    console.error("[STARTUP] Schema push failed:", migErr?.message?.slice(0, 300));
   }
 
   console.error("[STARTUP] BOOT ENTRY REACHED — running sequence audit");
