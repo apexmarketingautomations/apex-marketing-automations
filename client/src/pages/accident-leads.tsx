@@ -448,7 +448,18 @@ function LeadDetail({
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function AccidentLeadsPage() {
-  const { activeAccountId } = useAccount();
+  const { activeAccountId: rawActiveId } = useAccount();
+
+  // Fetch accounts to resolve fallback if activeAccountId not set
+  const { data: accounts = [] } = useQuery<any[]>({
+    queryKey: ["/api/sub-accounts"],
+    queryFn: async () => {
+      const res = await fetch("/api/sub-accounts", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+  const activeAccountId = rawActiveId ?? accounts[0]?.id ?? null;
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
