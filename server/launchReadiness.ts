@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { getDatabaseHealth } from "./dbBackup";
-import { isAIConfigured, getAIProviderStatus } from "./aiGateway";
+import { isAIConfigured, getAIProviderStatus, isAnthropicConfigured } from "./aiGateway";
 
 type CheckStatus = "pass" | "warn" | "fail";
 
@@ -66,7 +66,6 @@ export async function runLaunchReadinessChecks(): Promise<{
   });
 
   const aiStatusObj = getAIProviderStatus();
-  const { isAnthropicConfigured } = await import("./aiGateway");
   const anthropicOk = isAnthropicConfigured();
   const aiStatusStr = [
     `Primary=Anthropic (${anthropicOk ? "active" : "missing"})`,
