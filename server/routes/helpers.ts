@@ -69,8 +69,8 @@ export function getUserId(user: any): string {
 }
 
 // Accounts with full admin override — can access any sub-account
-const APEX_ADMIN_ACCOUNT_IDS = [13, 21]; // Apex Marketing + Officer Layla
-const APEX_PARENT_ACCOUNT_ID = 13;
+const APEX_ADMIN_ACCOUNT_IDS = [1, 3]; // Officer Layla + APEX MARKETING Account
+const APEX_PARENT_ACCOUNT_ID = 3;
 
 let _parentOwnerCache: { userId: string; ts: number } | null = null;
 const PARENT_CACHE_TTL = 60_000;
