@@ -76,12 +76,14 @@ async function getDatabaseHealth(): Promise<SystemComponent> {
 }
 
 async function getAIGatewayHealth(): Promise<SystemComponent> {
-  const isConfigured = !!process.env.OPENAI_API_KEY;
+  const { isAIConfigured, getAIProviderStatus } = await import("../aiGateway");
+  const configured = isAIConfigured();
+  const status = getAIProviderStatus();
   return {
     name: "AI Gateway",
-    status: isConfigured ? "healthy" : "degraded",
+    status: configured ? "healthy" : "degraded",
     lastCheckedAt: new Date().toISOString(),
-    detail: isConfigured ? "OpenAI configured" : "AI API key not configured",
+    detail: configured ? `${status.activeProvider} active` : "No AI provider configured",
   };
 }
 
@@ -256,7 +258,7 @@ export async function getSystemHealthReport(): Promise<SystemHealthReport> {
 
   const recommendations: string[] = [];
   if (dbHealth.status !== "healthy") recommendations.push("Database performance is degraded — check connection pool and query optimization");
-  if (aiHealth.status !== "healthy") recommendations.push("AI Gateway is not configured — add OpenAI API key to enable AI features");
+  if (aiHealth.status !== "healthy") recommendations.push("AI Gateway is not configured — add ANTHROPIC_API_KEY, OPENAI_APEX_INT_KEY, or Gemini_API_Key_saas to enable AI features");
   if (integHealth.status === "degraded") recommendations.push("Multiple integrations are disconnected — reconnect for full functionality");
   if (executionInsights.some(i => i.status === "failing")) recommendations.push("Some workflow steps have high error rates — review execution logs");
   if (executionInsights.some(i => i.status === "slow")) recommendations.push("Some execution steps are slow — consider optimization");
