@@ -6,6 +6,7 @@ export type SendEmailFailureReason =
   | "not_configured"
   | "no_from_address"
   | "sendgrid_error"
+  | "resend_error"
   | "row_write_failed";
 
 export interface SendEmailArgs {
@@ -24,6 +25,35 @@ export interface SendEmailResult {
   reason?: SendEmailFailureReason;
 }
 
+// ── Resend provider ───────────────────────────────────────────────────────────
+
+function resolveResendApiKey(): string | undefined {
+  return (
+    process.env.RESEND_API_KEY ||
+    process.env.RESEND_KEY ||
+    process.env.EMAIL_RESEND_API_KEY ||
+    undefined
+  );
+}
+
+let _resendClient: any = null;
+let resendInitialized = false;
+
+async function getResendClient(): Promise<any> {
+  if (_resendClient) return _resendClient;
+  const { Resend } = await import("resend");
+  const key = resolveResendApiKey()!;
+  _resendClient = new Resend(key);
+  resendInitialized = true;
+  return _resendClient;
+}
+
+export function isResendConfigured(): boolean {
+  return !!resolveResendApiKey();
+}
+
+// ── SendGrid provider ─────────────────────────────────────────────────────────
+
 function resolveSendgridApiKey(): string | undefined {
   return (
     process.env.SENDGRID_API_KEY ||
@@ -40,16 +70,45 @@ function ensureSendgrid(): { ok: true } | { ok: false; reason: SendEmailFailureR
     return {
       ok: false,
       reason: "not_configured",
-      error: "SendGrid API key is not set. Add SENDGRID_API_KEY (or sendgrid_api) as a Replit secret to enable the email channel.",
+      error: "SendGrid API key is not set.",
     };
   }
   if (!sgInitialized) {
     sgMail.setApiKey(apiKey);
     sgInitialized = true;
-    console.log("[SENDGRID] Email channel initialized");
+    console.log("[EMAIL] SendGrid initialized");
   }
   return { ok: true };
 }
+
+// ── Boot log (call once at server startup) ────────────────────────────────────
+
+export function logEmailProviderStartup(): void {
+  const resendKey     = resolveResendApiKey();
+  const sendgridKey   = resolveSendgridApiKey();
+
+  console.log(`[EMAIL] RESEND_API_KEY present: ${!!resendKey}`);
+  console.log(`[EMAIL] SENDGRID_API_KEY present: ${!!sendgridKey}`);
+
+  if (resendKey) {
+    const activeVar =
+      process.env.RESEND_API_KEY       ? "RESEND_API_KEY" :
+      process.env.RESEND_KEY           ? "RESEND_KEY" :
+      "EMAIL_RESEND_API_KEY";
+    console.log(`[EMAIL] Resend provider initialized (key: ${activeVar})`);
+    console.log("[EMAIL] Active email provider: resend");
+  } else {
+    console.log("[EMAIL] Resend skipped because RESEND_API_KEY is missing");
+    if (sendgridKey) {
+      console.log("[EMAIL] Active email provider: sendgrid (fallback)");
+    } else {
+      console.warn("[EMAIL] ⚠️  No email provider configured — outbound email disabled");
+      console.warn("[EMAIL]    Set RESEND_API_KEY, RESEND_KEY, or SENDGRID_API_KEY to enable email");
+    }
+  }
+}
+
+// ── Persist message row ───────────────────────────────────────────────────────
 
 async function persistRow(opts: {
   subAccountId: number;
@@ -81,14 +140,8 @@ async function persistRow(opts: {
   }
 }
 
-/**
- * Resolve the sender address with this precedence:
- *   1. Explicit per-call override.
- *   2. The sub-account's own configured fromEmail (set in account settings).
- *      This MUST be a sender that has been verified inside SendGrid for the
- *      account, otherwise SendGrid will reject the send.
- *   3. The platform-level SENDGRID_FROM_EMAIL fallback.
- */
+// ── From-address resolver ─────────────────────────────────────────────────────
+
 async function resolveFromAddress(subAccountId: number, override?: string): Promise<string | null> {
   if (override) return override;
   try {
@@ -101,8 +154,14 @@ async function resolveFromAddress(subAccountId: number, override?: string): Prom
       err instanceof Error ? err.message : err,
     );
   }
-  return process.env.SENDGRID_FROM_EMAIL || null;
+  return (
+    process.env.RESEND_FROM_EMAIL ||
+    process.env.SENDGRID_FROM_EMAIL ||
+    null
+  );
 }
+
+// ── SendGrid sender verification (unchanged) ──────────────────────────────────
 
 export type SenderVerificationStatus =
   | { state: "verified"; senderId: number }
@@ -116,17 +175,6 @@ interface VerifiedSenderRow {
   verified: boolean;
 }
 
-/**
- * Look up an email in SendGrid's Single Sender list to tell the operator
- * whether it has actually been verified. Returns "unknown" when SendGrid
- * itself is unreachable or unconfigured so the UI can show a soft warning
- * instead of a confident green check.
- *
- * Pagination: SendGrid's verified_senders endpoint supports cursor-based
- * paging via `last_seen_id`. We page through results (cap of ~5 pages /
- * 1000 senders) so accounts with very large sender lists do not get a
- * false "not_found" — those return "unknown" with a paging note instead.
- */
 export async function getSenderVerificationStatus(email: string): Promise<SenderVerificationStatus> {
   const apiKey = resolveSendgridApiKey();
   if (!apiKey) return { state: "unknown", reason: "SendGrid is not configured on this server." };
@@ -142,7 +190,7 @@ export async function getSenderVerificationStatus(email: string): Promise<Sender
       if (lastSeenId !== undefined) url.searchParams.set("last_seen_id", String(lastSeenId));
       const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${apiKey}` } });
       if (!res.ok) {
-        const body = await res.text().catch((err) => { console.warn("[SENDEMAIL] verifiedSender body fetch failed, using empty string:", err instanceof Error ? err.message : err); return ""; });
+        const body = await res.text().catch((err) => { console.warn("[SENDEMAIL] verifiedSender body fetch failed:", err instanceof Error ? err.message : err); return ""; });
         return { state: "unknown", reason: `SendGrid returned ${res.status}${body ? `: ${body.slice(0, 120)}` : ""}` };
       }
       const data = await res.json() as { results?: VerifiedSenderRow[] };
@@ -162,16 +210,6 @@ export async function getSenderVerificationStatus(email: string): Promise<Sender
   }
 }
 
-/**
- * Kick off SendGrid's Single Sender Verification flow for the given email.
- * SendGrid will email a confirmation link to from_email; the operator must
- * click it for the sender to flip to verified.
- *
- * SendGrid requires a postal address on the sender record. We don't store
- * one per sub-account, so we send the business name and reasonable
- * placeholders — the operator can refine the record later in the SendGrid
- * dashboard. SendGrid does not actually validate the postal address.
- */
 export async function requestSenderVerification(opts: {
   email: string;
   fromName?: string;
@@ -206,7 +244,7 @@ export async function requestSenderVerification(opts: {
         country: "United States",
       }),
     });
-    const body = await res.json().catch((err) => { console.warn("[SENDEMAIL] promise rejected, using default null:", err instanceof Error ? err.message : err); return null; }) as { id?: number; errors?: Array<{ message?: string }> } | null;
+    const body = await res.json().catch((err) => { console.warn("[SENDEMAIL] promise rejected:", err instanceof Error ? err.message : err); return null; }) as { id?: number; errors?: Array<{ message?: string }> } | null;
     if (!res.ok) {
       const message = body?.errors?.[0]?.message || `SendGrid returned ${res.status}`;
       return { ok: false, error: message };
@@ -217,55 +255,52 @@ export async function requestSenderVerification(opts: {
   }
 }
 
-/**
- * Centralized outbound email wrapper. Mirrors sendSms in behavior:
- *  - Writes a messages row for both success and failure.
- *  - Populates messages.error_message on failure.
- *  - Returns a typed result instead of throwing.
- */
+// ── Main send function — Resend primary, SendGrid fallback ────────────────────
+
 export async function sendEmail(args: SendEmailArgs): Promise<SendEmailResult> {
   const { subAccountId, to, subject, body } = args;
   const traceId = args.traceId || randomUUID();
 
-  const init = ensureSendgrid();
-  if (!init.ok) {
-    const rowId = await persistRow({
-      subAccountId, to, subject, body, status: "failed", traceId,
-      errorMessage: init.error,
-    });
-    return { ok: false, reason: init.reason, errorMessage: init.error, messageRowId: rowId };
-  }
-
   const from = await resolveFromAddress(subAccountId, args.from);
   if (!from) {
-    const errorMessage = "No sender email address configured. Set SENDGRID_FROM_EMAIL (a verified SendGrid sender) or pass `from` explicitly.";
-    const rowId = await persistRow({
-      subAccountId, to, subject, body, status: "failed", traceId, errorMessage,
-    });
+    const errorMessage = "No sender email address configured. Set RESEND_FROM_EMAIL, SENDGRID_FROM_EMAIL, or configure fromEmail in account settings.";
+    const rowId = await persistRow({ subAccountId, to, subject, body, status: "failed", traceId, errorMessage });
     return { ok: false, reason: "no_from_address", errorMessage, messageRowId: rowId };
   }
 
+  // ── Try Resend first ────────────────────────────────────────────────────────
+  if (isResendConfigured()) {
+    try {
+      const resend = await getResendClient();
+      const result = await resend.emails.send({ from, to, subject, text: body });
+      if (result.error) throw new Error(result.error.message || JSON.stringify(result.error));
+      const rowId = await persistRow({ subAccountId, to, subject, body, status: "sent", messageSid: result.data?.id ?? null, traceId });
+      return { ok: true, messageRowId: rowId };
+    } catch (err: any) {
+      const errorMessage = err?.message || String(err);
+      console.warn(`[SEND-EMAIL] Resend failed (${errorMessage}), trying SendGrid fallback`);
+      // Fall through to SendGrid
+    }
+  }
+
+  // ── SendGrid fallback ───────────────────────────────────────────────────────
+  const init = ensureSendgrid();
+  if (!init.ok) {
+    const rowId = await persistRow({ subAccountId, to, subject, body, status: "failed", traceId, errorMessage: init.error });
+    return { ok: false, reason: init.reason, errorMessage: init.error, messageRowId: rowId };
+  }
+
   try {
-    const [response] = await sgMail.send({
-      to,
-      from,
-      subject,
-      text: body,
-    });
+    const [response] = await sgMail.send({ to, from, subject, text: body });
     const messageSid = (response?.headers?.["x-message-id"] as string | undefined) || null;
-    const rowId = await persistRow({
-      subAccountId, to, subject, body, status: "sent", messageSid, traceId,
-    });
+    const rowId = await persistRow({ subAccountId, to, subject, body, status: "sent", messageSid, traceId });
     return { ok: true, messageRowId: rowId };
   } catch (err: any) {
     const errorMessage: string =
       err?.response?.body?.errors?.[0]?.message ||
       err?.message ||
       String(err);
-    const persistedErr = `sendgrid: ${errorMessage}`;
-    const rowId = await persistRow({
-      subAccountId, to, subject, body, status: "failed", traceId, errorMessage: persistedErr,
-    });
+    const rowId = await persistRow({ subAccountId, to, subject, body, status: "failed", traceId, errorMessage: `sendgrid: ${errorMessage}` });
     console.error("[SEND-EMAIL] sendgrid error:", errorMessage);
     return { ok: false, reason: "sendgrid_error", errorMessage, messageRowId: rowId };
   }
