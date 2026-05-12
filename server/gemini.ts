@@ -3,8 +3,19 @@ import { recordSuccess } from "./pulse";
 
 // Lazy-instantiate to avoid crash when GEMINI key is absent
 let _ai: GoogleGenAI | null = null;
+
+function resolveGeminiKey(): string {
+  return (
+    process.env.GEMINI_API_KEY_ ||
+    process.env.Gemini_API_Key_saas ||
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
+    ""
+  );
+}
+
 function getGeminiClient(): GoogleGenAI {
-  const key = process.env.Gemini_API_Key_saas || process.env.GEMINI_API_KEY || "";
+  const key = resolveGeminiKey();
   if (!_ai) _ai = new GoogleGenAI({ apiKey: key });
   return _ai;
 }
@@ -13,7 +24,7 @@ let rateLimitedUntil: number = 0;
 const RATE_LIMIT_COOLDOWN_MS = 60_000;
 
 export function isGeminiConfigured(): boolean {
-  return !!process.env.Gemini_API_Key_saas;
+  return resolveGeminiKey().length > 0;
 }
 
 export function isGeminiRateLimited(): boolean {
