@@ -146,3 +146,20 @@ export async function auditAndRepairSequences(): Promise<void> {
   }
   console.error("");
 }
+
+// Called at startup to ensure agent_tasks sequence is ahead of max id
+export async function repairAgentTasksSequence(): Promise<void> {
+  const pool = makePool();
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(
+      `SELECT setval('agent_tasks_id_seq', GREATEST((SELECT COALESCE(MAX(id),0) FROM agent_tasks) + 1, 1), false)`
+    );
+    console.error("[SEQ-AUDIT] agent_tasks sequence repaired");
+  } catch (e: any) {
+    console.error("[SEQ-AUDIT] agent_tasks sequence repair failed:", e.message);
+  } finally {
+    client.release();
+    await pool.end();
+  }
+}

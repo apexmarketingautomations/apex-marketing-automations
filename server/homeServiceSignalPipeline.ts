@@ -805,7 +805,16 @@ async function fetchDBPRNewLicenses(): Promise<RawSignal[]> {
       headers: { "Accept": "application/json", "User-Agent": "ApexLeadEngine/2.0" },
       signal: AbortSignal.timeout(10000),
     });
-    if (!res.ok) return signals;
+    if (!res.ok) {
+      console.warn(`[HS-PIPELINE] DBPR HTTP ${res.status} — skipping`);
+      return signals;
+    }
+    const ct = res.headers.get("content-type") || "";
+    if (!ct.includes("json")) {
+      const preview = (await res.text()).slice(0, 200);
+      console.warn(`[HS-PIPELINE] DBPR non-JSON response ct=${ct} preview=${preview}`);
+      return signals;
+    }
     const licenses = await res.json() as any[];
     for (const lic of licenses) {
       const licType = (lic.license_type || "").toUpperCase();

@@ -1848,7 +1848,8 @@ RULES:
 
   console.error("[STARTUP] BOOT ENTRY REACHED — running sequence audit");
       try {
-        const { auditAndRepairSequences } = await import("./startup/sequenceAudit");
+        const { auditAndRepairSequences, repairAgentTasksSequence } = await import("./startup/sequenceAudit");
+        await repairAgentTasksSequence();
         await auditAndRepairSequences();
       } catch (auditErr: any) {
         console.error("[SEQ-AUDIT] FATAL — audit threw:", auditErr?.message, auditErr?.stack);
