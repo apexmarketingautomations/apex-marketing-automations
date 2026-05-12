@@ -87,23 +87,23 @@ export function logEmailProviderStartup(): void {
   const resendKey     = resolveResendApiKey();
   const sendgridKey   = resolveSendgridApiKey();
 
-  console.log(`[EMAIL] RESEND_API_KEY present: ${!!resendKey}`);
-  console.log(`[EMAIL] SENDGRID_API_KEY present: ${!!sendgridKey}`);
+  console.log(`[EMAIL] Resend configured: ${!!resendKey}`);
+  console.log(`[EMAIL] SendGrid configured: ${!!sendgridKey}`);
 
   if (resendKey) {
     const activeVar =
-      process.env.RESEND_API_KEY       ? "RESEND_API_KEY" :
-      process.env.RESEND_KEY           ? "RESEND_KEY" :
-      "EMAIL_RESEND_API_KEY";
-    console.log(`[EMAIL] Resend provider initialized (key: ${activeVar})`);
+      process.env.RESEND_API_KEY       ? "resend-primary" :
+      process.env.RESEND_KEY           ? "resend-alt" :
+      "resend-email-var";
+    console.log(`[EMAIL] Resend provider initialized (slot: ${activeVar})`);
     console.log("[EMAIL] Active email provider: resend");
   } else {
-    console.log("[EMAIL] Resend skipped because RESEND_API_KEY is missing");
+    console.log("[EMAIL] Resend skipped — provider key not present");
     if (sendgridKey) {
       console.log("[EMAIL] Active email provider: sendgrid (fallback)");
     } else {
       console.warn("[EMAIL] ⚠️  No email provider configured — outbound email disabled");
-      console.warn("[EMAIL]    Set RESEND_API_KEY, RESEND_KEY, or SENDGRID_API_KEY to enable email");
+      console.warn("[EMAIL]    Configure a Resend or SendGrid credential to enable email");
     }
   }
 }
