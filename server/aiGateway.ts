@@ -142,7 +142,7 @@ async function* callAnthropicStream(
             if (event.type === "content_block_delta" && event.delta?.type === "text_delta" && event.delta.text) {
               yield event.delta.text as string;
             }
-          } catch { /* skip malformed SSE */ }
+          } catch { /* allow-silent-catch: intentionally skip malformed SSE JSON chunks in streaming parser */ }
         }
       }
     } finally {
