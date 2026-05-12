@@ -122,7 +122,7 @@ app.post(
 
       const whSecret = getStripeWebhookSecret();
       if (!whSecret) {
-        console.error("[STRIPE] STRIPE_WEBHOOK_SECRET not configured — rejecting webhook");
+        console.error("[STRIPE] Webhook signing credential not configured — rejecting webhook");
         return res.status(500).json({ error: "Webhook secret not configured" });
       }
       const stripe = new Stripe(process.env.STRIPE_API_SECRET || "", { apiVersion: "2025-08-27.basil" as any });
@@ -424,7 +424,7 @@ if (process.env.MCP_FS_TOKEN && process.env.MCP_FS_TOKEN.trim().length >= 8) {
     console.error("[MCP-FS] failed to mount router on main app:", msg);
   }
 } else {
-  console.log("[MCP-FS] /fs-mcp route NOT mounted (MCP_FS_TOKEN missing or <8 chars)");
+  console.log("[MCP-FS] /fs-mcp route NOT mounted (MCP-FS credential missing or too short)");
 }
 
 app.use(
@@ -525,17 +525,17 @@ function validateEnvVars() {
   }
 
   if (missingCritical) {
-    console.log("[STARTUP] Critical secrets missing. Voice agent features will be unavailable.");
+    console.log("[STARTUP] Critical voice credentials missing. Voice agent features will be unavailable.");
   }
 
   if (process.env.TWILIO_ACCOUNT_SID && !process.env.TWILIO_AUTH_TOKEN) {
-    console.log("[WARN] TWILIO_ACCOUNT_SID is set but TWILIO_AUTH_TOKEN is missing — Twilio will not work.");
+    console.log("[WARN] Twilio SID is set but auth credential is missing — Twilio will not work.");
   }
   if (!process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
-    console.log("[WARN] TWILIO_AUTH_TOKEN is set but TWILIO_ACCOUNT_SID is missing — Twilio will not work.");
+    console.log("[WARN] Twilio auth credential is set but SID is missing — Twilio will not work.");
   }
 
-  console.log("  [INFO] Meta/Facebook credentials are now per-account (sub_accounts.meta_page_id, meta_access_token).");
+  console.log("  [INFO] Meta/Facebook credentials are now per-account (stored in sub_accounts table).");
 
   console.log("=".repeat(60));
 }
@@ -551,7 +551,7 @@ async function validateMetaCredentials() {
 
   if (configuredAccounts.length === 0) {
     if (process.env.META_ACCESS_TOKEN && process.env.META_PAGE_ID) {
-      console.log("[META STARTUP] Found global META_ACCESS_TOKEN/META_PAGE_ID — migrating to default sub-account...");
+      console.log("[META STARTUP] Found global Meta env credentials — migrating to default sub-account...");
       const defaultAccount = allAccounts.find(a => a.ownerUserId !== "_archived") || allAccounts[0];
       if (defaultAccount) {
         await db.update(subAccounts).set({
@@ -559,7 +559,7 @@ async function validateMetaCredentials() {
           metaAccessToken: process.env.META_ACCESS_TOKEN,
           metaAppSecret: process.env.META_APP_SECRET || null,
         }).where(eq(subAccounts.id, defaultAccount.id));
-        console.log(`[META STARTUP] Migrated global Meta credentials to account ${defaultAccount.id} (${defaultAccount.name}). Remove META_ACCESS_TOKEN, META_PAGE_ID, META_APP_SECRET from env vars — they are now stored per-account.`);
+        console.log(`[META STARTUP] Migrated global Meta credentials to account ${defaultAccount.id} (${defaultAccount.name}). Remove legacy Meta env vars — credentials are now stored per-account.`);
         configuredAccounts.push({ ...defaultAccount, metaPageId: process.env.META_PAGE_ID!, metaAccessToken: process.env.META_ACCESS_TOKEN!, metaAppSecret: process.env.META_APP_SECRET || null });
       }
     } else {
@@ -1731,7 +1731,7 @@ RULES:
       const a = Buffer.from(adminSecret);
       const b = Buffer.from(headerVal);
       if (a.length === b.length) {
-        try { secretMatches = crypto.timingSafeEqual(a, b); } catch (err) { console.warn("[INDEX] caught:", err instanceof Error ? err.message : err); secretMatches = false; }
+        try { secretMatches = crypto.timingSafeEqual(a, b); } catch (err) { console.warn("[INDEX] timing-safe compare error:", err instanceof Error ? err.message : err); secretMatches = false; }
       }
     }
     if (secretMatches) {
@@ -2001,7 +2001,7 @@ RULES:
         if (account21) {
           const hasPageId = !!account21.metaPageId;
           const hasToken = !!account21.metaAccessToken;
-          console.log(`[STARTUP][META-DIAG] Account 21 (${account21.name}): metaPageId=${hasPageId ? account21.metaPageId : "MISSING"}, metaAccessToken=${hasToken ? "configured" : "MISSING"}`);
+          console.log(`[STARTUP][META-DIAG] Account 21 (${account21.name}): pageId=${hasPageId ? "configured" : "MISSING"}, accessCredential=${hasToken ? "configured" : "MISSING"}`);
           if (hasPageId && hasToken) {
             const validation = await validateMetaConfigForAccount(21);
             console.log(`[STARTUP][META-DIAG] Account 21 Meta API validation: ${validation.valid ? "✅ VALID" : "❌ INVALID"} ${validation.pageName ? `(page: ${validation.pageName})` : ""} ${validation.error ? `error: ${validation.error}` : ""}`);
