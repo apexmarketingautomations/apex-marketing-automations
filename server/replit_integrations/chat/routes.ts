@@ -2,7 +2,13 @@ import type { Express, Request, Response } from "express";
 import { GoogleGenAI } from "@google/genai";
 import { chatStorage } from "./storage";
 
-const ai = new GoogleGenAI({ apiKey: process.env.Gemini_API_Key_saas });
+// Lazy-instantiate to avoid crash when GEMINI key is absent
+let _ai: GoogleGenAI | null = null;
+function getGeminiClient(): GoogleGenAI {
+  const key = process.env.Gemini_API_Key_saas || process.env.GEMINI_API_KEY || "";
+  if (!_ai) _ai = new GoogleGenAI({ apiKey: key });
+  return _ai;
+}
 
 export function registerChatRoutes(app: Express): void {
   app.get("/api/chat-messages/:subAccountId", async (req: Request, res: Response) => {
@@ -33,7 +39,7 @@ export function registerChatRoutes(app: Express): void {
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      const response = await ai.models.generateContentStream({
+      const response = await getGeminiClient().models.generateContentStream({
         model: "gemini-2.5-flash",
         contents: chatContents,
         config: {

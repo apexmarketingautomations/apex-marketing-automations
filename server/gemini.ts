@@ -1,7 +1,13 @@
 import { GoogleGenAI } from "@google/genai";
 import { recordSuccess } from "./pulse";
 
-const ai = new GoogleGenAI({ apiKey: process.env.Gemini_API_Key_saas });
+// Lazy-instantiate to avoid crash when GEMINI key is absent
+let _ai: GoogleGenAI | null = null;
+function getGeminiClient(): GoogleGenAI {
+  const key = process.env.Gemini_API_Key_saas || process.env.GEMINI_API_KEY || "";
+  if (!_ai) _ai = new GoogleGenAI({ apiKey: key });
+  return _ai;
+}
 
 let rateLimitedUntil: number = 0;
 const RATE_LIMIT_COOLDOWN_MS = 60_000;
@@ -119,7 +125,7 @@ export async function geminiChat(
   const { contents, config } = prepareRequest(messages, options);
 
   const response = await withRetry(() =>
-    ai.models.generateContent({
+    getGeminiClient().models.generateContent({
       model: "gemini-2.5-flash",
       contents,
       config,
@@ -137,7 +143,7 @@ export async function* geminiChatStream(
   const { contents, config } = prepareRequest(messages, options);
 
   const response = await withRetry(() =>
-    ai.models.generateContentStream({
+    getGeminiClient().models.generateContentStream({
       model: "gemini-2.5-flash",
       contents,
       config,
@@ -161,7 +167,7 @@ export async function* geminiChatWithToolsStream(
   config.tools = [{ googleSearch: {} }];
 
   const response = await withRetry(() =>
-    ai.models.generateContentStream({
+    getGeminiClient().models.generateContentStream({
       model: "gemini-2.5-flash",
       contents,
       config,
@@ -182,7 +188,7 @@ export async function* geminiChatWithToolsStream(
 export async function geminiGenerateImage(prompt: string): Promise<string | null> {
   try {
     const response = await withRetry(() =>
-      ai.models.generateContent({
+      getGeminiClient().models.generateContent({
         model: "gemini-2.0-flash-exp",
         contents: prompt,
         config: {
