@@ -86,9 +86,11 @@ function ensureSendgrid(): { ok: true } | { ok: false; reason: SendEmailFailureR
 export function logEmailProviderStartup(): void {
   const resendKey     = resolveResendApiKey();
   const sendgridKey   = resolveSendgridApiKey();
+  const hasResend     = !!resendKey;
+  const hasSendgrid   = !!sendgridKey;
 
-  console.log(`[EMAIL] Resend configured: ${!!resendKey}`);
-  console.log(`[EMAIL] SendGrid configured: ${!!sendgridKey}`);
+  console.log(`[EMAIL] Resend configured: ${hasResend}`);
+  console.log(`[EMAIL] SendGrid configured: ${hasSendgrid}`);
 
   if (resendKey) {
     const activeVar =
@@ -305,3 +307,4 @@ export async function sendEmail(args: SendEmailArgs): Promise<SendEmailResult> {
     return { ok: false, reason: "sendgrid_error", errorMessage, messageRowId: rowId };
   }
 }
+
