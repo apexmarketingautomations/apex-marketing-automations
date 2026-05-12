@@ -293,13 +293,14 @@ export async function runTransportScraper(
       const preview = (await res.text()).slice(0, 300);
       const error   = `Apify HTTP ${res.status}: ${preview}`;
       console.error(`[APIFY-TRANSPORT] ${actor} failed — ${error}`);
-      pullLog.set(queryHash, { pulledAt: new Date(), status: "failed", resultCount: 0, actor, queryType });
+      // Do NOT set repull lock on failure — allow immediate retry
       return { ok: false, results: [], actor, queryType, queryHash, resultCount: 0, error };
     }
 
     const raw     = await res.json() as Record<string, unknown>[];
     const results = normalizeResults(actor, Array.isArray(raw) ? raw : []);
     console.log(`[APIFY-TRANSPORT] ${actor} returned ${results.length} records`);
+    // Only lock on SUCCESS to prevent duplicate charges
     pullLog.set(queryHash, { pulledAt: new Date(), status: "success", resultCount: results.length, actor, queryType });
     return { ok: true, results, actor, queryType, queryHash, resultCount: results.length };
 
@@ -307,7 +308,7 @@ export async function runTransportScraper(
     clearTimeout(timer);
     const error = err?.message || "unknown error";
     console.error(`[APIFY-TRANSPORT] ${actor} error: ${error}`);
-    pullLog.set(queryHash, { pulledAt: new Date(), status: "failed", resultCount: 0, actor, queryType });
+    // Do NOT set repull lock on error — allow immediate retry
     return { ok: false, results: [], actor, queryType, queryHash, resultCount: 0, error };
   }
 }
