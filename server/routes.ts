@@ -52,6 +52,7 @@ import { registerApexIntelligenceRoutes } from "./routes/apex-intelligence";
 import { registerSiteTrackingRoutes } from "./routes/siteTracking";
 import { registerTrackingRoutes } from "./routes/tracking";
 import { registerPublicFormsRoutes } from "./routes/publicForms";
+import { registerApifyTransportRoutes } from "./routes/apifyTransport";
 export { registerAgentWorkerRoutes } from "./routes/agentWorker";
 
 export async function registerRoutes(
@@ -331,6 +332,7 @@ export async function registerRoutes(
   registerSiteTrackingRoutes(app);
   registerTrackingRoutes(app);
   registerPublicFormsRoutes(app);
+  registerApifyTransportRoutes(app);
 
   return httpServer;
 }
