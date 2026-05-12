@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAccount } from "@/hooks/use-account";
+import { useAuth } from "@/hooks/use-auth";
 
 interface Contact {
   id: number;
@@ -23,39 +24,103 @@ interface PagedResult {
   totalPages: number;
 }
 
+function getEnrichmentStatus(c: Contact): { label: string; color: string } {
+  const tags = c.tags || [];
+  if (c.phone && tags.includes("skip-traced")) return { label: "Enriched", color: "text-green-400" };
+  if (c.phone)                                 return { label: "Has Phone", color: "text-emerald-400" };
+  if (tags.includes("skip-traced"))            return { label: "No Match", color: "text-slate-500" };
+  return { label: "Pending", color: "text-yellow-500" };
+}
+
 function exportCSV(contacts: Contact[]) {
   const rows = [
-    ["Name", "Phone", "Email", "Crash Location", "County", "Phone Status", "Date"].join(","),
+    ["Name", "Phone", "Email", "Crash Location", "County", "Enrichment Status", "Date"].join(","),
     ...contacts.map(c => [
       `"${c.firstName} ${c.lastName}"`,
       `"${c.phone || ""}"`,
       `"${c.email || ""}"`,
-      `"${c.address || ""}"`,
-      `"${c.city || ""}"`,
-      `"${c.phone ? "Confirmed" : "Pending Skip-Trace"}"`,
+      `"${(c.address || "").replace(/"/g, '""')}"`,
+      `"${(c.city    || "").replace(/"/g, '""')}"`,
+      `"${getEnrichmentStatus(c).label}"`,
       `"${new Date(c.createdAt).toLocaleDateString()}"`,
     ].join(","))
   ];
   const blob = new Blob([rows.join("\n")], { type: "text/csv" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `crash-leads-${new Date().toISOString().slice(0,10)}.csv`;
+  a.download = `crash-leads-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
+}
+
+// ── Admin: BatchData skip-trace trigger ────────────────────────────────────────
+function AdminSkipTraceButton({ subAccountId }: { subAccountId: number }) {
+  const queryClient = useQueryClient();
+  const [result, setResult] = useState<string | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/admin/batch-skip-trace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ subAccountId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Request failed" }));
+        throw new Error(err.error || "Failed");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setResult(data.message || "Skip-trace started");
+      // Refresh contacts after a short delay so new phones appear
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+        setResult(null);
+      }, 8000);
+    },
+    onError: (err: Error) => {
+      setResult(`Error: ${err.message}`);
+      setTimeout(() => setResult(null), 5000);
+    },
+  });
+
+  return (
+    <div className="flex flex-col gap-1">
+      <button
+        onClick={() => mutation.mutate()}
+        disabled={mutation.isPending}
+        className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-400 text-black font-black text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+        title="BatchData skip-trace — Apex Marketing account only"
+      >
+        {mutation.isPending ? "Starting..." : "BatchData Pull"}
+      </button>
+      {result && (
+        <div className={`text-xs px-2 py-1 rounded-lg ${mutation.isError ? "bg-red-500/20 text-red-400" : "bg-orange-500/20 text-orange-300"}`}>
+          {result}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function CrashLeadsPage() {
   const { currentAccount } = useAccount();
-  const [page, setPage] = useState(1);
+  const { user }           = useAuth();
+  const [page, setPage]    = useState(1);
   const [showPhoneOnly, setShowPhoneOnly] = useState(false);
   const LIMIT = 50;
+
+  // Only show admin controls to platform owner / DEV_ADMIN
+  const isAdmin = user?.isAdmin === "true" || user?.role === "DEV_ADMIN";
 
   const { data: result, isLoading } = useQuery<PagedResult>({
     queryKey: ["/api/contacts", currentAccount?.id, "crash-leads-paged", page, showPhoneOnly],
     queryFn: async () => {
       const params = new URLSearchParams({
-        tag: "crash-lead",
+        tag:   "crash-lead",
         source: "sentinel_crash",
-        page: String(page),
+        page:  String(page),
         limit: String(LIMIT),
       });
       if (showPhoneOnly) params.set("hasPhone", "true");
@@ -70,7 +135,6 @@ export function CrashLeadsPage() {
     refetchInterval: 30_000,
   });
 
-  // Fetch all for CSV export
   const { data: allResult } = useQuery<PagedResult>({
     queryKey: ["/api/contacts", currentAccount?.id, "crash-leads-all"],
     queryFn: async () => {
@@ -84,11 +148,14 @@ export function CrashLeadsPage() {
     enabled: !!currentAccount?.id,
   });
 
-  const contacts = result?.data ?? [];
-  const total = result?.total ?? 0;
+  const contacts   = result?.data     ?? [];
+  const total      = result?.total    ?? 0;
   const totalPages = result?.totalPages ?? 1;
-  const withPhone = contacts.filter(c => c.phone).length;
-  const allContacts = allResult?.data ?? [];
+  const allContacts = allResult?.data  ?? [];
+
+  const enrichedCount  = allContacts.filter(c => c.phone).length;
+  const pendingCount   = allContacts.filter(c => !c.phone && !(c.tags || []).includes("skip-traced")).length;
+  const exhaustedCount = allContacts.filter(c => !c.phone && (c.tags || []).includes("skip-traced")).length;
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -97,34 +164,61 @@ export function CrashLeadsPage() {
         <div>
           <h1 className="text-3xl font-black text-white">CRASH LEADS</h1>
           <p className="text-slate-400 text-sm mt-1">
-            Real-time FL injury crashes · BatchData skip-trace running
+            Real-time FL injury crashes · BatchData secondary enrichment
           </p>
+          {/* Enrichment status bar */}
+          {allResult && (
+            <div className="flex items-center gap-3 mt-2 text-xs">
+              <span className="text-green-400 font-bold">{enrichedCount} enriched</span>
+              <span className="text-yellow-500">{pendingCount} pending</span>
+              <span className="text-slate-600">{exhaustedCount} no match</span>
+            </div>
+          )}
         </div>
-        <div className="flex items-center gap-4">
+
+        <div className="flex items-center gap-3 flex-wrap justify-end">
+          {/* Stats */}
           <div className="text-right">
-            <div className="text-3xl font-black text-green-400">{result?.total ?? "—"}</div>
+            <div className="text-3xl font-black text-green-400">{total || "—"}</div>
             <div className="text-xs text-slate-500">total crash leads</div>
           </div>
           <div className="text-right">
-            <div className="text-2xl font-black text-cyan-400">
-              {allResult ? allContacts.filter(c => c.phone).length : "—"}
-            </div>
+            <div className="text-2xl font-black text-cyan-400">{enrichedCount || "—"}</div>
             <div className="text-xs text-slate-500">with phone</div>
           </div>
+
+          {/* Action buttons */}
           <div className="flex flex-col gap-2">
-            <button
-              onClick={() => exportCSV(allContacts)}
-              disabled={allContacts.length === 0}
-              className="px-4 py-2 rounded-xl bg-green-500 hover:bg-green-400 text-black font-black text-sm transition-all disabled:opacity-40"
-            >
-              ⬇ Export CSV
-            </button>
+            {/* Full CSV export (admin only — hits server-side route for all accounts) */}
+            {isAdmin ? (
+              <a
+                href="/api/admin/crash-contacts/export"
+                download
+                className="px-4 py-2 rounded-xl bg-green-500 hover:bg-green-400 text-black font-black text-sm transition-all text-center"
+              >
+                ⬇ Export All (Admin)
+              </a>
+            ) : (
+              <button
+                onClick={() => exportCSV(allContacts)}
+                disabled={allContacts.length === 0}
+                className="px-4 py-2 rounded-xl bg-green-500 hover:bg-green-400 text-black font-black text-sm transition-all disabled:opacity-40"
+              >
+                ⬇ Export CSV
+              </button>
+            )}
+
             <button
               onClick={() => { setShowPhoneOnly(v => !v); setPage(1); }}
               className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${showPhoneOnly ? "bg-cyan-600 text-white" : "bg-white/10 text-slate-300 hover:bg-white/20"}`}
             >
-              {showPhoneOnly ? "📞 Phone Only" : "All Leads"}
+              {showPhoneOnly ? "Phone Only" : "All Leads"}
             </button>
+
+            {/* BatchData skip-trace pull — APEX MARKETING ADMIN ONLY */}
+            {isAdmin && currentAccount?.id === 3 && (
+              <AdminSkipTraceButton subAccountId={currentAccount.id} />
+            )}
           </div>
         </div>
       </div>
@@ -137,7 +231,7 @@ export function CrashLeadsPage() {
           <div className="text-5xl mb-4">📋</div>
           <div className="text-white font-bold text-xl mb-2">No leads found</div>
           <div className="text-slate-500 text-sm">
-            Skip trace runs every 6 hours on street-address crashes.
+            BatchData skip-trace runs every 6 hours on street-address crashes.
           </div>
         </div>
       ) : (
@@ -150,20 +244,26 @@ export function CrashLeadsPage() {
                   <th className="text-left px-4 py-3 text-slate-400 font-bold">Phone</th>
                   <th className="text-left px-4 py-3 text-slate-400 font-bold hidden md:table-cell">Location</th>
                   <th className="text-left px-4 py-3 text-slate-400 font-bold">County</th>
+                  <th className="text-left px-4 py-3 text-slate-400 font-bold hidden lg:table-cell">Status</th>
                   <th className="text-left px-4 py-3 text-slate-400 font-bold hidden lg:table-cell">Date</th>
                 </tr>
               </thead>
               <tbody>
                 {contacts.map((c, i) => {
                   const hasPhone = !!c.phone;
+                  const status   = getEnrichmentStatus(c);
                   return (
                     <tr
                       key={c.id}
-                      className={`border-b border-white/5 transition-colors ${hasPhone ? "bg-green-500/5 hover:bg-green-500/10" : "hover:bg-white/[0.02]"} ${i % 2 === 0 ? "" : "bg-white/[0.01]"}`}
+                      className={`border-b border-white/5 transition-colors ${
+                        hasPhone ? "bg-green-500/5 hover:bg-green-500/10" : "hover:bg-white/[0.02]"
+                      } ${i % 2 === 0 ? "" : "bg-white/[0.01]"}`}
                     >
                       <td className="px-4 py-3">
                         <div className="text-white font-semibold text-sm">
-                          {hasPhone ? `${c.firstName} ${c.lastName}` : c.lastName?.replace(/^[A-Z]+ — /, "") || "Injury Crash"}
+                          {hasPhone
+                            ? `${c.firstName} ${c.lastName}`
+                            : c.lastName?.replace(/^[A-Z]+ — /, "") || "Injury Crash"}
                         </div>
                         {c.email && <div className="text-slate-500 text-xs">{c.email}</div>}
                       </td>
@@ -173,7 +273,9 @@ export function CrashLeadsPage() {
                             {c.phone}
                           </a>
                         ) : (
-                          <span className="text-xs text-slate-600 italic">Skip-tracing...</span>
+                          <span className="text-xs text-slate-600 italic">
+                            {(c.tags || []).includes("skip-traced") ? "No match" : "Pending..."}
+                          </span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-slate-400 text-xs max-w-[220px] truncate hidden md:table-cell">
@@ -181,6 +283,9 @@ export function CrashLeadsPage() {
                       </td>
                       <td className="px-4 py-3 text-slate-300 text-xs">
                         {c.city?.replace(" County", "")}
+                      </td>
+                      <td className={`px-4 py-3 text-xs font-bold hidden lg:table-cell ${status.color}`}>
+                        {status.label}
                       </td>
                       <td className="px-4 py-3 text-slate-500 text-xs hidden lg:table-cell">
                         {new Date(c.createdAt).toLocaleDateString()}
@@ -199,46 +304,23 @@ export function CrashLeadsPage() {
                 Page {page} of {totalPages} · {total} total leads
               </div>
               <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setPage(1)}
-                  disabled={page === 1}
-                  className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-sm disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  «
-                </button>
-                <button
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-sm disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  ‹
-                </button>
+                <button onClick={() => setPage(1)} disabled={page === 1}
+                  className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-sm disabled:opacity-30 disabled:cursor-not-allowed">«</button>
+                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                  className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-sm disabled:opacity-30 disabled:cursor-not-allowed">‹</button>
                 {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => {
                   const p = totalPages <= 10 ? i + 1 : Math.max(1, Math.min(page - 4, totalPages - 9)) + i;
                   return (
-                    <button
-                      key={p}
-                      onClick={() => setPage(p)}
-                      className={`w-9 h-9 rounded-lg text-sm font-bold transition-all ${p === page ? "bg-cyan-600 text-white" : "bg-white/5 hover:bg-white/10 text-slate-300"}`}
-                    >
+                    <button key={p} onClick={() => setPage(p)}
+                      className={`w-9 h-9 rounded-lg text-sm font-bold transition-all ${p === page ? "bg-cyan-600 text-white" : "bg-white/5 hover:bg-white/10 text-slate-300"}`}>
                       {p}
                     </button>
                   );
                 })}
-                <button
-                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                  disabled={page === totalPages}
-                  className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-sm disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  ›
-                </button>
-                <button
-                  onClick={() => setPage(totalPages)}
-                  disabled={page === totalPages}
-                  className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-sm disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  »
-                </button>
+                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                  className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-sm disabled:opacity-30 disabled:cursor-not-allowed">›</button>
+                <button onClick={() => setPage(totalPages)} disabled={page === totalPages}
+                  className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-sm disabled:opacity-30 disabled:cursor-not-allowed">»</button>
               </div>
             </div>
           )}
