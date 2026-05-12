@@ -110,15 +110,16 @@ export default function PipelinePage() {
     enabled: !!subAccountId,
   });
 
-  const { data: contacts = [] } = useQuery<Contact[]>({
+  const { data: contactsResult } = useQuery<{ data: Contact[]; total: number }>({
     queryKey: ["/api/contacts", subAccountId],
     queryFn: async () => {
-      const res = await fetch(`/api/contacts/${subAccountId}`);
+      const res = await fetch(`/api/contacts/${subAccountId}?limit=200`);
       if (!res.ok) throw new Error("Failed to fetch contacts");
       return res.json();
     },
     enabled: !!subAccountId,
   });
+  const contacts = contactsResult?.data ?? [];
 
   const createStageMutation = useMutation({
     mutationFn: async (stage: { name: string; color: string; position: number }) => {
