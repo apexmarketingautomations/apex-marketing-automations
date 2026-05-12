@@ -155,10 +155,10 @@ export async function scrapeAttorneysForVertical(vertical: string, practiceArea:
 export async function runFullAttorneyScrape(): Promise<void> {
   const token = getApifyToken();
   if (!token) {
-    console.warn("[APIFY] No APIFY_API_KEY or APIFY_TOKEN set — attorney scrape skipped");
+    console.warn("[APIFY] No Apify credential configured — attorney scrape skipped");
     return;
   }
-  console.log("[APIFY] Token confirmed — starting attorney scrape");
+  console.log("[APIFY] Credential confirmed — starting attorney scrape");
   console.log("[APIFY] Starting full attorney scrape for all legal verticals");
   for (const target of SCRAPE_TARGETS) {
     await scrapeAttorneysForVertical(target.vertical, target.practiceArea, target.label);
