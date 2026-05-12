@@ -223,7 +223,7 @@ export interface IStorage {
 
   createAuditLog(data: InsertAuditLog): Promise<AuditLog>;
 
-  getContacts(subAccountId: number): Promise<Contact[]>;
+  getContacts(subAccountId: number, opts?: { limit?: number; source?: string }): Promise<Contact[]>;
   getContactById(id: number): Promise<Contact | undefined>;
   createContact(data: InsertContact): Promise<Contact>;
   updateContact(id: number, data: Partial<InsertContact>): Promise<Contact | undefined>;
@@ -1089,8 +1089,12 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async getContacts(subAccountId: number) {
-    return db.select().from(contacts).where(eq(contacts.subAccountId, subAccountId)).orderBy(desc(contacts.createdAt));
+  async getContacts(subAccountId: number, opts?: { limit?: number; source?: string }) {
+    const baseWhere = opts?.source
+      ? and(eq(contacts.subAccountId, subAccountId), eq(contacts.source, opts.source))
+      : eq(contacts.subAccountId, subAccountId);
+    const q = db.select().from(contacts).where(baseWhere).orderBy(desc(contacts.createdAt));
+    return opts?.limit ? q.limit(opts.limit) : q;
   }
 
   async getContactById(id: number) {
