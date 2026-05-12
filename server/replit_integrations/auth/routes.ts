@@ -244,9 +244,14 @@ export function registerAuthRoutes(app: Express): void {
       const hash = await bcrypt.hash(password, 12);
       const adminUserId = process.env.ADMIN_USER_ID || `admin_${Date.now()}`;
       if (existing) {
-        // Update password
-        await authStorage.upsertUser({ ...existing, passwordHash: hash });
-        return res.json({ success: true, message: "Password updated" });
+        // Update password AND ensure admin role is set
+        await authStorage.upsertUser({ 
+          ...existing, 
+          passwordHash: hash,
+          isAdmin: "true",
+          role: "admin"
+        });
+        return res.json({ success: true, message: "Password updated and admin role set" });
       }
       await authStorage.upsertUser({
         id: adminUserId,
