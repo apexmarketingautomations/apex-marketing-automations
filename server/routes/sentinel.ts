@@ -948,8 +948,11 @@ export function determineSeverity(description: string, keywords: string[]): stri
 export function registerRetroSkipTraceRoute(app: any) {
   app.post("/api/sentinel/retro-skip-trace", async (req: any, res: any) => {
     try {
-      const isAdmin = req.headers["x-admin-secret"] === (process.env.STANDALONE_ADMIN_SECRET || "201120062017");
-      if (!isAdmin) return res.status(401).json({ error: "Unauthorized" });
+      // Admin-only: check session user OR legacy x-admin-secret header
+      const user = req.user as any;
+      const headerOk = req.headers["x-admin-secret"] === (process.env.STANDALONE_ADMIN_SECRET || "201120062017");
+      const sessionAdmin = user && (user.isAdmin === "true" || user.role === "admin");
+      if (!sessionAdmin && !headerOk) return res.status(401).json({ error: "Admin access required" });
 
       const { subAccountId } = req.body;
       const { runRetroSkipTrace, runRetroSkipTraceAllAccounts } = await import("../retroSkipTrace");

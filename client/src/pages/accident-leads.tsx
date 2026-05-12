@@ -451,7 +451,7 @@ function LeadDetail({
 export default function AccidentLeadsPage() {
   const { activeAccountId: rawActiveId } = useAccount();
   const { user } = useAuth();
-  const isAdmin = (user as any)?.isAdmin === "true" || (user as any)?.role === "DEV_ADMIN";
+  const isAdmin = (user as any)?.isAdmin === "true" || (user as any)?.role === "admin" || (user as any)?.role === "DEV_ADMIN";
   const [skipTraceRunning, setSkipTraceRunning] = useState(false);
 
   const runManualSkipTrace = async () => {
