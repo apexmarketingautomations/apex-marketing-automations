@@ -5,7 +5,7 @@ import crypto from "crypto";
 // ── Anthropic provider (raw fetch — no SDK required) ─────────────────────────
 const ANTHROPIC_URL     = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
-const ANTHROPIC_MODEL   = "claude-sonnet-4-20250514";
+const ANTHROPIC_MODEL   = "claude-sonnet-4-6";
 
 export function isAnthropicConfigured(): boolean {
   const key = (process.env.ANTHROPIC_API_KEY || "").trim();
@@ -83,6 +83,146 @@ async function callAnthropic(
   }
 }
 
+async function* callAnthropicStream(
+  messages: ChatMessage[],
+  options: AIOptions = {}
+): AsyncGenerator<string> {
+  const { temperature = 0.7, maxTokens = 4096, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
+
+  const systemMsg = messages.find(m => m.role === "system");
+  const userMsgs  = messages
+    .filter(m => m.role !== "system")
+    .map(m => ({ role: m.role as "user" | "assistant", content: m.content }));
+
+  const body: Record<string, unknown> = {
+    model:      ANTHROPIC_MODEL,
+    max_tokens: Math.min(maxTokens, 8096),
+    messages:   userMsgs,
+    stream:     true,
+  };
+  if (systemMsg?.content) body.system = systemMsg.content;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(ANTHROPIC_URL, {
+      method:  "POST",
+      signal:  controller.signal,
+      headers: {
+        "Content-Type":      "application/json",
+        "x-api-key":         getAnthropicKey(),
+        "anthropic-version": ANTHROPIC_VERSION,
+      },
+      body: JSON.stringify(body),
+    });
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      const preview = (await res.text()).slice(0, 300);
+      throw Object.assign(new Error(`Anthropic stream HTTP ${res.status}: ${preview}`), { status: res.status });
+    }
+    if (!res.body) throw new Error("Anthropic stream: no response body");
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const raw = line.slice(6).trim();
+          if (!raw || raw === "[DONE]") continue;
+          try {
+            const event = JSON.parse(raw) as any;
+            if (event.type === "content_block_delta" && event.delta?.type === "text_delta" && event.delta.text) {
+              yield event.delta.text as string;
+            }
+          } catch { /* skip malformed SSE */ }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  } catch (err: any) {
+    clearTimeout(timer);
+    throw err;
+  }
+}
+
+async function callAnthropicWithTools(
+  messages: Array<{ role: string; content?: string | null; tool_calls?: any[]; tool_call_id?: string; name?: string }>,
+  tools: ToolDefinition[],
+  options: AIOptions = {}
+): Promise<AIToolCallResponse> {
+  const { maxTokens = 4096, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
+
+  const anthropicTools = tools.map(t => ({
+    name: t.function.name,
+    description: t.function.description || "",
+    input_schema: (t.function.parameters as any) || { type: "object", properties: {} },
+  }));
+
+  const systemMsg = (messages as ChatMessage[]).find(m => m.role === "system");
+  const userMsgs  = (messages as ChatMessage[])
+    .filter(m => m.role !== "system")
+    .map(m => ({ role: m.role as "user" | "assistant", content: m.content || "" }));
+
+  const body: Record<string, unknown> = {
+    model:       ANTHROPIC_MODEL,
+    max_tokens:  Math.min(maxTokens, 8096),
+    messages:    userMsgs,
+    tools:       anthropicTools,
+    tool_choice: { type: "auto" },
+  };
+  if (systemMsg?.content) body.system = systemMsg.content;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(ANTHROPIC_URL, {
+      method:  "POST",
+      signal:  controller.signal,
+      headers: {
+        "Content-Type":      "application/json",
+        "x-api-key":         getAnthropicKey(),
+        "anthropic-version": ANTHROPIC_VERSION,
+      },
+      body: JSON.stringify(body),
+    });
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      const preview = (await res.text()).slice(0, 300);
+      throw Object.assign(new Error(`Anthropic tools HTTP ${res.status}: ${preview}`), { status: res.status });
+    }
+
+    const data = await res.json() as any;
+    const toolCalls: ToolCallResult[] = [];
+    let text = "";
+
+    for (const block of (data.content || [])) {
+      if (block.type === "text") text += block.text;
+      if (block.type === "tool_use") {
+        toolCalls.push({
+          id:        block.id,
+          name:      block.name,
+          arguments: typeof block.input === "string" ? block.input : JSON.stringify(block.input),
+        });
+      }
+    }
+
+    return { text, ok: true, toolCalls, provider: "anthropic", model: ANTHROPIC_MODEL, finishReason: data.stop_reason ?? undefined };
+  } catch (err: any) {
+    clearTimeout(timer);
+    throw err;
+  }
+}
+
 let _openaiClient: OpenAI | null = null;
 
 function resolveOpenAICreds(): { apiKey: string | undefined; baseURL: string | undefined; source: string } {
@@ -153,7 +293,7 @@ export interface AIResponse {
   ok: boolean;
   /** Original error message — populated only when `ok === false`. For logs/audit, never customer-facing. */
   errorMessage?: string;
-  provider: "openai" | "gemini";
+  provider: "openai" | "gemini" | "anthropic";
   model?: string;
   usage?: {
     promptTokens?: number;
@@ -513,7 +653,25 @@ export async function* aiChatStream(
   const provider = selectProvider();
 
   try {
-    if (provider === "openai") {
+    if (provider === "anthropic") {
+      try {
+        for await (const chunk of callAnthropicStream(messages, options)) {
+          chunksYielded++;
+          yield chunk;
+        }
+        logObservability({ requestId, traceId, subAccountId, route, provider: "anthropic" as any, model: ANTHROPIC_MODEL, latencyMs: Date.now() - start, success: true, fallbackTriggered: false });
+        return;
+      } catch (err: any) {
+        if (chunksYielded > 0) {
+          logObservability({ requestId, traceId, subAccountId, route, provider: "anthropic" as any, model: ANTHROPIC_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: false, error: `Mid-stream: ${err?.message}` });
+          throw new Error(`Anthropic stream interrupted after ${chunksYielded} chunks: ${err?.message}`);
+        }
+        console.warn(`[AI-GATEWAY] Anthropic stream failed, falling back: ${err?.message}`);
+      }
+    }
+
+    // ── OpenAI (primary or Anthropic fallback) ────────────────────────────────
+    if (isOpenAIConfigured() && !isCircuitOpen()) {
       for (let attempt = 0; attempt <= MAX_OPENAI_RETRIES; attempt++) {
         try {
           const { temperature = 0.7, maxTokens = 4096, jsonMode = false, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
@@ -576,9 +734,9 @@ export async function* aiChatStream(
           throw err;
         }
       }
-      return;
     }
 
+    // ── Gemini (final fallback) ────────────────────────────────────────────────
     if (!isGeminiAvailable()) {
       logObservability({ requestId, traceId, subAccountId, route, provider: "gemini", model: GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: false, error: "No AI provider available" });
       throw new Error("No AI provider available for streaming");
@@ -611,9 +769,6 @@ export async function* aiChatStream(
       fallbackTriggered: false,
       error: err?.message,
     });
-    // Whether mid-stream or pre-stream, throw the error so callers can handle it
-    // explicitly via try/catch. We never yield a "[AI Error: ...]" string — that
-    // would be indistinguishable from real model output and could leak to UI.
     throw err;
   }
 }
@@ -630,7 +785,7 @@ export interface AIToolCallResponse {
   ok: boolean;
   errorMessage?: string;
   toolCalls: ToolCallResult[];
-  provider: "openai" | "gemini";
+  provider: "openai" | "gemini" | "anthropic";
   model?: string;
   finishReason?: string;
 }
@@ -661,7 +816,20 @@ export async function aiChatWithToolCalls(
   const provider = selectProvider();
 
   try {
-    if (provider === "openai") {
+    // ── Anthropic (primary when ANTHROPIC_API_KEY is set) ─────────────────────
+    if (provider === "anthropic") {
+      try {
+        const result = await callAnthropicWithTools(messages, tools, options);
+        logObservability({ requestId, traceId, subAccountId, route, provider: "anthropic" as any, model: ANTHROPIC_MODEL, latencyMs: Date.now() - start, success: true, fallbackTriggered: false });
+        return result;
+      } catch (err: any) {
+        console.warn(`[AI-GATEWAY] Anthropic (tools) failed, falling back: ${err?.message}`);
+        // fall through to OpenAI
+      }
+    }
+
+    // ── OpenAI (primary or Anthropic fallback) ────────────────────────────────
+    if (isOpenAIConfigured() && !isCircuitOpen()) {
       for (let attempt = 0; attempt <= MAX_OPENAI_RETRIES; attempt++) {
         try {
           const { temperature = 0.7, maxTokens = 4096, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
@@ -725,7 +893,6 @@ export async function aiChatWithToolCalls(
     }
 
     logObservability({ requestId, traceId, subAccountId, route, provider: "gemini", model: GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: true, error: "Gemini fallback does not support multi-turn tool calling" });
-    // INVARIANT: text === "" when ok === false. Caller decides on user-facing wording.
     return {
       text: "",
       ok: false,
