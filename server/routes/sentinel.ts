@@ -934,6 +934,95 @@ export function registerSentinelRoutes(app: Express) {
 
     return res.status(201).json({ action: "created", incidentId: newIncident.id, incident: newIncident });
   }));
+
+  // ── Attorney Leads API ──────────────────────────────────────────────────────
+
+  app.get("/api/legal/attorneys", asyncHandler(async (req, res) => {
+    const { db } = await import("../db");
+    const { legalAttorneys } = await import("@shared/schema");
+    const { desc, sql, ilike } = await import("drizzle-orm");
+
+    const vertical = req.query.vertical as string | undefined;
+    const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
+
+    let attorneys;
+    if (vertical && vertical !== "all") {
+      attorneys = await db.select().from(legalAttorneys)
+        .where(sql`${legalAttorneys.legalVerticals}::jsonb @> ${JSON.stringify([vertical])}::jsonb`)
+        .orderBy(desc(legalAttorneys.score))
+        .limit(limit);
+    } else {
+      attorneys = await db.select().from(legalAttorneys)
+        .orderBy(desc(legalAttorneys.score))
+        .limit(limit);
+    }
+
+    res.json({ attorneys, total: attorneys.length });
+  }));
+
+  app.post("/api/legal/attorneys/scrape", asyncHandler(async (req, res) => {
+    const { runFullAttorneyScrape } = await import("../apifyAttorneyScraper");
+    // Fire and forget — scrape runs in background
+    runFullAttorneyScrape().catch(err =>
+      console.error("[APIFY] Manual scrape failed:", err.message)
+    );
+    res.json({ success: true, message: "Attorney scrape started in background — check logs for progress" });
+  }));
+
+  // ── Admin: Backfill misclassified leads ──────────────────────────────────────
+
+  app.post("/api/admin/backfill-lead-classification", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user || (user.isAdmin !== "true" && user.role !== "admin")) {
+      return res.status(403).json({ error: "Admin only" });
+    }
+
+    const { db } = await import("../db");
+    const { contacts } = await import("@shared/schema");
+    const { sql, eq } = await import("drizzle-orm");
+
+    let scanned = 0, corrected = 0, skipped = 0;
+    const corrections: Record<string, number> = {};
+
+    // Fetch contacts with source=legal_pipeline that have home_service or local_service tags
+    const misclassified = await db.select().from(contacts)
+      .where(eq(contacts.source, "legal_pipeline"))
+      .limit(5000);
+
+    for (const contact of misclassified) {
+      scanned++;
+      const tags = contact.tags || [];
+
+      let newSource: string | null = null;
+      let newChannel: string | null = null;
+      let newTags: string[] | null = null;
+
+      if (tags.includes("home_service")) {
+        newSource = "home_service_pipeline";
+        newChannel = "home_service";
+        newTags = tags.filter(t => t !== "legal-lead");
+        corrections["home_service"] = (corrections["home_service"] || 0) + 1;
+      } else if (tags.includes("local_service") || tags.includes("business_growth_signal")) {
+        newSource = "local_service_pipeline";
+        newChannel = "local_service";
+        newTags = tags.filter(t => t !== "legal-lead");
+        corrections["local_service"] = (corrections["local_service"] || 0) + 1;
+      }
+
+      if (newSource) {
+        await db.update(contacts)
+          .set({ source: newSource, channel: newChannel, tags: newTags })
+          .where(eq(contacts.id, contact.id));
+        corrected++;
+      } else {
+        skipped++;
+      }
+    }
+
+    console.log(`[LEAD-CLASSIFIER] Backfill: scanned=${scanned} corrected=${corrected} skipped=${skipped}`, corrections);
+    res.json({ scanned, corrected, skipped, corrections });
+  }));
+
 }
 
 export function determineSeverity(description: string, keywords: string[]): string {
@@ -1079,91 +1168,3 @@ export function registerRetroSkipTraceRoute(app: any) {
     res.json({ success: true, rule: updated });
   }));
 }
-
-  // ── Attorney Leads API ──────────────────────────────────────────────────────
-
-  app.get("/api/legal/attorneys", asyncHandler(async (req, res) => {
-    const { db } = await import("../db");
-    const { legalAttorneys } = await import("@shared/schema");
-    const { desc, sql, ilike } = await import("drizzle-orm");
-
-    const vertical = req.query.vertical as string | undefined;
-    const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
-
-    let attorneys;
-    if (vertical && vertical !== "all") {
-      attorneys = await db.select().from(legalAttorneys)
-        .where(sql`${legalAttorneys.legalVerticals}::jsonb @> ${JSON.stringify([vertical])}::jsonb`)
-        .orderBy(desc(legalAttorneys.score))
-        .limit(limit);
-    } else {
-      attorneys = await db.select().from(legalAttorneys)
-        .orderBy(desc(legalAttorneys.score))
-        .limit(limit);
-    }
-
-    res.json({ attorneys, total: attorneys.length });
-  }));
-
-  app.post("/api/legal/attorneys/scrape", asyncHandler(async (req, res) => {
-    const { runFullAttorneyScrape } = await import("../apifyAttorneyScraper");
-    // Fire and forget — scrape runs in background
-    runFullAttorneyScrape().catch(err =>
-      console.error("[APIFY] Manual scrape failed:", err.message)
-    );
-    res.json({ success: true, message: "Attorney scrape started in background — check logs for progress" });
-  }));
-
-  // ── Admin: Backfill misclassified leads ──────────────────────────────────────
-
-  app.post("/api/admin/backfill-lead-classification", asyncHandler(async (req, res) => {
-    const user = (req as any).user;
-    if (!user || (user.isAdmin !== "true" && user.role !== "admin")) {
-      return res.status(403).json({ error: "Admin only" });
-    }
-
-    const { db } = await import("../db");
-    const { contacts } = await import("@shared/schema");
-    const { sql, eq } = await import("drizzle-orm");
-
-    let scanned = 0, corrected = 0, skipped = 0;
-    const corrections: Record<string, number> = {};
-
-    // Fetch contacts with source=legal_pipeline that have home_service or local_service tags
-    const misclassified = await db.select().from(contacts)
-      .where(eq(contacts.source, "legal_pipeline"))
-      .limit(5000);
-
-    for (const contact of misclassified) {
-      scanned++;
-      const tags = contact.tags || [];
-
-      let newSource: string | null = null;
-      let newChannel: string | null = null;
-      let newTags: string[] | null = null;
-
-      if (tags.includes("home_service")) {
-        newSource = "home_service_pipeline";
-        newChannel = "home_service";
-        newTags = tags.filter(t => t !== "legal-lead");
-        corrections["home_service"] = (corrections["home_service"] || 0) + 1;
-      } else if (tags.includes("local_service") || tags.includes("business_growth_signal")) {
-        newSource = "local_service_pipeline";
-        newChannel = "local_service";
-        newTags = tags.filter(t => t !== "legal-lead");
-        corrections["local_service"] = (corrections["local_service"] || 0) + 1;
-      }
-
-      if (newSource) {
-        await db.update(contacts)
-          .set({ source: newSource, channel: newChannel, tags: newTags })
-          .where(eq(contacts.id, contact.id));
-        corrected++;
-      } else {
-        skipped++;
-      }
-    }
-
-    console.log(`[LEAD-CLASSIFIER] Backfill: scanned=${scanned} corrected=${corrected} skipped=${skipped}`, corrections);
-    res.json({ scanned, corrected, skipped, corrections });
-  }));
