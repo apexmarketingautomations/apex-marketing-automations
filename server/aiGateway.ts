@@ -325,6 +325,39 @@ export function isOpenAIConfigured(): boolean {
   return !!process.env.OPENAI_APEX_INT_KEY;
 }
 
+// ── Anthropic quota/billing failure tracking ──────────────────────────────────
+let _anthropicQuotaFailedAt: number | null = null;
+const ANTHROPIC_QUOTA_COOLDOWN_MS = 300_000; // 5 min — re-check after this window
+
+function isAnthropicQuotaFailed(): boolean {
+  if (_anthropicQuotaFailedAt === null) return false;
+  if (Date.now() - _anthropicQuotaFailedAt >= ANTHROPIC_QUOTA_COOLDOWN_MS) {
+    _anthropicQuotaFailedAt = null;
+    return false;
+  }
+  return true;
+}
+
+function markAnthropicQuotaFailed(): void {
+  _anthropicQuotaFailedAt = Date.now();
+  console.warn("[AI-GATEWAY] Anthropic quota/billing exhausted — routing all requests to Gemini");
+}
+
+function isQuotaError(err: any): boolean {
+  const status = err?.status ?? err?.statusCode ?? err?.httpStatusCode;
+  if (status === 429 || status === 402 || status === 529) return true;
+  const msg = String(err?.message ?? "").toLowerCase();
+  return (
+    msg.includes("quota") ||
+    msg.includes("insufficient_quota") ||
+    msg.includes("billing") ||
+    msg.includes("credit") ||
+    msg.includes("rate limit") ||
+    msg.includes("overloaded") ||
+    msg.includes("529")
+  );
+}
+
 function isAuthError(err: any): boolean {
   const status = err?.status ?? err?.statusCode ?? err?.httpStatusCode;
   return status === 401 || status === 403;
@@ -545,8 +578,18 @@ async function callGemini(
 }
 
 function selectProvider(): "anthropic" | "openai" | "gemini" {
-  if (isAnthropicConfigured()) return "anthropic";
-  if (isOpenAIConfigured() && !isCircuitOpen()) return "openai";
+  if (isAnthropicConfigured() && !isAnthropicQuotaFailed()) {
+    console.log("[AI-GATEWAY] Provider selected: anthropic");
+    return "anthropic";
+  }
+  if (isAnthropicConfigured() && isAnthropicQuotaFailed()) {
+    console.warn("[AI-GATEWAY] Anthropic unavailable, falling back to Gemini");
+  }
+  if (isOpenAIConfigured() && !isCircuitOpen()) {
+    console.log("[AI-GATEWAY] Provider selected: openai");
+    return "openai";
+  }
+  console.log("[AI-GATEWAY] Provider selected: gemini");
   return "gemini";
 }
 
@@ -574,10 +617,12 @@ export async function aiChat(
         });
         return result;
       } catch (err: any) {
-        console.warn(`[AI-GATEWAY] Anthropic failed, falling back: ${err?.message}`);
+        if (isQuotaError(err)) markAnthropicQuotaFailed();
+        console.warn(`[AI-GATEWAY] Anthropic failed (${err?.message}), falling back`);
         // Fall through to OpenAI → Gemini
         if (isOpenAIConfigured() && !isCircuitOpen()) {
           try {
+            console.log("[AI-GATEWAY] OpenAI unavailable, falling back to Gemini");
             const result = await callOpenAI(messages, options);
             logObservability({ requestId, traceId, subAccountId, route, provider: "openai", model: result.model, latencyMs: Date.now() - start, success: true, fallbackTriggered: true });
             return result;
@@ -587,6 +632,7 @@ export async function aiChat(
           }
         }
         if (isGeminiAvailable()) {
+          console.log("[AI-GATEWAY] Anthropic unavailable, falling back to Gemini");
           const result = await callGemini(messages, options);
           logObservability({ requestId, traceId, subAccountId, route, provider: "gemini", model: result.model, latencyMs: Date.now() - start, success: true, fallbackTriggered: true });
           return result;
@@ -662,11 +708,13 @@ export async function* aiChatStream(
         logObservability({ requestId, traceId, subAccountId, route, provider: "anthropic" as any, model: ANTHROPIC_MODEL, latencyMs: Date.now() - start, success: true, fallbackTriggered: false });
         return;
       } catch (err: any) {
+        if (isQuotaError(err)) markAnthropicQuotaFailed();
         if (chunksYielded > 0) {
           logObservability({ requestId, traceId, subAccountId, route, provider: "anthropic" as any, model: ANTHROPIC_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: false, error: `Mid-stream: ${err?.message}` });
           throw new Error(`Anthropic stream interrupted after ${chunksYielded} chunks: ${err?.message}`);
         }
-        console.warn(`[AI-GATEWAY] Anthropic stream failed, falling back: ${err?.message}`);
+        console.warn(`[AI-GATEWAY] Anthropic stream failed (${err?.message}), falling back`);
+        console.log("[AI-GATEWAY] Anthropic unavailable, falling back to Gemini");
       }
     }
 
@@ -823,8 +871,9 @@ export async function aiChatWithToolCalls(
         logObservability({ requestId, traceId, subAccountId, route, provider: "anthropic" as any, model: ANTHROPIC_MODEL, latencyMs: Date.now() - start, success: true, fallbackTriggered: false });
         return result;
       } catch (err: any) {
-        console.warn(`[AI-GATEWAY] Anthropic (tools) failed, falling back: ${err?.message}`);
-        // fall through to OpenAI
+        if (isQuotaError(err)) markAnthropicQuotaFailed();
+        console.warn(`[AI-GATEWAY] Anthropic (tools) failed (${err?.message}), falling back`);
+        // fall through to OpenAI → Gemini
       }
     }
 
@@ -1027,14 +1076,30 @@ export function logProviderStartup(): void {
   const anthropicActive = isAnthropicConfigured();
   const openaiActive    = isOpenAIConfigured();
   const geminiActive    = isGeminiConfigured();
+
+  // Identify which Gemini key is active
+  const geminiKeyName =
+    process.env.GEMINI_API_KEY_                ? "GEMINI_API_KEY_" :
+    process.env.Gemini_API_Key_saas            ? "Gemini_API_Key_saas" :
+    process.env.GEMINI_API_KEY                 ? "GEMINI_API_KEY" :
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY   ? "GOOGLE_GENERATIVE_AI_API_KEY" :
+    "none";
+
   const providers: string[] = [];
   if (anthropicActive) providers.push(`Anthropic (${ANTHROPIC_MODEL}, key=ANTHROPIC_API_KEY) [PRIMARY]`);
   if (openaiActive)    providers.push(`OpenAI (${OPENAI_MODEL}, key=OPENAI_APEX_INT_KEY)`);
-  if (geminiActive)    providers.push(`Gemini (${GEMINI_FALLBACK_MODEL}, key=Gemini_API_Key_saas)`);
+  if (geminiActive)    providers.push(`Gemini (${GEMINI_FALLBACK_MODEL}, key=${geminiKeyName})`);
+
   if (providers.length === 0) {
-    console.warn("[AI-GATEWAY] ⚠️  No AI providers configured. Set ANTHROPIC_API_KEY, OPENAI_APEX_INT_KEY, or Gemini_API_Key_saas.");
+    console.warn("[AI-GATEWAY] ⚠️  No AI providers configured.");
+    console.warn("[AI-GATEWAY]    Gemini keys checked: GEMINI_API_KEY_ | Gemini_API_Key_saas | GEMINI_API_KEY | GOOGLE_GENERATIVE_AI_API_KEY");
+    console.warn("[AI-GATEWAY]    OpenAI keys checked: OPENAI_APEX_INT_KEY");
+    console.warn("[AI-GATEWAY]    Anthropic keys checked: ANTHROPIC_API_KEY");
   } else {
     console.log(`[AI-GATEWAY] ✅ Providers active: ${providers.join(" | ")}`);
     console.log(`[AI-GATEWAY]    Timeout=${DEFAULT_TIMEOUT_MS}ms CB=${CIRCUIT_BREAKER_THRESHOLD}/${CIRCUIT_BREAKER_WINDOW_MS / 1000}s`);
+    if (geminiActive) {
+      console.log(`[AI-GATEWAY] Provider selected: gemini (active key: ${geminiKeyName})`);
+    }
   }
 }
