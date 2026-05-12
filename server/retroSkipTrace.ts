@@ -1,157 +1,209 @@
 /**
  * Retroactive Skip Trace Job
- * Runs through all crash-lead contacts with no phone number,
- * skip traces their address via BatchData, and updates the contact
- * with real name + phone. Runs in batches to respect API rate limits.
+ *
+ * Runs through crash-lead contacts with no phone and enriches them via BatchData.
+ *
+ * Safety rules:
+ *   1. Only processes crash/sentinel source contacts — never legal/FDA/OSHA
+ *   2. Skips contacts already tagged "skip-traced" (idempotent)
+ *   3. Skips contacts with no usable address
+ *   4. Skips contacts that already have a phone (BatchData already paid for them)
+ *   5. Runs in batches of 10 with 2-second delays (rate-limit safe)
+ *   6. Missing BATCH_DATA key → logs and exits silently (no crash)
  */
 
 import { storage } from "./storage";
 import { skipTraceLookup } from "./skip-trace";
 import { publishEventAsync, EVENT_TYPES } from "./eventBus";
 
-const BATCH_SIZE = 10;         // contacts per batch
-const BATCH_DELAY_MS = 2000;   // 2 seconds between batches — respect rate limits
-// Account IDs fetched dynamically from DB — see runRetroSkipTraceAllAccounts
+const BATCH_SIZE      = 10;
+const BATCH_DELAY_MS  = 2000;
+
+// Tags that disqualify a contact from skip-trace (polluted sources)
+const BLOCKED_TAGS = new Set([
+  "legal-lead", "attorney", "fda-recall", "osha-violation",
+  "growth-lead", "attorney-lead", "cpsc-recall",
+]);
+
+// Only process contacts from these crash/sentinel sources
+const ALLOWED_LEAD_TAGS = new Set(["crash-lead", "sentinel-auto", "home-service-lead"]);
+
+// CRASH-ONLY tags for admin-triggered runs
+const CRASH_ONLY_TAGS = new Set(["crash-lead", "sentinel-auto"]);
 
 interface RetroStats {
-  processed: number;
-  found: number;
-  notFound: number;
-  failed: number;
-  skipped: number;
+  processed:   number;
+  found:       number;
+  notFound:    number;
+  failed:      number;
+  skipped:     number;
 }
 
 async function sleep(ms: number) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-export async function runRetroSkipTrace(subAccountId: number): Promise<RetroStats> {
+function isEligibleContact(
+  contact:   { tags?: string[] | null; phone?: string | null; address?: string | null },
+  crashOnly: boolean,
+): boolean {
+  const tags          = contact.tags || [];
+  const tagSet        = new Set(tags);
+
+  // Must have a qualifying lead tag
+  const allowedSet = crashOnly ? CRASH_ONLY_TAGS : ALLOWED_LEAD_TAGS;
+  const hasLeadTag = [...allowedSet].some(t => tagSet.has(t));
+  if (!hasLeadTag)                 return false;
+
+  // Must NOT have a blocked/polluted tag
+  const hasBlockedTag = [...BLOCKED_TAGS].some(t => tagSet.has(t));
+  if (hasBlockedTag)               return false;
+
+  // Must not already be skip-traced
+  if (tagSet.has("skip-traced"))   return false;
+
+  // Must have an address to trace against
+  if (!contact.address)            return false;
+
+  // Must not already have a phone (skip-trace already paid for)
+  if (contact.phone)               return false;
+
+  return true;
+}
+
+export async function runRetroSkipTrace(
+  subAccountId: number,
+  options: { crashOnly?: boolean } = {},
+): Promise<RetroStats> {
   const apiKey = process.env.BATCH_DATA || process.env.BATCHDATA_API_KEY;
   if (!apiKey) {
-    console.error("[RETRO-SKIP-TRACE] BATCH_DATA env var not set");
+    console.error("[RETRO-SKIP-TRACE] BATCH_DATA env var not set — skipping");
     return { processed: 0, found: 0, notFound: 0, failed: 0, skipped: 0 };
   }
 
+  const crashOnly = options.crashOnly ?? false;
   const stats: RetroStats = { processed: 0, found: 0, notFound: 0, failed: 0, skipped: 0 };
 
-  console.log(`[RETRO-SKIP-TRACE] Starting retroactive skip trace for account ${subAccountId}`);
+  console.log(`[RETRO-SKIP-TRACE] Starting for account ${subAccountId} (crashOnly=${crashOnly})`);
 
-  // Get all contacts needing skip trace — crash leads AND home service leads with no phone
-  const allContacts = await storage.getContacts(subAccountId, { limit: 5000 });
-  const needsTrace = allContacts.filter(c => {
-    const tags = c.tags || [];
-    const isLead = tags.includes("crash-lead") || tags.includes("home-service-lead") || tags.includes("sentinel-auto");
-    const noPhone = !c.phone;
-    const hasAddress = !!c.address;
-    const notAlreadyTraced = !tags.includes("skip-traced");
-    return isLead && noPhone && hasAddress && notAlreadyTraced;
-  });
+  const allContacts  = await storage.getContacts(subAccountId, { limit: 5000 });
+  const needsTrace   = allContacts.filter(c => isEligibleContact(c, crashOnly));
 
-  console.log(`[RETRO-SKIP-TRACE] Found ${needsTrace.length} contacts needing skip trace`);
+  console.log(
+    `[RETRO-SKIP-TRACE] account=${subAccountId} total=${allContacts.length} eligible=${needsTrace.length}` +
+    ` (already-traced=${allContacts.filter(c => (c.tags || []).includes("skip-traced")).length}` +
+    ` has-phone=${allContacts.filter(c => !!c.phone).length})`
+  );
 
-  // Process in batches
+  if (needsTrace.length === 0) {
+    console.log(`[RETRO-SKIP-TRACE] Nothing to trace for account ${subAccountId}`);
+    return stats;
+  }
+
   for (let i = 0; i < needsTrace.length; i += BATCH_SIZE) {
     const batch = needsTrace.slice(i, i + BATCH_SIZE);
 
-    await Promise.allSettled(batch.map(async (contact) => {
+    await Promise.allSettled(batch.map(async contact => {
       try {
         stats.processed++;
 
-        if (!contact.address) { stats.skipped++; return; }
-
-        // Parse city/state from address string
-        const addressParts = contact.address.split(",");
-        const city = contact.city?.replace(" County", "") || "";
+        const city  = contact.city?.replace(" County", "") || "";
         const state = "FL";
 
         const result = await skipTraceLookup(
-          { address: contact.address, city, state },
-          apiKey
+          { address: contact.address!, city, state },
+          apiKey,
         );
 
         if (result.ownerPhone || result.ownerName || result.totalPersonsFound > 0) {
-          // Build real name from primary person
           let firstName = contact.firstName;
-          let lastName = contact.lastName;
+          let lastName  = contact.lastName;
 
           if (result.ownerName) {
             const parts = result.ownerName.trim().split(" ");
-            firstName = parts[0] || firstName;
-            lastName = parts.slice(1).join(" ") || lastName;
+            firstName   = parts[0]              || firstName;
+            lastName    = parts.slice(1).join(" ") || lastName;
           }
 
-          // Build rich notes with ALL persons found
+          // Build rich notes listing ALL persons found
           const personLines: string[] = [];
           for (const p of result.allPersons) {
-            const pLine = [
-              p.name || "Unknown",
-              p.allPhones.length ? `Phones: ${p.allPhones.join(', ')}` : null,
-              p.allEmails.length ? `Emails: ${p.allEmails.join(', ')}` : null,
-              p.mailingAddress ? `Mail: ${p.mailingAddress}` : null,
-              p.age ? `Age: ${p.age}` : null,
-            ].filter(Boolean).join(' | ');
-            personLines.push(pLine);
+            personLines.push(
+              [
+                p.name || "Unknown",
+                p.allPhones.length  ? `Phones: ${p.allPhones.join(", ")}`  : null,
+                p.allEmails.length  ? `Emails: ${p.allEmails.join(", ")}`  : null,
+                p.mailingAddress    ? `Mail: ${p.mailingAddress}`            : null,
+                p.age               ? `Age: ${p.age}`                        : null,
+              ].filter(Boolean).join(" | ")
+            );
           }
           if (result.additionalAddresses.length > 0) {
-            personLines.push(`Additional addresses: ${result.additionalAddresses.join('; ')}`);
+            personLines.push(`Additional addresses: ${result.additionalAddresses.join("; ")}`);
           }
-          const skipNotes = `Skip Trace (${new Date().toLocaleDateString()}):\n${personLines.join('\n') || 'No data found'}`;
+          const skipNotes = `Skip Trace (${new Date().toLocaleDateString()}):\n${personLines.join("\n") || "No data found"}`;
 
-          // Update contact with real data
           await storage.updateContact(contact.id, {
             firstName,
             lastName,
-            phone: result.ownerPhone || contact.phone,
-            email: result.ownerEmail || contact.email,
-            tags: [...new Set([...(contact.tags || []), "skip-traced", result.ownerPhone ? "has-phone" : "no-phone"])],
-            notes: (contact.notes || "") + `\n\n${skipNotes}`,
+            phone:  result.ownerPhone || contact.phone,
+            email:  result.ownerEmail || contact.email,
+            tags:   [...new Set([
+              ...(contact.tags || []),
+              "skip-traced",
+              result.ownerPhone ? "has-phone" : "no-phone",
+            ])],
+            notes:  (contact.notes || "") + `\n\n${skipNotes}`,
           });
 
-          // Fire event so Apex Intelligence learns from this
           publishEventAsync(EVENT_TYPES.CONTACT_UPDATED, {
             subAccountId,
-            contactId: contact.id,
-            source: "retro_skip_trace",
-            hasPhone: !!result.ownerPhone,
-            hasEmail: !!result.ownerEmail,
+            contactId:  contact.id,
+            source:     "retro_skip_trace",
+            hasPhone:   !!result.ownerPhone,
+            hasEmail:   !!result.ownerEmail,
           }, "retro-skip-trace");
 
           stats.found++;
-          console.log(`[RETRO-SKIP-TRACE] ✓ ${contact.id}: ${result.ownerName} | ${result.ownerPhone || "no phone"}`);
+          console.log(`[RETRO-SKIP-TRACE] ✓ contact=${contact.id} name=${result.ownerName} phone=${result.ownerPhone || "none"}`);
+
         } else {
           await storage.updateContact(contact.id, {
             tags: [...new Set([...(contact.tags || []), "skip-traced", "no-phone"])],
           });
           stats.notFound++;
         }
+
       } catch (err: any) {
         stats.failed++;
-        console.warn(`[RETRO-SKIP-TRACE] Failed for contact ${contact.id}:`, err.message);
+        console.warn(`[RETRO-SKIP-TRACE] Failed contact=${contact.id}:`, err.message);
       }
     }));
 
     const pct = Math.round(((i + batch.length) / needsTrace.length) * 100);
-    console.log(`[RETRO-SKIP-TRACE] Progress: ${i + batch.length}/${needsTrace.length} (${pct}%) — found: ${stats.found}, not found: ${stats.notFound}, failed: ${stats.failed}`);
+    console.log(
+      `[RETRO-SKIP-TRACE] Progress account=${subAccountId}: ${i + batch.length}/${needsTrace.length} (${pct}%)` +
+      ` found=${stats.found} notFound=${stats.notFound} failed=${stats.failed}`
+    );
 
-    // Don't delay after last batch
-    if (i + BATCH_SIZE < needsTrace.length) {
-      await sleep(BATCH_DELAY_MS);
-    }
+    if (i + BATCH_SIZE < needsTrace.length) await sleep(BATCH_DELAY_MS);
   }
 
-  console.log(`[RETRO-SKIP-TRACE] Complete for account ${subAccountId}:`, stats);
+  console.log(`[RETRO-SKIP-TRACE] Complete account=${subAccountId}:`, stats);
   return stats;
 }
 
 export async function runRetroSkipTraceAllAccounts(): Promise<void> {
-  const { db } = await import("./db");
+  const { db }         = await import("./db");
   const { subAccounts } = await import("@shared/schema");
-  const { ne } = await import("drizzle-orm");
-  // Only run retro skip trace on accounts that actually use crash/home-service leads
-  // Skip accounts that would never receive these lead types
-  const { pool } = await import("./db");
-  const allAccounts = await db.select({ id: subAccounts.id }).from(subAccounts)
+  const { ne }         = await import("drizzle-orm");
+  const { pool }       = await import("./db");
+
+  const allAccounts = await db
+    .select({ id: subAccounts.id })
+    .from(subAccounts)
     .where(ne(subAccounts.ownerUserId, "_archived"));
+
   const eligibleIds: number[] = [];
   for (const acct of allAccounts) {
     const r = await pool.query(
@@ -159,21 +211,24 @@ export async function runRetroSkipTraceAllAccounts(): Promise<void> {
       [acct.id]
     );
     const cfg = r.rows[0];
-    // Include: accounts with sentinel enabled, or Apex main (13)
-    if (!cfg || cfg.enabled || acct.id === 13 || acct.id === 14) {
+    // Include accounts with sentinel enabled, OR always include Apex Marketing (ID=3)
+    if (!cfg || cfg.enabled || acct.id === 3) {
       eligibleIds.push(acct.id);
     }
   }
-  const ids = eligibleIds;
-  console.log(`[RETRO-SKIP-TRACE] Starting for ${ids.length} eligible accounts: ${ids.join(", ")}`);
-  for (const accountId of ids) {
-    const stats = await runRetroSkipTrace(accountId);
-    console.log(`[RETRO-SKIP-TRACE] Account ${accountId}: processed=${stats.processed} found=${stats.found} notFound=${stats.notFound}`);
+
+  console.log(`[RETRO-SKIP-TRACE] Running for ${eligibleIds.length} eligible accounts: ${eligibleIds.join(", ")}`);
+
+  for (const accountId of eligibleIds) {
+    const stats = await runRetroSkipTrace(accountId, { crashOnly: false });
+    console.log(
+      `[RETRO-SKIP-TRACE] Account ${accountId}: processed=${stats.processed}` +
+      ` found=${stats.found} notFound=${stats.notFound} failed=${stats.failed}`
+    );
   }
 }
 
 export function startRetroSkipTraceScheduler(): void {
-  // Run once on startup after 2 min, then every 6 hours
   setTimeout(() => {
     runRetroSkipTraceAllAccounts().catch(err =>
       console.error("[RETRO-SKIP-TRACE] Scheduled run failed:", err?.message)
