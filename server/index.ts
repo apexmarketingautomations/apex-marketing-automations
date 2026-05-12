@@ -666,6 +666,10 @@ async function validateMetaCredentials() {
   try {
     const { startRetroSkipTraceScheduler } = await import("./retroSkipTrace");
     startRetroSkipTraceScheduler();
+
+    // Apify attorney lead scraper
+    const { startApifyScheduler } = await import("./apifyAttorneyScraper");
+    startApifyScheduler();
   } catch (retroErr: any) {
     console.error("[STARTUP] Retro skip trace scheduler failed (non-fatal):", retroErr?.message);
   }

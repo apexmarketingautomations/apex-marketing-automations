@@ -1076,3 +1076,37 @@ export function registerRetroSkipTraceRoute(app: any) {
     res.json({ success: true, rule: updated });
   }));
 }
+
+  // ── Attorney Leads API ──────────────────────────────────────────────────────
+
+  app.get("/api/legal/attorneys", asyncHandler(async (req, res) => {
+    const { db } = await import("../db");
+    const { legalAttorneys } = await import("@shared/schema");
+    const { desc, sql, ilike } = await import("drizzle-orm");
+
+    const vertical = req.query.vertical as string | undefined;
+    const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
+
+    let attorneys;
+    if (vertical && vertical !== "all") {
+      attorneys = await db.select().from(legalAttorneys)
+        .where(sql`${legalAttorneys.legalVerticals}::jsonb @> ${JSON.stringify([vertical])}::jsonb`)
+        .orderBy(desc(legalAttorneys.score))
+        .limit(limit);
+    } else {
+      attorneys = await db.select().from(legalAttorneys)
+        .orderBy(desc(legalAttorneys.score))
+        .limit(limit);
+    }
+
+    res.json({ attorneys, total: attorneys.length });
+  }));
+
+  app.post("/api/legal/attorneys/scrape", asyncHandler(async (req, res) => {
+    const { runFullAttorneyScrape } = await import("../apifyAttorneyScraper");
+    // Fire and forget — scrape runs in background
+    runFullAttorneyScrape().catch(err =>
+      console.error("[APIFY] Manual scrape failed:", err.message)
+    );
+    res.json({ success: true, message: "Attorney scrape started in background — check logs for progress" });
+  }));
