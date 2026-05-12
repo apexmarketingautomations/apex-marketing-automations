@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
 import { useAccount } from "@/hooks/use-account";
+import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertTriangle, MapPin, Clock, Phone, Send, ChevronLeft,
@@ -449,6 +450,22 @@ function LeadDetail({
 
 export default function AccidentLeadsPage() {
   const { activeAccountId: rawActiveId } = useAccount();
+  const { user } = useAuth();
+  const isAdmin = (user as any)?.isAdmin === "true" || (user as any)?.role === "DEV_ADMIN";
+  const [skipTraceRunning, setSkipTraceRunning] = useState(false);
+
+  const runManualSkipTrace = async () => {
+    if (!activeAccountId || skipTraceRunning) return;
+    setSkipTraceRunning(true);
+    try {
+      const res = await apiRequest("POST", `/api/sentinel/retro-skip-trace`, { subAccountId: activeAccountId });
+      toast({ title: "Skip trace started", description: "Running in background — refresh in 2 minutes." });
+    } catch (e: any) {
+      toast({ title: "Skip trace failed", description: e.message, variant: "destructive" });
+    } finally {
+      setSkipTraceRunning(false);
+    }
+  };
 
   // Fetch accounts to resolve fallback if activeAccountId not set
   const { data: accounts = [] } = useQuery<any[]>({
@@ -612,9 +629,20 @@ export default function AccidentLeadsPage() {
                 <div className="text-green-400 font-black text-lg">{crashContacts.length} LEADS WITH PHONE NUMBERS</div>
                 <div className="text-slate-400 text-xs mt-0.5">Real names + numbers from skip trace — ready to sell</div>
               </div>
-              <button onClick={exportCSV} className="px-4 py-2 rounded-xl bg-green-500 hover:bg-green-400 text-black font-black text-sm transition-all">
-                ⬇ Export CSV
-              </button>
+              <div className="flex gap-2">
+                {isAdmin && (
+                  <button
+                    onClick={runManualSkipTrace}
+                    disabled={skipTraceRunning}
+                    className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-black text-sm transition-all flex items-center gap-1"
+                  >
+                    {skipTraceRunning ? "⏳ Running..." : "🔍 Skip Trace"}
+                  </button>
+                )}
+                <button onClick={exportCSV} className="px-4 py-2 rounded-xl bg-green-500 hover:bg-green-400 text-black font-black text-sm transition-all">
+                  ⬇ Export CSV
+                </button>
+              </div>
             </div>
             <div className="space-y-2">
               {crashContacts.slice(0,10).map((c: any) => (

@@ -326,7 +326,8 @@ async function fetchFdaRecalls(): Promise<RawLegalSignal[]> {
   if (!data?.results) return signals;
 
   for (const r of data.results) {
-    const company = r.recalling_firm || r.firm_fei_number || "Unknown Company";
+    const company = r.recalling_firm || r.firm_fei_number;
+    if (!company) continue; // skip FDA records with no identifiable firm
     signals.push({
       signalType: "fda_recall",
       legalVertical: "personal_injury",
@@ -356,7 +357,8 @@ async function fetchCpscRecalls(): Promise<RawLegalSignal[]> {
   if (!Array.isArray(data)) return signals;
 
   for (const r of data) {
-    const company = r.Manufacturers?.[0]?.Name || r.Name || "Unknown";
+    const company = r.Manufacturers?.[0]?.Name || r.Name;
+    if (!company) continue; // skip CPSC records with no identifiable manufacturer
     signals.push({
       signalType: "cpsc_recall",
       legalVertical: "personal_injury",
@@ -558,26 +560,105 @@ function scoreLegalLead(signal: RawLegalSignal): { score: number; qualifies: boo
 
 // ── LEAD DELIVERY — ALL sub-accounts, not just one ───────────────────────────
 
+// Deterministic pipeline classifier — single source of truth
+function classifyLead(lead: any): { source: string; channel: string; tags: string[]; displayType: string; pipeline: string } {
+  const vertical = lead.legalVertical || "";
+  const signalType = lead.signalType || "";
+  const hasPhone = !!lead.subjectPhone;
+
+  // Home service signals — roofing, HVAC, plumbing, pool, landscaping
+  if (vertical === "home_service") {
+    return {
+      pipeline: "home_property_pipeline",
+      source: "home_service_pipeline",
+      channel: "home_service",
+      displayType: "Home Service Lead",
+      tags: ["home_service", lead.businessCategory || "home_service", "business_growth_signal", hasPhone ? "has-phone" : "no-phone"].filter(Boolean),
+    };
+  }
+
+  // Local service signals — salons, barbers, med spas, SMBs
+  if (vertical === "local_service") {
+    return {
+      pipeline: "growth_pipeline",
+      source: "local_service_pipeline",
+      channel: "local_service",
+      displayType: "Local Business Lead",
+      tags: ["local_service", lead.businessCategory || "local_service", "business_growth_signal", hasPhone ? "has-phone" : "no-phone"].filter(Boolean),
+    };
+  }
+
+  // Crash/accident signals
+  if (["crash", "accident", "fhp", "hsmv"].includes(vertical) || ["crash", "accident"].includes(signalType)) {
+    return {
+      pipeline: "crash_pipeline",
+      source: "crash_pipeline",
+      channel: "crash",
+      displayType: "Crash Lead",
+      tags: ["crash", "accident", signalType, hasPhone ? "has-phone" : "no-phone"].filter(Boolean),
+    };
+  }
+
+  // True legal signals — personal injury, criminal, family, traffic, workers_comp
+  const legalVerticals = ["personal_injury", "criminal", "family", "traffic", "workers_comp"];
+  if (legalVerticals.includes(vertical) || ["cpsc_recall", "fda_recall", "osha_incident", "arrest", "dui_arrest"].includes(signalType)) {
+    return {
+      pipeline: "legal_pipeline",
+      source: "legal_pipeline",
+      channel: "legal",
+      displayType: "Legal Lead",
+      tags: ["legal-lead", vertical, signalType, lead.urgency, hasPhone ? "has-phone" : "no-phone"].filter(Boolean),
+    };
+  }
+
+  // Unknown — do NOT default to legal_pipeline
+  console.warn(`[LEAD-CLASSIFIER] Unclassified lead: vertical=${vertical} signalType=${signalType} — defaulting to growth_pipeline`);
+  return {
+    pipeline: "growth_pipeline",
+    source: "unclassified",
+    channel: "unknown",
+    displayType: "Unresolved Record",
+    tags: ["unclassified", hasPhone ? "has-phone" : "no-phone"].filter(Boolean),
+  };
+}
+
 async function createContactFromLead(lead: any, subAccountId: number): Promise<void> {
   try {
     const { storage } = await import("./storage");
-    const firstName = lead.subjectName
-      ? lead.subjectName.split(" ")[0] || "Lead"
-      : "Lead";
-    const lastName = lead.subjectName
-      ? lead.subjectName.split(" ").slice(1).join(" ") || lead.county
-      : lead.county;
+    const classification = classifyLead(lead);
+
+    const subjectName = (lead.subjectName && lead.subjectName !== "Unknown STATEWIDE" && lead.subjectName !== "Unknown")
+      ? lead.subjectName
+      : null;
+    if (!subjectName && !lead.chargeDescription) {
+      console.warn(`[LEAD-CLASSIFIER] Skipping unresolvable record: no name, no description, id=${lead.id}`);
+      return;
+    }
+
+    const firstName = subjectName
+      ? subjectName.split(" ")[0] || classification.displayType
+      : classification.displayType;
+    const lastName = subjectName
+      ? subjectName.split(" ").slice(1).join(" ") || lead.county || ""
+      : lead.county || "";
+
+    const company = lead.businessCategory
+      ? (lead.chargeDescription?.split("—")[0]?.trim() || subjectName || null)
+      : null;
+
+    console.log(`[LEAD-CLASSIFIER] id=${lead.id} vertical=${lead.legalVertical} signalType=${lead.signalType} → pipeline=${classification.pipeline} source=${classification.source}`);
 
     await storage.createContact({
       subAccountId,
       firstName,
       lastName,
+      company: company || undefined,
       phone: lead.subjectPhone || undefined,
-      source: "legal_pipeline",
-      channel: "legal",
-      tags: ["legal-lead", lead.legalVertical, lead.signalType, lead.urgency, lead.subjectPhone ? "has-phone" : "no-phone"],
+      source: classification.source,
+      channel: classification.channel,
+      tags: classification.tags,
       notes: [
-        `Legal Lead — ${lead.legalVertical?.toUpperCase()} | ${lead.signalType?.replace(/_/g, " ")}`,
+        `${classification.displayType} — ${lead.legalVertical?.toUpperCase()} | ${lead.signalType?.replace(/_/g, " ")}`,
         lead.chargeDescription || "",
         lead.subjectAddress ? `Address: ${lead.subjectAddress}` : "",
         lead.caseNumber ? `Case: ${lead.caseNumber}` : "",
@@ -660,13 +741,14 @@ async function runLegalCycle(subAccountId: number): Promise<void> {
   stats.totalRuns++;
   stats.lastRunAt = new Date().toISOString();
 
-  const sourceNames = ["FL Arrests", "OSHA", "FDA Recalls", "CPSC Recalls", "Google Places"];
+  const sourceNames = ["FL Arrests", "OSHA", "FDA Recalls", "CPSC Recalls"];
   const results = await Promise.allSettled([
     fetchFlArrests(),
     fetchOshaIncidents(),
     fetchFdaRecalls(),
     fetchCpscRecalls(),
-    fetchGooglePlacesBusinesses(),
+    // Google Places local/home service signals moved to homeServiceSignalPipeline — not legal pipeline
+    Promise.resolve([]),
   ]);
 
   const allSignals: RawLegalSignal[] = results

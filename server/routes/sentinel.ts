@@ -1110,3 +1110,57 @@ export function registerRetroSkipTraceRoute(app: any) {
     );
     res.json({ success: true, message: "Attorney scrape started in background — check logs for progress" });
   }));
+
+  // ── Admin: Backfill misclassified leads ──────────────────────────────────────
+
+  app.post("/api/admin/backfill-lead-classification", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user || (user.isAdmin !== "true" && user.role !== "admin")) {
+      return res.status(403).json({ error: "Admin only" });
+    }
+
+    const { db } = await import("../db");
+    const { contacts } = await import("@shared/schema");
+    const { sql, eq } = await import("drizzle-orm");
+
+    let scanned = 0, corrected = 0, skipped = 0;
+    const corrections: Record<string, number> = {};
+
+    // Fetch contacts with source=legal_pipeline that have home_service or local_service tags
+    const misclassified = await db.select().from(contacts)
+      .where(eq(contacts.source, "legal_pipeline"))
+      .limit(5000);
+
+    for (const contact of misclassified) {
+      scanned++;
+      const tags = contact.tags || [];
+
+      let newSource: string | null = null;
+      let newChannel: string | null = null;
+      let newTags: string[] | null = null;
+
+      if (tags.includes("home_service")) {
+        newSource = "home_service_pipeline";
+        newChannel = "home_service";
+        newTags = tags.filter(t => t !== "legal-lead");
+        corrections["home_service"] = (corrections["home_service"] || 0) + 1;
+      } else if (tags.includes("local_service") || tags.includes("business_growth_signal")) {
+        newSource = "local_service_pipeline";
+        newChannel = "local_service";
+        newTags = tags.filter(t => t !== "legal-lead");
+        corrections["local_service"] = (corrections["local_service"] || 0) + 1;
+      }
+
+      if (newSource) {
+        await db.update(contacts)
+          .set({ source: newSource, channel: newChannel, tags: newTags })
+          .where(eq(contacts.id, contact.id));
+        corrected++;
+      } else {
+        skipped++;
+      }
+    }
+
+    console.log(`[LEAD-CLASSIFIER] Backfill: scanned=${scanned} corrected=${corrected} skipped=${skipped}`, corrections);
+    res.json({ scanned, corrected, skipped, corrections });
+  }));
