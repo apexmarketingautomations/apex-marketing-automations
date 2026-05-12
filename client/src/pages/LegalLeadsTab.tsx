@@ -20,9 +20,9 @@ type LegalSignalType =
   | "domestic_violence_injunction" | "custody_modification" | "probate_filing"
   | "osha_incident" | "fda_recall" | "cpsc_recall"
   | "license_suspension" | "traffic_violation"
-  | "new_business_filing" | "salon_license";
+  // home_service types (new_business_filing, salon_license) removed — belong in home pipeline
 
-type LegalCategory = "criminal" | "family" | "traffic" | "personal_injury" | "business";
+type LegalCategory = "criminal" | "family" | "traffic" | "personal_injury";
 
 interface LegalSignal {
   id: number;
@@ -87,14 +87,8 @@ const LEGAL_CATEGORIES: { key: LegalCategory; label: string; icon: any; color: s
     desc: "OSHA incidents, recalls, slip & fall",
     signals: ["osha_incident", "fda_recall", "cpsc_recall"],
   },
-  {
-    key: "business",
-    label: "Business Signals",
-    icon: Building,
-    color: "text-cyan-400",
-    desc: "New licenses, salon openings",
-    signals: ["new_business_filing", "salon_license"],
-  },
+  // NOTE: "business" (salon_license, new_business_filing) are home/local service leads.
+  // They are displayed in the Home & Property section, not here.
 ];
 
 const URGENCY_CONFIG = {

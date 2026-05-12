@@ -976,43 +976,37 @@ export function registerRetroSkipTraceRoute(app: any) {
     const category = (req.query.category as string) || "all";
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
 
-    // Map category to signal types
+    const { db } = await import("../db");
+    const { legalSignals } = await import("@shared/schema");
+    const { desc, inArray, eq } = await import("drizzle-orm");
+
+    // TRUE legal signal types only — personal injury, criminal, family, traffic
+    // home_service and local_service are NOT legal signals
     const CATEGORY_SIGNALS: Record<string, string[]> = {
-      criminal:         ["dui_arrest", "arrest_record"],
-      family:           ["divorce_filing", "domestic_violence_injunction", "custody_modification", "probate_filing"],
-      traffic:          ["license_suspension", "traffic_violation"],
-      personal_injury:  ["osha_incident", "fda_recall", "cpsc_recall"],
-      business:         ["new_business_filing", "salon_license", "new_business_filing"],
-      all:              [],
+      criminal:        ["dui_arrest", "arrest_record"],
+      family:          ["divorce_filing", "domestic_violence_injunction", "custody_modification", "probate_filing"],
+      traffic:         ["license_suspension", "traffic_violation"],
+      personal_injury: ["osha_incident", "fda_recall", "cpsc_recall"],
+      all:             [],
     };
 
-    const { db } = await import("../db");
-    const { homeServiceSignals } = await import("@shared/schema");
-    const { desc, inArray, not, eq } = await import("drizzle-orm");
-
-    let query = db.select().from(homeServiceSignals);
-
-    const signalTypes = CATEGORY_SIGNALS[category] || [];
-    const legalTypes = [
+    // All legal signal types — excludes new_business_filing, salon_license (home/local service)
+    const ALL_LEGAL_TYPES = [
       "dui_arrest", "arrest_record", "divorce_filing", "domestic_violence_injunction",
       "custody_modification", "probate_filing", "osha_incident", "fda_recall", "cpsc_recall",
-      "license_suspension", "traffic_violation", "new_business_filing", "salon_license",
+      "license_suspension", "traffic_violation",
     ];
 
-    if (signalTypes.length > 0) {
-      const signals = await db.select().from(homeServiceSignals)
-        .where(inArray(homeServiceSignals.signalType, signalTypes as any))
-        .orderBy(desc(homeServiceSignals.detectedAt))
-        .limit(limit);
-      return res.json({ signals, total: signals.length });
-    } else {
-      // All legal signals
-      const signals = await db.select().from(homeServiceSignals)
-        .where(inArray(homeServiceSignals.signalType, legalTypes as any))
-        .orderBy(desc(homeServiceSignals.detectedAt))
-        .limit(limit);
-      return res.json({ signals, total: signals.length });
-    }
+    const signalTypes = CATEGORY_SIGNALS[category] || [];
+    const filterTypes = signalTypes.length > 0 ? signalTypes : ALL_LEGAL_TYPES;
+
+    const signals = await db.select().from(legalSignals)
+      .where(inArray(legalSignals.signalType, filterTypes as any))
+      .orderBy(desc(legalSignals.detectedAt))
+      .limit(limit);
+
+    console.log(`[LEGAL-SIGNALS] category=${category} returned=${signals.length}`);
+    return res.json({ signals, total: signals.length });
   }));
 
   // ── Distribution Rules API ────────────────────────────────────────────────────
