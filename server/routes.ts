@@ -109,6 +109,7 @@ export async function registerRoutes(
   registerSnapshotsRoutes(app);
   registerAffiliatesRoutes(app);
   registerSentinelRoutes(app);
+  registerRetroSkipTraceRoute(app);
   registerDomainRoutes(app);
 
   // ── Legal Signal Pipeline Routes ──────────────────────────────────────────
