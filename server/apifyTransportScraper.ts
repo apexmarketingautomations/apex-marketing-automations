@@ -258,7 +258,7 @@ export async function runTransportScraper(
 ): Promise<TransportScrapeResult> {
   const token = (process.env.APIFY_API_KEY || process.env.APIFY_TOKEN || "").trim();
   if (!token) {
-    console.error("[APIFY-TRANSPORT] APIFY_API_KEY not configured — transport scrape skipped");
+    console.error("[APIFY-TRANSPORT] Apify credential not configured — transport scrape skipped");
     return { ok: false, results: [], actor: "", queryType: "general", queryHash: "", resultCount: 0, error: "APIFY_API_KEY not configured" };
   }
 
