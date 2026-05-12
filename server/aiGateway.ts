@@ -1086,20 +1086,20 @@ export function logProviderStartup(): void {
     "none";
 
   const providers: string[] = [];
-  if (anthropicActive) providers.push(`Anthropic (${ANTHROPIC_MODEL}, key=ANTHROPIC_API_KEY) [PRIMARY]`);
-  if (openaiActive)    providers.push(`OpenAI (${OPENAI_MODEL}, key=OPENAI_APEX_INT_KEY)`);
-  if (geminiActive)    providers.push(`Gemini (${GEMINI_FALLBACK_MODEL}, key=${geminiKeyName})`);
+  if (anthropicActive) providers.push(`Anthropic (${ANTHROPIC_MODEL}) [PRIMARY]`);
+  if (openaiActive)    providers.push(`OpenAI (${OPENAI_MODEL})`);
+  if (geminiActive)    providers.push(`Gemini (${GEMINI_FALLBACK_MODEL}, slot=${geminiKeyName})`);
 
   if (providers.length === 0) {
     console.warn("[AI-GATEWAY] ⚠️  No AI providers configured.");
-    console.warn("[AI-GATEWAY]    Gemini keys checked: GEMINI_API_KEY_ | Gemini_API_Key_saas | GEMINI_API_KEY | GOOGLE_GENERATIVE_AI_API_KEY");
-    console.warn("[AI-GATEWAY]    OpenAI keys checked: OPENAI_APEX_INT_KEY");
-    console.warn("[AI-GATEWAY]    Anthropic keys checked: ANTHROPIC_API_KEY");
+    console.warn("[AI-GATEWAY]    Gemini: check GEMINI_API_KEY_ / Gemini_API_Key_saas / GEMINI_API_KEY / GOOGLE_AI_KEY slots");
+    console.warn("[AI-GATEWAY]    OpenAI: check OPENAI_APEX_INT_KEY slot");
+    console.warn("[AI-GATEWAY]    Anthropic: check ANTHROPIC slot");
   } else {
     console.log(`[AI-GATEWAY] ✅ Providers active: ${providers.join(" | ")}`);
     console.log(`[AI-GATEWAY]    Timeout=${DEFAULT_TIMEOUT_MS}ms CB=${CIRCUIT_BREAKER_THRESHOLD}/${CIRCUIT_BREAKER_WINDOW_MS / 1000}s`);
     if (geminiActive) {
-      console.log(`[AI-GATEWAY] Provider selected: gemini (active key: ${geminiKeyName})`);
+      console.log(`[AI-GATEWAY] Provider selected: gemini (slot: ${geminiKeyName})`);
     }
   }
 }
