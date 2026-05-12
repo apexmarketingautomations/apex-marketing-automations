@@ -34,7 +34,7 @@ function exportCSV(contacts: Contact[]) {
 export function CrashLeadsPage() {
   const { currentAccount } = useAccount();
 
-  const { data: allLeads = [], isLoading } = useQuery<Contact[]>({
+  const { data: leadsResult, isLoading } = useQuery<{ data: Contact[]; total: number }>({
     queryKey: ["/api/contacts", currentAccount?.id, "crash-has-phone"],
     queryFn: async () => {
       const res = await fetch(
@@ -47,6 +47,7 @@ export function CrashLeadsPage() {
     enabled: !!currentAccount?.id,
     refetchInterval: 60_000,
   });
+  const allLeads = leadsResult?.data ?? [];
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
