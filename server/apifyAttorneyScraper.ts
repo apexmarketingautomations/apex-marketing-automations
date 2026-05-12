@@ -9,8 +9,11 @@ import { db } from "./db";
 import { legalAttorneys } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 
-const APIFY_TOKEN = process.env.APIFY_API_KEY || process.env.APIFY_TOKEN || "";
 const MARTINDALE_ACTOR = "jungle_synthesizer~martindale-scraper";
+
+function getApifyToken(): string {
+  return (process.env.APIFY_API_KEY || process.env.getApifyToken() || "").trim();
+}
 
 // Legal verticals to scrape with their Martindale practice area keys
 const SCRAPE_TARGETS = [
@@ -41,7 +44,7 @@ async function runApifyActor(input: Record<string, unknown>): Promise<string> {
   const res = await fetch(`https://api.apify.com/v2/acts/${MARTINDALE_ACTOR}/runs`, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${APIFY_TOKEN}`,
+      "Authorization": `Bearer ${getApifyToken()}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(input),
@@ -60,7 +63,7 @@ async function waitForRun(runId: string, maxWaitMs = 300000): Promise<string> {
   while (Date.now() - start < maxWaitMs) {
     await new Promise(r => setTimeout(r, 10000)); // poll every 10s
     const res = await fetch(`https://api.apify.com/v2/actor-runs/${runId}`, {
-      headers: { "Authorization": `Bearer ${APIFY_TOKEN}` },
+      headers: { "Authorization": `Bearer ${getApifyToken()}` },
     });
     const data = await res.json() as { data: { status: string; defaultDatasetId: string } };
     if (data.data.status === "SUCCEEDED") return data.data.defaultDatasetId;
@@ -74,7 +77,7 @@ async function waitForRun(runId: string, maxWaitMs = 300000): Promise<string> {
 async function fetchDataset(datasetId: string): Promise<MartindaleAttorney[]> {
   const res = await fetch(
     `https://api.apify.com/v2/datasets/${datasetId}/items?limit=1000&format=json`,
-    { headers: { "Authorization": `Bearer ${APIFY_TOKEN}` } }
+    { headers: { "Authorization": `Bearer ${getApifyToken()}` } }
   );
   if (!res.ok) throw new Error(`Dataset fetch failed: ${res.status}`);
   return res.json() as Promise<MartindaleAttorney[]>;
@@ -150,10 +153,12 @@ export async function scrapeAttorneysForVertical(vertical: string, practiceArea:
 }
 
 export async function runFullAttorneyScrape(): Promise<void> {
-  if (!APIFY_TOKEN) {
-    console.warn("[APIFY] No APIFY_API_KEY set — attorney scrape skipped");
+  const token = getApifyToken();
+  if (!token) {
+    console.warn("[APIFY] No APIFY_API_KEY or APIFY_TOKEN set — attorney scrape skipped");
     return;
   }
+  console.log("[APIFY] Token confirmed — starting attorney scrape");
   console.log("[APIFY] Starting full attorney scrape for all legal verticals");
   for (const target of SCRAPE_TARGETS) {
     await scrapeAttorneysForVertical(target.vertical, target.practiceArea, target.label);
