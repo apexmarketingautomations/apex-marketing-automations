@@ -612,6 +612,22 @@ async function validateMetaCredentials() {
     console.error("[STARTUP] Seed failed (non-fatal):", seedErr);
   }
 
+  // ── Email provider boot log ─────────────────────────────────────────────────
+  try {
+    const { logEmailProviderStartup } = await import("./messaging/sendEmail");
+    logEmailProviderStartup();
+  } catch (emailErr) {
+    console.error("[STARTUP] Email provider boot log failed (non-fatal):", emailErr);
+  }
+
+  // ── AI provider boot log ────────────────────────────────────────────────────
+  try {
+    const { logProviderStartup } = await import("./aiGateway");
+    logProviderStartup();
+  } catch (aiErr) {
+    console.error("[STARTUP] AI provider boot log failed (non-fatal):", aiErr);
+  }
+
   const DISABLE_BACKGROUND_WORKERS = process.env.DISABLE_BACKGROUND_WORKERS === "true";
   if (DISABLE_BACKGROUND_WORKERS) {
     console.log("[STARTUP] ⏸ Background workers DISABLED (DISABLE_BACKGROUND_WORKERS=true)");
