@@ -2501,20 +2501,58 @@ export function registerPropertyRoutes(app: Express) {
   app.get("/api/contacts/:subAccountId", asyncHandler(async (req, res) => {
     const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
-    const tag = req.query.tag as string | undefined;
-    const hasPhone = req.query.hasPhone === "true";
+
     const { db } = await import("../db");
     const { contacts } = await import("@shared/schema");
-    const { eq, isNotNull, and, sql } = await import("drizzle-orm");
+    const { eq, and, notInArray, desc, sql } = await import("drizzle-orm");
 
-    let q = db.select().from(contacts).where(eq(contacts.subAccountId, subAccountId));
-    const list = await q;
+    const page     = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit    = Math.min(200, Math.max(1, parseInt(req.query.limit as string) || 50));
+    const offset   = (page - 1) * limit;
+    const source   = req.query.source as string | undefined;
+    const search   = (req.query.search as string | undefined)?.toLowerCase().trim();
+    const tag      = req.query.tag as string | undefined;
+    const hasPhone = req.query.hasPhone === "true";
 
-    let filtered = list;
-    if (tag) filtered = filtered.filter((c: any) => Array.isArray(c.tags) && c.tags.includes(tag));
-    if (hasPhone) filtered = filtered.filter((c: any) => !!c.phone);
+    // Default view excludes attorney-scraper rows.
+    // Pass ?source=legal_pipeline to see those, or ?source=all for everything.
+    const ATTORNEY_SOURCES = ["legal_pipeline"];
+    const conditions: any[] = [eq(contacts.subAccountId, subAccountId)];
 
-    res.json(filtered);
+    if (source && source !== "all") {
+      conditions.push(eq(contacts.source, source));
+    } else if (!source) {
+      conditions.push(notInArray(contacts.source, ATTORNEY_SOURCES));
+    }
+
+    if (search) {
+      conditions.push(
+        sql`(LOWER(${contacts.firstName}) LIKE ${"%" + search + "%"}
+          OR LOWER(COALESCE(${contacts.lastName},'')) LIKE ${"%" + search + "%"}
+          OR LOWER(COALESCE(${contacts.phone},''))    LIKE ${"%" + search + "%"}
+          OR LOWER(COALESCE(${contacts.email},''))    LIKE ${"%" + search + "%"})`
+      );
+    }
+
+    const where = and(...conditions);
+
+    const [{ total }] = await db
+      .select({ total: sql<number>`COUNT(*)::int` })
+      .from(contacts)
+      .where(where);
+
+    let rows: any[] = await db
+      .select()
+      .from(contacts)
+      .where(where)
+      .orderBy(desc(contacts.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    if (tag)      rows = rows.filter((c: any) => Array.isArray(c.tags) && c.tags.includes(tag));
+    if (hasPhone) rows = rows.filter((c: any) => !!c.phone);
+
+    res.json({ data: rows, total, page, limit, totalPages: Math.ceil(total / limit) });
   }));
 
   app.get("/api/contacts/detail/:id", asyncHandler(async (req, res) => {
