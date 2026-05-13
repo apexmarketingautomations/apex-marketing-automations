@@ -3,7 +3,7 @@ import { messages } from "@shared/schema";
 import { storage } from "../storage";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
-import { aiChat, aiChatStream, isAIConfigured, aiChatWithToolCalls } from "../aiGateway";
+import { aiChat, aiChatStream, isAIConfigured, aiChatWithToolCalls, getAIProviderStatus } from "../aiGateway";
 import type { ToolDefinition, ToolCallResult } from "../aiGateway";
 import { streamAIResponse, sendSSEData, initSSE } from "../streaming";
 import { asyncHandler, parseIntParam, logUsageInternal, getIndustryContext, getLanguageInstruction } from "./helpers";
@@ -391,6 +391,7 @@ export function registerBotRoutes(app: Express) {
   }));
 
   app.post("/api/bot/chat/agent-stream", asyncHandler(async (req, res) => {
+    const botReqId = `bot-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     try {
       const adminSecret = process.env.STANDALONE_ADMIN_SECRET;
       const headerSecret = req.headers["x-admin-secret"] as string | undefined;
@@ -401,7 +402,8 @@ export function registerBotRoutes(app: Express) {
       }
 
       if (!isAIConfigured()) {
-        return res.status(503).json({ error: "AI service is not configured" });
+        console.error(`[AGENT:${botReqId}] No AI provider configured — ANTHROPIC_API_KEY / OPENAI_APEX_INT_KEY / GEMINI_API_KEY all missing`);
+        return res.status(503).json({ error: "AI service is not configured. Set ANTHROPIC_API_KEY in Railway env vars." });
       }
 
       const parsed = agentStreamSchema.safeParse(req.body);
@@ -410,6 +412,9 @@ export function registerBotRoutes(app: Express) {
       const subAccountId = parsed.data.subAccountId;
       const { sessionId, history } = await resolveSession(parsed.data.sessionId, subAccountId);
       const userMsg = parsed.data.message.trim();
+
+      const { activeProvider, anthropicConfigured, openaiConfigured, geminiConfigured } = getAIProviderStatus();
+      console.log(`[AGENT:${botReqId}] START subAccountId=${subAccountId} sessionId=${sessionId} historyLen=${history.length} msgLen=${userMsg.length} provider=${activeProvider} anthropic=${anthropicConfigured} openai=${openaiConfigured} gemini=${geminiConfigured}`);
 
       const pendingAction = await storage.getActivePendingAction(sessionId);
 
@@ -550,7 +555,7 @@ export function registerBotRoutes(app: Express) {
           route: "bot-agent-stream",
           timeoutMs: 30000,
         });
-        console.log(`[AGENT] round=${round} text_len=${(aiResponse.text || "").length} toolCalls=${aiResponse.toolCalls?.length || 0}${aiResponse.toolCalls?.length ? " names=" + aiResponse.toolCalls.map(tc => tc.name).join(",") : ""}`);
+        console.log(`[AGENT:${botReqId}] round=${round} ok=${aiResponse.ok} provider=${aiResponse.provider} text_len=${(aiResponse.text || "").length} toolCalls=${aiResponse.toolCalls?.length || 0}${aiResponse.toolCalls?.length ? " names=" + aiResponse.toolCalls.map(tc => tc.name).join(",") : ""}${!aiResponse.ok ? ` error="${aiResponse.errorMessage}"` : ""}`);
 
         // Auto-repair: if OpenAI rejects history due to dangling assistant tool_calls,
         // strip every prior assistant tool_calls + tool messages from chatMessages and retry once.
@@ -580,12 +585,28 @@ export function registerBotRoutes(app: Express) {
           });
         }
 
-        // If the AI gateway returned an error (ok=false), surface a friendly message
-        // instead of leaking the raw error and DO NOT persist it to history.
+        // If the AI gateway returned an error (ok=false), surface a structured error with
+        // the safe reason instead of a generic apology. DO NOT persist it to history.
         if (!aiResponse.ok) {
-          console.error(`[AGENT] AI gateway returned error: ${aiResponse.errorMessage}`);
-          const friendly = "Sorry — I had trouble responding just now. Please try sending that again.";
-          if (!closed) sendSSEData(res, { content: friendly });
+          const rawReason = aiResponse.errorMessage ?? "unknown error";
+          console.error(`[AGENT:${botReqId}] round=${round} AI ERROR provider=${aiResponse.provider} reason="${rawReason}"`);
+
+          // Map raw error to a safe, non-leaking user message
+          let safeReason = "AI service temporarily unavailable";
+          if (/quota|billing|credit|rate.?limit|429|overloaded|529/i.test(rawReason))
+            safeReason = "AI usage limit reached — try again in a moment";
+          else if (/no.?ai.?provider|not configured/i.test(rawReason))
+            safeReason = "No AI provider configured — check ANTHROPIC_API_KEY in Railway env vars";
+          else if (/timeout|timed.?out/i.test(rawReason))
+            safeReason = "AI response timed out — try a shorter message";
+          else if (/401|403|auth|unauthorized/i.test(rawReason))
+            safeReason = "AI API key rejected — check ANTHROPIC_API_KEY value in Railway";
+
+          const friendly = `Sorry — I had trouble responding (${safeReason}). Please try again.`;
+          if (!closed) {
+            sendSSEData(res, { error: safeReason });
+            sendSSEData(res, { content: friendly });
+          }
           fullAssistantText += friendly;
           break;
         }
@@ -840,6 +861,8 @@ export function registerBotRoutes(app: Express) {
         res.end();
       }
 
+      console.log(`[AGENT:${botReqId}] DONE subAccountId=${subAccountId} responseLen=${fullAssistantText.length}`);
+
       if (fullAssistantText) {
         emitOperatorConversation(subAccountId, "outbound", fullAssistantText, { sessionId });
       }
@@ -847,6 +870,7 @@ export function registerBotRoutes(app: Express) {
       clearInterval(keepalive);
       await logUsageInternal(null, "AI_CHAT", 1, "Agent agentic loop (Phase 1)");
     } catch (error: any) {
+      console.error(`[AGENT:${botReqId}] EXCEPTION: ${error?.message || error}`);
       if (!res.headersSent) {
         res.status(500).json({ error: error.message || "Streaming failed" });
       } else {

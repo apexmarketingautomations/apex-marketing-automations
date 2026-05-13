@@ -8,12 +8,20 @@ const ANTHROPIC_VERSION = "2023-06-01";
 const ANTHROPIC_MODEL   = "claude-sonnet-4-6";
 
 export function isAnthropicConfigured(): boolean {
-  const key = (process.env.ANTHROPIC_API_KEY || "").trim();
+  const key = (
+    process.env.ANTHROPIC_API_KEY ||
+    process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY ||
+    ""
+  ).trim();
   return key.length > 10;
 }
 
 function getAnthropicKey(): string {
-  return (process.env.ANTHROPIC_API_KEY || "").trim();
+  return (
+    process.env.ANTHROPIC_API_KEY ||
+    process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY ||
+    ""
+  ).trim();
 }
 
 async function callAnthropic(
@@ -154,6 +162,70 @@ async function* callAnthropicStream(
   }
 }
 
+/**
+ * Convert OpenAI-format multi-turn tool history to Anthropic's format.
+ *
+ * OpenAI:  assistant { tool_calls: [{id, function:{name,arguments}}] }
+ *          tool     { tool_call_id, content }
+ *
+ * Anthropic: assistant { content: [{type:"tool_use", id, name, input}] }
+ *            user      { content: [{type:"tool_result", tool_use_id, content}] }
+ *
+ * Consecutive tool messages are merged into one user message as required by Anthropic.
+ */
+function convertToAnthropicMessages(
+  rawMessages: Array<{ role: string; content?: string | null; tool_calls?: any[]; tool_call_id?: string; name?: string }>
+): Array<{ role: "user" | "assistant"; content: any }> {
+  const result: Array<{ role: "user" | "assistant"; content: any }> = [];
+  let i = 0;
+  while (i < rawMessages.length) {
+    const msg = rawMessages[i];
+    if (msg.role === "system") { i++; continue; }
+
+    if (msg.role === "assistant") {
+      if (msg.tool_calls && msg.tool_calls.length > 0) {
+        const content: any[] = [];
+        if (msg.content) content.push({ type: "text", text: String(msg.content) });
+        for (const tc of msg.tool_calls) {
+          let input: Record<string, unknown>;
+          try {
+            input = typeof tc.function?.arguments === "string"
+              ? JSON.parse(tc.function.arguments)
+              : (tc.function?.arguments ?? {});
+          } catch { input = {}; } // allow-silent-catch: malformed tool argument JSON replaced with empty object
+          content.push({
+            type: "tool_use",
+            id:   tc.id || `tool_${i}`,
+            name: tc.function?.name || "unknown",
+            input,
+          });
+        }
+        result.push({ role: "assistant", content });
+      } else {
+        result.push({ role: "assistant", content: msg.content || "" });
+      }
+      i++;
+    } else if (msg.role === "tool") {
+      // Merge consecutive tool messages into a single Anthropic user message
+      const toolResults: any[] = [];
+      while (i < rawMessages.length && rawMessages[i].role === "tool") {
+        const t = rawMessages[i];
+        toolResults.push({
+          type:        "tool_result",
+          tool_use_id: t.tool_call_id || "",
+          content:     typeof t.content === "string" ? t.content : JSON.stringify(t.content ?? ""),
+        });
+        i++;
+      }
+      result.push({ role: "user", content: toolResults });
+    } else {
+      result.push({ role: "user", content: msg.content || "" });
+      i++;
+    }
+  }
+  return result;
+}
+
 async function callAnthropicWithTools(
   messages: Array<{ role: string; content?: string | null; tool_calls?: any[]; tool_call_id?: string; name?: string }>,
   tools: ToolDefinition[],
@@ -162,15 +234,14 @@ async function callAnthropicWithTools(
   const { maxTokens = 4096, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
 
   const anthropicTools = tools.map(t => ({
-    name: t.function.name,
-    description: t.function.description || "",
+    name:         t.function.name,
+    description:  t.function.description || "",
     input_schema: (t.function.parameters as any) || { type: "object", properties: {} },
   }));
 
-  const systemMsg = (messages as ChatMessage[]).find(m => m.role === "system");
-  const userMsgs  = (messages as ChatMessage[])
-    .filter(m => m.role !== "system")
-    .map(m => ({ role: m.role as "user" | "assistant", content: m.content || "" }));
+  const systemMsg = messages.find(m => m.role === "system");
+  // Convert full multi-turn history (including tool_calls + tool results) to Anthropic format
+  const userMsgs  = convertToAnthropicMessages(messages);
 
   const body: Record<string, unknown> = {
     model:       ANTHROPIC_MODEL,
@@ -322,7 +393,7 @@ const circuitBreaker: CircuitBreakerState = {
 };
 
 export function isOpenAIConfigured(): boolean {
-  return !!process.env.OPENAI_APEX_INT_KEY;
+  return !!(process.env.OPENAI_APEX_INT_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY);
 }
 
 // ── Anthropic quota/billing failure tracking ──────────────────────────────────
@@ -941,15 +1012,38 @@ export async function aiChatWithToolCalls(
       return { text: "", ok: false, errorMessage: "No AI provider available. This action could not be completed.", toolCalls: [], provider: "gemini", model: GEMINI_FALLBACK_MODEL };
     }
 
-    logObservability({ requestId, traceId, subAccountId, route, provider: "gemini", model: GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: true, error: "Gemini fallback does not support multi-turn tool calling" });
-    return {
-      text: "",
-      ok: false,
-      errorMessage: "Gemini fallback does not support multi-turn tool calling. Primary AI provider currently unavailable.",
-      toolCalls: [],
-      provider: "gemini",
-      model: GEMINI_FALLBACK_MODEL,
-    };
+    // Gemini doesn't support native function calling in this path — degrade gracefully to plain
+    // chat so the user gets a text answer instead of a generic "Sorry" apology. The bot.ts loop
+    // receives toolCalls=[] and breaks out normally, streaming the text response.
+    console.warn("[AI-GATEWAY] Primary providers unavailable — Gemini plain-chat fallback (no tool calls)");
+    try {
+      // Strip tool messages and assistant tool_call blocks so Gemini gets a clean conversation
+      const geminiMsgs: ChatMessage[] = messages
+        .filter(m => m.role !== "tool")
+        .map(m => ({
+          role: (m.role === "assistant" || m.role === "user" || m.role === "system"
+            ? m.role : "user") as ChatMessage["role"],
+          content: m.role === "assistant" && m.tool_calls
+            ? (m.content || "I was about to run some tools to help with that.")
+            : (typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? "")),
+        }));
+
+      // Inject a brief tool-capability notice so Gemini knows what it can describe
+      const toolNames = tools.slice(0, 8).map(t => t.function.name).join(", ");
+      const sysIdx = geminiMsgs.findIndex(m => m.role === "system");
+      const notice = `\n[Note: Direct tool execution unavailable right now. Describe steps clearly and offer to assist further. Available capabilities: ${toolNames}]`;
+      if (sysIdx >= 0) {
+        geminiMsgs[sysIdx] = { ...geminiMsgs[sysIdx], content: (geminiMsgs[sysIdx].content || "") + notice };
+      }
+
+      const geminiResult = await callGemini(geminiMsgs, options);
+      logObservability({ requestId, traceId, subAccountId, route, provider: "gemini", model: GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: true, fallbackTriggered: true });
+      return { text: geminiResult.text, ok: true, toolCalls: [], provider: "gemini", model: GEMINI_FALLBACK_MODEL };
+    } catch (geminiErr: any) {
+      const errMsg = `Gemini fallback failed: ${geminiErr?.message ?? "unknown"}`;
+      logObservability({ requestId, traceId, subAccountId, route, provider: "gemini", model: GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: true, error: errMsg });
+      return { text: "", ok: false, errorMessage: errMsg, toolCalls: [], provider: "gemini", model: GEMINI_FALLBACK_MODEL };
+    }
   } catch (err: any) {
     const errorMessage = err?.message ?? "unknown";
     logObservability({ requestId, traceId, subAccountId, route, provider, model: provider === "openai" ? OPENAI_MODEL : GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: false, error: errorMessage });
