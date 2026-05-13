@@ -15,6 +15,7 @@
 import { storage } from "./storage";
 import { skipTraceLookup } from "./skip-trace";
 import { publishEventAsync, EVENT_TYPES } from "./eventBus";
+import { resolveBatchDataKey, recordBatchDataRun, CRASH_LEAD_ACCOUNT_IDS } from "./vendorConfig";
 
 const BATCH_SIZE      = 10;
 const BATCH_DELAY_MS  = 2000;
@@ -75,9 +76,9 @@ export async function runRetroSkipTrace(
   subAccountId: number,
   options: { crashOnly?: boolean } = {},
 ): Promise<RetroStats> {
-  const apiKey = process.env.BATCH_DATA || process.env.BATCHDATA_API_KEY;
+  const apiKey = resolveBatchDataKey();
   if (!apiKey) {
-    console.error("[RETRO-SKIP-TRACE] BATCH_DATA env var not set — skipping");
+    console.error("[RETRO-SKIP-TRACE] BatchData not configured (BATCHDATA_API_KEY missing) — skipping");
     return { processed: 0, found: 0, notFound: 0, failed: 0, skipped: 0 };
   }
 
@@ -193,11 +194,8 @@ export async function runRetroSkipTrace(
   return stats;
 }
 
-// Accounts that always receive crash leads regardless of sentinel_config.
-// Account 3  = Apex Marketing Automations (platform owner)
-// Account 13 = Apex Main (APEX_MAIN_ACCOUNT_ID in crashIngestPipeline)
-// Account 14 = Giovanni (GIOVANNI_ACCOUNT_ID in crashIngestPipeline)
-const ALWAYS_INCLUDE_CRASH_ACCOUNTS = new Set([3, 13, 14]);
+// Canonical set imported from vendorConfig — single source of truth for all vendor gates.
+// Contains: 3 (Apex Marketing), 13 (Apex Main), 14 (Giovanni)
 
 export async function runRetroSkipTraceAllAccounts(): Promise<void> {
   const { db }         = await import("./db");
@@ -219,7 +217,7 @@ export async function runRetroSkipTraceAllAccounts(): Promise<void> {
     const cfg = r.rows[0];
     // Always include known crash lead accounts (3, 13, 14) even if sentinel_config
     // is absent or disabled — crash leads are delivered there unconditionally.
-    if (ALWAYS_INCLUDE_CRASH_ACCOUNTS.has(acct.id) || !cfg || cfg.enabled) {
+    if (CRASH_LEAD_ACCOUNT_IDS.has(acct.id) || !cfg || cfg.enabled) {
       eligibleIds.push(acct.id);
     }
   }
@@ -231,6 +229,11 @@ export async function runRetroSkipTraceAllAccounts(): Promise<void> {
     console.log(
       `[RETRO-SKIP-TRACE] Account ${accountId}: processed=${stats.processed}` +
       ` found=${stats.found} notFound=${stats.notFound} failed=${stats.failed}`
+    );
+    recordBatchDataRun(
+      stats.processed,
+      `retro-scheduler account=${accountId}`,
+      stats.failed > 0 ? `${stats.failed} contacts failed` : null,
     );
   }
 }

@@ -8,21 +8,9 @@
 import { db } from "./db";
 import { legalAttorneys } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
+import { resolveApifyToken, recordApifyRun } from "./vendorConfig";
 
 const MARTINDALE_ACTOR = "jungle_synthesizer~martindale-scraper";
-
-function getApifyToken(): string {
-  // Check all three env var names — APIFY_API_KEY is canonical; APIFY_API_TOKEN and
-  // APIFY_TOKEN are accepted for backwards-compat.  The old code had a fatal typo:
-  // `process.env.getApifyToken()` — a call on a plain object — which throws
-  // TypeError when APIFY_API_KEY is absent.  Fixed here.
-  return (
-    process.env.APIFY_API_KEY    ||
-    process.env.APIFY_API_TOKEN  ||
-    process.env.APIFY_TOKEN      ||
-    ""
-  ).trim();
-}
 
 // Legal verticals to scrape with their Martindale practice area keys
 const SCRAPE_TARGETS = [
@@ -53,7 +41,7 @@ async function runApifyActor(input: Record<string, unknown>): Promise<string> {
   const res = await fetch(`https://api.apify.com/v2/acts/${MARTINDALE_ACTOR}/runs`, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${getApifyToken()}`,
+      "Authorization": `Bearer ${resolveApifyToken()!}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(input),
@@ -72,7 +60,7 @@ async function waitForRun(runId: string, maxWaitMs = 300000): Promise<string> {
   while (Date.now() - start < maxWaitMs) {
     await new Promise(r => setTimeout(r, 10000)); // poll every 10s
     const res = await fetch(`https://api.apify.com/v2/actor-runs/${runId}`, {
-      headers: { "Authorization": `Bearer ${getApifyToken()}` },
+      headers: { "Authorization": `Bearer ${resolveApifyToken()!}` },
     });
     const data = await res.json() as { data: { status: string; defaultDatasetId: string } };
     if (data.data.status === "SUCCEEDED") return data.data.defaultDatasetId;
@@ -86,7 +74,7 @@ async function waitForRun(runId: string, maxWaitMs = 300000): Promise<string> {
 async function fetchDataset(datasetId: string): Promise<MartindaleAttorney[]> {
   const res = await fetch(
     `https://api.apify.com/v2/datasets/${datasetId}/items?limit=1000&format=json`,
-    { headers: { "Authorization": `Bearer ${getApifyToken()}` } }
+    { headers: { "Authorization": `Bearer ${resolveApifyToken()!}` } }
   );
   if (!res.ok) throw new Error(`Dataset fetch failed: ${res.status}`);
   return res.json() as Promise<MartindaleAttorney[]>;
@@ -155,18 +143,18 @@ export async function scrapeAttorneysForVertical(vertical: string, practiceArea:
     console.log(`[APIFY] Fetched ${attorneys.length} ${label} attorneys from dataset`);
 
     const { inserted, skipped } = await upsertAttorneys(attorneys, vertical);
-    console.log(`[APIFY] ${label}: inserted=${inserted} skipped/updated=${skipped}`);
+    console.log(`[APIFY] ${label}: actor=${MARTINDALE_ACTOR} inserted=${inserted} skipped/updated=${skipped}`);
+    recordApifyRun(inserted, `attorney-scrape vertical=${vertical}`);
   } catch (err: any) {
     console.error(`[APIFY] Failed to scrape ${label}:`, err.message);
+    recordApifyRun(0, `attorney-scrape vertical=${vertical}`, err.message);
   }
 }
 
 export async function runFullAttorneyScrape(): Promise<void> {
-  const token = getApifyToken();
+  const token = resolveApifyToken();
   if (!token) {
-    console.warn(
-      "[APIFY] No Apify credential configured (checked APIFY_API_KEY / APIFY_API_TOKEN / APIFY_TOKEN) — attorney scrape skipped"
-    );
+    // resolveApifyToken() already logged the error — don't double-log
     return;
   }
   console.log("[APIFY] Credential present — actor=" + MARTINDALE_ACTOR + " starting attorney scrape for all legal verticals");

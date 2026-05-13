@@ -245,11 +245,10 @@ export async function skipTraceLookup(
 }
 
 /**
- * Get the BatchData API key — checks both variable names for compatibility.
+ * Get the BatchData API key.
+ * Re-exported from vendorConfig — canonical resolver lives there.
  */
-export function getBatchDataKey(): string | null {
-  return process.env.BATCH_DATA || process.env.BATCHDATA_API_KEY || null;
-}
+export { resolveBatchDataKey as getBatchDataKey } from "./vendorConfig";
 
 export function getCurrentMonthYear(): string {
   const now = new Date();

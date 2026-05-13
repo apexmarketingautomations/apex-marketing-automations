@@ -13,6 +13,7 @@
  */
 
 import crypto from "crypto";
+import { resolveApifyToken, recordApifyRun } from "./vendorConfig";
 
 // ── Actor identifiers ─────────────────────────────────────────────────────────
 const APIFY_BASE    = "https://api.apify.com/v2/acts";
@@ -256,18 +257,10 @@ export async function runTransportScraper(
   query:      TransportQuery,
   options:    { timeoutMs?: number; forceRepull?: boolean } = {},
 ): Promise<TransportScrapeResult> {
-  // Check all env var aliases: APIFY_API_KEY (canonical) | APIFY_API_TOKEN | APIFY_TOKEN
-  const token = (
-    process.env.APIFY_API_KEY   ||
-    process.env.APIFY_API_TOKEN ||
-    process.env.APIFY_TOKEN     ||
-    ""
-  ).trim();
+  // Canonical resolver — single source of truth for Apify credentials
+  const token = resolveApifyToken();
   if (!token) {
-    console.error(
-      "[APIFY-TRANSPORT] No Apify credential configured " +
-      "(checked APIFY_API_KEY / APIFY_API_TOKEN / APIFY_TOKEN) — transport scrape skipped"
-    );
+    // resolveApifyToken() already logged the error
     return { ok: false, results: [], actor: "", queryType: "general", queryHash: "", resultCount: 0, error: "APIFY credential not configured (APIFY_API_KEY / APIFY_API_TOKEN / APIFY_TOKEN)" };
   }
 
@@ -308,7 +301,8 @@ export async function runTransportScraper(
 
     const raw     = await res.json() as Record<string, unknown>[];
     const results = normalizeResults(actor, Array.isArray(raw) ? raw : []);
-    console.log(`[APIFY-TRANSPORT] ${actor} returned ${results.length} records`);
+    console.log(`[APIFY-TRANSPORT] ${actor} returned ${results.length} records (runId=sync)`);
+    recordApifyRun(results.length, `transport actor=${actor} queryType=${queryType}`);
     // Only lock on SUCCESS to prevent duplicate charges
     pullLog.set(queryHash, { pulledAt: new Date(), status: "success", resultCount: results.length, actor, queryType });
     return { ok: true, results, actor, queryType, queryHash, resultCount: results.length };

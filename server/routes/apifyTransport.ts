@@ -9,33 +9,14 @@
 
 import type { Express, Request, Response, NextFunction } from "express";
 import { asyncHandler } from "./helpers";
-
-// Accounts that always receive crash leads (hard-coded fallback in crashIngestPipeline).
-// The admin skip-trace button and retro skip-trace scheduler are allowed for all of these.
-//   3  = Apex Marketing Automations (platform owner)
-//   13 = Apex Main (APEX_MAIN_ACCOUNT_ID)
-//   14 = Giovanni (GIOVANNI_ACCOUNT_ID)
-const CRASH_LEAD_ACCOUNT_IDS = new Set([3, 13, 14]);
-
-// ── Vendor state (in-memory, reset on restart) ────────────────────────────────
-interface VendorRunRecord {
-  ranAt:    Date;
-  error:    string | null;
-  count:    number;
-}
-
-const _vendorState = {
-  batchData: { last: null as VendorRunRecord | null },
-  apify:     { last: null as VendorRunRecord | null },
-};
-
-export function recordBatchDataRun(count: number, error: string | null = null): void {
-  _vendorState.batchData.last = { ranAt: new Date(), error, count };
-}
-
-export function recordApifyRun(count: number, error: string | null = null): void {
-  _vendorState.apify.last = { ranAt: new Date(), error, count };
-}
+import {
+  resolveBatchDataKey,
+  resolveApifyToken,
+  recordBatchDataRun,
+  recordApifyRun,
+  getVendorRunState,
+  CRASH_LEAD_ACCOUNT_IDS,
+} from "../vendorConfig";
 
 // ── Auth helper ───────────────────────────────────────────────────────────────
 
@@ -126,11 +107,11 @@ export function registerApifyTransportRoutes(app: Express): void {
         });
       }
 
-      const apiKey = process.env.BATCH_DATA || process.env.BATCHDATA_API_KEY;
+      const apiKey = resolveBatchDataKey();
       if (!apiKey) {
         return res.status(503).json({
-          error:  "BatchData API key not configured (set BATCH_DATA or BATCHDATA_API_KEY in Railway env vars)",
-          detail: "No API key found for BATCH_DATA or BATCHDATA_API_KEY",
+          error:  "BatchData not configured — set BATCHDATA_API_KEY in Railway env vars",
+          detail: "No value found for BATCHDATA_API_KEY or BATCH_DATA",
         });
       }
 
@@ -177,17 +158,10 @@ export function registerApifyTransportRoutes(app: Express): void {
     "/api/admin/vendor-health",
     requireAdminMiddleware,
     asyncHandler(async (_req: any, res: any) => {
-      // BatchData
-      const batchDataKey = process.env.BATCH_DATA || process.env.BATCHDATA_API_KEY;
-      const batchDataConfigured = !!batchDataKey;
-
-      // Apify
-      const apifyKey =
-        process.env.APIFY_API_KEY   ||
-        process.env.APIFY_API_TOKEN ||
-        process.env.APIFY_TOKEN     ||
-        "";
-      const apifyConfigured = !!apifyKey.trim();
+      // Use the same canonical resolvers the runtime code uses — vendor-health
+      // can never diverge from runtime behaviour this way.
+      const batchDataConfigured = !!resolveBatchDataKey();
+      const apifyConfigured     = !!resolveApifyToken();
 
       // Pending BatchData jobs (crash contacts with no phone and not yet skip-traced)
       let pendingBatchDataJobs = 0;
@@ -201,7 +175,7 @@ export function registerApifyTransportRoutes(app: Express): void {
             AND NOT (tags @> ARRAY['skip-traced']::text[])
         `);
         pendingBatchDataJobs = parseInt(r.rows[0]?.cnt ?? "0", 10);
-      } catch (_e) { /* allow-silent-catch: vendor-health is best-effort; DB unavailability should not block the response */ }
+      } catch (_e) { /* allow-silent-catch: vendor-health is best-effort */ }
 
       // Pending Apify jobs (crash reports in AWAITING/PENDING status)
       let pendingApifyJobs = 0;
@@ -212,10 +186,9 @@ export function registerApifyTransportRoutes(app: Express): void {
           WHERE status IN ('AWAITING', 'PENDING') AND source = 'sentinel_auto'
         `);
         pendingApifyJobs = parseInt(r.rows[0]?.cnt ?? "0", 10);
-      } catch (_e) { /* allow-silent-catch: vendor-health is best-effort; DB unavailability should not block the response */ }
+      } catch (_e) { /* allow-silent-catch: vendor-health is best-effort */ }
 
-      const bd = _vendorState.batchData.last;
-      const ap = _vendorState.apify.last;
+      const { batchData: bd, apify: ap } = getVendorRunState();
 
       return res.json({
         batchDataConfigured,
@@ -224,13 +197,16 @@ export function registerApifyTransportRoutes(app: Express): void {
         pendingApifyJobs,
         lastBatchDataRunAt:    bd?.ranAt?.toISOString() ?? null,
         lastBatchDataCount:    bd?.count ?? null,
+        lastBatchDataSource:   bd?.source ?? null,
         lastBatchDataError:    bd?.error ?? null,
         lastApifyRunAt:        ap?.ranAt?.toISOString() ?? null,
         lastApifyCount:        ap?.count ?? null,
+        lastApifySource:       ap?.source ?? null,
         lastApifyError:        ap?.error ?? null,
+        crashLeadAccountIds:   [...CRASH_LEAD_ACCOUNT_IDS],
         envVarsPresent: {
-          BATCH_DATA:         !!process.env.BATCH_DATA,
           BATCHDATA_API_KEY:  !!process.env.BATCHDATA_API_KEY,
+          BATCH_DATA:         !!process.env.BATCH_DATA,
           APIFY_API_KEY:      !!process.env.APIFY_API_KEY,
           APIFY_API_TOKEN:    !!process.env.APIFY_API_TOKEN,
           APIFY_TOKEN:        !!process.env.APIFY_TOKEN,

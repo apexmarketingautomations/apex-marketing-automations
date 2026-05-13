@@ -24,6 +24,7 @@ import {
 import crypto from "crypto";
 import { storage } from "./storage";
 import { fetchFHPHSMVFeedSafe, type SentinelIncidentRaw } from "./sentinel";
+import { resolveBatchDataKey, recordBatchDataRun } from "./vendorConfig";
 
 const PIPELINE_ID = crypto.randomUUID().slice(0, 8);
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
@@ -206,7 +207,7 @@ async function createLeadFromCrash(
     let email: string | undefined;
     let skipTraceNotes = "Skip trace: not attempted";
 
-    const batchDataKey = process.env.BATCH_DATA || process.env.BATCHDATA_API_KEY;
+    const batchDataKey = resolveBatchDataKey();
     if (batchDataKey && incident.location) {
       try {
         const { skipTraceLookup } = await import("./skip-trace");
@@ -243,10 +244,12 @@ async function createLeadFromCrash(
           ? `Skip trace: FOUND ${traceResult.totalPersonsFound} person(s)\n${personLines.join('\n')}`
           : "Skip trace: no persons found";
 
-        console.log(`[CRASH-INGEST] Skip trace ${incident.location}: ${traceResult.totalPersonsFound} persons, ${traceResult.ownerPhone ? 'has phone' : 'no phone'}`);
+        console.log(`[BATCHDATA] skip-trace response: location=${incident.location} persons=${traceResult.totalPersonsFound} hasPhone=${!!traceResult.ownerPhone} hasEmail=${!!traceResult.ownerEmail}`);
+        recordBatchDataRun(traceResult.totalPersonsFound, `crash-ingest location=${incident.location}`);
       } catch (stErr: any) {
         skipTraceNotes = `Skip trace: failed — ${stErr.message}`;
-        console.warn(`[CRASH-INGEST] Skip trace failed for ${incident.location}:`, stErr.message);
+        console.warn(`[BATCHDATA] skip-trace failed for ${incident.location}: ${stErr.message}`);
+        recordBatchDataRun(0, `crash-ingest location=${incident.location}`, stErr.message);
       }
     }
 
