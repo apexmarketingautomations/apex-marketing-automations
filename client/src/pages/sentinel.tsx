@@ -89,7 +89,7 @@ export default function Sentinel() {
   const [location, navigate] = useLocation();
   const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_sentinel");
 
-  // ── Tab routing — use useState for reliable re-renders ──
+  // ── Tab routing — sync with URL so sidebar links work ──
   const urlParams = new URLSearchParams(location.includes("?") ? location.split("?")[1] : "");
   const initialTab = urlParams.get("tab") ?? "crash";
   const [activeTab, setActiveTabState] = useState(initialTab);
@@ -97,6 +97,12 @@ export default function Sentinel() {
     setActiveTabState(tab);
     navigate(`/sentinel?tab=${tab}`, { replace: true });
   };
+  // Keep activeTab in sync when the URL changes (e.g. sidebar clicks while already on /sentinel)
+  useEffect(() => {
+    const p = new URLSearchParams(location.includes("?") ? location.split("?")[1] : "");
+    const t = p.get("tab") ?? "crash";
+    setActiveTabState(t);
+  }, [location]);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { activeAccountId } = useAccount();

@@ -1,6 +1,8 @@
 node_modules
 dist
 .DS_Store
+veco-pilot/
+video editor/
 server/public
 vite.config.ts.*
 *.tar.gzgoogle-credentials.json

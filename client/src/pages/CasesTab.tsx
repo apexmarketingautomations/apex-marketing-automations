@@ -314,7 +314,7 @@ export function CasesTab({ onBack }: { onBack: () => void }) {
     queryKey: ["/api/cases", categoryFilter, showAll],
     queryFn: async () => {
       const params = new URLSearchParams({
-        minScore: showAll ? "25" : "40",
+        minScore: showAll ? "20" : "30",
         limit: "100",
         ...(categoryFilter !== "all" ? { category: categoryFilter } : {}),
       });

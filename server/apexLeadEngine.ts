@@ -355,86 +355,12 @@ async function fetchDBPRLicenses(): Promise<LeadSignal[]> {
   }
 }
 
-// ── FL Arrest Records (Criminal Defense leads) ────────────────────────────
+// ── FL Arrest Records — delegated to jailBookingPipeline (Nimble, all 11 FL counties) ──
+// Direct county-specific scraping removed. jailBookingPipeline runs every 60 min
+// and covers all 11 SW/Central FL counties via Nimble agents.
 
 async function fetchArrestRecords(): Promise<LeadSignal[]> {
-  const signals: LeadSignal[] = [];
-
-  // Lee County Sheriff booking log (public)
-  try {
-    const arrests = await safeJsonFetch(
-      'https://www.sheriffleefl.org/api/arrests/recent?limit=100',
-      'Lee Sheriff arrests',
-      8000
-    );
-    if (arrests) {
-      for (const a of arrests) {
-        const charges = (a.charges || []).map((c: any) => c.description || c).join(', ');
-        const isDUI = charges.toLowerCase().includes('dui') || charges.toLowerCase().includes('dwi');
-        const isCriminal = charges.toLowerCase().includes('felony') || charges.toLowerCase().includes('battery') ||
-          charges.toLowerCase().includes('assault') || charges.toLowerCase().includes('theft');
-        if (!isDUI && !isCriminal) continue;
-
-        signals.push({
-          id: a.booking_number || crypto.randomUUID(),
-          vertical: 'legal',
-          subVertical: isDUI ? 'traffic_dui' : 'criminal_defense',
-          signalType: isDUI ? 'dui_arrest' : 'criminal_arrest',
-          county: 'LEE',
-          state: 'FL',
-          subjectName: `${a.first_name || ''} ${a.last_name || ''}`.trim(),
-          address: a.address,
-          chargeDescription: charges,
-          caseNumber: a.booking_number,
-          description: `${isDUI ? 'DUI' : 'Criminal'} arrest — ${charges.slice(0, 80)}`,
-          urgency: isDUI ? 'high' : 'medium',
-          serviceCategories: isDUI ? ['traffic_dui_attorney'] : ['criminal_defense_attorney'],
-          legalVertical: isDUI ? 'traffic' : 'criminal',
-          rawData: a,
-          detectedAt: new Date(a.booking_date || Date.now()),
-        });
-      }
-    }
-  } catch (err: any) {
-    console.warn('[APEX-ENGINE] Lee arrests failed:', err.message);
-  }
-
-  // Hillsborough County booking (public JSON feed)
-  try {
-    const bookings = await safeJsonFetch(
-      'https://apps.hcso.net/api/bookings?limit=100&format=json',
-      'Hillsborough bookings',
-      8000
-    );
-    if (bookings) {
-      for (const b of bookings) {
-        const charges = (b.charges || b.offenses || []).join(', ');
-        if (!charges) continue;
-        const isDUI = charges.toLowerCase().includes('dui');
-        signals.push({
-          id: b.booking_id || crypto.randomUUID(),
-          vertical: 'legal',
-          subVertical: isDUI ? 'traffic_dui' : 'criminal_defense',
-          signalType: isDUI ? 'dui_arrest' : 'criminal_arrest',
-          county: 'HILLSBOROUGH',
-          state: 'FL',
-          subjectName: b.name || b.defendant_name,
-          chargeDescription: charges,
-          caseNumber: b.booking_id,
-          description: `${isDUI ? 'DUI' : 'Criminal'} arrest — ${charges.slice(0, 80)}`,
-          urgency: isDUI ? 'high' : 'medium',
-          serviceCategories: isDUI ? ['traffic_dui_attorney'] : ['criminal_defense_attorney'],
-          legalVertical: isDUI ? 'traffic' : 'criminal',
-          rawData: b,
-          detectedAt: new Date(b.booking_date || Date.now()),
-        });
-      }
-    }
-  } catch (err: any) {
-    console.warn('[APEX-ENGINE] Hillsborough bookings failed:', err.message);
-  }
-
-  return signals;
+  return []; // handled by jailBookingPipeline
 }
 
 // ── FL Court Filings (Family Law leads) ───────────────────────────────────

@@ -142,7 +142,7 @@ export async function registerRoutes(
     try { await db.execute({ sql: "SELECT 1 FROM intelligence_cases LIMIT 1", params: [] } as any); }
     catch (_tableErr) { /* allow-silent-catch: tables not created yet on first deploy */ return res.json({ cases: [], total: 0 }); }
 
-    const minScore  = Number(req.query.minScore  ?? 35);
+    const minScore  = Number(req.query.minScore  ?? 25);
     const category  = req.query.category as string | undefined;
     const status    = req.query.status   as string || "open";
     const limit     = Math.min(Number(req.query.limit ?? 50), 200);

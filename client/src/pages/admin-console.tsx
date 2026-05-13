@@ -108,6 +108,24 @@ function AdminSkipTracePanel() {
     }
   }
 
+  async function runEnrichLegalSignals() {
+    setRunning(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/sentinel/enrich-legal-signals", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      setResult(res.ok ? `Enriched ${data.enriched}/${data.checked} signals` : (data.error || "Failed"));
+    } catch (e: any) {
+      setResult("Error: " + e.message);
+    } finally {
+      setRunning(false);
+    }
+  }
+
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
       className="bg-[#0a0a0a] border border-cyan-500/20 rounded-2xl p-6"
@@ -160,6 +178,13 @@ function AdminSkipTracePanel() {
           className="px-4 py-2 rounded-lg text-xs font-bold border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 disabled:opacity-40 transition-all"
         >
           {running ? "Running…" : "⚡ Batch Skip Trace Account"}
+        </button>
+        <button
+          onClick={runEnrichLegalSignals}
+          disabled={running}
+          className="px-4 py-2 rounded-lg text-xs font-bold border border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 disabled:opacity-40 transition-all"
+        >
+          {running ? "Running…" : "🧬 Enrich Legal Signals (no-phone)"}
         </button>
       </div>
 

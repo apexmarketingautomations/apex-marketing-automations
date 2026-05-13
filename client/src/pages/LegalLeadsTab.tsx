@@ -16,13 +16,12 @@ import { Input } from "@/components/ui/input";
 // ── Types ────────────────────────────────────────────────────────────────────
 
 type LegalSignalType =
-  | "dui_arrest" | "arrest_record" | "divorce_filing"
+  | "dui_arrest" | "arrest" | "arrest_record" | "jail_booking" | "divorce_filing"
   | "domestic_violence_injunction" | "custody_modification" | "probate_filing"
   | "osha_incident" | "fda_recall" | "cpsc_recall"
   | "license_suspension" | "traffic_violation"
-  // home_service types (new_business_filing, salon_license) removed — belong in home pipeline
 
-type LegalCategory = "criminal" | "family" | "traffic" | "personal_injury";
+type LegalCategory = "criminal" | "family" | "traffic" | "personal_injury" | "workers_comp";
 
 interface LegalSignal {
   id: number;
@@ -61,7 +60,7 @@ const LEGAL_CATEGORIES: { key: LegalCategory; label: string; icon: any; color: s
     icon: Shield,
     color: "text-red-400",
     desc: "Arrests, DUI, felonies",
-    signals: ["dui_arrest", "arrest_record"],
+    signals: ["dui_arrest", "arrest", "arrest_record", "jail_booking"],
   },
   {
     key: "family",
@@ -87,8 +86,14 @@ const LEGAL_CATEGORIES: { key: LegalCategory; label: string; icon: any; color: s
     desc: "OSHA incidents, recalls, slip & fall",
     signals: ["osha_incident", "fda_recall", "cpsc_recall"],
   },
-  // NOTE: "business" (salon_license, new_business_filing) are home/local service leads.
-  // They are displayed in the Home & Property section, not here.
+  {
+    key: "workers_comp",
+    label: "Workers Comp",
+    icon: Shield,
+    color: "text-yellow-400",
+    desc: "OSHA workplace violations",
+    signals: ["osha_incident"],
+  },
 ];
 
 const URGENCY_CONFIG = {
@@ -100,7 +105,9 @@ const URGENCY_CONFIG = {
 
 const SIGNAL_LABELS: Record<string, { label: string; icon: any; color: string }> = {
   dui_arrest:                     { label: "DUI Arrest",             icon: Car,       color: "text-red-400" },
+  arrest:                         { label: "Criminal Arrest",         icon: Shield,    color: "text-red-400" },
   arrest_record:                  { label: "Criminal Arrest",         icon: Shield,    color: "text-red-400" },
+  jail_booking:                   { label: "Jail Booking",            icon: Shield,    color: "text-red-400" },
   divorce_filing:                 { label: "Divorce Filing",          icon: Scale,     color: "text-pink-400" },
   domestic_violence_injunction:   { label: "DV Injunction",           icon: AlertTriangle, color: "text-red-400" },
   custody_modification:           { label: "Custody Case",            icon: Users,     color: "text-pink-400" },
@@ -328,11 +335,11 @@ export function LegalLeadsTab({ onBack }: { onBack: () => void }) {
 
   const counts = {
     all: signals.length,
-    criminal: signals.filter(s => ["dui_arrest", "arrest_record"].includes(s.signalType)).length,
+    criminal: signals.filter(s => ["dui_arrest", "arrest", "arrest_record", "jail_booking"].includes(s.signalType)).length,
     family: signals.filter(s => ["divorce_filing", "domestic_violence_injunction", "custody_modification", "probate_filing"].includes(s.signalType)).length,
     traffic: signals.filter(s => ["license_suspension", "traffic_violation"].includes(s.signalType)).length,
     personal_injury: signals.filter(s => ["osha_incident", "fda_recall", "cpsc_recall"].includes(s.signalType)).length,
-    business: signals.filter(s => ["new_business_filing", "salon_license"].includes(s.signalType)).length,
+    workers_comp: signals.filter(s => s.signalType === "osha_incident").length,
   };
 
   if (selectedSignal) {

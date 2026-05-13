@@ -498,111 +498,20 @@ async function fetchFlBusinessLicenses(): Promise<RawSignal[]> {
 // ── Main pipeline cycle ───────────────────────────────────────────────────────
 
 
-// ── Legal: Florida Arrest Records (free — Sunshine Law) ──────────────────────
+// ── Legal: FL Arrests — delegated to jailBookingPipeline (Nimble, all 11 FL counties) ──
+// These county clerk API URLs are dead. Arrest data now flows through jailBookingPipeline.ts
+// which runs every 60 min via Nimble agents covering all 11 SW/Central FL counties.
 
 async function fetchFloridaArrests(): Promise<RawSignal[]> {
-  const signals: RawSignal[] = [];
-  const since = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
-
-  const COUNTY_ARREST_APIS = [
-    { name: "LEE",       url: "https://www.leeclerk.org/api/arrests?after=" + since + "&limit=100" },
-    { name: "COLLIER",   url: "https://www.collierclerk.com/api/arrests?after=" + since + "&limit=100" },
-    { name: "CHARLOTTE", url: "https://www.charlotteclerk.com/api/arrests?after=" + since + "&limit=100" },
-    { name: "SARASOTA",  url: "https://www.sarasotaclerk.com/api/arrests?after=" + since + "&limit=100" },
-  ];
-
-  for (const county of COUNTY_ARREST_APIS) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
-      const res = await fetch(county.url, {
-        headers: { "Accept": "application/json", "User-Agent": "ApexLegalSentinel/1.0" },
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-      if (!res.ok) continue;
-      const records = await res.json() as any[];
-      const arr = Array.isArray(records) ? records : records?.records || [];
-      for (const rec of arr) {
-        const charge = (rec.charge || rec.offense || "").toUpperCase();
-        const isDUI = charge.includes("DUI") || charge.includes("DWI") || charge.includes("DRIVING UNDER");
-        const isCriminal = charge.includes("FELONY") || charge.includes("ASSAULT") || charge.includes("BATTERY") || charge.includes("THEFT") || charge.includes("DRUG");
-        if (!isDUI && !isCriminal) continue;
-        signals.push({
-          signalType: isDUI ? "dui_arrest" : "arrest_record",
-          sourceId: rec.id || rec.caseNumber || rec.bookingNumber || String(Math.random()),
-          county: county.name,
-          address: rec.address || county.name + " County, FL",
-          ownerName: rec.name || rec.defendant || null,
-          ownerPhone: null,
-          serviceCategories: isDUI ? ["dui_defense", "criminal_defense", "traffic_law"] : ["criminal_defense"],
-          urgency: isDUI ? "high" : "medium",
-          description: (isDUI ? "DUI/DWI Arrest" : "Criminal Arrest") + " — " + (rec.charge || charge) + " — " + county.name + " County",
-          rawData: rec,
-          detectedAt: new Date(rec.arrestDate || rec.bookingDate || Date.now()),
-        });
-      }
-    } catch (err: any) {
-      if (err.name !== "AbortError") console.warn("[HS-PIPELINE] Arrest fetch failed for " + county.name + ":", err.message);
-    }
-  }
-
-  console.log("[HS-PIPELINE] Arrest signals: " + signals.length);
-  return signals;
+  return []; // handled by jailBookingPipeline
 }
 
-// ── Legal: Florida Court Filings (divorce, custody, injunctions) ──────────────
+// ── Legal: Court Filings — dead county clerk JSON APIs removed ────────────────
+// leeclerk.org, collierclerk.com, sarasotaclerk.com do not expose public JSON APIs.
+// Family court data will be added when real FL eCourt API access is obtained.
 
 async function fetchFloridaCourtFilings(): Promise<RawSignal[]> {
-  const signals: RawSignal[] = [];
-  const today = new Date().toISOString().split("T")[0];
-
-  const COURT_APIS = [
-    { county: "LEE",      url: "https://www.leeclerk.org/api/filings?date=" + today + "&type=family&limit=100" },
-    { county: "COLLIER",  url: "https://www.collierclerk.com/api/filings?date=" + today + "&type=family&limit=100" },
-    { county: "SARASOTA", url: "https://www.sarasotaclerk.com/api/filings?date=" + today + "&type=family&limit=100" },
-  ];
-
-  for (const court of COURT_APIS) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
-      const res = await fetch(court.url, {
-        headers: { "Accept": "application/json", "User-Agent": "ApexLegalSentinel/1.0" },
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-      if (!res.ok) continue;
-      const data = await res.json() as any;
-      const records = Array.isArray(data) ? data : data?.filings || [];
-      for (const rec of records) {
-        const caseType = (rec.caseType || rec.type || "").toUpperCase();
-        const isDivorce = caseType.includes("DIVORCE") || caseType.includes("DISSOLUTION");
-        const isCustody = caseType.includes("CUSTODY") || caseType.includes("PATERNITY");
-        const isInjunction = caseType.includes("INJUNCTION") || caseType.includes("DOMESTIC");
-        const isProbate = caseType.includes("PROBATE") || caseType.includes("ESTATE");
-        if (!isDivorce && !isCustody && !isInjunction && !isProbate) continue;
-        signals.push({
-          signalType: isDivorce ? "divorce_filing" : isInjunction ? "domestic_violence_injunction" : isProbate ? "probate_filing" : "custody_modification",
-          sourceId: rec.caseNumber || rec.id || String(Math.random()),
-          county: court.county,
-          address: court.county + " County Court, FL",
-          ownerName: rec.petitioner || rec.plaintiff || null,
-          ownerPhone: null,
-          serviceCategories: isInjunction ? ["family_law", "criminal_defense"] : ["family_law", "divorce_attorney"],
-          urgency: isInjunction ? "high" : "medium",
-          description: caseType + " Filing — " + court.county + " County — Case #" + (rec.caseNumber || "N/A"),
-          rawData: rec,
-          detectedAt: new Date(rec.filedDate || rec.date || Date.now()),
-        });
-      }
-    } catch (err: any) {
-      if (err.name !== "AbortError") console.warn("[HS-PIPELINE] Court filings failed for " + court.county + ":", err.message);
-    }
-  }
-
-  console.log("[HS-PIPELINE] Court filing signals: " + signals.length);
-  return signals;
+  return []; // placeholder — no live public court filing API available
 }
 
 // ── Legal: OSHA Workplace Incidents ──────────────────────────────────────────

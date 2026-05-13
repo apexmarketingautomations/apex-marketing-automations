@@ -142,8 +142,8 @@ function scoreCase(signals: LegalSignal[], category: string, county: string): Sc
     localRelevance:    Math.round(localRelevance),
     opportunityScore:  Math.round((financialScore + consumerImpact) / 2),
     compositeScore,
-    // Must meet threshold AND have some contact viability OR be a high-severity recall/osha
-    actionable: compositeScore >= 45 && (outreachViability >= 20 || category === "recall" || category === "osha"),
+    // Actionable if score is high enough; recall/osha/arrest are always outreach-viable via entity name
+    actionable: compositeScore >= 40 && (outreachViability >= 15 || category === "recall" || category === "osha" || category === "arrest"),
   };
 }
 
@@ -346,7 +346,7 @@ async function upsertCase(
 // ── Main Processing Cycle ───────────────────────────────────────────────────
 
 const MIN_SIGNALS_TO_GROUP = 1;  // Even a single signal creates a case
-const SUPPRESSION_THRESHOLD = 25; // Cases below this score are suppressed
+const SUPPRESSION_THRESHOLD = 20; // Cases below this score are suppressed
 
 let lastRunAt: Date | null = null;
 
@@ -358,7 +358,7 @@ export async function runCaseGroupingCycle(): Promise<void> {
 
   console.log(`[CASE-INTEL] Cycle start — processing signals since ${sinceDate.toISOString()}`);
 
-  // Load qualified signals that have a subject name (grouped signals need an entity)
+  // Load all non-disqualified signals that have a subject name
   const signals = await db
     .select()
     .from(legalSignals)
@@ -367,6 +367,7 @@ export async function runCaseGroupingCycle(): Promise<void> {
         not(eq(legalSignals.status, "disqualified")),
         gte(legalSignals.createdAt, sinceDate),
         not(isNull(legalSignals.subjectName)),
+        not(inArray(legalSignals.signalType, ["business_growth_signal"])),
       )
     )
     .orderBy(desc(legalSignals.detectedAt))

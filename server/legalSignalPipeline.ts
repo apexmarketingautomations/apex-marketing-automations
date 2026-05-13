@@ -132,6 +132,14 @@ export function getLegalPipelineStats(): PipelineStats {
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
+const MAX_SIGNAL_AGE_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+
+function normalizeDetectedAt(d: Date | undefined): Date {
+  if (!d) return new Date();
+  const age = Date.now() - d.getTime();
+  return age > MAX_SIGNAL_AGE_MS ? new Date() : d;
+}
+
 function buildSignalHash(s: RawLegalSignal): string {
   // Include ISO week so signals can re-insert weekly instead of being permanently deduped
   const week = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000));
@@ -202,82 +210,14 @@ function classifyCharge(charge: string): { vertical: LegalVertical; urgency: "cr
   return { vertical: "criminal", urgency: "medium" };
 }
 
-// ── SOURCE 1: FDLE — Florida Dept of Law Enforcement Arrest Data ────────────
-// Real public API. FDLE provides offense/arrest data via CJIS network.
-// This uses the public records endpoint which is accessible without auth.
+// ── SOURCE 1: FL Arrests — delegated to jailBookingPipeline (Nimble, all 11 FL counties) ──
+// Direct Lee-County-only scraping removed. jailBookingPipeline handles all county arrest
+// intake via Nimble agents, runs every 60 min, and covers all 11 SW/Central FL counties.
 
 async function fetchFlArrests(): Promise<RawLegalSignal[]> {
-  const signals: RawLegalSignal[] = [];
-
-  // FDLE Public Arrest Search — real endpoint
-  // Also try Lee County Sheriff (one of few with actual public JSON)
-  const sources = [
-    {
-      url: "https://www.leeclerk.org/api/arrest/recent?days=1&limit=100",
-      county: "LEE",
-      nameField: ["defendant_name", "name", "full_name"],
-      addressField: ["address", "home_address", "defendant_address"],
-      chargeField: ["charge", "charges", "offense_description"],
-      caseField: ["case_number", "arrest_number", "booking_number"],
-      dobField: ["dob", "date_of_birth", "birthdate"],
-    },
-    // Lee County real mugshot/booking data
-    {
-      url: "https://bocc.lee.fl.us/PublicRecords/Inmates/GetInmates?pageSize=50",
-      county: "LEE",
-      nameField: ["FullName", "Name", "full_name"],
-      addressField: ["Address", "HomeAddress"],
-      chargeField: ["ChargeDescription", "Charges", "charge"],
-      caseField: ["CaseNumber", "BookingNumber"],
-      dobField: ["DateOfBirth", "DOB"],
-    },
-  ];
-
-  for (const src of sources) {
-    const data = await safeFetch(src.url);
-    if (!data) continue;
-
-    const items = Array.isArray(data) ? data
-      : (data?.results ?? data?.inmates ?? data?.arrests ?? data?.data ?? []);
-    if (!Array.isArray(items) || items.length === 0) continue;
-
-    for (const item of items.slice(0, 50)) {
-      const name = src.nameField.map(f => item[f]).find(Boolean) || "";
-      const address = src.addressField.map(f => item[f]).find(Boolean) || "";
-      const chargeRaw = src.chargeField.map(f => item[f]).find(Boolean) || "";
-      const caseNum = src.caseField.map(f => item[f]).find(Boolean) || "";
-      const dob = src.dobField.map(f => item[f]).find(Boolean) || "";
-
-      const chargeStr = Array.isArray(chargeRaw)
-        ? chargeRaw.map((c: any) => c.description ?? c.charge ?? c).join(", ")
-        : String(chargeRaw);
-
-      if (!chargeStr || chargeStr.length < 3) continue;
-
-      const { vertical, urgency } = classifyCharge(chargeStr);
-      const isHighValue = urgency === "critical" || urgency === "high";
-      if (!isHighValue) continue; // only pull high-value arrests
-
-      const sourceId = `${src.county}-ARREST-${caseNum || name || crypto.randomUUID().slice(0, 8)}`;
-
-      signals.push({
-        signalType: chargeStr.toUpperCase().includes("DUI") ? "dui_arrest" : "arrest",
-        legalVertical: vertical,
-        county: src.county,
-        subjectName: name || undefined,
-        subjectAddress: address || undefined,
-        subjectDob: dob || undefined,
-        chargeDescription: chargeStr.slice(0, 500),
-        caseNumber: caseNum || undefined,
-        urgency,
-        sourceId,
-        rawData: item,
-        detectedAt: new Date(),
-      });
-    }
-  }
-
-  return signals;
+  // Arrest data flows through jailBookingPipeline.ts → legalSignals.
+  // This function intentionally returns empty to avoid Lee-County-only duplication.
+  return [];
 }
 
 // ── SOURCE 2: OSHA WORKPLACE INCIDENTS — Federal API (WORKS) ─────────────────
@@ -286,7 +226,7 @@ async function fetchOshaIncidents(): Promise<RawLegalSignal[]> {
   const signals: RawLegalSignal[] = [];
   const data = await safeFetch(
     "https://data.dol.gov/get/osha_inspection/rows/50/offset/0" +
-    "?state=FL&close_case_date=2026-01-01&order_by=open_date&order_dir=desc",
+    "?state=FL&order_by=open_date&order_dir=desc",
     20000
   );
   if (!data) return signals;
@@ -512,7 +452,7 @@ async function skipTraceSubject(signal: RawLegalSignal): Promise<string | null> 
 
 // ── GOOGLE PLACES ENRICHMENT — Get phone for company-based leads ──────────────
 
-async function findBusinessPhone(companyName: string, county: string): Promise<string | null> {
+export async function findBusinessPhone(companyName: string, county: string): Promise<string | null> {
   if (!GOOGLE_PLACES_KEY || !companyName) return null;
 
   try {
@@ -553,7 +493,7 @@ function scoreLegalLead(signal: RawLegalSignal): { score: number; qualifies: boo
 
   return {
     score: Math.min(score, 100),
-    qualifies: score >= 50,
+    qualifies: score >= 40,
     expiresAt: new Date(Date.now() + claimHours * 3600_000),
   };
 }
@@ -808,6 +748,7 @@ async function runLegalCycle(subAccountId: number): Promise<void> {
         legalVertical:     enrichedSignal.legalVertical,
         county:            enrichedSignal.county,
         subjectName:       enrichedSignal.subjectName,
+        subjectPhone:      phone || undefined,
         subjectAddress:    enrichedSignal.subjectAddress,
         subjectDob:        enrichedSignal.subjectDob,
         chargeDescription: enrichedSignal.chargeDescription,
@@ -817,7 +758,7 @@ async function runLegalCycle(subAccountId: number): Promise<void> {
         urgency:           enrichedSignal.urgency,
         status:            "raw",
         rawData:           enrichedSignal.rawData,
-        detectedAt:        enrichedSignal.detectedAt,
+        detectedAt:        normalizeDetectedAt(enrichedSignal.detectedAt),
       }).returning();
 
       inserted++;

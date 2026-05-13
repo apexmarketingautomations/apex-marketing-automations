@@ -1095,16 +1095,18 @@ export function registerRetroSkipTraceRoute(app: any) {
     const { desc, inArray, count } = await import("drizzle-orm");
 
     const CATEGORY_SIGNALS: Record<string, string[]> = {
-      criminal:        ["dui_arrest", "arrest_record"],
+      criminal:        ["dui_arrest", "arrest", "jail_booking"],
       family:          ["divorce_filing", "domestic_violence_injunction", "custody_modification", "probate_filing"],
       traffic:         ["license_suspension", "traffic_violation"],
       personal_injury: ["osha_incident", "fda_recall", "cpsc_recall"],
+      workers_comp:    ["osha_incident"],
       all:             [],
     };
 
     const ALL_LEGAL_TYPES = [
-      "dui_arrest", "arrest_record", "divorce_filing", "domestic_violence_injunction",
-      "custody_modification", "probate_filing", "osha_incident", "fda_recall", "cpsc_recall",
+      "dui_arrest", "arrest", "jail_booking",
+      "divorce_filing", "domestic_violence_injunction", "custody_modification", "probate_filing",
+      "osha_incident", "fda_recall", "cpsc_recall",
       "license_suspension", "traffic_violation",
     ];
 
@@ -1199,5 +1201,51 @@ export function registerRetroSkipTraceRoute(app: any) {
       .returning();
 
     res.json({ success: true, rule: updated });
+  }));
+
+  // POST /api/sentinel/enrich-legal-signals — retroactively enrich legal signals missing phones
+  app.post("/api/sentinel/enrich-legal-signals", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user || (user.isAdmin !== "true" && user.role !== "DEV_ADMIN")) {
+      return res.status(403).json({ error: "admin only" });
+    }
+
+    const { db } = await import("../db");
+    const { legalSignals } = await import("@shared/schema");
+    const { isNull, not, eq, inArray } = await import("drizzle-orm");
+
+    // Find qualified signals without phones (company-based signals only)
+    const missing = await db.select().from(legalSignals)
+      .where(
+        isNull(legalSignals.subjectPhone)
+      )
+      .limit(200);
+
+    const company_types = ["osha_incident", "fda_recall", "cpsc_recall", "business_growth_signal"];
+    const toEnrich = missing.filter(s =>
+      company_types.includes(s.signalType) && s.subjectName && s.county
+    );
+
+    let enriched = 0;
+    let { findBusinessPhone } = {} as any;
+    try {
+      ({ findBusinessPhone } = await import("../legalSignalPipeline"));
+    } catch { /* findBusinessPhone may not be exported yet */ }
+
+    if (typeof findBusinessPhone === "function") {
+      for (const sig of toEnrich) {
+        try {
+          const phone = await findBusinessPhone(sig.subjectName!, sig.county!);
+          if (phone) {
+            await db.update(legalSignals)
+              .set({ subjectPhone: phone })
+              .where(eq(legalSignals.id, sig.id));
+            enriched++;
+          }
+        } catch { /* allow-silent-catch: per-signal errors must not abort the batch */ }
+      }
+    }
+
+    res.json({ ok: true, checked: toEnrich.length, enriched });
   }));
 }
