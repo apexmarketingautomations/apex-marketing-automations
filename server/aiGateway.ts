@@ -732,7 +732,9 @@ export async function aiChat(
             console.warn(`[AI-GATEWAY] OpenAI attempt ${attempt + 1} failed (retrying): ${err?.message}`);
             continue;
           }
-          throw err;
+          // Do NOT throw — fall through to Gemini fallback below
+          console.warn(`[AI-GATEWAY] OpenAI failed (${err?.message}), falling back to Gemini`);
+          break;
         }
       }
     }
@@ -850,7 +852,9 @@ export async function* aiChatStream(
             console.warn(`[AI-GATEWAY] OpenAI stream attempt ${attempt + 1} failed (retrying): ${err?.message}`);
             continue;
           }
-          throw err;
+          // Do NOT throw — fall through to Gemini streaming fallback below
+          console.warn(`[AI-GATEWAY] OpenAI stream failed (${err?.message}), falling back to Gemini`);
+          break;
         }
       }
     }
@@ -1002,7 +1006,9 @@ export async function aiChatWithToolCalls(
             console.warn(`[AI-GATEWAY] OpenAI (tools) attempt ${attempt + 1} failed (retrying): ${err?.message}`);
             continue;
           }
-          throw err;
+          // Do NOT throw — fall through to Gemini tool-call fallback below
+          console.warn(`[AI-GATEWAY] OpenAI (tools) failed (${err?.message}), falling back to Gemini`);
+          break;
         }
       }
     }
