@@ -688,6 +688,14 @@ async function validateMetaCredentials() {
   }
 
   try {
+    const { startArrestIngestScheduler } = await import("./arrestIngestPipeline");
+    startArrestIngestScheduler();
+    console.log("[STARTUP] ✅ Arrest Ingest Pipeline started — direct Nimble REST + Apify fallback, every 6h (LEE/CHARLOTTE/COLLIER/HENDRY/GLADES/SARASOTA/MANATEE/POLK/HILLSBOROUGH/PINELLAS/PASCO)");
+  } catch (arrestErr: any) {
+    console.error("[STARTUP] Arrest Ingest Pipeline failed to start (non-fatal):", arrestErr?.message);
+  }
+
+  try {
     const { startHomeServicePipeline } = await import("./homeServiceSignalPipeline");
     startHomeServicePipeline();
     console.log("[STARTUP] ✅ Home Service pipeline started — FL roofing/plumbing/HVAC/pest-control signals");
