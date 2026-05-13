@@ -958,9 +958,13 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async getSentinelIncidents(subAccountId: number, limit = 200) {
+  async getSentinelIncidents(subAccountId: number, limit = 5000) {
+    const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     return db.select().from(sentinelIncidents)
-      .where(eq(sentinelIncidents.subAccountId, subAccountId))
+      .where(and(
+        eq(sentinelIncidents.subAccountId, subAccountId),
+        gte(sentinelIncidents.detectedAt, since30d)
+      ))
       .orderBy(desc(sentinelIncidents.detectedAt))
       .limit(limit);
   }

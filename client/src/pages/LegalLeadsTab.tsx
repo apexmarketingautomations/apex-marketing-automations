@@ -298,14 +298,17 @@ export function LegalLeadsTab({ onBack }: { onBack: () => void }) {
 
   const { data: signalsData, isLoading, refetch } = useQuery({
     queryKey: ["/api/sentinel/legal-signals", activeAccountId, activeCategory],
-    queryFn: () => apiRequest("GET",
-      `/api/sentinel/legal-signals?subAccountId=${activeAccountId}&category=${activeCategory}&limit=50`
-    ),
+    queryFn: async () => {
+      const res = await apiRequest("GET",
+        `/api/sentinel/legal-signals?subAccountId=${activeAccountId}&category=${activeCategory}&limit=50`
+      );
+      return res.json();
+    },
     refetchInterval: 60000,
     enabled: !!activeAccountId,
   });
 
-  const signals: LegalSignal[] = signalsData?.signals || signalsData || [];
+  const signals: LegalSignal[] = Array.isArray(signalsData) ? signalsData : (signalsData?.signals ?? []);
 
   const filtered = signals.filter(s => {
     if (!search) return true;
@@ -549,11 +552,14 @@ export function DistributionTab({ onBack }: { onBack: () => void }) {
 
   const { data: rulesData, isLoading } = useQuery({
     queryKey: ["/api/sentinel/distribution-rules", activeAccountId],
-    queryFn: () => apiRequest("GET", `/api/sentinel/distribution-rules?subAccountId=${activeAccountId}`),
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/sentinel/distribution-rules?subAccountId=${activeAccountId}`);
+      return res.json();
+    },
     enabled: !!activeAccountId,
   });
 
-  const rules: DistributionRule[] = rulesData?.rules || rulesData || [];
+  const rules: DistributionRule[] = Array.isArray(rulesData) ? rulesData : (rulesData?.rules ?? []);
 
   const toggleMutation = useMutation({
     mutationFn: async ({ id, active }: { id: number; active: boolean }) => {

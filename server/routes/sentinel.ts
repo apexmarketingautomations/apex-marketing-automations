@@ -238,7 +238,12 @@ export function registerSentinelRoutes(app: Express) {
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const { allowed, plan } = await requirePlanFeature(subAccountId, 'sentinel');
     if (!allowed) return res.status(403).json({ error: "upgrade_required", feature: "sentinel", currentPlan: plan, requiredPlan: "pro" });
-    const incidents = await storage.getSentinelIncidents(subAccountId);
+    // Parse optional since/limit query params; default = last 30 days, up to 5000
+    const since = req.query.since
+      ? new Date(req.query.since as string)
+      : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const limit = Math.min(parseInt(req.query.limit as string) || 5000, 10000);
+    const incidents = await storage.getSentinelIncidentsFiltered(subAccountId, { since, limit });
     res.json(incidents);
   }));
 
