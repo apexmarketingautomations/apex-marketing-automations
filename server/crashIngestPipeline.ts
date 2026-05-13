@@ -59,6 +59,8 @@ interface PollCycleSummary {
   countInserted: number;
   countSkipped: number;
   countSkippedDuplicateFhpId: number;
+  countExistingRawReconciled: number;
+  countAlreadyConverted: number;
   countConvertedToLeads: number;
   countFailed: number;
   pollEnd: string;
@@ -333,10 +335,12 @@ async function runIngestCycle(
   incidents: SentinelIncidentRaw[],
   traceId: string,
   defaultSubAccountId: number,
-): Promise<{ inserted: number; skipped: number; skippedDuplicateFhpId: number; leads: number; failed: number }> {
+): Promise<{ inserted: number; skipped: number; skippedDuplicateFhpId: number; existingRawReconciled: number; alreadyConverted: number; leads: number; failed: number }> {
   let inserted = 0;
   let skipped = 0;
   let skippedDuplicateFhpId = 0;
+  let existingRawReconciled = 0;
+  let alreadyConverted = 0;
   let leads = 0;
   let failed = 0;
 
@@ -371,11 +375,34 @@ async function runIngestCycle(
         const existingByFhpId = await storage.getSentinelAutoCrashReportByFhpIncidentId(incident.id);
         if (existingByFhpId) {
           skippedDuplicateFhpId++;
+          existingRawReconciled++;
           console.log(
-            `[CRASH-INGEST] Skipping resend of FHP incident id=${incident.id} — ` +
-            `already recorded as sentinel_auto report ${existingByFhpId.id} (${existingByFhpId.reportNumber}); ` +
-            `traceId=${traceId}`,
+            `[CRASH-INGEST] Existing FHP incident found; raw insert skipped, downstream reconciliation continuing — ` +
+            `id=${incident.id} reportId=${existingByFhpId.id} (${existingByFhpId.reportNumber}) ` +
+            `processedToLead=${existingByFhpId.processedToLead}; traceId=${traceId}`,
           );
+          if (existingByFhpId.processedToLead) {
+            alreadyConverted++;
+          } else if (isQualifyingCrash(incident)) {
+            const leadCreated = await createLeadFromCrash(existingByFhpId, {
+              type: incident.type,
+              location: incident.location,
+              county: incident.county,
+              severity: incident.severity,
+              received: incident.received,
+              remarks: incident.remarks,
+              googleMaps: incident.googleMaps,
+              lat: incident.lat,
+              lng: incident.lng,
+              ingestTraceId: traceId,
+            }, defaultSubAccountId);
+            if (leadCreated) {
+              leads++;
+              emitCrashLeadCreated(defaultSubAccountId, existingByFhpId.id, incident.severity || "unknown", incident.location || "unknown");
+            } else {
+              console.warn(`[CRASH-INGEST] Reconciliation lead creation failed for existing report ${existingByFhpId.id} — will retry in recovery pass`);
+            }
+          }
           continue;
         }
       }
@@ -494,7 +521,7 @@ async function runIngestCycle(
     }
   }
 
-  return { inserted, skipped, skippedDuplicateFhpId, leads, failed };
+  return { inserted, skipped, skippedDuplicateFhpId, existingRawReconciled, alreadyConverted, leads, failed };
 }
 
 async function runLeadRecoveryPass(defaultSubAccountId: number): Promise<number> {
@@ -626,7 +653,9 @@ async function pollCycle(): Promise<void> {
       responseStatus: "error",
       httpStatus: feedResult.httpStatus,
       countReturned: 0, countParsed: 0, countInserted: 0,
-      countSkipped: 0, countSkippedDuplicateFhpId: 0, countConvertedToLeads: 0, countFailed: 1,
+      countSkipped: 0, countSkippedDuplicateFhpId: 0,
+      countExistingRawReconciled: 0, countAlreadyConverted: 0,
+      countConvertedToLeads: 0, countFailed: 1,
       pollEnd: new Date().toISOString(),
       durationMs: Date.now() - startMs,
       error: feedResult.error,
@@ -646,7 +675,9 @@ async function pollCycle(): Promise<void> {
       traceId, pollStart, pollStartET, requestSent,
       responseStatus: "empty",
       countReturned: 0, countParsed: 0, countInserted: 0,
-      countSkipped: 0, countSkippedDuplicateFhpId: 0, countConvertedToLeads: 0, countFailed: 0,
+      countSkipped: 0, countSkippedDuplicateFhpId: 0,
+      countExistingRawReconciled: 0, countAlreadyConverted: 0,
+      countConvertedToLeads: 0, countFailed: 0,
       pollEnd: new Date().toISOString(),
       durationMs: Date.now() - startMs,
       lastPollCursorMs: prevCursorMs ?? undefined,
@@ -657,7 +688,7 @@ async function pollCycle(): Promise<void> {
   }
 
   const defaultSubAccountId = await getDefaultSubAccountId();
-  const { inserted, skipped, skippedDuplicateFhpId, leads, failed } = await runIngestCycle(
+  const { inserted, skipped, skippedDuplicateFhpId, existingRawReconciled, alreadyConverted, leads, failed } = await runIngestCycle(
     feedResult.incidents,
     traceId,
     defaultSubAccountId,
@@ -681,6 +712,8 @@ async function pollCycle(): Promise<void> {
     countInserted: inserted,
     countSkipped: skipped,
     countSkippedDuplicateFhpId: skippedDuplicateFhpId,
+    countExistingRawReconciled: existingRawReconciled,
+    countAlreadyConverted: alreadyConverted,
     countConvertedToLeads: leads,
     countFailed: failed,
     pollEnd,
@@ -700,6 +733,8 @@ async function pollCycle(): Promise<void> {
     ` countInserted=${inserted}` +
     ` countSkipped=${skipped}` +
     ` countSkippedDuplicateFhpId=${skippedDuplicateFhpId}` +
+    ` countExistingRawReconciled=${existingRawReconciled}` +
+    ` countAlreadyConverted=${alreadyConverted}` +
     ` countConvertedToLeads=${leads}` +
     ` countFailed=${failed}` +
     ` pollEnd=${pollEnd}` +
@@ -759,6 +794,91 @@ export function stopCrashIngestPipeline(): void {
   }
   pipelineRunning = false;
   console.log("[CRASH-INGEST] Pipeline stopped");
+}
+
+/**
+ * Backfill reconciliation: scan all sentinel_auto crash reports from the last
+ * `daysBack` days that still have processedToLead=false and attempt downstream
+ * lead creation for any that qualify.  Safe to run multiple times — the
+ * createLeadFromCrash path is idempotent (duplicate contacts are silently skipped).
+ *
+ * Usage: npx tsx server/crashIngestPipeline.ts --backfill
+ */
+export async function runBackfillReconcile(daysBack = 30): Promise<{ examined: number; converted: number; alreadyDone: number; skippedNoQualify: number; failed: number }> {
+  const defaultSubAccountId = await getDefaultSubAccountId();
+  const since = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
+  console.log(`[CRASH-INGEST] Backfill reconcile — scanning sentinel_auto reports since ${since.toISOString()} (${daysBack}d)`);
+
+  let examined = 0;
+  let converted = 0;
+  let alreadyDone = 0;
+  let skippedNoQualify = 0;
+  let failed = 0;
+
+  try {
+    const reports = await storage.getUnprocessedLeadCrashReports(defaultSubAccountId);
+    examined = reports.length;
+    console.log(`[CRASH-INGEST] Backfill: ${examined} unprocessed report(s) found`);
+
+    for (const report of reports) {
+      const raw = (report.rawPayload as Record<string, unknown> | null) ?? {};
+      const incidentData = {
+        type: (raw.type as string) || report.reportNumber,
+        location: (raw.location as string) || "",
+        county: (raw.county as string | null) ?? null,
+        severity: (raw.severity as string) || "high",
+        received: (raw.received as string | null) ?? null,
+        remarks: (raw.remarks as string | null) ?? null,
+        googleMaps: (raw.googleMaps as string | null) ?? null,
+        lat: (raw.lat as number | null) ?? null,
+        lng: (raw.lng as number | null) ?? null,
+        ingestTraceId: report.ingestTraceId,
+      };
+
+      if (report.processedToLead) {
+        alreadyDone++;
+        continue;
+      }
+
+      const qualifies = (raw.qualifiesForLead as boolean | undefined) ??
+        isQualifyingCrash({ type: incidentData.type, severity: incidentData.severity } as SentinelIncidentRaw);
+
+      if (!qualifies) {
+        skippedNoQualify++;
+        await storage.markCrashReportAsLead(report.id);
+        continue;
+      }
+
+      try {
+        const leadCreated = await createLeadFromCrash(report, incidentData, defaultSubAccountId);
+        if (leadCreated) {
+          converted++;
+          console.log(`[CRASH-INGEST] Backfill: converted report ${report.id} (${report.reportNumber})`);
+        } else {
+          failed++;
+          console.warn(`[CRASH-INGEST] Backfill: lead creation failed for report ${report.id}`);
+        }
+      } catch (err: any) {
+        failed++;
+        console.error(`[CRASH-INGEST] Backfill: error on report ${report.id}: ${err.message}`);
+      }
+    }
+  } catch (err: any) {
+    console.error(`[CRASH-INGEST] Backfill reconcile error: ${err.message}`);
+  }
+
+  console.log(`[CRASH-INGEST] Backfill complete — examined=${examined} converted=${converted} alreadyDone=${alreadyDone} skippedNoQualify=${skippedNoQualify} failed=${failed}`);
+  return { examined, converted, alreadyDone, skippedNoQualify, failed };
+}
+
+if (process.argv.includes("--backfill")) {
+  runBackfillReconcile(30).then(result => {
+    console.log("[CRASH-INGEST] Backfill result:", JSON.stringify(result, null, 2));
+    process.exit(0);
+  }).catch(err => {
+    console.error("[CRASH-INGEST] Backfill failed:", err);
+    process.exit(1);
+  });
 }
 
 export async function runTestHarness(
