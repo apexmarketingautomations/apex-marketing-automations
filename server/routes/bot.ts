@@ -1080,7 +1080,10 @@ export async function runRealTraining(jobId: number) {
     if (scrapedText.length < 200) {
       await updateJob(`Static scrape thin (${scrapedText.length} chars). Trying headless browser...`, 50);
       try {
-        const puppeteer = (await import("puppeteer")).default;
+        // puppeteer removed from production deps — dynamic import will throw if unavailable
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const puppeteer = (await import("puppeteer").catch((_e) => null))?.default; // allow-silent-catch: puppeteer is optional; absence handled below
+        if (!puppeteer) throw new Error("puppeteer not installed");
         const browser = await puppeteer.launch({
           headless: true,
           args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],

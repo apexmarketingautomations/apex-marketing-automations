@@ -70,8 +70,7 @@ function isDomainApproved(url: string): boolean {
   try {
     const host = new URL(url).hostname.replace(/^www\./, "");
     return APPROVED_DOMAINS.has(host) || APPROVED_DOMAINS.has("www." + host);
-  } catch {
-    // allow-silent-catch: malformed URL is treated as unapproved domain
+  } catch { // allow-silent-catch: malformed URL is treated as unapproved domain
     return false;
   }
 }
