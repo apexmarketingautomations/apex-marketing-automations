@@ -62,6 +62,23 @@ const DEFAULT_STAGES = [
   { name: "Closed Won", color: "#34d399", position: 3 },
 ];
 
+/** Returns page numbers to render, inserting "…" gaps for large ranges */
+function buildPageRange(current: number, total: number): (number | "…")[] {
+  if (total <= 10) return Array.from({ length: total }, (_, i) => i + 1);
+  const set = new Set<number>();
+  // Always show first 2 and last 2
+  [1, 2, total - 1, total].forEach(p => p > 0 && p <= total && set.add(p));
+  // Show a window of ±2 around current
+  for (let p = Math.max(1, current - 2); p <= Math.min(total, current + 2); p++) set.add(p);
+  const sorted = Array.from(set).sort((a, b) => a - b);
+  const result: (number | "…")[] = [];
+  sorted.forEach((p, i) => {
+    if (i > 0 && p - sorted[i - 1] > 1) result.push("…");
+    result.push(p);
+  });
+  return result;
+}
+
 export default function PipelinePage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -89,6 +106,7 @@ export default function PipelinePage() {
   const [editContactForm, setEditContactForm] = useState({ firstName: "", lastName: "", email: "", phone: "", company: "", source: "", tags: "" as string, notes: "", address: "", city: "", state: "", zip: "", smsOptOut: false, emailOptOut: false });
   const [deleteContactOpen, setDeleteContactOpen] = useState(false);
   const [contactToDelete, setContactToDelete] = useState<Contact | null>(null);
+  const [contactsPage, setContactsPage] = useState(1);
 
   const { data: stages = [], isLoading: stagesLoading } = useQuery<PipelineStage[]>({
     queryKey: ["/api/pipeline/stages", subAccountId],
@@ -111,9 +129,9 @@ export default function PipelinePage() {
   });
 
   const { data: contactsResult } = useQuery<{ items: Contact[]; data?: Contact[]; total: number; page: number; pageSize: number; totalPages: number }>({
-    queryKey: ["/api/contacts", subAccountId],
+    queryKey: ["/api/contacts", subAccountId, contactsPage],
     queryFn: async () => {
-      const res = await fetch(`/api/contacts/${subAccountId}?limit=200`);
+      const res = await fetch(`/api/contacts/${subAccountId}?limit=100&page=${contactsPage}`);
       if (!res.ok) throw new Error("Failed to fetch contacts");
       return res.json();
     },
@@ -121,7 +139,8 @@ export default function PipelinePage() {
   });
   // Use real total from server — never derive count from items.length
   const contacts = contactsResult?.items ?? contactsResult?.data ?? [];
-  const contactsTotal = contactsResult?.total ?? contacts.length;
+  const contactsTotal  = contactsResult?.total      ?? contacts.length;
+  const contactsTotalPages = contactsResult?.totalPages ?? 1;
 
   const createStageMutation = useMutation({
     mutationFn: async (stage: { name: string; color: string; position: number }) => {
@@ -454,7 +473,7 @@ export default function PipelinePage() {
             Pipeline
           </button>
           <button
-            onClick={() => setActiveTab("contacts")}
+            onClick={() => { setActiveTab("contacts"); setContactsPage(1); }}
             className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors flex items-center gap-2 ${
               activeTab === "contacts"
                 ? "bg-indigo-600 text-white"
@@ -555,14 +574,50 @@ export default function PipelinePage() {
         ) : (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
             <Card className="bg-white/5 border-white/10" data-testid="contacts-table">
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-white text-lg flex items-center gap-2">
-                  <Users size={18} className="text-indigo-400" />
-                  Contacts ({contactsTotal})
-                </CardTitle>
-                <Button onClick={() => setAddContactOpen(true)} className="bg-cyan-600 hover:bg-cyan-500 text-white" data-testid="button-add-contact">
-                  <Plus size={16} className="mr-1" /> Add Contact
-                </Button>
+              <CardHeader className="flex flex-col gap-3">
+                <div className="flex flex-row items-center justify-between">
+                  <CardTitle className="text-white text-lg flex items-center gap-2">
+                    <Users size={18} className="text-indigo-400" />
+                    Contacts ({contactsTotal})
+                    {contactsTotalPages > 1 && (
+                      <span className="text-xs text-slate-400 font-normal ml-1">
+                        — page {contactsPage} of {contactsTotalPages}
+                      </span>
+                    )}
+                  </CardTitle>
+                  <Button onClick={() => setAddContactOpen(true)} className="bg-cyan-600 hover:bg-cyan-500 text-white" data-testid="button-add-contact">
+                    <Plus size={16} className="mr-1" /> Add Contact
+                  </Button>
+                </div>
+                {contactsTotalPages > 1 && (
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <button
+                      className="h-7 px-2 rounded text-xs text-slate-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      onClick={() => setContactsPage(p => Math.max(1, p - 1))}
+                      disabled={contactsPage === 1}
+                    >‹ Prev</button>
+                    {buildPageRange(contactsPage, contactsTotalPages).map((p, i) =>
+                      p === "…" ? (
+                        <span key={`ellipsis-t-${i}`} className="text-slate-500 text-xs px-1">…</span>
+                      ) : (
+                        <button
+                          key={p}
+                          className={`h-7 w-7 rounded text-xs font-medium transition-colors ${
+                            p === contactsPage
+                              ? "bg-indigo-600 text-white"
+                              : "text-slate-400 hover:text-white hover:bg-white/10"
+                          }`}
+                          onClick={() => setContactsPage(p)}
+                        >{p}</button>
+                      )
+                    )}
+                    <button
+                      className="h-7 px-2 rounded text-xs text-slate-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      onClick={() => setContactsPage(p => Math.min(contactsTotalPages, p + 1))}
+                      disabled={contactsPage === contactsTotalPages}
+                    >Next ›</button>
+                  </div>
+                )}
               </CardHeader>
               <CardContent>
                 {contacts.length === 0 ? (
@@ -664,6 +719,35 @@ export default function PipelinePage() {
                         })}
                       </tbody>
                     </table>
+                  </div>
+                )}
+                {contactsTotalPages > 1 && (
+                  <div className="flex items-center justify-center gap-1 flex-wrap pt-4 pb-1 border-t border-white/5 mt-2">
+                    <button
+                      className="h-7 px-2 rounded text-xs text-slate-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      onClick={() => setContactsPage(p => Math.max(1, p - 1))}
+                      disabled={contactsPage === 1}
+                    >‹ Prev</button>
+                    {buildPageRange(contactsPage, contactsTotalPages).map((p, i) =>
+                      p === "…" ? (
+                        <span key={`ellipsis-b-${i}`} className="text-slate-500 text-xs px-1">…</span>
+                      ) : (
+                        <button
+                          key={p}
+                          className={`h-7 w-7 rounded text-xs font-medium transition-colors ${
+                            p === contactsPage
+                              ? "bg-indigo-600 text-white"
+                              : "text-slate-400 hover:text-white hover:bg-white/10"
+                          }`}
+                          onClick={() => setContactsPage(p)}
+                        >{p}</button>
+                      )
+                    )}
+                    <button
+                      className="h-7 px-2 rounded text-xs text-slate-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      onClick={() => setContactsPage(p => Math.min(contactsTotalPages, p + 1))}
+                      disabled={contactsPage === contactsTotalPages}
+                    >Next ›</button>
                   </div>
                 )}
               </CardContent>
