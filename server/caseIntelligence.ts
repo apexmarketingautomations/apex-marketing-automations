@@ -50,6 +50,7 @@ const SIGNAL_CATEGORY: Record<string, string> = {
   osha_incident:                  "osha",
   dui_arrest:                     "arrest",
   arrest_record:                  "arrest",
+  jail_booking:                   "arrest",   // jail booking pipeline
   divorce_filing:                 "court",
   domestic_violence_injunction:   "court",
   custody_modification:           "court",
@@ -116,7 +117,10 @@ function scoreCase(signals: LegalSignal[], category: string, county: string): Sc
     30;
 
   // Local relevance: SW Florida counties score higher
-  const LOCAL_COUNTIES = new Set(["LEE", "COLLIER", "CHARLOTTE", "SARASOTA", "MANATEE", "HILLSBOROUGH"]);
+  const LOCAL_COUNTIES = new Set([
+    "LEE", "COLLIER", "CHARLOTTE", "SARASOTA", "MANATEE", "HILLSBOROUGH",
+    "HENDRY", "GLADES", "POLK", "PINELLAS", "PASCO",  // jail booking counties
+  ]);
   const localRelevance = LOCAL_COUNTIES.has(county?.toUpperCase()) ? 80 : 40;
 
   // Composite (weighted)

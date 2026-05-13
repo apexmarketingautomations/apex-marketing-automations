@@ -680,6 +680,14 @@ async function validateMetaCredentials() {
   }
 
   try {
+    const { startJailBookingScheduler } = await import("./jailBookingPipeline");
+    startJailBookingScheduler();
+    console.log("[STARTUP] ✅ Jail Booking Pipeline started — 11 FL counties via Nimble browser agents (LEE/CHARLOTTE/COLLIER/HENDRY/GLADES/SARASOTA/MANATEE/POLK/HILLSBOROUGH/PINELLAS/PASCO)");
+  } catch (jailErr: any) {
+    console.error("[STARTUP] Jail Booking Pipeline failed to start (non-fatal):", jailErr?.message);
+  }
+
+  try {
     const { startRetroSkipTraceScheduler } = await import("./retroSkipTrace");
     startRetroSkipTraceScheduler();
 
