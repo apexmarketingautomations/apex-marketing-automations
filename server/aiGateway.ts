@@ -307,7 +307,7 @@ function resolveOpenAICreds(): { apiKey: string | undefined; baseURL: string | u
 
   const fallbackKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
   const fallbackBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
-  if (fallbackKey) {
+  if (isValidOpenAIKey(fallbackKey)) {
     if (primary && !isValidOpenAIKey(primary)) {
       console.warn(
         "[AI-GATEWAY] OPENAI_APEX_INT_KEY does not look like an OpenAI key " +
@@ -315,6 +315,15 @@ function resolveOpenAICreds(): { apiKey: string | undefined; baseURL: string | u
       );
     }
     return { apiKey: fallbackKey, baseURL: fallbackBase, source: "AI_INTEGRATIONS_OPENAI_API_KEY" };
+  }
+
+  // AI_INTEGRATIONS_OPENAI_API_KEY is present but isn't a valid OpenAI key
+  // (e.g. it's a Google/Gemini key starting with "AIza").  Log once and skip.
+  if (fallbackKey && !isValidOpenAIKey(fallbackKey)) {
+    console.warn(
+      "[AI-GATEWAY] AI_INTEGRATIONS_OPENAI_API_KEY does not look like an OpenAI key " +
+      "(expected prefix 'sk-'). Ignoring — will skip OpenAI and fall through to Gemini.",
+    );
   }
 
   return { apiKey: primary, baseURL: undefined, source: primary ? "OPENAI_APEX_INT_KEY (invalid)" : "none" };
@@ -393,7 +402,12 @@ const circuitBreaker: CircuitBreakerState = {
 };
 
 export function isOpenAIConfigured(): boolean {
-  return !!(process.env.OPENAI_APEX_INT_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY);
+  const isValidOpenAIKey = (k: string | undefined) =>
+    !!k && k.startsWith("sk-") && !k.startsWith("sk-ant-");
+  return (
+    isValidOpenAIKey(process.env.OPENAI_APEX_INT_KEY) ||
+    isValidOpenAIKey(process.env.AI_INTEGRATIONS_OPENAI_API_KEY)
+  );
 }
 
 // ── Anthropic quota/billing failure tracking ──────────────────────────────────
