@@ -9,7 +9,7 @@ import {
   Settings, Play, Pause, Radio, Shield, Clock, ChevronRight, ChevronLeft, Send, Target, Zap, Eye, BookOpen, Lock, ArrowUpCircle, Plus, ExternalLink, Globe, MessageSquare, AlertCircle, Home
 } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
-import { LegalLeadsTab, DistributionTab, HomeLeadsTab, ProviderConfigTab } from "@/pages/LegalLeadsTab";
+import { LegalLeadsTab, HomeLeadsTab, ProviderConfigTab } from "@/pages/LegalLeadsTab";
 import { CasesTab } from "@/pages/CasesTab";
 import { SENTINEL_STEPS } from "@/components/tutorial-steps";
 import { Button } from "@/components/ui/button";
@@ -120,6 +120,7 @@ export default function Sentinel() {
     targetStates: "",
     niche: "accident" as "accident" | "home_services",
     homeSvcConfig: null as any,
+    batchDataApiKey: "",
   });
   const [originalNiche, setOriginalNiche] = useState<"accident" | "home_services">("accident");
   const [nicheChangeConfirmed, setNicheChangeConfirmed] = useState(false);
@@ -178,6 +179,7 @@ export default function Sentinel() {
         targetStates: ((config as any).targetStates || []).join(", "),
         niche,
         homeSvcConfig: (config as any)?.homeSvcConfig ?? null,
+        batchDataApiKey: (config as any)?.batchDataApiKey || "",
       });
       setOriginalNiche(niche);
       setNicheChangeConfirmed(false);
@@ -283,6 +285,7 @@ export default function Sentinel() {
         targetStates: configForm.targetStates.split(",").map(s => s.trim()).filter(Boolean),
         niche: configForm.niche,
         homeSvcConfig: configForm.homeSvcConfig ?? null,
+        batchDataApiKey: configForm.batchDataApiKey || null,
       });
       return res.json();
     },
@@ -354,7 +357,6 @@ export default function Sentinel() {
           { key: "crash",        label: "Crash Leads",    icon: "🚨", desc: "PI Attorneys" },
           { key: "home",         label: "Home & Property", icon: "🏠", desc: "Contractors" },
           { key: "legal",        label: "Legal Signals",   icon: "⚖️", desc: "All Attorneys" },
-          { key: "distribution", label: "Distribution",    icon: "📡", desc: "Routing Rules" },
           { key: "providers",     label: "AI Providers",    icon: "🤖", desc: "Config & Test" },
           { key: "cases",         label: "Case Intel",      icon: "🔍", desc: "Grouped Cases" },
         ].map(tab => (
@@ -387,7 +389,6 @@ export default function Sentinel() {
           { key: "crash",        label: "Crash Leads",    icon: "🚨", desc: "PI Attorneys" },
           { key: "home",         label: "Home & Property", icon: "🏠", desc: "Contractors" },
           { key: "legal",        label: "Legal Signals",   icon: "⚖️", desc: "All Attorneys" },
-          { key: "distribution", label: "Distribution",    icon: "📡", desc: "Routing Rules" },
           { key: "providers",     label: "AI Providers",    icon: "🤖", desc: "Config & Test" },
           { key: "cases",         label: "Case Intel",      icon: "🔍", desc: "Grouped Cases" },
         ].map(tab => (
@@ -411,39 +412,6 @@ export default function Sentinel() {
       </div>
     );
   }
-  if (activeTab === "distribution") {
-    return (
-      <div className="p-6 md:p-10 max-w-6xl mx-auto">
-      {/* ── Persistent Tab Bar ── */}
-      <div className="flex gap-1 mb-6 bg-white/5 border border-white/10 rounded-2xl p-1">
-        {[
-          { key: "crash",        label: "Crash Leads",    icon: "🚨", desc: "PI Attorneys" },
-          { key: "home",         label: "Home & Property", icon: "🏠", desc: "Contractors" },
-          { key: "legal",        label: "Legal Signals",   icon: "⚖️", desc: "All Attorneys" },
-          { key: "distribution", label: "Distribution",    icon: "📡", desc: "Routing Rules" },
-          { key: "providers",     label: "AI Providers",    icon: "🤖", desc: "Config & Test" },
-          { key: "cases",         label: "Case Intel",      icon: "🔍", desc: "Grouped Cases" },
-        ].map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={[
-              "flex-1 flex flex-col items-center gap-0.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all",
-              activeTab === tab.key
-                ? "bg-indigo-600/80 text-white border border-indigo-500/50 shadow-lg shadow-indigo-500/20"
-                : "text-slate-500 hover:text-slate-300 hover:bg-white/5",
-            ].join(" ")}
-          >
-            <span className="text-base">{tab.icon}</span>
-            <span>{tab.label}</span>
-            <span className={"text-[9px] font-normal " + (activeTab === tab.key ? "text-indigo-200" : "text-slate-600")}>{tab.desc}</span>
-          </button>
-        ))}
-      </div>
-        <DistributionTab onBack={() => setActiveTab("crash")} />
-      </div>
-    );
-  }
 
   // ── Crash tab: incident detail view ─────────────────────────────────────────
   if (liveSelectedIncident) {
@@ -457,8 +425,7 @@ export default function Sentinel() {
             { key: "crash",        label: "Crash Leads",     icon: "🚨", desc: "PI Attorneys" },
             { key: "home",         label: "Home & Property",  icon: "🏠", desc: "Contractors" },
             { key: "legal",        label: "Legal Signals",    icon: "⚖️", desc: "All Attorneys" },
-            { key: "distribution", label: "Distribution",     icon: "📡", desc: "Routing Rules" },
-            { key: "providers",     label: "AI Providers",     icon: "🤖", desc: "Config & Test" },
+              { key: "providers",     label: "AI Providers",     icon: "🤖", desc: "Config & Test" },
           ].map(tab => (
             <button
               key={tab.key}
@@ -556,8 +523,7 @@ export default function Sentinel() {
             { key: "crash",        label: "Crash Leads",     icon: "🚨", desc: "PI Attorneys" },
             { key: "home",         label: "Home & Property",  icon: "🏠", desc: "Contractors" },
             { key: "legal",        label: "Legal Signals",    icon: "⚖️", desc: "All Attorneys" },
-            { key: "distribution", label: "Distribution",     icon: "📡", desc: "Routing Rules" },
-            { key: "providers",    label: "AI Providers",     icon: "🤖", desc: "Config & Test" },
+              { key: "providers",    label: "AI Providers",     icon: "🤖", desc: "Config & Test" },
             { key: "cases",        label: "Case Intel",       icon: "🔍", desc: "Grouped Cases" },
           ].map(tab => (
             <button
@@ -584,8 +550,7 @@ export default function Sentinel() {
             { key: "crash",        label: "Crash Leads",     icon: "🚨", desc: "PI Attorneys" },
             { key: "home",         label: "Home & Property",  icon: "🏠", desc: "Contractors" },
             { key: "legal",        label: "Legal Signals",    icon: "⚖️", desc: "All Attorneys" },
-            { key: "distribution", label: "Distribution",     icon: "📡", desc: "Routing Rules" },
-            { key: "providers",    label: "AI Providers",     icon: "🤖", desc: "Config & Test" },
+              { key: "providers",    label: "AI Providers",     icon: "🤖", desc: "Config & Test" },
             { key: "cases",        label: "Case Intel",       icon: "🔍", desc: "Grouped Cases" },
           ].map(tab => (
             <button
@@ -678,7 +643,6 @@ export default function Sentinel() {
           { key: "crash",        label: "Crash Leads",     icon: "🚨", desc: "PI Attorneys" },
           { key: "home",         label: "Home & Property",  icon: "🏠", desc: "Contractors" },
           { key: "legal",        label: "Legal Signals",    icon: "⚖️", desc: "Attorneys" },
-          { key: "distribution", label: "Distribution",     icon: "📡", desc: "Routing Rules" },
         ].map(tab => (
           <button
             key={tab.key}
@@ -1224,6 +1188,27 @@ export default function Sentinel() {
             </div>
               </>
             )}
+
+            {/* ── BatchData BYOK ── */}
+            <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Skip Trace — BatchData API Key</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 font-bold">BYOK</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mb-3">
+                Bring your own BatchData key to enable phone skip-tracing on arrest + court filing leads.
+                Get a key at <a href="https://batchdata.com" target="_blank" rel="noopener noreferrer" className="text-violet-400 hover:underline">batchdata.com</a>.
+                Leave blank to use the platform key.
+              </p>
+              <input
+                type="password"
+                data-testid="input-batchdata-api-key"
+                className="w-full px-3 py-2 rounded-lg bg-neutral-900 border border-white/10 text-white text-sm placeholder-slate-600 focus:outline-none focus:border-violet-500/50"
+                placeholder="bd_live_xxxxxxxxxxxxxxxx"
+                value={configForm.batchDataApiKey}
+                onChange={e => setConfigForm(f => ({ ...f, batchDataApiKey: e.target.value }))}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowConfig(false)} className="border-white/10 text-white hover:bg-white/10">Cancel</Button>

@@ -64,7 +64,7 @@ const LEAD_TTL_DAYS = 7;
 
 // ── Type aliases ──────────────────────────────────────────────────────────────
 
-type SignalType   = "dui_arrest" | "arrest" | "jail_booking";
+type SignalType   = "dui_arrest" | "arrest" | "jail_booking" | "license_suspension";
 type UrgencyLevel = "critical"  | "high"   | "medium" | "low";
 
 // ── Hash helpers ──────────────────────────────────────────────────────────────
@@ -114,8 +114,17 @@ function scoreToUrgency(score: number): UrgencyLevel {
 // ── Signal type resolver ──────────────────────────────────────────────────────
 
 function resolveSignalType(profile: ChargeProfile): SignalType {
+  // DWLS / license suspension charges → tag as license_suspension (traffic law vertical)
+  if (profile.primaryCategory === "suspended_license") return "license_suspension";
+  // DUI/DWI → dui_arrest (implies automatic FL license revocation)
   if (profile.dui_related) return "dui_arrest";
   return "arrest";
+}
+
+// DUI arrest implies automatic FL license suspension — emit a secondary license_suspension
+// signal so traffic-law accounts also see these leads alongside criminal-defense accounts.
+function emitsDualSignal(profile: ChargeProfile): boolean {
+  return profile.dui_related && profile.primaryCategory !== "suspended_license";
 }
 
 // ── Bond parser (handles "$1,500.00" and bare numbers) ───────────────────────
@@ -330,6 +339,40 @@ async function persistRecord(
   if (score >= CONTACT_SCORE_THRESHOLD && legalAccountIds.length > 0) {
     for (const accountId of legalAccountIds) {
       await createContactFromSignal(record, profile, score, accountId);
+    }
+  }
+
+  // ── 6b. Dual-signal: DUI arrest → also emit license_suspension ─────────
+  // A DUI arrest in FL triggers automatic license revocation.
+  // Insert a second legalSignal with signalType="license_suspension" so
+  // traffic-law accounts see this lead in their feed too.
+  if (emitsDualSignal(profile)) {
+    const suspHash = crypto
+      .createHash("sha256")
+      .update(`LIC_SUSP|${record.county}|${record.booking_id || record.full_name}|${bookingDateStr}`)
+      .digest("hex").slice(0, 32).toUpperCase();
+    const alreadyHasSusp = await isHashDuplicate(suspHash);
+    if (!alreadyHasSusp) {
+      await db.insert(legalSignals).values({
+        sourceHash:        suspHash,
+        signalType:        "license_suspension",
+        legalVertical:     "traffic",
+        county:            record.county,
+        state:             "FL",
+        subjectName:       record.full_name   || undefined,
+        subjectDob:        record.dob         || undefined,
+        chargeDescription: `DUI → automatic FL license revocation. Charges: ${chargeDesc}`,
+        caseNumber:        record.booking_id  || undefined,
+        urgency,
+        score,
+        status:            "raw",
+        rawData: {
+          parent_signal_id: signalId,
+          dui_related:      true,
+          source:           "arrest_ingest_dual_signal",
+        },
+        detectedAt: new Date(),
+      }).onConflictDoNothing();
     }
   }
 
