@@ -26,10 +26,15 @@ type LegalCategory = "criminal" | "family" | "traffic" | "personal_injury" | "wo
 interface LegalSignal {
   id: number;
   signalType: LegalSignalType;
+  legalVertical?: string;
   county: string;
   address?: string;
   ownerName?: string;
   ownerPhone?: string;
+  subjectName?: string;
+  subjectAddress?: string;
+  chargeDescription?: string;
+  caseNumber?: string;
   description: string;
   urgency: "critical" | "high" | "medium" | "low";
   serviceCategories: string[];
@@ -232,42 +237,54 @@ function LegalSignalDetail({ signal, onBack }: { signal: LegalSignal; onBack: ()
           <p className="text-white/80 text-sm leading-relaxed">{signal.description}</p>
         </div>
 
-        {/* Contact Info */}
-        {(signal.ownerName || signal.ownerPhone || signal.address) && (
-          <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-5">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Contact Information</h3>
-            <div className="space-y-2">
-              {signal.ownerName && (
-                <div className="flex items-center gap-2">
-                  <Users size={13} className="text-slate-500" />
-                  <span className="text-white text-sm font-medium">{signal.ownerName}</span>
-                </div>
-              )}
-              {signal.ownerPhone && (
-                <div className="flex items-center gap-2">
-                  <Phone size={13} className="text-emerald-400" />
-                  <span className="text-emerald-300 text-sm font-bold">{signal.ownerPhone}</span>
-                </div>
-              )}
-              {signal.address && (
-                <div className="flex items-center gap-2">
-                  <MapPin size={13} className="text-slate-500" />
-                  <span className="text-slate-300 text-sm">{signal.address}</span>
-                </div>
-              )}
+        {/* Contact / Subject Info */}
+        <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-5">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Details</h3>
+          <div className="space-y-2">
+            {(signal.ownerName || signal.subjectName) && (
               <div className="flex items-center gap-2">
-                <Scale size={13} className="text-slate-500" />
-                <span className="text-slate-400 text-sm">{signal.county} County, FL</span>
+                <Users size={13} className="text-slate-500" />
+                <span className="text-white text-sm font-medium">{signal.ownerName || signal.subjectName}</span>
               </div>
+            )}
+            {signal.ownerPhone && (
+              <div className="flex items-center gap-2">
+                <Phone size={13} className="text-emerald-400" />
+                <span className="text-emerald-300 text-sm font-bold">{signal.ownerPhone}</span>
+              </div>
+            )}
+            {(signal.address || signal.subjectAddress) && (
+              <div className="flex items-center gap-2">
+                <MapPin size={13} className="text-slate-500" />
+                <span className="text-slate-300 text-sm">{signal.address || signal.subjectAddress}</span>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <Scale size={13} className="text-slate-500" />
+              <span className="text-slate-400 text-sm">{signal.county} County, FL</span>
             </div>
+            {signal.caseNumber && (
+              <div className="flex items-center gap-2">
+                <span className="text-slate-500 text-xs font-mono">Case #</span>
+                <span className="text-slate-300 text-xs font-mono">{signal.caseNumber}</span>
+              </div>
+            )}
+            {signal.chargeDescription && (
+              <div className="mt-2 p-3 bg-white/5 rounded-lg">
+                <p className="text-slate-300 text-xs leading-relaxed">{signal.chargeDescription}</p>
+              </div>
+            )}
           </div>
-        )}
+        </div>
 
-        {/* Categories */}
+        {/* Practice Areas */}
         <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-5">
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Practice Areas</h3>
           <div className="flex flex-wrap gap-2">
-            {(Array.isArray(signal.serviceCategories) ? signal.serviceCategories : []).map(cat => (
+            {(Array.isArray(signal.serviceCategories) && signal.serviceCategories.length > 0
+              ? signal.serviceCategories
+              : signal.legalVertical ? [signal.legalVertical] : []
+            ).map(cat => (
               <span key={cat} className="px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-500/15 text-indigo-300 border border-indigo-500/20">
                 {cat.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())}
               </span>
