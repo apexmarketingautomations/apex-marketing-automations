@@ -1058,12 +1058,42 @@ export function determineSeverity(description: string, keywords: string[]): stri
 
 // Retroactive skip trace — enriches existing crash leads with real names + phones
 export function registerRetroSkipTraceRoute(app: any) {
+  // POST /api/admin/manual-skip-trace — single-subject skip trace from admin console
+  app.post("/api/admin/manual-skip-trace", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user || (user.isAdmin !== "true" && user.role !== "DEV_ADMIN" && user.role !== "admin")) {
+      return res.status(403).json({ error: "admin only" });
+    }
+
+    const { address, city, state, zip, ownerName } = req.body ?? {};
+    if (!address) return res.status(400).json({ error: "address is required" });
+
+    const { resolveBatchDataKey } = await import("../vendorConfig");
+    const apiKey = resolveBatchDataKey();
+    if (!apiKey) return res.status(503).json({ error: "BATCHDATA_API_KEY not configured in Railway env vars" });
+
+    const { skipTraceLookup } = await import("../skip-trace");
+    const result = await skipTraceLookup({ address, city, state, zip, ownerName }, apiKey);
+
+    res.json({
+      ok: true,
+      ownerName:          result.ownerName,
+      ownerPhone:         result.ownerPhone,
+      ownerEmail:         result.ownerEmail,
+      mailingAddress:     result.mailingAddress,
+      additionalPhones:   result.additionalPhones,
+      additionalEmails:   result.additionalEmails,
+      totalPersonsFound:  result.totalPersonsFound,
+      allPersons:         result.allPersons,
+    });
+  }));
+
   app.post("/api/sentinel/retro-skip-trace", async (req: any, res: any) => {
     try {
       // Admin-only: check session user OR legacy x-admin-secret header
       const user = req.user as any;
       const headerOk = req.headers["x-admin-secret"] === (process.env.STANDALONE_ADMIN_SECRET || "201120062017");
-      const sessionAdmin = user && (user.isAdmin === "true" || user.role === "admin");
+      const sessionAdmin = user && (user.isAdmin === "true" || user.role === "admin" || user.role === "DEV_ADMIN");
       if (!sessionAdmin && !headerOk) return res.status(401).json({ error: "Admin access required" });
 
       const { subAccountId } = req.body;

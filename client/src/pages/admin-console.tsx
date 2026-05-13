@@ -60,6 +60,114 @@ const categoryColors: Record<string, { bg: string; text: string; label: string }
   contact: { bg: "bg-cyan-500/20", text: "text-cyan-400", label: "Contact" },
 };
 
+function ManualSkipTracePanel() {
+  const [fields, setFields] = useState({ ownerName: "", address: "", city: "", state: "FL", zip: "" });
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function set(k: string, v: string) { setFields(f => ({ ...f, [k]: v })); }
+
+  async function run() {
+    if (!fields.address.trim()) { setError("Address is required"); return; }
+    setRunning(true); setResult(null); setError(null);
+    try {
+      const res = await fetch("/api/admin/manual-skip-trace", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fields),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || "Request failed"); return; }
+      setResult(data);
+    } catch (e: any) {
+      setError("Network error: " + e.message);
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  const inp = "w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/50";
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
+      className="bg-[#0a0a0a] border border-cyan-500/20 rounded-2xl p-6"
+    >
+      <h2 className="text-sm font-bold text-cyan-400 uppercase tracking-widest mb-1 flex items-center gap-2">
+        <Search size={14} /> Manual Skip Trace
+      </h2>
+      <p className="text-xs text-slate-500 mb-4">
+        Single-subject lookup via BatchData. Enter a name + address and get phone, email, and household members back.
+      </p>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+        <div>
+          <label className="text-xs text-slate-400 font-bold mb-1 block">Owner / Subject Name</label>
+          <input value={fields.ownerName} onChange={e => set("ownerName", e.target.value)}
+            placeholder="John Smith" className={inp} />
+        </div>
+        <div>
+          <label className="text-xs text-slate-400 font-bold mb-1 block">Street Address <span className="text-red-400">*</span></label>
+          <input value={fields.address} onChange={e => set("address", e.target.value)}
+            placeholder="123 Main St" className={inp} />
+        </div>
+        <div>
+          <label className="text-xs text-slate-400 font-bold mb-1 block">City</label>
+          <input value={fields.city} onChange={e => set("city", e.target.value)}
+            placeholder="Fort Myers" className={inp} />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-xs text-slate-400 font-bold mb-1 block">State</label>
+            <input value={fields.state} onChange={e => set("state", e.target.value)}
+              placeholder="FL" maxLength={2} className={inp} />
+          </div>
+          <div>
+            <label className="text-xs text-slate-400 font-bold mb-1 block">ZIP</label>
+            <input value={fields.zip} onChange={e => set("zip", e.target.value)}
+              placeholder="33901" maxLength={10} className={inp} />
+          </div>
+        </div>
+      </div>
+
+      <button onClick={run} disabled={running}
+        className="px-5 py-2 rounded-lg text-xs font-bold border border-cyan-500/40 bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25 disabled:opacity-40 transition-all mb-4"
+      >
+        {running ? "Looking up…" : "🔍 Run Skip Trace"}
+      </button>
+
+      {error && (
+        <div className="rounded-xl p-3 text-xs bg-red-500/10 border border-red-500/20 text-red-400 mb-3">{error}</div>
+      )}
+
+      {result && (
+        <div className="rounded-xl p-4 bg-green-500/5 border border-green-500/20 text-xs space-y-2">
+          <div className="flex gap-4 flex-wrap">
+            <span className="text-slate-400">Name: <span className="text-white font-bold">{result.ownerName || "—"}</span></span>
+            <span className="text-slate-400">Phone: <span className="text-cyan-300 font-bold">{result.ownerPhone || "—"}</span></span>
+            <span className="text-slate-400">Email: <span className="text-cyan-300 font-bold">{result.ownerEmail || "—"}</span></span>
+          </div>
+          {result.mailingAddress && (
+            <div className="text-slate-400">Mailing: <span className="text-white">{result.mailingAddress}</span></div>
+          )}
+          {result.additionalPhones?.length > 0 && (
+            <div className="text-slate-400">More phones: <span className="text-white">{result.additionalPhones.join(", ")}</span></div>
+          )}
+          {result.additionalEmails?.length > 0 && (
+            <div className="text-slate-400">More emails: <span className="text-white">{result.additionalEmails.join(", ")}</span></div>
+          )}
+          {result.allPersons?.length > 1 && (
+            <div className="text-slate-500 pt-1 border-t border-white/5">
+              {result.totalPersonsFound} person(s) at address — other household members may also be in results.
+            </div>
+          )}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
 function AdminSkipTracePanel() {
   const { toast } = { toast: (x: any) => {} }; // inline — replace with useToast if available
   const [subAccountId, setSubAccountId] = useState("");
@@ -598,7 +706,10 @@ export default function AdminConsolePage() {
         )}
       </div>
 
-      {/* ── Admin Skip Trace ── */}
+      {/* ── Manual Skip Trace ── */}
+      <ManualSkipTracePanel />
+
+      {/* ── Batch / Retro Skip Trace ── */}
       <AdminSkipTracePanel />
     </motion.div>
   );
