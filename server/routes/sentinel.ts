@@ -460,6 +460,9 @@ export function registerSentinelRoutes(app: Express) {
           description: `${inc.type} at ${inc.location}. ${inc.distanceMiles !== 'unknown' ? inc.distanceMiles + ' mi from HQ.' : ''} ${inc.actionRequired ? 'HIGH VALUE — Injuries/Fatality.' : 'Crash detected.'} County: ${inc.county || 'FL'}. ${inc.remarks || ''} [${inc.source.toUpperCase()}]`,
           location: inc.location,
           severity: inc.severity,
+          // Propagate territory classification so it isn't lost in the DB insert below
+          _operatorPriority: inc.operatorPriority,
+          _priorityScore:    inc.priorityScore,
           rawPayload: { id: inc.id, lat: inc.lat, lng: inc.lng, type: inc.type, source: inc.source, state: inc.state, county: inc.county, remarks: inc.remarks, received: inc.received, distanceMiles: inc.distanceMiles, googleMaps: inc.googleMaps },
         }));
 

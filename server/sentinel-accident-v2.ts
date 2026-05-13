@@ -837,11 +837,29 @@ export async function processFHPHSMVFeedV2(overrideConfig?: {
 
   const urgentCount   = incidents.filter(i => i.operatorPriority === 'urgent').length;
   const standardCount = incidents.filter(i => i.operatorPriority === 'standard').length;
+  const monitorCount  = incidents.length - urgentCount - standardCount;
+
+  // Diagnostic: show county breakdown so ops can verify territory matching
+  const countyCounts: Record<string, number> = {};
+  for (const inc of incidents) {
+    countyCounts[inc.county || '(empty)'] = (countyCounts[inc.county || '(empty)'] ?? 0) + 1;
+  }
+  const topCounties = Object.entries(countyCounts)
+    .sort((a, b) => b[1] - a[1]).slice(0, 8)
+    .map(([c, n]) => `${c}:${n}`).join(', ');
+
+  const targetCountiesInData = targetCounties.filter(tc =>
+    Object.keys(countyCounts).some(c => c.toUpperCase().includes(tc.toUpperCase()))
+  );
+
   console.log(
     `[SENTINEL SCRAPER] ${incidents.length} crashes parsed — ` +
-    `${urgentCount} urgent, ${standardCount} standard, ` +
-    `${incidents.length - urgentCount - standardCount} monitor-only. ` +
+    `${urgentCount} urgent, ${standardCount} standard, ${monitorCount} monitor-only. ` +
     `Scraper health: ${health.ok ? 'OK' : 'DEGRADED'}`
+  );
+  console.log(
+    `[SENTINEL SCRAPER] County breakdown (top 8): ${topCounties || '(none)'} | ` +
+    `Target counties found in data: ${targetCountiesInData.join(', ') || 'NONE — check column mapping'}`
   );
 
   return { incidents, health };
