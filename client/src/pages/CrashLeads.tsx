@@ -91,7 +91,7 @@ function AdminSkipTraceButton({ subAccountId }: { subAccountId: number }) {
         onClick={() => mutation.mutate()}
         disabled={mutation.isPending}
         className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-400 text-black font-black text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-        title="BatchData skip-trace — Apex Marketing account only"
+        title="BatchData skip-trace — enrich crash leads with skip-trace data"
       >
         {mutation.isPending ? "Starting..." : "BatchData Pull"}
       </button>
@@ -215,8 +215,8 @@ export function CrashLeadsPage() {
               {showPhoneOnly ? "Phone Only" : "All Leads"}
             </button>
 
-            {/* BatchData skip-trace pull — APEX MARKETING ADMIN ONLY */}
-            {isAdmin && currentAccount?.id === 3 && (
+            {/* BatchData skip-trace pull — crash lead accounts (3, 13, 14) */}
+            {isAdmin && currentAccount?.id !== undefined && [3, 13, 14].includes(currentAccount.id) && (
               <AdminSkipTraceButton subAccountId={currentAccount.id} />
             )}
           </div>

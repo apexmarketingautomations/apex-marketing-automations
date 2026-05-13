@@ -193,6 +193,12 @@ export async function runRetroSkipTrace(
   return stats;
 }
 
+// Accounts that always receive crash leads regardless of sentinel_config.
+// Account 3  = Apex Marketing Automations (platform owner)
+// Account 13 = Apex Main (APEX_MAIN_ACCOUNT_ID in crashIngestPipeline)
+// Account 14 = Giovanni (GIOVANNI_ACCOUNT_ID in crashIngestPipeline)
+const ALWAYS_INCLUDE_CRASH_ACCOUNTS = new Set([3, 13, 14]);
+
 export async function runRetroSkipTraceAllAccounts(): Promise<void> {
   const { db }         = await import("./db");
   const { subAccounts } = await import("@shared/schema");
@@ -211,13 +217,14 @@ export async function runRetroSkipTraceAllAccounts(): Promise<void> {
       [acct.id]
     );
     const cfg = r.rows[0];
-    // Include accounts with sentinel enabled, OR always include Apex Marketing (ID=3)
-    if (!cfg || cfg.enabled || acct.id === 3) {
+    // Always include known crash lead accounts (3, 13, 14) even if sentinel_config
+    // is absent or disabled — crash leads are delivered there unconditionally.
+    if (ALWAYS_INCLUDE_CRASH_ACCOUNTS.has(acct.id) || !cfg || cfg.enabled) {
       eligibleIds.push(acct.id);
     }
   }
 
-  console.log(`[RETRO-SKIP-TRACE] Running for ${eligibleIds.length} eligible accounts: ${eligibleIds.join(", ")}`);
+  console.log(`[RETRO-SKIP-TRACE] Running for ${eligibleIds.length} eligible accounts: ${eligibleIds.join(", ")} (always-included crash accounts: 3,13,14)`);
 
   for (const accountId of eligibleIds) {
     const stats = await runRetroSkipTrace(accountId, { crashOnly: false });

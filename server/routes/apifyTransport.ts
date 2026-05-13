@@ -3,15 +3,39 @@
  *
  * POST /api/admin/transport/pull        — run Apify transport scraper (admin only)
  * GET  /api/admin/transport/pull-status — view repull log (admin only)
- * POST /api/admin/batch-skip-trace      — trigger BatchData skip-trace (APEX MARKETING ACCOUNT ONLY)
+ * POST /api/admin/batch-skip-trace      — trigger BatchData skip-trace for crash accounts
+ * GET  /api/admin/vendor-health         — live vendor configuration + job status
  */
 
 import type { Express, Request, Response, NextFunction } from "express";
 import { asyncHandler } from "./helpers";
 
-// Apex Marketing Automations account ID — the only account allowed to trigger
-// BatchData skip-trace via the admin button.
-const APEX_MARKETING_ACCOUNT_ID = 3;
+// Accounts that always receive crash leads (hard-coded fallback in crashIngestPipeline).
+// The admin skip-trace button and retro skip-trace scheduler are allowed for all of these.
+//   3  = Apex Marketing Automations (platform owner)
+//   13 = Apex Main (APEX_MAIN_ACCOUNT_ID)
+//   14 = Giovanni (GIOVANNI_ACCOUNT_ID)
+const CRASH_LEAD_ACCOUNT_IDS = new Set([3, 13, 14]);
+
+// ── Vendor state (in-memory, reset on restart) ────────────────────────────────
+interface VendorRunRecord {
+  ranAt:    Date;
+  error:    string | null;
+  count:    number;
+}
+
+const _vendorState = {
+  batchData: { last: null as VendorRunRecord | null },
+  apify:     { last: null as VendorRunRecord | null },
+};
+
+export function recordBatchDataRun(count: number, error: string | null = null): void {
+  _vendorState.batchData.last = { ranAt: new Date(), error, count };
+}
+
+export function recordApifyRun(count: number, error: string | null = null): void {
+  _vendorState.apify.last = { ranAt: new Date(), error, count };
+}
 
 // ── Auth helper ───────────────────────────────────────────────────────────────
 
@@ -47,7 +71,9 @@ export function registerApifyTransportRoutes(app: Express): void {
       }
 
       const { runTransportScraper } = await import("../apifyTransportScraper");
+      console.log("[APIFY-TRANSPORT] Admin-triggered pull — query:", JSON.stringify(query));
       const result = await runTransportScraper(query as any, { forceRepull: !!forceRepull });
+      recordApifyRun(result.resultCount, result.error || null);
 
       return res.status(result.ok ? 200 : (result.error?.includes("blocked") ? 429 : 502)).json({
         ok:          result.ok,
@@ -80,41 +106,135 @@ export function registerApifyTransportRoutes(app: Express): void {
     })
   );
 
-  // ── Admin BatchData skip-trace button (APEX MARKETING ONLY) ────────────────
+  // ── Admin BatchData skip-trace button ──────────────────────────────────────
   //
-  // Only the platform owner can trigger this.
-  // Only works for sub-account ID = APEX_MARKETING_ACCOUNT_ID (3).
-  // Runs in background — returns immediately.
+  // Runs BatchData retro skip-trace for a crash lead account.  Allowed accounts:
+  //   3 (Apex Marketing), 13 (Apex Main), 14 (Giovanni).
+  // Runs in background — returns immediately with a confirmation.
+  // Pass subAccountId in the request body, or omit to run ALL crash accounts.
   app.post(
     "/api/admin/batch-skip-trace",
     requireAdminMiddleware,
     asyncHandler(async (req: any, res: any) => {
-      const { subAccountId = APEX_MARKETING_ACCOUNT_ID } = req.body as { subAccountId?: number };
+      const { subAccountId } = req.body as { subAccountId?: number };
 
-      if (Number(subAccountId) !== APEX_MARKETING_ACCOUNT_ID) {
+      // Validate — if an explicit account is requested, it must be a crash account
+      if (subAccountId !== undefined && !CRASH_LEAD_ACCOUNT_IDS.has(Number(subAccountId))) {
         return res.status(403).json({
-          error: `BatchData skip-trace via admin button is only available for account ${APEX_MARKETING_ACCOUNT_ID} (Apex Marketing).`,
+          error: `BatchData skip-trace via admin button is only available for crash lead accounts (${[...CRASH_LEAD_ACCOUNT_IDS].join(", ")}).`,
           hint:  `Requested: ${subAccountId}`,
         });
       }
 
       const apiKey = process.env.BATCH_DATA || process.env.BATCHDATA_API_KEY;
       if (!apiKey) {
-        return res.status(503).json({ error: "BATCH_DATA env var not configured" });
+        return res.status(503).json({
+          error:  "BatchData API key not configured (set BATCH_DATA or BATCHDATA_API_KEY in Railway env vars)",
+          detail: "No API key found for BATCH_DATA or BATCHDATA_API_KEY",
+        });
       }
 
       const { runRetroSkipTrace } = await import("../retroSkipTrace");
-      // Run in background — don't await. Caller gets immediate confirmation.
-      runRetroSkipTrace(Number(subAccountId)).then(stats => {
-        console.log(`[ADMIN-BATCH-SKIP-TRACE] Account ${subAccountId} complete:`, stats);
-      }).catch((err: Error) => {
-        console.error(`[ADMIN-BATCH-SKIP-TRACE] Account ${subAccountId} failed:`, err.message);
-      });
+
+      const targetAccounts = subAccountId !== undefined
+        ? [Number(subAccountId)]
+        : [...CRASH_LEAD_ACCOUNT_IDS];
+
+      console.log(`[BATCHDATA] Admin-triggered skip-trace for accounts: ${targetAccounts.join(", ")}`);
+
+      // Run in background — don't await
+      (async () => {
+        for (const accountId of targetAccounts) {
+          try {
+            console.log(`[BATCHDATA] Starting retro skip-trace for account ${accountId}`);
+            const stats = await runRetroSkipTrace(accountId, { crashOnly: true });
+            console.log(
+              `[BATCHDATA] Account ${accountId} complete — ` +
+              `processed=${stats.processed} found=${stats.found} notFound=${stats.notFound} ` +
+              `failed=${stats.failed} skipped=${stats.skipped}`
+            );
+            recordBatchDataRun(stats.processed, stats.failed > 0 ? `${stats.failed} contacts failed` : null);
+          } catch (err: any) {
+            console.error(`[BATCHDATA] Account ${accountId} skip-trace failed:`, err.message);
+            recordBatchDataRun(0, err.message);
+          }
+        }
+      })();
 
       return res.json({
-        ok:         true,
-        message:    `BatchData skip-trace started for account ${subAccountId} (Apex Marketing). Check logs for progress.`,
-        subAccountId,
+        ok:            true,
+        message:       `BatchData skip-trace started for account(s): ${targetAccounts.join(", ")}. Monitor Railway logs for [BATCHDATA] / [RETRO-SKIP-TRACE] output.`,
+        targetAccounts,
+      });
+    })
+  );
+
+  // ── Vendor health check (admin only) ─────────────────────────────────────────
+  //
+  // Reports live vendor credential status and last-run stats.
+  // Never logs or returns API key values.
+  app.get(
+    "/api/admin/vendor-health",
+    requireAdminMiddleware,
+    asyncHandler(async (_req: any, res: any) => {
+      // BatchData
+      const batchDataKey = process.env.BATCH_DATA || process.env.BATCHDATA_API_KEY;
+      const batchDataConfigured = !!batchDataKey;
+
+      // Apify
+      const apifyKey =
+        process.env.APIFY_API_KEY   ||
+        process.env.APIFY_API_TOKEN ||
+        process.env.APIFY_TOKEN     ||
+        "";
+      const apifyConfigured = !!apifyKey.trim();
+
+      // Pending BatchData jobs (crash contacts with no phone and not yet skip-traced)
+      let pendingBatchDataJobs = 0;
+      try {
+        const { pool } = await import("../db");
+        const r = await pool.query(`
+          SELECT COUNT(*) AS cnt FROM contacts
+          WHERE
+            (tags @> ARRAY['crash-lead']::text[] OR tags @> ARRAY['sentinel-auto']::text[] OR source = 'sentinel_crash')
+            AND (phone IS NULL OR phone = '')
+            AND NOT (tags @> ARRAY['skip-traced']::text[])
+        `);
+        pendingBatchDataJobs = parseInt(r.rows[0]?.cnt ?? "0", 10);
+      } catch (_e) { /* non-fatal */ }
+
+      // Pending Apify jobs (crash reports in AWAITING/PENDING status)
+      let pendingApifyJobs = 0;
+      try {
+        const { pool } = await import("../db");
+        const r = await pool.query(`
+          SELECT COUNT(*) AS cnt FROM crash_reports
+          WHERE status IN ('AWAITING', 'PENDING') AND source = 'sentinel_auto'
+        `);
+        pendingApifyJobs = parseInt(r.rows[0]?.cnt ?? "0", 10);
+      } catch (_e) { /* non-fatal */ }
+
+      const bd = _vendorState.batchData.last;
+      const ap = _vendorState.apify.last;
+
+      return res.json({
+        batchDataConfigured,
+        apifyConfigured,
+        pendingBatchDataJobs,
+        pendingApifyJobs,
+        lastBatchDataRunAt:    bd?.ranAt?.toISOString() ?? null,
+        lastBatchDataCount:    bd?.count ?? null,
+        lastBatchDataError:    bd?.error ?? null,
+        lastApifyRunAt:        ap?.ranAt?.toISOString() ?? null,
+        lastApifyCount:        ap?.count ?? null,
+        lastApifyError:        ap?.error ?? null,
+        envVarsPresent: {
+          BATCH_DATA:         !!process.env.BATCH_DATA,
+          BATCHDATA_API_KEY:  !!process.env.BATCHDATA_API_KEY,
+          APIFY_API_KEY:      !!process.env.APIFY_API_KEY,
+          APIFY_API_TOKEN:    !!process.env.APIFY_API_TOKEN,
+          APIFY_TOKEN:        !!process.env.APIFY_TOKEN,
+        },
       });
     })
   );

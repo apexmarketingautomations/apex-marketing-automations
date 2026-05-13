@@ -256,10 +256,19 @@ export async function runTransportScraper(
   query:      TransportQuery,
   options:    { timeoutMs?: number; forceRepull?: boolean } = {},
 ): Promise<TransportScrapeResult> {
-  const token = (process.env.APIFY_API_KEY || process.env.APIFY_TOKEN || "").trim();
+  // Check all env var aliases: APIFY_API_KEY (canonical) | APIFY_API_TOKEN | APIFY_TOKEN
+  const token = (
+    process.env.APIFY_API_KEY   ||
+    process.env.APIFY_API_TOKEN ||
+    process.env.APIFY_TOKEN     ||
+    ""
+  ).trim();
   if (!token) {
-    console.error("[APIFY-TRANSPORT] Apify credential not configured — transport scrape skipped");
-    return { ok: false, results: [], actor: "", queryType: "general", queryHash: "", resultCount: 0, error: "APIFY_API_KEY not configured" };
+    console.error(
+      "[APIFY-TRANSPORT] No Apify credential configured " +
+      "(checked APIFY_API_KEY / APIFY_API_TOKEN / APIFY_TOKEN) — transport scrape skipped"
+    );
+    return { ok: false, results: [], actor: "", queryType: "general", queryHash: "", resultCount: 0, error: "APIFY credential not configured (APIFY_API_KEY / APIFY_API_TOKEN / APIFY_TOKEN)" };
   }
 
   const queryType            = detectQueryType(query);

@@ -12,7 +12,16 @@ import { eq, and, sql } from "drizzle-orm";
 const MARTINDALE_ACTOR = "jungle_synthesizer~martindale-scraper";
 
 function getApifyToken(): string {
-  return (process.env.APIFY_API_KEY || process.env.getApifyToken() || "").trim();
+  // Check all three env var names — APIFY_API_KEY is canonical; APIFY_API_TOKEN and
+  // APIFY_TOKEN are accepted for backwards-compat.  The old code had a fatal typo:
+  // `process.env.getApifyToken()` — a call on a plain object — which throws
+  // TypeError when APIFY_API_KEY is absent.  Fixed here.
+  return (
+    process.env.APIFY_API_KEY    ||
+    process.env.APIFY_API_TOKEN  ||
+    process.env.APIFY_TOKEN      ||
+    ""
+  ).trim();
 }
 
 // Legal verticals to scrape with their Martindale practice area keys
@@ -155,11 +164,12 @@ export async function scrapeAttorneysForVertical(vertical: string, practiceArea:
 export async function runFullAttorneyScrape(): Promise<void> {
   const token = getApifyToken();
   if (!token) {
-    console.warn("[APIFY] No Apify credential configured — attorney scrape skipped");
+    console.warn(
+      "[APIFY] No Apify credential configured (checked APIFY_API_KEY / APIFY_API_TOKEN / APIFY_TOKEN) — attorney scrape skipped"
+    );
     return;
   }
-  console.log("[APIFY] Credential confirmed — starting attorney scrape");
-  console.log("[APIFY] Starting full attorney scrape for all legal verticals");
+  console.log("[APIFY] Credential present — actor=" + MARTINDALE_ACTOR + " starting attorney scrape for all legal verticals");
   for (const target of SCRAPE_TARGETS) {
     await scrapeAttorneysForVertical(target.vertical, target.practiceArea, target.label);
     await new Promise(r => setTimeout(r, 5000)); // be nice to the API
