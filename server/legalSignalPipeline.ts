@@ -629,7 +629,7 @@ async function deliverLeadToAllAccounts(lead: any): Promise<void> {
       );
       const niche = r.rows[0]?.niche;
       // Include if legal niche, no sentinel config (generic account), or Apex main
-      if (!niche || niche === "legal" || niche === "attorney" || acct.id === 13) {
+      if (!niche || niche === "legal" || niche === "attorney" || acct.id === 3 || acct.id === 4) {
         legalAccountIds.push(acct.id);
       }
     }
