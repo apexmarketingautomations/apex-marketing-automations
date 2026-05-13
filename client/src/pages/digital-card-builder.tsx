@@ -118,17 +118,17 @@ const SERVICE_ICONS = [
   { id: "briefcase", label: "Business", Icon: Briefcase },
 ];
 
+// Use real CSS gradients — Tailwind gradient classes built from template
+// strings get purged at build time and all render the same default color.
 const SERVICE_COLORS = [
-  { gradient: "from-red-500 to-rose-600",     hex: "#ef4444", label: "Red" },
-  { gradient: "from-orange-500 to-amber-500", hex: "#f97316", label: "Orange" },
-  { gradient: "from-yellow-400 to-orange-500",hex: "#eab308", label: "Yellow" },
-  { gradient: "from-emerald-500 to-green-600",hex: "#10b981", label: "Green" },
-  { gradient: "from-cyan-500 to-teal-600",    hex: "#06b6d4", label: "Teal" },
-  { gradient: "from-blue-500 to-indigo-600",  hex: "#3b82f6", label: "Blue" },
-  { gradient: "from-violet-500 to-purple-600",hex: "#8b5cf6", label: "Purple" },
-  { gradient: "from-pink-500 to-fuchsia-600", hex: "#ec4899", label: "Pink" },
-  { gradient: "from-slate-500 to-zinc-600",   hex: "#64748b", label: "Grey" },
-  { gradient: "from-amber-700 to-yellow-600", hex: "#b45309", label: "Gold" },
+  { gradient: "linear-gradient(135deg,#ef4444,#dc2626)", label: "Red"    },
+  { gradient: "linear-gradient(135deg,#f97316,#ea580c)", label: "Orange" },
+  { gradient: "linear-gradient(135deg,#f59e0b,#d97706)", label: "Gold"   },
+  { gradient: "linear-gradient(135deg,#10b981,#059669)", label: "Green"  },
+  { gradient: "linear-gradient(135deg,#06b6d4,#0891b2)", label: "Teal"   },
+  { gradient: "linear-gradient(135deg,#3b82f6,#2563eb)", label: "Blue"   },
+  { gradient: "linear-gradient(135deg,#8b5cf6,#7c3aed)", label: "Purple" },
+  { gradient: "linear-gradient(135deg,#ec4899,#db2777)", label: "Pink"   },
 ];
 
 const DEFAULT_CARD: CardConfig = {
@@ -910,9 +910,13 @@ function DigitalCardBuilderInner() {
                         <Label className="text-slate-300 text-xs">Color</Label>
                         <div className="flex gap-2 flex-wrap mt-1">
                           {SERVICE_COLORS.map(c => (
-                            <button key={c.hex} onClick={() => updateService(idx, "color", c.gradient)}
+                            <button
+                              key={c.label}
+                              onClick={() => updateService(idx, "color", c.gradient)}
                               title={c.label}
-                              className={`w-8 h-8 rounded-full bg-gradient-to-br ${c.gradient} transition-all hover:scale-110 ${svc.color === c.gradient ? "ring-2 ring-white ring-offset-2 ring-offset-gray-900 scale-110" : ""}`} />
+                              style={{ background: c.gradient }}
+                              className={`w-8 h-8 rounded-full transition-all hover:scale-110 ${svc.color === c.gradient ? "ring-2 ring-white ring-offset-2 ring-offset-gray-900 scale-110" : ""}`}
+                            />
                           ))}
                         </div>
                       </div>

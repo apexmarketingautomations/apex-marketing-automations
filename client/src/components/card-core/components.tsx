@@ -334,7 +334,10 @@ export function ServicesSection({ card, theme }: { card: SharedCardData; theme: 
               viewport={{ once: true }} transition={{ delay: i * 0.03 }}
               className={`flex items-start gap-3 p-3.5 rounded-xl ${theme.cardBg} border ${theme.border} transition-all hover:scale-[1.01]`}
               data-testid={`service-item-${i}`}>
-              <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${service.color || "from-indigo-500 to-purple-500"} flex items-center justify-center shrink-0`}>
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                style={{ background: service.color?.startsWith("linear-gradient") ? service.color : "linear-gradient(135deg,#6366f1,#8b5cf6)" }}
+              >
                 <Icon size={18} className="text-white" />
               </div>
               <div className="flex-1 min-w-0">
