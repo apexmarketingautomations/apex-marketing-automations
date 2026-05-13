@@ -2513,6 +2513,8 @@ export function registerPropertyRoutes(app: Express) {
     const search   = (req.query.search as string | undefined)?.toLowerCase().trim();
     const tag      = req.query.tag as string | undefined;
     const hasPhone = req.query.hasPhone === "true";
+    const sortBy   = (req.query.sortBy as string | undefined) ?? "createdAt";
+    const sortDir  = (req.query.sortDir as string | undefined) === "asc" ? "asc" : "desc";
 
     // Default view excludes attorney-scraper rows.
     // Pass ?source=legal_pipeline to see those, or ?source=all for everything.
@@ -2562,11 +2564,25 @@ export function registerPropertyRoutes(app: Express) {
       .from(contacts)
       .where(eq(contacts.subAccountId, subAccountId));
 
+    // Dynamic sort column — whitelist to prevent injection
+    const SORT_COLS: Record<string, any> = {
+      firstName: contacts.firstName,
+      lastName:  contacts.lastName,
+      email:     contacts.email,
+      phone:     contacts.phone,
+      address:   contacts.address,
+      source:    contacts.source,
+      createdAt: contacts.createdAt,
+    };
+    const sortCol   = SORT_COLS[sortBy] ?? contacts.createdAt;
+    const { asc }   = await import("drizzle-orm");
+    const orderExpr = sortDir === "asc" ? asc(sortCol) : desc(sortCol);
+
     const items = await db
       .select()
       .from(contacts)
       .where(where)
-      .orderBy(desc(contacts.createdAt))
+      .orderBy(orderExpr)
       .limit(pageSize)
       .offset(offset);
 

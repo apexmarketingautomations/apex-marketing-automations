@@ -12,7 +12,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Plus, Trash2, GripVertical, Users, Loader2, Layers, Info } from "lucide-react";
+import { Plus, Trash2, GripVertical, Users, Loader2, Layers, Info, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { PIPELINE_STEPS } from "@/components/tutorial-steps";
 import { AddressAutocomplete, type AddressData } from "@/components/address-autocomplete";
@@ -107,6 +107,25 @@ export default function PipelinePage() {
   const [deleteContactOpen, setDeleteContactOpen] = useState(false);
   const [contactToDelete, setContactToDelete] = useState<Contact | null>(null);
   const [contactsPage, setContactsPage] = useState(1);
+  const [sortField, setSortField] = useState<string>("createdAt");
+  const [sortDir, setSortDir]   = useState<"asc" | "desc">("desc");
+
+  function handleSort(field: string) {
+    if (sortField === field) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+    setContactsPage(1);
+  }
+
+  function SortIcon({ field }: { field: string }) {
+    if (sortField !== field) return <ChevronsUpDown size={12} className="ml-1 opacity-40" />;
+    return sortDir === "asc"
+      ? <ChevronUp size={12} className="ml-1 text-cyan-400" />
+      : <ChevronDown size={12} className="ml-1 text-cyan-400" />;
+  }
 
   const { data: stages = [], isLoading: stagesLoading } = useQuery<PipelineStage[]>({
     queryKey: ["/api/pipeline/stages", subAccountId],
@@ -129,9 +148,9 @@ export default function PipelinePage() {
   });
 
   const { data: contactsResult } = useQuery<{ items: Contact[]; data?: Contact[]; total: number; page: number; pageSize: number; totalPages: number }>({
-    queryKey: ["/api/contacts", subAccountId, contactsPage],
+    queryKey: ["/api/contacts", subAccountId, contactsPage, sortField, sortDir],
     queryFn: async () => {
-      const res = await fetch(`/api/contacts/${subAccountId}?limit=100&page=${contactsPage}`);
+      const res = await fetch(`/api/contacts/${subAccountId}?limit=100&page=${contactsPage}&sortBy=${sortField}&sortDir=${sortDir}`);
       if (!res.ok) throw new Error("Failed to fetch contacts");
       return res.json();
     },
@@ -630,11 +649,22 @@ export default function PipelinePage() {
                     <table className="w-full text-sm min-w-[700px]">
                       <thead>
                         <tr className="border-b border-white/10">
-                          <th className="text-left py-3 px-3 text-slate-400 font-medium">Name</th>
-                          <th className="text-left py-3 px-3 text-slate-400 font-medium hidden sm:table-cell">Email</th>
-                          <th className="text-left py-3 px-3 text-slate-400 font-medium">Phone</th>
-                          <th className="text-left py-3 px-3 text-slate-400 font-medium hidden lg:table-cell">Address</th>
-                          <th className="text-left py-3 px-3 text-slate-400 font-medium hidden md:table-cell">Source</th>
+                          {(["firstName","email","phone","address","source"] as const).map((field, i) => {
+                            const labels: Record<string, string> = { firstName: "Name", email: "Email", phone: "Phone", address: "Address", source: "Source" };
+                            const hidden = field === "email" ? "hidden sm:table-cell" : field === "address" ? "hidden lg:table-cell" : field === "source" ? "hidden md:table-cell" : "";
+                            const isActive = sortField === field || (field === "firstName" && sortField === "lastName");
+                            return (
+                              <th key={field} className={`text-left py-3 px-3 font-medium ${hidden}`}>
+                                <button
+                                  onClick={() => handleSort(field === "firstName" ? "firstName" : field)}
+                                  className={`inline-flex items-center gap-0.5 hover:text-white transition-colors select-none ${isActive ? "text-cyan-400" : "text-slate-400"}`}
+                                >
+                                  {labels[field]}
+                                  <SortIcon field={field === "firstName" ? "firstName" : field} />
+                                </button>
+                              </th>
+                            );
+                          })}
                           <th className="text-left py-3 px-3 text-slate-400 font-medium hidden lg:table-cell">Tags</th>
                           <th className="text-right py-3 px-3 text-slate-400 font-medium">Actions</th>
                         </tr>
