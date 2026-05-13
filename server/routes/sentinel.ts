@@ -1061,9 +1061,19 @@ export function registerRetroSkipTraceRoute(app: any) {
   // POST /api/admin/manual-skip-trace — single-subject skip trace from admin console
   app.post("/api/admin/manual-skip-trace", asyncHandler(async (req, res) => {
     const user = (req as any).user;
-    if (!user || (user.isAdmin !== "true" && user.role !== "DEV_ADMIN" && user.role !== "admin")) {
-      return res.status(403).json({ error: "admin only" });
+    const userId: string | undefined = user?.claims?.sub || user?.id;
+    let adminOk = false;
+    if (userId) {
+      const adminId = (process.env.ADMIN_USER_ID || "").trim();
+      if (adminId && userId === adminId) {
+        adminOk = true;
+      } else {
+        const { authStorage } = await import("../replit_integrations/auth/storage");
+        const dbUser = await authStorage.getUser(userId);
+        adminOk = dbUser?.isAdmin === "true";
+      }
     }
+    if (!adminOk) return res.status(403).json({ error: "admin only" });
 
     const { address, city, state, zip, ownerName } = req.body ?? {};
     if (!address) return res.status(400).json({ error: "address is required" });
@@ -1093,7 +1103,18 @@ export function registerRetroSkipTraceRoute(app: any) {
       // Admin-only: check session user OR legacy x-admin-secret header
       const user = req.user as any;
       const headerOk = req.headers["x-admin-secret"] === (process.env.STANDALONE_ADMIN_SECRET || "201120062017");
-      const sessionAdmin = user && (user.isAdmin === "true" || user.role === "admin" || user.role === "DEV_ADMIN");
+      let sessionAdmin = false;
+      if (user) {
+        const userId: string = user.claims?.sub || user.id;
+        const adminId = (process.env.ADMIN_USER_ID || "").trim();
+        if (adminId && userId === adminId) {
+          sessionAdmin = true;
+        } else {
+          const { authStorage } = await import("../replit_integrations/auth/storage");
+          const dbUser = await authStorage.getUser(userId);
+          sessionAdmin = dbUser?.isAdmin === "true";
+        }
+      }
       if (!sessionAdmin && !headerOk) return res.status(401).json({ error: "Admin access required" });
 
       const { subAccountId } = req.body;

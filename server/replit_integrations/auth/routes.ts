@@ -36,10 +36,12 @@ export function registerAuthRoutes(app: Express): void {
       if (!user) return res.status(404).json({ message: "User not found" });
 
       const adminUserId = process.env.ADMIN_USER_ID;
-      const isDevAdmin = adminUserId && userId === adminUserId;
 
       // Strip server-only fields before sending the user record to the client.
       const { passwordHash, ...safeUser } = user as any;
+
+      // Admin if env-var ID matches OR the DB isAdmin flag was explicitly set
+      const isDevAdmin = (adminUserId && userId === adminUserId) || safeUser.isAdmin === "true";
 
       res.json({
         ...safeUser,
@@ -288,7 +290,7 @@ export function registerAuthRoutes(app: Express): void {
       }
 
       const adminUserId = process.env.ADMIN_USER_ID;
-      const isDevAdmin = adminUserId && user.id === adminUserId;
+      const isDevAdmin = (adminUserId && user.id === adminUserId) || user.isAdmin === "true";
       const sessionUser = { id: user.id, claims: { sub: user.id }, authProvider: "email" };
 
       (req.session as any).passport = { user: sessionUser };
@@ -377,7 +379,7 @@ export function registerAuthRoutes(app: Express): void {
           }
 
           const adminUserId = process.env.ADMIN_USER_ID;
-          const isDevAdmin = adminUserId && user!.id === adminUserId;
+          const isDevAdmin = (adminUserId && user!.id === adminUserId) || user!.isAdmin === "true";
 
           res.json({
             success: true,

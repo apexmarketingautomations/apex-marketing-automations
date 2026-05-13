@@ -20,17 +20,26 @@ import {
 
 // ── Auth helper ───────────────────────────────────────────────────────────────
 
-function isAdminRequest(req: Request): boolean {
+async function isAdminRequest(req: Request): Promise<boolean> {
   const user = (req as any).user;
   if (!user) return false;
-  if (user.isAdmin === "true" || user.role === "DEV_ADMIN") return true;
+  const userId: string = user.claims?.sub || user.id;
+  if (!userId) return false;
+
   const adminId = (process.env.ADMIN_USER_ID || "").trim();
-  return !!adminId && user.id === adminId;
+  if (adminId && userId === adminId) return true;
+
+  // Passport session user never carries isAdmin/role — check DB directly
+  const { authStorage } = await import("../replit_integrations/auth/storage");
+  const dbUser = await authStorage.getUser(userId);
+  return dbUser?.isAdmin === "true";
 }
 
 function requireAdminMiddleware(req: Request, res: Response, next: NextFunction): void {
-  if (isAdminRequest(req)) { next(); return; }
-  res.status(403).json({ error: "Admin access required" });
+  isAdminRequest(req).then((ok) => {
+    if (ok) { next(); return; }
+    res.status(403).json({ error: "Admin access required" });
+  }).catch(() => res.status(403).json({ error: "Admin access required" }));
 }
 
 // ── Route registration ────────────────────────────────────────────────────────
