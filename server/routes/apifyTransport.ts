@@ -39,6 +39,7 @@ function requireAdminMiddleware(req: Request, res: Response, next: NextFunction)
   isAdminRequest(req).then((ok) => {
     if (ok) { next(); return; }
     res.status(403).json({ error: "Admin access required" });
+  // allow-silent-catch: auth guard — always return 403 without leaking internal error details
   }).catch(() => res.status(403).json({ error: "Admin access required" }));
 }
 
