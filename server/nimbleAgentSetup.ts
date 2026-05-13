@@ -337,6 +337,7 @@ async function agentExists(agentName: string): Promise<boolean> {
   try {
     const data = await nimbleGet(`/v1/agents/${agentName}`);
     return !!data && !data.error;
+  // allow-silent-catch: existence check — network/API errors mean "agent not found"
   } catch {
     return false;
   }
