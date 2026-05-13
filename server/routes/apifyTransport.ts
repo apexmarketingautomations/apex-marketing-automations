@@ -201,7 +201,7 @@ export function registerApifyTransportRoutes(app: Express): void {
             AND NOT (tags @> ARRAY['skip-traced']::text[])
         `);
         pendingBatchDataJobs = parseInt(r.rows[0]?.cnt ?? "0", 10);
-      } catch (_e) { /* non-fatal */ }
+      } catch (_e) { /* allow-silent-catch: vendor-health is best-effort; DB unavailability should not block the response */ }
 
       // Pending Apify jobs (crash reports in AWAITING/PENDING status)
       let pendingApifyJobs = 0;
@@ -212,7 +212,7 @@ export function registerApifyTransportRoutes(app: Express): void {
           WHERE status IN ('AWAITING', 'PENDING') AND source = 'sentinel_auto'
         `);
         pendingApifyJobs = parseInt(r.rows[0]?.cnt ?? "0", 10);
-      } catch (_e) { /* non-fatal */ }
+      } catch (_e) { /* allow-silent-catch: vendor-health is best-effort; DB unavailability should not block the response */ }
 
       const bd = _vendorState.batchData.last;
       const ap = _vendorState.apify.last;
