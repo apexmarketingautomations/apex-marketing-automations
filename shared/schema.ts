@@ -2117,13 +2117,14 @@ export type StandaloneOrder = typeof standaloneOrders.$inferSelect;
 // Captured when a visitor taps an NFC card and submits their info via the
 // sticky lead-capture bar on the public card view.
 export const standaloneCardLeads = pgTable("standalone_card_leads", {
-  id:        serial("id").primaryKey(),
-  cardId:    integer("card_id").references(() => standaloneCards.id, { onDelete: "cascade" }).notNull(),
-  name:      text("name").notNull(),
-  phone:     text("phone"),
-  email:     text("email"),
-  message:   text("message"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  id:         serial("id").primaryKey(),
+  cardId:     integer("card_id").references(() => standaloneCards.id, { onDelete: "cascade" }).notNull(),
+  name:       text("name").notNull(),
+  phone:      text("phone"),
+  email:      text("email"),
+  message:    text("message"),
+  ownerNotes: text("owner_notes"),   // card owner fills this in — where they met, what they do, etc.
+  createdAt:  timestamp("created_at").defaultNow().notNull(),
 });
 
 export const insertStandaloneCardLeadSchema = createInsertSchema(standaloneCardLeads).omit({ id: true, createdAt: true });

@@ -438,6 +438,42 @@ export function registerStandaloneCardsRoutes(app: Express) {
     return res.json({ ok: true });
   }));
 
+  // ── Update lead notes: PATCH /api/standalone/lead/:leadId/notes ─────────────
+  // Card owner saves their own notes on a lead (where they met, what they do).
+  // Auth: email in body must match the owner of the card this lead belongs to.
+  app.patch("/api/standalone/lead/:leadId/notes", asyncHandler(async (req, res) => {
+    const leadId = Number(req.params.leadId);
+    if (!leadId) return res.status(400).json({ error: "Invalid lead ID" });
+
+    const { email, notes } = req.body as { email?: string; notes?: string };
+    if (!email?.trim()) return res.status(400).json({ error: "Owner email required" });
+
+    // Verify the requester owns the card this lead belongs to
+    const [user] = await db.select({ id: standaloneCardUsers.id })
+      .from(standaloneCardUsers)
+      .where(eq(standaloneCardUsers.email, email.toLowerCase().trim()))
+      .limit(1);
+    if (!user) return res.status(403).json({ error: "Not authorized" });
+
+    const [lead] = await db.select({ id: standaloneCardLeads.id, cardId: standaloneCardLeads.cardId })
+      .from(standaloneCardLeads)
+      .where(eq(standaloneCardLeads.id, leadId))
+      .limit(1);
+    if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+    const [card] = await db.select({ id: standaloneCards.id })
+      .from(standaloneCards)
+      .where(and(eq(standaloneCards.id, lead.cardId), eq(standaloneCards.userId, user.id)))
+      .limit(1);
+    if (!card) return res.status(403).json({ error: "Not authorized" });
+
+    await db.update(standaloneCardLeads)
+      .set({ ownerNotes: notes?.trim() || null })
+      .where(eq(standaloneCardLeads.id, leadId));
+
+    return res.json({ ok: true });
+  }));
+
   app.post("/api/standalone/upsell-accept", asyncHandler(async (req, res) => {
     const { sessionId, offer, amount } = req.body;
     if (!sessionId) return res.status(400).json({ error: "Session ID required" });

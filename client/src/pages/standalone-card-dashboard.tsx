@@ -1,6 +1,82 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useLocation } from "wouter";
-import { Copy, ExternalLink, Users, DollarSign, Clock, CheckCircle, CreditCard, Loader2, ArrowLeft, Pencil, Phone, Mail, UserCheck } from "lucide-react";
+import { Copy, ExternalLink, Users, DollarSign, Clock, CheckCircle, CreditCard, Loader2, ArrowLeft, Pencil, Phone, Mail, UserCheck, NotebookPen } from "lucide-react";
+
+function LeadNotes({ leadId, initial, ownerEmail }: {
+  leadId: number;
+  initial: string | null;
+  ownerEmail: string;
+}) {
+  const [notes,   setNotes]   = useState(initial || "");
+  const [saving,  setSaving]  = useState(false);
+  const [saved,   setSaved]   = useState(false);
+  const [editing, setEditing] = useState(false);
+  const taRef = useRef<HTMLTextAreaElement>(null);
+
+  const save = async (value: string) => {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await fetch(`/api/standalone/lead/${leadId}/notes`, {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: ownerEmail, notes: value }),
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch { /* allow-silent-catch: notes save failed silently */ }
+    finally { setSaving(false); setEditing(false); }
+  };
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => { setEditing(true); setTimeout(() => taRef.current?.focus(), 50); }}
+        className="mt-2 w-full text-left group"
+      >
+        {notes ? (
+          <p className="text-neutral-400 text-xs italic leading-snug group-hover:text-neutral-300 transition-colors">
+            📝 {notes}
+          </p>
+        ) : (
+          <p className="text-neutral-600 text-xs flex items-center gap-1 group-hover:text-neutral-400 transition-colors">
+            <NotebookPen size={10} /> Add a note — where you met, what they do…
+          </p>
+        )}
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-1.5">
+      <textarea
+        ref={taRef}
+        value={notes}
+        onChange={e => setNotes(e.target.value)}
+        onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) save(notes); if (e.key === "Escape") setEditing(false); }}
+        placeholder="Where you met, what they do, anything useful…"
+        rows={2}
+        className="w-full px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-600 text-white text-xs placeholder-neutral-600 outline-none focus:border-cyan-600 resize-none transition-colors"
+      />
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => save(notes)}
+          disabled={saving}
+          className="px-3 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold disabled:opacity-50 transition-colors"
+        >
+          {saving ? "Saving…" : saved ? "Saved ✓" : "Save"}
+        </button>
+        <button
+          onClick={() => setEditing(false)}
+          className="px-3 py-1 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-neutral-300 text-xs transition-colors"
+        >
+          Cancel
+        </button>
+        <span className="text-neutral-600 text-[10px] ml-auto">⌘↵ to save</span>
+      </div>
+    </div>
+  );
+}
 
 export default function StandaloneCardDashboard() {
   const [, setLocation] = useLocation();
@@ -178,31 +254,39 @@ export default function StandaloneCardDashboard() {
               ) : (
                 <div className="space-y-2">
                   {card.leads.map((lead: any) => (
-                    <div key={lead.id} className="flex items-start gap-3 p-3 rounded-xl bg-neutral-900/60 border border-neutral-700/40">
-                      <div className="w-8 h-8 rounded-full bg-cyan-500/15 border border-cyan-500/20 flex items-center justify-center shrink-0 text-sm font-bold text-cyan-300">
-                        {lead.name.charAt(0).toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-white text-sm font-semibold">{lead.name}</p>
-                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
-                          {lead.phone && (
-                            <a href={`tel:${lead.phone}`} className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 transition-colors">
-                              <Phone size={10} />{lead.phone}
-                            </a>
-                          )}
-                          {lead.email && (
-                            <a href={`mailto:${lead.email}`} className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 transition-colors">
-                              <Mail size={10} />{lead.email}
-                            </a>
+                    <div key={lead.id} className="p-3 rounded-xl bg-neutral-900/60 border border-neutral-700/40">
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 rounded-full bg-cyan-500/15 border border-cyan-500/20 flex items-center justify-center shrink-0 text-sm font-bold text-cyan-300">
+                          {lead.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-sm font-semibold">{lead.name}</p>
+                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+                            {lead.phone && (
+                              <a href={`tel:${lead.phone}`} className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 transition-colors">
+                                <Phone size={10} />{lead.phone}
+                              </a>
+                            )}
+                            {lead.email && (
+                              <a href={`mailto:${lead.email}`} className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 transition-colors">
+                                <Mail size={10} />{lead.email}
+                              </a>
+                            )}
+                          </div>
+                          {lead.message && (
+                            <p className="text-neutral-400 text-xs mt-1 italic">"{lead.message}"</p>
                           )}
                         </div>
-                        {lead.message && (
-                          <p className="text-neutral-400 text-xs mt-1 italic">"{lead.message}"</p>
-                        )}
+                        <span className="text-neutral-600 text-[10px] shrink-0 mt-0.5">
+                          {new Date(lead.createdAt).toLocaleDateString()}
+                        </span>
                       </div>
-                      <span className="text-neutral-600 text-[10px] shrink-0 mt-0.5">
-                        {new Date(lead.createdAt).toLocaleDateString()}
-                      </span>
+                      {/* Owner notes — editable inline */}
+                      <LeadNotes
+                        leadId={lead.id}
+                        initial={lead.ownerNotes}
+                        ownerEmail={data.user.email}
+                      />
                     </div>
                   ))}
                 </div>
