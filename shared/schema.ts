@@ -2113,6 +2113,23 @@ export const insertStandaloneOrderSchema = createInsertSchema(standaloneOrders).
 export type InsertStandaloneOrder = z.infer<typeof insertStandaloneOrderSchema>;
 export type StandaloneOrder = typeof standaloneOrders.$inferSelect;
 
+// ── Standalone card leads ─────────────────────────────────────────────────────
+// Captured when a visitor taps an NFC card and submits their info via the
+// sticky lead-capture bar on the public card view.
+export const standaloneCardLeads = pgTable("standalone_card_leads", {
+  id:        serial("id").primaryKey(),
+  cardId:    integer("card_id").references(() => standaloneCards.id, { onDelete: "cascade" }).notNull(),
+  name:      text("name").notNull(),
+  phone:     text("phone"),
+  email:     text("email"),
+  message:   text("message"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertStandaloneCardLeadSchema = createInsertSchema(standaloneCardLeads).omit({ id: true, createdAt: true });
+export type InsertStandaloneCardLead = z.infer<typeof insertStandaloneCardLeadSchema>;
+export type StandaloneCardLead = typeof standaloneCardLeads.$inferSelect;
+
 export const insertStandaloneReferralCodeSchema = createInsertSchema(standaloneReferralCodes).omit({ id: true, createdAt: true });
 export type InsertStandaloneReferralCode = z.infer<typeof insertStandaloneReferralCodeSchema>;
 export type StandaloneReferralCode = typeof standaloneReferralCodes.$inferSelect;

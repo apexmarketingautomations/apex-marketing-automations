@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { Copy, ExternalLink, Users, DollarSign, Clock, CheckCircle, CreditCard, Loader2, ArrowLeft, Pencil } from "lucide-react";
+import { Copy, ExternalLink, Users, DollarSign, Clock, CheckCircle, CreditCard, Loader2, ArrowLeft, Pencil, Phone, Mail, UserCheck } from "lucide-react";
 
 export default function StandaloneCardDashboard() {
   const [, setLocation] = useLocation();
@@ -156,6 +156,58 @@ export default function StandaloneCardDashboard() {
               </button>
             </div>
             {copied === `card-${card.id}` && <p className="text-green-400 text-xs mt-1">Copied!</p>}
+
+            {/* ── Leads section ──────────────────────────────────────────── */}
+            <div className="mt-4 pt-4 border-t border-neutral-700/50">
+              <div className="flex items-center gap-2 mb-3">
+                <UserCheck className="w-4 h-4 text-cyan-400" />
+                <span className="text-sm font-semibold text-white">
+                  People Who Left Their Info
+                </span>
+                {card.leads?.length > 0 && (
+                  <span className="ml-auto text-xs bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-2 py-0.5 rounded-full font-bold">
+                    {card.leads.length} lead{card.leads.length !== 1 ? "s" : ""}
+                  </span>
+                )}
+              </div>
+
+              {!card.leads?.length ? (
+                <p className="text-neutral-500 text-xs py-2">
+                  No one yet — share your card and they'll show up here when someone taps and drops their info.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {card.leads.map((lead: any) => (
+                    <div key={lead.id} className="flex items-start gap-3 p-3 rounded-xl bg-neutral-900/60 border border-neutral-700/40">
+                      <div className="w-8 h-8 rounded-full bg-cyan-500/15 border border-cyan-500/20 flex items-center justify-center shrink-0 text-sm font-bold text-cyan-300">
+                        {lead.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm font-semibold">{lead.name}</p>
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+                          {lead.phone && (
+                            <a href={`tel:${lead.phone}`} className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 transition-colors">
+                              <Phone size={10} />{lead.phone}
+                            </a>
+                          )}
+                          {lead.email && (
+                            <a href={`mailto:${lead.email}`} className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 transition-colors">
+                              <Mail size={10} />{lead.email}
+                            </a>
+                          )}
+                        </div>
+                        {lead.message && (
+                          <p className="text-neutral-400 text-xs mt-1 italic">"{lead.message}"</p>
+                        )}
+                      </div>
+                      <span className="text-neutral-600 text-[10px] shrink-0 mt-0.5">
+                        {new Date(lead.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         ))}
 

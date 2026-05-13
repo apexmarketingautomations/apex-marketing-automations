@@ -46,6 +46,23 @@ const MIGRATIONS: DataMigration[] = [
         ON apex_module_coverage (account_id, module_group);
     `,
   },
+  {
+    name: "2026-05-13-standalone-card-leads",
+    sql: `
+      CREATE TABLE IF NOT EXISTS standalone_card_leads (
+        id         SERIAL PRIMARY KEY,
+        card_id    INTEGER NOT NULL REFERENCES standalone_cards(id) ON DELETE CASCADE,
+        name       TEXT    NOT NULL,
+        phone      TEXT,
+        email      TEXT,
+        message    TEXT,
+        created_at TIMESTAMP DEFAULT NOW() NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_scl_card_id    ON standalone_card_leads (card_id);
+      CREATE INDEX IF NOT EXISTS idx_scl_created_at ON standalone_card_leads (created_at DESC);
+    `,
+  },
 ];
 
 export async function runDataMigrations(): Promise<void> {

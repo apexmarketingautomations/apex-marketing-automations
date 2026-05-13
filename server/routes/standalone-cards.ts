@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import {
   standaloneCardUsers, standaloneCards, standaloneOrders,
   standaloneReferralCodes, standaloneReferrals, standalonePageViews,
+  standaloneCardLeads,
 } from "@shared/schema";
 import { db } from "../db";
 import { eq, sql, and, or, desc, ilike } from "drizzle-orm";
@@ -397,6 +398,46 @@ export function registerStandaloneCardsRoutes(app: Express) {
     res.send(vcard);
   }));
 
+  // ── Lead capture: POST /api/standalone/card/:slug/lead ──────────────────────
+  // Called by the sticky lead-capture bar on the public standalone card view.
+  // Stores the visitor's contact info against the card so the card owner can
+  // see and follow up from their dashboard.
+  app.post("/api/standalone/card/:slug/lead", asyncHandler(async (req, res) => {
+    const slug = req.params.slug.toLowerCase();
+    const [card] = await db.select({ id: standaloneCards.id })
+      .from(standaloneCards)
+      .where(and(eq(standaloneCards.slug, slug), eq(standaloneCards.published, true)))
+      .limit(1);
+    if (!card) return res.status(404).json({ error: "Card not found" });
+
+    const { name, phone, email, message } = req.body as {
+      name?: string; phone?: string; email?: string; message?: string;
+    };
+
+    if (!name?.trim()) return res.status(400).json({ error: "Name is required" });
+    if (!phone?.trim() && !email?.trim()) {
+      return res.status(400).json({ error: "Phone or email is required" });
+    }
+
+    await db.insert(standaloneCardLeads).values({
+      cardId:  card.id,
+      name:    name.trim(),
+      phone:   phone?.trim() || null,
+      email:   email?.trim() || null,
+      message: message?.trim() || null,
+    });
+
+    emitUniversalEvent({
+      eventType: "standalone_card.lead_captured",
+      sourceModule: "standalone-cards",
+      sourceTable:  "standalone_card_leads",
+      sourceId:     card.id,
+      payload: { cardId: card.id, slug },
+    });
+
+    return res.json({ ok: true });
+  }));
+
   app.post("/api/standalone/upsell-accept", asyncHandler(async (req, res) => {
     const { sessionId, offer, amount } = req.body;
     if (!sessionId) return res.status(400).json({ error: "Session ID required" });
@@ -583,9 +624,29 @@ export function registerStandaloneCardsRoutes(app: Express) {
     const paid = referrals.filter(r => r.status === "paid")
       .reduce((s, r) => s + r.commissionAmount, 0);
 
+    // Attach leads to each card
+    const cardIds = cards.map(c => c.id);
+    const leads = cardIds.length
+      ? await db.select()
+          .from(standaloneCardLeads)
+          .where(sql`${standaloneCardLeads.cardId} = ANY(${sql.raw(`ARRAY[${cardIds.join(",")}]::int[]`)})`)
+          .orderBy(desc(standaloneCardLeads.createdAt))
+      : [];
+
+    const leadsByCard: Record<number, typeof leads> = {};
+    for (const lead of leads) {
+      if (!leadsByCard[lead.cardId]) leadsByCard[lead.cardId] = [];
+      leadsByCard[lead.cardId].push(lead);
+    }
+
+    const cardsWithLeads = cards.map(c => ({
+      ...c,
+      leads: leadsByCard[c.id] || [],
+    }));
+
     res.json({
       user,
-      cards,
+      cards: cardsWithLeads,
       referralCode: refCode?.code,
       referralStats: {
         totalReferrals: referrals.length,
