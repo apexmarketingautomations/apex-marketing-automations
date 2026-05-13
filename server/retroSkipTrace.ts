@@ -144,11 +144,15 @@ export async function runRetroSkipTrace(
           }
           const skipNotes = `Skip Trace (${new Date().toLocaleDateString()}):\n${personLines.join("\n") || "No data found"}`;
 
+          // Prefer the mailing address from skip trace over the crash-scene location
+          const mailingAddr = result.mailingAddress || null;
+
           await storage.updateContact(contact.id, {
             firstName,
             lastName,
-            phone:  result.ownerPhone || contact.phone,
-            email:  result.ownerEmail || contact.email,
+            phone:   result.ownerPhone   || contact.phone,
+            email:   result.ownerEmail   || contact.email,
+            address: mailingAddr          || contact.address,
             tags:   [...new Set([
               ...(contact.tags || []),
               "skip-traced",
@@ -195,7 +199,7 @@ export async function runRetroSkipTrace(
 }
 
 // Canonical set imported from vendorConfig — single source of truth for all vendor gates.
-// Contains: 3 (Apex Marketing), 13 (Apex Main), 14 (Giovanni)
+// Contains: 3 (Apex Marketing / APEX MAIN), 4 (Crash Connect — Giovanni)
 
 export async function runRetroSkipTraceAllAccounts(): Promise<void> {
   const { db }         = await import("./db");
@@ -222,7 +226,7 @@ export async function runRetroSkipTraceAllAccounts(): Promise<void> {
     }
   }
 
-  console.log(`[RETRO-SKIP-TRACE] Running for ${eligibleIds.length} eligible accounts: ${eligibleIds.join(", ")} (always-included crash accounts: 3,13,14)`);
+  console.log(`[RETRO-SKIP-TRACE] Running for ${eligibleIds.length} eligible accounts: ${eligibleIds.join(", ")} (always-included crash accounts: 3, 4)`);
 
   for (const accountId of eligibleIds) {
     const stats = await runRetroSkipTrace(accountId, { crashOnly: false });
