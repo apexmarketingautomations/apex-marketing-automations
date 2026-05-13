@@ -137,16 +137,25 @@ export default function Sentinel() {
     },
   });
 
-  const { data: incidents = [], isLoading: loadingIncidents } = useQuery<SentinelIncident[]>({
-    queryKey: ["/api/sentinel/incidents", currentAccount?.id],
+  const [incidentPage, setIncidentPage] = useState(1);
+  const INCIDENT_PAGE_SIZE = 100;
+
+  const { data: incidentsData, isLoading: loadingIncidents } = useQuery({
+    queryKey: ["/api/sentinel/incidents", currentAccount?.id, incidentPage],
     enabled: !!currentAccount?.id && hasSentinelAccess,
     queryFn: async () => {
-      const res = await fetch(`/api/sentinel/incidents/${currentAccount!.id}`);
-        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+      const res = await fetch(`/api/sentinel/incidents/${currentAccount!.id}?page=${incidentPage}&pageSize=${INCIDENT_PAGE_SIZE}`);
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       return res.json();
     },
     refetchInterval: 3_600_000,
   });
+
+  const incidents: SentinelIncident[] = Array.isArray(incidentsData)
+    ? incidentsData
+    : (Array.isArray(incidentsData?.incidents) ? incidentsData.incidents : []);
+  const incidentTotal: number    = incidentsData?.total    ?? incidents.length;
+  const incidentTotalPages: number = incidentsData?.totalPages ?? 1;
 
   useEffect(() => {
     if (config) {
@@ -830,10 +839,10 @@ export default function Sentinel() {
               <>
                 <div className="flex items-center gap-3 mt-6 mb-3">
                   <div className="flex-1 h-px bg-white/10" />
-                  <span className="text-xs text-slate-600 uppercase tracking-widest font-bold">Previously Actioned</span>
+                  <span className="text-xs text-slate-600 uppercase tracking-widest font-bold">Previously Actioned ({actionedIncidents.length})</span>
                   <div className="flex-1 h-px bg-white/10" />
                 </div>
-                {actionedIncidents.slice(0, 10).map((incident, i) => (
+                {actionedIncidents.map((incident, i) => (
                   <IncidentCard
                     key={incident.id}
                     incident={incident}
@@ -848,6 +857,44 @@ export default function Sentinel() {
                   />
                 ))}
               </>
+            )}
+
+            {/* ── Page controls ── */}
+            {incidentTotalPages > 1 && (
+              <div className="flex items-center justify-center gap-1 pt-4">
+                <button
+                  onClick={() => setIncidentPage(p => Math.max(1, p - 1))}
+                  disabled={incidentPage <= 1}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold border border-white/10 bg-white/5 text-slate-400 hover:text-white disabled:opacity-30 transition-all"
+                >
+                  ← Prev
+                </button>
+                {Array.from({ length: Math.min(5, incidentTotalPages) }, (_, i) => {
+                  const start = Math.max(1, Math.min(incidentPage - 2, incidentTotalPages - 4));
+                  const p = start + i;
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => setIncidentPage(p)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                        p === incidentPage
+                          ? "border-red-500/50 bg-red-500/20 text-white"
+                          : "border-white/10 bg-white/5 text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  );
+                })}
+                <button
+                  onClick={() => setIncidentPage(p => Math.min(incidentTotalPages, p + 1))}
+                  disabled={incidentPage >= incidentTotalPages}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold border border-white/10 bg-white/5 text-slate-400 hover:text-white disabled:opacity-30 transition-all"
+                >
+                  Next →
+                </button>
+                <span className="text-xs text-slate-600 ml-2">{incidentTotal} total</span>
+              </div>
             )}
           </div>
         )}
@@ -1847,7 +1894,7 @@ function HomeSvcSentinelView({
                   <span className="text-xs text-slate-600 uppercase tracking-widest font-bold">Previously Actioned</span>
                   <div className="flex-1 h-px bg-white/10" />
                 </div>
-                {sortedActioned.slice(0, 10).map((incident, i) => (
+                {sortedActioned.map((incident, i) => (
                   <HomeSvcIncidentCard
                     key={incident.id}
                     incident={incident}
@@ -1871,7 +1918,7 @@ function HomeSvcSentinelView({
                   <span className="text-xs text-slate-700 uppercase tracking-widest font-bold">Expired</span>
                   <div className="flex-1 h-px bg-slate-800" />
                 </div>
-                {expiredSignals.slice(0, 5).map((incident, i) => (
+                {expiredSignals.map((incident, i) => (
                   <HomeSvcIncidentCard
                     key={incident.id}
                     incident={incident}

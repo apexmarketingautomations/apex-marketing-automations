@@ -110,7 +110,8 @@ Write 2-3 sentences: (1) what specifically happened, (2) the exact business oppo
         maxTokens: 180,
         route: "case-deep-analysis",
       });
-      const text = res.text || "AI analysis unavailable. Check Provider Config tab.";
+      const data = await res.json();
+      const text = (typeof data?.text === "string" ? data.text : null) || "AI analysis unavailable. Check Provider Config tab.";
       setLocalSummary(text);
       patch.mutate({ aiSummary: text });
     } catch {

@@ -238,13 +238,28 @@ export function registerSentinelRoutes(app: Express) {
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const { allowed, plan } = await requirePlanFeature(subAccountId, 'sentinel');
     if (!allowed) return res.status(403).json({ error: "upgrade_required", feature: "sentinel", currentPlan: plan, requiredPlan: "pro" });
-    // Parse optional since/limit query params; default = last 30 days, up to 5000
-    const since = req.query.since
+
+    const since    = req.query.since
       ? new Date(req.query.since as string)
       : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const limit = Math.min(parseInt(req.query.limit as string) || 5000, 10000);
-    const incidents = await storage.getSentinelIncidentsFiltered(subAccountId, { since, limit });
-    res.json(incidents);
+    const page     = Math.max(1, parseInt(req.query.page as string) || 1);
+    const pageSize = Math.min(Math.max(1, parseInt(req.query.pageSize as string) || 100), 500);
+    const offset   = (page - 1) * pageSize;
+
+    const all      = await storage.getSentinelIncidentsFiltered(subAccountId, { since, limit: 10000 });
+    const total    = all.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const incidents  = all.slice(offset, offset + pageSize);
+
+    res.json({
+      incidents,
+      page,
+      pageSize,
+      total,
+      totalPages,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1,
+    });
   }));
 
   app.post("/api/sentinel/scan", asyncHandler(async (req, res) => {
@@ -1070,15 +1085,15 @@ export function registerRetroSkipTraceRoute(app: any) {
     const subAccountId = parseIntParam(req.query.subAccountId as string, "subAccountId");
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
 
-    const category = (req.query.category as string) || "all";
-    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const category  = (req.query.category as string) || "all";
+    const page      = Math.max(1, parseInt(req.query.page as string) || 1);
+    const pageSize  = Math.min(Math.max(1, parseInt(req.query.pageSize as string) || 50), 200);
+    const offset    = (page - 1) * pageSize;
 
     const { db } = await import("../db");
     const { legalSignals } = await import("@shared/schema");
-    const { desc, inArray, eq } = await import("drizzle-orm");
+    const { desc, inArray, count } = await import("drizzle-orm");
 
-    // TRUE legal signal types only — personal injury, criminal, family, traffic
-    // home_service and local_service are NOT legal signals
     const CATEGORY_SIGNALS: Record<string, string[]> = {
       criminal:        ["dui_arrest", "arrest_record"],
       family:          ["divorce_filing", "domestic_violence_injunction", "custody_modification", "probate_filing"],
@@ -1087,23 +1102,36 @@ export function registerRetroSkipTraceRoute(app: any) {
       all:             [],
     };
 
-    // All legal signal types — excludes new_business_filing, salon_license (home/local service)
     const ALL_LEGAL_TYPES = [
       "dui_arrest", "arrest_record", "divorce_filing", "domestic_violence_injunction",
       "custody_modification", "probate_filing", "osha_incident", "fda_recall", "cpsc_recall",
       "license_suspension", "traffic_violation",
     ];
 
-    const signalTypes = CATEGORY_SIGNALS[category] || [];
-    const filterTypes = signalTypes.length > 0 ? signalTypes : ALL_LEGAL_TYPES;
+    const filterTypes = (CATEGORY_SIGNALS[category] || []).length > 0
+      ? CATEGORY_SIGNALS[category]
+      : ALL_LEGAL_TYPES;
+
+    const [{ total }] = await db.select({ total: count() }).from(legalSignals)
+      .where(inArray(legalSignals.signalType, filterTypes as any));
 
     const signals = await db.select().from(legalSignals)
       .where(inArray(legalSignals.signalType, filterTypes as any))
       .orderBy(desc(legalSignals.detectedAt))
-      .limit(limit);
+      .limit(pageSize)
+      .offset(offset);
 
-    console.log(`[LEGAL-SIGNALS] category=${category} returned=${signals.length}`);
-    return res.json({ signals, total: signals.length });
+    const totalPages = Math.max(1, Math.ceil(Number(total) / pageSize));
+    console.log(`[LEGAL-SIGNALS] category=${category} page=${page}/${totalPages} returned=${signals.length} total=${total}`);
+    return res.json({
+      signals,
+      page,
+      pageSize,
+      total: Number(total),
+      totalPages,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1,
+    });
   }));
 
   // ── Distribution Rules API ────────────────────────────────────────────────────

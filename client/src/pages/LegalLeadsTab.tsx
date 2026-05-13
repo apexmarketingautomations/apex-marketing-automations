@@ -260,7 +260,7 @@ function LegalSignalDetail({ signal, onBack }: { signal: LegalSignal; onBack: ()
         <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-5">
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Practice Areas</h3>
           <div className="flex flex-wrap gap-2">
-            {signal.serviceCategories.map(cat => (
+            {(Array.isArray(signal.serviceCategories) ? signal.serviceCategories : []).map(cat => (
               <span key={cat} className="px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-500/15 text-indigo-300 border border-indigo-500/20">
                 {cat.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())}
               </span>
@@ -295,12 +295,15 @@ export function LegalLeadsTab({ onBack }: { onBack: () => void }) {
   const [activeCategory, setActiveCategory] = useState<LegalCategory | "all">("all");
   const [selectedSignal, setSelectedSignal] = useState<LegalSignal | null>(null);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 50;
+  const handleCategoryChange = (cat: LegalCategory | "all") => { setActiveCategory(cat); setPage(1); };
 
   const { data: signalsData, isLoading, refetch } = useQuery({
-    queryKey: ["/api/sentinel/legal-signals", activeAccountId, activeCategory],
+    queryKey: ["/api/sentinel/legal-signals", activeAccountId, activeCategory, page],
     queryFn: async () => {
       const res = await apiRequest("GET",
-        `/api/sentinel/legal-signals?subAccountId=${activeAccountId}&category=${activeCategory}&limit=50`
+        `/api/sentinel/legal-signals?subAccountId=${activeAccountId}&category=${activeCategory}&page=${page}&pageSize=${PAGE_SIZE}`
       );
       return res.json();
     },
@@ -309,6 +312,8 @@ export function LegalLeadsTab({ onBack }: { onBack: () => void }) {
   });
 
   const signals: LegalSignal[] = Array.isArray(signalsData) ? signalsData : (signalsData?.signals ?? []);
+  const totalPages: number = signalsData?.totalPages ?? 1;
+  const total: number = signalsData?.total ?? signals.length;
 
   const filtered = signals.filter(s => {
     if (!search) return true;
@@ -365,7 +370,7 @@ export function LegalLeadsTab({ onBack }: { onBack: () => void }) {
           return (
             <button
               key={cat.key}
-              onClick={() => setActiveCategory(cat.key)}
+              onClick={() => handleCategoryChange(cat.key)}
               className={`p-3 rounded-xl border text-left transition-all ${
                 activeCategory === cat.key
                   ? "border-indigo-500/40 bg-indigo-500/10"
@@ -401,7 +406,7 @@ export function LegalLeadsTab({ onBack }: { onBack: () => void }) {
       {/* All / Category toggle */}
       <div className="flex items-center gap-2 mb-4">
         <button
-          onClick={() => setActiveCategory("all")}
+          onClick={() => handleCategoryChange("all")}
           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
             activeCategory === "all"
               ? "bg-white/10 text-white border border-white/20"
@@ -454,7 +459,7 @@ export function LegalLeadsTab({ onBack }: { onBack: () => void }) {
         </div>
       ) : (
         <div className="space-y-2">
-          <p className="text-xs text-slate-600 mb-3">{filtered.length} signal{filtered.length !== 1 ? "s" : ""} found</p>
+          <p className="text-xs text-slate-600 mb-3">{total} signal{total !== 1 ? "s" : ""} total · page {page} of {totalPages}</p>
           {filtered.map(signal => (
             <LegalSignalCard
               key={signal.id}
@@ -462,6 +467,41 @@ export function LegalLeadsTab({ onBack }: { onBack: () => void }) {
               onClick={() => setSelectedSignal(signal)}
             />
           ))}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-1 pt-4">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold border border-white/10 bg-white/5 text-slate-400 hover:text-white disabled:opacity-30 transition-all"
+              >
+                ← Prev
+              </button>
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                const start = Math.max(1, Math.min(page - 2, totalPages - 4));
+                const p = start + i;
+                return (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                      p === page
+                        ? "border-indigo-500/50 bg-indigo-500/20 text-white"
+                        : "border-white/10 bg-white/5 text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                );
+              })}
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold border border-white/10 bg-white/5 text-slate-400 hover:text-white disabled:opacity-30 transition-all"
+              >
+                Next →
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -501,7 +541,7 @@ function RuleCard({ rule, onToggle }: { rule: DistributionRule; onToggle: (id: n
             )}
           </div>
           <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-            {rule.signalTypes.map(t => {
+            {(Array.isArray(rule.signalTypes) ? rule.signalTypes : []).map(t => {
               const found = DISTRIBUTABLE_SIGNAL_TYPES.find(s => s.value === t);
               return (
                 <span key={t} className="text-[10px] px-2 py-0.5 rounded bg-white/5 border border-white/10 text-slate-400">
@@ -859,7 +899,8 @@ function LeadDrawer({
         ],
         maxTokens: 120,
       });
-      setAiSummary(res.text || res.message || "AI summary unavailable.");
+      const data = await res.json();
+      setAiSummary((typeof data?.text === "string" ? data.text : null) || (typeof data?.message === "string" ? data.message : null) || "AI summary unavailable.");
     } catch {
       setAiSummary("AI provider not configured. Add OPENAI_APEX_INT_KEY or Gemini_API_Key_saas to Railway env vars.");
     } finally {
@@ -1351,10 +1392,12 @@ export function ProviderConfigTab({ onBack }: { onBack: () => void }) {
         maxTokens: 10,
         route: "provider-connectivity-test",
       });
-      const ok = !!res.text;
+      const data = await res.json();
+      const replyText = typeof data?.text === "string" ? data.text : null;
+      const ok = !!replyText;
       setTestResults(prev => ({
         ...prev,
-        active: { ok, latency: Date.now() - start, reply: res.text?.slice(0, 60), error: res.errorMessage },
+        active: { ok, latency: Date.now() - start, reply: replyText?.slice(0, 60), error: data?.errorMessage ?? data?.error },
       }));
       toast({ title: ok ? "✅ AI responded successfully" : "⚠️ AI call returned but empty" });
     } catch (e: any) {

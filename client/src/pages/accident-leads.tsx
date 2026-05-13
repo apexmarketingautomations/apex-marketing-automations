@@ -489,7 +489,11 @@ export default function AccidentLeadsPage() {
   // Fetch incidents
   const { data: incidentsData, isLoading, refetch, dataUpdatedAt } = useQuery({
     queryKey: ["/api/sentinel/incidents", activeAccountId],
-    queryFn: () => apiRequest("GET", `/api/sentinel/incidents?subAccountId=${activeAccountId}&limit=200`),
+    queryFn: async () => {
+      const res = await fetch(`/api/sentinel/incidents/${activeAccountId}?pageSize=500`, { credentials: "include" });
+      if (!res.ok) return { incidents: [], total: 0 };
+      return res.json();
+    },
     refetchInterval: 60_000,
     enabled: !!activeAccountId,
   });
