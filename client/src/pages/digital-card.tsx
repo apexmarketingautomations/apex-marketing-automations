@@ -13,29 +13,38 @@ import {
 import type { SharedCardData, CardRenderConfig } from "@/components/card-core";
 import { useCardAdaptation } from "@/hooks/useCardAdaptation";
 
-// ── Quick-capture modal — fires immediately on NFC/QR land ────────────────────
-function QuickCaptureModal({ card, slug, onClose }: {
+// ── Sticky lead capture bar — scrolls with the phone, always in view ─────────
+//
+// Starts as a compact pill at the bottom. Tapping it expands the full form.
+// Stays fixed to the bottom of the viewport as the visitor scrolls the card.
+// Only a hard ✕ dismiss makes it go away for the session.
+//
+function StickyLeadCapture({ card, slug, onClose }: {
   card: SharedCardData;
   slug: string;
   onClose: (submitted: boolean) => void;
 }) {
-  const [name,  setName]  = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [busy,  setBusy]  = useState(false);
-  const [done,  setDone]  = useState(false);
-  const [err,   setErr]   = useState("");
+  const [expanded, setExpanded] = useState(false);
+  const [name,     setName]     = useState("");
+  const [phone,    setPhone]    = useState("");
+  const [email,    setEmail]    = useState("");
+  const [busy,     setBusy]     = useState(false);
+  const [done,     setDone]     = useState(false);
+  const [err,      setErr]      = useState("");
 
-  const ownerName = card.name || "them";
+  const ownerName  = card.name  || "them";
+  const ownerFirst = ownerName.split(" ")[0];
+  const brand      = card.brandColor  || "#6366f1";
+  const brandDim   = card.accentColor || "#4f46e5";
 
   const submit = async () => {
     setErr("");
-    if (!name.trim()) { setErr("What's your name?"); return; }
-    if (!phone.trim() && !email.trim()) { setErr("Drop a phone number or email so they can reach you."); return; }
+    if (!name.trim())                        { setErr("What's your name?"); return; }
+    if (!phone.trim() && !email.trim())      { setErr("Phone or email — at least one."); return; }
     setBusy(true);
     try {
       const res = await fetch(`/api/public-card/${slug}/lead`, {
-        method: "POST",
+        method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name:  name.trim(),
@@ -45,96 +54,112 @@ function QuickCaptureModal({ card, slug, onClose }: {
       });
       if (!res.ok) throw new Error("Failed");
       setDone(true);
-      setTimeout(() => onClose(true), 1400);
+      setTimeout(() => onClose(true), 2000);
     } catch {
       setErr("Something went wrong — try again.");
       setBusy(false);
     }
   };
 
-  const brand = card.brandColor || "#6366f1";
+  const inputCls = "w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/25 text-sm outline-none focus:border-white/25 transition-colors";
 
   return (
+    // Fixed to bottom of viewport — stays put as user scrolls
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
-      style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(6px)" }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(false); }}
+      initial={{ y: 120 }}
+      animate={{ y: 0 }}
+      exit={{ y: 120 }}
+      transition={{ type: "spring", damping: 28, stiffness: 260, delay: 0.1 }}
+      className="fixed bottom-0 left-0 right-0 z-40 flex justify-center px-3 pb-3 pointer-events-none"
     >
-      <motion.div
-        initial={{ y: 60, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: 60, opacity: 0 }}
-        transition={{ type: "spring", damping: 24, stiffness: 300 }}
-        className="w-full max-w-sm bg-[#0f0f14] border border-white/10 rounded-2xl overflow-hidden shadow-2xl"
+      <div
+        className="w-full max-w-sm pointer-events-auto"
+        style={{ filter: "drop-shadow(0 -4px 24px rgba(0,0,0,0.6))" }}
       >
-        {done ? (
-          <div className="px-6 py-8 text-center space-y-2">
-            <div className="text-3xl">✅</div>
-            <p className="text-white font-bold text-lg">Got it!</p>
-            <p className="text-slate-400 text-sm">{ownerName} will be in touch.</p>
-          </div>
-        ) : (
-          <>
-            {/* Top bar */}
-            <div className="px-5 pt-5 pb-4 border-b border-white/5">
-              <p className="text-white font-bold text-base leading-snug">
-                👋 Drop your info real quick
-              </p>
-              <p className="text-slate-400 text-sm mt-1">
-                {ownerName} will follow up with you directly.
-              </p>
+        <div
+          className="rounded-2xl overflow-hidden border border-white/10"
+          style={{ background: "rgba(10,10,16,0.96)", backdropFilter: "blur(16px)" }}
+        >
+          {done ? (
+            // ── Success state ────────────────────────────────────────────────
+            <div className="flex items-center gap-3 px-5 py-4">
+              <span className="text-2xl">✅</span>
+              <div>
+                <p className="text-white font-bold text-sm">Sent!</p>
+                <p className="text-slate-400 text-xs">{ownerFirst} will reach out to you soon.</p>
+              </div>
             </div>
+          ) : expanded ? (
+            // ── Expanded form ────────────────────────────────────────────────
+            <div className="px-4 pt-4 pb-4 space-y-3">
+              {/* Header row */}
+              <div className="flex items-center justify-between">
+                <p className="text-white font-bold text-sm">👋 Leave your info for {ownerFirst}</p>
+                <button
+                  onClick={() => onClose(false)}
+                  className="text-slate-500 hover:text-white text-lg leading-none transition-colors px-1"
+                  aria-label="Dismiss"
+                >✕</button>
+              </div>
 
-            {/* Form */}
-            <div className="px-5 py-4 space-y-3">
-              <input
-                type="text"
-                placeholder="Your name *"
-                value={name}
-                onChange={e => setName(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 text-sm outline-none focus:border-white/20 transition-colors"
-                autoFocus
-              />
-              <input
-                type="tel"
-                placeholder="Phone number"
-                value={phone}
-                onChange={e => setPhone(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 text-sm outline-none focus:border-white/20 transition-colors"
-              />
-              <input
-                type="email"
-                placeholder="Email (optional if you gave phone)"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 text-sm outline-none focus:border-white/20 transition-colors"
-              />
+              {/* Fields */}
+              <input type="text"    placeholder="Your name *"   value={name}  onChange={e => setName(e.target.value)}  className={inputCls} autoFocus />
+              <input type="tel"     placeholder="Phone number"  value={phone} onChange={e => setPhone(e.target.value)} className={inputCls} />
+              <input type="email"   placeholder="Email address" value={email} onChange={e => setEmail(e.target.value)} className={inputCls} />
               {err && <p className="text-red-400 text-xs">{err}</p>}
-            </div>
 
-            {/* Actions */}
-            <div className="px-5 pb-5 space-y-2">
               <button
                 onClick={submit}
                 disabled={busy}
-                className="w-full py-3 rounded-xl font-bold text-sm text-white transition-opacity disabled:opacity-50"
+                className="w-full py-3 rounded-xl font-bold text-sm text-white disabled:opacity-50 transition-opacity active:scale-[0.98]"
                 style={{ background: brand }}
               >
-                {busy ? "Sending…" : "Send my info"}
+                {busy ? "Sending…" : `Send my info to ${ownerFirst}`}
               </button>
               <button
-                onClick={() => onClose(false)}
-                className="w-full py-2 text-slate-500 text-xs hover:text-slate-300 transition-colors"
+                onClick={() => setExpanded(false)}
+                className="w-full py-1 text-slate-600 text-xs hover:text-slate-400 transition-colors"
               >
-                Skip, just browsing
+                Collapse
               </button>
             </div>
-          </>
-        )}
-      </motion.div>
+          ) : (
+            // ── Collapsed pill — always visible, nudges them to tap ──────────
+            <div className="flex items-center gap-3 px-4 py-3">
+              {/* Pulsing dot */}
+              <span className="relative flex h-2.5 w-2.5 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-60" style={{ background: brand }} />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5" style={{ background: brand }} />
+              </span>
+
+              {/* CTA text */}
+              <button
+                onClick={() => setExpanded(true)}
+                className="flex-1 text-left"
+              >
+                <p className="text-white text-sm font-semibold leading-tight">Want {ownerFirst} to follow up?</p>
+                <p className="text-slate-500 text-xs">Tap to drop your info — takes 10 seconds</p>
+              </button>
+
+              {/* Expand arrow + dismiss */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setExpanded(true)}
+                  className="px-3 py-1.5 rounded-lg text-white text-xs font-bold transition-opacity active:opacity-70"
+                  style={{ background: brandDim }}
+                >
+                  Yes →
+                </button>
+                <button
+                  onClick={() => onClose(false)}
+                  className="text-slate-600 hover:text-slate-400 text-base transition-colors px-1"
+                  aria-label="Dismiss"
+                >✕</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </motion.div>
   );
 }
@@ -409,7 +434,7 @@ export default function DigitalCard() {
         <HeroSection card={card} theme={theme} />
 
         <div
-          className={`px-5 max-w-[480px] mx-auto -mt-2 ${adaptation.compactMode ? "pb-20" : "pb-28"}`}
+          className={`px-5 max-w-[480px] mx-auto -mt-2 ${adaptation.compactMode ? "pb-32" : "pb-40"}`}
           data-adaptation-variant={adaptation.variant}
         >
           <LiveNowPill adaptation={adaptation} theme={theme} />
@@ -457,7 +482,7 @@ export default function DigitalCard() {
 
       <AnimatePresence>
         {showQuickCapture && slug && (
-          <QuickCaptureModal
+          <StickyLeadCapture
             card={card}
             slug={slug}
             onClose={(submitted) => {
