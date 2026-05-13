@@ -506,12 +506,13 @@ async function fetchFloridaArrests(): Promise<RawSignal[]> {
   return []; // handled by jailBookingPipeline
 }
 
-// ── Legal: Court Filings — dead county clerk JSON APIs removed ────────────────
-// leeclerk.org, collierclerk.com, sarasotaclerk.com do not expose public JSON APIs.
-// Family court data will be added when real FL eCourt API access is obtained.
+// ── Legal: Court Filings — delegated to courtFilingPipeline ──────────────────
+// County clerk portals (leeclerk.org, collierclerk.com, etc.) have no public JSON APIs.
+// Scraping is handled by courtFilingPipeline.ts via Nimble agents (every 6 hours).
+// This function returns [] — contacts and legalSignals are written directly by that pipeline.
 
 async function fetchFloridaCourtFilings(): Promise<RawSignal[]> {
-  return []; // placeholder — no live public court filing API available
+  return []; // handled by courtFilingPipeline.ts
 }
 
 // ── Legal: OSHA Workplace Incidents ──────────────────────────────────────────

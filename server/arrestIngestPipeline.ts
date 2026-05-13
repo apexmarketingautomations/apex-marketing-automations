@@ -33,12 +33,11 @@ import {
   legalSignals,
   legalLeads,
   contacts,
-  subAccounts,
   type InsertLegalSignal,
   type InsertLegalLead,
   type InsertContact,
 }                        from "@shared/schema";
-import { eq, or }        from "drizzle-orm";
+import { eq }            from "drizzle-orm";
 import {
   scrapeAllCounties,
   type RawBookingRecord,
@@ -125,27 +124,17 @@ function parseBond(raw: number | null): number | null {
   return raw && isFinite(raw) && raw > 0 ? raw : null;
 }
 
-// ── Account resolver (legal accounts get contacts) ───────────────────────────
+// ── Account resolver (all Sentinel-enabled accounts get contacts) ────────────
 
 async function resolveLegalAccountIds(): Promise<number[]> {
   const { pool } = await import("./db");
-  const allAccounts = await db
-    .select({ id: subAccounts.id })
-    .from(subAccounts)
-    .limit(200);
-
-  const ids: number[] = [];
-  for (const acct of allAccounts) {
-    // Always include Apex main (3) and Crash Connect (4)
-    if (acct.id === 3 || acct.id === 4) { ids.push(acct.id); continue; }
-    const r = await pool.query(
-      `SELECT niche FROM sentinel_config WHERE sub_account_id=$1 LIMIT 1`,
-      [acct.id],
-    );
-    const niche = r.rows[0]?.niche as string | undefined;
-    if (!niche || niche === "legal" || niche === "attorney") ids.push(acct.id);
-  }
-  return [...new Set(ids)];
+  // Deliver arrest leads to every account that has Sentinel turned on,
+  // regardless of niche. Previously this filtered by niche="legal"/"attorney"
+  // which silently excluded crash-niche accounts from ever seeing arrest leads.
+  const r = await pool.query(
+    `SELECT sub_account_id FROM sentinel_config WHERE enabled = true LIMIT 200`,
+  );
+  return r.rows.map((row: { sub_account_id: number }) => row.sub_account_id);
 }
 
 // ── Contact creation ──────────────────────────────────────────────────────────

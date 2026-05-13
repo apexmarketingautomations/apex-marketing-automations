@@ -680,6 +680,27 @@ async function validateMetaCredentials() {
   }
 
   try {
+    // ── One-time idempotent Nimble agent setup (runs on every boot, skips if agents already exist) ──
+    // Creates all jail-booking + court-filing named agents in Nimble before pipelines start.
+    // Safe to run repeatedly — each county agent is checked for existence first.
+    try {
+      const { setupAllBookingAgents } = await import("./nimbleAgentSetup");
+      console.log("[STARTUP] 🔧 Running Nimble jail-booking agent setup (idempotent)...");
+      await setupAllBookingAgents();
+      console.log("[STARTUP] ✅ Nimble jail-booking agents ready");
+    } catch (agentErr: any) {
+      console.error("[STARTUP] Nimble jail-booking agent setup failed (non-fatal):", agentErr?.message);
+    }
+
+    try {
+      const { setupAllCourtFilingAgents } = await import("./courtFilingAgentSetup");
+      console.log("[STARTUP] 🔧 Running Nimble court-filing agent setup (idempotent)...");
+      await setupAllCourtFilingAgents();
+      console.log("[STARTUP] ✅ Nimble court-filing agents ready");
+    } catch (courtAgentErr: any) {
+      console.error("[STARTUP] Nimble court-filing agent setup failed (non-fatal):", courtAgentErr?.message);
+    }
+
     const { startJailBookingScheduler } = await import("./jailBookingPipeline");
     startJailBookingScheduler();
     console.log("[STARTUP] ✅ Jail Booking Pipeline started — 11 FL counties via Nimble browser agents (LEE/CHARLOTTE/COLLIER/HENDRY/GLADES/SARASOTA/MANATEE/POLK/HILLSBOROUGH/PINELLAS/PASCO)");
@@ -701,6 +722,14 @@ async function validateMetaCredentials() {
     console.log("[STARTUP] ✅ Home Service pipeline started — FL roofing/plumbing/HVAC/pest-control signals");
   } catch (homeErr: any) {
     console.error("[STARTUP] Home Service pipeline failed to start (non-fatal):", homeErr?.message);
+  }
+
+  try {
+    const { startCourtFilingScheduler } = await import("./courtFilingPipeline");
+    startCourtFilingScheduler();
+    console.log("[STARTUP] ✅ Court Filing pipeline started — FL family law/probate signals (every 6 hours)");
+  } catch (courtErr: any) {
+    console.error("[STARTUP] Court Filing pipeline failed to start (non-fatal):", courtErr?.message);
   }
 
   try {

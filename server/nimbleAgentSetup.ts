@@ -445,7 +445,10 @@ async function main(): Promise<void> {
 }
 
 // Run if invoked directly: npx tsx server/nimbleAgentSetup.ts
-if (require.main === module) {
+// Use import.meta.url for ESM compatibility
+const _isMain = process.argv[1]?.endsWith("nimbleAgentSetup.ts") ||
+                process.argv[1]?.endsWith("nimbleAgentSetup.js");
+if (_isMain) {
   main().catch(err => {
     console.error("[NIMBLE-SETUP] Fatal:", err.message);
     process.exit(1);
