@@ -26,7 +26,10 @@ export function runStartupChecks() {
   check("Stripe API", ["STRIPE_API_SECRET", "STRIPE_SECRET_KEY"], true);
   check("Stripe Webhook", ["STRIPE_WEBHOOK_SECRET"], true);
   check("Twilio", ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"], true);
-  check("Google API", ["GOOGLE_API_KEY"], false);
+  check("Anthropic AI", ["ANTHROPIC_API_KEY", "AI_INTEGRATIONS_ANTHROPIC_API_KEY"], true);
+  check("Apify Scraper", ["APIFY_API_KEY"], false);
+  check("BatchData Skip Trace", ["BATCHDATA_API_KEY", "BATCH_DATA"], false);
+  check("Google API", ["GOOGLE_API_KEY", "GOOGLE_MAPS_API_KEY"], false);
   // VAPI_API_KEY is obsolete — system uses VAPI_PRIVATE_KEY_APEX, VAPI_PUBLIC_KEY, VAPI_ORG_ID
   // check("Vapi", ["VAPI_API_KEY"], false); // removed to avoid false warning
   check("Meta", ["META_APP_ID"], false);

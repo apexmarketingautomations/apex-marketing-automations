@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useAuth } from "@/hooks/use-auth";
-import { Shield, Users, MessageSquare, Target, AlertTriangle, Satellite, Activity, DollarSign, Radio, RefreshCcw, Search, ChevronDown, GitBranch } from "lucide-react";
+import { Shield, Users, MessageSquare, Target, AlertTriangle, Satellite, Activity, DollarSign, Radio, RefreshCcw, Search, ChevronDown, GitBranch, Fingerprint } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
 
@@ -59,6 +59,118 @@ const categoryColors: Record<string, { bg: string; text: string; label: string }
   sentinel_incident: { bg: "bg-red-500/20", text: "text-red-400", label: "Incident" },
   contact: { bg: "bg-cyan-500/20", text: "text-cyan-400", label: "Contact" },
 };
+
+function AdminSkipTracePanel() {
+  const { toast } = { toast: (x: any) => {} }; // inline — replace with useToast if available
+  const [subAccountId, setSubAccountId] = useState("");
+  const [force, setForce] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+
+  async function runRetroSkipTrace(scope: "single" | "all") {
+    setRunning(true);
+    setResult(null);
+    try {
+      const body: Record<string, any> = { force };
+      if (scope === "single" && subAccountId) body.subAccountId = parseInt(subAccountId);
+      const res = await fetch("/api/sentinel/retro-skip-trace", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      setResult(res.ok ? (data.message || "Started") : (data.error || "Failed"));
+    } catch (e: any) {
+      setResult("Error: " + e.message);
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function runBatchSkipTrace() {
+    if (!subAccountId) return;
+    setRunning(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/admin/batch-skip-trace", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subAccountId: parseInt(subAccountId), force }),
+      });
+      const data = await res.json();
+      setResult(res.ok ? (data.message || `Queued ${data.queued ?? ""} leads`) : (data.error || "Failed"));
+    } catch (e: any) {
+      setResult("Error: " + e.message);
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
+      className="bg-[#0a0a0a] border border-cyan-500/20 rounded-2xl p-6"
+    >
+      <h2 className="text-sm font-bold text-cyan-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+        <Fingerprint size={14} /> Admin Skip Trace
+      </h2>
+      <p className="text-xs text-slate-500 mb-4">
+        Enrich crash leads with phone/email/name via BatchData. Requires <code className="bg-white/10 px-1 rounded">BATCHDATA_API_KEY</code> in Railway env vars.
+      </p>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+        <div>
+          <label className="text-xs text-slate-400 font-bold mb-1 block">Sub-Account ID (optional for retro)</label>
+          <input
+            type="number"
+            value={subAccountId}
+            onChange={e => setSubAccountId(e.target.value)}
+            placeholder="e.g. 3"
+            className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/50"
+          />
+        </div>
+        <div className="flex items-end">
+          <label className="flex items-center gap-2 text-xs text-slate-400 font-bold cursor-pointer">
+            <input type="checkbox" checked={force} onChange={e => setForce(e.target.checked)}
+              className="w-4 h-4 rounded border-white/20 bg-white/5" />
+            Force re-enrich (ignore existing)
+          </label>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        <button
+          onClick={() => runRetroSkipTrace("all")}
+          disabled={running}
+          className="px-4 py-2 rounded-lg text-xs font-bold border border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20 disabled:opacity-40 transition-all"
+        >
+          {running ? "Running…" : "🔍 Retro All Crash Leads"}
+        </button>
+        <button
+          onClick={() => runRetroSkipTrace("single")}
+          disabled={running || !subAccountId}
+          className="px-4 py-2 rounded-lg text-xs font-bold border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 disabled:opacity-40 transition-all"
+        >
+          {running ? "Running…" : "🔍 Retro Single Account"}
+        </button>
+        <button
+          onClick={runBatchSkipTrace}
+          disabled={running || !subAccountId}
+          className="px-4 py-2 rounded-lg text-xs font-bold border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 disabled:opacity-40 transition-all"
+        >
+          {running ? "Running…" : "⚡ Batch Skip Trace Account"}
+        </button>
+      </div>
+
+      {result && (
+        <div className={`rounded-xl p-3 text-xs border ${result.startsWith("Error") || result.toLowerCase().includes("fail") ? "bg-red-500/10 border-red-500/20 text-red-400" : "bg-green-500/10 border-green-500/20 text-green-400"}`}>
+          {result}
+        </div>
+      )}
+    </motion.div>
+  );
+}
 
 export default function AdminConsolePage() {
   const { user } = useAuth();
@@ -460,6 +572,9 @@ export default function AdminConsolePage() {
           </div>
         )}
       </div>
+
+      {/* ── Admin Skip Trace ── */}
+      <AdminSkipTracePanel />
     </motion.div>
   );
 }
