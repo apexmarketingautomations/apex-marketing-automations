@@ -39,7 +39,10 @@ function requireAdminMiddleware(req: Request, res: Response, next: NextFunction)
   isAdminRequest(req).then((ok) => {
     if (ok) { next(); return; }
     res.status(403).json({ error: "Admin access required" });
-  }).catch(() => res.status(403).json({ error: "Admin access required" }));
+  }).catch((err: any) => {
+    console.warn("[APIFY-ADMIN] requireAdmin DB check failed:", err?.message);
+    res.status(403).json({ error: "Admin access required" });
+  });
 }
 
 // ── Route registration ────────────────────────────────────────────────────────
