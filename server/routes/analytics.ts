@@ -121,7 +121,14 @@ export function registerAnalyticsRoutes(app: Express) {
   app.get("/api/admin/global-stats", requireAdmin, asyncHandler(async (_req: Request, res: Response) => {
     const accountsResult = await db.execute(sql`SELECT COUNT(*) as count FROM sub_accounts`);
     const usersResult = await db.execute(sql`SELECT COUNT(*) as count FROM users`);
-    const leadsResult = await db.execute(sql`SELECT COUNT(*) as count FROM meta_leads`);
+    const leadsResult = await db.execute(sql`
+      SELECT (
+        (SELECT COUNT(*) FROM meta_leads) +
+        (SELECT COUNT(*) FROM sentinel_incidents) +
+        (SELECT COUNT(*) FROM legal_leads) +
+        (SELECT COUNT(*) FROM property_leads)
+      ) as count
+    `);
     const contactsResult = await db.execute(sql`SELECT COUNT(*) as count FROM contacts`);
     const messagesResult = await db.execute(sql`SELECT COUNT(*) as count FROM messages`);
     const incidentsResult = await db.execute(sql`SELECT COUNT(*) as count FROM sentinel_incidents`);
@@ -196,7 +203,12 @@ export function registerAnalyticsRoutes(app: Express) {
       SELECT sa.id, sa.name, sa.industry, sa.plan, sa.twilio_number, sa.owner_user_id,
         (SELECT COUNT(*) FROM contacts c WHERE c.sub_account_id = sa.id) as contact_count,
         (SELECT COUNT(*) FROM messages m WHERE m.sub_account_id = sa.id) as message_count,
-        (SELECT COUNT(*) FROM meta_leads ml WHERE ml.sub_account_id = sa.id) as lead_count
+        (
+          (SELECT COUNT(*) FROM meta_leads ml WHERE ml.sub_account_id = sa.id) +
+          (SELECT COUNT(*) FROM sentinel_incidents si WHERE si.sub_account_id = sa.id) +
+          (SELECT COUNT(*) FROM legal_leads ll WHERE ll.sub_account_id = sa.id) +
+          (SELECT COUNT(*) FROM property_leads pl WHERE pl.sub_account_id = sa.id)
+        ) as lead_count
       FROM sub_accounts sa
       ORDER BY sa.id DESC
     `);
