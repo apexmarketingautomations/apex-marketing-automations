@@ -950,16 +950,22 @@ export default function CrashReports() {
     refetchInterval: 3_600_000,
   });
 
-  const { data: sentinelIncidents = [] } = useQuery<SentinelIncident[]>({
-    queryKey: ["/api/sentinel/incidents", currentAccount?.id],
+  const [sentinelPage, setSentinelPage] = useState(1);
+  const { data: sentinelIncidentsData } = useQuery({
+    queryKey: ["/api/sentinel/incidents", currentAccount?.id, sentinelPage],
     enabled: !!currentAccount?.id && hasSentinelAccess,
     queryFn: async () => {
-      const res = await fetch(`/api/sentinel/incidents/${currentAccount!.id}`);
+      const res = await fetch(`/api/sentinel/incidents/${currentAccount!.id}?page=${sentinelPage}&pageSize=50`);
       if (!res.ok) throw new Error("Failed to fetch incidents");
       return res.json();
     },
     refetchInterval: 3_600_000,
   });
+  const sentinelIncidents: SentinelIncident[] = Array.isArray(sentinelIncidentsData)
+    ? sentinelIncidentsData
+    : (Array.isArray(sentinelIncidentsData?.incidents) ? sentinelIncidentsData.incidents : []);
+  const sentinelTotal: number     = sentinelIncidentsData?.total      ?? sentinelIncidents.length;
+  const sentinelTotalPages: number = sentinelIncidentsData?.totalPages ?? 1;
 
   if (selectedSentinelIncident) {
     return (
@@ -1028,11 +1034,11 @@ export default function CrashReports() {
               <Satellite size={14} /> Sentinel Detected Incidents
             </h2>
             <span className="text-[10px] text-slate-600 uppercase tracking-widest">
-              {sentinelIncidents.length} incident{sentinelIncidents.length !== 1 ? "s" : ""}
+              {sentinelTotal} total · page {sentinelPage}/{sentinelTotalPages}
             </span>
           </div>
           <div className="space-y-2">
-            {sentinelIncidents.slice(0, 10).map((incident) => (
+            {sentinelIncidents.map((incident) => (
               <SentinelIncidentCard
                 key={incident.id}
                 incident={incident}
@@ -1040,6 +1046,28 @@ export default function CrashReports() {
               />
             ))}
           </div>
+          {sentinelTotalPages > 1 && (
+            <div className="flex items-center justify-center gap-1 pt-3">
+              <button onClick={() => setSentinelPage(p => Math.max(1, p - 1))} disabled={sentinelPage <= 1}
+                className="px-3 py-1 rounded-lg text-xs font-bold border border-white/10 bg-white/5 text-slate-400 hover:text-white disabled:opacity-30 transition-all">
+                ← Prev
+              </button>
+              {Array.from({ length: Math.min(5, sentinelTotalPages) }, (_, i) => {
+                const start = Math.max(1, Math.min(sentinelPage - 2, sentinelTotalPages - 4));
+                const p = start + i;
+                return (
+                  <button key={p} onClick={() => setSentinelPage(p)}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all ${p === sentinelPage ? "border-purple-500/50 bg-purple-500/20 text-white" : "border-white/10 bg-white/5 text-slate-400 hover:text-white"}`}>
+                    {p}
+                  </button>
+                );
+              })}
+              <button onClick={() => setSentinelPage(p => Math.min(sentinelTotalPages, p + 1))} disabled={sentinelPage >= sentinelTotalPages}
+                className="px-3 py-1 rounded-lg text-xs font-bold border border-white/10 bg-white/5 text-slate-400 hover:text-white disabled:opacity-30 transition-all">
+                Next →
+              </button>
+            </div>
+          )}
         </motion.div>
       )}
 
