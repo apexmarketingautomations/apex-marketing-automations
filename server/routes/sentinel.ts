@@ -1230,7 +1230,9 @@ export function registerRetroSkipTraceRoute(app: any) {
     let { findBusinessPhone } = {} as any;
     try {
       ({ findBusinessPhone } = await import("../legalSignalPipeline"));
-    } catch { /* findBusinessPhone may not be exported yet */ }
+    } catch {
+      // allow-silent-catch: findBusinessPhone may not be exported yet
+    }
 
     if (typeof findBusinessPhone === "function") {
       for (const sig of toEnrich) {
