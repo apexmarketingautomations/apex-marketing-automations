@@ -465,6 +465,9 @@ export default function AdminConsolePage() {
         </div>
       )}
 
+      {/* ── Manual Skip Trace — top of page for easy access ── */}
+      <ManualSkipTracePanel />
+
       <div className="bg-black/40 border border-white/10 rounded-xl overflow-hidden" data-testid="admin-console">
         <div className="p-4 border-b border-white/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
@@ -705,9 +708,6 @@ export default function AdminConsolePage() {
           </div>
         )}
       </div>
-
-      {/* ── Manual Skip Trace ── */}
-      <ManualSkipTracePanel />
 
       {/* ── Batch / Retro Skip Trace ── */}
       <AdminSkipTracePanel />
