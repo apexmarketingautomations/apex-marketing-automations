@@ -688,6 +688,14 @@ async function validateMetaCredentials() {
   }
 
   try {
+    const { startHomeServicePipeline } = await import("./homeServiceSignalPipeline");
+    startHomeServicePipeline();
+    console.log("[STARTUP] ✅ Home Service pipeline started — FL roofing/plumbing/HVAC/pest-control signals");
+  } catch (homeErr: any) {
+    console.error("[STARTUP] Home Service pipeline failed to start (non-fatal):", homeErr?.message);
+  }
+
+  try {
     const { startRetroSkipTraceScheduler } = await import("./retroSkipTrace");
     startRetroSkipTraceScheduler();
 
