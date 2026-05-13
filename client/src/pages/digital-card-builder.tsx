@@ -212,6 +212,45 @@ const TOP_ACTION_LABEL: Record<string, string> = {
   qr_scan: "QR Scan", scroll: "Scrolled", view: "Viewed",
 };
 
+const ACTION_PLAIN: Record<string, string> = {
+  click_phone:    "Called your number",
+  save_contact:   "Saved your contact",
+  click_booking:  "Booked a meeting",
+  click_email:    "Sent you an email",
+  share:          "Shared your card",
+  click_website:  "Visited your website",
+  click_review:   "Left a review",
+  click_link:     "Clicked a link",
+  click_social:   "Checked your socials",
+  qr_scan:        "Scanned your QR code",
+  scroll:         "Scrolled your card",
+  view:           "Viewed your card",
+};
+
+function visitorLabel(s: SessionRow): string {
+  const parts: string[] = [];
+  if (s.deviceType === "mobile") parts.push("📱 Mobile");
+  else if (s.deviceType === "tablet") parts.push("📱 Tablet");
+  else if (s.deviceType) parts.push("💻 Desktop");
+  const ref = referrerHost(s.referrer);
+  if (ref && ref !== "Direct") parts.push(`via ${ref}`);
+  if (s.region) parts.push(s.region);
+  else if (s.country) parts.push(s.country);
+  return parts.length ? parts.join(" · ") : "Direct visit";
+}
+
+function intentSignals(s: SessionRow): string[] {
+  const out: string[] = [];
+  const sec = Math.round(s.totalTimeMs / 1000);
+  if (sec >= 120) out.push(`Spent ${Math.floor(sec / 60)}m reading`);
+  else if (sec >= 45)  out.push("Spent time reading");
+  if (s.maxScrollDepth >= 80) out.push("Read the full card");
+  else if (s.maxScrollDepth >= 50) out.push("Scrolled halfway");
+  if (s.clickCount >= 3) out.push(`${s.clickCount} clicks`);
+  if (s.returnVisit) out.push("Return visitor");
+  return out.slice(0, 3);
+}
+
 function useCardSessions(cardId?: number) {
   return useQuery<{ sessions: SessionRow[] }>({
     queryKey: ["/api/cards", cardId, "sessions"],
@@ -312,9 +351,19 @@ function fmtRelative(iso: string) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+const TIER_CONFIG = {
+  hot:  { emoji: "🔥", label: "Hot Lead",  bg: "bg-red-500/10",    border: "border-red-500/20",    badge: "bg-red-500/15 text-red-300 border-red-500/30",  why: "Took a strong action — called, booked, or saved your info." },
+  warm: { emoji: "🌡️", label: "Warm Lead", bg: "bg-orange-500/10", border: "border-orange-500/20", badge: "bg-orange-500/15 text-orange-300 border-orange-500/30", why: "Engaged with your card but hasn't reached out yet." },
+  cold: { emoji: "❄️", label: "Cold",      bg: "bg-slate-800/60",  border: "border-white/5",       badge: "bg-slate-500/15 text-slate-400 border-slate-500/30",  why: "Briefly viewed your card with no meaningful interaction." },
+};
+
 function LeadTable({ cardId }: { cardId?: number }) {
   const { data, isLoading } = useCardSessions(cardId);
-  const sessions = (data?.sessions || []).slice().sort((a, b) => b.intentScore - a.intentScore);
+  const [showAll, setShowAll] = useState(false);
+  const allSessions = (data?.sessions || []).slice().sort((a, b) => b.intentScore - a.intentScore);
+  const PREVIEW = 8;
+  const sessions = showAll ? allSessions : allSessions.slice(0, PREVIEW);
+  const hidden = allSessions.length - PREVIEW;
 
   if (!cardId) {
     return (
@@ -324,54 +373,108 @@ function LeadTable({ cardId }: { cardId?: number }) {
     );
   }
 
+  const hotCount  = allSessions.filter(s => s.leadTier === "hot").length;
+  const warmCount = allSessions.filter(s => s.leadTier === "warm").length;
+
   return (
     <Card className="bg-black/40 border-white/10">
-      <CardContent className="p-6 space-y-4">
-        <div className="flex items-center justify-between">
+      <CardContent className="p-5 space-y-4">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-white">Visitor Leads</h2>
-            <p className="text-xs text-slate-500 mt-0.5">Per-visitor sessions with intent scoring (0–100). Hot ≥ 71, Warm 31–70.</p>
+            <h2 className="text-base font-bold text-white">Who's Looking at Your Card</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Every person who visited, ranked by how interested they seem.</p>
           </div>
-          <span className="text-xs text-slate-500" data-testid="text-leads-count">{sessions.length} sessions</span>
+          <div className="flex items-center gap-2 shrink-0">
+            {hotCount > 0  && <span className="text-[11px] font-semibold bg-red-500/15 text-red-300 border border-red-500/30 px-2 py-0.5 rounded-full">🔥 {hotCount} hot</span>}
+            {warmCount > 0 && <span className="text-[11px] font-semibold bg-orange-500/15 text-orange-300 border border-orange-500/30 px-2 py-0.5 rounded-full">🌡️ {warmCount} warm</span>}
+            <span className="text-[11px] text-slate-500" data-testid="text-leads-count">{allSessions.length} total</span>
+          </div>
         </div>
 
+        {/* Legend */}
+        <div className="grid grid-cols-3 gap-2 text-[10px]">
+          {(["hot","warm","cold"] as const).map(tier => (
+            <div key={tier} className={`rounded-lg p-2 border ${TIER_CONFIG[tier].bg} ${TIER_CONFIG[tier].border}`}>
+              <p className="font-bold text-white mb-0.5">{TIER_CONFIG[tier].emoji} {TIER_CONFIG[tier].label}</p>
+              <p className="text-slate-400 leading-snug">{TIER_CONFIG[tier].why}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Lead list */}
         {isLoading ? (
-          <div className="text-sm text-slate-400 py-8 text-center">Loading sessions…</div>
-        ) : sessions.length === 0 ? (
-          <div className="text-sm text-slate-500 py-8 text-center" data-testid="empty-leads">
-            No visitor sessions yet. Share your card to start collecting leads.
+          <div className="text-sm text-slate-400 py-6 text-center">Loading…</div>
+        ) : allSessions.length === 0 ? (
+          <div className="text-sm text-slate-500 py-6 text-center" data-testid="empty-leads">
+            No visitors yet. Share your card to start seeing who's interested.
           </div>
         ) : (
-          <div className="overflow-x-auto -mx-2">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-[11px] uppercase tracking-wider text-slate-500 border-b border-white/5">
-                  <th className="px-2 py-2">Visitor ID</th>
-                  <th className="px-2 py-2">Score</th>
-                  <th className="px-2 py-2">Status</th>
-                  <th className="px-2 py-2">Top Action</th>
-                  <th className="px-2 py-2">Time on Page</th>
-                </tr>
-              </thead>
-              <tbody className="text-slate-200">
-                {sessions.map(s => (
-                  <tr key={s.id} className="border-b border-white/5 hover:bg-white/[0.03]" data-testid={`row-lead-${s.id}`}>
-                    <td className="px-2 py-2 font-mono text-[11px] text-slate-300" data-testid={`text-visitor-${s.id}`}>
-                      {(s.visitorId || s.sessionId).slice(0, 8)}{s.returnVisit && <span className="ml-1 text-cyan-400" title="Return visit">↻</span>}
-                    </td>
-                    <td className="px-2 py-2 font-mono text-white" data-testid={`text-score-${s.id}`}>{s.intentScore}</td>
-                    <td className="px-2 py-2">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${tierBadge(s.leadTier)}`} data-testid={`badge-tier-${s.id}`}>
-                        {s.leadTier}
+          <div className="space-y-2">
+            {sessions.map(s => {
+              const tier = (TIER_CONFIG[s.leadTier as keyof typeof TIER_CONFIG] ?? TIER_CONFIG.cold);
+              const signals = intentSignals(s);
+              const action  = ACTION_PLAIN[s.topAction] || TOP_ACTION_LABEL[s.topAction] || "Viewed";
+              return (
+                <div
+                  key={s.id}
+                  className={`rounded-xl border px-3 py-2.5 ${tier.bg} ${tier.border} hover:brightness-110 transition-all`}
+                  data-testid={`row-lead-${s.id}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    {/* Left: badge + identity */}
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-bold uppercase border ${tier.badge}`}
+                        data-testid={`badge-tier-${s.id}`}
+                      >
+                        {tier.emoji} {s.leadTier}
                       </span>
-                    </td>
-                    <td className="px-2 py-2 text-slate-300" data-testid={`text-topaction-${s.id}`}>{TOP_ACTION_LABEL[s.topAction] || s.topAction}</td>
-                    <td className="px-2 py-2" data-testid={`text-time-${s.id}`}>{fmtDuration(s.totalTimeMs)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      <span className="text-xs text-slate-300 truncate" data-testid={`text-visitor-${s.id}`}>
+                        {visitorLabel(s)}
+                        {s.returnVisit && <span className="ml-1 text-cyan-400 font-semibold">↻ Back again</span>}
+                      </span>
+                    </div>
+                    {/* Right: time + score */}
+                    <div className="flex items-center gap-2 shrink-0 text-[11px] text-slate-500">
+                      <span data-testid={`text-time-${s.id}`}>{fmtDuration(s.totalTimeMs)}</span>
+                      <span className="text-slate-600">·</span>
+                      <span className="font-bold text-white" data-testid={`text-score-${s.id}`}>{s.intentScore}</span>
+                      <span className="text-slate-600 text-[10px]">pts</span>
+                    </div>
+                  </div>
+                  {/* Action + signals */}
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] font-semibold text-white/80" data-testid={`text-topaction-${s.id}`}>
+                      {action}
+                    </span>
+                    {signals.map((sig, i) => (
+                      <span key={i} className="text-[10px] text-slate-500 bg-white/5 rounded-full px-1.5 py-0.5">{sig}</span>
+                    ))}
+                    <span className="text-[10px] text-slate-600 ml-auto">{fmtRelative(s.startedAt)}</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
+        )}
+
+        {/* Show more / less */}
+        {!showAll && hidden > 0 && (
+          <button
+            onClick={() => setShowAll(true)}
+            className="w-full text-xs text-slate-500 hover:text-slate-300 py-1 transition-colors"
+          >
+            Show {hidden} more visitors ↓
+          </button>
+        )}
+        {showAll && allSessions.length > PREVIEW && (
+          <button
+            onClick={() => setShowAll(false)}
+            className="w-full text-xs text-slate-500 hover:text-slate-300 py-1 transition-colors"
+          >
+            Show less ↑
+          </button>
         )}
       </CardContent>
     </Card>
