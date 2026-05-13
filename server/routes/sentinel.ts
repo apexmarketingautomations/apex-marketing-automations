@@ -1303,4 +1303,92 @@ export function registerRetroSkipTraceRoute(app: any) {
 
     res.json({ ok: true, checked: toEnrich.length, enriched });
   }));
+
+  // ── GET /api/sentinel/pipeline-status ────────────────────────────────────────
+  // Returns live status of all FL lead pipelines — useful for the Sentinel UI
+  // status panel and for debugging why leads aren't appearing.
+
+  app.get("/api/sentinel/pipeline-status", asyncHandler(async (_req, res) => {
+    const nimbleConfigured   = !!(process.env.NIMBLE_API_KEY || process.env.NIMBLE_TOKEN);
+    const apifyConfigured    = !!process.env.APIFY_API_KEY;
+    const batchDataConfigured = !!(process.env.BATCHDATA_API_KEY || process.env.BATCHDATA_KEY);
+    const googleMapsConfigured = !!process.env.GOOGLE_MAPS_API_KEY;
+
+    let arrestStats: any = null;
+    try {
+      const { getArrestIngestStats, isArrestIngestConfigured } = await import("../arrestIngestPipeline");
+      arrestStats = {
+        configured: isArrestIngestConfigured(),
+        lastRun:    getArrestIngestStats(),
+      };
+    } catch { /* non-fatal */ }
+
+    const { pool } = await import("../db");
+
+    // Recent signal counts (last 24h) per pipeline source
+    const { rows: signalCounts } = await pool.query<{ signal_type: string; cnt: string }>(
+      `SELECT signal_type, COUNT(*) as cnt
+         FROM legal_signals
+        WHERE detected_at > NOW() - INTERVAL '24 hours'
+        GROUP BY signal_type
+        ORDER BY cnt DESC`,
+    );
+
+    const { rows: courtFilingCounts } = await pool.query<{ cnt: string }>(
+      `SELECT COUNT(*) as cnt FROM legal_signals
+        WHERE signal_type IN ('divorce_filing','custody_modification','domestic_violence_injunction','probate_filing')
+          AND detected_at > NOW() - INTERVAL '24 hours'`,
+    );
+
+    const { rows: unenrichedRows } = await pool.query<{ cnt: string }>(
+      `SELECT COUNT(*) as cnt FROM legal_signals
+        WHERE subject_phone IS NULL
+          AND signal_type IN ('arrest','dui_arrest','jail_booking','license_suspension')
+          AND detected_at > NOW() - INTERVAL '7 days'`,
+    );
+
+    res.json({
+      credentials: {
+        nimble:     nimbleConfigured,
+        apify:      apifyConfigured,
+        batchData:  batchDataConfigured,
+        googleMaps: googleMapsConfigured,
+      },
+      pipelines: {
+        jailBooking: {
+          active:      nimbleConfigured,
+          description: "11 FL county jail booking scrapers (Nimble browser agents)",
+          intervalMin: 60,
+        },
+        arrestIngest: {
+          active:      arrestStats?.configured ?? false,
+          description: "Direct Nimble REST + Apify fallback, dedup + CRM routing",
+          intervalMin: 360,
+          lastRun:     arrestStats?.lastRun?.completedAt ?? null,
+          lastRunStats: arrestStats?.lastRun ?? null,
+        },
+        courtFiling: {
+          active:      nimbleConfigured,
+          description: "FL county clerk portals — divorce/DV/custody/probate",
+          intervalMin: 360,
+        },
+        legalSignals: {
+          active:      true,
+          description: "OSHA incidents, FDA/CPSC recalls, enrichment pass",
+          intervalMin: 15,
+        },
+        crashIngest: {
+          active:      true,
+          description: "FHP HSMV CAD crash scraper → PI attorney leads",
+          intervalMin: 5,
+        },
+      },
+      last24h: {
+        signals:      signalCounts.reduce((a, r) => a + parseInt(r.cnt, 10), 0),
+        byType:       Object.fromEntries(signalCounts.map(r => [r.signal_type, parseInt(r.cnt, 10)])),
+        courtFilings: parseInt(courtFilingCounts[0]?.cnt ?? "0", 10),
+        unenrichedArrests: parseInt(unenrichedRows[0]?.cnt ?? "0", 10),
+      },
+    });
+  }));
 }

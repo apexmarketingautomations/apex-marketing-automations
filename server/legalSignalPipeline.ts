@@ -452,6 +452,74 @@ async function skipTraceSubject(signal: RawLegalSignal): Promise<string | null> 
   return null;
 }
 
+// ── ARREST ENRICHMENT PASS ────────────────────────────────────────────────────
+// Runs alongside the main signal cycle. Queries legalSignals rows created by
+// jailBookingPipeline / arrestIngestPipeline that have no subjectPhone yet,
+// then runs BatchData skip trace and patches the row + matching legalLeads row.
+// Up to 20 records per pass to avoid over-spending skip-trace credits.
+
+async function runArrestEnrichmentPass(): Promise<void> {
+  if (!BATCHDATA_KEY) return; // no key → skip silently
+
+  const { pool } = await import("./db");
+
+  // Fetch up to 20 unenriched arrest-type signals from the last 7 days
+  const { rows } = await pool.query<{
+    id: number;
+    subject_name: string | null;
+    subject_address: string | null;
+    subject_dob: string | null;
+    lead_id: number | null;
+  }>(
+    `SELECT id, subject_name, subject_address, subject_dob, lead_id
+       FROM legal_signals
+      WHERE subject_phone IS NULL
+        AND signal_type IN ('arrest','dui_arrest','jail_booking','license_suspension')
+        AND detected_at > NOW() - INTERVAL '7 days'
+      ORDER BY score DESC NULLS LAST
+      LIMIT 20`,
+  );
+
+  if (rows.length === 0) return;
+  console.log(`[LEGAL-PIPELINE] 🔍 Arrest enrichment pass — ${rows.length} unenriched signals`);
+
+  let enriched = 0;
+  for (const row of rows) {
+    try {
+      if (!row.subject_address && !row.subject_name) continue;
+      const { skipTraceLookup } = await import("./skip-trace");
+      const result = await skipTraceLookup(
+        { address: row.subject_address ?? "", state: "FL", name: row.subject_name ?? "" },
+        BATCHDATA_KEY!,
+      );
+      const phone = result?.ownerPhone || result?.phone || null;
+      if (!phone) continue;
+
+      // Patch legalSignals
+      await pool.query(
+        `UPDATE legal_signals SET subject_phone = $1 WHERE id = $2`,
+        [phone, row.id],
+      );
+
+      // Patch matching legalLeads row if it exists
+      if (row.lead_id) {
+        await pool.query(
+          `UPDATE legal_leads SET subject_phone = $1 WHERE id = $2`,
+          [phone, row.lead_id],
+        );
+      }
+
+      enriched++;
+      stats.skipTraceHits++;
+    } catch (_e) { // allow-silent-catch: enrichment is optional
+    }
+  }
+
+  if (enriched > 0) {
+    console.log(`[LEGAL-PIPELINE] ✅ Enrichment pass complete — ${enriched}/${rows.length} signals got phone`);
+  }
+}
+
 // ── GOOGLE PLACES ENRICHMENT — Get phone for company-based leads ──────────────
 
 export async function findBusinessPhone(companyName: string, county: string): Promise<string | null> {
@@ -838,7 +906,13 @@ export function startLegalPipeline(subAccountId = APEX_PARENT_ACCOUNT_ID): void 
   console.log(`[LEGAL-PIPELINE] Sources: FL Arrests, OSHA, FDA, CPSC${GOOGLE_PLACES_KEY ? ", Google Places ✅" : " (no Google Places key)"}`);
   console.log(`[LEGAL-PIPELINE] Skip trace: ${BATCHDATA_KEY ? "✅ active" : "⚠️ no key"}`);
   const tick = async () => {
-    try { await runLegalCycle(subAccountId); }
+    try {
+      await runLegalCycle(subAccountId);
+      // Enrichment pass: skip-trace arrest signals that came in without a phone number
+      await runArrestEnrichmentPass().catch(err =>
+        console.warn("[LEGAL-PIPELINE] Enrichment pass error (non-fatal):", err?.message),
+      );
+    }
     catch (err: any) { stats.lastError = err.message; console.error("[LEGAL-PIPELINE] Tick error:", err.message); }
   };
   tick();

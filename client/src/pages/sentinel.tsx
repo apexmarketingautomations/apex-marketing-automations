@@ -164,6 +164,17 @@ export default function Sentinel() {
   const incidentTotal: number    = incidentsData?.total    ?? incidents.length;
   const incidentTotalPages: number = incidentsData?.totalPages ?? 1;
 
+  const { data: pipelineStatus } = useQuery({
+    queryKey: ["/api/sentinel/pipeline-status"],
+    queryFn: async () => {
+      const res = await fetch("/api/sentinel/pipeline-status");
+      if (!res.ok) throw new Error("pipeline-status failed");
+      return res.json();
+    },
+    refetchInterval: 60_000,
+    enabled: hasSentinelAccess,
+  });
+
   useEffect(() => {
     if (config) {
       const niche = (config.niche === 'home_services' ? 'home_services' : 'accident') as "accident" | "home_services";
@@ -720,6 +731,39 @@ export default function Sentinel() {
           <p className="text-3xl font-black text-white">{actionedIncidents.length}</p>
         </motion.div>
       </div>
+
+      {/* ── Pipeline Status Panel ─────────────────────────────── */}
+      {pipelineStatus && (
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}
+          className="bg-[#0a0a0a] border border-slate-700/50 p-5 rounded-2xl mb-6"
+        >
+          <h3 className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-3 flex items-center gap-2">
+            <Zap size={12} className="text-yellow-500" /> Data Pipeline Status
+          </h3>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {Object.entries((pipelineStatus as any).pipelines || {}).map(([key, pipe]: [string, any]) => (
+              <div key={key} className="bg-[#111] border border-slate-800 rounded-xl p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${pipe.active ? "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.8)]" : "bg-slate-600"}`} />
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400 truncate">{pipe.description}</span>
+                </div>
+                <p className="text-[10px] text-slate-500">{pipe.active ? `Every ${pipe.intervalMin}m` : "Inactive"}</p>
+              </div>
+            ))}
+          </div>
+          {pipelineStatus.last24h && (
+            <div className="mt-3 flex flex-wrap gap-3">
+              {Object.entries(pipelineStatus.last24h as Record<string, number>).map(([k, v]) =>
+                typeof v === "number" ? (
+                  <span key={k} className="text-[9px] text-slate-500 bg-slate-900 border border-slate-800 px-2 py-1 rounded-lg">
+                    {k.replace(/_/g, " ")}: <span className="text-white font-bold">{v}</span>
+                  </span>
+                ) : null
+              )}
+            </div>
+          )}
+        </motion.div>
+      )}
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
         className="bg-[#0a0a0a] border border-red-500/30 p-6 rounded-2xl mb-8"
