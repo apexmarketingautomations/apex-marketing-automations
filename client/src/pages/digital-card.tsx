@@ -1,4 +1,4 @@
-import { AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "wouter";
 import {
@@ -12,6 +12,146 @@ import {
 } from "@/components/card-core";
 import type { SharedCardData, CardRenderConfig } from "@/components/card-core";
 import { useCardAdaptation } from "@/hooks/useCardAdaptation";
+
+// ── Quick-capture modal — fires immediately on NFC/QR land ────────────────────
+function QuickCaptureModal({ card, slug, onClose }: {
+  card: SharedCardData;
+  slug: string;
+  onClose: (submitted: boolean) => void;
+}) {
+  const [name,  setName]  = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [busy,  setBusy]  = useState(false);
+  const [done,  setDone]  = useState(false);
+  const [err,   setErr]   = useState("");
+
+  const ownerName = card.name || "them";
+
+  const submit = async () => {
+    setErr("");
+    if (!name.trim()) { setErr("What's your name?"); return; }
+    if (!phone.trim() && !email.trim()) { setErr("Drop a phone number or email so they can reach you."); return; }
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/public-card/${slug}/lead`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name:  name.trim(),
+          phone: phone.trim() || null,
+          email: email.trim() || null,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      setDone(true);
+      setTimeout(() => onClose(true), 1400);
+    } catch {
+      setErr("Something went wrong — try again.");
+      setBusy(false);
+    }
+  };
+
+  const brand = card.brandColor || "#6366f1";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(6px)" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(false); }}
+    >
+      <motion.div
+        initial={{ y: 60, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 60, opacity: 0 }}
+        transition={{ type: "spring", damping: 24, stiffness: 300 }}
+        className="w-full max-w-sm bg-[#0f0f14] border border-white/10 rounded-2xl overflow-hidden shadow-2xl"
+      >
+        {done ? (
+          <div className="px-6 py-8 text-center space-y-2">
+            <div className="text-3xl">✅</div>
+            <p className="text-white font-bold text-lg">Got it!</p>
+            <p className="text-slate-400 text-sm">{ownerName} will be in touch.</p>
+          </div>
+        ) : (
+          <>
+            {/* Top bar */}
+            <div className="px-5 pt-5 pb-4 border-b border-white/5">
+              <p className="text-white font-bold text-base leading-snug">
+                👋 Drop your info real quick
+              </p>
+              <p className="text-slate-400 text-sm mt-1">
+                {ownerName} will follow up with you directly.
+              </p>
+            </div>
+
+            {/* Form */}
+            <div className="px-5 py-4 space-y-3">
+              <input
+                type="text"
+                placeholder="Your name *"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 text-sm outline-none focus:border-white/20 transition-colors"
+                autoFocus
+              />
+              <input
+                type="tel"
+                placeholder="Phone number"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 text-sm outline-none focus:border-white/20 transition-colors"
+              />
+              <input
+                type="email"
+                placeholder="Email (optional if you gave phone)"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 text-sm outline-none focus:border-white/20 transition-colors"
+              />
+              {err && <p className="text-red-400 text-xs">{err}</p>}
+            </div>
+
+            {/* Actions */}
+            <div className="px-5 pb-5 space-y-2">
+              <button
+                onClick={submit}
+                disabled={busy}
+                className="w-full py-3 rounded-xl font-bold text-sm text-white transition-opacity disabled:opacity-50"
+                style={{ background: brand }}
+              >
+                {busy ? "Sending…" : "Send my info"}
+              </button>
+              <button
+                onClick={() => onClose(false)}
+                className="w-full py-2 text-slate-500 text-xs hover:text-slate-300 transition-colors"
+              >
+                Skip, just browsing
+              </button>
+            </div>
+          </>
+        )}
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function shouldShowQuickCapture(slug: string): boolean {
+  try {
+    return !sessionStorage.getItem(`qc_dismissed_${slug}`);
+  } catch {
+    return true;
+  }
+}
+
+function markQuickCaptureDismissed(slug: string): void {
+  try {
+    sessionStorage.setItem(`qc_dismissed_${slug}`, "1");
+  } catch { /* allow-silent-catch: sessionStorage unavailable (private mode) */ }
+}
 
 type FetchState = "loading" | "success" | "not-found" | "unavailable" | "error";
 
@@ -215,6 +355,7 @@ export default function DigitalCard() {
   const [state, setState] = useState<FetchState>("loading");
   const [showShare, setShowShare] = useState(false);
   const [showQR, setShowQR] = useState(false);
+  const [showQuickCapture, setShowQuickCapture] = useState(false);
 
   useEffect(() => {
     if (!slug) { setState("not-found"); return; }
@@ -233,6 +374,10 @@ export default function DigitalCard() {
           setCard(adapted);
           setState("success");
           applySeoMeta(adapted);
+          // Show quick-capture popup if card has it enabled and visitor hasn't dismissed yet
+          if (adapted.leadCaptureEnabled && slug && shouldShowQuickCapture(slug)) {
+            setTimeout(() => setShowQuickCapture(true), 600);
+          }
         });
       })
       .catch(() => setState("error"));
@@ -308,6 +453,20 @@ export default function DigitalCard() {
 
       <AnimatePresence>
         {showShare && <ShareModal card={card} theme={theme} config={config} onClose={() => setShowShare(false)} />}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showQuickCapture && slug && (
+          <QuickCaptureModal
+            card={card}
+            slug={slug}
+            onClose={(submitted) => {
+              setShowQuickCapture(false);
+              markQuickCaptureDismissed(slug);
+              if (submitted) trackEvent("save_contact", "quick_capture_modal");
+            }}
+          />
+        )}
       </AnimatePresence>
     </div>
   );
