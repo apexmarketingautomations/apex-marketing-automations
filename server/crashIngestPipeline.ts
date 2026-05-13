@@ -45,8 +45,8 @@ const LEAD_QUALIFYING_TYPES = [
 const QUALIFYING_SEVERITIES = new Set(["critical", "high"]);
 
 // Giovanni's account gets all injury leads
-const GIOVANNI_ACCOUNT_ID = 14;
-const APEX_MAIN_ACCOUNT_ID = 13;
+const GIOVANNI_ACCOUNT_ID = 4;   // Crash Connect — Giovanni (actual DB id)
+const APEX_MAIN_ACCOUNT_ID = 3;  // APEX MARKETING Account (actual DB id)
 
 interface PollCycleSummary {
   traceId: string;

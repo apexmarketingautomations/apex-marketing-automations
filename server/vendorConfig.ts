@@ -14,9 +14,9 @@
 
 // ── Crash lead accounts (always receive crash leads via crashIngestPipeline) ──
 //   3  = Apex Marketing Automations (platform owner)
-//   13 = Apex Main   (APEX_MAIN_ACCOUNT_ID  in crashIngestPipeline)
-//   14 = Giovanni    (GIOVANNI_ACCOUNT_ID    in crashIngestPipeline)
-export const CRASH_LEAD_ACCOUNT_IDS = new Set<number>([3, 13, 14]);
+//   3  = APEX MARKETING Account (APEX_MAIN_ACCOUNT_ID in crashIngestPipeline)
+//   4  = Crash Connect — Giovanni (GIOVANNI_ACCOUNT_ID in crashIngestPipeline)
+export const CRASH_LEAD_ACCOUNT_IDS = new Set<number>([3, 4]);
 
 // ── BatchData ─────────────────────────────────────────────────────────────────
 // Canonical env var: BATCHDATA_API_KEY
