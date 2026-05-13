@@ -2504,11 +2504,11 @@ export function registerPropertyRoutes(app: Express) {
 
     const { db } = await import("../db");
     const { contacts } = await import("@shared/schema");
-    const { eq, and, notInArray, desc, sql } = await import("drizzle-orm");
+    const { eq, and, notInArray, isNotNull, ne, desc, sql } = await import("drizzle-orm");
 
     const page     = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit    = Math.min(200, Math.max(1, parseInt(req.query.limit as string) || 50));
-    const offset   = (page - 1) * limit;
+    const pageSize = Math.min(500, Math.max(1, parseInt(req.query.limit as string) || 50));
+    const offset   = (page - 1) * pageSize;
     const source   = req.query.source as string | undefined;
     const search   = (req.query.search as string | undefined)?.toLowerCase().trim();
     const tag      = req.query.tag as string | undefined;
@@ -2534,25 +2534,57 @@ export function registerPropertyRoutes(app: Express) {
       );
     }
 
+    // Tag and hasPhone applied at DB level so COUNT(*) is accurate
+    if (tag) {
+      conditions.push(sql`${contacts.tags} @> ARRAY[${tag}]::text[]`);
+    }
+    if (hasPhone) {
+      conditions.push(isNotNull(contacts.phone));
+      conditions.push(ne(contacts.phone, ""));
+    }
+
     const where = and(...conditions);
 
-    const [{ total }] = await db
+    // Real COUNT — never approximated from items.length
+    const [countRow] = await db
       .select({ total: sql<number>`COUNT(*)::int` })
       .from(contacts)
       .where(where);
+    const total = countRow?.total ?? 0;
 
-    let rows: any[] = await db
+    // Account-wide metrics (unfiltered — always reflect true totals)
+    const [metricsRow] = await db
+      .select({
+        withPhone:  sql<number>`COUNT(*) FILTER (WHERE phone IS NOT NULL AND phone <> '')::int`,
+        crashLeads: sql<number>`COUNT(*) FILTER (WHERE source = 'sentinel_crash' OR tags @> ARRAY['crash-lead']::text[])::int`,
+        skipTraced: sql<number>`COUNT(*) FILTER (WHERE tags @> ARRAY['skip-traced']::text[])::int`,
+      })
+      .from(contacts)
+      .where(eq(contacts.subAccountId, subAccountId));
+
+    const items = await db
       .select()
       .from(contacts)
       .where(where)
       .orderBy(desc(contacts.createdAt))
-      .limit(limit)
+      .limit(pageSize)
       .offset(offset);
 
-    if (tag)      rows = rows.filter((c: any) => Array.isArray(c.tags) && c.tags.includes(tag));
-    if (hasPhone) rows = rows.filter((c: any) => !!c.phone);
-
-    res.json({ data: rows, total, page, limit, totalPages: Math.ceil(total / limit) });
+    const totalPages = Math.ceil(total / pageSize);
+    res.json({
+      items,
+      // Legacy alias so existing callers using `.data` don't break during rollout
+      data: items,
+      total,
+      page,
+      pageSize,
+      totalPages,
+      metrics: {
+        totalWithPhone: metricsRow?.withPhone  ?? 0,
+        crashLeads:     metricsRow?.crashLeads ?? 0,
+        skipTraced:     metricsRow?.skipTraced ?? 0,
+      },
+    });
   }));
 
   app.get("/api/contacts/detail/:id", asyncHandler(async (req, res) => {

@@ -110,7 +110,7 @@ export default function PipelinePage() {
     enabled: !!subAccountId,
   });
 
-  const { data: contactsResult } = useQuery<{ data: Contact[]; total: number }>({
+  const { data: contactsResult } = useQuery<{ items: Contact[]; data?: Contact[]; total: number; page: number; pageSize: number; totalPages: number }>({
     queryKey: ["/api/contacts", subAccountId],
     queryFn: async () => {
       const res = await fetch(`/api/contacts/${subAccountId}?limit=200`);
@@ -119,7 +119,9 @@ export default function PipelinePage() {
     },
     enabled: !!subAccountId,
   });
-  const contacts = contactsResult?.data ?? [];
+  // Use real total from server — never derive count from items.length
+  const contacts = contactsResult?.items ?? contactsResult?.data ?? [];
+  const contactsTotal = contactsResult?.total ?? contacts.length;
 
   const createStageMutation = useMutation({
     mutationFn: async (stage: { name: string; color: string; position: number }) => {
@@ -556,7 +558,7 @@ export default function PipelinePage() {
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-white text-lg flex items-center gap-2">
                   <Users size={18} className="text-indigo-400" />
-                  Contacts ({contacts.length})
+                  Contacts ({contactsTotal})
                 </CardTitle>
                 <Button onClick={() => setAddContactOpen(true)} className="bg-cyan-600 hover:bg-cyan-500 text-white" data-testid="button-add-contact">
                   <Plus size={16} className="mr-1" /> Add Contact
