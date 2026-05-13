@@ -205,11 +205,9 @@ export function registerApifyTransportRoutes(app: Express): void {
         lastApifyError:        ap?.error ?? null,
         crashLeadAccountIds:   [...CRASH_LEAD_ACCOUNT_IDS],
         envVarsPresent: {
-          BATCHDATA_API_KEY:  !!process.env.BATCHDATA_API_KEY,
-          BATCH_DATA:         !!process.env.BATCH_DATA,
-          APIFY_API_KEY:      !!process.env.APIFY_API_KEY,
-          APIFY_API_TOKEN:    !!process.env.APIFY_API_TOKEN,
-          APIFY_TOKEN:        !!process.env.APIFY_TOKEN,
+          BATCHDATA_API_KEY: !!process.env.BATCHDATA_API_KEY,
+          BATCH_DATA:        !!process.env.BATCH_DATA,
+          APIFY_API_KEY:     !!process.env.APIFY_API_KEY,
         },
       });
     })

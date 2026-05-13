@@ -37,16 +37,20 @@ interface MartindaleAttorney {
   county?: string;
 }
 
-async function runApifyActor(input: Record<string, unknown>): Promise<string> {
+// token is resolved ONCE in runFullAttorneyScrape() and passed down to every
+// sub-function — no per-request re-resolution, no null cast via !
+async function runApifyActor(token: string, input: Record<string, unknown>): Promise<string> {
+  console.log(`[APIFY] request start — actor=${MARTINDALE_ACTOR}`);
   const res = await fetch(`https://api.apify.com/v2/acts/${MARTINDALE_ACTOR}/runs`, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${resolveApifyToken()!}`,
+      "Authorization": `Bearer ${token}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(input),
     signal: AbortSignal.timeout(30000),
   });
+  console.log(`[APIFY] request response — actor=${MARTINDALE_ACTOR} status=${res.status}`);
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`Apify run failed: ${res.status} ${err.slice(0, 200)}`);
@@ -55,12 +59,12 @@ async function runApifyActor(input: Record<string, unknown>): Promise<string> {
   return data.data.id;
 }
 
-async function waitForRun(runId: string, maxWaitMs = 300000): Promise<string> {
+async function waitForRun(token: string, runId: string, maxWaitMs = 300000): Promise<string> {
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
     await new Promise(r => setTimeout(r, 10000)); // poll every 10s
     const res = await fetch(`https://api.apify.com/v2/actor-runs/${runId}`, {
-      headers: { "Authorization": `Bearer ${resolveApifyToken()!}` },
+      headers: { "Authorization": `Bearer ${token}` },
     });
     const data = await res.json() as { data: { status: string; defaultDatasetId: string } };
     if (data.data.status === "SUCCEEDED") return data.data.defaultDatasetId;
@@ -71,10 +75,10 @@ async function waitForRun(runId: string, maxWaitMs = 300000): Promise<string> {
   throw new Error(`Apify run ${runId} timed out after ${maxWaitMs}ms`);
 }
 
-async function fetchDataset(datasetId: string): Promise<MartindaleAttorney[]> {
+async function fetchDataset(token: string, datasetId: string): Promise<MartindaleAttorney[]> {
   const res = await fetch(
     `https://api.apify.com/v2/datasets/${datasetId}/items?limit=1000&format=json`,
-    { headers: { "Authorization": `Bearer ${resolveApifyToken()!}` } }
+    { headers: { "Authorization": `Bearer ${token}` } }
   );
   if (!res.ok) throw new Error(`Dataset fetch failed: ${res.status}`);
   return res.json() as Promise<MartindaleAttorney[]>;
@@ -126,20 +130,20 @@ async function upsertAttorneys(attorneys: MartindaleAttorney[], vertical: string
   return { inserted, skipped };
 }
 
-export async function scrapeAttorneysForVertical(vertical: string, practiceArea: string, label: string): Promise<void> {
+async function scrapeAttorneysForVertical(token: string, vertical: string, practiceArea: string, label: string): Promise<void> {
   console.log(`[APIFY] Starting scrape: ${label} attorneys in ${TARGET_STATES.join(", ")}`);
   try {
-    const runId = await runApifyActor({
+    const runId = await runApifyActor(token, {
       states: TARGET_STATES,
       practiceAreas: [practiceArea],
       maxItems: 200,
     });
     console.log(`[APIFY] Run started: ${runId} for ${label}`);
 
-    const datasetId = await waitForRun(runId);
+    const datasetId = await waitForRun(token, runId);
     console.log(`[APIFY] Run complete: dataset=${datasetId} for ${label}`);
 
-    const attorneys = await fetchDataset(datasetId);
+    const attorneys = await fetchDataset(token, datasetId);
     console.log(`[APIFY] Fetched ${attorneys.length} ${label} attorneys from dataset`);
 
     const { inserted, skipped } = await upsertAttorneys(attorneys, vertical);
@@ -154,13 +158,13 @@ export async function scrapeAttorneysForVertical(vertical: string, practiceArea:
 export async function runFullAttorneyScrape(): Promise<void> {
   const token = resolveApifyToken();
   if (!token) {
-    // resolveApifyToken() already logged the error — don't double-log
+    console.error("[APIFY] Aborting — APIFY_API_KEY not set in Railway.");
     return;
   }
-  console.log("[APIFY] Credential present — actor=" + MARTINDALE_ACTOR + " starting attorney scrape for all legal verticals");
+  console.log(`[APIFY] Starting full attorney scrape — actor=${MARTINDALE_ACTOR}`);
   for (const target of SCRAPE_TARGETS) {
-    await scrapeAttorneysForVertical(target.vertical, target.practiceArea, target.label);
-    await new Promise(r => setTimeout(r, 5000)); // be nice to the API
+    await scrapeAttorneysForVertical(token, target.vertical, target.practiceArea, target.label);
+    await new Promise(r => setTimeout(r, 5000));
   }
   console.log("[APIFY] Full attorney scrape complete");
 }

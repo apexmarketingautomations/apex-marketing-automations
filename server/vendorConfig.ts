@@ -55,32 +55,24 @@ export function resolveBatchDataKey(): string | null {
 export const getBatchDataKey = resolveBatchDataKey;
 
 // ── Apify ─────────────────────────────────────────────────────────────────────
-// Canonical env var: APIFY_API_KEY
-// Legacy aliases:    APIFY_API_TOKEN, APIFY_TOKEN
+// Source of truth: APIFY_API_KEY (Railway env var — no aliases, no fallbacks)
 
 let _apifyLogged = false;
 
 /**
- * Returns the Apify API token, or null if not configured.
- * Logs configuration status once per process (boolean only, never the value).
+ * Returns the Apify API token from APIFY_API_KEY, or null if missing/empty.
+ * Logs status once per process — boolean + length only, never the value.
  */
 export function resolveApifyToken(): string | null {
-  const key = (
-    process.env.APIFY_API_KEY   ||
-    process.env.APIFY_API_TOKEN ||
-    process.env.APIFY_TOKEN     ||
-    ""
-  ).trim() || null;
+  const key = (process.env.APIFY_API_KEY || "").trim() || null;
 
   if (!_apifyLogged) {
     _apifyLogged = true;
     if (key) {
-      console.log("[VENDOR] Apify configured: true (APIFY_API_KEY / APIFY_API_TOKEN / APIFY_TOKEN)");
+      console.log(`[APIFY] token configured: true`);
+      console.log(`[APIFY] token length: ${key.length}`);
     } else {
-      console.error(
-        "[VENDOR] Apify configured: false — " +
-        "set APIFY_API_KEY in Railway env vars. Attorney + transport scrapers will not run."
-      );
+      console.error("[APIFY] token configured: false — APIFY_API_KEY is not set in Railway. Scrapers will not run.");
     }
   }
   return key;
