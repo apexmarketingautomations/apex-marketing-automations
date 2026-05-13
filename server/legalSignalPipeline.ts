@@ -136,7 +136,9 @@ const MAX_SIGNAL_AGE_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 
 function normalizeDetectedAt(d: Date | undefined): Date {
   if (!d) return new Date();
-  const age = Date.now() - d.getTime();
+  const t = d.getTime();
+  if (isNaN(t)) return new Date();
+  const age = Date.now() - t;
   return age > MAX_SIGNAL_AGE_MS ? new Date() : d;
 }
 
@@ -791,7 +793,7 @@ async function runLegalCycle(subAccountId: number): Promise<void> {
         status:            "available",
         expiresAt,
         rawData:           enrichedSignal.rawData,
-        detectedAt:        enrichedSignal.detectedAt,
+        detectedAt:        normalizeDetectedAt(enrichedSignal.detectedAt),
       }).returning();
 
       await db.update(legalSignals)

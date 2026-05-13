@@ -123,10 +123,21 @@ export function isUserAdmin(user: any): boolean {
   return !!(adminUserId && userId === adminUserId);
 }
 
+async function isUserAdminAsync(user: any): Promise<boolean> {
+  if (!user) return false;
+  const userId = getUserId(user);
+  if (!userId) return false;
+  const adminUserId = process.env.ADMIN_USER_ID;
+  if (adminUserId && userId === adminUserId) return true;
+  const { authStorage } = await import("../replit_integrations/auth/storage");
+  const dbUser = await authStorage.getUser(userId);
+  return dbUser?.isAdmin === "true";
+}
+
 export const requireAdmin = async (req: Request, res: Response, next: NextFunction) => {
   const user = (req as any).user;
   if (!user) return res.status(401).json({ error: "Not authenticated" });
-  if (!isUserAdmin(user)) {
+  if (!(await isUserAdminAsync(user))) {
     return res.status(403).json({ error: "Admin access required" });
   }
   next();
