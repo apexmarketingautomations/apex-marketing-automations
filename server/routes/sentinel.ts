@@ -1321,6 +1321,7 @@ export function registerRetroSkipTraceRoute(app: any) {
         configured: isArrestIngestConfigured(),
         lastRun:    getArrestIngestStats(),
       };
+    // allow-silent-catch: arrest ingest stats are optional — missing module is non-fatal
     } catch { /* non-fatal */ }
 
     const { pool } = await import("../db");

@@ -91,6 +91,7 @@ function isDomainApproved(url: string): boolean {
   try {
     const host = new URL(url).hostname.replace(/^www\./, "");
     return APPROVED_DOMAINS.has(host);
+  // allow-silent-catch: invalid URL string → treat as not approved
   } catch { return false; }
 }
 
@@ -503,7 +504,7 @@ async function persistFilingRecord(
 
   let filingDateTs: Date | undefined;
   try { filingDateTs = record.filing_date ? new Date(record.filing_date) : undefined; }
-  catch { /* ignore */ }
+  catch { /* ignore */ } // allow-silent-catch: invalid date string → filingDateTs stays undefined
 
   const [signal] = await db.insert(legalSignals).values({
     sourceHash:        primaryHash,
