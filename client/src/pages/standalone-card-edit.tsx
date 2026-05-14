@@ -2,9 +2,26 @@ import { useState, useEffect } from "react";
 import { useRoute, useLocation } from "wouter";
 import {
   ArrowLeft, Save, Loader2, Check, Eye, User, Phone,
-  Globe, Image, Palette, Star, AlertTriangle
+  Globe, Image, Palette, Star, AlertTriangle, Briefcase, Plus, Trash2
 } from "lucide-react";
 import { CARD_THEMES, getAvailableThemes, getAvailableLayouts, canRemoveBranding, getThemeDisplayName } from "@/components/card-core";
+
+interface Service {
+  label: string;
+  description: string;
+  color?: string;
+}
+
+const SERVICE_COLORS = [
+  { gradient: "linear-gradient(135deg,#ef4444,#dc2626)", label: "Red"    },
+  { gradient: "linear-gradient(135deg,#f97316,#ea580c)", label: "Orange" },
+  { gradient: "linear-gradient(135deg,#f59e0b,#d97706)", label: "Gold"   },
+  { gradient: "linear-gradient(135deg,#10b981,#059669)", label: "Green"  },
+  { gradient: "linear-gradient(135deg,#06b6d4,#0891b2)", label: "Teal"   },
+  { gradient: "linear-gradient(135deg,#3b82f6,#2563eb)", label: "Blue"   },
+  { gradient: "linear-gradient(135deg,#8b5cf6,#7c3aed)", label: "Purple" },
+  { gradient: "linear-gradient(135deg,#ec4899,#db2777)", label: "Pink"   },
+];
 
 function Field({ label, value, onChange, testId, type = "text", placeholder = "" }: any) {
   return (
@@ -180,6 +197,78 @@ export default function StandaloneCardEdit() {
           <Field label="Phone" value={card.phone} onChange={(v: string) => update("phone", v)} testId="input-phone" type="tel" />
           <Field label="Website" value={card.website} onChange={(v: string) => update("website", v)} testId="input-website" placeholder="https://..." />
           <Field label="Address" value={card.address} onChange={(v: string) => update("address", v)} testId="input-address" />
+        </Section>
+
+        <Section title="Services / What You Do" icon={Briefcase}>
+          <p className="text-xs text-slate-500 -mt-1">Show up to 6 services or skills on your card.</p>
+          <div className="space-y-3 mt-1">
+            {((card.services || []) as Service[]).map((svc: Service, i: number) => (
+              <div key={i} className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-3 space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    value={svc.label}
+                    onChange={e => {
+                      const updated = [...(card.services || [])];
+                      updated[i] = { ...updated[i], label: e.target.value };
+                      update("services", updated);
+                    }}
+                    placeholder="Service name"
+                    data-testid={`input-service-label-${i}`}
+                    className="flex-1 px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm placeholder-slate-600 focus:outline-none focus:border-cyan-500/50 transition"
+                  />
+                  <button
+                    onClick={() => {
+                      const updated = (card.services || []).filter((_: Service, idx: number) => idx !== i);
+                      update("services", updated);
+                    }}
+                    className="p-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 shrink-0"
+                    data-testid={`button-remove-service-${i}`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <input
+                  value={svc.description || ""}
+                  onChange={e => {
+                    const updated = [...(card.services || [])];
+                    updated[i] = { ...updated[i], description: e.target.value };
+                    update("services", updated);
+                  }}
+                  placeholder="Short description (optional)"
+                  data-testid={`input-service-desc-${i}`}
+                  className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm placeholder-slate-600 focus:outline-none focus:border-cyan-500/50 transition"
+                />
+                <div>
+                  <p className="text-[11px] text-slate-600 mb-1.5">Icon color</p>
+                  <div className="flex flex-wrap gap-2">
+                    {SERVICE_COLORS.map(c => (
+                      <button
+                        key={c.label}
+                        type="button"
+                        title={c.label}
+                        onClick={() => {
+                          const updated = [...(card.services || [])];
+                          updated[i] = { ...updated[i], color: c.gradient };
+                          update("services", updated);
+                        }}
+                        className={`w-6 h-6 rounded-md transition-all ${svc.color === c.gradient ? "ring-2 ring-white ring-offset-1 ring-offset-[#0a0a0f] scale-110" : "opacity-60 hover:opacity-100"}`}
+                        style={{ background: c.gradient }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {(card.services || []).length < 6 && (
+              <button
+                data-testid="button-add-service"
+                onClick={() => update("services", [...(card.services || []), { label: "", description: "", color: SERVICE_COLORS[5].gradient }])}
+                className="flex items-center gap-1.5 text-sm text-cyan-400 hover:text-cyan-300 transition"
+              >
+                <Plus className="w-4 h-4" /> Add Service
+              </button>
+            )}
+          </div>
         </Section>
 
         <Section title="Images" icon={Image}>

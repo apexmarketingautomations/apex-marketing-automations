@@ -71,6 +71,13 @@ const MIGRATIONS: DataMigration[] = [
         ADD COLUMN IF NOT EXISTS owner_notes TEXT;
     `,
   },
+  {
+    name: "2026-05-13-standalone-card-services",
+    sql: `
+      ALTER TABLE standalone_cards
+        ADD COLUMN IF NOT EXISTS services JSONB DEFAULT '[]'::jsonb;
+    `,
+  },
 ];
 
 export async function runDataMigrations(): Promise<void> {

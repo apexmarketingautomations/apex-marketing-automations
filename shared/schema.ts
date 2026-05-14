@@ -2055,6 +2055,7 @@ export const standaloneCards = pgTable("standalone_cards", {
   linkedinUrl: text("linkedin_url"),
   youtubeUrl: text("youtube_url"),
   customLinks: jsonb("custom_links"),
+  services: jsonb("services").$type<{ label: string; description: string; icon?: string; color?: string }[]>().default([]),
   themeColor: text("theme_color").default("#0ea5e9"),
   cardTheme: text("card_theme").default("executive-dark"),
   tier: text("tier").default("base").notNull(),

@@ -112,6 +112,7 @@ export async function handleStandaloneCardWebhook(session: any) {
     linkedinUrl: cardData.linkedinUrl || null,
     youtubeUrl: cardData.youtubeUrl || null,
     customLinks: cardData.customLinks || null,
+    services: cardData.services || [],
     themeColor: cardData.themeColor || "#0ea5e9",
     tier,
     removeApexBranding: hasPremiumBump,
@@ -601,7 +602,7 @@ export function registerStandaloneCardsRoutes(app: Express) {
     const allowed: Record<string, any> = {};
     const fields = ["fullName","businessName","title","phone","email","website","address","bio",
       "profileImageUrl","logoUrl","reviewLink","bookingLink","instagramUrl","facebookUrl",
-      "tiktokUrl","linkedinUrl","youtubeUrl","customLinks","themeColor"];
+      "tiktokUrl","linkedinUrl","youtubeUrl","customLinks","services","themeColor"];
     for (const f of fields) {
       if (f in updates) allowed[f] = updates[f];
     }

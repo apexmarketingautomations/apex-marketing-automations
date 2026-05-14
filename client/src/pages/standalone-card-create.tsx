@@ -7,10 +7,27 @@ interface CustomLink {
   url: string;
 }
 
+interface Service {
+  label: string;
+  description: string;
+  color?: string;
+}
+
 const THEME_COLORS = [
   "#0ea5e9", "#6366f1", "#8b5cf6", "#ec4899",
   "#ef4444", "#f97316", "#eab308", "#22c55e",
   "#14b8a6", "#06b6d4", "#1e293b", "#000000",
+];
+
+const SERVICE_COLORS = [
+  { gradient: "linear-gradient(135deg,#ef4444,#dc2626)", label: "Red"    },
+  { gradient: "linear-gradient(135deg,#f97316,#ea580c)", label: "Orange" },
+  { gradient: "linear-gradient(135deg,#f59e0b,#d97706)", label: "Gold"   },
+  { gradient: "linear-gradient(135deg,#10b981,#059669)", label: "Green"  },
+  { gradient: "linear-gradient(135deg,#06b6d4,#0891b2)", label: "Teal"   },
+  { gradient: "linear-gradient(135deg,#3b82f6,#2563eb)", label: "Blue"   },
+  { gradient: "linear-gradient(135deg,#8b5cf6,#7c3aed)", label: "Purple" },
+  { gradient: "linear-gradient(135deg,#ec4899,#db2777)", label: "Pink"   },
 ];
 
 export default function StandaloneCardCreate() {
@@ -23,6 +40,7 @@ export default function StandaloneCardCreate() {
     tiktokUrl: "", linkedinUrl: "", youtubeUrl: "", themeColor: "#0ea5e9",
   });
   const [customLinks, setCustomLinks] = useState<CustomLink[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
 
   useEffect(() => {
     const saved = sessionStorage.getItem("standalone_card_data");
@@ -31,6 +49,10 @@ export default function StandaloneCardCreate() {
       if (data.customLinks) {
         setCustomLinks(data.customLinks);
         delete data.customLinks;
+      }
+      if (data.services) {
+        setServices(data.services);
+        delete data.services;
       }
       setForm(prev => ({ ...prev, ...data }));
     }
@@ -53,7 +75,11 @@ export default function StandaloneCardCreate() {
     }
     if (step < 4) setStep(step + 1);
     else {
-      const cardData = { ...form, customLinks: customLinks.filter(l => l.label && l.url) };
+      const cardData = {
+        ...form,
+        customLinks: customLinks.filter(l => l.label && l.url),
+        services: services.filter(s => s.label),
+      };
       sessionStorage.setItem("standalone_card_data", JSON.stringify(cardData));
       setLocation("/standalone/preview");
     }
@@ -83,7 +109,7 @@ export default function StandaloneCardCreate() {
             ))}
           </div>
           <p className="text-neutral-400 text-sm mt-2">
-            Step {step} of 4 — {step === 1 ? "Basic Info" : step === 2 ? "Contact & Links" : step === 3 ? "Social Media" : "Theme & Extras"}
+            Step {step} of 4 — {step === 1 ? "Basic Info" : step === 2 ? "Contact & Links" : step === 3 ? "Social Media" : "Services & Theme"}
           </p>
         </div>
 
@@ -172,6 +198,78 @@ export default function StandaloneCardCreate() {
 
         {step === 4 && (
           <div className="space-y-6">
+            {/* ── Services / Expertise ── */}
+            <div>
+              <label className={labelClass}>Services / What You Do</label>
+              <p className="text-xs text-neutral-500 mb-3">Add up to 6 services or skills that show on your card.</p>
+              <div className="space-y-3">
+                {services.map((svc, i) => (
+                  <div key={i} className="bg-neutral-800/60 border border-neutral-700 rounded-xl p-3 space-y-2">
+                    <div className="flex gap-2">
+                      <input
+                        className={inputClass + " flex-1"}
+                        value={svc.label}
+                        onChange={e => {
+                          const updated = [...services];
+                          updated[i] = { ...updated[i], label: e.target.value };
+                          setServices(updated);
+                        }}
+                        placeholder="Service name (e.g. Web Design)"
+                        data-testid={`input-service-label-${i}`}
+                      />
+                      <button
+                        onClick={() => setServices(services.filter((_, idx) => idx !== i))}
+                        className="p-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 shrink-0"
+                        data-testid={`button-remove-service-${i}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <input
+                      className={inputClass}
+                      value={svc.description}
+                      onChange={e => {
+                        const updated = [...services];
+                        updated[i] = { ...updated[i], description: e.target.value };
+                        setServices(updated);
+                      }}
+                      placeholder="Short description (optional)"
+                      data-testid={`input-service-desc-${i}`}
+                    />
+                    <div>
+                      <p className="text-xs text-neutral-500 mb-2">Icon color</p>
+                      <div className="flex flex-wrap gap-2">
+                        {SERVICE_COLORS.map(c => (
+                          <button
+                            key={c.label}
+                            type="button"
+                            title={c.label}
+                            onClick={() => {
+                              const updated = [...services];
+                              updated[i] = { ...updated[i], color: c.gradient };
+                              setServices(updated);
+                            }}
+                            className={`w-7 h-7 rounded-lg transition-all ${svc.color === c.gradient ? "ring-2 ring-white ring-offset-1 ring-offset-neutral-900 scale-110" : "opacity-70 hover:opacity-100"}`}
+                            style={{ background: c.gradient }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {services.length < 6 && (
+                  <button
+                    data-testid="button-add-service"
+                    onClick={() => setServices([...services, { label: "", description: "", color: SERVICE_COLORS[5].gradient }])}
+                    className="flex items-center gap-2 text-cyan-400 hover:text-cyan-300 text-sm transition"
+                  >
+                    <Plus className="w-4 h-4" /> Add Service
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* ── Theme Color ── */}
             <div>
               <label className={labelClass}>Accent / Theme Color</label>
               <div className="flex flex-wrap gap-3 mt-2">
