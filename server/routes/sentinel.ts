@@ -1309,10 +1309,11 @@ export function registerRetroSkipTraceRoute(app: any) {
   // status panel and for debugging why leads aren't appearing.
 
   app.get("/api/sentinel/pipeline-status", asyncHandler(async (_req, res) => {
-    const nimbleConfigured   = !!(process.env.NIMBLE_API_KEY || process.env.NIMBLE_TOKEN);
-    const apifyConfigured    = !!process.env.APIFY_API_KEY;
-    const batchDataConfigured = !!(process.env.BATCHDATA_API_KEY || process.env.BATCHDATA_KEY);
-    const googleMapsConfigured = !!process.env.GOOGLE_MAPS_API_KEY;
+    const nimbleConfigured         = !!(process.env.NIMBLE_API_KEY || process.env.NIMBLE_TOKEN);
+    const apifyConfigured          = !!(process.env.APIFY_API_KEY || process.env.APIFY_TOKEN || process.env.APIFY_KEY);
+    const batchDataConfigured      = !!(process.env.BATCHDATA_API_KEY || process.env.BATCH_DATA || process.env.BATCHDATA_KEY);
+    const googleMapsConfigured     = !!process.env.GOOGLE_MAPS_API_KEY;
+    const courtListenerConfigured  = !!process.env.COURTLISTENER_API_TOKEN; // optional — free tier works without it
 
     let arrestStats: any = null;
     try {
@@ -1322,6 +1323,12 @@ export function registerRetroSkipTraceRoute(app: any) {
         lastRun:    getArrestIngestStats(),
       };
     // allow-silent-catch: arrest ingest stats are optional — missing module is non-fatal
+    } catch { /* non-fatal */ }
+
+    let courtListenerStats: any = null;
+    try {
+      const { getCourtListenerPipelineStats } = await import("../courtListenerPipeline");
+      courtListenerStats = getCourtListenerPipelineStats();
     } catch { /* non-fatal */ }
 
     const { pool } = await import("../db");
@@ -1348,12 +1355,19 @@ export function registerRetroSkipTraceRoute(app: any) {
           AND detected_at > NOW() - INTERVAL '7 days'`,
     );
 
+    const { rows: bankruptcyCounts } = await pool.query<{ cnt: string }>(
+      `SELECT COUNT(*) as cnt FROM legal_signals
+        WHERE signal_type = 'bankruptcy_filing'
+          AND detected_at > NOW() - INTERVAL '24 hours'`,
+    );
+
     res.json({
       credentials: {
-        nimble:     nimbleConfigured,
-        apify:      apifyConfigured,
-        batchData:  batchDataConfigured,
-        googleMaps: googleMapsConfigured,
+        nimble:        nimbleConfigured,
+        apify:         apifyConfigured,
+        batchData:     batchDataConfigured,
+        googleMaps:    googleMapsConfigured,
+        courtListener: courtListenerConfigured, // optional — free tier works without
       },
       pipelines: {
         jailBooking: {
@@ -1373,6 +1387,16 @@ export function registerRetroSkipTraceRoute(app: any) {
           description: "FL county clerk portals — divorce/DV/custody/probate",
           intervalMin: 360,
         },
+        bankruptcy: {
+          active:            true, // always active — free tier requires no token
+          description:       "CourtListener REST API — FL bankruptcy filings (flmb/flsb/flnb)",
+          intervalMin:       360,
+          tokenConfigured:   courtListenerConfigured,
+          lastRunAt:         courtListenerStats?.lastRunAt ?? null,
+          lastCycleInserted: courtListenerStats?.lastCycleInserted ?? null,
+          lastCycleSkipped:  courtListenerStats?.lastCycleSkipped ?? null,
+          totalInserted:     courtListenerStats?.totalInsertedEver ?? null,
+        },
         legalSignals: {
           active:      true,
           description: "OSHA incidents, FDA/CPSC recalls, enrichment pass",
@@ -1385,9 +1409,10 @@ export function registerRetroSkipTraceRoute(app: any) {
         },
       },
       last24h: {
-        signals:      signalCounts.reduce((a, r) => a + parseInt(r.cnt, 10), 0),
-        byType:       Object.fromEntries(signalCounts.map(r => [r.signal_type, parseInt(r.cnt, 10)])),
-        courtFilings: parseInt(courtFilingCounts[0]?.cnt ?? "0", 10),
+        signals:          signalCounts.reduce((a, r) => a + parseInt(r.cnt, 10), 0),
+        byType:           Object.fromEntries(signalCounts.map(r => [r.signal_type, parseInt(r.cnt, 10)])),
+        courtFilings:     parseInt(courtFilingCounts[0]?.cnt ?? "0", 10),
+        bankruptcyLeads:  parseInt(bankruptcyCounts[0]?.cnt ?? "0", 10),
         unenrichedArrests: parseInt(unenrichedRows[0]?.cnt ?? "0", 10),
       },
     });

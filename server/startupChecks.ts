@@ -30,6 +30,7 @@ export function runStartupChecks() {
   check("Apify Scraper", ["APIFY_API_KEY"], false);
   check("BatchData Skip Trace", ["BATCHDATA_API_KEY", "BATCH_DATA"], false);
   check("Google API", ["GOOGLE_API_KEY", "GOOGLE_MAPS_API_KEY"], false);
+  check("CourtListener (bankruptcy leads)", ["COURTLISTENER_API_TOKEN"], false);
   // VAPI_API_KEY is obsolete — system uses VAPI_PRIVATE_KEY_APEX, VAPI_PUBLIC_KEY, VAPI_ORG_ID
   // check("Vapi", ["VAPI_API_KEY"], false); // removed to avoid false warning
   check("Meta", ["META_APP_ID"], false);

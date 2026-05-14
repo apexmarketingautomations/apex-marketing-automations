@@ -113,7 +113,7 @@ export function registerArrestRoutes(app: Express) {
     res.json({
       configured,
       nimbleConfigured:  !!(process.env.NIMBLE_API_KEY || process.env.NIMBLE_TOKEN),
-      apifyConfigured:   !!process.env.APIFY_API_KEY,
+      apifyConfigured:   !!(process.env.APIFY_API_KEY || process.env.APIFY_TOKEN || process.env.APIFY_KEY),
       lastRun:           lastRun ?? null,
       // Jail booking pipeline (Nimble agents path) status
       nimbleAgentPipeline: agentStats,

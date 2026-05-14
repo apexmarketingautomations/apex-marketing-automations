@@ -584,7 +584,9 @@ export function isArrestIngestConfigured(): boolean {
   return !!(
     process.env.NIMBLE_API_KEY  ||
     process.env.NIMBLE_TOKEN    ||
-    process.env.APIFY_API_KEY
+    process.env.APIFY_API_KEY   ||
+    process.env.APIFY_TOKEN     ||
+    process.env.APIFY_KEY
   );
 }
 
