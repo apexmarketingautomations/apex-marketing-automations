@@ -212,7 +212,7 @@ export async function scrapeLeeCounty(
         }
         if (charges[0]?.caseNumber)          caseNumber      = charges[0].caseNumber;
         if (charges[0]?.arrestingAgencyName) arrestingAgency = charges[0].arrestingAgencyName;
-      } catch { /* charge fetch failures are non-fatal */ }
+      } catch { // allow-silent-catch: charge fetch failures are non-fatal — missing charges don't block booking record creation
 
       const surName  = (b.surName   || "").trim();
       const givenName = (b.givenName || "").trim();
