@@ -741,6 +741,14 @@ async function validateMetaCredentials() {
   }
 
   try {
+    const { startHillsboroughRecordsScheduler } = await import("./hillsboroughRecordsPipeline");
+    startHillsboroughRecordsScheduler();
+    console.log("[STARTUP] ✅ Hillsborough Official Records pipeline started — lis pendens + judgments (daily at 06:00 ET)");
+  } catch (hillsErr: any) {
+    console.error("[STARTUP] Hillsborough Records pipeline failed to start (non-fatal):", hillsErr?.message);
+  }
+
+  try {
     const { startRetroSkipTraceScheduler } = await import("./retroSkipTrace");
     startRetroSkipTraceScheduler();
 

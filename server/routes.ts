@@ -54,6 +54,7 @@ import { registerTrackingRoutes } from "./routes/tracking";
 import { registerPublicFormsRoutes } from "./routes/publicForms";
 import { registerApifyTransportRoutes } from "./routes/apifyTransport";
 import { registerArrestRoutes } from "./routes/arrests";
+import { registerHillsboroughRoutes } from "./routes/hillsborough";
 export { registerAgentWorkerRoutes } from "./routes/agentWorker";
 
 export async function registerRoutes(
@@ -114,6 +115,7 @@ export async function registerRoutes(
   registerRetroSkipTraceRoute(app);
   registerDomainRoutes(app);
   registerArrestRoutes(app);
+  registerHillsboroughRoutes(app);
 
   // ── Legal Signal Pipeline Routes ──────────────────────────────────────────
   app.get("/api/legal-leads", asyncHandler(async (req, res) => {

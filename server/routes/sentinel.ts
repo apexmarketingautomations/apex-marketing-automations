@@ -1331,6 +1331,12 @@ export function registerRetroSkipTraceRoute(app: any) {
       courtListenerStats = getCourtListenerPipelineStats();
     } catch { /* non-fatal */ }
 
+    let hillsboroughStats: any = null;
+    try {
+      const { getHillsboroughRecordsPipelineStats } = await import("../hillsboroughRecordsPipeline");
+      hillsboroughStats = getHillsboroughRecordsPipelineStats();
+    } catch { /* non-fatal */ }
+
     const { pool } = await import("../db");
 
     // Recent signal counts (last 24h) per pipeline source
@@ -1358,6 +1364,13 @@ export function registerRetroSkipTraceRoute(app: any) {
     const { rows: bankruptcyCounts } = await pool.query<{ cnt: string }>(
       `SELECT COUNT(*) as cnt FROM legal_signals
         WHERE signal_type = 'bankruptcy_filing'
+          AND detected_at > NOW() - INTERVAL '24 hours'`,
+    );
+
+    const { rows: hillsboroughCounts } = await pool.query<{ cnt: string }>(
+      `SELECT COUNT(*) as cnt FROM legal_signals
+        WHERE signal_type IN ('lis_pendens','civil_judgment')
+          AND county = 'HILLSBOROUGH'
           AND detected_at > NOW() - INTERVAL '24 hours'`,
     );
 
@@ -1397,6 +1410,16 @@ export function registerRetroSkipTraceRoute(app: any) {
           lastCycleSkipped:  courtListenerStats?.lastCycleSkipped ?? null,
           totalInserted:     courtListenerStats?.totalInsertedEver ?? null,
         },
+        hillsboroughRecords: {
+          active:            true, // no credentials needed — free public bulk files
+          description:       "Hillsborough County official records — lis pendens + judgments (daily CSV)",
+          scheduleDesc:      "Daily at 06:00 ET",
+          batchDataAvailable: hillsboroughStats?.batchDataAvailable ?? false,
+          lastRunAt:         hillsboroughStats?.lastRunAt ?? null,
+          lastCycleInserted: hillsboroughStats?.lastCycleInserted ?? null,
+          lastCycleSkipped:  hillsboroughStats?.lastCycleSkipped ?? null,
+          totalInserted:     hillsboroughStats?.totalInsertedEver ?? null,
+        },
         legalSignals: {
           active:      true,
           description: "OSHA incidents, FDA/CPSC recalls, enrichment pass",
@@ -1411,9 +1434,10 @@ export function registerRetroSkipTraceRoute(app: any) {
       last24h: {
         signals:          signalCounts.reduce((a, r) => a + parseInt(r.cnt, 10), 0),
         byType:           Object.fromEntries(signalCounts.map(r => [r.signal_type, parseInt(r.cnt, 10)])),
-        courtFilings:     parseInt(courtFilingCounts[0]?.cnt ?? "0", 10),
-        bankruptcyLeads:  parseInt(bankruptcyCounts[0]?.cnt ?? "0", 10),
-        unenrichedArrests: parseInt(unenrichedRows[0]?.cnt ?? "0", 10),
+        courtFilings:       parseInt(courtFilingCounts[0]?.cnt ?? "0", 10),
+        bankruptcyLeads:    parseInt(bankruptcyCounts[0]?.cnt ?? "0", 10),
+        hillsboroughLeads:  parseInt(hillsboroughCounts[0]?.cnt ?? "0", 10),
+        unenrichedArrests:  parseInt(unenrichedRows[0]?.cnt ?? "0", 10),
       },
     });
   }));
