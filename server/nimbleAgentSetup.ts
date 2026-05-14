@@ -412,12 +412,31 @@ async function setupCountyAgent(config: CountyBookingConfig): Promise<boolean> {
 
 // ── Main ───────────────────────────────────────────────────────────────────────
 
+async function isAgentApiReachable(): Promise<boolean> {
+  try {
+    const key = resolveNimbleKey();
+    const res = await fetch(`${NIMBLE_BASE_URL}/v1/agents`, {
+      method: "GET",
+      headers: { "Authorization": `Bearer ${key}` },
+      signal: AbortSignal.timeout(6000),
+    });
+    // Any HTTP response (even 401/403) means the host resolves and is reachable
+    return res.status > 0;
+  } catch (err: any) {
+    console.warn(`[NIMBLE-SETUP] Agent management API unreachable (${err.message}) — skipping agent setup (direct extraction still active)`);
+    return false;
+  }
+}
+
 async function main(): Promise<void> {
   const key = resolveNimbleKey();
   if (!key) {
     console.error("[NIMBLE-SETUP] No Nimble credential configured. Set NIMBLE_API_KEY in Railway env vars.");
     process.exit(1);
   }
+
+  // Pre-flight: confirm api.webnimble.com is reachable before attempting 11 county requests
+  if (!await isAgentApiReachable()) return;
 
   console.log("[NIMBLE-SETUP] Starting agent setup for all FL county jail booking scrapers...");
   console.log(`[NIMBLE-SETUP] ${COUNTY_BOOKING_CONFIGS.length} counties to configure`);

@@ -500,6 +500,9 @@ async function fetchProductRecalls(): Promise<LeadSignal[]> {
 // ── Code Enforcement (Home service leads) ─────────────────────────────────
 
 async function fetchCodeEnforcement(): Promise<LeadSignal[]> {
+  // opendata.leegov.com DNS fails from Railway — same domain as Lee permits (disabled)
+  // TODO: replace with verified Lee County Socrata resource ID once confirmed working
+  return [];
   const signals: LeadSignal[] = [];
   try {
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();

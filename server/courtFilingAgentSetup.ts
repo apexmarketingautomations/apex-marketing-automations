@@ -373,12 +373,30 @@ async function setupCourtAgent(cfg: CourtAgentConfig): Promise<boolean> {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+async function isAgentApiReachable(): Promise<boolean> {
+  try {
+    const key = resolveNimbleKey();
+    const res = await fetch(`${NIMBLE_BASE_URL}/v1/agents`, {
+      method: "GET",
+      headers: { "Authorization": `Bearer ${key}` },
+      signal: AbortSignal.timeout(6000),
+    });
+    return res.status > 0;
+  } catch (err: any) {
+    console.warn(`[COURT-AGENT-SETUP] Agent management API unreachable (${err.message}) — skipping court agent setup`);
+    return false;
+  }
+}
+
 async function main(): Promise<void> {
   const key = resolveNimbleKey();
   if (!key) {
     console.error("[COURT-AGENT-SETUP] No Nimble credential configured. Set NIMBLE_API_KEY.");
     process.exit(1);
   }
+
+  // Pre-flight: confirm api.webnimble.com is reachable before attempting 7 county requests
+  if (!await isAgentApiReachable()) return;
 
   console.log("[COURT-AGENT-SETUP] Starting agent setup for FL county court filing portals...");
   console.log(`[COURT-AGENT-SETUP] ${COURT_AGENT_CONFIGS.length} counties to configure`);
