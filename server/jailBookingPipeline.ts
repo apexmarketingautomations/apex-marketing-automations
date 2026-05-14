@@ -668,6 +668,7 @@ async function persistBookingRecord(
       duiRelated:   record.dui_related,
       felonyRelated: record.felony_related,
     },
+  // allow-silent-catch: fire-and-forget telemetry
   })).catch(() => {});
 
   return { inserted: true, signalId: signal.id };

@@ -736,6 +736,7 @@ async function processReport(reportId: number, reportNumber: string): Promise<vo
         totalFatalities: detail_data?.TotalFatalities ?? null,
         source:        isFollowUp ? "sentinel_followup" : "direct",
       },
+    // allow-silent-catch: fire-and-forget telemetry
     })).catch(() => {});
 
     // For follow-up jobs, also stamp the official FLHSMV data onto the original sentinel record

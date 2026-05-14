@@ -433,6 +433,7 @@ export async function handleCallRequestFlow(
       hasPhone:    intent.hasPhone,
       isUrgent:    detectUrgency(message),
     },
+  // allow-silent-catch: fire-and-forget telemetry
   })).catch(() => {});
 
   return true;

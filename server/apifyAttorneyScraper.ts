@@ -166,6 +166,7 @@ async function scrapeAttorneysForVertical(token: string, vertical: string, pract
         inserted,
         skipped,
       },
+    // allow-silent-catch: fire-and-forget telemetry
     })).catch(() => {});
   } catch (err: any) {
     console.error(`[APIFY] Failed to scrape ${label}:`, err.message);

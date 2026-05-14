@@ -1329,18 +1329,21 @@ export function registerRetroSkipTraceRoute(app: any) {
     try {
       const { getCourtListenerPipelineStats } = await import("../courtListenerPipeline");
       courtListenerStats = getCourtListenerPipelineStats();
+    // allow-silent-catch: optional pipeline stats — missing module is non-fatal
     } catch { /* non-fatal */ }
 
     let hillsboroughStats: any = null;
     try {
       const { getHillsboroughRecordsPipelineStats } = await import("../hillsboroughRecordsPipeline");
       hillsboroughStats = getHillsboroughRecordsPipelineStats();
+    // allow-silent-catch: optional pipeline stats — missing module is non-fatal
     } catch { /* non-fatal */ }
 
     let hillsboroughFilingsStats: any = null;
     try {
       const { getHillsboroughFilingsPipelineStats } = await import("../hillsboroughCourtFilingsPipeline");
       hillsboroughFilingsStats = getHillsboroughFilingsPipelineStats();
+    // allow-silent-catch: optional pipeline stats — missing module is non-fatal
     } catch { /* non-fatal */ }
 
     const { pool } = await import("../db");

@@ -111,6 +111,7 @@ async function fetchBankruptcyFilings(
     });
 
     if (!res.ok) {
+      // allow-silent-catch: non-critical body read for error logging
       const body = await res.text().catch(() => "");
       console.error(`[${PIPELINE_TAG}] API ${res.status} for court=${courtId}: ${body.slice(0, 200)}`);
       return [];
@@ -195,6 +196,7 @@ async function skipTraceDebtor(firstName: string, lastName: string): Promise<str
       data?.phone ||
       null;
     return phone || null;
+  // allow-silent-catch: skip trace failure is non-fatal — returns null
   } catch {
     return null;
   }
@@ -209,6 +211,7 @@ async function getAllEnabledAccountIds(): Promise<number[]> {
       "SELECT sub_account_id FROM sentinel_config WHERE enabled = true LIMIT 200"
     );
     return r.rows.map((row: { sub_account_id: number }) => row.sub_account_id);
+  // allow-silent-catch: fallback to parent account on DB error
   } catch {
     // Fallback to parent account
     return [parseInt(process.env.APEX_PARENT_ACCOUNT_ID || "3")];

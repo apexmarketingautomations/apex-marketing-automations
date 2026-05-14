@@ -216,6 +216,7 @@ async function processJob(job: any): Promise<void> {
             trigger:  job.trigger,
             jobId:    job.id,
           },
+        // allow-silent-catch: fire-and-forget telemetry
         })).catch(() => {});
       } else {
         const errMsg = platformResult?.errorMessage || "Unknown publish error";

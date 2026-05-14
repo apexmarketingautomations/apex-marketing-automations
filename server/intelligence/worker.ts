@@ -198,6 +198,7 @@ export function startIntelligenceWorkers(): void {
         metadata: {
           accountsScored: accounts.length,
         },
+      // allow-silent-catch: fire-and-forget telemetry
       })).catch(() => {});
     } catch (err) {
       console.error("[APEX-INTEL] Scoring cycle failed:", (err as Error).message);

@@ -168,6 +168,7 @@ async function runFullSync(): Promise<void> {
           syncedLeads,
           totalCampaigns: activeCampaigns.length,
         },
+      // allow-silent-catch: fire-and-forget telemetry
       })).catch(() => {});
     }
   } catch (err: any) {
