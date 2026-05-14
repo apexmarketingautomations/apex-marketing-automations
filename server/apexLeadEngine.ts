@@ -39,6 +39,7 @@ import { eq, and, gte } from 'drizzle-orm';
 
 const ENGINE_ID = crypto.randomUUID().slice(0, 8);
 const POLL_INTERVAL_MS = 30 * 60 * 1000;
+const APEX_PARENT_ACCOUNT_ID = Number(process.env.APEX_PARENT_ACCOUNT_ID || 13);
 
 // Florida counties covered
 // Safe fetch: checks content-type, logs failures, never throws
@@ -600,6 +601,18 @@ export async function runApexLeadEngine(): Promise<void> {
           expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         } as any);
         legal++;
+        import("./operator/apexIntelligence").then(({ reportOutcome }) =>
+          reportOutcome({
+            agentName:    "apex-engine",
+            action:       "lead_created",
+            subject:      signal.subjectName || signal.signalType,
+            result:       `${signal.signalType} legal lead — ${signal.county}`,
+            confidence:   signal.urgency === "critical" ? 0.95 : signal.urgency === "high" ? 0.8 : 0.6,
+            subAccountId: APEX_PARENT_ACCOUNT_ID,
+            niche:        "legal",
+            metadata:     { signalType: signal.signalType, county: signal.county, vertical: signal.subVertical, urgency: signal.urgency },
+          })
+        ).catch((e: any) => console.warn("[APEX-OUTCOME] reportOutcome fire-and-forget error:", e?.message));
       } else {
         // Insert into homeServiceSignals table (covers home_property + beauty + auto)
         await db.insert(homeServiceSignals).values({
@@ -617,6 +630,18 @@ export async function runApexLeadEngine(): Promise<void> {
         } as any);
         if (signal.vertical === 'beauty') beauty++;
         else homeProperty++;
+        import("./operator/apexIntelligence").then(({ reportOutcome }) =>
+          reportOutcome({
+            agentName:    "apex-engine",
+            action:       "signal_created",
+            subject:      signal.subjectName || signal.signalType,
+            result:       `${signal.signalType} signal — ${signal.county} (${signal.vertical})`,
+            confidence:   0.7,
+            subAccountId: APEX_PARENT_ACCOUNT_ID,
+            niche:        "home_service",
+            metadata:     { signalType: signal.signalType, county: signal.county, vertical: signal.vertical, categories: signal.serviceCategories },
+          })
+        ).catch((e: any) => console.warn("[APEX-OUTCOME] reportOutcome fire-and-forget error:", e?.message));
       }
 
       inserted++;

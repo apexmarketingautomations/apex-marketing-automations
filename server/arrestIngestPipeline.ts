@@ -194,6 +194,18 @@ async function createContactFromSignal(
     };
 
     await db.insert(contacts).values(contactData);
+    import("./operator/apexIntelligence").then(({ reportOutcome }) =>
+      reportOutcome({
+        agentName:    "arrest-ingest",
+        action:       "contact_created",
+        subject:      `${firstName} ${lastName}`,
+        result:       `Arrest lead routed — ${record.county} County (score ${score})`,
+        confidence:   Math.min(1, score / 100),
+        subAccountId,
+        niche:        "legal",
+        metadata:     { bookingId: record.booking_id, county: record.county, signalType: profile.primaryCategory, score },
+      })
+    ).catch((e: any) => console.warn("[APEX-OUTCOME] reportOutcome fire-and-forget error:", e?.message));
   } catch (err: any) { // allow-silent-catch: contact failure must not block signal pipeline
     console.warn(`[ARREST-INGEST] Contact creation failed (account=${subAccountId}):`, err?.message);
   }

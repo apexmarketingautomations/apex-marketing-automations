@@ -605,6 +605,18 @@ async function createContactFromFiling(
     };
 
     await db.insert(contacts).values(contactData);
+    import("./operator/apexIntelligence").then(({ reportOutcome }) =>
+      reportOutcome({
+        agentName:    "court-filing-pipeline",
+        action:       "contact_created",
+        subject:      `${firstName} ${lastName}`,
+        result:       `${cls.description} — ${record.county} County (score ${score})`,
+        confidence:   Math.min(1, score / 100),
+        subAccountId,
+        niche:        "legal",
+        metadata:     { signalType: cls.signalType, county: record.county, caseNumber: record.case_number, urgency: cls.urgency, score },
+      })
+    ).catch((e: any) => console.warn("[APEX-OUTCOME] reportOutcome fire-and-forget error:", e?.message));
   } catch (err: any) { // allow-silent-catch: contact failure must not block signal pipeline
     console.warn(`[COURT-FILING] Contact creation failed (account=${subAccountId}):`, err?.message);
   }

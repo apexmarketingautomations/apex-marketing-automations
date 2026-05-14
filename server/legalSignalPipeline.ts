@@ -871,6 +871,19 @@ async function runLegalCycle(subAccountId: number): Promise<void> {
       await deliverLeadToAllAccounts({ ...lead, subjectPhone: phone });
       stats.totalLeads++;
 
+      import("./operator/apexIntelligence").then(({ reportOutcome }) =>
+        reportOutcome({
+          agentName:    "legal-pipeline",
+          action:       "lead_created",
+          subject:      enrichedSignal.subjectName || enrichedSignal.signalType,
+          result:       `${enrichedSignal.signalType} lead — ${enrichedSignal.county} (score ${score})`,
+          confidence:   Math.min(1, score / 100),
+          subAccountId: APEX_PARENT_ACCOUNT_ID,
+          niche:        "legal",
+          metadata:     { signalType: enrichedSignal.signalType, county: enrichedSignal.county, urgency: enrichedSignal.urgency, score, leadId: lead.id },
+        })
+      ).catch((e: any) => console.warn("[APEX-OUTCOME] reportOutcome fire-and-forget error:", e?.message));
+
     } catch (err: any) {
       console.error(`[LEGAL-PIPELINE] Signal error:`, err.message);
     }
