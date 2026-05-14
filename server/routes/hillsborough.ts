@@ -122,8 +122,8 @@ export function registerHillsboroughRoutes(app: Express) {
         const results = await runHillsboroughFilingsCycle({ daysBack });
         const totals  = results.reduce(
           (s, r) => ({
-            inserted: s.inserted + r.civFam.inserted + r.probate.inserted,
-            contacts: s.contacts + r.civFam.contacts + r.probate.contacts,
+            inserted: s.inserted + r.civFam.inserted + r.probate.inserted + r.criminal.inserted,
+            contacts: s.contacts + r.civFam.contacts + r.probate.contacts + r.criminal.contacts,
           }),
           { inserted: 0, contacts: 0 }
         );

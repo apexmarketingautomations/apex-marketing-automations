@@ -1,7 +1,7 @@
 /**
  * Hillsborough County Daily Court Filings Pipeline
  *
- * Consumes the FREE, unauthenticated daily court filing CSVs published by the
+ * Consumes FREE, unauthenticated daily court filing CSVs published by the
  * Hillsborough County Clerk at publicrec.hillsclerk.com:
  *
  *   CivilFiling_YYYYMMDD.csv   — Civil + Family Law (CaseCategory = "CV" | "FAM")
@@ -10,18 +10,25 @@
  *   ProbateFiling_YYYYMMDD.csv — Probate + Guardianship (CaseCategory = "PR")
  *     https://publicrec.hillsclerk.com/Probate/dailyfilings/
  *
- * CSV schema (both files):
+ *   CriminalFiling_YYYYMMDD.csv — Criminal court filings (CaseCategory = "CR")
+ *     https://publicrec.hillsclerk.com/Criminal/dailyfilings/
+ *
+ * CSV schema (civil/criminal):
  *   CaseCategory, CaseTypeDescription, CaseNumber, Title, FilingDate,
- *   PartyType, FirstName, MiddleName, LastName/CompanyName,
- *   [DateofDeath (probate only)], PartyAddress, Attorney
+ *   ChargeNumber (criminal), ChargeOffenseDescription (criminal),
+ *   PartyType, FirstName, MiddleName, LastName, PartyAddress, Attorney
+ *
+ * CSV schema (probate):
+ *   same + DateofDeath column between LastName and PartyAddress
  *
  * Target rules:
  *   FAM rows  → Respondent with "No Attorney" (divorce/custody — urgent, unrepresented)
  *   PR rows   → Petitioner with "No Attorney" (probate — needs estate attorney)
  *   CV rows   → Defendant in Mortgage Foreclosure cases (real estate attorney)
+ *   CR rows   → Defendant with "No Attorney", felony/DUI charges (criminal defense attorney)
  *
  * Lead flow:
- *   CSV rows → filter → address-enhanced skip trace (address already in file)
+ *   CSV rows → filter → address-enhanced skip trace (address already in CSV)
  *   → legalSignals + legalLeads → CRM contacts tagged by vertical
  *
  * Schedule: daily at 07:00 ET (files published overnight/early morning)
@@ -35,8 +42,9 @@ import { eq } from "drizzle-orm";
 const PIPELINE_TAG = "HILLS-FILINGS";
 const COUNTY       = "HILLSBOROUGH";
 
-const CIVIL_FILING_BASE  = "https://publicrec.hillsclerk.com/DailyNewCaseFilings/CivilandFamilyLaw";
-const PROBATE_FILING_BASE = "https://publicrec.hillsclerk.com/Probate/dailyfilings";
+const CIVIL_FILING_BASE    = "https://publicrec.hillsclerk.com/DailyNewCaseFilings/CivilandFamilyLaw";
+const PROBATE_FILING_BASE  = "https://publicrec.hillsclerk.com/Probate/dailyfilings";
+const CRIMINAL_FILING_BASE = "https://publicrec.hillsclerk.com/Criminal/dailyfilings";
 
 // ── Case type → lead configuration ───────────────────────────────────────────
 
@@ -124,6 +132,55 @@ const FORECLOSURE_KEYWORDS = [
   "Tax Certificate Foreclosure",
 ];
 
+// ── Criminal case type → lead config ─────────────────────────────────────────
+
+interface CriminalCaseConfig {
+  signalType:    string;
+  legalVertical: string;
+  urgency:       "high" | "medium" | "low";
+  crmTags:       string[];
+}
+
+const CRIMINAL_CATEGORY_CONFIGS: Record<string, CriminalCaseConfig> = {
+  "FELONY DRUG OFFENSE": {
+    signalType: "arrest", legalVertical: "criminal", urgency: "high",
+    crmTags: ["criminal-defense", "drug-charge", "felony", "sentinel-auto"],
+  },
+  "FELONY CRIMES AGAINST A PERSON": {
+    signalType: "arrest", legalVertical: "criminal", urgency: "high",
+    crmTags: ["criminal-defense", "crimes-against-person", "felony", "sentinel-auto"],
+  },
+  "FELONY DUI": {
+    signalType: "dui_arrest", legalVertical: "criminal", urgency: "high",
+    crmTags: ["dui-defense", "criminal-defense", "felony", "sentinel-auto"],
+  },
+  "FELONY OTHER FELONY": {
+    signalType: "arrest", legalVertical: "criminal", urgency: "high",
+    crmTags: ["criminal-defense", "felony", "sentinel-auto"],
+  },
+  "MISDEMEANOR DUI": {
+    signalType: "dui_arrest", legalVertical: "criminal", urgency: "high",
+    crmTags: ["dui-defense", "criminal-defense", "sentinel-auto"],
+  },
+  "MISDEMEANOR": {
+    signalType: "arrest", legalVertical: "criminal", urgency: "medium",
+    crmTags: ["criminal-defense", "misdemeanor", "sentinel-auto"],
+  },
+};
+
+function getCriminalConfig(caseType: string): CriminalCaseConfig {
+  // Exact match first
+  if (CRIMINAL_CATEGORY_CONFIGS[caseType]) return CRIMINAL_CATEGORY_CONFIGS[caseType];
+  // DUI keyword
+  if (caseType.includes("DUI") || caseType.includes("DRUNK")) return CRIMINAL_CATEGORY_CONFIGS["FELONY DUI"];
+  // Felony vs misdemeanor
+  if (caseType.startsWith("FELONY")) return CRIMINAL_CATEGORY_CONFIGS["FELONY OTHER FELONY"];
+  return CRIMINAL_CATEGORY_CONFIGS["MISDEMEANOR"];
+}
+
+// Case types to skip entirely (fugitive, minor traffic, animal)
+const SKIP_CRIMINAL_TYPES = ["FUGITIVE", "ANIMAL", "CIVIL TRAFFIC", "COUNTY ORDINANCE"];
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function resolveBatchDataKey(): string | null {
@@ -153,18 +210,19 @@ function isEntityName(name: string): boolean {
 // ── CSV parsing ───────────────────────────────────────────────────────────────
 
 interface FilingRow {
-  caseCategory:    string;
-  caseType:        string;
-  caseNumber:      string;
-  title:           string;
-  filingDate:      string;
-  partyType:       string;
-  firstName:       string;
-  middleName:      string;
-  lastName:        string;
-  partyAddress:    string;
-  attorney:        string;
-  dateOfDeath?:    string; // probate only
+  caseCategory:      string;
+  caseType:          string;
+  caseNumber:        string;
+  title:             string;
+  filingDate:        string;
+  partyType:         string;
+  firstName:         string;
+  middleName:        string;
+  lastName:          string;
+  partyAddress:      string;
+  attorney:          string;
+  dateOfDeath?:      string; // probate only
+  chargeDescription?: string; // criminal only — aggregated from multiple charge rows
 }
 
 /** Parse a CSV line respecting double-quoted fields (including quoted commas). */
@@ -234,6 +292,62 @@ function parseProbateCSV(raw: string): FilingRow[] {
     });
   }
   return rows;
+}
+
+/** Criminal CSV schema:
+ *  CaseCategory, CaseTypeDescription, CaseNumber, Title, FilingDate,
+ *  ChargeNumber, ChargeOffenseDescription, PartyType,
+ *  FirstName, MiddleName, LastName, PartyAddress, Attorney
+ *
+ * Returns one FilingRow per unique CaseNumber (first row = representative row,
+ * chargeDescription aggregated from all charge rows). */
+function parseCriminalCSV(raw: string): FilingRow[] {
+  const lines = raw.split(/\r?\n/).filter(l => l.trim() && !l.startsWith("CaseCategory"));
+
+  // First pass: collect all rows
+  const allRows: (FilingRow & { chargeDesc: string })[] = [];
+  for (const line of lines) {
+    const cols = parseCsvLine(line);
+    if (cols.length < 13) continue;
+    // cols: 0=cat, 1=caseType, 2=caseNum, 3=title, 4=filingDate,
+    //       5=chargeNum, 6=chargeDesc, 7=partyType,
+    //       8=firstName, 9=middleName, 10=lastName, 11=address, 12=attorney
+    allRows.push({
+      caseCategory: cols[0],
+      caseType:     cols[1],
+      caseNumber:   cols[2],
+      title:        cols[3],
+      filingDate:   cols[4],
+      partyType:    cols[7],
+      firstName:    cols[8],
+      middleName:   cols[9],
+      lastName:     cols[10],
+      partyAddress: cols[11],
+      attorney:     cols[12],
+      chargeDesc:   cols[6],
+    });
+  }
+
+  // Deduplicate by caseNumber — one FilingRow per case/defendant
+  // Aggregate charge descriptions for the chargeDescription field
+  const caseMap = new Map<string, FilingRow & { charges: string[] }>();
+  for (const row of allRows) {
+    const key = `${row.caseNumber}|${row.lastName}|${row.firstName}`;
+    if (!caseMap.has(key)) {
+      caseMap.set(key, { ...row, charges: [row.chargeDesc].filter(Boolean) });
+    } else {
+      const existing = caseMap.get(key)!;
+      if (row.chargeDesc && !existing.charges.includes(row.chargeDesc)) {
+        existing.charges.push(row.chargeDesc);
+      }
+    }
+  }
+
+  // Return one FilingRow per case with combined charge description
+  return Array.from(caseMap.values()).map(r => ({
+    ...r,
+    chargeDescription: r.charges.slice(0, 5).join("; "), // cap at 5 charges in description
+  }));
 }
 
 // ── File fetch ────────────────────────────────────────────────────────────────
@@ -532,19 +646,26 @@ interface CycleStats {
   date:     string;
   civFam:   ProcessResult;
   probate:  ProcessResult;
+  criminal: ProcessResult;
 }
 
 async function processDayFilings(targetDate: Date): Promise<CycleStats> {
   const ds = toFileDate(targetDate);
   console.log(`[${PIPELINE_TAG}] Processing ${ds} filings`);
 
-  const civilUrl  = `${CIVIL_FILING_BASE}/CivilFiling_${ds}.csv`;
-  const probateUrl = `${PROBATE_FILING_BASE}/ProbateFiling_${ds}.csv`;
+  const civilUrl    = `${CIVIL_FILING_BASE}/CivilFiling_${ds}.csv`;
+  const probateUrl  = `${PROBATE_FILING_BASE}/ProbateFiling_${ds}.csv`;
+  const criminalUrl = `${CRIMINAL_FILING_BASE}/CriminalFiling_${ds}.csv`;
 
-  const [civilRaw, probateRaw] = await Promise.all([fetchText(civilUrl), fetchText(probateUrl)]);
+  const [civilRaw, probateRaw, criminalRaw] = await Promise.all([
+    fetchText(civilUrl),
+    fetchText(probateUrl),
+    fetchText(criminalUrl),
+  ]);
 
-  const civFam: ProcessResult  = { inserted: 0, skipped: 0, errors: 0, contacts: 0 };
-  const probate: ProcessResult = { inserted: 0, skipped: 0, errors: 0, contacts: 0 };
+  const civFam:   ProcessResult = { inserted: 0, skipped: 0, errors: 0, contacts: 0 };
+  const probate:  ProcessResult = { inserted: 0, skipped: 0, errors: 0, contacts: 0 };
+  const criminal: ProcessResult = { inserted: 0, skipped: 0, errors: 0, contacts: 0 };
 
   // ── Process Civil + Family Law CSV ─────────────────────────────────────────
   if (civilRaw) {
@@ -629,13 +750,55 @@ async function processDayFilings(targetDate: Date): Promise<CycleStats> {
     console.warn(`[${PIPELINE_TAG}] No probate filing for ${ds}`);
   }
 
+  // ── Process Criminal Filing CSV ────────────────────────────────────────────
+  if (criminalRaw) {
+    const rows = parseCriminalCSV(criminalRaw);
+    console.log(`[${PIPELINE_TAG}] ${ds} criminal: ${rows.length} unique defendants`);
+
+    for (const row of rows) {
+      // Skip non-defendant rows and entity names
+      if (row.partyType !== "Defendant" || isEntityName(row.lastName)) { criminal.skipped++; continue; }
+      // Skip low-value case types
+      if (SKIP_CRIMINAL_TYPES.some(s => row.caseType.toUpperCase().includes(s))) { criminal.skipped++; continue; }
+      // Only target unrepresented defendants
+      if (row.attorney && row.attorney !== "No Attorney" && row.attorney.trim() !== "") { criminal.skipped++; continue; }
+
+      const crConfig = getCriminalConfig(row.caseType);
+
+      // Build a "config" compatible with processRow (which expects CaseTypeConfig)
+      const compatConfig: CaseTypeConfig = {
+        signalType:    crConfig.signalType,
+        legalVertical: crConfig.legalVertical,
+        urgency:       crConfig.urgency,
+        crmTags:       crConfig.crmTags,
+        targetParty:   "Defendant",
+        noAttorneyOnly: false, // already filtered above
+      };
+
+      // Override chargeDescription in the row with aggregated charge list
+      const enrichedRow: FilingRow = {
+        ...row,
+        chargeDescription: row.chargeDescription || row.caseType,
+      };
+
+      const r = await processRow(enrichedRow, compatConfig);
+      criminal.inserted += r.inserted;
+      criminal.skipped  += r.skipped;
+      criminal.errors   += r.errors;
+      criminal.contacts += r.contacts;
+    }
+  } else {
+    console.warn(`[${PIPELINE_TAG}] No criminal filing for ${ds}`);
+  }
+
   console.log(
     `[${PIPELINE_TAG}] ${ds} complete — ` +
     `civFam: ins=${civFam.inserted} skip=${civFam.skipped} | ` +
-    `probate: ins=${probate.inserted} skip=${probate.skipped}`
+    `probate: ins=${probate.inserted} skip=${probate.skipped} | ` +
+    `criminal: ins=${criminal.inserted} skip=${criminal.skipped}`
   );
 
-  return { date: ds, civFam, probate };
+  return { date: ds, civFam, probate, criminal };
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
@@ -671,9 +834,9 @@ export async function runHillsboroughFilingsCycle(opts?: { daysBack?: number }):
     d.setDate(d.getDate() - i);
     const stats = await processDayFilings(d);
     results.push(stats);
-    _lastCycleInserted += stats.civFam.inserted + stats.probate.inserted;
-    _lastCycleSkipped  += stats.civFam.skipped  + stats.probate.skipped;
-    _totalInsertedEver += stats.civFam.inserted + stats.probate.inserted;
+    _lastCycleInserted += stats.civFam.inserted + stats.probate.inserted + stats.criminal.inserted;
+    _lastCycleSkipped  += stats.civFam.skipped  + stats.probate.skipped  + stats.criminal.skipped;
+    _totalInsertedEver += stats.civFam.inserted + stats.probate.inserted + stats.criminal.inserted;
   }
 
   return results;
