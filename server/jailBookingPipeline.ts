@@ -441,8 +441,8 @@ async function runLeeCountyDirectApi(
         chargeDescs = charges.map((c: any) => c.offenseDescription).filter(Boolean);
         const firstBond = charges.find((c: any) => c.bondAmount && c.bondAmount !== "Not Set");
         if (firstBond) bondStr = firstBond.bondAmount;
+      // allow-silent-catch: charge failures are non-fatal — missing charges don't block booking record creation
       } catch {
-        // allow-silent-catch: charge failures are non-fatal — missing charges don't block booking record creation
       }
 
       const surName  = (b.surName   || "").trim();
