@@ -757,8 +757,7 @@ async function runLegalCycle(subAccountId: number): Promise<void> {
     fetchOshaIncidents(),
     fetchFdaRecalls(),
     fetchCpscRecalls(),
-    // Google Places local/home service signals moved to homeServiceSignalPipeline — not legal pipeline
-    Promise.resolve([]),
+    // Note: Google Places moved to homeServiceSignalPipeline — do NOT add extra promise here
   ]);
 
   const allSignals: RawLegalSignal[] = results

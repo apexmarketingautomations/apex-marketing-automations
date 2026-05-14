@@ -248,7 +248,10 @@ function parsePermitCategories(permitType: string): string[] {
 }
 
 async function fetchLeePermits(): Promise<LeadSignal[]> {
-  try {
+  // opendata.leegov.com consistently fails DNS from Railway — disabled until verified working
+  // TODO: replace with Lee County iGovServices or confirmed Socrata resource ID
+  return [];
+  try { // unreachable — kept for reference
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const permits = await safeJsonFetch(
       `https://opendata.leegov.com/resource/permits.json?$where=application_date>'${since}'&$limit=200&$order=application_date DESC`,
@@ -281,7 +284,10 @@ async function fetchLeePermits(): Promise<LeadSignal[]> {
 }
 
 async function fetchCollierPermits(): Promise<LeadSignal[]> {
-  try {
+  // colliercountyfl.gov/api/permits returns HTTP 404 — no public JSON API at this path
+  // TODO: find Collier County's actual permit data endpoint (Tyler Technologies iGovServices)
+  return [];
+  try { // unreachable — kept for reference
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const permits = await safeJsonFetch(
       `https://www.colliercountyfl.gov/api/permits?issued_after=${since}&limit=200`,
@@ -316,7 +322,11 @@ async function fetchCollierPermits(): Promise<LeadSignal[]> {
 // ── FL DBPR License Filings (Beauty/Barber/Salon) ─────────────────────────
 
 async function fetchDBPRLicenses(): Promise<LeadSignal[]> {
-  try {
+  // myfloridalicense.com/wl11.asp returns HTML — no public JSON API
+  // The FL DBPR licensing portal is browser-only; would need Nimble extraction
+  // TODO: wire to a Nimble agent for DBPR new license scraping
+  return [];
+  try { // unreachable — kept for reference
     // FL DBPR public license search — new licenses issued in last 30 days
     const _dbprFetch = await safeJsonFetch(
       'https://www.myfloridalicense.com/wl11.asp?mode=0&search=LicenseType&LicenseType=COS&County=&status=A&issue_date_after=' +
@@ -366,11 +376,14 @@ async function fetchArrestRecords(): Promise<LeadSignal[]> {
 // ── FL Court Filings (Family Law leads) ───────────────────────────────────
 
 async function fetchCourtFilings(): Promise<LeadSignal[]> {
+  // myeclerk.myfloridacounty.com is not a real domain — DNS always fails
+  // Court filings are handled by courtFilingPipeline.ts (Nimble extraction, every 6h)
+  return [];
   const signals: LeadSignal[] = [];
-  
+
   // Florida Courts e-filing portal — public case search
   const familyTypes = ['Dissolution of Marriage', 'Domestic Violence', 'Child Custody', 'Paternity', 'Probate'];
-  
+
   for (const county of FL_COUNTIES.slice(0, 6)) { // Top 6 counties
     try {
       const cases = await safeJsonFetch(
@@ -417,7 +430,11 @@ async function fetchCourtFilings(): Promise<LeadSignal[]> {
 // ── OSHA Workplace Incidents (Personal Injury leads) ──────────────────────
 
 async function fetchOSHAIncidents(): Promise<LeadSignal[]> {
-  try {
+  // data.osha.gov (Socrata/CKAN) is decommissioned — DNS fails
+  // OSHA incidents are handled by legalSignalPipeline.ts (separate cycle, every 15m)
+  // New OSHA data endpoint requires a DOL API key (api.dol.gov/V1/Compliance/OSHA)
+  return [];
+  try { // unreachable — kept for reference
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     const _oshaRes = await safeJsonFetch(
       `https://data.osha.gov/api/action/datastore_search?resource_id=b62ed87f-e733-4c8f-b2e0-d30c39b22b83&filters={"state_flag":"FL"}&limit=100&sort=event_date desc`,
