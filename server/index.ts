@@ -733,6 +733,14 @@ async function validateMetaCredentials() {
   }
 
   try {
+    const { startCourtListenerScheduler } = await import("./courtListenerPipeline");
+    startCourtListenerScheduler();
+    console.log("[STARTUP] ✅ CourtListener pipeline started — FL bankruptcy filings (flmb/flsb/flnb, every 6h)");
+  } catch (clErr: any) {
+    console.error("[STARTUP] CourtListener pipeline failed to start (non-fatal):", clErr?.message);
+  }
+
+  try {
     const { startRetroSkipTraceScheduler } = await import("./retroSkipTrace");
     startRetroSkipTraceScheduler();
 

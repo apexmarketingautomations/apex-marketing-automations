@@ -108,3 +108,28 @@ export function recordApifyRun(count: number, source: string, error: string | nu
 export function getVendorRunState(): typeof _runState {
   return _runState;
 }
+
+// ── CourtListener ─────────────────────────────────────────────────────────────
+// Source of truth: COURTLISTENER_API_TOKEN (Railway env var)
+// Free tier works without a token but is rate-limited (~50 req/day).
+// Register at courtlistener.com to get a free token (higher limits).
+
+let _courtListenerLogged = false;
+
+/**
+ * Returns the CourtListener API token, or null if not configured.
+ * Token is optional — free tier allows limited unauthenticated access.
+ */
+export function resolveCourtListenerToken(): string | null {
+  const key = (process.env.COURTLISTENER_API_TOKEN || "").trim() || null;
+
+  if (!_courtListenerLogged) {
+    _courtListenerLogged = true;
+    if (key) {
+      console.log("[VENDOR] CourtListener configured: true (COURTLISTENER_API_TOKEN)");
+    } else {
+      console.log("[VENDOR] CourtListener configured: false — using free tier (rate-limited). Set COURTLISTENER_API_TOKEN for production volume.");
+    }
+  }
+  return key;
+}
