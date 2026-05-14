@@ -1,8 +1,7 @@
 /**
  * courtFilingPipeline.ts
  *
- * Real-time FL county court filing intake for family law, domestic violence,
- * and probate leads using Nimble browser extraction (api.webit.live).
+ * FL county court filing intake for family law, domestic violence, and probate leads.
  *
  * Data flow:
  *   Nimble extract → FilingRecord[] → dedup → legalSignals → legalLeads → contacts
@@ -10,20 +9,33 @@
  * Requires: NIMBLE_API_KEY  (set in Railway env vars)
  * Schedule: every 6 hours, staggered 5s between counties
  *
- * Extraction strategy:
- *   - Uses api.webit.live/api/v1/realtime/web (Basic auth)  — same pattern as countyBookingScrapers.ts
- *   - No pre-built Nimble agents required
- *   - Each county has a primary URL and optional fallback
- *   - Lee County probate: extracts from published monthly PDF report links
- *   - Form-based portals: rendered with JS wait, results parsed from markdown
- *
- * Signal types produced:
+ * Signal types produced (when data is available):
  *   divorce_filing                 → family vertical
  *   custody_modification           → family vertical
  *   domestic_violence_injunction   → family vertical  (urgency: critical)
  *   probate_filing                 → estate vertical
  *
- * Coverage enforcement:
+ * ── CURRENT STATUS ────────────────────────────────────────────────────────────
+ * The pipeline infrastructure is complete (dedup, persistence, CRM routing,
+ * coverage reporting) but ALL county scrapers are currently blocked:
+ *
+ *   LEE:        leeclerk.org PDFs behind Akamai WAF (HTTP 403 on direct fetch;
+ *               Chrome PDF viewer HTML via Nimble render).
+ *               matrix.leeclerk.org case search requires ASP.NET form POST with
+ *               CSRF token — Akamai TLS-fingerprints direct connections.
+ *
+ *   ALL OTHERS: FL county clerk portals (Tyler Odyssey, Granicus, etc.) require
+ *               form POST to return case data. Nimble GET renders the search form
+ *               page only — results never appear without form submission.
+ *
+ * ── TO UNBLOCK ────────────────────────────────────────────────────────────────
+ * Option A (best):  Deploy Puppeteer/Playwright on Railway (browser automation
+ *                   that can fill and submit ASP.NET forms).
+ * Option B:         Subscribe to CourtAPI or Docket Alarm (paid FL court data APIs).
+ * Option C:         Use Nimble agents via api.webnimble.com once reachable from
+ *                   Railway (would enable interactive form submission).
+ *
+ * ── COVERAGE ENFORCEMENT ──────────────────────────────────────────────────────
  *   - Prints full source list before execution
  *   - Logs each county as QUEUED, FETCHING, SUCCESS, NO_DATA, SKIPPED, or FAILED
  *   - Reports: sources_attempted, sources_succeeded, sources_failed, leads_created
@@ -254,9 +266,18 @@ function logCountyStatus(county: string, status: SourceStatus, detail?: string) 
 // ── County Scrapers ───────────────────────────────────────────────────────────
 
 // LEE COUNTY
-// Primary:  leeclerk.org court case records page (probate PDF reports)
-// Search:   matrix.leeclerk.org (JS-rendered form — try direct render)
-// Probate:  Monthly PDF listing at /departments/courts/court-case-records
+// Data source: leeclerk.org/departments/courts/court-case-records
+//   - Publishes monthly PDFs for Probate New Estate Listings and Civil Closed Cases
+//   - PDF URLs: /home/showpublisheddocument/{id}/{timestamp}
+//   - BLOCKER: PDFs are served behind Akamai WAF (HTTP 403 on direct fetch).
+//     Nimble with render:true returns Chrome's PDF viewer HTML, not text.
+//     Google Docs viewer also blocked. All PDF extraction approaches fail.
+//   - ALTERNATIVE: matrix.leeclerk.org has full case search (Tyler Odyssey)
+//     but requires ASP.NET form POST with CSRF token + session cookie.
+//     Direct connections to matrix.leeclerk.org get TLS-fingerprinted by Akamai.
+//
+// REQUIRED TO UNBLOCK: Puppeteer/Playwright browser automation in Railway
+// OR a paid court data API (CourtAPI, Docket Alarm).
 
 async function scrapeLeeCounty(from: string, to: string): Promise<CountyScrapeResult> {
   const county = "LEE";
@@ -264,51 +285,60 @@ async function scrapeLeeCounty(from: string, to: string): Promise<CountyScrapeRe
   const errors: string[] = [];
   let pages = 0;
 
-  // ── Attempt 1: Court Case Records listing page (probate PDF reports) ─────
   try {
-    const url  = "https://www.leeclerk.org/departments/courts/court-case-records";
-    const html = await nimbleExtract(url, 4000);
+    // Render the court case records page to confirm pipeline connectivity
+    // and find the most recent PDF URLs (even though we can't parse them yet)
+    const listUrl = "https://www.leeclerk.org/departments/courts/court-case-records";
+    const html    = await nimbleExtract(listUrl, 5000);
     pages++;
 
-    // Find PDF links for Probate New Estate Listings (published monthly)
-    const pdfLinkPattern = /(https:\/\/www\.leeclerk\.org\/home\/showpublisheddocument\/\d+\/\d+)/g;
-    const pdfLinks = [...html.matchAll(pdfLinkPattern)].map(m => m[1]);
+    // Find the Probate New Estate Listings PDF link (most recent month)
+    const probateLinkRx = /\[Probate[^\]]*\]\((https:\/\/www\.leeclerk\.org\/home\/showpublisheddocument\/\d+\/\d+)\)/gi;
+    const probateLinks  = [...html.matchAll(probateLinkRx)].map(m => m[1]);
 
-    // Extract the most recent probate PDF
-    if (pdfLinks.length > 0) {
-      try {
-        const pdfMd = await nimbleExtract(pdfLinks[0], 3000);
-        pages++;
-        const pdfRecords = parseCaseMarkdown(pdfMd, county, pdfLinks[0], ["PR", "GD"]);
-        records.push(...pdfRecords);
-        console.log(`[COURT-FILING] Lee County probate PDF: ${pdfRecords.length} records`);
-      } catch (pdfErr: any) {
-        errors.push(`probate PDF: ${pdfErr.message}`);
-      }
+    // Fallback: bare URL near "Probate" text
+    if (probateLinks.length === 0) {
+      const nearProbate = html.match(/Probate[\s\S]{0,500}?(https:\/\/www\.leeclerk\.org\/home\/showpublisheddocument\/\d+\/\d+)/i);
+      if (nearProbate) probateLinks.push(nearProbate[1]);
     }
+
+    if (probateLinks.length > 0) {
+      // PDF found — but all extraction methods are blocked (Akamai WAF / Chrome viewer)
+      // We log the PDF URL so it's visible in Railway logs for manual verification.
+      console.log(`[COURT-FILING] Lee County probate PDF located: ${probateLinks[0]}`);
+      errors.push(
+        `leeclerk.org: Probate PDF located at ${probateLinks[0]} — ` +
+        "PDF parsing blocked by Akamai WAF. Needs Puppeteer or paid court API to extract text."
+      );
+    } else {
+      errors.push("leeclerk.org: no Probate New Estate Listing PDF links found on page");
+    }
+
+    // Also check for Civil Closed Cases PDF
+    const civilLinkRx = /\[Civil Closed[^\]]*\]\((https:\/\/www\.leeclerk\.org\/home\/showpublisheddocument\/\d+\/\d+)\)/gi;
+    const civilLinks  = [...html.matchAll(civilLinkRx)].map(m => m[1]);
+    if (civilLinks.length > 0) {
+      console.log(`[COURT-FILING] Lee County civil closed PDF located: ${civilLinks[0]}`);
+    }
+
   } catch (err: any) {
     errors.push(`leeclerk.org: ${err.message}`);
   }
 
-  // ── Attempt 2: Matrix case search (JS-rendered — try direct render) ───────
-  try {
-    const url  = "https://matrix.leeclerk.org/";
-    const html = await nimbleExtract(url, 8000); // extra wait for form JS
-    pages++;
-    const parsed = parseCaseMarkdown(html, county, url, ["DR", "DV", "DM"]);
-    records.push(...parsed);
-    console.log(`[COURT-FILING] Lee County matrix: ${parsed.length} records`);
-  } catch (err: any) {
-    // form portal — expected to be limited without form submission
-    errors.push(`matrix.leeclerk.org: ${err.message}`);
-  }
-
-  return { county, records, pages, errors };
+  return {
+    county,
+    records,
+    pages,
+    errors,
+    blocker: "form-post-or-pdf-required",
+  };
 }
 
 // COLLIER COUNTY
-// Portal: collierclerk.com/records-and-courts/court-records/
-// Also try: apps.collierclerk.com (case search application)
+// Case search portal: collierclerk.com/court-divisions/online-case-search/
+// Report portal:      cms.collierclerk.com/reportportal
+// BLOCKER: Case search requires form interaction; report portal requires authentication.
+// The previously used URL (/records-and-courts/court-records/) returns HTTP 404.
 
 async function scrapeCollierCounty(from: string, to: string): Promise<CountyScrapeResult> {
   const county = "COLLIER";
@@ -317,8 +347,8 @@ async function scrapeCollierCounty(from: string, to: string): Promise<CountyScra
   let pages = 0;
 
   for (const url of [
-    "https://www.collierclerk.com/records-and-courts/court-records/",
-    `https://www.collierclerk.com/records-and-courts/court-records/?filingFrom=${from}&filingTo=${to}`,
+    "https://www.collierclerk.com/records-search/court-reports/",
+    "https://www.collierclerk.com/court-divisions/online-case-search/",
   ]) {
     if (!isDomainApproved(url)) continue;
     try {
@@ -332,11 +362,16 @@ async function scrapeCollierCounty(from: string, to: string): Promise<CountyScra
     }
   }
 
-  return { county, records, pages, errors };
+  if (records.length === 0) {
+    errors.push("collierclerk.com: case search requires form POST — case data not visible without form submission");
+  }
+
+  return { county, records, pages, errors, blocker: records.length === 0 ? "form-post-required" : undefined };
 }
 
 // CHARLOTTE COUNTY
-// Portal: charlotteclerk.com
+// Case search: charlotteclerk.com/court-divisions/court-case-search/
+// BLOCKER: Tyler Odyssey portal requires form POST to return case data.
 
 async function scrapeCharlotteCounty(from: string, to: string): Promise<CountyScrapeResult> {
   const county = "CHARLOTTE";
@@ -344,27 +379,28 @@ async function scrapeCharlotteCounty(from: string, to: string): Promise<CountySc
   const errors: string[] = [];
   let pages = 0;
 
-  for (const url of [
-    "https://www.charlotteclerk.com/courts/court-records/",
-    `https://www.charlotteclerk.com/courts/court-records/?caseType=DR,DV,PR&from=${from}&to=${to}`,
-  ]) {
-    if (!isDomainApproved(url)) continue;
+  const url = "https://www.charlotteclerk.com/court-divisions/court-case-search/";
+  if (isDomainApproved(url)) {
     try {
       const html   = await nimbleExtract(url, 5000);
       pages++;
       const parsed = parseCaseMarkdown(html, county, url, ["DR", "DV", "DM", "PR", "GD"]);
       records.push(...parsed);
-      if (records.length > 0) break;
     } catch (err: any) {
-      errors.push(`${url}: ${err.message}`);
+      errors.push(`charlotteclerk.com: ${err.message}`);
     }
   }
 
-  return { county, records, pages, errors };
+  if (records.length === 0) {
+    errors.push("charlotteclerk.com: case search requires form POST — case data not visible without form submission");
+  }
+
+  return { county, records, pages, errors, blocker: records.length === 0 ? "form-post-required" : undefined };
 }
 
 // SARASOTA COUNTY
-// Portal: sarasotaclerk.com
+// Case search: sarasotaclerk.com — online case search portal
+// BLOCKER: Form-based case search; GET requests return the search form only.
 
 async function scrapeSarasotaCounty(from: string, to: string): Promise<CountyScrapeResult> {
   const county = "SARASOTA";
@@ -372,27 +408,28 @@ async function scrapeSarasotaCounty(from: string, to: string): Promise<CountyScr
   const errors: string[] = [];
   let pages = 0;
 
-  for (const url of [
-    `https://www.sarasotaclerk.com/index.aspx?NID=195`,
-    `https://www.sarasotaclerk.com/court-records/?from=${from}&to=${to}`,
-  ]) {
-    if (!isDomainApproved(url)) continue;
+  const url = "https://www.sarasotaclerk.com/court-services/search/";
+  if (isDomainApproved(url)) {
     try {
       const html   = await nimbleExtract(url, 5000);
       pages++;
       const parsed = parseCaseMarkdown(html, county, url, ["DR", "DV", "DM", "PR", "GD"]);
       records.push(...parsed);
-      if (records.length > 0) break;
     } catch (err: any) {
-      errors.push(`${url}: ${err.message}`);
+      errors.push(`sarasotaclerk.com: ${err.message}`);
     }
   }
 
-  return { county, records, pages, errors };
+  if (records.length === 0) {
+    errors.push("sarasotaclerk.com: case search requires form POST — case data not visible without form submission");
+  }
+
+  return { county, records, pages, errors, blocker: records.length === 0 ? "form-post-required" : undefined };
 }
 
 // MANATEE COUNTY
-// Portal: manateeclerk.com
+// Case search: manateeclerk.com/online-services/case-search/
+// BLOCKER: Form-based case search.
 
 async function scrapeManateeCounty(from: string, to: string): Promise<CountyScrapeResult> {
   const county = "MANATEE";
@@ -400,27 +437,28 @@ async function scrapeManateeCounty(from: string, to: string): Promise<CountyScra
   const errors: string[] = [];
   let pages = 0;
 
-  for (const url of [
-    "https://www.manateeclerk.com/online-services/case-search/",
-    `https://www.manateeclerk.com/online-services/case-search/?from=${from}&to=${to}&type=DR,DV,PR`,
-  ]) {
-    if (!isDomainApproved(url)) continue;
+  const url = "https://www.manateeclerk.com/online-services/case-search/";
+  if (isDomainApproved(url)) {
     try {
       const html   = await nimbleExtract(url, 5000);
       pages++;
       const parsed = parseCaseMarkdown(html, county, url, ["DR", "DV", "DM", "PR", "GD"]);
       records.push(...parsed);
-      if (records.length > 0) break;
     } catch (err: any) {
-      errors.push(`${url}: ${err.message}`);
+      errors.push(`manateeclerk.com: ${err.message}`);
     }
   }
 
-  return { county, records, pages, errors };
+  if (records.length === 0) {
+    errors.push("manateeclerk.com: case search requires form POST — case data not visible without form submission");
+  }
+
+  return { county, records, pages, errors, blocker: records.length === 0 ? "form-post-required" : undefined };
 }
 
 // PALM BEACH COUNTY
-// Portal: apps.mypalmbeachclerk.com
+// Case search: apps.mypalmbeachclerk.com/search/ (Tyler Odyssey)
+// BLOCKER: Tyler Odyssey form POST required. GET returns search form only.
 
 async function scrapePalmBeachCounty(from: string, to: string): Promise<CountyScrapeResult> {
   const county = "PALM_BEACH";
@@ -428,27 +466,28 @@ async function scrapePalmBeachCounty(from: string, to: string): Promise<CountySc
   const errors: string[] = [];
   let pages = 0;
 
-  for (const url of [
-    "https://apps.mypalmbeachclerk.com/search/",
-    `https://apps.mypalmbeachclerk.com/search/?caseType=DR&filingFrom=${from}&filingTo=${to}`,
-  ]) {
-    if (!isDomainApproved(url)) continue;
+  const url = "https://apps.mypalmbeachclerk.com/search/";
+  if (isDomainApproved(url)) {
     try {
       const html   = await nimbleExtract(url, 6000);
       pages++;
       const parsed = parseCaseMarkdown(html, county, url, ["DR", "DV", "DM", "PR", "GD"]);
       records.push(...parsed);
-      if (records.length > 0) break;
     } catch (err: any) {
-      errors.push(`${url}: ${err.message}`);
+      errors.push(`mypalmbeachclerk.com: ${err.message}`);
     }
   }
 
-  return { county, records, pages, errors };
+  if (records.length === 0) {
+    errors.push("mypalmbeachclerk.com: Tyler Odyssey case search requires form POST — case data not visible without form submission");
+  }
+
+  return { county, records, pages, errors, blocker: records.length === 0 ? "form-post-required" : undefined };
 }
 
 // MIAMI-DADE COUNTY
-// Portal: miamidadeclerk.com/ocs/
+// Case search: www2.miamidadeclerk.com/ocs/ (Online Case Search)
+// BLOCKER: ASP.NET form-based search; GET returns the search page without results.
 
 async function scrapeMiamiDadeCounty(from: string, to: string): Promise<CountyScrapeResult> {
   const county = "MIAMI_DADE";
@@ -456,23 +495,23 @@ async function scrapeMiamiDadeCounty(from: string, to: string): Promise<CountySc
   const errors: string[] = [];
   let pages = 0;
 
-  for (const url of [
-    "https://www2.miamidadeclerk.com/ocs/",
-    `https://www2.miamidadeclerk.com/ocs/Search.aspx?caseType=DR&filingFrom=${from}&filingTo=${to}`,
-  ]) {
-    if (!isDomainApproved(url)) continue;
+  const url = "https://www2.miamidadeclerk.com/ocs/";
+  if (isDomainApproved(url)) {
     try {
       const html   = await nimbleExtract(url, 6000);
       pages++;
       const parsed = parseCaseMarkdown(html, county, url, ["DR", "DV", "DM", "PR", "GD"]);
       records.push(...parsed);
-      if (records.length > 0) break;
     } catch (err: any) {
-      errors.push(`${url}: ${err.message}`);
+      errors.push(`miamidadeclerk.com: ${err.message}`);
     }
   }
 
-  return { county, records, pages, errors };
+  if (records.length === 0) {
+    errors.push("miamidadeclerk.com: case search requires form POST — case data not visible without form submission");
+  }
+
+  return { county, records, pages, errors, blocker: records.length === 0 ? "form-post-required" : undefined };
 }
 
 // ── Dedup & Persistence ───────────────────────────────────────────────────────
