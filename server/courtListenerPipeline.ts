@@ -235,6 +235,25 @@ async function deliverToAccounts(lead: any, subjectPhone: string | null): Promis
         tags,
         notes: `Bankruptcy filing — ${lead.chapter ? `Chapter ${lead.chapter}` : "Unknown chapter"} | Docket: ${lead.caseNumber} | Court: ${lead.courtName} | Filed: ${lead.filingDate}`,
       });
+
+      // Report to Apex Intelligence brain
+      import("./operator/apexIntelligence").then(({ reportOutcome }) =>
+        reportOutcome({
+          agentName:    "courtlistener-pipeline",
+          action:       "contact_created",
+          subject:      `${firstName} ${lastName}`.trim(),
+          result:       `Bankruptcy Ch.${lead.chapter || "?"} lead routed — ${lead.courtName} (${lead.caseNumber})`,
+          confidence:   0.65,
+          subAccountId,
+          niche:        "bankruptcy",
+          metadata: {
+            caseNumber:  lead.caseNumber,
+            chapter:     lead.chapter,
+            court:       lead.courtName,
+            hasPhone:    !!subjectPhone,
+          },
+        })
+      ).catch((e: any) => console.warn("[APEX-OUTCOME] courtlistener-pipeline reportOutcome error:", e?.message));
     } catch (err: any) {
       console.warn(`[${PIPELINE_TAG}] createContact failed for account ${subAccountId}: ${err.message}`);
     }

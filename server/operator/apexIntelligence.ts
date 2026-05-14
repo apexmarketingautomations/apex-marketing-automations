@@ -22,6 +22,11 @@ const ALLOWED_AGENTS = new Set([
   // Legal / arrest pipelines
   "arrest-ingest", "jail-booking-pipeline", "legal-pipeline",
   "court-filing-pipeline", "apex-engine",
+  // Hillsborough County bulk data pipelines
+  "hillsborough-records",   // lis pendens + judgments (Official Records D/P files)
+  "hillsborough-filings",   // divorce/custody/probate/criminal (daily court filing CSVs)
+  // Bankruptcy
+  "courtlistener-pipeline",
 ]);
 const MAX_BUFFER = 2000;
 const MAX_METADATA_KEYS = 10;

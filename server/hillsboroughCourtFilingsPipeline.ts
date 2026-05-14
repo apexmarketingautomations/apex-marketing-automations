@@ -489,6 +489,27 @@ async function deliverToAccounts(params: {
         state:     "FL",
       });
       delivered++;
+
+      // Report to Apex Intelligence brain
+      import("./operator/apexIntelligence").then(({ reportOutcome }) =>
+        reportOutcome({
+          agentName:    "hillsborough-filings",
+          action:       "contact_created",
+          subject:      `${params.firstName} ${params.lastName}`.trim(),
+          result:       `${params.caseType} lead routed — Hillsborough County (${params.caseNumber})`,
+          confidence:   params.config.urgency === "high" ? 0.70 : params.config.urgency === "medium" ? 0.55 : 0.40,
+          subAccountId,
+          niche:        params.config.legalVertical,
+          metadata: {
+            caseNumber:   params.caseNumber,
+            caseType:     params.caseType,
+            signalType:   params.config.signalType,
+            county:       COUNTY,
+            hasPhone:     !!params.phone,
+            filingDate:   params.filingDate,
+          },
+        })
+      ).catch((e: any) => console.warn("[APEX-OUTCOME] hillsborough-filings reportOutcome error:", e?.message));
     } catch (err: any) {
       console.warn(`[${PIPELINE_TAG}] createContact failed (account=${subAccountId}): ${err.message}`);
     }
