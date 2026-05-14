@@ -64,7 +64,8 @@ const COVERAGE_THRESHOLD = 0.90;    // 90% of enabled sources must be attempted
 
 const APPROVED_DOMAINS = new Set([
   "sheriffleefl.org",
-  "charlottesheriff.org",
+  "charlottesheriff.org",   // legacy — kept so old URLs don't crash; actual URL is ccso.org
+  "ccso.org",               // Charlotte County Sheriff (correct domain)
   "colliersheriff.org",
   "hendrysheriff.org",
   "gladessheriff.com",
@@ -100,10 +101,15 @@ export interface CountyBookingConfig {
   bookingUrl: string;  // Primary booking search URL (for reference / domain check)
   fips:       string;  // FIPS code for cross-reference
   enabled:    boolean;
+  /** ms to wait for JS render — defaults to 6000. Increase for AJAX-heavy pages */
+  waitMs?:    number;
 }
 
 export const COUNTY_BOOKING_CONFIGS: CountyBookingConfig[] = [
   // ── Core: Lee County ──────────────────────────────────────────────────────
+  // NOTE: Lee County uses a direct public REST API (runLeeCountyDirectApi).
+  // The bookingUrl is kept for reference / domain-check only — Nimble is NOT
+  // used for LEE. runCountyScrape() short-circuits to the direct API.
   {
     county:     "LEE",
     state:      "FL",
@@ -113,13 +119,15 @@ export const COUNTY_BOOKING_CONFIGS: CountyBookingConfig[] = [
     enabled:    true,
   },
   // ── Immediate Border Counties ─────────────────────────────────────────────
+  // Charlotte County uses ccso.org (correct domain). charlottesheriff.org is DNS-dead.
   {
     county:     "CHARLOTTE",
     state:      "FL",
     agentName:  "apex-charlotte-county-jail-booking",
-    bookingUrl: "https://www.charlottesheriff.org/divisions/detention/inmatesearch/",
+    bookingUrl: "https://www.ccso.org/correctional_facility/local_arrest_database.php",
     fips:       "12015",
     enabled:    true,
+    waitMs:     8_000,  // Revize CMS — needs extra render time
   },
   {
     county:     "COLLIER",
@@ -262,6 +270,7 @@ async function runNimbleAgent(
   agentName: string,
   bookingUrl: string,
   params:    Record<string, unknown>,
+  waitMs:    number = 6_000,
 ): Promise<{ records: BookingRecord[]; attempted: boolean; error?: string }> {
   const key = resolveNimbleKey();
   if (!key) return { records: [], attempted: false, error: "NIMBLE_API_KEY not configured" };
@@ -283,7 +292,7 @@ async function runNimbleAgent(
   try {
     const resp = await axios.post(
       NIMBLE_REALTIME_API,
-      { url: targetUrl, render: true, wait: 6000, output_format: "markdown" },
+      { url: targetUrl, render: true, wait: waitMs, output_format: "markdown" },
       {
         headers: {
           Authorization: `Basic ${Buffer.from(key).toString("base64")}`,
@@ -383,6 +392,91 @@ function parseBookingMarkdown(html: string, county: string, sourceUrl: string): 
   }
 
   return records;
+}
+
+// ── Lee County Direct Public REST API ──────────────────────────────────────────
+// The booking search page (sheriffleefl.org/booking-search/) loads data via
+// jQuery.ajax to /public-api/bookings — discovered by inspecting the page JS.
+// Hitting the JSON API directly is faster and more reliable than browser scraping.
+//
+// API date format: YYYY-M-D (no zero-padding)
+// Charges:         /public-api/bookings/{bookingNumber}/charges
+
+function leeApiDate(d: Date): string {
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+async function runLeeCountyDirectApi(
+  dateFrom: Date,
+  dateTo:   Date,
+): Promise<{ records: BookingRecord[]; attempted: boolean; error?: string }> {
+  const from   = leeApiDate(dateFrom);
+  const to     = leeApiDate(dateTo);
+  const apiUrl = `https://www.sheriffleefl.org/public-api/bookings?startBooking=${from}&toBooking=${to}`;
+
+  try {
+    const resp = await axios.get<any[]>(apiUrl, {
+      timeout: 30_000,
+      headers: { Accept: "application/json" },
+    });
+
+    const bookings: any[] = Array.isArray(resp.data) ? resp.data : [];
+    console.log(`[JAIL-BOOKING] LEE direct API: ${bookings.length} bookings (${from}→${to})`);
+
+    if (bookings.length === 0) return { records: [], attempted: true };
+
+    const records: BookingRecord[] = [];
+
+    for (const b of bookings) {
+      // Fetch charges for DUI/felony classification
+      let chargeDescs: string[] = [];
+      let bondStr: string | undefined;
+
+      try {
+        const cResp = await axios.get<any[]>(
+          `https://www.sheriffleefl.org/public-api/bookings/${b.bookingNumber}/charges`,
+          { timeout: 15_000, headers: { Accept: "application/json" } },
+        );
+        const charges: any[] = Array.isArray(cResp.data) ? cResp.data : [];
+        chargeDescs = charges.map((c: any) => c.offenseDescription).filter(Boolean);
+        const firstBond = charges.find((c: any) => c.bondAmount && c.bondAmount !== "Not Set");
+        if (firstBond) bondStr = firstBond.bondAmount;
+      } catch { /* charge failures are non-fatal */ }
+
+      const surName  = (b.surName   || "").trim();
+      const given    = (b.givenName || "").trim();
+      const middle   = (b.middleName || "").trim();
+      const fullName = [surName, given, middle].filter(Boolean).join(" ");
+      const chargeText = chargeDescs.join(" ");
+
+      records.push({
+        county:           "LEE",
+        source_url:       `https://www.sheriffleefl.org/booking/?id=${b.bookingNumber}`,
+        full_name:        fullName || "Unknown",
+        first_name:       given,
+        last_name:        surName,
+        booking_id:       String(b.bookingNumber),
+        booking_date:     (b.bookingDate || "").split(" ")[0] || new Date().toISOString().slice(0, 10),
+        arrest_date:      (b.bookingDate || "").split(" ")[0] || new Date().toISOString().slice(0, 10),
+        charges:          chargeDescs.length ? chargeDescs : ["Unknown"],
+        dui_related:      /\bDUI\b|\bDWI\b|IMPAIRED|INTOXICATED/i.test(chargeText),
+        felony_related:   /FELONY|MURDER|HOMICIDE|TRAFFICKING|ROBBERY/i.test(chargeText),
+        bond_amount:      bondStr,
+        custody_status:   b.inCustodyText || (b.inCustody ? "In Custody" : "Released"),
+        dob:              b.birthDate ? b.birthDate.split(" ")[0] : undefined,
+        city_state:       b.address || "Lee County, FL",
+        scrape_timestamp: new Date().toISOString(),
+      });
+
+      await new Promise(r => setTimeout(r, 250)); // brief pause between charge lookups
+    }
+
+    return { records, attempted: true };
+  } catch (err: any) {
+    const errMsg = err?.message || "unknown error";
+    console.warn(`[JAIL-BOOKING] LEE direct API error: ${errMsg}`);
+    return { records: [], attempted: true, error: errMsg };
+  }
 }
 
 /** Parse "LAST, FIRST MIDDLE" or "FIRST LAST" formats into name parts */
@@ -576,23 +670,36 @@ async function runCountyScrape(
 
   logSource(config.county, "FETCHING", `agent=${config.agentName} range=${fromStr}→${toStr}`);
 
-  let result = await runNimbleAgent(config.agentName, config.bookingUrl, {
-    booking_date_from: fromStr,
-    booking_date_to:   toStr,
-  });
+  // ── Lee County: use direct public REST API (no Nimble needed) ────────────
+  let result: { records: BookingRecord[]; attempted: boolean; error?: string };
 
-  if (!result.attempted) {
-    return { stats, attempted: false, error: result.error };
-  }
+  if (config.county === "LEE") {
+    result = await runLeeCountyDirectApi(dateFrom, dateTo);
 
-  // Fallback: expand to 7 days if 72h window returns nothing
-  if (result.records.length === 0 && !result.error) {
-    const sevenDaysAgo = new Date(dateTo.getTime() - 7 * 24 * 60 * 60 * 1000);
-    console.log(`[JAIL-BOOKING] ${config.county}: no results in 72h — retrying 7-day window`);
+    // Fallback to 7-day window if no results
+    if (result.attempted && result.records.length === 0 && !result.error) {
+      const sevenDaysAgo = new Date(dateTo.getTime() - 7 * 24 * 60 * 60 * 1000);
+      console.log("[JAIL-BOOKING] LEE: 72h window empty — retrying 7-day");
+      result = await runLeeCountyDirectApi(sevenDaysAgo, dateTo);
+    }
+  } else {
+    // ── All other counties: Nimble browser extraction ──────────────────────
+    const waitMs = config.waitMs ?? 6_000;
+
     result = await runNimbleAgent(config.agentName, config.bookingUrl, {
-      booking_date_from: sevenDaysAgo.toISOString().slice(0, 10),
+      booking_date_from: fromStr,
       booking_date_to:   toStr,
-    });
+    }, waitMs);
+
+    // Fallback: expand to 7 days if 72h window returns nothing
+    if (result.attempted && result.records.length === 0 && !result.error) {
+      const sevenDaysAgo = new Date(dateTo.getTime() - 7 * 24 * 60 * 60 * 1000);
+      console.log(`[JAIL-BOOKING] ${config.county}: no results in 72h — retrying 7-day window`);
+      result = await runNimbleAgent(config.agentName, config.bookingUrl, {
+        booking_date_from: sevenDaysAgo.toISOString().slice(0, 10),
+        booking_date_to:   toStr,
+      }, waitMs);
+    }
   }
 
   if (result.error && result.records.length === 0) {

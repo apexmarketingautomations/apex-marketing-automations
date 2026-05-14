@@ -304,7 +304,9 @@ export async function seedSystemTimelineMarker(): Promise<SeedResult> {
     const { db } = await import("../db");
     const { subAccounts } = await import("@shared/schema");
     const { eq } = await import("drizzle-orm");
-    const accountId = parseInt(process.env.APEX_PARENT_ACCOUNT_ID || "13");
+    // Default to 3 (Apex Marketing Automations — platform owner) when not set.
+    // Previously defaulted to 13 which doesn't exist in sub_accounts.
+    const accountId = parseInt(process.env.APEX_PARENT_ACCOUNT_ID || "3");
     const [acct] = await db.select({ id: subAccounts.id }).from(subAccounts)
       .where(eq(subAccounts.id, accountId)).limit(1);
     if (!acct) {

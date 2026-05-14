@@ -154,98 +154,107 @@ async function triggerApifyActor(
 }
 
 // ── LEE COUNTY ───────────────────────────────────────────────────────────────
-// Primary:  sheriffleefl.org/booking-search/
-// Platform: WordPress + custom BookingSearch JS widget
-// Strategy: Nimble browser-rendered extract, then parse result table rows.
-//           The page renders a booking results table after JS executes.
-// Fallback: Apify actor `apex-lee-county-booking` (browser automation)
+// Strategy: Direct public REST API at sheriffleefl.org/public-api/bookings
+//           Returns JSON — no browser rendering or button clicks needed.
+// API date format: YYYY-M-D  (no zero-padding)
+// Charges:  /public-api/bookings/{bookingNumber}/charges
+//
+// Discovered from the page JS: the "Recent Bookings" button called this API
+// via jQuery.ajax — it was never accessible via HTML scraping.
+
+function leeApiDate(iso: string): string {
+  // "2026-05-01" → "2026-5-1"  (API requires no zero-padding)
+  const [y, m, d] = iso.split("-").map(Number);
+  return `${y}-${m}-${d}`;
+}
 
 export async function scrapeLeeCounty(
   fromDate = daysAgo(3),
   toDate   = daysAgo(0),
 ): Promise<ScrapeResult> {
-  const county       = "Lee";
-  const SOURCE_BASE  = "https://www.sheriffleefl.org/booking-search/";
+  const county   = "Lee";
+  const BASE_URL = "https://www.sheriffleefl.org";
   const records: RawBookingRecord[] = [];
   const errors: string[] = [];
   let   pagesRead = 0;
 
   try {
-    // The page uses a custom BookingSearch JS class.
-    // We extract the rendered DOM after providing date filters via URL hash or
-    // query string. The actual widget renders results in #booking-results.
-    const url = `${SOURCE_BASE}?booking_date_from=${fromDate}&booking_date_to=${toDate}`;
-    const html = await nimbleExtract(url, 5000);
+    const apiUrl = `${BASE_URL}/public-api/bookings?startBooking=${leeApiDate(fromDate)}&toBooking=${leeApiDate(toDate)}`;
+    const resp   = await axios.get<any[]>(apiUrl, {
+      timeout: 30_000,
+      headers: { Accept: "application/json" },
+    });
     pagesRead++;
 
-    // Parse booking rows from markdown/HTML output
-    const parsed = parseLeeBookingHtml(html, county, SOURCE_BASE);
-    records.push(...parsed);
+    const bookings: any[] = Array.isArray(resp.data) ? resp.data : [];
+    console.log(`[ARREST-SCRAPER] Lee County API: ${bookings.length} bookings (${fromDate}→${toDate})`);
 
-    // If no results from 3-day window, retry with 7-day window
-    if (records.length === 0) {
-      console.warn("[ARREST-SCRAPER] Lee County: 3-day search empty, retrying 7-day");
-      const url7 = `${SOURCE_BASE}?booking_date_from=${daysAgo(7)}&booking_date_to=${toDate}`;
-      const html7 = await nimbleExtract(url7, 5000);
-      pagesRead++;
-      const parsed7 = parseLeeBookingHtml(html7, county, SOURCE_BASE);
-      records.push(...parsed7);
+    for (const b of bookings) {
+      // Fetch charges for this booking
+      let chargeDescs: string[] = [];
+      let bondAmount: number | null = null;
+      let caseNumber: string | undefined;
+      let arrestingAgency = "Lee County Sheriff";
+
+      try {
+        const cResp = await axios.get<any[]>(
+          `${BASE_URL}/public-api/bookings/${b.bookingNumber}/charges`,
+          { timeout: 15_000, headers: { Accept: "application/json" } },
+        );
+        const charges: any[] = Array.isArray(cResp.data) ? cResp.data : [];
+        chargeDescs = charges.map((c: any) => c.offenseDescription).filter(Boolean);
+
+        for (const c of charges) {
+          if (c.bondAmount && c.bondAmount !== "Not Set") {
+            const n = parseFloat(String(c.bondAmount).replace(/[^0-9.]/g, ""));
+            if (!isNaN(n) && n > 0) { bondAmount = n; break; }
+          }
+        }
+        if (charges[0]?.caseNumber)          caseNumber      = charges[0].caseNumber;
+        if (charges[0]?.arrestingAgencyName) arrestingAgency = charges[0].arrestingAgencyName;
+      } catch { /* charge fetch failures are non-fatal */ }
+
+      const surName  = (b.surName   || "").trim();
+      const givenName = (b.givenName || "").trim();
+      const middle   = (b.middleName || "").trim();
+      const rawFull  = [surName, givenName, middle].filter(Boolean).join(" ");
+      const nameParts = splitName(rawFull);
+
+      records.push({
+        county,
+        source_url:       `${BASE_URL}/booking/?id=${b.bookingNumber}`,
+        full_name:        nameParts.full || rawFull || "Unknown",
+        first_name:       nameParts.first || givenName,
+        last_name:        nameParts.last  || surName,
+        booking_id:       String(b.bookingNumber),
+        booking_date:     (b.bookingDate || "").split(" ")[0] || null,
+        arrest_date:      (b.bookingDate || "").split(" ")[0] || null,
+        charges:          chargeDescs.length ? chargeDescs : ["Unknown"],
+        bond_amount:      bondAmount,
+        custody_status:   b.inCustodyText || (b.inCustody ? "In Custody" : "Released"),
+        age:              null,
+        dob:              b.birthDate ? b.birthDate.split(" ")[0] : null,
+        city_state:       b.address  || "Lee County, FL",
+        mugshot_url:      null,  // base64 image — omit to keep payload small
+        arresting_agency: arrestingAgency,
+        scrape_timestamp: nowIso(),
+      });
+
+      await sleep(250); // brief pause between charge-lookup calls
     }
 
-    console.log(`[ARREST-SCRAPER] Lee County: ${records.length} records extracted`);
-    return { county, records, pagesRead, errors, strategy: "nimble" };
+    return { county, records, pagesRead, errors, strategy: "api" };
 
   } catch (err: any) {
     const msg = err?.message || String(err);
-    console.error(`[ARREST-SCRAPER] Lee County failed: ${msg}`);
-
-    // Classify blocker
-    const blocker = classifyBlocker(msg);
-    if (blocker) {
-      return {
-        county, records: [], pagesRead, errors: [msg],
-        blocker: `Lee County blocked — ${blocker}. Required workaround: Apify Playwright actor with proxy rotation. Endpoint: ${SOURCE_BASE}`,
-        strategy: "nimble",
-      };
-    }
-
+    console.error(`[ARREST-SCRAPER] Lee County API failed: ${msg}`);
     errors.push(msg);
-    return { county, records, pagesRead, errors, strategy: "nimble" };
+    return { county, records, pagesRead, errors, strategy: "api" };
   }
 }
 
-function parseLeeBookingHtml(html: string, county: string, base: string): RawBookingRecord[] {
-  const records: RawBookingRecord[] = [];
-  // Lee County renders a table: Name | Booking# | Date | Charges | Bond | Status
-  // Regex to find table rows after Nimble markdown conversion
-  const rowPattern = /\|\s*([A-Z][A-Z ,'-]+)\s*\|\s*([A-Z0-9-]+)\s*\|\s*(\d{1,2}\/\d{1,2}\/\d{4})\s*\|\s*([^|]+)\|\s*([\d$,.]*)\s*\|\s*([^|]+)/g;
-  let match: RegExpExecArray | null;
-  while ((match = rowPattern.exec(html)) !== null) {
-    const [, fullName, bookingId, bookingDate, chargesRaw, bondRaw, status] = match;
-    const nameParts = splitName(fullName.trim());
-    const bond = parseBond(bondRaw);
-    records.push({
-      county,
-      source_url:       `${base}#${bookingId}`,
-      full_name:        nameParts.full,
-      first_name:       nameParts.first,
-      last_name:        nameParts.last,
-      booking_id:       bookingId.trim(),
-      booking_date:     bookingDate.trim(),
-      arrest_date:      bookingDate.trim(),
-      charges:          splitCharges(chargesRaw),
-      bond_amount:      bond,
-      custody_status:   status.trim() || null,
-      age:              null,
-      dob:              null,
-      city_state:       county + " County, FL",
-      mugshot_url:      null,
-      arresting_agency: "Lee County Sheriff",
-      scrape_timestamp: nowIso(),
-    });
-  }
-  return records;
-}
+// parseLeeBookingHtml removed — Lee County now uses the public REST API directly.
+// See scrapeLeeCounty() above.
 
 // ── HENDRY COUNTY ────────────────────────────────────────────────────────────
 // Platform: OCV / The Sheriff App  (hendrysheriff.org)
