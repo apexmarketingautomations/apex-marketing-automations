@@ -1,9 +1,15 @@
 /**
- * Hillsborough County Official Records Routes
+ * Hillsborough County Pipeline Routes
  *
+ * Official Records (lis pendens, judgments):
  *   POST /api/hillsborough/ingest          — Manual trigger (admin)
  *   GET  /api/hillsborough/stats           — Pipeline status + last run stats
  *   GET  /api/hillsborough/leads           — Lis pendens + judgment leads
+ *
+ * Daily Court Filings (divorce, custody, probate, foreclosure):
+ *   POST /api/hillsborough/filings/ingest  — Manual trigger (admin)
+ *   GET  /api/hillsborough/filings/stats   — Pipeline status
+ *   GET  /api/hillsborough/filings/leads   — Family law + probate leads
  */
 
 import type { Express } from "express";
@@ -87,6 +93,88 @@ export function registerHillsboroughRoutes(app: Express) {
     ];
     if (status !== "all") conds.push(eq(legalLeads.status, status));
     if (signalType) conds.push(eq(legalLeads.signalType, signalType));
+
+    const rows = await db
+      .select()
+      .from(legalLeads)
+      .where(and(...conds))
+      .orderBy(desc(legalLeads.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    res.json({ leads: rows, count: rows.length, offset, limit });
+  }));
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Daily Court Filings (divorce, custody, probate, foreclosure)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // ── POST /api/hillsborough/filings/ingest ────────────────────────────────
+  app.post("/api/hillsborough/filings/ingest", asyncHandler(async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+
+    const daysBack = req.body?.daysBack ? Number(req.body.daysBack) : 1;
+    res.status(202).json({ status: "accepted", message: "Hillsborough court filings ingest started", daysBack });
+
+    setImmediate(async () => {
+      try {
+        const { runHillsboroughFilingsCycle } = await import("../hillsboroughCourtFilingsPipeline");
+        const results = await runHillsboroughFilingsCycle({ daysBack });
+        const totals  = results.reduce(
+          (s, r) => ({
+            inserted: s.inserted + r.civFam.inserted + r.probate.inserted,
+            contacts: s.contacts + r.civFam.contacts + r.probate.contacts,
+          }),
+          { inserted: 0, contacts: 0 }
+        );
+        console.log(`[HILLS-FILINGS-ROUTES] Manual ingest complete — inserted=${totals.inserted} contacts=${totals.contacts}`);
+      } catch (err: any) {
+        console.error("[HILLS-FILINGS-ROUTES] Manual ingest error:", err?.message);
+      }
+    });
+  }));
+
+  // ── GET /api/hillsborough/filings/stats ──────────────────────────────────
+  app.get("/api/hillsborough/filings/stats", asyncHandler(async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+
+    const { getHillsboroughFilingsPipelineStats } = await import("../hillsboroughCourtFilingsPipeline");
+    const stats = getHillsboroughFilingsPipelineStats();
+
+    res.json({
+      pipeline:    "hillsborough_court_filings",
+      sources:     ["DailyNewCaseFilings/CivilandFamilyLaw", "Probate/dailyfilings"],
+      county:      "HILLSBOROUGH",
+      signalTypes: ["divorce_filing", "custody_modification", "domestic_violence_injunction", "probate_filing", "lis_pendens"],
+      scheduleDescription: "Daily at 07:00 ET",
+      ...stats,
+    });
+  }));
+
+  // ── GET /api/hillsborough/filings/leads ──────────────────────────────────
+  app.get("/api/hillsborough/filings/leads", asyncHandler(async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+
+    const { db }          = await import("../db");
+    const { legalLeads }  = await import("@shared/schema");
+    const { desc, eq, and, inArray } = await import("drizzle-orm");
+
+    const limit      = Math.min(Number(req.query.limit  ?? 50), 200);
+    const offset     = Number(req.query.offset ?? 0);
+    const signalType = typeof req.query.signalType === "string" ? req.query.signalType : undefined;
+    const vertical   = typeof req.query.vertical   === "string" ? req.query.vertical   : undefined;
+    const status     = typeof req.query.status     === "string" ? req.query.status     : "available";
+
+    const conds: any[] = [
+      inArray(legalLeads.signalType, [
+        "divorce_filing", "custody_modification",
+        "domestic_violence_injunction", "probate_filing",
+      ]),
+      eq(legalLeads.county, "HILLSBOROUGH"),
+    ];
+    if (status !== "all") conds.push(eq(legalLeads.status, status));
+    if (signalType) conds.push(eq(legalLeads.signalType, signalType));
+    if (vertical)   conds.push(eq(legalLeads.legalVertical, vertical));
 
     const rows = await db
       .select()

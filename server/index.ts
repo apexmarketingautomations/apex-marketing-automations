@@ -749,6 +749,14 @@ async function validateMetaCredentials() {
   }
 
   try {
+    const { startHillsboroughFilingsScheduler } = await import("./hillsboroughCourtFilingsPipeline");
+    startHillsboroughFilingsScheduler();
+    console.log("[STARTUP] ✅ Hillsborough Court Filings pipeline started — divorce/custody/probate/foreclosure (daily at 07:00 ET)");
+  } catch (hillsFilingsErr: any) {
+    console.error("[STARTUP] Hillsborough Filings pipeline failed to start (non-fatal):", hillsFilingsErr?.message);
+  }
+
+  try {
     const { startRetroSkipTraceScheduler } = await import("./retroSkipTrace");
     startRetroSkipTraceScheduler();
 
