@@ -163,7 +163,18 @@ function Router() {
   useAutoSaveContact();
   useFirebaseAnalytics();
   useFirebaseNotifications();
-  const { isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
+
+  // ELU Analytics: attach the signed-in user's email to their session so product
+  // analytics can attribute behavior to a real person instead of an anonymous
+  // device. Optional — safe to remove if you don't want to share email with
+  // analytics. See https://elu.dev for docs.
+  useEffect(() => {
+    if (typeof window === "undefined" || !(window as any).elu) return;
+    if (user?.email) {
+      (window as any).elu.identify(user.email, { email: user.email });
+    }
+  }, [user?.email]);
 
   if (isLoading) return <PageLoader />;
 

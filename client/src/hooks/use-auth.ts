@@ -44,6 +44,10 @@ export function useAuth() {
     },
     onSuccess: () => {
       queryClient.setQueryData(["/api/auth/user"], null);
+      // ELU Analytics: clear the identified user so the next session starts anonymous
+      if (typeof window !== "undefined" && (window as any).elu) {
+        (window as any).elu.reset();
+      }
     },
   });
 
