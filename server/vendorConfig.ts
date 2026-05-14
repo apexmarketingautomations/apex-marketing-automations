@@ -64,7 +64,12 @@ let _apifyLogged = false;
  * Logs status once per process — boolean + length only, never the value.
  */
 export function resolveApifyToken(): string | null {
-  const key = (process.env.APIFY_API_KEY || "").trim() || null;
+  const key = (
+    process.env.APIFY_API_KEY ||
+    process.env.APIFY_TOKEN   ||
+    process.env.APIFY_KEY     ||
+    ""
+  ).trim() || null;
 
   if (!_apifyLogged) {
     _apifyLogged = true;

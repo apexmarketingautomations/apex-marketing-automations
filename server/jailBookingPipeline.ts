@@ -19,6 +19,7 @@
  */
 
 import crypto from "crypto";
+import axios  from "axios";
 import { db } from "./db";
 import { legalSignals, legalLeads } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -38,8 +39,8 @@ function isNimbleConfigured(): boolean {
   return resolveNimbleKey().length > 0;
 }
 
-const NIMBLE_BASE_URL    = process.env.NIMBLE_API_URL || "https://api.webnimble.com";
-const AGENT_TIMEOUT_MS   = 180_000; // 3 min per county run
+const NIMBLE_REALTIME_API = "https://api.webit.live/api/v1/realtime/web";
+const AGENT_TIMEOUT_MS    = 120_000; // 2 min per county (direct extraction is faster)
 const STAGGER_BETWEEN_MS = 3_000;   // 3 s between counties
 const COVERAGE_THRESHOLD = 0.90;    // 90% of enabled sources must be attempted
 
@@ -62,8 +63,8 @@ const APPROVED_DOMAINS = new Set([
   "inmatesearch.polksheriff.org",
   "apps.hcso.net",
   "www.leeclerk.org",   // fallback for Lee County clerk data
-  // Nimble API itself
-  "api.webnimble.com",
+  // VINE / Appriss (used by Manatee, Pasco, Glades)
+  "vinelink.vineapps.com",
 ]);
 
 function isDomainApproved(url: string): boolean {
@@ -232,6 +233,16 @@ interface BookingRecord {
 
 // ── Nimble Agent Runner ────────────────────────────────────────────────────────
 
+/**
+ * Direct Nimble browser extraction — replaces the old named-agent approach.
+ *
+ * Uses api.webit.live (Basic auth) which is reachable from Railway, unlike
+ * api.webnimble.com (agent management API) which is not.
+ *
+ * Each county's bookingUrl is a PUBLIC page — no login required.
+ * Nimble renders the page with JS enabled and returns markdown content
+ * that we parse for booking records.
+ */
 async function runNimbleAgent(
   agentName: string,
   bookingUrl: string,
@@ -246,38 +257,130 @@ async function runNimbleAgent(
     return { records: [], attempted: false, error: `Blocked domain: ${bookingUrl}` };
   }
 
-  const controller = new AbortController();
-  const timer      = setTimeout(() => controller.abort(), AGENT_TIMEOUT_MS);
+  // Some sites accept date range as query params — append if URL has no existing query
+  const fromDate = params.booking_date_from as string | undefined;
+  const toDate   = params.booking_date_to   as string | undefined;
+  let targetUrl  = bookingUrl;
+  if (fromDate && toDate && !bookingUrl.includes("?")) {
+    targetUrl = `${bookingUrl}?booking_date_from=${fromDate}&booking_date_to=${toDate}`;
+  }
 
   try {
-    const res = await fetch(`${NIMBLE_BASE_URL}/v1/pipeline/run`, {
-      method:  "POST",
-      headers: {
-        "Authorization": `Bearer ${key}`,
-        "Content-Type":  "application/json",
+    const resp = await axios.post(
+      NIMBLE_REALTIME_API,
+      { url: targetUrl, render: true, wait: 6000, output_format: "markdown" },
+      {
+        headers: {
+          Authorization: `Basic ${Buffer.from(key).toString("base64")}`,
+          "Content-Type": "application/json",
+        },
+        timeout: AGENT_TIMEOUT_MS,
       },
-      body:   JSON.stringify({ agent_name: agentName, params }),
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
+    );
 
-    if (!res.ok) {
-      const preview = (await res.text()).slice(0, 300);
-      const errMsg  = `Nimble HTTP ${res.status}: ${preview}`;
-      console.warn(`[JAIL-BOOKING] ❌ ${agentName}: ${errMsg}`);
-      return { records: [], attempted: true, error: errMsg };
+    const html = (resp.data?.html_content || resp.data?.content || "") as string;
+    if (!html || html.length < 200) {
+      return { records: [], attempted: true, error: "Empty or minimal response from Nimble" };
     }
 
-    const raw = await res.json() as { results?: BookingRecord[]; data?: BookingRecord[] } | BookingRecord[];
-    const records = Array.isArray(raw) ? raw : (raw?.results ?? raw?.data ?? []);
-    const valid   = records.filter((r): r is BookingRecord => !!r && typeof r === "object" && !!r.full_name);
-    return { records: valid, attempted: true };
+    // Derive county label from agent name: apex-lee-county-jail-booking → LEE
+    const county = agentName
+      .replace(/^apex-/, "")
+      .replace(/-county-jail-booking$/, "")
+      .replace(/-/g, " ")
+      .toUpperCase();
+
+    const records = parseBookingMarkdown(html, county, bookingUrl);
+    return { records, attempted: true };
   } catch (err: any) {
-    clearTimeout(timer);
-    const errMsg = err?.message || "unknown error";
+    const errMsg: string = err?.response?.data?.message || err?.message || "unknown error";
     console.warn(`[JAIL-BOOKING] ❌ ${agentName} exception: ${errMsg}`);
     return { records: [], attempted: true, error: errMsg };
   }
+}
+
+// ── Booking Markdown Parser ────────────────────────────────────────────────────
+// Parses Nimble markdown output into BookingRecord[].
+// Handles two common layouts emitted by FL county sheriff CMS platforms:
+//   1. Pipe-delimited table rows  (WordPress, Sitefinity, Revize)
+//   2. Card-style headings + date (OCV / VINE / Sheriff App)
+
+function parseBookingMarkdown(html: string, county: string, sourceUrl: string): BookingRecord[] {
+  const records: BookingRecord[] = [];
+
+  // ── Pattern 1: pipe-delimited table rows ──────────────────────────────────
+  // Matches rows like:
+  //   | SMITH, JOHN | 2024-0012345 | 01/15/2024 | DUI / BATTERY | $1500 | RELEASED |
+  const tableRow = /\|\s*([A-Z][A-Z ,'.\-]{2,40})\s*\|\s*([A-Z0-9][A-Z0-9\-]{2,18})\s*\|\s*(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})[^|]*\|\s*([^|]{3,200})\|\s*([\d$,.]*)\s*\|\s*([^|\n]{1,60})/g;
+  let m: RegExpExecArray | null;
+
+  while ((m = tableRow.exec(html)) !== null) {
+    const [, rawName, bookingId, bookingDate, chargesRaw, bondRaw, statusRaw] = m;
+    // Skip header rows
+    if (!rawName || /name|inmate|booking/i.test(rawName)) continue;
+    const nameParts  = splitBookingName(rawName.trim());
+    const chargeList = chargesRaw
+      .split(/[;/\n|]+/)
+      .map(s => s.replace(/^[*\-• ]+/, "").trim())
+      .filter(s => s.length > 2 && s.length < 200);
+    const bondNum = parseFloat((bondRaw || "").replace(/[^0-9.]/g, ""));
+
+    records.push({
+      county,
+      source_url:       sourceUrl,
+      full_name:        nameParts.full,
+      first_name:       nameParts.first,
+      last_name:        nameParts.last,
+      booking_id:       bookingId.trim(),
+      booking_date:     bookingDate.trim(),
+      arrest_date:      bookingDate.trim(),
+      charges:          chargeList.length ? chargeList : ["Unknown"],
+      charge_category:  undefined,
+      dui_related:      /\bDUI\b|\bDWI\b|IMPAIRED|INTOXICATED/i.test(chargesRaw),
+      felony_related:   /FELONY|MURDER|HOMICIDE|TRAFFICKING|ROBBERY/i.test(chargesRaw),
+      bond_amount:      !isNaN(bondNum) && bondNum > 0 ? String(bondNum) : undefined,
+      custody_status:   statusRaw?.trim() || undefined,
+      scrape_timestamp: new Date().toISOString(),
+    });
+  }
+
+  // ── Pattern 2: card-style heading + date (OCV / VINE / Sheriff App) ───────
+  // Matches: ## SMITH, JOHN\n...\nBooked: 01/15/2024
+  if (records.length === 0) {
+    const cardPattern = /##\s+([A-Z][A-Z ,'.\-]{2,50})\n[\s\S]{0,400}?(?:Booked?|Booking|Arrested?|Entry)[:\s]+(\d{1,2}\/\d{1,2}\/\d{2,4})/g;
+    while ((m = cardPattern.exec(html)) !== null) {
+      const nameParts = splitBookingName(m[1]);
+      records.push({
+        county,
+        source_url:       sourceUrl,
+        full_name:        nameParts.full,
+        first_name:       nameParts.first,
+        last_name:        nameParts.last,
+        booking_id:       `${county.replace(/\s/g, "-")}-${records.length}-${Date.now() % 100_000}`,
+        booking_date:     m[2],
+        arrest_date:      m[2],
+        charges:          [],
+        dui_related:      false,
+        felony_related:   false,
+        scrape_timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  return records;
+}
+
+/** Parse "LAST, FIRST MIDDLE" or "FIRST LAST" formats into name parts */
+function splitBookingName(full: string): { full: string; first: string; last: string } {
+  full = full.replace(/,+$/, "").trim();
+  if (full.includes(",")) {
+    const [last, rest] = full.split(",", 2).map(s => s.trim());
+    const first = (rest.split(/\s+/)[0] || rest).trim();
+    return { full: `${first} ${last}`, first, last };
+  }
+  const parts = full.split(/\s+/);
+  if (parts.length >= 2) return { full, first: parts[0], last: parts.slice(1).join(" ") };
+  return { full, first: full, last: "" };
 }
 
 // ── Charge Classification ──────────────────────────────────────────────────────
