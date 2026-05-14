@@ -415,6 +415,26 @@ export async function runReengageJob(options?: {
     }
 
     console.log(`[REENGAGE] Job complete: eligible=${result.totalEligible} attempted=${result.attempted} sent=${result.sent} dryRun=${result.dryRun} handovers=${result.handovers} optOut=${result.skippedOptOut} errors=${result.errors}`);
+
+    // Report to Apex Intelligence brain (fire-and-forget)
+    if (result.attempted > 0) {
+      import("../../operator/apexIntelligence").then(({ reportOutcome }) => reportOutcome({
+        agentName:    "reengage-bot",
+        action:       "reengage_batch_sent",
+        subject:      `reengage-${subAccountId}`,
+        result:       `Re-engage batch: ${result.sent} sent, ${result.handovers} handovers, ${result.errors} errors`,
+        confidence:   0.7,
+        subAccountId,
+        metadata: {
+          sent:          result.sent,
+          dryRun:        result.dryRun,
+          handovers:     result.handovers,
+          errors:        result.errors,
+          totalEligible: result.totalEligible,
+        },
+      })).catch(() => {});
+    }
+
     return result;
 
   } catch (err: any) {

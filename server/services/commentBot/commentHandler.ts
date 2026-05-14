@@ -391,6 +391,22 @@ async function sendAndRecord(opts: SendAndRecordOpts): Promise<void> {
     }).where(eq(commentAutoReplies.id, record.id));
 
     console.log(`[COMMENT-BOT] Replied to ${platform} comment ${commentId}: "${replyText.substring(0, 60)}..."`);
+
+    // Report to Apex Intelligence brain (fire-and-forget)
+    import("../../operator/apexIntelligence").then(({ reportOutcome }) => reportOutcome({
+      agentName:    "comment-bot",
+      action:       "comment_replied",
+      subject:      commentId,
+      result:       `Replied to ${platform} comment — sentiment: ${sentiment}`,
+      confidence:   0.7,
+      subAccountId,
+      metadata: {
+        platform,
+        commentId,
+        sentiment,
+        replyLength: replyText.length,
+      },
+    })).catch(() => {});
   } else {
     throw new Error(replyResult.error || "Unknown reply error");
   }

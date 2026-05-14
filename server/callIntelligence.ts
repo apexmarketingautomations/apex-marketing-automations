@@ -170,6 +170,24 @@ export async function analyzeCallTranscript(callId: number): Promise<CallAnalysi
     await db.update(vapiCallLogs).set({ analysis }).where(eq(vapiCallLogs.id, callId));
     emitCallAnalyzed(call.subAccountId || 0, callId, analysis.outcome, analysis.engagement_score, analysis.agent_score);
     console.log(`[CALL-INTEL] Analyzed call ${callId}: outcome=${analysis.outcome}, engagement=${analysis.engagement_score}, agent=${analysis.agent_score}`);
+
+    // Report to Apex Intelligence brain (fire-and-forget)
+    import("./operator/apexIntelligence").then(({ reportOutcome }) => reportOutcome({
+      agentName:    "call-intelligence",
+      action:       "call_analyzed",
+      subject:      `call-${callId}`,
+      result:       `Call analyzed — outcome: ${analysis.outcome}, engagement: ${analysis.engagement_score}/10, agent score: ${analysis.agent_score}/10`,
+      confidence:   0.75,
+      subAccountId: call.subAccountId || parseInt(process.env.APEX_PARENT_ACCOUNT_ID || "3"),
+      metadata: {
+        callId,
+        outcome:         analysis.outcome,
+        engagementScore: analysis.engagement_score,
+        agentScore:      analysis.agent_score,
+        prospectType:    analysis.prospect_type,
+      },
+    })).catch(() => {});
+
     return analysis;
   } catch (err) {
     console.error(`[CALL-INTEL] Analysis failed for call ${callId}:`, err?.message ?? err, err?.stack);

@@ -149,6 +149,27 @@ async function runFullSync(): Promise<void> {
     }
 
     console.log(`[META-SYNC] Completed: ${syncedCampaigns}/${activeCampaigns.length} campaigns synced, ${syncedLeads} new leads imported`);
+
+    // Report to Apex Intelligence brain (fire-and-forget)
+    if (syncedLeads > 0 || syncedCampaigns > 0) {
+      const firstAccountId = Array.isArray(subAccountIds) && subAccountIds.length > 0
+        ? Number(subAccountIds[0])
+        : parseInt(process.env.APEX_PARENT_ACCOUNT_ID || "3");
+      import("./operator/apexIntelligence").then(({ reportOutcome }) => reportOutcome({
+        agentName:    "meta-campaign-sync",
+        action:       "leads_synced",
+        subject:      "meta-campaign-sync",
+        result:       `Meta sync — ${syncedCampaigns}/${activeCampaigns.length} campaigns, ${syncedLeads} new leads`,
+        confidence:   0.75,
+        subAccountId: firstAccountId,
+        niche:        "marketing",
+        metadata: {
+          syncedCampaigns,
+          syncedLeads,
+          totalCampaigns: activeCampaigns.length,
+        },
+      })).catch(() => {});
+    }
   } catch (err: any) {
     console.error("[META-SYNC] Background sync error:", err.message);
   }

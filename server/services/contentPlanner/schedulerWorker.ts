@@ -200,6 +200,23 @@ async function processJob(job: any): Promise<void> {
         await markJobPublished(job.id, platformResult.externalPostId);
         console.log(`[CP-WORKER] Job ${job.id} published — externalPostId=${platformResult.externalPostId}`);
         stats.jobsSucceeded++;
+
+        // Report to Apex Intelligence brain (fire-and-forget)
+        import("../../operator/apexIntelligence").then(({ reportOutcome }) => reportOutcome({
+          agentName:    "content-publisher",
+          action:       "content_published",
+          subject:      `post-${job.post_id}`,
+          result:       `Content published — platform: ${job.platform} externalId: ${platformResult.externalPostId || "unknown"}`,
+          confidence:   0.85,
+          subAccountId: job.sub_account_id,
+          niche:        "content",
+          metadata: {
+            postId:   job.post_id,
+            platform: job.platform,
+            trigger:  job.trigger,
+            jobId:    job.id,
+          },
+        })).catch(() => {});
       } else {
         const errMsg = platformResult?.errorMessage || "Unknown publish error";
         await markJobFailed(job.id, errMsg, job.attempt_count, job.max_attempts);

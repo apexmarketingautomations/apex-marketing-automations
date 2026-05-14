@@ -717,6 +717,27 @@ async function processReport(reportId: number, reportNumber: string): Promise<vo
 
     console.log(`[CRASH-WORKER] Report ${reportNumber} completed successfully`);
 
+    // Report to Apex Intelligence brain (fire-and-forget)
+    const detail_data = detail.type === "success" ? detail.data : null;
+    const personName = detail_data?.Vehicles?.[0]?.Driver?.Name || reportNumber;
+    import("./operator/apexIntelligence").then(({ reportOutcome }) => reportOutcome({
+      agentName:    "crash-report-worker",
+      action:       "crash_report_enriched",
+      subject:      personName,
+      result:       `FLHSMV crash report ${reportNumber} enriched — ${detail_data?.TotalInjuries ?? "?"} injuries, ${detail_data?.TotalFatalities ?? "?"} fatalities`,
+      confidence:   0.7,
+      subAccountId: report.subAccountId ?? parseInt(process.env.APEX_PARENT_ACCOUNT_ID || "3"),
+      niche:        "crash",
+      metadata: {
+        reportId:      reportId,
+        reportNumber,
+        county:        detail_data?.CrashCounty || null,
+        totalInjuries: detail_data?.TotalInjuries ?? null,
+        totalFatalities: detail_data?.TotalFatalities ?? null,
+        source:        isFollowUp ? "sentinel_followup" : "direct",
+      },
+    })).catch(() => {});
+
     // For follow-up jobs, also stamp the official FLHSMV data onto the original sentinel record
     // so the UI shows full driver/insurance/tag info on the parent crash row.
     // Hardened: validates parent identity, scopes to the same sub-account, and uses an atomic

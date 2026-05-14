@@ -435,6 +435,22 @@ export async function runCaseGroupingCycle(): Promise<void> {
     `[CASE-INTEL] Cycle complete in ${Date.now() - start}ms — ` +
     `created=${casesCreated} updated=${casesUpdated} suppressed=${suppressed}`
   );
+
+  // Report to Apex Intelligence brain (fire-and-forget)
+  import("./operator/apexIntelligence").then(({ reportOutcome }) => reportOutcome({
+    agentName:    "case-intelligence",
+    action:       "cases_grouped",
+    subject:      "case-grouping-cycle",
+    result:       `Case grouping complete — created=${casesCreated} updated=${casesUpdated} suppressed=${suppressed} from ${signals.length} signals`,
+    confidence:   0.8,
+    subAccountId: parseInt(process.env.APEX_PARENT_ACCOUNT_ID || "3"),
+    metadata: {
+      casesCreated,
+      casesUpdated,
+      suppressed,
+      signalsProcessed: signals.length,
+    },
+  })).catch(() => {});
 }
 
 export function startCaseIntelligence(): void {

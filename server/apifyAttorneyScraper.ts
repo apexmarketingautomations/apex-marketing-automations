@@ -149,6 +149,24 @@ async function scrapeAttorneysForVertical(token: string, vertical: string, pract
     const { inserted, skipped } = await upsertAttorneys(attorneys, vertical);
     console.log(`[APIFY] ${label}: actor=${MARTINDALE_ACTOR} inserted=${inserted} skipped/updated=${skipped}`);
     recordApifyRun(inserted, `attorney-scrape vertical=${vertical}`);
+
+    // Report to Apex Intelligence brain (fire-and-forget)
+    import("./operator/apexIntelligence").then(({ reportOutcome }) => reportOutcome({
+      agentName:    "apify-attorney-scraper",
+      action:       "attorneys_discovered",
+      subject:      `${label} attorneys`,
+      result:       `Scraped ${attorneys.length} ${label} attorneys — inserted=${inserted} updated/skipped=${skipped}`,
+      confidence:   0.7,
+      subAccountId: parseInt(process.env.APEX_PARENT_ACCOUNT_ID || "3"),
+      niche:        "legal",
+      metadata: {
+        vertical,
+        practiceArea,
+        scraped:  attorneys.length,
+        inserted,
+        skipped,
+      },
+    })).catch(() => {});
   } catch (err: any) {
     console.error(`[APIFY] Failed to scrape ${label}:`, err.message);
     recordApifyRun(0, `attorney-scrape vertical=${vertical}`, err.message);

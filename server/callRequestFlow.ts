@@ -418,6 +418,23 @@ export async function handleCallRequestFlow(
     }
   }
 
+  // Report to Apex Intelligence brain (fire-and-forget)
+  import("./operator/apexIntelligence").then(({ reportOutcome }) => reportOutcome({
+    agentName:    "call-request-flow",
+    action:       "hot_lead_captured",
+    subject:      name || `contact-${contactId}`,
+    result:       `Hot lead — intent: ${intent.intentType}, confidence: ${Math.round(intent.confidence * 100)}%, channel: ${channel}`,
+    confidence:   intent.confidence,
+    subAccountId,
+    metadata: {
+      contactId,
+      channel,
+      intentType:  intent.intentType,
+      hasPhone:    intent.hasPhone,
+      isUrgent:    detectUrgency(message),
+    },
+  })).catch(() => {});
+
   return true;
 }
 

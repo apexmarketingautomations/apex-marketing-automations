@@ -172,6 +172,25 @@ export async function runRetroSkipTrace(
           stats.found++;
           console.log(`[RETRO-SKIP-TRACE] ✓ contact=${contact.id} name=${result.ownerName} phone=${result.ownerPhone || "none"}`);
 
+          // Report to Apex Intelligence brain (fire-and-forget)
+          if (result.ownerPhone) {
+            import("./operator/apexIntelligence").then(({ reportOutcome }) => reportOutcome({
+              agentName:    "retro-skip-trace",
+              action:       "phone_enriched",
+              subject:      result.ownerName || `contact-${contact.id}`,
+              result:       "Phone found via BatchData skip trace",
+              confidence:   0.8,
+              subAccountId,
+              niche:        "crash",
+              metadata: {
+                contactId:   contact.id,
+                hasPhone:    true,
+                hasEmail:    !!result.ownerEmail,
+                personsFound: result.totalPersonsFound,
+              },
+            })).catch(() => {});
+          }
+
         } else {
           await storage.updateContact(contact.id, {
             tags: [...new Set([...(contact.tags || []), "skip-traced", "no-phone"])],

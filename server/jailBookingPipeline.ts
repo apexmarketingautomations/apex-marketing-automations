@@ -649,6 +649,27 @@ async function persistBookingRecord(
     }).onConflictDoNothing();
   }
 
+  // Report to Apex Intelligence brain (fire-and-forget)
+  import("./operator/apexIntelligence").then(({ reportOutcome }) => reportOutcome({
+    agentName:    "jail-booking-pipeline",
+    action:       "lead_captured",
+    subject:      record.full_name || record.booking_id || "Unknown",
+    result:       `Booking record inserted for ${config.county} County — charges: ${charges.slice(0, 2).join("; ") || "Unknown"}`,
+    confidence:   0.65,
+    subAccountId: parseInt(process.env.APEX_PARENT_ACCOUNT_ID || "3"),
+    niche:        "criminal",
+    metadata: {
+      county:       config.county,
+      signalType,
+      legalVertical,
+      urgency,
+      score,
+      bookingId:    record.booking_id || null,
+      duiRelated:   record.dui_related,
+      felonyRelated: record.felony_related,
+    },
+  })).catch(() => {});
+
   return { inserted: true, signalId: signal.id };
 }
 

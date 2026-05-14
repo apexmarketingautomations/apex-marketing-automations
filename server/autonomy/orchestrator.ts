@@ -364,6 +364,24 @@ async function executeAndRecordAction(
     error: failed ? actionResult.error : undefined,
   });
 
+  // Report to Apex Intelligence brain (fire-and-forget)
+  import("../operator/apexIntelligence").then(({ reportOutcome }) => reportOutcome({
+    agentName:    "operator",
+    action:       completed ? "action_completed" : "action_failed",
+    subject:      actionType,
+    result:       completed
+      ? `Autonomy action ${actionType} completed successfully`
+      : `Autonomy action ${actionType} failed: ${actionResult.error || "unknown error"}`,
+    confidence:   completed ? 0.9 : 0.3,
+    subAccountId: accountId,
+    metadata: {
+      actionType,
+      category:         String(category),
+      correlationId,
+      autonomyActionId,
+    },
+  })).catch(() => {});
+
   return {
     actionId: autonomyActionId,
     completed,

@@ -27,6 +27,29 @@ const ALLOWED_AGENTS = new Set([
   "hillsborough-filings",   // divorce/custody/probate/criminal (daily court filing CSVs)
   // Bankruptcy
   "courtlistener-pipeline",
+  // Home service pipelines
+  "home-service-scorer",    // homeServiceLeadScorer.ts
+  "home-service-delivery",  // homeServiceLeadDelivery.ts
+  // Crash report pipelines
+  "crash-report-worker",    // crashReportWorker.ts
+  // Skip trace / enrichment
+  "retro-skip-trace",       // retroSkipTrace.ts
+  // Call & case intelligence
+  "call-intelligence",      // callIntelligence.ts
+  "case-intelligence",      // caseIntelligence.ts
+  "call-request-flow",      // callRequestFlow.ts
+  // Meta / social pipelines
+  "meta-campaign-sync",     // metaCampaignSync.ts
+  // Attorney data
+  "apify-attorney-scraper", // apifyAttorneyScraper.ts
+  // Comment & content bots
+  "reengage-bot",           // services/commentBot/reengageJob.ts
+  "comment-bot",            // services/commentBot/commentHandler.ts
+  "content-publisher",      // services/contentPlanner/schedulerWorker.ts
+  // Intelligence scoring
+  "scoring-worker",         // intelligence/worker.ts
+  // Calendar sync
+  "gcal-sync",              // googleCalendarSync.ts
 ]);
 const MAX_BUFFER = 2000;
 const MAX_METADATA_KEYS = 10;

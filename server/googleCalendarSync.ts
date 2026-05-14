@@ -140,6 +140,26 @@ export async function syncGoogleCalendar(
   }
 
   console.log(`[GCAL-SYNC] Account ${subAccountId}: created=${created}, updated=${updated}, skipped=${skipped}`);
+
+  // Report to Apex Intelligence brain (fire-and-forget)
+  if (created > 0 || updated > 0) {
+    import("./operator/apexIntelligence").then(({ reportOutcome }) => reportOutcome({
+      agentName:    "gcal-sync",
+      action:       "calendar_synced",
+      subject:      `gcal-${subAccountId}`,
+      result:       `Google Calendar sync — created=${created} updated=${updated} skipped=${skipped}`,
+      confidence:   0.85,
+      subAccountId,
+      metadata: {
+        created,
+        updated,
+        skipped,
+        calendarId,
+        totalEvents: events.length,
+      },
+    })).catch(() => {});
+  }
+
   return { synced: events.length, created, updated, skipped };
 }
 

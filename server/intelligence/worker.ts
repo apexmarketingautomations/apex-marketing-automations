@@ -186,6 +186,19 @@ export function startIntelligenceWorkers(): void {
         await runAllRecommendationsForAccount(account.id);
       }
       console.log(`[APEX-INTEL] Scoring + recommendations cycle complete: ${accounts.length} accounts`);
+
+      // Report to Apex Intelligence brain (fire-and-forget)
+      import("../operator/apexIntelligence").then(({ reportOutcome }) => reportOutcome({
+        agentName:    "scoring-worker",
+        action:       "accounts_scored",
+        subject:      "scoring-cycle",
+        result:       `Intelligence scoring cycle complete — ${accounts.length} accounts scored and recommendations generated`,
+        confidence:   0.9,
+        subAccountId: parseInt(process.env.APEX_PARENT_ACCOUNT_ID || "3"),
+        metadata: {
+          accountsScored: accounts.length,
+        },
+      })).catch(() => {});
     } catch (err) {
       console.error("[APEX-INTEL] Scoring cycle failed:", (err as Error).message);
     } finally {
