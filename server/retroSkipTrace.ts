@@ -188,6 +188,7 @@ export async function runRetroSkipTrace(
                 hasEmail:    !!result.ownerEmail,
                 personsFound: result.totalPersonsFound,
               },
+            // allow-silent-catch: fire-and-forget telemetry
             })).catch(() => {});
           }
 

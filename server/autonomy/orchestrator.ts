@@ -380,6 +380,7 @@ async function executeAndRecordAction(
       correlationId,
       autonomyActionId,
     },
+  // allow-silent-catch: fire-and-forget telemetry
   })).catch(() => {});
 
   return {

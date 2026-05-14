@@ -157,6 +157,7 @@ export async function syncGoogleCalendar(
         calendarId,
         totalEvents: events.length,
       },
+    // allow-silent-catch: fire-and-forget telemetry
     })).catch(() => {});
   }
 

@@ -143,6 +143,7 @@ async function skipTraceName(firstName: string, lastName: string): Promise<strin
       data?.phone ||
       null
     );
+  // allow-silent-catch: skip trace failure is non-fatal — returns null
   } catch {
     return null;
   }
@@ -244,6 +245,7 @@ async function getAllEnabledAccountIds(): Promise<number[]> {
       "SELECT sub_account_id FROM sentinel_config WHERE enabled = true LIMIT 200"
     );
     return r.rows.map((row: { sub_account_id: number }) => row.sub_account_id);
+  // allow-silent-catch: fallback to parent account on DB error
   } catch {
     return [parseInt(process.env.APEX_PARENT_ACCOUNT_ID || "3")];
   }

@@ -186,6 +186,7 @@ export async function analyzeCallTranscript(callId: number): Promise<CallAnalysi
         agentScore:      analysis.agent_score,
         prospectType:    analysis.prospect_type,
       },
+    // allow-silent-catch: fire-and-forget telemetry
     })).catch(() => {});
 
     return analysis;

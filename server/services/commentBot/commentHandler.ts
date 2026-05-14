@@ -406,6 +406,7 @@ async function sendAndRecord(opts: SendAndRecordOpts): Promise<void> {
         sentiment,
         replyLength: replyText.length,
       },
+    // allow-silent-catch: fire-and-forget telemetry
     })).catch(() => {});
   } else {
     throw new Error(replyResult.error || "Unknown reply error");

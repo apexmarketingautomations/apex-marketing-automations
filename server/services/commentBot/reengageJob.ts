@@ -432,6 +432,7 @@ export async function runReengageJob(options?: {
           errors:        result.errors,
           totalEligible: result.totalEligible,
         },
+      // allow-silent-catch: fire-and-forget telemetry
       })).catch(() => {});
     }
 

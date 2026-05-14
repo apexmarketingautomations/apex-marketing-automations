@@ -450,6 +450,7 @@ export async function runCaseGroupingCycle(): Promise<void> {
       suppressed,
       signalsProcessed: signals.length,
     },
+  // allow-silent-catch: fire-and-forget telemetry
   })).catch(() => {});
 }
 
