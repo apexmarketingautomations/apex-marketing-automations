@@ -506,13 +506,23 @@ async function fetchFloridaArrests(): Promise<RawSignal[]> {
   return []; // handled by jailBookingPipeline
 }
 
-// ── Legal: Court Filings — delegated to courtFilingPipeline ──────────────────
-// County clerk portals (leeclerk.org, collierclerk.com, etc.) have no public JSON APIs.
-// Scraping is handled by courtFilingPipeline.ts via Nimble agents (every 6 hours).
-// This function returns [] — contacts and legalSignals are written directly by that pipeline.
+// ── Legal: Court Filings — delegated to dedicated pipelines ──────────────────
+// Florida court filing data flows through two separate pipelines:
+//
+//   hillsboroughCourtFilingsPipeline.ts — consumes FREE daily CSVs from
+//     publicrec.hillsclerk.com (DailyNewCaseFilings + Probate/dailyfilings).
+//     Covers: divorce, custody, DV injunctions, probate, mortgage foreclosure
+//     in Hillsborough County. Runs daily at 07:00 ET.
+//
+//   courtFilingPipeline.ts — Nimble agent scraper for remaining FL county
+//     clerk portals (leeclerk.org, collierclerk.com, etc.) where no bulk
+//     API exists. Runs every 6 hours.
+//
+// Both pipelines write directly to legalSignals + legalLeads + CRM contacts.
+// This function returns [] — no signals are generated here.
 
 async function fetchFloridaCourtFilings(): Promise<RawSignal[]> {
-  return []; // handled by courtFilingPipeline.ts
+  return []; // handled by hillsboroughCourtFilingsPipeline.ts + courtFilingPipeline.ts
 }
 
 // ── Legal: OSHA Workplace Incidents ──────────────────────────────────────────
