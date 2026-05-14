@@ -26,7 +26,22 @@ import { eq } from "drizzle-orm";
 
 // ── Nimble Config ──────────────────────────────────────────────────────────────
 
+/**
+ * Returns the Nimble Basic-auth credential string "username:password".
+ *
+ * Priority:
+ *   1. NIMBLE_USERNAME + NIMBLE_PASSWORD  (from Nimble dashboard → Your Credentials)
+ *   2. NIMBLE_API_KEY / NIMBLE_TOKEN / NIMBLE_KEY  (if already "user:pass" format)
+ *
+ * Railway env vars to set:
+ *   NIMBLE_USERNAME = account-apex_pnv8jh-pipeline-nimbleapi
+ *   NIMBLE_PASSWORD = 89BK2BPU35e0
+ */
 function resolveNimbleKey(): string {
+  const username = (process.env.NIMBLE_USERNAME || "").trim();
+  const password = (process.env.NIMBLE_PASSWORD || "").trim();
+  if (username && password) return `${username}:${password}`;
+
   return (
     process.env.NIMBLE_API_KEY ||
     process.env.NIMBLE_TOKEN   ||

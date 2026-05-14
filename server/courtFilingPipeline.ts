@@ -42,7 +42,16 @@ const STAGGER_BETWEEN_MS  = 5_000;   // 5 s between counties
 const POLL_INTERVAL_MS    = 6 * 60 * 60 * 1_000; // 6 hours
 const COVERAGE_THRESHOLD  = 0.80;
 
+/**
+ * Returns "username:password" for Nimble Basic auth.
+ * Checks NIMBLE_USERNAME + NIMBLE_PASSWORD first (Nimble dashboard credentials),
+ * then falls back to NIMBLE_API_KEY / NIMBLE_TOKEN / NIMBLE_KEY.
+ */
 function resolveNimbleKey(): string {
+  const username = (process.env.NIMBLE_USERNAME || "").trim();
+  const password = (process.env.NIMBLE_PASSWORD || "").trim();
+  if (username && password) return `${username}:${password}`;
+
   return (
     process.env.NIMBLE_API_KEY ||
     process.env.NIMBLE_TOKEN   ||

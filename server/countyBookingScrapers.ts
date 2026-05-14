@@ -97,16 +97,33 @@ function nowIso(): string {
 
 const NIMBLE_API = "https://api.webit.live/api/v1/realtime/web";
 
+/**
+ * Returns "username:password" for Nimble Basic auth.
+ * Checks NIMBLE_USERNAME + NIMBLE_PASSWORD first (Nimble dashboard credentials),
+ * then falls back to NIMBLE_API_KEY / NIMBLE_TOKEN / NIMBLE_KEY.
+ */
+function resolveNimbleCredential(): string {
+  const username = (process.env.NIMBLE_USERNAME || "").trim();
+  const password = (process.env.NIMBLE_PASSWORD || "").trim();
+  if (username && password) return `${username}:${password}`;
+  return (
+    process.env.NIMBLE_API_KEY ||
+    process.env.NIMBLE_TOKEN   ||
+    process.env.NIMBLE_KEY     ||
+    ""
+  ).trim();
+}
+
 async function nimbleExtract(url: string, waitMs = 3000): Promise<string> {
-  const apiKey = process.env.NIMBLE_API_KEY || "";
-  if (!apiKey) throw new Error("NIMBLE_API_KEY not configured");
+  const credential = resolveNimbleCredential();
+  if (!credential) throw new Error("Nimble not configured — set NIMBLE_USERNAME + NIMBLE_PASSWORD in Railway");
 
   const resp = await axios.post(
     NIMBLE_API,
     { url, render: true, wait: waitMs, output_format: "markdown" },
     {
       headers: {
-        Authorization: `Basic ${Buffer.from(apiKey).toString("base64")}`,
+        Authorization: `Basic ${Buffer.from(credential).toString("base64")}`,
         "Content-Type": "application/json",
       },
       timeout: 60_000,
