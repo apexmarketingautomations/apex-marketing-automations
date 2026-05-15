@@ -2125,11 +2125,11 @@ RULES:
     console.log(`[SHUTDOWN] ${signal} received — flushing logs and closing queues...`);
     try {
       await flushLogs();
-    } catch { /* non-fatal */ }
+    } catch (err) { console.warn("[SHUTDOWN] flushLogs caught:", err instanceof Error ? err.message : err); }
     try {
       const { closeQueues } = await import("./queues/queueFactory");
       await closeQueues();
-    } catch { /* non-fatal */ }
+    } catch (err) { console.warn("[SHUTDOWN] closeQueues caught:", err instanceof Error ? err.message : err); }
     process.exit(0);
   };
 
