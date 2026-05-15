@@ -148,9 +148,7 @@ export async function flushLogs(): Promise<void> {
   try {
     await axiomClient?.flush();
     console.log("[LOGGER] Axiom log buffer flushed");
-  } catch {
-    // Non-fatal — logs are already on stdout
-  }
+  } catch (err) { console.warn("[LOGGER] flush caught:", err instanceof Error ? err.message : err); }
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
