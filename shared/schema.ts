@@ -756,6 +756,60 @@ export const insertContactRoutingAuditSchema = createInsertSchema(contactRouting
 export type InsertContactRoutingAudit = z.infer<typeof insertContactRoutingAuditSchema>;
 export type ContactRoutingAudit = typeof contactRoutingAudit.$inferSelect;
 
+// ---- Skip Trace Requests (contact-level audit) ----
+
+export const skipTraceRequests = pgTable("skip_trace_requests", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  contactId: integer("contact_id").references(() => contacts.id).notNull(),
+  triggeredBy: text("triggered_by").notNull(),
+  triggerType: text("trigger_type").default("manual").notNull(),
+  provider: text("provider").default("batchdata").notNull(),
+  status: text("status").default("pending").notNull(),
+  inputAddress: text("input_address"),
+  inputName: text("input_name"),
+  phoneFound: text("phone_found"),
+  emailFound: text("email_found"),
+  phonesTotal: integer("phones_total").default(0),
+  emailsTotal: integer("emails_total").default(0),
+  creditsUsed: integer("credits_used").default(1),
+  errorCode: text("error_code"),
+  errorMessage: text("error_message"),
+  providerRequestId: text("provider_request_id"),
+  requestedAt: timestamp("requested_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_skip_trace_requests_contact").on(table.contactId, table.createdAt),
+  index("idx_skip_trace_requests_status").on(table.status, table.createdAt),
+]);
+
+export const insertSkipTraceRequestSchema = createInsertSchema(skipTraceRequests).omit({ id: true, createdAt: true, requestedAt: true });
+export type InsertSkipTraceRequest = z.infer<typeof insertSkipTraceRequestSchema>;
+export type SkipTraceRequest = typeof skipTraceRequests.$inferSelect;
+
+// ---- Contact Enrichment Events ----
+
+export const contactEnrichmentEvents = pgTable("contact_enrichment_events", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  contactId: integer("contact_id").references(() => contacts.id).notNull(),
+  eventType: text("event_type").notNull(),
+  previousValue: jsonb("previous_value"),
+  newValue: jsonb("new_value"),
+  source: text("source"),
+  provider: text("provider"),
+  skipTraceRequestId: bigserial("skip_trace_request_id", { mode: "number" }),
+  performedBy: text("performed_by"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_enrichment_events_contact").on(table.contactId, table.createdAt),
+  index("idx_enrichment_events_type").on(table.eventType, table.createdAt),
+]);
+
+export const insertContactEnrichmentEventSchema = createInsertSchema(contactEnrichmentEvents).omit({ id: true, createdAt: true });
+export type InsertContactEnrichmentEvent = z.infer<typeof insertContactEnrichmentEventSchema>;
+export type ContactEnrichmentEvent = typeof contactEnrichmentEvents.$inferSelect;
+
 // ---- Pipeline Deals ----
 
 export const pipelineStages = pgTable("pipeline_stages", {

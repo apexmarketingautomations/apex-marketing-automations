@@ -464,6 +464,215 @@ export function registerPropertyRoutes(app: Express) {
     res.json({ contact, alreadySaved: false });
   }));
 
+  // ---- Manual Contact Skip Trace (with full audit trail) ----
+
+  app.post("/api/contacts/:contactId/skip-trace", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    const contactId = parseIntParam(req.params.contactId, "contactId");
+
+    const contact = await storage.getContactById(contactId);
+    if (!contact) return res.status(404).json({ error: "Contact not found" });
+    if (!(await verifyAccountOwnership(req, res, contact.subAccountId))) return;
+
+    const userId = getUserId(user);
+
+    // Resolve API key
+    let apiKey = process.env.BATCHDATA_API_KEY || process.env.BATCH_DATA;
+    if (!apiKey) {
+      const conn = await storage.getIntegrationConnection(contact.subAccountId, "skip-trace");
+      apiKey = (conn?.config as any)?.apiKey;
+    }
+    if (!apiKey) {
+      return res.status(422).json({ error: "No skip trace API key configured. Add your BatchData API key in Integrations Hub." });
+    }
+
+    // Guard: already has phone — still allow but log
+    const alreadyHasPhone = !!contact.phone;
+
+    // Create skip_trace_requests row — status=pending
+    const [requestRow] = await db.execute<{ id: number }>(sql`
+      INSERT INTO skip_trace_requests
+        (contact_id, triggered_by, trigger_type, provider, status, input_address, input_name, requested_at)
+      VALUES
+        (${contactId}, ${userId}, 'manual', 'batchdata', 'pending',
+         ${[contact.formattedAddress, contact.address].find(Boolean) ?? null},
+         ${[contact.firstName, contact.lastName].filter(Boolean).join(" ") || null},
+         NOW())
+      RETURNING id
+    `);
+    const requestId = (requestRow as any).rows?.[0]?.id ?? (requestRow as any)[0]?.id;
+
+    // Log to enrichment_provider_log — request sent
+    await db.execute(sql`
+      INSERT INTO enrichment_provider_log (contact_id, provider, request_type, status, created_at)
+      VALUES (${contactId}, 'batchdata', 'manual_skip_trace', 'requested', NOW())
+    `);
+
+    // Log to audit_logs
+    await db.execute(sql`
+      INSERT INTO audit_logs (action, performed_by, details, created_at)
+      VALUES ('manual_skip_trace_started', ${userId},
+        ${JSON.stringify({ contactId, requestId, provider: "batchdata" })}::json,
+        NOW())
+    `);
+
+    let result;
+    try {
+      result = await skipTraceLookup({
+        address: contact.formattedAddress || contact.address || "",
+        city: contact.city || undefined,
+        state: contact.state || undefined,
+        zip: contact.zip || undefined,
+        ownerName: [contact.firstName, contact.lastName].filter(Boolean).join(" ") || undefined,
+      }, apiKey);
+    } catch (err: any) {
+      // Log failure
+      const errMsg = err?.message || "Unknown error";
+      await db.execute(sql`
+        UPDATE skip_trace_requests
+        SET status = 'failed', error_message = ${errMsg}, completed_at = NOW()
+        WHERE id = ${requestId}
+      `);
+      await db.execute(sql`
+        INSERT INTO enrichment_provider_log (contact_id, provider, request_type, status, error_message, created_at)
+        VALUES (${contactId}, 'batchdata', 'manual_skip_trace', 'failed', ${errMsg}, NOW())
+      `);
+      await db.execute(sql`
+        INSERT INTO contact_enrichment_events (contact_id, event_type, source, provider, skip_trace_request_id, performed_by, notes, created_at)
+        VALUES (${contactId}, 'manual_skip_trace_failed', 'manual', 'batchdata', ${requestId ?? null}, ${userId}, ${errMsg}, NOW())
+      `);
+      await db.execute(sql`
+        INSERT INTO audit_logs (action, performed_by, details, created_at)
+        VALUES ('manual_skip_trace_failed', ${userId},
+          ${JSON.stringify({ contactId, requestId, error: errMsg })}::json,
+          NOW())
+      `);
+      return res.status(502).json({ error: "Skip trace provider error", detail: errMsg });
+    }
+
+    const phonesTotal = [result.ownerPhone, ...(result.additionalPhones || [])].filter(Boolean).length;
+    const emailsTotal = [result.ownerEmail, ...(result.additionalEmails || [])].filter(Boolean).length;
+    const matched = phonesTotal > 0 || emailsTotal > 0;
+
+    // Update skip_trace_requests — completed
+    await db.execute(sql`
+      UPDATE skip_trace_requests
+      SET status = ${matched ? "matched" : "no_match"},
+          phone_found = ${result.ownerPhone ?? null},
+          email_found = ${result.ownerEmail ?? null},
+          phones_total = ${phonesTotal},
+          emails_total = ${emailsTotal},
+          completed_at = NOW()
+      WHERE id = ${requestId}
+    `);
+
+    // Update contact via service (handles tags, identity_status, export_eligible)
+    const { updateContactSkipTrace } = await import("../services/contactUpsertService");
+    await updateContactSkipTrace(contactId, {
+      status: matched ? "matched" : "no_match",
+      phone: result.ownerPhone || undefined,
+      firstName: result.ownerName?.split(" ")[0] || undefined,
+      lastName: result.ownerName?.split(" ").slice(1).join(" ") || undefined,
+      provider: "batchdata",
+      confidence: matched ? 0.9 : 0.1,
+    });
+
+    // Re-derive and update export_eligible
+    const { deriveExportEligible } = await import("../services/contactUpsertService");
+    const updatedContact = await storage.getContactById(contactId);
+    if (updatedContact) {
+      const eligible = deriveExportEligible(
+        updatedContact.firstName, updatedContact.phone, updatedContact.email, updatedContact.leadType
+      );
+      if (eligible !== updatedContact.exportEligible) {
+        await db.update(contacts).set({ exportEligible: eligible }).where(eq(contacts.id, contactId));
+      }
+    }
+
+    // Log to enrichment_provider_log — response received
+    await db.execute(sql`
+      INSERT INTO enrichment_provider_log (contact_id, provider, request_type, status, credits_used, created_at)
+      VALUES (${contactId}, 'batchdata', 'manual_skip_trace', ${matched ? "matched" : "no_match"}, 1, NOW())
+    `);
+
+    // Log to contact_enrichment_events
+    await db.execute(sql`
+      INSERT INTO contact_enrichment_events
+        (contact_id, event_type, previous_value, new_value, source, provider, skip_trace_request_id, performed_by, created_at)
+      VALUES
+        (${contactId}, 'skip_trace_completed',
+         ${JSON.stringify({ phone: contact.phone, alreadyHadPhone: alreadyHasPhone })}::jsonb,
+         ${JSON.stringify({ phoneFound: result.ownerPhone, emailFound: result.ownerEmail, phonesTotal, emailsTotal, matched })}::jsonb,
+         'manual', 'batchdata', ${requestId ?? null}, ${userId}, NOW())
+    `);
+
+    // Log to audit_logs — final outcome
+    await db.execute(sql`
+      INSERT INTO audit_logs (action, performed_by, details, created_at)
+      VALUES ('manual_skip_trace_completed', ${userId},
+        ${JSON.stringify({ contactId, requestId, matched, phonesTotal, emailsTotal })}::json,
+        NOW())
+    `);
+
+    // Increment skip trace usage counter
+    await storage.incrementSkipTraceUsage(contact.subAccountId, getCurrentMonthYear());
+    await logUsageInternal(contact.subAccountId, "SKIP_TRACE", 1,
+      `Manual skip trace: contact ${contactId} → ${matched ? "matched" : "no match"}`);
+
+    res.json({
+      requestId,
+      matched,
+      phonesTotal,
+      emailsTotal,
+      phoneFound: result.ownerPhone,
+      emailFound: result.ownerEmail,
+      status: matched ? "matched" : "no_match",
+    });
+  }));
+
+  // GET enrichment history for a contact
+  app.get("/api/contacts/:contactId/enrichment-history", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    const contactId = parseIntParam(req.params.contactId, "contactId");
+
+    const contact = await storage.getContactById(contactId);
+    if (!contact) return res.status(404).json({ error: "Contact not found" });
+    if (!(await verifyAccountOwnership(req, res, contact.subAccountId))) return;
+
+    const [events, requests] = await Promise.all([
+      db.execute(sql`
+        SELECT id, event_type, source, provider, performed_by, notes, new_value, created_at
+        FROM contact_enrichment_events
+        WHERE contact_id = ${contactId}
+        ORDER BY created_at DESC
+        LIMIT 50
+      `),
+      db.execute(sql`
+        SELECT id, trigger_type, provider, status, phones_total, emails_total,
+               phone_found, error_message, requested_at, completed_at
+        FROM skip_trace_requests
+        WHERE contact_id = ${contactId}
+        ORDER BY created_at DESC
+        LIMIT 20
+      `),
+    ]);
+
+    const eventsRows = (events as any).rows ?? (events as any);
+    const requestRows = (requests as any).rows ?? (requests as any);
+
+    res.json({
+      contactId,
+      skipTraceStatus: contact.skipTraceStatus,
+      enrichmentProvider: contact.enrichmentProvider,
+      lastEnrichedAt: contact.enrichmentCompletedAt,
+      exportEligible: contact.exportEligible,
+      events: eventsRows,
+      skipTraceRequests: requestRows,
+    });
+  }));
+
   app.post("/api/sentinel/test-trigger", asyncHandler(async (req, res) => {
     // No auth required — demo endpoint for live meeting triggers
     const testSchema = z.object({ subAccountId: z.number().optional() }).passthrough();
