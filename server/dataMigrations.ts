@@ -502,20 +502,23 @@ const MIGRATIONS: DataMigration[] = [
       CREATE INDEX IF NOT EXISTS idx_contacts_lead_type ON contacts(lead_type);
       CREATE INDEX IF NOT EXISTS idx_contacts_export_eligible ON contacts(sub_account_id, export_eligible);
 
-      -- Step 3: Routing rules table
+      -- Step 3: Routing rules table (matches actual live schema — richer columns)
       CREATE TABLE IF NOT EXISTS contact_routing_rules (
         id SERIAL PRIMARY KEY,
-        source_pipeline TEXT NOT NULL,
-        lead_type TEXT NOT NULL,
-        target_sub_account_id INTEGER NOT NULL REFERENCES sub_accounts(id),
+        rule_name TEXT,
         priority INTEGER NOT NULL DEFAULT 0,
+        match_source_pipeline TEXT,
+        match_lead_type TEXT,
+        match_lead_vertical TEXT,
+        match_county TEXT,
+        match_niche TEXT,
+        target_sub_account_id INTEGER NOT NULL REFERENCES sub_accounts(id),
         description TEXT,
-        enabled BOOLEAN NOT NULL DEFAULT true,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
-      CREATE INDEX IF NOT EXISTS idx_routing_rules_pipeline_type ON contact_routing_rules(source_pipeline, lead_type);
+      CREATE INDEX IF NOT EXISTS idx_routing_rules_pipeline_type ON contact_routing_rules(match_source_pipeline, match_lead_type);
 
       -- Step 4: Routing audit table
       CREATE TABLE IF NOT EXISTS contact_routing_audit (
@@ -532,31 +535,20 @@ const MIGRATIONS: DataMigration[] = [
       CREATE INDEX IF NOT EXISTS idx_routing_audit_contact_id ON contact_routing_audit(contact_id);
       CREATE INDEX IF NOT EXISTS idx_routing_audit_created_at ON contact_routing_audit(created_at);
 
-      -- Step 5: Seed routing rules (idempotent via ON CONFLICT DO NOTHING)
-      -- Using explicit IDs so ON CONFLICT ON CONSTRAINT can target the PK
-      INSERT INTO contact_routing_rules (source_pipeline, lead_type, target_sub_account_id, priority, description, enabled)
-      SELECT 'sentinel_crash', 'individual', id, 10, 'Crash pipeline — real individuals → crash sub-account', true
-      FROM sub_accounts WHERE name ILIKE '%crash%' LIMIT 1
+      -- Step 5: Seed routing rules (idempotent — table may already have rows from prior session)
+      INSERT INTO contact_routing_rules (rule_name, match_source_pipeline, match_lead_type, target_sub_account_id, priority, description, active)
+      SELECT 'crash-ingest → APEX parent', 'crash_ingest', 'individual', id, 10, 'Real crash victims ingest to APEX master account', true
+      FROM sub_accounts WHERE id = 3 LIMIT 1
       ON CONFLICT DO NOTHING;
 
-      INSERT INTO contact_routing_rules (source_pipeline, lead_type, target_sub_account_id, priority, description, enabled)
-      SELECT 'sentinel_crash', 'placeholder', id, 5, 'Crash pipeline — placeholders (hold, do not export)', true
-      FROM sub_accounts WHERE name ILIKE '%crash%' LIMIT 1
+      INSERT INTO contact_routing_rules (rule_name, match_source_pipeline, match_lead_type, target_sub_account_id, priority, description, active)
+      SELECT 'crash-ingest placeholder', 'crash_ingest', 'placeholder', id, 5, 'Unidentified crash placeholders stay in APEX master only', true
+      FROM sub_accounts WHERE id = 3 LIMIT 1
       ON CONFLICT DO NOTHING;
 
-      INSERT INTO contact_routing_rules (source_pipeline, lead_type, target_sub_account_id, priority, description, enabled)
-      SELECT 'legal_pipeline', 'individual', id, 10, 'Legal pipeline — real individuals → legal sub-account', true
-      FROM sub_accounts WHERE name ILIKE '%legal%' LIMIT 1
-      ON CONFLICT DO NOTHING;
-
-      INSERT INTO contact_routing_rules (source_pipeline, lead_type, target_sub_account_id, priority, description, enabled)
-      SELECT 'legal_pipeline', 'attorney', id, 5, 'Legal pipeline — attorney entities (not exportable to clients)', true
-      FROM sub_accounts WHERE name ILIKE '%legal%' LIMIT 1
-      ON CONFLICT DO NOTHING;
-
-      INSERT INTO contact_routing_rules (source_pipeline, lead_type, target_sub_account_id, priority, description, enabled)
-      SELECT 'hillsborough_pipeline', 'individual', id, 10, 'Hillsborough court — real individuals → legal sub-account', true
-      FROM sub_accounts WHERE name ILIKE '%legal%' LIMIT 1
+      INSERT INTO contact_routing_rules (rule_name, match_source_pipeline, match_lead_type, target_sub_account_id, priority, description, active)
+      SELECT 'legal individual → APEX parent', 'legal_signal', 'individual', id, 10, 'Real individual legal leads route to APEX master', true
+      FROM sub_accounts WHERE id = 3 LIMIT 1
       ON CONFLICT DO NOTHING;
 
       -- Step 6: Backfill source_pipeline from existing source values

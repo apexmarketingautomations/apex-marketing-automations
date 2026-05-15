@@ -717,19 +717,22 @@ export type RoutingFailure = typeof routingFailures.$inferSelect;
 
 export const contactRoutingRules = pgTable("contact_routing_rules", {
   id: serial("id").primaryKey(),
-  sourcePipeline: text("source_pipeline").notNull(),
-  leadType: text("lead_type").notNull(),
-  targetSubAccountId: integer("target_sub_account_id").references(() => subAccounts.id).notNull(),
+  ruleName: text("rule_name"),
   priority: integer("priority").default(0).notNull(),
+  matchSourcePipeline: text("match_source_pipeline"),
+  matchLeadType: text("match_lead_type"),
+  matchLeadVertical: text("match_lead_vertical"),
+  matchCounty: text("match_county"),
+  matchNiche: text("match_niche"),
+  targetSubAccountId: integer("target_sub_account_id").references(() => subAccounts.id).notNull(),
   description: text("description"),
-  enabled: boolean("enabled").default(true).notNull(),
+  active: boolean("active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
-  index("idx_routing_rules_pipeline_type").on(table.sourcePipeline, table.leadType),
+  index("idx_routing_rules_pipeline_type").on(table.matchSourcePipeline, table.matchLeadType),
 ]);
 
-export const insertContactRoutingRuleSchema = createInsertSchema(contactRoutingRules).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertContactRoutingRuleSchema = createInsertSchema(contactRoutingRules).omit({ id: true, createdAt: true });
 export type InsertContactRoutingRule = z.infer<typeof insertContactRoutingRuleSchema>;
 export type ContactRoutingRule = typeof contactRoutingRules.$inferSelect;
 
