@@ -157,6 +157,336 @@ const MIGRATIONS: DataMigration[] = [
         ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'member';
     `,
   },
+  {
+    name: "2026-05-14-stage3-operational-tables",
+    sql: `
+      CREATE EXTENSION IF NOT EXISTS vector;
+
+      -- Group A: no external FK dependencies
+      CREATE TABLE IF NOT EXISTS account_tier_history (
+        id BIGSERIAL PRIMARY KEY,
+        sub_account_id INTEGER NOT NULL REFERENCES sub_accounts(id) ON DELETE CASCADE,
+        changed_by_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+        previous_tier VARCHAR(50),
+        new_tier VARCHAR(50) NOT NULL,
+        reason TEXT,
+        effective_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS admin_audit_log (
+        id BIGSERIAL PRIMARY KEY,
+        user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+        action VARCHAR(100) NOT NULL,
+        target_type VARCHAR(100),
+        target_id TEXT,
+        metadata JSONB,
+        ip_address VARCHAR(50),
+        user_agent TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS api_keys (
+        id BIGSERIAL PRIMARY KEY,
+        sub_account_id INTEGER NOT NULL REFERENCES sub_accounts(id) ON DELETE CASCADE,
+        user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+        key_hash VARCHAR(64) NOT NULL UNIQUE,
+        key_prefix VARCHAR(12) NOT NULL,
+        name VARCHAR(200) NOT NULL,
+        scopes TEXT[] NOT NULL DEFAULT '{}',
+        last_used_at TIMESTAMPTZ,
+        expires_at TIMESTAMPTZ,
+        revoked_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS agent_outcome_log (
+        id BIGSERIAL PRIMARY KEY,
+        agent_id INTEGER,
+        task_id TEXT,
+        pipeline VARCHAR(100) NOT NULL,
+        outcome VARCHAR(50) NOT NULL,
+        contact_id INTEGER,
+        sub_account_id INTEGER,
+        payload JSONB,
+        duration_ms INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS twilio_account_registry (
+        id BIGSERIAL PRIMARY KEY,
+        sub_account_id INTEGER NOT NULL REFERENCES sub_accounts(id) ON DELETE CASCADE,
+        twilio_account_sid VARCHAR(34) NOT NULL UNIQUE,
+        twilio_auth_token_encrypted TEXT,
+        friendly_name VARCHAR(200),
+        status VARCHAR(50) NOT NULL DEFAULT 'active',
+        phone_numbers TEXT[] NOT NULL DEFAULT '{}',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS embedding_store (
+        id BIGSERIAL PRIMARY KEY,
+        source_type VARCHAR(100) NOT NULL,
+        source_id TEXT NOT NULL,
+        content_hash VARCHAR(64) NOT NULL,
+        content_preview TEXT,
+        embedding vector(1536) NOT NULL,
+        model VARCHAR(100) NOT NULL DEFAULT 'text-embedding-3-small',
+        dimensions INTEGER NOT NULL DEFAULT 1536,
+        metadata JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(source_type, source_id, model)
+      );
+
+      -- Group B: FK to verified existing tables
+      CREATE TABLE IF NOT EXISTS contact_ai_profiles (
+        id BIGSERIAL PRIMARY KEY,
+        contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+        summary TEXT,
+        intent_signals TEXT[],
+        predicted_intent VARCHAR(100),
+        intent_confidence NUMERIC(4,3),
+        lifecycle_stage VARCHAR(50),
+        last_enriched_at TIMESTAMPTZ,
+        embedding vector(1536),
+        embedding_model VARCHAR(100),
+        embedding_updated_at TIMESTAMPTZ,
+        metadata JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(contact_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS contact_merge_log (
+        id BIGSERIAL PRIMARY KEY,
+        primary_contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+        merged_contact_id INTEGER NOT NULL,
+        merged_by_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+        merge_reason VARCHAR(100),
+        confidence NUMERIC(4,3),
+        field_snapshot JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS enrichment_provider_log (
+        id BIGSERIAL PRIMARY KEY,
+        contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+        provider VARCHAR(100) NOT NULL,
+        attempt_type VARCHAR(100),
+        status VARCHAR(50) NOT NULL,
+        fields_returned TEXT[],
+        cost_units NUMERIC(10,4),
+        raw_response JSONB,
+        error_message TEXT,
+        duration_ms INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS message_delivery_log (
+        id BIGSERIAL PRIMARY KEY,
+        message_id INTEGER REFERENCES messages(id) ON DELETE SET NULL,
+        channel VARCHAR(50) NOT NULL,
+        provider VARCHAR(100),
+        provider_message_id TEXT,
+        status VARCHAR(50) NOT NULL,
+        status_detail TEXT,
+        delivered_at TIMESTAMPTZ,
+        opened_at TIMESTAMPTZ,
+        clicked_at TIMESTAMPTZ,
+        failed_at TIMESTAMPTZ,
+        error_code VARCHAR(50),
+        error_message TEXT,
+        metadata JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS sentinel_actions (
+        id BIGSERIAL PRIMARY KEY,
+        incident_id INTEGER NOT NULL REFERENCES sentinel_incidents(id) ON DELETE CASCADE,
+        action_type VARCHAR(100) NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'pending',
+        payload JSONB,
+        result JSONB,
+        error TEXT,
+        triggered_by VARCHAR(100),
+        executed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS sentinel_incident_ai_triage (
+        id BIGSERIAL PRIMARY KEY,
+        incident_id INTEGER NOT NULL REFERENCES sentinel_incidents(id) ON DELETE CASCADE,
+        triage_score NUMERIC(4,3),
+        severity VARCHAR(50),
+        confidence NUMERIC(4,3),
+        recommended_action TEXT,
+        reasoning TEXT,
+        signals JSONB,
+        model VARCHAR(100),
+        triaged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(incident_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS legal_lead_delivery_log (
+        id BIGSERIAL PRIMARY KEY,
+        legal_lead_id INTEGER NOT NULL REFERENCES legal_leads(id) ON DELETE CASCADE,
+        attorney_id INTEGER REFERENCES legal_attorneys(id) ON DELETE SET NULL,
+        delivery_channel VARCHAR(100) NOT NULL,
+        status VARCHAR(50) NOT NULL,
+        delivered_at TIMESTAMPTZ,
+        accepted_at TIMESTAMPTZ,
+        rejected_at TIMESTAMPTZ,
+        rejection_reason TEXT,
+        price_cents INTEGER,
+        metadata JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS home_service_signal_scores (
+        id BIGSERIAL PRIMARY KEY,
+        signal_id INTEGER NOT NULL REFERENCES home_service_signals(id) ON DELETE CASCADE,
+        score NUMERIC(5,4) NOT NULL,
+        score_version VARCHAR(50),
+        signals_used JSONB,
+        model VARCHAR(100),
+        scored_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(signal_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS legal_case_ai_summary (
+        id BIGSERIAL PRIMARY KEY,
+        intelligence_case_id INTEGER NOT NULL REFERENCES intelligence_cases(id) ON DELETE CASCADE,
+        summary TEXT,
+        key_facts TEXT[],
+        recommended_actions TEXT[],
+        risk_level VARCHAR(50),
+        confidence NUMERIC(4,3),
+        embedding vector(1536),
+        embedding_model VARCHAR(100),
+        embedding_updated_at TIMESTAMPTZ,
+        model VARCHAR(100),
+        generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(intelligence_case_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS workflow_ai_suggestions (
+        id BIGSERIAL PRIMARY KEY,
+        workflow_id INTEGER NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+        suggestion_type VARCHAR(100) NOT NULL,
+        suggestion TEXT NOT NULL,
+        reasoning TEXT,
+        confidence NUMERIC(4,3),
+        status VARCHAR(50) NOT NULL DEFAULT 'pending',
+        applied_at TIMESTAMPTZ,
+        dismissed_at TIMESTAMPTZ,
+        model VARCHAR(100),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS brain_learning_feedback (
+        id BIGSERIAL PRIMARY KEY,
+        user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+        event_id BIGINT REFERENCES universal_events(id) ON DELETE SET NULL,
+        feedback_type VARCHAR(100) NOT NULL,
+        signal VARCHAR(100) NOT NULL,
+        context JSONB,
+        weight NUMERIC(5,4) NOT NULL DEFAULT 1.0,
+        processed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      -- Group C: plain INTEGER (parent tables not yet created)
+      CREATE TABLE IF NOT EXISTS agent_performance_metrics (
+        id BIGSERIAL PRIMARY KEY,
+        agent_id INTEGER NOT NULL,
+        metric_date DATE NOT NULL,
+        tasks_completed INTEGER NOT NULL DEFAULT 0,
+        tasks_failed INTEGER NOT NULL DEFAULT 0,
+        avg_duration_ms NUMERIC(12,2),
+        p95_duration_ms NUMERIC(12,2),
+        outcomes JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(agent_id, metric_date)
+      );
+
+      CREATE TABLE IF NOT EXISTS funnel_analytics (
+        id BIGSERIAL PRIMARY KEY,
+        campaign_id INTEGER,
+        website_id INTEGER,
+        entry_page_id INTEGER,
+        exit_page_id INTEGER,
+        sub_account_id INTEGER,
+        date DATE NOT NULL,
+        sessions INTEGER NOT NULL DEFAULT 0,
+        leads INTEGER NOT NULL DEFAULT 0,
+        conversions INTEGER NOT NULL DEFAULT 0,
+        conversion_rate NUMERIC(6,4),
+        avg_time_on_site_seconds INTEGER,
+        metadata JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS ad_performance_ai_insights (
+        id BIGSERIAL PRIMARY KEY,
+        campaign_id INTEGER,
+        recommendation_id INTEGER,
+        insight_type VARCHAR(100) NOT NULL,
+        insight TEXT NOT NULL,
+        metric_snapshot JSONB,
+        confidence JSONB,
+        impact_estimate TEXT,
+        status VARCHAR(50) NOT NULL DEFAULT 'pending',
+        applied_at TIMESTAMPTZ,
+        model VARCHAR(100),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS distribution_performance (
+        id BIGSERIAL PRIMARY KEY,
+        buyer_id INTEGER NOT NULL,
+        sub_account_id INTEGER,
+        metric_date DATE NOT NULL,
+        leads_sent INTEGER NOT NULL DEFAULT 0,
+        leads_accepted INTEGER NOT NULL DEFAULT 0,
+        leads_rejected INTEGER NOT NULL DEFAULT 0,
+        acceptance_rate NUMERIC(6,4),
+        avg_response_time_seconds NUMERIC(10,2),
+        revenue_cents BIGINT NOT NULL DEFAULT 0,
+        metadata JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(buyer_id, metric_date)
+      );
+
+      -- HNSW index on embedding_store (works on empty table, no training data needed)
+      CREATE INDEX IF NOT EXISTS embedding_store_hnsw_cosine_idx
+        ON embedding_store
+        USING hnsw (embedding vector_cosine_ops)
+        WITH (m = 16, ef_construction = 64);
+
+      -- Supporting B-tree indexes
+      CREATE INDEX IF NOT EXISTS embedding_store_source_idx ON embedding_store(source_type, source_id);
+      CREATE INDEX IF NOT EXISTS embedding_store_created_at_idx ON embedding_store(created_at DESC);
+      CREATE INDEX IF NOT EXISTS agent_outcome_log_pipeline_idx ON agent_outcome_log(pipeline, created_at DESC);
+      CREATE INDEX IF NOT EXISTS agent_outcome_log_contact_idx ON agent_outcome_log(contact_id) WHERE contact_id IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS enrichment_provider_log_contact_idx ON enrichment_provider_log(contact_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS enrichment_provider_log_provider_idx ON enrichment_provider_log(provider, status);
+      CREATE INDEX IF NOT EXISTS sentinel_actions_incident_idx ON sentinel_actions(incident_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS admin_audit_log_user_idx ON admin_audit_log(user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS admin_audit_log_action_idx ON admin_audit_log(action, created_at DESC);
+      CREATE INDEX IF NOT EXISTS brain_learning_feedback_signal_idx ON brain_learning_feedback(signal, created_at DESC);
+      CREATE INDEX IF NOT EXISTS message_delivery_log_status_idx ON message_delivery_log(status, created_at DESC);
+      CREATE INDEX IF NOT EXISTS legal_lead_delivery_log_status_idx ON legal_lead_delivery_log(status, created_at DESC);
+    `,
+  },
 ];
 
 export async function runDataMigrations(): Promise<void> {
