@@ -144,7 +144,7 @@ function isQualifyingCrash(incident: SentinelIncidentRaw): boolean {
 let _activeAccountCache: number[] = [];
 let _activeAccountCacheTime = 0;
 
-async function getActiveAccountIds(): Promise<number[]> {
+export async function getActiveAccountIds(): Promise<number[]> {
   const now = Date.now();
   if (_activeAccountCache.length > 0 && now - _activeAccountCacheTime < 5 * 60 * 1000) {
     return _activeAccountCache;
