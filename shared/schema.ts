@@ -677,7 +677,13 @@ export const contacts = pgTable("contacts", {
   normalizedEmail: text("normalized_email"),
   county: text("county"),
   contactQualityScore: real("contact_quality_score"),
-});
+}, (table) => [
+  index("idx_contacts_sub_skip_status").on(table.subAccountId, table.skipTraceStatus),
+  index("idx_contacts_sub_identity_status").on(table.subAccountId, table.identityStatus),
+  index("idx_contacts_source_external_id").on(table.subAccountId, table.sourceExternalId),
+  index("idx_contacts_normalized_phone").on(table.subAccountId, table.normalizedPhone),
+  index("idx_contacts_lead_vertical").on(table.subAccountId, table.leadVertical),
+]);
 
 export const insertContactSchema = createInsertSchema(contacts).omit({ id: true, createdAt: true });
 export type InsertContact = z.infer<typeof insertContactSchema>;
