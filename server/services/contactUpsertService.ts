@@ -96,6 +96,14 @@ export interface ContactUpsertInput {
 
   // Quality score (0–1)
   contactQualityScore?: number | null;
+
+  // Routing fields (2026-05-15)
+  sourcePipeline?: string | null;
+  leadType?: string | null;
+  routeRuleId?: number | null;
+  routeReason?: string | null;
+  // exportEligible is auto-derived when not explicitly set
+  exportEligible?: boolean | null;
 }
 
 export interface ContactUpsertResult {
@@ -161,6 +169,21 @@ export function deriveIdentityStatus(
   return "verified";
 }
 
+const ENTITY_LEAD_TYPES = new Set(["recall_entity", "osha_entity", "local_business", "attorney", "placeholder"]);
+
+export function deriveExportEligible(
+  firstName: string | null | undefined,
+  phone: string | null | undefined,
+  email: string | null | undefined,
+  leadType: string | null | undefined,
+  override?: boolean | null,
+): boolean {
+  if (override != null) return override;
+  if (ENTITY_LEAD_TYPES.has(leadType ?? "")) return false;
+  if (!firstName || !firstName.trim() || isPlaceholderName(firstName)) return false;
+  return !!(normalizePhone(phone) || normalizeEmail(email));
+}
+
 /** Builds a crash-incident placeholder display name. */
 export function buildCrashPlaceholderName(county: string | null | undefined): {
   firstName: string;
@@ -193,6 +216,14 @@ export async function upsertContact(input: ContactUpsertInput): Promise<ContactU
     input.phone,
     input.email,
     input.identityStatus,
+  );
+
+  const exportEligible = deriveExportEligible(
+    input.firstName,
+    input.phone,
+    input.email,
+    input.leadType,
+    input.exportEligible,
   );
 
   // Build the full set of values we'd write on insert
@@ -229,6 +260,11 @@ export async function upsertContact(input: ContactUpsertInput): Promise<ContactU
     normalizedPhone: normPhone,
     normalizedEmail: normEmail,
     contactQualityScore: input.contactQualityScore ?? null,
+    sourcePipeline: input.sourcePipeline ?? null,
+    leadType: input.leadType ?? null,
+    routeRuleId: input.routeRuleId ?? null,
+    routeReason: input.routeReason ?? null,
+    exportEligible,
   } as const;
 
   // --- Step 1: Try dedup by source_external_id ---
@@ -432,6 +468,24 @@ async function mergeContact(
     if (higher !== existing.contactQualityScore) {
       patch.contactQualityScore = higher;
     }
+  }
+
+  // Routing fields: fill if missing
+  if (input.sourcePipeline && !existing.sourcePipeline) patch.sourcePipeline = input.sourcePipeline;
+  if (input.leadType && !existing.leadType) patch.leadType = input.leadType;
+  if (input.routeRuleId && !existing.routeRuleId) patch.routeRuleId = input.routeRuleId;
+  if (input.routeReason && !existing.routeReason) patch.routeReason = input.routeReason;
+
+  // Re-derive exportEligible from final merged state
+  if (input.exportEligible != null) {
+    if (input.exportEligible !== existing.exportEligible) patch.exportEligible = input.exportEligible;
+  } else {
+    const finalPhone = patch.phone ?? existing.phone;
+    const finalEmail = patch.email ?? existing.email;
+    const finalFirstName = patch.firstName ?? existing.firstName;
+    const finalLeadType = patch.leadType ?? existing.leadType;
+    const derived = deriveExportEligible(finalFirstName, finalPhone, finalEmail, finalLeadType);
+    if (derived !== existing.exportEligible) patch.exportEligible = derived;
   }
 
   if (Object.keys(patch).length === 0) return null;

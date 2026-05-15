@@ -487,6 +487,138 @@ const MIGRATIONS: DataMigration[] = [
       CREATE INDEX IF NOT EXISTS legal_lead_delivery_log_status_idx ON legal_lead_delivery_log(status, created_at DESC);
     `,
   },
+  {
+    name: "2026-05-15-contact-routing-fields",
+    sql: `
+      -- Step 1: Add routing columns to contacts
+      ALTER TABLE contacts ADD COLUMN IF NOT EXISTS source_pipeline TEXT;
+      ALTER TABLE contacts ADD COLUMN IF NOT EXISTS lead_type TEXT;
+      ALTER TABLE contacts ADD COLUMN IF NOT EXISTS route_rule_id INTEGER;
+      ALTER TABLE contacts ADD COLUMN IF NOT EXISTS route_reason TEXT;
+      ALTER TABLE contacts ADD COLUMN IF NOT EXISTS export_eligible BOOLEAN NOT NULL DEFAULT false;
+
+      -- Step 2: Indexes on new contact columns
+      CREATE INDEX IF NOT EXISTS idx_contacts_source_pipeline ON contacts(source_pipeline);
+      CREATE INDEX IF NOT EXISTS idx_contacts_lead_type ON contacts(lead_type);
+      CREATE INDEX IF NOT EXISTS idx_contacts_export_eligible ON contacts(sub_account_id, export_eligible);
+
+      -- Step 3: Routing rules table
+      CREATE TABLE IF NOT EXISTS contact_routing_rules (
+        id SERIAL PRIMARY KEY,
+        source_pipeline TEXT NOT NULL,
+        lead_type TEXT NOT NULL,
+        target_sub_account_id INTEGER NOT NULL REFERENCES sub_accounts(id),
+        priority INTEGER NOT NULL DEFAULT 0,
+        description TEXT,
+        enabled BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_routing_rules_pipeline_type ON contact_routing_rules(source_pipeline, lead_type);
+
+      -- Step 4: Routing audit table
+      CREATE TABLE IF NOT EXISTS contact_routing_audit (
+        id BIGSERIAL PRIMARY KEY,
+        contact_id INTEGER NOT NULL REFERENCES contacts(id),
+        source_pipeline TEXT,
+        source_record_id TEXT,
+        matched_rule_id INTEGER,
+        assigned_sub_account_id INTEGER,
+        reason TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_routing_audit_contact_id ON contact_routing_audit(contact_id);
+      CREATE INDEX IF NOT EXISTS idx_routing_audit_created_at ON contact_routing_audit(created_at);
+
+      -- Step 5: Seed routing rules (idempotent via ON CONFLICT DO NOTHING)
+      -- Using explicit IDs so ON CONFLICT ON CONSTRAINT can target the PK
+      INSERT INTO contact_routing_rules (source_pipeline, lead_type, target_sub_account_id, priority, description, enabled)
+      SELECT 'sentinel_crash', 'individual', id, 10, 'Crash pipeline — real individuals → crash sub-account', true
+      FROM sub_accounts WHERE name ILIKE '%crash%' LIMIT 1
+      ON CONFLICT DO NOTHING;
+
+      INSERT INTO contact_routing_rules (source_pipeline, lead_type, target_sub_account_id, priority, description, enabled)
+      SELECT 'sentinel_crash', 'placeholder', id, 5, 'Crash pipeline — placeholders (hold, do not export)', true
+      FROM sub_accounts WHERE name ILIKE '%crash%' LIMIT 1
+      ON CONFLICT DO NOTHING;
+
+      INSERT INTO contact_routing_rules (source_pipeline, lead_type, target_sub_account_id, priority, description, enabled)
+      SELECT 'legal_pipeline', 'individual', id, 10, 'Legal pipeline — real individuals → legal sub-account', true
+      FROM sub_accounts WHERE name ILIKE '%legal%' LIMIT 1
+      ON CONFLICT DO NOTHING;
+
+      INSERT INTO contact_routing_rules (source_pipeline, lead_type, target_sub_account_id, priority, description, enabled)
+      SELECT 'legal_pipeline', 'attorney', id, 5, 'Legal pipeline — attorney entities (not exportable to clients)', true
+      FROM sub_accounts WHERE name ILIKE '%legal%' LIMIT 1
+      ON CONFLICT DO NOTHING;
+
+      INSERT INTO contact_routing_rules (source_pipeline, lead_type, target_sub_account_id, priority, description, enabled)
+      SELECT 'hillsborough_pipeline', 'individual', id, 10, 'Hillsborough court — real individuals → legal sub-account', true
+      FROM sub_accounts WHERE name ILIKE '%legal%' LIMIT 1
+      ON CONFLICT DO NOTHING;
+
+      -- Step 6: Backfill source_pipeline from existing source values
+      UPDATE contacts SET source_pipeline = 'sentinel_crash'     WHERE source = 'sentinel_crash'    AND source_pipeline IS NULL;
+      UPDATE contacts SET source_pipeline = 'legal_pipeline'     WHERE source = 'legal_pipeline'    AND source_pipeline IS NULL;
+      UPDATE contacts SET source_pipeline = 'jail_booking'       WHERE source = 'jail_booking'      AND source_pipeline IS NULL;
+      UPDATE contacts SET source_pipeline = 'home_services'      WHERE source = 'home_services'     AND source_pipeline IS NULL;
+      UPDATE contacts SET source_pipeline = 'hillsborough_pipeline' WHERE (source IS NULL OR source NOT IN ('sentinel_crash','legal_pipeline','jail_booking','home_services','apify_scrape','meta_lead','manual','form_submission','import')) AND source_pipeline IS NULL AND county IS NOT NULL;
+      UPDATE contacts SET source_pipeline = COALESCE(source, 'manual') WHERE source_pipeline IS NULL;
+
+      -- Step 7: Backfill lead_type
+      -- Placeholders: crash incident marker names
+      UPDATE contacts SET lead_type = 'placeholder'
+      WHERE lead_type IS NULL
+        AND (first_name ILIKE 'Unidentified Crash Incident%' OR first_name ILIKE 'Crash Lead%' OR first_name ILIKE 'Vehicle Crash%' OR first_name ILIKE 'Incident Lead%');
+
+      -- Recall/OSHA/business entities
+      UPDATE contacts SET lead_type = 'recall_entity'
+      WHERE lead_type IS NULL AND tags @> ARRAY['recall']::text[];
+
+      UPDATE contacts SET lead_type = 'osha_entity'
+      WHERE lead_type IS NULL AND tags @> ARRAY['osha']::text[];
+
+      UPDATE contacts SET lead_type = 'local_business'
+      WHERE lead_type IS NULL AND (source IN ('apify_scrape') OR company IS NOT NULL AND first_name IS NULL);
+
+      -- Attorneys
+      UPDATE contacts SET lead_type = 'attorney'
+      WHERE lead_type IS NULL AND (source = 'legal_pipeline' AND tags @> ARRAY['attorney']::text[]);
+
+      -- Everything else with a real first name is an individual
+      UPDATE contacts SET lead_type = 'individual'
+      WHERE lead_type IS NULL AND first_name IS NOT NULL AND first_name <> '';
+
+      -- Catch-all for remaining nulls
+      UPDATE contacts SET lead_type = 'individual' WHERE lead_type IS NULL;
+
+      -- Step 8: Backfill export_eligible
+      -- Individuals with a real non-placeholder name AND (phone OR email) → true
+      UPDATE contacts SET export_eligible = true
+      WHERE lead_type = 'individual'
+        AND first_name IS NOT NULL AND first_name <> ''
+        AND first_name NOT ILIKE 'Unidentified%'
+        AND first_name NOT ILIKE 'Crash Lead%'
+        AND first_name NOT ILIKE 'Vehicle Crash%'
+        AND first_name NOT ILIKE 'Incident Lead%'
+        AND first_name NOT ILIKE 'Unknown%'
+        AND first_name NOT ILIKE 'Legal Lead%'
+        AND first_name NOT ILIKE 'Booking Lead%'
+        AND (
+          (phone IS NOT NULL AND phone <> '' AND regexp_replace(phone, '[^0-9]', '', 'g') <> '' AND length(regexp_replace(phone, '[^0-9]', '', 'g')) >= 7)
+          OR
+          (email IS NOT NULL AND email LIKE '%@%' AND length(email) >= 5)
+        );
+
+      -- Ensure empty first_name individuals are never export_eligible
+      UPDATE contacts SET export_eligible = false
+      WHERE lead_type = 'individual'
+        AND (first_name IS NULL OR first_name = '')
+        AND export_eligible = true;
+    `,
+  },
 ];
 
 export async function runDataMigrations(): Promise<void> {

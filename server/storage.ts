@@ -1093,10 +1093,11 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async getContacts(subAccountId: number, opts?: { limit?: number; source?: string }) {
-    const baseWhere = opts?.source
-      ? and(eq(contacts.subAccountId, subAccountId), eq(contacts.source, opts.source))
-      : eq(contacts.subAccountId, subAccountId);
+  async getContacts(subAccountId: number, opts?: { limit?: number; source?: string; exportEligible?: boolean }) {
+    const conditions = [eq(contacts.subAccountId, subAccountId)];
+    if (opts?.source) conditions.push(eq(contacts.source, opts.source));
+    if (opts?.exportEligible != null) conditions.push(eq(contacts.exportEligible, opts.exportEligible));
+    const baseWhere = conditions.length === 1 ? conditions[0] : and(...conditions);
     const q = db.select().from(contacts).where(baseWhere).orderBy(desc(contacts.createdAt));
     return opts?.limit ? q.limit(opts.limit) : q;
   }

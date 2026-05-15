@@ -677,6 +677,12 @@ export const contacts = pgTable("contacts", {
   normalizedEmail: text("normalized_email"),
   county: text("county"),
   contactQualityScore: real("contact_quality_score"),
+  // --- Contact routing fields (2026-05-15) ---
+  sourcePipeline: text("source_pipeline"),
+  leadType: text("lead_type"),
+  routeRuleId: integer("route_rule_id"),
+  routeReason: text("route_reason"),
+  exportEligible: boolean("export_eligible").default(false).notNull(),
 }, (table) => [
   index("idx_contacts_sub_skip_status").on(table.subAccountId, table.skipTraceStatus),
   index("idx_contacts_sub_identity_status").on(table.subAccountId, table.identityStatus),
@@ -706,6 +712,46 @@ export const routingFailures = pgTable("routing_failures", {
 export const insertRoutingFailureSchema = createInsertSchema(routingFailures).omit({ id: true, createdAt: true });
 export type InsertRoutingFailure = z.infer<typeof insertRoutingFailureSchema>;
 export type RoutingFailure = typeof routingFailures.$inferSelect;
+
+// ---- Contact Routing Rules ----
+
+export const contactRoutingRules = pgTable("contact_routing_rules", {
+  id: serial("id").primaryKey(),
+  sourcePipeline: text("source_pipeline").notNull(),
+  leadType: text("lead_type").notNull(),
+  targetSubAccountId: integer("target_sub_account_id").references(() => subAccounts.id).notNull(),
+  priority: integer("priority").default(0).notNull(),
+  description: text("description"),
+  enabled: boolean("enabled").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_routing_rules_pipeline_type").on(table.sourcePipeline, table.leadType),
+]);
+
+export const insertContactRoutingRuleSchema = createInsertSchema(contactRoutingRules).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertContactRoutingRule = z.infer<typeof insertContactRoutingRuleSchema>;
+export type ContactRoutingRule = typeof contactRoutingRules.$inferSelect;
+
+// ---- Contact Routing Audit ----
+
+export const contactRoutingAudit = pgTable("contact_routing_audit", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  contactId: integer("contact_id").references(() => contacts.id).notNull(),
+  sourcePipeline: text("source_pipeline"),
+  sourceRecordId: text("source_record_id"),
+  matchedRuleId: integer("matched_rule_id"),
+  assignedSubAccountId: integer("assigned_sub_account_id"),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_routing_audit_contact_id").on(table.contactId),
+  index("idx_routing_audit_created_at").on(table.createdAt),
+]);
+
+export const insertContactRoutingAuditSchema = createInsertSchema(contactRoutingAudit).omit({ id: true, createdAt: true });
+export type InsertContactRoutingAudit = z.infer<typeof insertContactRoutingAuditSchema>;
+export type ContactRoutingAudit = typeof contactRoutingAudit.$inferSelect;
 
 // ---- Pipeline Deals ----
 

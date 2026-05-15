@@ -17,7 +17,7 @@ import { scanDistressedProperties, calculateDealMetrics } from "../property-rada
 import { skipTraceLookup, getCurrentMonthYear } from "../skip-trace";
 import crypto from "crypto";
 import { dispatchAlert, generateDeepLink } from "../pushAlertService";
-import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, logUsageInternal } from "./helpers";
+import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, logUsageInternal, isUserAdmin } from "./helpers";
 import { recordOutboundBilling } from "../billing";
 import { requireActiveSubscription } from "../subscriptionGuard";
 import {
@@ -3250,10 +3250,12 @@ export function registerPropertyRoutes(app: Express) {
     let csvContent = "";
 
     if (type === "contacts") {
-      const data = await storage.getContacts(subAccountId);
-      csvContent = "ID,First Name,Last Name,Email,Phone,Company,Source,Created At\n";
+      // Admin can pass ?all=true to bypass the export_eligible filter
+      const adminBypass = req.query.all === "true" && isUserAdmin((req as any).user);
+      const data = await storage.getContacts(subAccountId, { exportEligible: adminBypass ? undefined : true });
+      csvContent = "ID,First Name,Last Name,Email,Phone,Company,Source,Pipeline,Lead Type,Route Reason,Created At\n";
       for (const r of data) {
-        csvContent += `${r.id},"${r.firstName || ""}","${r.lastName || ""}","${r.email || ""}","${r.phone || ""}","${r.company || ""}","${r.source || ""}","${r.createdAt}"\n`;
+        csvContent += `${r.id},"${r.firstName || ""}","${r.lastName || ""}","${r.email || ""}","${r.phone || ""}","${r.company || ""}","${r.source || ""}","${r.sourcePipeline || ""}","${r.leadType || ""}","${r.routeReason || ""}","${r.createdAt}"\n`;
       }
     } else if (type === "deals") {
       const data = await storage.getDeals(subAccountId);
