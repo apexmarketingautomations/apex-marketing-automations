@@ -1,3 +1,6 @@
+// ⚠️  MUST be first — Sentry instruments modules as they load
+import "./instrument";
+
 import express, { type Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import { registerRoutes } from "./routes";
@@ -1895,6 +1898,11 @@ RULES:
     }
     res.redirect("/roomos");
   });
+
+  // Sentry Express error handler — must be registered AFTER all routes
+  // and BEFORE the static/vite catch-all so it captures route errors.
+  const { Sentry: SentryRuntime } = await import("./instrument");
+  SentryRuntime.setupExpressErrorHandler(app);
 
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
