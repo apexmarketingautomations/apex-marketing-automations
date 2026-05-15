@@ -1,0 +1,213 @@
+/**
+ * server/queues/queueFactory.ts
+ * ------------------------------
+ * BullMQ Queue registry for Apex Marketing OS.
+ *
+ * Queue hierarchy (priority order, high → low):
+ *   apex-routing       — contact routing, lead delivery (HIGH)
+ *   apex-notifications — SMS/email alerts, webhooks (HIGH)
+ *   apex-intake        — inbound webhook processing (HIGH)
+ *   apex-enrichment    — skip trace, address validation (MEDIUM)
+ *   apex-scoring       — contact quality, case scoring (MEDIUM)
+ *   apex-crm           — CRM updates, lifecycle changes (MEDIUM)
+ *   apex-general       — legacy jobQueue.ts migrations (MEDIUM)
+ *   apex-ocr           — document ingestion, OCR extraction (LOW)
+ *   apex-embeddings    — vector embedding generation (LOW)
+ *   apex-semantic      — semantic indexing, reranking (LOW)
+ *   apex-maintenance   — cleanup, archival, health checks (BACKGROUND)
+ *
+ * All queues share the same Upstash Redis instance but use isolated
+ * BullMQ connections. Workers are defined in server/workers/*.ts.
+ */
+
+import { Queue, QueueEvents, type ConnectionOptions } from "bullmq";
+import { createRedisConnection, isRedisAvailable } from "../redis";
+
+// ─── Connection config passed to every Queue/Worker ──────────────────────────
+// BullMQ requires a fresh ioredis instance per Queue AND per Worker.
+
+export function getBullMQConnection(): ConnectionOptions {
+  const url = process.env.UPSTASH_REDIS_URL;
+  if (!url) {
+    throw new Error("[QUEUE-FACTORY] UPSTASH_REDIS_URL not set");
+  }
+
+  // Return URL string — BullMQ will create its own ioredis connection.
+  // This avoids the "shared connection" anti-pattern.
+  return {
+    url,
+    tls: {},
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+  } as unknown as ConnectionOptions;
+}
+
+// ─── Queue names (single source of truth) ────────────────────────────────────
+
+export const QUEUE_NAMES = {
+  ROUTING: "apex-routing",
+  NOTIFICATIONS: "apex-notifications",
+  INTAKE: "apex-intake",
+  ENRICHMENT: "apex-enrichment",
+  SCORING: "apex-scoring",
+  CRM: "apex-crm",
+  GENERAL: "apex-general",       // Legacy jobQueue.ts drop-in
+  OCR: "apex-ocr",
+  EMBEDDINGS: "apex-embeddings",
+  SEMANTIC: "apex-semantic",
+  MAINTENANCE: "apex-maintenance",
+} as const;
+
+export type QueueName = typeof QUEUE_NAMES[keyof typeof QUEUE_NAMES];
+
+// ─── Default job options per queue ────────────────────────────────────────────
+
+const HIGH_PRIORITY_DEFAULTS = {
+  attempts: 5,
+  backoff: { type: "exponential" as const, delay: 2_000 },
+  removeOnComplete: { count: 500 },
+  removeOnFail: { count: 2_000 }, // Keep more failures for debugging
+};
+
+const MEDIUM_PRIORITY_DEFAULTS = {
+  attempts: 3,
+  backoff: { type: "exponential" as const, delay: 5_000 },
+  removeOnComplete: { count: 200 },
+  removeOnFail: { count: 1_000 },
+};
+
+const LOW_PRIORITY_DEFAULTS = {
+  attempts: 3,
+  backoff: { type: "exponential" as const, delay: 30_000 },
+  removeOnComplete: { count: 100 },
+  removeOnFail: { count: 500 },
+};
+
+const BACKGROUND_DEFAULTS = {
+  attempts: 2,
+  backoff: { type: "fixed" as const, delay: 60_000 },
+  removeOnComplete: { count: 50 },
+  removeOnFail: { count: 200 },
+};
+
+// ─── Queue registry ───────────────────────────────────────────────────────────
+
+let queues: Map<QueueName, Queue> | null = null;
+
+function createQueue(name: QueueName, defaultJobOptions: object): Queue {
+  const connection = createRedisConnection();
+  return new Queue(name, {
+    connection,
+    defaultJobOptions,
+  });
+}
+
+/**
+ * Initialise all BullMQ queues.
+ * Call once at startup, AFTER initRedis() confirms connection.
+ * Queues are singletons — safe to call multiple times.
+ */
+export function initQueues(): Map<QueueName, Queue> {
+  if (queues) return queues;
+
+  if (!isRedisAvailable()) {
+    console.warn("[QUEUE-FACTORY] Redis not available — BullMQ queues not initialised");
+    return new Map();
+  }
+
+  console.log("[QUEUE-FACTORY] Initialising BullMQ queues...");
+
+  queues = new Map<QueueName, Queue>([
+    [QUEUE_NAMES.ROUTING,       createQueue(QUEUE_NAMES.ROUTING,       HIGH_PRIORITY_DEFAULTS)],
+    [QUEUE_NAMES.NOTIFICATIONS, createQueue(QUEUE_NAMES.NOTIFICATIONS,  HIGH_PRIORITY_DEFAULTS)],
+    [QUEUE_NAMES.INTAKE,        createQueue(QUEUE_NAMES.INTAKE,         HIGH_PRIORITY_DEFAULTS)],
+    [QUEUE_NAMES.ENRICHMENT,    createQueue(QUEUE_NAMES.ENRICHMENT,     MEDIUM_PRIORITY_DEFAULTS)],
+    [QUEUE_NAMES.SCORING,       createQueue(QUEUE_NAMES.SCORING,        MEDIUM_PRIORITY_DEFAULTS)],
+    [QUEUE_NAMES.CRM,           createQueue(QUEUE_NAMES.CRM,            MEDIUM_PRIORITY_DEFAULTS)],
+    [QUEUE_NAMES.GENERAL,       createQueue(QUEUE_NAMES.GENERAL,        MEDIUM_PRIORITY_DEFAULTS)],
+    [QUEUE_NAMES.OCR,           createQueue(QUEUE_NAMES.OCR,            LOW_PRIORITY_DEFAULTS)],
+    [QUEUE_NAMES.EMBEDDINGS,    createQueue(QUEUE_NAMES.EMBEDDINGS,     LOW_PRIORITY_DEFAULTS)],
+    [QUEUE_NAMES.SEMANTIC,      createQueue(QUEUE_NAMES.SEMANTIC,       LOW_PRIORITY_DEFAULTS)],
+    [QUEUE_NAMES.MAINTENANCE,   createQueue(QUEUE_NAMES.MAINTENANCE,    BACKGROUND_DEFAULTS)],
+  ]);
+
+  console.log(`[QUEUE-FACTORY] ✅ ${queues.size} queues ready: ${[...queues.keys()].join(", ")}`);
+  return queues;
+}
+
+/**
+ * Get a specific queue by name.
+ * Returns null if Redis is unavailable (graceful degradation).
+ */
+export function getQueue(name: QueueName): Queue | null {
+  return queues?.get(name) ?? null;
+}
+
+/**
+ * Get the general-purpose queue (used by legacyAdapter.ts).
+ */
+export function getGeneralQueue(): Queue | null {
+  return queues?.get(QUEUE_NAMES.GENERAL) ?? null;
+}
+
+// ─── Queue health snapshot ────────────────────────────────────────────────────
+
+export interface QueueHealthSnapshot {
+  name: string;
+  waiting: number;
+  active: number;
+  completed: number;
+  failed: number;
+  delayed: number;
+  paused: boolean;
+  timestamp: string;
+}
+
+/**
+ * Fetch job counts for all queues.
+ * Used by the /api/operator/queue-health endpoint.
+ */
+export async function getQueueHealthSnapshot(): Promise<QueueHealthSnapshot[]> {
+  if (!queues) return [];
+
+  const snapshots = await Promise.allSettled(
+    [...queues.entries()].map(async ([name, queue]) => {
+      const counts = await queue.getJobCounts(
+        "waiting",
+        "active",
+        "completed",
+        "failed",
+        "delayed",
+        "paused"
+      );
+      const isPaused = await queue.isPaused();
+
+      return {
+        name,
+        waiting: counts.waiting ?? 0,
+        active: counts.active ?? 0,
+        completed: counts.completed ?? 0,
+        failed: counts.failed ?? 0,
+        delayed: counts.delayed ?? 0,
+        paused: isPaused,
+        timestamp: new Date().toISOString(),
+      } satisfies QueueHealthSnapshot;
+    })
+  );
+
+  return snapshots
+    .filter((r): r is PromiseFulfilledResult<QueueHealthSnapshot> => r.status === "fulfilled")
+    .map(r => r.value);
+}
+
+/**
+ * Gracefully close all queue connections.
+ * Call in SIGTERM handler.
+ */
+export async function closeQueues(): Promise<void> {
+  if (!queues) return;
+
+  await Promise.allSettled([...queues.values()].map(q => q.close()));
+  queues = null;
+  console.log("[QUEUE-FACTORY] All queues closed");
+}

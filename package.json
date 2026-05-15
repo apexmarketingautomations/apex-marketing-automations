@@ -58,6 +58,7 @@
     "@vapi-ai/web": "^2.5.2",
     "axios": "^1.13.5",
     "bcryptjs": "^3.0.3",
+    "bullmq": "^5.76.8",
     "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -80,6 +81,7 @@
     "googleapis": "^148.0.0",
     "helmet": "^8.1.0",
     "input-otp": "^1.4.2",
+    "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.545.0",
     "memoizee": "^0.4.17",
@@ -101,6 +103,7 @@
     "react-hook-form": "^7.66.0",
     "react-resizable-panels": "^2.1.9",
     "recharts": "^2.15.4",
+    "resend": "^3.2.0",
     "sonner": "^2.0.7",
     "stripe": "^20.0.0",
     "stripe-replit-sync": "^1.0.0",
@@ -115,8 +118,7 @@
     "wouter": "^3.3.5",
     "ws": "^8.18.0",
     "zod": "^3.25.76",
-    "zod-validation-error": "^3.5.4",
-    "resend": "^3.2.0"
+    "zod-validation-error": "^3.5.4"
   },
   "devDependencies": {
     "@replit/vite-plugin-cartographer": "^0.4.4",

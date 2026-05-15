@@ -1981,6 +1981,22 @@ RULES:
       } catch (err: any) {
         console.error("[CALL-INTEL] Failed to start auto-learning loop:", err?.message);
       }
+      // ── Phase 4A: Redis + Durable Queue init ──────────────────────────────
+      try {
+        const { initRedis } = await import("./redis");
+        const redisConnected = await initRedis();
+        if (redisConnected) {
+          const { initQueues } = await import("./queues/queueFactory");
+          initQueues();
+          console.log("[STARTUP] ✅ Upstash Redis connected, BullMQ queues ready");
+        } else {
+          console.warn("[STARTUP] ⚠️  Redis unavailable — jobQueue running in-memory fallback mode");
+        }
+      } catch (err: any) {
+        console.error("[STARTUP] Redis/Queue init failed (non-fatal):", err?.message);
+      }
+      // ─────────────────────────────────────────────────────────────────────
+
       try {
         const { startRetryProcessor } = await import("./eventRetryProcessor");
         startRetryProcessor();
