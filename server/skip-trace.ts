@@ -1,5 +1,46 @@
 import axios from 'axios';
 
+// ─── Circuit breaker ───────────────────────────────────────────────────────────
+// Trips automatically on 402/403 quota errors so the process stops hammering
+// a dead API on every inbound lead. Resets only on restart.
+// Also respects BATCHDATA_DISABLED=true env var as a manual kill switch.
+
+let _circuitOpen = false;
+let _circuitTrippedAt: string | null = null;
+
+export function isBatchDataDisabled(): boolean {
+  if (process.env.BATCHDATA_DISABLED === "true") return true;
+  return _circuitOpen;
+}
+
+function tripCircuit(reason: string): void {
+  if (_circuitOpen) return;
+  _circuitOpen = true;
+  _circuitTrippedAt = new Date().toISOString();
+  console.error(
+    `[SKIP-TRACE] ⛔ Circuit breaker OPEN — BatchData calls suspended. ` +
+    `Reason: ${reason}. ` +
+    `Set BATCHDATA_DISABLED=false and restart to re-enable. ` +
+    `Tripped at: ${_circuitTrippedAt}`
+  );
+}
+
+/** Returns a no-op result when BatchData is disabled/exhausted. */
+function disabledResult(input: SkipTraceInput): SkipTraceOutput {
+  return {
+    ownerName: input.ownerName || null,
+    ownerPhone: null,
+    ownerEmail: null,
+    mailingAddress: null,
+    additionalPhones: [],
+    additionalEmails: [],
+    additionalAddresses: [],
+    allPersons: [],
+    totalPersonsFound: 0,
+    raw: { disabled: true, reason: _circuitOpen ? "circuit_breaker_open" : "BATCHDATA_DISABLED" },
+  };
+}
+
 export interface SkipTraceInput {
   address: string;
   city?: string;
@@ -153,6 +194,12 @@ export async function skipTraceLookup(
   input: SkipTraceInput,
   apiKey: string
 ): Promise<SkipTraceOutput> {
+  // ── Circuit breaker / kill switch check ──────────────────────────────────
+  if (isBatchDataDisabled()) {
+    console.warn("[SKIP-TRACE] Skipped — BatchData is disabled (exhausted or kill switch)");
+    return disabledResult(input);
+  }
+
   const fullAddress = [input.address, input.city, input.state, input.zip]
     .filter(Boolean)
     .join(', ');
@@ -233,13 +280,28 @@ export async function skipTraceLookup(
       raw: response.data,
     };
   } catch (error: any) {
-    console.error(`🔍 SKIP TRACE: API error for ${fullAddress}:`, error?.message);
-    if (error?.response?.status === 401 || error?.response?.status === 403) {
-      throw new Error('Invalid or expired skip trace API key. Check your BatchData credentials.');
+    const status = error?.response?.status;
+    console.error(`🔍 SKIP TRACE: API error for ${fullAddress} (HTTP ${status ?? "network"}):`, error?.message);
+
+    if (status === 402) {
+      tripCircuit("credits_exhausted (HTTP 402)");
+      return disabledResult(input);
     }
-    if (error?.response?.status === 402) {
-      throw new Error('Skip trace credits exhausted. Please top up your BatchData account.');
+    if (status === 403) {
+      tripCircuit("quota_exhausted_or_invalid_key (HTTP 403)");
+      return disabledResult(input);
     }
+    if (status === 401) {
+      tripCircuit("invalid_api_key (HTTP 401)");
+      return disabledResult(input);
+    }
+    if (status === 429) {
+      // Rate limit — don't trip circuit, just skip this request
+      console.warn("[SKIP-TRACE] Rate limited — skipping this request");
+      return disabledResult(input);
+    }
+
+    // Network / timeout errors — don't trip the circuit, may be transient
     throw new Error(`Skip trace lookup failed: ${error?.message || 'Unknown error'}`);
   }
 }

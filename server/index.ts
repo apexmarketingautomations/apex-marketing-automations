@@ -1,5 +1,6 @@
 // ⚠️  MUST be first — Sentry instruments modules as they load
 import "./instrument";
+import { flushLogs } from "./logger";
 
 import express, { type Request, Response, NextFunction } from "express";
 import crypto from "crypto";
@@ -2118,4 +2119,20 @@ RULES:
       }
     },
   );
+
+  // ── Graceful shutdown — flush Axiom buffer + drain BullMQ ────────────────
+  const gracefulShutdown = async (signal: string) => {
+    console.log(`[SHUTDOWN] ${signal} received — flushing logs and closing queues...`);
+    try {
+      await flushLogs();
+    } catch { /* non-fatal */ }
+    try {
+      const { closeQueues } = await import("./queues/queueFactory");
+      await closeQueues();
+    } catch { /* non-fatal */ }
+    process.exit(0);
+  };
+
+  process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+  process.on("SIGINT",  () => gracefulShutdown("SIGINT"));
 })();
