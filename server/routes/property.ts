@@ -20,6 +20,12 @@ import { dispatchAlert, generateDeepLink } from "../pushAlertService";
 import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, logUsageInternal } from "./helpers";
 import { recordOutboundBilling } from "../billing";
 import { requireActiveSubscription } from "../subscriptionGuard";
+import {
+  upsertContact,
+  buildCrashPlaceholderName,
+  isPlaceholderName,
+  CONTACT_SOURCES,
+} from "../services/contactUpsertService";
 
 const subscriptionGuard = requireActiveSubscription();
 
@@ -1519,39 +1525,48 @@ export function registerPropertyRoutes(app: Express) {
       }
 
       if (event === "crash.detected" || event === "lead.created" || event === "lead.enriched") {
-        const contactData: any = {
-          firstName: payload.firstName || payload.name?.split(" ")[0] || "Crash Lead",
-          lastName: payload.lastName || payload.name?.split(" ").slice(1).join(" ") || "",
-          phone: payload.phone || null,
-          email: payload.email || null,
-          tags: ["Crash_Connect_Lead", event.replace(".", "_")],
-          source: `Crash Connect: ${event}`,
-        };
+        // Parse name — never fall back to "Crash Lead" placeholder string
+        let parsedFirstName: string | null = null;
+        let parsedLastName: string | null = null;
+        if (payload.firstName && !isPlaceholderName(payload.firstName)) {
+          parsedFirstName = payload.firstName;
+          parsedLastName = payload.lastName || null;
+        } else if (payload.name && !isPlaceholderName(payload.name)) {
+          const parts = payload.name.trim().split(" ");
+          parsedFirstName = parts[0] || null;
+          parsedLastName = parts.slice(1).join(" ") || null;
+        }
 
-        if (payload.location) contactData.tags.push(`Location: ${payload.location}`);
-        if (payload.severity) contactData.tags.push(`Severity: ${payload.severity}`);
+        // Use structured placeholder if no real name
+        if (!parsedFirstName) {
+          const ph = buildCrashPlaceholderName(payload.county || null);
+          parsedFirstName = ph.firstName;
+          parsedLastName = ph.lastName;
+        }
+
+        const ccTags = ["Crash_Connect_Lead", event.replace(".", "_")];
+        if (payload.location) ccTags.push(`Location: ${payload.location}`);
+        if (payload.severity) ccTags.push(`Severity: ${payload.severity}`);
 
         if (targetAccountId) {
-          let existingContacts: any[] = [];
-          if (payload.phone) {
-            existingContacts = await db.select().from(contacts)
-              .where(and(eq(contacts.subAccountId, targetAccountId), eq(contacts.phone, payload.phone)))
-              .limit(1);
-          } else if (payload.email) {
-            existingContacts = await db.select().from(contacts)
-              .where(and(eq(contacts.subAccountId, targetAccountId), eq(contacts.email, payload.email)))
-              .limit(1);
-          }
-
-          if (existingContacts.length === 0) {
-            await db.insert(contacts).values({
-              subAccountId: targetAccountId,
-              ...contactData,
-            });
-            console.log(`[CRASH CONNECT] CRM contact created: ${contactData.firstName} ${contactData.lastName}`);
-          } else {
-            console.log(`[CRASH CONNECT] Contact already exists, skipping duplicate`);
-          }
+          const upsertResult = await upsertContact({
+            subAccountId: targetAccountId,
+            firstName: parsedFirstName,
+            lastName: parsedLastName,
+            phone: payload.phone || null,
+            email: payload.email || null,
+            source: CONTACT_SOURCES.CRASH,
+            channel: "crash_connect",
+            leadVertical: "personal_injury",
+            leadSubtype: "crash",
+            county: payload.county || null,
+            sourceExternalId: payload.incidentId ? `crash_connect:${payload.incidentId}` : null,
+            rawSourceType: "crash_connect_webhook",
+            tags: ccTags,
+            address: payload.location || null,
+            state: "FL",
+          });
+          console.log(`[CRASH CONNECT] Contact ${upsertResult.action}: id=${upsertResult.contactId} identity=${upsertResult.identityStatus}`);
         }
       }
 

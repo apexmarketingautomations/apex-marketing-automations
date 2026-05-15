@@ -658,6 +658,25 @@ export const contacts = pgTable("contacts", {
   emailOptOut: boolean("email_opt_out").default(false).notNull(),
   optOutAt: timestamp("opt_out_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  // --- Contact lifecycle fields (Phase 5 — 2026-05-14) ---
+  // identity_status: 'unidentified' | 'placeholder' | 'verified'
+  identityStatus: text("identity_status").default("unidentified").notNull(),
+  // skip_trace_status: 'not_attempted' | 'pending' | 'attempted' | 'matched' | 'no_match' | 'failed'
+  skipTraceStatus: text("skip_trace_status").default("not_attempted").notNull(),
+  enrichmentProvider: text("enrichment_provider"),
+  enrichmentAttemptedAt: timestamp("enrichment_attempted_at"),
+  enrichmentCompletedAt: timestamp("enrichment_completed_at"),
+  enrichmentConfidence: real("enrichment_confidence"),
+  // Stable dedup key from source system (incident ID, event ID, etc.)
+  sourceExternalId: text("source_external_id"),
+  rawSourceType: text("raw_source_type"),
+  leadVertical: text("lead_vertical"),
+  leadSubtype: text("lead_subtype"),
+  // Normalized E.164-ish phone (digits only) for dedup
+  normalizedPhone: text("normalized_phone"),
+  normalizedEmail: text("normalized_email"),
+  county: text("county"),
+  contactQualityScore: real("contact_quality_score"),
 });
 
 export const insertContactSchema = createInsertSchema(contacts).omit({ id: true, createdAt: true });

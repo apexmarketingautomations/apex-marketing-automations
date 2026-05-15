@@ -16,6 +16,7 @@ import { storage } from "./storage";
 import { skipTraceLookup } from "./skip-trace";
 import { publishEventAsync, EVENT_TYPES } from "./eventBus";
 import { resolveBatchDataKey, recordBatchDataRun, CRASH_LEAD_ACCOUNT_IDS } from "./vendorConfig";
+import { updateContactSkipTrace, isPlaceholderName } from "./services/contactUpsertService";
 
 const BATCH_SIZE      = 10;
 const BATCH_DELAY_MS  = 2000;
@@ -45,7 +46,12 @@ async function sleep(ms: number) {
 }
 
 function isEligibleContact(
-  contact:   { tags?: string[] | null; phone?: string | null; address?: string | null },
+  contact: {
+    tags?: string[] | null;
+    phone?: string | null;
+    address?: string | null;
+    skipTraceStatus?: string | null;
+  },
   crashOnly: boolean,
 ): boolean {
   const tags          = contact.tags || [];
@@ -60,8 +66,10 @@ function isEligibleContact(
   const hasBlockedTag = [...BLOCKED_TAGS].some(t => tagSet.has(t));
   if (hasBlockedTag)               return false;
 
-  // Must not already be skip-traced
+  // Skip if already traced (check both the tag for pre-migration contacts and the new status field)
   if (tagSet.has("skip-traced"))   return false;
+  const sts = contact.skipTraceStatus;
+  if (sts && sts !== "not_attempted" && sts !== "pending") return false;
 
   // Must have an address to trace against
   if (!contact.address)            return false;
@@ -117,15 +125,6 @@ export async function runRetroSkipTrace(
         );
 
         if (result.ownerPhone || result.ownerName || result.totalPersonsFound > 0) {
-          let firstName = contact.firstName;
-          let lastName  = contact.lastName;
-
-          if (result.ownerName) {
-            const parts = result.ownerName.trim().split(" ");
-            firstName   = parts[0]              || firstName;
-            lastName    = parts.slice(1).join(" ") || lastName;
-          }
-
           // Build rich notes listing ALL persons found
           const personLines: string[] = [];
           for (const p of result.allPersons) {
@@ -142,22 +141,29 @@ export async function runRetroSkipTrace(
           if (result.additionalAddresses.length > 0) {
             personLines.push(`Additional addresses: ${result.additionalAddresses.join("; ")}`);
           }
-          const skipNotes = `Skip Trace (${new Date().toLocaleDateString()}):\n${personLines.join("\n") || "No data found"}`;
+          const skipNotes = `Skip Trace BatchData (${new Date().toLocaleDateString()}):\n${personLines.join("\n") || "No data found"}`;
 
           // Prefer the mailing address from skip trace over the crash-scene location
           const mailingAddr = result.mailingAddress || null;
 
+          // Use the structured service to update skip-trace status + tags atomically
+          await updateContactSkipTrace(contact.id, {
+            status: "matched",
+            phone: result.ownerPhone || null,
+            firstName: result.ownerName && !isPlaceholderName(result.ownerName)
+              ? result.ownerName.trim().split(" ")[0]
+              : null,
+            lastName: result.ownerName
+              ? result.ownerName.trim().split(" ").slice(1).join(" ") || null
+              : null,
+            provider: "batchdata",
+            confidence: result.totalPersonsFound > 0 ? 0.8 : 0.5,
+          });
+
+          // Update address + notes via storage (not covered by updateContactSkipTrace)
           await storage.updateContact(contact.id, {
-            firstName,
-            lastName,
-            phone:   result.ownerPhone   || contact.phone,
-            email:   result.ownerEmail   || contact.email,
-            address: mailingAddr          || contact.address,
-            tags:   [...new Set([
-              ...(contact.tags || []),
-              "skip-traced",
-              result.ownerPhone ? "has-phone" : "no-phone",
-            ])],
+            address: mailingAddr || (contact.address ?? undefined),
+            email:   result.ownerEmail || (contact.email ?? undefined),
             notes:  (contact.notes || "") + `\n\n${skipNotes}`,
           });
 
@@ -193,8 +199,11 @@ export async function runRetroSkipTrace(
           }
 
         } else {
-          await storage.updateContact(contact.id, {
-            tags: [...new Set([...(contact.tags || []), "skip-traced", "no-phone"])],
+          // No match — record this formally so we don't re-trace and pay again
+          await updateContactSkipTrace(contact.id, {
+            status: "no_match",
+            provider: "batchdata",
+            confidence: 0,
           });
           stats.notFound++;
         }

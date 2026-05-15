@@ -11,9 +11,18 @@ interface Contact {
   email?: string;
   address?: string;
   city?: string;
+  county?: string;
   notes?: string;
   tags?: string[];
   createdAt: string;
+  // Lifecycle fields (Phase 5)
+  identityStatus?: string;
+  skipTraceStatus?: string;
+  enrichmentProvider?: string;
+  enrichmentAttemptedAt?: string;
+  leadVertical?: string;
+  leadSubtype?: string;
+  contactQualityScore?: number;
 }
 
 interface PagedResult {
@@ -24,12 +33,35 @@ interface PagedResult {
   totalPages: number;
 }
 
-function getEnrichmentStatus(c: Contact): { label: string; color: string } {
+/**
+ * Returns structured status based on new skip_trace_status field (with tag fallback for
+ * contacts created before the schema upgrade).
+ */
+function getEnrichmentStatus(c: Contact): { label: string; color: string; icon: string } {
+  const sts = c.skipTraceStatus;
   const tags = c.tags || [];
-  if (c.phone && tags.includes("skip-traced")) return { label: "Enriched", color: "text-green-400" };
-  if (c.phone)                                 return { label: "Has Phone", color: "text-emerald-400" };
-  if (tags.includes("skip-traced"))            return { label: "No Match", color: "text-slate-500" };
-  return { label: "Pending", color: "text-yellow-500" };
+
+  // Use structured status if available
+  if (sts === "matched")       return { label: "Matched", color: "text-green-400",   icon: "✓" };
+  if (sts === "no_match")      return { label: "No Match", color: "text-slate-500",  icon: "○" };
+  if (sts === "failed")        return { label: "Failed",   color: "text-red-400",    icon: "✗" };
+  if (sts === "pending")       return { label: "Pending",  color: "text-yellow-500", icon: "⏳" };
+  if (sts === "attempted")     return { label: "Attempted", color: "text-slate-400", icon: "~" };
+
+  // Tag-based fallback for pre-migration contacts
+  if (c.phone && tags.includes("skip-traced")) return { label: "Enriched",  color: "text-green-400",   icon: "✓" };
+  if (c.phone)                                 return { label: "Has Phone", color: "text-emerald-400", icon: "📞" };
+  if (tags.includes("skip-traced"))            return { label: "No Match",  color: "text-slate-500",   icon: "○" };
+
+  return { label: "Not Traced", color: "text-yellow-500", icon: "?" };
+}
+
+function getIdentityBadge(c: Contact): { label: string; cls: string } | null {
+  const is = c.identityStatus;
+  if (is === "verified")      return { label: "Verified", cls: "bg-green-500/15 text-green-400 border-green-500/25" };
+  if (is === "placeholder")   return { label: "Raw Incident", cls: "bg-slate-500/15 text-slate-400 border-slate-600/25" };
+  if (is === "unidentified")  return { label: "Unidentified", cls: "bg-slate-700/30 text-slate-600 border-slate-700/25" };
+  return null;
 }
 
 function exportCSV(contacts: Contact[]) {
@@ -153,9 +185,18 @@ export function CrashLeadsPage() {
   const totalPages = result?.totalPages ?? 1;
   const allContacts = allResult?.data  ?? [];
 
-  const enrichedCount  = allContacts.filter(c => c.phone).length;
-  const pendingCount   = allContacts.filter(c => !c.phone && !(c.tags || []).includes("skip-traced")).length;
-  const exhaustedCount = allContacts.filter(c => !c.phone && (c.tags || []).includes("skip-traced")).length;
+  // Use structured skipTraceStatus when available; fall back to tag-based for pre-migration rows
+  const enrichedCount  = allContacts.filter(c =>
+    c.skipTraceStatus === "matched" || (!c.skipTraceStatus && c.phone && (c.tags || []).includes("skip-traced"))
+  ).length;
+  const hasPhonetCount = allContacts.filter(c => !!c.phone).length;
+  const pendingCount   = allContacts.filter(c =>
+    !c.skipTraceStatus || c.skipTraceStatus === "not_attempted"
+  ).length;
+  const noMatchCount   = allContacts.filter(c =>
+    c.skipTraceStatus === "no_match" || (!c.skipTraceStatus && !c.phone && (c.tags || []).includes("skip-traced"))
+  ).length;
+  const exhaustedCount = noMatchCount; // alias for old references
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -168,10 +209,11 @@ export function CrashLeadsPage() {
           </p>
           {/* Enrichment status bar */}
           {allResult && (
-            <div className="flex items-center gap-3 mt-2 text-xs">
-              <span className="text-green-400 font-bold">{enrichedCount} enriched</span>
-              <span className="text-yellow-500">{pendingCount} pending</span>
-              <span className="text-slate-600">{exhaustedCount} no match</span>
+            <div className="flex items-center gap-3 mt-2 text-xs flex-wrap">
+              <span className="text-green-400 font-bold">✓ {enrichedCount} matched</span>
+              <span className="text-emerald-400">📞 {hasPhonetCount} with phone</span>
+              <span className="text-yellow-500">? {pendingCount} not traced</span>
+              <span className="text-slate-600">○ {noMatchCount} no match</span>
             </div>
           )}
         </div>
@@ -252,6 +294,14 @@ export function CrashLeadsPage() {
                 {contacts.map((c, i) => {
                   const hasPhone = !!c.phone;
                   const status   = getEnrichmentStatus(c);
+                  const idBadge  = getIdentityBadge(c);
+                  // Show placeholder display name for unidentified incidents
+                  const displayName = c.identityStatus === "verified" || hasPhone
+                    ? `${c.firstName} ${c.lastName ?? ""}`.trim()
+                    : c.county
+                      ? `Crash — ${c.county} County`
+                      : c.lastName?.replace(/^— /, "") || "Injury Crash";
+
                   return (
                     <tr
                       key={c.id}
@@ -260,12 +310,22 @@ export function CrashLeadsPage() {
                       } ${i % 2 === 0 ? "" : "bg-white/[0.01]"}`}
                     >
                       <td className="px-4 py-3">
-                        <div className="text-white font-semibold text-sm">
-                          {hasPhone
-                            ? `${c.firstName} ${c.lastName}`
-                            : c.lastName?.replace(/^[A-Z]+ — /, "") || "Injury Crash"}
+                        <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                          {idBadge && (
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${idBadge.cls}`}>
+                              {idBadge.label}
+                            </span>
+                          )}
+                        </div>
+                        <div className={`font-semibold text-sm ${hasPhone ? "text-white" : "text-slate-400"}`}>
+                          {displayName}
                         </div>
                         {c.email && <div className="text-slate-500 text-xs">{c.email}</div>}
+                        {c.leadSubtype && (
+                          <div className="text-slate-600 text-[10px] uppercase tracking-wide">
+                            {c.leadSubtype.replace(/_/g, " ")}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         {hasPhone ? (
@@ -274,7 +334,7 @@ export function CrashLeadsPage() {
                           </a>
                         ) : (
                           <span className="text-xs text-slate-600 italic">
-                            {(c.tags || []).includes("skip-traced") ? "No match" : "Pending..."}
+                            {status.label}
                           </span>
                         )}
                       </td>
@@ -282,10 +342,13 @@ export function CrashLeadsPage() {
                         {c.address}
                       </td>
                       <td className="px-4 py-3 text-slate-300 text-xs">
-                        {c.city?.replace(" County", "")}
+                        {c.county || c.city?.replace(" County", "")}
                       </td>
                       <td className={`px-4 py-3 text-xs font-bold hidden lg:table-cell ${status.color}`}>
-                        {status.label}
+                        <span className="mr-1">{status.icon}</span>{status.label}
+                        {c.enrichmentProvider && (
+                          <div className="text-[9px] text-slate-600 font-normal">{c.enrichmentProvider}</div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-slate-500 text-xs hidden lg:table-cell">
                         {new Date(c.createdAt).toLocaleDateString()}

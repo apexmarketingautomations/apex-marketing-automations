@@ -27,8 +27,14 @@
 
 import crypto from "crypto";
 import { db } from "./db";
-import { legalSignals, legalLeads, legalAttorneys, legalLeadClaims, subAccounts, contacts } from "@shared/schema";
+import { legalSignals, legalLeads, legalAttorneys, legalLeadClaims, subAccounts } from "@shared/schema";
 import { eq, and, ne } from "drizzle-orm";
+import {
+  upsertContact,
+  isPlaceholderName,
+  CONTACT_SOURCES,
+  type ContactSource,
+} from "./services/contactUpsertService";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -645,27 +651,55 @@ async function createContactFromLead(lead: any, subAccountId: number): Promise<v
       return;
     }
 
-    const firstName = subjectName
-      ? subjectName.split(" ")[0] || classification.displayType
-      : classification.displayType;
-    const lastName = subjectName
-      ? subjectName.split(" ").slice(1).join(" ") || lead.county || ""
-      : lead.county || "";
+    // Only parse name if it's a real (non-placeholder) subject name
+    let firstName: string | null = null;
+    let lastName: string | null = null;
+    if (subjectName && !isPlaceholderName(subjectName)) {
+      const parts = subjectName.trim().split(" ");
+      firstName = parts[0] || null;
+      lastName = parts.slice(1).join(" ") || null;
+    }
+    // If no real name, use a descriptive placeholder — NOT "Legal Lead" or "Crash Lead"
+    if (!firstName) {
+      const vertLabel = lead.legalVertical
+        ? lead.legalVertical.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())
+        : "Unknown";
+      firstName = `Unidentified ${vertLabel} Incident`;
+      lastName = lead.county || null;
+    }
 
     const company = lead.businessCategory
       ? (lead.chargeDescription?.split("—")[0]?.trim() || subjectName || null)
       : null;
 
-    console.log(`[LEAD-CLASSIFIER] id=${lead.id} vertical=${lead.legalVertical} signalType=${lead.signalType} → pipeline=${classification.pipeline} source=${classification.source}`);
+    // Map pipeline classification to canonical source
+    const sourceMap: Record<string, ContactSource> = {
+      crash_pipeline: CONTACT_SOURCES.CRASH,
+      legal_pipeline: CONTACT_SOURCES.LEGAL,
+      growth_pipeline: CONTACT_SOURCES.LEGAL,
+    };
+    const canonicalSource: ContactSource = sourceMap[classification.pipeline] ?? CONTACT_SOURCES.LEGAL;
 
-    await storage.createContact({
+    // Dedup key: use caseNumber or lead.id from source system
+    const externalId = lead.caseNumber
+      ? `legal:${lead.caseNumber}:acct${subAccountId}`
+      : `legal:signal:${lead.id}:acct${subAccountId}`;
+
+    console.log(`[LEAD-CLASSIFIER] id=${lead.id} vertical=${lead.legalVertical} signalType=${lead.signalType} → pipeline=${classification.pipeline} source=${canonicalSource}`);
+
+    await upsertContact({
       subAccountId,
       firstName,
       lastName,
-      company: company || undefined,
-      phone: lead.subjectPhone || undefined,
-      source: classification.source,
+      company: company || null,
+      phone: lead.subjectPhone || null,
+      source: canonicalSource,
       channel: classification.channel,
+      leadVertical: lead.legalVertical || null,
+      leadSubtype: lead.signalType || null,
+      county: lead.county || null,
+      sourceExternalId: externalId,
+      rawSourceType: lead.source || lead.signalType || null,
       tags: classification.tags,
       notes: [
         `${classification.displayType} — ${lead.legalVertical?.toUpperCase()} | ${lead.signalType?.replace(/_/g, " ")}`,
@@ -676,8 +710,9 @@ async function createContactFromLead(lead: any, subAccountId: number): Promise<v
         `Score: ${lead.score}/100 | Urgency: ${lead.urgency}`,
         lead.subjectPhone ? `Phone: ${lead.subjectPhone}` : "No phone — skip trace recommended",
       ].filter(Boolean).join("\n"),
-      address: lead.subjectAddress || undefined,
+      address: lead.subjectAddress || null,
       state: "FL",
+      skipTraceStatus: lead.subjectPhone ? "matched" : "not_attempted",
     });
   } catch (_e) { // allow-silent-catch: contact creation failure should not block lead pipeline
   }

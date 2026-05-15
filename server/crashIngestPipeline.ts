@@ -25,6 +25,13 @@ import crypto from "crypto";
 import { storage } from "./storage";
 import { fetchFHPHSMVFeedSafe, type SentinelIncidentRaw } from "./sentinel";
 import { resolveBatchDataKey, recordBatchDataRun } from "./vendorConfig";
+import {
+  upsertContact,
+  updateContactSkipTrace,
+  buildCrashPlaceholderName,
+  isPlaceholderName,
+  CONTACT_SOURCES,
+} from "./services/contactUpsertService";
 
 const PIPELINE_ID = crypto.randomUUID().slice(0, 8);
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
@@ -200,28 +207,43 @@ async function createLeadFromCrash(
   try {
     // Deliver to ALL active accounts, not just Giovanni
     const allAccountIds = await getActiveAccountIds();
-    // Skip trace once for all accounts
-    let firstName = "Crash Lead";
-    let lastName = `${incident.county || "FL"} — ${incident.type}`;
+    // Skip trace once — result shared across all fan-out accounts
+    const placeholder = buildCrashPlaceholderName(incident.county);
+    let firstName = placeholder.firstName;
+    let lastName = placeholder.lastName;
     let phone: string | undefined;
     let email: string | undefined;
     let skipTraceNotes = "Skip trace: not attempted";
+    let skipTraceStatusResult: "not_attempted" | "matched" | "no_match" | "failed" = "not_attempted";
+    let enrichmentAttemptedAt: Date | undefined;
+    let enrichmentCompletedAt: Date | undefined;
+
+    // Stable dedup key: crash report number (unique in HSMV system)
+    const sourceExternalId = report.reportNumber
+      ? `crash:${report.reportNumber}`
+      : `crash:${report.id}`;
 
     const batchDataKey = resolveBatchDataKey();
     if (batchDataKey && incident.location) {
+      enrichmentAttemptedAt = new Date();
       try {
         const { skipTraceLookup } = await import("./skip-trace");
         const traceResult = await skipTraceLookup(
           { address: incident.location, state: "FL", city: incident.county || "" },
           batchDataKey
         );
-        if (traceResult.ownerName) {
+        enrichmentCompletedAt = new Date();
+
+        if (traceResult.ownerName && !isPlaceholderName(traceResult.ownerName)) {
           const parts = traceResult.ownerName.trim().split(" ");
-          firstName = parts[0] || "Crash";
-          lastName = parts.slice(1).join(" ") || `Lead — ${incident.county || "FL"}`;
+          firstName = parts[0] || firstName;
+          lastName = parts.slice(1).join(" ") || lastName;
         }
         if (traceResult.ownerPhone) phone = traceResult.ownerPhone;
         if (traceResult.ownerEmail) email = traceResult.ownerEmail;
+
+        // Determine skip-trace outcome
+        skipTraceStatusResult = traceResult.totalPersonsFound > 0 ? "matched" : "no_match";
 
         // Build rich notes with ALL persons and ALL contact data found
         const personLines: string[] = [];
@@ -241,56 +263,74 @@ async function createLeadFromCrash(
         }
 
         skipTraceNotes = traceResult.totalPersonsFound > 0
-          ? `Skip trace: FOUND ${traceResult.totalPersonsFound} person(s)\n${personLines.join('\n')}`
-          : "Skip trace: no persons found";
+          ? `Skip trace (BatchData): FOUND ${traceResult.totalPersonsFound} person(s)\n${personLines.join('\n')}`
+          : "Skip trace (BatchData): no persons found at this address";
 
-        console.log(`[BATCHDATA] skip-trace response: location=${incident.location} persons=${traceResult.totalPersonsFound} hasPhone=${!!traceResult.ownerPhone} hasEmail=${!!traceResult.ownerEmail}`);
+        console.log(`[BATCHDATA] skip-trace: location=${incident.location} persons=${traceResult.totalPersonsFound} hasPhone=${!!traceResult.ownerPhone}`);
         recordBatchDataRun(traceResult.totalPersonsFound, `crash-ingest location=${incident.location}`);
       } catch (stErr: any) {
-        skipTraceNotes = `Skip trace: failed — ${stErr.message}`;
+        skipTraceStatusResult = "failed";
+        enrichmentCompletedAt = new Date();
+        skipTraceNotes = `Skip trace (BatchData): failed — ${stErr.message}`;
         console.warn(`[BATCHDATA] skip-trace failed for ${incident.location}: ${stErr.message}`);
         recordBatchDataRun(0, `crash-ingest location=${incident.location}`, stErr.message);
       }
     }
 
-    const contactData = {
-      firstName,
-      lastName,
-      phone,
-      email,
-      source: "sentinel_crash",
-      channel: "sentinel",
-      tags: ["crash-lead", "sentinel-auto", incident.severity || "high", phone ? "has-phone" : "no-phone"],
-      notes: [
-        `Auto-generated from Sentinel crash ingest.`,
-        skipTraceNotes,
-        `Type: ${incident.type}`,
-        `Location: ${incident.location}`,
-        `County: ${incident.county || "Unknown"}`,
-        `Severity: ${incident.severity}`,
-        `Received: ${incident.received || "Unknown"}`,
-        `Google Maps: ${incident.googleMaps || "N/A"}`,
-        `Remarks: ${incident.remarks || "None"}`,
-        `Crash Report ID: ${report.id} (${report.reportNumber})`,
-        `Ingest Trace: ${incident.ingestTraceId || report.ingestTraceId || "N/A"}`,
-      ].join("\n"),
-      address: incident.location,
-      city: incident.county ? `${incident.county} County` : undefined,
-      state: "FL",
-      lat: incident.lat ?? undefined,
-      lng: incident.lng ?? undefined,
-    };
+    const baseTags = ["crash-lead", "sentinel-auto", incident.severity || "high"];
+    if (skipTraceStatusResult === "matched" && phone) baseTags.push("has-phone");
+    else if (skipTraceStatusResult !== "not_attempted") baseTags.push("no-phone");
+    if (skipTraceStatusResult !== "not_attempted") baseTags.push("skip-traced");
 
-    // Create contact in ALL active accounts
+    const sharedNotes = [
+      `Auto-generated from Sentinel crash ingest.`,
+      skipTraceNotes,
+      `Type: ${incident.type}`,
+      `Location: ${incident.location}`,
+      `County: ${incident.county || "Unknown"}`,
+      `Severity: ${incident.severity}`,
+      `Received: ${incident.received || "Unknown"}`,
+      `Google Maps: ${incident.googleMaps || "N/A"}`,
+      `Remarks: ${incident.remarks || "None"}`,
+      `Crash Report ID: ${report.id} (${report.reportNumber})`,
+      `Ingest Trace: ${incident.ingestTraceId || report.ingestTraceId || "N/A"}`,
+    ].join("\n");
+
+    // Create/update contact in ALL active accounts via the upsert service
     const accountIds = await getActiveAccountIds();
     for (const accountId of accountIds) {
       try {
-        await storage.createContact({ subAccountId: accountId, ...contactData });
+        await upsertContact({
+          subAccountId: accountId,
+          firstName,
+          lastName,
+          phone,
+          email,
+          source: CONTACT_SOURCES.CRASH,
+          channel: "sentinel",
+          leadVertical: "personal_injury",
+          leadSubtype: "crash",
+          county: incident.county ?? null,
+          sourceExternalId: `${sourceExternalId}:acct${accountId}`,
+          rawSourceType: "flhsmv_hsmv_cad",
+          tags: baseTags,
+          notes: sharedNotes,
+          address: incident.location,
+          city: incident.county ? `${incident.county} County` : null,
+          state: "FL",
+          lat: incident.lat ?? null,
+          lng: incident.lng ?? null,
+          skipTraceStatus: skipTraceStatusResult === "not_attempted"
+            ? "not_attempted"
+            : skipTraceStatusResult === "matched" ? "matched"
+            : skipTraceStatusResult === "no_match" ? "no_match"
+            : "failed",
+          enrichmentProvider: enrichmentAttemptedAt ? "batchdata" : null,
+          enrichmentAttemptedAt: enrichmentAttemptedAt ?? null,
+          enrichmentCompletedAt: enrichmentCompletedAt ?? null,
+        });
       } catch (createErr: any) {
-        // If contact already exists in this account, that's fine
-        if (!createErr.message?.includes("unique") && !createErr.message?.includes("duplicate")) {
-          console.warn(`[CRASH-INGEST] Contact creation failed for account ${accountId}:`, createErr.message);
-        }
+        console.warn(`[CRASH-INGEST] Contact upsert failed for account ${accountId}:`, createErr.message);
       }
     }
 

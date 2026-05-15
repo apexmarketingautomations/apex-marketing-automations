@@ -4,7 +4,7 @@ import { subAccounts } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { storage } from "../storage";
 
-const APEX_PARENT_ACCOUNT_ID = 13;
+const APEX_PARENT_ACCOUNT_ID = 3;
 const DEFAULT_ACCOUNT_ID = APEX_PARENT_ACCOUNT_ID;
 
 declare global {

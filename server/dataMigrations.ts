@@ -78,6 +78,78 @@ const MIGRATIONS: DataMigration[] = [
         ADD COLUMN IF NOT EXISTS services JSONB DEFAULT '[]'::jsonb;
     `,
   },
+  {
+    name: "2026-05-14-contact-lifecycle-fields",
+    sql: `
+      -- Phase 5: Contact lifecycle + skip-trace structured status columns
+      -- All additive-only — safe to run on live tables
+
+      ALTER TABLE contacts
+        ADD COLUMN IF NOT EXISTS identity_status       TEXT NOT NULL DEFAULT 'unidentified',
+        ADD COLUMN IF NOT EXISTS skip_trace_status     TEXT NOT NULL DEFAULT 'not_attempted',
+        ADD COLUMN IF NOT EXISTS enrichment_provider   TEXT,
+        ADD COLUMN IF NOT EXISTS enrichment_attempted_at   TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS enrichment_completed_at   TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS enrichment_confidence REAL,
+        ADD COLUMN IF NOT EXISTS source_external_id    TEXT,
+        ADD COLUMN IF NOT EXISTS raw_source_type       TEXT,
+        ADD COLUMN IF NOT EXISTS lead_vertical         TEXT,
+        ADD COLUMN IF NOT EXISTS lead_subtype          TEXT,
+        ADD COLUMN IF NOT EXISTS normalized_phone      TEXT,
+        ADD COLUMN IF NOT EXISTS normalized_email      TEXT,
+        ADD COLUMN IF NOT EXISTS county                TEXT,
+        ADD COLUMN IF NOT EXISTS contact_quality_score REAL;
+
+      -- Indexes for efficient filtering on the new status fields
+      CREATE INDEX IF NOT EXISTS idx_contacts_sub_skip_status
+        ON contacts (sub_account_id, skip_trace_status);
+
+      CREATE INDEX IF NOT EXISTS idx_contacts_sub_identity_status
+        ON contacts (sub_account_id, identity_status);
+
+      CREATE INDEX IF NOT EXISTS idx_contacts_source_external_id
+        ON contacts (sub_account_id, source_external_id)
+        WHERE source_external_id IS NOT NULL;
+
+      CREATE INDEX IF NOT EXISTS idx_contacts_normalized_phone
+        ON contacts (sub_account_id, normalized_phone)
+        WHERE normalized_phone IS NOT NULL;
+
+      CREATE INDEX IF NOT EXISTS idx_contacts_lead_vertical
+        ON contacts (sub_account_id, lead_vertical)
+        WHERE lead_vertical IS NOT NULL;
+
+      -- Backfill: any contact that already has the "skip-traced" tag gets
+      -- its skip_trace_status set to 'attempted' so existing data is valid.
+      -- Contacts with "has-phone" after skip-trace become 'matched';
+      -- contacts with "no-phone" after skip-trace become 'no_match'.
+      UPDATE contacts
+      SET skip_trace_status = CASE
+            WHEN 'skip-traced' = ANY(tags) AND 'has-phone' = ANY(tags) THEN 'matched'
+            WHEN 'skip-traced' = ANY(tags) AND 'no-phone'  = ANY(tags) THEN 'no_match'
+            WHEN 'skip-traced' = ANY(tags) THEN 'attempted'
+            ELSE 'not_attempted'
+          END
+      WHERE skip_trace_status = 'not_attempted';
+
+      -- Backfill identity_status: contacts with a real phone or real email
+      -- (and not a placeholder first_name) are marked 'verified'.
+      UPDATE contacts
+      SET identity_status = 'verified'
+      WHERE (phone IS NOT NULL AND phone != '')
+         OR (email IS NOT NULL AND email != '')
+      AND first_name NOT LIKE 'Crash Lead%'
+      AND first_name NOT LIKE 'Unidentified%'
+      AND identity_status = 'unidentified';
+
+      -- Backfill normalized_phone from existing phone values (digits only)
+      UPDATE contacts
+      SET normalized_phone = regexp_replace(phone, '[^0-9]', '', 'g')
+      WHERE phone IS NOT NULL
+        AND phone != ''
+        AND normalized_phone IS NULL;
+    `,
+  },
 ];
 
 export async function runDataMigrations(): Promise<void> {
