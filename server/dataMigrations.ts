@@ -150,6 +150,13 @@ const MIGRATIONS: DataMigration[] = [
         AND normalized_phone IS NULL;
     `,
   },
+  {
+    name: "2026-05-14-users-role-column",
+    sql: `
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'member';
+    `,
+  },
 ];
 
 export async function runDataMigrations(): Promise<void> {
