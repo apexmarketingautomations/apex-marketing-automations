@@ -26,6 +26,7 @@ import crypto   from "crypto";
 import { db }   from "./db";
 import { legalSignals, legalLeads } from "@shared/schema";
 import { eq }   from "drizzle-orm";
+import { resolveBatchDataKey } from "./vendorConfig";
 
 const PIPELINE_TAG  = "HILLS-RECORDS";
 const BASE_URL      = "https://publicrec.hillsclerk.com/OfficialRecords/DailyIndexes";
@@ -78,10 +79,7 @@ const ENTITY_SUFFIXES = [
 ];
 
 // ── Utility helpers ───────────────────────────────────────────────────────────
-
-function resolveBatchDataKey(): string | null {
-  return process.env.BATCHDATA_API_KEY || process.env.BATCH_DATA || process.env.BATCHDATA_KEY || null;
-}
+// BatchData key resolved via vendorConfig — single source of truth for all aliases.
 
 /** sha256(county|instrumentNumber) — used as dedup key */
 function buildSignalHash(instrumentNumber: string): string {

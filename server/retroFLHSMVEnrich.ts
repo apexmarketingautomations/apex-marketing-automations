@@ -12,15 +12,16 @@
  *
  * Safety rules:
  *   1. Only processes reports with officialReportNumber populated
- *   2. Skips reports already tagged "flhsmv-enriched" on their contact
+ *   2. Skips reports whose linked contacts are already tagged "flhsmv-enriched"
+ *      — checked BEFORE calling ScrapingBee so no credits are burned on re-runs
  *   3. Rate-limited: 3 requests/batch, 4-second delay between batches
  *   4. Requires SCRAPINGBEE_API_KEY — exits gracefully if absent
  *   5. Idempotent: enrichCrashLeadContacts upserts, never duplicates
  */
 
 import { db } from "./db";
-import { crashReports } from "@shared/schema";
-import { isNotNull, eq, and } from "drizzle-orm";
+import { crashReports, contacts } from "@shared/schema";
+import { isNotNull, eq, and, sql } from "drizzle-orm";
 import { fetchReportDetail, enrichCrashLeadContacts } from "./crashReportWorker";
 
 const BATCH_SIZE = 3;
@@ -32,10 +33,40 @@ export interface RetroEnrichStats {
   noData: number;
   failed: number;
   skipped: number;
+  /** Contacts already enriched — ScrapingBee credits NOT burned */
+  alreadyEnriched: number;
+  /** Reports with a real driver name in FLHSMV but no matching contacts in DB */
+  noContacts: number;
 }
 
 async function sleep(ms: number) {
   return new Promise(r => setTimeout(r, ms));
+}
+
+/**
+ * Returns true if ALL contacts linked to this crash report are already tagged
+ * "flhsmv-enriched". Called BEFORE fetchReportDetail so credits aren't wasted.
+ */
+async function isAlreadyEnriched(
+  reportNumber: string,
+  subAccountId: number | null,
+): Promise<boolean> {
+  const sourcePrefix = `crash:${reportNumber}:`;
+
+  const rows = await db
+    .select({ id: contacts.id, tags: contacts.tags, subAccountId: contacts.subAccountId })
+    .from(contacts)
+    .where(sql`source_external_id LIKE ${sourcePrefix + "%"}`);
+
+  // Narrow to sub-account if known
+  const scoped = subAccountId != null
+    ? rows.filter(c => c.subAccountId === subAccountId)
+    : rows;
+
+  if (scoped.length === 0) return false; // No contacts yet — let enrichment run and create them
+
+  // All must be tagged; if even one is missing the tag we allow the run
+  return scoped.every(c => (c.tags ?? []).includes("flhsmv-enriched"));
 }
 
 export async function runRetroFLHSMVEnrich(options: {
@@ -45,23 +76,25 @@ export async function runRetroFLHSMVEnrich(options: {
   const SCRAPINGBEE_API_KEY = process.env.SCRAPINGBEE_API_KEY;
   if (!SCRAPINGBEE_API_KEY) {
     console.error("[RETRO-FLHSMV] ⚠️  SCRAPINGBEE_API_KEY not set — cannot fetch FLHSMV detail, exiting");
-    return { total: 0, enriched: 0, noData: 0, failed: 0, skipped: 0 };
+    return { total: 0, enriched: 0, noData: 0, failed: 0, skipped: 0, alreadyEnriched: 0, noContacts: 0 };
   }
 
   const { dryRun = false, limit = 500 } = options;
 
-  const stats: RetroEnrichStats = { total: 0, enriched: 0, noData: 0, failed: 0, skipped: 0 };
+  const stats: RetroEnrichStats = {
+    total: 0, enriched: 0, noData: 0, failed: 0, skipped: 0, alreadyEnriched: 0, noContacts: 0,
+  };
 
-  // Find crash reports that have an official report number but haven't been enriched yet.
-  // We use processedToLead = false OR data->>'flhsmvEnrichedAt' IS NULL as the "needs enrichment" signal.
-  // The enrichCrashLeadContacts function is idempotent via upsertContact, so over-running is safe.
+  // Find crash reports that have an official report number and are COMPLETE.
+  // The enrichCrashLeadContacts function is idempotent via upsertContact, so
+  // the real guard is the "flhsmv-enriched" tag pre-flight check below.
   const rows = await db
     .select({
-      id: crashReports.id,
-      reportNumber: crashReports.reportNumber,
+      id:                   crashReports.id,
+      reportNumber:         crashReports.reportNumber,
       officialReportNumber: crashReports.officialReportNumber,
-      subAccountId: crashReports.subAccountId,
-      data: crashReports.data,
+      subAccountId:         crashReports.subAccountId,
+      data:                 crashReports.data,
     })
     .from(crashReports)
     .where(
@@ -86,6 +119,17 @@ export async function runRetroFLHSMVEnrich(options: {
     await Promise.allSettled(batch.map(async (row) => {
       try {
         const officialNumber = row.officialReportNumber!;
+        const subAccountId   = row.subAccountId ?? null;
+
+        // ── Pre-flight tag check ──────────────────────────────────────────
+        // Check whether the linked contacts are already tagged "flhsmv-enriched"
+        // BEFORE hitting ScrapingBee, so we don't burn credits on re-runs.
+        const alreadyDone = await isAlreadyEnriched(row.reportNumber, subAccountId);
+        if (alreadyDone) {
+          console.log(`[RETRO-FLHSMV] ↷ Already enriched — skipping ${officialNumber}`);
+          stats.alreadyEnriched++;
+          return;
+        }
 
         // Fetch FLHSMV detail through ScrapingBee
         const result = await fetchReportDetail(officialNumber);
@@ -107,15 +151,29 @@ export async function runRetroFLHSMVEnrich(options: {
           return;
         }
 
-        await enrichCrashLeadContacts({
+        const enrichResult = await enrichCrashLeadContacts({
           sentinelReportNumber: row.reportNumber,
-          subAccountId: row.subAccountId ?? null,
+          subAccountId,
           detailData,
           officialReportNumber: officialNumber,
         });
 
-        console.log(`[RETRO-FLHSMV] ✓ Enriched ${officialNumber} — driver: ${driver.Name}`);
+        if (enrichResult.noContacts) {
+          console.log(`[RETRO-FLHSMV] ⚠ No contacts found for ${officialNumber} (driver: ${driver.Name})`);
+          stats.noContacts++;
+          return;
+        }
+
+        console.log(
+          `[RETRO-FLHSMV] ✓ Enriched ${officialNumber} — driver: ${driver.Name} ` +
+          `(contacts enriched=${enrichResult.enriched} already-done=${enrichResult.skipped})`
+        );
         stats.enriched++;
+
+        // Count any contacts that were already done inside this batch (possible
+        // when a report has multiple contacts and some were already enriched)
+        stats.alreadyEnriched += enrichResult.skipped;
+
       } catch (err: any) {
         console.warn(`[RETRO-FLHSMV] Failed report ${row.officialReportNumber}: ${err.message}`);
         stats.failed++;
@@ -125,7 +183,8 @@ export async function runRetroFLHSMVEnrich(options: {
     const pct = Math.round(((i + batch.length) / rows.length) * 100);
     console.log(
       `[RETRO-FLHSMV] Progress: ${i + batch.length}/${rows.length} (${pct}%) ` +
-      `enriched=${stats.enriched} noData=${stats.noData} failed=${stats.failed}`
+      `enriched=${stats.enriched} alreadyEnriched=${stats.alreadyEnriched} ` +
+      `noData=${stats.noData} noContacts=${stats.noContacts} failed=${stats.failed}`
     );
 
     if (i + BATCH_SIZE < rows.length) await sleep(BATCH_DELAY_MS);

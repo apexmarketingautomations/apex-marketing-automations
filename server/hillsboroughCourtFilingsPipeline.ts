@@ -38,6 +38,7 @@ import crypto from "crypto";
 import { db }  from "./db";
 import { legalSignals, legalLeads } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { resolveBatchDataKey } from "./vendorConfig";
 
 const PIPELINE_TAG = "HILLS-FILINGS";
 const COUNTY       = "HILLSBOROUGH";
@@ -182,10 +183,7 @@ function getCriminalConfig(caseType: string): CriminalCaseConfig {
 const SKIP_CRIMINAL_TYPES = ["FUGITIVE", "ANIMAL", "CIVIL TRAFFIC", "COUNTY ORDINANCE"];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function resolveBatchDataKey(): string | null {
-  return process.env.BATCHDATA_API_KEY || process.env.BATCH_DATA || process.env.BATCHDATA_KEY || null;
-}
+// BatchData key resolved via vendorConfig — single source of truth for all aliases.
 
 function toFileDate(d: Date): string {
   return d.toISOString().slice(0, 10).replace(/-/g, "");

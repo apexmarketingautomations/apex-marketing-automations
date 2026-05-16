@@ -27,10 +27,12 @@ let _batchDataLogged = false;
 /**
  * Returns the BatchData API key, or null if not configured.
  * Logs configuration status once per process (boolean only, never the value).
+ * Canonical env var: BATCHDATA_API_KEY — also accepts BATCHDATA_KEY / BATCH_DATA for legacy envs.
  */
 export function resolveBatchDataKey(): string | null {
   const key = (
     process.env.BATCHDATA_API_KEY ||
+    process.env.BATCHDATA_KEY     ||
     process.env.BATCH_DATA        ||
     ""
   ).trim() || null;
@@ -132,4 +134,95 @@ export function resolveCourtListenerToken(): string | null {
     }
   }
   return key;
+}
+
+// ── ScrapingBee ───────────────────────────────────────────────────────────────
+// Required for FLHSMV crash detail lookups (Akamai bypass).
+// Canonical env var: SCRAPINGBEE_API_KEY
+
+let _scrapingBeeLogged = false;
+
+/**
+ * Returns the ScrapingBee API key, or null if not configured.
+ * When null, FLHSMV crash detail fetching is unavailable.
+ */
+export function resolveScrapingBeeKey(): string | null {
+  const key = (process.env.SCRAPINGBEE_API_KEY || "").trim() || null;
+
+  if (!_scrapingBeeLogged) {
+    _scrapingBeeLogged = true;
+    if (key) {
+      console.log("[VENDOR] ScrapingBee configured: true (SCRAPINGBEE_API_KEY)");
+    } else {
+      console.error(
+        "[VENDOR] ScrapingBee configured: false — " +
+        "set SCRAPINGBEE_API_KEY in Railway env vars. FLHSMV crash detail lookups will not run."
+      );
+    }
+  }
+  return key;
+}
+
+// ── Nimble ────────────────────────────────────────────────────────────────────
+// Pipeline API + residential proxy.
+// Canonical env vars: NIMBLE_API_USERNAME / NIMBLE_API_PASSWORD (Pipeline API)
+//                     NIMBLE_PROXY_USERNAME / NIMBLE_PROXY_PASSWORD (proxy)
+
+let _nimbleLogged = false;
+
+export interface NimbleCredentials {
+  apiUsername: string;
+  apiPassword: string;
+  proxyUsername: string | null;
+  proxyPassword: string | null;
+}
+
+/**
+ * Returns Nimble credentials from env vars, or null if Pipeline API is unconfigured.
+ * Logs status once per process.
+ */
+export function resolveNimbleCredentials(): NimbleCredentials | null {
+  const apiUsername = (process.env.NIMBLE_API_USERNAME || "").trim() || null;
+  const apiPassword = (process.env.NIMBLE_API_PASSWORD || "").trim() || null;
+  const proxyUsername = (process.env.NIMBLE_PROXY_USERNAME || "").trim() || null;
+  const proxyPassword = (process.env.NIMBLE_PROXY_PASSWORD || "").trim() || null;
+
+  if (!_nimbleLogged) {
+    _nimbleLogged = true;
+    const apiOk = !!(apiUsername && apiPassword);
+    const proxyOk = !!(proxyUsername && proxyPassword);
+    if (apiOk) {
+      console.log(`[VENDOR] Nimble Pipeline API configured: true | proxy: ${proxyOk}`);
+    } else {
+      console.error(
+        "[VENDOR] Nimble configured: false — " +
+        "set NIMBLE_API_USERNAME + NIMBLE_API_PASSWORD in Railway. DHSMV plate lookups will not run."
+      );
+    }
+  }
+
+  if (!apiUsername || !apiPassword) return null;
+  return { apiUsername, apiPassword, proxyUsername, proxyPassword };
+}
+
+// ── Startup warnings ──────────────────────────────────────────────────────────
+// Call once at process startup to emit a consolidated configuration summary.
+// Non-fatal — warns but never throws.
+
+export function emitVendorStartupWarnings(): void {
+  const missing: string[] = [];
+
+  if (!resolveBatchDataKey()) missing.push("BATCHDATA_API_KEY (skip-trace disabled)");
+  if (!resolveScrapingBeeKey()) missing.push("SCRAPINGBEE_API_KEY (FLHSMV detail lookups disabled)");
+  if (!resolveNimbleCredentials()) missing.push("NIMBLE_API_USERNAME + NIMBLE_API_PASSWORD (DHSMV plate lookups disabled)");
+  if (!resolveApifyToken()) missing.push("APIFY_API_KEY (Apify scrapers disabled)");
+
+  if (missing.length > 0) {
+    console.warn(
+      `[VENDOR] ⚠️  ${missing.length} vendor integration(s) unconfigured:\n` +
+      missing.map(m => `  · ${m}`).join("\n")
+    );
+  } else {
+    console.log("[VENDOR] ✓ All vendor integrations configured");
+  }
 }
