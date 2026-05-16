@@ -1162,7 +1162,7 @@ export function startCrashReportWorker(): void {
 
 export interface EnrichCrashLeadContactsParams {
   sentinelReportNumber: string;
-  subAccountId: number | null;
+  subAccountId: number;
   detailData: FLHSMVReportData;
   officialReportNumber: string;
 }
@@ -1177,6 +1177,12 @@ export async function enrichCrashLeadContacts(
   params: EnrichCrashLeadContactsParams,
 ): Promise<EnrichCrashLeadContactsResult> {
   const { sentinelReportNumber, subAccountId, detailData, officialReportNumber } = params;
+
+  // SECURITY: a null subAccountId would fan out enrichment to ALL tenants — reject immediately.
+  if (subAccountId == null) {
+    console.error(`[CRASH-WORKER] enrichCrashLeadContacts called with null subAccountId for report ${sentinelReportNumber} — refusing to enrich`);
+    return { enriched: 0, skipped: 0, noContacts: false };
+  }
 
   const vehicle = detailData.Vehicles?.[0];
   const driver  = vehicle?.Driver;
@@ -1279,7 +1285,9 @@ export async function enrichCrashLeadContacts(
   // Find all contacts linked to this sentinel crash report.
   // sourceExternalId format (set in crashIngestPipeline): crash:<reportNumber>:acct<accountId>
   const sourcePrefix = `crash:${sentinelReportNumber}:`;
-  const rows = await db
+  // SECURITY: always scope the query to the verified subAccountId — never fan out cross-tenant.
+  // subAccountId is guaranteed non-null by the guard above.
+  const targets = await db
     .select({
       id:               contacts.id,
       subAccountId:     contacts.subAccountId,
@@ -1288,12 +1296,7 @@ export async function enrichCrashLeadContacts(
       firstName:        contacts.firstName,
     })
     .from(contacts)
-    .where(sql`source_external_id LIKE ${sourcePrefix + "%"}`);
-
-  // Narrow to the specific sub-account when provided
-  const targets = subAccountId != null
-    ? rows.filter(c => c.subAccountId === subAccountId)
-    : rows;
+    .where(sql`source_external_id LIKE ${sourcePrefix + "%"} AND sub_account_id = ${subAccountId}`);
 
   if (targets.length === 0) {
     return { enriched: 0, skipped: 0, noContacts: true };
