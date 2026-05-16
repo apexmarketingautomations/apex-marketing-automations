@@ -90,10 +90,13 @@ interface CrashReportStoredData {
 interface CrashReportDetail {
   id: number;
   reportNumber: string;
+  officialReportNumber?: string | null;
   status: string;
   requesterRole: string | null;
   reason: string | null;
+  retryCount?: number;
   data: CrashReportStoredData | CrashReportData | null;
+  rawData?: Record<string, any> | null;
   errorLog: string | null;
   createdAt: string;
   updatedAt: string;

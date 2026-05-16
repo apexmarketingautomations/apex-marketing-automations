@@ -533,15 +533,22 @@ function LeadCommandCenter({ accountId, isAdmin, onSkipTrace, skipTraceRunning }
     return p.toString();
   }, [filters]);
 
-  const { data, isLoading, refetch } = useQuery<any>({
+  interface ContactsResponse {
+    items: any[];
+    data: any[];
+    total: number;
+    totalPages: number;
+    metrics: Record<string, number>;
+  }
+
+  const { data, isLoading, refetch } = useQuery<ContactsResponse>({
     queryKey: ["/api/contacts", accountId, qp],
     queryFn: async () => {
       const res = await fetch(`/api/contacts/${accountId}?${qp}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load leads");
-      return res.json();
+      return res.json() as Promise<ContactsResponse>;
     },
     enabled: !!accountId,
-    keepPreviousData: true,
   });
 
   const items: any[] = data?.items ?? data?.data ?? [];
