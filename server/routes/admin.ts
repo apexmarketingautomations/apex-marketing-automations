@@ -530,4 +530,143 @@ export function registerAdminRoutes(app: Express) {
     const report = await runPerformanceAudit();
     return res.json(report);
   }));
+
+  /**
+   * GET /api/admin/dlq
+   * Inspect dead letter queue jobs with failure context.
+   */
+  app.get("/api/admin/dlq", asyncHandler(async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "Admin access required" });
+    const limit = Math.min(Number(req.query.limit) || 100, 500);
+    const { inspectDLQ, getDLQStats } = await import("../workers/dlqReplayEngine");
+    const [jobs, stats] = await Promise.all([inspectDLQ(limit), getDLQStats()]);
+    return res.json({ stats, jobs });
+  }));
+
+  /**
+   * POST /api/admin/dlq/replay
+   * Replay DLQ jobs: { jobId } for single, { originQueue, maxAge, limit } for batch.
+   */
+  app.post("/api/admin/dlq/replay", asyncHandler(async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "Admin access required" });
+    const { replayJob, replayAll } = await import("../workers/dlqReplayEngine");
+    if (req.body.jobId) {
+      const result = await replayJob(String(req.body.jobId));
+      return res.json(result);
+    }
+    const { originQueue, maxAge, limit } = req.body;
+    const result = await replayAll({ originQueue, maxAge: maxAge ? Number(maxAge) : undefined, limit: limit ? Number(limit) : 100 });
+    return res.json(result);
+  }));
+
+  /**
+   * POST /api/admin/dlq/purge
+   * Remove DLQ entries permanently: { jobIds: string[] }
+   */
+  app.post("/api/admin/dlq/purge", asyncHandler(async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "Admin access required" });
+    const { purgeDLQ } = await import("../workers/dlqReplayEngine");
+    const jobIds = Array.isArray(req.body.jobIds) ? req.body.jobIds.map(String) : [];
+    if (jobIds.length === 0) return res.status(400).json({ error: "jobIds array required" });
+    const result = await purgeDLQ(jobIds);
+    return res.json(result);
+  }));
+
+  /**
+   * POST /api/admin/reconciliation/repair
+   * Trigger signal reconciliation auto-repair. Pass { dryRun: true } to preview.
+   */
+  app.post("/api/admin/reconciliation/repair", asyncHandler(async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "Admin access required" });
+    const { runReconciliationRepair } = await import("../workers/signalReconciliationWorker");
+    const result = await runReconciliationRepair("admin-api", req.body.dryRun === true);
+    return res.json(result);
+  }));
+
+  /**
+   * GET /api/admin/insurance-opportunities
+   * Insurance opportunity pipeline results (admin view — cross-tenant).
+   */
+  app.get("/api/admin/insurance-opportunities", asyncHandler(async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "Admin access required" });
+    const { getInsuranceOpportunities } = await import("../insuranceIntelligencePipeline");
+    const minScore = req.query.minScore ? Number(req.query.minScore) : 40;
+    const limit    = Math.min(Number(req.query.limit) || 100, 500);
+    const results  = await getInsuranceOpportunities({ minScore, limit, status: req.query.status as string });
+    return res.json({ opportunities: results, count: results.length });
+  }));
+
+  /**
+   * POST /api/admin/insurance-opportunities/process
+   * Trigger crash signal → insurance opportunity pipeline.
+   */
+  app.post("/api/admin/insurance-opportunities/process", asyncHandler(async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "Admin access required" });
+    const { processCrashInsuranceSignals } = await import("../insuranceIntelligencePipeline");
+    const limit = Math.min(Number(req.body.limit) || 100, 1000);
+    const result = await processCrashInsuranceSignals(limit);
+    return res.json(result);
+  }));
+
+  /**
+   * GET /api/admin/compliance/violations
+   * TCPA violation log (admin view).
+   */
+  app.get("/api/admin/compliance/violations", asyncHandler(async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "Admin access required" });
+    const { getViolationLog, ensureComplianceTables } = await import("../compliance/tcpaGuard");
+    await ensureComplianceTables();
+    const subAccountId = req.query.subAccountId ? Number(req.query.subAccountId) : undefined;
+    const result = await getViolationLog(subAccountId ?? 0, Number(req.query.limit) || 100);
+    return res.json({ violations: result, count: result.length });
+  }));
+
+  /**
+   * POST /api/admin/compliance/opt-out
+   * Manually register a DNC opt-out.
+   */
+  app.post("/api/admin/compliance/opt-out", asyncHandler(async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "Admin access required" });
+    const { phone, source } = req.body;
+    if (!phone) return res.status(400).json({ error: "phone required" });
+    const { recordOptOut } = await import("../compliance/tcpaGuard");
+    await recordOptOut(String(phone), source ?? "manual_admin");
+    return res.json({ ok: true });
+  }));
+
+  /**
+   * POST /api/admin/retention/run
+   * Trigger data retention purge. Pass { dryRun: true } to count-only.
+   */
+  app.post("/api/admin/retention/run", asyncHandler(async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "Admin access required" });
+    const { runDataRetention } = await import("../compliance/dataRetention");
+    const result = await runDataRetention(req.body.subAccountId ? Number(req.body.subAccountId) : undefined);
+    return res.json(result);
+  }));
+
+  /**
+   * POST /api/admin/correlation/backfill
+   * Backfill cross-signal correlation for existing legal_signals.
+   */
+  app.post("/api/admin/correlation/backfill", asyncHandler(async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "Admin access required" });
+    const { backfillCorrelation } = await import("../intelligence/correlationWorker");
+    const limit = Math.min(Number(req.body.limit) || 500, 2000);
+    const result = await backfillCorrelation(limit);
+    return res.json(result);
+  }));
+
+  /**
+   * POST /api/admin/webhooks/endpoints
+   * Register a webhook delivery endpoint for a tenant + vertical.
+   */
+  app.post("/api/admin/webhooks/endpoints", asyncHandler(async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "Admin access required" });
+    const { registerWebhookEndpoint } = await import("../routing/webhookDelivery");
+    const { subAccountId, vertical, url, secret, headers, maxRetries } = req.body;
+    if (!subAccountId || !vertical || !url) return res.status(400).json({ error: "subAccountId, vertical, url required" });
+    const result = await registerWebhookEndpoint({ subAccountId: Number(subAccountId), vertical, url, secret, headers, maxRetries });
+    return res.json(result);
+  }));
 }

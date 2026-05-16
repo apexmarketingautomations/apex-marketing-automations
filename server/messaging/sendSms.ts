@@ -97,6 +97,20 @@ export async function sendSms(args: SendSmsArgs): Promise<SendSmsResult> {
   const channel = args.channel || "sms";
   const traceId = args.traceId || randomUUID();
 
+  // 0. TCPA compliance gate — hard block before any outbound SMS
+  try {
+    const { checkTCPA } = await import("../compliance/tcpaGuard");
+    const tcpa = await checkTCPA({ subAccountId, phone: to, channel: "sms" });
+    if (!tcpa.allowed) {
+      const msg = `tcpa_blocked: ${tcpa.blockedReasons.join(", ")}`;
+      const rowId = await persistRow({
+        subAccountId, to, body, channel, status: "failed", threadId, traceId, errorMessage: msg,
+      });
+      emitMessageFailed({ subAccountId, channel, path, threadId, reason: "tcpa_violation", errorMessage: msg, metadata: { source, tcpaReasons: tcpa.blockedReasons, ...(args.metadata || {}) } });
+      return { ok: false, reason: "guard_violation", errorMessage: msg, messageRowId: rowId };
+    }
+  } catch { /* TCPA errors are non-fatal — log and proceed */ }
+
   // 1. Provider guard — throws SmsProviderViolationError if non-Twilio.
   try {
     await enforceSmsProvider("sms", "twilio", { subAccountId, phone: to, source });
