@@ -1142,6 +1142,71 @@ const MIGRATIONS: DataMigration[] = [
           AND incident_fingerprint IS NULL;
     `,
   },
+
+  {
+    name: "2026-05-16-phone-lineage-source-intelligence",
+    sql: `
+      -- Phone Lineage / Source Intelligence Preservation (2026-05-16)
+      -- Tracks where each contact's phone came from, how confident we are,
+      -- and when it was acquired. Enables the source_matched skip-trace gate
+      -- that prevents BatchData from re-purchasing already-acquired intelligence.
+
+      -- 1. Phone source — which system/feed provided this phone
+      --    Values: 'flhsmv' | 'dhsmv' | 'sheriff_booking' | 'court_filing'
+      --            | 'jail_booking' | 'batchdata' | 'google_places' | 'manual' | 'unknown'
+      ALTER TABLE contacts ADD COLUMN IF NOT EXISTS phone_source text;
+
+      -- 2. Phone confidence — how reliable is this phone number (0.0–1.0)
+      --    Scale: 0.95 (govt verified) → 0.90 (sheriff) → 0.85 (court/DHSMV)
+      --           → 0.72 (batchdata) → 0.50 (inferred) → 0.30 (unknown)
+      ALTER TABLE contacts ADD COLUMN IF NOT EXISTS phone_confidence real;
+
+      -- 3. Phone acquired at — when this phone was recorded
+      ALTER TABLE contacts ADD COLUMN IF NOT EXISTS phone_acquired_at timestamp;
+
+      -- 4. Index: find contacts with a specific phone source for reporting
+      CREATE INDEX IF NOT EXISTS idx_contacts_phone_source
+        ON contacts(phone_source)
+        WHERE phone_source IS NOT NULL;
+
+      -- 5. Backfill: tag existing contacts that have phones from BatchData enrichment
+      --    (skipTraceStatus='matched' + enrichmentProvider='batchdata' → phone_source='batchdata')
+      UPDATE contacts
+        SET phone_source     = 'batchdata',
+            phone_confidence = 0.72,
+            phone_acquired_at = COALESCE(enrichment_completed_at, updated_at, created_at)
+        WHERE phone IS NOT NULL
+          AND phone_source IS NULL
+          AND skip_trace_status = 'matched'
+          AND enrichment_provider = 'batchdata';
+
+      -- 6. Backfill: contacts with phone but unknown source → mark as unknown confidence
+      UPDATE contacts
+        SET phone_source     = 'unknown',
+            phone_confidence = 0.30,
+            phone_acquired_at = COALESCE(updated_at, created_at)
+        WHERE phone IS NOT NULL
+          AND phone_source IS NULL;
+
+      -- 7. Backfill: contacts that already have phones but skipTraceStatus='not_attempted'
+      --    — these had source phones but were never marked correctly.
+      --    Promote to source_matched so BatchData never re-traces them.
+      UPDATE contacts
+        SET skip_trace_status = 'source_matched'
+        WHERE phone IS NOT NULL
+          AND skip_trace_status = 'not_attempted';
+
+      -- 8. Backfill: contacts with phone AND skipTraceStatus='no_match'
+      --    — these were incorrectly marked no_match after skip trace ran on source phones.
+      --    Restore to source_matched (the skip trace should never have run).
+      UPDATE contacts
+        SET skip_trace_status = 'source_matched'
+        WHERE phone IS NOT NULL
+          AND phone_source IS NOT NULL
+          AND phone_source != 'batchdata'
+          AND skip_trace_status = 'no_match';
+    `,
+  },
 ];
 
 export async function runDataMigrations(): Promise<void> {

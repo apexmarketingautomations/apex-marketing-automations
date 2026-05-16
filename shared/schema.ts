@@ -675,6 +675,16 @@ export const contacts = pgTable("contacts", {
   // Normalized E.164-ish phone (digits only) for dedup
   normalizedPhone: text("normalized_phone"),
   normalizedEmail: text("normalized_email"),
+  // ── Phone lineage (2026-05-16) ──────────────────────────────────────────
+  // Tracks where the phone came from, how confident we are, and when acquired.
+  // phoneSource values: "flhsmv" | "dhsmv" | "sheriff_booking" | "court_filing"
+  //   | "jail_booking" | "batchdata" | "google_places" | "manual" | "unknown"
+  // phoneConfidence: use PHONE_CONFIDENCE constants in contactUpsertService.ts
+  //   0.95 (verified govt) → 0.90 (sheriff) → 0.85 (court) → 0.72 (batchdata)
+  //   → 0.50 (inferred) → 0.30 (unknown)
+  phoneSource:     text("phone_source"),
+  phoneConfidence: real("phone_confidence"),
+  phoneAcquiredAt: timestamp("phone_acquired_at"),
   county: text("county"),
   contactQualityScore: real("contact_quality_score"),
   // --- Contact routing fields (2026-05-15) ---

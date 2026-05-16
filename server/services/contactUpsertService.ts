@@ -47,7 +47,9 @@ export type SkipTraceStatus =
   | "attempted"
   | "matched"
   | "no_match"
-  | "failed";
+  | "failed"
+  /** Source already provided a valid phone — skip trace is unnecessary and must NOT run. */
+  | "source_matched";
 
 export interface ContactUpsertInput {
   subAccountId: number;
@@ -57,6 +59,19 @@ export interface ContactUpsertInput {
   lastName?: string | null;
   email?: string | null;
   phone?: string | null;
+  /**
+   * Where this phone came from. Use PHONE_CONFIDENCE source string values:
+   * "flhsmv" | "dhsmv" | "sheriff_booking" | "court_filing" | "jail_booking"
+   * "batchdata" | "google_places" | "manual" | "unknown"
+   *
+   * When set, the phone is treated as first-party source intelligence and
+   * skipTraceStatus auto-promotes to "source_matched" — BatchData will not run.
+   */
+  phoneSource?: string | null;
+  /** Confidence in this phone (0.0–1.0). Use PHONE_CONFIDENCE constants. */
+  phoneConfidence?: number | null;
+  /** When this phone was acquired. Defaults to now on write. */
+  phoneAcquiredAt?: Date | null;
   company?: string | null;
 
   // Classification
@@ -218,6 +233,35 @@ export const ADDRESS_CONFIDENCE = {
 } as const;
 
 /**
+ * Phone confidence scale — mirrors address confidence but for phone numbers.
+ *
+ * Priority for merge: higher confidence always wins.
+ * BatchData (0.72) must NEVER overwrite a government-source phone (0.85+).
+ *
+ * Example phoneSource values:
+ *   "flhsmv" | "dhsmv" | "sheriff_booking" | "court_filing" | "jail_booking"
+ *   "batchdata" | "google_places" | "manual" | "unknown"
+ */
+export const PHONE_CONFIDENCE = {
+  /** FL government agency verified (FLHSMV, DHSMV direct) */
+  VERIFIED_GOVERNMENT: 0.95,
+  /** Sheriff booking record — directly from booking form */
+  SHERIFF_BOOKING:     0.90,
+  /** Court filing — party contact info on official record */
+  COURT_FILING:        0.85,
+  /** DHSMV registration — vehicle owner phone on file */
+  REGISTRATION:        0.85,
+  /** BatchData skip-trace result */
+  BATCHDATA:           0.72,
+  /** Google Places — business phone from Maps */
+  GOOGLE_PLACES:       0.70,
+  /** Inferred / probabilistic match */
+  INFERRED:            0.50,
+  /** Source unknown or not specified */
+  UNKNOWN:             0.30,
+} as const;
+
+/**
  * Returns true if the given address string looks like a highway reference,
  * not a residential or mailing address. These should never be skip-traced
  * or used as residential intelligence.
@@ -323,13 +367,20 @@ export async function upsertContact(input: ContactUpsertInput): Promise<ContactU
     sourceExternalId: sourceExternalId ?? null,
     rawSourceType: input.rawSourceType ?? null,
     identityStatus,
-    skipTraceStatus: input.skipTraceStatus ?? "not_attempted",
+    // Auto-promote to source_matched when a first-party source provides a phone.
+    // This prevents retroSkipTrace and enrichmentWorker from spending BatchData
+    // credits re-acquiring intelligence already in hand.
+    skipTraceStatus: input.skipTraceStatus ?? (input.phone ? "source_matched" : "not_attempted"),
     enrichmentProvider: input.enrichmentProvider ?? null,
     enrichmentAttemptedAt: input.enrichmentAttemptedAt ?? null,
     enrichmentCompletedAt: input.enrichmentCompletedAt ?? null,
     enrichmentConfidence: input.enrichmentConfidence ?? null,
     normalizedPhone: normPhone,
     normalizedEmail: normEmail,
+    // ── Phone lineage ───────────────────────────────────────────────────────
+    phoneSource:     input.phoneSource ?? null,
+    phoneConfidence: input.phoneConfidence ?? (input.phone ? PHONE_CONFIDENCE.UNKNOWN : null),
+    phoneAcquiredAt: input.phone ? (input.phoneAcquiredAt ?? new Date()) : null,
     contactQualityScore: input.contactQualityScore ?? null,
     sourcePipeline: input.sourcePipeline ?? null,
     leadType: input.leadType ?? null,
@@ -457,10 +508,18 @@ async function mergeContact(
     if (input.lastName !== undefined) patch.lastName = input.lastName;
   }
 
-  // Phone: only overwrite if existing is blank
-  if (input.phone && !existing.phone) {
+  // Phone: upgrade by confidence — higher-confidence source always wins.
+  // Government / sheriff source (0.85–0.95) beats BatchData (0.72).
+  // Never overwrite a higher-confidence phone with a lower-confidence one.
+  // If existing phone has no confidence recorded, treat as UNKNOWN (0.30).
+  const incomingPhoneConf = input.phoneConfidence ?? (input.phone ? PHONE_CONFIDENCE.UNKNOWN : 0);
+  const existingPhoneConf = (existing as any).phoneConfidence ?? (existing.phone ? PHONE_CONFIDENCE.UNKNOWN : 0);
+  if (input.phone && (incomingPhoneConf > existingPhoneConf || !existing.phone)) {
     patch.phone = input.phone;
     if (normPhone) patch.normalizedPhone = normPhone;
+    if (input.phoneSource) (patch as any).phoneSource = input.phoneSource;
+    if (input.phoneConfidence !== undefined) (patch as any).phoneConfidence = input.phoneConfidence;
+    (patch as any).phoneAcquiredAt = input.phoneAcquiredAt ?? new Date();
   }
 
   // Email: only overwrite if existing is blank
@@ -492,7 +551,9 @@ async function mergeContact(
   // Enrichment fields: only upgrade (never downgrade)
   if (input.skipTraceStatus) {
     const statusRank: Record<string, number> = {
-      not_attempted: 0, pending: 1, attempted: 2, failed: 2, no_match: 3, matched: 4,
+      // source_matched (5) is the highest rank — once a source provides a phone,
+      // BatchData results must never overwrite that status back to "no_match".
+      not_attempted: 0, pending: 1, attempted: 2, failed: 2, no_match: 3, matched: 4, source_matched: 5,
     };
     const incomingRank = statusRank[input.skipTraceStatus] ?? 0;
     const existingRank = statusRank[existing.skipTraceStatus ?? "not_attempted"] ?? 0;

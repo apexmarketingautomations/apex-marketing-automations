@@ -77,9 +77,23 @@ async function handleSkipTrace(job: Job<EnrichmentJobData>): Promise<{ enriched:
   const [contact] = await db.select().from(contacts).where(eq(contacts.id, contactId)).limit(1);
   if (!contact) throw new Error(`Contact ${contactId} not found`);
 
-  // Idempotency: skip if already enriched (unless forced)
+  // Idempotency: skip if already enriched via BatchData (unless forced)
   if (!force && contact.skipTraceStatus === "matched") {
     console.log(`[${WORKER_TAG}] Contact ${contactId} already skip-traced — skipping`);
+    return { enriched: false };
+  }
+
+  // SOURCE INTELLIGENCE GUARD — never run BatchData when source already provided a phone.
+  // If a first-party source (sheriff, FLHSMV, court) already gave us a phone,
+  // running BatchData is wasted spend. Promote the status to source_matched and exit.
+  if (!force && contact.phone) {
+    const alreadySourceMatched = contact.skipTraceStatus === "source_matched";
+    if (!alreadySourceMatched) {
+      await db.update(contacts)
+        .set({ skipTraceStatus: "source_matched" })
+        .where(eq(contacts.id, contactId));
+      console.log(`[${WORKER_TAG}] Contact ${contactId} already has source phone — promoted to source_matched, skipping BatchData`);
+    }
     return { enriched: false };
   }
 

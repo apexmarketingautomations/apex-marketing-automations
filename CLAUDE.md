@@ -57,6 +57,21 @@ Signal → Incident → Enrichment → Contact → Opportunity
 - **Address confidence scale:** 0.95 (geocode verified) → 0.90 (DHSMV) → 0.85 (FLHSMV) →
   0.72 (BatchData) → 0.61 (probable) → 0.15 (incident scene) → 0.00 (unknown)
 
+- **SOURCE INTELLIGENCE PRESERVATION (v1, 2026-05-16) — MANDATORY RULES:**
+  1. First-party source intelligence (sheriff, FLHSMV, court, jail) is ALWAYS preserved.
+  2. BatchData is GAP FILLING only — never runs when `contact.phone` already exists.
+  3. `skipTraceStatus = "source_matched"` (rank 5) is auto-set by `upsertContact()` when `input.phone` is provided. This status is terminal — BatchData can never downgrade it.
+  4. `enrichmentWorker.ts::handleSkipTrace()` has a source intelligence guard: if `contact.phone` is set → promote to `source_matched`, return without calling BatchData.
+  5. `mergeContact()` phone merge is confidence-based: higher `phoneConfidence` wins. BatchData (0.72) NEVER overwrites sheriff (0.90) or FLHSMV (0.85–0.95).
+  6. Every pipeline that provides a phone MUST set `phoneSource` and `phoneConfidence`.
+  7. Never set `skipTraceStatus = "no_match"` or `"matched"` (from BatchData) on a contact whose phone came from a government/first-party source.
+  8. `retroSkipTrace.ts` already has `if (contact.phone) return false` — this is correct and must not be removed.
+  9. All new ingestion pipelines use `upsertContact()` (never raw `db.insert(contacts)`).
+  10. `PHONE_CONFIDENCE` constants in `contactUpsertService.ts` are the canonical source — use them.
+
+- **Phone confidence scale:** 0.95 (verified govt) → 0.90 (sheriff booking) → 0.85 (court filing / DHSMV) →
+  0.72 (BatchData) → 0.70 (Google Places) → 0.50 (inferred) → 0.30 (unknown)
+
 - **The operator brain is real.** `server/operator/` contains a persistent
   AI agent with memory, goals, planning, and autonomy. Don't treat it as
   dead code — it runs in production.

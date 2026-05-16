@@ -208,12 +208,27 @@ Stage 6 — Retro passes (admin-triggered or scheduled)
 - Be assigned to team members
 
 **Contact quality fields:**
-- `skipTraceStatus` — `not_attempted` / `pending` / `matched` / `no_match` / `failed`
+- `skipTraceStatus` — `not_attempted` / `pending` / `matched` / `no_match` / `failed` / **`source_matched`** (rank 5 — source already provided phone; BatchData must never run)
 - `enrichmentProvider` — which vendor produced the enrichment
 - `enrichmentConfidence` — 0–1 score
 - `contactQualityScore` — overall quality score
 - `identityStatus` — how confident we are this is a real, unique person
 - `exportEligible` — whether this contact is ready for attorney delivery
+- `phoneSource` — where the phone came from (`"flhsmv"` / `"sheriff_booking"` / `"court_filing"` / `"batchdata"` / `"google_places"` / `"unknown"`)
+- `phoneConfidence` — 0.0–1.0 phone confidence (mirrors address confidence scale)
+- `phoneAcquiredAt` — when the phone was recorded
+
+**Source Intelligence Hierarchy (MANDATORY — never violate):**
+
+First-party source intelligence is ALWAYS preserved and NEVER overwritten by lower-confidence enrichment:
+
+| Tier | Sources | Phone Confidence | Address Confidence |
+|------|---------|------------------|--------------------|
+| Primary | FLHSMV, DHSMV, Sheriff booking, Court filing, Jail records | 0.85–0.95 | 0.85–0.95 |
+| Secondary | BatchData skip-trace, Google Places | 0.70–0.72 | 0.72 |
+| Inferred | Probabilistic, unknown source | 0.30–0.50 | 0.00–0.61 |
+
+**BatchData is gap-filling only.** It must never run when `contact.phone` already exists (`source_matched` gate in `enrichmentWorker.ts`). The `upsertContact()` function auto-sets `skipTraceStatus = "source_matched"` whenever `input.phone` is provided, blocking all downstream skip-trace attempts.
 
 **UI surfaces:**
 - **Lead Command Center** (`accident-leads.tsx`) — multi-filter, stackable, sortable, paginated

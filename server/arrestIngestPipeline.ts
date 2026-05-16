@@ -32,10 +32,8 @@ import { db }            from "./db";
 import {
   legalSignals,
   legalLeads,
-  contacts,
   type InsertLegalSignal,
   type InsertLegalLead,
-  type InsertContact,
 }                        from "@shared/schema";
 import { eq }            from "drizzle-orm";
 import {
@@ -49,6 +47,7 @@ import {
   chargeProfileToVertical,
   type ChargeProfile,
 }                        from "./chargeNormalizer";
+import { upsertContact } from "./services/contactUpsertService";
 import { publishEventAsync, EVENT_TYPES } from "./eventBus";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -181,19 +180,38 @@ async function createContactFromSignal(
       || record.full_name.split(" ").slice(1).join(" ")
       || "Subject";
 
-    const contactData: InsertContact = {
+    // Build stable dedup key from county + booking_id (or name+date fallback)
+    // so the same booking never creates duplicate contacts across runs.
+    const sourceExternalId = record.booking_id
+      ? `arrest:${record.county.toLowerCase()}:${record.booking_id}`
+      : `arrest:${record.county.toLowerCase()}:${record.full_name.toLowerCase().replace(/\s+/g, "-")}:${record.booking_date || "unknown"}`;
+
+    // Parse city from city_state field ("Fort Myers, FL" → city="Fort Myers")
+    const cityRaw = record.city_state?.split(",")[0]?.trim() || null;
+
+    await upsertContact({
       subAccountId,
       firstName,
       lastName,
-      source:  "arrest_booking",
-      channel: "criminal_defense",
+      source:           "arrest_booking",
+      channel:          "criminal_defense",
+      sourceExternalId,
       tags,
       notes,
-      address: record.city_state || undefined,
-      state:   "FL",
-    };
+      // Booking records from public mugshot sites don't include residential addresses —
+      // only county of arrest. Store county as city reference only; do NOT put in
+      // contacts.address (that field is for residential data only per victim-centric rules).
+      city:  cityRaw ?? `${record.county} County`,
+      state: "FL",
+      // No phone available from public booking records (private data).
+      // skipTraceStatus auto-defaults to "not_attempted" when no phone present.
+      county:     record.county,
+      leadVertical: profile.dui_related ? "criminal_dui" : "criminal_defense",
+      leadSubtype:  profile.primaryCategory,
+      isPlaceholder: true,
+      viewClass:     "arrest_subject",
+    } as any);
 
-    await db.insert(contacts).values(contactData);
     import("./operator/apexIntelligence").then(({ reportOutcome }) =>
       reportOutcome({
         agentName:    "arrest-ingest",

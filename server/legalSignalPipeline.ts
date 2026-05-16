@@ -694,6 +694,11 @@ async function createContactFromLead(lead: any, subAccountId: number): Promise<v
       lastName,
       company: company || null,
       phone: lead.subjectPhone || null,
+      // First-party source intelligence: record WHERE the phone came from.
+      // skipTraceStatus auto-promotes to "source_matched" when phone is provided,
+      // preventing wasted BatchData spend on already-acquired intelligence.
+      phoneSource:     lead.subjectPhone ? (lead.signalType === "arrest" ? "sheriff_booking" : "court_filing") : null,
+      phoneConfidence: lead.subjectPhone ? 0.85 : null,
       source: canonicalSource,
       channel: classification.channel,
       leadVertical: lead.legalVertical || null,
@@ -709,11 +714,12 @@ async function createContactFromLead(lead: any, subAccountId: number): Promise<v
         lead.caseNumber ? `Case: ${lead.caseNumber}` : "",
         `County: ${lead.county}`,
         `Score: ${lead.score}/100 | Urgency: ${lead.urgency}`,
-        lead.subjectPhone ? `Phone: ${lead.subjectPhone}` : "No phone — skip trace recommended",
+        lead.subjectPhone ? `Phone: ${lead.subjectPhone} (source: ${lead.signalType === "arrest" ? "sheriff" : "court filing"})` : "No phone — skip trace eligible",
       ].filter(Boolean).join("\n"),
       address: lead.subjectAddress || null,
       state: "FL",
-      skipTraceStatus: lead.subjectPhone ? "matched" : "not_attempted",
+      // Note: skipTraceStatus is auto-derived in upsertContact() baseValues:
+      // phone present → "source_matched", no phone → "not_attempted"
     });
   } catch (_e) { // allow-silent-catch: contact creation failure should not block lead pipeline
   }
