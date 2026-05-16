@@ -1798,6 +1798,12 @@ RULES:
   const { registerAgentWorkerRoutes } = await import("./routes/agentWorker");
   registerAgentWorkerRoutes(app);
 
+  const { registerAiAdminRoutes } = await import("./routes/aiAdmin");
+  registerAiAdminRoutes(app);
+
+  const { registerHomeServiceRoutes } = await import("./routes/homeService");
+  registerHomeServiceRoutes(app);
+
   await setupAuth(app);
 
   // Admin-secret bypass: when an internal/trusted caller (e.g. the Apex
