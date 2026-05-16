@@ -97,8 +97,7 @@ export async function nimblePipelineFetch(opts: NimblePipelineOptions): Promise<
       const json = JSON.parse(text);
       html       = json.html ?? json.body ?? json.content ?? text;
       statusCode = json.status_code ?? res.status;
-    } catch {
-      // raw HTML response — use as-is
+    } catch { // allow-silent-catch: JSON.parse fails when Nimble returns raw HTML — fall back to raw text which is already assigned
     }
 
     return { ok: statusCode < 400, status: statusCode, html };
