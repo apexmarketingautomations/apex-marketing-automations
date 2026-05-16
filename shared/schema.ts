@@ -715,6 +715,70 @@ export const contacts = pgTable("contacts", {
    * Derived from identityStatus === 'placeholder' but stored as a fast boolean index.
    */
   isPlaceholder: boolean("is_placeholder").default(true).notNull(),
+
+  // ── Victim-Centric Address Architecture (2026-05-16) ──────────────────────
+  /**
+   * incident_location: raw crash scene / highway marker from FHP CAD feed.
+   * NEVER used as a residential address. Attached to the Incident layer, not Contact.
+   * Example: "I-75 NB MM 131, LEE County, FL"
+   */
+  incidentLocation: text("incident_location"),
+  incidentLat:      real("incident_lat"),
+  incidentLng:      real("incident_lng"),
+
+  /**
+   * registration_address: address from the vehicle registration (DHSMV owner address).
+   * May differ from driver's license address — owner could be employer or spouse.
+   * Source: DHSMV MVCheck registration lookup via Nimble.
+   */
+  registrationAddress:       text("registration_address"),
+  registrationAddressSource: text("registration_address_source"),      // 'dhsmv' | 'flhsmv_report'
+  registrationAddressSourcAt: timestamp("registration_address_sourced_at"),
+
+  /**
+   * mailing_address: postal mailing address from skip-trace provider (BatchData).
+   * Often matches residential but may be PO Box.
+   */
+  mailingAddress: text("mailing_address"),
+
+  /**
+   * probable_residence: best inferred residential address — combines registration,
+   * license, and mailing data via confidence weighting.
+   * This is what skip-trace should target when phone is missing.
+   */
+  probableResidence: text("probable_residence"),
+
+  /**
+   * verified_residence: geocode-confirmed residential address (geocodeStatus='verified').
+   * Set after Google Geocoding API confirms the address as a real residential location.
+   */
+  verifiedResidence: text("verified_residence"),
+
+  /**
+   * address_confidence: 0.0–1.0 confidence score for the current contact.address value.
+   * Scale:
+   *   0.95 — FLHSMV/DHSMV verified residential
+   *   0.85 — FLHSMV driver license address (registration quality)
+   *   0.72 — BatchData skip-trace inferred
+   *   0.61 — Probable household from aggregation
+   *   0.15 — Roadway / incident location (last resort)
+   *   0.00 — Unknown / no address
+   */
+  addressConfidence: real("address_confidence").default(0.0),
+
+  /**
+   * address_type: discriminator for what contact.address currently holds.
+   * Values: 'verified_residence' | 'registration' | 'mailing' | 'probable_residence'
+   *         | 'incident_location' | 'unknown'
+   * 'incident_location' means address has NOT been upgraded to residential data.
+   */
+  addressType: text("address_type").default("unknown"),
+
+  /**
+   * address_source: which system/provider last set contact.address.
+   * Examples: 'flhsmv' | 'dhsmv' | 'batchdata' | 'google_geocode' | 'manual' | 'fhp_cad'
+   */
+  addressSource: text("address_source"),
 }, (table) => [
   index("idx_contacts_sub_skip_status").on(table.subAccountId, table.skipTraceStatus),
   index("idx_contacts_sub_identity_status").on(table.subAccountId, table.identityStatus),

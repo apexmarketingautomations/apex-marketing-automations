@@ -116,39 +116,75 @@ FHP CAD feed
 | Apify | Attorney scraping, transport data | `APIFY_API_TOKEN` | `apifyAttorneyScraper.ts` |
 | Property Radar | Property owner data | `PROPERTY_RADAR_API_KEY` | `property-radar.ts` |
 
-**Enrichment stages for a crash lead (in order):**
+**Enrichment stages for a crash lead — VICTIM-CENTRIC pipeline (v2, 2026-05-16):**
+
+> **Core principle:** The enrichment target is THE PERSON, not the roadway.
+> Incident locations (highway markers, intersections) NEVER become contact addresses.
+> `contacts.address` holds residential intelligence only.
 
 ```
-Stage 1 — Ingest time
+Stage 1 — Ingest time (crashIngestPipeline.ts)
   Placeholder contact created: "Unidentified Crash Incident"
-  Address = crash SCENE (intersection/highway) — NOT skip-traceable
+  incidentLocation = crash scene ("I-75 NB MM 131") — stored separately, NEVER in contacts.address
+  contacts.address = NULL (no residential data yet)
+  addressConfidence = 0.00 | addressType = "unknown"
+  incidentFingerprint = SHA256("crash:{reportNumber}") — stable dedup key
+  isPlaceholder = true | workflowStage = "new"
   Tags: ["crash-lead", "sentinel-auto"]
 
-Stage 2 — FLHSMV worker (crashReportWorker.ts)
-  Real driver name extracted from FLHSMV official report
-  Driver HOME address (from license record) — skip-traceable
-  Insurance company, vehicle info stored
-  Tags: ["flhsmv-enriched"]
+Stage 2 — FLHSMV enrichment (crashReportWorker.ts → enrichCrashLeadContacts)
+  Real driver name from FLHSMV official report
+  Driver license address (residential) → registrationAddress field
+  addressConfidence = 0.85 (FLHSMV license address)
+  contacts.address = driver license address (first residential write)
+  addressType = "registration" | addressSource = "flhsmv"
+  Insurance company, vehicle info stored in notes
+  isPlaceholder = false | workflowStage = "enriching"
+  Tags: ["flhsmv-enriched", "plate:FL-XXXXX"]
 
-Stage 3 — DHSMV registration (dhsmvRegistrationLookup.ts via Nimble)
-  Registered owner name + address (may differ from driver)
-  Vehicle year/make/model/color
-  Tags: ["dhsmv-registration-found"]
+Stage 3 — DHSMV registration lookup (dhsmvRegistrationLookup.ts via Nimble)
+  Registered owner name + owner mailing address from DHSMV MVCheck portal
+  registrationAddress upgraded if DHSMV owner address found
+  addressConfidence = 0.90 (DHSMV registration — beats FLHSMV license)
+  contacts.address upgraded to DHSMV owner address
+  Tags: ["dhsmv-enriched"]
 
-Stage 4 — Skip-trace (skip-trace.ts via BatchData)
-  Phone numbers from driver home address
-  Additional persons at address
+Stage 4 — Skip-trace (retroSkipTrace.ts / enrichmentWorker → BatchData)
+  Target: probableResidence > registrationAddress (NEVER highway reference)
+  Phone numbers from residential address
+  mailingAddress field populated from BatchData result
+  addressConfidence = 0.72 (BatchData inferred)
+  contacts.address upgraded only if confidence beats current value
   Tags: ["skip-traced", "has-phone" or "no-phone"]
 
-Stage 5 — Retro passes (admin-triggered or scheduled)
+Stage 5 — Address geocode (enrichmentWorker → Google Geocoding API)
+  Geocodes probableResidence or registrationAddress (NEVER incidentLocation)
+  verifiedResidence field set on geocode confirmation
+  addressConfidence = 0.95 (verified residential — highest possible)
+  addressType = "verified_residence" | geocodeStatus = "verified"
+  lat/lng set from residential geocode (not crash scene coordinates)
+  workflowStage → "scored" → "routed"
+
+Stage 6 — Retro passes (admin-triggered or scheduled)
   retroFLHSMVEnrich.ts — recover names on old placeholder contacts
-  retroSkipTrace.ts — recover phones on contacts with addresses but no phone
+  retroSkipTrace.ts — recover phones on contacts with residential addresses
 ```
 
-**Contact dedup key:** `crash:{sentinelReportNumber}:acct{accountId}`
-Never overwrites a real phone with null. Never replaces a real name with a placeholder.
+**Contact dedup key:** `crash:{sentinelReportNumber}:acct{accountId}` (per sub-account)
+**Incident dedup key:** `incidentFingerprint = SHA256("crash:{reportNumber}")` (cross-account)
+**Merge guarantee:** `mergeContact()` only upgrades address confidence, never downgrades.
+**Highway guard:** `looksLikeHighwayAddress()` in `contactUpsertService.ts` — highway strings are rejected from all residential address fields and skip-trace targets.
 
-**Highway guard:** Skip-trace is suppressed when address matches highway pattern (`I-\d`, `US-\d`, `SR-\d`, `MM \d`, etc.) — these are crash scene addresses, not residential.
+**Address confidence scale:**
+| Level | Value | Source |
+|-------|-------|--------|
+| Verified residence | 0.95 | Google geocode confirmed residential |
+| DHSMV registration | 0.90 | DHSMV registered owner address |
+| FLHSMV license | 0.85 | Driver license address from crash report |
+| BatchData inferred | 0.72 | Skip-trace mailing address |
+| Probable household | 0.61 | Aggregated multi-source |
+| Incident location | 0.15 | Highway/intersection scene — never for skip-trace |
+| Unknown | 0.00 | No address data |
 
 ---
 

@@ -52,33 +52,64 @@ function isEligibleContact(
     phone?: string | null;
     address?: string | null;
     skipTraceStatus?: string | null;
+    // Victim-centric address fields
+    probableResidence?: string | null;
+    registrationAddress?: string | null;
+    addressConfidence?: number | null;
+    addressType?: string | null;
   },
   crashOnly: boolean,
 ): boolean {
-  const tags          = contact.tags || [];
-  const tagSet        = new Set(tags);
+  const tags   = contact.tags || [];
+  const tagSet = new Set(tags);
 
   // Must have a qualifying lead tag
   const allowedSet = crashOnly ? CRASH_ONLY_TAGS : ALLOWED_LEAD_TAGS;
   const hasLeadTag = [...allowedSet].some(t => tagSet.has(t));
-  if (!hasLeadTag)                 return false;
+  if (!hasLeadTag) return false;
 
   // Must NOT have a blocked/polluted tag
   const hasBlockedTag = [...BLOCKED_TAGS].some(t => tagSet.has(t));
-  if (hasBlockedTag)               return false;
+  if (hasBlockedTag) return false;
 
-  // Skip if already traced (check both the tag for pre-migration contacts and the new status field)
-  if (tagSet.has("skip-traced"))   return false;
+  // Skip if already traced
+  if (tagSet.has("skip-traced")) return false;
   const sts = contact.skipTraceStatus;
   if (sts && sts !== "not_attempted" && sts !== "pending") return false;
 
-  // Must have an address to trace against
-  if (!contact.address)            return false;
-
   // Must not already have a phone (skip-trace already paid for)
-  if (contact.phone)               return false;
+  if (contact.phone) return false;
+
+  // Must have a RESIDENTIAL address to trace against.
+  // The victim-centric pipeline stores skip-trace targets in:
+  //   probableResidence > registrationAddress > address (if addressConfidence > 0.15)
+  // Contacts whose only address is a highway/intersection reference (addressType='incident_location'
+  // or addressConfidence <= 0.15) are NOT eligible — BatchData returns no_match 100% of the time.
+  const hasResidentialTarget =
+    !!(contact.probableResidence) ||
+    !!(contact.registrationAddress) ||
+    (!!contact.address && (contact.addressConfidence ?? 0) > 0.15);
+
+  if (!hasResidentialTarget) return false;
 
   return true;
+}
+
+/**
+ * Select the best residential address to use as the skip-trace query target.
+ * Priority: probableResidence > registrationAddress > address (if residential confidence).
+ * NEVER uses a highway/intersection string.
+ */
+function selectSkipTraceAddress(contact: {
+  address?: string | null;
+  probableResidence?: string | null;
+  registrationAddress?: string | null;
+  addressConfidence?: number | null;
+}): string | null {
+  if (contact.probableResidence)   return contact.probableResidence;
+  if (contact.registrationAddress) return contact.registrationAddress;
+  if (contact.address && (contact.addressConfidence ?? 0) > 0.15) return contact.address;
+  return null;
 }
 
 export async function runRetroSkipTrace(
@@ -124,8 +155,16 @@ export async function runRetroSkipTrace(
         const city  = contact.city?.replace(" County", "") || "";
         const state = "FL";
 
+        // Use the best available residential address — never a highway reference
+        const skipTraceTarget = selectSkipTraceAddress(contact as any);
+        if (!skipTraceTarget) {
+          stats.skipped++;
+          console.log(`[RETRO-SKIP-TRACE] contact=${contact.id} — no residential address available, skipping`);
+          return;
+        }
+
         const result = await skipTraceLookup(
-          { address: contact.address!, city, state },
+          { address: skipTraceTarget, city, state },
           apiKey,
         );
 
@@ -148,8 +187,9 @@ export async function runRetroSkipTrace(
           }
           const skipNotes = `Skip Trace BatchData (${new Date().toLocaleDateString()}):\n${personLines.join("\n") || "No data found"}`;
 
-          // Prefer the mailing address from skip trace over the crash-scene location
+          // BatchData mailing address → victim-centric typed address field
           const mailingAddr = result.mailingAddress || null;
+          const batchDataConf = result.totalPersonsFound > 0 ? 0.72 : 0.5; // ADDRESS_CONFIDENCE.BATCHDATA_INFERRED
 
           // Use the structured service to update skip-trace status + tags atomically
           await updateContactSkipTrace(contact.id, {
@@ -162,15 +202,34 @@ export async function runRetroSkipTrace(
               ? result.ownerName.trim().split(" ").slice(1).join(" ") || null
               : null,
             provider: "batchdata",
-            confidence: result.totalPersonsFound > 0 ? 0.8 : 0.5,
+            confidence: batchDataConf,
           });
 
-          // Update address + notes via storage (not covered by updateContactSkipTrace)
-          await storage.updateContact(contact.id, {
-            address: mailingAddr || (contact.address ?? undefined),
-            email:   result.ownerEmail || (contact.email ?? undefined),
-            notes:  (contact.notes || "") + `\n\n${skipNotes}`,
-          });
+          // Update address fields using victim-centric hierarchy:
+          // - mailingAddress field captures the BatchData mailing address
+          // - contact.address upgrades to mailing address ONLY if confidence is higher than current
+          //   (BatchData=0.72 wins over incident_location=0.15 but loses to FLHSMV/DHSMV >= 0.85)
+          const currentConfidence = (contact as any).addressConfidence ?? 0;
+          const addressUpdate: Record<string, any> = {
+            email:  result.ownerEmail || (contact.email ?? undefined),
+            notes: (contact.notes || "") + `\n\n${skipNotes}`,
+            // Always store mailing address in its typed field
+            ...(mailingAddr ? { mailingAddress: mailingAddr } : {}),
+            // Upgrade contact.address only if BatchData confidence beats current
+            ...(mailingAddr && batchDataConf > currentConfidence ? {
+              address:           mailingAddr,
+              addressConfidence: batchDataConf,
+              addressType:       "mailing",
+              addressSource:     "batchdata",
+              // Probable residence = best non-verified address we have
+              probableResidence: mailingAddr,
+            } : {}),
+            // Always upgrade identity + placeholder status on skip-trace match
+            isPlaceholder:  false,
+            viewClass:      "enriched_contact",
+            workflowStage:  "scored",
+          };
+          await storage.updateContact(contact.id, addressUpdate);
 
           publishEventAsync(EVENT_TYPES.CONTACT_UPDATED, {
             subAccountId,

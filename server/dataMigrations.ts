@@ -1047,6 +1047,101 @@ const MIGRATIONS: DataMigration[] = [
           AND identity_status != 'verified';
     `,
   },
+  {
+    name: "2026-05-16-victim-centric-address-architecture",
+    sql: `
+      -- ── Victim-Centric Address Architecture ──────────────────────────────────
+      -- Separates incident locations from residential intelligence.
+      -- Adds typed address fields + confidence scoring to contacts table.
+
+      -- 1. Incident location columns (crash scene / highway marker)
+      ALTER TABLE contacts
+        ADD COLUMN IF NOT EXISTS incident_location TEXT,
+        ADD COLUMN IF NOT EXISTS incident_lat      REAL,
+        ADD COLUMN IF NOT EXISTS incident_lng      REAL;
+
+      -- 2. Registration address (DHSMV owner address)
+      ALTER TABLE contacts
+        ADD COLUMN IF NOT EXISTS registration_address         TEXT,
+        ADD COLUMN IF NOT EXISTS registration_address_source  TEXT,
+        ADD COLUMN IF NOT EXISTS registration_address_sourced_at TIMESTAMP;
+
+      -- 3. Skip-trace mailing address (BatchData)
+      ALTER TABLE contacts
+        ADD COLUMN IF NOT EXISTS mailing_address TEXT;
+
+      -- 4. Residential intelligence columns
+      ALTER TABLE contacts
+        ADD COLUMN IF NOT EXISTS probable_residence TEXT,
+        ADD COLUMN IF NOT EXISTS verified_residence TEXT;
+
+      -- 5. Address confidence scoring
+      ALTER TABLE contacts
+        ADD COLUMN IF NOT EXISTS address_confidence REAL DEFAULT 0.0,
+        ADD COLUMN IF NOT EXISTS address_type       TEXT DEFAULT 'unknown',
+        ADD COLUMN IF NOT EXISTS address_source     TEXT;
+
+      -- 6. Index for residential filtering and confidence queries
+      CREATE INDEX IF NOT EXISTS idx_contacts_address_type
+        ON contacts (sub_account_id, address_type)
+        WHERE address_type IS NOT NULL;
+
+      CREATE INDEX IF NOT EXISTS idx_contacts_address_confidence
+        ON contacts (sub_account_id, address_confidence)
+        WHERE address_confidence > 0;
+
+      -- 7. Backfill: existing contacts with 'crash' vertical whose address
+      --    looks like a highway reference → move to incident_location, clear address,
+      --    set address_confidence = 0.15, address_type = 'incident_location'
+      UPDATE contacts
+        SET incident_location   = address,
+            incident_lat        = lat,
+            incident_lng        = lng,
+            address             = NULL,
+            address_confidence  = 0.15,
+            address_type        = 'incident_location',
+            address_source      = 'fhp_cad'
+        WHERE lead_subtype = 'crash'
+          AND address IS NOT NULL
+          AND (
+            address ~* '\\m(I-[0-9]|US-[0-9]|SR-[0-9]|CR-[0-9]|FL-[0-9]|MM\\s*[0-9]|INTERSTATE|HIGHWAY|HWY)\\M'
+            OR address ILIKE '% MM %'
+            OR address ILIKE '%MILE MARKER%'
+          )
+          AND incident_location IS NULL;
+
+      -- 8. Backfill: existing contacts enriched by FLHSMV (has 'flhsmv-enriched' tag)
+      --    that have a non-null address not matching highway pattern →
+      --    treat as registration-quality address
+      UPDATE contacts
+        SET registration_address        = address,
+            registration_address_source = 'flhsmv_report',
+            address_confidence          = 0.85,
+            address_type                = 'registration',
+            address_source              = 'flhsmv'
+        WHERE lead_subtype = 'crash'
+          AND 'flhsmv-enriched' = ANY(tags)
+          AND address IS NOT NULL
+          AND (
+            address !~* '\\m(I-[0-9]|US-[0-9]|SR-[0-9]|CR-[0-9]|FL-[0-9]|MM\\s*[0-9]|INTERSTATE|HIGHWAY|HWY)\\M'
+          )
+          AND registration_address IS NULL;
+
+      -- 9. Backfill: update incident_fingerprint for existing crash contacts
+      --    that have a sourceExternalId (crash:<reportNumber>:acct<N>)
+      UPDATE contacts
+        SET incident_fingerprint = encode(
+              digest(
+                REGEXP_REPLACE(source_external_id, ':acct[0-9]+$', ''),
+                'sha256'
+              ),
+              'hex'
+            )
+        WHERE lead_subtype = 'crash'
+          AND source_external_id LIKE 'crash:%'
+          AND incident_fingerprint IS NULL;
+    `,
+  },
 ];
 
 export async function runDataMigrations(): Promise<void> {
