@@ -547,7 +547,7 @@ async function searchReportByCountyDate(
   }
 }
 
-async function fetchReportDetail(reportNumber: string): Promise<DetailResult> {
+export async function fetchReportDetail(reportNumber: string): Promise<DetailResult> {
   try {
     const headers = getHeaders();
     delete headers["Content-Type"];
@@ -584,7 +584,7 @@ async function fetchReportDetail(reportNumber: string): Promise<DetailResult> {
  * HOME address from their license — a real residential address we can skip-trace
  * to find the actual victim's phone number.
  */
-async function enrichCrashLeadContacts(params: {
+export async function enrichCrashLeadContacts(params: {
   sentinelReportNumber: string;
   subAccountId: number | null;
   detailData: FLHSMVReportData | null;
