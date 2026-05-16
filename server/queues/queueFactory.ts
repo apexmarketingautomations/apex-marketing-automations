@@ -56,6 +56,7 @@ export const QUEUE_NAMES = {
   EMBEDDINGS: "apex-embeddings",
   SEMANTIC: "apex-semantic",
   MAINTENANCE: "apex-maintenance",
+  DEAD_LETTER: "apex-dead-letters", // All exhausted jobs land here for replay
 } as const;
 
 export type QueueName = typeof QUEUE_NAMES[keyof typeof QUEUE_NAMES];
@@ -129,6 +130,12 @@ export function initQueues(): Map<QueueName, Queue> {
     [QUEUE_NAMES.EMBEDDINGS,    createQueue(QUEUE_NAMES.EMBEDDINGS,     LOW_PRIORITY_DEFAULTS)],
     [QUEUE_NAMES.SEMANTIC,      createQueue(QUEUE_NAMES.SEMANTIC,       LOW_PRIORITY_DEFAULTS)],
     [QUEUE_NAMES.MAINTENANCE,   createQueue(QUEUE_NAMES.MAINTENANCE,    BACKGROUND_DEFAULTS)],
+    [QUEUE_NAMES.DEAD_LETTER,   createQueue(QUEUE_NAMES.DEAD_LETTER, {
+      // DLQ jobs never auto-retry — they wait for operator replay
+      attempts:         1,
+      removeOnComplete: { count: 100 },
+      removeOnFail:     { count: 5_000 }, // keep lots of DLQ failures for audit
+    })],
   ]);
 
   console.log(`[QUEUE-FACTORY] ✅ ${queues.size} queues ready: ${[...queues.keys()].join(", ")}`);
@@ -160,10 +167,116 @@ function requireQueue(name: QueueName): Queue {
   return q;
 }
 
-export function getEnrichmentQueue(): Queue { return requireQueue(QUEUE_NAMES.ENRICHMENT); }
-export function getScoringQueue():    Queue { return requireQueue(QUEUE_NAMES.SCORING); }
+export function getEnrichmentQueue():  Queue { return requireQueue(QUEUE_NAMES.ENRICHMENT); }
+export function getScoringQueue():     Queue { return requireQueue(QUEUE_NAMES.SCORING); }
 export function getMaintenanceQueue(): Queue { return requireQueue(QUEUE_NAMES.MAINTENANCE); }
-export function getRoutingQueue():    Queue { return requireQueue(QUEUE_NAMES.ROUTING); }
+export function getRoutingQueue():     Queue { return requireQueue(QUEUE_NAMES.ROUTING); }
+export function getDeadLetterQueue():  Queue { return requireQueue(QUEUE_NAMES.DEAD_LETTER); }
+
+// ─── Dead Letter Queue helpers ────────────────────────────────────────────────
+
+export interface DeadLetterEnvelope {
+  /** Name of the source queue the job came from */
+  sourceQueue: QueueName;
+  /** Original BullMQ job name */
+  jobName: string;
+  /** Original job payload */
+  payload: unknown;
+  /** Number of attempts that were made */
+  attempts: number;
+  /** Last error message */
+  lastError: string;
+  /** ISO timestamp of failure */
+  failedAt: string;
+  /** Optional metadata for replay routing */
+  meta?: Record<string, unknown>;
+}
+
+/**
+ * Push a failed job to the dead letter queue.
+ * Call this from worker `failed` event handlers.
+ */
+export async function sendToDeadLetterQueue(envelope: DeadLetterEnvelope): Promise<string | undefined> {
+  try {
+    const dlq = queues?.get(QUEUE_NAMES.DEAD_LETTER);
+    if (!dlq) {
+      console.error("[DLQ] Dead letter queue not initialised — job lost!", envelope.jobName);
+      return undefined;
+    }
+    const job = await dlq.add(`dlq:${envelope.sourceQueue}:${envelope.jobName}`, envelope, {
+      removeOnComplete: false, // keep DLQ completions forever for audit
+      removeOnFail: { count: 5_000 },
+    });
+    console.warn(`[DLQ] ☠ Job dead-lettered: ${envelope.sourceQueue}/${envelope.jobName} — ${envelope.lastError}`);
+    return job.id;
+  } catch (err: any) {
+    console.error(`[DLQ] Failed to write to dead letter queue: ${err?.message}`);
+    return undefined;
+  }
+}
+
+/**
+ * Fetch paginated dead letter jobs for the admin API.
+ */
+export async function getDeadLetterJobs(opts: {
+  start?: number;
+  end?: number;
+  sourceQueue?: string;
+}): Promise<{ jobs: Array<{ id: string; data: DeadLetterEnvelope; failedAt: string }>; total: number }> {
+  const dlq = queues?.get(QUEUE_NAMES.DEAD_LETTER);
+  if (!dlq) return { jobs: [], total: 0 };
+
+  const { start = 0, end = 49, sourceQueue } = opts;
+
+  // BullMQ getJobs returns jobs in all states
+  const [waiting, failed] = await Promise.all([
+    dlq.getJobs(["waiting"], start, end),
+    dlq.getJobs(["failed"], start, end),
+  ]);
+  const allJobs = [...waiting, ...failed];
+
+  const filtered = sourceQueue
+    ? allJobs.filter(j => (j.data as DeadLetterEnvelope).sourceQueue === sourceQueue)
+    : allJobs;
+
+  return {
+    jobs: filtered.map(j => ({
+      id:       j.id ?? "unknown",
+      data:     j.data as DeadLetterEnvelope,
+      failedAt: (j.data as DeadLetterEnvelope).failedAt ?? new Date(j.timestamp).toISOString(),
+    })),
+    total: filtered.length,
+  };
+}
+
+/**
+ * Replay a DLQ job by re-enqueueing it to its source queue.
+ * The job is removed from the DLQ after successful re-enqueue.
+ */
+export async function replayDeadLetterJob(jobId: string): Promise<{ ok: boolean; newJobId?: string; error?: string }> {
+  const dlq = queues?.get(QUEUE_NAMES.DEAD_LETTER);
+  if (!dlq) return { ok: false, error: "DLQ not initialised" };
+
+  const job = await dlq.getJob(jobId);
+  if (!job) return { ok: false, error: `DLQ job ${jobId} not found` };
+
+  const envelope = job.data as DeadLetterEnvelope;
+  const sourceQueue = queues?.get(envelope.sourceQueue);
+  if (!sourceQueue) return { ok: false, error: `Source queue ${envelope.sourceQueue} not found` };
+
+  try {
+    const replayed = await sourceQueue.add(
+      envelope.jobName,
+      envelope.payload,
+      { attempts: 3, backoff: { type: "exponential", delay: 5_000 } }
+    );
+    await job.remove();
+    console.log(`[DLQ] ↩ Replayed job ${jobId} → ${envelope.sourceQueue} as ${replayed.id}`);
+    return { ok: true, newJobId: replayed.id };
+  } catch (err: any) {
+    return { ok: false, error: err?.message ?? "replay failed" };
+  }
+}
 
 // ─── Queue health snapshot ────────────────────────────────────────────────────
 

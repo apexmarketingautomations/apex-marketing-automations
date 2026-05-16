@@ -23,7 +23,7 @@ import { Worker, Job } from "bullmq";
 import { db } from "../db";
 import { contacts, contactScores } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { getBullMQConnection, QUEUE_NAMES, getEnrichmentQueue } from "../queues/queueFactory";
+import { getBullMQConnection, QUEUE_NAMES, getEnrichmentQueue, sendToDeadLetterQueue } from "../queues/queueFactory";
 import { isBatchDataDisabled } from "../skip-trace";
 import { resolveBatchDataKey } from "../vendorConfig";
 
@@ -322,8 +322,23 @@ export function startEnrichmentWorker(): void {
     }
   );
 
-  _worker.on("failed", (job, err) => {
-    console.error(`[${WORKER_TAG}] Job ${job?.id} failed after ${job?.attemptsMade} attempts: ${err?.message}`);
+  _worker.on("failed", async (job, err) => {
+    const attempts = job?.attemptsMade ?? 0;
+    const maxAttempts = job?.opts?.attempts ?? 3;
+    console.error(`[${WORKER_TAG}] Job ${job?.id} failed (${attempts}/${maxAttempts}): ${err?.message}`);
+
+    // Only dead-letter after all retries are exhausted
+    if (job && attempts >= maxAttempts) {
+      await sendToDeadLetterQueue({
+        sourceQueue: QUEUE_NAMES.ENRICHMENT,
+        jobName:     job.name,
+        payload:     job.data,
+        attempts,
+        lastError:   err?.message ?? "unknown error",
+        failedAt:    new Date().toISOString(),
+        meta:        { jobId: job.id, jobType: (job.data as EnrichmentJobData).jobType },
+      });
+    }
   });
 
   _worker.on("stalled", (jobId) => {

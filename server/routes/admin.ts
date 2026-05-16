@@ -162,4 +162,68 @@ export function registerAdminRoutes(app: Express) {
       .orderBy(desc(commentAutoReplies.id)).limit(20);
     res.json({ stats, recent });
   }));
+
+  // ── Dead Letter Queue endpoints ─────────────────────────────────────────────
+
+  /**
+   * GET /api/admin/dead-letters
+   * List dead-lettered jobs with optional ?sourceQueue= filter.
+   * Query: ?sourceQueue=apex-enrichment&start=0&end=49
+   */
+  app.get("/api/admin/dead-letters", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
+
+    const { getDeadLetterJobs } = await import("../queues/queueFactory");
+    const start       = parseInt(String(req.query.start || "0"), 10);
+    const end         = parseInt(String(req.query.end   || "49"), 10);
+    const sourceQueue = req.query.sourceQueue as string | undefined;
+
+    const result = await getDeadLetterJobs({ start, end, sourceQueue });
+    res.json(result);
+  }));
+
+  /**
+   * POST /api/admin/dead-letters/:jobId/replay
+   * Replay a single dead-lettered job back to its source queue.
+   */
+  app.post("/api/admin/dead-letters/:jobId/replay", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
+
+    const jobId = String(req.params.jobId ?? "");
+    if (!jobId) return res.status(400).json({ error: "jobId required" });
+
+    const { replayDeadLetterJob } = await import("../queues/queueFactory");
+    const result = await replayDeadLetterJob(jobId);
+
+    if (!result.ok) {
+      return res.status(400).json({ error: result.error });
+    }
+    res.json({ ok: true, newJobId: result.newJobId, replayed: jobId });
+  }));
+
+  /**
+   * POST /api/admin/dead-letters/replay-all
+   * Replay all DLQ jobs, optionally filtered by ?sourceQueue=
+   */
+  app.post("/api/admin/dead-letters/replay-all", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
+
+    const { getDeadLetterJobs, replayDeadLetterJob } = await import("../queues/queueFactory");
+    const sourceQueue = req.body.sourceQueue as string | undefined;
+
+    // Fetch up to 500 at a time
+    const { jobs } = await getDeadLetterJobs({ start: 0, end: 499, sourceQueue });
+
+    const results = await Promise.allSettled(
+      jobs.map(j => replayDeadLetterJob(j.id))
+    );
+
+    const replayed = results.filter(r => r.status === "fulfilled" && (r as any).value?.ok).length;
+    const failed   = results.length - replayed;
+
+    res.json({ ok: true, replayed, failed, total: results.length });
+  }));
 }
