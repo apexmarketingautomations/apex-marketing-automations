@@ -11,7 +11,7 @@ import {
   ExternalLink, Copy, CheckCircle2, Satellite, Zap, Eye,
   Users, TrendingUp, Info, Bell, XCircle, Download, SortAsc,
   SortDesc, ChevronLeft as PrevPage, ChevronRight, X, Tag,
-  PhoneCall, UserCheck, UserX, Layers,
+  PhoneCall, UserCheck, UserX, Layers, FileText, Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -855,50 +855,127 @@ function LeadCommandCenter({ accountId, isAdmin, onSkipTrace, skipTraceRunning }
 
                   {/* Expanded detail */}
                   <AnimatePresence>
-                    {selected?.id === contact.id && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden border-t border-white/8"
-                      >
-                        <div className="px-4 py-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            {contact.phone && (
-                              <div className="flex items-center gap-2">
-                                <Phone size={13} className="text-green-400 shrink-0" />
-                                <a href={`tel:${contact.phone}`} className="text-green-400 font-mono font-bold text-sm hover:text-green-300">{contact.phone}</a>
-                                <button onClick={e => copyPhone(contact.phone, e)} className="text-slate-600 hover:text-white transition-colors"><Copy size={11} /></button>
-                              </div>
-                            )}
-                            {contact.email && (
-                              <div className="flex items-center gap-2">
-                                <ExternalLink size={13} className="text-blue-400 shrink-0" />
-                                <span className="text-blue-400 text-sm">{contact.email}</span>
-                              </div>
-                            )}
-                            {contact.address && (
-                              <div className="flex items-center gap-2">
-                                <MapPin size={13} className="text-slate-400 shrink-0" />
-                                <span className="text-slate-300 text-sm">{contact.address}</span>
-                              </div>
-                            )}
-                          </div>
-                          <div className="space-y-2">
-                            <div className="flex flex-wrap gap-1.5">
-                              {tags.map((t: string) => (
-                                <span key={t} className="bg-white/8 text-slate-400 text-[9px] font-bold px-2 py-0.5 rounded-full border border-white/10 flex items-center gap-1">
-                                  <Tag size={8} />{t}
-                                </span>
-                              ))}
+                    {selected?.id === contact.id && (() => {
+                      // Parse structured fields out of the notes block so each
+                      // piece of data gets its own labeled row, not a text dump.
+                      const notes = contact.notes || "";
+                      const parseLine = (prefix: string) => {
+                        const m = notes.match(new RegExp(`${prefix}[:\\s]+(.+)`, "i"));
+                        return m ? m[1].trim() : null;
+                      };
+                      const flhsmvReport   = parseLine("FLHSMV Official Report");
+                      const crashLine      = parseLine("Crash:");
+                      const insuranceLine  = parseLine("Insurance:");
+                      const plateTag       = tags.find(t => t.startsWith("plate:"));
+                      const plateDisplay   = plateTag ? plateTag.replace("plate:", "") : null;
+                      // DHSMV registration block
+                      const dhsmvBlock     = notes.includes("DHSMV Registration")
+                        ? notes.split("DHSMV Registration")[1]?.split("\n").slice(0, 5).join("\n")
+                        : null;
+                      const dhsmvOwner     = dhsmvBlock ? (dhsmvBlock.match(/Owner:\s*(.+)/)?.[1]?.trim() ?? null) : null;
+                      const dhsmvAddr      = dhsmvBlock ? (dhsmvBlock.match(/Address:\s*(.+)/)?.[1]?.trim() ?? null) : null;
+                      const dhsmvVehicle   = dhsmvBlock ? (dhsmvBlock.match(/Vehicle:\s*(.+)/)?.[1]?.trim() ?? null) : null;
+                      // Non-structured tags only
+                      const displayTags    = tags.filter(t => !t.startsWith("plate:"));
+
+                      return (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="overflow-hidden border-t border-white/8"
+                        >
+                          <div className="px-4 py-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+
+                            {/* LEFT — contact + crash info */}
+                            <div className="space-y-2.5">
+                              {contact.phone && (
+                                <div className="flex items-center gap-2">
+                                  <Phone size={12} className="text-green-400 shrink-0" />
+                                  <a href={`tel:${contact.phone}`} onClick={e => e.stopPropagation()} className="text-green-400 font-mono font-bold text-sm hover:text-green-300">{contact.phone}</a>
+                                  <button onClick={e => copyPhone(contact.phone, e)} className="text-slate-600 hover:text-white transition-colors"><Copy size={10} /></button>
+                                </div>
+                              )}
+                              {contact.email && (
+                                <div className="flex items-center gap-2">
+                                  <ExternalLink size={12} className="text-blue-400 shrink-0" />
+                                  <span className="text-blue-400 text-xs">{contact.email}</span>
+                                </div>
+                              )}
+                              {contact.address && (
+                                <div className="flex items-start gap-2">
+                                  <MapPin size={12} className="text-slate-400 shrink-0 mt-0.5" />
+                                  <div>
+                                    <p className="text-[9px] text-slate-600 uppercase tracking-widest font-bold">Driver Home Address</p>
+                                    <p className="text-slate-300 text-xs">{contact.address}</p>
+                                  </div>
+                                </div>
+                              )}
+                              {crashLine && (
+                                <div className="flex items-start gap-2">
+                                  <Car size={12} className="text-orange-400 shrink-0 mt-0.5" />
+                                  <div>
+                                    <p className="text-[9px] text-slate-600 uppercase tracking-widest font-bold">Crash</p>
+                                    <p className="text-slate-400 text-xs">{crashLine}</p>
+                                  </div>
+                                </div>
+                              )}
+                              {insuranceLine && (
+                                <div className="flex items-start gap-2">
+                                  <Shield size={12} className="text-blue-400 shrink-0 mt-0.5" />
+                                  <div>
+                                    <p className="text-[9px] text-slate-600 uppercase tracking-widest font-bold">Insurance</p>
+                                    <p className="text-blue-300 text-xs font-bold">{insuranceLine}</p>
+                                  </div>
+                                </div>
+                              )}
+                              {flhsmvReport && (
+                                <div className="flex items-start gap-2">
+                                  <FileText size={12} className="text-purple-400 shrink-0 mt-0.5" />
+                                  <div>
+                                    <p className="text-[9px] text-slate-600 uppercase tracking-widest font-bold">FLHSMV Report #</p>
+                                    <p className="text-purple-300 text-xs font-mono">{flhsmvReport}</p>
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                            {contact.notes && (
-                              <p className="text-slate-500 text-[10px] leading-relaxed whitespace-pre-line line-clamp-4">{contact.notes}</p>
-                            )}
+
+                            {/* RIGHT — registration + plate + tags */}
+                            <div className="space-y-2.5">
+                              {plateDisplay && (
+                                <div className="flex items-start gap-2">
+                                  <Car size={12} className="text-amber-400 shrink-0 mt-0.5" />
+                                  <div>
+                                    <p className="text-[9px] text-slate-600 uppercase tracking-widest font-bold">License Plate</p>
+                                    <p className="text-amber-300 font-mono font-bold text-sm">{plateDisplay}</p>
+                                  </div>
+                                </div>
+                              )}
+                              {(dhsmvOwner || dhsmvAddr || dhsmvVehicle) && (
+                                <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-2.5 space-y-1">
+                                  <p className="text-[9px] text-amber-400 uppercase tracking-widest font-bold flex items-center gap-1">
+                                    <Building2 size={9} /> DHSMV Registered Owner
+                                  </p>
+                                  {dhsmvOwner   && <p className="text-white text-xs font-bold">{dhsmvOwner}</p>}
+                                  {dhsmvAddr    && <p className="text-slate-400 text-xs">{dhsmvAddr}</p>}
+                                  {dhsmvVehicle && <p className="text-slate-500 text-[10px]">{dhsmvVehicle}</p>}
+                                </div>
+                              )}
+                              {displayTags.length > 0 && (
+                                <div className="flex flex-wrap gap-1">
+                                  {displayTags.map((t: string) => (
+                                    <span key={t} className="bg-white/5 text-slate-500 text-[9px] font-bold px-2 py-0.5 rounded-full border border-white/8 flex items-center gap-1">
+                                      <Tag size={7} />{t}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
                           </div>
-                        </div>
-                      </motion.div>
-                    )}
+                        </motion.div>
+                      );
+                    })()}
                   </AnimatePresence>
                 </motion.div>
               );
