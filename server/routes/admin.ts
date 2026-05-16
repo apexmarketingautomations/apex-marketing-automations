@@ -502,4 +502,32 @@ export function registerAdminRoutes(app: Express) {
       }
     }
   }));
+
+  /**
+   * GET /api/admin/sequence-audit
+   *
+   * Read-only sequence drift report. Returns every PostgreSQL sequence owned
+   * by a table column, its last_value vs MAX(id), and the drift count.
+   * Does NOT repair — use auditAndRepairSequences() at startup for that.
+   */
+  app.get("/api/admin/sequence-audit", asyncHandler(async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "Admin access required" });
+    const { inspectSequences } = await import("../db/sequenceInspector");
+    const report = await inspectSequences();
+    return res.json(report);
+  }));
+
+  /**
+   * GET /api/admin/db-performance
+   *
+   * Read-only performance audit: slow queries (pg_stat_statements), table
+   * bloat (dead tuple ratios), unused indexes, connection pressure, and
+   * buffer cache hit ratios.
+   */
+  app.get("/api/admin/db-performance", asyncHandler(async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "Admin access required" });
+    const { runPerformanceAudit } = await import("../db/performanceAuditor");
+    const report = await runPerformanceAudit();
+    return res.json(report);
+  }));
 }
