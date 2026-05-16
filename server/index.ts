@@ -1,6 +1,7 @@
 // ⚠️  MUST be first — Sentry instruments modules as they load
 import "./instrument";
-import { flushLogs } from "./logger";
+import { flushLogs, logger } from "./logger";
+import { Sentry } from "./instrument";
 
 import express, { type Request, Response, NextFunction } from "express";
 import crypto from "crypto";
@@ -1866,13 +1867,39 @@ RULES:
       }
     }
 
-    console.error("Internal Server Error:", err);
+    const requestId = (_req as any).requestId ?? "unknown";
+
     if (status >= 500) {
+      // 1. Local console (always)
+      console.error(`[ERROR] ${_req.method} ${_req.path} → ${status}: ${rawMessage}`, err?.stack?.split("\n")[1]?.trim());
+
+      // 2. Axiom structured log (picks up via drain if AXIOM_TOKEN set)
+      logger.error("http.server_error", {
+        status,
+        method: _req.method,
+        path: _req.path,
+        requestId,
+        errorName: err?.name,
+      }, err instanceof Error ? err : new Error(rawMessage));
+
+      // 3. Sentry (if DSN configured)
+      Sentry.withScope((scope) => {
+        scope.setTag("http.method", _req.method);
+        scope.setTag("http.status", String(status));
+        scope.setContext("request", { path: _req.path, requestId });
+        Sentry.captureException(err);
+      });
+
+      // 4. Legacy system error log (DB audit trail)
       logSystemError("server", rawMessage, {
         path: _req.path,
         method: _req.method,
+        requestId,
         stack: err.stack?.substring(0, 500),
       });
+    } else {
+      // 4xx — debug only, no Sentry noise
+      console.warn(`[WARN] ${_req.method} ${_req.path} → ${status}: ${rawMessage}`);
     }
 
     if (res.headersSent) {

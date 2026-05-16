@@ -24,6 +24,7 @@ import { db } from "../db";
 import { contacts, contactScores } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { getBullMQConnection, QUEUE_NAMES, getEnrichmentQueue, sendToDeadLetterQueue } from "../queues/queueFactory";
+import { captureWorkerError } from "../instrument";
 import { isBatchDataDisabled } from "../skip-trace";
 import { resolveBatchDataKey } from "../vendorConfig";
 
@@ -329,6 +330,13 @@ export function startEnrichmentWorker(): void {
 
     // Only dead-letter after all retries are exhausted
     if (job && attempts >= maxAttempts) {
+      // Report exhausted job to Sentry before dead-lettering
+      captureWorkerError(WORKER_TAG, (job.data as EnrichmentJobData).jobType, err, {
+        contactId:  (job.data as EnrichmentJobData).contactId,
+        jobId:      job.id,
+        attempts,
+      });
+
       await sendToDeadLetterQueue({
         sourceQueue: QUEUE_NAMES.ENRICHMENT,
         jobName:     job.name,
