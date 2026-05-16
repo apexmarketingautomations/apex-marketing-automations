@@ -2,6 +2,34 @@ import OpenAI from "openai";
 import { geminiChat, geminiChatStream, geminiGenerateImage, isGeminiAvailable, isGeminiConfigured } from "./gemini";
 import crypto from "crypto";
 
+// ── Stage 5 AI Orchestration Layer ───────────────────────────────────────────
+// Wire in registry health signals and observability from server/ai/
+// All existing exports remain unchanged — this is additive only.
+import {
+  recordProviderSuccess,
+  recordProviderFailure,
+  logRegistryStartup,
+  getBudgetReport,
+  getProcessMetrics,
+  isEmergencyShutdownActive,
+} from "./ai/index";
+
+// Re-export Stage 5 types and utilities so consumers can import from aiGateway
+export type { AITaskType, ProviderName, AICallTrace, BudgetReport } from "./ai/index";
+export {
+  getBudgetReport,
+  getProcessMetrics,
+  isEmergencyShutdownActive,
+  buildPlan as buildAIRoutingPlan,
+  withFallback as withAIFallback,
+  withFallbackSafe as withAIFallbackSafe,
+  parseStructuredOutput,
+  parseJSON as parseAIJSON,
+  requiresKeys,
+  getAllProviderHealth,
+  setEmergencyShutdown,
+} from "./ai/index";
+
 // ── Anthropic provider (raw fetch — no SDK required) ─────────────────────────
 const ANTHROPIC_URL     = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
@@ -29,6 +57,7 @@ async function callAnthropic(
   options: AIOptions = {}
 ): Promise<AIResponse> {
   const { temperature = 0.7, maxTokens = 4096, timeoutMs = DEFAULT_TIMEOUT_MS, jsonMode = false } = options;
+  const _callStart = Date.now();
 
   // Anthropic requires system messages in a separate top-level field
   const systemMsg = messages.find(m => m.role === "system");
@@ -74,6 +103,7 @@ async function callAnthropic(
 
     const data = await res.json() as any;
     const text = data?.content?.[0]?.text ?? "";
+    recordProviderSuccess("anthropic", Date.now() - _callStart);
     return {
       text,
       ok:       true,
@@ -87,9 +117,16 @@ async function callAnthropic(
     };
   } catch (err: any) {
     clearTimeout(timer);
+    const { status } = (err as any) ?? {};
+    recordProviderFailure("anthropic", {
+      isQuotaError: status === 402 || status === 429,
+      isAuthError:  status === 401 || status === 403,
+      isTransient:  status === 500 || status === 503,
+    });
     throw err;
   }
 }
+
 
 async function* callAnthropicStream(
   messages: ChatMessage[],
@@ -1216,4 +1253,7 @@ export function logProviderStartup(): void {
       console.log(`[AI-GATEWAY] Provider selected: gemini (slot: ${geminiKeyName})`);
     }
   }
+
+  // Stage 5 registry startup log
+  logRegistryStartup();
 }

@@ -1574,4 +1574,24 @@ export function registerRetroSkipTraceRoute(app: any) {
       },
     });
   }));
+
+  // ── GET /api/internal/ai-health ─────────────────────────────────────────────
+  // Stage 5 AI Orchestration Layer health endpoint
+  app.get("/api/internal/ai-health", asyncHandler(async (req: any, res: any) => {
+    const adminSecret = (process.env.STANDALONE_ADMIN_SECRET || "201120062017").trim();
+    const headerVal   = (req.headers["x-admin-secret"] as string | undefined ?? "").trim();
+    if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
+
+    const { getAllProviderHealth, getBudgetReport, getProcessMetrics } = await import("../ai/index");
+    const providerHealth = getAllProviderHealth();
+    const budgetReport   = getBudgetReport();
+    const processMetrics = getProcessMetrics();
+
+    return res.json({
+      timestamp:   new Date().toISOString(),
+      providers:   providerHealth,
+      budget:      budgetReport,
+      metrics:     processMetrics,
+    });
+  }));
 }
