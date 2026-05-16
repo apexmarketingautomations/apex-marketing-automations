@@ -2004,6 +2004,14 @@ RULES:
       } catch (err: any) {
         console.error("[STARTUP] Redis/Queue init failed (non-fatal):", err?.message);
       }
+      // ── Phase 4B: BullMQ Workers ──────────────────────────────────────────
+      try {
+        const { startAllWorkers } = await import("./workers/index");
+        startAllWorkers();
+        console.log("[STARTUP] ✅ BullMQ workers started (enrichment, scoring, routing, maintenance)");
+      } catch (err: any) {
+        console.error("[STARTUP] BullMQ workers failed to start (non-fatal):", err?.message);
+      }
       // ─────────────────────────────────────────────────────────────────────
 
       try {
@@ -2126,6 +2134,10 @@ RULES:
     try {
       await flushLogs();
     } catch (err) { console.warn("[SHUTDOWN] flushLogs caught:", err instanceof Error ? err.message : err); }
+    try {
+      const { stopAllWorkers } = await import("./workers/index");
+      await stopAllWorkers();
+    } catch (err) { console.warn("[SHUTDOWN] stopAllWorkers caught:", err instanceof Error ? err.message : err); }
     try {
       const { closeQueues } = await import("./queues/queueFactory");
       await closeQueues();

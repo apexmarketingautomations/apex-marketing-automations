@@ -150,6 +150,21 @@ export function getGeneralQueue(): Queue | null {
   return queues?.get(QUEUE_NAMES.GENERAL) ?? null;
 }
 
+/**
+ * Typed queue getters — used by workers so they don't have to handle null.
+ * Throws if the queue wasn't initialised (Redis unavailable at startup).
+ */
+function requireQueue(name: QueueName): Queue {
+  const q = queues?.get(name);
+  if (!q) throw new Error(`[QUEUE-FACTORY] Queue ${name} not initialised — is Redis connected?`);
+  return q;
+}
+
+export function getEnrichmentQueue(): Queue { return requireQueue(QUEUE_NAMES.ENRICHMENT); }
+export function getScoringQueue():    Queue { return requireQueue(QUEUE_NAMES.SCORING); }
+export function getMaintenanceQueue(): Queue { return requireQueue(QUEUE_NAMES.MAINTENANCE); }
+export function getRoutingQueue():    Queue { return requireQueue(QUEUE_NAMES.ROUTING); }
+
 // ─── Queue health snapshot ────────────────────────────────────────────────────
 
 export interface QueueHealthSnapshot {

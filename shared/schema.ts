@@ -683,12 +683,49 @@ export const contacts = pgTable("contacts", {
   routeRuleId: integer("route_rule_id"),
   routeReason: text("route_reason"),
   exportEligible: boolean("export_eligible").default(false).notNull(),
+  // --- Phase 4B — Multi-Vertical Intelligence (2026-05-16) ---
+  /**
+   * view_class: controls which CRM view this contact appears in by default.
+   *   incident_subject → appeared in an incident (crash, arrest, permit)
+   *   opportunity_lead → active commercial opportunity
+   *   enriched_contact → verified, actionable contact
+   *   placeholder      → name/data not yet resolved
+   *   archived         → not actionable, removed from default views
+   */
+  viewClass: text("view_class").default("placeholder").notNull(),
+  /**
+   * workflow_stage: current stage in the operational workflow.
+   *   new → enriching → scored → routed → contacted → converted | closed
+   */
+  workflowStage: text("workflow_stage").default("new").notNull(),
+  /**
+   * incident_fingerprint: SHA256 hash linking this contact back to the
+   * source incident. Used for dedup and incident–contact correlation.
+   * Format: SHA256(vertical|sourceId)
+   */
+  incidentFingerprint: text("incident_fingerprint"),
+  /**
+   * territory_id: FK to territories table.
+   * Set during routing; used for territory-based filtering and assignment.
+   */
+  territoryId: integer("territory_id"),
+  /**
+   * is_placeholder: true if we have no verified identity for this contact.
+   * Placeholders are hidden from default CRM views and excluded from exports.
+   * Derived from identityStatus === 'placeholder' but stored as a fast boolean index.
+   */
+  isPlaceholder: boolean("is_placeholder").default(true).notNull(),
 }, (table) => [
   index("idx_contacts_sub_skip_status").on(table.subAccountId, table.skipTraceStatus),
   index("idx_contacts_sub_identity_status").on(table.subAccountId, table.identityStatus),
   index("idx_contacts_source_external_id").on(table.subAccountId, table.sourceExternalId),
   index("idx_contacts_normalized_phone").on(table.subAccountId, table.normalizedPhone),
   index("idx_contacts_lead_vertical").on(table.subAccountId, table.leadVertical),
+  index("idx_contacts_view_class").on(table.subAccountId, table.viewClass),
+  index("idx_contacts_workflow_stage").on(table.subAccountId, table.workflowStage),
+  index("idx_contacts_is_placeholder").on(table.subAccountId, table.isPlaceholder),
+  index("idx_contacts_incident_fingerprint").on(table.incidentFingerprint),
+  index("idx_contacts_territory").on(table.territoryId),
 ]);
 
 export const insertContactSchema = createInsertSchema(contacts).omit({ id: true, createdAt: true });
@@ -3580,3 +3617,293 @@ export const onboardingDefaultsPayloadSchema = z.object({
 
 export type OnboardingDefaultsPayload = z.infer<typeof onboardingDefaultsPayloadSchema>;
 export type OnboardingDefaultsRow = typeof onboardingDefaults.$inferSelect;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 4B / Stage 6 — Multi-Vertical Intelligence Infrastructure
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Territories ───────────────────────────────────────────────────────────────
+/**
+ * Operational territory definitions.
+ * One territory per routing/coverage zone — used by all verticals.
+ * Contacts, incidents, and leads are linked via territory_id.
+ *
+ * Territory types:
+ *   county   — single FL county (e.g. "HILLSBOROUGH")
+ *   zip      — ZIP code cluster
+ *   radius   — lat/lng + radius miles
+ *   dma      — DMA market area code
+ *   custom   — operator-defined polygon (stored as geojson in boundaryJson)
+ */
+export const territories = pgTable("territories", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  name: text("name").notNull(),
+  /** county | zip | radius | dma | custom */
+  territoryType: text("territory_type").notNull().default("county"),
+  /** Primary geographic identifier (county name, ZIP, DMA code, etc.) */
+  identifier: text("identifier").notNull(),
+  /** Additional identifiers (multiple counties, ZIPs, etc.) */
+  identifiers: text("identifiers").array().default([]),
+  /** For radius type: center latitude */
+  centerLat: real("center_lat"),
+  /** For radius type: center longitude */
+  centerLng: real("center_lng"),
+  /** For radius type: radius in miles */
+  radiusMiles: real("radius_miles"),
+  /** GeoJSON boundary for custom or DMA territories */
+  boundaryJson: json("boundary_json"),
+  /** Which vertical this territory applies to (null = all) */
+  vertical: text("vertical"),
+  /** Active territories route leads; inactive are archived */
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_territories_sub_account").on(table.subAccountId),
+  index("idx_territories_identifier").on(table.identifier),
+  index("idx_territories_vertical").on(table.subAccountId, table.vertical),
+]);
+
+export const insertTerritorySchema = createInsertSchema(territories).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertTerritory = z.infer<typeof insertTerritorySchema>;
+export type Territory = typeof territories.$inferSelect;
+
+// ── Generic Incidents ─────────────────────────────────────────────────────────
+/**
+ * Vertical-agnostic incident layer.
+ *
+ * An "incident" is a real-world triggering event — crash, arrest, permit filing,
+ * weather event, OSHA violation, bankruptcy filing, etc.
+ *
+ * Incidents are source-of-truth for what happened. Contacts are people linked
+ * to incidents. Opportunities are commercial actions derived from incidents.
+ *
+ * All verticals converge here:
+ *   crash_report     → sentinelIncidents (crash-specific) + incidents (generic)
+ *   arrest           → incidents
+ *   permit_filing    → incidents
+ *   bankruptcy       → incidents (linked from legalLeads)
+ *   osha_violation   → incidents
+ *   weather_event    → incidents
+ *   court_filing     → incidents
+ */
+export const incidents = pgTable("incidents", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id),
+  /**
+   * Vertical classification:
+   *   crash | arrest | permit | bankruptcy | osha | weather | court | recall | growth
+   */
+  vertical: text("vertical").notNull(),
+  /**
+   * Signal type (mirrors source signal type strings):
+   *   crash_report | dui_arrest | permit_filing | bankruptcy_filing |
+   *   osha_incident | noaa_weather_alert | court_filing | fda_recall | new_business_filing
+   */
+  signalType: text("signal_type").notNull(),
+  /**
+   * Dedup hash — SHA256 of (vertical + sourceId).
+   * Unique constraint prevents double-ingest of the same real-world event.
+   */
+  incidentHash: text("incident_hash").notNull().unique(),
+  /**
+   * External source identifier (case number, docket number, permit number, etc.)
+   */
+  sourceId: text("source_id"),
+  /** Human-readable title for dashboard display */
+  title: text("title").notNull(),
+  /** Full text description */
+  description: text("description"),
+  /** high | medium | low */
+  severity: text("severity").default("medium").notNull(),
+  /**
+   * Lifecycle status:
+   *   new         → just ingested
+   *   enriching   → enrichment worker running
+   *   enriched    → enrichment complete
+   *   routed      → contacts created and routed
+   *   closed      → no further action
+   *   error       → processing failed
+   */
+  status: text("status").default("new").notNull(),
+  /** County where incident occurred */
+  county: text("county"),
+  /** State (default FL) */
+  state: text("state").default("FL"),
+  /** City */
+  city: text("city"),
+  /** Latitude of incident */
+  lat: real("lat"),
+  /** Longitude of incident */
+  lng: real("lng"),
+  /** Territory this incident falls into (from territory matcher) */
+  territoryId: integer("territory_id").references(() => territories.id),
+  /** When the real-world event occurred (not ingest time) */
+  occurredAt: timestamp("occurred_at"),
+  /** When we ingested it */
+  detectedAt: timestamp("detected_at").defaultNow().notNull(),
+  /** Source system name (courtlistener, flhsmv, batchdata, etc.) */
+  sourceSystem: text("source_system"),
+  /** Confidence score 0–1 that this is a real, actionable incident */
+  confidence: real("confidence"),
+  /** Raw source payload for replay/debugging */
+  rawData: json("raw_data"),
+  /** Number of contacts linked to this incident */
+  contactCount: integer("contact_count").default(0).notNull(),
+  /** Number of opportunities created from this incident */
+  opportunityCount: integer("opportunity_count").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_incidents_sub_vertical").on(table.subAccountId, table.vertical),
+  index("idx_incidents_signal_type").on(table.signalType),
+  index("idx_incidents_status").on(table.status),
+  index("idx_incidents_county").on(table.county),
+  index("idx_incidents_territory").on(table.territoryId),
+  index("idx_incidents_detected_at").on(table.detectedAt),
+  index("idx_incidents_occurred_at").on(table.occurredAt),
+]);
+
+export const insertIncidentSchema = createInsertSchema(incidents).omit({ id: true, createdAt: true, updatedAt: true, detectedAt: true });
+export type InsertIncident = z.infer<typeof insertIncidentSchema>;
+export type Incident = typeof incidents.$inferSelect;
+
+// ── Incident–Contact junction ────────────────────────────────────────────────
+/**
+ * Many-to-many link between incidents and contacts.
+ * One incident can involve multiple people; one person can appear in multiple incidents.
+ * Role: "subject" | "witness" | "counterparty" | "owner" | "occupant"
+ */
+export const incidentContacts = pgTable("incident_contacts", {
+  id: serial("id").primaryKey(),
+  incidentId: integer("incident_id").references(() => incidents.id).notNull(),
+  contactId: integer("contact_id").references(() => contacts.id).notNull(),
+  /** Role of this person in the incident */
+  role: text("role").default("subject").notNull(),
+  /** Whether this contact was auto-linked (true) or manually linked (false) */
+  autoLinked: boolean("auto_linked").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_incident_contacts_incident").on(table.incidentId),
+  index("idx_incident_contacts_contact").on(table.contactId),
+]);
+
+export type IncidentContact = typeof incidentContacts.$inferSelect;
+
+// ── Opportunities ─────────────────────────────────────────────────────────────
+/**
+ * Commercial opportunities derived from incidents.
+ *
+ * Opportunities represent actionable commercial value:
+ *   - An attorney can sign this bankruptcy filer
+ *   - A roofer can bid this storm-damaged property
+ *   - A PI attorney can represent this crash victim
+ *
+ * Opportunities are SEPARATE from contacts and incidents.
+ * They track the business relationship, not the event.
+ *
+ * Lifecycle:
+ *   available → assigned → in_progress → won | lost | expired
+ */
+export const opportunities = pgTable("opportunities", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  /** The incident that generated this opportunity (nullable for manually created) */
+  incidentId: integer("incident_id").references(() => incidents.id),
+  /** Primary contact this opportunity is about */
+  contactId: integer("contact_id").references(() => contacts.id),
+  /** Vertical: crash | arrest | permit | bankruptcy | home_service | legal */
+  vertical: text("vertical").notNull(),
+  /** Opportunity type within vertical: pi_attorney_lead | roofing_bid | bankruptcy_consult | etc. */
+  opportunityType: text("opportunity_type").notNull(),
+  /** Brief title */
+  title: text("title").notNull(),
+  /**
+   * Lifecycle status:
+   *   available   → not yet assigned to anyone
+   *   assigned    → claimed by a user/team
+   *   in_progress → actively being worked
+   *   won         → closed as successful
+   *   lost        → closed as unsuccessful
+   *   expired     → past expiry date, no longer actionable
+   */
+  status: text("status").default("available").notNull(),
+  /** Who this opportunity is assigned to */
+  assignedTo: integer("assigned_to"),
+  /** Score 0–100 */
+  score: integer("score"),
+  /** A+ | A | B | C | D */
+  scoreBand: text("score_band"),
+  /** Territory this opportunity belongs to */
+  territoryId: integer("territory_id").references(() => territories.id),
+  /** Estimated value in USD */
+  estimatedValueUsd: real("estimated_value_usd"),
+  /** When this opportunity expires and becomes unactionable */
+  expiresAt: timestamp("expires_at"),
+  /** Notes */
+  notes: text("notes"),
+  /** Raw data from source system */
+  rawData: json("raw_data"),
+  claimedAt: timestamp("claimed_at"),
+  wonAt: timestamp("won_at"),
+  lostAt: timestamp("lost_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_opportunities_sub_vertical").on(table.subAccountId, table.vertical),
+  index("idx_opportunities_status").on(table.status),
+  index("idx_opportunities_contact").on(table.contactId),
+  index("idx_opportunities_incident").on(table.incidentId),
+  index("idx_opportunities_territory").on(table.territoryId),
+  index("idx_opportunities_score").on(table.score),
+  index("idx_opportunities_expires_at").on(table.expiresAt),
+]);
+
+export const insertOpportunitySchema = createInsertSchema(opportunities).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertOpportunity = z.infer<typeof insertOpportunitySchema>;
+export type Opportunity = typeof opportunities.$inferSelect;
+
+// ── Contact scores ────────────────────────────────────────────────────────────
+/**
+ * Unified cross-vertical contact scoring.
+ *
+ * Scoring factors (weighted):
+ *   enrichment_quality  — has real name, phone, address
+ *   phone_presence      — verified phone number
+ *   email_presence      — verified email
+ *   recency             — age since incident occurred
+ *   territory_relevance — matches operator's territory config
+ *   source_confidence   — source data quality
+ *   severity            — high severity incidents score higher
+ *   engagement          — prior workflow interactions
+ *
+ * A+ = 90–100, A = 75–89, B = 55–74, C = 35–54, D = 0–34
+ */
+export const contactScores = pgTable("contact_scores", {
+  id: serial("id").primaryKey(),
+  contactId: integer("contact_id").references(() => contacts.id).notNull(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  /** Composite score 0–100 */
+  score: integer("score").notNull(),
+  /** A+ | A | B | C | D */
+  scoreBand: text("score_band").notNull(),
+  /** Whether this contact qualifies for routing/outreach */
+  qualifies: boolean("qualifies").default(false).notNull(),
+  /** Scoring factor breakdown (JSON: { factor: weight * raw }) */
+  breakdown: json("breakdown"),
+  /** Version of the scoring algorithm that produced this score */
+  scorerVersion: text("scorer_version").default("v1").notNull(),
+  /** When this score expires and should be recalculated */
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_contact_scores_contact").on(table.contactId),
+  index("idx_contact_scores_sub_band").on(table.subAccountId, table.scoreBand),
+  index("idx_contact_scores_score").on(table.score),
+]);
+
+export const insertContactScoreSchema = createInsertSchema(contactScores).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertContactScore = z.infer<typeof insertContactScoreSchema>;
+export type ContactScore = typeof contactScores.$inferSelect;

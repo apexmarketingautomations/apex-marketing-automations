@@ -860,6 +860,193 @@ const MIGRATIONS: DataMigration[] = [
           AND lead_subtype = 'crash';
     `,
   },
+  {
+    name: "2026-05-16-phase-4b-multi-vertical-intelligence",
+    sql: `
+      -- ── Phase 4B: Multi-Vertical Intelligence Infrastructure ──────────────────
+      -- Adds: view_class, workflow_stage, incident_fingerprint, territory_id,
+      --       is_placeholder on contacts; new territories, incidents,
+      --       incident_contacts, opportunities, contact_scores tables.
+
+      -- 1. Contacts — Phase 4B columns
+      ALTER TABLE contacts
+        ADD COLUMN IF NOT EXISTS view_class          TEXT NOT NULL DEFAULT 'placeholder',
+        ADD COLUMN IF NOT EXISTS workflow_stage      TEXT NOT NULL DEFAULT 'new',
+        ADD COLUMN IF NOT EXISTS incident_fingerprint TEXT,
+        ADD COLUMN IF NOT EXISTS territory_id        INTEGER,
+        ADD COLUMN IF NOT EXISTS is_placeholder      BOOLEAN NOT NULL DEFAULT true;
+
+      CREATE INDEX IF NOT EXISTS idx_contacts_view_class
+        ON contacts (sub_account_id, view_class);
+      CREATE INDEX IF NOT EXISTS idx_contacts_workflow_stage
+        ON contacts (sub_account_id, workflow_stage);
+      CREATE INDEX IF NOT EXISTS idx_contacts_is_placeholder
+        ON contacts (sub_account_id, is_placeholder);
+      CREATE INDEX IF NOT EXISTS idx_contacts_incident_fingerprint
+        ON contacts (incident_fingerprint)
+        WHERE incident_fingerprint IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_contacts_territory
+        ON contacts (territory_id)
+        WHERE territory_id IS NOT NULL;
+
+      -- 2. Territories table
+      CREATE TABLE IF NOT EXISTS territories (
+        id              SERIAL PRIMARY KEY,
+        sub_account_id  INTEGER NOT NULL REFERENCES sub_accounts(id),
+        name            TEXT NOT NULL,
+        territory_type  TEXT NOT NULL DEFAULT 'county',
+        identifier      TEXT NOT NULL,
+        identifiers     TEXT[] DEFAULT '{}',
+        center_lat      REAL,
+        center_lng      REAL,
+        radius_miles    REAL,
+        boundary_json   JSONB,
+        vertical        TEXT,
+        is_active       BOOLEAN NOT NULL DEFAULT true,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_territories_sub_account
+        ON territories (sub_account_id);
+      CREATE INDEX IF NOT EXISTS idx_territories_identifier
+        ON territories (identifier);
+      CREATE INDEX IF NOT EXISTS idx_territories_vertical
+        ON territories (sub_account_id, vertical);
+
+      -- 3. Generic incidents table (vertical-agnostic)
+      CREATE TABLE IF NOT EXISTS incidents (
+        id               SERIAL PRIMARY KEY,
+        sub_account_id   INTEGER REFERENCES sub_accounts(id),
+        vertical         TEXT NOT NULL,
+        signal_type      TEXT NOT NULL,
+        incident_hash    TEXT NOT NULL UNIQUE,
+        source_id        TEXT,
+        title            TEXT NOT NULL,
+        description      TEXT,
+        severity         TEXT NOT NULL DEFAULT 'medium',
+        status           TEXT NOT NULL DEFAULT 'new',
+        county           TEXT,
+        state            TEXT DEFAULT 'FL',
+        city             TEXT,
+        lat              REAL,
+        lng              REAL,
+        territory_id     INTEGER REFERENCES territories(id),
+        occurred_at      TIMESTAMPTZ,
+        detected_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+        source_system    TEXT,
+        confidence       REAL,
+        raw_data         JSONB,
+        contact_count    INTEGER NOT NULL DEFAULT 0,
+        opportunity_count INTEGER NOT NULL DEFAULT 0,
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_incidents_sub_vertical
+        ON incidents (sub_account_id, vertical);
+      CREATE INDEX IF NOT EXISTS idx_incidents_signal_type
+        ON incidents (signal_type);
+      CREATE INDEX IF NOT EXISTS idx_incidents_status
+        ON incidents (status);
+      CREATE INDEX IF NOT EXISTS idx_incidents_county
+        ON incidents (county);
+      CREATE INDEX IF NOT EXISTS idx_incidents_territory
+        ON incidents (territory_id);
+      CREATE INDEX IF NOT EXISTS idx_incidents_detected_at
+        ON incidents (detected_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_incidents_occurred_at
+        ON incidents (occurred_at DESC);
+
+      -- 4. Incident–contact junction
+      CREATE TABLE IF NOT EXISTS incident_contacts (
+        id          SERIAL PRIMARY KEY,
+        incident_id INTEGER NOT NULL REFERENCES incidents(id),
+        contact_id  INTEGER NOT NULL REFERENCES contacts(id),
+        role        TEXT NOT NULL DEFAULT 'subject',
+        auto_linked BOOLEAN NOT NULL DEFAULT true,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_incident_contacts_incident
+        ON incident_contacts (incident_id);
+      CREATE INDEX IF NOT EXISTS idx_incident_contacts_contact
+        ON incident_contacts (contact_id);
+
+      -- 5. Opportunities table
+      CREATE TABLE IF NOT EXISTS opportunities (
+        id                  SERIAL PRIMARY KEY,
+        sub_account_id      INTEGER NOT NULL REFERENCES sub_accounts(id),
+        incident_id         INTEGER REFERENCES incidents(id),
+        contact_id          INTEGER REFERENCES contacts(id),
+        vertical            TEXT NOT NULL,
+        opportunity_type    TEXT NOT NULL,
+        title               TEXT NOT NULL,
+        status              TEXT NOT NULL DEFAULT 'available',
+        assigned_to         INTEGER,
+        score               INTEGER,
+        score_band          TEXT,
+        territory_id        INTEGER REFERENCES territories(id),
+        estimated_value_usd REAL,
+        expires_at          TIMESTAMPTZ,
+        notes               TEXT,
+        raw_data            JSONB,
+        claimed_at          TIMESTAMPTZ,
+        won_at              TIMESTAMPTZ,
+        lost_at             TIMESTAMPTZ,
+        created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_opportunities_sub_vertical
+        ON opportunities (sub_account_id, vertical);
+      CREATE INDEX IF NOT EXISTS idx_opportunities_status
+        ON opportunities (status);
+      CREATE INDEX IF NOT EXISTS idx_opportunities_contact
+        ON opportunities (contact_id);
+      CREATE INDEX IF NOT EXISTS idx_opportunities_incident
+        ON opportunities (incident_id);
+      CREATE INDEX IF NOT EXISTS idx_opportunities_territory
+        ON opportunities (territory_id);
+      CREATE INDEX IF NOT EXISTS idx_opportunities_expires_at
+        ON opportunities (expires_at)
+        WHERE expires_at IS NOT NULL;
+
+      -- 6. Contact scores table
+      CREATE TABLE IF NOT EXISTS contact_scores (
+        id             SERIAL PRIMARY KEY,
+        contact_id     INTEGER NOT NULL REFERENCES contacts(id),
+        sub_account_id INTEGER NOT NULL REFERENCES sub_accounts(id),
+        score          INTEGER NOT NULL,
+        score_band     TEXT NOT NULL,
+        qualifies      BOOLEAN NOT NULL DEFAULT false,
+        breakdown      JSONB,
+        scorer_version TEXT NOT NULL DEFAULT 'v1',
+        expires_at     TIMESTAMPTZ,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_contact_scores_contact
+        ON contact_scores (contact_id);
+      CREATE INDEX IF NOT EXISTS idx_contact_scores_sub_band
+        ON contact_scores (sub_account_id, score_band);
+      CREATE INDEX IF NOT EXISTS idx_contact_scores_score
+        ON contact_scores (score DESC);
+
+      -- 7. Backfill is_placeholder from existing identityStatus
+      UPDATE contacts
+        SET is_placeholder = true
+        WHERE identity_status IN ('unidentified', 'placeholder');
+      UPDATE contacts
+        SET is_placeholder = false
+        WHERE identity_status = 'verified';
+
+      -- 8. Backfill view_class from existing identity and tags
+      UPDATE contacts
+        SET view_class = 'enriched_contact'
+        WHERE identity_status = 'verified';
+      UPDATE contacts
+        SET view_class = 'incident_subject'
+        WHERE lead_subtype IN ('crash', 'arrest', 'dui')
+          AND identity_status != 'verified';
+    `,
+  },
 ];
 
 export async function runDataMigrations(): Promise<void> {
