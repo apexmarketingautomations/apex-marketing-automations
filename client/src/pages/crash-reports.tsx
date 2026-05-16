@@ -16,6 +16,7 @@ import { hasFeature } from "@shared/schema";
 interface CrashReportSummary {
   id: number;
   reportNumber: string;
+  officialReportNumber?: string | null;
   status: string;
   requesterRole: string | null;
   reason: string | null;
@@ -343,8 +344,11 @@ function ReportDetailView({ reportId, onBack }: { reportId: number; onBack: () =
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div className="min-w-0">
             <h2 className="text-xl md:text-2xl font-black text-white truncate" data-testid="text-report-number">
-              Report #{report.reportNumber}
+              Report #{report.officialReportNumber ?? report.reportNumber}
             </h2>
+            {report.officialReportNumber && (
+              <p className="text-slate-500 text-xs font-mono">Tracking ID: {report.reportNumber}</p>
+            )}
             <p className="text-slate-500 text-sm">Requested {formatDate(report.createdAt)}</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -1144,7 +1148,7 @@ function ReportRow({ report, index, onClick }: { report: CrashReportSummary; ind
         </div>
         <div className="min-w-0">
           <p className="text-white font-bold text-sm" data-testid={`text-report-number-${report.id}`}>
-            {report.reportNumber}
+            {report.officialReportNumber ?? report.reportNumber}
           </p>
           <p className="text-slate-500 text-xs truncate">
             {report.status === "PENDING" || report.status === "PROCESSING" ? "Queued" : report.reason || "No reason specified"} {formatDate(report.createdAt)}
