@@ -226,4 +226,77 @@ export function registerAdminRoutes(app: Express) {
 
     res.json({ ok: true, replayed, failed, total: results.length });
   }));
+
+  // ── Pipeline Metrics endpoint ────────────────────────────────────────────────
+
+  /**
+   * GET /api/admin/pipeline-metrics
+   * Returns a unified snapshot of all BullMQ queue depths, DLQ status,
+   * and Redis availability. Admin-only.
+   *
+   * Response shape:
+   * {
+   *   timestamp: string,
+   *   redisAvailable: boolean,
+   *   queues: QueueHealthSnapshot[],
+   *   dlq: { waiting: number; failed: number; jobs: DeadLetterJob[] },
+   *   totals: { waiting: number; active: number; failed: number; delayed: number }
+   * }
+   */
+  app.get("/api/admin/pipeline-metrics", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
+
+    const {
+      getQueueHealthSnapshot,
+      getDeadLetterJobs,
+      isRedisAvailable,
+      QUEUE_NAMES,
+    } = await import("../queues/queueFactory");
+
+    const redisAvailable = isRedisAvailable();
+
+    if (!redisAvailable) {
+      return res.json({
+        timestamp: new Date().toISOString(),
+        redisAvailable: false,
+        queues: [],
+        dlq: { waiting: 0, failed: 0, jobs: [] },
+        totals: { waiting: 0, active: 0, failed: 0, delayed: 0 },
+      });
+    }
+
+    const [allQueues, dlqResult] = await Promise.all([
+      getQueueHealthSnapshot(),
+      getDeadLetterJobs({ start: 0, end: 49 }),
+    ]);
+
+    // Separate DLQ from operational queues
+    const operationalQueues = allQueues.filter(q => q.name !== QUEUE_NAMES.DEAD_LETTER);
+    const dlqSnapshot       = allQueues.find(q => q.name === QUEUE_NAMES.DEAD_LETTER);
+
+    // Aggregate totals across all operational queues
+    const totals = operationalQueues.reduce(
+      (acc, q) => ({
+        waiting: acc.waiting + q.waiting,
+        active:  acc.active  + q.active,
+        failed:  acc.failed  + q.failed,
+        delayed: acc.delayed + q.delayed,
+      }),
+      { waiting: 0, active: 0, failed: 0, delayed: 0 }
+    );
+
+    res.json({
+      timestamp: new Date().toISOString(),
+      redisAvailable: true,
+      queues: operationalQueues,
+      dlq: {
+        waiting: dlqSnapshot?.waiting ?? 0,
+        failed:  dlqSnapshot?.failed  ?? 0,
+        jobs:    dlqResult.jobs,
+        total:   dlqResult.total,
+      },
+      totals,
+    });
+  }));
 }

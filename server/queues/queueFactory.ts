@@ -172,6 +172,7 @@ export function getScoringQueue():     Queue { return requireQueue(QUEUE_NAMES.S
 export function getMaintenanceQueue(): Queue { return requireQueue(QUEUE_NAMES.MAINTENANCE); }
 export function getRoutingQueue():     Queue { return requireQueue(QUEUE_NAMES.ROUTING); }
 export function getDeadLetterQueue():  Queue { return requireQueue(QUEUE_NAMES.DEAD_LETTER); }
+export { isRedisAvailable };
 
 // ─── Dead Letter Queue helpers ────────────────────────────────────────────────
 
