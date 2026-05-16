@@ -12,7 +12,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Plus, Trash2, GripVertical, Users, Loader2, Layers, Info, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
+import { Plus, Trash2, GripVertical, Users, Loader2, Layers, Info, ChevronUp, ChevronDown, ChevronsUpDown, Search, Phone, MapPin, Filter, X, EyeOff } from "lucide-react";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { PIPELINE_STEPS } from "@/components/tutorial-steps";
 import { AddressAutocomplete, type AddressData } from "@/components/address-autocomplete";
@@ -109,6 +109,10 @@ export default function PipelinePage() {
   const [contactsPage, setContactsPage] = useState(1);
   const [sortField, setSortField] = useState<string>("createdAt");
   const [sortDir, setSortDir]   = useState<"asc" | "desc">("desc");
+  const [contactSearch, setContactSearch] = useState("");
+  const [contactSource, setContactSource] = useState("");
+  const [contactHasPhone, setContactHasPhone] = useState<"" | "true" | "false">("");
+  const [hideUnidentified, setHideUnidentified] = useState(true);
 
   function handleSort(field: string) {
     if (sortField === field) {
@@ -148,9 +152,19 @@ export default function PipelinePage() {
   });
 
   const { data: contactsResult } = useQuery<{ items: Contact[]; data?: Contact[]; total: number; page: number; pageSize: number; totalPages: number }>({
-    queryKey: ["/api/contacts", subAccountId, contactsPage, sortField, sortDir],
+    queryKey: ["/api/contacts", subAccountId, contactsPage, sortField, sortDir, contactSearch, contactSource, contactHasPhone, hideUnidentified],
     queryFn: async () => {
-      const res = await fetch(`/api/contacts/${subAccountId}?limit=100&page=${contactsPage}&sortBy=${sortField}&sortDir=${sortDir}`);
+      const qp = new URLSearchParams({
+        limit: "50",
+        page: String(contactsPage),
+        sortBy: sortField,
+        sortDir,
+        source: "all",
+      });
+      if (contactSearch) qp.set("search", contactSearch);
+      if (contactSource) qp.set("source", contactSource);
+      if (contactHasPhone) qp.set("hasPhone", contactHasPhone);
+      const res = await fetch(`/api/contacts/${subAccountId}?${qp.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch contacts");
       return res.json();
     },
@@ -594,19 +608,74 @@ export default function PipelinePage() {
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
             <Card className="bg-white/5 border-white/10" data-testid="contacts-table">
               <CardHeader className="flex flex-col gap-3">
-                <div className="flex flex-row items-center justify-between">
+                <div className="flex flex-row items-center justify-between gap-2 flex-wrap">
                   <CardTitle className="text-white text-lg flex items-center gap-2">
                     <Users size={18} className="text-indigo-400" />
-                    Contacts ({contactsTotal})
+                    Contacts ({contactsTotal.toLocaleString()})
                     {contactsTotalPages > 1 && (
                       <span className="text-xs text-slate-400 font-normal ml-1">
-                        — page {contactsPage} of {contactsTotalPages}
+                        · page {contactsPage}/{contactsTotalPages}
                       </span>
                     )}
                   </CardTitle>
-                  <Button onClick={() => setAddContactOpen(true)} className="bg-cyan-600 hover:bg-cyan-500 text-white" data-testid="button-add-contact">
-                    <Plus size={16} className="mr-1" /> Add Contact
+                  <Button onClick={() => setAddContactOpen(true)} className="bg-cyan-600 hover:bg-cyan-500 text-white text-xs h-8" data-testid="button-add-contact">
+                    <Plus size={14} className="mr-1" /> Add Contact
                   </Button>
+                </div>
+
+                {/* Filter bar */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex gap-2 flex-wrap">
+                    {/* Search */}
+                    <div className="relative flex-1 min-w-[160px]">
+                      <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                      <Input
+                        value={contactSearch}
+                        onChange={e => { setContactSearch(e.target.value); setContactsPage(1); }}
+                        placeholder="Name, phone, email..."
+                        className="pl-8 h-8 text-xs bg-white/5 border-white/10 text-white placeholder:text-slate-600"
+                      />
+                      {contactSearch && (
+                        <button onClick={() => { setContactSearch(""); setContactsPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white">
+                          <X size={11} />
+                        </button>
+                      )}
+                    </div>
+                    {/* Source filter */}
+                    <select
+                      value={contactSource}
+                      onChange={e => { setContactSource(e.target.value); setContactsPage(1); }}
+                      className="h-8 px-2 rounded-md text-xs font-medium bg-white/5 border border-white/10 text-slate-300 focus:outline-none"
+                    >
+                      <option value="">All Sources</option>
+                      <option value="sentinel_crash">Crash Leads</option>
+                      <option value="property_radar">Property Radar</option>
+                      <option value="meta_ads">Meta Ads</option>
+                      <option value="manual">Manual</option>
+                    </select>
+                    {/* Has phone filter */}
+                    <select
+                      value={contactHasPhone}
+                      onChange={e => { setContactHasPhone(e.target.value as "" | "true" | "false"); setContactsPage(1); }}
+                      className="h-8 px-2 rounded-md text-xs font-medium bg-white/5 border border-white/10 text-slate-300 focus:outline-none"
+                    >
+                      <option value="">All</option>
+                      <option value="true">Has Phone</option>
+                      <option value="false">No Phone</option>
+                    </select>
+                  </div>
+                  {/* Hide unidentified toggle */}
+                  <button
+                    onClick={() => { setHideUnidentified(h => !h); setContactsPage(1); }}
+                    className={`flex items-center gap-1.5 text-[11px] font-bold w-fit px-2.5 py-1 rounded-lg border transition-all ${
+                      hideUnidentified
+                        ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                        : "bg-white/5 text-slate-500 border-white/10"
+                    }`}
+                  >
+                    <EyeOff size={11} />
+                    {hideUnidentified ? "Hiding unnamed crash placeholders" : "Show all contacts"}
+                  </button>
                 </div>
                 {contactsTotalPages > 1 && (
                   <div className="flex items-center gap-1 flex-wrap">
@@ -645,110 +714,124 @@ export default function PipelinePage() {
                     <p className="text-slate-200 text-sm">No contacts yet</p>
                   </div>
                 ) : (
-                  <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
-                    <table className="w-full text-sm min-w-[700px]">
-                      <thead>
-                        <tr className="border-b border-white/10">
-                          {(["firstName","email","phone","address","source"] as const).map((field, i) => {
-                            const labels: Record<string, string> = { firstName: "Name", email: "Email", phone: "Phone", address: "Address", source: "Source" };
-                            const hidden = field === "email" ? "hidden sm:table-cell" : field === "address" ? "hidden lg:table-cell" : field === "source" ? "hidden md:table-cell" : "";
-                            const isActive = sortField === field || (field === "firstName" && sortField === "lastName");
-                            return (
-                              <th key={field} className={`text-left py-3 px-3 font-medium ${hidden}`}>
-                                <button
-                                  onClick={() => handleSort(field === "firstName" ? "firstName" : field)}
-                                  className={`inline-flex items-center gap-0.5 hover:text-white transition-colors select-none ${isActive ? "text-cyan-400" : "text-slate-400"}`}
-                                >
-                                  {labels[field]}
-                                  <SortIcon field={field === "firstName" ? "firstName" : field} />
-                                </button>
-                              </th>
-                            );
-                          })}
-                          <th className="text-left py-3 px-3 text-slate-400 font-medium hidden lg:table-cell">Tags</th>
-                          <th className="text-right py-3 px-3 text-slate-400 font-medium">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {contacts.map((contact) => {
-                          const isCrashLead = contact.tags?.includes("Crash_Connect_Lead");
-                          const isGeofence = contact.tags?.includes("Sentinel_Geofence");
-                          return (
-                          <tr key={contact.id} className={`border-b border-white/5 hover:bg-white/[0.03] transition-colors cursor-pointer ${isCrashLead ? "bg-red-500/5" : ""}`} onClick={() => {
-                            setSelectedContact(contact);
-                            setEditContactForm({
-                              firstName: contact.firstName || "",
-                              lastName: contact.lastName || "",
-                              email: contact.email || "",
-                              phone: contact.phone || "",
-                              company: contact.company || "",
-                              source: contact.source || "",
-                              tags: (contact.tags || []).join(", "),
-                              notes: contact.notes || "",
-                              address: contact.address || "",
-                              city: contact.city || "",
-                              state: contact.state || "",
-                              zip: contact.zip || "",
-                              smsOptOut: contact.smsOptOut || false,
-                              emailOptOut: contact.emailOptOut || false,
-                            });
-                            setEditContactOpen(true);
-                          }} data-testid={`contact-row-${contact.id}`}>
-                            <td className="py-3 px-3 text-white font-medium" data-testid={`contact-name-${contact.id}`}>
-                              <span className="truncate block max-w-[150px] md:max-w-none">{[contact.firstName, contact.lastName].filter(Boolean).join(" ") || "—"}</span>
-                              {isCrashLead && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30 uppercase font-bold">Crash Lead</span>}
-                            </td>
-                            <td className="py-3 px-3 text-slate-200 hidden sm:table-cell" data-testid={`contact-email-${contact.id}`}>{contact.email || "—"}</td>
-                            <td className="py-3 px-3 text-slate-200" data-testid={`contact-phone-${contact.id}`}>
-                              {contact.phone ? (
-                                (contact.channel === "facebook" || contact.channel === "instagram") && /^\d{10,20}$/.test(contact.phone) ? (
-                                  <span className="text-xs text-slate-400">{contact.channel === "instagram" ? "IG" : "FB"} ID ...{contact.phone.slice(-4)}</span>
-                                ) : contact.phone
-                              ) : "—"}
-                            </td>
-                            <td className="py-3 px-3 text-slate-200 hidden lg:table-cell" data-testid={`contact-address-${contact.id}`}>
-                              {contact.address ? (
-                                <span className="text-xs">{contact.address}{contact.city ? `, ${contact.city}` : ""}{contact.state ? `, ${contact.state}` : ""} {contact.zip || ""}</span>
-                              ) : "—"}
-                            </td>
-                            <td className="py-3 px-3 hidden md:table-cell">
-                              <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30" data-testid={`contact-source-${contact.id}`}>
+                  <div className="space-y-2 md:space-y-0">
+                    {/* Desktop table header — hidden on mobile */}
+                    <div className="hidden md:grid grid-cols-[2fr_1.5fr_1fr_1fr_40px] gap-3 px-3 py-2 border-b border-white/10 text-xs font-medium text-slate-400">
+                      {(["firstName","phone","source","address"] as const).map(field => {
+                        const labels: Record<string,string> = { firstName:"Name", phone:"Phone", source:"Source", address:"Address" };
+                        const isActive = sortField === field;
+                        return (
+                          <button key={field} onClick={() => handleSort(field)}
+                            className={`flex items-center gap-1 text-left hover:text-white transition-colors ${isActive ? "text-cyan-400" : ""}`}>
+                            {labels[field]}<SortIcon field={field} />
+                          </button>
+                        );
+                      })}
+                      <span />
+                    </div>
+
+                    {contacts
+                      .filter(c => !hideUnidentified || !/^Unidentified\b/i.test(c.firstName || ""))
+                      .map((contact) => {
+                        const isCrashLead = contact.source === "sentinel_crash" || contact.tags?.includes("Crash_Connect_Lead") || contact.tags?.includes("crash-lead");
+                        const fullName = [contact.firstName, contact.lastName].filter(Boolean).join(" ");
+                        const isPlaceholder = /^Unidentified\b/i.test(contact.firstName || "");
+                        const displayName = isPlaceholder
+                          ? (contact.address || contact.city || "Crash Incident")
+                          : (fullName || "—");
+
+                        const openEdit = () => {
+                          setSelectedContact(contact);
+                          setEditContactForm({
+                            firstName: contact.firstName || "",
+                            lastName: contact.lastName || "",
+                            email: contact.email || "",
+                            phone: contact.phone || "",
+                            company: contact.company || "",
+                            source: contact.source || "",
+                            tags: (contact.tags || []).join(", "),
+                            notes: contact.notes || "",
+                            address: contact.address || "",
+                            city: contact.city || "",
+                            state: contact.state || "",
+                            zip: contact.zip || "",
+                            smsOptOut: contact.smsOptOut || false,
+                            emailOptOut: contact.emailOptOut || false,
+                          });
+                          setEditContactOpen(true);
+                        };
+
+                        return (
+                          <div key={contact.id} data-testid={`contact-row-${contact.id}`}>
+                            {/* Mobile card */}
+                            <div
+                              className={`md:hidden flex items-center justify-between px-3 py-3 rounded-xl border cursor-pointer transition-all ${
+                                isCrashLead ? "bg-red-500/5 border-red-500/15 hover:border-red-500/30" : "bg-white/[0.02] border-white/5 hover:bg-white/[0.04] hover:border-white/10"
+                              }`}
+                              onClick={openEdit}
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p className={`font-bold text-sm truncate ${isPlaceholder ? "text-slate-500 italic" : "text-white"}`}>
+                                  {displayName}
+                                </p>
+                                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                  {contact.phone ? (
+                                    <a href={`tel:${contact.phone}`} onClick={e => e.stopPropagation()}
+                                      className="text-green-400 font-mono text-xs font-bold flex items-center gap-1">
+                                      <Phone size={10} />{contact.phone}
+                                    </a>
+                                  ) : (
+                                    <span className="text-slate-600 text-xs">No phone</span>
+                                  )}
+                                  {isCrashLead && <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30 font-black">CRASH</span>}
+                                  <span className="text-[10px] text-slate-600">{contact.source || ""}</span>
+                                </div>
+                              </div>
+                              <Button variant="ghost" size="sm"
+                                className="text-red-400 hover:text-red-300 hover:bg-red-500/10 h-7 w-7 p-0 shrink-0 ml-2"
+                                onClick={e => { e.stopPropagation(); setContactToDelete(contact); setDeleteContactOpen(true); }}
+                                data-testid={`button-row-delete-contact-${contact.id}`}>
+                                <Trash2 size={13} />
+                              </Button>
+                            </div>
+
+                            {/* Desktop row */}
+                            <div
+                              className={`hidden md:grid grid-cols-[2fr_1.5fr_1fr_1fr_40px] gap-3 items-center px-3 py-2.5 border-b border-white/5 cursor-pointer transition-colors hover:bg-white/[0.03] ${isCrashLead ? "bg-red-500/[0.03]" : ""}`}
+                              onClick={openEdit}
+                              data-testid={`contact-row-desktop-${contact.id}`}
+                            >
+                              <div className="min-w-0">
+                                <p className={`font-medium text-sm truncate ${isPlaceholder ? "text-slate-500 italic" : "text-white"}`} data-testid={`contact-name-${contact.id}`}>
+                                  {displayName}
+                                </p>
+                                {isCrashLead && <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30 font-black">CRASH</span>}
+                              </div>
+                              <div data-testid={`contact-phone-${contact.id}`}>
+                                {contact.phone ? (
+                                  <a href={`tel:${contact.phone}`} onClick={e => e.stopPropagation()}
+                                    className="text-green-400 font-mono text-sm font-bold hover:text-green-300 flex items-center gap-1">
+                                    <Phone size={11} />{contact.phone}
+                                  </a>
+                                ) : <span className="text-slate-600 text-sm">—</span>}
+                                {contact.email && <p className="text-slate-500 text-xs truncate">{contact.email}</p>}
+                              </div>
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 w-fit" data-testid={`contact-source-${contact.id}`}>
                                 {contact.source || "—"}
                               </span>
-                            </td>
-                            <td className="py-3 px-3 hidden lg:table-cell">
-                              <div className="flex flex-wrap gap-1" data-testid={`contact-tags-${contact.id}`}>
-                                {contact.tags?.map((tag, i) => (
-                                  <span key={i} className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                                    tag === "Crash_Connect_Lead" ? "bg-red-500/20 text-red-400 border border-red-500/30" :
-                                    tag === "Sentinel_Geofence" ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" :
-                                    "bg-white/10 text-slate-300 border border-white/10"
-                                  }`}>
-                                    {tag}
-                                  </span>
-                                )) || "—"}
-                              </div>
-                            </td>
-                            <td className="py-3 px-3 text-right">
-                              <Button
-                                variant="ghost"
-                                size="sm"
+                              <p className="text-slate-500 text-xs truncate" data-testid={`contact-address-${contact.id}`}>
+                                {contact.city || contact.address || "—"}
+                              </p>
+                              <Button variant="ghost" size="sm"
                                 className="text-red-400 hover:text-red-300 hover:bg-red-500/10 h-7 w-7 p-0"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setContactToDelete(contact);
-                                  setDeleteContactOpen(true);
-                                }}
-                                data-testid={`button-row-delete-contact-${contact.id}`}
-                              >
+                                onClick={e => { e.stopPropagation(); setContactToDelete(contact); setDeleteContactOpen(true); }}
+                                data-testid={`button-row-delete-contact-${contact.id}`}>
                                 <Trash2 size={14} />
                               </Button>
-                            </td>
-                          </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                            </div>
+                          </div>
+                        );
+                    })}
                   </div>
                 )}
                 {contactsTotalPages > 1 && (
