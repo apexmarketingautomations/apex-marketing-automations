@@ -665,8 +665,16 @@ export async function enrichCrashLeadContacts(params: {
     skipTraceNotes || null,
   ].filter(Boolean).join("\n");
 
+  // Store plate number as a searchable tag so attorneys can run lookups later.
+  // Format: "plate:FL-ABC1234" — queryable in CRM filter even without a lookup vendor.
+  const vehicle = detailData.Vehicles?.[0];
+  const plateTag = vehicle?.TagNumber
+    ? `plate:${(vehicle.TagState || "FL").toUpperCase()}-${vehicle.TagNumber.toUpperCase().replace(/\s+/g, "")}`
+    : null;
+
   const enrichmentTags = [
     "flhsmv-enriched",
+    plateTag,
     skipTraceStatusResult === "matched" && phone ? "has-phone" : null,
     skipTraceStatusResult === "no_match" ? "no-phone" : null,
     skipTraceStatusResult !== "not_attempted" ? "skip-traced" : null,

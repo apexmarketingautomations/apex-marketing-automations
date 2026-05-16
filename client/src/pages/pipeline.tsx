@@ -739,6 +739,8 @@ export default function PipelinePage() {
                         const displayName = isPlaceholder
                           ? (contact.address || contact.city || "Crash Incident")
                           : (fullName || "—");
+                        const plateTag = (contact.tags || []).find(t => t.startsWith("plate:"));
+                        const plateDisplay = plateTag ? plateTag.replace("plate:", "") : null;
 
                         const openEdit = () => {
                           setSelectedContact(contact);
@@ -784,6 +786,7 @@ export default function PipelinePage() {
                                     <span className="text-slate-600 text-xs">No phone</span>
                                   )}
                                   {isCrashLead && <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30 font-black">CRASH</span>}
+                                  {plateDisplay && <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 font-mono font-bold">{plateDisplay}</span>}
                                   <span className="text-[10px] text-slate-600">{contact.source || ""}</span>
                                 </div>
                               </div>
@@ -805,7 +808,10 @@ export default function PipelinePage() {
                                 <p className={`font-medium text-sm truncate ${isPlaceholder ? "text-slate-500 italic" : "text-white"}`} data-testid={`contact-name-${contact.id}`}>
                                   {displayName}
                                 </p>
-                                {isCrashLead && <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30 font-black">CRASH</span>}
+                                <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                                  {isCrashLead && <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30 font-black">CRASH</span>}
+                                  {plateDisplay && <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 font-mono font-bold">{plateDisplay}</span>}
+                                </div>
                               </div>
                               <div data-testid={`contact-phone-${contact.id}`}>
                                 {contact.phone ? (
