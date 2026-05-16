@@ -20,7 +20,7 @@
 
 import { db } from "./db";
 import { crashReports } from "@shared/schema";
-import { isNotNull, isNull, eq, and, or } from "drizzle-orm";
+import { isNotNull, eq, and } from "drizzle-orm";
 import { fetchReportDetail, enrichCrashLeadContacts } from "./crashReportWorker";
 
 const BATCH_SIZE = 3;
