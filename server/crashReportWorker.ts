@@ -5,6 +5,7 @@ import crypto from "crypto";
 import { upsertContact, isPlaceholderName, CONTACT_SOURCES, normalizePhone } from "./services/contactUpsertService";
 import { getActiveAccountIds } from "./crashIngestPipeline";
 import { resolveBatchDataKey, recordBatchDataRun } from "./vendorConfig";
+import { lookupRegistration, formatRegistrationNote } from "./dhsmvRegistrationLookup";
 
 const FLHSMV_BASE = "https://services.flhsmv.gov";
 const FLHSMV_HOME = `${FLHSMV_BASE}/crashreportrequest/`;
@@ -547,7 +548,7 @@ async function searchReportByCountyDate(
   }
 }
 
-async function fetchReportDetail(reportNumber: string): Promise<DetailResult> {
+export async function fetchReportDetail(reportNumber: string): Promise<DetailResult> {
   try {
     const headers = getHeaders();
     delete headers["Content-Type"];
@@ -584,7 +585,7 @@ async function fetchReportDetail(reportNumber: string): Promise<DetailResult> {
  * HOME address from their license — a real residential address we can skip-trace
  * to find the actual victim's phone number.
  */
-async function enrichCrashLeadContacts(params: {
+export async function enrichCrashLeadContacts(params: {
   sentinelReportNumber: string;
   subAccountId: number | null;
   detailData: FLHSMVReportData | null;
@@ -651,22 +652,42 @@ async function enrichCrashLeadContacts(params: {
     }
   }
 
+  // Store plate number as a searchable tag so attorneys can run lookups later.
+  // Format: "plate:FL-ABC1234" — queryable in CRM filter even without a lookup vendor.
+  const vehicle = detailData.Vehicles?.[0];
+  const rawPlate = vehicle?.TagNumber ?? null;
+  const plateState = (vehicle?.TagState || "FL").toUpperCase();
+  const plateTag = rawPlate
+    ? `plate:${plateState}-${rawPlate.toUpperCase().replace(/\s+/g, "")}`
+    : null;
+
+  // DHSMV registration lookup via Nimble — gets registered owner name/address.
+  // Runs in addition to FLHSMV driver data; registered owner may differ from driver.
+  let registrationNote: string | null = null;
+  if (rawPlate) {
+    try {
+      const regResult = await lookupRegistration(rawPlate, plateState);
+      registrationNote = formatRegistrationNote(regResult, `${plateState}-${rawPlate}`);
+    } catch (regErr: any) {
+      console.warn(`[CRASH-WORKER] DHSMV registration lookup failed for plate ${rawPlate}: ${regErr.message}`);
+    }
+  }
+
   const noteLines = [
     `FLHSMV Official Report: ${officialReportNumber ?? "pending"}`,
     `Driver: ${primaryDriver.Name} — ${primaryDriver.Address}`,
     `Crash: ${detailData.CrashDate} ${detailData.CrashTime} @ ${detailData.CrashStreet}, ${detailData.CrashCity} FL`,
     `Vehicles: ${detailData.TotalVehicles}  Injuries: ${detailData.TotalInjuries}  Fatalities: ${detailData.TotalFatalities}`,
-    detailData.Vehicles?.[0]?.InsuranceCompany
-      ? `Insurance: ${detailData.Vehicles[0].InsuranceCompany}`
-      : null,
-    detailData.Vehicles?.[0]?.TagNumber
-      ? `Tag: ${detailData.Vehicles[0].TagNumber} ${detailData.Vehicles[0].TagState}`
-      : null,
+    vehicle?.InsuranceCompany ? `Insurance: ${vehicle.InsuranceCompany}` : null,
+    rawPlate ? `Tag: ${rawPlate} ${plateState}` : null,
+    registrationNote || null,
     skipTraceNotes || null,
   ].filter(Boolean).join("\n");
 
   const enrichmentTags = [
     "flhsmv-enriched",
+    plateTag,
+    registrationNote ? "dhsmv-registration-found" : null,
     skipTraceStatusResult === "matched" && phone ? "has-phone" : null,
     skipTraceStatusResult === "no_match" ? "no-phone" : null,
     skipTraceStatusResult !== "not_attempted" ? "skip-traced" : null,

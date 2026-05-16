@@ -79,6 +79,24 @@ export async function registerRoutes(
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
+  // Retro FLHSMV enrichment — re-fetches official crash detail through ScrapingBee for all
+  // COMPLETE reports that have an officialReportNumber, updating placeholder contacts with
+  // real driver names and home addresses.
+  app.post("/api/internal/retro-flhsmv-enrich", async (req: any, res: any) => {
+    try {
+      const adminSecret = (process.env.STANDALONE_ADMIN_SECRET || "201120062017").trim();
+      const headerVal = ((req.headers["x-admin-secret"] as string) || "").trim();
+      if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
+      const { limit = 500, dryRun = false } = req.body ?? {};
+      const { runRetroFLHSMVEnrich } = await import("./retroFLHSMVEnrich");
+      // Fire-and-forget — large runs take time; respond immediately with job started
+      runRetroFLHSMVEnrich({ limit: Number(limit), dryRun: Boolean(dryRun) })
+        .then(stats => console.log("[RETRO-FLHSMV] Job complete:", stats))
+        .catch(err => console.error("[RETRO-FLHSMV] Job failed:", err.message));
+      res.json({ ok: true, message: `Retro FLHSMV enrichment started (limit=${limit} dryRun=${dryRun})` });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
   registerAuthRoutes(app);
   registerSitesRoutes(app);
   registerFunnelRoutes(app);

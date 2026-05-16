@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import {
   FileText, ChevronLeft, Car, Users, MapPin,
   CheckCircle2, XCircle, Loader2, Eye, FileWarning, Upload, AlertCircle,
-  Clock, Database, Shield, RefreshCw, AlertTriangle, Satellite, ChevronRight, Crosshair, Send, Globe, MessageSquare, ExternalLink
+  Clock, Database, Shield, RefreshCw, AlertTriangle, Satellite, ChevronRight, Crosshair, Send, Globe, MessageSquare, ExternalLink, Zap
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAccount } from "@/hooks/use-account";
@@ -926,6 +926,66 @@ function SentinelIncidentDetailView({ incident, onBack }: { incident: SentinelIn
   );
 }
 
+function RetroFLHSMVEnrichPanel() {
+  const { toast } = useToast();
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<{ enriched: number; total: number; noData: number; failed: number } | null>(null);
+
+  async function triggerEnrich() {
+    setRunning(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/internal/retro-flhsmv-enrich", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-secret": "201120062017",
+        },
+        body: JSON.stringify({ limit: 500 }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Unknown error");
+      toast({ title: "Enrichment job started", description: "Running in background — check server logs for progress." });
+    } catch (err: any) {
+      toast({ title: "Failed to start job", description: err.message, variant: "destructive" });
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.15 }}
+      className="bg-[#0a0a0a] border border-amber-500/30 rounded-2xl p-4 md:p-5 mb-6"
+    >
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-bold text-amber-400 uppercase tracking-widest flex items-center gap-2 mb-1">
+            <Zap size={14} /> Recover Crash Contact Names via ScrapingBee
+          </h2>
+          <p className="text-xs text-slate-500 max-w-xl">
+            Re-fetches FLHSMV driver details for all confirmed crash reports and updates
+            placeholder contacts with real driver names and home addresses.
+            Does <strong className="text-slate-400">not</strong> consume BatchData — names only.
+            Uses ScrapingBee credits (~10 per report).
+          </p>
+        </div>
+        <Button
+          onClick={triggerEnrich}
+          disabled={running}
+          className="shrink-0 bg-amber-500 hover:bg-amber-600 text-black font-bold text-xs px-4 py-2 rounded-xl"
+        >
+          {running
+            ? <><Loader2 size={14} className="mr-1.5 animate-spin" /> Running…</>
+            : <><Zap size={14} className="mr-1.5" /> Run Name Recovery</>}
+        </Button>
+      </div>
+    </motion.div>
+  );
+}
+
 export default function CrashReports() {
   const queryClient = useQueryClient();
   const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
@@ -1027,6 +1087,8 @@ export default function CrashReports() {
       </div>
 
       <FetchReportForm subAccountId={currentAccount?.id} onQueued={() => queryClient.invalidateQueries({ queryKey: ["/api/crash-reports"] })} />
+
+      <RetroFLHSMVEnrichPanel />
 
       {hasSentinelAccess && sentinelIncidents.length > 0 && (
         <motion.div
