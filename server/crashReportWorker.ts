@@ -5,6 +5,7 @@ import crypto from "crypto";
 import { upsertContact, isPlaceholderName, CONTACT_SOURCES, normalizePhone } from "./services/contactUpsertService";
 import { getActiveAccountIds } from "./crashIngestPipeline";
 import { resolveBatchDataKey, recordBatchDataRun } from "./vendorConfig";
+import { lookupRegistration, formatRegistrationNote } from "./dhsmvRegistrationLookup";
 
 const FLHSMV_BASE = "https://services.flhsmv.gov";
 const FLHSMV_HOME = `${FLHSMV_BASE}/crashreportrequest/`;
@@ -651,30 +652,42 @@ export async function enrichCrashLeadContacts(params: {
     }
   }
 
+  // Store plate number as a searchable tag so attorneys can run lookups later.
+  // Format: "plate:FL-ABC1234" — queryable in CRM filter even without a lookup vendor.
+  const vehicle = detailData.Vehicles?.[0];
+  const rawPlate = vehicle?.TagNumber ?? null;
+  const plateState = (vehicle?.TagState || "FL").toUpperCase();
+  const plateTag = rawPlate
+    ? `plate:${plateState}-${rawPlate.toUpperCase().replace(/\s+/g, "")}`
+    : null;
+
+  // DHSMV registration lookup via Nimble — gets registered owner name/address.
+  // Runs in addition to FLHSMV driver data; registered owner may differ from driver.
+  let registrationNote: string | null = null;
+  if (rawPlate) {
+    try {
+      const regResult = await lookupRegistration(rawPlate, plateState);
+      registrationNote = formatRegistrationNote(regResult, `${plateState}-${rawPlate}`);
+    } catch (regErr: any) {
+      console.warn(`[CRASH-WORKER] DHSMV registration lookup failed for plate ${rawPlate}: ${regErr.message}`);
+    }
+  }
+
   const noteLines = [
     `FLHSMV Official Report: ${officialReportNumber ?? "pending"}`,
     `Driver: ${primaryDriver.Name} — ${primaryDriver.Address}`,
     `Crash: ${detailData.CrashDate} ${detailData.CrashTime} @ ${detailData.CrashStreet}, ${detailData.CrashCity} FL`,
     `Vehicles: ${detailData.TotalVehicles}  Injuries: ${detailData.TotalInjuries}  Fatalities: ${detailData.TotalFatalities}`,
-    detailData.Vehicles?.[0]?.InsuranceCompany
-      ? `Insurance: ${detailData.Vehicles[0].InsuranceCompany}`
-      : null,
-    detailData.Vehicles?.[0]?.TagNumber
-      ? `Tag: ${detailData.Vehicles[0].TagNumber} ${detailData.Vehicles[0].TagState}`
-      : null,
+    vehicle?.InsuranceCompany ? `Insurance: ${vehicle.InsuranceCompany}` : null,
+    rawPlate ? `Tag: ${rawPlate} ${plateState}` : null,
+    registrationNote || null,
     skipTraceNotes || null,
   ].filter(Boolean).join("\n");
-
-  // Store plate number as a searchable tag so attorneys can run lookups later.
-  // Format: "plate:FL-ABC1234" — queryable in CRM filter even without a lookup vendor.
-  const vehicle = detailData.Vehicles?.[0];
-  const plateTag = vehicle?.TagNumber
-    ? `plate:${(vehicle.TagState || "FL").toUpperCase()}-${vehicle.TagNumber.toUpperCase().replace(/\s+/g, "")}`
-    : null;
 
   const enrichmentTags = [
     "flhsmv-enriched",
     plateTag,
+    registrationNote ? "dhsmv-registration-found" : null,
     skipTraceStatusResult === "matched" && phone ? "has-phone" : null,
     skipTraceStatusResult === "no_match" ? "no-phone" : null,
     skipTraceStatusResult !== "not_attempted" ? "skip-traced" : null,
