@@ -2,10 +2,8 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import crypto from "crypto";
-import { upsertContact, isPlaceholderName, CONTACT_SOURCES, normalizePhone } from "./services/contactUpsertService";
-import { getActiveAccountIds } from "./crashIngestPipeline";
-import { resolveBatchDataKey, recordBatchDataRun } from "./vendorConfig";
-import { lookupRegistration, formatRegistrationNote } from "./dhsmvRegistrationLookup";
+import { contacts } from "@shared/schema";
+import { upsertContact, CONTACT_SOURCES, isPlaceholderName } from "./services/contactUpsertService";
 
 const FLHSMV_BASE = "https://services.flhsmv.gov";
 const FLHSMV_HOME = `${FLHSMV_BASE}/crashreportrequest/`;
@@ -112,7 +110,7 @@ interface FLHSMVSearchResult {
   ReportStatus: string;
 }
 
-interface FLHSMVReportData {
+export interface FLHSMVReportData {
   ReportNumber: string;
   CrashDate: string;
   CrashTime: string;
@@ -576,162 +574,6 @@ export async function fetchReportDetail(reportNumber: string): Promise<DetailRes
   }
 }
 
-/**
- * After the FLHSMV worker successfully retrieves official crash data, enrich
- * the crash lead contacts for every active crash-enabled account.
- *
- * The original skip-trace ran on the CRASH SCENE address (a highway/intersection)
- * and almost always returned no phone. The FLHSMV detail contains the driver's
- * HOME address from their license — a real residential address we can skip-trace
- * to find the actual victim's phone number.
- */
-export async function enrichCrashLeadContacts(params: {
-  sentinelReportNumber: string;
-  subAccountId: number | null;
-  detailData: FLHSMVReportData | null;
-  officialReportNumber: string | null;
-}): Promise<void> {
-  const { sentinelReportNumber, subAccountId, detailData, officialReportNumber } = params;
-
-  if (!detailData) return;
-
-  const primaryDriver = detailData.Vehicles?.[0]?.Driver;
-  if (!primaryDriver?.Name || !primaryDriver?.Address) return;
-
-  // Skip if driver address looks like a crash scene (highway, intersection, etc.)
-  const addrUpper = primaryDriver.Address.toUpperCase();
-  const isHighway = /\b(I-\d|US-\d|SR-\d|CR-\d|MM\s*\d|INTERSTATE|HIGHWAY|HWY)\b/.test(addrUpper);
-  if (isHighway) return;
-
-  // Parse "FIRST LAST" driver name
-  const nameParts = primaryDriver.Name.trim().split(/\s+/);
-  const driverFirstName = nameParts[0] ?? "";
-  const driverLastName = nameParts.slice(1).join(" ") || null;
-
-  if (!driverFirstName || isPlaceholderName(driverFirstName)) return;
-
-  // Attempt skip-trace on driver's home address
-  const batchDataKey = resolveBatchDataKey();
-  let phone: string | undefined;
-  let skipTraceStatusResult: "not_attempted" | "matched" | "no_match" | "failed" = "not_attempted";
-  let skipTraceNotes = "";
-
-  if (batchDataKey && primaryDriver.Address.trim().length > 5) {
-    try {
-      const { skipTraceLookup } = await import("./skip-trace");
-      const traceResult = await skipTraceLookup(
-        {
-          address: primaryDriver.Address,
-          state: "FL",
-          city: detailData.CrashCity || detailData.CrashCounty || "",
-        },
-        batchDataKey,
-      );
-      recordBatchDataRun(traceResult.totalPersonsFound, `flhsmv-enrichment driver=${primaryDriver.Name}`);
-
-      if (traceResult.ownerPhone) phone = traceResult.ownerPhone;
-      skipTraceStatusResult = traceResult.totalPersonsFound > 0 ? "matched" : "no_match";
-
-      const personLines: string[] = [];
-      for (const p of traceResult.allPersons) {
-        const pLine = [
-          p.name || "Unknown",
-          p.allPhones.length ? `Phones: ${p.allPhones.join(", ")}` : null,
-          p.allEmails.length ? `Emails: ${p.allEmails.join(", ")}` : null,
-          p.mailingAddress ? `Mail: ${p.mailingAddress}` : null,
-        ].filter(Boolean).join(" | ");
-        personLines.push(pLine);
-      }
-      skipTraceNotes = traceResult.totalPersonsFound > 0
-        ? `FLHSMV skip-trace (BatchData): FOUND ${traceResult.totalPersonsFound} person(s)\n${personLines.join("\n")}`
-        : "FLHSMV skip-trace (BatchData): no persons found at driver's home address";
-    } catch (stErr: any) {
-      skipTraceStatusResult = "failed";
-      skipTraceNotes = `FLHSMV skip-trace failed: ${stErr.message}`;
-      console.warn(`[CRASH-WORKER] Enrichment skip-trace failed for ${sentinelReportNumber}: ${stErr.message}`);
-    }
-  }
-
-  // Store plate number as a searchable tag so attorneys can run lookups later.
-  // Format: "plate:FL-ABC1234" — queryable in CRM filter even without a lookup vendor.
-  const vehicle = detailData.Vehicles?.[0];
-  const rawPlate = vehicle?.TagNumber ?? null;
-  const plateState = (vehicle?.TagState || "FL").toUpperCase();
-  const plateTag = rawPlate
-    ? `plate:${plateState}-${rawPlate.toUpperCase().replace(/\s+/g, "")}`
-    : null;
-
-  // DHSMV registration lookup via Nimble — gets registered owner name/address.
-  // Runs in addition to FLHSMV driver data; registered owner may differ from driver.
-  let registrationNote: string | null = null;
-  if (rawPlate) {
-    try {
-      const regResult = await lookupRegistration(rawPlate, plateState);
-      registrationNote = formatRegistrationNote(regResult, `${plateState}-${rawPlate}`);
-    } catch (regErr: any) {
-      console.warn(`[CRASH-WORKER] DHSMV registration lookup failed for plate ${rawPlate}: ${regErr.message}`);
-    }
-  }
-
-  const noteLines = [
-    `FLHSMV Official Report: ${officialReportNumber ?? "pending"}`,
-    `Driver: ${primaryDriver.Name} — ${primaryDriver.Address}`,
-    `Crash: ${detailData.CrashDate} ${detailData.CrashTime} @ ${detailData.CrashStreet}, ${detailData.CrashCity} FL`,
-    `Vehicles: ${detailData.TotalVehicles}  Injuries: ${detailData.TotalInjuries}  Fatalities: ${detailData.TotalFatalities}`,
-    vehicle?.InsuranceCompany ? `Insurance: ${vehicle.InsuranceCompany}` : null,
-    rawPlate ? `Tag: ${rawPlate} ${plateState}` : null,
-    registrationNote || null,
-    skipTraceNotes || null,
-  ].filter(Boolean).join("\n");
-
-  const enrichmentTags = [
-    "flhsmv-enriched",
-    plateTag,
-    registrationNote ? "dhsmv-registration-found" : null,
-    skipTraceStatusResult === "matched" && phone ? "has-phone" : null,
-    skipTraceStatusResult === "no_match" ? "no-phone" : null,
-    skipTraceStatusResult !== "not_attempted" ? "skip-traced" : null,
-  ].filter(Boolean) as string[];
-
-  // Update the contact in every active crash account
-  try {
-    const accountIds = await getActiveAccountIds();
-    const now = new Date();
-    for (const accountId of accountIds) {
-      if (subAccountId !== null && accountId !== subAccountId) continue;
-      const sourceExternalId = `crash:${sentinelReportNumber}:acct${accountId}`;
-      await upsertContact({
-        subAccountId: accountId,
-        firstName: driverFirstName,
-        lastName: driverLastName,
-        phone: phone ?? null,
-        source: CONTACT_SOURCES.CRASH,
-        channel: "sentinel",
-        leadVertical: "personal_injury",
-        leadSubtype: "crash",
-        sourceExternalId,
-        rawSourceType: "flhsmv_official",
-        tags: enrichmentTags,
-        notes: noteLines,
-        address: primaryDriver.Address,
-        state: "FL",
-        city: detailData.CrashCity || null,
-        skipTraceStatus: skipTraceStatusResult === "not_attempted" ? undefined : skipTraceStatusResult,
-        enrichmentProvider: batchDataKey && skipTraceStatusResult !== "not_attempted" ? "batchdata" : null,
-        enrichmentAttemptedAt: batchDataKey && skipTraceStatusResult !== "not_attempted" ? now : null,
-        enrichmentCompletedAt: batchDataKey && skipTraceStatusResult !== "not_attempted" ? now : null,
-      });
-    }
-    console.log(
-      `[CRASH-WORKER] Enriched contacts for ${sentinelReportNumber}: ` +
-      `driver=${primaryDriver.Name} phone=${phone ? "found" : "not found"} ` +
-      `skipTrace=${skipTraceStatusResult} accounts=${accountIds.length}`,
-    );
-  } catch (enrichErr: any) {
-    console.warn(`[CRASH-WORKER] Contact enrichment failed for ${sentinelReportNumber}: ${enrichErr.message}`);
-  }
-}
-
 async function processReport(reportId: number, reportNumber: string): Promise<void> {
   console.log(`[CRASH-WORKER] Processing report ${reportNumber} (id=${reportId})`);
 
@@ -825,14 +667,7 @@ async function processReport(reportId: number, reportNumber: string): Promise<vo
       return;
     }
 
-    // For follow-up jobs the search returned the REAL FLHSMV report number
-    // (e.g. "FL-20260415-001234"). We must fetch detail using that number, not
-    // the synthetic "FLHSMV-FOLLOWUP-<FHP_ID>" hash which is meaningless to FLHSMV.
-    const flhsmvDetailNumber = isFollowUp
-      ? ((searchResult.data as any)?.ReportNumber ?? reportNumber)
-      : reportNumber;
-
-    const detail = await fetchReportDetail(flhsmvDetailNumber);
+    const detail = await fetchReportDetail(reportNumber);
 
     if (detail.type === "upstream_error" || detail.type === "network_error") {
       const failCount = (report.serviceFailureCount ?? 0) + 1;
@@ -875,20 +710,14 @@ async function processReport(reportId: number, reportNumber: string): Promise<vo
       reportData.discoveredReportNumber = (searchResult.data as any)?.ReportNumber ?? null;
     }
 
-    // For direct (non-follow-up) completions, extract official report number from
-    // FLHSMV search result and persist it on the row so it is queryable.
-    const directOfficialReportNumber: string | null =
-      !isFollowUp ? ((searchResult.data as any)?.ReportNumber ?? null) : null;
-
     await storage.updateCrashReport(reportId, {
       status: "COMPLETED",
       data: reportData,
       errorLog: null,
       serviceFailureCount: 0,
-      ...(directOfficialReportNumber ? { officialReportNumber: directOfficialReportNumber } : {}),
     });
 
-    console.log(`[CRASH-WORKER] Report ${reportNumber} completed successfully${directOfficialReportNumber ? ` (official=${directOfficialReportNumber})` : ""}`);
+    console.log(`[CRASH-WORKER] Report ${reportNumber} completed successfully`);
 
     // Report to Apex Intelligence brain (fire-and-forget)
     const detail_data = detail.type === "success" ? detail.data : null;
@@ -911,18 +740,6 @@ async function processReport(reportId: number, reportNumber: string): Promise<vo
       },
     // allow-silent-catch: fire-and-forget telemetry
     })).catch(() => {});
-
-    // Enrich crash lead contacts for direct (non-follow-up) completions.
-    // Follow-up enrichment fires separately below after the parent linkback.
-    if (!isFollowUp) {
-      enrichCrashLeadContacts({
-        sentinelReportNumber: reportNumber,
-        subAccountId: report.subAccountId ?? null,
-        detailData: detail.type === "success" ? detail.data : null,
-        officialReportNumber: directOfficialReportNumber,
-      // allow-silent-catch: fire-and-forget contact enrichment
-      }).catch((err: any) => console.warn(`[CRASH-WORKER] Direct enrichment failed for ${reportNumber}: ${err.message}`));
-    }
 
     // For follow-up jobs, also stamp the official FLHSMV data onto the original sentinel record
     // so the UI shows full driver/insurance/tag info on the parent crash row.
@@ -1003,17 +820,6 @@ async function processReport(reportId: number, reportNumber: string): Promise<vo
               console.warn(`[CRASH-WORKER] Follow-up ${reportId} atomic merge rejected by guards`);
             } else {
               console.log(`[CRASH-WORKER] Linked official FLHSMV report ${officialReportNumber} back to sentinel parent ${sentinelReportId} (atomic)`);
-
-              // Enrich crash lead contacts using driver's HOME address from FLHSMV data.
-              // Scoped to the sentinel parent's sub-account so it matches the contact
-              // row that was created when the sentinel_auto record was first ingested.
-              enrichCrashLeadContacts({
-                sentinelReportNumber: sentinelReportNumber ?? reportNumber,
-                subAccountId: report.subAccountId ?? null,
-                detailData: detail.type === "success" ? detail.data : null,
-                officialReportNumber,
-              // allow-silent-catch: fire-and-forget contact enrichment
-              }).catch((err: any) => console.warn(`[CRASH-WORKER] Follow-up enrichment failed for ${sentinelReportNumber ?? reportNumber}: ${err.message}`));
 
               // ── Sibling fan-out (Task #176) ────────────────────────────────
               // The sentinel ingest pipeline can record the SAME FHP incident
@@ -1345,6 +1151,136 @@ export function startCrashReportWorker(): void {
 
   tick();
   workerInterval = setInterval(tick, WORKER_INTERVAL_MS);
+}
+
+// ── Retro FLHSMV Enrichment ───────────────────────────────────────────────────
+//
+// Called by retroFLHSMVEnrich.ts after fetchReportDetail() succeeds.
+// Finds all contacts linked to the sentinel crash report (via sourceExternalId
+// pattern `crash:<reportNumber>:acct<id>`), skips any already tagged
+// `flhsmv-enriched`, and updates the rest with real name, home address, plate.
+
+export interface EnrichCrashLeadContactsParams {
+  sentinelReportNumber: string;
+  subAccountId: number | null;
+  detailData: FLHSMVReportData;
+  officialReportNumber: string;
+}
+
+export interface EnrichCrashLeadContactsResult {
+  enriched: number;
+  skipped: number;
+  noContacts: boolean;
+}
+
+export async function enrichCrashLeadContacts(
+  params: EnrichCrashLeadContactsParams,
+): Promise<EnrichCrashLeadContactsResult> {
+  const { sentinelReportNumber, subAccountId, detailData, officialReportNumber } = params;
+
+  const vehicle = detailData.Vehicles?.[0];
+  const driver  = vehicle?.Driver;
+
+  if (!driver?.Name) {
+    return { enriched: 0, skipped: 0, noContacts: false };
+  }
+
+  // Parse "LASTNAME FIRSTNAME" or "FIRST LAST" — FLHSMV typically uses "LAST, FIRST" or "FIRST LAST"
+  const rawName  = driver.Name.trim();
+  let firstName: string;
+  let lastName: string | null = null;
+  if (rawName.includes(",")) {
+    // "SMITH, JOHN" format
+    const [last, ...rest] = rawName.split(",").map(s => s.trim());
+    firstName = rest.join(" ") || last;
+    lastName  = rest.length > 0 ? last : null;
+  } else {
+    const parts = rawName.split(/\s+/);
+    firstName = parts[0] ?? rawName;
+    lastName  = parts.slice(1).join(" ") || null;
+  }
+
+  // Build enrichment tags (additive — upsertContact never removes existing tags)
+  const enrichmentTags: string[] = ["flhsmv-enriched"];
+  if (vehicle?.TagNumber && vehicle?.TagState) {
+    const plate = `${vehicle.TagState.toUpperCase()}-${vehicle.TagNumber.toUpperCase()}`;
+    enrichmentTags.push(`plate:${plate}`);
+  }
+
+  // Address from FLHSMV driver record
+  const homeAddress = driver.Address?.trim() || null;
+
+  // Insurance note
+  const insuranceNote = vehicle?.InsuranceCompany
+    ? `Insurance: ${vehicle.InsuranceCompany}`
+    : null;
+  const vehicleNote = vehicle?.TagNumber
+    ? `Vehicle: ${vehicle.Year ?? ""} ${vehicle.Make ?? ""} ${vehicle.Model ?? ""} | Plate: ${vehicle.TagState ?? "FL"}-${vehicle.TagNumber}`.trim()
+    : null;
+  const enrichmentNote = [
+    `FLHSMV enriched at ${new Date().toISOString()}`,
+    `Official report: ${officialReportNumber}`,
+    homeAddress ? `Home address: ${homeAddress}` : null,
+    vehicleNote,
+    insuranceNote,
+  ].filter(Boolean).join("\n");
+
+  // Find all contacts linked to this sentinel crash report.
+  // sourceExternalId format (set in crashIngestPipeline): crash:<reportNumber>:acct<accountId>
+  const sourcePrefix = `crash:${sentinelReportNumber}:`;
+  const rows = await db
+    .select({
+      id:               contacts.id,
+      subAccountId:     contacts.subAccountId,
+      tags:             contacts.tags,
+      sourceExternalId: contacts.sourceExternalId,
+      firstName:        contacts.firstName,
+    })
+    .from(contacts)
+    .where(sql`source_external_id LIKE ${sourcePrefix + "%"}`);
+
+  // Narrow to the specific sub-account when provided
+  const targets = subAccountId != null
+    ? rows.filter(c => c.subAccountId === subAccountId)
+    : rows;
+
+  if (targets.length === 0) {
+    return { enriched: 0, skipped: 0, noContacts: true };
+  }
+
+  let enriched = 0;
+  let skipped  = 0;
+
+  for (const contact of targets) {
+    const currentTags = contact.tags ?? [];
+    if (currentTags.includes("flhsmv-enriched")) {
+      skipped++;
+      continue;
+    }
+
+    try {
+      await upsertContact({
+        subAccountId:     contact.subAccountId,
+        firstName,
+        lastName,
+        address:          homeAddress,
+        state:            "FL",
+        tags:             enrichmentTags,
+        notes:            enrichmentNote,
+        source:           CONTACT_SOURCES.CRASH,
+        sourceExternalId: contact.sourceExternalId ?? undefined,
+        // Upgrade identity status only if the existing name is a placeholder
+        identityStatus:   isPlaceholderName(contact.firstName) ? "verified" : undefined,
+        enrichmentProvider:     "flhsmv",
+        enrichmentCompletedAt:  new Date(),
+      });
+      enriched++;
+    } catch (err: any) {
+      console.warn(`[CRASH-WORKER] enrichCrashLeadContacts: upsert failed for contact ${contact.id}: ${err.message}`);
+    }
+  }
+
+  return { enriched, skipped, noContacts: false };
 }
 
 export function stopCrashReportWorker(): void {

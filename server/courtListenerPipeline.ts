@@ -27,6 +27,7 @@ import * as crypto from "crypto";
 import { db } from "./db";
 import { legalSignals, legalLeads, subAccounts } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { resolveBatchDataKey, resolveCourtListenerToken } from "./vendorConfig";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -53,13 +54,7 @@ const BUSINESS_INDICATORS = [
 
 // ── Env & auth ────────────────────────────────────────────────────────────────
 
-function resolveCourtListenerToken(): string | null {
-  return (process.env.COURTLISTENER_API_TOKEN || "").trim() || null;
-}
-
-function resolveBatchDataKey(): string | null {
-  return (process.env.BATCHDATA_API_KEY || process.env.BATCH_DATA || "").trim() || null;
-}
+// BatchData + CourtListener keys resolved via vendorConfig — single source of truth.
 
 function buildAuthHeaders(): Record<string, string> {
   const token = resolveCourtListenerToken();
