@@ -1998,6 +1998,24 @@ RULES:
         );
       }
 
+      // ── Phase 1A: Database boot validation ──────────────────────────────────
+      try {
+        const { runBootValidation } = await import("./db/bootValidator");
+        const bootResult = await runBootValidation();
+        if (!bootResult.passed) {
+          console.error(
+            `[STARTUP] ⚠ DB boot validation FAILED — ${bootResult.criticalFailures.length} critical issue(s). ` +
+            `Server continues but integrity is degraded. Check /api/admin/db-health.`
+          );
+        } else if (bootResult.warnings.length > 0) {
+          console.warn(`[STARTUP] DB boot validation passed with ${bootResult.warnings.length} warning(s)`);
+        } else {
+          console.log(`[STARTUP] ✅ DB boot validation passed in ${bootResult.durationMs}ms`);
+        }
+      } catch (bootValidErr: any) {
+        console.error("[STARTUP] DB boot validation threw (non-fatal):", bootValidErr?.message);
+      }
+
       try {
         const { runProductionSeed } = await import("./intelligence/productionSeed");
         const seedResult = await runProductionSeed();

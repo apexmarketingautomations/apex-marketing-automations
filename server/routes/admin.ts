@@ -299,4 +299,207 @@ export function registerAdminRoutes(app: Express) {
       totals,
     });
   }));
+
+  // ── DB Integrity Command Center ──────────────────────────────────────────────
+
+  /**
+   * GET /api/admin/db-health
+   * Returns the last boot validation result + a live migration check.
+   * Fast: uses the cached boot result, does not re-run full scans.
+   */
+  app.get("/api/admin/db-health", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
+
+    const { getLastBootResult } = await import("../db/bootValidator");
+    const bootResult = getLastBootResult();
+
+    res.json({
+      bootValidation: bootResult ?? { status: "not_run", note: "Server restarted without boot validation — restart to trigger" },
+      timestamp: new Date().toISOString(),
+    });
+  }));
+
+  /**
+   * GET /api/admin/schema-audit
+   * Runs migration verification + schema drift detection.
+   */
+  app.get("/api/admin/schema-audit", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
+
+    const { verifyMigrations, detectSchemaDrift } = await import("../db/migrationVerifier");
+    const [migrations, schemaDrift] = await Promise.all([
+      verifyMigrations(),
+      detectSchemaDrift(),
+    ]);
+
+    res.json({ migrations, schemaDrift, generatedAt: new Date().toISOString() });
+  }));
+
+  /**
+   * GET /api/admin/orphan-scan
+   * Scans for orphaned records across all FK relationships.
+   * Expensive on large datasets — runs in ~5s on typical sizes.
+   */
+  app.get("/api/admin/orphan-scan", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
+
+    const { detectOrphans } = await import("../db/orphanDetector");
+    const report = await detectOrphans();
+    res.json(report);
+  }));
+
+  /**
+   * GET /api/admin/tenant-integrity
+   * Scans all tenant-linked tables for null/invalid subAccountId values.
+   */
+  app.get("/api/admin/tenant-integrity", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
+
+    const { auditTenantIntegrity } = await import("../db/tenantIntegrity");
+    const report = await auditTenantIntegrity();
+    res.json(report);
+  }));
+
+  /**
+   * GET /api/admin/reconciliation-report
+   * Detects duplicate contacts, stale enrichment states, stuck crash reports,
+   * orphaned signals, and other data consistency issues.
+   */
+  app.get("/api/admin/reconciliation-report", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
+
+    const { runReconciliationScan } = await import("../db/reconciliationEngine");
+    const report = await runReconciliationScan();
+    res.json(report);
+  }));
+
+  /**
+   * GET /api/admin/quarantine-status
+   * Returns current quarantine log — all pending quarantined records.
+   */
+  app.get("/api/admin/quarantine-status", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
+
+    const { getQuarantineStatus } = await import("../db/quarantineCoordinator");
+    const report = await getQuarantineStatus();
+    res.json(report);
+  }));
+
+  /**
+   * POST /api/admin/run-integrity-repair
+   * Non-destructive repair actions. All actions are logged to audit_logs.
+   *
+   * Supported actions:
+   * - quarantine_record: { action, sourceTable, sourceId, reason }
+   * - restore_quarantine: { action, quarantineId }
+   * - reset_stale_enrichment: { action } — resets skip_trace_status='pending' > 24h → null
+   * - reset_stuck_crash_reports: { action } — resets crash_reports PROCESSING > 2h → PENDING
+   */
+  app.post("/api/admin/run-integrity-repair", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!isUserAdmin(user)) return res.status(403).json({ error: "Admin access required" });
+
+    const schema = z.discriminatedUnion("action", [
+      z.object({
+        action:      z.literal("quarantine_record"),
+        sourceTable: z.string().min(1),
+        sourceId:    z.number().int().positive(),
+        reason:      z.string().min(1),
+      }),
+      z.object({
+        action:        z.literal("restore_quarantine"),
+        quarantineId:  z.number().int().positive(),
+      }),
+      z.object({ action: z.literal("reset_stale_enrichment") }),
+      z.object({ action: z.literal("reset_stuck_crash_reports") }),
+    ]);
+
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const operatorId = (user?.claims?.sub ?? user?.id ?? "unknown");
+
+    switch (parsed.data.action) {
+      case "quarantine_record": {
+        const { quarantineRecord } = await import("../db/quarantineCoordinator");
+        const result = await quarantineRecord({
+          sourceTable:   parsed.data.sourceTable,
+          sourceId:      parsed.data.sourceId,
+          reason:        parsed.data.reason,
+          quarantinedBy: operatorId,
+        });
+        await import("../storage").then(({ storage }) =>
+          storage.createAuditLog({
+            action:      "INTEGRITY_REPAIR_QUARANTINE",
+            performedBy: operatorId,
+            details:     { ...parsed.data, quarantineId: result.quarantineId },
+          }).catch(() => {})
+        );
+        return res.json({ ok: result.ok, quarantineId: result.quarantineId, error: result.error });
+      }
+
+      case "restore_quarantine": {
+        const { restoreRecord } = await import("../db/quarantineCoordinator");
+        const result = await restoreRecord(parsed.data.quarantineId, operatorId);
+        await import("../storage").then(({ storage }) =>
+          storage.createAuditLog({
+            action:      "INTEGRITY_REPAIR_RESTORE",
+            performedBy: operatorId,
+            details:     { quarantineId: parsed.data.quarantineId },
+          }).catch(() => {})
+        );
+        return res.json({ ok: result.ok, error: result.error });
+      }
+
+      case "reset_stale_enrichment": {
+        const { sql } = await import("drizzle-orm");
+        const { db }  = await import("../db");
+        const cutoff  = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const result  = await db.execute(sql.raw(`
+          UPDATE contacts
+          SET skip_trace_status = NULL
+          WHERE skip_trace_status = 'pending'
+            AND enrichment_attempted_at < '${cutoff}'
+        `));
+        const affected = (result as any).rowCount ?? 0;
+        await import("../storage").then(({ storage }) =>
+          storage.createAuditLog({
+            action:      "INTEGRITY_REPAIR_RESET_ENRICHMENT",
+            performedBy: operatorId,
+            details:     { affected, cutoff },
+          }).catch(() => {})
+        );
+        console.log(`[INTEGRITY-REPAIR] reset_stale_enrichment: ${affected} contacts reset`);
+        return res.json({ ok: true, affected });
+      }
+
+      case "reset_stuck_crash_reports": {
+        const { sql } = await import("drizzle-orm");
+        const { db }  = await import("../db");
+        const cutoff  = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+        const result  = await db.execute(sql.raw(`
+          UPDATE crash_reports
+          SET status = 'PENDING', updated_at = NOW()
+          WHERE status = 'PROCESSING'
+            AND updated_at < '${cutoff}'
+        `));
+        const affected = (result as any).rowCount ?? 0;
+        await import("../storage").then(({ storage }) =>
+          storage.createAuditLog({
+            action:      "INTEGRITY_REPAIR_RESET_CRASH_REPORTS",
+            performedBy: operatorId,
+            details:     { affected, cutoff },
+          }).catch(() => {})
+        );
+        console.log(`[INTEGRITY-REPAIR] reset_stuck_crash_reports: ${affected} reports reset to PENDING`);
+        return res.json({ ok: true, affected });
+      }
+    }
+  }));
 }
