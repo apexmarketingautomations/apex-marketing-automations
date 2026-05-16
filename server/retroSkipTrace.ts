@@ -16,6 +16,7 @@ import { storage } from "./storage";
 import { skipTraceLookup } from "./skip-trace";
 import { publishEventAsync, EVENT_TYPES } from "./eventBus";
 import { resolveBatchDataKey, recordBatchDataRun, CRASH_LEAD_ACCOUNT_IDS } from "./vendorConfig";
+import { isBatchDataDisabled } from "./skip-trace";
 import { updateContactSkipTrace, isPlaceholderName } from "./services/contactUpsertService";
 
 const BATCH_SIZE      = 10;
@@ -87,6 +88,10 @@ export async function runRetroSkipTrace(
   const apiKey = resolveBatchDataKey();
   if (!apiKey) {
     console.error("[RETRO-SKIP-TRACE] BatchData not configured (BATCHDATA_API_KEY missing) — skipping");
+    return { processed: 0, found: 0, notFound: 0, failed: 0, skipped: 0 };
+  }
+  if (isBatchDataDisabled()) {
+    console.warn("[RETRO-SKIP-TRACE] BatchData disabled (exhausted or kill switch) — aborting retro job, will retry next scheduled run");
     return { processed: 0, found: 0, notFound: 0, failed: 0, skipped: 0 };
   }
 
