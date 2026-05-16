@@ -621,7 +621,7 @@ async function enrichCrashLeadContacts(params: {
       const traceResult = await skipTraceLookup(
         {
           address: primaryDriver.Address,
-          state: detailData.CrashCity ? "FL" : "FL",
+          state: "FL",
           city: detailData.CrashCity || detailData.CrashCounty || "",
         },
         batchDataKey,
@@ -804,7 +804,14 @@ async function processReport(reportId: number, reportNumber: string): Promise<vo
       return;
     }
 
-    const detail = await fetchReportDetail(reportNumber);
+    // For follow-up jobs the search returned the REAL FLHSMV report number
+    // (e.g. "FL-20260415-001234"). We must fetch detail using that number, not
+    // the synthetic "FLHSMV-FOLLOWUP-<FHP_ID>" hash which is meaningless to FLHSMV.
+    const flhsmvDetailNumber = isFollowUp
+      ? ((searchResult.data as any)?.ReportNumber ?? reportNumber)
+      : reportNumber;
+
+    const detail = await fetchReportDetail(flhsmvDetailNumber);
 
     if (detail.type === "upstream_error" || detail.type === "network_error") {
       const failCount = (report.serviceFailureCount ?? 0) + 1;
