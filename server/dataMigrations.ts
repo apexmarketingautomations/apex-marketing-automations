@@ -804,6 +804,62 @@ const MIGRATIONS: DataMigration[] = [
       CREATE INDEX IF NOT EXISTS idx_enrichment_events_type ON contact_enrichment_events(event_type, created_at DESC);
     `,
   },
+  {
+    name: "2026-05-15-crash-reports-official-number",
+    sql: `
+      -- Add the official FLHSMV-issued accident report number as a first-class column.
+      -- The existing report_number column is a synthetic dedup hash and must never
+      -- be shown to users as the real accident report number.
+      ALTER TABLE crash_reports
+        ADD COLUMN IF NOT EXISTS official_report_number TEXT;
+
+      CREATE INDEX IF NOT EXISTS idx_crash_reports_official_number
+        ON crash_reports (official_report_number)
+        WHERE official_report_number IS NOT NULL;
+
+      -- Backfill path 1: sentinel parents enriched via follow-up worker
+      -- (data->officialFlhsmv->reportNumber)
+      UPDATE crash_reports
+        SET official_report_number = data->'officialFlhsmv'->>'reportNumber'
+        WHERE official_report_number IS NULL
+          AND data->'officialFlhsmv'->>'reportNumber' IS NOT NULL
+          AND data->'officialFlhsmv'->>'reportNumber' <> '';
+
+      -- Backfill path 2: direct FLHSMV fetch (data->searchResult->ReportNumber)
+      UPDATE crash_reports
+        SET official_report_number = data->'searchResult'->>'ReportNumber'
+        WHERE official_report_number IS NULL
+          AND source NOT IN ('sentinel_auto', 'sentinel_followup')
+          AND status = 'COMPLETED'
+          AND data->'searchResult'->>'ReportNumber' IS NOT NULL
+          AND data->'searchResult'->>'ReportNumber' <> '';
+
+      -- Backfill path 3: discovered_report_number on completed follow-up jobs
+      UPDATE crash_reports
+        SET official_report_number = data->>'discoveredReportNumber'
+        WHERE official_report_number IS NULL
+          AND source = 'sentinel_followup'
+          AND status = 'COMPLETED'
+          AND data->>'discoveredReportNumber' IS NOT NULL
+          AND data->>'discoveredReportNumber' <> '';
+    `,
+  },
+  {
+    name: "2026-05-15-contacts-flhsmv-enriched-tag",
+    sql: `
+      -- Add driver_address column to contacts so the FLHSMV home address
+      -- (from which skip-trace is run) is stored separately from the crash
+      -- scene address already in the address column.
+      ALTER TABLE contacts
+        ADD COLUMN IF NOT EXISTS driver_address TEXT;
+
+      -- Index for contacts awaiting FLHSMV-sourced skip-trace
+      CREATE INDEX IF NOT EXISTS idx_contacts_flhsmv_pending
+        ON contacts (sub_account_id, skip_trace_status)
+        WHERE skip_trace_status IN ('not_attempted', 'no_match')
+          AND lead_subtype = 'crash';
+    `,
+  },
 ];
 
 export async function runDataMigrations(): Promise<void> {

@@ -35,6 +35,7 @@ import {
   CONTACT_SOURCES,
   type ContactSource,
 } from "./services/contactUpsertService";
+import { resolveBatchDataKey } from "./vendorConfig";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -48,8 +49,8 @@ const APEX_PARENT_ACCOUNT_ID = Number(process.env.APEX_PARENT_ACCOUNT_ID || 13);
 // Google Places API — searches for local businesses with real phone numbers
 const GOOGLE_PLACES_KEY = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API || process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_API_KEY;
 
-// BatchData for skip tracing arrest subjects
-const BATCHDATA_KEY = process.env.BATCH_DATA || process.env.BATCHDATA_API_KEY;
+// BatchData for skip tracing arrest subjects — resolved via vendorConfig
+const BATCHDATA_KEY = resolveBatchDataKey();
 
 // Florida counties — real FIPS codes for real APIs
 const FL_COUNTIES = [

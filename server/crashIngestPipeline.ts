@@ -144,7 +144,7 @@ function isQualifyingCrash(incident: SentinelIncidentRaw): boolean {
 let _activeAccountCache: number[] = [];
 let _activeAccountCacheTime = 0;
 
-async function getActiveAccountIds(): Promise<number[]> {
+export async function getActiveAccountIds(): Promise<number[]> {
   const now = Date.now();
   if (_activeAccountCache.length > 0 && now - _activeAccountCacheTime < 5 * 60 * 1000) {
     return _activeAccountCache;
@@ -224,7 +224,13 @@ async function createLeadFromCrash(
       : `crash:${report.id}`;
 
     const batchDataKey = resolveBatchDataKey();
-    if (batchDataKey && incident.location) {
+    // Skip-trace at ingest time is only useful if the address is residential.
+    // FHP incident locations are highway references (e.g. "I-75 NB MM 131") —
+    // BatchData returns no_match on these 100% of the time and wastes credits.
+    // Real skip-trace runs later in enrichCrashLeadContacts() using the
+    // driver's HOME address from the FLHSMV official report.
+    const looksLikeHighway = /\b(I-\d|US-\d|SR-\d|CR-\d|FL-\d|MM\s*\d|INTERSTATE|HIGHWAY|HWY)\b/i.test(incident.location || "");
+    if (batchDataKey && incident.location && !looksLikeHighway) {
       enrichmentAttemptedAt = new Date();
       try {
         const { skipTraceLookup } = await import("./skip-trace");

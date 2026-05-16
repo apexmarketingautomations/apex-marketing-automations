@@ -202,6 +202,46 @@ function apexReport(params: {
     .catch((err) => console.warn("[HOMESERVICESIGNALPIPELINE] promise rejected:", err instanceof Error ? err.message : err));
 }
 
+// ── Safe JSON fetch ───────────────────────────────────────────────────────────
+// Validates content-type before parsing. Returns null on HTTP errors, timeouts,
+// or non-JSON responses (e.g. maintenance pages returned as HTML). Never throws.
+
+async function safeJsonFetch(
+  url: string,
+  label: string,
+  opts: { timeoutMs?: number; headers?: Record<string, string> } = {},
+): Promise<any | null> {
+  const { timeoutMs = 15_000, headers = { Accept: "application/json" } } = opts;
+  try {
+    const controller = new AbortController();
+    const timer      = setTimeout(() => controller.abort(), timeoutMs);
+    let res: Response;
+    try {
+      res = await fetch(url, { headers, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!res.ok) {
+      console.warn(`[HS-PIPELINE] ${label} HTTP ${res.status} — skipping`);
+      return null;
+    }
+    const ct = res.headers.get("content-type") ?? "";
+    if (!ct.includes("json")) {
+      const preview = (await res.text()).slice(0, 300).replace(/\s+/g, " ");
+      console.warn(`[HS-PIPELINE] ${label} non-JSON content-type="${ct}" preview="${preview}"`);
+      return null;
+    }
+    return await res.json();
+  } catch (err: any) {
+    if (err.name === "AbortError" || err.message?.includes("abort")) {
+      console.warn(`[HS-PIPELINE] ${label} TIMEOUT after ${timeoutMs}ms`);
+    } else {
+      console.error(`[HS-PIPELINE] ${label} fetch error: ${err.message}`);
+    }
+    return null;
+  }
+}
+
 // ── Dedup ─────────────────────────────────────────────────────────────────────
 
 function buildSignalHash(signal: RawSignal): string {
@@ -226,16 +266,13 @@ async function fetchNoaaAlerts(): Promise<RawSignal[]> {
   const signals: RawSignal[] = [];
   for (const county of FL_COUNTIES_CORE) {
     try {
-      const controller = new AbortController();
-      const timeout    = setTimeout(() => controller.abort(), 10_000);
-      const res        = await fetch(
+      const data = await safeJsonFetch(
         `https://api.weather.gov/alerts/active?zone=${county.zone}`,
-        { headers: { "Accept": "application/geo+json", "User-Agent": "ApexHomeServicePipeline/1.0" }, signal: controller.signal },
+        `NOAA ${county.name}`,
+        { timeoutMs: 10_000, headers: { "Accept": "application/geo+json", "User-Agent": "ApexHomeServicePipeline/1.0" } },
       );
-      clearTimeout(timeout);
-      if (!res.ok) continue;
-
-      const features = (await res.json())?.features ?? [];
+      if (data == null) continue;
+      const features = data?.features ?? [];
       for (const f of features) {
         const props = f?.properties ?? {};
         if (!HIGH_VALUE_ALERT_TYPES.has(props.event)) continue;
@@ -270,19 +307,10 @@ function resolveWeatherCategories(e: string): ServiceCategory[] {
 // ── County permit filings ─────────────────────────────────────────────────────
 
 async function fetchPermits(county: string, url: string, map: (p: any) => RawSignal | null): Promise<RawSignal[]> {
-  try {
-    const controller = new AbortController();
-    const timeout    = setTimeout(() => controller.abort(), 15_000);
-    const res        = await fetch(url, { signal: controller.signal, headers: { "Accept": "application/json" } });
-    clearTimeout(timeout);
-    if (!res.ok) { console.warn(`[HS-PIPELINE] ${county} permits: HTTP ${res.status}`); return []; }
-    const data = await res.json() as any;
-    const list = Array.isArray(data) ? data : (data?.permits ?? data?.results ?? data?.data ?? []);
-    return list.map(map).filter((s: any): s is RawSignal => s !== null);
-  } catch (err: any) {
-    console.error(`[HS-PIPELINE] ${county} permits: ${err.message}`);
-    return [];
-  }
+  const data = await safeJsonFetch(url, `${county} permits`, { timeoutMs: 15_000 });
+  if (data == null) return [];
+  const list = Array.isArray(data) ? data : (data?.permits ?? data?.results ?? data?.data ?? []);
+  return list.map(map).filter((s: any): s is RawSignal => s !== null);
 }
 
 function isHVP(type: string): boolean {
@@ -390,33 +418,25 @@ async function fetchCodeEnforcement(): Promise<RawSignal[]> {
   for (const county of FL_COUNTIES_CORE) {
     const url = urls[county.name];
     if (!url) continue;
-    try {
-      const controller = new AbortController();
-      const timeout    = setTimeout(() => controller.abort(), 15_000);
-      const res        = await fetch(url, { signal: controller.signal, headers: { "Accept": "application/json" } });
-      clearTimeout(timeout);
-      if (!res.ok) continue;
-      const data  = await res.json() as any;
-      const items = Array.isArray(data) ? data : (data?.data ?? []);
-      for (const v of items) {
-        const cat = resolveCodeCategory(v.violation_type ?? v.description ?? "");
-        if (!cat) continue;
-        signals.push({
-          signalType: "code_enforcement",
-          sourceId:   `${county.name}-CODE-${v.case_number ?? v.id}`,
-          county:     county.name,
-          address:    v.address ?? v.site_address,
-          lat:        v.latitude  ? parseFloat(v.latitude)  : undefined,
-          lng:        v.longitude ? parseFloat(v.longitude) : undefined,
-          serviceCategories: [cat],
-          urgency:    "high",
-          description: `Code violation: ${v.violation_type ?? v.description} at ${v.address ?? "unknown"}`,
-          rawData:    v,
-          detectedAt: new Date(v.open_date ?? v.filed_date ?? Date.now()),
-        });
-      }
-    } catch (err: any) {
-      console.error(`[HS-PIPELINE] Code enforcement ${county.name}: ${err.message}`);
+    const data = await safeJsonFetch(url, `code-enforcement ${county.name}`, { timeoutMs: 15_000 });
+    if (data == null) continue;
+    const items = Array.isArray(data) ? data : (data?.data ?? []);
+    for (const v of items) {
+      const cat = resolveCodeCategory(v.violation_type ?? v.description ?? "");
+      if (!cat) continue;
+      signals.push({
+        signalType: "code_enforcement",
+        sourceId:   `${county.name}-CODE-${v.case_number ?? v.id}`,
+        county:     county.name,
+        address:    v.address ?? v.site_address,
+        lat:        v.latitude  ? parseFloat(v.latitude)  : undefined,
+        lng:        v.longitude ? parseFloat(v.longitude) : undefined,
+        serviceCategories: [cat],
+        urgency:    "high",
+        description: `Code violation: ${v.violation_type ?? v.description} at ${v.address ?? "unknown"}`,
+        rawData:    v,
+        detectedAt: new Date(v.open_date ?? v.filed_date ?? Date.now()),
+      });
     }
   }
   return signals;
@@ -460,35 +480,27 @@ async function fetchFlBusinessLicenses(): Promise<RawSignal[]> {
   ];
 
   for (const api of countyBtrApis) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10_000);
-      const res = await fetch(api.url, { signal: controller.signal, headers: { "Accept": "application/json" } });
-      clearTimeout(timeout);
-      if (!res.ok) continue;
-      const data = await res.json() as any;
-      const businesses = Array.isArray(data) ? data : (data?.businesses ?? data?.results ?? data?.data ?? []);
-      for (const biz of businesses) {
-        const bizType = biz.business_type ?? biz.type ?? biz.category ?? biz.description ?? "";
-        if (!bizType) continue;
-        const u = bizType.toUpperCase();
-        const isHighValue = [...HIGH_VALUE_BUSINESS_TYPES].some(k => u.includes(k));
-        if (!isHighValue) continue;
-        const cats = bizCats(bizType);
-        signals.push({
-          signalType: "permit_filing" as SignalType,
-          sourceId: `${api.county}-BTR-${biz.license_number ?? biz.id ?? biz.receipt_number}`,
-          county: api.county,
-          address: [biz.address, biz.city, "FL"].filter(Boolean).join(", "),
-          serviceCategories: cats,
-          urgency: "medium",
-          description: `New business: ${biz.business_name ?? bizType} (${bizType}) — ${api.county} County`,
-          rawData: biz,
-          detectedAt: new Date(biz.registration_date ?? biz.filed_date ?? Date.now()),
-        });
-      }
-    } catch (err: any) {
-      console.error(`[HS-PIPELINE] BTR ${api.county}: ${err.message}`);
+    const data = await safeJsonFetch(api.url, `BTR ${api.county}`, { timeoutMs: 10_000 });
+    if (data == null) continue;
+    const businesses = Array.isArray(data) ? data : (data?.businesses ?? data?.results ?? data?.data ?? []);
+    for (const biz of businesses) {
+      const bizType = biz.business_type ?? biz.type ?? biz.category ?? biz.description ?? "";
+      if (!bizType) continue;
+      const u = bizType.toUpperCase();
+      const isHighValue = [...HIGH_VALUE_BUSINESS_TYPES].some(k => u.includes(k));
+      if (!isHighValue) continue;
+      const cats = bizCats(bizType);
+      signals.push({
+        signalType: "permit_filing" as SignalType,
+        sourceId: `${api.county}-BTR-${biz.license_number ?? biz.id ?? biz.receipt_number}`,
+        county: api.county,
+        address: [biz.address, biz.city, "FL"].filter(Boolean).join(", "),
+        serviceCategories: cats,
+        urgency: "medium",
+        description: `New business: ${biz.business_name ?? bizType} (${bizType}) — ${api.county} County`,
+        rawData: biz,
+        detectedAt: new Date(biz.registration_date ?? biz.filed_date ?? Date.now()),
+      });
     }
   }
 
@@ -529,17 +541,13 @@ async function fetchFloridaCourtFilings(): Promise<RawSignal[]> {
 
 async function fetchOshaIncidents(): Promise<RawSignal[]> {
   const signals: RawSignal[] = [];
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
-    const year = new Date().getFullYear();
-    const res = await fetch(
-      "https://data.osha.gov/api/1.0/oshainspection/?state_plan=FL&open_date_start=" + year + "-01-01&inspection_type=G&limit=100",
-      { headers: { "Accept": "application/json" }, signal: controller.signal }
-    );
-    clearTimeout(timeout);
-    if (!res.ok) return signals;
-    const data = await res.json() as any;
+  const year = new Date().getFullYear();
+  const data = await safeJsonFetch(
+    `https://data.osha.gov/api/1.0/oshainspection/?state_plan=FL&open_date_start=${year}-01-01&inspection_type=G&limit=100`,
+    "OSHA incidents",
+    { timeoutMs: 10_000 },
+  );
+  if (data != null) {
     const records = data?.data || data?.results || [];
     for (const rec of records) {
       if (!rec.fatalities && !rec.total_injury) continue;
@@ -557,8 +565,6 @@ async function fetchOshaIncidents(): Promise<RawSignal[]> {
         detectedAt: new Date(rec.open_date || Date.now()),
       });
     }
-  } catch (err: any) {
-    if (err.name !== "AbortError") console.warn("[HS-PIPELINE] OSHA fetch failed:", err.message);
   }
   console.log("[HS-PIPELINE] OSHA signals: " + signals.length);
   return signals;
@@ -568,35 +574,28 @@ async function fetchOshaIncidents(): Promise<RawSignal[]> {
 
 async function fetchRecalls(): Promise<RawSignal[]> {
   const signals: RawSignal[] = [];
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
-    const res = await fetch(
-      "https://api.fda.gov/drug/enforcement.json?search=status%3A%22Ongoing%22&limit=20",
-      { headers: { "Accept": "application/json" }, signal: controller.signal }
-    );
-    clearTimeout(timeout);
-    if (res.ok) {
-      const data = await res.json() as any;
-      for (const rec of (data?.results || [])) {
-        if (rec.classification !== "Class I") continue;
-        signals.push({
-          signalType: "fda_recall",
-          sourceId: "fda_" + (rec.recall_number || String(Math.random())),
-          county: "STATEWIDE",
-          address: "Florida Statewide",
-          ownerName: rec.recalling_firm || null,
-          ownerPhone: null,
-          serviceCategories: ["personal_injury", "medical_malpractice"],
-          urgency: "high",
-          description: "FDA Class I Recall — " + (rec.product_description || "Drug/Device").slice(0, 80) + " — " + rec.recalling_firm,
-          rawData: rec,
-          detectedAt: new Date(rec.recall_initiation_date || Date.now()),
-        });
-      }
+  const data = await safeJsonFetch(
+    "https://api.fda.gov/drug/enforcement.json?search=status%3A%22Ongoing%22&limit=20",
+    "FDA recalls",
+    { timeoutMs: 8_000 },
+  );
+  if (data != null) {
+    for (const rec of (data?.results || [])) {
+      if (rec.classification !== "Class I") continue;
+      signals.push({
+        signalType: "fda_recall",
+        sourceId: "fda_" + (rec.recall_number || String(Math.random())),
+        county: "STATEWIDE",
+        address: "Florida Statewide",
+        ownerName: rec.recalling_firm || null,
+        ownerPhone: null,
+        serviceCategories: ["personal_injury", "medical_malpractice"],
+        urgency: "high",
+        description: "FDA Class I Recall — " + (rec.product_description || "Drug/Device").slice(0, 80) + " — " + rec.recalling_firm,
+        rawData: rec,
+        detectedAt: new Date(rec.recall_initiation_date || Date.now()),
+      });
     }
-  } catch (err: any) {
-    if (err.name !== "AbortError") console.warn("[HS-PIPELINE] FDA recall fetch failed:", err.message);
   }
   console.log("[HS-PIPELINE] Recall signals: " + signals.length);
   return signals;
@@ -621,36 +620,29 @@ async function fetchFlBusinessSignals(): Promise<RawSignal[]> {
   const TARGET_COUNTIES = new Set(["LEE", "COLLIER", "CHARLOTTE", "SARASOTA", "MANATEE", "HILLSBOROUGH", "PINELLAS", "MIAMI-DADE", "BROWARD", "PALM BEACH", "ORANGE"]);
 
   for (const lic of LICENSE_TYPES) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
-      const res = await fetch(
-        "https://ww2.myfloridalicense.com/api/licenses?licenseType=" + lic.code + "&issuedAfter=" + since + "&status=Active&limit=50",
-        { headers: { "Accept": "application/json" }, signal: controller.signal }
-      );
-      clearTimeout(timeout);
-      if (!res.ok) continue;
-      const data = await res.json() as any;
-      const records = Array.isArray(data) ? data : data?.licenses || [];
-      for (const rec of records) {
-        const county = (rec.county || "UNKNOWN").toUpperCase();
-        if (!TARGET_COUNTIES.has(county)) continue;
-        signals.push({
-          signalType: "new_business_filing",
-          sourceId: "fldoh_" + (rec.licenseNumber || String(Math.random())),
-          county,
-          address: [rec.address, rec.city, "FL", rec.zip].filter(Boolean).join(", "),
-          ownerName: rec.businessName || rec.name || null,
-          ownerPhone: rec.phone || null,
-          serviceCategories: lic.cats,
-          urgency: "low",
-          description: "New " + lic.name + " License — " + (rec.businessName || "New Business") + " — " + county + " County",
-          rawData: rec,
-          detectedAt: new Date(rec.issueDate || Date.now()),
-        });
-      }
-    } catch (err: any) {
-      if (err.name !== "AbortError") console.warn("[HS-PIPELINE] FL license fetch failed for " + lic.name + ":", err.message);
+    const data = await safeJsonFetch(
+      "https://ww2.myfloridalicense.com/api/licenses?licenseType=" + lic.code + "&issuedAfter=" + since + "&status=Active&limit=50",
+      `FL license ${lic.name}`,
+      { timeoutMs: 8_000 },
+    );
+    if (data == null) continue;
+    const records = Array.isArray(data) ? data : data?.licenses || [];
+    for (const rec of records) {
+      const county = (rec.county || "UNKNOWN").toUpperCase();
+      if (!TARGET_COUNTIES.has(county)) continue;
+      signals.push({
+        signalType: "new_business_filing",
+        sourceId: "fldoh_" + (rec.licenseNumber || String(Math.random())),
+        county,
+        address: [rec.address, rec.city, "FL", rec.zip].filter(Boolean).join(", "),
+        ownerName: rec.businessName || rec.name || null,
+        ownerPhone: rec.phone || null,
+        serviceCategories: lic.cats,
+        urgency: "low",
+        description: "New " + lic.name + " License — " + (rec.businessName || "New Business") + " — " + county + " County",
+        rawData: rec,
+        detectedAt: new Date(rec.issueDate || Date.now()),
+      });
     }
   }
   console.log("[HS-PIPELINE] Business license signals: " + signals.length);
@@ -661,38 +653,31 @@ async function fetchFlBusinessSignals(): Promise<RawSignal[]> {
 
 async function fetchTrafficSignals(): Promise<RawSignal[]> {
   const signals: RawSignal[] = [];
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
-    const today = new Date().toISOString().split("T")[0];
-    const res = await fetch(
-      "https://services.flhsmv.gov/api/suspensions?date=" + today + "&limit=200",
-      { headers: { "Accept": "application/json" }, signal: controller.signal }
-    );
-    clearTimeout(timeout);
-    if (res.ok) {
-      const data = await res.json() as any;
-      const records = Array.isArray(data) ? data : data?.suspensions || [];
-      for (const rec of records) {
-        const reason = (rec.reason || "").toUpperCase();
-        const isDUI = reason.includes("DUI") || reason.includes("ALCOHOL");
-        signals.push({
-          signalType: "license_suspension",
-          sourceId: "dhsmv_" + (rec.id || String(Math.random())),
-          county: rec.county || "UNKNOWN",
-          address: (rec.county || "FL") + ", FL",
-          ownerName: rec.name || null,
-          ownerPhone: null,
-          serviceCategories: isDUI ? ["dui_defense", "traffic_law"] : ["traffic_law"],
-          urgency: isDUI ? "high" : "medium",
-          description: "FL License Suspension — " + (rec.reason || "Unknown") + " — " + (rec.county || "FL") + " County",
-          rawData: rec,
-          detectedAt: new Date(rec.suspensionDate || Date.now()),
-        });
-      }
+  const today = new Date().toISOString().split("T")[0];
+  const data = await safeJsonFetch(
+    "https://services.flhsmv.gov/api/suspensions?date=" + today + "&limit=200",
+    "DHSMV suspensions",
+    { timeoutMs: 8_000 },
+  );
+  if (data != null) {
+    const records = Array.isArray(data) ? data : data?.suspensions || [];
+    for (const rec of records) {
+      const reason = (rec.reason || "").toUpperCase();
+      const isDUI = reason.includes("DUI") || reason.includes("ALCOHOL");
+      signals.push({
+        signalType: "license_suspension",
+        sourceId: "dhsmv_" + (rec.id || String(Math.random())),
+        county: rec.county || "UNKNOWN",
+        address: (rec.county || "FL") + ", FL",
+        ownerName: rec.name || null,
+        ownerPhone: null,
+        serviceCategories: isDUI ? ["dui_defense", "traffic_law"] : ["traffic_law"],
+        urgency: isDUI ? "high" : "medium",
+        description: "FL License Suspension — " + (rec.reason || "Unknown") + " — " + (rec.county || "FL") + " County",
+        rawData: rec,
+        detectedAt: new Date(rec.suspensionDate || Date.now()),
+      });
     }
-  } catch (err: any) {
-    if (err.name !== "AbortError") console.warn("[HS-PIPELINE] DHSMV fetch failed:", err.message);
   }
   console.log("[HS-PIPELINE] Traffic signals: " + signals.length);
   return signals;

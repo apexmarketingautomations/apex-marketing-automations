@@ -1133,6 +1133,106 @@ export function registerRetroSkipTraceRoute(app: any) {
     }
   });
 
+  // ── Retro FLHSMV Enrichment ──────────────────────────────────────────────────
+  // POST /api/internal/retro-flhsmv-enrich
+  // Fire-and-forget: triggers retroactive FLHSMV enrichment for contacts that
+  // still have placeholder names. Skips already-enriched contacts (credit-safe).
+
+  app.post("/api/internal/retro-flhsmv-enrich", async (req: any, res: any) => {
+    try {
+      const adminSecret = (process.env.STANDALONE_ADMIN_SECRET || "201120062017").trim();
+      const headerVal   = ((req.headers["x-admin-secret"] as string) || "").trim();
+      if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
+
+      const limit  = Math.min(Number(req.body?.limit ?? 500), 2000);
+      const dryRun = req.body?.dryRun === true;
+
+      const { runRetroFLHSMVEnrich } = await import("../retroFLHSMVEnrich");
+      // Fire-and-forget — the job can run for minutes; caller polls logs
+      runRetroFLHSMVEnrich({ limit, dryRun }).catch((err: any) =>
+        console.error("[RETRO-FLHSMV] Unhandled error in background job:", err?.message)
+      );
+
+      res.json({ ok: true, message: `Retro FLHSMV enrichment started (limit=${limit} dryRun=${dryRun}). Check server logs for progress.` });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── Pipeline Health ───────────────────────────────────────────────────────────
+  // GET /api/internal/pipeline-health
+  // Admin-secret gated. Returns current status of all pipeline subsystems.
+
+  app.get("/api/internal/pipeline-health", async (req: any, res: any) => {
+    try {
+      const adminSecret = (process.env.STANDALONE_ADMIN_SECRET || "201120062017").trim();
+      const headerVal   = ((req.headers["x-admin-secret"] as string) || "").trim();
+      if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
+
+      const { db }           = await import("../db");
+      const { crashReports, contacts } = await import("@shared/schema");
+      const { count, eq, and, isNotNull, lt } = await import("drizzle-orm");
+      const { getFLHSMVHealth } = await import("../crashReportWorker");
+      const { getVendorRunState, resolveBatchDataKey, resolveScrapingBeeKey, resolveNimbleCredentials } = await import("../vendorConfig");
+
+      // Crash report queue depth by status
+      const [pending, processing, complete, notFound, failed] = await Promise.all([
+        db.select({ n: count() }).from(crashReports).where(eq(crashReports.status, "PENDING")),
+        db.select({ n: count() }).from(crashReports).where(eq(crashReports.status, "PROCESSING")),
+        db.select({ n: count() }).from(crashReports).where(eq(crashReports.status, "COMPLETE")),
+        db.select({ n: count() }).from(crashReports).where(eq(crashReports.status, "NOT_FOUND")),
+        db.select({ n: count() }).from(crashReports).where(eq(crashReports.status, "FAILED")),
+      ]);
+
+      // FLHSMV enrichment counts
+      const [completeWithOfficial, alreadyEnriched] = await Promise.all([
+        db.select({ n: count() }).from(crashReports).where(
+          and(eq(crashReports.status, "COMPLETE"), isNotNull(crashReports.officialReportNumber))
+        ),
+        // Contacts tagged flhsmv-enriched (approximate count via SQL array contains)
+        db.execute(
+          (await import("drizzle-orm")).sql`SELECT COUNT(*) AS n FROM contacts WHERE 'flhsmv-enriched' = ANY(tags)`
+        ),
+      ]);
+
+      // Stuck reports: PROCESSING > 2h
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+      const [stuckProcessing] = await db.select({ n: count() }).from(crashReports).where(
+        and(eq(crashReports.status, "PROCESSING"), lt(crashReports.updatedAt, twoHoursAgo))
+      );
+
+      const flhsmvHealth = getFLHSMVHealth();
+      const vendorState  = getVendorRunState();
+
+      res.json({
+        timestamp: new Date().toISOString(),
+        vendors: {
+          batchData:   { configured: !!resolveBatchDataKey(), lastRun: vendorState.batchData },
+          scrapingBee: { configured: !!resolveScrapingBeeKey() },
+          nimble:      { configured: !!resolveNimbleCredentials() },
+        },
+        flhsmv: {
+          ...flhsmvHealth,
+        },
+        crashQueue: {
+          pending:     pending[0]?.n ?? 0,
+          processing:  processing[0]?.n ?? 0,
+          complete:    complete[0]?.n ?? 0,
+          notFound:    notFound[0]?.n ?? 0,
+          failed:      failed[0]?.n ?? 0,
+          stuckProcessing: stuckProcessing?.n ?? 0,
+        },
+        enrichment: {
+          completeWithOfficialReport: completeWithOfficial[0]?.n ?? 0,
+          contactsTaggedFlhsmvEnriched: Number((alreadyEnriched.rows?.[0] as any)?.n ?? 0),
+        },
+      });
+    } catch (err: any) {
+      console.error("[PIPELINE-HEALTH] Error:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ── Legal Signals API ────────────────────────────────────────────────────────
 
   app.get("/api/sentinel/legal-signals", asyncHandler(async (req, res) => {

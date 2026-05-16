@@ -1,4 +1,5 @@
 import { getAIProviderStatus, isAIConfigured, logProviderStartup } from "./aiGateway";
+import { emitVendorStartupWarnings } from "./vendorConfig";
 
 export function runStartupChecks() {
   const results: { service: string; status: "ok" | "warning" | "missing"; detail?: string }[] = [];
@@ -28,7 +29,9 @@ export function runStartupChecks() {
   check("Twilio", ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"], true);
   check("Anthropic AI", ["ANTHROPIC_API_KEY", "AI_INTEGRATIONS_ANTHROPIC_API_KEY"], true);
   check("Apify Scraper", ["APIFY_API_KEY"], false);
-  check("BatchData Skip Trace", ["BATCHDATA_API_KEY", "BATCH_DATA"], false);
+  check("BatchData Skip Trace", ["BATCHDATA_API_KEY", "BATCHDATA_KEY", "BATCH_DATA"], false);
+  check("ScrapingBee (FLHSMV)", ["SCRAPINGBEE_API_KEY"], false);
+  check("Nimble Pipeline API", ["NIMBLE_API_USERNAME"], false);
   check("Google API", ["GOOGLE_API_KEY", "GOOGLE_MAPS_API_KEY"], false);
   check("CourtListener (bankruptcy leads)", ["COURTLISTENER_API_TOKEN"], false);
   // VAPI_API_KEY is obsolete — system uses VAPI_PRIVATE_KEY_APEX, VAPI_PUBLIC_KEY, VAPI_ORG_ID
@@ -44,6 +47,7 @@ export function runStartupChecks() {
   });
 
   logProviderStartup();
+  emitVendorStartupWarnings();
 
   console.log("\n=== STARTUP HEALTH CHECK ===");
   for (const r of results) {

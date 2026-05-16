@@ -1377,7 +1377,11 @@ export function registerPropertyRoutes(app: Express) {
     if (!user) return res.status(401).json({ error: "Not authenticated" });
 
     const reportNumber = req.params.reportNumber.trim().toUpperCase();
-    const report = await storage.getCrashReportByNumber(reportNumber);
+    // Accept both the synthetic dedup key (SENTINEL-*) and the official FL government number
+    let report = await storage.getCrashReportByNumber(reportNumber);
+    if (!report) {
+      report = await storage.getCrashReportByOfficialNumber(reportNumber) ?? null;
+    }
     if (!report) {
       return res.status(404).json({ error: "Report not found. Submit a request first." });
     }
@@ -1389,6 +1393,7 @@ export function registerPropertyRoutes(app: Express) {
     const response: Record<string, any> = {
       id: report.id,
       reportNumber: report.reportNumber,
+      officialReportNumber: report.officialReportNumber ?? null,
       status: report.status,
       retryCount: report.retryCount,
       createdAt: report.createdAt,
@@ -1421,6 +1426,7 @@ export function registerPropertyRoutes(app: Express) {
     res.json(reports.map(r => ({
       id: r.id,
       reportNumber: r.reportNumber,
+      officialReportNumber: r.officialReportNumber ?? null,
       status: r.status,
       requesterRole: r.requesterRole,
       reason: r.reason,

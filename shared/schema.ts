@@ -1476,7 +1476,12 @@ export type DigitalCard = typeof digitalCards.$inferSelect;
 
 export const crashReports = pgTable("crash_reports", {
   id: serial("id").primaryKey(),
+  // Synthetic dedup hash (SENTINEL-<sha256> or FLHSMV-FOLLOWUP-<id>). Never shown to users as the
+  // official accident report number — use officialReportNumber for the real FL government number.
   reportNumber: text("report_number").unique().notNull(),
+  // Official Florida HSMV-issued crash report number (e.g. "FL-20260415-001234").
+  // Populated by the crash report worker once FLHSMV confirms the record. Null until then.
+  officialReportNumber: text("official_report_number"),
   status: text("status").default("PENDING").notNull(),
   requesterRole: text("requester_role"),
   reason: text("reason"),

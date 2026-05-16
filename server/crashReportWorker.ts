@@ -2,6 +2,8 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import crypto from "crypto";
+import { contacts } from "@shared/schema";
+import { upsertContact, CONTACT_SOURCES, isPlaceholderName } from "./services/contactUpsertService";
 
 const FLHSMV_BASE = "https://services.flhsmv.gov";
 const FLHSMV_HOME = `${FLHSMV_BASE}/crashreportrequest/`;
@@ -108,7 +110,7 @@ interface FLHSMVSearchResult {
   ReportStatus: string;
 }
 
-interface FLHSMVReportData {
+export interface FLHSMVReportData {
   ReportNumber: string;
   CrashDate: string;
   CrashTime: string;
@@ -544,7 +546,7 @@ async function searchReportByCountyDate(
   }
 }
 
-async function fetchReportDetail(reportNumber: string): Promise<DetailResult> {
+export async function fetchReportDetail(reportNumber: string): Promise<DetailResult> {
   try {
     const headers = getHeaders();
     delete headers["Content-Type"];
@@ -1149,6 +1151,136 @@ export function startCrashReportWorker(): void {
 
   tick();
   workerInterval = setInterval(tick, WORKER_INTERVAL_MS);
+}
+
+// ── Retro FLHSMV Enrichment ───────────────────────────────────────────────────
+//
+// Called by retroFLHSMVEnrich.ts after fetchReportDetail() succeeds.
+// Finds all contacts linked to the sentinel crash report (via sourceExternalId
+// pattern `crash:<reportNumber>:acct<id>`), skips any already tagged
+// `flhsmv-enriched`, and updates the rest with real name, home address, plate.
+
+export interface EnrichCrashLeadContactsParams {
+  sentinelReportNumber: string;
+  subAccountId: number | null;
+  detailData: FLHSMVReportData;
+  officialReportNumber: string;
+}
+
+export interface EnrichCrashLeadContactsResult {
+  enriched: number;
+  skipped: number;
+  noContacts: boolean;
+}
+
+export async function enrichCrashLeadContacts(
+  params: EnrichCrashLeadContactsParams,
+): Promise<EnrichCrashLeadContactsResult> {
+  const { sentinelReportNumber, subAccountId, detailData, officialReportNumber } = params;
+
+  const vehicle = detailData.Vehicles?.[0];
+  const driver  = vehicle?.Driver;
+
+  if (!driver?.Name) {
+    return { enriched: 0, skipped: 0, noContacts: false };
+  }
+
+  // Parse "LASTNAME FIRSTNAME" or "FIRST LAST" — FLHSMV typically uses "LAST, FIRST" or "FIRST LAST"
+  const rawName  = driver.Name.trim();
+  let firstName: string;
+  let lastName: string | null = null;
+  if (rawName.includes(",")) {
+    // "SMITH, JOHN" format
+    const [last, ...rest] = rawName.split(",").map(s => s.trim());
+    firstName = rest.join(" ") || last;
+    lastName  = rest.length > 0 ? last : null;
+  } else {
+    const parts = rawName.split(/\s+/);
+    firstName = parts[0] ?? rawName;
+    lastName  = parts.slice(1).join(" ") || null;
+  }
+
+  // Build enrichment tags (additive — upsertContact never removes existing tags)
+  const enrichmentTags: string[] = ["flhsmv-enriched"];
+  if (vehicle?.TagNumber && vehicle?.TagState) {
+    const plate = `${vehicle.TagState.toUpperCase()}-${vehicle.TagNumber.toUpperCase()}`;
+    enrichmentTags.push(`plate:${plate}`);
+  }
+
+  // Address from FLHSMV driver record
+  const homeAddress = driver.Address?.trim() || null;
+
+  // Insurance note
+  const insuranceNote = vehicle?.InsuranceCompany
+    ? `Insurance: ${vehicle.InsuranceCompany}`
+    : null;
+  const vehicleNote = vehicle?.TagNumber
+    ? `Vehicle: ${vehicle.Year ?? ""} ${vehicle.Make ?? ""} ${vehicle.Model ?? ""} | Plate: ${vehicle.TagState ?? "FL"}-${vehicle.TagNumber}`.trim()
+    : null;
+  const enrichmentNote = [
+    `FLHSMV enriched at ${new Date().toISOString()}`,
+    `Official report: ${officialReportNumber}`,
+    homeAddress ? `Home address: ${homeAddress}` : null,
+    vehicleNote,
+    insuranceNote,
+  ].filter(Boolean).join("\n");
+
+  // Find all contacts linked to this sentinel crash report.
+  // sourceExternalId format (set in crashIngestPipeline): crash:<reportNumber>:acct<accountId>
+  const sourcePrefix = `crash:${sentinelReportNumber}:`;
+  const rows = await db
+    .select({
+      id:               contacts.id,
+      subAccountId:     contacts.subAccountId,
+      tags:             contacts.tags,
+      sourceExternalId: contacts.sourceExternalId,
+      firstName:        contacts.firstName,
+    })
+    .from(contacts)
+    .where(sql`source_external_id LIKE ${sourcePrefix + "%"}`);
+
+  // Narrow to the specific sub-account when provided
+  const targets = subAccountId != null
+    ? rows.filter(c => c.subAccountId === subAccountId)
+    : rows;
+
+  if (targets.length === 0) {
+    return { enriched: 0, skipped: 0, noContacts: true };
+  }
+
+  let enriched = 0;
+  let skipped  = 0;
+
+  for (const contact of targets) {
+    const currentTags = contact.tags ?? [];
+    if (currentTags.includes("flhsmv-enriched")) {
+      skipped++;
+      continue;
+    }
+
+    try {
+      await upsertContact({
+        subAccountId:     contact.subAccountId,
+        firstName,
+        lastName,
+        address:          homeAddress,
+        state:            "FL",
+        tags:             enrichmentTags,
+        notes:            enrichmentNote,
+        source:           CONTACT_SOURCES.CRASH,
+        sourceExternalId: contact.sourceExternalId ?? undefined,
+        // Upgrade identity status only if the existing name is a placeholder
+        identityStatus:   isPlaceholderName(contact.firstName) ? "verified" : undefined,
+        enrichmentProvider:     "flhsmv",
+        enrichmentCompletedAt:  new Date(),
+      });
+      enriched++;
+    } catch (err: any) {
+      console.warn(`[CRASH-WORKER] enrichCrashLeadContacts: upsert failed for contact ${contact.id}: ${err.message}`);
+    }
+  }
+
+  return { enriched, skipped, noContacts: false };
 }
 
 export function stopCrashReportWorker(): void {

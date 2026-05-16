@@ -370,6 +370,7 @@ export interface IStorage {
   createCrashReport(data: InsertCrashReport): Promise<CrashReport>;
   getCrashReport(id: number): Promise<CrashReport | undefined>;
   getCrashReportByNumber(reportNumber: string): Promise<CrashReport | undefined>;
+  getCrashReportByOfficialNumber(officialNumber: string): Promise<CrashReport | undefined>;
   getSentinelAutoCrashReportByFhpIncidentId(fhpIncidentId: string): Promise<CrashReport | undefined>;
   updateCrashReport(id: number, data: Partial<InsertCrashReport>): Promise<CrashReport | undefined>;
   mergeCrashReportData(
@@ -1739,6 +1740,16 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
+  async getCrashReportByOfficialNumber(officialNumber: string) {
+    const [row] = await db
+      .select()
+      .from(crashReports)
+      .where(eq(crashReports.officialReportNumber, officialNumber))
+      .orderBy(crashReports.id)
+      .limit(1);
+    return row;
+  }
+
   async getSentinelAutoCrashReportByFhpIncidentId(fhpIncidentId: string) {
     const [row] = await db
       .select()
@@ -1780,13 +1791,13 @@ export class DatabaseStorage implements IStorage {
     // undefined if the guards rejected the update (no row was changed).
     return await db.transaction(async (tx) => {
       const locked = await tx.execute(sql`
-        SELECT id, source, sub_account_id, data
+        SELECT id, source, sub_account_id, data, official_report_number
         FROM crash_reports
         WHERE id = ${id}
         FOR UPDATE
       `);
       const lockedRow = (locked.rows || [])[0] as
-        | { id: number; source: string | null; sub_account_id: number | null; data: unknown }
+        | { id: number; source: string | null; sub_account_id: number | null; data: unknown; official_report_number: string | null }
         | undefined;
       if (!lockedRow) return undefined;
       if (options.expectSource !== undefined && lockedRow.source !== options.expectSource) {
@@ -1803,14 +1814,25 @@ export class DatabaseStorage implements IStorage {
           ? (lockedRow.data as Record<string, unknown>)
           : {};
       const merged: Record<string, unknown> = { ...existing, ...patch };
+      // Auto-extract the official FLHSMV report number from the patch so callers
+      // don't have to remember to pass it separately. Covers both the follow-up
+      // merge path (patch.officialFlhsmv.reportNumber) and never overwrites a
+      // number that was already set.
+      const extractedOfficialNumber: string | null =
+        (patch.officialFlhsmv as Record<string, any> | undefined)?.reportNumber ?? null;
+
       const setPayload: Partial<InsertCrashReport> & {
         updatedAt: Date;
         lockedAt?: null;
         lockedBy?: null;
+        officialReportNumber?: string | null;
       } = {
         data: merged,
         updatedAt: new Date(),
       };
+      if (extractedOfficialNumber && !lockedRow.official_report_number) {
+        setPayload.officialReportNumber = extractedOfficialNumber;
+      }
       if (options.setStatus) {
         setPayload.status = options.setStatus;
         const clearLockStatuses = ["COMPLETED", "FAILED", "NOT_FOUND", "PENDING", "AWAITING"];
