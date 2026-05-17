@@ -19,7 +19,7 @@
  */
 
 import type { Express, Request, Response } from "express";
-import { isUserAdmin } from "../auth";
+import { isUserAdmin } from "./helpers";
 import { getWorkflowStats, getPendingWorkflows } from "../hpl/hplWorkflowCoordinator";
 import { getActiveStormEvents, getStormOpportunityStats, ingestStormEvent, normalizeNWSSignal } from "../hpl/stormOpportunityEngine";
 import { getRoutingStats, buildRoutingPlan, executeRouting, getContractorTerritoryMap } from "../hpl/contractorRoutingEngine";

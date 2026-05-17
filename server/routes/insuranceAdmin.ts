@@ -27,7 +27,7 @@
  */
 
 import type { Express, Request, Response } from "express";
-import { isUserAdmin } from "../auth";
+import { isUserAdmin } from "./helpers";
 import { getHouseholdStats, getTopHouseholds, upsertHousehold, correlateFromHPLProperty } from "../insurance/householdRiskEngine";
 import { scorePolicy, detectOpportunityTypes, estimateHouseholdPremium, crossSellLikelihood } from "../insurance/policyScoringService";
 import { getStormClaimStats, getReadyStormOpportunities, processStormOpportunities } from "../insurance/stormClaimIntelligence";
