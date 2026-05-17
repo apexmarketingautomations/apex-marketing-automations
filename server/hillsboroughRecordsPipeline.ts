@@ -27,6 +27,7 @@ import { db }   from "./db";
 import { legalSignals, legalLeads, contacts } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import { resolveBatchDataKey } from "./vendorConfig";
+import { isBatchDataDisabled } from "./skip-trace";
 
 const PIPELINE_TAG  = "HILLS-RECORDS";
 const BASE_URL      = "https://publicrec.hillsclerk.com/OfficialRecords/DailyIndexes";
@@ -149,6 +150,7 @@ async function skipTraceName(firstName: string, lastName: string): Promise<strin
   const existing = await lookupExistingPhone(firstName, lastName);
   if (existing) return existing;
 
+  if (isBatchDataDisabled()) return null;
   const key = resolveBatchDataKey();
   if (!key) return null;
   try {

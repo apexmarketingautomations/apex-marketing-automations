@@ -29,6 +29,7 @@ import { db } from "./db";
 import { legalSignals, legalLeads, subAccounts, contacts } from "@shared/schema";
 import { eq, isNotNull, sql } from "drizzle-orm";
 import { resolveBatchDataKey, resolveCourtListenerToken } from "./vendorConfig";
+import { isBatchDataDisabled } from "./skip-trace";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -200,6 +201,7 @@ async function skipTraceDebtor(firstName: string, lastName: string): Promise<str
   const existing = await lookupExistingPhone(firstName, lastName);
   if (existing) return existing;
 
+  if (isBatchDataDisabled()) return null;
   const key = resolveBatchDataKey();
   if (!key) return null;
 
