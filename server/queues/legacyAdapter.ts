@@ -61,6 +61,10 @@ interface BullJobData {
 const MAX_CONCURRENT = 5;
 const MAX_HISTORY = 1_000;
 
+// Circuit-breaker backoff delays (ms) — doubles each pause, capped at 5 min
+const CB_BACKOFF_INITIAL = 15_000;
+const CB_BACKOFF_MAX = 300_000;
+
 // ─── DurableJobQueue ──────────────────────────────────────────────────────────
 
 class DurableJobQueue {
@@ -76,6 +80,11 @@ class DurableJobQueue {
   // BullMQ worker (initialised on first registerHandler when Redis is up)
   private bullWorker: Worker | null = null;
   private bullWorkerStarted = false;
+
+  // Circuit-breaker state
+  private cbPaused = false;
+  private cbBackoffMs = CB_BACKOFF_INITIAL;
+  private cbResumeTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ─── Public API ─────────────────────────────────────────────────────────
 
@@ -227,7 +236,43 @@ class DurableJobQueue {
       });
 
       this.bullWorker.on("error", (err) => {
-        console.error("[JOB-QUEUE] BullMQ worker error:", err.message);
+        const isQuotaError =
+          err.message.includes("max requests limit exceeded") ||
+          err.message.includes("QUOTA") ||
+          err.message.includes("ERR max");
+
+        if (isQuotaError && this.bullWorker && !this.cbPaused) {
+          this.cbPaused = true;
+          console.warn(
+            `[JOB-QUEUE] ⚠ Redis quota exceeded — pausing BullMQ worker for ${this.cbBackoffMs / 1000}s. ` +
+            `Upgrade Upstash plan or wait for quota reset.`
+          );
+          // Pause the worker so it stops hammering Redis
+          this.bullWorker.pause().catch(() => undefined);
+
+          // Clear any existing resume timer
+          if (this.cbResumeTimer) clearTimeout(this.cbResumeTimer);
+
+          this.cbResumeTimer = setTimeout(async () => {
+            if (this.bullWorker) {
+              try {
+                await this.bullWorker.resume();
+                console.log(
+                  `[JOB-QUEUE] BullMQ worker resumed after ${this.cbBackoffMs / 1000}s backoff`
+                );
+                this.cbPaused = false;
+                // Double backoff for next quota hit, capped at max
+                this.cbBackoffMs = Math.min(this.cbBackoffMs * 2, CB_BACKOFF_MAX);
+              } catch (resumeErr: any) {
+                console.error("[JOB-QUEUE] Failed to resume worker:", resumeErr.message);
+                this.cbPaused = false; // allow next error to re-trigger
+              }
+            }
+          }, this.cbBackoffMs);
+        } else if (!isQuotaError) {
+          console.error("[JOB-QUEUE] BullMQ worker error:", err.message);
+        }
+        // Quota errors while already paused are silently swallowed — no log spam
       });
 
       this.bullWorkerStarted = true;
@@ -334,6 +379,10 @@ class DurableJobQueue {
   // ─── Graceful shutdown ────────────────────────────────────────────────────
 
   async close(): Promise<void> {
+    if (this.cbResumeTimer) {
+      clearTimeout(this.cbResumeTimer);
+      this.cbResumeTimer = null;
+    }
     if (this.bullWorker) {
       await this.bullWorker.close();
       console.log("[JOB-QUEUE] BullMQ worker closed");
