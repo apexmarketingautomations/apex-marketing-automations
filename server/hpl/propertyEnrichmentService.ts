@@ -16,6 +16,8 @@
 import { upsertProperty, buildApexPropertyId } from "./propertyIntelligenceEngine";
 import { linkPropertyEntity } from "./propertyRelationshipGraph";
 import type { PropertyEntity, PropertyType, OccupancyType } from "./types";
+import { db } from "../db";
+import { sql } from "drizzle-orm";
 
 // ── FL county storm exposure zones (historical hurricane/storm frequency) ──────
 
@@ -188,6 +190,7 @@ export async function enrichPropertyFromSignal(
 export interface EnrichmentPassResult {
   processed: number;
   enriched:  number;
+  skipped:   number;
   errors:    number;
   durationMs: number;
 }
@@ -198,9 +201,20 @@ export async function runEnrichmentPass(
   const start = Date.now();
   let enriched = 0;
   let errors = 0;
+  let skipped = 0;
 
   for (const signal of signals) {
     try {
+      // Skip properties that already completed skip-trace — no need to re-enrich
+      const apexId = buildApexPropertyId(signal.address, signal.county, signal.state);
+      const [existing] = await db.execute(sql.raw(
+        `SELECT skip_trace_completed FROM _hpl_properties WHERE apex_property_id = '${apexId.replace(/'/g, "''")}' LIMIT 1`
+      )).then((r: any) => (r as any).rows ?? r).catch(() => []); // allow-silent-catch: property not yet in DB — fall through to enrich
+      if (existing?.skip_trace_completed) {
+        skipped++;
+        continue;
+      }
+
       const result = await enrichPropertyFromSignal(signal);
       if (result.enriched) enriched++;
     } catch (err: any) {
@@ -210,9 +224,9 @@ export async function runEnrichmentPass(
   }
 
   const durationMs = Date.now() - start;
-  console.log(`[HPL-ENRICH] Pass complete: ${enriched}/${signals.length} enriched in ${durationMs}ms`);
+  console.log(`[HPL-ENRICH] Pass complete: ${enriched}/${signals.length} enriched, ${skipped} skipped (already traced) in ${durationMs}ms`);
 
-  return { processed: signals.length, enriched, errors, durationMs };
+  return { processed: signals.length, enriched, skipped, errors, durationMs };
 }
 
 // ── Ownership confidence ─────────────────────────────────────────────────────

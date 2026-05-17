@@ -26,7 +26,7 @@
 
 import * as crypto from "crypto";
 import { db } from "./db";
-import { legalSignals, legalLeads, subAccounts } from "@shared/schema";
+import { legalSignals, legalLeads, subAccounts, contacts } from "@shared/schema";
 import { eq, isNotNull, sql } from "drizzle-orm";
 import { resolveBatchDataKey, resolveCourtListenerToken } from "./vendorConfig";
 
@@ -173,15 +173,23 @@ async function isDuplicate(hash: string): Promise<boolean> {
 // ── Skip trace ────────────────────────────────────────────────────────────────
 
 async function lookupExistingPhone(firstName: string, lastName: string): Promise<string | null> {
+  const fn = firstName.trim().toLowerCase();
+  const ln = lastName.trim().toLowerCase();
   try {
-    const fullName = `${firstName} ${lastName}`.trim();
-    const [row] = await db.select({ subjectPhone: legalSignals.subjectPhone })
-      .from(legalSignals)
-      .where(
-        sql`lower(subject_name) = lower(${fullName}) AND subject_phone IS NOT NULL`
-      )
+    // Contacts table: cross-pipeline dedup — phone from any prior skip trace
+    const [contact] = await db.select({ phone: contacts.phone })
+      .from(contacts)
+      .where(sql`lower(first_name) = ${fn} AND lower(last_name) = ${ln} AND phone IS NOT NULL`)
       .limit(1);
-    return row?.subjectPhone ?? null;
+    if (contact?.phone) return contact.phone;
+
+    // Same-table fallback: legalSignals already has a phone for this name
+    const fullName = `${firstName} ${lastName}`.trim();
+    const [signal] = await db.select({ subjectPhone: legalSignals.subjectPhone })
+      .from(legalSignals)
+      .where(sql`lower(subject_name) = lower(${fullName}) AND subject_phone IS NOT NULL`)
+      .limit(1);
+    return signal?.subjectPhone ?? null;
   // allow-silent-catch: DB lookup failure falls through to fresh skip trace
   } catch {
     return null;

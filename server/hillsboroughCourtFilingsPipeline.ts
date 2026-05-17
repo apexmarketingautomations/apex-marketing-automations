@@ -37,7 +37,7 @@
 
 import crypto from "crypto";
 import { db }  from "./db";
-import { legalSignals, legalLeads } from "@shared/schema";
+import { legalSignals, legalLeads, contacts } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import { resolveBatchDataKey } from "./vendorConfig";
 
@@ -383,13 +383,21 @@ function parseAddress(raw: string): { street: string; city: string; state: strin
 }
 
 async function lookupExistingPhone(firstName: string, lastName: string): Promise<string | null> {
+  const fn = firstName.trim().toLowerCase();
+  const ln = lastName.trim().toLowerCase();
   try {
+    const [contact] = await db.select({ phone: contacts.phone })
+      .from(contacts)
+      .where(sql`lower(first_name) = ${fn} AND lower(last_name) = ${ln} AND phone IS NOT NULL`)
+      .limit(1);
+    if (contact?.phone) return contact.phone;
+
     const fullName = `${firstName} ${lastName}`.trim();
-    const [row] = await db.select({ subjectPhone: legalSignals.subjectPhone })
+    const [signal] = await db.select({ subjectPhone: legalSignals.subjectPhone })
       .from(legalSignals)
       .where(sql`lower(subject_name) = lower(${fullName}) AND subject_phone IS NOT NULL`)
       .limit(1);
-    return row?.subjectPhone ?? null;
+    return signal?.subjectPhone ?? null;
   // allow-silent-catch: DB lookup failure falls through to fresh skip trace
   } catch {
     return null;
