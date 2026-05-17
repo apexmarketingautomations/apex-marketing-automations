@@ -306,8 +306,10 @@ async function runBankruptcyCycle(): Promise<void> {
           continue;
         }
 
-        const chapter      = filing.chapter || null;
-        const filingDate   = filing.dateFiled || new Date().toISOString().slice(0, 10);
+        const chapter         = filing.chapter || null;
+        const filingDateStr   = filing.dateFiled || new Date().toISOString().slice(0, 10);
+        // legalSignals.filingDate is a timestamp column — Drizzle requires a Date object
+        const filingDate      = new Date(filingDateStr + "T00:00:00Z");
         const { firstName, lastName } = splitName(debtorName);
 
         // Skip trace the debtor
@@ -332,7 +334,7 @@ async function runBankruptcyCycle(): Promise<void> {
             chapter,
             courtId:      court.id,
             pacerCaseId:  filing.pacer_case_id,
-            dateFiled:    filingDate,
+            dateFiled:    filingDateStr,
             parties:      filing.party,
             source:       "courtlistener",
           },
@@ -357,7 +359,7 @@ async function runBankruptcyCycle(): Promise<void> {
             caseName:  filing.caseName,
             chapter,
             courtId:   court.id,
-            dateFiled: filingDate,
+            dateFiled: filingDateStr,
             source:    "courtlistener",
           },
           detectedAt: new Date(),
@@ -370,7 +372,7 @@ async function runBankruptcyCycle(): Promise<void> {
 
         // Deliver to all Sentinel-enabled accounts
         await deliverToAccounts(
-          { ...lead, subjectName: debtorName, chapter, caseNumber: filing.docketNumber, courtName: `U.S. Bankruptcy Court, ${court.label}`, filingDate },
+          { ...lead, subjectName: debtorName, chapter, caseNumber: filing.docketNumber, courtName: `U.S. Bankruptcy Court, ${court.label}`, filingDate: filingDateStr },
           phone
         );
 
