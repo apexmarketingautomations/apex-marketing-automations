@@ -27,7 +27,14 @@ import { logSystemError, logSystemEvent } from "./systemLogger";
 import { clearLaylaCache } from "./services/laylaAccountResolver";
 import { ensureAccountsUnprotected } from "./startupPatches";
 
+function isRedisQuotaError(reason: any): boolean {
+  const s = `${reason?.message ?? ""} ${String(reason)}`;
+  return s.includes("max requests limit exceeded") || s.includes("ERR max") || s.includes("QUOTA");
+}
+
 process.on("unhandledRejection", (reason: any) => {
+  // Swallow Upstash quota errors silently — circuit breaker handles the worker shutdown
+  if (isRedisQuotaError(reason)) return;
   console.error("[PROCESS] Unhandled promise rejection (caught, not crashing):", reason?.message || reason);
   logSystemError("process", "Unhandled promise rejection", {
     message: reason?.message || String(reason),
@@ -36,6 +43,7 @@ process.on("unhandledRejection", (reason: any) => {
 });
 
 process.on("uncaughtException", (err: Error) => {
+  if (isRedisQuotaError(err)) return;
   console.error("[PROCESS] Uncaught exception (caught, not crashing):", err.message);
   logSystemError("process", "Uncaught exception", {
     message: err.message,

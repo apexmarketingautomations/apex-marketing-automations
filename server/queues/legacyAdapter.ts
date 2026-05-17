@@ -236,43 +236,27 @@ class DurableJobQueue {
       });
 
       this.bullWorker.on("error", (err) => {
+        // Use String(err) as broad fallback — ReplyError sometimes has no .message
+        const msg = err?.message ?? String(err);
+        const errStr = `${msg} ${String(err)}`;
         const isQuotaError =
-          err.message.includes("max requests limit exceeded") ||
-          err.message.includes("QUOTA") ||
-          err.message.includes("ERR max");
+          errStr.includes("max requests limit exceeded") ||
+          errStr.includes("ERR max") ||
+          errStr.includes("QUOTA");
 
         if (isQuotaError && this.bullWorker && !this.cbPaused) {
           this.cbPaused = true;
           console.warn(
-            `[JOB-QUEUE] ⚠ Redis quota exceeded — pausing BullMQ worker for ${this.cbBackoffMs / 1000}s. ` +
-            `Upgrade Upstash plan or wait for quota reset.`
+            `[JOB-QUEUE] ⚠ Redis quota exceeded — closing BullMQ worker to stop bzpopmin polling. ` +
+            `Upgrade Upstash plan or redeploy after quota resets.`
           );
-          // Pause the worker so it stops hammering Redis
-          this.bullWorker.pause().catch(() => undefined);  // allow-silent-catch: non-fatal, returns safe default
-
-          // Clear any existing resume timer
-          if (this.cbResumeTimer) clearTimeout(this.cbResumeTimer);
-
-          this.cbResumeTimer = setTimeout(async () => {
-            if (this.bullWorker) {
-              try {
-                await this.bullWorker.resume();
-                console.log(
-                  `[JOB-QUEUE] BullMQ worker resumed after ${this.cbBackoffMs / 1000}s backoff`
-                );
-                this.cbPaused = false;
-                // Double backoff for next quota hit, capped at max
-                this.cbBackoffMs = Math.min(this.cbBackoffMs * 2, CB_BACKOFF_MAX);
-              } catch (resumeErr: any) {
-                console.error("[JOB-QUEUE] Failed to resume worker:", resumeErr.message);
-                this.cbPaused = false; // allow next error to re-trigger
-              }
-            }
-          }, this.cbBackoffMs);
-        } else if (!isQuotaError) {
-          console.error("[JOB-QUEUE] BullMQ worker error:", err.message);
+          // Close entirely — pause() leaves IORedis bzpopmin polling alive
+          this.bullWorker.close().catch(() => undefined);  // allow-silent-catch: non-fatal, returns safe default
+          this.bullWorker = null;
+        } else if (!isQuotaError && !this.cbPaused) {
+          console.error("[JOB-QUEUE] BullMQ worker error:", msg);
         }
-        // Quota errors while already paused are silently swallowed — no log spam
+        // All errors after close are swallowed — connection is gone
       });
 
       this.bullWorkerStarted = true;

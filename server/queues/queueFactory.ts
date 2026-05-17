@@ -350,45 +350,33 @@ const CB_BACKOFF_MAX_MS     = 300_000;
 /**
  * Attach a quota-aware circuit-breaker error handler to any BullMQ Worker.
  *
- * When Upstash Redis returns ERR max requests limit exceeded, the worker
- * pauses itself (15 s initially, doubling on each hit, capped at 5 min)
- * instead of hammering Redis with retries and flooding Railway logs.
+ * When Upstash Redis returns ERR max requests limit exceeded the worker is
+ * CLOSED (not just paused) so the underlying bzpopmin polling loop stops
+ * entirely. worker.pause() leaves the IORedis connection alive and polling,
+ * which keeps burning the quota and flooding logs.
  */
 export function attachCircuitBreaker(worker: any, tag: string): void {
-  let paused    = false;
-  let backoffMs = CB_BACKOFF_INITIAL_MS;
-  let timer: ReturnType<typeof setTimeout> | null = null;
+  let closed = false;
 
   worker.on("error", (err: any) => {
+    // Use String(err) as a broad fallback — ReplyError sometimes has no .message
     const msg = err?.message ?? String(err);
+    const errStr = `${msg} ${String(err)}`;
     const isQuota =
-      msg.includes("max requests limit exceeded") ||
-      msg.includes("ERR max") ||
-      msg.includes("QUOTA");
+      errStr.includes("max requests limit exceeded") ||
+      errStr.includes("ERR max") ||
+      errStr.includes("QUOTA");
 
-    if (isQuota && !paused) {
-      paused = true;
+    if (isQuota && !closed) {
+      closed = true;
       console.warn(
-        `[${tag}] ⚠ Redis quota exceeded — pausing worker for ${backoffMs / 1000}s. ` +
-        `Upgrade Upstash plan or wait for quota reset.`
+        `[${tag}] ⚠ Redis quota exceeded — closing worker to stop bzpopmin polling. ` +
+        `Upgrade Upstash plan or redeploy after quota resets.`
       );
-      worker.pause().catch(() => undefined);  // allow-silent-catch: non-fatal, returns safe default
-
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(async () => {
-        try {
-          await worker.resume();
-          console.log(`[${tag}] Worker resumed after ${backoffMs / 1000}s backoff`);
-          paused = false;
-          backoffMs = Math.min(backoffMs * 2, CB_BACKOFF_MAX_MS);
-        } catch (e: any) {
-          console.error(`[${tag}] Failed to resume worker: ${e?.message}`);
-          paused = false;
-        }
-      }, backoffMs);
-    } else if (!isQuota) {
+      worker.close().catch(() => undefined);  // allow-silent-catch: non-fatal, returns safe default
+    } else if (!isQuota && !closed) {
       console.error(`[${tag}] Worker error: ${msg}`);
     }
-    // Quota errors while already paused are swallowed — no log spam
+    // All errors after close are swallowed — connection is gone
   });
 }
