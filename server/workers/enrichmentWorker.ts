@@ -24,7 +24,7 @@ import { Worker, Job } from "bullmq";
 import { db } from "../db";
 import { contacts, contactScores } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { getBullMQConnection, QUEUE_NAMES, getEnrichmentQueue, sendToDeadLetterQueue } from "../queues/queueFactory";
+import { getBullMQConnection, QUEUE_NAMES, getEnrichmentQueue, sendToDeadLetterQueue, attachCircuitBreaker } from "../queues/queueFactory";
 import { captureWorkerError } from "../instrument";
 import { isBatchDataDisabled } from "../skip-trace";
 import { resolveBatchDataKey } from "../vendorConfig";
@@ -353,6 +353,7 @@ export function startEnrichmentWorker(): void {
   _worker.on("stalled", (jobId) => {
     console.warn(`[${WORKER_TAG}] Job ${jobId} stalled`);
   });
+  attachCircuitBreaker(_worker, WORKER_TAG);
 
   console.log(`[${WORKER_TAG}] Started — concurrency=${MAX_CONCURRENCY} queue=${QUEUE_NAMES.ENRICHMENT}`);
 }

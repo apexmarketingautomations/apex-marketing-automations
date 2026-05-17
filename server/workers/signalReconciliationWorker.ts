@@ -22,7 +22,7 @@ import { Worker, Queue, type Job } from "bullmq";
 import { sql, eq, and, lt, isNull } from "drizzle-orm";
 import { db } from "../db";
 import { contacts } from "@shared/schema";
-import { getBullMQConnection, QUEUE_NAMES } from "../queues/queueFactory";
+import { getBullMQConnection, QUEUE_NAMES, attachCircuitBreaker } from "../queues/queueFactory";
 import { runReconciliationScan, type ReconciliationIssue } from "../db/reconciliationEngine";
 import { quarantineRecord } from "../db/quarantineCoordinator";
 
@@ -217,6 +217,7 @@ export function startSignalReconciliationWorker(): Worker {
   _worker.on("failed", (job, err) => {
     console.error(`[RECONCILIATION-WORKER] job ${job?.id} failed:`, err?.message);
   });
+  attachCircuitBreaker(_worker, "RECONCILIATION-WORKER");
 
   console.log("[RECONCILIATION-WORKER] started — listening on apex-maintenance queue");
   return _worker;

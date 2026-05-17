@@ -20,7 +20,7 @@ import { Worker, type Job } from "bullmq";
 import { sql, eq, and, isNotNull, ne } from "drizzle-orm";
 import { db } from "../db";
 import { contacts } from "@shared/schema";
-import { getBullMQConnection, QUEUE_NAMES } from "../queues/queueFactory";
+import { getBullMQConnection, QUEUE_NAMES, attachCircuitBreaker } from "../queues/queueFactory";
 import { quarantineRecord } from "../db/quarantineCoordinator";
 
 export interface DedupMergeJob {
@@ -167,6 +167,7 @@ export function startDedupWorker(): Worker {
   _worker.on("failed", (job, err) => {
     console.error(`[DEDUP-WORKER] job ${job?.id} failed:`, err?.message);
   });
+  attachCircuitBreaker(_worker, "DEDUP-WORKER");
 
   console.log("[DEDUP-WORKER] started — listening on apex-maintenance queue");
   return _worker;

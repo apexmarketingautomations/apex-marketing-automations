@@ -20,7 +20,7 @@ import { Worker, Job } from "bullmq";
 import { db } from "../db";
 import { contacts } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
-import { getBullMQConnection, QUEUE_NAMES, getRoutingQueue, getScoringQueue, sendToDeadLetterQueue } from "../queues/queueFactory";
+import { getBullMQConnection, QUEUE_NAMES, getRoutingQueue, getScoringQueue, sendToDeadLetterQueue, attachCircuitBreaker } from "../queues/queueFactory";
 import { logSystemEvent } from "../systemLogger";
 
 const WORKER_TAG  = "ROUTING-WORKER";
@@ -268,6 +268,7 @@ export function startRoutingWorker(): void {
     }
   });
 
+  attachCircuitBreaker(_worker, WORKER_TAG);
   console.log(`[${WORKER_TAG}] Started — concurrency=${MAX_CONCURRENCY} queue=${QUEUE_NAMES.ROUTING}`);
 }
 

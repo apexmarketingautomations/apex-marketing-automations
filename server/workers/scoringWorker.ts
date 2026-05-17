@@ -29,7 +29,7 @@ import { Worker, Job, Queue } from "bullmq";
 import { db } from "../db";
 import { contacts, contactScores } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { getBullMQConnection, QUEUE_NAMES, getScoringQueue, sendToDeadLetterQueue } from "../queues/queueFactory";
+import { getBullMQConnection, QUEUE_NAMES, getScoringQueue, sendToDeadLetterQueue, attachCircuitBreaker } from "../queues/queueFactory";
 
 const WORKER_TAG    = "SCORING-WORKER";
 const MAX_CONCURRENCY = 5;  // scoring is CPU-cheap
@@ -306,6 +306,7 @@ export function startScoringWorker(): void {
     }
   });
 
+  attachCircuitBreaker(_worker, WORKER_TAG);
   console.log(`[${WORKER_TAG}] Started — concurrency=${MAX_CONCURRENCY} queue=${QUEUE_NAMES.SCORING}`);
 }
 
