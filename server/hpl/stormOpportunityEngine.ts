@@ -16,6 +16,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { STORM_TRADE_MAP } from "./permitParser";
 import { upsertProperty } from "./propertyIntelligenceEngine";
+import { esc, num, bool, arr, isoDate } from "./sqlSafe";
 import type { StormEvent, ServiceTrade, PropertyEntity } from "./types";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -132,10 +133,9 @@ export async function ingestStormEvent(
   const { score, primaryTrades, insuranceCrossFit } = scoreStormOpportunity(raw);
   const event: StormEvent = { ...raw, opportunityScore: score, primaryTrades, insuranceCrossFit };
 
-  const tradesArr = primaryTrades.length > 0
-    ? `ARRAY[${primaryTrades.map(t => `'${t}'`).join(",")}]::TEXT[]`
-    : "ARRAY[]::TEXT[]";
+  const tradesArr = arr(primaryTrades);
   const rawJson = JSON.stringify(rawData ?? {}).replace(/'/g, "''");
+  const expiresVal = isoDate(event.expiresAt);
 
   try {
     await db.execute(sql.raw(`
@@ -145,29 +145,30 @@ export async function ingestStormEvent(
         hail_size_inches, wind_speed_mph, affected_properties,
         primary_trades, insurance_cross_fit, opportunity_score, source, raw_data
       ) VALUES (
-        '${event.eventId}',
-        '${event.eventType}',
-        '${event.severity}',
-        '${event.county}',
-        '${event.state}',
-        '${event.startedAt}',
-        ${event.expiresAt ? `'${event.expiresAt}'` : "NULL"},
-        ${event.lat ?? "NULL"},
-        ${event.lng ?? "NULL"},
-        ${event.radiusMiles ?? "NULL"},
-        ${event.hailSizeInches ?? "NULL"},
-        ${event.windSpeedMph ?? "NULL"},
-        ${event.affectedProperties ?? "NULL"},
+        ${esc(event.eventId)},
+        ${esc(event.eventType)},
+        ${esc(event.severity)},
+        ${esc(event.county)},
+        ${esc(event.state)},
+        ${isoDate(event.startedAt)},
+        ${expiresVal},
+        ${num(event.lat)},
+        ${num(event.lng)},
+        ${num(event.radiusMiles)},
+        ${num(event.hailSizeInches)},
+        ${num(event.windSpeedMph)},
+        ${num(event.affectedProperties)},
         ${tradesArr},
-        ${insuranceCrossFit},
+        ${bool(insuranceCrossFit)},
         ${score},
-        '${raw.source}',
+        ${esc(raw.source)},
         '${rawJson}'::jsonb
       )
       ON CONFLICT (event_id) DO UPDATE SET
         opportunity_score   = GREATEST(_hpl_storm_events.opportunity_score, ${score}),
-        insurance_cross_fit = _hpl_storm_events.insurance_cross_fit OR ${insuranceCrossFit},
-        expires_at          = COALESCE('${event.expiresAt ?? ""}', _hpl_storm_events.expires_at)
+        insurance_cross_fit = _hpl_storm_events.insurance_cross_fit OR ${bool(insuranceCrossFit)},
+        expires_at          = CASE WHEN ${expiresVal} IS NOT NULL THEN ${expiresVal}
+                                   ELSE _hpl_storm_events.expires_at END
     `));
 
     console.log(`[HPL-STORM] Ingested ${event.eventType} event in ${event.county}, FL — score=${score}`);
@@ -212,9 +213,17 @@ export function normalizeNWSSignal(signal: {
   const eventType = typeMap[signal.signalType] ?? "severe_storm";
   const severity  = severityMap[signal.severity?.toLowerCase()] ?? "moderate";
 
-  // Extract county name from areaDesc (e.g. "Lee County in Florida")
-  const countyMatch = signal.areaDesc.match(/^([A-Z][a-zA-Z\s-]+?)(?:\s+(?:County|counties))?(?:,|\s+in|\s+FL|\s*$)/i);
-  const county = countyMatch ? countyMatch[1].trim().toUpperCase() : signal.areaDesc.substring(0, 20).toUpperCase();
+  // Extract county name from areaDesc with multiple pattern fallbacks.
+  // Pattern 1: "Lee County in Florida" / "Lee County, FL"
+  // Pattern 2: "Lee; Collier; Charlotte Counties" → first county
+  // Pattern 3: bare state-zone codes like "FLZ042" → strip to zone ID
+  const countyMatch =
+    signal.areaDesc.match(/^([A-Za-z][a-zA-Z\s-]+?)\s+(?:County|Counties)/i) ??
+    signal.areaDesc.match(/^([A-Za-z][a-zA-Z\s-]+?)(?:;|,|\s+in\s|\s+FL\b)/i);
+  const rawCounty = countyMatch
+    ? countyMatch[1].trim()
+    : signal.areaDesc.split(/[;,]/)[0].trim().substring(0, 30);
+  const county = rawCounty.toUpperCase().replace(/\s+COUNTY$/i, "").trim() || "UNKNOWN";
 
   return {
     eventId: signal.id,

@@ -16,6 +16,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { createHash } from "crypto";
+import { esc, num, bool, arr } from "./sqlSafe";
 import type { PropertyEntity, HPLSignalType } from "./types";
 
 // ── Table bootstrap ───────────────────────────────────────────────────────────
@@ -151,16 +152,8 @@ export async function upsertProperty(
   const apexPropertyId = entity.apexPropertyId ?? buildApexPropertyId(entity.propertyAddress, entity.county, entity.state);
   const opportunityScore = scoreContractorOpportunity(entity);
 
-  const signalsArr = entity.activeSignals?.length
-    ? `ARRAY[${entity.activeSignals.map(s => `'${s}'`).join(",")}]::TEXT[]`
-    : "ARRAY[]::TEXT[]";
-  const sourcesArr = entity.enrichmentSources?.length
-    ? `ARRAY[${entity.enrichmentSources.map(s => `'${s}'`).join(",")}]::TEXT[]`
-    : "ARRAY[]::TEXT[]";
-
-  const esc = (v: string | undefined) => v ? `'${v.replace(/'/g, "''")}'` : "NULL";
-  const num = (v: number | undefined) => v != null ? String(v) : "NULL";
-  const bool = (v: boolean | undefined) => v != null ? String(v) : "NULL";
+  const signalsArr = arr(entity.activeSignals as string[] | undefined);
+  const sourcesArr = arr(entity.enrichmentSources);
 
   try {
     const result = await db.execute(sql.raw(`

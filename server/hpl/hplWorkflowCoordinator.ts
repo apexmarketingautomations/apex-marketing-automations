@@ -20,6 +20,7 @@
 
 import { sql } from "drizzle-orm";
 import { db } from "../db";
+import { esc, num, isoDate } from "./sqlSafe";
 import type { ContractorWorkflowType, ServiceTrade, StormEvent } from "./types";
 
 // ── Table bootstrap ───────────────────────────────────────────────────────────
@@ -163,12 +164,12 @@ export async function enqueueWorkflow(opts: EnqueueWorkflowOptions): Promise<num
       INSERT INTO _hpl_workflow_queue
         (workflow_type, contractor_id, sub_account_id, lead_id, trigger_data, scheduled_at, approval_required)
       VALUES
-        ('${opts.workflowType}',
-         ${opts.contractorId ?? "NULL"},
-         ${opts.subAccountId ?? "NULL"},
-         ${opts.leadId ?? "NULL"},
+        (${esc(opts.workflowType)},
+         ${num(opts.contractorId)},
+         ${num(opts.subAccountId)},
+         ${num(opts.leadId)},
          '${triggerJson}'::jsonb,
-         '${scheduledAt.toISOString()}',
+         ${isoDate(scheduledAt.toISOString())},
          TRUE)
       RETURNING id
     `));
