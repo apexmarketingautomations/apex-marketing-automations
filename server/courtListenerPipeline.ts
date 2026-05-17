@@ -30,6 +30,7 @@ import { legalSignals, legalLeads, subAccounts, contacts } from "@shared/schema"
 import { eq, isNotNull, sql } from "drizzle-orm";
 import { resolveBatchDataKey, resolveCourtListenerToken } from "./vendorConfig";
 import { isBatchDataDisabled } from "./skip-trace";
+import { ENRICHMENT_ACCOUNT_IDS } from "./vendorConfig";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -235,10 +236,10 @@ async function getAllEnabledAccountIds(): Promise<number[]> {
     const r = await pool.query(
       "SELECT sub_account_id FROM sentinel_config WHERE enabled = true LIMIT 200"
     );
-    return r.rows.map((row: { sub_account_id: number }) => row.sub_account_id);
+    const ids: number[] = r.rows.map((row: { sub_account_id: number }) => row.sub_account_id);
+    return ids.filter(id => ENRICHMENT_ACCOUNT_IDS.has(id));
   // allow-silent-catch: fallback to parent account on DB error
   } catch {
-    // Fallback to parent account
     return [parseInt(process.env.APEX_PARENT_ACCOUNT_ID || "3")];
   }
 }

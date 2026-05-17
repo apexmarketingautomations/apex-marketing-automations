@@ -16,7 +16,7 @@
 import { storage } from "./storage";
 import { skipTraceLookup } from "./skip-trace";
 import { publishEventAsync, EVENT_TYPES } from "./eventBus";
-import { resolveBatchDataKey, recordBatchDataRun, CRASH_LEAD_ACCOUNT_IDS } from "./vendorConfig";
+import { resolveBatchDataKey, recordBatchDataRun, CRASH_LEAD_ACCOUNT_IDS, ENRICHMENT_ACCOUNT_IDS } from "./vendorConfig";
 import { isBatchDataDisabled } from "./skip-trace";
 import { updateContactSkipTrace, isPlaceholderName } from "./services/contactUpsertService";
 
@@ -315,12 +315,12 @@ export async function runRetroSkipTraceAllAccounts(): Promise<void> {
     const cfg = r.rows[0];
     // Always include known crash lead accounts (3, 13, 14) even if sentinel_config
     // is absent or disabled — crash leads are delivered there unconditionally.
-    if (CRASH_LEAD_ACCOUNT_IDS.has(acct.id) || !cfg || cfg.enabled) {
+    if ((CRASH_LEAD_ACCOUNT_IDS.has(acct.id) || !cfg || cfg.enabled) && ENRICHMENT_ACCOUNT_IDS.has(acct.id)) {
       eligibleIds.push(acct.id);
     }
   }
 
-  console.log(`[RETRO-SKIP-TRACE] Running for ${eligibleIds.length} eligible accounts: ${eligibleIds.join(", ")} (always-included crash accounts: 3, 4)`);
+  console.log(`[RETRO-SKIP-TRACE] Running for ${eligibleIds.length} enrichment-allowed accounts: ${eligibleIds.join(", ")} (enrichment restricted to: ${[...ENRICHMENT_ACCOUNT_IDS].join(", ")})`);
 
   for (const accountId of eligibleIds) {
     const stats = await runRetroSkipTrace(accountId, { crashOnly: false });

@@ -49,6 +49,7 @@ import {
 }                        from "./chargeNormalizer";
 import { upsertContact } from "./services/contactUpsertService";
 import { publishEventAsync, EVENT_TYPES } from "./eventBus";
+import { ENRICHMENT_ACCOUNT_IDS } from "./vendorConfig";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -136,13 +137,11 @@ function parseBond(raw: number | null): number | null {
 
 async function resolveLegalAccountIds(): Promise<number[]> {
   const { pool } = await import("./db");
-  // Deliver arrest leads to every account that has Sentinel turned on,
-  // regardless of niche. Previously this filtered by niche="legal"/"attorney"
-  // which silently excluded crash-niche accounts from ever seeing arrest leads.
   const r = await pool.query(
     `SELECT sub_account_id FROM sentinel_config WHERE enabled = true LIMIT 200`,
   );
-  return r.rows.map((row: { sub_account_id: number }) => row.sub_account_id);
+  const ids: number[] = r.rows.map((row: { sub_account_id: number }) => row.sub_account_id);
+  return ids.filter(id => ENRICHMENT_ACCOUNT_IDS.has(id));
 }
 
 // ── Contact creation ──────────────────────────────────────────────────────────

@@ -28,6 +28,7 @@ import { legalSignals, legalLeads, contacts } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import { resolveBatchDataKey } from "./vendorConfig";
 import { isBatchDataDisabled } from "./skip-trace";
+import { ENRICHMENT_ACCOUNT_IDS } from "./vendorConfig";
 
 const PIPELINE_TAG  = "HILLS-RECORDS";
 const BASE_URL      = "https://publicrec.hillsclerk.com/OfficialRecords/DailyIndexes";
@@ -269,7 +270,8 @@ async function getAllEnabledAccountIds(): Promise<number[]> {
     const r = await pool.query(
       "SELECT sub_account_id FROM sentinel_config WHERE enabled = true LIMIT 200"
     );
-    return r.rows.map((row: { sub_account_id: number }) => row.sub_account_id);
+    const ids: number[] = r.rows.map((row: { sub_account_id: number }) => row.sub_account_id);
+    return ids.filter(id => ENRICHMENT_ACCOUNT_IDS.has(id));
   // allow-silent-catch: fallback to parent account on DB error
   } catch {
     return [parseInt(process.env.APEX_PARENT_ACCOUNT_ID || "3")];
