@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   CheckCircle2, XCircle, Clock, AlertTriangle, ChevronRight,
-  User, Shield, Activity, FileText, RefreshCw,
+  User, Shield, Activity, FileText, RefreshCw, Send,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -225,6 +225,7 @@ function DetailPanel({ workflow, onAction }: DetailPanelProps) {
   const [actorName, setActorName] = useState("");
   const [rejectReason, setRejectReason] = useState("");
   const [showRejectDialog, setShowRejectDialog] = useState(false);
+  const [executeResult, setExecuteResult] = useState<{ ok: boolean; channel?: string; messageSid?: string; error?: string; gateCode?: string } | null>(null);
 
   // Sync draft when workflow changes
   React.useEffect(() => {
@@ -238,6 +239,30 @@ function DetailPanel({ workflow, onAction }: DetailPanelProps) {
     refetchInterval: 10_000,
   });
   const timeline: AuditEntry[] = auditQ.data?.timeline ?? [];
+
+  // Execute mutation — only available on approved workflows
+  const executeMutation = useMutation({
+    mutationFn: (body: { subAccountId: number; agencyId: number }) =>
+      postJson(`/api/insurance/execute-workflow/${workflow.id}`, body),
+    onSuccess: (data) => {
+      setExecuteResult(data);
+      if (data.ok) {
+        toast({ title: "Workflow executed", description: `Sent via ${data.channel} — SID: ${data.messageSid ?? "n/a"}` });
+        qc.invalidateQueries({ queryKey: ["insurance", "pending-approvals"] });
+        qc.invalidateQueries({ queryKey: ["insurance", "workflow-audit", workflow.id] });
+        onAction();
+      } else {
+        toast({
+          title: "Execution blocked",
+          description: data.gateCode ? `Gate: ${data.gateCode}` : data.error,
+          variant: "destructive",
+        });
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Execute failed", description: err.message, variant: "destructive" });
+    },
+  });
 
   // Approve mutation
   const approveMutation = useMutation({
@@ -432,6 +457,42 @@ function DetailPanel({ workflow, onAction }: DetailPanelProps) {
               {approveMutation.isPending ? "Approving…" : "Approve Draft"}
             </Button>
           </div>
+          {/* Execute — only shown for already-approved workflows */}
+          {workflow.status === "approved" && (
+            <>
+              <Separator />
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-green-700 flex items-center gap-1">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Approved — ready to send
+                </p>
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="w-full bg-green-700 hover:bg-green-800"
+                  disabled={!actorName.trim() || executeMutation.isPending}
+                  onClick={() => {
+                    // subAccountId and agencyId must come from the workflow or session context.
+                    // Using agency_id from the workflow row; subAccountId defaults to agency_id
+                    // until sub-account wiring is done in Phase 9.
+                    const agencyId = workflow.agency_id ?? 0;
+                    executeMutation.mutate({ subAccountId: agencyId, agencyId });
+                  }}
+                >
+                  <Send className="h-4 w-4 mr-1" />
+                  {executeMutation.isPending ? "Sending…" : "Execute & Send"}
+                </Button>
+                {executeResult && !executeResult.ok && (
+                  <p className="text-xs text-red-600">
+                    Blocked: {executeResult.gateCode ?? executeResult.error}
+                  </p>
+                )}
+                <p className="text-[10px] text-muted-foreground">
+                  Transport gate re-validates approval, score, and suppression immediately before send.
+                </p>
+              </div>
+            </>
+          )}
+
           <p className="text-[10px] text-muted-foreground text-center">
             Approval queues this workflow — transport gate re-validates before any message is sent.
           </p>

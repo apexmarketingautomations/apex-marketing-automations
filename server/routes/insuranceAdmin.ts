@@ -3,18 +3,25 @@
  *
  * Insurance Intelligence Admin Routes
  *
- *   GET  /api/insurance/household-stats         — household intelligence KPIs
- *   GET  /api/insurance/top-households          — top-scored households
- *   GET  /api/insurance/storm-claim-stats       — storm claim opportunity stats
- *   GET  /api/insurance/storm-opportunities     — ready-to-outreach storm opps
- *   GET  /api/insurance/commercial-stats        — commercial risk KPIs
+ *   GET  /api/insurance/household-stats          — household intelligence KPIs
+ *   GET  /api/insurance/top-households           — top-scored households
+ *   GET  /api/insurance/storm-claim-stats        — storm claim opportunity stats
+ *   GET  /api/insurance/storm-opportunities      — ready-to-outreach storm opps
+ *   GET  /api/insurance/commercial-stats         — commercial risk KPIs
  *   GET  /api/insurance/commercial-opportunities — top commercial opps
- *   GET  /api/insurance/workflow-queue          — pending insurance workflows
- *   GET  /api/insurance/routing-stats           — agency routing performance
- *   POST /api/insurance/ingest-household        — manual household enrichment
- *   POST /api/insurance/ingest-commercial       — manual DBPR/business ingest
- *   POST /api/insurance/process-storm/:eventId  — trigger storm opportunity processing
- *   POST /api/insurance/score-household/:id     — re-score a household
+ *   GET  /api/insurance/workflow-queue           — pending insurance workflows
+ *   GET  /api/insurance/routing-stats            — agency routing performance
+ *   GET  /api/insurance/pending-approvals        — workflows awaiting human review
+ *   GET  /api/insurance/workflow-audit/:id       — approval audit timeline
+ *   POST /api/insurance/ingest-household         — manual household enrichment
+ *   POST /api/insurance/ingest-commercial        — manual DBPR/business ingest
+ *   POST /api/insurance/process-storm/:eventId   — trigger storm opportunity processing
+ *   POST /api/insurance/score-household/:id      — re-score a household
+ *   POST /api/insurance/approve-workflow/:id     — approve a workflow draft (named actor)
+ *   POST /api/insurance/reject-workflow/:id      — reject / cancel a workflow
+ *   POST /api/insurance/pre-exec-validation      — score sweep: cancel stale/low-score
+ *   POST /api/insurance/execute-workflow/:id     — execute single approved workflow
+ *   POST /api/insurance/execute-batch            — batch-execute all approved due workflows
  *
  * All routes require admin auth.
  */
@@ -28,6 +35,7 @@ import { getCommercialStats, getTopCommercialOpportunities, ingestDbprLicense } 
 import { getPendingInsuranceWorkflows, getInsuranceWorkflowStats, runPreExecutionValidation } from "../insurance/insuranceWorkflowCoordinator";
 import { getInsuranceRoutingStats } from "../insurance/insuranceRoutingEngine";
 import { approveWorkflow, rejectWorkflow, getPendingApprovals, getWorkflowAuditTimeline } from "../insurance/insuranceApprovalGate";
+import { executeInsuranceWorkflow, executeApprovedBatch } from "../insurance/insuranceExecutionCoordinator";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { esc } from "../hpl/sqlSafe";
@@ -309,6 +317,68 @@ export function registerInsuranceAdminRoutes(app: Express): void {
     const agencyId      = req.body.agencyId ? parseInt(String(req.body.agencyId), 10) : undefined;
     try {
       const result = await runPreExecutionValidation({ minScore, staleAfterDays, agencyId });
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message ?? "failed" });
+    }
+  });
+
+  // ── Execution routes ────────────────────────────────────────────────────────
+  //
+  // These are the ONLY paths that trigger outbound communication.
+  // Both call assertApproved() inside the adapter — approval gate re-validates
+  // at send time, not just at approval time.
+
+  // POST /api/insurance/execute-workflow/:id
+  // Execute a single approved workflow. Requires subAccountId in body.
+  app.post("/api/insurance/execute-workflow/:id", async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
+    const workflowId    = parseInt(req.params.id, 10);
+    const subAccountId  = parseInt(String(req.body.subAccountId ?? "0"), 10);
+    const callerAgencyId = parseInt(String(req.body.agencyId ?? "0"), 10);
+    const channelOverride = req.body.channel as "sms" | "email" | "voice" | undefined;
+    const baseUrl       = req.body.baseUrl as string | undefined;
+
+    if (!subAccountId || !callerAgencyId) {
+      return res.status(400).json({ error: "subAccountId and agencyId required" });
+    }
+
+    try {
+      const result = await executeInsuranceWorkflow({
+        workflowId,
+        callerAgencyId,
+        subAccountId,
+        baseUrl,
+        channelOverride,
+      });
+      return res.status(result.ok ? 200 : 422).json(result);
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message ?? "failed" });
+    }
+  });
+
+  // POST /api/insurance/execute-batch
+  // Execute all approved-and-due workflows for an agency in one sweep.
+  app.post("/api/insurance/execute-batch", async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
+    const subAccountId   = parseInt(String(req.body.subAccountId ?? "0"), 10);
+    const callerAgencyId = parseInt(String(req.body.agencyId ?? "0"), 10);
+    const maxPerRun      = Math.min(parseInt(String(req.body.maxPerRun ?? "20"), 10), 50);
+    const baseUrl        = req.body.baseUrl as string | undefined;
+    const runPreExecSweep = req.body.runPreExecSweep !== false;
+
+    if (!subAccountId || !callerAgencyId) {
+      return res.status(400).json({ error: "subAccountId and agencyId required" });
+    }
+
+    try {
+      const result = await executeApprovedBatch({
+        callerAgencyId,
+        subAccountId,
+        baseUrl,
+        maxPerRun,
+        runPreExecSweep,
+      });
       return res.json(result);
     } catch (err: any) {
       return res.status(500).json({ error: err?.message ?? "failed" });
