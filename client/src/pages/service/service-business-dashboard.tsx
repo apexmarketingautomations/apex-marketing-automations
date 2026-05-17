@@ -595,6 +595,379 @@ function ReceptionistPanel() {
   );
 }
 
+// ── New Residents panel ───────────────────────────────────────────────────────
+
+const TENANT_ID = "apex-default";
+
+function NewResidentsPanel() {
+  const qc = useQueryClient();
+  const [actorName, setActorName] = useState("");
+  const [ingestZip, setIngestZip]   = useState("");
+
+  const { data: evtStats }    = useQuery({ queryKey: ["/api/nr/events/stats"],         refetchInterval: 30_000 });
+  const { data: households }  = useQuery({ queryKey: ["/api/nr/households"],            refetchInterval: 30_000 });
+  const { data: topScores }   = useQuery({ queryKey: ["/api/nr/scores/top"],            refetchInterval: 30_000 });
+  const { data: pending }     = useQuery({ queryKey: ["/api/nr/workflow/pending"],       refetchInterval: 15_000 });
+  const { data: wfStats }     = useQuery({ queryKey: ["/api/nr/workflow/stats"],         refetchInterval: 30_000 });
+  const { data: matches }     = useQuery({ queryKey: ["/api/nr/matches"],               refetchInterval: 30_000 });
+  const { data: crossover }   = useQuery({ queryKey: ["/api/nr/crossover"],             refetchInterval: 30_000 });
+  const { data: xStats }      = useQuery({ queryKey: ["/api/nr/crossover/stats"],        refetchInterval: 30_000 });
+  const { data: recs }        = useQuery({ queryKey: ["/api/nr/recommendations"],       refetchInterval: 30_000 });
+
+  const approveWf = useMutation({
+    mutationFn: (id: string) =>
+      fetch(`/api/nr/workflow/${id}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantId: TENANT_ID, approvedBy: actorName }),
+      }).then(r => r.json()),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/nr/workflow/pending"] }),
+  });
+
+  const rejectWf = useMutation({
+    mutationFn: (id: string) =>
+      fetch(`/api/nr/workflow/${id}/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantId: TENANT_ID, rejectedBy: actorName, reason: "rejected_via_dashboard" }),
+      }).then(r => r.json()),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/nr/workflow/pending"] }),
+  });
+
+  const es  = (evtStats   as any)?.data ?? {};
+  const hhs = (households as any)?.data ?? [];
+  const ts  = (topScores  as any)?.data ?? [];
+  const pw  = (pending    as any)?.data ?? [];
+  const ws  = (wfStats    as any)?.data ?? {};
+  const mx  = (matches    as any)?.data ?? [];
+  const cr  = (crossover  as any)?.data ?? [];
+  const xs  = (xStats     as any)?.data ?? {};
+  const rs  = (recs       as any)?.data ?? [];
+
+  // Compute ZIP/county frequency from households
+  const zipCounts: Record<string, number> = {};
+  const countyCounts: Record<string, number> = {};
+  for (const h of hhs) {
+    if (h.zip)    zipCounts[h.zip]       = (zipCounts[h.zip] ?? 0) + 1;
+    if (h.county) countyCounts[h.county] = (countyCounts[h.county] ?? 0) + 1;
+  }
+  const topZips    = Object.entries(zipCounts).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const topCounties = Object.entries(countyCounts).sort((a, b) => b[1] - a[1]).slice(0, 4);
+
+  const homeowners = hhs.filter((h: any) => (h.homeownerLikelihood ?? 0) >= 60).length;
+  const renters    = hhs.filter((h: any) => (h.homeownerLikelihood ?? 0) <  60).length;
+
+  function tierBadge(tier: string) {
+    if (tier === "high")   return "bg-green-100 text-green-800";
+    if (tier === "medium") return "bg-yellow-100 text-yellow-800";
+    return "bg-slate-100 text-slate-600";
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Privacy notice */}
+      <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs text-blue-800">
+        <strong>Local Welcome Intelligence</strong> — Public-record signals only. No protected attribute inference.
+        All outreach requires human approval. Opt-outs honoured permanently. No automated sending.
+      </div>
+
+      {/* Top KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { label: "Total Move Events",       value: es.total          ?? 0 },
+          { label: "High-Confidence Events",  value: es.highConfidence ?? 0 },
+          { label: "Active Households",       value: hhs.length },
+          { label: "Pending WF Drafts",       value: ws.pending        ?? 0 },
+        ].map(k => (
+          <Card key={k.label}>
+            <CardContent className="pt-4">
+              <div className="text-2xl font-bold text-slate-800">{k.value}</div>
+              <div className="text-xs text-slate-500 mt-0.5">{k.label}</div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Move-ins by ZIP + County */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader><CardTitle className="text-sm">Move-ins by ZIP Code</CardTitle></CardHeader>
+          <CardContent>
+            {topZips.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-4">No ZIP data yet</p>
+            ) : (
+              <div className="space-y-2">
+                {topZips.map(([zip, count]) => (
+                  <div key={zip} className="flex items-center gap-2">
+                    <span className="font-mono text-sm w-16">{zip}</span>
+                    <div className="flex-1 bg-slate-100 rounded-full h-2">
+                      <div
+                        className="bg-blue-500 h-2 rounded-full"
+                        style={{ width: `${Math.min(100, (count / (topZips[0]?.[1] ?? 1)) * 100)}%` }}
+                      />
+                    </div>
+                    <span className="text-xs text-slate-500 w-6 text-right">{count}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle className="text-sm">Move-ins by County</CardTitle></CardHeader>
+          <CardContent>
+            {topCounties.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-4">No county data yet</p>
+            ) : (
+              <div className="space-y-2">
+                {topCounties.map(([county, count]) => (
+                  <div key={county} className="flex items-center gap-2">
+                    <span className="text-sm flex-1 truncate">{county}</span>
+                    <div className="w-24 bg-slate-100 rounded-full h-2">
+                      <div
+                        className="bg-indigo-500 h-2 rounded-full"
+                        style={{ width: `${Math.min(100, (count / (topCounties[0]?.[1] ?? 1)) * 100)}%` }}
+                      />
+                    </div>
+                    <span className="text-xs text-slate-500 w-6 text-right">{count}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Homeowner vs Renter + Opportunity heatmap */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader><CardTitle className="text-sm">Household Transitions</CardTitle></CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-emerald-50 border border-emerald-200 rounded p-3 text-center">
+                <div className="text-3xl font-bold text-emerald-700">{homeowners}</div>
+                <div className="text-xs text-emerald-600 mt-1">Homeowner Transitions</div>
+                <div className="text-xs text-slate-400">≥60% ownership likelihood</div>
+              </div>
+              <div className="bg-violet-50 border border-violet-200 rounded p-3 text-center">
+                <div className="text-3xl font-bold text-violet-700">{renters}</div>
+                <div className="text-xs text-violet-600 mt-1">Renter Transitions</div>
+                <div className="text-xs text-slate-400">&lt;60% ownership likelihood</div>
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-center">
+              <div className="bg-slate-50 rounded p-2">
+                <div className="font-semibold text-slate-700">{xs.insuranceOpportunities ?? 0}</div>
+                <div className="text-slate-500">Insurance Opps</div>
+              </div>
+              <div className="bg-slate-50 rounded p-2">
+                <div className="font-semibold text-slate-700">{xs.contractorOpportunities ?? 0}</div>
+                <div className="text-slate-500">Contractor Opps</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle className="text-sm">Opportunity Score Heatmap</CardTitle></CardHeader>
+          <CardContent>
+            {ts.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-4">No scored households yet</p>
+            ) : (
+              <div className="space-y-1 max-h-48 overflow-y-auto">
+                {ts.slice(0, 8).map((h: any) => (
+                  <div key={h.householdId} className="flex items-center gap-2 text-xs">
+                    <span className="font-mono truncate w-24 text-slate-400">{h.householdId.slice(0, 12)}</span>
+                    <div className="flex-1 bg-slate-100 rounded-full h-2">
+                      <div
+                        className={`h-2 rounded-full ${h.overallScore >= 70 ? "bg-green-500" : h.overallScore >= 50 ? "bg-yellow-500" : "bg-slate-400"}`}
+                        style={{ width: `${h.overallScore}%` }}
+                      />
+                    </div>
+                    <span className={`w-8 text-right font-semibold ${h.overallScore >= 70 ? "text-green-700" : h.overallScore >= 50 ? "text-yellow-700" : "text-slate-500"}`}>
+                      {h.overallScore}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Workflow Approval Queue */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <CardTitle className="text-sm">
+              Workflow Approval Queue
+              {pw.length > 0 && (
+                <span className="ml-2 bg-amber-500 text-white text-xs px-1.5 py-0.5 rounded-full">{pw.length}</span>
+              )}
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="Your name (required)"
+                className="text-xs h-7 w-44"
+                value={actorName}
+                onChange={e => setActorName(e.target.value)}
+              />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mb-3">
+            Human approval required before any welcome workflow is dispatched. No automated sending.
+          </p>
+          {pw.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-4">No pending workflow drafts</p>
+          ) : (
+            <div className="divide-y">
+              {pw.map((d: any) => (
+                <div key={d.draftId} className="py-3 space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant="outline" className="text-xs">{d.workflowType}</Badge>
+                    <Badge className="text-xs bg-blue-100 text-blue-800">{d.serviceCategory}</Badge>
+                    <span className="text-xs text-slate-400">{d.createdAt ? new Date(d.createdAt).toLocaleDateString() : "—"}</span>
+                  </div>
+                  <div className="text-xs bg-slate-50 border rounded p-2 text-slate-600 line-clamp-3">
+                    {d.draftContent ?? d.messageOptions?.[0]?.message ?? "No content"}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      className="text-xs h-7 bg-green-600 hover:bg-green-700"
+                      disabled={actorName.trim().length < 2 || approveWf.isPending}
+                      onClick={() => approveWf.mutate(d.draftId)}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="text-xs h-7"
+                      disabled={actorName.trim().length < 2 || rejectWf.isPending}
+                      onClick={() => rejectWf.mutate(d.draftId)}
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Business Category Routing */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader><CardTitle className="text-sm">Business Category Routing</CardTitle></CardHeader>
+          <CardContent>
+            {mx.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-4">No business matches yet</p>
+            ) : (
+              <div className="space-y-2 max-h-52 overflow-y-auto">
+                {mx.slice(0, 8).map((m: any) => (
+                  <div key={m.matchId} className="flex items-center justify-between text-xs border-b pb-1 last:border-0">
+                    <div>
+                      <span className="font-medium text-slate-700">{m.businessName}</span>
+                      <Badge variant="outline" className="ml-1 text-xs">{m.serviceCategory}</Badge>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`font-semibold ${m.matchScore >= 70 ? "text-green-600" : m.matchScore >= 50 ? "text-yellow-600" : "text-slate-500"}`}>
+                        {m.matchScore}
+                      </span>
+                      <Badge variant="outline" className="text-xs">{m.status}</Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle className="text-sm">AI Agent Recommendations</CardTitle></CardHeader>
+          <CardContent>
+            {rs.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-4">No recommendations yet</p>
+            ) : (
+              <div className="space-y-2 max-h-52 overflow-y-auto">
+                {rs.slice(0, 6).map((r: any) => (
+                  <div key={r.recommendationId} className="text-xs border-b pb-2 last:border-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <Badge className={`text-xs ${tierBadge(r.priority)}`}>{r.priority}</Badge>
+                      <span className="font-medium text-slate-700">{r.recommendationType}</span>
+                    </div>
+                    <p className="text-slate-500 line-clamp-2">{r.reason}</p>
+                    {r.timingWindow && (
+                      <p className="text-blue-600 mt-0.5">⏱ {r.timingWindow}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Crossover Opportunities */}
+      {cr.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Insurance &amp; Contractor Crossover Opportunities</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+              {[
+                { label: "Total",     value: xs.totalOpportunities    ?? 0 },
+                { label: "Insurance", value: xs.insuranceOpportunities ?? 0 },
+                { label: "Contractor",value: xs.contractorOpportunities ?? 0 },
+                { label: "High Score",value: xs.highScore              ?? 0 },
+              ].map(k => (
+                <div key={k.label} className="bg-slate-50 rounded p-2 text-center">
+                  <div className="font-bold text-slate-700">{k.value}</div>
+                  <div className="text-xs text-slate-500">{k.label}</div>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-1 max-h-40 overflow-y-auto">
+              {cr.slice(0, 6).map((c: any) => (
+                <div key={c.opportunityId} className="flex items-center justify-between text-xs border-b pb-1 last:border-0">
+                  <div>
+                    <Badge variant="outline" className="text-xs">{c.opportunityType}</Badge>
+                    <span className="ml-2 text-slate-500 truncate max-w-xs">{c.rationale}</span>
+                  </div>
+                  <span className={`font-semibold ml-2 ${c.score >= 70 ? "text-green-600" : "text-yellow-600"}`}>{c.score}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Compliance summary */}
+      <Card>
+        <CardHeader><CardTitle className="text-sm">Compliance &amp; Privacy Rules</CardTitle></CardHeader>
+        <CardContent>
+          <ul className="text-xs text-slate-500 space-y-1 grid grid-cols-1 md:grid-cols-2">
+            <li>✅ Public-record signals only — no protected attributes</li>
+            <li>✅ Quiet hours enforced (8 PM–9 AM local)</li>
+            <li>✅ Suppression checked before every household record</li>
+            <li>✅ Addresses stored as SHA-256 hashes — no raw PII</li>
+            <li>✅ 14-day workflow dedup per household</li>
+            <li>✅ Opt-outs honoured permanently — cannot be overridden</li>
+            <li>✅ requiresApproval: true on all AI recommendations</li>
+            <li>✅ Confidence gate ≥40 required to create household record</li>
+          </ul>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ── Root dashboard ────────────────────────────────────────────────────────────
 
 export default function ServiceBusinessDashboard() {
@@ -617,15 +990,17 @@ export default function ServiceBusinessDashboard() {
             <TabsTrigger value="retention">Retention</TabsTrigger>
             <TabsTrigger value="loyalty">Loyalty</TabsTrigger>
             <TabsTrigger value="receptionist">AI Receptionist</TabsTrigger>
+            <TabsTrigger value="new-residents">New Residents</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview">      <OverviewPanel />     </TabsContent>
-          <TabsContent value="missed-calls">  <MissedCallsPanel />  </TabsContent>
-          <TabsContent value="appointments">  <AppointmentsPanel /> </TabsContent>
-          <TabsContent value="reputation">    <ReputationPanel />   </TabsContent>
-          <TabsContent value="retention">     <RetentionPanel />    </TabsContent>
-          <TabsContent value="loyalty">       <LoyaltyPanel />      </TabsContent>
-          <TabsContent value="receptionist">  <ReceptionistPanel /> </TabsContent>
+          <TabsContent value="overview">      <OverviewPanel />       </TabsContent>
+          <TabsContent value="missed-calls">  <MissedCallsPanel />    </TabsContent>
+          <TabsContent value="appointments">  <AppointmentsPanel />   </TabsContent>
+          <TabsContent value="reputation">    <ReputationPanel />     </TabsContent>
+          <TabsContent value="retention">     <RetentionPanel />      </TabsContent>
+          <TabsContent value="loyalty">       <LoyaltyPanel />        </TabsContent>
+          <TabsContent value="receptionist">  <ReceptionistPanel />   </TabsContent>
+          <TabsContent value="new-residents"> <NewResidentsPanel />   </TabsContent>
         </Tabs>
 
         <div className="mt-8 text-xs text-slate-400 text-center border-t pt-4">

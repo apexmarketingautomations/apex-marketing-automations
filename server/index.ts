@@ -1824,6 +1824,9 @@ RULES:
 
   const { registerCommunicationsAdminRoutes } = await import("./routes/communicationsAdmin");
   registerCommunicationsAdminRoutes(app);
+
+  const { registerNewResidentAdminRoutes } = await import("./routes/newResidentAdmin");
+  registerNewResidentAdminRoutes(app);
   await setupAuth(app);
 
   // Admin-secret bypass: when an internal/trusted caller (e.g. the Apex
