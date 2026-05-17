@@ -10,3 +10,5 @@ logs/emergency-health-check.json
 logs/emergency-worker-status.json
 logs/emergency-recent-activity.json
 backups/snapshot_*.json
+.claude/worktrees/
+.claire/
