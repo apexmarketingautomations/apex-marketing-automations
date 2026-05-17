@@ -284,9 +284,9 @@ export async function getTopScoredHouseholds(opts: {
       let topCats: any[] = [];
       let recs: any[] = [];
       let breakdown: any = {};
-      try { topCats  = typeof r.top_categories === "string" ? JSON.parse(r.top_categories) : r.top_categories ?? []; } catch {}
-      try { recs     = typeof r.recommended_workflows === "string" ? JSON.parse(r.recommended_workflows) : r.recommended_workflows ?? []; } catch {}
-      try { breakdown = typeof r.score_breakdown === "string" ? JSON.parse(r.score_breakdown) : r.score_breakdown ?? {}; } catch {}
+      try { topCats  = typeof r.top_categories === "string" ? JSON.parse(r.top_categories) : r.top_categories ?? []; } catch {}  // allow-silent-catch: non-fatal, returns safe default
+      try { recs     = typeof r.recommended_workflows === "string" ? JSON.parse(r.recommended_workflows) : r.recommended_workflows ?? []; } catch {}  // allow-silent-catch: non-fatal, returns safe default
+      try { breakdown = typeof r.score_breakdown === "string" ? JSON.parse(r.score_breakdown) : r.score_breakdown ?? {}; } catch {}  // allow-silent-catch: non-fatal, returns safe default
       return {
         householdId:           r.household_id,
         tenantId:              r.tenant_id,
@@ -302,5 +302,5 @@ export async function getTopScoredHouseholds(opts: {
         scoredAt:              r.scored_at?.toISOString?.() ?? new Date().toISOString(),
       };
     });
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }

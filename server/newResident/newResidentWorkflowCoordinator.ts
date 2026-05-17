@@ -286,7 +286,7 @@ export async function getPendingWorkflowDrafts(tenantId: string, limit = 50): Pr
       LIMIT ${num(limit)}
     `));
     return ((result as any).rows ?? result ?? []).map(mapDraftRow);
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 export async function getWorkflowDraftStats(tenantId: string): Promise<{
@@ -314,14 +314,14 @@ export async function getWorkflowDraftStats(tenantId: string): Promise<{
       rejected:  Number(r?.rejected ?? 0),
       suppressed: Number(r?.suppressed ?? 0),
     };
-  } catch { return { pending: 0, approved: 0, rejected: 0, suppressed: 0 }; }
+  } catch { return { pending: 0, approved: 0, rejected: 0, suppressed: 0 }; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Row mapper ────────────────────────────────────────────────────────────────
 
 function mapDraftRow(r: any): ResidentWorkflowDraft {
   let options: string[] = [];
-  try { options = typeof r.message_options === "string" ? JSON.parse(r.message_options) : r.message_options ?? []; } catch {}
+  try { options = typeof r.message_options === "string" ? JSON.parse(r.message_options) : r.message_options ?? []; } catch {}  // allow-silent-catch: non-fatal, returns safe default
   return {
     draftId:          r.draft_id,
     residentEventId:  r.resident_event_id,

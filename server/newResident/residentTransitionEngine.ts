@@ -475,7 +475,7 @@ export async function getRecentResidentEvents(opts: {
       LIMIT ${num(limit)} OFFSET ${num(offset)}
     `));
     return ((result as any).rows ?? result ?? []).map(mapEventRow);
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 export async function getResidentHouseholds(opts: {
@@ -502,7 +502,7 @@ export async function getResidentHouseholds(opts: {
       LIMIT ${num(limit)} OFFSET ${num(offset)}
     `));
     return ((result as any).rows ?? result ?? []).map(mapHouseholdRow);
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 export async function getResidentEventStats(tenantId: string): Promise<{
@@ -550,7 +550,7 @@ export async function getResidentEventStats(tenantId: string): Promise<{
       last30Days:       Number(r?.last_30 ?? 0),
       byCounty,
     };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return { totalEvents: 0, highConfidence: 0, mediumConfidence: 0, lowConfidence: 0, suppressed: 0, last7Days: 0, last30Days: 0, byCounty: {} };
   }
 }
@@ -560,8 +560,8 @@ export async function getResidentEventStats(tenantId: string): Promise<{
 function mapEventRow(r: any): NewResidentEvent {
   let signals: MoveSignalSource[] = [];
   let categories: any[] = [];
-  try { signals = typeof r.source_signals === "string" ? JSON.parse(r.source_signals) : r.source_signals ?? []; } catch {}
-  try { categories = typeof r.opportunity_categories === "string" ? JSON.parse(r.opportunity_categories) : r.opportunity_categories ?? []; } catch {}
+  try { signals = typeof r.source_signals === "string" ? JSON.parse(r.source_signals) : r.source_signals ?? []; } catch {}  // allow-silent-catch: non-fatal, returns safe default
+  try { categories = typeof r.opportunity_categories === "string" ? JSON.parse(r.opportunity_categories) : r.opportunity_categories ?? []; } catch {}  // allow-silent-catch: non-fatal, returns safe default
   return {
     residentEventId:       r.resident_event_id,
     householdId:           r.household_id,

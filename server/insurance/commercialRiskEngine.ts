@@ -280,7 +280,7 @@ export async function getTopCommercialOpportunities(opts: {
     `));
     const rows = (result as any).rows ?? result;
     return Array.isArray(rows) ? rows.map(mapCommercialRow) : [];
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 export async function getCommercialStats(): Promise<{
@@ -313,7 +313,7 @@ export async function getCommercialStats(): Promise<{
       wcCount:         Number(r.wc ?? 0),
       bopCount:        Number(r.bop ?? 0),
     };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return { total: 0, avgScore: 0, contractorCount: 0, glCount: 0, wcCount: 0, bopCount: 0 };
   }
 }

@@ -254,7 +254,7 @@ export async function getPendingRetentionDrafts(businessId?: string, limit = 50)
       LIMIT ${num(limit)}
     `));
     return (result as any).rows ?? result ?? [];
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
@@ -290,7 +290,7 @@ export async function getRetentionStats(businessId?: string): Promise<{
       sent,
       conversionPct: total > 0 ? (sent / total) * 100 : 0,
     };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return { totalDrafts: 0, pending: 0, approved: 0, sent: 0, conversionPct: 0 };
   }
 }

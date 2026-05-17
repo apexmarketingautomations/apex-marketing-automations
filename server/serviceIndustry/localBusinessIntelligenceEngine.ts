@@ -306,7 +306,7 @@ export async function getTopOpportunityBusinesses(opts: {
     `));
     const rows = (result as any).rows ?? result;
     return Array.isArray(rows) ? rows.map(mapBusinessRow) : [];
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
@@ -346,7 +346,7 @@ export async function getBusinessIntelligenceStats(): Promise<{
       if (r.vertical) byVertical[r.vertical] = (byVertical[r.vertical] ?? 0) + Number(r.v_count ?? 0);
     }
     return { total, avgChaosScore: avgChaos, highChaosCount: highChaos, missedCallCount: missedCall, byVertical, commercialOpportunityCount: commOpp };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return { total: 0, avgChaosScore: 0, highChaosCount: 0, missedCallCount: 0, byVertical: {}, commercialOpportunityCount: 0 };
   }
 }

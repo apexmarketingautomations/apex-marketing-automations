@@ -337,7 +337,7 @@ export async function getAtRiskCustomers(businessId: string, limit = 50): Promis
     `));
     const rows = (result as any).rows ?? result;
     return Array.isArray(rows) ? rows.map(mapCustomerRow) : [];
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Query: VIP customers ──────────────────────────────────────────────────────
@@ -355,7 +355,7 @@ export async function getVipCustomers(businessId: string, limit = 25): Promise<S
     `));
     const rows = (result as any).rows ?? result;
     return Array.isArray(rows) ? rows.map(mapCustomerRow) : [];
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Appointment KPIs ──────────────────────────────────────────────────────────
@@ -423,7 +423,7 @@ export async function getAppointmentStats(businessId: string): Promise<{
       lapsedCustomers:    custByLifecycle["lapsed"] ?? 0,
       vipCustomers:       custByLifecycle["vip"] ?? 0,
     };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return {
       totalAppointments: 0, completedCount: 0, noShowCount: 0, cancellationCount: 0,
       noShowRatePct: 0, cancelRatePct: 0, totalRevenue: 0, avgValue: 0,

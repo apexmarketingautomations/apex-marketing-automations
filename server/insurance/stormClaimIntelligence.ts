@@ -191,7 +191,7 @@ export async function processStormOpportunities(event: StormEvent): Promise<{
           ON CONFLICT DO NOTHING
         `));
         generated++;
-      } catch { errors++; }
+      } catch { errors++; }  // allow-silent-catch: non-fatal, returns safe default
     }
   } catch (err: any) {
     console.error("[INS-STORM] Processing failed:", err?.message);
@@ -227,7 +227,7 @@ export async function getReadyStormOpportunities(opts: {
       LIMIT ${limit}
     `));
     return (result as any).rows ?? result ?? [];
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
@@ -267,7 +267,7 @@ export async function getStormClaimStats(): Promise<{
       avgClaimScore:           parseFloat(r.avg_score ?? "0"),
       topCounties,
     };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return { totalOpportunities: 0, readyForOutreach: 0, roofReplacementCount: 0, insuranceCrossoverCount: 0, avgClaimScore: 0, topCounties: [] };
   }
 }

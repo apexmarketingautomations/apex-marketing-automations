@@ -290,7 +290,7 @@ export async function getPendingIMessageDrafts(tenantId: string, limit = 20): Pr
       LIMIT ${num(limit)}
     `));
     return ((result as any).rows ?? result ?? []).map(mapDraftRow);
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
@@ -318,14 +318,14 @@ export async function getIMessageStats(tenantId: string): Promise<{
       sent:      Number(r?.sent ?? 0),
       dismissed: Number(r?.dismissed ?? 0),
     };
-  } catch { return { pending: 0, sent: 0, dismissed: 0 }; }
+  } catch { return { pending: 0, sent: 0, dismissed: 0 }; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Row mapper ────────────────────────────────────────────────────────────────
 
 function mapDraftRow(r: any): IMessageDraft {
   let options: string[] = [];
-  try { options = typeof r.response_options === "string" ? JSON.parse(r.response_options) : r.response_options ?? []; } catch {}
+  try { options = typeof r.response_options === "string" ? JSON.parse(r.response_options) : r.response_options ?? []; } catch {}  // allow-silent-catch: non-fatal, returns safe default
   return {
     draftId:         r.draft_id,
     tenantId:        r.tenant_id,

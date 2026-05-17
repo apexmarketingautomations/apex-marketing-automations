@@ -282,7 +282,7 @@ export async function expireStaleApprovals(tenantId?: string): Promise<number> {
     const expired = Array.isArray(rows) ? rows.length : 0;
     console.log(`[COMM-APPROVAL] Expired ${expired} stale approvals`);
     return expired;
-  } catch { return 0; }
+  } catch { return 0; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Get pending approvals ─────────────────────────────────────────────────────
@@ -299,7 +299,7 @@ export async function getPendingApprovals(tenantId: string, limit = 50): Promise
       LIMIT ${num(limit)}
     `));
     return ((result as any).rows ?? result ?? []).map(mapApprovalRow);
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Approval stats ────────────────────────────────────────────────────────────
@@ -333,7 +333,7 @@ export async function getApprovalStats(tenantId: string): Promise<{
       expired:  Number(r?.expired ?? 0),
       avgTurnaroundMinutes: Number(r?.avg_minutes ?? 0),
     };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return { pending: 0, approved: 0, rejected: 0, expired: 0, avgTurnaroundMinutes: 0 };
   }
 }

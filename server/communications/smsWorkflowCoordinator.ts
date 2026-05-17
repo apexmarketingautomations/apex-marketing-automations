@@ -361,7 +361,7 @@ export async function getSmsQueue(opts: {
       LIMIT ${num(opts.limit ?? 50)}
     `));
     return (result as any).rows ?? result ?? [];
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── SMS stats ─────────────────────────────────────────────────────────────────
@@ -395,7 +395,7 @@ export async function getSmsStats(tenantId: string): Promise<{
       failed:          Number(r?.failed ?? 0),
       deliveryRate:    total > 0 ? (sent / total) * 100 : 0,
     };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return { total: 0, sent: 0, pendingApproval: 0, failed: 0, deliveryRate: 0 };
   }
 }

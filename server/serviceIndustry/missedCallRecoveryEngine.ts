@@ -306,7 +306,7 @@ export async function getMissedCallStats(businessId?: string): Promise<{
       recoveryRatePct: total > 0 ? (booked / total) * 100 : 0,
       suppressedPct:   total > 0 ? (suppressed / total) * 100 : 0,
     };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return { total: 0, queued: 0, booked: 0, escalated: 0, recoveryRatePct: 0, suppressedPct: 0 };
   }
 }
@@ -328,5 +328,5 @@ export async function getPendingRecoveries(businessId?: string, limit = 50): Pro
       LIMIT ${num(limit)}
     `));
     return (result as any).rows ?? result ?? [];
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }

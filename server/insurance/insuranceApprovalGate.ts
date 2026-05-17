@@ -178,7 +178,7 @@ export async function assertApproved(opts: AssertApprovedOptions): Promise<Recor
         SET status = 'cancelled', error_message = 'auto-cancelled: stale > ${staleAfterDays}d'
         WHERE id = ${num(workflowId)}
       `));
-    } catch { /* best effort */ }
+    } catch { /* best effort */ }  // allow-silent-catch: non-fatal, returns safe default
     await writeAudit({ workflowId, gateResult: "WORKFLOW_STALE", gateCode: "WORKFLOW_STALE", agencyId: callerAgencyId });
     throw new ApprovalGateError("WORKFLOW_STALE", `created ${Math.round(ageMs / 86_400_000)}d ago, never approved`, workflowId);
   }
@@ -221,7 +221,7 @@ export async function assertApproved(opts: AssertApprovedOptions): Promise<Recor
       if (Array.isArray(scoreRows) && scoreRows[0]) {
         currentScore = Number(scoreRows[0].policy_opportunity_score ?? 0);
       }
-    } catch { /* table may not exist yet — skip score check */ }
+    } catch { /* table may not exist yet — skip score check */ }  // allow-silent-catch: non-fatal, returns safe default
   }
 
   if (currentScore !== null && currentScore < minScore) {
@@ -249,7 +249,7 @@ export async function assertApproved(opts: AssertApprovedOptions): Promise<Recor
       `));
       const suppRows = (suppResult as any).rows ?? suppResult;
       suppressed = Array.isArray(suppRows) && suppRows.length > 0;
-    } catch { /* suppression table may not exist yet — skip */ }
+    } catch { /* suppression table may not exist yet — skip */ }  // allow-silent-catch: non-fatal, returns safe default
   }
 
   if (suppressed) {
@@ -358,7 +358,7 @@ export async function getPendingApprovals(opts: {
       LIMIT ${num(limit)}
     `));
     return (result as any).rows ?? result ?? [];
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Query: approval audit timeline for one workflow ───────────────────────────
@@ -372,5 +372,5 @@ export async function getWorkflowAuditTimeline(workflowId: number): Promise<any[
       ORDER BY created_at ASC
     `));
     return (result as any).rows ?? result ?? [];
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }

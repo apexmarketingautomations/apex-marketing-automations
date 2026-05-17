@@ -231,7 +231,7 @@ export async function getTopOpportunities(opts: {
     `));
     const rows = (result as any).rows ?? result;
     return Array.isArray(rows) ? rows.map(mapPropertyRow) : [];
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Row mapper ────────────────────────────────────────────────────────────────

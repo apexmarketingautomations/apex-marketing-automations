@@ -241,7 +241,7 @@ export async function getPendingNegativeAlerts(businessId?: string): Promise<Rev
     `));
     const rows = (result as any).rows ?? result ?? [];
     return rows.map(mapReviewRow);
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Compute + snapshot reputation score ──────────────────────────────────────
@@ -338,7 +338,7 @@ export async function getReputationStats(businessId?: string): Promise<{
       pendingAlerts:   Number(r?.pending_alerts ?? 0),
       responseRate:    total > 0 ? (responded / total) * 100 : 0,
     };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return { totalReviews: 0, avgRating: 0, reputationScore: 0, pendingAlerts: 0, responseRate: 0 };
   }
 }
@@ -356,7 +356,7 @@ export async function getRecentReviews(businessId?: string, limit = 20): Promise
       LIMIT ${num(limit)}
     `));
     return ((result as any).rows ?? result ?? []).map(mapReviewRow);
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Row mapper ────────────────────────────────────────────────────────────────

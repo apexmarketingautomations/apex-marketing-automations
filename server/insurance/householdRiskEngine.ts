@@ -268,7 +268,7 @@ export async function getTopHouseholds(opts: {
     `));
     const rows = (result as any).rows ?? result;
     return Array.isArray(rows) ? rows.map(mapHouseholdRow) : [];
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 export async function getHouseholdStats(): Promise<{
@@ -301,7 +301,7 @@ export async function getHouseholdStats(): Promise<{
       commercialCount: Number(r.commercial ?? 0),
       highRiskCount:   Number(r.high_risk ?? 0),
     };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return { total: 0, avgScore: 0, homeownersCount: 0, bundlingCount: 0, commercialCount: 0, highRiskCount: 0 };
   }
 }

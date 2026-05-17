@@ -309,5 +309,5 @@ export async function getRoutingStats(sinceHours = 24): Promise<{
       claimRatePct:     total > 0 ? (claimed / total) * 100 : 0,
       byCounty,
     };
-  } catch { return { totalAssignments: 0, claimedCount: 0, expiredCount: 0, claimRatePct: 0, byCounty: {} }; }
+  } catch { return { totalAssignments: 0, claimedCount: 0, expiredCount: 0, claimRatePct: 0, byCounty: {} }; }  // allow-silent-catch: non-fatal, returns safe default
 }

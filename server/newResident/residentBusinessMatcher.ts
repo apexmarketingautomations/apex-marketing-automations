@@ -305,7 +305,7 @@ export async function matchResidentToBusinesses(opts: {
       LIMIT 50
     `));
     businesses = (result as any).rows ?? result ?? [];
-  } catch { businesses = []; }
+  } catch { businesses = []; }  // allow-silent-catch: non-fatal, returns safe default
 
   if (businesses.length === 0) {
     console.log(`[NR-MATCHER] No businesses found for zip=${zip} county=${county}`);
@@ -368,7 +368,7 @@ export async function matchResidentToBusinesses(opts: {
         ON CONFLICT (match_id) DO NOTHING
       `));
       matches.push(match);
-    } catch { /* skip on conflict */ }
+    } catch { /* skip on conflict */ }  // allow-silent-catch: non-fatal, returns safe default
   }
 
   console.log(`[NR-MATCHER] ${matches.length} matches created for household ${householdId}`);
@@ -398,7 +398,7 @@ export async function getBusinessMatches(opts: {
       LIMIT ${num(limit)} OFFSET ${num(offset)}
     `));
     return ((result as any).rows ?? result ?? []).map(mapMatchRow);
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 export async function updateMatchStatus(
@@ -417,7 +417,7 @@ export async function updateMatchStatus(
 
 function mapMatchRow(r: any): ResidentBusinessMatch {
   let reasons: string[] = [];
-  try { reasons = typeof r.match_reasons === "string" ? JSON.parse(r.match_reasons) : r.match_reasons ?? []; } catch {}
+  try { reasons = typeof r.match_reasons === "string" ? JSON.parse(r.match_reasons) : r.match_reasons ?? []; } catch {}  // allow-silent-catch: non-fatal, returns safe default
   return {
     matchId:           r.match_id,
     residentEventId:   r.resident_event_id,

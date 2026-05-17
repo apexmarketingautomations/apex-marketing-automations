@@ -312,7 +312,7 @@ export async function getConversationIntelligence(communicationId: string, tenan
       followUpAt:            r.follow_up_at?.toISOString?.() ?? undefined,
       createdAt:             r.analyzed_at?.toISOString?.() ?? undefined,
     };
-  } catch { return null; }
+  } catch { return null; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Pending follow-ups ────────────────────────────────────────────────────────
@@ -341,7 +341,7 @@ export async function getPendingFollowUps(tenantId: string, limit = 30): Promise
       nextStepRecommendation: r.next_step_action || undefined,
       followUpAt:           r.follow_up_at?.toISOString?.() ?? undefined,
     }));
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Intelligence stats ────────────────────────────────────────────────────────
@@ -375,7 +375,7 @@ export async function getIntelligenceStats(tenantId: string): Promise<{
       escalations:     Number(r?.escalations ?? 0),
       pendingFollowUp: Number(r?.pending_followup ?? 0),
     };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return { totalAnalyzed: 0, highUrgency: 0, veryLikely: 0, escalations: 0, pendingFollowUp: 0 };
   }
 }

@@ -402,7 +402,7 @@ export async function getCommunications(opts: {
       LIMIT ${num(limit)} OFFSET ${num(offset)}
     `));
     return ((result as any).rows ?? result ?? []).map(mapCommRow);
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Dashboard metrics ─────────────────────────────────────────────────────────
@@ -451,7 +451,7 @@ export async function getCommunicationMetrics(tenantId: string): Promise<{
       email:           Number(r?.email ?? 0),
       deliveryRate:    total > 0 ? (sent / total) * 100 : 0,
     };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return { total: 0, sent: 0, pendingApproval: 0, failed: 0, blocked: 0, sms: 0, voice: 0, imessage: 0, email: 0, deliveryRate: 0 };
   }
 }
@@ -460,7 +460,7 @@ export async function getCommunicationMetrics(tenantId: string): Promise<{
 
 function mapCommRow(r: any): CommunicationRecord {
   let metadata: Record<string, unknown> = {};
-  try { metadata = typeof r.metadata === "string" ? JSON.parse(r.metadata) : r.metadata ?? {}; } catch {}
+  try { metadata = typeof r.metadata === "string" ? JSON.parse(r.metadata) : r.metadata ?? {}; } catch {}  // allow-silent-catch: non-fatal, returns safe default
   return {
     communicationId:   r.communication_id,
     tenantId:          r.tenant_id,

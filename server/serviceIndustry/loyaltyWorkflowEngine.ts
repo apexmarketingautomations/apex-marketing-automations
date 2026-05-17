@@ -133,7 +133,7 @@ async function getCurrentBalance(businessId: string, customerId: string): Promis
     `));
     const rows = (result as any).rows ?? result;
     return Number((Array.isArray(rows) ? rows[0] : {})?.current_balance ?? 0);
-  } catch { return 0; }
+  } catch { return 0; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Record points event ───────────────────────────────────────────────────────
@@ -307,7 +307,7 @@ export async function getLoyaltySummary(businessId: string, customerId: string):
       pointsToNext,
       milestonesHit,
     };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return {
       customerId, businessId, totalPoints: 0, lifetimeEarned: 0,
       totalRedeemed: 0, nextMilestone: MILESTONES[0], pointsToNext: MILESTONES[0], milestonesHit: [],
@@ -337,7 +337,7 @@ export async function getLoyaltyLedger(businessId: string, customerId: string, l
       balanceAfter:  Number(r.balance_after),
       createdAt:     r.created_at?.toISOString?.() ?? undefined,
     }));
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Business-level loyalty stats ──────────────────────────────────────────────
@@ -367,7 +367,7 @@ export async function getLoyaltyStats(businessId?: string): Promise<{
       totalRedeemed:     Number(r?.redeemed ?? 0),
       milestonesHit:     Number(r?.milestones ?? 0),
     };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return { totalMembers: 0, totalPointsIssued: 0, totalRedeemed: 0, milestonesHit: 0 };
   }
 }

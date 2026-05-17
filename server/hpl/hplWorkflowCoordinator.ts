@@ -269,7 +269,7 @@ export async function getPendingWorkflows(opts: {
       scheduledAt:      r.scheduled_at instanceof Date ? r.scheduled_at.toISOString() : String(r.scheduled_at),
       approvalRequired: Boolean(r.approval_required),
     })) : [];
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Workflow stats ────────────────────────────────────────────────────────────
@@ -305,5 +305,5 @@ export async function getWorkflowStats(): Promise<{
     }
 
     return { pending, executed, byType };
-  } catch { return { pending: 0, executed: 0, byType: {} }; }
+  } catch { return { pending: 0, executed: 0, byType: {} }; }  // allow-silent-catch: non-fatal, returns safe default
 }

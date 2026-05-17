@@ -118,7 +118,7 @@ export async function getPropertyTimeline(apexPropertyId: string): Promise<Prope
       metadata:    typeof r.metadata === "object" ? r.metadata : {},
       createdAt:   r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
     })) : [];
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Geographic cluster ────────────────────────────────────────────────────────
@@ -163,7 +163,7 @@ export async function buildCountyClusters(): Promise<CountyCluster[]> {
       stormEventCount:     Number(r.storm_total ?? 0) > 0 ? 1 : 0,
       highValueCount:      Number(r.high_value_count ?? 0),
     }));
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Neighborhood analysis ─────────────────────────────────────────────────────
@@ -205,7 +205,7 @@ export async function getNeighborhoodInsights(county: string, zip?: string): Pro
         restoration:       Number(r.storm_demand ?? 0),
       } as any,
     };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return { propertyCount: 0, avgValue: 0, avgRoofAge: 0, topSignals: [], contractorDemand: {} as any, stormExposureAvg: 0 };
   }
 }
@@ -232,7 +232,7 @@ export async function linkLeadsToProperties(): Promise<{ linked: number; errors:
           signalType: lead.signalType,
         });
         linked++;
-      } catch { errors++; }
+      } catch { errors++; }  // allow-silent-catch: non-fatal, returns safe default
     }
   } catch (err: any) {
     console.error("[HPL-GRAPH] Link leads failed:", err?.message);

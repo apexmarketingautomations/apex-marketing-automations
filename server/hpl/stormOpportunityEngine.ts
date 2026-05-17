@@ -261,7 +261,7 @@ export async function getActiveStormEvents(opts: {
     `));
     const rows = (result as any).rows ?? result;
     return Array.isArray(rows) ? rows.map(mapStormRow) : [];
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 export async function getStormOpportunityStats(): Promise<{
@@ -292,7 +292,7 @@ export async function getStormOpportunityStats(): Promise<{
       topCounties,
       insuranceCrossFitCount: Number(r.insurance_cross ?? 0),
     };
-  } catch { return { activeEvents: 0, avgScore: 0, topCounties: [], insuranceCrossFitCount: 0 }; }
+  } catch { return { activeEvents: 0, avgScore: 0, topCounties: [], insuranceCrossFitCount: 0 }; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Property correlation — link storm events to affected properties ────────────

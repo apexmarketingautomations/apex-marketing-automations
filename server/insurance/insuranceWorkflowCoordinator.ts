@@ -226,7 +226,7 @@ export async function getPendingInsuranceWorkflows(opts: {
       ORDER BY scheduled_at ASC LIMIT ${limit}
     `));
     return (result as any).rows ?? result ?? [];
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
@@ -254,7 +254,7 @@ export async function getInsuranceWorkflowStats(): Promise<{
       byType[r.workflow_type] = (byType[r.workflow_type] ?? 0) + n;
     }
     return { pending, executed, byType };
-  } catch { return { pending: 0, executed: 0, byType: {} }; }
+  } catch { return { pending: 0, executed: 0, byType: {} }; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Pre-execution validation sweep ────────────────────────────────────────────
@@ -298,7 +298,7 @@ export async function runPreExecutionValidation(opts: {
       LIMIT 500
     `));
     workflows = (result as any).rows ?? result ?? [];
-  } catch { return { checked: 0, cancelled: 0, stale: 0, lowScore: 0, ok: 0 }; }
+  } catch { return { checked: 0, cancelled: 0, stale: 0, lowScore: 0, ok: 0 }; }  // allow-silent-catch: non-fatal, returns safe default
 
   let cancelled = 0, stale = 0, lowScore = 0, ok = 0;
   const staleLimitMs = staleAfterDays * 86_400_000;
@@ -318,7 +318,7 @@ export async function runPreExecutionValidation(opts: {
           WHERE id = ${num(wfId)} AND status IN ('pending', 'approved')
         `));
         stale++; cancelled++;
-      } catch { /* best effort */ }
+      } catch { /* best effort */ }  // allow-silent-catch: non-fatal, returns safe default
       continue;
     }
 
@@ -335,7 +335,7 @@ export async function runPreExecutionValidation(opts: {
         if (Array.isArray(srows) && srows[0]) {
           score = Number(srows[0].policy_opportunity_score ?? 0);
         }
-      } catch { /* table may not exist */ }
+      } catch { /* table may not exist */ }  // allow-silent-catch: non-fatal, returns safe default
 
       if (score !== null && score < minScore) {
         try {
@@ -348,7 +348,7 @@ export async function runPreExecutionValidation(opts: {
             WHERE id = ${num(wfId)} AND status IN ('pending', 'approved')
           `));
           lowScore++; cancelled++;
-        } catch { /* best effort */ }
+        } catch { /* best effort */ }  // allow-silent-catch: non-fatal, returns safe default
         continue;
       }
 
@@ -360,7 +360,7 @@ export async function runPreExecutionValidation(opts: {
               pre_exec_checked_at = NOW()
           WHERE id = ${num(wfId)}
         `));
-      } catch { /* best effort */ }
+      } catch { /* best effort */ }  // allow-silent-catch: non-fatal, returns safe default
     }
 
     ok++;

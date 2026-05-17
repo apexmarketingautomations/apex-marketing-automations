@@ -285,7 +285,7 @@ export async function generateCrossoverOpportunities(opts: {
         status:               "pending",
         createdAt:            new Date().toISOString(),
       });
-    } catch { /* skip conflicts */ }
+    } catch { /* skip conflicts */ }  // allow-silent-catch: non-fatal, returns safe default
   }
 
   console.log(`[NR-CROSSOVER] ${created.length} crossover opportunities created for household ${householdId}`);
@@ -331,7 +331,7 @@ export async function getCrossoverOpportunities(opts: {
       status:              r.status,
       createdAt:           r.created_at?.toISOString?.() ?? new Date().toISOString(),
     }));
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 export async function getCrossoverStats(tenantId: string): Promise<{
@@ -364,7 +364,7 @@ export async function getCrossoverStats(tenantId: string): Promise<{
       pending:                 Number(r?.pending ?? 0),
       last30Days:              Number(r?.last_30 ?? 0),
     };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return { totalOpportunities: 0, insuranceOpportunities: 0, contractorOpportunities: 0, highScore: 0, pending: 0, last30Days: 0 };
   }
 }

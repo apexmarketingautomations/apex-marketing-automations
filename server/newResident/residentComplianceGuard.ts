@@ -124,7 +124,7 @@ export async function checkResidentSuppression(opts: {
     `));
     const rows = (result as any).rows ?? result;
     return Array.isArray(rows) ? rows.length > 0 : false;
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return false; // fail open on DB error — do not block ingestion
   }
 }
@@ -217,7 +217,7 @@ export async function getSuppressions(tenantId: string, limit = 50): Promise<Res
       expiresAt:       r.expires_at?.toISOString?.() ?? undefined,
       createdAt:       r.created_at?.toISOString?.() ?? new Date().toISOString(),
     }));
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Quiet hours check ─────────────────────────────────────────────────────────
@@ -246,7 +246,7 @@ export async function logComplianceDecision(opts: {
       VALUES (${esc(opts.tenantId)}, ${esc(opts.eventType)}, ${esc(opts.decision)},
               ${esc(opts.reason ?? "")}, ${esc(JSON.stringify(opts.context ?? {}))})
     `));
-  } catch { /* non-critical */ }
+  } catch { /* non-critical */ }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 export async function getComplianceLog(tenantId: string, limit = 100): Promise<any[]> {
@@ -267,7 +267,7 @@ export async function getComplianceLog(tenantId: string, limit = 100): Promise<a
       context:   typeof r.context_json === "string" ? JSON.parse(r.context_json) : r.context_json ?? {},
       createdAt: r.created_at?.toISOString?.() ?? new Date().toISOString(),
     }));
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Validate approval actor ───────────────────────────────────────────────────

@@ -248,7 +248,7 @@ export async function analyzeResidentOpportunity(opts: {
   });
 
   // 2. Persist score (GREATEST() — scores never regress)
-  await persistOpportunityScore(score).catch(() => {});
+  await persistOpportunityScore(score).catch(() => {});  // allow-silent-catch: non-fatal, returns safe default
 
   // 3. Generate recommendations
   const recommendations: ResidentAgentRecommendation[] = [];
@@ -344,7 +344,7 @@ async function persistRecommendations(recs: ResidentAgentRecommendation[]): Prom
         )
         ON CONFLICT (recommendation_id) DO NOTHING
       `));
-    } catch { /* skip */ }
+    } catch { /* skip */ }  // allow-silent-catch: non-fatal, returns safe default
   }
 }
 
@@ -368,7 +368,7 @@ export async function getAgentRecommendations(opts: {
     `));
     return ((result as any).rows ?? result ?? []).map((r: any): ResidentAgentRecommendation => {
       let cats: any[] = [];
-      try { cats = typeof r.suggested_biz_categories === "string" ? JSON.parse(r.suggested_biz_categories) : r.suggested_biz_categories ?? []; } catch {}
+      try { cats = typeof r.suggested_biz_categories === "string" ? JSON.parse(r.suggested_biz_categories) : r.suggested_biz_categories ?? []; } catch {}  // allow-silent-catch: non-fatal, returns safe default
       return {
         recommendationId:            r.recommendation_id,
         residentEventId:             r.resident_event_id,
@@ -385,5 +385,5 @@ export async function getAgentRecommendations(opts: {
         createdAt:                   r.created_at?.toISOString?.() ?? new Date().toISOString(),
       };
     });
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }

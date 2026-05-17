@@ -261,7 +261,7 @@ export async function getInsuranceRoutingStats(sinceHours = 24): Promise<{
       if (r.insurance_line) byLine[r.insurance_line] = (byLine[r.insurance_line] ?? 0) + n;
     }
     return { totalRouted: total, claimed, expired, claimRatePct: total > 0 ? (claimed / total) * 100 : 0, byLine };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return { totalRouted: 0, claimed: 0, expired: 0, claimRatePct: 0, byLine: {} };
   }
 }

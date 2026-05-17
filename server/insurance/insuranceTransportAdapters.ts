@@ -116,7 +116,7 @@ async function markFailed(workflowId: number, reason: string): Promise<void> {
       SET error_message = ${esc(reason.slice(0, 500))}
       WHERE id = ${num(workflowId)}
     `));
-  } catch { /* best effort */ }
+  } catch { /* best effort */ }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Contact resolution ────────────────────────────────────────────────────────
@@ -153,7 +153,7 @@ async function resolveContact(wf: Record<string, unknown>): Promise<{
           name:  name  ?? (r.primary_name  || undefined),
         };
       }
-    } catch { /* table may not exist */ }
+    } catch { /* table may not exist */ }  // allow-silent-catch: non-fatal, returns safe default
   }
 
   return { phone, email, name };

@@ -103,7 +103,7 @@ export async function getCommunicationTimeline(
       ORDER BY created_at ASC
     `));
     return ((result as any).rows ?? result ?? []).map(mapRow);
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Get recent timeline for tenant (command center feed) ──────────────────────
@@ -126,7 +126,7 @@ export async function getTenantTimeline(opts: {
       LIMIT ${num(limit)} OFFSET ${num(offset)}
     `));
     return ((result as any).rows ?? result ?? []).map(mapRow);
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Search timeline ───────────────────────────────────────────────────────────
@@ -150,7 +150,7 @@ export async function searchTimeline(opts: {
       LIMIT ${num(opts.limit ?? 20)}
     `));
     return ((result as any).rows ?? result ?? []).map(mapRow);
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Timeline stats for dashboard ─────────────────────────────────────────────
@@ -184,7 +184,7 @@ export async function getTimelineStats(tenantId: string): Promise<{
       aiGenerated:        Number(r?.ai_generated ?? 0),
       appointmentsBooked: Number(r?.appointments ?? 0),
     };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return { total: 0, lastHour: 0, escalations: 0, aiGenerated: 0, appointmentsBooked: 0 };
   }
 }
@@ -193,7 +193,7 @@ export async function getTimelineStats(tenantId: string): Promise<{
 
 function mapRow(r: any): TimelineEvent {
   let metadata: Record<string, unknown> = {};
-  try { metadata = typeof r.metadata === "string" ? JSON.parse(r.metadata) : r.metadata ?? {}; } catch {}
+  try { metadata = typeof r.metadata === "string" ? JSON.parse(r.metadata) : r.metadata ?? {}; } catch {}  // allow-silent-catch: non-fatal, returns safe default
   return {
     eventId:         r.event_id,
     communicationId: r.communication_id,

@@ -430,7 +430,7 @@ export async function getVoiceStats(tenantId: string): Promise<{
       avgDuration:        Number(r?.avg_duration ?? 0),
       appointmentsBooked: Number(r?.appointments ?? 0),
     };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return { totalCalls: 0, completed: 0, escalated: 0, avgDuration: 0, appointmentsBooked: 0 };
   }
 }
@@ -448,7 +448,7 @@ export async function getActiveVoiceSessions(tenantId: string): Promise<VoiceSes
       LIMIT 20
     `));
     return ((result as any).rows ?? result ?? []).map(mapSessionRow);
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

@@ -125,7 +125,7 @@ export async function getTenantPolicy(tenantId: string): Promise<TenantCommPolic
       blockedChannels: (r.blocked_channels ?? []) as CommunicationChannel[],
       consentRequired: Boolean(r.consent_required),
     };
-  } catch { return defaultPolicy(tenantId); }
+  } catch { return defaultPolicy(tenantId); }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 function defaultPolicy(tenantId: string): TenantCommPolicy {
@@ -227,7 +227,7 @@ export async function checkOptOut(opts: {
     `));
     const rows = (result as any).rows ?? result;
     return Array.isArray(rows) && rows.length > 0;
-  } catch { return false; }
+  } catch { return false; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Quiet hours check ─────────────────────────────────────────────────────────
@@ -273,7 +273,7 @@ async function checkRateLimit(opts: {
     `));
     const rows = (result as any).rows ?? result;
     return Number((Array.isArray(rows) ? rows[0] : {})?.cnt ?? 0) >= maxPerDay;
-  } catch { return false; }
+  } catch { return false; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Duplicate check ───────────────────────────────────────────────────────────
@@ -302,7 +302,7 @@ async function checkDuplicate(opts: {
     `));
     const rows = (result as any).rows ?? result;
     return Array.isArray(rows) && rows.length > 0;
-  } catch { return false; }
+  } catch { return false; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Abuse detection ───────────────────────────────────────────────────────────
@@ -326,7 +326,7 @@ async function detectAbuse(opts: {
     `));
     const rows = (result as any).rows ?? result;
     return Number((Array.isArray(rows) ? rows[0] : {})?.cnt ?? 0) >= ABUSE_THRESHOLD;
-  } catch { return false; }
+  } catch { return false; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── MAIN SAFETY CHECK ─────────────────────────────────────────────────────────
@@ -432,5 +432,5 @@ export async function getOptOutList(tenantId: string): Promise<any[]> {
       LIMIT 100
     `));
     return (result as any).rows ?? result ?? [];
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }

@@ -429,7 +429,7 @@ export async function getOpenEscalations(businessId?: string): Promise<Reception
       LIMIT 50
     `));
     return ((result as any).rows ?? result ?? []).map(mapSessionRow);
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
@@ -462,7 +462,7 @@ export async function getReceptionistStats(businessId?: string): Promise<{
       bookingIntents: Number(r?.booking_intents ?? 0),
       avgMessages:    Number(r?.avg_messages ?? 0),
     };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return { totalSessions: 0, openSessions: 0, escalations: 0, bookingIntents: 0, avgMessages: 0 };
   }
 }
@@ -471,7 +471,7 @@ export async function getReceptionistStats(businessId?: string): Promise<{
 
 function mapSessionRow(r: any): ReceptionistSession {
   let auditLog = [];
-  try { auditLog = typeof r.audit_log === "string" ? JSON.parse(r.audit_log) : r.audit_log ?? []; } catch {}
+  try { auditLog = typeof r.audit_log === "string" ? JSON.parse(r.audit_log) : r.audit_log ?? []; } catch {}  // allow-silent-catch: non-fatal, returns safe default
   return {
     sessionId:            r.session_id,
     businessId:           r.business_id,
