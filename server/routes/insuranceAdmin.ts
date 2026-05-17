@@ -1,0 +1,240 @@
+/**
+ * server/routes/insuranceAdmin.ts
+ *
+ * Insurance Intelligence Admin Routes
+ *
+ *   GET  /api/insurance/household-stats         — household intelligence KPIs
+ *   GET  /api/insurance/top-households          — top-scored households
+ *   GET  /api/insurance/storm-claim-stats       — storm claim opportunity stats
+ *   GET  /api/insurance/storm-opportunities     — ready-to-outreach storm opps
+ *   GET  /api/insurance/commercial-stats        — commercial risk KPIs
+ *   GET  /api/insurance/commercial-opportunities — top commercial opps
+ *   GET  /api/insurance/workflow-queue          — pending insurance workflows
+ *   GET  /api/insurance/routing-stats           — agency routing performance
+ *   POST /api/insurance/ingest-household        — manual household enrichment
+ *   POST /api/insurance/ingest-commercial       — manual DBPR/business ingest
+ *   POST /api/insurance/process-storm/:eventId  — trigger storm opportunity processing
+ *   POST /api/insurance/score-household/:id     — re-score a household
+ *
+ * All routes require admin auth.
+ */
+
+import type { Express, Request, Response } from "express";
+import { isUserAdmin } from "../auth";
+import { getHouseholdStats, getTopHouseholds, upsertHousehold, correlateFromHPLProperty } from "../insurance/householdRiskEngine";
+import { scorePolicy, detectOpportunityTypes, estimateHouseholdPremium, crossSellLikelihood } from "../insurance/policyScoringService";
+import { getStormClaimStats, getReadyStormOpportunities, processStormOpportunities } from "../insurance/stormClaimIntelligence";
+import { getCommercialStats, getTopCommercialOpportunities, ingestDbprLicense } from "../insurance/commercialRiskEngine";
+import { getPendingInsuranceWorkflows, getInsuranceWorkflowStats } from "../insurance/insuranceWorkflowCoordinator";
+import { getInsuranceRoutingStats } from "../insurance/insuranceRoutingEngine";
+import { db } from "../db";
+import { sql } from "drizzle-orm";
+
+// ── Route registration ────────────────────────────────────────────────────────
+
+export function registerInsuranceAdminRoutes(app: Express): void {
+
+  // ── Household KPIs ──────────────────────────────────────────────────────
+
+  app.get("/api/insurance/household-stats", async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
+    try {
+      const stats = await getHouseholdStats();
+      return res.json(stats);
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message ?? "failed" });
+    }
+  });
+
+  // ── Top households ──────────────────────────────────────────────────────
+
+  app.get("/api/insurance/top-households", async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
+    const county  = req.query.county as string | undefined;
+    const zip     = req.query.zip as string | undefined;
+    const minScore = parseInt(String(req.query.minScore ?? "50"), 10);
+    const limit   = Math.min(parseInt(String(req.query.limit ?? "25"), 10), 100);
+    const hasPhone = req.query.hasPhone === "true";
+
+    try {
+      const households = await getTopHouseholds({ county, zip, minScore, limit, hasPhone });
+      // Attach score breakdown to each
+      const enriched = households.map(h => ({
+        ...h,
+        scoreBreakdown:       scorePolicy(h),
+        opportunityTypes:     detectOpportunityTypes(h).map(o => o.opportunityType),
+        estimatedPremium:     estimateHouseholdPremium(h),
+        crossSellLikelihood:  crossSellLikelihood(h),
+      }));
+      return res.json({ households: enriched, total: enriched.length });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message ?? "failed" });
+    }
+  });
+
+  // ── Storm claim stats ───────────────────────────────────────────────────
+
+  app.get("/api/insurance/storm-claim-stats", async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
+    try {
+      const stats = await getStormClaimStats();
+      return res.json(stats);
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message ?? "failed" });
+    }
+  });
+
+  // ── Storm opportunities ─────────────────────────────────────────────────
+
+  app.get("/api/insurance/storm-opportunities", async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
+    const county              = req.query.county as string | undefined;
+    const minScore            = parseInt(String(req.query.minScore ?? "40"), 10);
+    const limit               = Math.min(parseInt(String(req.query.limit ?? "50"), 10), 200);
+    const insuranceCrossoverOnly = req.query.insuranceCrossoverOnly === "true";
+    try {
+      const opportunities = await getReadyStormOpportunities({ county, minScore, limit, insuranceCrossoverOnly });
+      return res.json({ opportunities });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message ?? "failed" });
+    }
+  });
+
+  // ── Trigger storm opportunity processing ────────────────────────────────
+
+  app.post("/api/insurance/process-storm/:eventId", async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
+    const { eventId } = req.params;
+    try {
+      // Fetch storm event from HPL table
+      const result = await db.execute(sql.raw(`
+        SELECT * FROM _hpl_storm_events WHERE event_id = '${eventId.replace(/'/g, "''")}' LIMIT 1
+      `));
+      const rows = (result as any).rows ?? result;
+      if (!Array.isArray(rows) || !rows[0]) return res.status(404).json({ error: "storm_event_not_found" });
+      const r = rows[0];
+      const event = {
+        eventId:          r.event_id,
+        eventType:        r.event_type,
+        severity:         r.severity,
+        county:           r.county,
+        state:            r.state,
+        startedAt:        r.started_at?.toISOString?.() ?? String(r.started_at),
+        expiresAt:        r.expires_at?.toISOString?.() ?? undefined,
+        hailSizeInches:   r.hail_size_inches ?? undefined,
+        windSpeedMph:     r.wind_speed_mph ?? undefined,
+        primaryTrades:    r.primary_trades ?? [],
+        insuranceCrossFit: Boolean(r.insurance_cross_fit),
+        opportunityScore: Number(r.opportunity_score ?? 0),
+        source:           r.source ?? "unknown",
+      } as any;
+      const processResult = await processStormOpportunities(event);
+      return res.json(processResult);
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message ?? "failed" });
+    }
+  });
+
+  // ── Commercial stats ────────────────────────────────────────────────────
+
+  app.get("/api/insurance/commercial-stats", async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
+    try {
+      const stats = await getCommercialStats();
+      return res.json(stats);
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message ?? "failed" });
+    }
+  });
+
+  // ── Commercial opportunities ────────────────────────────────────────────
+
+  app.get("/api/insurance/commercial-opportunities", async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
+    const county      = req.query.county as string | undefined;
+    const businessType = req.query.businessType as string | undefined;
+    const minScore    = parseInt(String(req.query.minScore ?? "40"), 10);
+    const limit       = Math.min(parseInt(String(req.query.limit ?? "25"), 10), 100);
+    try {
+      const opportunities = await getTopCommercialOpportunities({ county, businessType, minScore, limit });
+      return res.json({ opportunities });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message ?? "failed" });
+    }
+  });
+
+  // ── Insurance workflow queue ────────────────────────────────────────────
+
+  app.get("/api/insurance/workflow-queue", async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
+    const agencyId = req.query.agencyId ? parseInt(String(req.query.agencyId), 10) : undefined;
+    const limit    = Math.min(parseInt(String(req.query.limit ?? "50"), 10), 200);
+    try {
+      const [pending, stats] = await Promise.all([
+        getPendingInsuranceWorkflows({ agencyId, limit }),
+        getInsuranceWorkflowStats(),
+      ]);
+      return res.json({ pending, stats });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message ?? "failed" });
+    }
+  });
+
+  // ── Agency routing stats ────────────────────────────────────────────────
+
+  app.get("/api/insurance/routing-stats", async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
+    const sinceHours = parseInt(String(req.query.sinceHours ?? "24"), 10);
+    try {
+      const stats = await getInsuranceRoutingStats(sinceHours);
+      return res.json(stats);
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message ?? "failed" });
+    }
+  });
+
+  // ── Manual household ingest ─────────────────────────────────────────────
+
+  app.post("/api/insurance/ingest-household", async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
+    const { primaryAddress, county, state } = req.body;
+    if (!primaryAddress || !county || !state) {
+      return res.status(400).json({ error: "primaryAddress, county, state required" });
+    }
+    try {
+      const result = await upsertHousehold({ ...req.body, primaryAddress, county, state });
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message ?? "failed" });
+    }
+  });
+
+  // ── Correlate HPL property to household ────────────────────────────────
+
+  app.post("/api/insurance/correlate-property/:apexPropertyId", async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
+    try {
+      const householdId = await correlateFromHPLProperty(req.params.apexPropertyId);
+      if (!householdId) return res.status(404).json({ error: "property_not_found" });
+      return res.json({ householdId });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message ?? "failed" });
+    }
+  });
+
+  // ── Manual DBPR license ingest ──────────────────────────────────────────
+
+  app.post("/api/insurance/ingest-commercial", async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
+    const { licenseNumber, licenseType, businessName, address, county, state } = req.body;
+    if (!licenseNumber || !licenseType || !businessName || !address || !county || !state) {
+      return res.status(400).json({ error: "licenseNumber, licenseType, businessName, address, county, state required" });
+    }
+    try {
+      const result = await ingestDbprLicense(req.body);
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message ?? "failed" });
+    }
+  });
+}

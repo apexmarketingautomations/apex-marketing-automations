@@ -1815,6 +1815,9 @@ RULES:
 
   const { registerHplAdminRoutes } = await import("./routes/hplAdmin");
   registerHplAdminRoutes(app);
+
+  const { registerInsuranceAdminRoutes } = await import("./routes/insuranceAdmin");
+  registerInsuranceAdminRoutes(app);
   await setupAuth(app);
 
   // Admin-secret bypass: when an internal/trusted caller (e.g. the Apex
