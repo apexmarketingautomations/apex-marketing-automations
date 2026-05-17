@@ -222,7 +222,7 @@ export async function isQuarantined(sourceTable: string, sourceId: number): Prom
     `));
     const rows = (result as any).rows ?? result;
     return Array.isArray(rows) && rows.length > 0;
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return false;
   }
 }

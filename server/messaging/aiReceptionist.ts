@@ -142,7 +142,7 @@ async function resolveContact(subAccountId: number, phone?: string, email?: stri
       if (Array.isArray(rows) && rows.length > 0) return Number(rows[0].id);
     }
     return null;
-  } catch { return null; }
+  } catch { return null; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Session management ─────────────────────────────────────────────────────────

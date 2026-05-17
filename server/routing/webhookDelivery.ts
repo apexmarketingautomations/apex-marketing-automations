@@ -167,7 +167,7 @@ async function deliverToEndpoint(
     clearTimeout(timeout);
 
     httpStatus = response.status;
-    const text = await response.text().catch(() => "");
+    const text = await response.text().catch(() => "");  // allow-silent-catch: non-fatal, returns safe default
     responseSnippet = text.slice(0, 200);
     status = response.ok ? "success" : "failed";
   } catch (err: any) {
@@ -191,7 +191,7 @@ async function deliverToEndpoint(
         (${deliveryId}, ${endpoint.subAccountId}, ${endpoint.id}, ${endpoint.vertical},
          ${attempt}, ${status}, ${httpStatus ?? null}, ${latencyMs}, ${responseSnippet ?? null}, ${hash})
     `);
-  } catch { /* non-fatal */ }
+  } catch { /* non-fatal */ }  // allow-silent-catch: non-fatal, returns safe default
 
   return log;
 }

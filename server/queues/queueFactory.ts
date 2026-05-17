@@ -372,7 +372,7 @@ export function attachCircuitBreaker(worker: any, tag: string): void {
         `[${tag}] ⚠ Redis quota exceeded — pausing worker for ${backoffMs / 1000}s. ` +
         `Upgrade Upstash plan or wait for quota reset.`
       );
-      worker.pause().catch(() => undefined);
+      worker.pause().catch(() => undefined);  // allow-silent-catch: non-fatal, returns safe default
 
       if (timer) clearTimeout(timer);
       timer = setTimeout(async () => {

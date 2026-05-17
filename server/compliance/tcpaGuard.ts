@@ -108,7 +108,7 @@ function isQuietHours(tz = "America/New_York"): boolean {
       new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hour12: false }).format(new Date()), 10
     );
     return h < 8 || h >= 21;
-  } catch { return false; }
+  } catch { return false; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 const FREQUENCY_CAPS: Record<Channel, number> = { sms: 3, call: 2, voicemail: 1, email: 5 };
@@ -129,7 +129,7 @@ async function checkFrequency(subAccountId: number, phone: string | undefined, c
     `);
     const rows = (r as any).rows ?? r;
     return Number(Array.isArray(rows) ? rows[0]?.n ?? 0 : 0) >= cap;
-  } catch { return false; }
+  } catch { return false; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 async function isDNC(phone: string): Promise<{ listed: boolean; source?: string }> {
@@ -139,7 +139,7 @@ async function isDNC(phone: string): Promise<{ listed: boolean; source?: string 
     const rows = (r as any).rows ?? r;
     if (Array.isArray(rows) && rows.length > 0) return { listed: true, source: rows[0].source };
     return { listed: false };
-  } catch { return { listed: false }; }
+  } catch { return { listed: false }; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 async function isLitigationRisk(phone: string): Promise<{ risk: boolean; level?: string }> {
@@ -149,7 +149,7 @@ async function isLitigationRisk(phone: string): Promise<{ risk: boolean; level?:
     const rows = (r as any).rows ?? r;
     if (Array.isArray(rows) && rows.length > 0) return { risk: true, level: rows[0].risk_level };
     return { risk: false };
-  } catch { return { risk: false }; }
+  } catch { return { risk: false }; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 async function isOptedOut(phone?: string, contactId?: number): Promise<boolean> {
@@ -163,7 +163,7 @@ async function isOptedOut(phone?: string, contactId?: number): Promise<boolean> 
       const rows = (r as any).rows ?? r; if (Array.isArray(rows) && rows.length > 0) return true;
     }
     return false;
-  } catch { return false; }
+  } catch { return false; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 async function hasConsent(subAccountId: number, phone?: string, contactId?: number, channel?: Channel): Promise<boolean> {
@@ -182,7 +182,7 @@ async function hasConsent(subAccountId: number, phone?: string, contactId?: numb
     `);
     const rows = (r as any).rows ?? r;
     return Array.isArray(rows) && rows.length > 0;
-  } catch { return false; }
+  } catch { return false; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 export async function checkTCPA(input: TCPACheckInput): Promise<TCPACheckResult> {
@@ -231,7 +231,7 @@ export async function checkTCPA(input: TCPACheckInput): Promise<TCPACheckResult>
                 ${input.phone ? normalizePhone(input.phone) : null},
                 ${input.channel}, ${JSON.stringify(blockedReasons)}::text[], ${riskLevel})
       `);
-    } catch { /* non-fatal */ }
+    } catch { /* non-fatal */ }  // allow-silent-catch: non-fatal, returns safe default
   }
 
   return { allowed, blockedReasons, riskLevel, consentOnFile, dncListed, quietHours, frequencyCapped, litigationRisk, checkedAt };

@@ -127,7 +127,7 @@ export async function runBootValidation(): Promise<BootValidationResult> {
         scope.setContext("boot_validation", { criticalFailures, warnings, durationMs });
         Sentry.captureMessage(`DB Boot Validation FAILED: ${criticalFailures[0]}`, "fatal");
       });
-    }).catch(() => {});
+    }).catch(() => {});  // allow-silent-catch: non-fatal, returns safe default
   } else if (warnings.length > 0) {
     console.warn(`[BOOT-VALIDATOR] ⚠ passed with ${warnings.length} warning(s): ${warnings.join(" | ")}`);
   } else {

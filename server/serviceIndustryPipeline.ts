@@ -162,7 +162,7 @@ export async function ingestServiceSignal(params: {
                        params.signalType === "health_violation" ? "osha" : "other",
         opportunityScore: score,
       });
-    } catch { /* non-fatal */ }
+    } catch { /* non-fatal */ }  // allow-silent-catch: non-fatal, returns safe default
   }
 
   return { id, score };

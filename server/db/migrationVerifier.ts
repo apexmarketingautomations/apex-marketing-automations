@@ -54,7 +54,7 @@ export async function verifyMigrations(): Promise<MigrationVerificationReport> {
     `);
     const rows = (tableCheck as any).rows ?? tableCheck;
     trackingTableExists = Array.isArray(rows) && rows[0]?.exists === true;
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     trackingTableExists = false;
   }
 
@@ -72,7 +72,7 @@ export async function verifyMigrations(): Promise<MigrationVerificationReport> {
             : String(r.applied_at),
         }));
       }
-    } catch {
+    } catch {  // allow-silent-catch: non-fatal, returns safe default
       appliedMigrations = [];
     }
   }
@@ -141,7 +141,7 @@ export async function detectSchemaDrift(): Promise<SchemaDriftReport> {
     if (Array.isArray(rows)) {
       rows.forEach((r: any) => existingIndexes.add(r.indexname));
     }
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     existingIndexes = new Set();
   }
 

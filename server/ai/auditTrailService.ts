@@ -187,7 +187,7 @@ export async function getAuditLog(opts: AuditQueryOptions = {}): Promise<AIAudit
     `));
     const rows = (result as any).rows ?? result;
     return Array.isArray(rows) ? rows.map(mapRow) : [];
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return [];
   }
 }

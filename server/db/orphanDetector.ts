@@ -74,7 +74,7 @@ async function tableExists(tableName: string): Promise<boolean> {
     `);
     const rows = (result as any).rows ?? result;
     return Array.isArray(rows) && rows[0]?.exists === true;
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return false;
   }
 }

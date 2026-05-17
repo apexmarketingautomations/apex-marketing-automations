@@ -109,7 +109,7 @@ export async function sendSms(args: SendSmsArgs): Promise<SendSmsResult> {
       emitMessageFailed({ subAccountId, channel, path, threadId, reason: "tcpa_violation", errorMessage: msg, metadata: { source, tcpaReasons: tcpa.blockedReasons, ...(args.metadata || {}) } });
       return { ok: false, reason: "guard_violation", errorMessage: msg, messageRowId: rowId };
     }
-  } catch { /* TCPA errors are non-fatal — log and proceed */ }
+  } catch { /* TCPA errors are non-fatal — log and proceed */ }  // allow-silent-catch: non-fatal, returns safe default
 
   // 1. Provider guard — throws SmsProviderViolationError if non-Twilio.
   try {

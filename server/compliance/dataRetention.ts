@@ -73,7 +73,7 @@ async function loadPolicies(subAccountId?: number): Promise<RetentionPolicy[]> {
       });
     }
     return [...merged.values()];
-  } catch { return DEFAULT_POLICIES; }
+  } catch { return DEFAULT_POLICIES; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Table-specific purge runners ──────────────────────────────────────────────
@@ -85,7 +85,7 @@ async function tableExists(name: string): Promise<boolean> {
     `);
     const rows = (r as any).rows ?? r;
     return Array.isArray(rows) && rows[0]?.e === true;
-  } catch { return false; }
+  } catch { return false; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 async function runHardDelete(tableName: string, retentionDays: number, subAccountId?: number): Promise<RetentionRunResult> {

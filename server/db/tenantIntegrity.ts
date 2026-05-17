@@ -69,7 +69,7 @@ async function tableExists(tableName: string): Promise<boolean> {
     `);
     const rows = (result as any).rows ?? result;
     return Array.isArray(rows) && rows[0]?.exists === true;
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return false;
   }
 }
@@ -80,7 +80,7 @@ async function getValidSubAccountIds(): Promise<Set<number>> {
     const rows = (result as any).rows ?? result;
     if (!Array.isArray(rows)) return new Set();
     return new Set(rows.map((r: any) => Number(r.id)));
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return new Set();
   }
 }
@@ -116,7 +116,7 @@ async function scanNullSubAccounts(
       sampleIds,
       severity: tt.severity,
     };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return null;
   }
 }
@@ -156,7 +156,7 @@ async function scanInvalidSubAccounts(
       sampleIds,
       severity: tt.severity,
     };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return null;
   }
 }

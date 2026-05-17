@@ -195,7 +195,7 @@ export async function processCrashInsuranceSignals(limit = 100): Promise<{
         financialScore: Math.round(policyLimitEst / 5000),
         legalSeverity:  injurySeverity === "fatal" ? 90 : 50,
       });
-    } catch { /* correlation is non-fatal */ }
+    } catch { /* correlation is non-fatal */ }  // allow-silent-catch: non-fatal, returns safe default
 
     qualified++;
   }

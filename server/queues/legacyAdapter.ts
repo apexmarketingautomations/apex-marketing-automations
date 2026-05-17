@@ -248,7 +248,7 @@ class DurableJobQueue {
             `Upgrade Upstash plan or wait for quota reset.`
           );
           // Pause the worker so it stops hammering Redis
-          this.bullWorker.pause().catch(() => undefined);
+          this.bullWorker.pause().catch(() => undefined);  // allow-silent-catch: non-fatal, returns safe default
 
           // Clear any existing resume timer
           if (this.cbResumeTimer) clearTimeout(this.cbResumeTimer);

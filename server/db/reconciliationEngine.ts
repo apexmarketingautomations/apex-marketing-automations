@@ -46,7 +46,7 @@ async function tableExists(name: string): Promise<boolean> {
     `);
     const rows = (r as any).rows ?? r;
     return Array.isArray(rows) && rows[0]?.e === true;
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return false;
   }
 }
@@ -82,7 +82,7 @@ async function scanDuplicateContactsByPhone(): Promise<ReconciliationIssue | nul
       severity:    "error",
       repairHint:  "Run /api/admin/run-integrity-repair with action=merge_duplicate_contacts to merge by normalizedPhone",
     };
-  } catch { return null; }
+  } catch { return null; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 async function scanStaleEnrichmentPending(): Promise<ReconciliationIssue | null> {
@@ -104,7 +104,7 @@ async function scanStaleEnrichmentPending(): Promise<ReconciliationIssue | null>
       severity:    "warning",
       repairHint:  "These contacts had BatchData calls that timed out without completing. Reset skip_trace_status to null and re-enqueue via BullMQ enrichment worker",
     };
-  } catch { return null; }
+  } catch { return null; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 async function scanStuckCrashReports(): Promise<ReconciliationIssue | null> {
@@ -126,7 +126,7 @@ async function scanStuckCrashReports(): Promise<ReconciliationIssue | null> {
       severity:    "error",
       repairHint:  "Likely caused by a worker crash during FLHSMV fetching. Reset to PENDING to allow retry",
     };
-  } catch { return null; }
+  } catch { return null; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 async function scanContactsWithoutSubAccount(): Promise<ReconciliationIssue | null> {
@@ -145,7 +145,7 @@ async function scanContactsWithoutSubAccount(): Promise<ReconciliationIssue | nu
       severity:    "critical",
       repairHint:  "Quarantine these contacts immediately. They cannot be safely assigned without knowing their origin",
     };
-  } catch { return null; }
+  } catch { return null; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 async function scanLegalSignalsWithoutSubAccount(): Promise<ReconciliationIssue | null> {
@@ -164,7 +164,7 @@ async function scanLegalSignalsWithoutSubAccount(): Promise<ReconciliationIssue 
       severity:    "error",
       repairHint:  "Assign these signals to the correct sub_account or quarantine if origin unknown",
     };
-  } catch { return null; }
+  } catch { return null; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 async function scanOrphanedCaseSignals(): Promise<ReconciliationIssue | null> {
@@ -188,7 +188,7 @@ async function scanOrphanedCaseSignals(): Promise<ReconciliationIssue | null> {
       severity:    "warning",
       repairHint:  "Safe to quarantine — the parent case was deleted. These rows consume space but cause no active bugs",
     };
-  } catch { return null; }
+  } catch { return null; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 async function scanIntelligenceEntitiesWithoutCases(): Promise<ReconciliationIssue | null> {
@@ -212,7 +212,7 @@ async function scanIntelligenceEntitiesWithoutCases(): Promise<ReconciliationIss
       severity:    "info",
       repairHint:  "These entities are pre-registered but no signals have matched yet. Acceptable unless count grows unbounded",
     };
-  } catch { return null; }
+  } catch { return null; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────

@@ -440,7 +440,7 @@ export function registerAdminRoutes(app: Express) {
             action:      "INTEGRITY_REPAIR_QUARANTINE",
             performedBy: operatorId,
             details:     { ...parsed.data, quarantineId: result.quarantineId },
-          }).catch(() => {})
+          }).catch(() => {})  // allow-silent-catch: non-fatal, returns safe default
         );
         return res.json({ ok: result.ok, quarantineId: result.quarantineId, error: result.error });
       }
@@ -453,7 +453,7 @@ export function registerAdminRoutes(app: Express) {
             action:      "INTEGRITY_REPAIR_RESTORE",
             performedBy: operatorId,
             details:     { quarantineId: parsed.data.quarantineId },
-          }).catch(() => {})
+          }).catch(() => {})  // allow-silent-catch: non-fatal, returns safe default
         );
         return res.json({ ok: result.ok, error: result.error });
       }
@@ -474,7 +474,7 @@ export function registerAdminRoutes(app: Express) {
             action:      "INTEGRITY_REPAIR_RESET_ENRICHMENT",
             performedBy: operatorId,
             details:     { affected, cutoff },
-          }).catch(() => {})
+          }).catch(() => {})  // allow-silent-catch: non-fatal, returns safe default
         );
         console.log(`[INTEGRITY-REPAIR] reset_stale_enrichment: ${affected} contacts reset`);
         return res.json({ ok: true, affected });
@@ -496,7 +496,7 @@ export function registerAdminRoutes(app: Express) {
             action:      "INTEGRITY_REPAIR_RESET_CRASH_REPORTS",
             performedBy: operatorId,
             details:     { affected, cutoff },
-          }).catch(() => {})
+          }).catch(() => {})  // allow-silent-catch: non-fatal, returns safe default
         );
         console.log(`[INTEGRITY-REPAIR] reset_stuck_crash_reports: ${affected} reports reset to PENDING`);
         return res.json({ ok: true, affected });

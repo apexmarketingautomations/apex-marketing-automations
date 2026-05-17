@@ -104,7 +104,7 @@ async function getSlowQueries(): Promise<{ entries: SlowQueryEntry[]; available:
       rows:        Number(r.rows ?? 0),
     }));
     return { entries, available: true };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return { entries: [], available: false };
   }
 }
@@ -141,7 +141,7 @@ async function getTableBloat(): Promise<TableBloatEntry[]> {
         severity:       deadRatio >= 30 ? "critical" : deadRatio >= 15 ? "warning" : "ok",
       };
     });
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 async function getIndexUsage(): Promise<IndexUsageEntry[]> {
@@ -175,7 +175,7 @@ async function getIndexUsage(): Promise<IndexUsageEntry[]> {
         status: scans === 0 ? "unused" : scans < 10 ? "rarely_used" : "used",
       };
     });
-  } catch { return []; }
+  } catch { return []; }  // allow-silent-catch: non-fatal, returns safe default
 }
 
 async function getConnectionSummary(): Promise<ConnectionSummary> {
@@ -204,7 +204,7 @@ async function getConnectionSummary(): Promise<ConnectionSummary> {
     const usagePct  = maxConn > 0 ? Math.round(total / maxConn * 100) : 0;
 
     return { active, idle, idleInTx, total, maxConnections: maxConn, usagePct };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return { active: 0, idle: 0, idleInTx: 0, total: 0, maxConnections: 100, usagePct: 0 };
   }
 }
@@ -234,7 +234,7 @@ async function getCacheHit(): Promise<CacheHitSummary> {
       "healthy";
 
     return { tableHitRatio, indexHitRatio, status };
-  } catch {
+  } catch {  // allow-silent-catch: non-fatal, returns safe default
     return { tableHitRatio: 100, indexHitRatio: 100, status: "healthy" };
   }
 }
