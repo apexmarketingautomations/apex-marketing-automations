@@ -245,7 +245,7 @@ function parsePermitCategories(permitType: string): string[] {
   for (const [keyword, services] of Object.entries(PERMIT_KEYWORDS)) {
     if (upper.includes(keyword)) cats.push(...services);
   }
-  return [...new Set(cats)];
+  return Array.from(new Set(cats));
 }
 
 async function fetchLeePermits(): Promise<LeadSignal[]> {
@@ -259,7 +259,7 @@ async function fetchLeePermits(): Promise<LeadSignal[]> {
       "Lee permits"
     );
     if (!permits) return [];
-    return permits.flatMap(p => {
+    return permits!.flatMap(p => {
       const cats = parsePermitCategories(p.permit_type || p.work_description || '');
       if (!cats.length) return [];
       return [{
@@ -295,7 +295,7 @@ async function fetchCollierPermits(): Promise<LeadSignal[]> {
       "Collier permits"
     );
     if (!permits) return [];
-    return permits.flatMap(p => {
+    return permits!.flatMap(p => {
       const cats = parsePermitCategories(p.permit_type || p.description || '');
       if (!cats.length) return [];
       return [{
@@ -395,7 +395,7 @@ async function fetchCourtFilings(): Promise<LeadSignal[]> {
         8000
       );
       if (!cases) continue;
-      for (const c of cases) {
+      for (const c of cases!) {
         const caseType = c.case_type || c.description || '';
         const isDivorce = caseType.toLowerCase().includes('dissolution') || caseType.toLowerCase().includes('divorce');
         const isDV = caseType.toLowerCase().includes('domestic') || caseType.toLowerCase().includes('injunction');
@@ -476,7 +476,7 @@ async function fetchProductRecalls(): Promise<LeadSignal[]> {
       'FDA recalls'
     );
     if (!data) return [];
-    return (data?.results || []).map((r: any) => ({
+    return ((data as any)?.results || []).map((r: any) => ({
       id: r.recall_number || crypto.randomUUID(),
       vertical: 'legal' as const,
       subVertical: 'product_liability',

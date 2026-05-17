@@ -47,7 +47,7 @@ const activateRecommendedDefaults: ActionHandler = {
     const config = await storage.getSentinelConfig(accountId);
     if (config && !config.enabled) {
       const before = { enabled: false };
-      await storage.upsertSentinelConfig({ ...config, enabled: true });
+      await storage.upsertSentinelConfig({ ...config, enabled: true } as any);
       affected.push({
         entityType: "sentinel_config",
         entityId: String(config.id),
@@ -98,7 +98,7 @@ const activateRecommendedDefaults: ActionHandler = {
       if (c.entityType === "sentinel_config") {
         const config = await storage.getSentinelConfig(accountId);
         if (config) {
-          await storage.upsertSentinelConfig({ ...config, enabled: c.before.enabled as boolean });
+          await storage.upsertSentinelConfig({ ...config, enabled: c.before.enabled as boolean } as any);
         }
       }
       if (c.entityType === "notification_preferences") {
@@ -195,7 +195,7 @@ const adjustAlertThresholds: ActionHandler = {
       }, start);
     }
 
-    const thresholds = (config.alertThresholds as Record<string, { enabled: boolean; threshold: number }>) || {};
+    const thresholds = ((config as any).alertThresholds as Record<string, { enabled: boolean; threshold: number }>) || {};
     const before = JSON.parse(JSON.stringify(thresholds));
     let adjusted = 0;
 
@@ -212,7 +212,7 @@ const adjustAlertThresholds: ActionHandler = {
       }, start);
     }
 
-    await storage.upsertSentinelConfig({ ...config, alertThresholds: thresholds });
+    await storage.upsertSentinelConfig({ ...config, alertThresholds: thresholds } as any);
 
     return makeResult(this.actionType, accountId, {
       entitiesAffected: [{
@@ -234,7 +234,7 @@ const adjustAlertThresholds: ActionHandler = {
       await storage.upsertSentinelConfig({
         ...config,
         alertThresholds: payload.previousThresholds as Record<string, unknown>,
-      });
+      } as any);
     }
     return makeResult("adjust_alert_thresholds", accountId, {
       status: "rolled_back",
@@ -302,7 +302,7 @@ const activateDraftAutomations: ActionHandler = {
     const start = Date.now();
     const automations = await storage.getLiveAutomations(accountId);
     const readyToActivate = automations.filter(a => {
-      if (a.status !== "draft" || a.active) return false;
+      if (a.status !== "draft" || (a as any).active) return false;
       const manifest = a.manifest as Record<string, unknown> | null;
       return manifest?.trigger && manifest?.steps && Array.isArray(manifest.steps) && manifest.steps.length > 0;
     });
@@ -317,7 +317,7 @@ const activateDraftAutomations: ActionHandler = {
     await db.transaction(async (tx) => {
       for (const auto of readyToActivate) {
         await tx.update(liveAutomations)
-          .set({ active: true, status: "active" })
+          .set({ active: true, status: "active" } as any)
           .where(eq(liveAutomations.id, auto.id));
         affected.push({
           entityType: "live_automation",
@@ -342,7 +342,7 @@ const activateDraftAutomations: ActionHandler = {
     await db.transaction(async (tx) => {
       for (const id of ids) {
         await tx.update(liveAutomations)
-          .set({ active: false, status: "draft" })
+          .set({ active: false, status: "draft" } as any)
           .where(eq(liveAutomations.id, Number(id)));
       }
     });
@@ -389,7 +389,7 @@ const optimizeWorkflowSteps: ActionHandler = {
             workflowId: wf.id,
             stepIndex: m.stepIndex,
             changeType: "suggestion",
-            oldValue: { failRate: Math.round(failRate * 100) },
+            previousValue: { failRate: Math.round(failRate * 100) },
             newValue: { recommendation: "Review and fix this step" },
             reason: suggestion,
             appliedBy: "autonomy_engine",

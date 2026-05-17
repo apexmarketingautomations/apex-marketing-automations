@@ -1162,7 +1162,7 @@ export function startCrashReportWorker(): void {
 
 export interface EnrichCrashLeadContactsParams {
   sentinelReportNumber: string;
-  subAccountId: number | null;
+  subAccountId: number;
   detailData: FLHSMVReportData;
   officialReportNumber: string;
 }
@@ -1177,6 +1177,12 @@ export async function enrichCrashLeadContacts(
   params: EnrichCrashLeadContactsParams,
 ): Promise<EnrichCrashLeadContactsResult> {
   const { sentinelReportNumber, subAccountId, detailData, officialReportNumber } = params;
+
+  // SECURITY: a null subAccountId would fan out enrichment to ALL tenants — reject immediately.
+  if (subAccountId == null) {
+    console.error(`[CRASH-WORKER] enrichCrashLeadContacts called with null subAccountId for report ${sentinelReportNumber} — refusing to enrich`);
+    return { enriched: 0, skipped: 0, noContacts: false };
+  }
 
   const vehicle = detailData.Vehicles?.[0];
   const driver  = vehicle?.Driver;
@@ -1202,25 +1208,76 @@ export async function enrichCrashLeadContacts(
 
   // Build enrichment tags (additive — upsertContact never removes existing tags)
   const enrichmentTags: string[] = ["flhsmv-enriched"];
+  let plateNumber: string | null = null;
   if (vehicle?.TagNumber && vehicle?.TagState) {
-    const plate = `${vehicle.TagState.toUpperCase()}-${vehicle.TagNumber.toUpperCase()}`;
-    enrichmentTags.push(`plate:${plate}`);
+    plateNumber = `${vehicle.TagNumber.toUpperCase()}`;
+    enrichmentTags.push(`plate:${vehicle.TagState.toUpperCase()}-${plateNumber}`);
   }
 
-  // Address from FLHSMV driver record
-  const homeAddress = driver.Address?.trim() || null;
+  // ── Victim-centric: FLHSMV driver address = license address (registration quality) ──
+  // This is the address on the driver's FL license, NOT the roadway.
+  // Confidence: 0.85 (FLHSMV driver license address — high quality but not DHSMV verified)
+  const { ADDRESS_CONFIDENCE, looksLikeHighwayAddress } = await import("./services/contactUpsertService");
+  const rawDriverAddress = driver.Address?.trim() || null;
+  // Reject highway-looking addresses that slipped through FLHSMV
+  const driverAddress = rawDriverAddress && !looksLikeHighwayAddress(rawDriverAddress) ? rawDriverAddress : null;
 
-  // Insurance note
+  // ── DHSMV registration lookup (plate → owner → owner address) ─────────────
+  // Registration address may differ from driver license address (spouse, employer, etc.)
+  // Confidence: 0.90 (DHSMV registered owner address — highest available pre-skip-trace)
+  let dhsmvOwnerName:    string | null = null;
+  let dhsmvOwnerAddress: string | null = null;
+  if (plateNumber) {
+    try {
+      const { lookupRegistration } = await import("./dhsmvRegistrationLookup");
+      const reg = await lookupRegistration(plateNumber, vehicle?.TagState ?? "FL");
+      if (reg.found && reg.ownerAddress && !looksLikeHighwayAddress(reg.ownerAddress)) {
+        dhsmvOwnerAddress = reg.ownerAddress;
+        if (reg.ownerName) dhsmvOwnerName = reg.ownerName;
+        console.log(`[CRASH-WORKER] DHSMV plate lookup: plate=${plateNumber} owner=${dhsmvOwnerName} addr=${dhsmvOwnerAddress}`);
+        enrichmentTags.push("dhsmv-enriched");
+      }
+    } catch (regErr: any) {
+      console.warn(`[CRASH-WORKER] DHSMV registration lookup failed for plate ${plateNumber}: ${regErr.message}`);
+    }
+  }
+
+  // ── Select best address for contact.address ──────────────────────────────
+  // Priority: DHSMV owner address (0.90) > FLHSMV driver address (0.85) > null
+  const bestAddress      = dhsmvOwnerAddress ?? driverAddress;
+  const bestAddressConf  = dhsmvOwnerAddress ? ADDRESS_CONFIDENCE.DHSMV_REGISTRATION
+                         : driverAddress     ? ADDRESS_CONFIDENCE.FLHSMV_LICENSE
+                         : ADDRESS_CONFIDENCE.UNKNOWN;
+  const bestAddressSrc   = dhsmvOwnerAddress ? "dhsmv" : driverAddress ? "flhsmv" : null;
+  const bestAddressType  = bestAddress ? "registration" : "unknown";
+
+  // ── Incident fingerprint: stable SHA256 for dedup ─────────────────────────
+  // Format: SHA256("crash:" + sentinelReportNumber) — ties ALL contacts from
+  // this crash report back to the same incident regardless of account fan-out.
+  const incidentFingerprint = crypto
+    .createHash("sha256")
+    .update(`crash:${sentinelReportNumber}`)
+    .digest("hex");
+
+  // Insurance and vehicle notes
   const insuranceNote = vehicle?.InsuranceCompany
     ? `Insurance: ${vehicle.InsuranceCompany}`
     : null;
   const vehicleNote = vehicle?.TagNumber
     ? `Vehicle: ${vehicle.Year ?? ""} ${vehicle.Make ?? ""} ${vehicle.Model ?? ""} | Plate: ${vehicle.TagState ?? "FL"}-${vehicle.TagNumber}`.trim()
     : null;
+  const addressNote = bestAddress
+    ? `Residential address (${bestAddressSrc}, confidence ${(bestAddressConf * 100).toFixed(0)}%): ${bestAddress}`
+    : "No residential address recovered — skip trace required";
+  const dhsmvNote = dhsmvOwnerName
+    ? `DHSMV registered owner: ${dhsmvOwnerName}`
+    : null;
   const enrichmentNote = [
     `FLHSMV enriched at ${new Date().toISOString()}`,
     `Official report: ${officialReportNumber}`,
-    homeAddress ? `Home address: ${homeAddress}` : null,
+    `Incident fingerprint: ${incidentFingerprint}`,
+    addressNote,
+    dhsmvNote,
     vehicleNote,
     insuranceNote,
   ].filter(Boolean).join("\n");
@@ -1228,7 +1285,9 @@ export async function enrichCrashLeadContacts(
   // Find all contacts linked to this sentinel crash report.
   // sourceExternalId format (set in crashIngestPipeline): crash:<reportNumber>:acct<accountId>
   const sourcePrefix = `crash:${sentinelReportNumber}:`;
-  const rows = await db
+  // SECURITY: always scope the query to the verified subAccountId — never fan out cross-tenant.
+  // subAccountId is guaranteed non-null by the guard above.
+  const targets = await db
     .select({
       id:               contacts.id,
       subAccountId:     contacts.subAccountId,
@@ -1237,12 +1296,7 @@ export async function enrichCrashLeadContacts(
       firstName:        contacts.firstName,
     })
     .from(contacts)
-    .where(sql`source_external_id LIKE ${sourcePrefix + "%"}`);
-
-  // Narrow to the specific sub-account when provided
-  const targets = subAccountId != null
-    ? rows.filter(c => c.subAccountId === subAccountId)
-    : rows;
+    .where(sql`source_external_id LIKE ${sourcePrefix + "%"} AND sub_account_id = ${subAccountId}`);
 
   if (targets.length === 0) {
     return { enriched: 0, skipped: 0, noContacts: true };
@@ -1263,17 +1317,42 @@ export async function enrichCrashLeadContacts(
         subAccountId:     contact.subAccountId,
         firstName,
         lastName,
-        address:          homeAddress,
+        // ── Victim-centric address wiring ──────────────────────────────────
+        // contact.address receives the best residential address we have.
+        // Roadway (incidentLocation) is NEVER written here — it lives on
+        // the contact's incidentLocation field, set during initial ingest.
+        address:          bestAddress,
         state:            "FL",
+        addressConfidence: bestAddressConf,
+        addressType:       bestAddressType,
+        addressSource:     bestAddressSrc,
+        // Registration-quality address stored in typed field
+        registrationAddress:       driverAddress,
+        registrationAddressSource: "flhsmv_report",
+        registrationAddressSourcAt: new Date(),
+        // DHSMV owner address (higher confidence) if available
+        ...(dhsmvOwnerAddress ? {
+          registrationAddress:       dhsmvOwnerAddress,
+          registrationAddressSource: "dhsmv",
+          registrationAddressSourcAt: new Date(),
+        } : {}),
+        // Probable residence = best address we have before geocoding confirms
+        probableResidence: bestAddress,
+        // Incident fingerprint for cross-account dedup
+        incidentFingerprint,
+        // ──────────────────────────────────────────────────────────────────
         tags:             enrichmentTags,
         notes:            enrichmentNote,
         source:           CONTACT_SOURCES.CRASH,
         sourceExternalId: contact.sourceExternalId ?? undefined,
-        // Upgrade identity status only if the existing name is a placeholder
         identityStatus:   isPlaceholderName(contact.firstName) ? "verified" : undefined,
         enrichmentProvider:     "flhsmv",
         enrichmentCompletedAt:  new Date(),
-      });
+        enrichmentConfidence:   bestAddressConf,
+        isPlaceholder: false,
+        viewClass:     "incident_subject",
+        workflowStage: "enriching",
+      } as any);
       enriched++;
     } catch (err: any) {
       console.warn(`[CRASH-WORKER] enrichCrashLeadContacts: upsert failed for contact ${contact.id}: ${err.message}`);

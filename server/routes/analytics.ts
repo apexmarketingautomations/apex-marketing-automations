@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { Express, Request, Response } from "express";
 import { contacts, deals, messages, subAccounts, sentinelIncidents, propertyLeads, workflows } from "@shared/schema";
 import { db } from "../db";

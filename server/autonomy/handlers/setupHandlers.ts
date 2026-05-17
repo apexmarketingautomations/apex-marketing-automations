@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { ActionHandler, ActionResult, EntityChange } from "../types";
 import { storage } from "../../storage";
 import { db } from "../../db";

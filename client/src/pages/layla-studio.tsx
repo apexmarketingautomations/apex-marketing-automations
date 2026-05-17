@@ -432,7 +432,7 @@ function ApexModal({ asset, onClose, onSuccess }: { asset: Asset; onClose: () =>
     setSending(true); setError("");
     try {
       await sendToApex({
-        type: asset.type, url: asset.url, character: "Layla", prompt: asset.prompt,
+        type: asset.type, url: asset.url, character: "Layla", prompt: asset.prompt ?? "",
         shot_type: asset.shotType || "Portrait", aspect_ratio: asset.aspectRatio || "9:16",
         face_swapped: !!asset.faceSwapped, generated_at: new Date().toISOString(),
         suggested_caption: caption, platform,
@@ -590,7 +590,7 @@ function TabImages({ laylaFace, laylaPrompt, addToLibrary, setFaceUploadStatus }
       setStatus("Generating image...");
       const gen = await muapiPost(model, { prompt: `${prompt}, ${shotType.toLowerCase()} shot`, aspect_ratio: aspectRatio });
       setProgress(30);
-      const result = await pollResult(gen.id, setProgress);
+      const result = await pollResult(gen.id as string, setProgress);
       let imageUrl = extractUrl(result);
       const modelLabel = IMAGE_MODELS.find(m => m.id === model)?.label || model;
 
@@ -610,7 +610,7 @@ function TabImages({ laylaFace, laylaPrompt, addToLibrary, setFaceUploadStatus }
         setStatus("Locking face...");
         setProgress(65);
         const swap = await muapiPost("ai-image-face-swap", { target_image: imageUrl, source_image: sourceImage });
-        const swapResult = await pollResult(swap.id, p => setProgress(65 + p * 0.35));
+        const swapResult = await pollResult(swap.id as string, p => setProgress(65 + p * 0.35));
         imageUrl = extractUrl(swapResult) || imageUrl;
       }
 
@@ -690,13 +690,13 @@ function TabVideo({ laylaFace, laylaPrompt, library, addToLibrary, setFaceUpload
       if (mode === "t2v") {
         setStatus("Generating video...");
         const gen = await muapiPost(selectedModel, { prompt, aspect_ratio: aspectRatio, duration });
-        const result = await pollResult(gen.id, p => setProgress(p * 0.75));
+        const result = await pollResult(gen.id as string, p => setProgress(p * 0.75));
         videoUrl = extractUrl(result);
       } else {
         if (!sourceAsset) { setError("Select a source image first"); setGenerating(false); return; }
         setStatus("Animating image...");
         const gen = await muapiPost(selectedModel, { prompt, image_url: sourceAsset.url, aspect_ratio: aspectRatio, duration });
-        const result = await pollResult(gen.id, p => setProgress(p * 0.75));
+        const result = await pollResult(gen.id as string, p => setProgress(p * 0.75));
         videoUrl = extractUrl(result);
       }
 
@@ -715,7 +715,7 @@ function TabVideo({ laylaFace, laylaPrompt, library, addToLibrary, setFaceUpload
         setFaceUploadStatus("uploaded");
         setStatus("Locking face..."); setProgress(78);
         const swap = await muapiPost("ai-video-face-swap", { target_video: videoUrl, source_image: sourceImage });
-        const swapResult = await pollResult(swap.id, p => setProgress(78 + p * 0.22));
+        const swapResult = await pollResult(swap.id as string, p => setProgress(78 + p * 0.22));
         videoUrl = extractUrl(swapResult) || videoUrl;
       }
 
@@ -912,7 +912,7 @@ function TabLipsync({ library, addToLibrary }: { library: Asset[]; addToLibrary:
     setProcessing(true); setError(""); setStatus("Generating audio...");
     try {
       const gen = await muapiPost("mmaudio-v2/text-to-audio", { prompt: audioPrompt, duration: 10 });
-      const result = await pollResult(gen.id, setProgress);
+      const result = await pollResult(gen.id as string, setProgress);
       setAudioUrl(extractUrl(result) || ""); setStatus("Audio ready ✓");
     } catch (e: unknown) { setError(errorMessage(e)); }
     setProcessing(false);
@@ -930,7 +930,7 @@ function TabLipsync({ library, addToLibrary }: { library: Asset[]; addToLibrary:
     setProcessing(true); setError(""); setProgress(0); setStatus("Applying lipsync...");
     try {
       const gen = await muapiPost(provider, { video_url: videoAsset.url, audio_url: audioUrl });
-      const result = await pollResult(gen.id, setProgress);
+      const result = await pollResult(gen.id as string, setProgress);
       const url = extractUrl(result);
       const asset: Asset = { type: "video", url: url || "", prompt: audioPrompt || "Lipsync", faceSwapped: videoAsset.faceSwapped, model: provider };
       setResults(r => [asset, ...r]);

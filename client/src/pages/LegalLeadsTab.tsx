@@ -1164,7 +1164,8 @@ function LeadDrawer({
 }
 
 export function HomeLeadsTab({ onBack }: { onBack: () => void }) {
-  const { currentAccount } = useAccount();
+  const { activeAccountId } = useAccount();
+  const currentAccount = activeAccountId !== null ? { id: activeAccountId } : null;
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<string>("all");
@@ -1208,7 +1209,7 @@ export function HomeLeadsTab({ onBack }: { onBack: () => void }) {
     patchLead.mutate({ id, body: { notes } });
   }
 
-  const allNiches = [...new Set(leads.flatMap(l => l.serviceCategories))];
+  const allNiches = Array.from(new Set(leads.flatMap(l => l.serviceCategories)));
 
   const filtered = leads.filter(l => {
     const cats = l.serviceCategories;

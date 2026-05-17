@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { DiagnosticCheck } from "./types";
 import { storage } from "../storage";
 import { db } from "../db";

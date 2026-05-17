@@ -137,7 +137,8 @@ function AdminSkipTraceButton({ subAccountId }: { subAccountId: number }) {
 }
 
 export function CrashLeadsPage() {
-  const { currentAccount } = useAccount();
+  const { activeAccountId } = useAccount();
+  const currentAccount = activeAccountId !== null ? { id: activeAccountId } : null;
   const { user }           = useAuth();
   const [page, setPage]    = useState(1);
   const [showPhoneOnly, setShowPhoneOnly] = useState(false);

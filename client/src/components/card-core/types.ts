@@ -51,6 +51,9 @@ export interface SharedCardData {
   links: CustomLink[];
   services: Service[];
   testimonial: Testimonial | null;
+  seoTitle?: string;
+  seoDescription?: string;
+  ogImageUrl?: string;
 }
 
 export type CardSource = "platform" | "standalone";

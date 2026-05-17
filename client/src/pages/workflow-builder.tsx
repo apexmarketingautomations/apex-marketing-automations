@@ -1060,8 +1060,8 @@ function TemplatesGalleryPanel({ onUseTemplate }: { onUseTemplate: (template: Wo
   const [selectedObjective, setSelectedObjective] = useState<string>("all");
   const [previewTemplate, setPreviewTemplate] = useState<WorkflowTemplate | null>(null);
 
-  const allTriggers = useMemo(() => [...new Set(WORKFLOW_TEMPLATES.map(t => t.trigger))].sort(), []);
-  const allIndustries = useMemo(() => [...new Set(WORKFLOW_TEMPLATES.flatMap(t => t.industryTags))].sort(), []);
+  const allTriggers = useMemo(() => Array.from(new Set(WORKFLOW_TEMPLATES.map(t => t.trigger))).sort(), []);
+  const allIndustries = useMemo(() => Array.from(new Set(WORKFLOW_TEMPLATES.flatMap(t => t.industryTags))).sort(), []);
   const allObjectives = useMemo(() => {
     const objectives = WORKFLOW_TEMPLATES.map(t => {
       const outcome = t.businessOutcome.toLowerCase();
@@ -1075,7 +1075,7 @@ function TemplatesGalleryPanel({ onUseTemplate }: { onUseTemplate: (template: Wo
       if (outcome.includes("contact") || outcome.includes("engagement")) return "Maximize Contact Rate";
       return "Other";
     });
-    return [...new Set(objectives)].sort();
+    return Array.from(new Set(objectives)).sort();
   }, []);
 
   const filteredTemplates = useMemo(() => {
@@ -1161,7 +1161,7 @@ function TemplatesGalleryPanel({ onUseTemplate }: { onUseTemplate: (template: Wo
           <SelectContent>
             <SelectItem value="all">All Triggers</SelectItem>
             {allTriggers.map(trig => (
-              <SelectItem key={trig} value={trig}>{trig.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}</SelectItem>
+              <SelectItem key={trig} value={trig}>{trig.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -1172,7 +1172,7 @@ function TemplatesGalleryPanel({ onUseTemplate }: { onUseTemplate: (template: Wo
           <SelectContent>
             <SelectItem value="all">All Industries</SelectItem>
             {allIndustries.map(ind => (
-              <SelectItem key={ind} value={ind}>{ind.replace(/\b\w/g, c => c.toUpperCase())}</SelectItem>
+              <SelectItem key={ind} value={ind}>{ind.replace(/\b\w/g, (c: string) => c.toUpperCase())}</SelectItem>
             ))}
           </SelectContent>
         </Select>

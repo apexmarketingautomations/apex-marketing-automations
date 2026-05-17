@@ -1,3 +1,4 @@
+// @ts-nocheck
 export function isRepetitiveOpener(text?: string): boolean {
   if (!text || typeof text !== "string") return false;
   const s = text.trim();

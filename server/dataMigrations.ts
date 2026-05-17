@@ -1047,6 +1047,166 @@ const MIGRATIONS: DataMigration[] = [
           AND identity_status != 'verified';
     `,
   },
+  {
+    name: "2026-05-16-victim-centric-address-architecture",
+    sql: `
+      -- ── Victim-Centric Address Architecture ──────────────────────────────────
+      -- Separates incident locations from residential intelligence.
+      -- Adds typed address fields + confidence scoring to contacts table.
+
+      -- 1. Incident location columns (crash scene / highway marker)
+      ALTER TABLE contacts
+        ADD COLUMN IF NOT EXISTS incident_location TEXT,
+        ADD COLUMN IF NOT EXISTS incident_lat      REAL,
+        ADD COLUMN IF NOT EXISTS incident_lng      REAL;
+
+      -- 2. Registration address (DHSMV owner address)
+      ALTER TABLE contacts
+        ADD COLUMN IF NOT EXISTS registration_address         TEXT,
+        ADD COLUMN IF NOT EXISTS registration_address_source  TEXT,
+        ADD COLUMN IF NOT EXISTS registration_address_sourced_at TIMESTAMP;
+
+      -- 3. Skip-trace mailing address (BatchData)
+      ALTER TABLE contacts
+        ADD COLUMN IF NOT EXISTS mailing_address TEXT;
+
+      -- 4. Residential intelligence columns
+      ALTER TABLE contacts
+        ADD COLUMN IF NOT EXISTS probable_residence TEXT,
+        ADD COLUMN IF NOT EXISTS verified_residence TEXT;
+
+      -- 5. Address confidence scoring
+      ALTER TABLE contacts
+        ADD COLUMN IF NOT EXISTS address_confidence REAL DEFAULT 0.0,
+        ADD COLUMN IF NOT EXISTS address_type       TEXT DEFAULT 'unknown',
+        ADD COLUMN IF NOT EXISTS address_source     TEXT;
+
+      -- 6. Index for residential filtering and confidence queries
+      CREATE INDEX IF NOT EXISTS idx_contacts_address_type
+        ON contacts (sub_account_id, address_type)
+        WHERE address_type IS NOT NULL;
+
+      CREATE INDEX IF NOT EXISTS idx_contacts_address_confidence
+        ON contacts (sub_account_id, address_confidence)
+        WHERE address_confidence > 0;
+
+      -- 7. Backfill: existing contacts with 'crash' vertical whose address
+      --    looks like a highway reference → move to incident_location, clear address,
+      --    set address_confidence = 0.15, address_type = 'incident_location'
+      UPDATE contacts
+        SET incident_location   = address,
+            incident_lat        = lat,
+            incident_lng        = lng,
+            address             = NULL,
+            address_confidence  = 0.15,
+            address_type        = 'incident_location',
+            address_source      = 'fhp_cad'
+        WHERE lead_subtype = 'crash'
+          AND address IS NOT NULL
+          AND (
+            address ~* '\\m(I-[0-9]|US-[0-9]|SR-[0-9]|CR-[0-9]|FL-[0-9]|MM\\s*[0-9]|INTERSTATE|HIGHWAY|HWY)\\M'
+            OR address ILIKE '% MM %'
+            OR address ILIKE '%MILE MARKER%'
+          )
+          AND incident_location IS NULL;
+
+      -- 8. Backfill: existing contacts enriched by FLHSMV (has 'flhsmv-enriched' tag)
+      --    that have a non-null address not matching highway pattern →
+      --    treat as registration-quality address
+      UPDATE contacts
+        SET registration_address        = address,
+            registration_address_source = 'flhsmv_report',
+            address_confidence          = 0.85,
+            address_type                = 'registration',
+            address_source              = 'flhsmv'
+        WHERE lead_subtype = 'crash'
+          AND 'flhsmv-enriched' = ANY(tags)
+          AND address IS NOT NULL
+          AND (
+            address !~* '\\m(I-[0-9]|US-[0-9]|SR-[0-9]|CR-[0-9]|FL-[0-9]|MM\\s*[0-9]|INTERSTATE|HIGHWAY|HWY)\\M'
+          )
+          AND registration_address IS NULL;
+
+      -- 9. Backfill: update incident_fingerprint for existing crash contacts
+      --    that have a sourceExternalId (crash:<reportNumber>:acct<N>)
+      UPDATE contacts
+        SET incident_fingerprint = encode(
+              digest(
+                REGEXP_REPLACE(source_external_id, ':acct[0-9]+$', ''),
+                'sha256'
+              ),
+              'hex'
+            )
+        WHERE lead_subtype = 'crash'
+          AND source_external_id LIKE 'crash:%'
+          AND incident_fingerprint IS NULL;
+    `,
+  },
+
+  {
+    name: "2026-05-16-phone-lineage-source-intelligence",
+    sql: `
+      -- Phone Lineage / Source Intelligence Preservation (2026-05-16)
+      -- Tracks where each contact's phone came from, how confident we are,
+      -- and when it was acquired. Enables the source_matched skip-trace gate
+      -- that prevents BatchData from re-purchasing already-acquired intelligence.
+
+      -- 1. Phone source — which system/feed provided this phone
+      --    Values: 'flhsmv' | 'dhsmv' | 'sheriff_booking' | 'court_filing'
+      --            | 'jail_booking' | 'batchdata' | 'google_places' | 'manual' | 'unknown'
+      ALTER TABLE contacts ADD COLUMN IF NOT EXISTS phone_source text;
+
+      -- 2. Phone confidence — how reliable is this phone number (0.0–1.0)
+      --    Scale: 0.95 (govt verified) → 0.90 (sheriff) → 0.85 (court/DHSMV)
+      --           → 0.72 (batchdata) → 0.50 (inferred) → 0.30 (unknown)
+      ALTER TABLE contacts ADD COLUMN IF NOT EXISTS phone_confidence real;
+
+      -- 3. Phone acquired at — when this phone was recorded
+      ALTER TABLE contacts ADD COLUMN IF NOT EXISTS phone_acquired_at timestamp;
+
+      -- 4. Index: find contacts with a specific phone source for reporting
+      CREATE INDEX IF NOT EXISTS idx_contacts_phone_source
+        ON contacts(phone_source)
+        WHERE phone_source IS NOT NULL;
+
+      -- 5. Backfill: tag existing contacts that have phones from BatchData enrichment
+      --    (skipTraceStatus='matched' + enrichmentProvider='batchdata' → phone_source='batchdata')
+      UPDATE contacts
+        SET phone_source     = 'batchdata',
+            phone_confidence = 0.72,
+            phone_acquired_at = COALESCE(enrichment_completed_at, updated_at, created_at)
+        WHERE phone IS NOT NULL
+          AND phone_source IS NULL
+          AND skip_trace_status = 'matched'
+          AND enrichment_provider = 'batchdata';
+
+      -- 6. Backfill: contacts with phone but unknown source → mark as unknown confidence
+      UPDATE contacts
+        SET phone_source     = 'unknown',
+            phone_confidence = 0.30,
+            phone_acquired_at = COALESCE(updated_at, created_at)
+        WHERE phone IS NOT NULL
+          AND phone_source IS NULL;
+
+      -- 7. Backfill: contacts that already have phones but skipTraceStatus='not_attempted'
+      --    — these had source phones but were never marked correctly.
+      --    Promote to source_matched so BatchData never re-traces them.
+      UPDATE contacts
+        SET skip_trace_status = 'source_matched'
+        WHERE phone IS NOT NULL
+          AND skip_trace_status = 'not_attempted';
+
+      -- 8. Backfill: contacts with phone AND skipTraceStatus='no_match'
+      --    — these were incorrectly marked no_match after skip trace ran on source phones.
+      --    Restore to source_matched (the skip trace should never have run).
+      UPDATE contacts
+        SET skip_trace_status = 'source_matched'
+        WHERE phone IS NOT NULL
+          AND phone_source IS NOT NULL
+          AND phone_source != 'batchdata'
+          AND skip_trace_status = 'no_match';
+    `,
+  },
 ];
 
 export async function runDataMigrations(): Promise<void> {

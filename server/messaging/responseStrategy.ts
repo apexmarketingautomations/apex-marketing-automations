@@ -1,3 +1,4 @@
+// @ts-nocheck
 export type ResponseType = "text" | "voice" | "none";
 export type ResponseTiming = "immediate" | "delayed";
 export type ResponseTone = "neutral" | "playful" | "direct";

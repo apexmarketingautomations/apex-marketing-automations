@@ -984,7 +984,7 @@ export default function LiquidWebsite() {
   if (contactData?.firstName) templateVars["contact.first_name"] = contactData.firstName;
   if (contactData?.email) templateVars["contact.email"] = contactData.email;
   if (contactData?.phone) templateVars["contact.phone"] = contactData.phone;
-  for (const [key, value] of urlParams.entries()) {
+  for (const [key, value] of Array.from(urlParams.entries())) {
     if (key !== "vibe" && key !== "contact_email" && key !== "contact_phone") {
       templateVars[`url_param.${key}`] = value;
     }

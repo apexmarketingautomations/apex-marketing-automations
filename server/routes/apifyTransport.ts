@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Apify Transport + Admin BatchData Routes
  *

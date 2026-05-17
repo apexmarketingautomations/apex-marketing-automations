@@ -212,7 +212,7 @@ function WebhooksPageInner() {
     if (editingWebhook) {
       updateMutation.mutate({ id: editingWebhook.id, name: formName, url: formUrl, events: formEvents, active: formActive });
     } else {
-      createMutation.mutate({ subAccountId, name: formName, url: formUrl, events: formEvents, active: formActive });
+      createMutation.mutate({ subAccountId: subAccountId ?? 0, name: formName, url: formUrl, events: formEvents, active: formActive });
     }
   }
 

@@ -10,6 +10,7 @@ interface PlanGateProps {
   feature: string;
   children: React.ReactNode;
   featureLabel?: string;
+  pageName?: string;
 }
 
 export function PlanGate({ feature, children, featureLabel }: PlanGateProps) {

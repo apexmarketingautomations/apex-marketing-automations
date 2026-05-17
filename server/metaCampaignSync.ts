@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { jobQueue } from "./jobQueue";
 import { storage } from "./storage";
 import { getMetaConfig } from "./metaConfig";

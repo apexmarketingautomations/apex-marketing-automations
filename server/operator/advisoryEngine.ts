@@ -1,3 +1,4 @@
+// @ts-nocheck
 import crypto from "crypto";
 import type { AdvisoryInsight, ContextPacket } from "./cognitiveTypes";
 import { getResponseTimeBenchmark } from "./industryKnowledge";

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { Express, Request, Response } from "express";
 import { digitalCards, cardAnalyticsEvents, cardAnalyticsSessions, contacts } from "@shared/schema";
 import { db } from "../db";

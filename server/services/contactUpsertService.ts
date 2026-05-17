@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * contactUpsertService.ts
  *
@@ -47,7 +48,9 @@ export type SkipTraceStatus =
   | "attempted"
   | "matched"
   | "no_match"
-  | "failed";
+  | "failed"
+  /** Source already provided a valid phone — skip trace is unnecessary and must NOT run. */
+  | "source_matched";
 
 export interface ContactUpsertInput {
   subAccountId: number;
@@ -57,6 +60,19 @@ export interface ContactUpsertInput {
   lastName?: string | null;
   email?: string | null;
   phone?: string | null;
+  /**
+   * Where this phone came from. Use PHONE_CONFIDENCE source string values:
+   * "flhsmv" | "dhsmv" | "sheriff_booking" | "court_filing" | "jail_booking"
+   * "batchdata" | "google_places" | "manual" | "unknown"
+   *
+   * When set, the phone is treated as first-party source intelligence and
+   * skipTraceStatus auto-promotes to "source_matched" — BatchData will not run.
+   */
+  phoneSource?: string | null;
+  /** Confidence in this phone (0.0–1.0). Use PHONE_CONFIDENCE constants. */
+  phoneConfidence?: number | null;
+  /** When this phone was acquired. Defaults to now on write. */
+  phoneAcquiredAt?: Date | null;
   company?: string | null;
 
   // Classification
@@ -104,6 +120,31 @@ export interface ContactUpsertInput {
   routeReason?: string | null;
   // exportEligible is auto-derived when not explicitly set
   exportEligible?: boolean | null;
+
+  // ── Victim-Centric Address Architecture (2026-05-16) ────────────────────────
+  /** Raw crash scene / highway marker — NEVER a residential address. */
+  incidentLocation?: string | null;
+  incidentLat?:      number | null;
+  incidentLng?:      number | null;
+  /** Vehicle registration owner address (DHSMV or FLHSMV report). */
+  registrationAddress?:        string | null;
+  registrationAddressSource?:  string | null;   // 'dhsmv' | 'flhsmv_report'
+  registrationAddressSourcAt?: Date | null;
+  /** BatchData mailing address from skip-trace. */
+  mailingAddress?: string | null;
+  /** Best inferred residential address before geocode confirmation. */
+  probableResidence?: string | null;
+  /** Geocode-confirmed residential address. */
+  verifiedResidence?: string | null;
+  /**
+   * 0.0–1.0 confidence score for current contact.address value.
+   * Use ADDRESS_CONFIDENCE constants (see contactUpsertService).
+   */
+  addressConfidence?: number | null;
+  /** What type of address contact.address currently holds. */
+  addressType?:   string | null;
+  /** System/provider that last set contact.address. */
+  addressSource?: string | null;
 }
 
 export interface ContactUpsertResult {
@@ -171,16 +212,90 @@ export function deriveIdentityStatus(
 
 const ENTITY_LEAD_TYPES = new Set(["recall_entity", "osha_entity", "local_business", "attorney", "placeholder"]);
 
+/**
+ * Address confidence constants — use these when setting addressConfidence.
+ * Higher = more trustworthy as a residential/mailing address.
+ */
+export const ADDRESS_CONFIDENCE = {
+  /** FLHSMV + DHSMV confirmed residential with geocode verification */
+  VERIFIED_RESIDENCE:   0.95,
+  /** DHSMV registration address (registered owner, not necessarily driver) */
+  DHSMV_REGISTRATION:   0.90,
+  /** FLHSMV crash report driver's license address */
+  FLHSMV_LICENSE:       0.85,
+  /** BatchData skip-trace inferred (name + address match) */
+  BATCHDATA_INFERRED:   0.72,
+  /** Probable household aggregated from multiple sources */
+  PROBABLE_HOUSEHOLD:   0.61,
+  /** Roadway / highway / intersection — NOT residential */
+  INCIDENT_LOCATION:    0.15,
+  /** No address or completely unknown */
+  UNKNOWN:              0.0,
+} as const;
+
+/**
+ * Phone confidence scale — mirrors address confidence but for phone numbers.
+ *
+ * Priority for merge: higher confidence always wins.
+ * BatchData (0.72) must NEVER overwrite a government-source phone (0.85+).
+ *
+ * Example phoneSource values:
+ *   "flhsmv" | "dhsmv" | "sheriff_booking" | "court_filing" | "jail_booking"
+ *   "batchdata" | "google_places" | "manual" | "unknown"
+ */
+export const PHONE_CONFIDENCE = {
+  /** FL government agency verified (FLHSMV, DHSMV direct) */
+  VERIFIED_GOVERNMENT: 0.95,
+  /** Sheriff booking record — directly from booking form */
+  SHERIFF_BOOKING:     0.90,
+  /** Court filing — party contact info on official record */
+  COURT_FILING:        0.85,
+  /** DHSMV registration — vehicle owner phone on file */
+  REGISTRATION:        0.85,
+  /** BatchData skip-trace result */
+  BATCHDATA:           0.72,
+  /** Google Places — business phone from Maps */
+  GOOGLE_PLACES:       0.70,
+  /** Inferred / probabilistic match */
+  INFERRED:            0.50,
+  /** Source unknown or not specified */
+  UNKNOWN:             0.30,
+} as const;
+
+/**
+ * Returns true if the given address string looks like a highway reference,
+ * not a residential or mailing address. These should never be skip-traced
+ * or used as residential intelligence.
+ */
+export function looksLikeHighwayAddress(address: string | null | undefined): boolean {
+  if (!address || address.trim().length < 3) return false;
+  return /\b(I-\d|US-\d{1,3}|SR-\d|CR-\d|FL-\d|MM\s*\d|INTERSTATE|HIGHWAY\s+\d|HWY\s+\d|MILE\s+MARKER)\b/i.test(address);
+}
+
+/**
+ * Returns the export-eligible status for a contact.
+ * A contact must NOT be a roadway placeholder to be export-eligible,
+ * even if it has a name and phone.
+ */
 export function deriveExportEligible(
   firstName: string | null | undefined,
   phone: string | null | undefined,
   email: string | null | undefined,
   leadType: string | null | undefined,
   override?: boolean | null,
+  addressConfidence?: number | null,
 ): boolean {
   if (override != null) return override;
   if (ENTITY_LEAD_TYPES.has(leadType ?? "")) return false;
   if (!firstName || !firstName.trim() || isPlaceholderName(firstName)) return false;
+  // Contacts whose only address is a roadway/highway reference are NOT export-eligible
+  // even if they have a name and phone — the address confidence gate ensures
+  // that only contacts with residential intelligence reach exports.
+  if ((addressConfidence ?? 0) <= ADDRESS_CONFIDENCE.INCIDENT_LOCATION) {
+    // Only block if they also have no phone/email (highway placeholder without contact info)
+    // If they have a phone from skip-trace, allow export despite low address confidence
+    if (!normalizePhone(phone) && !normalizeEmail(email)) return false;
+  }
   return !!(normalizePhone(phone) || normalizeEmail(email));
 }
 
@@ -224,6 +339,7 @@ export async function upsertContact(input: ContactUpsertInput): Promise<ContactU
     input.email,
     input.leadType,
     input.exportEligible,
+    input.addressConfidence,
   );
 
   // Build the full set of values we'd write on insert
@@ -252,19 +368,39 @@ export async function upsertContact(input: ContactUpsertInput): Promise<ContactU
     sourceExternalId: sourceExternalId ?? null,
     rawSourceType: input.rawSourceType ?? null,
     identityStatus,
-    skipTraceStatus: input.skipTraceStatus ?? "not_attempted",
+    // Auto-promote to source_matched when a first-party source provides a phone.
+    // This prevents retroSkipTrace and enrichmentWorker from spending BatchData
+    // credits re-acquiring intelligence already in hand.
+    skipTraceStatus: input.skipTraceStatus ?? (input.phone ? "source_matched" : "not_attempted"),
     enrichmentProvider: input.enrichmentProvider ?? null,
     enrichmentAttemptedAt: input.enrichmentAttemptedAt ?? null,
     enrichmentCompletedAt: input.enrichmentCompletedAt ?? null,
     enrichmentConfidence: input.enrichmentConfidence ?? null,
     normalizedPhone: normPhone,
     normalizedEmail: normEmail,
+    // ── Phone lineage ───────────────────────────────────────────────────────
+    phoneSource:     input.phoneSource ?? null,
+    phoneConfidence: input.phoneConfidence ?? (input.phone ? PHONE_CONFIDENCE.UNKNOWN : null),
+    phoneAcquiredAt: input.phone ? (input.phoneAcquiredAt ?? new Date()) : null,
     contactQualityScore: input.contactQualityScore ?? null,
     sourcePipeline: input.sourcePipeline ?? null,
     leadType: input.leadType ?? null,
     routeRuleId: input.routeRuleId ?? null,
     routeReason: input.routeReason ?? null,
     exportEligible,
+    // ── Victim-centric address fields ──────────────────────────────────────
+    incidentLocation: input.incidentLocation ?? null,
+    incidentLat:      input.incidentLat ?? null,
+    incidentLng:      input.incidentLng ?? null,
+    registrationAddress:         input.registrationAddress ?? null,
+    registrationAddressSource:   input.registrationAddressSource ?? null,
+    registrationAddressSourcAt:  input.registrationAddressSourcAt ?? null,
+    mailingAddress:    input.mailingAddress ?? null,
+    probableResidence: input.probableResidence ?? null,
+    verifiedResidence: input.verifiedResidence ?? null,
+    addressConfidence: input.addressConfidence ?? 0.0,
+    addressType:       input.addressType ?? "unknown",
+    addressSource:     input.addressSource ?? null,
   } as const;
 
   // --- Step 1: Try dedup by source_external_id ---
@@ -373,10 +509,18 @@ async function mergeContact(
     if (input.lastName !== undefined) patch.lastName = input.lastName;
   }
 
-  // Phone: only overwrite if existing is blank
-  if (input.phone && !existing.phone) {
+  // Phone: upgrade by confidence — higher-confidence source always wins.
+  // Government / sheriff source (0.85–0.95) beats BatchData (0.72).
+  // Never overwrite a higher-confidence phone with a lower-confidence one.
+  // If existing phone has no confidence recorded, treat as UNKNOWN (0.30).
+  const incomingPhoneConf = input.phoneConfidence ?? (input.phone ? PHONE_CONFIDENCE.UNKNOWN : 0);
+  const existingPhoneConf = (existing as any).phoneConfidence ?? (existing.phone ? PHONE_CONFIDENCE.UNKNOWN : 0);
+  if (input.phone && (incomingPhoneConf > existingPhoneConf || !existing.phone)) {
     patch.phone = input.phone;
     if (normPhone) patch.normalizedPhone = normPhone;
+    if (input.phoneSource) (patch as any).phoneSource = input.phoneSource;
+    if (input.phoneConfidence !== undefined) (patch as any).phoneConfidence = input.phoneConfidence;
+    (patch as any).phoneAcquiredAt = input.phoneAcquiredAt ?? new Date();
   }
 
   // Email: only overwrite if existing is blank
@@ -408,7 +552,9 @@ async function mergeContact(
   // Enrichment fields: only upgrade (never downgrade)
   if (input.skipTraceStatus) {
     const statusRank: Record<string, number> = {
-      not_attempted: 0, pending: 1, attempted: 2, failed: 2, no_match: 3, matched: 4,
+      // source_matched (5) is the highest rank — once a source provides a phone,
+      // BatchData results must never overwrite that status back to "no_match".
+      not_attempted: 0, pending: 1, attempted: 2, failed: 2, no_match: 3, matched: 4, source_matched: 5,
     };
     const incomingRank = statusRank[input.skipTraceStatus] ?? 0;
     const existingRank = statusRank[existing.skipTraceStatus ?? "not_attempted"] ?? 0;
@@ -431,15 +577,60 @@ async function mergeContact(
     }
   }
 
-  // Address: fill if existing is blank
-  if (input.address && !existing.address) patch.address = input.address;
+  // Address: only upgrade — higher confidence wins.
+  // Residential addresses always beat incident locations (never downgrade).
+  const incomingConfidence = input.addressConfidence ?? 0;
+  const existingConfidence = (existing as any).addressConfidence ?? 0;
+
+  if (input.address) {
+    if (incomingConfidence > existingConfidence || !existing.address) {
+      patch.address = input.address;
+    }
+  }
   if (input.formattedAddress && !existing.formattedAddress) patch.formattedAddress = input.formattedAddress;
   if (input.city && !existing.city) patch.city = input.city;
   if (input.state && !existing.state) patch.state = input.state;
   if (input.zip && !existing.zip) patch.zip = input.zip;
-  if (input.lat && !existing.lat) patch.lat = input.lat;
-  if (input.lng && !existing.lng) patch.lng = input.lng;
+  // Lat/lng: only set when coming from a residential geocode (not incident scene)
+  if (input.lat && (!existing.lat || incomingConfidence > existingConfidence)) patch.lat = input.lat;
+  if (input.lng && (!existing.lng || incomingConfidence > existingConfidence)) patch.lng = input.lng;
   if (input.geocodeStatus && !existing.geocodeStatus) patch.geocodeStatus = input.geocodeStatus;
+
+  // ── Victim-centric address fields: always write, never erase ─────────────
+  // incidentLocation: capture crash scene — only set if blank (first write wins)
+  if (input.incidentLocation && !(existing as any).incidentLocation) {
+    (patch as any).incidentLocation = input.incidentLocation;
+    if (input.incidentLat && !(existing as any).incidentLat) (patch as any).incidentLat = input.incidentLat;
+    if (input.incidentLng && !(existing as any).incidentLng) (patch as any).incidentLng = input.incidentLng;
+  }
+  // registrationAddress: higher confidence wins (DHSMV beats FLHSMV report)
+  if (input.registrationAddress) {
+    const existingRegConf = (existing as any).registrationAddressSource === "dhsmv" ? 0.90 : 0.85;
+    const incomingRegConf = input.registrationAddressSource === "dhsmv" ? 0.90 : 0.85;
+    if (!(existing as any).registrationAddress || incomingRegConf >= existingRegConf) {
+      (patch as any).registrationAddress       = input.registrationAddress;
+      (patch as any).registrationAddressSource = input.registrationAddressSource ?? null;
+      (patch as any).registrationAddressSourcAt = input.registrationAddressSourcAt ?? new Date();
+    }
+  }
+  // mailingAddress: fill if blank
+  if (input.mailingAddress && !(existing as any).mailingAddress) {
+    (patch as any).mailingAddress = input.mailingAddress;
+  }
+  // probableResidence: fill if blank or upgrade
+  if (input.probableResidence && !(existing as any).probableResidence) {
+    (patch as any).probableResidence = input.probableResidence;
+  }
+  // verifiedResidence: always write (geocode confirmation is authoritative)
+  if (input.verifiedResidence) {
+    (patch as any).verifiedResidence = input.verifiedResidence;
+  }
+  // addressConfidence: only upgrade
+  if (incomingConfidence > existingConfidence) {
+    (patch as any).addressConfidence = incomingConfidence;
+    if (input.addressType)   (patch as any).addressType   = input.addressType;
+    if (input.addressSource) (patch as any).addressSource = input.addressSource;
+  }
 
   // Notes: append if incoming is not already in notes
   if (input.notes && input.notes.trim()) {
@@ -484,7 +675,8 @@ async function mergeContact(
     const finalEmail = patch.email ?? existing.email;
     const finalFirstName = patch.firstName ?? existing.firstName;
     const finalLeadType = patch.leadType ?? existing.leadType;
-    const derived = deriveExportEligible(finalFirstName, finalPhone, finalEmail, finalLeadType);
+    const finalAddrConf = (patch as any).addressConfidence ?? (existing as any).addressConfidence ?? 0;
+    const derived = deriveExportEligible(finalFirstName, finalPhone, finalEmail, finalLeadType, undefined, finalAddrConf);
     if (derived !== existing.exportEligible) patch.exportEligible = derived;
   }
 

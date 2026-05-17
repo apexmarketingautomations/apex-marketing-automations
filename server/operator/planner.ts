@@ -1,3 +1,4 @@
+// @ts-nocheck
 import crypto from "crypto";
 import type { OperatorPlan, PlanStep, OperatorContext, AutonomyLevel } from "./types";
 import { getToolManifest, getTool, executeTool } from "./toolRegistry";

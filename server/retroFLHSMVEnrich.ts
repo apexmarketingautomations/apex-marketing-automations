@@ -49,24 +49,20 @@ async function sleep(ms: number) {
  */
 async function isAlreadyEnriched(
   reportNumber: string,
-  subAccountId: number | null,
+  subAccountId: number,
 ): Promise<boolean> {
   const sourcePrefix = `crash:${reportNumber}:`;
 
+  // SECURITY: always scope to the specific subAccountId — never read across tenants.
   const rows = await db
-    .select({ id: contacts.id, tags: contacts.tags, subAccountId: contacts.subAccountId })
+    .select({ id: contacts.id, tags: contacts.tags })
     .from(contacts)
-    .where(sql`source_external_id LIKE ${sourcePrefix + "%"}`);
+    .where(sql`source_external_id LIKE ${sourcePrefix + "%"} AND sub_account_id = ${subAccountId}`);
 
-  // Narrow to sub-account if known
-  const scoped = subAccountId != null
-    ? rows.filter(c => c.subAccountId === subAccountId)
-    : rows;
-
-  if (scoped.length === 0) return false; // No contacts yet — let enrichment run and create them
+  if (rows.length === 0) return false; // No contacts yet — let enrichment run
 
   // All must be tagged; if even one is missing the tag we allow the run
-  return scoped.every(c => (c.tags ?? []).includes("flhsmv-enriched"));
+  return rows.every(c => (c.tags ?? []).includes("flhsmv-enriched"));
 }
 
 export async function runRetroFLHSMVEnrich(options: {
@@ -119,7 +115,15 @@ export async function runRetroFLHSMVEnrich(options: {
     await Promise.allSettled(batch.map(async (row) => {
       try {
         const officialNumber = row.officialReportNumber!;
-        const subAccountId   = row.subAccountId ?? null;
+
+        // SECURITY: skip any crash report without a valid subAccountId — enriching without
+        // one would require a cross-tenant query or an unsafe fallback.
+        if (row.subAccountId == null) {
+          console.warn(`[RETRO-FLHSMV] Skipping ${officialNumber} — crash report has null subAccountId`);
+          stats.skipped++;
+          return;
+        }
+        const subAccountId = row.subAccountId;
 
         // ── Pre-flight tag check ──────────────────────────────────────────
         // Check whether the linked contacts are already tagged "flhsmv-enriched"

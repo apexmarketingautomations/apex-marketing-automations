@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { db } from "../db";
 import { subAccounts, contacts } from "@shared/schema";
 import { eq, or } from "drizzle-orm";

@@ -111,3 +111,38 @@ export {
   requiresKeys,
 } from "./aiStructuredOutput";
 export type { Validator } from "./aiStructuredOutput";
+
+// ── Audit trail ───────────────────────────────────────────────────────────────
+export {
+  writeAuditEntry,
+  getAuditLog,
+  getAuditSummary,
+} from "./auditTrailService";
+export type { AIAuditEntry, AuditSummary, AuditQueryOptions } from "./auditTrailService";
+
+// ── Execution policy engine ───────────────────────────────────────────────────
+export {
+  checkExecutionPolicy,
+  assertTenantBoundary,
+  isEmergencyPolicyShutdown,
+  setEmergencyPolicyShutdown,
+  disableTaskType,
+  enableTaskType,
+  grantAccountAction,
+  revokeAccountAction,
+  getPolicyReport,
+} from "./executionPolicyEngine";
+export type {
+  AIAction,
+  PolicyContext,
+  PolicyResult,
+  PolicyReport,
+} from "./executionPolicyEngine";
+
+// ── Agent coordinator ─────────────────────────────────────────────────────────
+export { runAgent } from "./agentCoordinator";
+export type {
+  AgentDefinition,
+  AgentRunOptions,
+  AgentResult,
+} from "./agentCoordinator";

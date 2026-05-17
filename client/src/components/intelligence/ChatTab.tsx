@@ -150,7 +150,7 @@ export function ChatTab({ subAccountId }: { subAccountId: number }) {
           setActivitySteps([]);
         },
         onError: (err) => {
-          const errorMessage = typeof err === 'string' ? err : (err?.message || String(err) || "Unknown");
+          const errorMessage = typeof err === 'string' ? err : ((err as any)?.message || String(err) || "Unknown");
           setMessages(prev => [...prev, { role: "assistant", content: `I'm having trouble connecting right now. This could be a temporary issue with the AI service.\n\nError: ${errorMessage}\n\nPlease try again in a few seconds.` }]);
           setActivitySteps([]);
           setGroundingSources([]);

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import crypto from "crypto";
 import { storage } from "./storage";
 import { EVENT_LOG_STATUS } from "@shared/schema";

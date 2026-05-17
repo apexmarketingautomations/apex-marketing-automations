@@ -7,7 +7,7 @@ const recentExecutions: Map<string, number> = new Map();
 
 setInterval(() => {
   const cutoff = Date.now() - DUPLICATE_WINDOW_MS * 2;
-  for (const [key, ts] of recentExecutions) {
+  for (const [key, ts] of Array.from(recentExecutions.entries())) {
     if (ts < cutoff) recentExecutions.delete(key);
   }
 }, 30_000);
