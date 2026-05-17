@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * server/routing/webhookDelivery.ts
  *

@@ -62,7 +62,7 @@ Schema:
   },
 
   outputValidator: (v): v is ServiceBusinessOutput =>
-    isObject(v) && requiresKeys(v, ["businessCategory", "opportunityScore", "confidence"]),
+    isObject(v) && requiresKeys(["businessCategory", "opportunityScore", "confidence"])(v),
 
   defaultConfidence: 0.76,
   maxParseAttempts: 2,

@@ -24,7 +24,8 @@ import { writeAuditEntry } from "./auditTrailService";
 import { parseStructuredOutput } from "./aiStructuredOutput";
 import { buildPlan } from "./aiTaskRouter";
 import { recordProviderSuccess, recordProviderFailure } from "./providerRegistry";
-import type { AITaskType, ProviderName, Validator } from "./types";
+import type { AITaskType, ProviderName } from "./types";
+import type { Validator } from "./aiStructuredOutput";
 import type { PolicyContext, AIAction } from "./executionPolicyEngine";
 
 // ── Agent definition ──────────────────────────────────────────────────────────
@@ -138,7 +139,7 @@ export async function runAgent<TOutput>(
   const timeoutMs   = agent.timeoutMs ?? 30_000;
 
   // 4. Get routing plan for best available provider/model
-  const plan = buildPlan({ taskType: agent.taskType, jsonMode: true });
+  const plan = buildPlan(agent.taskType);
   const primary = plan.candidates[0];
   const provider: ProviderName = (primary?.provider ?? "anthropic") as ProviderName;
   const model    = primary?.modelId ?? "claude-3-5-haiku-20241022";
@@ -166,12 +167,12 @@ export async function runAgent<TOutput>(
             { role: "system", content: system },
             { role: "user",   content: user + retryNote },
           ],
-          { taskType: agent.taskType, jsonMode: true, timeoutMs, maxTokens: 4096 },
+          { jsonMode: true, timeoutMs, maxTokens: 4096 },
         ),
         timeoutMs,
       );
 
-      lastRaw       = response.content;
+      lastRaw       = response.text;
       totalTokens   = response.usage?.totalTokens;
       estimatedCostUsd = estimateCost(model, response.usage);
 
@@ -179,7 +180,7 @@ export async function runAgent<TOutput>(
       recordProviderSuccess(provider, Date.now() - start);
 
       // Validate structured output
-      const parsed = parseStructuredOutput<TOutput>(lastRaw, agent.outputValidator);
+      const parsed = await parseStructuredOutput<TOutput>(lastRaw, agent.outputValidator);
       if (parsed.valid && parsed.data != null) {
         output      = parsed.data;
         outputValid = true;

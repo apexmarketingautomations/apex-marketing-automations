@@ -261,7 +261,7 @@ export interface PolicyReport {
 
 export function getPolicyReport(): PolicyReport {
   const accountOverrides: Record<string, string[]> = {};
-  for (const [id, actions] of _accountActionOverrides.entries()) {
+  for (const [id, actions] of Array.from(_accountActionOverrides.entries())) {
     accountOverrides[id] = Array.from(actions);
   }
   return {

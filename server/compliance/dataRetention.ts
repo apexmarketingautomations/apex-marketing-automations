@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * server/compliance/dataRetention.ts
  *

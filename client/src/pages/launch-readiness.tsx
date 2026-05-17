@@ -68,7 +68,7 @@ export default function LaunchReadiness() {
 
   const data = readiness.data;
   const categories = data?.checks
-    ? [...new Set(data.checks.map((c: any) => c.category))]
+    ? Array.from(new Set<string>(data.checks.map((c: any) => c.category as string)))
     : [];
 
   return (

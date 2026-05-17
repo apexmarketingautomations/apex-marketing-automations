@@ -171,6 +171,8 @@ async function sendErrorToSentry(trace: AICallTrace): Promise<void> {
   // Dynamically import Sentry so we don't hard-dep it — if not installed, silently skip
   let Sentry: any;
   try {
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore — optional dep; silently skipped if not installed
     Sentry = await import("@sentry/node");
   } catch { // allow-silent-catch: Sentry SDK not installed — skip error reporting
     return;

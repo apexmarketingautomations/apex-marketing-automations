@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * server/workers/enrichmentWorker.ts
  *

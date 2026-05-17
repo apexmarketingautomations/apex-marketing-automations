@@ -973,13 +973,13 @@ export default function PropertyRadar() {
                           <p className="text-sm text-slate-300" data-testid="text-skip-mailing">{skipTraceResult.mailingAddress || "N/A"}</p>
                         </div>
                       </div>
-                      {(skipTraceResult.additionalPhones?.length > 0 || skipTraceResult.additionalEmails?.length > 0) && (
+                      {((skipTraceResult.additionalPhones?.length ?? 0) > 0 || (skipTraceResult.additionalEmails?.length ?? 0) > 0) && (
                         <div className="border-t border-violet-500/20 pt-2">
-                          {skipTraceResult.additionalPhones?.length > 0 && (
-                            <p className="text-xs text-slate-400">Other phones: {skipTraceResult.additionalPhones.join(", ")}</p>
+                          {(skipTraceResult.additionalPhones?.length ?? 0) > 0 && (
+                            <p className="text-xs text-slate-400">Other phones: {skipTraceResult.additionalPhones?.join(", ")}</p>
                           )}
-                          {skipTraceResult.additionalEmails?.length > 0 && (
-                            <p className="text-xs text-slate-400 mt-1">Other emails: {skipTraceResult.additionalEmails.join(", ")}</p>
+                          {(skipTraceResult.additionalEmails?.length ?? 0) > 0 && (
+                            <p className="text-xs text-slate-400 mt-1">Other emails: {skipTraceResult.additionalEmails?.join(", ")}</p>
                           )}
                         </div>
                       )}

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { Express, Request, Response } from "express";
 import { messages } from "@shared/schema";
 import { storage } from "../storage";

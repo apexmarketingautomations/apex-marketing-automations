@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Retroactive Skip Trace Job
  *

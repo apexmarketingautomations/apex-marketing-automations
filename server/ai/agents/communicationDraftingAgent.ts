@@ -79,8 +79,8 @@ Schema:
 
   outputValidator: (v): v is CommunicationDraftOutput =>
     isObject(v) &&
-    requiresKeys(v, ["channel", "body", "characterCount", "approvalRequired", "confidence"]) &&
-    (v as any).approvalRequired === true,
+    requiresKeys(["channel", "body", "characterCount", "approvalRequired", "confidence"])(v) &&
+    (v as unknown as CommunicationDraftOutput).approvalRequired === true,
 
   defaultConfidence: 0.85,
   maxParseAttempts: 2,

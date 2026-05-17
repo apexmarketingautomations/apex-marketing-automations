@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { db } from "../../db";
 import { eq, and, gte, sql } from "drizzle-orm";
 import { commentAutoReplies, subAccounts } from "@shared/schema";

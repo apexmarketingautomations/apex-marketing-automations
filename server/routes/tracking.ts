@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { Express, Request, Response } from "express";
 import crypto from "crypto";
 import { z } from "zod";

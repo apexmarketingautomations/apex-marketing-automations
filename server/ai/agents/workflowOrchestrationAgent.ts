@@ -83,7 +83,7 @@ Schema:
 
   outputValidator: (v): v is WorkflowOrchestrationOutput =>
     isObject(v) &&
-    requiresKeys(v, ["workflowId", "workflowHealth", "nextActions", "confidence"]),
+    requiresKeys(["workflowId", "workflowHealth", "nextActions", "confidence"])(v),
 
   defaultConfidence: 0.84,
   maxParseAttempts: 2,

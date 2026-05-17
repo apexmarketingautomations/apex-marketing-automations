@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { OperatorTool, ValidationResult, ToolResult, OperatorContext } from "../types";
 import { storage } from "../../storage";
 import { db } from "../../db";

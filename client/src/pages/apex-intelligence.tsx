@@ -2002,7 +2002,7 @@ export default function ApexIntelligenceDashboard() {
                     </Card>
                   </div>
 
-                  {(readinessData.errors?.length > 0 || readinessData.warnings?.length > 0) && (
+                  {((readinessData.errors?.length ?? 0) > 0 || (readinessData.warnings?.length ?? 0) > 0) && (
                     <Card className="bg-white/[0.03] border-white/5 p-4" data-testid="readiness-issues">
                       <h4 className="text-xs font-bold text-white mb-3 flex items-center gap-2">
                         <AlertTriangle size={12} className="text-amber-400" />

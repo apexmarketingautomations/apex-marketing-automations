@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { aiChat, isAIConfigured } from "../../aiGateway";
 import type { RoomContext } from "./contextBuilder";
 

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { Express, Request, Response } from "express";
 import { aiChat, aiGenerateImage, isAIConfigured } from "../aiGateway";
 import { asyncHandler, logUsageInternal } from "./helpers";

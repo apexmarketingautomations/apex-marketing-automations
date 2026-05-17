@@ -63,7 +63,7 @@ Schema:
 
   outputValidator: (v): v is EnrichmentReasoningOutput =>
     isObject(v) &&
-    requiresKeys(v, ["contactabilityScore", "overallProfileStrength", "confidence"]),
+    requiresKeys(["contactabilityScore", "overallProfileStrength", "confidence"])(v),
 
   defaultConfidence: 0.83,
   maxParseAttempts: 2,

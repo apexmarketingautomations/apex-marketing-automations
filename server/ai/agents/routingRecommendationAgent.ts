@@ -68,7 +68,7 @@ Schema:
 
   outputValidator: (v): v is RoutingRecommendationOutput =>
     isObject(v) &&
-    requiresKeys(v, ["recommendedServiceType", "primaryMatchScore", "priorityTier"]),
+    requiresKeys(["recommendedServiceType", "primaryMatchScore", "priorityTier"])(v),
 
   defaultConfidence: 0.80,
   maxParseAttempts: 2,

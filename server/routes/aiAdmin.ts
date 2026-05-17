@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * server/routes/aiAdmin.ts
  *

@@ -62,7 +62,7 @@ Schema:
   },
 
   outputValidator: (v): v is ContractorOpportunityOutput =>
-    isObject(v) && requiresKeys(v, ["serviceCategory", "opportunityScore", "confidence"]),
+    isObject(v) && requiresKeys(["serviceCategory", "opportunityScore", "confidence"])(v),
 
   defaultConfidence: 0.78,
   maxParseAttempts: 2,

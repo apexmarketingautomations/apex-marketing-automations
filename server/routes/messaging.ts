@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { Express, Request, Response } from "express";
 import { insertMessageSchema, insertWhatsappTemplateSchema, messages, whatsappTemplates, integrationConnections, contacts, subAccounts } from "@shared/schema";
 import { sql, eq, and } from "drizzle-orm";

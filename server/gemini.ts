@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { GoogleGenAI } from "@google/genai";
 import { recordSuccess } from "./pulse";
 

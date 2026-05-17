@@ -62,8 +62,8 @@ Schema:
 
   outputValidator: (v): v is SignalAnalysisOutput =>
     isObject(v) &&
-    requiresKeys(v, ["opportunityScore", "urgencyScore", "signalType", "primaryCategory",
-      "keyFindings", "recommendedActions", "confidence", "reasoning"]),
+    requiresKeys(["opportunityScore", "urgencyScore", "signalType", "primaryCategory",
+      "keyFindings", "recommendedActions", "confidence", "reasoning"])(v),
 
   defaultConfidence: 0.82,
   maxParseAttempts: 2,

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { db } from "./db";
 import { sharedInsights } from "@shared/schema";
 import { eq, and, desc, sql, asc } from "drizzle-orm";

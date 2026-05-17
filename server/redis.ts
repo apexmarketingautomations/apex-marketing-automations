@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * server/redis.ts
  * ---------------

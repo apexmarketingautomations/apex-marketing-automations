@@ -324,7 +324,7 @@ function OAuthConnectionCard({
   onDisconnect,
   onReconnect,
 }: {
-  provider: "google" | "meta";
+  provider: string;
   title: string;
   description: string;
   icon: React.ReactNode;

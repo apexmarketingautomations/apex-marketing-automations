@@ -62,8 +62,8 @@ Schema:
 
   outputValidator: (v): v is LegalIntelligenceOutput =>
     isObject(v) &&
-    requiresKeys(v, ["caseClassification", "estimatedCaseSeverity", "referralRecommended",
-      "opportunityScore", "confidence"]),
+    requiresKeys(["caseClassification", "estimatedCaseSeverity", "referralRecommended",
+      "opportunityScore", "confidence"])(v),
 
   defaultConfidence: 0.78,
   maxParseAttempts: 2,

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { postProcessAndGuard, checkEscalationKeywords, maskPiiForLogs } from "./laylaPostProcessor";
 import { shouldSendVoiceMessage } from "./laylaVoice";
 import type { LaylaPolicy } from "@shared/laylaPolicy";

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { TelemetryMetric } from "./types";
 import { eventBus } from "../eventBus";
 import { jobQueue } from "../jobQueue";

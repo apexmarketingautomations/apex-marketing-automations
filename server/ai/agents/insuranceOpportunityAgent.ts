@@ -65,7 +65,7 @@ Schema:
 
   outputValidator: (v): v is InsuranceOpportunityOutput =>
     isObject(v) &&
-    requiresKeys(v, ["opportunityType", "opportunityScore", "confidence"]),
+    requiresKeys(["opportunityType", "opportunityScore", "confidence"])(v),
 
   defaultConfidence: 0.80,
   maxParseAttempts: 2,

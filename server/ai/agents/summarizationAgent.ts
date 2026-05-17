@@ -75,7 +75,7 @@ Schema:
 
   outputValidator: (v): v is SummarizationOutput =>
     isObject(v) &&
-    requiresKeys(v, ["format", "headline", "executiveSummary", "keyPoints", "confidence"]),
+    requiresKeys(["format", "headline", "executiveSummary", "keyPoints", "confidence"])(v),
 
   defaultConfidence: 0.88,
   maxParseAttempts: 2,

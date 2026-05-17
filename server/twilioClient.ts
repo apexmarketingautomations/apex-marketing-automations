@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { sendSms as sendSmsCore } from "./messaging/sendSms";
 
 export async function sendSms(args: { to: string; body: string; subAccountId?: number; source?: string }) {

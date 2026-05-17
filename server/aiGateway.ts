@@ -581,7 +581,7 @@ function logObservability(entry: {
   traceId?: string;
   subAccountId?: string | number;
   route?: string;
-  provider: "openai" | "gemini";
+  provider: "openai" | "gemini" | "anthropic" | string;
   model?: string;
   latencyMs: number;
   success: boolean;
@@ -1026,10 +1026,11 @@ export async function aiChatWithToolCalls(
 
           if (message?.tool_calls && message.tool_calls.length > 0) {
             for (const tc of message.tool_calls) {
+              const tcAny = tc as any;
               toolCalls.push({
                 id: tc.id,
-                name: tc.function.name,
-                arguments: tc.function.arguments,
+                name: tcAny.function?.name ?? tcAny.name ?? "",
+                arguments: tcAny.function?.arguments ?? tcAny.arguments ?? "",
               });
             }
           }

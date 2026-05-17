@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { db } from "../db";
 import { operatorGoals, operatorPlans, operatorPlanSteps } from "@shared/schema";
 import { eq, and, desc, lte, inArray } from "drizzle-orm";

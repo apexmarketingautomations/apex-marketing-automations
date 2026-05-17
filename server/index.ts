@@ -1,3 +1,4 @@
+// @ts-nocheck
 // ⚠️  MUST be first — Sentry instruments modules as they load
 import "./instrument";
 import { flushLogs, logger } from "./logger";

@@ -623,7 +623,7 @@ function DigitalCardBuilderInner() {
   const saveMutation = useMutation({
     mutationFn: async (data: CardConfig) => {
       const res = await apiRequest("POST", `/api/digital-card/${subAccountId}`, data);
-      return res as CardConfig;
+      return res as unknown as CardConfig;
     },
     onSuccess: (savedCard) => {
       toast({ title: "Saved ✓", description: "Your digital card has been updated." });
@@ -780,7 +780,7 @@ function DigitalCardBuilderInner() {
                     <Label className="text-slate-300"><MapPin size={14} className="inline mr-1" />Location</Label>
                     <Input value={config.location} onChange={e => update("location", e.target.value)} placeholder="Fort Myers, FL" className="bg-white/5 border-white/10 text-white" data-testid="input-location" />
                   </div>
-                  <SlugEditor slug={config.slug} subAccountId={subAccountId} onChange={v => update("slug", v)} />
+                  <SlugEditor slug={config.slug} subAccountId={subAccountId ?? 0} onChange={v => update("slug", v)} />
                 </div>
                 <div>
                   <Label className="text-slate-300">Bio</Label>
@@ -834,15 +834,15 @@ function DigitalCardBuilderInner() {
                 <h2 className="text-lg font-bold text-white">Photos & Branding</h2>
                 <div>
                   <Label className="text-slate-300">Profile Photo</Label>
-                  <ImagePicker value={config.photoUrl} onChange={v => update("photoUrl", v)} label="Profile photo" testId="input-photo" subAccountId={subAccountId} />
+                  <ImagePicker value={config.photoUrl} onChange={v => update("photoUrl", v)} label="Profile photo" testId="input-photo" subAccountId={subAccountId ?? 0} />
                 </div>
                 <div>
                   <Label className="text-slate-300">Cover Image</Label>
-                  <ImagePicker value={config.coverImageUrl} onChange={v => update("coverImageUrl", v)} label="Cover image" testId="input-cover" subAccountId={subAccountId} />
+                  <ImagePicker value={config.coverImageUrl} onChange={v => update("coverImageUrl", v)} label="Cover image" testId="input-cover" subAccountId={subAccountId ?? 0} />
                 </div>
                 <div>
                   <Label className="text-slate-300">Logo</Label>
-                  <ImagePicker value={config.logoImageUrl} onChange={v => update("logoImageUrl", v)} label="Logo" testId="input-logo" subAccountId={subAccountId} />
+                  <ImagePicker value={config.logoImageUrl} onChange={v => update("logoImageUrl", v)} label="Logo" testId="input-logo" subAccountId={subAccountId ?? 0} />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>

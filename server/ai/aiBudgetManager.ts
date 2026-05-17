@@ -229,12 +229,12 @@ export function getBudgetReport(): BudgetReport {
   const globalSpend = _globalSpend.total();
 
   const byProvider: Record<string, number> = {};
-  for (const [provider, tracker] of _providerSpend) {
+  for (const [provider, tracker] of Array.from(_providerSpend.entries())) {
     byProvider[provider] = tracker.total();
   }
 
   const byTaskType: Record<string, number> = {};
-  for (const [tt, tracker] of _taskTypeSpend) {
+  for (const [tt, tracker] of Array.from(_taskTypeSpend.entries())) {
     byTaskType[tt] = tracker.total();
   }
 

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TutorialOverlay, useTutorial } from "@/components/tutorial-overlay";
 import { DOMAINS_STEPS } from "@/components/tutorial-steps";
 import { useAccount } from "@/hooks/use-account";
@@ -530,7 +531,7 @@ export default function Domains() {
                         <div className="flex items-center gap-2">
                           <Select
                             value={domain.siteId?.toString() || "none"}
-                            onValueChange={(val) =>
+                            onValueChange={(val: string) =>
                               linkSiteMutation.mutate({
                                 domainId: domain.id,
                                 siteId: val === "none" ? null : parseInt(val),
