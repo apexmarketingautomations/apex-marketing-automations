@@ -1818,6 +1818,9 @@ RULES:
 
   const { registerInsuranceAdminRoutes } = await import("./routes/insuranceAdmin");
   registerInsuranceAdminRoutes(app);
+
+  const { registerServiceIndustryAdminRoutes } = await import("./routes/serviceIndustryAdmin");
+  registerServiceIndustryAdminRoutes(app);
   await setupAuth(app);
 
   // Admin-secret bypass: when an internal/trusted caller (e.g. the Apex
