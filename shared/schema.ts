@@ -3981,3 +3981,168 @@ export const contactScores = pgTable("contact_scores", {
 export const insertContactScoreSchema = createInsertSchema(contactScores).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertContactScore = z.infer<typeof insertContactScoreSchema>;
 export type ContactScore = typeof contactScores.$inferSelect;
+// Phase 11 — Enterprise Control Center schemas
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Enterprise hierarchy node (platform → enterprise → org → office → team → user)
+export const enterpriseHierarchyNodes = pgTable("enterprise_hierarchy_nodes", {
+  id:           serial("id").primaryKey(),
+  nodeType:     text("node_type").notNull(),      // platform | enterprise | org | office | team | user
+  name:         text("name").notNull(),
+  parentId:     integer("parent_id"),             // null for root
+  subAccountId: integer("sub_account_id"),        // leaf nodes link to sub_accounts
+  ownerId:      text("owner_id"),                 // user_id of node owner
+  metadata:     jsonb("metadata"),
+  createdAt:    timestamp("created_at").defaultNow().notNull(),
+  updatedAt:    timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Usage meters — one row per metric per sub_account per period
+export const enterpriseUsageMeters = pgTable("enterprise_usage_meters", {
+  id:              bigserial("id", { mode: "number" }).primaryKey(),
+  subAccountId:    integer("sub_account_id").notNull(),
+  metricType:      text("metric_type").notNull(),  // ai_tokens | sms | voice_min | email | enrichment_call | skip_trace
+  periodStart:     timestamp("period_start").notNull(),
+  periodEnd:       timestamp("period_end").notNull(),
+  quantity:        real("quantity").notNull().default(0),
+  unitCost:        real("unit_cost"),
+  totalCost:       real("total_cost"),
+  metadata:        jsonb("metadata"),
+  createdAt:       timestamp("created_at").defaultNow().notNull(),
+});
+
+// Immutable enterprise audit events (append-only; never update or delete rows)
+export const enterpriseAuditEvents = pgTable("enterprise_audit_events", {
+  id:           bigserial("id", { mode: "number" }).primaryKey(),
+  eventType:    text("event_type").notNull(),      // billing.charge | rbac.role_assigned | tenant.suspended | ai.quota_hit | workflow.executed …
+  actor:        text("actor").notNull(),            // user_id or "system"
+  actorRole:    text("actor_role"),
+  subAccountId: integer("sub_account_id"),
+  nodeId:       integer("node_id"),
+  resource:     text("resource"),                   // e.g. "contact:42", "workflow:7"
+  payload:      jsonb("payload"),
+  ipAddress:    text("ip_address"),
+  userAgent:    text("user_agent"),
+  createdAt:    timestamp("created_at").defaultNow().notNull(),
+});
+
+// RBAC roles
+export const enterpriseRoles = pgTable("enterprise_roles", {
+  id:           serial("id").primaryKey(),
+  name:         text("name").notNull(),             // super_admin | platform_admin | enterprise_admin | org_admin | office_manager | agent | read_only | receptionist
+  displayName:  text("display_name").notNull(),
+  description:  text("description"),
+  isSystem:     boolean("is_system").default(true), // system roles can't be deleted
+  createdAt:    timestamp("created_at").defaultNow().notNull(),
+});
+
+// RBAC user-role assignments (scoped to a hierarchy node)
+export const enterpriseRoleAssignments = pgTable("enterprise_role_assignments", {
+  id:           serial("id").primaryKey(),
+  userId:       text("user_id").notNull(),
+  roleId:       integer("role_id").notNull(),
+  scopeNodeId:  integer("scope_node_id"),           // null = platform-wide
+  subAccountId: integer("sub_account_id"),
+  grantedBy:    text("granted_by"),
+  expiresAt:    timestamp("expires_at"),
+  createdAt:    timestamp("created_at").defaultNow().notNull(),
+});
+
+// RBAC permission definitions per role
+export const enterpriseRolePermissions = pgTable("enterprise_role_permissions", {
+  id:         serial("id").primaryKey(),
+  roleId:     integer("role_id").notNull(),
+  resource:   text("resource").notNull(),    // contacts | workflows | billing | ai_config | reports | admin …
+  action:     text("action").notNull(),      // read | write | delete | configure | approve
+  createdAt:  timestamp("created_at").defaultNow().notNull(),
+});
+
+// White-label configuration per node (enterprise or org level)
+export const enterpriseWhiteLabelConfigs = pgTable("enterprise_white_label_configs", {
+  id:              serial("id").primaryKey(),
+  nodeId:          integer("node_id"),
+  subAccountId:    integer("sub_account_id"),
+  agencyName:      text("agency_name"),
+  customDomain:    text("custom_domain"),
+  brandColor:      text("brand_color"),
+  logoUrl:         text("logo_url"),
+  faviconUrl:      text("favicon_url"),
+  senderName:      text("sender_name"),          // overrides outbound SMS/email sender
+  supportEmail:    text("support_email"),
+  footerText:      text("footer_text"),
+  hideApexBranding: boolean("hide_apex_branding").default(false),
+  customCss:       text("custom_css"),
+  config:          jsonb("config"),
+  createdAt:       timestamp("created_at").defaultNow().notNull(),
+  updatedAt:       timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Tenant governance — plan limits and quota state
+export const enterpriseTenantQuotas = pgTable("enterprise_tenant_quotas", {
+  id:                  serial("id").primaryKey(),
+  subAccountId:        integer("sub_account_id").notNull().unique(),
+  planTier:            text("plan_tier").notNull().default("starter"),
+  // monthly limits (0 = unlimited)
+  monthlyAiTokens:     integer("monthly_ai_tokens").default(0),
+  monthlySms:          integer("monthly_sms").default(0),
+  monthlyVoiceMin:     integer("monthly_voice_min").default(0),
+  monthlyEmail:        integer("monthly_email").default(0),
+  monthlyEnrichment:   integer("monthly_enrichment").default(0),
+  maxUsers:            integer("max_users").default(5),
+  maxWorkflows:        integer("max_workflows").default(10),
+  maxContacts:         integer("max_contacts").default(0),
+  // current period consumption (reset monthly)
+  usedAiTokens:        integer("used_ai_tokens").default(0),
+  usedSms:             integer("used_sms").default(0),
+  usedVoiceMin:        real("used_voice_min").default(0),
+  usedEmail:           integer("used_email").default(0),
+  usedEnrichment:      integer("used_enrichment").default(0),
+  periodStart:         timestamp("period_start"),
+  periodEnd:           timestamp("period_end"),
+  // feature flags
+  featureFlags:        jsonb("feature_flags"),
+  suspended:           boolean("suspended").default(false),
+  suspendReason:       text("suspend_reason"),
+  updatedAt:           timestamp("updated_at").defaultNow().notNull(),
+});
+
+// ROI snapshots — computed periodically per account
+export const enterpriseRoiSnapshots = pgTable("enterprise_roi_snapshots", {
+  id:                      serial("id").primaryKey(),
+  subAccountId:            integer("sub_account_id").notNull(),
+  periodStart:             timestamp("period_start").notNull(),
+  periodEnd:               timestamp("period_end").notNull(),
+  // pipeline KPIs
+  totalLeads:              integer("total_leads").default(0),
+  leadsConverted:          integer("leads_converted").default(0),
+  conversionRate:          real("conversion_rate").default(0),
+  // automation savings
+  automatedReplies:        integer("automated_replies").default(0),
+  estimatedHoursSaved:     real("estimated_hours_saved").default(0),
+  // missed-call recovery
+  missedCallsRecovered:    integer("missed_calls_recovered").default(0),
+  missedCallRevenueValue:  real("missed_call_revenue_value").default(0),
+  // AI effectiveness
+  aiResponsesSent:         integer("ai_responses_sent").default(0),
+  aiHandoffRate:           real("ai_handoff_rate").default(0),
+  aiCsat:                  real("ai_csat"),
+  // enrichment value
+  contactsEnriched:        integer("contacts_enriched").default(0),
+  phoneNumbersFound:       integer("phone_numbers_found").default(0),
+  enrichmentSuccessRate:   real("enrichment_success_rate").default(0),
+  // revenue
+  estimatedRevenueImpact:  real("estimated_revenue_impact").default(0),
+  platformCost:            real("platform_cost").default(0),
+  netRoi:                  real("net_roi").default(0),
+  computedAt:              timestamp("computed_at").defaultNow().notNull(),
+});
+
+export type EnterpriseHierarchyNode   = typeof enterpriseHierarchyNodes.$inferSelect;
+export type EnterpriseUsageMeter      = typeof enterpriseUsageMeters.$inferSelect;
+export type EnterpriseAuditEvent      = typeof enterpriseAuditEvents.$inferSelect;
+export type EnterpriseRole            = typeof enterpriseRoles.$inferSelect;
+export type EnterpriseRoleAssignment  = typeof enterpriseRoleAssignments.$inferSelect;
+export type EnterpriseRolePermission  = typeof enterpriseRolePermissions.$inferSelect;
+export type EnterpriseWhiteLabelConfig = typeof enterpriseWhiteLabelConfigs.$inferSelect;
+export type EnterpriseTenantQuota     = typeof enterpriseTenantQuotas.$inferSelect;
+export type EnterpriseRoiSnapshot     = typeof enterpriseRoiSnapshots.$inferSelect;

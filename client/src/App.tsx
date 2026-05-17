@@ -60,6 +60,7 @@ const MetaMessaging2027Page = lazy(() => import("@/pages/meta-messaging-2027"));
 const NexusDemo = lazy(() => import("@/pages/nexus-demo"));
 const AdminConsolePage = lazy(() => import("@/pages/admin-console"));
 const AdminOnboardingDefaultsPage = lazy(() => import("@/pages/admin/onboarding-defaults"));
+const EnterpriseControlCenterPage = lazy(() => import("@/pages/admin/enterprise-control-center"));
 const LaylaStudioPage = lazy(() => import("@/pages/layla-studio"));
 const EventSignup = lazy(() => import("@/pages/event-signup"));
 const AdminEventMode = lazy(() => import("@/pages/admin-event-mode"));
@@ -312,6 +313,7 @@ function Router() {
                   <Route path="/god-mode" component={GodMode} />
                   <Route path="/admin-console" component={AdminConsolePage} />
                   <Route path="/admin/onboarding-defaults" component={AdminOnboardingDefaultsPage} />
+                  <Route path="/admin/enterprise" component={EnterpriseControlCenterPage} />
                   <Route path="/dashboard/layla-studio" component={LaylaStudioPage} />
                   <Route path="/launch-readiness" component={LaunchReadinessPage} />
                   <Route path="/marketplace" component={MarketplacePage} />

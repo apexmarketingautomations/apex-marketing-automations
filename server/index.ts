@@ -782,6 +782,14 @@ async function validateMetaCredentials() {
   }
   }
 
+  // Phase 11 — Enterprise Control Center startup
+  try {
+    const { seedSystemRoles } = await import("./enterprise/rbacPermissionSystem");
+    await seedSystemRoles();
+  } catch (enterpriseErr: any) {
+    console.error("[STARTUP] Enterprise RBAC seed failed (non-fatal):", enterpriseErr?.message);
+  }
+
   try {
     const { storage } = await import("./storage");
     initEventSubscribers(storage);
@@ -1827,6 +1835,11 @@ RULES:
 
   const { registerNewResidentAdminRoutes } = await import("./routes/newResidentAdmin");
   registerNewResidentAdminRoutes(app);
+
+  const { registerEnterpriseAdminRoutes } = await import("./routes/enterpriseAdmin");
+  registerEnterpriseAdminRoutes(app);
+
+
   await setupAuth(app);
 
   // Admin-secret bypass: when an internal/trusted caller (e.g. the Apex
