@@ -134,6 +134,8 @@ export function scoreAgencyMatch(opts: {
 
 export interface InsuranceRoutingPlan {
   opportunityId: string;
+  insuranceLine: string;
+  opportunityType: string;
   tier: AgencyTier;
   assignments: Array<{
     agencyId: number;
@@ -167,8 +169,10 @@ export async function buildInsuranceRoutingPlan(
   const expiresAt = new Date(Date.now() + claimHrs * 3_600_000).toISOString();
 
   return {
-    opportunityId: opportunity.opportunityId,
-    tier: routingTier,
+    opportunityId:    opportunity.opportunityId,
+    insuranceLine:    opportunity.insuranceLine,
+    opportunityType:  opportunity.opportunityType,
+    tier:             routingTier,
     assignments: selected.map(({ agency, matchScore }) => ({
       agencyId:   agency.id,
       matchScore,
@@ -211,9 +215,9 @@ export async function executeInsuranceRouting(plan: InsuranceRoutingPlan): Promi
           (opportunity_id, agency_id, insurance_line, opportunity_type, routing_tier,
            match_score, expires_at, exclusive)
         VALUES
-          (${esc(plan.opportunityId)}, ${assignment.agencyId},
-           'placeholder', 'placeholder', ${esc(plan.tier)},
-           ${assignment.matchScore}, ${esc(assignment.expiresAt)}, ${bool(assignment.exclusive)})
+          (${esc(plan.opportunityId)}, ${num(assignment.agencyId)},
+           ${esc(plan.insuranceLine)}, ${esc(plan.opportunityType)}, ${esc(plan.tier)},
+           ${num(assignment.matchScore)}, ${esc(assignment.expiresAt)}, ${bool(assignment.exclusive)})
       `));
       routed++;
     } catch (err: any) {

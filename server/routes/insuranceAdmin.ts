@@ -25,10 +25,12 @@ import { getHouseholdStats, getTopHouseholds, upsertHousehold, correlateFromHPLP
 import { scorePolicy, detectOpportunityTypes, estimateHouseholdPremium, crossSellLikelihood } from "../insurance/policyScoringService";
 import { getStormClaimStats, getReadyStormOpportunities, processStormOpportunities } from "../insurance/stormClaimIntelligence";
 import { getCommercialStats, getTopCommercialOpportunities, ingestDbprLicense } from "../insurance/commercialRiskEngine";
-import { getPendingInsuranceWorkflows, getInsuranceWorkflowStats } from "../insurance/insuranceWorkflowCoordinator";
+import { getPendingInsuranceWorkflows, getInsuranceWorkflowStats, runPreExecutionValidation } from "../insurance/insuranceWorkflowCoordinator";
 import { getInsuranceRoutingStats } from "../insurance/insuranceRoutingEngine";
+import { approveWorkflow, rejectWorkflow, getPendingApprovals, getWorkflowAuditTimeline } from "../insurance/insuranceApprovalGate";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
+import { esc } from "../hpl/sqlSafe";
 
 // ── Route registration ────────────────────────────────────────────────────────
 
@@ -106,9 +108,9 @@ export function registerInsuranceAdminRoutes(app: Express): void {
     if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
     const { eventId } = req.params;
     try {
-      // Fetch storm event from HPL table
+      // Fetch storm event from HPL table — use esc() to prevent injection
       const result = await db.execute(sql.raw(`
-        SELECT * FROM _hpl_storm_events WHERE event_id = '${eventId.replace(/'/g, "''")}' LIMIT 1
+        SELECT * FROM _hpl_storm_events WHERE event_id = ${esc(eventId)} LIMIT 1
       `));
       const rows = (result as any).rows ?? result;
       if (!Array.isArray(rows) || !rows[0]) return res.status(404).json({ error: "storm_event_not_found" });
@@ -232,6 +234,81 @@ export function registerInsuranceAdminRoutes(app: Express): void {
     }
     try {
       const result = await ingestDbprLicense(req.body);
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message ?? "failed" });
+    }
+  });
+
+  // ── Approval executor routes ────────────────────────────────────────────────
+
+  // GET /api/insurance/pending-approvals  — list workflows awaiting human review
+  app.get("/api/insurance/pending-approvals", async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
+    const agencyId = req.query.agencyId ? parseInt(String(req.query.agencyId), 10) : undefined;
+    const limit    = Math.min(parseInt(String(req.query.limit ?? "50"), 10), 200);
+    try {
+      const pending = await getPendingApprovals({ agencyId, limit });
+      return res.json({ pending, total: pending.length });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message ?? "failed" });
+    }
+  });
+
+  // POST /api/insurance/approve-workflow/:id  — approve a workflow draft
+  app.post("/api/insurance/approve-workflow/:id", async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
+    const workflowId = parseInt(req.params.id, 10);
+    const { approvedBy, draftContent } = req.body;
+    if (!approvedBy || typeof approvedBy !== "string") {
+      return res.status(400).json({ error: "approvedBy (string) required" });
+    }
+    try {
+      const result = await approveWorkflow({ workflowId, approvedBy, draftContent });
+      if (!result.success) return res.status(400).json({ error: result.error });
+      return res.json({ success: true, workflowId });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message ?? "failed" });
+    }
+  });
+
+  // POST /api/insurance/reject-workflow/:id  — reject / cancel a workflow
+  app.post("/api/insurance/reject-workflow/:id", async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
+    const workflowId = parseInt(req.params.id, 10);
+    const { rejectedBy, reason } = req.body;
+    if (!rejectedBy || typeof rejectedBy !== "string") {
+      return res.status(400).json({ error: "rejectedBy (string) required" });
+    }
+    try {
+      const result = await rejectWorkflow({ workflowId, rejectedBy, reason });
+      if (!result.success) return res.status(400).json({ error: result.error });
+      return res.json({ success: true, workflowId });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message ?? "failed" });
+    }
+  });
+
+  // GET /api/insurance/workflow-audit/:id  — approval audit timeline
+  app.get("/api/insurance/workflow-audit/:id", async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
+    const workflowId = parseInt(req.params.id, 10);
+    try {
+      const timeline = await getWorkflowAuditTimeline(workflowId);
+      return res.json({ timeline });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message ?? "failed" });
+    }
+  });
+
+  // POST /api/insurance/pre-exec-validation  — admin-triggered score sweep
+  app.post("/api/insurance/pre-exec-validation", async (req: Request, res: Response) => {
+    if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
+    const minScore      = parseInt(String(req.body.minScore ?? "30"), 10);
+    const staleAfterDays = parseInt(String(req.body.staleAfterDays ?? "7"), 10);
+    const agencyId      = req.body.agencyId ? parseInt(String(req.body.agencyId), 10) : undefined;
+    try {
+      const result = await runPreExecutionValidation({ minScore, staleAfterDays, agencyId });
       return res.json(result);
     } catch (err: any) {
       return res.status(500).json({ error: err?.message ?? "failed" });

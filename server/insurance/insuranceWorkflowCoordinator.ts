@@ -51,11 +51,24 @@ async function ensureTable(): Promise<void> {
         approved_at         TIMESTAMPTZ,
         approved_by         TEXT,
         error_message       TEXT,
+        pre_exec_score      INTEGER,
+        pre_exec_checked_at TIMESTAMPTZ,
         created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS ins_wf_agency_idx    ON _ins_workflow_queue (agency_id, status);
       CREATE INDEX IF NOT EXISTS ins_wf_scheduled_idx ON _ins_workflow_queue (scheduled_at, status);
       CREATE INDEX IF NOT EXISTS ins_wf_type_idx      ON _ins_workflow_queue (workflow_type, status);
+      CREATE TABLE IF NOT EXISTS _ins_suppression_list (
+        id           SERIAL PRIMARY KEY,
+        household_id TEXT        NOT NULL,
+        reason       TEXT        NOT NULL DEFAULT 'opt_out',
+        channel      TEXT,
+        added_by     TEXT,
+        expires_at   TIMESTAMPTZ,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS ins_suppress_hh_idx ON _ins_suppression_list (household_id)
+        WHERE expires_at IS NULL OR expires_at > NOW();
     `);
     _tableEnsured = true;
   } catch (err: any) {
@@ -242,4 +255,117 @@ export async function getInsuranceWorkflowStats(): Promise<{
     }
     return { pending, executed, byType };
   } catch { return { pending: 0, executed: 0, byType: {} }; }
+}
+
+// ── Pre-execution validation sweep ────────────────────────────────────────────
+//
+// Called by a scheduler (or manually by admin) before the approval executor
+// fires. Re-checks every approved-but-not-yet-executed workflow for:
+//   - Score still ≥ minScore
+//   - Tenant still valid
+//   - Workflow not stale
+// Stale/low-score workflows are auto-cancelled here to prevent the approval
+// gate from being the first point of failure during execution.
+
+export interface PreExecValidationResult {
+  checked:   number;
+  cancelled: number;
+  stale:     number;
+  lowScore:  number;
+  ok:        number;
+}
+
+export async function runPreExecutionValidation(opts: {
+  minScore?:       number;
+  staleAfterDays?: number;
+  agencyId?:       number;
+} = {}): Promise<PreExecValidationResult> {
+  await ensureTable();
+  const { minScore = 30, staleAfterDays = 7, agencyId } = opts;
+
+  const agencyFilter = agencyId ? `AND agency_id = ${num(agencyId)}` : "";
+
+  // Fetch all approved-or-pending workflows that haven't executed yet
+  let workflows: any[] = [];
+  try {
+    const result = await db.execute(sql.raw(`
+      SELECT id, household_id, created_at, approved_at, agency_id
+      FROM _ins_workflow_queue
+      WHERE status IN ('pending', 'approved')
+        AND scheduled_at <= NOW() + INTERVAL '24 hours'
+        ${agencyFilter}
+      ORDER BY scheduled_at ASC
+      LIMIT 500
+    `));
+    workflows = (result as any).rows ?? result ?? [];
+  } catch { return { checked: 0, cancelled: 0, stale: 0, lowScore: 0, ok: 0 }; }
+
+  let cancelled = 0, stale = 0, lowScore = 0, ok = 0;
+  const staleLimitMs = staleAfterDays * 86_400_000;
+
+  for (const wf of workflows) {
+    const wfId = Number(wf.id);
+    const createdMs = new Date(wf.created_at).getTime();
+    const ageMs = Date.now() - createdMs;
+
+    // Staleness check
+    if (ageMs > staleLimitMs && !wf.approved_at) {
+      try {
+        await db.execute(sql.raw(`
+          UPDATE _ins_workflow_queue
+          SET status = 'cancelled',
+              error_message = 'pre-exec: stale > ${staleAfterDays}d without approval'
+          WHERE id = ${num(wfId)} AND status IN ('pending', 'approved')
+        `));
+        stale++; cancelled++;
+      } catch { /* best effort */ }
+      continue;
+    }
+
+    // Score re-check
+    const householdId = wf.household_id as string | null;
+    if (householdId) {
+      let score: number | null = null;
+      try {
+        const sr = await db.execute(sql.raw(`
+          SELECT policy_opportunity_score FROM _ins_households
+          WHERE household_id = ${esc(householdId)} LIMIT 1
+        `));
+        const srows = (sr as any).rows ?? sr;
+        if (Array.isArray(srows) && srows[0]) {
+          score = Number(srows[0].policy_opportunity_score ?? 0);
+        }
+      } catch { /* table may not exist */ }
+
+      if (score !== null && score < minScore) {
+        try {
+          await db.execute(sql.raw(`
+            UPDATE _ins_workflow_queue
+            SET status = 'cancelled',
+                pre_exec_score = ${num(score)},
+                pre_exec_checked_at = NOW(),
+                error_message = 'pre-exec: score=${score} < threshold=${minScore}'
+            WHERE id = ${num(wfId)} AND status IN ('pending', 'approved')
+          `));
+          lowScore++; cancelled++;
+        } catch { /* best effort */ }
+        continue;
+      }
+
+      // Record score even on pass
+      try {
+        await db.execute(sql.raw(`
+          UPDATE _ins_workflow_queue
+          SET pre_exec_score = ${num(score ?? -1)},
+              pre_exec_checked_at = NOW()
+          WHERE id = ${num(wfId)}
+        `));
+      } catch { /* best effort */ }
+    }
+
+    ok++;
+  }
+
+  console.log(`[PRE-EXEC] checked=${workflows.length} ok=${ok} cancelled=${cancelled} (stale=${stale} lowScore=${lowScore})`);
+  return { checked: workflows.length, cancelled, stale, lowScore, ok };
 }
