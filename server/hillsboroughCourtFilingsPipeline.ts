@@ -38,7 +38,7 @@
 import crypto from "crypto";
 import { db }  from "./db";
 import { legalSignals, legalLeads } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { resolveBatchDataKey } from "./vendorConfig";
 
 const PIPELINE_TAG = "HILLS-FILINGS";
@@ -382,11 +382,28 @@ function parseAddress(raw: string): { street: string; city: string; state: strin
   return { street, city, state, zip };
 }
 
+async function lookupExistingPhone(firstName: string, lastName: string): Promise<string | null> {
+  try {
+    const fullName = `${firstName} ${lastName}`.trim();
+    const [row] = await db.select({ subjectPhone: legalSignals.subjectPhone })
+      .from(legalSignals)
+      .where(sql`lower(subject_name) = lower(${fullName}) AND subject_phone IS NOT NULL`)
+      .limit(1);
+    return row?.subjectPhone ?? null;
+  // allow-silent-catch: DB lookup failure falls through to fresh skip trace
+  } catch {
+    return null;
+  }
+}
+
 async function skipTraceByAddress(
   firstName: string,
   lastName: string,
   address: string,
 ): Promise<string | null> {
+  const existing = await lookupExistingPhone(firstName, lastName);
+  if (existing) return existing;
+
   const key = resolveBatchDataKey();
   if (!key) return null;
 
