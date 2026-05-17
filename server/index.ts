@@ -1813,6 +1813,8 @@ RULES:
   const { registerHomeServiceRoutes } = await import("./routes/homeService");
   registerHomeServiceRoutes(app);
 
+  const { registerHplAdminRoutes } = await import("./routes/hplAdmin");
+  registerHplAdminRoutes(app);
   await setupAuth(app);
 
   // Admin-secret bypass: when an internal/trusted caller (e.g. the Apex
