@@ -14,7 +14,7 @@
  * DynamicPageSchema.forms[], `cta` nodes use DynamicPageSchema.cta.
  */
 
-import { Suspense, useMemo } from "react";
+import { Suspense, useMemo, createElement } from "react";
 import { motion } from "framer-motion";
 import * as Icons from "lucide-react";
 import { WebGLSceneRenderer } from "./WebGLSceneRenderer";
@@ -254,21 +254,24 @@ function LayoutNodeView({ node, ctx }: { node: LayoutNode; ctx: RenderCtx }): Re
     // ── text / heading ──────────────────────────────────────────────────────
     case "heading": {
       const level = node.content?.headingLevel ?? 2;
-      const Tag = `h${level}` as React.ElementType;
       const tCss = typographyCss(ds, node.content?.typographyRole ?? "h2", true);
       const colorKey = node.content?.colorToken;
       const gradient = node.content?.gradientText;
+      const headingStyle: React.CSSProperties = {
+        ...tCss,
+        color: gradient ? "transparent" : (colorKey ? c[colorKey] : c.text),
+        ...(gradient ? { backgroundImage: c.gradient, WebkitBackgroundClip: "text", backgroundClip: "text" } : {}),
+      };
+      // Build the semantic heading element via createElement — a dynamic JSX
+      // tag (<Tag>) makes TS collapse the children/style props to `never`.
+      const headingEl = createElement(
+        `h${level}`,
+        { style: headingStyle },
+        node.content?.text ?? "",
+      );
       return (
         <motion.div {...motionProps} style={css}>
-          <Tag
-            style={{
-              ...tCss,
-              color: gradient ? "transparent" : (colorKey ? c[colorKey] : c.text),
-              ...(gradient ? { backgroundImage: c.gradient, WebkitBackgroundClip: "text", backgroundClip: "text" } : {}),
-            }}
-          >
-            {node.content?.text ?? ""}
-          </Tag>
+          {headingEl}
         </motion.div>
       );
     }
