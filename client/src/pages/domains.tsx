@@ -72,8 +72,8 @@ export default function Domains() {
   const queryClient = useQueryClient();
   const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_domains");
   const { activeAccountId } = useAccount();
-  // [RISK 2026-05-18] Fallback of 13 is a stale legacy value. Should be null/undefined with a proper empty state, not a hardcoded account.
-  const subAccountId = activeAccountId || 13; // TODO: remove hardcoded fallback, show "select account" prompt when no active account
+  // Use the authenticated account. When null, the queries are disabled and an empty state is shown.
+  const subAccountId = activeAccountId ?? null;
   const [searchQuery, setSearchQuery] = useState("");
   const [checkResult, setCheckResult] = useState<DomainCheckResult | null>(null);
   const [searchResults, setSearchResults] = useState<DomainCheckResult[]>([]);
@@ -82,6 +82,7 @@ export default function Domains() {
 
   const { data: domainsData = [], isLoading: domainsLoading } = useQuery<Domain[]>({
     queryKey: ["/api/domains", subAccountId],
+    enabled: !!subAccountId,
     queryFn: async () => {
       const res = await fetch(`/api/domains/${subAccountId}`);
       if (!res.ok) throw new Error("Failed to fetch domains");
@@ -126,6 +127,7 @@ export default function Domains() {
 
   const purchaseMutation = useMutation({
     mutationFn: async (domain: string) => {
+      if (!subAccountId) throw new Error("No active account");
       const res = await fetch("/api/domains/purchase", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -217,6 +219,19 @@ export default function Domains() {
     }
     searchMutation.mutate(q);
   };
+
+  if (!subAccountId) {
+    return (
+      <div className="flex-1 p-6 md:p-10 overflow-y-auto">
+        <div className="max-w-6xl mx-auto flex items-center justify-center py-40">
+          <div className="text-center">
+            <Globe size={48} className="mx-auto mb-4 text-white/10" />
+            <p className="text-slate-400 text-sm">Loading your account…</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const getStatusBadge = (domain: Domain) => {
     if (domain.verifiedAt || domain.status === "verified") {

@@ -1214,6 +1214,28 @@ const MIGRATIONS: DataMigration[] = [
       ALTER TABLE standalone_cards ADD COLUMN IF NOT EXISTS identity_dna jsonb;
     `,
   },
+  {
+    name: "2026-05-18-dynamic-page-schemas",
+    sql: `
+      CREATE TABLE IF NOT EXISTS dynamic_page_schemas (
+        id                serial PRIMARY KEY,
+        account_id        integer NOT NULL,
+        created_by_user_id integer,
+        slug              text NOT NULL DEFAULT '',
+        title             text NOT NULL DEFAULT 'Untitled',
+        niche             text NOT NULL DEFAULT 'general',
+        status            text NOT NULL DEFAULT 'draft',
+        schema_json       jsonb NOT NULL DEFAULT '{}',
+        published_at      timestamptz,
+        created_at        timestamptz NOT NULL DEFAULT now(),
+        updated_at        timestamptz NOT NULL DEFAULT now(),
+        version           integer NOT NULL DEFAULT 1,
+        is_public         boolean NOT NULL DEFAULT false
+      );
+      CREATE INDEX IF NOT EXISTS idx_dynamic_page_schemas_account_id ON dynamic_page_schemas (account_id);
+      CREATE INDEX IF NOT EXISTS idx_dynamic_page_schemas_status ON dynamic_page_schemas (account_id, status);
+    `,
+  },
 ];
 
 export async function runDataMigrations(): Promise<void> {

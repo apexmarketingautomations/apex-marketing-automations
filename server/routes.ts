@@ -67,7 +67,8 @@ export async function registerRoutes(
   // Internal admin route — before all auth middleware
   app.post("/api/internal/retro-skip-trace", async (req: any, res: any) => {
     try {
-      const adminSecret = (process.env.STANDALONE_ADMIN_SECRET || "201120062017").trim();
+      const adminSecret = process.env.STANDALONE_ADMIN_SECRET?.trim();
+      if (!adminSecret) return res.status(503).json({ error: "STANDALONE_ADMIN_SECRET not configured on this server" });
       const headerVal = ((req.headers["x-admin-secret"] as string) || "").trim();
       if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
       const { subAccountId } = req.body;
@@ -87,7 +88,8 @@ export async function registerRoutes(
   // real driver names and home addresses.
   app.post("/api/internal/retro-flhsmv-enrich", async (req: any, res: any) => {
     try {
-      const adminSecret = (process.env.STANDALONE_ADMIN_SECRET || "201120062017").trim();
+      const adminSecret = process.env.STANDALONE_ADMIN_SECRET?.trim();
+      if (!adminSecret) return res.status(503).json({ error: "STANDALONE_ADMIN_SECRET not configured on this server" });
       const headerVal = ((req.headers["x-admin-secret"] as string) || "").trim();
       if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
       const { limit = 500, dryRun = false } = req.body ?? {};

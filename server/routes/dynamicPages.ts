@@ -2,10 +2,13 @@
  * server/routes/dynamicPages.ts
  *
  * API routes for the Apex Dynamic Pages prompt-driven builder.
- * Handles schema generation, patching, saving, and discoverability.
+ * All schemas are persisted to the `dynamic_page_schemas` DB table.
  */
 
 import type { Express, Request, Response } from "express";
+import { db } from "../db";
+import { dynamicPageSchemas } from "@shared/schema";
+import { eq, and, desc } from "drizzle-orm";
 import { generatePageSchema, patchExistingPageSchema } from "../services/aiPromptToPageSchema";
 import { isPlatformAdmin } from "../auth/authorization";
 import { requireActiveSubscription } from "../subscriptionGuard";
@@ -15,50 +18,66 @@ import { generateTenantLlmsTxt } from "../services/discoverability/llmsTxtGenera
 import { generateSitemapXml, buildSitemapEntries } from "../services/discoverability/sitemapGenerator";
 import { generateRobotsTxt } from "../services/discoverability/robotsTxtGenerator";
 
-// ── In-memory schema store (TODO: migrate to db table when schema is stable) ──
-// WARNING: This is a volatile in-memory store. All saved schemas are LOST on server restart.
-// [DYNAMIC-PAGES] DO NOT use this in production without DB persistence.
-// Migration path: create a `dynamic_page_schemas` table in shared/schema.ts and move
-// saveSchemaForAccount / getSchemasForAccount to db queries via storage layer.
-// Tracking issue: server restart drops all user-saved pages.
+// ── DB helpers ────────────────────────────────────────────────────────────────
 
-// Emit a startup warning so Railway logs surface this clearly
-if (typeof process !== "undefined") {
-  console.warn("[DYNAMIC-PAGES] Using in-memory schema store — data will not survive restart. Migrate to DB persistence before production use.");
+async function getSchemasForAccount(accountId: number) {
+  return db
+    .select()
+    .from(dynamicPageSchemas)
+    .where(eq(dynamicPageSchemas.accountId, accountId))
+    .orderBy(desc(dynamicPageSchemas.updatedAt));
 }
 
-interface StoredSchema {
-  id: string;
-  subAccountId: number;
-  schema: any;
-  savedAt: string;
-  published: boolean;
+async function getPublishedPages(accountId: number) {
+  return db
+    .select()
+    .from(dynamicPageSchemas)
+    .where(and(eq(dynamicPageSchemas.accountId, accountId), eq(dynamicPageSchemas.status, "published")))
+    .orderBy(desc(dynamicPageSchemas.publishedAt));
 }
 
-const schemaStore = new Map<number, StoredSchema[]>();
+async function upsertSchema(accountId: number, schema: any, userId?: number) {
+  const schemaId: number | undefined = schema._dbId ? Number(schema._dbId) : undefined;
+  const slug = schema.meta?.slug ?? "";
+  const title = schema.meta?.title ?? "Untitled";
+  const niche = schema.meta?.niche ?? "general";
+  const isPublished = schema.publish?.published === true;
+  const status = isPublished ? "published" : "draft";
+  const publishedAt = isPublished ? (schema.publish?.publishedAt ? new Date(schema.publish.publishedAt) : new Date()) : null;
 
-function getSchemasForAccount(subAccountId: number): StoredSchema[] {
-  return schemaStore.get(subAccountId) ?? [];
-}
+  if (schemaId) {
+    const [updated] = await db
+      .update(dynamicPageSchemas)
+      .set({
+        slug,
+        title,
+        niche,
+        status,
+        schemaJson: schema,
+        publishedAt,
+        updatedAt: new Date(),
+        isPublic: isPublished,
+      })
+      .where(and(eq(dynamicPageSchemas.id, schemaId), eq(dynamicPageSchemas.accountId, accountId)))
+      .returning();
+    return updated;
+  }
 
-function saveSchemaForAccount(subAccountId: number, schema: any): StoredSchema {
-  const existing = schemaStore.get(subAccountId) ?? [];
-  const entry: StoredSchema = {
-    id: schema.id ?? Math.random().toString(36).slice(2, 10),
-    subAccountId,
-    schema,
-    savedAt: new Date().toISOString(),
-    published: schema.publish?.published ?? false,
-  };
-  const idx = existing.findIndex(s => s.id === entry.id);
-  if (idx >= 0) existing[idx] = entry;
-  else existing.push(entry);
-  schemaStore.set(subAccountId, existing);
-  return entry;
-}
-
-function getPublishedPages(subAccountId: number): StoredSchema[] {
-  return getSchemasForAccount(subAccountId).filter(s => s.published);
+  const [inserted] = await db
+    .insert(dynamicPageSchemas)
+    .values({
+      accountId,
+      createdByUserId: userId ?? null,
+      slug,
+      title,
+      niche,
+      status,
+      schemaJson: schema,
+      publishedAt,
+      isPublic: isPublished,
+    })
+    .returning();
+  return inserted;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -85,9 +104,7 @@ export function registerDynamicPagesRoutes(app: Express): void {
       return res.status(400).json({ error: "prompt is required (min 3 chars)" });
     }
 
-    // Sanitize prompt — prevent XSS / injection
     const sanitized = prompt.trim().slice(0, 2000).replace(/<[^>]*>/g, "");
-
     const schema = await generatePageSchema(sanitized, subAccountId);
     return res.json({ schema });
   }));
@@ -109,53 +126,74 @@ export function registerDynamicPagesRoutes(app: Express): void {
 
   /** List saved schemas for a sub-account */
   app.get("/api/dynamic-pages/schemas/:subAccountId", guard, asyncHandler(async (req: Request, res: Response) => {
-    const subAccountId = parseInt(String(req.params.subAccountId), 10);
-    if (isNaN(subAccountId)) return res.status(400).json({ error: "Invalid subAccountId" });
+    const accountId = parseInt(String(req.params.subAccountId), 10);
+    if (isNaN(accountId)) return res.status(400).json({ error: "Invalid subAccountId" });
 
-    const schemas = getSchemasForAccount(subAccountId).map(s => ({
-      id: s.id, savedAt: s.savedAt, published: s.published,
-      title: s.schema?.meta?.title ?? "Untitled",
-      slug: s.schema?.meta?.slug ?? s.id,
-      niche: s.schema?.meta?.niche ?? "general",
+    const rows = await getSchemasForAccount(accountId);
+    const schemas = rows.map(r => ({
+      id: r.id,
+      savedAt: r.updatedAt,
+      published: r.status === "published",
+      title: r.title,
+      slug: r.slug,
+      niche: r.niche,
+      status: r.status,
     }));
     return res.json({ schemas });
   }));
 
-  /** Save a schema */
+  /** Save (upsert) a schema */
   app.post("/api/dynamic-pages/schemas", guard, asyncHandler(async (req: Request, res: Response) => {
     const { schema, subAccountId } = req.body as { schema?: any; subAccountId?: number };
     if (!schema || !subAccountId) return res.status(400).json({ error: "schema and subAccountId are required" });
 
-    const entry = saveSchemaForAccount(subAccountId, schema);
-    return res.json({ id: entry.id, savedAt: entry.savedAt });
+    const userId = (req as any).user?.id ?? undefined;
+    const entry = await upsertSchema(Number(subAccountId), schema, userId);
+    return res.json({ id: entry.id, savedAt: entry.updatedAt });
   }));
 
-  /** Publish/unpublish a schema — triggers discoverability file updates */
+  /** Publish/unpublish a schema */
   app.patch("/api/dynamic-pages/schemas/:schemaId/publish", guard, asyncHandler(async (req: Request, res: Response) => {
-    const { schemaId } = req.params;
+    const schemaId = parseInt(String(req.params.schemaId), 10);
+    if (isNaN(schemaId)) return res.status(400).json({ error: "Invalid schemaId" });
+
     const { subAccountId, published } = req.body as { subAccountId?: number; published?: boolean };
     if (!subAccountId) return res.status(400).json({ error: "subAccountId required" });
 
-    const schemas = schemaStore.get(subAccountId) ?? [];
-    const entry = schemas.find(s => s.id === schemaId);
-    if (!entry) return res.status(404).json({ error: "Schema not found" });
+    const [existing] = await db
+      .select()
+      .from(dynamicPageSchemas)
+      .where(and(eq(dynamicPageSchemas.id, schemaId), eq(dynamicPageSchemas.accountId, Number(subAccountId))));
+    if (!existing) return res.status(404).json({ error: "Schema not found" });
 
-    entry.published = !!published;
-    entry.schema.publish = { ...entry.schema.publish, published: !!published, publishedAt: published ? new Date().toISOString() : undefined };
-    schemaStore.set(subAccountId, schemas);
+    const isPublished = !!published;
+    const schemaJson = { ...(existing.schemaJson as any), publish: { ...(existing.schemaJson as any)?.publish, published: isPublished, publishedAt: isPublished ? new Date().toISOString() : undefined } };
 
-    return res.json({ id: schemaId, published: entry.published });
+    await db
+      .update(dynamicPageSchemas)
+      .set({
+        status: isPublished ? "published" : "draft",
+        publishedAt: isPublished ? new Date() : null,
+        isPublic: isPublished,
+        schemaJson,
+        updatedAt: new Date(),
+      })
+      .where(eq(dynamicPageSchemas.id, schemaId));
+
+    return res.json({ id: schemaId, published: isPublished });
   }));
 
   /** Delete a schema */
   app.delete("/api/dynamic-pages/schemas/:schemaId", guard, asyncHandler(async (req: Request, res: Response) => {
-    const { schemaId } = req.params;
+    const schemaId = parseInt(String(req.params.schemaId), 10);
+    if (isNaN(schemaId)) return res.status(400).json({ error: "Invalid schemaId" });
+
     const subAccountId = getSubAccountId(req);
     if (!subAccountId) return res.status(400).json({ error: "subAccountId required" });
 
-    const schemas = schemaStore.get(subAccountId) ?? [];
-    const next = schemas.filter(s => s.id !== schemaId);
-    schemaStore.set(subAccountId, next);
+    await db
+      .delete(dynamicPageSchemas)
+      .where(and(eq(dynamicPageSchemas.id, schemaId), eq(dynamicPageSchemas.accountId, subAccountId)));
     return res.json({ deleted: true });
   }));
 
@@ -175,17 +213,16 @@ export function registerDynamicPagesRoutes(app: Express): void {
   app.get("/sitemap.xml", asyncHandler(async (req: Request, res: Response) => {
     const subAccountId = getSubAccountId(req);
     const origin = getOrigin(req);
-    const published = subAccountId ? getPublishedPages(subAccountId) : [];
+    const published = subAccountId ? await getPublishedPages(subAccountId) : [];
 
     const entries = buildSitemapEntries(
       published.map(s => ({
-        url: s.schema?.publish?.canonicalUrl ?? `${origin}/${s.schema?.meta?.slug ?? s.id}`,
-        publishedAt: s.schema?.publish?.publishedAt,
-        slug: s.schema?.meta?.slug ?? s.id,
+        url: (s.schemaJson as any)?.publish?.canonicalUrl ?? `${origin}/${s.slug || s.id}`,
+        publishedAt: s.publishedAt?.toISOString(),
+        slug: s.slug || String(s.id),
       }))
     );
 
-    // Always include home
     entries.unshift({ url: origin, lastmod: new Date().toISOString().split("T")[0], changefreq: "daily", priority: 1.0 });
 
     const xml = generateSitemapXml(entries);
@@ -198,20 +235,23 @@ export function registerDynamicPagesRoutes(app: Express): void {
   app.get("/llms.txt", asyncHandler(async (req: Request, res: Response) => {
     const subAccountId = getSubAccountId(req);
     const origin = getOrigin(req);
-    const host = req.headers.host ?? "apex.app";
-    const published = subAccountId ? getPublishedPages(subAccountId) : [];
+    const host = String(req.headers.host ?? "apex.app");
+    const published = subAccountId ? await getPublishedPages(subAccountId) : [];
 
     const txt = generateTenantLlmsTxt({
       organizationName: host.split(".")[0] ?? "Apex Business",
       organizationUrl: origin,
-      publishedPages: published.map(s => ({
-        title: s.schema?.meta?.title ?? "Page",
-        slug: s.schema?.meta?.slug ?? s.id,
-        niche: s.schema?.meta?.niche ?? "general",
-        businessType: s.schema?.meta?.businessType ?? "business",
-        copy: s.schema?.copy,
-        publish: s.schema?.publish ?? { published: true },
-      })),
+      publishedPages: published.map(s => {
+        const sj = s.schemaJson as any;
+        return {
+          title: s.title,
+          slug: s.slug || String(s.id),
+          niche: s.niche,
+          businessType: sj?.meta?.businessType ?? "business",
+          copy: sj?.copy,
+          publish: sj?.publish ?? { published: true },
+        };
+      }),
     });
 
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
@@ -219,31 +259,35 @@ export function registerDynamicPagesRoutes(app: Express): void {
     return res.send(txt);
   }));
 
-  /** JSON-LD structured data for a specific page */
+  /** JSON-LD structured data for a specific published page */
   app.get("/api/dynamic-pages/schemas/:schemaId/structured-data", asyncHandler(async (req: Request, res: Response) => {
-    const { schemaId } = req.params;
+    const schemaId = parseInt(String(req.params.schemaId), 10);
+    if (isNaN(schemaId)) return res.status(400).json({ error: "Invalid schemaId" });
+
     const subAccountId = getSubAccountId(req);
     if (!subAccountId) return res.status(400).json({ error: "subAccountId required" });
 
-    const schemas = getSchemasForAccount(subAccountId);
-    const entry = schemas.find(s => s.id === schemaId);
+    const [entry] = await db
+      .select()
+      .from(dynamicPageSchemas)
+      .where(and(eq(dynamicPageSchemas.id, schemaId), eq(dynamicPageSchemas.accountId, subAccountId)));
     if (!entry) return res.status(404).json({ error: "Schema not found" });
-    if (!entry.published) return res.status(403).json({ error: "Only published pages have structured data" });
+    if (entry.status !== "published") return res.status(403).json({ error: "Only published pages have structured data" });
 
     const origin = getOrigin(req);
-    const schema = entry.schema;
+    const sj = entry.schemaJson as any;
     const structuredData = generateAllStructuredData({
-      title: schema?.meta?.title ?? "Page",
-      slug: schema?.meta?.slug ?? schemaId,
-      url: schema?.publish?.canonicalUrl ?? `${origin}/${schema?.meta?.slug ?? schemaId}`,
-      description: schema?.copy?.seoDescription ?? schema?.copy?.subheadline ?? "",
-      niche: schema?.meta?.niche ?? "general",
-      businessType: schema?.meta?.businessType ?? "business",
-      headline: schema?.copy?.headline ?? "",
-      subheadline: schema?.copy?.subheadline ?? "",
-      sections: schema?.sections ?? [],
-      publishedAt: schema?.publish?.publishedAt,
-      organizationName: req.headers.host?.split(".")[0] ?? "Business",
+      title: entry.title,
+      slug: entry.slug || String(schemaId),
+      url: sj?.publish?.canonicalUrl ?? `${origin}/${entry.slug || schemaId}`,
+      description: sj?.copy?.seoDescription ?? sj?.copy?.subheadline ?? "",
+      niche: entry.niche,
+      businessType: sj?.meta?.businessType ?? "business",
+      headline: sj?.copy?.headline ?? "",
+      subheadline: sj?.copy?.subheadline ?? "",
+      sections: sj?.sections ?? [],
+      publishedAt: entry.publishedAt?.toISOString(),
+      organizationName: String(req.headers.host ?? "").split(".")[0] ?? "Business",
       organizationUrl: origin,
     });
 
@@ -253,10 +297,7 @@ export function registerDynamicPagesRoutes(app: Express): void {
   /** Admin: view all schemas across accounts */
   app.get("/api/dynamic-pages/admin/all", asyncHandler(async (req: Request, res: Response) => {
     if (!isPlatformAdmin(req)) return res.status(403).json({ error: "Admin only" });
-    const all: any[] = [];
-    for (const [subAccountId, schemas] of schemaStore.entries()) {
-      all.push(...schemas.map(s => ({ ...s, subAccountId })));
-    }
+    const all = await db.select().from(dynamicPageSchemas).orderBy(desc(dynamicPageSchemas.updatedAt));
     return res.json({ schemas: all, total: all.length });
   }));
 }
