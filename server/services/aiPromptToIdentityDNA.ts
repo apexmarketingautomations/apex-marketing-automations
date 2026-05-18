@@ -377,7 +377,8 @@ Return the COMPLETE updated DNA as JSON.`;
     }
     console.log(`[IDENTITY] Patched DNA: "${prompt.slice(0, 60)}"`);
     return patched;
-  } catch {
+  } catch (err) {
+    console.warn("[IDENTITY] patchIdentityDNA failed, returning existing DNA:", err instanceof Error ? err.message : err);
     return existingDNA;
   }
 }

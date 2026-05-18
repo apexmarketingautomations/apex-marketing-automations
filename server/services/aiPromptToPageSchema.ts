@@ -221,7 +221,8 @@ Return the COMPLETE updated schema as JSON.`;
     const patched = JSON.parse(raw) as DynamicPageSchema;
     patched.meta = { ...existingSchema.meta, ...patched.meta, updatedAt: now };
     return patched;
-  } catch {
+  } catch (err) {
+    console.warn("[AI-PAGE-SCHEMA] patchExistingPageSchema failed, returning existing schema:", err instanceof Error ? err.message : err);
     return existingSchema;
   }
 }
@@ -239,7 +240,9 @@ export async function generatePageCopy(prompt: string, niche: string): Promise<{
       const raw = extractJSON(response.text);
       return JSON.parse(raw);
     }
-  } catch {}
+  } catch (err) {
+    console.warn("[AI-PAGE-SCHEMA] generatePageCopy failed, using fallback copy:", err instanceof Error ? err.message : err);
+  }
   return { headline: "Grow Your Business with AI", subheadline: "Automation. Leads. Results.", body: "We help you scale.", ctaText: "Get Started" };
 }
 
