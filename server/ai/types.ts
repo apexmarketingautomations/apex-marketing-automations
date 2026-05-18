@@ -49,7 +49,8 @@ export type ModelCapability =
   | "function-calling"     // native tool / function call schema
   | "streaming"            // supports server-sent event streaming
   | "local"                // runs on local hardware (Ollama)
-  | "reranking";           // cross-encoder reranking
+  | "reranking"            // cross-encoder reranking
+  | "reasoning";           // extended chain-of-thought / deep reasoning
 
 // ── Model profiles ────────────────────────────────────────────────────────────
 

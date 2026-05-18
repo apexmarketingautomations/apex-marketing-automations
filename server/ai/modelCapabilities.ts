@@ -74,8 +74,10 @@ export const TASK_PROVIDER_PREFERENCE: Record<AITaskType, ProviderName[]> = {
  * model that has the required capabilities.
  */
 export const TASK_MODEL_OVERRIDES: Partial<Record<AITaskType, Partial<Record<ProviderName, string>>>> = {
+  // deep_reasoning → REASONING (120B via Groq)
   "reasoning": {
     anthropic: "claude-sonnet-4-6",
+    groq:      "openai/gpt-oss-120b",
     openai:    "gpt-4o",
   },
   "extraction": {
@@ -91,19 +93,22 @@ export const TASK_MODEL_OVERRIDES: Partial<Record<AITaskType, Partial<Record<Pro
     gemini:    "gemini-embedding-exp",
     ollama:    "nomic-embed-text",
   },
+  // lead_classification → FAST (8B instant)
   "classification": {
     anthropic: "claude-3-5-haiku-20241022",
-    groq:      "llama-3.3-70b-versatile",
+    groq:      "llama-3.1-8b-instant",
     openai:    "gpt-4o-mini",
   },
+  // scoring uses FAST too — high volume, low stakes
   "scoring": {
     anthropic: "claude-3-5-haiku-20241022",
-    groq:      "llama-3.3-70b-versatile",
+    groq:      "llama-3.1-8b-instant",
     openai:    "gpt-4o-mini",
   },
+  // case_analysis / summarization → SMART (70B versatile)
   "summarization": {
     anthropic: "claude-3-5-haiku-20241022",
-    groq:      "llama-3.1-8b-instant",
+    groq:      "llama-3.3-70b-versatile",
     openai:    "gpt-4o-mini",
     gemini:    "gemini-2.5-flash",
   },
