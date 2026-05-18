@@ -48,6 +48,12 @@ export interface AgentDefinition<TOutput> {
   timeoutMs?: number;
   /** Whether this agent requires human approval before its output is acted on. */
   requiresApproval?: boolean;
+  /**
+   * Preferred provider for this agent. When set and the provider is configured,
+   * overrides the routing plan so the agent always uses this provider.
+   * Use "groq" for lightweight summarization/classification agents with no PII.
+   */
+  preferredProvider?: ProviderName;
 }
 
 export interface AgentRunOptions {
@@ -141,7 +147,13 @@ export async function runAgent<TOutput>(
   // 4. Get routing plan for best available provider/model
   const plan = buildPlan(agent.taskType);
   const primary = plan.candidates[0];
-  const provider: ProviderName = (primary?.provider ?? "anthropic") as ProviderName;
+  // Honor agent.preferredProvider when set and the key is present
+  const preferred = agent.preferredProvider;
+  const preferredActive =
+    preferred === "groq" && !!process.env.GROQ_API_KEY?.trim();
+  const provider: ProviderName = preferredActive
+    ? (preferred as ProviderName)
+    : (primary?.provider ?? "anthropic") as ProviderName;
   const model    = primary?.modelId ?? "claude-3-5-haiku-20241022";
 
   let lastRaw = "";
@@ -167,7 +179,7 @@ export async function runAgent<TOutput>(
             { role: "system", content: system },
             { role: "user",   content: user + retryNote },
           ],
-          { jsonMode: true, timeoutMs, maxTokens: 4096 },
+          { jsonMode: true, timeoutMs, maxTokens: 4096, forceProvider: provider },
         ),
         timeoutMs,
       );

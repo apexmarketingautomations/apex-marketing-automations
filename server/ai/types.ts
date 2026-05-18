@@ -30,7 +30,7 @@ export type AITaskType =
 
 // ── Provider names ────────────────────────────────────────────────────────────
 
-export type ProviderName = "anthropic" | "openai" | "gemini" | "ollama";
+export type ProviderName = "anthropic" | "openai" | "gemini" | "ollama" | "groq";
 
 // ── Capability flags ──────────────────────────────────────────────────────────
 

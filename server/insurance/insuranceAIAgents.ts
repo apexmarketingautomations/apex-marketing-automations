@@ -202,98 +202,104 @@ export async function runCommercialPolicyAnalysis(
   return result.ok ? result.output ?? null : null;
 }
 
-// ── Agent 4: Homeowner Opportunity ────────────────────────────────────────────
+// ── Agent 4: Homeowner Opportunity (Groq — no PII, aggregate signals only) ────
 
-const homeownerOpportunityAgent = {
-  agentId: "insurance_homeowner_opportunity",
-  displayName: "Homeowner Coverage Opportunity Agent",
-  model: "claude-haiku",
-  systemPrompt: `You are a homeowner insurance specialist. Summarize property signals and coverage opportunities concisely. Output ONLY valid JSON.`,
+const homeownerOpportunityAgent: AgentDefinition<{ summary: string; urgency: string; recommendedAction: string }> = {
+  name:             "insurance_homeowner_opportunity",
+  taskType:         "summarization",
+  promptVersion:    "1.0",
+  preferredProvider: "groq",
   buildPrompt: (input: unknown) => {
     const h = input as HouseholdEntity;
-    return `Summarize homeowner coverage opportunity for:
+    return {
+      system: `You are a homeowner insurance specialist. Summarize property signals and coverage opportunities concisely. Output ONLY valid JSON.`,
+      user:   `Summarize homeowner coverage opportunity for:
 Address: ${h.primaryAddress}, ${h.county}
 Home Value: $${h.estimatedHomeValue?.toLocaleString() ?? "unknown"}
 Roof Age: ${h.roofAgeEstimate ?? "unknown"} years
 Storm Exposure: ${h.stormExposureScore ?? 0}/100
 Signals: ${(h.activeSignals ?? []).join(", ") || "none"}
 
-Return JSON: summary (string), urgency (low/medium/high), recommendedAction (string).`;
+Return JSON: summary (string), urgency (low/medium/high), recommendedAction (string).`,
+    };
   },
   outputValidator: (v: unknown): v is { summary: string; urgency: string; recommendedAction: string } =>
     isObj(v) && hasKeys(v, ["summary", "urgency", "recommendedAction"]),
-  requiredAction: "read_data",
-  maxRetries: 1,
+  maxParseAttempts: 1,
 };
 
 export async function runHomeownerOpportunityAnalysis(
   household: HouseholdEntity,
   subAccountId?: number,
 ) {
-  const result: any = await runAgent(homeownerOpportunityAgent as any, household, { subAccountId });
+  const result: any = await runAgent(homeownerOpportunityAgent, household, { subAccountId });
   return result.ok ? result.output ?? null : null;
 }
 
-// ── Agent 5: Auto Policy Opportunity ─────────────────────────────────────────
+// ── Agent 5: Auto Policy Opportunity (Groq — aggregate risk signals, no PII) ─
 
-const autoPolicyAgent = {
-  agentId: "insurance_auto_policy",
-  displayName: "Auto Policy Opportunity Agent",
-  model: "claude-haiku",
-  systemPrompt: `You are an auto insurance placement specialist. Categorize risk and recommend placement approach. Output ONLY valid JSON.`,
+const autoPolicyAgent: AgentDefinition<{ riskCategory: string; placement: string; estimatedPremium: number; urgency: string }> = {
+  name:             "insurance_auto_policy",
+  taskType:         "classification",
+  promptVersion:    "1.0",
+  preferredProvider: "groq",
   buildPrompt: (input: unknown) => {
     const h = input as HouseholdEntity;
-    return `Analyze auto insurance opportunity:
+    return {
+      system: `You are an auto insurance placement specialist. Categorize risk and recommend placement approach. Output ONLY valid JSON.`,
+      user:   `Analyze auto insurance opportunity:
 Vehicles: ${h.vehicleCount ?? 0}
 Crashes (12mo): ${h.crashCount12Mo ?? 0}
 DUIs (36mo): ${h.duiCount36Mo ?? 0}
 Teen Driver: ${h.hasTeenDriver ? "Yes" : "No"}
 Signals: ${(h.activeSignals ?? []).join(", ") || "none"}
 
-Return JSON: riskCategory (standard/preferred/high-risk/non-standard), placement (string), estimatedPremium (number), urgency (low/medium/high/immediate).`;
+Return JSON: riskCategory (standard/preferred/high-risk/non-standard), placement (string), estimatedPremium (number), urgency (low/medium/high/immediate).`,
+    };
   },
   outputValidator: (v: unknown): v is { riskCategory: string; placement: string; estimatedPremium: number; urgency: string } =>
     isObj(v) && hasKeys(v, ["riskCategory", "placement", "estimatedPremium", "urgency"]),
-  requiredAction: "read_data",
-  maxRetries: 1,
+  maxParseAttempts: 1,
 };
 
 export async function runAutoPolicyAnalysis(
   household: HouseholdEntity,
   subAccountId?: number,
 ) {
-  const result: any = await runAgent(autoPolicyAgent as any, household, { subAccountId });
+  const result: any = await runAgent(autoPolicyAgent, household, { subAccountId });
   return result.ok ? result.output ?? null : null;
 }
 
-// ── Agent 6: Bundling Recommendation ─────────────────────────────────────────
+// ── Agent 6: Bundling Recommendation (Groq — aggregate scores only) ──────────
 
-const bundlingAgent = {
-  agentId: "insurance_bundling",
-  displayName: "Insurance Bundling Recommendation Agent",
-  model: "claude-haiku",
-  systemPrompt: `You are an insurance bundling specialist. Identify cross-sell opportunities and estimate savings. Output ONLY valid JSON.`,
+const bundlingAgent: AgentDefinition<BundlingSummary> = {
+  name:             "insurance_bundling",
+  taskType:         "scoring",
+  promptVersion:    "1.0",
+  preferredProvider: "groq",
   buildPrompt: (input: unknown) => {
     const h = input as HouseholdEntity;
-    return `Analyze bundling opportunity:
+    return {
+      system: `You are an insurance bundling specialist. Identify cross-sell opportunities and estimate savings. Output ONLY valid JSON.`,
+      user:   `Analyze bundling opportunity:
 Homeowner: ${h.isHomeowner ? "Yes" : "No"}
 Vehicles: ${h.vehicleCount ?? 0}
 Business Owner: ${h.businessOwner ? "Yes" : "No"}
 Estimated Home Value: $${h.estimatedHomeValue?.toLocaleString() ?? "unknown"}
 Policy Opportunity Score: ${h.policyOpportunityScore ?? 0}/100
 
-Return JSON: householdId, bundlingLines (array of line names), estimatedSavings (annual $), approachAngle (string).`;
+Return JSON: householdId, bundlingLines (array of line names), estimatedSavings (annual $), approachAngle (string).`,
+    };
   },
   outputValidator: (v: unknown): v is BundlingSummary =>
     isObj(v) && hasKeys(v, ["bundlingLines", "estimatedSavings", "approachAngle"]),
-  requiredAction: "read_data",
-  maxRetries: 1,
+  maxParseAttempts: 1,
 };
 
 export async function runBundlingAnalysis(
   household: HouseholdEntity,
   subAccountId?: number,
 ): Promise<BundlingSummary | null> {
-  const result: any = await runAgent(bundlingAgent as any, household, { subAccountId });
+  const result: any = await runAgent(bundlingAgent, household, { subAccountId });
   return result.ok ? result.output ?? null : null;
 }

@@ -55,9 +55,9 @@ export const TASK_PROVIDER_PREFERENCE: Record<AITaskType, ProviderName[]> = {
   "extraction":         ["anthropic", "openai", "gemini"],
   "ocr-assist":         ["gemini",    "anthropic"],
   "embeddings":         ["openai",    "gemini",    "ollama"],
-  "classification":     ["anthropic", "openai",    "gemini"],
-  "scoring":            ["anthropic", "openai",    "gemini"],
-  "summarization":      ["anthropic", "openai",    "gemini"],
+  "classification":     ["anthropic", "groq", "openai", "gemini"],
+  "scoring":            ["anthropic", "groq", "openai", "gemini"],
+  "summarization":      ["anthropic", "groq", "openai", "gemini"],
   "workflow-analysis":  ["anthropic", "openai",    "gemini"],
   "semantic-retrieval": ["anthropic", "openai",    "gemini"],
   "image-generation":   ["openai",    "gemini"],
@@ -92,15 +92,18 @@ export const TASK_MODEL_OVERRIDES: Partial<Record<AITaskType, Partial<Record<Pro
     ollama:    "nomic-embed-text",
   },
   "classification": {
-    anthropic: "claude-3-5-haiku-20241022",   // fast + cheap for classification
+    anthropic: "claude-3-5-haiku-20241022",
+    groq:      "llama-3.3-70b-versatile",
     openai:    "gpt-4o-mini",
   },
   "scoring": {
     anthropic: "claude-3-5-haiku-20241022",
+    groq:      "llama-3.3-70b-versatile",
     openai:    "gpt-4o-mini",
   },
   "summarization": {
     anthropic: "claude-3-5-haiku-20241022",
+    groq:      "llama-3.1-8b-instant",
     openai:    "gpt-4o-mini",
     gemini:    "gemini-2.5-flash",
   },

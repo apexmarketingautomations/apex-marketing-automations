@@ -61,12 +61,18 @@ function isOllamaConfigured(): boolean {
   return !!(process.env.OLLAMA_BASE_URL || process.env.OLLAMA_ENABLED === "true");
 }
 
+/** Returns true if a Groq API key is present. */
+function isGroqConfigured(): boolean {
+  return !!process.env.GROQ_API_KEY?.trim();
+}
+
 function isProviderConfigured(provider: ProviderName): boolean {
   switch (provider) {
     case "anthropic": return isAnthropicConfigured();
     case "openai":    return isOpenAIConfigured();
     case "gemini":    return isGeminiConfigured();
     case "ollama":    return isOllamaConfigured();
+    case "groq":      return isGroqConfigured();
   }
 }
 
@@ -171,7 +177,7 @@ export function buildPlan(
 
 /** Check if any AI provider is currently configured and available. */
 export function isAnyProviderAvailable(): boolean {
-  const providers: ProviderName[] = ["anthropic", "openai", "gemini"];
+  const providers: ProviderName[] = ["anthropic", "openai", "gemini", "groq"];
   return providers.some(p => isProviderConfigured(p) && isProviderAvailable(p));
 }
 
