@@ -366,7 +366,6 @@ export default function DynamicPages() {
 
   const [selectedTemplate, setSelectedTemplate] = useState(TEMPLATES[0].id);
   const [tab, setTab] = useState<"templates" | "builder">("templates");
-  const [pageName, setPageName] = useState("");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -374,6 +373,7 @@ export default function DynamicPages() {
   const [showCatMenu, setShowCatMenu] = useState(false);
   const [currentSchema, setCurrentSchema] = useState<DynamicPageSchema | null>(null);
   const [previewSchema, setPreviewSchema] = useState(false);
+  const [customPrompt, setCustomPrompt] = useState("");
 
   const activeTemplate = TEMPLATES.find(t => t.id === selectedTemplate) ?? TEMPLATES[0];
 
@@ -393,7 +393,8 @@ export default function DynamicPages() {
   const handleGenerate = async () => {
     setIsGenerating(true);
     try {
-      const prompt = `${activeTemplate.name}: ${activeTemplate.desc}. Tags: ${activeTemplate.tags.join(", ")}.`;
+      const base = customPrompt.trim() || activeTemplate.desc;
+      const prompt = `${activeTemplate.name}: ${base}. Style tags: ${activeTemplate.tags.join(", ")}.`;
       const res = await apiRequest("POST", "/api/dynamic-pages/generate", { prompt, subAccountId });
       const data = await res.json();
       if (data?.schema) {
@@ -506,14 +507,19 @@ export default function DynamicPages() {
                 )}
               </div>
 
-              {/* Generate CTA */}
+              {/* Prompt + Generate CTA */}
               <div className="p-3 border-t border-white/5 space-y-2">
-                <input
-                  value={pageName}
-                  onChange={e => setPageName(e.target.value)}
-                  placeholder="Page name (optional)"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-xs placeholder:text-white/30 outline-none focus:border-purple-500/50"
-                />
+                <div className="relative">
+                  <Sparkles className="absolute left-2.5 top-2.5 w-3 h-3 text-purple-400/60 pointer-events-none" />
+                  <textarea
+                    value={customPrompt}
+                    onChange={e => setCustomPrompt(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleGenerate(); }}
+                    placeholder={`Describe your page...\ne.g. "Dark hero, emergency hotline, bold CTA"`}
+                    rows={3}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl pl-7 pr-3 py-2 text-white text-xs placeholder:text-white/30 outline-none focus:border-purple-500/50 resize-none leading-relaxed"
+                  />
+                </div>
                 <Button onClick={handleGenerate} disabled={isGenerating}
                   className="w-full bg-purple-600 hover:bg-purple-700 text-white text-sm h-9 gap-2">
                   {isGenerating ? (
@@ -526,6 +532,7 @@ export default function DynamicPages() {
                     <><Sparkles className="w-3.5 h-3.5" /> Generate · {activeTemplate.name}</>
                   )}
                 </Button>
+                <p className="text-white/20 text-[10px] text-center">⌘ Enter to generate</p>
               </div>
             </>
           )}
@@ -622,7 +629,7 @@ export default function DynamicPages() {
                       <Sparkles className="w-8 h-8" style={{ color: activeTemplate.color }} />
                     </motion.div>
                     <h3 className="text-3xl font-bold text-white mb-2">
-                      {currentSchema?.meta?.title ?? pageName ?? activeTemplate.name} is ready
+                      {currentSchema?.meta?.title ?? activeTemplate.name} is ready
                     </h3>
                     <p className="text-white/50 text-sm mb-4">
                       {currentSchema ? "AI page generated · WebGL scene live" : "3D scene built · Animations wired"} · Ready to publish
