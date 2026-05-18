@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Car } from "lucide-react";
 import { Link, useLocation } from "wouter";
-import { MessageSquare, GitFork, Scale, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2, History, Satellite, Building, BarChart3, Kanban, CalendarDays, Mail, Palette, Webhook, FileBarChart, Instagram, Target, Lock, Plug, Activity, Menu, X, ContactRound, MapPin, BellRing, FlaskConical, Home, Brain, PenTool, Zap, Sparkles, Umbrella, Scissors, Wrench, PawPrint } from "lucide-react";
+import { MessageSquare, GitFork, Scale, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2, History, Satellite, Building, BarChart3, Kanban, CalendarDays, Mail, Palette, Webhook, FileBarChart, Instagram, Target, Lock, Plug, Activity, Menu, X, ContactRound, MapPin, BellRing, FlaskConical, Home, Brain, PenTool, Zap, Sparkles, Umbrella, Scissors, Wrench, PawPrint, Layers } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CommandMenu } from "@/components/command-menu";
@@ -91,7 +91,7 @@ const navSections = [
     label: "BUILD",
     items: [
       { href: "/site-builder", icon: LayoutTemplate, label: "Site Builder" },
-      { href: "/liquid", icon: Globe, label: "Dynamic Pages" },
+      { href: "/dynamic-pages", icon: Layers, label: "Dynamic Pages" },
       { href: "/form-builder", icon: LayoutTemplate, label: "Form Builder" },
       { href: "/digital-card-builder", icon: ContactRound, label: "Digital Card", requiredFeature: "digital_card" },
       { href: "/domains", icon: Link2, label: "Domains" },
