@@ -3,10 +3,14 @@
  * courtListenerPipeline.ts
  *
  * Polls CourtListener REST API for FL bankruptcy filings.
- * Three courts, every 6 hours:
- *   flmb — U.S. Bankruptcy Court, M.D. Florida (Tampa / Orlando / Fort Myers area)
- *   flsb — U.S. Bankruptcy Court, S.D. Florida (Miami / Fort Lauderdale / West Palm)
- *   flnb — U.S. Bankruptcy Court, N.D. Florida (Tallahassee / Pensacola / Gainesville)
+ * One court, every 6 hours:
+ *   flmb — U.S. Bankruptcy Court, M.D. Florida
+ *           Target counties: Lee (Fort Myers), Collier (Naples), Charlotte (Punta Gorda)
+ *
+ * Southern (flsb) and Northern (flnb) districts are intentionally disabled —
+ * our attorney network only covers Southwest Florida.
+ *
+ * Business filings (LLC, Inc, Corp, etc.) are skipped — Sunbiz.org handles FL entities.
  *
  * Data flow:
  *   CourtListener REST API
@@ -20,7 +24,7 @@
  * Dedup: permanent by docket_number (one CRM contact per bankruptcy case, never re-inserted)
  * Skip trace: BatchData (BATCHDATA_API_KEY / BATCH_DATA) — fires on individual debtors
  *
- * Rate-limit safety: 3 courts × 1 page each = 3 API calls per cycle at free tier.
+ * Rate-limit safety: 1 court × 1 page each = 1 API call per cycle at free tier.
  * With token: no meaningful limit for this volume.
  */
 
@@ -39,11 +43,12 @@ const POLL_INTERVAL   = 6 * 60 * 60 * 1000; // 6 hours
 const PAGE_SIZE       = 100;
 const API_BASE        = "https://www.courtlistener.com/api/rest/v4";
 
-/** Bankruptcy courts in Florida — all three districts */
+/**
+ * Middle District only — covers Lee (Fort Myers), Collier (Naples), Charlotte (Punta Gorda).
+ * flsb (Southern) and flnb (Northern) are disabled; our network is Southwest FL only.
+ */
 const FL_BANKRUPTCY_COURTS = [
-  { id: "flmb", label: "M.D. Florida", district: "MIDDLE DISTRICT" },
-  { id: "flsb", label: "S.D. Florida", district: "SOUTHERN DISTRICT" },
-  { id: "flnb", label: "N.D. Florida", district: "NORTHERN DISTRICT" },
+  { id: "flmb", label: "M.D. Florida — SW Florida", district: "Lee / Collier / Charlotte" },
 ] as const;
 
 /** Words that indicate a business filing — skip these */
@@ -316,7 +321,7 @@ async function runBankruptcyCycle(): Promise<void> {
   const lookbackMs   = POLL_INTERVAL + 60 * 60 * 1000; // interval + 1h buffer
   const filedAfter   = new Date(Date.now() - lookbackMs).toISOString().slice(0, 10);
 
-  console.log(`[${PIPELINE_TAG}] Cycle started — polling 3 FL bankruptcy courts since ${filedAfter}`);
+  console.log(`[${PIPELINE_TAG}] Cycle started — polling flmb (Lee/Collier/Charlotte) since ${filedAfter}`);
 
   for (const court of FL_BANKRUPTCY_COURTS) {
     const filings = await fetchBankruptcyFilings(court.id, filedAfter);
