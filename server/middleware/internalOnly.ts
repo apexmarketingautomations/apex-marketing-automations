@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
+import { isPlatformAdmin, hasAdminSecret, logAuthBypass } from "../auth/authorization";
 
 /**
  * Middleware for routes that are only callable by internal services
@@ -16,8 +17,7 @@ import type { Request, Response, NextFunction } from "express";
 export function internalOnly(req: Request, res: Response, next: NextFunction): void {
   const secret = process.env.STANDALONE_ADMIN_SECRET?.trim();
   if (!secret) {
-    // Misconfigured environment — fail closed
-    console.error("[INTERNAL-ONLY] STANDALONE_ADMIN_SECRET not set; blocking request", {
+    console.error("[AUTH] [INTERNAL-ONLY] STANDALONE_ADMIN_SECRET not set; blocking request", {
       path: req.path,
       method: req.method,
       ip: req.ip,
@@ -26,19 +26,18 @@ export function internalOnly(req: Request, res: Response, next: NextFunction): v
     return;
   }
 
-  const provided = (req.headers["x-admin-secret"] as string | undefined)?.trim();
-  if (!provided || provided !== secret) {
-    console.warn("[INTERNAL-ONLY] Denied", {
+  if (!hasAdminSecret(req)) {
+    console.warn("[AUTH] [INTERNAL-ONLY] Denied — missing or invalid x-admin-secret", {
       path: req.path,
       method: req.method,
       ip: req.ip,
-      hasHeader: !!provided,
       traceId: req.headers["x-trace-id"] ?? null,
     });
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
+  logAuthBypass(req, "internalOnly");
   next();
 }
 
@@ -48,20 +47,16 @@ export function internalOnly(req: Request, res: Response, next: NextFunction): v
  * Use this for routes reachable by both UI admin users and internal services.
  */
 export function internalOrAdmin(req: Request, res: Response, next: NextFunction): void {
-  const user = (req as any).user;
-  const isSessionAdmin = user?.isAdmin === "true";
-  if (isSessionAdmin) {
+  if (isPlatformAdmin(req)) {
+    logAuthBypass(req, "internalOrAdmin");
     next();
     return;
   }
 
-  const adminUserId = process.env.ADMIN_USER_ID?.trim();
-  const userId: string | undefined = user?.claims?.sub ?? user?.id;
-  if (adminUserId && userId === adminUserId) {
-    next();
-    return;
-  }
-
-  // Fall through to secret-based check
-  internalOnly(req, res, next);
+  console.warn("[AUTH] [INTERNAL-ONLY] internalOrAdmin denied", {
+    path: req.path,
+    method: req.method,
+    ip: req.ip,
+  });
+  res.status(403).json({ error: "Admin or internal access required" });
 }
