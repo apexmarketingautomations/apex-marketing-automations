@@ -357,6 +357,88 @@ function TemplateCard({ template, selected, onSelect }: { template: TemplateItem
   );
 }
 
+// ── Prompt intent extraction (client-side, instant, no API call) ───────────────
+
+interface PromptIntent {
+  businessName: string;   // "Barbershop", "Med Spa", "Roofing Company"
+  focalObject: string;    // "spinning barbershop chair", "espresso machine", ""
+  displayLabel: string;   // shown on the Generate button
+  templateHint: string;   // matching template id if detected, "" if none
+  conflict: boolean;      // true when user prompt intent differs from selected template
+}
+
+// Ordered by specificity — longer phrases before shorter to avoid partial matches
+const INTENT_MAP: Array<[RegExp, string, string]> = [
+  // [pattern, businessName, matchingTemplateId]
+  [/barber\s*shop|barber\s*chair|fade\s*cut|hair\s*cut\s*shop/i, "Barber Shop", "barber-shop"],
+  [/coffee\s*shop|espresso|cafe|latte|cappuccino/i, "Coffee Shop", "coffee-shop"],
+  [/med\s*spa|medspa|botox|filler|aesthetics|microneedling/i, "Med Spa", "medspa"],
+  [/roofing|roof\s*repair|storm\s*damage\s*roof/i, "Roofing Company", "roofing"],
+  [/criminal\s*defense|criminal\s*lawyer|defense\s*attorney/i, "Criminal Defense Attorney", "criminal-defense"],
+  [/personal\s*injury|accident\s*lawyer|injury\s*attorney/i, "Personal Injury Law", "personal-injury-law"],
+  [/dental|dentist|tooth|teeth|smile/i, "Dental Practice", "dentist"],
+  [/dog\s*groo|pet\s*groo|puppy\s*wash/i, "Dog Grooming", "dog-grooming"],
+  [/gym|fitness\s*center|weight\s*room|workout/i, "Gym & Fitness", "gym"],
+  [/yoga/i, "Yoga Studio", "yoga-studio"],
+  [/realtor|real\s*estate|property\s*listing/i, "Real Estate", "residential-realtor"],
+  [/restaurant|bistro|eatery|dining\s*room/i, "Restaurant", "restaurant"],
+  [/pizza/i, "Pizzeria", "restaurant"],
+  [/auto\s*repair|mechanic|car\s*shop/i, "Auto Repair", "auto-repair"],
+  [/plumb/i, "Plumbing", "plumbing"],
+  [/hvac|air\s*condition/i, "HVAC", "hvac"],
+  [/law\s*firm|attorney|lawyer/i, "Law Firm", "personal-injury-law"],
+  [/solar/i, "Solar Company", "solar"],
+  [/tattoo/i, "Tattoo Studio", "tattoo-studio"],
+  [/nail\s*salon/i, "Nail Salon", "nail-salon"],
+  [/chiropract/i, "Chiropractic Clinic", "chiropractor"],
+  [/financial\s*advisor|wealth\s*manag/i, "Financial Advisor", "financial-advisor"],
+  [/saas|software|app\s*landing|tech\s*startup/i, "SaaS / Tech", "saas-dark"],
+  [/wedding\s*plann/i, "Wedding Planner", "wedding-planner"],
+  [/nonprofit|charity|donation/i, "Nonprofit", "nonprofit"],
+  [/church|ministry|congregation/i, "Church", "church"],
+  [/landscap|lawn\s*care|gardening/i, "Landscaping", "landscaping"],
+  [/photography|photo\s*studio/i, "Photography Studio", "photography-studio"],
+  [/food\s*truck/i, "Food Truck", "food-truck"],
+  [/bakery|pastry|cake\s*shop/i, "Bakery", "bakery"],
+  [/insurance/i, "Insurance Agency", "insurance-agency"],
+  [/contractor|construction|remodel/i, "Contractor", "general-contractor"],
+  [/pet\s*board|doggy\s*daycare/i, "Pet Boarding", "pet-boarding"],
+  [/vet|veterinar/i, "Veterinary Clinic", "veterinarian"],
+  [/massage|spa\s*therapy/i, "Massage Therapy", "massage-therapy"],
+  [/pilates/i, "Pilates Studio", "pilates-studio"],
+  [/crossfit/i, "CrossFit Box", "crossfit"],
+  [/martial\s*arts|bjj|karate|judo/i, "Martial Arts", "martial-arts"],
+  [/luxury\s*real\s*estate/i, "Luxury Real Estate", "luxury-real-estate"],
+];
+
+// Extracts what the user is describing so the button + AI get the RIGHT context
+function extractPromptIntent(prompt: string, selectedTemplateId: string): PromptIntent {
+  if (!prompt.trim()) {
+    return { businessName: "", focalObject: "", displayLabel: "", templateHint: "", conflict: false };
+  }
+
+  let businessName = "";
+  let templateHint = "";
+  for (const [pattern, name, tid] of INTENT_MAP) {
+    if (pattern.test(prompt)) {
+      businessName = name;
+      templateHint = tid;
+      break;
+    }
+  }
+
+  // Extract focal 3D object: "spinning X", "3D X", "with a X", "featuring X", "a X in the hero"
+  const focalMatch = prompt.match(
+    /(?:spinning|rotating|3d|interactive|floating|animated|a\s+giant|hero\s+(?:is\s+a|shows?)\s+(?:a\s+)?|featuring\s+a\s+|with\s+a\s+(?:spinning\s+|rotating\s+|3d\s+)?)([a-z][a-z\s]{2,30}?)(?:\s+in\s+|\s+as\s+|\s+for\s+|[,.]|$)/i
+  );
+  const focalObject = focalMatch ? focalMatch[1].trim() : "";
+
+  const displayLabel = businessName || (focalObject ? focalObject : "");
+  const conflict = !!templateHint && templateHint !== selectedTemplateId && !!businessName;
+
+  return { businessName, focalObject, displayLabel, templateHint, conflict };
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function DynamicPages() {
@@ -374,9 +456,16 @@ export default function DynamicPages() {
   const [currentSchema, setCurrentSchema] = useState<DynamicPageSchema | null>(null);
   const [previewSchema, setPreviewSchema] = useState(false);
   const [customPrompt, setCustomPrompt] = useState("");
+  const [generatedBusinessName, setGeneratedBusinessName] = useState("");
   const [uploadedImageUrl, setUploadedImageUrl] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const uploadRef = useRef<HTMLInputElement>(null);
+
+  // Reactive: update intent as user types — drives button label + conflict notice
+  const promptIntent = useMemo(
+    () => extractPromptIntent(customPrompt, selectedTemplate),
+    [customPrompt, selectedTemplate]
+  );
 
   const handleImageUpload = useCallback(async (file: File) => {
     if (!file.type.startsWith("image/")) return;
@@ -412,18 +501,41 @@ export default function DynamicPages() {
 
   const handleGenerate = async () => {
     setIsGenerating(true);
+    const userTyped = customPrompt.trim();
     try {
-      const base = customPrompt.trim() || activeTemplate.desc;
-      const prompt = `${activeTemplate.name}: ${base}. Style tags: ${activeTemplate.tags.join(", ")}.`;
-      const res = await apiRequest("POST", "/api/dynamic-pages/generate", { prompt, subAccountId, imageUrl: uploadedImageUrl || undefined });
+      // PROMPT IS SOURCE OF TRUTH.
+      // When user typed a prompt, send it directly — do NOT prepend template name.
+      // Template is used only as seed when no prompt exists.
+      let prompt: string;
+      if (userTyped) {
+        // Put focal object hint at front so AI knows the 3D centerpiece
+        const focalHint = promptIntent.focalObject
+          ? `Primary 3D focal object: ${promptIntent.focalObject}. `
+          : "";
+        prompt = `${focalHint}${userTyped}`;
+      } else {
+        // No user prompt — use selected template as seed
+        prompt = `${activeTemplate.name}: ${activeTemplate.desc}. Style tags: ${activeTemplate.tags.join(", ")}.`;
+      }
+
+      const res = await apiRequest("POST", "/api/dynamic-pages/generate", {
+        prompt,
+        subAccountId,
+        imageUrl: uploadedImageUrl || undefined,
+      });
       const data = await res.json();
       if (data?.schema) {
         setCurrentSchema(data.schema);
         setGenerated(true);
         setTab("builder");
+        // Store the detected business name so success UI can show it
+        const detectedName =
+          data.schema?.meta?.title ||
+          promptIntent.businessName ||
+          activeTemplate.name;
+        setGeneratedBusinessName(detectedName);
       }
     } catch {
-      // fall through — builder tab still opens so user can refine via PromptDesignPanel
       setGenerated(true);
       setTab("builder");
     } finally {
@@ -573,25 +685,49 @@ export default function DynamicPages() {
                   )}
                 </div>
 
+                {/* Conflict notice: prompt intent differs from selected template */}
+                {promptIntent.conflict && (
+                  <div className="flex items-start gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                    <Zap className="w-3 h-3 text-amber-400 shrink-0 mt-px" />
+                    <p className="text-amber-400/80 text-[10px] leading-relaxed">
+                      Using your prompt ({promptIntent.businessName}) instead of the selected <em>{activeTemplate.name}</em> template.
+                    </p>
+                  </div>
+                )}
+
                 <Button onClick={handleGenerate} disabled={isGenerating}
                   className="w-full bg-purple-600 hover:bg-purple-700 text-white text-sm h-9 gap-2">
                   {isGenerating ? (
                     <>
                       <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
                         className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full" />
-                      Building 3D Scene...
+                      {promptIntent.displayLabel ? `Building ${promptIntent.displayLabel}…` : "Building 3D Scene…"}
                     </>
                   ) : (
-                    <><Sparkles className="w-3.5 h-3.5" /> Generate · {activeTemplate.name}</>
+                    <>
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Generate · {promptIntent.displayLabel || activeTemplate.name}
+                    </>
                   )}
                 </Button>
-                <p className="text-white/20 text-[10px] text-center">⌘ Enter to generate</p>
+                <p className="text-white/20 text-[10px] text-center">⌘ Enter to generate · Prompt overrides template</p>
               </div>
             </>
           )}
 
           {tab === "builder" && (
             <div className="flex-1 overflow-y-auto p-3 space-y-3">
+              {/* Generated page info */}
+              {generatedBusinessName && (
+                <div className="px-3 py-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center gap-2">
+                  <Sparkles className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-white text-xs font-semibold truncate">{generatedBusinessName}</p>
+                    <p className="text-white/40 text-[10px]">AI page generated · WebGL scene live</p>
+                  </div>
+                </div>
+              )}
+
               {/* Prompt-driven design panel */}
               <PromptDesignPanel
                 currentSchema={currentSchema}
@@ -600,34 +736,15 @@ export default function DynamicPages() {
                 subAccountId={subAccountId ?? undefined}
               />
 
+              {/* Go back and generate something different */}
               <div className="border-t border-white/5 pt-3">
-                <p className="text-white/40 text-xs px-1 mb-2">Or add sections manually</p>
-              {[
-                { label: "3D Hero", icon: Globe, desc: "Interactive WebGL hero" },
-                { label: "Feature Grid", icon: Layers, desc: "Animated feature cards" },
-                { label: "Stats Counter", icon: TrendingUp, desc: "Counting number reveal" },
-                { label: "Testimonials", icon: Star, desc: "Scroll carousel" },
-                { label: "3D CTA", icon: Rocket, desc: "Floating 3D call to action" },
-                { label: "Pricing Table", icon: Target, desc: "Tiered pricing comparison" },
-                { label: "Photo Gallery", icon: Camera, desc: "Masonry grid gallery" },
-                { label: "Contact Form", icon: LayoutTemplate, desc: "Glassmorphism form" },
-                { label: "FAQ Accordion", icon: BookOpen, desc: "Animated expand/collapse" },
-                { label: "Team Section", icon: Users, desc: "Bio cards with hover fx" },
-                { label: "Video Hero", icon: Cpu, desc: "Autoplay background video" },
-                { label: "Map Section", icon: Globe, desc: "Interactive location map" },
-              ].map(s => (
-                <motion.div key={s.label} whileHover={{ x: 2 }}
-                  className="flex items-center gap-3 p-2.5 rounded-xl border border-white/10 hover:border-purple-500/30 hover:bg-purple-500/5 cursor-pointer transition-all">
-                  <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
-                    <s.icon className="w-4 h-4 text-purple-400" />
-                  </div>
-                  <div>
-                    <p className="text-white text-xs font-medium">{s.label}</p>
-                    <p className="text-white/40 text-[10px]">{s.desc}</p>
-                  </div>
-                  <Plus className="w-3.5 h-3.5 text-white/30 ml-auto" />
-                </motion.div>
-              ))}
+                <button
+                  onClick={() => setTab("templates")}
+                  className="w-full flex items-center gap-2 p-2.5 rounded-xl border border-white/10 hover:border-purple-500/30 hover:bg-purple-500/5 text-white/40 hover:text-white/70 text-xs transition-all"
+                >
+                  <ArrowRight className="w-3.5 h-3.5 rotate-180 shrink-0" />
+                  Back to prompt — generate a new page
+                </button>
               </div>
             </div>
           )}
@@ -656,22 +773,46 @@ export default function DynamicPages() {
               <AnimatePresence mode="wait">
                 {!generated ? (
                   <motion.div key="idle" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="text-center px-8">
-                    <motion.div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs border mb-4"
-                      style={{ borderColor: activeTemplate.color + "44", color: activeTemplate.color, backgroundColor: activeTemplate.color + "11" }}>
-                      <activeTemplate.icon className="w-3 h-3" />
-                      {activeTemplate.name}
-                    </motion.div>
-                    <motion.h2 className="text-4xl font-black text-white mb-2"
-                      style={{ textShadow: `0 0 60px ${activeTemplate.color}99` }}
-                      animate={{ opacity: [0.8, 1, 0.8] }} transition={{ duration: 3, repeat: Infinity }}>
-                      {activeTemplate.category}
-                    </motion.h2>
-                    <p className="text-white/50 text-sm max-w-xs mx-auto">{activeTemplate.desc}</p>
-                    <div className="flex gap-2 justify-center mt-4 flex-wrap">
-                      {activeTemplate.tags.map(tag => (
-                        <Badge key={tag} className="text-[10px]" style={{ backgroundColor: activeTemplate.color + "22", borderColor: activeTemplate.color + "44", color: activeTemplate.color }}>{tag}</Badge>
-                      ))}
-                    </div>
+                    {promptIntent.displayLabel ? (
+                      // User has typed a prompt — show their intent
+                      <>
+                        <motion.div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs border mb-4 border-purple-500/40 text-purple-400 bg-purple-500/10">
+                          <Sparkles className="w-3 h-3" />
+                          Prompt detected
+                        </motion.div>
+                        <motion.h2 className="text-4xl font-black text-white mb-2"
+                          style={{ textShadow: "0 0 60px #a855f799" }}
+                          animate={{ opacity: [0.8, 1, 0.8] }} transition={{ duration: 3, repeat: Infinity }}>
+                          {promptIntent.businessName || promptIntent.focalObject || "Custom Site"}
+                        </motion.h2>
+                        {promptIntent.focalObject && (
+                          <p className="text-white/50 text-sm max-w-xs mx-auto mb-2">
+                            3D focal object: <span className="text-purple-400">{promptIntent.focalObject}</span>
+                          </p>
+                        )}
+                        <p className="text-white/40 text-sm max-w-xs mx-auto">Hit Generate to build your custom page</p>
+                      </>
+                    ) : (
+                      // No prompt — show selected template preview
+                      <>
+                        <motion.div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs border mb-4"
+                          style={{ borderColor: activeTemplate.color + "44", color: activeTemplate.color, backgroundColor: activeTemplate.color + "11" }}>
+                          <activeTemplate.icon className="w-3 h-3" />
+                          {activeTemplate.name}
+                        </motion.div>
+                        <motion.h2 className="text-4xl font-black text-white mb-2"
+                          style={{ textShadow: `0 0 60px ${activeTemplate.color}99` }}
+                          animate={{ opacity: [0.8, 1, 0.8] }} transition={{ duration: 3, repeat: Infinity }}>
+                          {activeTemplate.category}
+                        </motion.h2>
+                        <p className="text-white/50 text-sm max-w-xs mx-auto">{activeTemplate.desc}</p>
+                        <div className="flex gap-2 justify-center mt-4 flex-wrap">
+                          {activeTemplate.tags.map(tag => (
+                            <Badge key={tag} className="text-[10px]" style={{ backgroundColor: activeTemplate.color + "22", borderColor: activeTemplate.color + "44", color: activeTemplate.color }}>{tag}</Badge>
+                          ))}
+                        </div>
+                      </>
+                    )}
                   </motion.div>
                 ) : (
                   <motion.div key="done" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center pointer-events-auto">
@@ -682,10 +823,13 @@ export default function DynamicPages() {
                       <Sparkles className="w-8 h-8" style={{ color: activeTemplate.color }} />
                     </motion.div>
                     <h3 className="text-3xl font-bold text-white mb-2">
-                      {currentSchema?.meta?.title ?? activeTemplate.name} is ready
+                      {generatedBusinessName || currentSchema?.meta?.title || activeTemplate.name} is ready
                     </h3>
                     <p className="text-white/50 text-sm mb-4">
-                      {currentSchema ? "AI page generated · WebGL scene live" : "3D scene built · Animations wired"} · Ready to publish
+                      {currentSchema
+                        ? `${generatedBusinessName || currentSchema.meta?.businessType || "Site"} built · WebGL hero live · Tailwind sections generated`
+                        : "3D scene built · Animations wired"
+                      } · Ready to publish
                     </p>
                     <div className="flex gap-2 justify-center">
                       {currentSchema && (
