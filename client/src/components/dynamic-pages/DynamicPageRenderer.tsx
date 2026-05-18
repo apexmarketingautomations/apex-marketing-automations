@@ -258,6 +258,22 @@ export function DynamicPageRenderer({ schema, isPreview = false, heroHeight = "5
     <div style={{ backgroundColor: schema.theme.colors.background, color: schema.theme.colors.text, fontFamily: schema.theme.font ?? "Inter" }}>
       {/* ── WebGL 3D Hero (always rendered) ── */}
       <div style={{ position: "relative", height: heroHeight }}>
+        {/* AI-generated hero image — rendered as a layered backdrop behind the 3D scene */}
+        {schema.scene?.fallbackImage && (
+          <div style={{
+            position: "absolute",
+            inset: 0,
+            backgroundImage: `url(${schema.scene.fallbackImage})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
+            zIndex: 0,
+          }}>
+            {/* Dark overlay so the 3D scene reads clearly */}
+            <div style={{ position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.55)" }} />
+          </div>
+        )}
+
         <Suspense fallback={<div style={{ height: heroHeight, background: schema.theme.colors.surface }} />}>
           <WebGLSceneRenderer scene={schema.scene} height={heroHeight} />
         </Suspense>

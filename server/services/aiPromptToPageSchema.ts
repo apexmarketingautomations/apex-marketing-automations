@@ -5,7 +5,7 @@
  * Calls aiChat (Anthropic → Groq fallback) to produce a DynamicPageSchema from a prompt.
  */
 
-import { aiChat } from "../aiGateway";
+import { aiChat, aiGenerateImage } from "../aiGateway";
 import { parsePromptIntent } from "./visualPromptParser";
 import type { DynamicPageSchema, WebGLSceneSchema, SceneObject, SectionSchema } from "../../client/src/lib/dynamic-pages/schema";
 
@@ -150,20 +150,53 @@ RULES:
    var(--primary), var(--secondary), var(--accent), var(--bg), var(--surface), var(--text), var(--text-muted)
 4. The page already has a dramatic WebGL 3D hero above with the main headline — do NOT add another hero section.
 5. Generate these sections in this order:
-   a) Features/Services grid (3–6 cards)
-   b) Stats bar (3–4 impressive niche-specific numbers)
-   c) Testimonials (2–3 realistic client quotes)
-   d) CTA banner with gradient background
-   e) Contact form with niche-appropriate fields
+   a) About / intro section with a REAL image (see image rules below)
+   b) Features/Services grid (3–6 cards)
+   c) Stats bar (3–4 impressive niche-specific numbers)
+   d) Testimonials (2–3 realistic client quotes with avatar images)
+   e) CTA banner with gradient background and a showcase image
+   f) Contact form with niche-appropriate fields
 6. Make ALL copy 100% specific to the niche — no generic placeholder text.
 7. Stats must be realistic and impressive (law firm → "$2.4M avg. settlement", "93% case win rate").
 8. Testimonials: use realistic client first names + last initial and specific results.
-9. Contact form: fields must be appropriate for the niche (injury law → accident date, injury type; pet grooming → pet name, breed, services needed).
+9. Contact form: fields must be appropriate for the niche.
 10. Use modern dark UI: glassmorphism cards (bg-white/5 backdrop-blur), gradient borders, glow effects.
 11. Use inline style="..." with var(--primary) for dynamic theme color accents.
 12. All hover effects via Tailwind hover: prefix.
 13. Use semantic HTML5: <section>, <h2>, <h3>, <p>, <ul>, <form>.
-14. Do NOT add a navigation bar or footer — those are handled by the platform.`;
+14. Do NOT add a navigation bar or footer — those are handled by the platform.
+
+IMAGE RULES — follow exactly:
+- If a hero image URL is provided, use it as the about-section background: <div class="relative rounded-2xl overflow-hidden"><img src="HERO_IMAGE_URL" class="w-full h-64 object-cover rounded-2xl opacity-90" alt="About us" /></div>
+- For all other images use Unsplash CDN. Choose the most visually appropriate photo ID from your training data for the niche. Format: https://images.unsplash.com/photo-PHOTO_ID?q=80&w=1200&auto=format&fit=crop
+- Embed at least 2–3 images total across all sections (about, team/showcase, CTA backdrop).
+- For testimonial avatars use: https://i.pravatar.cc/80?img=N where N is 1–70.
+- Never use placeholder or broken image URLs.`;
+
+// ── Hero image prompt builder ─────────────────────────────────────────────────
+
+function buildHeroImagePrompt(prompt: string, intent: ReturnType<typeof parsePromptIntent>): string {
+  const niche = intent.businessType.replace(/_/g, " ");
+  const style = intent.style ?? "professional";
+
+  const styleMap: Record<string, string> = {
+    luxury: "ultra-luxury, high-end, gold accents, cinematic lighting, editorial photography",
+    dark: "dark aesthetic, dramatic shadows, moody atmosphere, professional photography",
+    warm: "warm inviting tones, natural light, lifestyle photography, welcoming atmosphere",
+    energetic: "dynamic energy, vibrant colors, action photography, bold composition",
+    calm: "serene, soft pastels, minimal, zen atmosphere, natural light",
+    tech: "sleek technology, blue/purple lighting, futuristic, clean lines, studio photography",
+    bold: "high contrast, bold colors, dramatic composition, commercial photography",
+    clean: "bright, clean, white space, professional, trust-inspiring",
+    nature: "lush greens, natural environment, outdoor photography, fresh aesthetic",
+    neon: "neon lights, dark background, electric colors, nightlife atmosphere",
+    artisan: "artisan craft, warm tones, texture, authentic, detailed photography",
+  };
+
+  const styleDesc = styleMap[style] ?? "professional, high-quality, commercial photography";
+
+  return `Professional ${niche} marketing hero image. ${prompt}. ${styleDesc}. Photorealistic, 8K quality, no text or logos, centered composition suitable for a website hero background.`;
+}
 
 // ── Sanitize AI-generated HTML ────────────────────────────────────────────────
 
@@ -181,11 +214,18 @@ async function generateSectionsHtml(
   prompt: string,
   schema: DynamicPageSchema,
   intent: ReturnType<typeof parsePromptIntent>,
-  imageUrl?: string
+  imageUrl?: string,
+  heroImageUrl?: string
 ): Promise<string> {
   const colors = schema.theme?.colors ?? {};
-  const imageContext = imageUrl
-    ? `\n- User uploaded image: ${imageUrl} — embed it prominently using <img src="${imageUrl}" class="..."> in the most appropriate section (hero backdrop, about section, product showcase, or profile photo).`
+
+  // Prefer AI-generated hero image, fall back to user-uploaded image
+  const primaryImage = heroImageUrl ?? imageUrl;
+  const imageContext = primaryImage
+    ? `\n- Hero/showcase image URL (use in the about section): ${primaryImage}`
+    : "";
+  const uploadedContext = imageUrl && imageUrl !== primaryImage
+    ? `\n- Additional uploaded image: ${imageUrl} — embed in the most relevant section.`
     : "";
 
   const userMessage = `Generate HTML sections for this landing page prompt: "${prompt}"
@@ -197,9 +237,9 @@ Business context:
 - Headline (already shown in the 3D hero): "${schema.copy?.headline ?? ""}"
 - Subheadline: "${schema.copy?.subheadline ?? ""}"
 - Primary CTA: "${schema.cta?.primaryText ?? "Get Started"}"
-- Theme colors: primary=${colors.primary ?? "#6366f1"}, secondary=${colors.secondary ?? "#a855f7"}, accent=${colors.accent ?? "#06b6d4"}${imageContext}
+- Theme colors: primary=${colors.primary ?? "#6366f1"}, secondary=${colors.secondary ?? "#a855f7"}, accent=${colors.accent ?? "#06b6d4"}${imageContext}${uploadedContext}
 
-Generate compelling, niche-specific sections. The WebGL 3D hero is already above — start directly with features/services.`;
+Generate compelling, niche-specific sections with real images. The WebGL 3D hero is already above — start directly with the about/intro section featuring an image.`;
 
   try {
     const response = await aiChat(
@@ -248,9 +288,12 @@ Context from parser:
 
 Generate a compelling, on-brand page schema. Make the copy specific and persuasive. Make the scene visually striking. Return ONLY the JSON.`;
 
+  // Build a cinematic image prompt for the hero background
+  const heroImagePrompt = buildHeroImagePrompt(prompt, intent);
+
   try {
-    // Run schema generation and HTML section generation in parallel
-    const [schemaResponse, htmlSections] = await Promise.allSettled([
+    // Fire schema generation AND hero image generation in parallel — no extra wait time
+    const [schemaResponse, heroImageResult] = await Promise.allSettled([
       aiChat(
         [
           { role: "system", content: SCHEMA_SYSTEM_PROMPT },
@@ -258,9 +301,7 @@ Generate a compelling, on-brand page schema. Make the copy specific and persuasi
         ],
         { temperature: 0.8, maxTokens: 4096, jsonMode: true, timeoutMs: 30000 }
       ),
-      // HTML sections need the schema for copy context — use intent-based placeholder first,
-      // then we'll re-call with the real schema after. For now generate from intent.
-      Promise.resolve(null as null),
+      aiGenerateImage(heroImagePrompt),
     ]);
 
     let parsed: DynamicPageSchema;
@@ -283,8 +324,21 @@ Generate a compelling, on-brand page schema. Make the copy specific and persuasi
     if (subAccountId) parsed.meta.subAccountId = subAccountId;
     if (parsed.publish) parsed.publish.published = false;
 
-    // Now generate the AI HTML sections using the real schema copy + theme
-    const generatedHtml = await generateSectionsHtml(prompt, parsed, intent, imageUrl);
+    // Embed AI-generated hero image in the scene schema
+    const heroImageUrl = heroImageResult.status === "fulfilled" && heroImageResult.value
+      ? heroImageResult.value
+      : undefined;
+
+    if (heroImageUrl) {
+      if (!parsed.scene) parsed.scene = {} as any;
+      parsed.scene.fallbackImage = heroImageUrl;
+      console.log(`[AI-PAGE-SCHEMA] Hero image generated (${heroImageUrl.slice(0, 40)}…)`);
+    } else {
+      console.warn("[AI-PAGE-SCHEMA] Hero image generation skipped or failed");
+    }
+
+    // Generate AI HTML sections with the real schema + hero image
+    const generatedHtml = await generateSectionsHtml(prompt, parsed, intent, imageUrl, heroImageUrl);
     if (generatedHtml) {
       parsed.generatedHtml = generatedHtml;
     }

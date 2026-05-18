@@ -10,6 +10,7 @@ import { db } from "../db";
 import { dynamicPageSchemas } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { generatePageSchema, patchExistingPageSchema } from "../services/aiPromptToPageSchema";
+import { aiGenerateImage } from "../aiGateway";
 import { isPlatformAdmin } from "../auth/authorization";
 import { requireActiveSubscription } from "../subscriptionGuard";
 import { asyncHandler } from "./helpers";
@@ -293,6 +294,38 @@ export function registerDynamicPagesRoutes(app: Express): void {
     });
 
     return res.json({ structuredData });
+  }));
+
+  /** Generate a standalone AI image for a Dynamic Page (hero backdrop, section photo) */
+  app.post("/api/dynamic-pages/generate-image", guard, asyncHandler(async (req: Request, res: Response) => {
+    const { prompt, niche, businessType, style } = req.body as {
+      prompt?: string; niche?: string; businessType?: string; style?: string;
+    };
+    if (!prompt || typeof prompt !== "string") {
+      return res.status(400).json({ error: "prompt is required" });
+    }
+
+    const styleDescriptions: Record<string, string> = {
+      luxury: "ultra-luxury, cinematic lighting, editorial photography, gold accents",
+      dark: "dark dramatic aesthetic, moody shadows, professional photography",
+      warm: "warm inviting tones, natural light, lifestyle photography",
+      energetic: "dynamic energy, vibrant, action photography, bold composition",
+      tech: "sleek technology, blue-purple lighting, futuristic studio photography",
+      bold: "high contrast, dramatic, commercial photography",
+      clean: "bright, clean, professional, trust-inspiring",
+      nature: "lush natural environment, fresh outdoor photography",
+      neon: "neon lights, dark background, electric nightlife atmosphere",
+    };
+
+    const styleDesc = styleDescriptions[style ?? ""] ?? "professional, high-quality, commercial photography";
+    const niceName = (businessType ?? niche ?? "business").replace(/_/g, " ");
+    const imagePrompt = `Professional ${niceName} marketing hero image. ${prompt.trim().slice(0, 300)}. ${styleDesc}. Photorealistic, 8K, no text or logos, centered composition for a website hero.`;
+
+    const imageUrl = await aiGenerateImage(imagePrompt);
+    if (!imageUrl) {
+      return res.status(503).json({ error: "Image generation unavailable", imageUrl: null });
+    }
+    return res.json({ imageUrl });
   }));
 
   /** Admin: view all schemas across accounts */
