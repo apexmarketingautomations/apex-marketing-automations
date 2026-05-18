@@ -2,40 +2,58 @@
  * server/services/aiPromptToPageSchema.ts
  *
  * AI-driven page schema generation and patching.
- * Calls aiChat (Anthropic → Groq fallback) to produce a DynamicPageSchema from a prompt.
+ *
+ * Two generation modes:
+ *   "apex-fast"    — single AI call with niche-aware system prompt (fast, ~3s)
+ *   "stitch-style" — design spec first, then schema mapping + validation (richer, ~6s)
+ *
+ * Both modes:
+ *   1. Run the intent parser to extract structured context
+ *   2. Generate the schema (fast) or design spec → schema (stitch)
+ *   3. Run quality validation and auto-fix mismatches
+ *   4. Generate HTML sections
+ *   5. Generate hero image in parallel
  */
 
 import { aiChat, aiGenerateImage } from "../aiGateway";
 import { parsePromptIntent } from "./visualPromptParser";
+import { generateVisualDesignSpec } from "./visualDesignGenerator";
+import { validateGeneratedSchema } from "./qualityValidator";
 import type { DynamicPageSchema, WebGLSceneSchema, SceneObject, SectionSchema } from "../../client/src/lib/dynamic-pages/schema";
+import type { ParsedPromptIntent, SemanticObjectHint } from "./visualPromptParser";
+import type { VisualDesignSpec, SceneObjectSpec, SectionSpec } from "./visualDesignGenerator";
 
-// ── Shared alias so server can import the client schema types ─────────────────
+export type GenerationMode = "apex-fast" | "stitch-style" | "stitch-import";
 
-// Inline the core defaults (avoid circular import from client/src)
 const NOW = () => new Date().toISOString();
+function randomId(): string { return Math.random().toString(36).slice(2, 10); }
 
-function randomId(): string {
-  return Math.random().toString(36).slice(2, 10);
-}
+// ── Apex Fast system prompt ───────────────────────────────────────────────────
+// Niche-aware, tightly controlled. Forces specific output per business type.
 
-// ── System prompt ─────────────────────────────────────────────────────────────
+const APEX_FAST_SYSTEM_PROMPT = `You are Apex Page Generator — an expert marketing landing page architect.
 
-const SCHEMA_SYSTEM_PROMPT = `You are an expert web designer and funnel architect AI for Apex Marketing OS.
+Generate a DynamicPageSchema JSON from the user's prompt and intent context.
 
-Your job is to generate a DynamicPageSchema JSON object from a user's prompt.
+HARD RULES — violating any of these will produce a rejected result:
+1. Return ONLY valid JSON. No markdown, no code blocks, no explanations.
+2. The niche, businessType, headline, CTA, and CRM tag MUST match the business in the prompt.
+   - "Barber Shop" prompt → businessType "barbershop", headline about barbering, CTA "Book a Cut", crmTag "barbershop-lead"
+   - "Law Firm" prompt → CTA "Free Case Review", NOT "Shop Now"
+   - NEVER output generic AI/ecommerce copy for a real-world service business
+3. If the prompt describes a specific visual object (razor, gavel, dumbbell, etc.) → that object MUST appear in scene.objects with the correct label and animation.
+4. scene.objects labels must describe the actual requested object. "orb" is only acceptable when NO specific object was mentioned.
+5. CTA must drive the primary conversion action: booking → "Book a ___", quote → "Get a Free ___", consultation → "Free ___ Consultation"
+6. CRM automationTag must be niche-specific: barbershop → "barbershop-lead", law → "pi-lead", NOT "new-lead" or "ecommerce-lead"
+7. Generate 6–10 content sections. Make them niche-specific with real copy, real prices where applicable.
+8. Colors must be valid hex strings (#rrggbb).
+9. Max 6 scene objects. Max particle count 1200.
 
-RULES:
-1. Return ONLY valid JSON — no markdown, no code blocks, no explanations.
-2. Generate compelling, niche-specific copy (headline, subheadline, sections, CTA text).
-3. For the WebGL scene: use procedural primitives only (orb, torus, box, cone, cylinder, ring).
-   - Label objects semantically (e.g. label:"giraffe" but type:"orb").
-   - Do NOT claim real 3D models exist — use the label field to record what was requested.
-   - Max 6 objects. Max particle count 1200.
-4. Colors must be valid hex strings (#rrggbb).
-5. The schema must match this structure exactly:
+Schema structure:
 {
   "version": "1.0",
-  "id": "<uuid>",
+  "id": "<8-char-id>",
+  "designSource": "apex-generator",
   "meta": { "title": string, "slug": string, "niche": string, "businessType": string, "prompt": string, "createdAt": string, "updatedAt": string },
   "theme": { "colors": { "primary": "#hex", "secondary": "#hex", "accent": "#hex", "background": "#hex", "surface": "#hex", "text": "#hex", "textMuted": "#hex" }, "style": string, "motion": string, "font": "Inter" },
   "copy": { "headline": string, "subheadline": string, "body": string, "seoTitle": string, "seoDescription": string },
@@ -43,99 +61,19 @@ RULES:
     "sceneType": "custom_prompt_scene",
     "prompt": string,
     "environment": string,
-    "objects": [{ "id": string, "label": string, "type": "orb"|"torus"|"box"|"cone"|"cylinder"|"ring", "style": string, "props": string[], "position": [x,y,z], "scale": [x,y,z], "animation": "slow_float"|"orbit"|"spin"|"idle"|"bob"|"pulse"|"drift"|"wave", "color": "#hex", "emissive": "#hex", "material": "distort"|"wobble"|"standard"|"glass"|"metallic"|"emissive", "distort": 0.0-1.0, "opacity": 0.5-1.0 }],
+    "objects": [{ "id": string, "label": string, "type": "orb"|"torus"|"box"|"cone"|"cylinder"|"ring", "style": string, "props": [string], "position": [x,y,z], "scale": [x,y,z], "animation": "slow_float"|"orbit"|"spin"|"idle"|"bob"|"pulse"|"drift"|"wave", "color": "#hex", "emissive": "#hex", "material": "distort"|"wobble"|"standard"|"glass"|"metallic"|"emissive", "distort": 0.0-1.0, "opacity": 0.5-1.0 }],
     "particles": { "type": "stars"|"rain"|"snow"|"dust"|"sparks"|"bubbles"|"leaves", "density": "low"|"medium"|"high", "speed": 0.1-3.0, "color": "#hex", "count": 200-1200, "size": 0.01-0.1 },
     "lighting": { "type": "neon_rim"|"warm_studio"|"cool_ambient"|"dramatic"|"sunset"|"medical"|"neutral", "colors": ["#hex","#hex","#hex"], "intensity": 0.5-3.0, "ambientIntensity": 0.1-1.0 },
     "camera": { "mode": "slow_orbit"|"fixed"|"gentle_sway"|"cinematic_pan"|"static", "intensity": 0.1-2.0, "fov": 45-90 },
     "postProcessing": { "bloom": bool, "bloomIntensity": 0.5-3.0, "chromaticAberration": bool, "vignette": bool, "vignetteIntensity": 0.3-1.0 }
   },
-  "sections": [{ "id": string, "type": "hero"|"features"|"testimonials"|"faq"|"cta_banner"|"services"|"team"|"gallery"|"pricing"|"contact"|"stats"|"process", "title": string, "subtitle": string, "body": string, "items": [{"title":string,"body":string}], "visible": true, "order": 0 }],
+  "sections": [{ "id": string, "type": "hero"|"features"|"testimonials"|"faq"|"cta_banner"|"services"|"team"|"gallery"|"pricing"|"contact"|"stats"|"process", "title": string, "subtitle": string, "body": string, "items": [{"title":string,"body":string}], "visible": true, "order": number }],
   "cta": { "primaryText": string, "primaryUrl": "#contact", "secondaryText": string, "secondaryUrl": "#learn-more", "animation": "none"|"pulse"|"glow"|"bounce"|"shimmer", "color": "#hex" },
-  "forms": [{ "id": string, "title": string, "submitText": string, "fields": [{"name":string,"label":string,"type":"text"|"email"|"phone"|"textarea","required":bool}], "crmTag": string }],
+  "forms": [{ "id": string, "title": string, "submitText": string, "fields": [{"name":string,"label":string,"type":"text"|"email"|"phone"|"textarea"|"select","required":bool,"options":[string]}], "crmTag": string }],
   "analytics": { "pageType": "landing", "niche": string, "funnelStage": "awareness"|"consideration"|"conversion", "trackingEvents": ["page_view","cta_click","form_submit"] },
   "crm": { "leadSource": "dynamic-page", "automationTag": string, "assignedWorkflow": string },
   "publish": { "published": false, "slug": string, "canonicalUrl": "" }
 }`;
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function extractJSON(raw: string): string {
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start === -1 || end === -1) throw new Error("No JSON found in AI response");
-  return raw.slice(start, end + 1);
-}
-
-function buildFallbackSchema(prompt: string, intent: ReturnType<typeof parsePromptIntent>): DynamicPageSchema {
-  const id = randomId();
-  const now = NOW();
-  const slug = intent.niche.replace(/_/g, "-").toLowerCase() + "-page";
-  const primary = intent.colors[0] ?? "#6366f1";
-  const secondary = intent.colors[1] ?? "#a855f7";
-
-  return {
-    version: "1.0",
-    id,
-    meta: { title: intent.businessType.replace(/_/g, " "), slug, niche: intent.niche, businessType: intent.businessType, prompt, createdAt: now, updatedAt: now },
-    theme: {
-      colors: { primary, secondary, accent: intent.colors[2] ?? "#06b6d4", background: "#030712", surface: "#0f172a", text: "#f8fafc", textMuted: "#94a3b8" },
-      style: intent.style as any,
-      motion: intent.motion as any,
-      font: "Inter",
-    },
-    copy: {
-      headline: `${intent.businessType.replace(/_/g, " ")} — Powered by AI`,
-      subheadline: "Automate. Convert. Grow.",
-      body: "We help businesses like yours scale with AI-powered tools and proven conversion funnels.",
-      seoTitle: `${intent.businessType.replace(/_/g, " ")} | Apex`,
-      seoDescription: `${intent.niche} AI automation and funnel solutions`,
-    },
-    scene: {
-      sceneType: "procedural",
-      prompt,
-      environment: intent.environment as any,
-      objects: buildDefaultObjects(intent),
-      particles: { type: "stars", density: "medium", speed: 1, color: primary, count: 800, size: 0.04 },
-      lighting: { type: intent.lighting as any, colors: [primary, secondary, "#818cf8"], intensity: 2, ambientIntensity: 0.3 },
-      camera: { mode: "slow_orbit", intensity: 0.5, fov: 60 },
-      postProcessing: { bloom: true, bloomIntensity: 1.5, chromaticAberration: true, vignette: true, vignetteIntensity: 0.8 },
-    },
-    sections: buildDefaultSections(intent),
-    cta: { primaryText: ctaText(intent.ctaIntent), primaryUrl: "#contact", animation: "pulse", color: primary },
-    forms: [{ id: "main-form", title: "Get Started", submitText: "Submit", fields: [{ name: "name", label: "Your Name", type: "text", required: true }, { name: "email", label: "Email", type: "email", required: true }, { name: "phone", label: "Phone", type: "phone", required: false }], crmTag: `${intent.niche}-lead` }],
-    analytics: { pageType: "landing", niche: intent.niche, funnelStage: "conversion", trackingEvents: ["page_view", "cta_click", "form_submit"] },
-    crm: { leadSource: "dynamic-page", automationTag: `${intent.niche}-lead`, assignedWorkflow: `${intent.niche}-followup` },
-    publish: { published: false, slug },
-  } as DynamicPageSchema;
-}
-
-function ctaText(intent: string): string {
-  const map: Record<string, string> = {
-    booking: "Book Free Consultation", quote: "Get Free Quote", purchase: "Shop Now",
-    consultation: "Schedule a Call", learn: "Learn More", contact: "Get Started Today",
-  };
-  return map[intent] ?? "Get Started Free";
-}
-
-function buildDefaultObjects(intent: ReturnType<typeof parsePromptIntent>): SceneObject[] {
-  const primary = intent.colors[0] ?? "#6366f1";
-  const secondary = intent.colors[1] ?? "#a855f7";
-  const objs: SceneObject[] = [
-    { id: "orb-1", label: intent.objects[0] ?? "orb", type: "orb", style: "cinematic_3d", props: [], position: [-3.5, 1, -2], scale: [1, 1, 1], animation: "slow_float", color: primary, emissive: primary, material: "distort", distort: 0.5, opacity: 0.85 },
-    { id: "orb-2", label: intent.objects[1] ?? "orb", type: "orb", style: "cinematic_3d", props: [], position: [3.5, -1, -1], scale: [1, 1, 1], animation: "slow_float", color: secondary, material: "distort", distort: 0.3, opacity: 0.85 },
-    { id: "torus-1", label: "ring", type: "torus", style: "metallic", props: [], position: [-2, -2, 0], scale: [1, 1, 1], animation: "slow_float", color: secondary, material: "wobble", wobbleFactor: 0.4 },
-  ];
-  return objs;
-}
-
-function buildDefaultSections(intent: ReturnType<typeof parsePromptIntent>): SectionSchema[] {
-  const niceName = intent.businessType.replace(/_/g, " ");
-  return [
-    { id: "hero", type: "hero", title: `${niceName} — AI-Powered`, subtitle: "The modern way to grow your business", visible: true, order: 0 },
-    { id: "features", type: "features", title: "What We Offer", items: [{ title: "AI Automation", body: "Workflows that convert around the clock" }, { title: "Lead Capture", body: "Smart forms that qualify prospects" }, { title: "Follow-Up", body: "Personalized outreach at scale" }], visible: true, order: 1 },
-    { id: "cta-banner", type: "cta_banner", title: "Ready to grow?", subtitle: "Join thousands of businesses using Apex.", visible: true, order: 2 },
-  ];
-}
 
 // ── HTML sections system prompt ───────────────────────────────────────────────
 
@@ -146,100 +84,351 @@ Generate complete HTML sections for a marketing landing page using Tailwind CSS.
 RULES:
 1. Return ONLY raw HTML — NO <html>, <head>, <body>, <script>, or <style> wrapper tags.
 2. Use Tailwind CSS utility classes for ALL styling (the page loads Tailwind CDN).
-3. CSS custom properties are available for theme colors:
-   var(--primary), var(--secondary), var(--accent), var(--bg), var(--surface), var(--text), var(--text-muted)
+3. CSS custom properties are available: var(--primary), var(--secondary), var(--accent), var(--bg), var(--surface), var(--text), var(--text-muted)
 4. The page already has a dramatic WebGL 3D hero above with the main headline — do NOT add another hero section.
 5. Generate these sections in this order:
-   a) About / intro section with a REAL image (see image rules below)
-   b) Features/Services grid (3–6 cards)
+   a) About / intro section with a REAL image
+   b) Features/Services grid (3–6 cards with real niche-specific content)
    c) Stats bar (3–4 impressive niche-specific numbers)
    d) Testimonials (2–3 realistic client quotes with avatar images)
-   e) CTA banner with gradient background and a showcase image
-   f) Contact form with niche-appropriate fields
-6. Make ALL copy 100% specific to the niche — no generic placeholder text.
-7. Stats must be realistic and impressive (law firm → "$2.4M avg. settlement", "93% case win rate").
-8. Testimonials: use realistic client first names + last initial and specific results.
-9. Contact form: fields must be appropriate for the niche.
+   e) CTA banner with gradient background
+   f) Contact/booking form with niche-appropriate fields
+6. Make ALL copy 100% specific to the niche — NO generic "AI automation" placeholders.
+7. Stats must be realistic and niche-appropriate (barbershop → "500+ Cuts/Month", law firm → "$50M+ Recovered").
+8. Testimonials: use realistic client first names + last initial and specific results tied to the niche.
+9. Contact form fields must be appropriate for the niche (barbershop → service dropdown, date picker).
 10. Use modern dark UI: glassmorphism cards (bg-white/5 backdrop-blur), gradient borders, glow effects.
 11. Use inline style="..." with var(--primary) for dynamic theme color accents.
 12. All hover effects via Tailwind hover: prefix.
 13. Use semantic HTML5: <section>, <h2>, <h3>, <p>, <ul>, <form>.
-14. Do NOT add a navigation bar or footer — those are handled by the platform.
+14. Do NOT add a navigation bar or footer.
 
-IMAGE RULES — follow exactly:
-- If a hero image URL is provided, use it as the about-section background: <div class="relative rounded-2xl overflow-hidden"><img src="HERO_IMAGE_URL" class="w-full h-64 object-cover rounded-2xl opacity-90" alt="About us" /></div>
-- For all other images use Unsplash CDN. Choose the most visually appropriate photo ID from your training data for the niche. Format: https://images.unsplash.com/photo-PHOTO_ID?q=80&w=1200&auto=format&fit=crop
-- Embed at least 2–3 images total across all sections (about, team/showcase, CTA backdrop).
-- For testimonial avatars use: https://i.pravatar.cc/80?img=N where N is 1–70.
+IMAGE RULES:
+- For images use Unsplash CDN with niche-specific photo IDs from your training data.
+  Format: https://images.unsplash.com/photo-PHOTO_ID?q=80&w=1200&auto=format&fit=crop
+- For testimonial avatars: https://i.pravatar.cc/80?img=N where N is 1–70.
 - Never use placeholder or broken image URLs.`;
 
-// ── Hero image prompt builder ─────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-function buildHeroImagePrompt(prompt: string, intent: ReturnType<typeof parsePromptIntent>): string {
-  const niche = intent.businessType.replace(/_/g, " ");
-  const style = intent.style ?? "professional";
-
-  const styleMap: Record<string, string> = {
-    luxury: "ultra-luxury, high-end, gold accents, cinematic lighting, editorial photography",
-    dark: "dark aesthetic, dramatic shadows, moody atmosphere, professional photography",
-    warm: "warm inviting tones, natural light, lifestyle photography, welcoming atmosphere",
-    energetic: "dynamic energy, vibrant colors, action photography, bold composition",
-    calm: "serene, soft pastels, minimal, zen atmosphere, natural light",
-    tech: "sleek technology, blue/purple lighting, futuristic, clean lines, studio photography",
-    bold: "high contrast, bold colors, dramatic composition, commercial photography",
-    clean: "bright, clean, white space, professional, trust-inspiring",
-    nature: "lush greens, natural environment, outdoor photography, fresh aesthetic",
-    neon: "neon lights, dark background, electric colors, nightlife atmosphere",
-    artisan: "artisan craft, warm tones, texture, authentic, detailed photography",
-  };
-
-  const styleDesc = styleMap[style] ?? "professional, high-quality, commercial photography";
-
-  return `Professional ${niche} marketing hero image. ${prompt}. ${styleDesc}. Photorealistic, 8K quality, no text or logos, centered composition suitable for a website hero background.`;
+function extractJSON(raw: string): string {
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start === -1 || end === -1) throw new Error("No JSON found in AI response");
+  return raw.slice(start, end + 1);
 }
 
-// ── Sanitize AI-generated HTML ────────────────────────────────────────────────
-
 function sanitizeHtml(html: string): string {
-  // Strip any <script> tags (AI shouldn't generate them but be safe)
   return html
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
     .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, "")
-    .replace(/on\w+\s*=/gi, "data-blocked="); // strip inline event handlers
+    .replace(/on\w+\s*=/gi, "data-blocked=");
 }
 
-// ── Generate below-hero HTML sections ────────────────────────────────────────
+// ── Schema mapper: converts VisualDesignSpec → DynamicPageSchema ──────────────
+
+function mapSpecToSchema(
+  spec: VisualDesignSpec,
+  prompt: string,
+  subAccountId?: number,
+): DynamicPageSchema {
+  const now = NOW();
+  const id = randomId();
+  const slug = `${spec.businessType.replace(/_/g, "-").toLowerCase()}-${id}`;
+
+  const primaryObj = spec.scene.primaryObject;
+  const sceneObjects: SceneObject[] = [
+    {
+      id: `${primaryObj.semanticType}-1`,
+      label: primaryObj.label,
+      type: (primaryObj.fallbackPrimitive as any) ?? "orb",
+      style: "cinematic_3d",
+      props: [primaryObj.semanticType, primaryObj.objectPrompt],
+      position: primaryObj.position ?? [0, 0, -2],
+      scale: primaryObj.scale ?? [1, 1, 1],
+      animation: primaryObj.animation as any,
+      color: primaryObj.color,
+      emissive: primaryObj.emissive ?? (primaryObj.material === "emissive" ? primaryObj.color : undefined),
+      material: primaryObj.material as any,
+      opacity: 0.95,
+      ...(primaryObj.semanticType && { semanticType: primaryObj.semanticType } as any),
+      objectCategory: "semantic_object" as any,
+      fallbackPrimitive: primaryObj.fallbackPrimitive as any,
+    },
+    ...spec.scene.supportingObjects.slice(0, 4).map((obj, i) => ({
+      id: `${obj.semanticType}-${i + 2}`,
+      label: obj.label,
+      type: (obj.fallbackPrimitive as any) ?? "orb",
+      style: "cinematic_3d",
+      props: [obj.semanticType],
+      position: [
+        (i % 2 === 0 ? -3 : 3) + Math.random() * 0.5,
+        (i < 2 ? 1 : -1) + Math.random() * 0.5,
+        -2 - i * 0.5,
+      ] as [number, number, number],
+      scale: [0.8, 0.8, 0.8] as [number, number, number],
+      animation: obj.animation as any,
+      color: obj.color,
+      material: obj.material as any,
+      opacity: 0.85,
+      ...(obj.semanticType && { semanticType: obj.semanticType } as any),
+      objectCategory: "semantic_object" as any,
+      fallbackPrimitive: obj.fallbackPrimitive as any,
+    })),
+  ];
+
+  const sections: SectionSchema[] = spec.sections.map(s => ({
+    id: `${s.type}-${s.order}`,
+    type: s.type as any,
+    title: s.title,
+    subtitle: s.subtitle,
+    body: s.body,
+    items: s.items,
+    visible: true,
+    order: s.order,
+  }));
+
+  const formFields = spec.form.fields.map(fieldName => ({
+    name: fieldName,
+    label: fieldName.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+    type: fieldTypeFor(fieldName),
+    required: ["name", "phone", "email"].includes(fieldName),
+    options: fieldOptionsFor(fieldName),
+  }));
+
+  return {
+    version: "1.0",
+    id,
+    designSource: "stitch-style" as any,
+    meta: {
+      title: spec.businessLabel,
+      slug,
+      niche: spec.niche,
+      businessType: spec.businessType,
+      prompt,
+      createdAt: now,
+      updatedAt: now,
+      subAccountId,
+    },
+    theme: {
+      colors: spec.colors,
+      style: spec.style as any,
+      motion: spec.motion as any,
+      font: spec.font,
+    },
+    copy: {
+      headline: spec.copy.headline,
+      subheadline: spec.copy.subheadline,
+      body: spec.copy.heroBody,
+      seoTitle: spec.copy.seoTitle,
+      seoDescription: spec.copy.seoDescription,
+    },
+    scene: {
+      sceneType: "custom_prompt_scene",
+      prompt,
+      environment: spec.scene.environment as any,
+      objects: sceneObjects,
+      particles: {
+        type: particleTypeFor(spec.niche),
+        density: "medium",
+        speed: spec.motion === "cinematic" ? 0.5 : 1,
+        color: spec.colors.primary,
+        count: 600,
+        size: 0.04,
+      },
+      lighting: {
+        type: lightingTypeFor(spec.scene.lighting),
+        colors: [spec.colors.primary, spec.colors.secondary, spec.colors.accent],
+        intensity: 2,
+        ambientIntensity: 0.3,
+      },
+      camera: {
+        mode: "slow_orbit",
+        intensity: spec.motion === "subtle" ? 0.3 : 0.6,
+        fov: 60,
+      },
+      postProcessing: {
+        bloom: true,
+        bloomIntensity: spec.style === "dark" ? 1.8 : 1.2,
+        chromaticAberration: spec.style !== "minimal",
+        vignette: true,
+        vignetteIntensity: 0.7,
+      },
+    },
+    sections,
+    cta: {
+      primaryText: spec.copy.ctaText,
+      primaryUrl: "#contact",
+      animation: "pulse",
+      color: spec.colors.accent,
+    },
+    forms: [{
+      id: "main-form",
+      title: spec.form.title,
+      submitText: spec.form.submitText,
+      fields: formFields,
+      crmTag: spec.form.crmTag,
+    }],
+    analytics: {
+      pageType: "landing",
+      niche: spec.niche,
+      funnelStage: "conversion",
+      trackingEvents: ["page_view", "cta_click", "form_submit"],
+    },
+    crm: {
+      leadSource: "dynamic-page",
+      automationTag: spec.form.crmTag,
+      assignedWorkflow: `${spec.businessType}-followup`,
+    },
+    publish: {
+      published: false,
+      slug,
+      subAccountId,
+    },
+  } as DynamicPageSchema;
+}
+
+function fieldTypeFor(fieldName: string): "text" | "email" | "phone" | "textarea" | "select" {
+  if (fieldName === "email") return "email";
+  if (fieldName === "phone") return "phone";
+  if (["message", "description", "accident_type", "tattoo_idea", "main_challenge", "case_type", "how_long"].includes(fieldName)) return "textarea";
+  if (["service", "service_type", "fitness_goal", "experience_level", "party_size", "preferred_time"].includes(fieldName)) return "select";
+  return "text";
+}
+
+function fieldOptionsFor(fieldName: string): string[] | undefined {
+  const map: Record<string, string[]> = {
+    service: ["Haircut", "Fade", "Beard Trim", "Hot Shave", "Full Grooming"],
+    service_type: ["Basic", "Standard", "Premium"],
+    fitness_goal: ["Lose Weight", "Build Muscle", "Improve Endurance", "General Fitness"],
+    experience_level: ["Beginner", "Intermediate", "Advanced"],
+    party_size: ["1", "2", "3-4", "5-6", "7+"],
+    preferred_time: ["Morning (8am-12pm)", "Afternoon (12pm-5pm)", "Evening (5pm-8pm)"],
+    case_type: ["Car Accident", "Slip & Fall", "Medical Malpractice", "Workplace Injury", "Other"],
+  };
+  return map[fieldName];
+}
+
+function particleTypeFor(niche: string): "stars" | "dust" | "sparks" | "bubbles" | "rain" | "snow" | "leaves" {
+  const map: Record<string, any> = {
+    beauty: "dust", health: "dust", fitness: "sparks", food: "dust",
+    automotive: "sparks", home_services: "dust", legal: "stars",
+    ecommerce: "stars", tech: "stars",
+  };
+  return map[niche] ?? "stars";
+}
+
+function lightingTypeFor(lightingDescription: string): "neon_rim" | "warm_studio" | "cool_ambient" | "dramatic" | "sunset" | "medical" | "neutral" {
+  const d = lightingDescription.toLowerCase();
+  if (d.includes("warm") || d.includes("amber")) return "warm_studio";
+  if (d.includes("neon") || d.includes("electric")) return "neon_rim";
+  if (d.includes("dramatic") || d.includes("rim")) return "dramatic";
+  if (d.includes("medical") || d.includes("sterile")) return "medical";
+  if (d.includes("sunset")) return "sunset";
+  if (d.includes("cool") || d.includes("blue")) return "cool_ambient";
+  return "dramatic";
+}
+
+// ── Fallback schema builder ───────────────────────────────────────────────────
+
+function buildFallbackSchema(prompt: string, intent: ParsedPromptIntent): DynamicPageSchema {
+  const id = randomId();
+  const now = NOW();
+  const slug = `${intent.businessType.replace(/_/g, "-")}-${id}`;
+  const primary = intent.colors[0] ?? "#6366f1";
+  const secondary = intent.colors[1] ?? "#a855f7";
+
+  const sceneObjects: SceneObject[] = intent.semanticObjects.length > 0
+    ? intent.semanticObjects.slice(0, 3).map((obj, i) => ({
+        id: `${obj.semanticType}-${i + 1}`,
+        label: obj.label,
+        type: obj.fallbackPrimitive as any,
+        style: "cinematic_3d",
+        props: [obj.semanticType],
+        position: [i === 0 ? 0 : (i % 2 === 0 ? -3 : 3), i === 0 ? 0 : (i < 2 ? 1 : -1), -2] as [number, number, number],
+        scale: [1, 1, 1] as [number, number, number],
+        animation: obj.animation as any,
+        color: obj.color,
+        material: obj.material as any,
+        opacity: 0.9,
+      }))
+    : [
+        { id: "orb-1", label: "orb", type: "orb" as any, style: "cinematic_3d", props: [], position: [-3.5, 1, -2] as any, scale: [1, 1, 1] as any, animation: "slow_float" as any, color: primary, material: "distort" as any, distort: 0.5, opacity: 0.85 },
+        { id: "orb-2", label: "orb", type: "orb" as any, style: "cinematic_3d", props: [], position: [3.5, -1, -1] as any, scale: [1, 1, 1] as any, animation: "slow_float" as any, color: secondary, material: "distort" as any, distort: 0.3, opacity: 0.85 },
+      ];
+
+  const ctaText = intent.ctaText;
+
+  return {
+    version: "1.0",
+    id,
+    designSource: "apex-generator" as any,
+    meta: { title: intent.businessLabel, slug, niche: intent.niche, businessType: intent.businessType, prompt, createdAt: now, updatedAt: now },
+    theme: {
+      colors: { primary, secondary, accent: intent.colors[2] ?? "#06b6d4", background: "#030712", surface: "#0f172a", text: "#f8fafc", textMuted: "#94a3b8" },
+      style: intent.style as any,
+      motion: intent.motion as any,
+      font: "Inter",
+    },
+    copy: {
+      headline: `${intent.businessLabel} — Built for Results`,
+      subheadline: `Serving ${intent.targetAudience}`,
+      body: `Premium ${intent.businessLabel} services tailored for ${intent.targetAudience}.`,
+      seoTitle: `${intent.businessLabel} | Premium Services`,
+      seoDescription: `${intent.businessLabel} offering premium services to ${intent.targetAudience}.`,
+    },
+    scene: {
+      sceneType: "procedural",
+      prompt,
+      environment: intent.environment as any,
+      objects: sceneObjects,
+      particles: { type: "stars", density: "medium", speed: 1, color: primary, count: 600, size: 0.04 },
+      lighting: { type: intent.lighting as any, colors: [primary, secondary, "#818cf8"], intensity: 2, ambientIntensity: 0.3 },
+      camera: { mode: "slow_orbit", intensity: 0.5, fov: 60 },
+      postProcessing: { bloom: true, bloomIntensity: 1.5, chromaticAberration: true, vignette: true, vignetteIntensity: 0.8 },
+    },
+    sections: [
+      { id: "hero", type: "hero", title: intent.businessLabel, subtitle: `Serving ${intent.targetAudience}`, visible: true, order: 0 },
+      { id: "services", type: "services" as any, title: "Our Services", visible: true, order: 1 },
+      { id: "cta-banner", type: "cta_banner", title: "Ready to Get Started?", subtitle: ctaText, visible: true, order: 2 },
+    ],
+    cta: { primaryText: ctaText, primaryUrl: "#contact", animation: "pulse", color: primary },
+    forms: [{
+      id: "main-form",
+      title: ctaText,
+      submitText: ctaText,
+      fields: intent.formFields.map(f => ({ name: f, label: f.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()), type: fieldTypeFor(f), required: ["name", "phone", "email"].includes(f) })),
+      crmTag: intent.crmTag,
+    }],
+    analytics: { pageType: "landing", niche: intent.niche, funnelStage: "conversion", trackingEvents: ["page_view", "cta_click", "form_submit"] },
+    crm: { leadSource: "dynamic-page", automationTag: intent.crmTag, assignedWorkflow: `${intent.businessType}-followup` },
+    publish: { published: false, slug },
+  } as DynamicPageSchema;
+}
+
+// ── HTML sections generator ───────────────────────────────────────────────────
 
 async function generateSectionsHtml(
   prompt: string,
   schema: DynamicPageSchema,
-  intent: ReturnType<typeof parsePromptIntent>,
-  imageUrl?: string,
-  heroImageUrl?: string
+  intent: ParsedPromptIntent,
+  heroImageUrl?: string,
+  uploadedImageUrl?: string,
 ): Promise<string> {
   const colors = schema.theme?.colors ?? {};
+  const primaryImage = heroImageUrl ?? uploadedImageUrl;
+  const imageContext = primaryImage ? `\n- Showcase/hero image URL: ${primaryImage}` : "";
 
-  // Prefer AI-generated hero image, fall back to user-uploaded image
-  const primaryImage = heroImageUrl ?? imageUrl;
-  const imageContext = primaryImage
-    ? `\n- Hero/showcase image URL (use in the about section): ${primaryImage}`
-    : "";
-  const uploadedContext = imageUrl && imageUrl !== primaryImage
-    ? `\n- Additional uploaded image: ${imageUrl} — embed in the most relevant section.`
-    : "";
-
-  const userMessage = `Generate HTML sections for this landing page prompt: "${prompt}"
+  const userMessage = `Generate HTML sections for: "${prompt}"
 
 Business context:
-- Niche: ${intent.niche}
-- Business type: ${intent.businessType}
+- Business: ${intent.businessLabel} (type: ${intent.businessType}, niche: ${intent.niche})
 - Style: ${intent.style}
-- Headline (already shown in the 3D hero): "${schema.copy?.headline ?? ""}"
-- Subheadline: "${schema.copy?.subheadline ?? ""}"
-- Primary CTA: "${schema.cta?.primaryText ?? "Get Started"}"
-- Theme colors: primary=${colors.primary ?? "#6366f1"}, secondary=${colors.secondary ?? "#a855f7"}, accent=${colors.accent ?? "#06b6d4"}${imageContext}${uploadedContext}
+- Headline: "${schema.copy?.headline ?? ""}"
+- CTA: "${schema.cta?.primaryText ?? "Get Started"}"
+- Theme: primary=${colors.primary}, secondary=${colors.secondary}, accent=${colors.accent}${imageContext}
 
-Generate compelling, niche-specific sections with real images. The WebGL 3D hero is already above — start directly with the about/intro section featuring an image.`;
+Generate ALL sections with 100% niche-specific copy and realistic content. Do NOT use generic "AI automation" placeholders.`;
 
   try {
     const response = await aiChat(
@@ -251,11 +440,10 @@ Generate compelling, niche-specific sections with real images. The WebGL 3D hero
     );
 
     if (!response.ok || !response.text) {
-      console.warn("[AI-PAGE-HTML] HTML generation failed, sections will use fallback renderer");
+      console.warn("[AI-PAGE-HTML] HTML generation failed");
       return "";
     }
 
-    // Strip any accidental markdown code fences
     const clean = response.text
       .replace(/^```html?\n?/i, "")
       .replace(/```$/m, "")
@@ -263,140 +451,222 @@ Generate compelling, niche-specific sections with real images. The WebGL 3D hero
 
     return sanitizeHtml(clean);
   } catch (err) {
-    console.warn("[AI-PAGE-HTML] generateSectionsHtml error:", err instanceof Error ? err.message : err);
+    console.warn("[AI-PAGE-HTML] error:", err instanceof Error ? err.message : err);
     return "";
   }
 }
 
+// ── Hero image prompt builder ─────────────────────────────────────────────────
+
+function buildHeroImagePrompt(prompt: string, intent: ParsedPromptIntent): string {
+  const styleMap: Record<string, string> = {
+    luxury: "ultra-luxury, high-end, cinematic lighting, editorial photography",
+    dark: "dark aesthetic, dramatic shadows, professional photography",
+    warm: "warm inviting tones, natural light, lifestyle photography",
+    energetic: "dynamic energy, vibrant colors, bold composition",
+    calm: "serene, soft, minimal, zen atmosphere",
+    tech: "sleek technology, blue/purple lighting, futuristic",
+  };
+  const styleDesc = styleMap[intent.style] ?? "professional, high-quality, commercial photography";
+  return `Professional ${intent.businessLabel} marketing image. ${prompt.trim().slice(0, 300)}. ${styleDesc}. Photorealistic, 8K, no text or logos, centered composition for a website hero.`;
+}
+
+// ── Stitch-style generation ───────────────────────────────────────────────────
+
+async function generateStitchStyleSchema(
+  prompt: string,
+  intent: ParsedPromptIntent,
+  subAccountId?: number,
+  uploadedImageUrl?: string,
+): Promise<DynamicPageSchema> {
+  // Phase 1: design spec (in parallel with hero image generation)
+  const [specResult, heroImageResult] = await Promise.allSettled([
+    generateVisualDesignSpec(prompt, intent),
+    aiGenerateImage(buildHeroImagePrompt(prompt, intent)),
+  ]);
+
+  const spec = specResult.status === "fulfilled" ? specResult.value : null;
+  const heroImageUrl = heroImageResult.status === "fulfilled" && heroImageResult.value ? heroImageResult.value : undefined;
+
+  if (!spec) {
+    console.warn("[STITCH] Design spec generation failed, falling back to Apex Fast");
+    return generateApexFastSchema(prompt, intent, subAccountId, uploadedImageUrl);
+  }
+
+  // Phase 2: map spec to schema
+  let schema = mapSpecToSchema(spec, prompt, subAccountId);
+
+  // Embed hero image
+  if (heroImageUrl) {
+    schema.scene.fallbackImage = heroImageUrl;
+  }
+
+  // Phase 3: quality validation + auto-fix
+  const validation = validateGeneratedSchema(schema, prompt, intent);
+  if (!validation.passed && validation.fixedSchema) {
+    console.log(`[STITCH] Auto-fixed ${validation.issues.filter(i => i.severity === "error").length} errors`);
+    schema = validation.fixedSchema;
+  }
+
+  // Phase 4: HTML sections
+  const generatedHtml = await generateSectionsHtml(prompt, schema, intent, heroImageUrl, uploadedImageUrl);
+  if (generatedHtml) schema.generatedHtml = generatedHtml;
+
+  return schema;
+}
+
+// ── Apex Fast generation ──────────────────────────────────────────────────────
+
+async function generateApexFastSchema(
+  prompt: string,
+  intent: ParsedPromptIntent,
+  subAccountId?: number,
+  uploadedImageUrl?: string,
+): Promise<DynamicPageSchema> {
+  const now = NOW();
+  const id = randomId();
+
+  const userMessage = `Generate a DynamicPageSchema for: "${prompt}"
+
+Intent context (use this to generate niche-specific output — do NOT override with generic content):
+- Business: ${intent.businessLabel}
+- businessType: ${intent.businessType}
+- niche: ${intent.niche}
+- style: ${intent.style}
+- environment: ${intent.environment}
+- Specific objects requested: ${intent.semanticObjects.map(o => `"${o.label}" (type: ${o.semanticType}, animation: ${o.animation})`).join(", ") || "none — use abstract theme objects"}
+- Colors: ${intent.colors.join(", ") || "pick palette appropriate for the niche"}
+- motion: ${intent.motion}
+- CTA text: "${intent.ctaText}"
+- CRM tag: "${intent.crmTag}"
+- Form fields: ${intent.formFields.join(", ")}
+
+Generate everything niche-specific. Return ONLY JSON.`;
+
+  const [schemaResponse, heroImageResult] = await Promise.allSettled([
+    aiChat(
+      [
+        { role: "system", content: APEX_FAST_SYSTEM_PROMPT },
+        { role: "user", content: userMessage },
+      ],
+      { temperature: 0.8, maxTokens: 4096, jsonMode: true, timeoutMs: 30000 }
+    ),
+    aiGenerateImage(buildHeroImagePrompt(prompt, intent)),
+  ]);
+
+  let schema: DynamicPageSchema;
+
+  if (schemaResponse.status === "fulfilled" && schemaResponse.value.ok && schemaResponse.value.text) {
+    try {
+      const raw = extractJSON(schemaResponse.value.text);
+      schema = JSON.parse(raw) as DynamicPageSchema;
+    } catch {
+      console.warn("[APEX-FAST] JSON parse failed, using fallback");
+      schema = buildFallbackSchema(prompt, intent);
+    }
+  } else {
+    console.warn("[APEX-FAST] AI call failed, using fallback");
+    schema = buildFallbackSchema(prompt, intent);
+  }
+
+  // Normalize required fields
+  schema.version = "1.0";
+  schema.id = schema.id || id;
+  schema.designSource = (schema.designSource as any) ?? "apex-generator";
+  schema.meta = schema.meta ?? ({} as any);
+  schema.meta.prompt = prompt;
+  schema.meta.createdAt = now;
+  schema.meta.updatedAt = now;
+  if (subAccountId) schema.meta.subAccountId = subAccountId;
+  if (schema.publish) schema.publish.published = false;
+
+  const heroImageUrl = heroImageResult.status === "fulfilled" && heroImageResult.value ? heroImageResult.value : undefined;
+  if (heroImageUrl && schema.scene) schema.scene.fallbackImage = heroImageUrl;
+
+  // Quality validation + auto-fix
+  const validation = validateGeneratedSchema(schema, prompt, intent);
+  if (!validation.passed && validation.fixedSchema) {
+    console.log(`[APEX-FAST] Auto-fixed ${validation.issues.filter(i => i.severity === "error").length} errors`);
+    schema = validation.fixedSchema;
+  }
+
+  const generatedHtml = await generateSectionsHtml(prompt, schema, intent, heroImageUrl, uploadedImageUrl);
+  if (generatedHtml) schema.generatedHtml = generatedHtml;
+
+  return schema;
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export async function generatePageSchema(prompt: string, subAccountId?: number, imageUrl?: string): Promise<DynamicPageSchema> {
+export async function generatePageSchema(
+  prompt: string,
+  subAccountId?: number,
+  uploadedImageUrl?: string,
+  mode: GenerationMode = "stitch-style",
+): Promise<DynamicPageSchema> {
   const intent = parsePromptIntent(prompt);
-  const id = randomId();
-  const now = NOW();
 
-  const userMessage = `Generate a complete DynamicPageSchema for this prompt: "${prompt}"
-
-Context from parser:
-- niche: ${intent.niche}
-- businessType: ${intent.businessType}
-- environment: ${intent.environment}
-- style: ${intent.style}
-- objects requested: ${intent.objects.join(", ") || "none"}
-- colors: ${intent.colors.join(", ") || "pick appropriate"}
-- motion: ${intent.motion}
-
-Generate a compelling, on-brand page schema. Make the copy specific and persuasive. Make the scene visually striking. Return ONLY the JSON.`;
-
-  // Build a cinematic image prompt for the hero background
-  const heroImagePrompt = buildHeroImagePrompt(prompt, intent);
+  console.log(`[PAGE-GEN] mode=${mode} niche=${intent.niche} businessType=${intent.businessType} objects=[${intent.semanticObjects.map(o => o.label).join(", ")}]`);
 
   try {
-    // Fire schema generation AND hero image generation in parallel — no extra wait time
-    const [schemaResponse, heroImageResult] = await Promise.allSettled([
-      aiChat(
-        [
-          { role: "system", content: SCHEMA_SYSTEM_PROMPT },
-          { role: "user", content: userMessage },
-        ],
-        { temperature: 0.8, maxTokens: 4096, jsonMode: true, timeoutMs: 30000 }
-      ),
-      aiGenerateImage(heroImagePrompt),
-    ]);
-
-    let parsed: DynamicPageSchema;
-
-    if (schemaResponse.status === "fulfilled" && schemaResponse.value.ok && schemaResponse.value.text) {
-      const raw = extractJSON(schemaResponse.value.text);
-      parsed = JSON.parse(raw) as DynamicPageSchema;
+    if (mode === "stitch-style") {
+      return await generateStitchStyleSchema(prompt, intent, subAccountId, uploadedImageUrl);
     } else {
-      console.warn("[AI-PAGE-SCHEMA] Schema AI call failed, using fallback");
-      parsed = buildFallbackSchema(prompt, intent);
+      return await generateApexFastSchema(prompt, intent, subAccountId, uploadedImageUrl);
     }
-
-    // Ensure required fields
-    parsed.version = "1.0";
-    parsed.id = parsed.id || id;
-    parsed.meta = parsed.meta || {} as any;
-    parsed.meta.prompt = prompt;
-    parsed.meta.createdAt = now;
-    parsed.meta.updatedAt = now;
-    if (subAccountId) parsed.meta.subAccountId = subAccountId;
-    if (parsed.publish) parsed.publish.published = false;
-
-    // Embed AI-generated hero image in the scene schema
-    const heroImageUrl = heroImageResult.status === "fulfilled" && heroImageResult.value
-      ? heroImageResult.value
-      : undefined;
-
-    if (heroImageUrl) {
-      if (!parsed.scene) parsed.scene = {} as any;
-      parsed.scene.fallbackImage = heroImageUrl;
-      console.log(`[AI-PAGE-SCHEMA] Hero image generated (${heroImageUrl.slice(0, 40)}…)`);
-    } else {
-      console.warn("[AI-PAGE-SCHEMA] Hero image generation skipped or failed");
-    }
-
-    // Generate AI HTML sections with the real schema + hero image
-    const generatedHtml = await generateSectionsHtml(prompt, parsed, intent, imageUrl, heroImageUrl);
-    if (generatedHtml) {
-      parsed.generatedHtml = generatedHtml;
-    }
-
-    return parsed;
   } catch (err) {
-    console.error("[AI-PAGE-SCHEMA] Error:", err instanceof Error ? err.message : err);
+    console.error("[PAGE-GEN] Fatal error:", err instanceof Error ? err.message : err);
     return buildFallbackSchema(prompt, intent);
   }
 }
 
-export async function patchExistingPageSchema(existingSchema: DynamicPageSchema, prompt: string): Promise<DynamicPageSchema> {
+export async function patchExistingPageSchema(
+  existingSchema: DynamicPageSchema,
+  prompt: string,
+): Promise<DynamicPageSchema> {
   const intent = parsePromptIntent(prompt);
   const now = NOW();
 
   const userMessage = `You have this existing page schema:
 ${JSON.stringify(existingSchema, null, 2)}
 
-The user wants to make this change: "${prompt}"
+User wants to change: "${prompt}"
 
-Patch the schema minimally — only change what the user asked for. Preserve everything else.
+Patch the schema minimally — only change what was asked. Preserve everything else.
 Return the COMPLETE updated schema as JSON.`;
 
   try {
     const response = await aiChat(
       [
-        { role: "system", content: SCHEMA_SYSTEM_PROMPT },
+        { role: "system", content: APEX_FAST_SYSTEM_PROMPT },
         { role: "user", content: userMessage },
       ],
       { temperature: 0.5, maxTokens: 4096, jsonMode: true, timeoutMs: 30000 }
     );
 
-    if (!response.ok || !response.text) {
-      console.warn("[AI-PAGE-SCHEMA] Patch AI call failed, returning existing schema");
-      return existingSchema;
-    }
+    if (!response.ok || !response.text) return existingSchema;
 
     const raw = extractJSON(response.text);
     const patched = JSON.parse(raw) as DynamicPageSchema;
     patched.meta = { ...existingSchema.meta, ...patched.meta, updatedAt: now };
 
-    // Regenerate HTML sections with the patched schema
     const updatedHtml = await generateSectionsHtml(prompt, patched, intent);
     if (updatedHtml) patched.generatedHtml = updatedHtml;
 
     return patched;
   } catch (err) {
-    console.warn("[AI-PAGE-SCHEMA] patchExistingPageSchema failed, returning existing schema:", err instanceof Error ? err.message : err);
+    console.warn("[PAGE-GEN] patchExistingPageSchema failed:", err instanceof Error ? err.message : err);
     return existingSchema;
   }
 }
 
 export async function generatePageCopy(prompt: string, niche: string): Promise<{ headline: string; subheadline: string; body: string; ctaText: string }> {
+  const intent = parsePromptIntent(prompt);
   try {
     const response = await aiChat(
       [
         { role: "system", content: "Generate concise web copy. Return JSON only: {headline, subheadline, body, ctaText}" },
-        { role: "user", content: `Write compelling landing page copy for: "${prompt}" in the ${niche} industry.` },
+        { role: "user", content: `Write compelling landing page copy for: "${prompt}" — business type: ${intent.businessLabel}. Make it 100% niche-specific.` },
       ],
       { temperature: 0.9, maxTokens: 500, jsonMode: true }
     );
@@ -404,14 +674,12 @@ export async function generatePageCopy(prompt: string, niche: string): Promise<{
       const raw = extractJSON(response.text);
       return JSON.parse(raw);
     }
-  } catch (err) {
-    console.warn("[AI-PAGE-SCHEMA] generatePageCopy failed, using fallback copy:", err instanceof Error ? err.message : err);
-  }
-  return { headline: "Grow Your Business with AI", subheadline: "Automation. Leads. Results.", body: "We help you scale.", ctaText: "Get Started" };
+  } catch { /* fall through */ }
+  return { headline: `${intent.businessLabel} — Built for Results`, subheadline: `Serving ${intent.targetAudience}`, body: `Premium services tailored for you.`, ctaText: intent.ctaText };
 }
 
 export async function generateScenePlan(prompt: string): Promise<WebGLSceneSchema> {
-  const schema = await generatePageSchema(prompt);
+  const schema = await generatePageSchema(prompt, undefined, undefined, "apex-fast");
   return schema.scene;
 }
 

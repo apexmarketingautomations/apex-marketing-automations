@@ -487,6 +487,8 @@ export default function DynamicPages() {
   const [uploadedImageUrl, setUploadedImageUrl] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [showAllExamples, setShowAllExamples] = useState(false);
+  const [generationMode, setGenerationMode] = useState<"stitch-style" | "apex-fast" | "stitch-import">("stitch-style");
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
   const uploadRef = useRef<HTMLInputElement>(null);
 
   const promptIntent = useMemo(
@@ -550,6 +552,7 @@ export default function DynamicPages() {
         subAccountId,
         imageUrl: uploadedImageUrl || undefined,
         templateId: activeTemplate.id,
+        generationMode,
       });
       const data = await res.json();
       if (data?.schema) {
@@ -595,15 +598,26 @@ export default function DynamicPages() {
               className="flex gap-1.5"
             >
               {currentSchema && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setPreviewSchema(v => !v)}
-                  className="h-7 text-xs text-white/50 hover:text-white gap-1.5"
-                >
-                  <Eye className="w-3 h-3" />
-                  {previewSchema ? "3D Scene" : "Full Preview"}
-                </Button>
+                <>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setPreviewSchema(v => !v)}
+                    className="h-7 text-xs text-white/50 hover:text-white gap-1.5"
+                  >
+                    <Eye className="w-3 h-3" />
+                    {previewSchema ? "3D Scene" : "Full Preview"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setShowDebugPanel(v => !v)}
+                    className="h-7 text-xs text-white/50 hover:text-white gap-1.5"
+                  >
+                    <Zap className="w-3 h-3" />
+                    Debug
+                  </Button>
+                </>
               )}
               <Button size="sm" variant="ghost" className="h-7 text-xs text-white/50 hover:text-white gap-1.5">
                 <Share2 className="w-3 h-3" /> Publish
@@ -757,6 +771,30 @@ export default function DynamicPages() {
                       </div>
                     </>
                   )}
+                </div>
+
+                {/* Generation mode selector */}
+                <div className="flex gap-1 p-1 rounded-lg bg-white/[0.04] border border-white/[0.06]">
+                  {(["stitch-style", "apex-fast", "stitch-import"] as const).map(m => {
+                    const labels: Record<string, string> = {
+                      "stitch-style": "✦ Stitch Visual",
+                      "apex-fast": "⚡ Apex Fast",
+                      "stitch-import": "⬇ Import",
+                    };
+                    return (
+                      <button
+                        key={m}
+                        onClick={() => setGenerationMode(m)}
+                        className={`flex-1 py-1.5 rounded-md text-[10px] font-semibold transition-all ${
+                          generationMode === m
+                            ? "bg-purple-600 text-white shadow"
+                            : "text-white/35 hover:text-white/60"
+                        }`}
+                      >
+                        {labels[m]}
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {/* Generate button */}
@@ -1098,13 +1136,139 @@ export default function DynamicPages() {
             <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
             <span className="text-white/30 text-[11px]">
               {currentSchema
-                ? `${generatedBusinessName || "Page"} · WebGL active · ${currentSchema.meta.niche.replace(/_/g, " ")}`
+                ? `${generatedBusinessName || "Page"} · WebGL active · ${currentSchema.meta.niche.replace(/_/g, " ")} · ${(currentSchema as any).designSource ?? "apex-generator"}`
                 : `WebGL live · ${activeTemplate.style} aesthetic · ${TEMPLATES.length} templates`
               }
             </span>
           </div>
         </main>
       </div>
+
+      {/* ── Debug Panel ─────────────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {showDebugPanel && currentSchema && (
+          <motion.div
+            key="debug-panel"
+            initial={{ opacity: 0, x: 400 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 400 }}
+            transition={{ type: "spring", damping: 30, stiffness: 300 }}
+            className="fixed right-0 top-0 h-full w-[420px] bg-[#060810] border-l border-white/[0.08] z-50 flex flex-col shadow-2xl"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
+              <div className="flex items-center gap-2">
+                <Zap className="w-4 h-4 text-purple-400" />
+                <span className="text-white font-bold text-sm">Debug Panel</span>
+                <Badge className="ml-1 text-[9px] h-4 px-1.5 bg-purple-500/20 text-purple-400 border-purple-500/30">
+                  {(currentSchema as any).designSource ?? "apex-generator"}
+                </Badge>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowDebugPanel(false)}
+                className="h-7 w-7 p-0 text-white/40 hover:text-white"
+              >
+                <X className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs font-mono">
+
+              {/* Parsed Intent */}
+              <details open className="group">
+                <summary className="cursor-pointer text-purple-400 font-bold uppercase tracking-widest text-[10px] mb-2 list-none flex items-center gap-1.5">
+                  <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
+                  Parsed Intent
+                </summary>
+                <div className="bg-white/[0.03] rounded-lg p-3 space-y-1 border border-white/[0.05]">
+                  <div className="flex gap-2"><span className="text-white/40 w-28 shrink-0">businessType</span><span className="text-green-400">{currentSchema.meta.businessType}</span></div>
+                  <div className="flex gap-2"><span className="text-white/40 w-28 shrink-0">niche</span><span className="text-green-400">{currentSchema.meta.niche}</span></div>
+                  <div className="flex gap-2"><span className="text-white/40 w-28 shrink-0">designSource</span><span className="text-cyan-400">{(currentSchema as any).designSource ?? "—"}</span></div>
+                  <div className="flex gap-2"><span className="text-white/40 w-28 shrink-0">sceneObjects</span><span className="text-yellow-400">{currentSchema.scene.objects.length}</span></div>
+                  <div className="flex gap-2"><span className="text-white/40 w-28 shrink-0">ctaText</span><span className="text-orange-400">{currentSchema.cta.primaryText}</span></div>
+                  <div className="flex gap-2"><span className="text-white/40 w-28 shrink-0">crmTag</span><span className="text-pink-400">{currentSchema.crm.automationTag}</span></div>
+                </div>
+              </details>
+
+              {/* Scene Objects */}
+              <details open className="group">
+                <summary className="cursor-pointer text-purple-400 font-bold uppercase tracking-widest text-[10px] mb-2 list-none flex items-center gap-1.5">
+                  <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
+                  Scene Objects ({currentSchema.scene.objects.length})
+                </summary>
+                <div className="space-y-1.5">
+                  {currentSchema.scene.objects.map(obj => (
+                    <div key={obj.id} className="bg-white/[0.03] rounded-lg p-2.5 border border-white/[0.05]">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-3 h-3 rounded-full shrink-0" style={{ background: obj.color }} />
+                        <span className="text-white font-bold">{obj.label}</span>
+                        <span className="ml-auto text-white/30 text-[10px]">{obj.type}</span>
+                      </div>
+                      <div className="flex gap-3 text-[10px]">
+                        <span className="text-white/30">anim: <span className="text-cyan-400">{obj.animation}</span></span>
+                        <span className="text-white/30">mat: <span className="text-yellow-400">{obj.material}</span></span>
+                        {(obj as any).semanticType && <span className="text-white/30">type: <span className="text-green-400">{(obj as any).semanticType}</span></span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+
+              {/* Copy Validation */}
+              <details open className="group">
+                <summary className="cursor-pointer text-purple-400 font-bold uppercase tracking-widest text-[10px] mb-2 list-none flex items-center gap-1.5">
+                  <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
+                  Generated Copy
+                </summary>
+                <div className="bg-white/[0.03] rounded-lg p-3 space-y-2 border border-white/[0.05]">
+                  <div>
+                    <span className="text-white/40 block text-[10px] mb-0.5">Headline</span>
+                    <span className="text-white">{currentSchema.copy.headline}</span>
+                  </div>
+                  <div>
+                    <span className="text-white/40 block text-[10px] mb-0.5">Subheadline</span>
+                    <span className="text-white/70">{currentSchema.copy.subheadline}</span>
+                  </div>
+                  <div>
+                    <span className="text-white/40 block text-[10px] mb-0.5">CTA</span>
+                    <span className="text-green-400 font-bold">{currentSchema.cta.primaryText}</span>
+                  </div>
+                </div>
+              </details>
+
+              {/* Sections */}
+              <details className="group">
+                <summary className="cursor-pointer text-purple-400 font-bold uppercase tracking-widest text-[10px] mb-2 list-none flex items-center gap-1.5">
+                  <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
+                  Sections ({currentSchema.sections.length})
+                </summary>
+                <div className="space-y-1">
+                  {currentSchema.sections.map((s, i) => (
+                    <div key={i} className="flex gap-2 items-center">
+                      <span className="text-white/25 w-4 shrink-0">{i}</span>
+                      <span className="text-cyan-400 w-20 shrink-0">{s.type}</span>
+                      <span className="text-white/60 truncate">{s.title}</span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+
+              {/* Raw Schema */}
+              <details className="group">
+                <summary className="cursor-pointer text-purple-400 font-bold uppercase tracking-widest text-[10px] mb-2 list-none flex items-center gap-1.5">
+                  <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
+                  Raw Schema JSON
+                </summary>
+                <pre className="bg-black/40 rounded-lg p-3 text-[9px] text-white/50 overflow-auto max-h-64 leading-relaxed border border-white/[0.05]">
+                  {JSON.stringify({ meta: currentSchema.meta, cta: currentSchema.cta, crm: currentSchema.crm }, null, 2)}
+                </pre>
+              </details>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

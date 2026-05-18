@@ -100,14 +100,19 @@ export function registerDynamicPagesRoutes(app: Express): void {
 
   /** Generate a new page schema from a prompt */
   app.post("/api/dynamic-pages/generate", guard, asyncHandler(async (req: Request, res: Response) => {
-    const { prompt, subAccountId, imageUrl } = req.body as { prompt?: string; subAccountId?: number; imageUrl?: string };
+    const { prompt, subAccountId, imageUrl, generationMode } = req.body as {
+      prompt?: string; subAccountId?: number; imageUrl?: string;
+      generationMode?: "apex-fast" | "stitch-style" | "stitch-import";
+    };
     if (!prompt || typeof prompt !== "string" || prompt.trim().length < 3) {
       return res.status(400).json({ error: "prompt is required (min 3 chars)" });
     }
 
     const sanitized = prompt.trim().slice(0, 2000).replace(/<[^>]*>/g, "");
     const cleanImageUrl = typeof imageUrl === "string" && imageUrl.startsWith("http") ? imageUrl : undefined;
-    const schema = await generatePageSchema(sanitized, subAccountId, cleanImageUrl);
+    const mode = generationMode === "apex-fast" ? "apex-fast" : "stitch-style";
+
+    const schema = await generatePageSchema(sanitized, subAccountId, cleanImageUrl, mode);
     return res.json({ schema });
   }));
 

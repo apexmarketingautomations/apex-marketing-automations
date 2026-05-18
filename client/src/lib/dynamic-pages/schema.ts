@@ -59,12 +59,31 @@ export type MaterialType = "distort" | "wobble" | "standard" | "glass" | "metall
 
 export type PrimitiveType = "orb" | "torus" | "box" | "cone" | "cylinder" | "ring" | "future_mesh_slot";
 
+/** How the object was authored — drives renderer behavior and future tooling. */
+export type SceneObjectCategory = "primitive" | "semantic_object" | "custom_model";
+
+export type GenerationMode = "apex-fast" | "stitch-style" | "stitch-import";
+
+export type DesignSource = "apex-generator" | "stitch-import" | "stitch-inspired";
+
 export interface SceneObject {
   id: string;
-  /** Semantic label — what the user asked for (e.g. "giraffe", "stethoscope") */
+  /** Semantic label — what the user asked for (e.g. "spinning straight razor") */
   label: string;
-  /** Actual Three.js primitive to render (orb = sphere, future_mesh_slot = placeholder) */
+  /** How this object was authored:
+   *  - "primitive": generic Three.js shape, no semantic meaning
+   *  - "semantic_object": user-described object, rendered via fallbackPrimitive until a GLB model is available
+   *  - "custom_model": GLB/GLTF model path (future)
+   */
+  objectCategory?: SceneObjectCategory;
+  /** Actual Three.js primitive to render. For semantic_object this is the fallback until models are available. */
   type: PrimitiveType;
+  /** Normalized semantic type for future 3D model lookup, e.g. "straight_razor" */
+  semanticType?: string;
+  /** Human-readable description of what this object should look like — stored for future generative model pipeline */
+  objectPrompt?: string;
+  /** The primitive to render until a real 3D model is available */
+  fallbackPrimitive?: PrimitiveType;
   style: string;
   /** Props the user requested — stored for future GLB mesh generation */
   props: string[];
@@ -77,6 +96,28 @@ export interface SceneObject {
   distort?: number;
   wobbleFactor?: number;
   opacity?: number;
+}
+
+// ── Stitch import interfaces ──────────────────────────────────────────────────
+// Placeholders for future Stitch output ingestion.
+
+export interface StitchHandoffMetadata {
+  stitchProjectId?: string;
+  stitchExportedAt?: string;
+  figmaFileUrl?: string;
+  screenshotUrl?: string;
+  generatedByModel?: string;
+}
+
+export interface StitchImportPayload {
+  /** Raw HTML/CSS pasted from a Stitch export */
+  htmlCss?: string;
+  /** Structured design JSON if Stitch ever exposes an export API */
+  designJson?: unknown;
+  /** Handoff metadata from Figma or Stitch */
+  handoff?: StitchHandoffMetadata;
+  /** Reference screenshot for image-based generation */
+  screenshotUrl?: string;
 }
 
 export interface ParticleConfig {
@@ -219,6 +260,12 @@ export interface DynamicPageSchema {
    * The WebGL 3D hero always renders above it unchanged.
    */
   generatedHtml?: string;
+  /** How this schema was generated — drives debug panel display and future tooling. */
+  designSource?: DesignSource;
+  /** The generation mode used to produce this schema. */
+  generationMode?: GenerationMode;
+  /** Stitch import payload — populated only for stitch-import mode. */
+  stitchImport?: StitchImportPayload;
   meta: {
     title: string;
     slug: string;
